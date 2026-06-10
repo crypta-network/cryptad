@@ -22,21 +22,25 @@ import java.util.List;
  * @param consumerAppId stable consumer app id that declares the request
  * @param consumerName consumer display name safe for operator views
  * @param consumerVersion consumer display version safe for operator views
+ * @param alias manifest-local request alias
  * @param providerAppId requested provider app id from manifest metadata
  * @param serviceId requested public service id from manifest metadata
  * @param scopes requested scopes/actions for operator review
  * @param contexts requested contexts for operator review, or empty for unscoped services
  * @param purpose operator-facing purpose explaining why the app requests the service
+ * @param dependency dependency metadata used for review and graph display, not authorization
  */
 public record AppServiceRequestDescriptor(
     String consumerAppId,
     String consumerName,
     String consumerVersion,
+    String alias,
     String providerAppId,
     String serviceId,
     List<String> scopes,
     List<String> contexts,
-    String purpose) {
+    String purpose,
+    AppServiceDependencyDescriptor dependency) {
   /**
    * Creates a validated request descriptor.
    *
@@ -48,11 +52,17 @@ public record AppServiceRequestDescriptor(
     consumerAppId = AppServiceManifestParser.normalizeAppId(consumerAppId);
     consumerName = AppServiceManifestParser.requiredText("consumerName", consumerName, 80);
     consumerVersion = AppServiceManifestParser.requiredText("consumerVersion", consumerVersion, 40);
+    alias = AppServiceManifestParser.normalizeAlias(alias);
     providerAppId = AppServiceManifestParser.normalizeAppId(providerAppId);
     serviceId = AppServiceManifestParser.normalizeServiceId(serviceId);
     scopes = AppServiceManifestParser.normalizeTokens("scopes", scopes, 16);
     contexts = AppServiceManifestParser.normalizeTokens("contexts", contexts, 16);
-    purpose = AppServiceManifestParser.requiredText("purpose", purpose, 512);
+    purpose = AppServiceManifestParser.requiredPurposeText(purpose);
+    dependency =
+        dependency == null ? AppServiceDependencyDescriptor.legacyOptional(alias) : dependency;
+    if (!alias.equals(dependency.alias())) {
+      throw new IllegalArgumentException("dependency alias must match request alias");
+    }
   }
 
   /**
@@ -64,15 +74,17 @@ public record AppServiceRequestDescriptor(
    * @return public request descriptor map with stable key order
    */
   public java.util.Map<String, Object> toJson() {
-    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(8);
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(10);
     json.put("consumerAppId", consumerAppId);
     json.put("consumerName", consumerName);
     json.put("consumerVersion", consumerVersion);
+    json.put("alias", alias);
     json.put("providerAppId", providerAppId);
     json.put("serviceId", serviceId);
     json.put("scopes", scopes);
     json.put("contexts", contexts);
     json.put("purpose", purpose);
+    json.put("dependency", dependency.toJson());
     return json;
   }
 }

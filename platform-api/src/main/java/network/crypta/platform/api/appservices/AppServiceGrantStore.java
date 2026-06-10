@@ -58,6 +58,31 @@ public interface AppServiceGrantStore {
   void writeGrant(AppServiceGrant grant) throws IOException;
 
   /**
+   * Lists all stored grant bundles in deterministic order.
+   *
+   * @return immutable bundle list ordered by creation time and bundle id
+   * @throws IOException when bundle records cannot be read or decoded
+   */
+  List<AppServiceGrantBundle> listBundles() throws IOException;
+
+  /**
+   * Reads one grant bundle by id.
+   *
+   * @param bundleId stable local bundle id to look up
+   * @return bundle when present, or empty when the id is unknown
+   * @throws IOException when bundle records cannot be read or decoded
+   */
+  Optional<AppServiceGrantBundle> readBundle(String bundleId) throws IOException;
+
+  /**
+   * Creates or replaces one grant-bundle review record.
+   *
+   * @param bundle validated bundle record to persist
+   * @throws IOException when the bundle cannot be written safely
+   */
+  void writeBundle(AppServiceGrantBundle bundle) throws IOException;
+
+  /**
    * Appends a redacted audit event.
    *
    * <p>The event is already redacted by the coordinator or adapter boundary. Implementations may

@@ -9,7 +9,7 @@ The current app-facing values are:
 
 ```text
 apiVersion=v1
-contractVersion=15
+contractVersion=16
 ```
 
 The contract does not change Platform API behavior. It publishes metadata that answers which
@@ -37,7 +37,7 @@ The response shape is:
 {
   "contract": {
     "apiVersion": "v1",
-    "contractVersion": 15,
+    "contractVersion": 16,
     "generatedBy": "cryptad",
     "stabilityPolicy": "...",
     "capabilities": [],
@@ -129,6 +129,24 @@ statement keeps any existing local deprecated or revoked status. Score evidence 
 bounded contribution reason codes and an `evidenceTruncated` flag; revoked, deprecated, expired,
 unverified, unanchored, or zero-confidence statements do not contribute. The `trust.score`
 app-service remains read-only and no more permissive than direct score reads.
+
+Contract version 16 extends the app-service contract with dependency graph and grant-bundle
+review routes:
+
+| Route | Required app capabilities | Purpose |
+| --- | --- | --- |
+| `GET /api/v1/app-services/dependencies` | `app.services.read` | List caller-visible dependency graph nodes and edges. Host/operator sees all apps; app principals see only their own app dependencies. |
+| `GET /api/v1/app-services/dependencies/consumers/{consumerAppId}` | `app.services.read` | Read one consumer app's dependency graph, with app-principal scoping enforced by the route and no conflict with provider service routes. |
+| `GET /api/v1/app-services/grant-bundles` | `app.services.read` | List caller-visible grant-bundle proposals and approved/expired/revalidation states. |
+| `POST /api/v1/app-services/grant-bundles` | `app.services.call` | Request a pending bounded bundle for the caller's declared dependencies; host/operator may specify a consumer app. |
+| `POST /api/v1/app-services/grant-bundles/{bundleId}/approve` | Host/operator only | Approve a pending bundle after revalidating the signed consumer manifest and current provider descriptors. |
+| `POST /api/v1/app-services/grant-bundles/{bundleId}/reject` | Host/operator only | Reject a pending bundle without leaving active grants. |
+| `POST /api/v1/app-services/grant-bundles/{bundleId}/renew` | Host/operator only | Renew or revalidate bundle-approved grants after descriptor compatibility checks. |
+
+Dependency metadata is review and UX metadata, not authorization. Bundle proposals do not approve
+access. Invocation still requires a non-expired active grant on every call. Provider descriptor
+version, scope, context, kind, adapter, and compatibility fingerprint drift produces
+`revalidation-required` behavior until an operator explicitly renews or revalidates the bundle.
 
 Contract version 6 adds bounded content fetch support for static feed apps:
 
@@ -289,11 +307,18 @@ moderation system, crawler, daemon-core message protocol, or network protocol ch
 [social-inbox-reference-app.md](social-inbox-reference-app.md).
 
 Contract version 12 adds local app-service discovery, operator-approved grants, redacted audit, and
-mediated invocation:
+mediated invocation. Contract version 16 adds the dependency and grant-bundle routes listed above:
 
 | Route | Required app capabilities | Purpose |
 | --- | --- | --- |
 | `GET /api/v1/app-services` | `app.services.read` | List advertised local service descriptors and the caller-visible manifest service requests. |
+| `GET /api/v1/app-services/dependencies` | `app.services.read` | List caller-visible dependency graph nodes and edges. |
+| `GET /api/v1/app-services/dependencies/consumers/{consumerAppId}` | `app.services.read` | Read one consumer app's dependency graph with app scoping. |
+| `GET /api/v1/app-services/grant-bundles` | `app.services.read` | List caller-visible grant bundles. |
+| `POST /api/v1/app-services/grant-bundles` | `app.services.call` | Request a pending bundle for declared service dependencies. |
+| `POST /api/v1/app-services/grant-bundles/{bundleId}/approve` | Host/operator only | Approve a pending bundle. App principals cannot approve bundles. |
+| `POST /api/v1/app-services/grant-bundles/{bundleId}/reject` | Host/operator only | Reject a pending bundle without activating grants. |
+| `POST /api/v1/app-services/grant-bundles/{bundleId}/renew` | Host/operator only | Renew or revalidate bundle-approved grants. |
 | `GET /api/v1/app-services/{providerAppId}/services` | `app.services.read` | List services advertised by one installed provider app. |
 | `GET /api/v1/app-services/{providerAppId}/services/{serviceId}` | `app.services.read` | Read one public service descriptor. |
 | `GET /api/v1/app-services/grants` | `app.services.read` | List caller-visible service grants; app principals see their own consumer grants and host/operator sees all. |
@@ -303,23 +328,26 @@ mediated invocation:
 | `GET /api/v1/app-services/audit` | Host/operator only | Read bounded redacted app-service grant and invocation audit events. |
 | `POST /api/v1/app-services/{providerAppId}/services/{serviceId}/invoke` | `app.services.call` | Invoke an explicitly registered platform adapter through an active grant. |
 
-`app.services.read` allows discovery of public descriptors and grant state, not provider app data.
-`app.services.call` allows a consumer app to request grants and invoke services only when an active
-consumer/provider/service grant exists at call time. Approval remains host/operator-only.
+`app.services.read` allows discovery of public descriptors, dependency status, bundle state, and
+grant state, not provider app data. `app.services.call` allows a consumer app to request bundles or
+grants and invoke services only when an active consumer/provider/service grant exists at call time.
+Approval, rejection, renewal, and revalidation remain host/operator-only.
 
 The initial first-party service is `trust-graph` / `trust.score` using adapter
 `trust-graph.score`. Its manifest descriptor is metadata-only: provider app id/name/version,
 service id/name/version, kind, adapter, scopes such as `score.read`, contexts such as
-`message-author`, description, stability, and availability. Invocation accepts bounded
-`subjectKind`, `subjectUri`, `context`, and optional `scope`, then returns a service-call envelope
-with a redacted score summary and subject URI hash.
+`message-author`, description, stability, and availability. Bundle approval and grant invocation
+check provider app id, service id, version range, scopes, contexts, kind, adapter, and a safe
+compatibility fingerprint. Invocation accepts bounded `subjectKind`, `subjectUri`, `context`, and
+optional `scope`, then returns a service-call envelope with a redacted score summary and subject
+URI hash.
 
 App-service invocation is not generic RPC, not a localhost proxy, not a plugin ABI, and not remote
 service discovery. The platform dispatches only to registered in-process adapters. Responses,
 audit, Web Shell, docs, and release evidence must not expose provider app data, Trust Graph store
-files, raw statement bodies, raw request bodies, private insert URIs, private identity material,
-browser-session tokens, app process tokens, form passwords, absolute local paths, or raw service
-bearer tokens.
+files, raw statement bodies, raw request bodies, raw subject URIs, private insert URIs, private
+identity material, browser-session tokens, app process tokens, form passwords, absolute local
+paths, app-data backup payloads, or raw service bearer tokens.
 
 The app secret and identity vault capability names are also part of the app permission vocabulary:
 `vault.secrets.read`, `vault.secrets.write`, `vault.identities.read`,
@@ -466,9 +494,12 @@ Feed Reader bundle. Social Inbox RC has separate evidence:
 `reference-app.social-inbox`, `reference-app.social-inbox-signed-message`,
 `reference-app.social-inbox-subscriptions`, `reference-app.social-inbox-app-data`,
 `reference-app.social-inbox-trust-annotations`, `app-services.registry`,
-`app-services.grants`, `app-services.trust-score-provider`,
-`reference-app.social-inbox-service-grant`, `reference-app.social-inbox-rc-threading`,
-`app-services.web-shell`, `app-services.redaction`, and `migration.social-mail-preview`.
+`app-services.grants`, `app-services.dependency-graph`, `app-services.grant-bundles`,
+`app-services.grant-expiry-renewal`, `app-services.provider-revalidation`,
+`app-services.trust-score-provider`, `reference-app.social-inbox-service-grant`,
+`reference-app.social-inbox-service-dependency`, `reference-app.social-inbox-rc-threading`,
+`app-services.web-shell`, `app-services.redaction`, `app-services.dependency-redaction`, and
+`migration.social-mail-preview`.
 Trust Graph Local RC has
 separate evidence: `reference-app.trust-graph` for the first-party app,
 `app-platform.trust-graph-preview` for the original v7 trust routes and SDK helpers,

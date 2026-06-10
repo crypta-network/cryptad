@@ -38,6 +38,11 @@ import java.util.List;
  * @param lastUsedAt last successful invocation timestamp, or {@code null}
  * @param useCount number of successful invocations recorded for this grant
  * @param tokenFingerprint optional token fingerprint; PR-243 does not issue raw service tokens
+ * @param bundleId optional grant-bundle id that approved or renewed this grant
+ * @param expiresAt optional expiry timestamp after which the grant is non-authorizing
+ * @param renewedAt optional timestamp of the latest explicit operator renewal
+ * @param compatibilityFingerprint approval-time safe descriptor compatibility fingerprint
+ * @param providerServiceVersionAtApproval provider service version observed at approval time
  */
 public record AppServiceGrant(
     String grantId,
@@ -54,7 +59,52 @@ public record AppServiceGrant(
     Instant revokedAt,
     Instant lastUsedAt,
     long useCount,
-    String tokenFingerprint) {
+    String tokenFingerprint,
+    String bundleId,
+    Instant expiresAt,
+    Instant renewedAt,
+    String compatibilityFingerprint,
+    String providerServiceVersionAtApproval) {
+  /** Backward-compatible constructor for legacy tests and pre-expiry grant creation. */
+  public AppServiceGrant(
+      String grantId,
+      String consumerAppId,
+      String providerAppId,
+      String serviceId,
+      List<String> scopes,
+      List<String> contexts,
+      String purpose,
+      AppServiceGrantStatus status,
+      Instant createdAt,
+      Instant updatedAt,
+      Instant approvedAt,
+      Instant revokedAt,
+      Instant lastUsedAt,
+      long useCount,
+      String tokenFingerprint) {
+    this(
+        grantId,
+        consumerAppId,
+        providerAppId,
+        serviceId,
+        scopes,
+        contexts,
+        purpose,
+        status,
+        createdAt,
+        updatedAt,
+        approvedAt,
+        revokedAt,
+        lastUsedAt,
+        useCount,
+        tokenFingerprint,
+        null,
+        null,
+        null,
+        null,
+        null);
+  }
+
   /**
    * Creates a validated grant.
    *
@@ -69,7 +119,7 @@ public record AppServiceGrant(
     serviceId = AppServiceManifestParser.normalizeServiceId(serviceId);
     scopes = AppServiceManifestParser.normalizeTokens("scopes", scopes, 16);
     contexts = AppServiceManifestParser.normalizeTokens("contexts", contexts, 16);
-    purpose = AppServiceManifestParser.requiredText("purpose", purpose, 512);
+    purpose = AppServiceManifestParser.requiredStoredPurposeText(purpose);
     java.util.Objects.requireNonNull(status, "status");
     java.util.Objects.requireNonNull(createdAt, "createdAt");
     java.util.Objects.requireNonNull(updatedAt, "updatedAt");
@@ -77,6 +127,13 @@ public record AppServiceGrant(
       throw new IllegalArgumentException("useCount must not be negative");
     }
     tokenFingerprint = AppServiceManifestParser.optionalText(tokenFingerprint, 128);
+    bundleId = bundleId == null ? null : AppServiceManifestParser.normalizeBundleId(bundleId);
+    compatibilityFingerprint = AppServiceManifestParser.optionalText(compatibilityFingerprint, 128);
+    providerServiceVersionAtApproval =
+        providerServiceVersionAtApproval == null
+            ? null
+            : AppServiceManifestParser.requiredText(
+                "providerServiceVersionAtApproval", providerServiceVersionAtApproval, 40);
   }
 
   /**
@@ -114,7 +171,43 @@ public record AppServiceGrant(
         revoked,
         lastUsedAt,
         useCount,
-        tokenFingerprint);
+        tokenFingerprint,
+        bundleId,
+        expiresAt,
+        renewedAt,
+        compatibilityFingerprint,
+        providerServiceVersionAtApproval);
+  }
+
+  AppServiceGrant withApprovalMetadata(
+      Instant now,
+      String newBundleId,
+      Instant newExpiresAt,
+      Instant newRenewedAt,
+      String newCompatibilityFingerprint,
+      String newProviderServiceVersion) {
+    Instant approved = approvedAt == null ? now : approvedAt;
+    return new AppServiceGrant(
+        grantId,
+        consumerAppId,
+        providerAppId,
+        serviceId,
+        scopes,
+        contexts,
+        purpose,
+        AppServiceGrantStatus.ACTIVE,
+        createdAt,
+        now,
+        approved,
+        revokedAt,
+        lastUsedAt,
+        useCount,
+        tokenFingerprint,
+        newBundleId,
+        newExpiresAt,
+        newRenewedAt,
+        newCompatibilityFingerprint,
+        newProviderServiceVersion);
   }
 
   /**
@@ -142,7 +235,12 @@ public record AppServiceGrant(
         revokedAt,
         now,
         useCount + 1,
-        tokenFingerprint);
+        tokenFingerprint,
+        bundleId,
+        expiresAt,
+        renewedAt,
+        compatibilityFingerprint,
+        providerServiceVersionAtApproval);
   }
 
   /**
@@ -169,7 +267,7 @@ public record AppServiceGrant(
    * @return deterministic JSON-compatible grant map with stable key order
    */
   public java.util.Map<String, Object> toJson(AppServiceGrantStatus effectiveStatus) {
-    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(15);
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(20);
     json.put("grantId", grantId);
     json.put("consumerAppId", consumerAppId);
     json.put("providerAppId", providerAppId);
@@ -185,6 +283,11 @@ public record AppServiceGrant(
     json.put("lastUsedAt", lastUsedAt == null ? null : lastUsedAt.toString());
     json.put("useCount", useCount);
     json.put("tokenFingerprint", tokenFingerprint);
+    json.put("bundleId", bundleId);
+    json.put("expiresAt", expiresAt == null ? null : expiresAt.toString());
+    json.put("renewedAt", renewedAt == null ? null : renewedAt.toString());
+    json.put("compatibilityFingerprint", compatibilityFingerprint);
+    json.put("providerServiceVersionAtApproval", providerServiceVersionAtApproval);
     return json;
   }
 }

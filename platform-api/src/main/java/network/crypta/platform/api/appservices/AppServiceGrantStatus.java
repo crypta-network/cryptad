@@ -45,7 +45,7 @@ public enum AppServiceGrantStatus {
   /**
    * Grant cannot currently be used because its app or service declaration is unavailable.
    *
-   * <p>This state is used when AppHost cleanup marks stored records inactive, and it can also be an
+   * <p>This state is used when AppHost cleanup marks stored records inactive. It can also be an
    * effective status when a provider stops advertising a service, changes supported scopes or
    * contexts, or when the consumer app loses the app-service call permission.
    */
@@ -57,7 +57,16 @@ public enum AppServiceGrantStatus {
    * <p>No expiry scheduler is active in PR-243, but the status value is reserved so future bounded
    * grants can become non-authorizing without changing the public JSON shape.
    */
-  EXPIRED("expired");
+  EXPIRED("expired"),
+
+  /**
+   * Grant was approved against provider metadata that now needs explicit operator review.
+   *
+   * <p>This is non-authorizing. The coordinator reports it when a provider descriptor drifted from
+   * the approval-time compatibility fingerprint or service version and the grant must be renewed or
+   * revalidated before invocation can resume.
+   */
+  REVALIDATION_REQUIRED("revalidation-required");
 
   private final String jsonValue;
 

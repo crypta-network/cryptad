@@ -162,4 +162,28 @@ public record AppServiceDescriptor(
     return contexts.isEmpty()
         || contexts.contains(AppServiceManifestParser.normalizeToken("context", context));
   }
+
+  boolean satisfiesVersionRange(AppServiceVersionRange range) {
+    return range == null || range.contains(version);
+  }
+
+  String compatibilityFingerprint() {
+    return "sha256:"
+        + AppServiceCoordinator.hashHex(
+            providerAppId
+                + "|"
+                + serviceId
+                + "|"
+                + version
+                + "|"
+                + kind
+                + "|"
+                + adapter
+                + "|"
+                + String.join(",", scopes.stream().sorted().toList())
+                + "|"
+                + String.join(",", contexts.stream().sorted().toList())
+                + "|"
+                + stability);
+  }
 }

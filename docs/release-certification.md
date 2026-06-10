@@ -137,11 +137,17 @@ Release-candidate mode requires these evidence ids:
 | `app-platform.trust-statement-signing` | App-platform smoke summary. | The bounded AppVault route `POST /api/v1/app-vault/identities/{identityId}/trust-statement` is present, documented, requires `trust.write`, `vault.identities.read`, and `vault.identities.use`, and does not expose private material in evidence. |
 | `app-platform.social-message-signing` | App-platform smoke summary. | Contract v11 exposes the bounded AppVault route `POST /api/v1/app-vault/identities/{identityId}/social-message`, fixes the signing domain to `crypta.social.message.v1`, requires `vault.identities.read` and `vault.identities.use`, and does not expose generic browser signing or private material in evidence. |
 | `app-services.registry` | App-platform smoke summary. | Contract v12 exposes `/api/v1/app-services`, `app.services.read`, and `app.services.call`, parses signed manifest service descriptors and requests, wires a shared coordinator, and includes SDK service helpers. |
-| `app-services.grants` | App-platform smoke summary. | The app-service grant model, statuses, in-memory/file-backed stores, host-only approval, revocation, active-grant invocation check, and deterministic tests are present. |
+| `app-services.grants` | App-platform smoke summary. | The app-service grant model, statuses, in-memory/file-backed stores, host-only approval, revocation, expiry, compatibility fingerprints, active-grant invocation check, and deterministic tests are present. |
+| `app-services.dependency-graph` | App-platform smoke summary. | Contract v16 dependency graph routes exist, parse signed dependency metadata while preserving legacy requests, enforce app-principal scoping, and emit deterministic path-free graph JSON. |
+| `app-services.grant-bundles` | App-platform smoke summary. | Grant-bundle models, stores, routes, app-request flow, host/operator-only approve/reject controls, and rejected-bundle no-active-grant behavior are present. |
+| `app-services.grant-expiry-renewal` | App-platform smoke summary. | Bundle-approved grants can expire, expired grants fail closed, and host/operator renewal revalidates the signed manifest and provider descriptor before restoring access. |
+| `app-services.provider-revalidation` | App-platform smoke summary. | Provider descriptor fingerprint, service version, scope, context, kind, or adapter drift forces `revalidation-required` behavior and blocks invocation until explicit operator renewal/revalidation. |
 | `app-services.trust-score-provider` | App-platform smoke summary. | Trust Graph Local RC advertises read-only `trust.score` through a `trust-graph.score` platform adapter that returns a bounded redacted score summary, is not a localhost proxy, and cannot mutate anchors, imports, or lifecycle records. |
 | `reference-app.social-inbox-service-grant` | App-platform smoke summary. | Social Inbox declares a `trust.score` request, uses `app.services.read` and `app.services.call`, invokes through `CryptaPlatform.services.invoke`, and shows neutral missing/pending/revoked grant states. |
-| `app-services.web-shell` | App-platform smoke summary. | Web Shell lists advertised services, service requests, grants, and redacted audit events, and lets the operator approve pending grants or revoke active grants. |
+| `reference-app.social-inbox-service-dependency` | App-platform smoke summary. | Social Inbox declares the optional `trust-annotations` dependency bundle for Trust score annotations, requests it through the SDK, and degrades safely when the dependency is unavailable. |
+| `app-services.web-shell` | App-platform smoke summary. | Web Shell lists advertised services, dependencies, grant bundles, grants, expiry, revalidation warnings, and redacted audit events, and lets the operator approve/reject/renew bundles or revoke active grants. |
 | `app-services.redaction` | App-platform smoke summary. | App-service evidence excludes raw tokens, raw subject URIs, raw request bodies, private insert URIs, local paths, provider app data, and generic proxy behavior. |
+| `app-services.dependency-redaction` | App-platform smoke summary. | Dependency graph, bundle, Web Shell, and release evidence exclude raw service request bodies, raw subject URIs, raw Trust Graph data, raw signatures, tokens, private insert URIs, private keys, local paths, and app-data backup payloads. |
 | `app-ui.design-system` | App-platform smoke summary. | Canonical app UI design-system assets exist and first-party staged bundles contain matching local copies. |
 | `app-update.live-catalog-refresh` | App-platform smoke summary. | App-update scheduler evidence shows configured signed catalog refresh, including live USK catalog refresh, before candidate discovery while keeping manual update policy as the default. |
 | `app-update.data-migration-contract` | App-platform smoke summary. | Signed app manifests declare app-data schema and migration metadata; update summaries expose path-free migration plans; dry-run, snapshot, missing-path, rollback-incompatible, Feed Reader, Trust Graph Local RC UI-state, and redaction checks are present. |
@@ -351,9 +357,12 @@ Social Inbox RC supplies the threaded social inbox reference path. Release evide
 `reference-app.social-inbox-signed-message`, `reference-app.social-inbox-subscriptions`,
 `reference-app.social-inbox-app-data`, `reference-app.social-inbox-trust-annotations`,
 `reference-app.social-inbox-service-grant`, `reference-app.social-inbox-rc-threading`,
-`app-services.registry`, `app-services.grants`, `app-services.trust-score-provider`,
-`app-services.web-shell`, `app-services.redaction`, and `migration.social-mail-preview` before a
-release claims Social Inbox RC support.
+`app-services.registry`, `app-services.grants`, `app-services.dependency-graph`,
+`app-services.grant-bundles`, `app-services.grant-expiry-renewal`,
+`app-services.provider-revalidation`, `app-services.trust-score-provider`,
+`reference-app.social-inbox-service-dependency`, `app-services.web-shell`,
+`app-services.redaction`, `app-services.dependency-redaction`, and `migration.social-mail-preview`
+before a release claims Social Inbox RC support.
 `legacy-plugin.migration-guide` and `legacy-plugin.social-inbox-spike` certify the broader legacy
 plugin-to-app migration guidance and the executable Social Inbox app-platform replacement path.
 Social Inbox evidence must not include raw social message bodies, raw fetched social documents,
@@ -365,18 +374,21 @@ Trust Graph Local RC supplies the local trust-service reference path. Release ev
 `reference-app.trust-graph-app-data-preview`, `app-platform.trust-graph-preview`,
 `app-platform.trust-graph-rc-scope-and-safety`, `app-platform.trust-graph-durable-store`,
 `app-platform.trust-graph-exchange`, `app-platform.trust-statement-signing`,
-`app-services.registry`, `app-services.grants`, `app-services.trust-score-provider`,
-`app-services.web-shell`, and `app-services.redaction` before a release claims Trust Graph Local RC
-support. The evidence must prove local anchors, imported public signed statements, local lifecycle
-states, bounded score explanations, redacted source metadata, and read-only app-service score
-boundaries. It must also prove the non-goals: no crawling, no global moderation or blocking, no
+`app-services.registry`, `app-services.grants`, `app-services.dependency-graph`,
+`app-services.grant-bundles`, `app-services.grant-expiry-renewal`,
+`app-services.provider-revalidation`, `app-services.trust-score-provider`,
+`app-services.web-shell`, `app-services.redaction`, and `app-services.dependency-redaction` before a
+release claims Trust Graph Local RC support. The evidence must prove local anchors, imported public
+signed statements, local lifecycle states, bounded score explanations, redacted source metadata,
+and read-only app-service score boundaries. It must also prove the non-goals: no crawling, no
+global moderation or blocking, no
 routing decisions, no node-to-node trust propagation, and no legacy WebOfTrust, Freetalk, Sone, or
 Freemail compatibility claim. Trust and app-service evidence must not include raw trust statement
 bodies from real users, raw fetched content, raw request bodies, raw signature values, private
 insert URIs, private identity material, app process tokens, browser-session tokens, form passwords,
-absolute staging paths, store roots, provider app data, raw subject URIs, or local paths. Social
-Inbox threading, app-service dependency bundles, advisory/denylist policy, network-scale soak,
-operator RC recovery workflows, and final ecosystem RC certification remain deferred to later PRs.
+absolute staging paths, store roots, provider app data, raw subject URIs, app-data backup payloads,
+or local paths. Advisory/denylist policy, network-scale soak, operator RC recovery workflows, and
+final ecosystem RC certification remain deferred to later PRs.
 
 ## Historical comparison
 

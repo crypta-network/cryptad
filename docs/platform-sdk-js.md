@@ -113,9 +113,11 @@ common Platform API error bodies into readable `Error` messages.
 
 ## Mutations
 
-Mutating helpers submit `application/x-www-form-urlencoded` bodies and authenticate with the same
-`X-Crypta-App-Session` header used for reads. They do not add the legacy local-admin
-`formPassword` to app-owned UI requests.
+Mutating app-owned helpers submit `application/x-www-form-urlencoded` bodies and authenticate with
+the same `X-Crypta-App-Session` header used for reads. They do not add the legacy local-admin
+`formPassword` to app-owned UI requests. The host/operator-only app-service bundle approval,
+rejection, and renewal helpers are the exception: they omit the app session header and send only an
+explicit `formPassword` supplied by the host page.
 
 ```js
 await CryptaPlatform.queue.directDownload(new FormData(form));
@@ -187,20 +189,22 @@ passwords, or local paths.
 
 ## App Services
 
-Contract v12 adds `CryptaPlatform.services` for local app-service discovery, grant requests, grant
-revocation, and mediated invocation. These helpers wrap `/api/v1/app-services`; they do not create
-or cache bearer tokens and they do not call provider localhost ports directly.
+Contract v12 adds `CryptaPlatform.services` for local app-service discovery, individual grant
+requests, grant revocation, and mediated invocation. Contract v16 adds dependency graph and
+grant-bundle helpers. These helpers wrap `/api/v1/app-services`; they do not create or cache
+bearer tokens and they do not call provider localhost ports directly.
 
 ```js
 const services = await CryptaPlatform.services.list();
 const trustScore = await CryptaPlatform.services.get("trust-graph", "trust.score");
+const dependencies = await CryptaPlatform.services.dependencies.list();
+const ownDependencies = await CryptaPlatform.services.dependencies.get("social-inbox");
+const bundles = await CryptaPlatform.services.bundles.list();
 const grants = await CryptaPlatform.services.grants.list();
 
-await CryptaPlatform.services.grants.request({
-  providerAppId: "trust-graph",
-  serviceId: "trust.score",
-  scopes: ["score.read"],
-  contexts: ["message-author"],
+await CryptaPlatform.services.bundles.request({
+  bundleAlias: "trust-annotations",
+  includeOptional: true,
   purpose: "Annotate message authors with the local Trust Graph Local RC score service.",
 });
 
@@ -214,20 +218,37 @@ const score = await CryptaPlatform.services.invoke("trust-graph", "trust.score",
 await CryptaPlatform.services.grants.revoke("asg-111111111111111111111111");
 ```
 
-Discovery and grant listing require `app.services.read`. Grant requests and invocation require
-`app.services.call`, and invocation also requires an active operator-approved grant checked on each
-call. A pending, revoked, inactive, expired, missing, or no-longer-authorized grant makes the
-service call fail. Apps cannot approve their own grants; approval is a Web Shell host/operator
-action.
+Discovery, dependency graph reads, bundle listing, and grant listing require `app.services.read`.
+Bundle requests, individual grant requests, and invocation require `app.services.call`, and
+invocation also requires an active operator-approved grant checked on each call. A pending,
+rejected, revoked, inactive, expired, missing, or no-longer-authorized grant makes the service call
+fail. Apps cannot approve, reject, renew, or revalidate their own bundles; those actions are Web
+Shell host/operator actions even though the SDK exposes convenience methods for host/operator
+contexts:
 
-For the v12 proving path, Social Inbox RC invokes `trust-graph` / `trust.score` only through
-`CryptaPlatform.services.invoke(...)`. The Trust Graph Preview provider advertises a
+```js
+await CryptaPlatform.services.bundles.approve("asb-111111111111111111111111", {
+  formPassword,
+});
+await CryptaPlatform.services.bundles.reject("asb-111111111111111111111111", {
+  formPassword,
+});
+await CryptaPlatform.services.bundles.renew("asb-111111111111111111111111", {
+  formPassword,
+});
+```
+
+For the v16 proving path, Social Inbox RC declares an optional `trust-annotations` bundle for
+Trust score annotations and invokes `trust-graph` / `trust.score` only through
+`CryptaPlatform.services.invoke(...)`. The Trust Graph Local RC provider advertises a
 `platform-adapter` descriptor, so the platform dispatches to a built-in Trust Graph score adapter
-instead of proxying an arbitrary app server. Responses include service-call metadata and a redacted
-score result. Apps should render missing or revoked grants as neutral unavailable states and must
-not fall back to direct Trust Graph score routes after revocation. Score results are annotations
-only; Social Inbox must not use them to hide messages, block replies, archive threads, route
-network behavior, or refresh subscriptions.
+instead of proxying an arbitrary app server. Bundle approval records a safe descriptor
+compatibility fingerprint and may attach expiry. Responses include service-call metadata and a
+redacted score result. Apps should render missing, rejected, revoked, expired, or
+revalidation-required grants as neutral unavailable states and must not fall back to direct Trust
+Graph score routes after revocation. Score results are annotations only; Social Inbox must not use
+them to hide messages, block replies, archive threads, route network behavior, or refresh
+subscriptions.
 
 Feed Reader uses the v8 feed and content subscription helpers instead of constructing fetch forms
 by hand:

@@ -184,6 +184,129 @@ class PlatformApiAppServicesRouterTest {
   }
 
   @Test
+  void route_whenProviderAppIdIsDependencies_expectServiceListTakesPrecedence() throws Exception {
+    PlatformApiRouter router =
+        router(
+            new InMemoryAppServiceGrantStore(),
+            installedProvider("dependencies"),
+            installedConsumer());
+    PlatformApiPrincipal readOnly =
+        PlatformApiPrincipal.appBrowserSession("social-inbox", List.of("app.services.read"));
+
+    PlatformApiResponse services =
+        router.route(
+            request(
+                "GET", List.of("app-services", "dependencies", "services"), Map.of(), readOnly));
+    PlatformApiResponse service =
+        router.route(
+            request(
+                "GET",
+                List.of("app-services", "dependencies", "services", "trust.score"),
+                Map.of(),
+                readOnly));
+
+    assertEquals(200, services.statusCode());
+    assertTrue(services.body().contains("\"providerAppId\":\"dependencies\""));
+    assertEquals(200, service.statusCode());
+    assertTrue(service.body().contains("\"serviceId\":\"trust.score\""));
+    assertTrue(service.body().contains("\"providerAppId\":\"dependencies\""));
+  }
+
+  @Test
+  void route_whenConsumerAppIdIsServices_expectDependencyReadUsesUnambiguousRoute()
+      throws Exception {
+    PlatformApiRouter router =
+        router(
+            new InMemoryAppServiceGrantStore(), installedProvider(), installedConsumer("services"));
+    PlatformApiPrincipal servicesApp =
+        PlatformApiPrincipal.appBrowserSession("services", List.of("app.services.read"));
+
+    PlatformApiResponse dependencies =
+        router.route(
+            request(
+                "GET",
+                List.of("app-services", "dependencies", "consumers", "services"),
+                Map.of(),
+                servicesApp));
+
+    assertEquals(200, dependencies.statusCode());
+    assertTrue(dependencies.body().contains("\"dependencyGraph\""));
+    assertTrue(dependencies.body().contains("\"appId\":\"services\""));
+    assertTrue(dependencies.body().contains("\"serviceId\":\"trust.score\""));
+  }
+
+  @Test
+  void route_whenAppUsesDependencyAndBundleRoutes_expectScopedReviewFlow() throws Exception {
+    InMemoryAppServiceGrantStore store = new InMemoryAppServiceGrantStore();
+    PlatformApiRouter router = router(store, installedProvider(), installedConsumer());
+    PlatformApiPrincipal socialInbox =
+        PlatformApiPrincipal.appBrowserSession(
+            "social-inbox", List.of("app.services.read", "app.services.call"));
+
+    PlatformApiResponse dependencies =
+        router.route(
+            request("GET", List.of("app-services", "dependencies"), Map.of(), socialInbox));
+    PlatformApiResponse bundle =
+        router.route(
+            request(
+                "POST",
+                List.of("app-services", "grant-bundles"),
+                Map.of("bundleAlias", List.of("trust-annotations")),
+                socialInbox));
+    String bundleId = store.listBundles().getFirst().bundleId();
+    PlatformApiResponse appApprove =
+        router.route(
+            request(
+                "POST",
+                List.of("app-services", "grant-bundles", bundleId, "approve"),
+                Map.of(),
+                socialInbox));
+    PlatformApiResponse hostApprove =
+        router.route(
+            request(
+                "POST",
+                List.of("app-services", "grant-bundles", bundleId, "approve"),
+                Map.of(),
+                PlatformApiPrincipal.hostOperator()));
+    PlatformApiResponse bundles =
+        router.route(
+            request("GET", List.of("app-services", "grant-bundles"), Map.of(), socialInbox));
+
+    assertEquals(200, dependencies.statusCode());
+    assertTrue(dependencies.body().contains("\"dependencyGraph\""));
+    assertTrue(dependencies.body().contains("\"trust-score\""));
+    assertEquals(201, bundle.statusCode());
+    assertTrue(bundle.body().contains("\"status\":\"pending\""));
+    assertEquals(403, appApprove.statusCode());
+    assertEquals(200, hostApprove.statusCode());
+    assertTrue(hostApprove.body().contains("\"status\":\"approved\""));
+    assertEquals(200, bundles.statusCode());
+    assertTrue(bundles.body().contains("\"trust-annotations\""));
+  }
+
+  @Test
+  void route_whenAppReadsOtherAppDependencies_expectForbidden() throws Exception {
+    PlatformApiRouter router =
+        router(
+            new InMemoryAppServiceGrantStore(),
+            installedProvider(),
+            installedConsumer(),
+            installedConsumer("other-inbox"));
+    PlatformApiPrincipal socialInbox =
+        PlatformApiPrincipal.appBrowserSession("social-inbox", List.of("app.services.read"));
+
+    PlatformApiResponse response =
+        router.route(
+            request(
+                "GET",
+                List.of("app-services", "dependencies", "consumers", "other-inbox"),
+                Map.of(),
+                socialInbox));
+
+    assertEquals(403, response.statusCode());
+  }
+
+  @Test
   void route_whenAppReadsAuditOrInvokesWithoutCallCapability_expectDenied() throws Exception {
     PlatformApiRouter router =
         router(new InMemoryAppServiceGrantStore(), installedProvider(), installedConsumer());
@@ -274,6 +397,39 @@ class PlatformApiAppServicesRouterTest {
         app.service-request.trust-score.scopes=score.read
         app.service-request.trust-score.contexts=message-author
         app.service-request.trust-score.purpose=Annotate message authors.
+        app.service-request.trust-score.dependency.kind=optional
+        app.service-request.trust-score.dependency.required=false
+        app.service-request.trust-score.dependency.featureId=trust-score-annotations
+        app.service-request.trust-score.dependency.featureName=Trust score annotations
+        app.service-request.trust-score.dependency.degradeBehavior=disable-feature
+        app.service-request.trust-score.dependency.minServiceVersion=1
+        app.service-request.trust-score.dependency.maxServiceVersion=1
+        app.service-request.trust-score.dependency.grantBundle=trust-annotations
+        app.service-request.trust-score.dependency.grantExpiresAfter=PT720H
+        """);
+  }
+
+  private InstalledAppSnapshot installedConsumer(String appId) throws Exception {
+    return installedApp(
+        appId,
+        "Social Inbox Preview",
+        List.of("app.services.read", "app.services.call"),
+        """
+        app.services.requests=trust-score
+        app.service-request.trust-score.provider=trust-graph
+        app.service-request.trust-score.service=trust.score
+        app.service-request.trust-score.scopes=score.read
+        app.service-request.trust-score.contexts=message-author
+        app.service-request.trust-score.purpose=Annotate message authors.
+        app.service-request.trust-score.dependency.kind=optional
+        app.service-request.trust-score.dependency.required=false
+        app.service-request.trust-score.dependency.featureId=trust-score-annotations
+        app.service-request.trust-score.dependency.featureName=Trust score annotations
+        app.service-request.trust-score.dependency.degradeBehavior=disable-feature
+        app.service-request.trust-score.dependency.minServiceVersion=1
+        app.service-request.trust-score.dependency.maxServiceVersion=1
+        app.service-request.trust-score.dependency.grantBundle=trust-annotations
+        app.service-request.trust-score.dependency.grantExpiresAfter=PT720H
         """);
   }
 

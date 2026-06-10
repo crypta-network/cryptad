@@ -168,11 +168,23 @@ class CryptaPlatformSdkResourceTest {
     assertTrue(script.contains("function listAppServices(options)"));
     assertTrue(script.contains("function getAppService(providerAppId, serviceId, options)"));
     assertTrue(script.contains("function listAppServiceGrants(options)"));
+    assertTrue(script.contains("function listAppServiceDependencies(options)"));
+    assertTrue(script.contains("function getAppServiceDependencies(consumerAppId, options)"));
+    assertTrue(script.contains("function listAppServiceBundles(options)"));
+    assertTrue(script.contains("function requestAppServiceBundle(request, options)"));
+    assertTrue(script.contains("function approveAppServiceBundle(bundleIdOrOptions, options)"));
+    assertTrue(script.contains("function rejectAppServiceBundle(bundleIdOrOptions, options)"));
+    assertTrue(script.contains("function renewAppServiceBundle(bundleIdOrOptions, options)"));
+    assertTrue(script.contains("function normalizeAppServiceBundleMutation(source)"));
+    assertTrue(script.contains("function apiPostHostForm(path, formDataOrParams, options)"));
     assertTrue(script.contains("function requestAppServiceGrant(request, options)"));
     assertTrue(script.contains("function revokeAppServiceGrant(grantIdOrOptions, options)"));
     assertTrue(
         script.contains("function invokeAppService(providerAppId, serviceId, request, options)"));
     assertTrue(script.contains("\"app-services/grants\""));
+    assertTrue(script.contains("\"app-services/dependencies\""));
+    assertTrue(script.contains("\"app-services/grant-bundles\""));
+    assertTrue(script.contains("normalizeAppServiceBundleRequest(source)"));
     assertTrue(script.contains("normalizeAppServiceGrantRequest(source)"));
     assertTrue(script.contains("normalizeAppServiceInvocation(source)"));
     assertTrue(script.contains("appServiceSegment(value, description)"));
@@ -222,6 +234,55 @@ class CryptaPlatformSdkResourceTest {
               && options.method === "POST";
           },
           { grant: { status: "revoked" } });
+        enqueueResponse(
+          (url, options) => {
+            const parsed = new URL(url);
+            return parsed.pathname === "/api/v1/app-services/dependencies"
+              && options.method === "GET";
+          },
+          { dependencyGraph: { apps: [], edges: [] } });
+        enqueueResponse(
+          (url, options) => {
+            const parsed = new URL(url);
+            return parsed.pathname === "/api/v1/app-services/dependencies/consumers/social-inbox"
+              && options.method === "GET";
+          },
+          { dependencyGraph: { apps: [{ appId: "social-inbox" }], edges: [] } });
+        enqueueResponse(
+          (url, options) => {
+            const parsed = new URL(url);
+            return parsed.pathname === "/api/v1/app-services/grant-bundles"
+              && options.method === "GET";
+          },
+          { bundles: [] });
+        enqueueResponse(
+          (url, options) => {
+            const parsed = new URL(url);
+            return parsed.pathname === "/api/v1/app-services/grant-bundles"
+              && options.method === "POST";
+          },
+          { bundle: { bundleId: "asb-111111111111111111111111", status: "pending" } });
+        enqueueResponse(
+          (url, options) => {
+            const parsed = new URL(url);
+            return parsed.pathname === "/api/v1/app-services/grant-bundles/asb-111111111111111111111111/approve"
+              && options.method === "POST";
+          },
+          { bundle: { status: "approved" } });
+        enqueueResponse(
+          (url, options) => {
+            const parsed = new URL(url);
+            return parsed.pathname === "/api/v1/app-services/grant-bundles/asb-111111111111111111111111/reject"
+              && options.method === "POST";
+          },
+          { bundle: { status: "rejected" } });
+        enqueueResponse(
+          (url, options) => {
+            const parsed = new URL(url);
+            return parsed.pathname === "/api/v1/app-services/grant-bundles/asb-111111111111111111111111/renew"
+              && options.method === "POST";
+          },
+          { bundle: { status: "approved", renewedAt: "2026-05-24T12:00:00Z" } });
 
         const listed = await CryptaPlatform.services.list();
         const service = await CryptaPlatform.services.get("trust-graph", "trust.score");
@@ -240,6 +301,25 @@ class CryptaPlatformSdkResourceTest {
           scope: "score.read"
         });
         const revoked = await CryptaPlatform.services.grants.revoke("asg-111111111111111111111111");
+        const dependencies = await CryptaPlatform.services.dependencies.list();
+        const ownDependencies = await CryptaPlatform.services.dependencies.get("social-inbox");
+        const bundles = await CryptaPlatform.services.bundles.list();
+        const bundle = await CryptaPlatform.services.bundles.request({
+          consumerAppId: "social-inbox",
+          bundleAlias: "trust-annotations",
+          includeOptional: true,
+          purpose: "Review Trust score annotations."
+        });
+        const approvedBundle = await CryptaPlatform.services.bundles.approve(
+          "asb-111111111111111111111111",
+          { formPassword: "operator-password" });
+        const rejectedBundle = await CryptaPlatform.services.bundles.reject({
+          bundleId: "asb-111111111111111111111111",
+          formPassword: "operator-password"
+        });
+        const renewedBundle = await CryptaPlatform.services.bundles.renew(
+          "asb-111111111111111111111111",
+          { formPassword: "operator-password" });
 
         assert.equal(listed.services[0].serviceId, "trust.score");
         assert.equal(service.service.serviceId, "trust.score");
@@ -247,6 +327,13 @@ class CryptaPlatformSdkResourceTest {
         assert.equal(requested.grant.status, "pending");
         assert.equal(invoked.serviceCall.status, "ok");
         assert.equal(revoked.grant.status, "revoked");
+        assert.equal(dependencies.dependencyGraph.apps.length, 0);
+        assert.equal(ownDependencies.dependencyGraph.apps[0].appId, "social-inbox");
+        assert.equal(bundles.bundles.length, 0);
+        assert.equal(bundle.bundle.status, "pending");
+        assert.equal(approvedBundle.bundle.status, "approved");
+        assert.equal(rejectedBundle.bundle.status, "rejected");
+        assert.equal(renewedBundle.bundle.renewedAt, "2026-05-24T12:00:00Z");
         const requestParams = decodeFormBody(calls[4]);
         assert.equal(requestParams.get("providerAppId"), "trust-graph");
         assert.equal(requestParams.get("serviceId"), "trust.score");
@@ -260,6 +347,20 @@ class CryptaPlatformSdkResourceTest {
         assert.equal(invokeParams.get("scope"), "score.read");
         assert.equal(headerValue(calls[5].headers, "X-Crypta-App-Session"), "session-token");
         assert.equal(calls[5].credentials, "omit");
+        const bundleParams = decodeFormBody(calls[10]);
+        assert.equal(bundleParams.get("consumerAppId"), "social-inbox");
+        assert.equal(bundleParams.get("bundleAlias"), "trust-annotations");
+        assert.equal(bundleParams.get("includeOptional"), "true");
+        assert.equal(bundleParams.get("purpose"), "Review Trust score annotations.");
+        const approveParams = decodeFormBody(calls[11]);
+        assert.equal(approveParams.get("formPassword"), "operator-password");
+        assert.equal(headerValue(calls[11].headers, "X-Crypta-App-Session"), null);
+        const rejectParams = decodeFormBody(calls[12]);
+        assert.equal(rejectParams.get("formPassword"), "operator-password");
+        assert.equal(headerValue(calls[12].headers, "X-Crypta-App-Session"), null);
+        const renewParams = decodeFormBody(calls[13]);
+        assert.equal(renewParams.get("formPassword"), "operator-password");
+        assert.equal(headerValue(calls[13].headers, "X-Crypta-App-Session"), null);
         """);
   }
 

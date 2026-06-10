@@ -24,6 +24,7 @@ import java.util.Optional;
  */
 public final class InMemoryAppServiceGrantStore implements AppServiceGrantStore {
   private final Map<String, AppServiceGrant> grants = new LinkedHashMap<>();
+  private final Map<String, AppServiceGrantBundle> bundles = new LinkedHashMap<>();
   private final List<AppServiceAuditEvent> auditEvents = new ArrayList<>();
 
   /**
@@ -69,6 +70,25 @@ public final class InMemoryAppServiceGrantStore implements AppServiceGrantStore 
   @Override
   public synchronized void writeGrant(AppServiceGrant grant) {
     grants.put(grant.grantId(), grant);
+  }
+
+  @Override
+  public synchronized List<AppServiceGrantBundle> listBundles() {
+    return bundles.values().stream()
+        .sorted(
+            Comparator.comparing(AppServiceGrantBundle::createdAt)
+                .thenComparing(AppServiceGrantBundle::bundleId))
+        .toList();
+  }
+
+  @Override
+  public synchronized Optional<AppServiceGrantBundle> readBundle(String bundleId) {
+    return Optional.ofNullable(bundles.get(AppServiceManifestParser.normalizeBundleId(bundleId)));
+  }
+
+  @Override
+  public synchronized void writeBundle(AppServiceGrantBundle bundle) {
+    bundles.put(bundle.bundleId(), bundle);
   }
 
   /**

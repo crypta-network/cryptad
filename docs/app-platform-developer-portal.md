@@ -26,7 +26,7 @@ Use this portal first, then follow the detailed source-of-truth pages for the ar
 | Platform API contract | [platform-api-contract.md](platform-api-contract.md) |
 | Platform API route surface | [platform-api-surface.md](platform-api-surface.md) |
 | Browser SDK | [platform-sdk-js.md](platform-sdk-js.md) |
-| App-service discovery and grants | [app-service-discovery-and-grants.md](app-service-discovery-and-grants.md) |
+| App-service dependencies, bundles, and grants | [app-service-discovery-and-grants.md](app-service-discovery-and-grants.md) |
 | Durable app data | [app-data-store.md](app-data-store.md) |
 | App-owned UI and isolated origins | [app-owned-ui.md](app-owned-ui.md) |
 | App UI design system and lint | [app-ui-design-system.md](app-ui-design-system.md) |
@@ -57,13 +57,13 @@ The current source declares:
 
 ```text
 PlatformApiContract.CURRENT_API_VERSION = "v1"
-PlatformApiContract.CURRENT_CONTRACT_VERSION = 15
+PlatformApiContract.CURRENT_CONTRACT_VERSION = 16
 ```
 
 In docs, manifests, and catalog descriptors:
 
 - `/api/v1` identifies the transport route family.
-- `contractVersion=15` identifies the Platform API compatibility contract snapshot.
+- `contractVersion=16` identifies the Platform API compatibility contract snapshot.
 - `api.minimumVersion` and `api.maximumTestedVersion` compare against the integer contract
   version, not against the URL route prefix or the Cryptad build number.
 
@@ -93,9 +93,9 @@ See [first-party-beta-catalog.md](first-party-beta-catalog.md),
 Trust Graph Local RC is advisory local trust only. It does not crawl the network, perform global
 moderation or blocking, change routing or FProxy browse behavior, propagate trust to other nodes,
 or promise legacy WebOfTrust, Freetalk, Sone, or Freemail compatibility. Apps that need trust
-annotations should use the read-only `trust.score` app-service through an operator-approved grant;
-they do not gain authority to import statements, mutate anchors, or change statement lifecycle
-records through that service.
+annotations should use the read-only `trust.score` app-service through an operator-reviewed grant
+bundle and an active grant; they do not gain authority to import statements, mutate anchors, or
+change statement lifecycle records through that service.
 
 Social Inbox RC keeps message threading, search, channel filtering, read/unread state, and
 author-profile links local to the app. It does not provide encrypted mail, Freetalk/Sone/Freemail

@@ -668,21 +668,34 @@ class WebShellResourcesTest {
     assertTrue(script.contains("loadOptionalJson(apiUrl(\"identity-vault/grants\"))"));
     assertTrue(script.contains("loadOptionalJson(apiUrl(\"app-services\"))"));
     assertTrue(script.contains("loadOptionalJson(apiUrl(\"app-services/grants\"))"));
+    assertTrue(script.contains("loadOptionalJson(apiUrl(\"app-services/dependencies\"))"));
+    assertTrue(script.contains("loadOptionalJson(apiUrl(\"app-services/grant-bundles\"))"));
     assertTrue(script.contains("loadOptionalJson(apiUrl(\"app-services/audit?limit=12\"))"));
     assertTrue(script.contains("App-service grants"));
     assertTrue(script.contains("Service grant summary"));
     assertTrue(script.contains("Advertised services"));
     assertTrue(script.contains("Declared requests"));
+    assertTrue(script.contains("Dependency edges"));
+    assertTrue(script.contains("Grant bundles"));
     assertTrue(script.contains("Pending grants"));
     assertTrue(script.contains("Active grants"));
     assertTrue(script.contains("Revoked grants"));
     assertTrue(script.contains("App-service audit"));
     assertTrue(script.contains("App-service grant actions unavailable in read-only mode."));
+    assertTrue(script.contains("App-service grant-bundle actions unavailable in read-only mode."));
     assertTrue(script.contains("App-service grant action unavailable."));
+    assertTrue(script.contains("App-service grant-bundle action unavailable."));
     assertTrue(script.contains("App-service grant ${action} completed."));
+    assertTrue(script.contains("App-service grant bundle ${action} completed."));
     assertTrue(script.contains("form.dataset.appServiceGrantAction = action;"));
+    assertTrue(script.contains("form.dataset.appServiceBundleAction = action;"));
     assertTrue(
         script.contains("await submitAppServiceGrantMutation(form, appServiceGrantAction);"));
+    assertTrue(
+        script.contains("await submitAppServiceBundleMutation(form, appServiceBundleAction);"));
+    assertTrue(script.contains("function renderAppServiceDependencyGraph(graph)"));
+    assertTrue(script.contains("function renderAppServiceDependencyCard(dependency)"));
+    assertTrue(script.contains("function renderAppServiceBundleCard(bundle)"));
     assertTrue(script.contains("catalogsSnapshot.catalogs.map(loadCatalogApps)"));
     assertTrue(script.contains("recommendedSnapshot.catalogs"));
     assertTrue(script.contains("renderRecommendedCatalogs("));
@@ -719,6 +732,9 @@ class WebShellResourcesTest {
     assertTrue(
         script.contains(
             "`app-services/grants/${encodeURIComponent(grantId)}/${encodeURIComponent(action)}`"));
+    assertTrue(
+        script.contains(
+            "`app-services/grant-bundles/${encodeURIComponent(bundleId)}/${encodeURIComponent(action)}`"));
     assertTrue(script.contains("action === \"uninstall\""));
     assertTrue(script.contains("App lifecycle actions unavailable in read-only mode."));
     assertTrue(script.contains("Catalog actions unavailable in read-only mode."));

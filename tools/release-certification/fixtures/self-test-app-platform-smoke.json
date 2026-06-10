@@ -60,7 +60,7 @@
       "details": {
         "apiVersion": "v1",
         "capabilityCount": 25,
-        "contractVersion": 15,
+        "contractVersion": 16,
         "endpointCount": 65,
         "flaggedStability": [],
         "stabilityCounts": {

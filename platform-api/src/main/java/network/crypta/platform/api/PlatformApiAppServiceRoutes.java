@@ -22,6 +22,10 @@ import network.crypta.platform.api.appservices.AppServiceCoordinator;
  *
  * <ul>
  *   <li>{@code /app-services} lists advertised services and manifest-declared requests.
+ *   <li>{@code /app-services/dependencies} lists the caller-visible dependency graph.
+ *   <li>{@code /app-services/dependencies/consumers/{consumerAppId}} reads one consumer graph
+ *       without conflicting with provider app ids.
+ *   <li>{@code /app-services/grant-bundles} lists or requests grant bundles.
  *   <li>{@code /app-services/grants} lists or creates consumer grant records.
  *   <li>{@code /app-services/grants/{grantId}/approve} and {@code revoke} mutate grant state.
  *   <li>{@code /app-services/{providerAppId}/services/{serviceId}/invoke} calls an explicit
@@ -49,6 +53,18 @@ record PlatformApiAppServiceRoutes(AppServiceCoordinator coordinator) {
 
   /** Shared route segment and response key for one grant record. */
   private static final String RESOURCE_GRANT = "grant";
+
+  /** Shared route segment and response key for one grant-bundle record. */
+  private static final String RESOURCE_BUNDLE = "bundle";
+
+  /** Shared top-level route segment for dependency graph reads. */
+  private static final String RESOURCE_DEPENDENCIES = "dependencies";
+
+  /** Disambiguating dependency route segment for per-consumer graph reads. */
+  private static final String RESOURCE_CONSUMERS = "consumers";
+
+  /** Shared top-level route segment for grant-bundle collections. */
+  private static final String RESOURCE_GRANT_BUNDLES = "grant-bundles";
 
   /** Shared route segment and response key for grant collections. */
   private static final String RESOURCE_GRANTS = "grants";
@@ -78,9 +94,10 @@ record PlatformApiAppServiceRoutes(AppServiceCoordinator coordinator) {
     return switch (segments.size()) {
       case 1 -> routeRoot(request, service);
       case 2 -> routeTopLevel(segments.get(1), request, service);
-      case 3 -> routeProviderServices(segments.get(1), segments.get(2), request, service);
+      case 3 ->
+          routeDependencyOrProviderServices(segments.get(1), segments.get(2), request, service);
       case 4 ->
-          routeGrantActionOrService(
+          routeDependencyConsumerGrantActionOrService(
               segments.get(1), segments.get(2), segments.get(3), request, service);
       case 5 ->
           routeInvocation(
@@ -128,6 +145,16 @@ record PlatformApiAppServiceRoutes(AppServiceCoordinator coordinator) {
     if (RESOURCE_GRANTS.equals(resource)) {
       return routeGrantsCollection(request, service);
     }
+    if (RESOURCE_GRANT_BUNDLES.equals(resource)) {
+      return routeGrantBundlesCollection(request, service);
+    }
+    if (RESOURCE_DEPENDENCIES.equals(resource)) {
+      if (!METHOD_GET.equals(request.method())) {
+        return methodNotAllowed(METHOD_GET, GET_ONLY_MESSAGE);
+      }
+      return PlatformApiResponse.ok(
+          envelope("dependencyGraph", service.dependencyGraph(request.principal())));
+    }
     if ("audit".equals(resource)) {
       if (!METHOD_GET.equals(request.method())) {
         return methodNotAllowed(METHOD_GET, GET_ONLY_MESSAGE);
@@ -166,6 +193,40 @@ record PlatformApiAppServiceRoutes(AppServiceCoordinator coordinator) {
     return methodNotAllowed("GET, POST", "Platform API v1 supports GET and POST requests only.");
   }
 
+  private PlatformApiResponse routeGrantBundlesCollection(
+      PlatformApiRequest request, AppServiceCoordinator service) {
+    if (METHOD_GET.equals(request.method())) {
+      return PlatformApiResponse.ok(envelope("bundles", service.listBundles(request.principal())));
+    }
+    if (METHOD_POST.equals(request.method())) {
+      return PlatformApiResponse.created(
+          envelope(
+              RESOURCE_BUNDLE,
+              service.requestBundle(request.principal(), request.queryParameters())));
+    }
+    return methodNotAllowed("GET, POST", "Platform API v1 supports GET and POST requests only.");
+  }
+
+  private PlatformApiResponse routeDependencyOrProviderServices(
+      String first, String second, PlatformApiRequest request, AppServiceCoordinator service) {
+    if (RESOURCE_SERVICES.equals(second)) {
+      return routeProviderServices(first, second, request, service);
+    }
+    if (RESOURCE_DEPENDENCIES.equals(first)) {
+      return routeConsumerDependencies(second, request, service);
+    }
+    return routeProviderServices(first, second, request, service);
+  }
+
+  private PlatformApiResponse routeConsumerDependencies(
+      String consumerAppId, PlatformApiRequest request, AppServiceCoordinator service) {
+    if (!METHOD_GET.equals(request.method())) {
+      return methodNotAllowed(METHOD_GET, GET_ONLY_MESSAGE);
+    }
+    return PlatformApiResponse.ok(
+        envelope("dependencyGraph", service.dependencyGraph(request.principal(), consumerAppId)));
+  }
+
   /**
    * Handles {@code /app-services/{providerAppId}/services}.
    *
@@ -195,25 +256,29 @@ record PlatformApiAppServiceRoutes(AppServiceCoordinator coordinator) {
   }
 
   /**
-   * Resolves four-segment routes that can mean either grant mutation or service read.
+   * Resolves four-segment routes that can mean per-consumer dependency read, grant mutation, or
+   * service read.
    *
    * <p>Provider service reads are checked before grant actions so an installed provider with app id
    * {@code grants} remains reachable at {@code /app-services/grants/services/{serviceId}}. Grant
    * actions still use {@code /app-services/grants/{grantId}/{approve|revoke}}.
    *
-   * @param first provider app id or literal {@code grants}
-   * @param second service-list marker segment or a grant id
-   * @param third service id or grant action
+   * @param first provider app id, literal {@code dependencies}, or literal {@code grants}
+   * @param second service-list marker segment, literal {@code consumers}, or a grant id
+   * @param third consumer app id, service id, or grant action
    * @param request request containing method and principal
    * @param service coordinator used for service reads or grant mutation
    * @return service descriptor or updated grant envelope
    */
-  private PlatformApiResponse routeGrantActionOrService(
+  private PlatformApiResponse routeDependencyConsumerGrantActionOrService(
       String first,
       String second,
       String third,
       PlatformApiRequest request,
       AppServiceCoordinator service) {
+    if (RESOURCE_DEPENDENCIES.equals(first) && RESOURCE_CONSUMERS.equals(second)) {
+      return routeConsumerDependencies(third, request, service);
+    }
     if (RESOURCE_SERVICES.equals(second)) {
       if (!METHOD_GET.equals(request.method())) {
         return methodNotAllowed(METHOD_GET, GET_ONLY_MESSAGE);
@@ -222,6 +287,9 @@ record PlatformApiAppServiceRoutes(AppServiceCoordinator coordinator) {
     }
     if (RESOURCE_GRANTS.equals(first)) {
       return routeGrantAction(second, third, request, service);
+    }
+    if (RESOURCE_GRANT_BUNDLES.equals(first)) {
+      return routeGrantBundleAction(second, third, request, service);
     }
     throw notFound();
   }
@@ -251,6 +319,25 @@ record PlatformApiAppServiceRoutes(AppServiceCoordinator coordinator) {
       case "revoke" ->
           PlatformApiResponse.ok(
               envelope(RESOURCE_GRANT, service.revokeGrant(request.principal(), grantId)));
+      default -> throw notFound();
+    };
+  }
+
+  private PlatformApiResponse routeGrantBundleAction(
+      String bundleId, String action, PlatformApiRequest request, AppServiceCoordinator service) {
+    if (!METHOD_POST.equals(request.method())) {
+      return methodNotAllowed(METHOD_POST, POST_ONLY_MESSAGE);
+    }
+    return switch (action) {
+      case "approve" ->
+          PlatformApiResponse.ok(
+              envelope(RESOURCE_BUNDLE, service.approveBundle(request.principal(), bundleId)));
+      case "reject" ->
+          PlatformApiResponse.ok(
+              envelope(RESOURCE_BUNDLE, service.rejectBundle(request.principal(), bundleId)));
+      case "renew" ->
+          PlatformApiResponse.ok(
+              envelope(RESOURCE_BUNDLE, service.renewBundle(request.principal(), bundleId)));
       default -> throw notFound();
     };
   }

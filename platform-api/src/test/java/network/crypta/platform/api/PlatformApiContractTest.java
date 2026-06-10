@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SuppressWarnings("java:S100")
@@ -19,7 +20,7 @@ class PlatformApiContractTest {
     String second = PlatformApiContractJson.writeEnvelope(PlatformApiContract.current());
 
     assertEquals(first, second);
-    assertTrue(first.startsWith("{\"contract\":{\"apiVersion\":\"v1\",\"contractVersion\":15"));
+    assertTrue(first.startsWith("{\"contract\":{\"apiVersion\":\"v1\",\"contractVersion\":16"));
     assertFalse(first.contains("CRYPTAD_APP_TOKEN"));
     assertFalse(first.contains("browserSessionToken"));
     assertFalse(first.contains("password"));
@@ -40,7 +41,7 @@ class PlatformApiContractTest {
     PlatformApiContractVersion version = PlatformApiContract.current().version();
 
     assertEquals("v1", version.apiVersion());
-    assertEquals(15, version.contractVersion());
+    assertEquals(16, version.contractVersion());
   }
 
   @Test
@@ -289,12 +290,21 @@ class PlatformApiContractTest {
   }
 
   @Test
-  void current_whenInspectingAppServiceEndpoints_expectContractV12Capabilities() {
+  void current_whenInspectingAppServiceEndpoints_expectContractV12AndV16Capabilities() {
     Map<String, List<String>> expectedCapabilities =
         Map.ofEntries(
             Map.entry("GET /app-services", List.of("app.services.read")),
             Map.entry("GET /app-services/audit", List.of()),
             Map.entry("GET /app-services/grants", List.of("app.services.read")),
+            Map.entry("GET /app-services/dependencies", List.of("app.services.read")),
+            Map.entry(
+                "GET /app-services/dependencies/consumers/{consumerAppId}",
+                List.of("app.services.read")),
+            Map.entry("GET /app-services/grant-bundles", List.of("app.services.read")),
+            Map.entry("POST /app-services/grant-bundles", List.of("app.services.call")),
+            Map.entry("POST /app-services/grant-bundles/{bundleId}/approve", List.of()),
+            Map.entry("POST /app-services/grant-bundles/{bundleId}/reject", List.of()),
+            Map.entry("POST /app-services/grant-bundles/{bundleId}/renew", List.of()),
             Map.entry("POST /app-services/grants", List.of("app.services.call")),
             Map.entry("POST /app-services/grants/{grantId}/approve", List.of()),
             Map.entry("POST /app-services/grants/{grantId}/revoke", List.of("app.services.call")),
@@ -313,22 +323,58 @@ class PlatformApiContractTest {
         continue;
       }
       seen.add(key);
-      assertEquals(12, endpoint.sinceContractVersion(), key);
+      assertEquals(
+          key.contains("dependencies") || key.contains("grant-bundles") ? 16 : 12,
+          endpoint.sinceContractVersion(),
+          key);
       assertEquals("app-services", endpoint.routeFamily(), key);
       assertEquals(PlatformApiStabilityLevel.EXPERIMENTAL, endpoint.stability(), key);
       assertEquals(expectedCapabilities.get(key), endpoint.requiredCapabilities(), key);
-      if (key.endsWith("/approve") || key.equals("GET /app-services/audit")) {
+      if (key.endsWith("/approve")
+          || key.endsWith("/reject")
+          || key.endsWith("/renew")
+          || key.equals("GET /app-services/audit")) {
         assertTrue(endpoint.hostOperatorBypassAllowed(), key);
         assertFalse(endpoint.appProcessAllowed(), key);
         assertFalse(endpoint.appBrowserAllowed(), key);
       } else if (key.equals("POST /app-services/grants")
+          || key.equals("POST /app-services/grant-bundles")
           || key.equals("POST /app-services/{providerAppId}/services/{serviceId}/invoke")) {
-        assertFalse(endpoint.hostOperatorBypassAllowed(), key);
+        assertEquals(
+            key.equals("POST /app-services/grant-bundles"),
+            endpoint.hostOperatorBypassAllowed(),
+            key);
         assertTrue(endpoint.appProcessAllowed(), key);
         assertTrue(endpoint.appBrowserAllowed(), key);
       }
     }
     assertEquals(expectedCapabilities.keySet(), seen);
+  }
+
+  @Test
+  void endpointFor_whenDependencyConsumerIdIsServices_expectDisambiguatedContractRoute() {
+    PlatformApiContract contract = PlatformApiContract.current();
+
+    PlatformApiEndpointDescriptor dependencyRead =
+        contract.endpointFor(
+            "GET",
+            List.of("app-services", "dependencies", "consumers", "services"),
+            PlatformApiPrincipalType.APP_BROWSER);
+    PlatformApiEndpointDescriptor providerList =
+        contract.endpointFor(
+            "GET",
+            List.of("app-services", "dependencies", "services"),
+            PlatformApiPrincipalType.APP_BROWSER);
+
+    assertNotNull(dependencyRead);
+    assertNotNull(providerList);
+    assertEquals(
+        "/app-services/dependencies/consumers/{consumerAppId}", dependencyRead.routeTemplate());
+    assertEquals("app-services.dependencies.read", dependencyRead.actionLabel());
+    assertEquals(List.of("app.services.read"), dependencyRead.requiredCapabilities());
+    assertEquals("/app-services/{providerAppId}/services", providerList.routeTemplate());
+    assertEquals("app-services.provider.list", providerList.actionLabel());
+    assertEquals(List.of("app.services.read"), providerList.requiredCapabilities());
   }
 
   @Test
@@ -456,6 +502,10 @@ class PlatformApiContractTest {
     }
     if (endpoint.routeTemplate().equals("/app-vault/identities/{identityId}/social-message")) {
       return 11;
+    }
+    if (endpoint.routeTemplate().startsWith("/app-services/dependencies")
+        || endpoint.routeTemplate().startsWith("/app-services/grant-bundles")) {
+      return 16;
     }
     if (endpoint.routeTemplate().startsWith("/app-services")) {
       return 12;

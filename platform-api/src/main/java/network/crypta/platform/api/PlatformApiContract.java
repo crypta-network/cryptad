@@ -57,7 +57,7 @@ public record PlatformApiContract(
    * way that tooling should be able to compare. It is not the Cryptad build number, and it is not
    * the URL API version.
    */
-  public static final int CURRENT_CONTRACT_VERSION = 15;
+  public static final int CURRENT_CONTRACT_VERSION = 16;
 
   private static final int INITIAL_CONTRACT_VERSION = 1;
   private static final int APP_UPDATE_LIFECYCLE_CONTRACT_VERSION = 2;
@@ -72,6 +72,7 @@ public record PlatformApiContract(
   private static final int SOCIAL_MESSAGE_CONTRACT_VERSION = 11;
   private static final int APP_SERVICES_CONTRACT_VERSION = 12;
   private static final int TRUST_GRAPH_RC_SCOPE_CONTRACT_VERSION = 15;
+  private static final int APP_SERVICE_DEPENDENCY_BUNDLES_CONTRACT_VERSION = 16;
 
   /**
    * Stable producer label written into generated contract snapshots.
@@ -89,6 +90,9 @@ public record PlatformApiContract(
           + TRUST_GRAPH_RC_SCOPE_CONTRACT_VERSION
           + " adds local Trust Graph RC scope metadata, lifecycle statement routes, and bounded"
           + " contribution reason summaries"
+          + ". Contract version "
+          + APP_SERVICE_DEPENDENCY_BUNDLES_CONTRACT_VERSION
+          + " adds app-service dependency graph and grant-bundle routes"
           + ". Endpoint descriptors retain the contract version where each route first appeared. "
           + "Experimental, deprecated, scheduled-for-removal, and internal entries are flagged for "
           + "developer tooling and release review before behavior changes.";
@@ -1243,6 +1247,69 @@ public record PlatformApiContract(
               "List app-service grants visible to the caller."));
       appServiceEndpoint(
           new AppServiceEndpointSpec(
+              METHOD_GET,
+              "/app-services/dependencies",
+              "app-services.dependencies.list",
+              List.of(PlatformApiCapabilities.APP_SERVICES_READ),
+              APP_SERVICE_DEPENDENCY_BUNDLES_CONTRACT_VERSION,
+              EndpointAccess.HOST_AND_APP_PRINCIPALS,
+              "List the caller-visible app-service dependency graph."));
+      appServiceEndpoint(
+          new AppServiceEndpointSpec(
+              METHOD_GET,
+              "/app-services/dependencies/consumers/{consumerAppId}",
+              "app-services.dependencies.read",
+              List.of(PlatformApiCapabilities.APP_SERVICES_READ),
+              APP_SERVICE_DEPENDENCY_BUNDLES_CONTRACT_VERSION,
+              EndpointAccess.HOST_AND_APP_PRINCIPALS,
+              "Read dependency graph metadata for one consumer app."));
+      appServiceEndpoint(
+          new AppServiceEndpointSpec(
+              METHOD_GET,
+              "/app-services/grant-bundles",
+              "app-services.grant-bundles.list",
+              List.of(PlatformApiCapabilities.APP_SERVICES_READ),
+              APP_SERVICE_DEPENDENCY_BUNDLES_CONTRACT_VERSION,
+              EndpointAccess.HOST_AND_APP_PRINCIPALS,
+              "List grant-bundle proposals visible to the caller."));
+      appServiceEndpoint(
+          new AppServiceEndpointSpec(
+              METHOD_POST,
+              "/app-services/grant-bundles",
+              "app-services.grant-bundles.request",
+              List.of(PlatformApiCapabilities.APP_SERVICES_CALL),
+              APP_SERVICE_DEPENDENCY_BUNDLES_CONTRACT_VERSION,
+              EndpointAccess.HOST_AND_APP_PRINCIPALS,
+              "Request an operator-reviewed grant bundle for declared dependencies."));
+      appServiceEndpoint(
+          new AppServiceEndpointSpec(
+              METHOD_POST,
+              "/app-services/grant-bundles/{bundleId}/approve",
+              "app-services.grant-bundles.approve",
+              List.of(),
+              APP_SERVICE_DEPENDENCY_BUNDLES_CONTRACT_VERSION,
+              EndpointAccess.HOST_OPERATOR_ONLY,
+              "Approve one pending app-service grant bundle."));
+      appServiceEndpoint(
+          new AppServiceEndpointSpec(
+              METHOD_POST,
+              "/app-services/grant-bundles/{bundleId}/reject",
+              "app-services.grant-bundles.reject",
+              List.of(),
+              APP_SERVICE_DEPENDENCY_BUNDLES_CONTRACT_VERSION,
+              EndpointAccess.HOST_OPERATOR_ONLY,
+              "Reject one pending app-service grant bundle."));
+      appServiceEndpoint(
+          new AppServiceEndpointSpec(
+              METHOD_POST,
+              "/app-services/grant-bundles/{bundleId}/renew",
+              "app-services.grant-bundles.renew",
+              List.of(),
+              APP_SERVICE_DEPENDENCY_BUNDLES_CONTRACT_VERSION,
+              EndpointAccess.HOST_OPERATOR_ONLY,
+              "Renew or revalidate one approved app-service grant bundle."));
+      appServiceEndpoint(
+          new AppServiceEndpointSpec(
               METHOD_POST,
               "/app-services/grants",
               "app-services.grants.request",
@@ -1299,7 +1366,7 @@ public record PlatformApiContract(
               spec.routeTemplate(),
               spec.actionLabel(),
               spec.capabilities(),
-              APP_SERVICES_CONTRACT_VERSION,
+              spec.sinceContractVersion(),
               spec.access().hostOperatorBypassAllowed(),
               spec.access().appProcessAllowed(),
               spec.access().appBrowserAllowed(),
@@ -1589,8 +1656,26 @@ public record PlatformApiContract(
       String routeTemplate,
       String actionLabel,
       List<String> capabilities,
+      int sinceContractVersion,
       EndpointAccess access,
       String description) {
+    private AppServiceEndpointSpec(
+        String method,
+        String routeTemplate,
+        String actionLabel,
+        List<String> capabilities,
+        EndpointAccess access,
+        String description) {
+      this(
+          method,
+          routeTemplate,
+          actionLabel,
+          capabilities,
+          APP_SERVICES_CONTRACT_VERSION,
+          access,
+          description);
+    }
+
     private AppServiceEndpointSpec {
       capabilities = List.copyOf(capabilities);
       Objects.requireNonNull(access, "access");

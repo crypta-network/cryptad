@@ -2,7 +2,9 @@ package network.crypta.platform.api.appservices;
 
 import java.io.IOException;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.HexFormat;
@@ -53,8 +55,12 @@ public final class AppServiceCoordinator {
   private static final String AUDIT_EVENT_SERVICE_INVOCATION_DENIED = "service_invocation_denied";
   private static final String AUDIT_STATUS_DENIED = "denied";
   private static final System.Logger LOG = System.getLogger(AppServiceCoordinator.class.getName());
+  private static final String PARAM_BUNDLE_ALIAS = "bundleAlias";
+  private static final String PARAM_CONSUMER_APP_ID = "consumerAppId";
   private static final String PARAM_CONTEXT = "context";
   private static final String PARAM_CONTEXTS = "contexts";
+  private static final String FIELD_STATUS = "status";
+  private static final String PARAM_INCLUDE_OPTIONAL = "includeOptional";
   private static final String PARAM_PROVIDER_APP_ID = "providerAppId";
   private static final String PARAM_PURPOSE = "purpose";
   private static final String PARAM_SCOPE = "scope";
@@ -62,7 +68,9 @@ public final class AppServiceCoordinator {
   private static final String PARAM_SERVICE_ID = "serviceId";
   private static final String PARAM_SUBJECT_URI = "subjectUri";
   private static final String REQUIRED_TRUST_SCORE_SCOPE = "score.read";
+  private static final String SUPPORTED_SERVICE_KIND = "platform-adapter";
   private static final int DEFAULT_AUDIT_LIMIT = 50;
+  private static final Duration MAX_BUNDLE_GRANT_DURATION = Duration.ofDays(30);
   private static final HexFormat HEX = HexFormat.of();
 
   private final AppHost appHost;
@@ -152,6 +160,204 @@ public final class AppServiceCoordinator {
   }
 
   /**
+   * Returns the caller-visible app-service dependency graph.
+   *
+   * <p>Host/operator principals see every installed app node. App principals see only their own app
+   * and dependency edges. The graph is rebuilt from signed manifests, current provider descriptors,
+   * and current grant state on each call. It contains review metadata only and no local paths,
+   * request bodies, subject URIs, tokens, private insert URIs, or raw Trust Graph data.
+   *
+   * @param principal request principal used for app scoping
+   * @return deterministic graph JSON
+   */
+  public synchronized Map<String, Object> dependencyGraph(PlatformApiPrincipal principal) {
+    return dependencyGraph(principal, null);
+  }
+
+  /**
+   * Returns the dependency graph for a single consumer app.
+   *
+   * @param principal request principal used for app scoping
+   * @param consumerAppId requested consumer app id
+   * @return deterministic graph JSON
+   */
+  public synchronized Map<String, Object> dependencyGraph(
+      PlatformApiPrincipal principal, String consumerAppId) {
+    String callerAppId = principal.isApp() ? principal.appId() : null;
+    String selectedAppId =
+        consumerAppId == null
+            ? callerAppId
+            : AppServiceManifestParser.normalizeAppId(consumerAppId);
+    if (callerAppId != null && !callerAppId.equals(selectedAppId)) {
+      throw new PlatformApiException(
+          403, "forbidden", "App principals can read only their own dependencies.");
+    }
+    List<InstalledAppSnapshot> apps = installedApps();
+    List<AppServiceRequestDescriptor> requests = installedServiceRequests();
+    List<AppServiceDescriptor> services = installedServices();
+    List<AppServiceGrant> grants = readGrants();
+    LinkedHashMap<String, Object> graph = LinkedHashMap.newLinkedHashMap(2);
+    graph.put("apps", dependencyAppNodes(apps, requests, services, grants, selectedAppId));
+    graph.put("edges", dependencyEdges(requests, apps, services, grants, selectedAppId));
+    return graph;
+  }
+
+  /**
+   * Lists caller-visible grant-bundle review records.
+   *
+   * @param principal request principal used for app scoping
+   * @return deterministic bundle JSON list
+   */
+  public synchronized List<Map<String, Object>> listBundles(PlatformApiPrincipal principal) {
+    String callerAppId = principal.isApp() ? principal.appId() : null;
+    try {
+      List<AppServiceRequestDescriptor> requests = installedServiceRequests();
+      List<AppServiceDescriptor> services = installedServices();
+      List<AppServiceGrant> grants = store.listGrants();
+      return store.listBundles().stream()
+          .filter(bundle -> callerAppId == null || bundle.consumerAppId().equals(callerAppId))
+          .map(bundle -> bundleJson(bundle, requests, services, grants))
+          .toList();
+    } catch (IOException _) {
+      throw unavailable();
+    }
+  }
+
+  /**
+   * Creates or reuses a pending grant-bundle proposal for one consumer app.
+   *
+   * <p>Apps can request only their own bundle. Host/operator callers can create a review bundle for
+   * a named installed app. The proposal does not create grants or approve access.
+   *
+   * @param principal request principal
+   * @param parameters decoded form parameters
+   * @return pending bundle JSON
+   */
+  public synchronized Map<String, Object> requestBundle(
+      PlatformApiPrincipal principal, Map<String, List<String>> parameters) {
+    String consumerAppId = bundleConsumerAppId(principal, parameters);
+    ensureConsumerCanCall(consumerAppId);
+    String bundleAlias =
+        optionalAlias(PlatformApiParameters.readOptionalString(parameters, PARAM_BUNDLE_ALIAS));
+    boolean includeOptional =
+        PlatformApiParameters.readBoolean(parameters, PARAM_INCLUDE_OPTIONAL, true);
+    String purpose =
+        AppServiceManifestParser.optionalSafeText(
+            PlatformApiParameters.readOptionalString(parameters, PARAM_PURPOSE), 512);
+    if (purpose == null) {
+      purpose = "Review app-service dependencies for " + consumerAppId + ".";
+    }
+    List<AppServiceRequestDescriptor> dependencies =
+        selectedBundleDependencies(consumerAppId, bundleAlias, includeOptional);
+    if (dependencies.isEmpty()) {
+      throw new PlatformApiException(
+          400,
+          "app_service_bundle_empty",
+          "No declared app-service dependencies match this bundle request.");
+    }
+    List<String> aliases = dependencies.stream().map(AppServiceRequestDescriptor::alias).toList();
+    List<String> dependencyFingerprints = dependencyFingerprints(dependencies);
+    Instant now = clock.instant();
+    try {
+      Optional<AppServiceGrantBundle> existing =
+          store.listBundles().stream()
+              .filter(bundle -> bundle.consumerAppId().equals(consumerAppId))
+              .filter(bundle -> Objects.equals(bundle.bundleAlias(), bundleAlias))
+              .filter(bundle -> bundle.status() == AppServiceGrantBundleStatus.PENDING)
+              .filter(bundle -> sameTokens(bundle.dependencyAliases(), aliases))
+              .filter(bundle -> bundle.dependencyFingerprints().equals(dependencyFingerprints))
+              .findFirst();
+      if (existing.isPresent()) {
+        return bundleJson(
+            existing.get(), installedServiceRequests(), installedServices(), store.listGrants());
+      }
+      AppServiceGrantBundle bundle =
+          new AppServiceGrantBundle(
+              newBundleId(consumerAppId, bundleAlias, aliases, now),
+              consumerAppId,
+              bundleAlias,
+              aliases,
+              dependencyFingerprints,
+              includeOptional,
+              purpose,
+              AppServiceGrantBundleStatus.PENDING,
+              now,
+              now,
+              null,
+              null,
+              null,
+              null,
+              List.of());
+      store.writeBundle(bundle);
+      return bundleJson(
+          bundle, installedServiceRequests(), installedServices(), store.listGrants());
+    } catch (IOException _) {
+      throw unavailable();
+    }
+  }
+
+  /** Approves a pending grant bundle. */
+  public synchronized Map<String, Object> approveBundle(
+      PlatformApiPrincipal principal, String bundleId) {
+    requireHostOperator(principal, "App principals cannot approve app-service grant bundles.");
+    AppServiceGrantBundle bundle = bundleRequired(bundleId);
+    if (bundle.status() != AppServiceGrantBundleStatus.PENDING) {
+      throw new PlatformApiException(
+          409,
+          "app_service_bundle_not_pending",
+          "Only pending app-service grant bundles can be approved.");
+    }
+    return approveOrRenewBundle(bundle, false);
+  }
+
+  /** Rejects a pending grant bundle without creating active grants. */
+  public synchronized Map<String, Object> rejectBundle(
+      PlatformApiPrincipal principal, String bundleId) {
+    requireHostOperator(principal, "App principals cannot reject app-service grant bundles.");
+    AppServiceGrantBundle bundle = bundleRequired(bundleId);
+    if (bundle.status() != AppServiceGrantBundleStatus.PENDING) {
+      throw new PlatformApiException(
+          409,
+          "app_service_bundle_not_pending",
+          "Only pending app-service grant bundles can be rejected.");
+    }
+    Instant now = clock.instant();
+    AppServiceGrantBundle rejected =
+        bundle.withStatus(
+            AppServiceGrantBundleStatus.REJECTED,
+            now,
+            bundle.approvedAt(),
+            now,
+            bundle.expiresAt(),
+            bundle.renewedAt(),
+            List.of());
+    try {
+      store.writeBundle(rejected);
+      return bundleJson(
+          rejected, installedServiceRequests(), installedServices(), store.listGrants());
+    } catch (IOException _) {
+      throw unavailable();
+    }
+  }
+
+  /** Renews or revalidates an approved grant bundle after explicit operator action. */
+  public synchronized Map<String, Object> renewBundle(
+      PlatformApiPrincipal principal, String bundleId) {
+    requireHostOperator(principal, "App principals cannot renew app-service grant bundles.");
+    AppServiceGrantBundle bundle = bundleRequired(bundleId);
+    AppServiceGrantBundleStatus effective = effectiveBundleStatus(bundle, readGrants());
+    if (effective != AppServiceGrantBundleStatus.APPROVED
+        && effective != AppServiceGrantBundleStatus.EXPIRED
+        && effective != AppServiceGrantBundleStatus.REVALIDATION_REQUIRED) {
+      throw new PlatformApiException(
+          409,
+          "app_service_bundle_not_renewable",
+          "Only approved, expired, or revalidation-required bundles can be renewed.");
+    }
+    return approveOrRenewBundle(bundle, true);
+  }
+
+  /**
    * Lists services for one provider.
    *
    * <p>The provider must currently be installed. A provider that is installed but has invalid or
@@ -236,6 +442,7 @@ public final class AppServiceCoordinator {
         AppServiceManifestParser.normalizeServiceId(
             PlatformApiParameters.requireString(parameters, PARAM_SERVICE_ID));
     AppServiceDescriptor descriptor = serviceRequired(providerAppId, serviceId);
+    ensureDescriptorSupported(descriptor);
     List<String> scopes =
         AppServiceManifestParser.commaList(
             PlatformApiParameters.requireString(parameters, PARAM_SCOPES), PARAM_SCOPES);
@@ -283,7 +490,8 @@ public final class AppServiceCoordinator {
               serviceId,
               scopes,
               contexts,
-              PlatformApiParameters.requireString(parameters, PARAM_PURPOSE),
+              AppServiceManifestParser.requiredPurposeText(
+                  PlatformApiParameters.requireString(parameters, PARAM_PURPOSE)),
               AppServiceGrantStatus.PENDING,
               now,
               now,
@@ -320,10 +528,19 @@ public final class AppServiceCoordinator {
           409, "app_service_grant_not_pending", "Only pending app-service grants can be approved.");
     }
     AppServiceDescriptor descriptor = serviceRequired(grant.providerAppId(), grant.serviceId());
+    ensureDescriptorSupported(descriptor);
     ensureGrantSupportedByDescriptor(grant, descriptor);
     ensureConsumerCanCall(grant.consumerAppId());
     ensureNoFailedCleanup(grant.consumerAppId(), grant.providerAppId());
-    AppServiceGrant approved = grant.withStatus(AppServiceGrantStatus.ACTIVE, clock.instant());
+    Instant now = clock.instant();
+    AppServiceGrant approved =
+        grant.withApprovalMetadata(
+            now,
+            grant.bundleId(),
+            grant.expiresAt(),
+            grant.renewedAt(),
+            descriptor.compatibilityFingerprint(),
+            descriptor.version());
     try {
       store.writeGrant(approved);
       appendAudit("grant_approved", approved, null, null, "ok", "grant_active", null);
@@ -386,6 +603,7 @@ public final class AppServiceCoordinator {
     String consumerAppId = requireAppPrincipal(principal);
     ensureConsumerCanCall(consumerAppId);
     AppServiceDescriptor descriptor = serviceRequired(providerAppId, serviceId);
+    ensureDescriptorSupported(descriptor);
     ensureNoFailedCleanup(consumerAppId, descriptor.providerAppId());
     String context = requestedContext(parameters, descriptor);
     Map<String, List<String>> normalizedParameters = withInvocationContext(parameters, context);
@@ -487,6 +705,611 @@ public final class AppServiceCoordinator {
       cleanupFailedAppIds.remove(normalizedAppId);
     } catch (IOException exception) {
       LOG.log(System.Logger.Level.WARNING, "Failed to clear app-service state", exception);
+      throw unavailable();
+    }
+  }
+
+  private List<Map<String, Object>> dependencyAppNodes(
+      List<InstalledAppSnapshot> apps,
+      List<AppServiceRequestDescriptor> requests,
+      List<AppServiceDescriptor> services,
+      List<AppServiceGrant> grants,
+      String selectedAppId) {
+    return apps.stream()
+        .filter(snapshot -> selectedAppId == null || snapshot.appId().equals(selectedAppId))
+        .sorted(Comparator.comparing(InstalledAppSnapshot::appId))
+        .map(
+            snapshot -> {
+              Map<String, Object> app = LinkedHashMap.newLinkedHashMap(4);
+              app.put("appId", snapshot.appId());
+              app.put("name", snapshot.manifest().appName());
+              app.put("version", snapshot.manifest().appVersion());
+              app.put(
+                  "dependencies",
+                  requests.stream()
+                      .filter(request -> request.consumerAppId().equals(snapshot.appId()))
+                      .sorted(Comparator.comparing(AppServiceRequestDescriptor::alias))
+                      .map(request -> dependencyJson(request, apps, services, grants))
+                      .toList());
+              return app;
+            })
+        .toList();
+  }
+
+  private List<Map<String, Object>> dependencyEdges(
+      List<AppServiceRequestDescriptor> requests,
+      List<InstalledAppSnapshot> apps,
+      List<AppServiceDescriptor> services,
+      List<AppServiceGrant> grants,
+      String selectedAppId) {
+    return requests.stream()
+        .filter(request -> selectedAppId == null || request.consumerAppId().equals(selectedAppId))
+        .sorted(
+            Comparator.comparing(AppServiceRequestDescriptor::consumerAppId)
+                .thenComparing(AppServiceRequestDescriptor::providerAppId)
+                .thenComparing(AppServiceRequestDescriptor::serviceId)
+                .thenComparing(AppServiceRequestDescriptor::alias))
+        .map(
+            request -> {
+              DependencyEvaluation evaluation = evaluateDependency(request, apps, services, grants);
+              Map<String, Object> edge = LinkedHashMap.newLinkedHashMap(5);
+              edge.put(PARAM_CONSUMER_APP_ID, request.consumerAppId());
+              edge.put(PARAM_PROVIDER_APP_ID, request.providerAppId());
+              edge.put(PARAM_SERVICE_ID, request.serviceId());
+              edge.put("alias", request.alias());
+              edge.put(FIELD_STATUS, evaluation.status().jsonValue());
+              return edge;
+            })
+        .toList();
+  }
+
+  private Map<String, Object> dependencyJson(
+      AppServiceRequestDescriptor request,
+      List<InstalledAppSnapshot> apps,
+      List<AppServiceDescriptor> services,
+      List<AppServiceGrant> grants) {
+    AppServiceDependencyDescriptor dependency = request.dependency();
+    DependencyEvaluation evaluation = evaluateDependency(request, apps, services, grants);
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(18);
+    json.put("alias", request.alias());
+    json.put(PARAM_PROVIDER_APP_ID, request.providerAppId());
+    json.put(PARAM_SERVICE_ID, request.serviceId());
+    json.put("kind", dependency.kind().jsonValue());
+    json.put("featureId", dependency.featureId());
+    json.put("featureName", dependency.featureName());
+    json.put("required", dependency.required());
+    json.put(PARAM_SCOPES, request.scopes());
+    json.put(PARAM_CONTEXTS, request.contexts());
+    json.put(
+        "versionRange",
+        dependency.versionRange() == null ? null : dependency.versionRange().toJson());
+    json.put(FIELD_STATUS, evaluation.status().jsonValue());
+    json.put("degradeBehavior", dependency.degradeBehavior().jsonValue());
+    json.put("reason", dependency.reason() == null ? request.purpose() : dependency.reason());
+    json.put("grantBundle", dependency.grantBundle());
+    json.put(
+        "grantExpiresAfter",
+        dependency.grantExpiresAfter() == null ? null : dependency.grantExpiresAfter().toString());
+    json.put("grantId", evaluation.grant() == null ? null : evaluation.grant().grantId());
+    json.put(
+        "blocking",
+        dependency.required() && evaluation.status() != AppServiceDependencyStatus.GRANT_ACTIVE);
+    json.put(
+        "providerServiceVersion",
+        evaluation.descriptor() == null ? null : evaluation.descriptor().version());
+    return json;
+  }
+
+  private DependencyEvaluation evaluateDependency(
+      AppServiceRequestDescriptor request,
+      List<InstalledAppSnapshot> apps,
+      List<AppServiceDescriptor> services,
+      List<AppServiceGrant> grants) {
+    if (apps.stream().noneMatch(snapshot -> snapshot.appId().equals(request.providerAppId()))) {
+      return new DependencyEvaluation(AppServiceDependencyStatus.MISSING_PROVIDER, null, null);
+    }
+    Optional<AppServiceDescriptor> descriptor =
+        services.stream()
+            .filter(service -> service.providerAppId().equals(request.providerAppId()))
+            .filter(service -> service.serviceId().equals(request.serviceId()))
+            .findFirst();
+    if (descriptor.isEmpty()) {
+      return new DependencyEvaluation(AppServiceDependencyStatus.MISSING_SERVICE, null, null);
+    }
+    AppServiceDescriptor service = descriptor.get();
+    if (!service.satisfiesVersionRange(request.dependency().versionRange())) {
+      return new DependencyEvaluation(AppServiceDependencyStatus.VERSION_MISMATCH, service, null);
+    }
+    if (service.hasUnsupportedScopes(request.scopes())) {
+      return new DependencyEvaluation(AppServiceDependencyStatus.SCOPE_MISMATCH, service, null);
+    }
+    if (!contextsSupported(service, request.contexts())) {
+      return new DependencyEvaluation(AppServiceDependencyStatus.CONTEXT_MISMATCH, service, null);
+    }
+    if (descriptorUnsupported(service)) {
+      return new DependencyEvaluation(AppServiceDependencyStatus.UNAVAILABLE, service, null);
+    }
+    Optional<AppServiceGrant> grant = matchingGrantForRequest(request, grants);
+    if (grant.isEmpty()) {
+      return new DependencyEvaluation(AppServiceDependencyStatus.AVAILABLE, service, null);
+    }
+    AppServiceGrantStatus status = effectiveStatus(grant.get());
+    if (status == AppServiceGrantStatus.PENDING) {
+      return new DependencyEvaluation(
+          AppServiceDependencyStatus.GRANT_PENDING, service, grant.get());
+    }
+    if (status == AppServiceGrantStatus.ACTIVE) {
+      return new DependencyEvaluation(
+          AppServiceDependencyStatus.GRANT_ACTIVE, service, grant.get());
+    }
+    if (status == AppServiceGrantStatus.EXPIRED) {
+      return new DependencyEvaluation(
+          AppServiceDependencyStatus.GRANT_EXPIRED, service, grant.get());
+    }
+    if (status == AppServiceGrantStatus.REVALIDATION_REQUIRED) {
+      return new DependencyEvaluation(
+          AppServiceDependencyStatus.REVALIDATION_REQUIRED, service, grant.get());
+    }
+    return new DependencyEvaluation(AppServiceDependencyStatus.AVAILABLE, service, null);
+  }
+
+  private Optional<AppServiceGrant> matchingGrantForRequest(
+      AppServiceRequestDescriptor request, List<AppServiceGrant> grants) {
+    return grants.stream()
+        .filter(grant -> grant.consumerAppId().equals(request.consumerAppId()))
+        .filter(grant -> grant.providerAppId().equals(request.providerAppId()))
+        .filter(grant -> grant.serviceId().equals(request.serviceId()))
+        .filter(grant -> sameTokens(grant.scopes(), request.scopes()))
+        .filter(grant -> sameTokens(grant.contexts(), request.contexts()))
+        .filter(
+            grant ->
+                grant.status() == AppServiceGrantStatus.ACTIVE
+                    || grant.status() == AppServiceGrantStatus.PENDING)
+        .map(grant -> new GrantMatch(grant, effectiveStatus(grant)))
+        .filter(match -> dependencyGrantStatusRank(match.status()) < Integer.MAX_VALUE)
+        .min(
+            Comparator.comparingInt((GrantMatch match) -> dependencyGrantStatusRank(match.status()))
+                .thenComparing(match -> match.grant().createdAt())
+                .thenComparing(match -> match.grant().grantId()))
+        .map(GrantMatch::grant);
+  }
+
+  private static int dependencyGrantStatusRank(AppServiceGrantStatus status) {
+    return switch (status) {
+      case ACTIVE -> 0;
+      case PENDING -> 1;
+      case REVALIDATION_REQUIRED -> 2;
+      case EXPIRED -> 3;
+      default -> Integer.MAX_VALUE;
+    };
+  }
+
+  private boolean contextsSupported(AppServiceDescriptor descriptor, List<String> contexts) {
+    if (descriptor.contexts().isEmpty()) {
+      return contexts.isEmpty();
+    }
+    return !contexts.isEmpty() && contexts.stream().allMatch(descriptor::supportsContext);
+  }
+
+  private Map<String, Object> bundleJson(
+      AppServiceGrantBundle bundle,
+      List<AppServiceRequestDescriptor> requests,
+      List<AppServiceDescriptor> services,
+      List<AppServiceGrant> grants) {
+    List<InstalledAppSnapshot> apps = installedApps();
+    List<AppServiceRequestDescriptor> matchingRequests =
+        requests.stream()
+            .filter(request -> request.consumerAppId().equals(bundle.consumerAppId()))
+            .filter(request -> bundle.dependencyAliases().contains(request.alias()))
+            .sorted(Comparator.comparing(AppServiceRequestDescriptor::alias))
+            .toList();
+    List<Map<String, Object>> dependencies =
+        matchingRequests.stream()
+            .map(request -> dependencyJson(request, apps, services, grants))
+            .toList();
+    AppServiceGrantBundleStatus status = effectiveBundleStatus(bundle, grants);
+    if (bundleManifestDriftRequiresRevalidation(bundle, matchingRequests, status)) {
+      status = AppServiceGrantBundleStatus.REVALIDATION_REQUIRED;
+    }
+    return bundle.toJson(status, dependencies);
+  }
+
+  private static boolean bundleManifestDriftRequiresRevalidation(
+      AppServiceGrantBundle bundle,
+      List<AppServiceRequestDescriptor> matchingRequests,
+      AppServiceGrantBundleStatus effectiveStatus) {
+    return effectiveStatus == AppServiceGrantBundleStatus.APPROVED
+        && bundleDependencyFingerprintsChanged(bundle, matchingRequests);
+  }
+
+  private AppServiceGrantBundleStatus effectiveBundleStatus(
+      AppServiceGrantBundle bundle, List<AppServiceGrant> grants) {
+    if (bundle.status() != AppServiceGrantBundleStatus.APPROVED) {
+      return bundle.status();
+    }
+    if (isExpired(bundle.expiresAt())) {
+      return AppServiceGrantBundleStatus.EXPIRED;
+    }
+    List<AppServiceGrantStatus> grantStatuses =
+        grants.stream()
+            .filter(grant -> bundle.grantIds().contains(grant.grantId()))
+            .map(this::effectiveStatus)
+            .toList();
+    if (grantStatuses.size() != bundle.grantIds().size()) {
+      return AppServiceGrantBundleStatus.REVALIDATION_REQUIRED;
+    }
+    if (grantStatuses.stream().anyMatch(status -> status == AppServiceGrantStatus.EXPIRED)) {
+      return AppServiceGrantBundleStatus.EXPIRED;
+    }
+    boolean allActive =
+        grantStatuses.stream().allMatch(status -> status == AppServiceGrantStatus.ACTIVE);
+    return allActive
+        ? AppServiceGrantBundleStatus.APPROVED
+        : AppServiceGrantBundleStatus.REVALIDATION_REQUIRED;
+  }
+
+  private String bundleConsumerAppId(
+      PlatformApiPrincipal principal, Map<String, List<String>> parameters) {
+    if (principal.isApp()) {
+      return principal.appId();
+    }
+    return AppServiceManifestParser.normalizeAppId(
+        PlatformApiParameters.requireString(parameters, PARAM_CONSUMER_APP_ID));
+  }
+
+  private List<AppServiceRequestDescriptor> selectedBundleDependencies(
+      String consumerAppId, String bundleAlias, boolean includeOptional) {
+    return installedServiceRequests().stream()
+        .filter(request -> request.consumerAppId().equals(consumerAppId))
+        .filter(
+            request ->
+                bundleAlias == null
+                    || bundleAlias.equals(request.dependency().grantBundle())
+                    || bundleAlias.equals(request.alias()))
+        .filter(request -> includeOptional || request.dependency().required())
+        .sorted(Comparator.comparing(AppServiceRequestDescriptor::alias))
+        .toList();
+  }
+
+  private void ensureBundleDependenciesStillReviewed(
+      AppServiceGrantBundle bundle, List<AppServiceRequestDescriptor> dependencies) {
+    if (bundleDependencyFingerprintsChanged(bundle, dependencies)) {
+      throw new PlatformApiException(
+          409,
+          "app_service_bundle_manifest_stale",
+          "The bundled app-service dependencies changed after operator review.");
+    }
+  }
+
+  private static boolean bundleDependencyFingerprintsChanged(
+      AppServiceGrantBundle bundle, List<AppServiceRequestDescriptor> dependencies) {
+    return bundle.dependencyFingerprints().isEmpty()
+        || !bundle.dependencyFingerprints().equals(dependencyFingerprints(dependencies));
+  }
+
+  private static List<String> dependencyFingerprints(
+      List<AppServiceRequestDescriptor> dependencies) {
+    return dependencies.stream()
+        .sorted(Comparator.comparing(AppServiceRequestDescriptor::alias))
+        .map(AppServiceCoordinator::dependencyFingerprint)
+        .toList();
+  }
+
+  private static String dependencyFingerprint(AppServiceRequestDescriptor request) {
+    StringBuilder builder = new StringBuilder();
+    appendFingerprintField(builder, request.alias());
+    appendFingerprintField(builder, request.providerAppId());
+    appendFingerprintField(builder, request.serviceId());
+    appendFingerprintList(builder, request.scopes());
+    appendFingerprintList(builder, request.contexts());
+    appendFingerprintField(builder, request.purpose());
+    AppServiceDependencyDescriptor dependency = request.dependency();
+    appendFingerprintField(builder, dependency.kind().jsonValue());
+    appendFingerprintField(builder, Boolean.toString(dependency.required()));
+    AppServiceVersionRange range = dependency.versionRange();
+    appendFingerprintField(builder, range == null ? null : range.min());
+    appendFingerprintField(builder, range == null ? null : range.max());
+    appendFingerprintField(builder, dependency.reason());
+    appendFingerprintField(builder, dependency.degradeBehavior().jsonValue());
+    appendFingerprintField(builder, dependency.featureId());
+    appendFingerprintField(builder, dependency.featureName());
+    appendFingerprintField(builder, dependency.grantBundle());
+    appendFingerprintField(
+        builder,
+        dependency.grantExpiresAfter() == null ? null : dependency.grantExpiresAfter().toString());
+    return "sha256:" + hashHex(builder.toString());
+  }
+
+  private static void appendFingerprintList(StringBuilder builder, List<String> values) {
+    appendFingerprintField(builder, Integer.toString(values.size()));
+    for (String value : values) {
+      appendFingerprintField(builder, value);
+    }
+  }
+
+  private static void appendFingerprintField(StringBuilder builder, String value) {
+    if (value == null) {
+      builder.append("-1:|");
+      return;
+    }
+    builder.append(value.length()).append(':').append(value).append('|');
+  }
+
+  private Map<String, Object> approveOrRenewBundle(AppServiceGrantBundle bundle, boolean renewal) {
+    ensureConsumerCanCall(bundle.consumerAppId());
+    List<AppServiceRequestDescriptor> requests = installedServiceRequests();
+    List<AppServiceDescriptor> services = installedServices();
+    List<InstalledAppSnapshot> apps = installedApps();
+    List<AppServiceRequestDescriptor> dependencies =
+        requests.stream()
+            .filter(request -> request.consumerAppId().equals(bundle.consumerAppId()))
+            .filter(request -> bundle.dependencyAliases().contains(request.alias()))
+            .sorted(Comparator.comparing(AppServiceRequestDescriptor::alias))
+            .toList();
+    if (dependencies.size() != bundle.dependencyAliases().size()) {
+      throw new PlatformApiException(
+          409,
+          "app_service_bundle_manifest_stale",
+          "The consumer manifest no longer declares every bundled dependency.");
+    }
+    ensureBundleDependenciesStillReviewed(bundle, dependencies);
+    Instant now = clock.instant();
+    try {
+      List<AppServiceGrant> currentGrants = store.listGrants();
+      BundleApprovalPlan plan =
+          buildBundleApprovalPlan(
+              bundle, renewal, dependencies, apps, services, currentGrants, now);
+      store.writeBundle(plan.bundle());
+      persistBundleApprovalGrants(bundle, currentGrants, plan.grants(), now);
+      for (AppServiceGrant grant : plan.grants()) {
+        appendAudit(
+            renewal ? "grant_renewed" : "grant_bundle_approved",
+            grant,
+            null,
+            null,
+            "ok",
+            renewal ? "grant_renewed" : "grant_active",
+            null);
+      }
+      return bundleJson(
+          plan.bundle(), installedServiceRequests(), installedServices(), store.listGrants());
+    } catch (IOException _) {
+      throw unavailable();
+    }
+  }
+
+  private BundleApprovalPlan buildBundleApprovalPlan(
+      AppServiceGrantBundle bundle,
+      boolean renewal,
+      List<AppServiceRequestDescriptor> dependencies,
+      List<InstalledAppSnapshot> apps,
+      List<AppServiceDescriptor> services,
+      List<AppServiceGrant> currentGrants,
+      Instant now) {
+    ArrayList<String> grantIds = new ArrayList<>();
+    ArrayList<AppServiceGrant> grants = new ArrayList<>();
+    Instant bundleExpiresAt = null;
+    List<AppServiceGrant> effectiveGrants = currentGrants;
+    HashSet<String> plannedGrantIds = new HashSet<>();
+    for (AppServiceRequestDescriptor dependency : dependencies) {
+      DependencyEvaluation evaluation =
+          evaluateDependency(dependency, apps, services, effectiveGrants);
+      if (evaluation.descriptor() == null || !bundleApprovalEligible(evaluation.status())) {
+        throw new PlatformApiException(
+            409,
+            "app_service_dependency_unavailable",
+            "A bundled app-service dependency is not currently compatible.");
+      }
+      AppServiceDescriptor descriptor = evaluation.descriptor();
+      ensureDescriptorSupported(descriptor);
+      ensureNoFailedCleanup(dependency.consumerAppId(), dependency.providerAppId());
+      Instant expiresAt = grantExpiresAt(dependency.dependency(), now);
+      BundleGrantApprovalContext approvalContext =
+          new BundleGrantApprovalContext(
+              bundle, effectiveGrants, expiresAt, now, renewal, plannedGrantIds);
+      AppServiceGrant grant = grantForBundleApproval(dependency, descriptor, approvalContext);
+      if (grant.expiresAt() != null
+          && (bundleExpiresAt == null || grant.expiresAt().isBefore(bundleExpiresAt))) {
+        bundleExpiresAt = grant.expiresAt();
+      }
+      grants.add(grant);
+      grantIds.add(grant.grantId());
+      plannedGrantIds.add(grant.grantId());
+      effectiveGrants = grantsWithReplacement(effectiveGrants, grant);
+    }
+    AppServiceGrantBundle approved =
+        bundle.withStatus(
+            AppServiceGrantBundleStatus.APPROVED,
+            now,
+            bundle.approvedAt() == null ? now : bundle.approvedAt(),
+            bundle.rejectedAt(),
+            bundleExpiresAt,
+            renewal ? now : bundle.renewedAt(),
+            grantIds);
+    return new BundleApprovalPlan(approved, List.copyOf(grants));
+  }
+
+  private void persistBundleApprovalGrants(
+      AppServiceGrantBundle originalBundle,
+      List<AppServiceGrant> originalGrants,
+      List<AppServiceGrant> approvedGrants,
+      Instant now)
+      throws IOException {
+    ArrayList<AppServiceGrant> written = new ArrayList<>();
+    try {
+      for (AppServiceGrant grant : approvedGrants) {
+        store.writeGrant(grant);
+        written.add(grant);
+      }
+    } catch (IOException exception) {
+      rollbackBundleApprovalWrites(originalBundle, originalGrants, written, now, exception);
+      throw exception;
+    }
+  }
+
+  private void rollbackBundleApprovalWrites(
+      AppServiceGrantBundle originalBundle,
+      List<AppServiceGrant> originalGrants,
+      List<AppServiceGrant> written,
+      Instant now,
+      IOException cause) {
+    try {
+      store.writeBundle(originalBundle);
+    } catch (IOException exception) {
+      cause.addSuppressed(exception);
+      LOG.log(
+          System.Logger.Level.WARNING,
+          "Failed to roll back app-service grant bundle after approval write failure",
+          exception);
+    }
+    Map<String, AppServiceGrant> originalsById =
+        LinkedHashMap.newLinkedHashMap(originalGrants.size());
+    for (AppServiceGrant original : originalGrants) {
+      originalsById.put(original.grantId(), original);
+    }
+    for (AppServiceGrant grant : written.reversed()) {
+      AppServiceGrant replacement =
+          originalsById.getOrDefault(
+              grant.grantId(), grant.withStatus(AppServiceGrantStatus.INACTIVE, now));
+      try {
+        store.writeGrant(replacement);
+      } catch (IOException exception) {
+        cause.addSuppressed(exception);
+        LOG.log(
+            System.Logger.Level.WARNING,
+            "Failed to roll back app-service grant after approval write failure",
+            exception);
+      }
+    }
+  }
+
+  private static List<AppServiceGrant> grantsWithReplacement(
+      List<AppServiceGrant> grants, AppServiceGrant replacement) {
+    return Stream.concat(
+            grants.stream().filter(grant -> !grant.grantId().equals(replacement.grantId())),
+            Stream.of(replacement))
+        .toList();
+  }
+
+  private AppServiceGrant grantForBundleApproval(
+      AppServiceRequestDescriptor dependency,
+      AppServiceDescriptor descriptor,
+      BundleGrantApprovalContext approvalContext) {
+    Optional<AppServiceGrant> existing =
+        approvalContext.currentGrants().stream()
+            .filter(grant -> grant.consumerAppId().equals(dependency.consumerAppId()))
+            .filter(grant -> grant.providerAppId().equals(dependency.providerAppId()))
+            .filter(grant -> grant.serviceId().equals(dependency.serviceId()))
+            .filter(grant -> sameTokens(grant.scopes(), dependency.scopes()))
+            .filter(grant -> sameTokens(grant.contexts(), dependency.contexts()))
+            .filter(
+                grant ->
+                    grant.status() == AppServiceGrantStatus.PENDING
+                        || grant.status() == AppServiceGrantStatus.ACTIVE)
+            .findFirst();
+    boolean reusePlannedGrant =
+        existing
+            .map(grant -> approvalContext.plannedGrantIds().contains(grant.grantId()))
+            .orElse(false);
+    AppServiceGrant grant =
+        existing.orElseGet(
+            () ->
+                new AppServiceGrant(
+                    newGrantId(
+                        dependency.consumerAppId(),
+                        dependency.providerAppId(),
+                        dependency.serviceId(),
+                        dependency.scopes(),
+                        dependency.contexts(),
+                        approvalContext.now()),
+                    dependency.consumerAppId(),
+                    dependency.providerAppId(),
+                    dependency.serviceId(),
+                    dependency.scopes(),
+                    dependency.contexts(),
+                    dependency.purpose(),
+                    AppServiceGrantStatus.PENDING,
+                    approvalContext.now(),
+                    approvalContext.now(),
+                    null,
+                    null,
+                    null,
+                    0,
+                    null));
+    ensureGrantSupportedByDescriptor(grant, descriptor);
+    Instant approvedExpiresAt =
+        approvedGrantExpiresAt(
+            grant, approvalContext.expiresAt(), approvalContext.renewal(), reusePlannedGrant);
+    return grant.withApprovalMetadata(
+        approvalContext.now(),
+        approvalContext.bundle().bundleId(),
+        approvedExpiresAt,
+        approvalContext.renewal() ? approvalContext.now() : grant.renewedAt(),
+        descriptor.compatibilityFingerprint(),
+        descriptor.version());
+  }
+
+  private Instant approvedGrantExpiresAt(
+      AppServiceGrant grant,
+      Instant requestedExpiresAt,
+      boolean renewal,
+      boolean reusePlannedGrant) {
+    if (renewal && !reusePlannedGrant) {
+      return requestedExpiresAt;
+    }
+    if (!reusePlannedGrant && isExpired(grant.expiresAt())) {
+      return requestedExpiresAt;
+    }
+    return mostRestrictiveExpiresAt(grant.expiresAt(), requestedExpiresAt);
+  }
+
+  private static Instant mostRestrictiveExpiresAt(Instant first, Instant second) {
+    if (first == null) {
+      return second;
+    }
+    if (second == null) {
+      return first;
+    }
+    return first.isBefore(second) ? first : second;
+  }
+
+  private boolean bundleApprovalEligible(AppServiceDependencyStatus status) {
+    return status == AppServiceDependencyStatus.AVAILABLE
+        || status == AppServiceDependencyStatus.GRANT_PENDING
+        || status == AppServiceDependencyStatus.GRANT_ACTIVE
+        || status == AppServiceDependencyStatus.GRANT_EXPIRED
+        || status == AppServiceDependencyStatus.REVALIDATION_REQUIRED;
+  }
+
+  private Instant grantExpiresAt(AppServiceDependencyDescriptor dependency, Instant now) {
+    if (dependency.grantExpiresAfter() == null) {
+      return null;
+    }
+    Duration capped =
+        dependency.grantExpiresAfter().compareTo(MAX_BUNDLE_GRANT_DURATION) > 0
+            ? MAX_BUNDLE_GRANT_DURATION
+            : dependency.grantExpiresAfter();
+    return now.plus(capped);
+  }
+
+  private AppServiceGrantBundle bundleRequired(String bundleId) {
+    try {
+      Optional<AppServiceGrantBundle> bundle = store.readBundle(bundleId);
+      return bundle.orElseThrow(
+          () ->
+              new PlatformApiException(
+                  404,
+                  "app_service_bundle_not_found",
+                  "The app-service grant bundle was not found."));
+    } catch (IOException _) {
+      throw unavailable();
+    }
+  }
+
+  private List<AppServiceGrant> readGrants() {
+    try {
+      return store.listGrants();
+    } catch (IOException _) {
       throw unavailable();
     }
   }
@@ -611,7 +1434,7 @@ public final class AppServiceCoordinator {
               .filter(grant -> grant.providerAppId().equals(descriptor.providerAppId()))
               .filter(grant -> grant.serviceId().equals(descriptor.serviceId()))
               .filter(grant -> grant.status() == AppServiceGrantStatus.ACTIVE)
-              .filter(grant -> !cleanupFailedFor(grant))
+              .filter(grant -> effectiveStatus(grant) == AppServiceGrantStatus.ACTIVE)
               .filter(grant -> grantSupportedByDescriptor(grant, descriptor))
               .filter(grant -> grant.scopes().contains(scope))
               .filter(grant -> grantCoversContext(descriptor, grant, context))
@@ -665,6 +1488,9 @@ public final class AppServiceCoordinator {
     if (grant.status() != AppServiceGrantStatus.ACTIVE) {
       return grant.status();
     }
+    if (isExpired(grant.expiresAt())) {
+      return AppServiceGrantStatus.EXPIRED;
+    }
     if (cleanupFailedFor(grant)) {
       return AppServiceGrantStatus.INACTIVE;
     }
@@ -677,14 +1503,19 @@ public final class AppServiceCoordinator {
     if (!providerInstalled) {
       return AppServiceGrantStatus.INACTIVE;
     }
-    boolean serviceAdvertised =
+    Optional<AppServiceDescriptor> descriptor =
         installedServices().stream()
-            .anyMatch(
-                service ->
-                    service.providerAppId().equals(grant.providerAppId())
-                        && service.serviceId().equals(grant.serviceId())
-                        && grantSupportedByDescriptor(grant, service));
-    return serviceAdvertised ? AppServiceGrantStatus.ACTIVE : AppServiceGrantStatus.INACTIVE;
+            .filter(service -> service.providerAppId().equals(grant.providerAppId()))
+            .filter(service -> service.serviceId().equals(grant.serviceId()))
+            .findFirst();
+    if (descriptor.isEmpty()) {
+      return AppServiceGrantStatus.INACTIVE;
+    }
+    if (!grantSupportedByDescriptor(grant, descriptor.get())
+        || !approvalMetadataStillMatches(grant, descriptor.get())) {
+      return AppServiceGrantStatus.REVALIDATION_REQUIRED;
+    }
+    return AppServiceGrantStatus.ACTIVE;
   }
 
   private Optional<AppServiceGrant> existingReusableGrant(
@@ -779,7 +1610,7 @@ public final class AppServiceCoordinator {
     serviceCall.put(PARAM_PROVIDER_APP_ID, descriptor.providerAppId());
     serviceCall.put(PARAM_SERVICE_ID, descriptor.serviceId());
     serviceCall.put("grantId", grant.grantId());
-    serviceCall.put("status", "ok");
+    serviceCall.put(FIELD_STATUS, "ok");
     serviceCall.put("invokedAt", invokedAt.toString());
     serviceCall.put("result", result);
     LinkedHashMap<String, Object> envelope = LinkedHashMap.newLinkedHashMap(1);
@@ -831,6 +1662,9 @@ public final class AppServiceCoordinator {
 
   private boolean grantSupportedByDescriptor(
       AppServiceGrant grant, AppServiceDescriptor descriptor) {
+    if (descriptorUnsupported(descriptor)) {
+      return false;
+    }
     if (descriptor.hasUnsupportedScopes(grant.scopes())) {
       return false;
     }
@@ -841,6 +1675,40 @@ public final class AppServiceCoordinator {
       return false;
     }
     return grant.contexts().stream().allMatch(descriptor::supportsContext);
+  }
+
+  private void ensureDescriptorSupported(AppServiceDescriptor descriptor) {
+    if (!SUPPORTED_SERVICE_KIND.equals(descriptor.kind())) {
+      throw new PlatformApiException(
+          400,
+          "app_service_kind_unsupported",
+          "The service descriptor uses an unsupported adapter kind.");
+    }
+    if (!adapters.containsKey(descriptor.adapter())) {
+      throw new PlatformApiException(
+          404,
+          "app_service_adapter_missing",
+          "No platform adapter is registered for this service.");
+    }
+  }
+
+  private boolean descriptorUnsupported(AppServiceDescriptor descriptor) {
+    return !SUPPORTED_SERVICE_KIND.equals(descriptor.kind())
+        || !adapters.containsKey(descriptor.adapter());
+  }
+
+  private boolean approvalMetadataStillMatches(
+      AppServiceGrant grant, AppServiceDescriptor descriptor) {
+    if (grant.providerServiceVersionAtApproval() != null
+        && !grant.providerServiceVersionAtApproval().equals(descriptor.version())) {
+      return false;
+    }
+    return grant.compatibilityFingerprint() == null
+        || grant.compatibilityFingerprint().equals(descriptor.compatibilityFingerprint());
+  }
+
+  private boolean isExpired(Instant expiresAt) {
+    return expiresAt != null && !expiresAt.isAfter(clock.instant());
   }
 
   private String requestedScope(
@@ -918,6 +1786,20 @@ public final class AppServiceCoordinator {
             .substring(0, 24);
   }
 
+  private static String newBundleId(
+      String consumerAppId, String bundleAlias, List<String> aliases, Instant now) {
+    return "asb-"
+        + hashHex(
+                consumerAppId
+                    + "|"
+                    + (bundleAlias == null ? "" : bundleAlias)
+                    + "|"
+                    + String.join(",", aliases)
+                    + "|"
+                    + now)
+            .substring(0, 24);
+  }
+
   private static String newEventId(
       String eventType, String grantId, Instant now, String runId, long sequence) {
     return "ase-"
@@ -929,7 +1811,11 @@ public final class AppServiceCoordinator {
     return Set.copyOf(first).equals(Set.copyOf(second));
   }
 
-  private static String hashHex(String value) {
+  private static String optionalAlias(String value) {
+    return value == null || value.isBlank() ? null : AppServiceManifestParser.normalizeAlias(value);
+  }
+
+  static String hashHex(String value) {
     try {
       java.security.MessageDigest digest = java.security.MessageDigest.getInstance("SHA-256");
       return HEX.formatHex(digest.digest(value.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
@@ -937,4 +1823,19 @@ public final class AppServiceCoordinator {
       throw new IllegalStateException("SHA-256 is required", exception);
     }
   }
+
+  private record BundleApprovalPlan(AppServiceGrantBundle bundle, List<AppServiceGrant> grants) {}
+
+  private record BundleGrantApprovalContext(
+      AppServiceGrantBundle bundle,
+      List<AppServiceGrant> currentGrants,
+      Instant expiresAt,
+      Instant now,
+      boolean renewal,
+      Set<String> plannedGrantIds) {}
+
+  private record GrantMatch(AppServiceGrant grant, AppServiceGrantStatus status) {}
+
+  private record DependencyEvaluation(
+      AppServiceDependencyStatus status, AppServiceDescriptor descriptor, AppServiceGrant grant) {}
 }

@@ -1627,6 +1627,15 @@
       : null;
   }
 
+  function appServiceBundlePath(bundleId, action) {
+    return typeof bundleId === "string" &&
+      bundleId.length > 0 &&
+      typeof action === "string" &&
+      action.length > 0
+      ? `app-services/grant-bundles/${encodeURIComponent(bundleId)}/${encodeURIComponent(action)}`
+      : null;
+  }
+
   function appUiHref(app) {
     const isolatedFallbackHref = isolatedAppUiFallbackHref(app);
     if (isolatedFallbackHref || isolatedAppUiActive(app)) {
@@ -2224,6 +2233,22 @@
     form.className = "app-action-form";
     form.dataset.appServiceGrantAction = action;
     form.dataset.grantId = grant.grantId;
+    const submit = document.createElement("button");
+    submit.className = "button button-secondary";
+    submit.type = "submit";
+    submit.textContent = label;
+    form.append(submit);
+    return form;
+  }
+
+  function buildAppServiceBundleActionForm(bundle, action, label) {
+    if (!formPassword || typeof bundle.bundleId !== "string" || !bundle.bundleId) {
+      return null;
+    }
+    const form = document.createElement("form");
+    form.className = "app-action-form";
+    form.dataset.appServiceBundleAction = action;
+    form.dataset.bundleId = bundle.bundleId;
     const submit = document.createElement("button");
     submit.className = "button button-secondary";
     submit.type = "submit";
@@ -3579,6 +3604,10 @@
     const services = Array.isArray(appServices.services) ? appServices.services : [];
     const requests = Array.isArray(appServices.requests) ? appServices.requests : [];
     const grants = Array.isArray(appServices.grants) ? appServices.grants : [];
+    const dependencyGraph = appServices.dependencyGraph || { apps: [], edges: [] };
+    const dependencyApps = Array.isArray(dependencyGraph.apps) ? dependencyGraph.apps : [];
+    const dependencyEdges = Array.isArray(dependencyGraph.edges) ? dependencyGraph.edges : [];
+    const bundles = Array.isArray(appServices.bundles) ? appServices.bundles : [];
     const audit = Array.isArray(appServices.audit) ? appServices.audit : [];
     sections.apps.append(
       summaryCard(
@@ -3586,20 +3615,36 @@
         [
           ["Advertised services", `${services.length}`],
           ["Declared requests", `${requests.length}`],
+          ["Dependency edges", `${dependencyEdges.length}`],
+          ["Grant bundles", `${bundles.length}`],
           ["Pending grants", `${grants.filter((grant) => grant.status === "pending").length}`],
           ["Active grants", `${grants.filter((grant) => grant.status === "active").length}`],
           ["Revoked grants", `${grants.filter((grant) => grant.status === "revoked").length}`],
           ["Audit events", `${audit.length}`],
         ],
-        services.length || requests.length || grants.length ? "" : "is-warning",
+        services.length || requests.length || dependencyEdges.length || bundles.length || grants.length
+          ? ""
+          : "is-warning",
       ),
     );
-    if (!services.length && !requests.length && !grants.length) {
+    if (!services.length && !requests.length && !dependencyEdges.length && !bundles.length && !grants.length) {
       sections.apps.append(text("p", "empty-state", "No app-service descriptors or grants were returned."));
       return;
     }
     const list = document.createElement("div");
     list.className = "app-card-list";
+    if (dependencyEdges.length || dependencyApps.length) {
+      list.append(renderAppServiceDependencyGraph(dependencyGraph));
+    }
+    dependencyApps.forEach((app) => {
+      const dependencies = Array.isArray(app.dependencies) ? app.dependencies : [];
+      dependencies.forEach((dependency) => {
+        list.append(renderAppServiceDependencyCard(dependency));
+      });
+    });
+    bundles.forEach((bundle) => {
+      list.append(renderAppServiceBundleCard(bundle));
+    });
     services.forEach((service) => {
       list.append(renderAppServiceDescriptorCard(service));
     });
@@ -3646,6 +3691,157 @@
       ]),
     );
     return card;
+  }
+
+  function renderAppServiceDependencyGraph(graph) {
+    const card = document.createElement("article");
+    card.className = "catalog-app-card";
+    const apps = Array.isArray(graph.apps) ? graph.apps : [];
+    const edges = Array.isArray(graph.edges) ? graph.edges : [];
+    const header = document.createElement("div");
+    header.className = "catalog-app-header";
+    const heading = document.createElement("div");
+    heading.className = "app-card-heading";
+    heading.append(
+      text("h4", "catalog-app-title", "Dependency graph"),
+      text("p", "app-card-subtitle", `${apps.length} apps / ${edges.length} service edges`),
+    );
+    const pills = document.createElement("div");
+    pills.className = "app-card-pills";
+    pills.append(createPill("Graph"));
+    const warningCount = edges.filter((edge) => edge.status && edge.status !== "grant-active").length;
+    pills.append(createPill(`${warningCount} review`, warningCount ? "is-warning" : "is-success"));
+    header.append(heading, pills);
+    card.append(header);
+    apps.forEach((app) => {
+      const dependencies = Array.isArray(app.dependencies) ? app.dependencies : [];
+      const appSection = document.createElement("section");
+      appSection.className = "catalog-app-list";
+      appSection.append(
+        text("h5", "catalog-app-title", scalar(app.name || app.appId)),
+        definitionList([
+          ["App", scalar(app.appId)],
+          ["Version", scalar(app.version)],
+          ["Dependencies", `${dependencies.length}`],
+          ["Dependency status", appServiceDependencySummaries(dependencies)],
+        ]),
+      );
+      card.append(appSection);
+    });
+    return card;
+  }
+
+  function renderAppServiceDependencyCard(dependency) {
+    const card = document.createElement("article");
+    card.className = "catalog-app-card";
+    const status = typeof dependency.status === "string" ? dependency.status : "unavailable";
+    const header = document.createElement("div");
+    header.className = "catalog-app-header";
+    const heading = document.createElement("div");
+    heading.className = "app-card-heading";
+    heading.append(
+      text("h5", "catalog-app-title", scalar(dependency.featureName || dependency.alias)),
+      text("p", "app-card-subtitle", `${scalar(dependency.providerAppId)} / ${scalar(dependency.serviceId)}`),
+    );
+    const pills = document.createElement("div");
+    pills.className = "app-card-pills";
+    pills.append(createPill(dependency.required ? "Required" : "Optional", dependency.required ? "is-error" : ""));
+    pills.append(createPill(normalizedStatus(status, "dependency"), appServiceGrantTone(status)));
+    header.append(heading, pills);
+    card.append(header);
+    card.append(
+      definitionList([
+        ["Alias", scalar(dependency.alias)],
+        ["Feature", scalar(dependency.featureId)],
+        ["Scopes", formatPermissions(dependency.scopes)],
+        ["Contexts", formatPermissions(dependency.contexts)],
+        ["Version range", appServiceVersionRange(dependency.versionRange)],
+        ["Degrade behavior", scalar(dependency.degradeBehavior)],
+        ["Grant bundle", scalar(dependency.grantBundle)],
+        ["Grant expiry", scalar(dependency.grantExpiresAfter)],
+        ["Grant", scalar(dependency.grantId)],
+        ["Blocking", scalar(dependency.blocking)],
+        ["Reason", scalar(dependency.reason)],
+      ]),
+    );
+    return card;
+  }
+
+  function renderAppServiceBundleCard(bundle) {
+    const card = document.createElement("section");
+    card.className = "catalog-app-card";
+    const status = typeof bundle.status === "string" ? bundle.status : "";
+    if (status && status !== "approved") {
+      card.className += " is-update-available";
+    }
+    const header = document.createElement("div");
+    header.className = "catalog-app-header";
+    const heading = document.createElement("div");
+    heading.className = "app-card-heading";
+    heading.append(
+      text("h4", "catalog-app-title", `${scalar(bundle.consumerAppId)} grant bundle`),
+      text("p", "app-card-subtitle", scalar(bundle.bundleId)),
+    );
+    const pills = document.createElement("div");
+    pills.className = "app-card-pills";
+    pills.append(createPill(normalizedStatus(status, "bundle"), appServiceGrantTone(status)));
+    pills.append(createPill(scalar(bundle.bundleAlias || "default")));
+    header.append(heading, pills);
+    card.append(header);
+    const dependencies = Array.isArray(bundle.dependencies) ? bundle.dependencies : [];
+    card.append(
+      definitionList([
+        ["Consumer", scalar(bundle.consumerAppId)],
+        ["Purpose", scalar(bundle.purpose)],
+        ["Dependencies", `${dependencies.length}`],
+        ["Grant ids", formatPermissions(bundle.grantIds)],
+        ["Created", formatIsoTimestamp(bundle.createdAt)],
+        ["Updated", formatIsoTimestamp(bundle.updatedAt)],
+        ["Approved", formatIsoTimestamp(bundle.approvedAt)],
+        ["Rejected", formatIsoTimestamp(bundle.rejectedAt)],
+        ["Expires", formatIsoTimestamp(bundle.expiresAt)],
+        ["Renewed", formatIsoTimestamp(bundle.renewedAt)],
+      ]),
+    );
+    if (dependencies.length) {
+      card.append(
+        definitionList([["Dependency status", appServiceDependencySummaries(dependencies)]]),
+      );
+    }
+    const actions = document.createElement("div");
+    actions.className = "app-card-actions";
+    if (status === "pending") {
+      const approveForm = buildAppServiceBundleActionForm(bundle, "approve", "Approve bundle");
+      const rejectForm = buildAppServiceBundleActionForm(bundle, "reject", "Reject bundle");
+      if (approveForm) {
+        actions.append(approveForm);
+      }
+      if (rejectForm) {
+        actions.append(rejectForm);
+      }
+    }
+    if (status === "approved" || status === "expired" || status === "revalidation-required") {
+      const renewForm = buildAppServiceBundleActionForm(bundle, "renew", "Renew bundle");
+      if (renewForm) {
+        actions.append(renewForm);
+      }
+    }
+    if (actions.childNodes.length) {
+      card.append(actions);
+    }
+    return card;
+  }
+
+  function appServiceDependencySummaries(dependencies) {
+    if (!Array.isArray(dependencies) || !dependencies.length) {
+      return "none";
+    }
+    return dependencies
+      .map(
+        (dependency) =>
+          `${scalar(dependency.alias)}: ${scalar(dependency.providerAppId)} / ${scalar(dependency.serviceId)} (${scalar(dependency.status)})`,
+      )
+      .join("; ");
   }
 
   function renderAppServiceRequestCard(request) {
@@ -3711,6 +3907,11 @@
         ["Approved", formatIsoTimestamp(grant.approvedAt)],
         ["Revoked", formatIsoTimestamp(grant.revokedAt)],
         ["Last used", formatIsoTimestamp(grant.lastUsedAt)],
+        ["Expires", formatIsoTimestamp(grant.expiresAt)],
+        ["Renewed", formatIsoTimestamp(grant.renewedAt)],
+        ["Bundle", scalar(grant.bundleId)],
+        ["Provider version at approval", scalar(grant.providerServiceVersionAtApproval)],
+        ["Compatibility fingerprint", scalar(grant.compatibilityFingerprint)],
         ["Use count", scalar(grant.useCount || 0)],
       ]),
     );
@@ -3767,13 +3968,32 @@
   }
 
   function appServiceGrantTone(status) {
-    if (status === "active") {
+    if (status === "active" || status === "grant-active" || status === "approved") {
       return "is-success";
     }
-    if (status === "revoked" || status === "inactive" || status === "expired") {
+    if (
+      status === "revoked" ||
+      status === "inactive" ||
+      status === "expired" ||
+      status === "grant-expired" ||
+      status === "missing-provider" ||
+      status === "missing-service" ||
+      status === "version-mismatch" ||
+      status === "scope-mismatch" ||
+      status === "context-mismatch"
+    ) {
       return "is-error";
     }
     return "is-warning";
+  }
+
+  function appServiceVersionRange(versionRange) {
+    if (!versionRange || typeof versionRange !== "object") {
+      return "any";
+    }
+    const min = scalar(versionRange.min || "any");
+    const max = scalar(versionRange.max || "any");
+    return `${min} - ${max}`;
   }
 
   function renderIdentityVault(identityVault, identityVaultError, apps) {
@@ -5612,11 +5832,14 @@
     let appServices = {};
     let appServicesError = "";
     try {
-      const [serviceSnapshot, grantSnapshot, auditSnapshot] = await Promise.all([
+      const [serviceSnapshot, grantSnapshot, dependencySnapshot, bundleSnapshot, auditSnapshot] =
+        await Promise.all([
         loadOptionalJson(apiUrl("app-services")),
         loadOptionalJson(apiUrl("app-services/grants")),
+        loadOptionalJson(apiUrl("app-services/dependencies")),
+        loadOptionalJson(apiUrl("app-services/grant-bundles")),
         loadOptionalJson(apiUrl("app-services/audit?limit=12")),
-      ]);
+        ]);
       appServices = {
         services:
           serviceSnapshot && Array.isArray(serviceSnapshot.services)
@@ -5627,6 +5850,12 @@
             ? serviceSnapshot.requests
             : [],
         grants: grantSnapshot && Array.isArray(grantSnapshot.grants) ? grantSnapshot.grants : [],
+        dependencyGraph:
+          dependencySnapshot && dependencySnapshot.dependencyGraph
+            ? dependencySnapshot.dependencyGraph
+            : { apps: [], edges: [] },
+        bundles:
+          bundleSnapshot && Array.isArray(bundleSnapshot.bundles) ? bundleSnapshot.bundles : [],
         audit: auditSnapshot && Array.isArray(auditSnapshot.audit) ? auditSnapshot.audit : [],
       };
     } catch (error) {
@@ -5935,6 +6164,21 @@
     try {
       await postForm(path, new FormData(form), "App-service grant actions unavailable in read-only mode.");
       setAppsStatus(`App-service grant ${action} completed.`, "is-success");
+      await loadAppsSection();
+    } catch (error) {
+      setAppsStatus(error instanceof Error ? error.message : String(error), "is-error");
+    }
+  }
+
+  async function submitAppServiceBundleMutation(form, action) {
+    const path = appServiceBundlePath(form.dataset.bundleId || "", action);
+    if (!path) {
+      setAppsStatus("App-service grant-bundle action unavailable.", "is-error");
+      return;
+    }
+    try {
+      await postForm(path, new FormData(form), "App-service grant-bundle actions unavailable in read-only mode.");
+      setAppsStatus(`App-service grant bundle ${action} completed.`, "is-success");
       await loadAppsSection();
     } catch (error) {
       setAppsStatus(error instanceof Error ? error.message : String(error), "is-error");
@@ -7012,6 +7256,12 @@
       if (appServiceGrantAction) {
         event.preventDefault();
         await submitAppServiceGrantMutation(form, appServiceGrantAction);
+        return;
+      }
+      const appServiceBundleAction = form.dataset.appServiceBundleAction;
+      if (appServiceBundleAction) {
+        event.preventDefault();
+        await submitAppServiceBundleMutation(form, appServiceBundleAction);
         return;
       }
       const catalogAction = form.dataset.catalogAction;
