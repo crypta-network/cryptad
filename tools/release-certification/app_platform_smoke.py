@@ -2336,6 +2336,7 @@ def collect_app_services_evidence(settings: Settings) -> list[EvidenceItem]:
             and "optional" in docs_text
         ),
     }
+    bundle_source = read_source(appservices_dir / "AppServiceGrantBundle.java")
     dependency_redaction_checks = {
         "dependencyJsonPathFreeByConstruction": (
             "dependencyJson" in coordinator_text
@@ -2343,10 +2344,9 @@ def collect_app_services_evidence(settings: Settings) -> list[EvidenceItem]:
             and "subjectUri" not in request_descriptor_text
             and "request bodies" in appservices_model_text
         ),
-        "bundleJsonContainsNoTokensOrPaths": (
+        "bundlePublicJsonFieldsSafe": (
             "AppServiceGrantBundle" in appservices_model_text
-            and "token" not in read_source(appservices_dir / "AppServiceGrantBundle.java").lower()
-            and "Path" not in read_source(appservices_dir / "AppServiceGrantBundle.java")
+            and app_service_bundle_public_fields_are_safe(bundle_source)
         ),
         "uiAndEvidenceAvoidRawSensitiveValues": (
             "subjectUriHash" in shell_text
@@ -9008,6 +9008,135 @@ def read_source(path: Path) -> str:
     return path.read_text(encoding="utf-8", errors="replace")
 
 
+def java_source_without_comments(source: str) -> str:
+    """Return Java source with line and block comments removed.
+
+    Certification source checks often need to prove that serialized field names
+    are safe. Redaction policy comments may legitimately mention tokens, paths,
+    or other forbidden payloads, so callers should strip comments before checking
+    Java identifiers or JSON keys.
+    """
+    result: list[str] = []
+    index = 0
+    in_string = False
+    in_char = False
+    escaped = False
+    while index < len(source):
+        char = source[index]
+        next_char = source[index + 1] if index + 1 < len(source) else ""
+        if in_string or in_char:
+            result.append(char)
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif in_string and char == '"':
+                in_string = False
+            elif in_char and char == "'":
+                in_char = False
+            index += 1
+            continue
+        if char == '"':
+            in_string = True
+            result.append(char)
+            index += 1
+            continue
+        if char == "'":
+            in_char = True
+            result.append(char)
+            index += 1
+            continue
+        if char == "/" and next_char == "/":
+            index += 2
+            while index < len(source) and source[index] not in "\r\n":
+                index += 1
+            result.append("\n")
+            continue
+        if char == "/" and next_char == "*":
+            index += 2
+            while index + 1 < len(source) and not (
+                source[index] == "*" and source[index + 1] == "/"
+            ):
+                if source[index] in "\r\n":
+                    result.append("\n")
+                index += 1
+            index = min(index + 2, len(source))
+            continue
+        result.append(char)
+        index += 1
+    return "".join(result)
+
+
+def split_java_top_level_commas(source: str) -> list[str]:
+    parts: list[str] = []
+    start = 0
+    angle_depth = 0
+    paren_depth = 0
+    bracket_depth = 0
+    for index, char in enumerate(source):
+        if char == "<":
+            angle_depth += 1
+        elif char == ">" and angle_depth > 0:
+            angle_depth -= 1
+        elif char == "(":
+            paren_depth += 1
+        elif char == ")" and paren_depth > 0:
+            paren_depth -= 1
+        elif char == "[":
+            bracket_depth += 1
+        elif char == "]" and bracket_depth > 0:
+            bracket_depth -= 1
+        elif char == "," and angle_depth == 0 and paren_depth == 0 and bracket_depth == 0:
+            parts.append(source[start:index].strip())
+            start = index + 1
+    parts.append(source[start:].strip())
+    return [part for part in parts if part]
+
+
+def java_record_component_names(source: str, record_name: str) -> set[str]:
+    source_without_comments = java_source_without_comments(source)
+    match = re.search(
+        rf"\brecord\s+{re.escape(record_name)}\s*\((?P<components>.*?)\)\s*\{{",
+        source_without_comments,
+        re.DOTALL,
+    )
+    if not match:
+        return set()
+    names: set[str] = set()
+    for component in split_java_top_level_commas(match.group("components")):
+        name_match = re.search(r"([A-Za-z_][A-Za-z0-9_]*)\s*$", component)
+        if name_match:
+            names.add(name_match.group(1))
+    return names
+
+
+def java_json_field_names(source: str) -> set[str]:
+    source_without_comments = java_source_without_comments(source)
+    return set(re.findall(r'\bjson\.put\(\s*"([^"]+)"', source_without_comments))
+
+
+def app_service_bundle_public_fields_are_safe(bundle_source: str) -> bool:
+    public_fields = java_record_component_names(bundle_source, "AppServiceGrantBundle")
+    public_fields.update(java_json_field_names(bundle_source))
+    forbidden_fragments = (
+        "token",
+        "path",
+        "privateinserturi",
+        "privatekey",
+        "subjecturi",
+        "requestbody",
+        "rawbody",
+        "providerstate",
+        "processstate",
+        "appdatabackup",
+    )
+    return bool(public_fields) and not any(
+        fragment in field_name.lower()
+        for field_name in public_fields
+        for fragment in forbidden_fragments
+    )
+
+
 def source_contains_markup_fixture(source: str, fixture: str) -> bool:
     return fixture in source or fixture.replace('"', '\\"') in source
 
@@ -11362,6 +11491,17 @@ def run_self_test(repo_root: Path) -> None:
         assert forbidden not in body_label_scrubbed, body_label_scrubbed
     assert "raw trust statement body: <redacted>" in body_label_scrubbed, body_label_scrubbed
     assert "raw message body: <redacted>" in body_label_scrubbed, body_label_scrubbed
+    safe_bundle_source = (
+        "record AppServiceGrantBundle(String bundleId) { "
+        "/* comments can mention tokens and local paths */ "
+        "void toJson(java.util.Map<String,Object> json) { json.put(\"bundleId\", bundleId); } }"
+    )
+    unsafe_bundle_source = (
+        "record AppServiceGrantBundle(String bundleId, String tokenPath) { "
+        "void toJson(java.util.Map<String,Object> json) { json.put(\"tokenPath\", tokenPath); } }"
+    )
+    assert app_service_bundle_public_fields_are_safe(safe_bundle_source), safe_bundle_source
+    assert not app_service_bundle_public_fields_are_safe(unsafe_bundle_source), unsafe_bundle_source
     pem_scrubbed = scrub_text(
         "-----BEGIN PRIVATE KEY-----\n"
         "pem-private-key-body\n"
@@ -13297,7 +13437,9 @@ def make_self_test_workspace(workspace: Path) -> None:
         encoding="utf-8",
     )
     (appservices_dir / "AppServiceGrantBundle.java").write_text(
-        "record AppServiceGrantBundle(String bundleId) {}\n",
+        "record AppServiceGrantBundle(String bundleId) { "
+        "// Bundle docs may mention tokens and local paths while fields stay safe. "
+        "void toJson(java.util.Map<String,Object> json) { json.put(\"bundleId\", bundleId); } }\n",
         encoding="utf-8",
     )
     (appservices_dir / "AppServiceGrantBundleStatus.java").write_text(
