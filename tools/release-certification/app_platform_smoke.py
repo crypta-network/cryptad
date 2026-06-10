@@ -11827,6 +11827,35 @@ def run_self_test(repo_root: Path) -> None:
         assert json.loads(python_contract.read_text(encoding="utf-8"))["contract"][
             "contractVersion"
         ] == CURRENT_PLATFORM_API_CONTRACT_VERSION
+        python_fake_init_dir = workspace / "python-fake-init"
+        python_fake_init_result = subprocess.run(
+            [
+                sys.executable,
+                str(python_fake_cli),
+                "init",
+                "--dir",
+                str(python_fake_init_dir),
+                "--app-id",
+                "cert-smoke",
+                "--name",
+                "Certification Smoke",
+                "--version",
+                "0.1.0",
+                "--ui-mode",
+                "static",
+                "--permission",
+                "queue.read",
+                "--overwrite",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert python_fake_init_result.returncode == 0, python_fake_init_result.stderr
+        python_fake_manifest = parse_properties(python_fake_init_dir / "cryptad-app.properties")
+        assert python_fake_manifest["api.maximumTestedVersion"] == str(
+            CURRENT_PLATFORM_API_CONTRACT_VERSION
+        )
         fake_cli = make_fake_cli(workspace)
         settings = Settings(
             workspace_root=workspace.resolve(),
@@ -11844,7 +11873,8 @@ def run_self_test(repo_root: Path) -> None:
         assert summary["status"] in {"pass", "warn"}, summary
         evidence_by_id = {item["id"]: item for item in summary["evidence"]}
         assert evidence_by_id["app-platform.first-party"]["status"] == "pass"
-        assert evidence_by_id["app-platform.devtools-cli"]["status"] == "pass"
+        devtools_item = evidence_by_id["app-platform.devtools-cli"]
+        assert devtools_item["status"] == "pass", devtools_item
         toolkit_item = evidence_by_id["app-platform.developer-beta-toolkit"]
         assert toolkit_item["status"] == "pass", toolkit_item
         assert toolkit_item["details"]["checks"]["devCommand"] is True, toolkit_item
@@ -15419,6 +15449,8 @@ import json
 import os
 import sys
 from pathlib import Path
+
+CURRENT_PLATFORM_API_CONTRACT_VERSION = 16
 
 
 def option_value(args, name):
