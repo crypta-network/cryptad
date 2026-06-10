@@ -213,6 +213,21 @@
     return readJsonOrThrow(response);
   }
 
+  async function apiPostHostForm(path, formDataOrParams, options) {
+    const requestOptions = options || {};
+    const body = toUrlSearchParams(formDataOrParams);
+    const headers = jsonHeaders(requestOptions.headers);
+    headers.set("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8");
+    const response = await fetch(apiUrl(path), {
+      method: "POST",
+      headers,
+      body: body.toString(),
+      signal: requestOptions.signal,
+      credentials: "omit",
+    });
+    return readJsonOrThrow(response);
+  }
+
   function apiUrl(path) {
     const root = normalizeLocalRoot(
       currentBootstrap && currentBootstrap.platformApiRoot,
@@ -464,6 +479,56 @@
 
   function listAppServiceGrants(options) {
     return apiGet("app-services/grants", options);
+  }
+
+  function listAppServiceDependencies(options) {
+    return apiGet("app-services/dependencies", options);
+  }
+
+  function getAppServiceDependencies(consumerAppId, options) {
+    const encodedConsumerAppId = encodeURIComponent(appServiceSegment(consumerAppId, "consumerAppId"));
+    return apiGet(`app-services/dependencies/consumers/${encodedConsumerAppId}`, options);
+  }
+
+  function listAppServiceBundles(options) {
+    return apiGet("app-services/grant-bundles", options);
+  }
+
+  function requestAppServiceBundle(request, options) {
+    const source = requireOptionsObject(request, "App-service grant-bundle request");
+    return apiPostForm(
+      "app-services/grant-bundles",
+      normalizeAppServiceBundleRequest(source),
+      options || requestOptionsFrom(source)
+    );
+  }
+
+  function approveAppServiceBundle(bundleIdOrOptions, options) {
+    return mutateAppServiceBundle(bundleIdOrOptions, "approve", options);
+  }
+
+  function rejectAppServiceBundle(bundleIdOrOptions, options) {
+    return mutateAppServiceBundle(bundleIdOrOptions, "reject", options);
+  }
+
+  function renewAppServiceBundle(bundleIdOrOptions, options) {
+    return mutateAppServiceBundle(bundleIdOrOptions, "renew", options);
+  }
+
+  function mutateAppServiceBundle(bundleIdOrOptions, action, options) {
+    const source =
+      typeof bundleIdOrOptions === "string"
+        ? options || {}
+        : Object.assign({}, bundleIdOrOptions, options || {});
+    const bundleId =
+      typeof bundleIdOrOptions === "string"
+        ? bundleIdOrOptions
+        : appServiceBundleId(source);
+    return apiPostHostForm(
+      `app-services/grant-bundles/${encodeURIComponent(trimmedRequired(bundleId, "bundleId"))}/${action}`,
+      normalizeAppServiceBundleMutation(source),
+      requestOptionsFrom(source)
+    );
   }
 
   function requestAppServiceGrant(request, options) {
@@ -1201,6 +1266,25 @@
     return params;
   }
 
+  function normalizeAppServiceBundleRequest(source) {
+    const params = new URLSearchParams();
+    if (source.consumerAppId) {
+      params.set("consumerAppId", appServiceSegment(source.consumerAppId, "consumerAppId"));
+    }
+    if (source.bundleAlias) {
+      params.set("bundleAlias", appServiceSegment(source.bundleAlias, "bundleAlias"));
+    }
+    copyBooleanParam(source, params, "includeOptional");
+    copyStringParam(source, params, "purpose");
+    return params;
+  }
+
+  function normalizeAppServiceBundleMutation(source) {
+    const params = new URLSearchParams();
+    copyStringParam(source, params, "form" + "Password");
+    return params;
+  }
+
   function normalizeAppServiceInvocation(source) {
     const params = new URLSearchParams();
     appendAppServiceInvocationParams(source, params);
@@ -1389,6 +1473,26 @@
     if (typeof value === "string" && value.trim()) {
       params.set(name, value.trim());
     }
+  }
+
+  function copyBooleanParam(source, params, name) {
+    if (!source || !Object.prototype.hasOwnProperty.call(source, name)) {
+      return;
+    }
+    const value = source[name];
+    if (typeof value === "boolean") {
+      params.set(name, value ? "true" : "false");
+      return;
+    }
+    if (typeof value === "string" && value.trim()) {
+      const normalized = value.trim().toLowerCase();
+      if (normalized !== "true" && normalized !== "false") {
+        throw new Error(`${name} must be true or false.`);
+      }
+      params.set(name, normalized);
+      return;
+    }
+    throw new Error(`${name} must be true or false.`);
   }
 
   function copyStringParamAs(source, params, sourceName, targetName) {
@@ -2141,6 +2245,13 @@
     return source.grantId || source.id;
   }
 
+  function appServiceBundleId(source) {
+    if (!source || typeof source !== "object" || Array.isArray(source)) {
+      throw new Error("App-service grant-bundle id is required.");
+    }
+    return source.bundleId || source.id;
+  }
+
   function normalizeVaultGrantRequest(request) {
     const source = request && typeof request === "object" ? request : {};
     const params = {
@@ -2274,6 +2385,17 @@
     services: Object.freeze({
       list: listAppServices,
       get: getAppService,
+      dependencies: Object.freeze({
+        list: listAppServiceDependencies,
+        get: getAppServiceDependencies,
+      }),
+      bundles: Object.freeze({
+        list: listAppServiceBundles,
+        request: requestAppServiceBundle,
+        approve: approveAppServiceBundle,
+        reject: rejectAppServiceBundle,
+        renew: renewAppServiceBundle,
+      }),
       grants: Object.freeze({
         list: listAppServiceGrants,
         request: requestAppServiceGrant,

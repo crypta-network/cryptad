@@ -6,11 +6,14 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.time.Duration;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.regex.Pattern;
@@ -42,16 +45,22 @@ public final class AppServiceManifestParser {
       Pattern.compile("[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?");
   private static final Pattern TOKEN_PATTERN = Pattern.compile("[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?");
   private static final Pattern GRANT_ID_PATTERN = Pattern.compile("asg-[0-9a-f]{24,64}");
+  private static final Pattern BUNDLE_ID_PATTERN = Pattern.compile("asb-[0-9a-f]{24,64}");
   private static final Pattern EVENT_ID_PATTERN = Pattern.compile("ase-[0-9a-f]{24,64}");
   private static final int MAX_APP_ID_LENGTH = 64;
   private static final int MAX_TOKEN_LENGTH = 80;
   private static final int MAX_ALIAS_COUNT = 16;
   private static final int MAX_MANIFEST_BYTES = 128 * 1024;
+  private static final Duration MAX_DECLARED_GRANT_EXPIRY = Duration.ofDays(365);
+  private static final int MAX_SAFE_TEXT_LENGTH = 512;
   private static final String PROVIDES_KEY = "app.services.provides";
   private static final String REQUESTS_KEY = "app.services.requests";
+  private static final String DEPENDENCY_PREFIX = "dependency.";
   private static final String FIELD_CONTEXTS = "contexts";
   private static final String FIELD_ERROR_PREFIX = "Field '";
+  private static final String FIELD_PURPOSE = "purpose";
   private static final String FIELD_SCOPES = "scopes";
+  private static final String MANIFEST_PROPERTY_ERROR_PREFIX = "Manifest property '";
 
   private AppServiceManifestParser() {}
 
@@ -160,14 +169,67 @@ public final class AppServiceManifestParser {
               manifest.appId(),
               manifest.appName(),
               manifest.appVersion(),
+              alias,
               requiredProperty(properties, prefix + "provider"),
               requiredProperty(properties, prefix + "service"),
               commaList(requiredProperty(properties, prefix + FIELD_SCOPES), prefix + FIELD_SCOPES),
               commaList(
                   optionalProperty(properties, prefix + FIELD_CONTEXTS), prefix + FIELD_CONTEXTS),
-              requiredProperty(properties, prefix + "purpose")));
+              requiredProperty(properties, prefix + FIELD_PURPOSE),
+              parseDependency(alias, properties, prefix)));
     }
     return List.copyOf(descriptors);
+  }
+
+  private static AppServiceDependencyDescriptor parseDependency(
+      String alias, Properties properties, String requestPrefix) {
+    String dependencyPrefix = requestPrefix + DEPENDENCY_PREFIX;
+    if (!hasDependencyMetadata(properties, dependencyPrefix)) {
+      return AppServiceDependencyDescriptor.legacyOptional(alias);
+    }
+    AppServiceDependencyKind kind =
+        parseDependencyKind(optionalProperty(properties, dependencyPrefix + "kind"));
+    Optional<Boolean> required =
+        parseOptionalBoolean(optionalProperty(properties, dependencyPrefix + "required"));
+    if (kind == null) {
+      kind =
+          required.orElse(false)
+              ? AppServiceDependencyKind.REQUIRED
+              : AppServiceDependencyKind.OPTIONAL;
+    }
+    boolean requiredValue = required.orElse(kind == AppServiceDependencyKind.REQUIRED);
+    if (requiredValue != (kind == AppServiceDependencyKind.REQUIRED)) {
+      throw invalid("Dependency required flag must match dependency kind.");
+    }
+    AppServiceDegradeBehavior degradeBehavior =
+        parseDegradeBehavior(optionalProperty(properties, dependencyPrefix + "degradeBehavior"));
+    try {
+      return new AppServiceDependencyDescriptor(
+          alias,
+          kind,
+          requiredValue,
+          AppServiceVersionRange.optional(
+              optionalProperty(properties, dependencyPrefix + "minServiceVersion"),
+              optionalProperty(properties, dependencyPrefix + "maxServiceVersion")),
+          optionalProperty(properties, dependencyPrefix + "reason"),
+          degradeBehavior,
+          optionalProperty(properties, dependencyPrefix + "featureId"),
+          optionalProperty(properties, dependencyPrefix + "featureName"),
+          optionalProperty(properties, dependencyPrefix + "grantBundle"),
+          parseOptionalDuration(
+              optionalProperty(properties, dependencyPrefix + "grantExpiresAfter")));
+    } catch (IllegalArgumentException exception) {
+      throw invalid(exception.getMessage());
+    }
+  }
+
+  private static boolean hasDependencyMetadata(Properties properties, String dependencyPrefix) {
+    for (String key : properties.stringPropertyNames()) {
+      if (key.startsWith(dependencyPrefix)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private static Properties readManifestProperties(Path manifestFile) throws IOException {
@@ -197,17 +259,31 @@ public final class AppServiceManifestParser {
     if (raw == null || raw.isBlank()) {
       return List.of();
     }
-    List<String> aliases = commaList(raw, propertyName);
-    if (aliases.size() > MAX_ALIAS_COUNT) {
-      throw invalid("Manifest property '" + propertyName + "' declares too many aliases.");
+    ArrayList<String> aliases = new ArrayList<>();
+    LinkedHashSet<String> seen = new LinkedHashSet<>();
+    for (String part : raw.split(",", -1)) {
+      String trimmed = part.trim();
+      if (trimmed.isEmpty()) {
+        throw invalid(FIELD_ERROR_PREFIX + propertyName + "' must not contain empty values.");
+      }
+      String alias = normalizeAlias(trimmed);
+      if (!seen.add(alias)) {
+        throw invalid(
+            MANIFEST_PROPERTY_ERROR_PREFIX + propertyName + "' contains a duplicate alias.");
+      }
+      aliases.add(alias);
     }
-    return aliases;
+    if (aliases.size() > MAX_ALIAS_COUNT) {
+      throw invalid(MANIFEST_PROPERTY_ERROR_PREFIX + propertyName + "' declares too many aliases.");
+    }
+    return List.copyOf(aliases);
   }
 
   private static String requiredProperty(Properties properties, String key) {
     String value = properties.getProperty(key);
     if (value == null || value.isBlank()) {
-      throw invalid("Manifest property '" + key + "' is required for app-service metadata.");
+      throw invalid(
+          MANIFEST_PROPERTY_ERROR_PREFIX + key + "' is required for app-service metadata.");
     }
     return value;
   }
@@ -280,6 +356,16 @@ public final class AppServiceManifestParser {
   }
 
   /**
+   * Normalizes a manifest-local service request or bundle alias.
+   *
+   * @param value raw alias from a manifest or route request
+   * @return normalized alias token
+   */
+  static String normalizeAlias(String value) {
+    return requiredToken("alias", value, 64);
+  }
+
+  /**
    * Normalizes a persisted app-service grant id.
    *
    * <p>Grant ids are local metadata keys with the {@code asg-} prefix. They are never bearer
@@ -293,6 +379,20 @@ public final class AppServiceManifestParser {
     String normalized = requiredText("grantId", value, 68).toLowerCase(Locale.ROOT);
     if (!GRANT_ID_PATTERN.matcher(normalized).matches()) {
       throw invalid("App-service grant id is malformed.");
+    }
+    return normalized;
+  }
+
+  /**
+   * Normalizes a persisted app-service grant-bundle id.
+   *
+   * @param value raw bundle id from a route or persisted record
+   * @return normalized lower-case bundle id
+   */
+  static String normalizeBundleId(String value) {
+    String normalized = requiredText("bundleId", value, 68).toLowerCase(Locale.ROOT);
+    if (!BUNDLE_ID_PATTERN.matcher(normalized).matches()) {
+      throw invalid("App-service grant bundle id is malformed.");
     }
     return normalized;
   }
@@ -378,6 +478,23 @@ public final class AppServiceManifestParser {
     return List.copyOf(normalized);
   }
 
+  static List<String> normalizeAliases(String fieldName, List<String> values) {
+    Objects.requireNonNull(values, fieldName);
+    if (values.isEmpty()) {
+      return List.of();
+    }
+    if (values.size() > MAX_ALIAS_COUNT) {
+      throw invalid(FIELD_ERROR_PREFIX + fieldName + "' contains too many values.");
+    }
+    LinkedHashSet<String> normalized = new LinkedHashSet<>();
+    for (String value : values) {
+      if (!normalized.add(normalizeAlias(value))) {
+        throw invalid(FIELD_ERROR_PREFIX + fieldName + "' contains duplicate aliases.");
+      }
+    }
+    return List.copyOf(normalized);
+  }
+
   /**
    * Normalizes required operator-facing text.
    *
@@ -427,6 +544,158 @@ public final class AppServiceManifestParser {
       }
     }
     return text;
+  }
+
+  static String requiredPurposeText(String value) {
+    return safeText(requiredText(FIELD_PURPOSE, value, MAX_SAFE_TEXT_LENGTH));
+  }
+
+  static String requiredStoredPurposeText(String value) {
+    String text = requiredText(FIELD_PURPOSE, value, MAX_SAFE_TEXT_LENGTH);
+    try {
+      return safeText(text);
+    } catch (PlatformApiException _) {
+      return "Redacted legacy app-service purpose.";
+    }
+  }
+
+  static String optionalSafeText(String value, int maxLength) {
+    String text = optionalText(value, maxLength);
+    return text == null ? null : safeText(text);
+  }
+
+  private static String safeText(String text) {
+    String lower = text.toLowerCase(Locale.ROOT);
+    if (lower.contains("://")
+        || lower.startsWith("file:")
+        || lower.contains("ssk@")
+        || lower.contains("usk@")
+        || lower.contains("chr@")
+        || lower.contains("privkey")
+        || lower.contains("token=")
+        || lower.contains("bearer ")
+        || lower.contains("$(")
+        || lower.contains("`")) {
+      throw invalid("Field value contains unsupported sensitive or command-like text.");
+    }
+    if (looksLikeLocalPath(lower)) {
+      throw invalid("Field value must not contain local filesystem paths.");
+    }
+    return text;
+  }
+
+  private static boolean looksLikeLocalPath(String lowerText) {
+    return containsPosixLocalPath(lowerText) || containsWindowsLocalPath(lowerText);
+  }
+
+  private static boolean containsPosixLocalPath(String lowerText) {
+    for (int index = 0; index < lowerText.length(); index++) {
+      if (lowerText.charAt(index) == '/'
+          && pathCanStartAt(lowerText, index)
+          && pathStartsWithKnownRoot(lowerText, index + 1)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private static boolean pathCanStartAt(String lowerText, int slashIndex) {
+    return slashIndex == 0 || !isAsciiLetterOrDigit(lowerText.charAt(slashIndex - 1));
+  }
+
+  private static boolean pathStartsWithKnownRoot(String lowerText, int startIndex) {
+    return pathRootMatches(lowerText, startIndex, "home")
+        || pathRootMatches(lowerText, startIndex, "work")
+        || pathRootMatches(lowerText, startIndex, "tmp")
+        || pathRootMatches(lowerText, startIndex, "var")
+        || pathRootMatches(lowerText, startIndex, "etc")
+        || pathRootMatches(lowerText, startIndex, "users")
+        || pathRootMatches(lowerText, startIndex, "opt")
+        || pathRootMatches(lowerText, startIndex, "root");
+  }
+
+  private static boolean pathRootMatches(String lowerText, int startIndex, String root) {
+    int endIndex = startIndex + root.length();
+    return lowerText.startsWith(root, startIndex)
+        && (endIndex == lowerText.length()
+            || lowerText.charAt(endIndex) == '/'
+            || Character.isWhitespace(lowerText.charAt(endIndex)));
+  }
+
+  private static boolean containsWindowsLocalPath(String lowerText) {
+    for (int index = 0; index + 2 < lowerText.length(); index++) {
+      if (isAsciiLetter(lowerText.charAt(index))
+          && lowerText.charAt(index + 1) == ':'
+          && isWindowsPathSeparator(lowerText.charAt(index + 2))) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private static boolean isWindowsPathSeparator(char ch) {
+    return ch == '\\' || ch == '/';
+  }
+
+  private static boolean isAsciiLetterOrDigit(char ch) {
+    return isAsciiLetter(ch) || (ch >= '0' && ch <= '9');
+  }
+
+  private static boolean isAsciiLetter(char ch) {
+    return ch >= 'a' && ch <= 'z';
+  }
+
+  private static AppServiceDependencyKind parseDependencyKind(String value) {
+    if (value == null || value.isBlank()) {
+      return null;
+    }
+    try {
+      return AppServiceDependencyKind.parse(value);
+    } catch (IllegalArgumentException exception) {
+      throw invalid(exception.getMessage());
+    }
+  }
+
+  private static AppServiceDegradeBehavior parseDegradeBehavior(String value) {
+    if (value == null || value.isBlank()) {
+      return null;
+    }
+    try {
+      return AppServiceDegradeBehavior.parse(value);
+    } catch (IllegalArgumentException exception) {
+      throw invalid(exception.getMessage());
+    }
+  }
+
+  private static Optional<Boolean> parseOptionalBoolean(String value) {
+    if (value == null || value.isBlank()) {
+      return Optional.empty();
+    }
+    String normalized = value.trim().toLowerCase(Locale.ROOT);
+    if ("true".equals(normalized)) {
+      return Optional.of(Boolean.TRUE);
+    }
+    if ("false".equals(normalized)) {
+      return Optional.of(Boolean.FALSE);
+    }
+    throw invalid("Dependency required flag must be true or false.");
+  }
+
+  private static Duration parseOptionalDuration(String value) {
+    if (value == null || value.isBlank()) {
+      return null;
+    }
+    try {
+      Duration duration = Duration.parse(value.trim());
+      if (duration.isZero()
+          || duration.isNegative()
+          || duration.compareTo(MAX_DECLARED_GRANT_EXPIRY) > 0) {
+        throw invalid("Dependency grant expiry duration is outside the supported range.");
+      }
+      return duration;
+    } catch (DateTimeParseException _) {
+      throw invalid("Dependency grant expiry duration must be an ISO-8601 duration.");
+    }
   }
 
   private static PlatformApiException invalid(String message) {

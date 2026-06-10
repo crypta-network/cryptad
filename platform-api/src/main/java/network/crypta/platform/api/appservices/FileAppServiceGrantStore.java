@@ -36,17 +36,28 @@ import network.crypta.platform.apphost.OwnerOnlyFilePermissions;
  */
 public final class FileAppServiceGrantStore implements AppServiceGrantStore {
   private static final String GRANTS_DIRECTORY = "grants";
+  private static final String BUNDLES_DIRECTORY = "bundles";
   private static final String AUDIT_DIRECTORY = "audit";
   private static final String PROPERTIES_SUFFIX = ".properties";
   private static final String KEY_VERSION = "version";
   private static final String KEY_GRANT_ID = "grantId";
+  private static final String KEY_BUNDLE_ID = "bundleId";
   private static final String KEY_EVENT_ID = "eventId";
   private static final String KEY_CONSUMER_APP_ID = "consumerAppId";
   private static final String KEY_PROVIDER_APP_ID = "providerAppId";
   private static final String KEY_SERVICE_ID = "serviceId";
   private static final String KEY_SCOPES = "scopes";
   private static final String KEY_CONTEXTS = "contexts";
+  private static final String KEY_PURPOSE = "purpose";
   private static final String KEY_STATUS = "status";
+  private static final String KEY_CREATED_AT = "createdAt";
+  private static final String KEY_UPDATED_AT = "updatedAt";
+  private static final String KEY_APPROVED_AT = "approvedAt";
+  private static final String KEY_EXPIRES_AT = "expiresAt";
+  private static final String KEY_RENEWED_AT = "renewedAt";
+  private static final String KEY_DEPENDENCY_ALIASES = "dependencyAliases";
+  private static final String KEY_DEPENDENCY_FINGERPRINTS = "dependencyFingerprints";
+  private static final String KEY_GRANT_IDS = "grantIds";
   private static final int MAX_PROPERTIES_BYTES = 16 * 1024;
   private static final int MAX_AUDIT_EVENTS = 512;
 
@@ -133,18 +144,77 @@ public final class FileAppServiceGrantStore implements AppServiceGrantStore {
     properties.setProperty(KEY_SERVICE_ID, grant.serviceId());
     properties.setProperty(KEY_SCOPES, String.join(",", grant.scopes()));
     properties.setProperty(KEY_CONTEXTS, String.join(",", grant.contexts()));
-    properties.setProperty("purpose", grant.purpose());
+    properties.setProperty(KEY_PURPOSE, grant.purpose());
     properties.setProperty(KEY_STATUS, grant.status().jsonValue());
-    properties.setProperty("createdAt", grant.createdAt().toString());
-    properties.setProperty("updatedAt", grant.updatedAt().toString());
-    setInstant(properties, "approvedAt", grant.approvedAt());
+    properties.setProperty(KEY_CREATED_AT, grant.createdAt().toString());
+    properties.setProperty(KEY_UPDATED_AT, grant.updatedAt().toString());
+    setInstant(properties, KEY_APPROVED_AT, grant.approvedAt());
     setInstant(properties, "revokedAt", grant.revokedAt());
     setInstant(properties, "lastUsedAt", grant.lastUsedAt());
     properties.setProperty("useCount", Long.toString(grant.useCount()));
     if (grant.tokenFingerprint() != null) {
       properties.setProperty("tokenFingerprint", grant.tokenFingerprint());
     }
+    setText(properties, KEY_BUNDLE_ID, grant.bundleId());
+    setInstant(properties, KEY_EXPIRES_AT, grant.expiresAt());
+    setInstant(properties, KEY_RENEWED_AT, grant.renewedAt());
+    setText(properties, "compatibilityFingerprint", grant.compatibilityFingerprint());
+    setText(
+        properties, "providerServiceVersionAtApproval", grant.providerServiceVersionAtApproval());
     writeProperties(grantsDirectory().resolve(grant.grantId() + PROPERTIES_SUFFIX), properties);
+  }
+
+  @Override
+  public synchronized List<AppServiceGrantBundle> listBundles() throws IOException {
+    Path directory = bundlesDirectory();
+    if (!Files.isDirectory(directory)) {
+      return List.of();
+    }
+    ArrayList<AppServiceGrantBundle> bundles = new ArrayList<>();
+    try (Stream<Path> stream = Files.list(directory)) {
+      for (Path path : sortedProperties(stream)) {
+        bundles.add(readBundleFile(path));
+      }
+    }
+    bundles.sort(
+        Comparator.comparing(AppServiceGrantBundle::createdAt)
+            .thenComparing(AppServiceGrantBundle::bundleId));
+    return List.copyOf(bundles);
+  }
+
+  @Override
+  public synchronized Optional<AppServiceGrantBundle> readBundle(String bundleId)
+      throws IOException {
+    String normalized = AppServiceManifestParser.normalizeBundleId(bundleId);
+    Path file = bundlesDirectory().resolve(normalized + PROPERTIES_SUFFIX);
+    if (!Files.isRegularFile(file)) {
+      return Optional.empty();
+    }
+    return Optional.of(readBundleFile(file));
+  }
+
+  @Override
+  public synchronized void writeBundle(AppServiceGrantBundle bundle) throws IOException {
+    ensureStoreDirectories();
+    Properties properties = new Properties();
+    properties.setProperty(KEY_VERSION, "1");
+    properties.setProperty(KEY_BUNDLE_ID, bundle.bundleId());
+    properties.setProperty(KEY_CONSUMER_APP_ID, bundle.consumerAppId());
+    setText(properties, "bundleAlias", bundle.bundleAlias());
+    properties.setProperty(KEY_DEPENDENCY_ALIASES, String.join(",", bundle.dependencyAliases()));
+    properties.setProperty(
+        KEY_DEPENDENCY_FINGERPRINTS, String.join(",", bundle.dependencyFingerprints()));
+    properties.setProperty("includeOptional", Boolean.toString(bundle.includeOptional()));
+    properties.setProperty(KEY_PURPOSE, bundle.purpose());
+    properties.setProperty(KEY_STATUS, bundle.status().jsonValue());
+    properties.setProperty(KEY_CREATED_AT, bundle.createdAt().toString());
+    properties.setProperty(KEY_UPDATED_AT, bundle.updatedAt().toString());
+    setInstant(properties, KEY_APPROVED_AT, bundle.approvedAt());
+    setInstant(properties, "rejectedAt", bundle.rejectedAt());
+    setInstant(properties, KEY_EXPIRES_AT, bundle.expiresAt());
+    setInstant(properties, KEY_RENEWED_AT, bundle.renewedAt());
+    properties.setProperty(KEY_GRANT_IDS, String.join(",", bundle.grantIds()));
+    writeProperties(bundlesDirectory().resolve(bundle.bundleId() + PROPERTIES_SUFFIX), properties);
   }
 
   /**
@@ -244,17 +314,49 @@ public final class FileAppServiceGrantStore implements AppServiceGrantStore {
           require(properties, KEY_SERVICE_ID),
           AppServiceManifestParser.commaList(require(properties, KEY_SCOPES), KEY_SCOPES),
           AppServiceManifestParser.commaList(properties.getProperty(KEY_CONTEXTS), KEY_CONTEXTS),
-          require(properties, "purpose"),
+          require(properties, KEY_PURPOSE),
           AppServiceGrantStatus.parse(require(properties, KEY_STATUS)),
-          Instant.parse(require(properties, "createdAt")),
-          Instant.parse(require(properties, "updatedAt")),
-          optionalInstant(properties, "approvedAt"),
+          Instant.parse(require(properties, KEY_CREATED_AT)),
+          Instant.parse(require(properties, KEY_UPDATED_AT)),
+          optionalInstant(properties, KEY_APPROVED_AT),
           optionalInstant(properties, "revokedAt"),
           optionalInstant(properties, "lastUsedAt"),
           Long.parseLong(require(properties, "useCount")),
-          properties.getProperty("tokenFingerprint"));
+          properties.getProperty("tokenFingerprint"),
+          properties.getProperty(KEY_BUNDLE_ID),
+          optionalInstant(properties, KEY_EXPIRES_AT),
+          optionalInstant(properties, KEY_RENEWED_AT),
+          properties.getProperty("compatibilityFingerprint"),
+          properties.getProperty("providerServiceVersionAtApproval"));
     } catch (RuntimeException exception) {
       throw malformedRecord("grant", exception);
+    }
+  }
+
+  private AppServiceGrantBundle readBundleFile(Path file) throws IOException {
+    Properties properties = readProperties(file);
+    try {
+      return new AppServiceGrantBundle(
+          require(properties, KEY_BUNDLE_ID),
+          require(properties, KEY_CONSUMER_APP_ID),
+          properties.getProperty("bundleAlias"),
+          AppServiceManifestParser.normalizeAliases(
+              KEY_DEPENDENCY_ALIASES,
+              AppServiceManifestParser.commaList(
+                  properties.getProperty(KEY_DEPENDENCY_ALIASES), KEY_DEPENDENCY_ALIASES)),
+          commaSeparatedValues(properties.getProperty(KEY_DEPENDENCY_FINGERPRINTS)),
+          Boolean.parseBoolean(require(properties, "includeOptional")),
+          require(properties, KEY_PURPOSE),
+          AppServiceGrantBundleStatus.parse(require(properties, KEY_STATUS)),
+          Instant.parse(require(properties, KEY_CREATED_AT)),
+          Instant.parse(require(properties, KEY_UPDATED_AT)),
+          optionalInstant(properties, KEY_APPROVED_AT),
+          optionalInstant(properties, "rejectedAt"),
+          optionalInstant(properties, KEY_EXPIRES_AT),
+          optionalInstant(properties, KEY_RENEWED_AT),
+          grantIdList(properties.getProperty(KEY_GRANT_IDS)));
+    } catch (RuntimeException exception) {
+      throw malformedRecord("bundle", exception);
     }
   }
 
@@ -275,7 +377,7 @@ public final class FileAppServiceGrantStore implements AppServiceGrantStore {
           require(properties, "reasonCode"),
           properties.getProperty("subjectUriHash"));
     } catch (RuntimeException exception) {
-      throw malformedRecord("audit", exception);
+      throw malformedRecord(AUDIT_DIRECTORY, exception);
     }
   }
 
@@ -308,14 +410,20 @@ public final class FileAppServiceGrantStore implements AppServiceGrantStore {
 
   private void ensureStoreDirectories() throws IOException {
     Files.createDirectories(grantsDirectory());
+    Files.createDirectories(bundlesDirectory());
     Files.createDirectories(auditDirectory());
     OwnerOnlyFilePermissions.hardenDirectory(root);
     OwnerOnlyFilePermissions.hardenDirectory(grantsDirectory());
+    OwnerOnlyFilePermissions.hardenDirectory(bundlesDirectory());
     OwnerOnlyFilePermissions.hardenDirectory(auditDirectory());
   }
 
   private Path grantsDirectory() {
     return root.resolve(GRANTS_DIRECTORY);
+  }
+
+  private Path bundlesDirectory() {
+    return root.resolve(BUNDLES_DIRECTORY);
   }
 
   private Path auditDirectory() {
@@ -340,6 +448,27 @@ public final class FileAppServiceGrantStore implements AppServiceGrantStore {
   private static Instant optionalInstant(Properties properties, String key) {
     String value = properties.getProperty(key);
     return value == null || value.isBlank() ? null : Instant.parse(value);
+  }
+
+  private static List<String> grantIdList(String raw) {
+    return commaSeparatedValues(raw).stream()
+        .map(AppServiceManifestParser::normalizeGrantId)
+        .toList();
+  }
+
+  private static List<String> commaSeparatedValues(String raw) {
+    if (raw == null || raw.isBlank()) {
+      return List.of();
+    }
+    ArrayList<String> values = new ArrayList<>();
+    for (String part : raw.split(",", -1)) {
+      String trimmed = part.trim();
+      if (trimmed.isEmpty()) {
+        throw new IllegalArgumentException("comma-separated list contains an empty value");
+      }
+      values.add(trimmed);
+    }
+    return List.copyOf(values);
   }
 
   private static IOException malformedRecord(String kind, RuntimeException cause) {

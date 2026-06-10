@@ -87,6 +87,7 @@ public final class PlatformApiToadlet extends Toadlet {
   private static final String APP_CATALOGS_SEGMENT = "app-catalogs";
   private static final String APP_SERVICES_SEGMENT = "app-services";
   private static final String FORM_PASSWORD_PARAMETER = "formPassword";
+  private static final String GRANT_BUNDLES_SEGMENT = "grant-bundles";
   private static final String GRANTS_SEGMENT = "grants";
   private static final String IDENTITY_VAULT_SEGMENT = "identity-vault";
   private static final String OPERATOR_SEGMENT = "operator";
@@ -669,11 +670,24 @@ public final class PlatformApiToadlet extends Toadlet {
   }
 
   private static boolean requiresAppServicesFormPassword(String method, List<String> pathSegments) {
-    return "POST".equals(method)
-        && pathSegments.size() == 4
-        && APP_SERVICES_SEGMENT.equals(pathSegments.getFirst())
-        && GRANTS_SEGMENT.equals(pathSegments.get(1))
-        && ("approve".equals(pathSegments.get(3)) || "revoke".equals(pathSegments.get(3)));
+    if (!"POST".equals(method)
+        || pathSegments.isEmpty()
+        || !APP_SERVICES_SEGMENT.equals(pathSegments.getFirst())) {
+      return false;
+    }
+    if (pathSegments.size() == 2) {
+      return GRANT_BUNDLES_SEGMENT.equals(pathSegments.get(1));
+    }
+    if (pathSegments.size() != 4) {
+      return false;
+    }
+    if (GRANTS_SEGMENT.equals(pathSegments.get(1))) {
+      return "approve".equals(pathSegments.get(3)) || "revoke".equals(pathSegments.get(3));
+    }
+    return GRANT_BUNDLES_SEGMENT.equals(pathSegments.get(1))
+        && ("approve".equals(pathSegments.get(3))
+            || "reject".equals(pathSegments.get(3))
+            || "renew".equals(pathSegments.get(3)));
   }
 
   private static boolean requiresOperatorFormPassword(String method, List<String> pathSegments) {

@@ -29,8 +29,8 @@ For broader legacy plugin categories and migration recipes, see
 ```text
 app.id=social-inbox
 app.name=Social Inbox RC
-api.minimumVersion=12
-api.maximumTestedVersion=15
+api.minimumVersion=16
+api.maximumTestedVersion=16
 api.experimentalCapabilitiesAccepted=true
 app.data.schema.current=1
 ```
@@ -239,10 +239,10 @@ without blocking installed updates.
 These records must not contain private identity material, private insert URIs, browser-session
 tokens, app process tokens, raw fetched documents, raw signatures, local paths, or generic secrets.
 
-## Trust Score Service Grant
+## Trust Score Service Dependency
 
-For each message author fingerprint, the app queries Trust Graph Local RC through the v12
-app-services API:
+For each message author fingerprint, the app queries Trust Graph Local RC through the app-services
+API:
 
 ```text
 POST /api/v1/app-services/trust-graph/services/trust.score/invoke
@@ -253,19 +253,37 @@ scope=score.read
 
 The app first calls `CryptaPlatform.services.get("trust-graph", "trust.score")` and
 `CryptaPlatform.services.grants.list()` to show whether the service is discovered and whether its
-grant is missing, pending, active, revoked, or inactive. The request button calls
-`CryptaPlatform.services.grants.request(...)`, creating a pending grant that the operator must
-approve in Web Shell. After approval, author annotations use
+grant is missing, pending, active, revoked, expired, inactive, or revalidation-required. The signed
+manifest declares the dependency as optional:
+
+```properties
+app.service-request.trust-score.dependency.kind=optional
+app.service-request.trust-score.dependency.required=false
+app.service-request.trust-score.dependency.featureId=trust-score-annotations
+app.service-request.trust-score.dependency.featureName=Trust score annotations
+app.service-request.trust-score.dependency.degradeBehavior=disable-feature
+app.service-request.trust-score.dependency.minServiceVersion=1
+app.service-request.trust-score.dependency.maxServiceVersion=1
+app.service-request.trust-score.dependency.grantBundle=trust-annotations
+app.service-request.trust-score.dependency.grantExpiresAfter=PT720H
+```
+
+The request button calls `CryptaPlatform.services.bundles.request(...)`, creating or reusing a
+pending `trust-annotations` bundle that the operator must approve in Web Shell. Bundle approval
+revalidates the signed consumer manifest and current Trust Graph provider descriptor before it
+activates the grant. After approval, author annotations use
 `CryptaPlatform.services.invoke("trust-graph", "trust.score", ...)`.
 
-Pending, revoked, inactive, missing, or no-longer-authorized grants are rendered as neutral
-`Trust score unavailable / grant required` states. The app must not fall back to
-`CryptaPlatform.trust.score` or direct Trust Graph routes after revocation. The result is rendered
-as annotations only. Scores and evidence counts are displayed when available. Missing or failed
-trust evidence is shown as a neutral/unscored badge. The app still shows unscored and untrusted
-messages; Trust Graph annotations are not a moderation decision, not content hiding, and not daemon
-routing policy. Trust score values do not hide, archive, sort by policy, block replies, trigger
-network fetches, or change subscription behavior.
+Pending, rejected, revoked, expired, inactive, missing, revalidation-required, or
+no-longer-authorized grants are rendered as neutral unavailable states such as
+`Trust score unavailable / grant required`, `Trust score unavailable / grant expired`, or
+`Trust score unavailable / grant requires operator revalidation`. The app must not fall back to
+`CryptaPlatform.trust.score` or direct Trust Graph routes after revocation or revalidation failure.
+The result is rendered as annotations only. Scores and evidence counts are displayed when
+available. Missing or failed trust evidence is shown as a neutral/unscored badge. The app still
+shows unscored and untrusted messages; Trust Graph annotations are not a moderation decision, not
+content hiding, and not daemon routing policy. Trust score values do not hide, archive, sort by
+policy, block replies, trigger network fetches, or change subscription behavior.
 
 ## Release evidence
 
@@ -279,12 +297,18 @@ reference-app.social-inbox-subscriptions
 reference-app.social-inbox-app-data
 reference-app.social-inbox-trust-annotations
 reference-app.social-inbox-service-grant
+reference-app.social-inbox-service-dependency
 reference-app.social-inbox-rc-threading
 app-services.registry
 app-services.grants
+app-services.dependency-graph
+app-services.grant-bundles
+app-services.grant-expiry-renewal
+app-services.provider-revalidation
 app-services.trust-score-provider
 app-services.web-shell
 app-services.redaction
+app-services.dependency-redaction
 migration.social-mail-preview
 ```
 
@@ -292,9 +316,9 @@ Evidence must verify the app exists and stages, preserves `app.id=social-inbox`,
 permissions, uses the SDK and design system, signs messages through the bounded AppVault
 social-message route, publishes generated outbox documents, manages durable USK subscriptions,
 persists only safe bounded app data, builds local threads from `replyTo`, supports channel
-filtering and bounded local search, renders safe author/profile metadata, requests and uses a
-mediated Trust Score Service grant for message-author scores, verifies revocation failure, and
-documents the migration boundary.
+filtering and bounded local search, renders safe author/profile metadata, requests the
+`trust-annotations` bundle, uses a mediated Trust Score Service grant for message-author scores,
+verifies expiry/revocation/provider-revalidation failure, and documents the migration boundary.
 
 Evidence must not include raw message bodies, raw fetched content, raw request bodies, raw
 signatures, private insert URIs, private keys, private identity material, browser-session tokens,

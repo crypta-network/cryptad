@@ -230,9 +230,10 @@ must not be stored or exposed.
 anchors, or mutate lifecycle records only when their manifest grants `trust.write`.
 
 Other apps should call scores through the platform-mediated `trust.score` app-service. That
-service uses operator-approved app-service grants and requires `app.services.read`,
-`app.services.call`, and an active grant. It is read-only: app-service consumers cannot import
-statements, manage anchors, deprecate, revoke, or reactivate statements through `trust.score`.
+service uses operator-reviewed grant bundles plus active app-service grants, and it requires
+`app.services.read`, `app.services.call`, and an active non-expired grant. It is read-only:
+app-service consumers cannot import statements, manage anchors, deprecate, revoke, or reactivate
+statements through `trust.score`.
 
 The signed Trust Graph manifest advertises:
 
@@ -249,8 +250,12 @@ app.service.trust-score.contexts=message-author,profile
 
 Invocation is not a proxy to a Trust Graph app localhost server. The platform dispatches to the
 built-in `trust-graph.score` adapter, checks the consumer manifest and active grant at call time,
-and returns only a redacted score summary and subject URI hash. App-service score output must be no
-more permissive than direct score output and must preserve evidence limits.
+and returns only a redacted score summary and subject URI hash. Bundle approval and invocation
+match provider app id, service id, version `1`, scope `score.read`, context such as
+`message-author`, kind `platform-adapter`, and adapter `trust-graph.score`. If a provider update
+changes those descriptor fields incompatibly, the grant becomes `revalidation-required` until the
+operator explicitly renews or revalidates the bundle. App-service score output must be no more
+permissive than direct score output and must preserve evidence limits.
 
 Trust statement subscription management uses the content subscription routes through SDK trust
 exchange helpers. This avoids a Trust Graph crawler and keeps subscription ownership, restart

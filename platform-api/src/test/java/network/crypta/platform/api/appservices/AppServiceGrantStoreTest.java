@@ -61,6 +61,82 @@ class AppServiceGrantStoreTest {
   }
 
   @Test
+  void fileStore_whenBundleAndGrantLifecycleFieldsReload_expectDeterministicRecords()
+      throws Exception {
+    Path root = tempDir.resolve("app-services");
+    FileAppServiceGrantStore store = new FileAppServiceGrantStore(root);
+    Instant createdAt = Instant.parse("2026-05-24T12:00:01Z");
+    AppServiceGrant grant =
+        grant("asg-111111111111111111111111", createdAt)
+            .withApprovalMetadata(
+                createdAt,
+                "asb-111111111111111111111111",
+                createdAt.plusSeconds(60),
+                createdAt,
+                "sha256:abc",
+                "1");
+    AppServiceGrantBundle bundle =
+        new AppServiceGrantBundle(
+            "asb-111111111111111111111111",
+            "social-inbox",
+            "trust-annotations",
+            List.of("trust-score"),
+            List.of("sha256:" + "a".repeat(64)),
+            true,
+            "Review Trust score annotations.",
+            AppServiceGrantBundleStatus.APPROVED,
+            createdAt,
+            createdAt,
+            createdAt,
+            null,
+            createdAt.plusSeconds(60),
+            createdAt,
+            List.of(grant.grantId()));
+
+    store.writeGrant(grant);
+    store.writeBundle(bundle);
+    FileAppServiceGrantStore reloaded = new FileAppServiceGrantStore(root);
+
+    assertEquals(grant, reloaded.readGrant(grant.grantId()).orElseThrow());
+    assertEquals(bundle, reloaded.readBundle(bundle.bundleId()).orElseThrow());
+    assertEquals(
+        List.of("sha256:" + "a".repeat(64)),
+        reloaded.readBundle(bundle.bundleId()).orElseThrow().dependencyFingerprints());
+    assertEquals(
+        List.of(bundle.bundleId()),
+        reloaded.listBundles().stream().map(AppServiceGrantBundle::bundleId).toList());
+    assertFalse(bundle.toJson(List.of()).toString().contains(tempDir.toString()));
+  }
+
+  @Test
+  void fileStore_whenLegacyBundleLacksDependencyFingerprints_expectEmptyFingerprintList()
+      throws Exception {
+    Path root = tempDir.resolve("app-services");
+    Path bundleDirectory = root.resolve("bundles");
+    Files.createDirectories(bundleDirectory);
+    Files.writeString(
+        bundleDirectory.resolve("asb-111111111111111111111111.properties"),
+        """
+        version=1
+        bundleId=asb-111111111111111111111111
+        consumerAppId=social-inbox
+        bundleAlias=trust-annotations
+        dependencyAliases=trust-score
+        includeOptional=true
+        purpose=Review Trust score annotations.
+        status=pending
+        createdAt=2026-05-24T12:00:01Z
+        updatedAt=2026-05-24T12:00:01Z
+        grantIds=
+        """);
+    FileAppServiceGrantStore store = new FileAppServiceGrantStore(root);
+
+    AppServiceGrantBundle bundle = store.listBundles().getFirst();
+
+    assertEquals(List.of(), bundle.dependencyFingerprints());
+  }
+
+  @Test
   void fileStore_whenAuditRetentionExceeded_expectOldestFilesPruned() throws Exception {
     Path root = tempDir.resolve("app-services");
     FileAppServiceGrantStore store = new FileAppServiceGrantStore(root);
@@ -79,6 +155,40 @@ class AppServiceGrantStoreTest {
     assertFalse(Files.exists(auditDirectory.resolve(eventId(2) + ".properties")));
     assertTrue(Files.exists(auditDirectory.resolve(eventId(3) + ".properties")));
     assertEquals(eventId(514), store.listAuditEvents(10).getFirst().eventId());
+  }
+
+  @Test
+  void fileStore_whenLegacyGrantPurposeContainsSensitiveText_expectRedactedPurpose()
+      throws Exception {
+    Path root = tempDir.resolve("app-services");
+    FileAppServiceGrantStore store = new FileAppServiceGrantStore(root);
+    AppServiceGrant grant =
+        grant("asg-111111111111111111111111", Instant.parse("2026-05-24T12:00:01Z"));
+    store.writeGrant(grant);
+    Files.writeString(
+        root.resolve("grants").resolve(grant.grantId() + ".properties"),
+        """
+        version=1
+        grantId=asg-111111111111111111111111
+        consumerAppId=social-inbox
+        providerAppId=trust-graph
+        serviceId=trust.score
+        scopes=score.read
+        contexts=message-author
+        purpose=Legacy reason referenced USK@private and /Users/alice/secret over http://127.0.0.1/.
+        status=active
+        createdAt=2026-05-24T12:00:01Z
+        updatedAt=2026-05-24T12:00:01Z
+        useCount=0
+        """);
+
+    AppServiceGrant reloaded = store.listGrants().getFirst();
+
+    assertEquals("Redacted legacy app-service purpose.", reloaded.purpose());
+    String publicJson = reloaded.toJson().toString();
+    assertFalse(publicJson.contains("USK@"));
+    assertFalse(publicJson.contains("/Users"));
+    assertFalse(publicJson.contains("http://"));
   }
 
   @Test

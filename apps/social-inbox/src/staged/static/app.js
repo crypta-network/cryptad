@@ -59,6 +59,7 @@
     trustScores: {},
     trustServiceDescriptor: null,
     trustServiceGrants: [],
+    trustServiceBundles: [],
     trustServiceError: "",
     channelFilter: "",
     readFilter: "active",
@@ -1023,8 +1024,10 @@
         trustScoreServiceId
       );
       const grantsResponse = await CryptaPlatform.services.grants.list();
+      const bundlesResponse = await CryptaPlatform.services.bundles.list();
       state.trustServiceDescriptor = serviceResponse.service || serviceResponse;
       state.trustServiceGrants = boundedArray(grantsResponse.grants || grantsResponse, 20);
+      state.trustServiceBundles = boundedArray(bundlesResponse.bundles || bundlesResponse, 20);
       state.trustServiceError = "";
       renderTrustServiceStatus();
       if (!(options && options.silent)) {
@@ -1033,6 +1036,7 @@
     } catch (error) {
       state.trustServiceDescriptor = null;
       state.trustServiceGrants = [];
+      state.trustServiceBundles = [];
       state.trustServiceError = CryptaPlatform.api.errorMessage(error);
       renderTrustServiceStatus();
       if (!(options && options.silent)) {
@@ -1043,17 +1047,15 @@
 
   async function requestTrustServiceGrant() {
     try {
-      setStatus("Requesting Trust Score Service grant...");
-      await CryptaPlatform.services.grants.request({
-        providerAppId: trustScoreProviderAppId,
-        serviceId: trustScoreServiceId,
-        scopes: [trustScoreScope],
-        contexts: [trustScoreContext],
+      setStatus("Requesting Trust Score Service grant bundle...");
+      await CryptaPlatform.services.bundles.request({
+        bundleAlias: "trust-annotations",
+        includeOptional: true,
         purpose:
           "Annotate Social Inbox message authors using the local Trust Graph Local RC score service.",
       });
       await refreshTrustServiceStatus({ silent: true });
-      setStatus("Trust Score Service grant requested; an operator must approve it.");
+      setStatus("Trust Score Service grant bundle requested; an operator must approve it.");
     } catch (error) {
       setStatus(CryptaPlatform.api.errorMessage(error), "error");
     }
@@ -1517,7 +1519,9 @@
     elements.trustServiceStatus.replaceChildren();
     const descriptor = state.trustServiceDescriptor;
     const grant = preferredTrustServiceGrant();
+    const pendingBundle = pendingTrustServiceBundle();
     const status = grant ? stringField(grant, "status") : "";
+    const bundleStatus = pendingBundle ? stringField(pendingBundle, "status") : "";
     const serviceName = descriptor
       ? stringField(descriptor, "name") || trustScoreServiceId
       : "Trust Score Service";
@@ -1533,12 +1537,15 @@
       rows.push(summaryRow("Use count", String(numberField(grant, "useCount"))));
       rows.push(summaryRow("Last used", stringField(grant, "lastUsedAt")));
     }
+    if (pendingBundle) {
+      rows.push(summaryRow("Bundle", bundleStatus || "pending"));
+    }
     if (state.trustServiceError) {
       rows.push(summaryRow("Status", state.trustServiceError));
     }
     elements.trustServiceStatus.append(...rows);
     elements.requestTrustGrantButton.disabled =
-      !descriptor || ["active", "pending"].includes(status);
+      !descriptor || ["active", "pending"].includes(status) || bundleStatus === "pending";
   }
 
   function renderQueue(response) {
@@ -1680,9 +1687,34 @@
     return (
       activeTrustServiceGrant() ||
       state.trustServiceGrants.find((grant) => trustGrantMatches(grant, "pending")) ||
+      state.trustServiceGrants.find((grant) => trustGrantMatches(grant, "expired")) ||
+      state.trustServiceGrants.find((grant) =>
+        trustGrantMatches(grant, "revalidation-required")
+      ) ||
       state.trustServiceGrants.find((grant) => trustGrantMatches(grant, "inactive")) ||
       state.trustServiceGrants.find((grant) => trustGrantMatches(grant, "revoked")) ||
       null
+    );
+  }
+
+  function pendingTrustServiceBundle() {
+    return state.trustServiceBundles.find((bundle) => trustBundleMatches(bundle, "pending"));
+  }
+
+  function trustBundleMatches(bundle, status) {
+    if (!bundle || stringField(bundle, "bundleAlias") !== "trust-annotations") {
+      return false;
+    }
+    if (status && stringField(bundle, "status") !== status) {
+      return false;
+    }
+    const dependencies = boundedArray(bundle.dependencies, 16);
+    return dependencies.some(
+      (dependency) =>
+        stringField(dependency, "providerAppId") === trustScoreProviderAppId &&
+        stringField(dependency, "serviceId") === trustScoreServiceId &&
+        stringListField(dependency, "scopes", 16).includes(trustScoreScope) &&
+        grantContextsCoverTrustScore(stringListField(dependency, "contexts", 16))
     );
   }
 
@@ -1721,8 +1753,17 @@
     if (status === "pending") {
       return "Trust score unavailable / grant pending.";
     }
+    if (pendingTrustServiceBundle()) {
+      return "Trust score unavailable / grant bundle pending.";
+    }
     if (status === "revoked") {
       return "Trust score unavailable / grant revoked.";
+    }
+    if (status === "expired") {
+      return "Trust score unavailable / grant expired.";
+    }
+    if (status === "revalidation-required") {
+      return "Trust score unavailable / grant requires operator revalidation.";
     }
     if (status === "inactive") {
       return "Trust score unavailable / grant inactive.";

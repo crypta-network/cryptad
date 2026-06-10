@@ -1,5 +1,6 @@
 package network.crypta.apps.socialinbox;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermission;
@@ -26,6 +27,13 @@ class SocialInboxBundleStagingTest {
   private static final String EXPECTED_APP_NAME = "Social Inbox RC";
   private static final String EXPECTED_UI_ENTRY = "static/index.html";
   private static final String EXPECTED_LAUNCHER_PATH = "bin/social-inbox.sh";
+  private static final String APP_SCRIPT_FILE = "app.js";
+  private static final String APP_STYLESHEET_FILE = "app.css";
+  private static final String PLATFORM_SDK_SCRIPT_FILE = "crypta-platform.js";
+  private static final String LOCAL_STORAGE_TOKEN = "localStorage";
+  private static final String SESSION_STORAGE_TOKEN = "sessionStorage";
+  private static final String FORM_PASSWORD_TOKEN = "formPassword";
+  private static final String APP_PROCESS_TOKEN = "CRYPTAD_APP_TOKEN";
   private static final String EXPECTED_PERMISSIONS =
       "vault.identities.read,vault.identities.create,vault.identities.use,content.fetch,"
           + "content.subscribe,content.insert.app-document,queue.read,queue.write,app.data.read,"
@@ -50,8 +58,8 @@ class SocialInboxBundleStagingTest {
           "<img src=x onerror=alert(1)>",
           "<a href=\"javascript:alert(1)\">click</a>",
           "<iframe srcdoc=\"<script>alert(1)</script>\"></iframe>");
-  private static final int EXPECTED_PLATFORM_API_MINIMUM_VERSION = 12;
-  private static final int EXPECTED_PLATFORM_API_MAXIMUM_TESTED_VERSION = 15;
+  private static final int EXPECTED_PLATFORM_API_MINIMUM_VERSION = 16;
+  private static final int EXPECTED_PLATFORM_API_MAXIMUM_TESTED_VERSION = 16;
   private static final Path PLATFORM_SDK_SOURCE_PATH =
       Path.of(
           "platform-sdk-js",
@@ -63,7 +71,7 @@ class SocialInboxBundleStagingTest {
           "platform",
           "sdk",
           "js",
-          "crypta-platform.js");
+          PLATFORM_SDK_SCRIPT_FILE);
   private static final Path DESIGN_SYSTEM_SOURCE_PATH =
       Path.of(
           "platform-design-system",
@@ -114,38 +122,14 @@ class SocialInboxBundleStagingTest {
   }
 
   @Test
-  void stagedBundle_whenManifestRead_expectExpectedRenderedContent() throws Exception {
+  void stagedBundle_whenManifestRead_expectExpectedRenderedContent() throws IOException {
     String manifestText =
         Files.readString(stageDirectory().resolve(AppManifestParser.MANIFEST_FILE_NAME));
 
-    assertTrue(manifestText.contains("manifest.version=1"));
-    assertTrue(manifestText.contains("app.id=" + EXPECTED_APP_ID));
-    assertTrue(manifestText.contains("app.name=" + EXPECTED_APP_NAME));
-    assertTrue(manifestText.contains("app.version=" + System.getProperty(APP_VERSION_PROPERTY)));
-    assertTrue(
-        manifestText.contains("api.minimumVersion=" + EXPECTED_PLATFORM_API_MINIMUM_VERSION));
-    assertTrue(
-        manifestText.contains(
-            "api.maximumTestedVersion=" + EXPECTED_PLATFORM_API_MAXIMUM_TESTED_VERSION));
-    assertTrue(manifestText.contains("api.experimentalCapabilitiesAccepted=true"));
-    assertTrue(manifestText.contains("app.exec=" + EXPECTED_LAUNCHER_PATH));
-    assertTrue(manifestText.contains("app.ui.mode=static"));
-    assertTrue(manifestText.contains("app.ui.entry=" + EXPECTED_UI_ENTRY));
-    assertTrue(manifestText.contains("app.permissions=" + EXPECTED_PERMISSIONS));
-    assertTrue(manifestText.contains("app.services.requests=trust-score"));
-    assertTrue(manifestText.contains("app.service-request.trust-score.provider=trust-graph"));
-    assertTrue(manifestText.contains("app.service-request.trust-score.service=trust.score"));
-    assertTrue(manifestText.contains("app.service-request.trust-score.scopes=score.read"));
-    assertTrue(manifestText.contains("app.service-request.trust-score.contexts=message-author"));
-    assertTrue(
-        manifestText.contains(
-            "app.service-request.trust-score.purpose=Annotate Social Inbox message authors using"
-                + " the local Trust Graph Local RC score service."));
-    assertTrue(manifestText.contains("sandbox.mode=restricted-process"));
-    assertTrue(manifestText.contains("sandbox.required=false"));
-    assertTrue(manifestText.contains("app.restart.policy=never"));
-    assertTrue(manifestText.contains("quota.data.bytes=2097152"));
-    assertTrue(manifestText.contains("quota.cache.bytes=2097152"));
+    verifyManifestIdentityContent(manifestText);
+    verifyManifestApiContent(manifestText);
+    verifyManifestRuntimeContent(manifestText);
+    verifyManifestTrustScoreDependencyContent(manifestText);
     verifyManifestDataContractContent(manifestText);
   }
 
@@ -174,8 +158,8 @@ class SocialInboxBundleStagingTest {
 
     verifyStaticAssetsPresent(staticDirectory);
     String indexHtml = Files.readString(staticDirectory.resolve("index.html"));
-    String appScript = Files.readString(staticDirectory.resolve("app.js"));
-    String appCss = Files.readString(staticDirectory.resolve("app.css"));
+    String appScript = Files.readString(staticDirectory.resolve(APP_SCRIPT_FILE));
+    String appCss = Files.readString(staticDirectory.resolve(APP_STYLESHEET_FILE));
     verifyDesignSystemCssLoadsBeforeAppCss(indexHtml);
     verifyDesignSystemComponentsLoadsBeforeSdk(indexHtml);
     verifySdkLoadsBeforeAppScript(indexHtml);
@@ -184,19 +168,69 @@ class SocialInboxBundleStagingTest {
     verifyStagedDesignSystemAsset(staticDirectory, "crypta-ui-tokens.css");
     verifyStagedDesignSystemAsset(staticDirectory, "crypta-ui.css");
     verifyStagedDesignSystemAsset(staticDirectory, "crypta-ui-components.js");
-    verifyStagedSdkScript(Files.readString(staticDirectory.resolve("crypta-platform.js")));
+    verifyStagedSdkScript(Files.readString(staticDirectory.resolve(PLATFORM_SDK_SCRIPT_FILE)));
     verifySocialInboxAppScript(appScript);
   }
 
   private static void verifyStaticAssetsPresent(Path staticDirectory) {
     assertTrue(Files.isRegularFile(staticDirectory.resolve("index.html")));
-    assertTrue(Files.isRegularFile(staticDirectory.resolve("app.js")));
-    assertTrue(Files.isRegularFile(staticDirectory.resolve("app.css")));
-    assertTrue(Files.isRegularFile(staticDirectory.resolve("crypta-platform.js")));
+    assertTrue(Files.isRegularFile(staticDirectory.resolve(APP_SCRIPT_FILE)));
+    assertTrue(Files.isRegularFile(staticDirectory.resolve(APP_STYLESHEET_FILE)));
+    assertTrue(Files.isRegularFile(staticDirectory.resolve(PLATFORM_SDK_SCRIPT_FILE)));
     assertTrue(Files.isRegularFile(staticDirectory.resolve("crypta-ui/crypta-ui-tokens.css")));
     assertTrue(Files.isRegularFile(staticDirectory.resolve("crypta-ui/crypta-ui.css")));
     assertTrue(Files.isRegularFile(staticDirectory.resolve("crypta-ui/crypta-ui-components.js")));
     assertTrue(Files.notExists(staticDirectory.resolve("README.txt")));
+  }
+
+  private static void verifyManifestIdentityContent(String manifestText) {
+    verifyContainsAll(
+        manifestText,
+        "manifest.version=1",
+        "app.id=" + EXPECTED_APP_ID,
+        "app.name=" + EXPECTED_APP_NAME,
+        "app.version=" + System.getProperty(APP_VERSION_PROPERTY));
+  }
+
+  private static void verifyManifestApiContent(String manifestText) {
+    verifyContainsAll(
+        manifestText,
+        "api.minimumVersion=" + EXPECTED_PLATFORM_API_MINIMUM_VERSION,
+        "api.maximumTestedVersion=" + EXPECTED_PLATFORM_API_MAXIMUM_TESTED_VERSION,
+        "api.experimentalCapabilitiesAccepted=true",
+        "app.permissions=" + EXPECTED_PERMISSIONS);
+  }
+
+  private static void verifyManifestRuntimeContent(String manifestText) {
+    verifyContainsAll(
+        manifestText,
+        "app.exec=" + EXPECTED_LAUNCHER_PATH,
+        "app.ui.mode=static",
+        "app.ui.entry=" + EXPECTED_UI_ENTRY,
+        "sandbox.mode=restricted-process",
+        "sandbox.required=false",
+        "app.restart.policy=never",
+        "quota.data.bytes=2097152",
+        "quota.cache.bytes=2097152");
+  }
+
+  private static void verifyManifestTrustScoreDependencyContent(String manifestText) {
+    verifyContainsAll(
+        manifestText,
+        "app.services.requests=trust-score",
+        "app.service-request.trust-score.provider=trust-graph",
+        "app.service-request.trust-score.service=trust.score",
+        "app.service-request.trust-score.scopes=score.read",
+        "app.service-request.trust-score.contexts=message-author",
+        "app.service-request.trust-score.purpose=Annotate Social Inbox message authors using"
+            + " the local Trust Graph Local RC score service.",
+        "app.service-request.trust-score.dependency.kind=optional",
+        "app.service-request.trust-score.dependency.required=false",
+        "app.service-request.trust-score.dependency.featureId=trust-score-annotations",
+        "app.service-request.trust-score.dependency.featureName=Trust score annotations",
+        "app.service-request.trust-score.dependency.degradeBehavior=disable-feature",
+        "app.service-request.trust-score.dependency.grantBundle=trust-annotations",
+        "app.service-request.trust-score.dependency.grantExpiresAfter=PT720H");
   }
 
   private static void verifyManifestDataContractContent(String manifestText) {
@@ -212,7 +246,7 @@ class SocialInboxBundleStagingTest {
   private static void verifyDesignSystemCssLoadsBeforeAppCss(String indexHtml) {
     int tokensIndex = indexHtml.indexOf("crypta-ui-tokens.css");
     int uiCssIndex = indexHtml.indexOf("crypta-ui.css");
-    int appCssIndex = indexHtml.indexOf("app.css");
+    int appCssIndex = indexHtml.indexOf(APP_STYLESHEET_FILE);
 
     assertTrue(tokensIndex >= 0, "index.html must load design-system tokens.");
     assertTrue(uiCssIndex > tokensIndex, "index.html must load design-system CSS after tokens.");
@@ -221,15 +255,15 @@ class SocialInboxBundleStagingTest {
 
   private static void verifyDesignSystemComponentsLoadsBeforeSdk(String indexHtml) {
     int componentsIndex = indexHtml.indexOf("crypta-ui-components.js");
-    int sdkScriptIndex = indexHtml.indexOf("crypta-platform.js");
+    int sdkScriptIndex = indexHtml.indexOf(PLATFORM_SDK_SCRIPT_FILE);
 
     assertTrue(componentsIndex >= 0, "index.html must load design-system components.");
     assertTrue(sdkScriptIndex > componentsIndex, "index.html must load the SDK after components.");
   }
 
   private static void verifySdkLoadsBeforeAppScript(String indexHtml) {
-    int sdkScriptIndex = indexHtml.indexOf("crypta-platform.js");
-    int appScriptIndex = indexHtml.indexOf("app.js");
+    int sdkScriptIndex = indexHtml.indexOf(PLATFORM_SDK_SCRIPT_FILE);
+    int appScriptIndex = indexHtml.indexOf(APP_SCRIPT_FILE);
 
     assertTrue(sdkScriptIndex >= 0, "index.html must load the platform SDK.");
     assertTrue(appScriptIndex > sdkScriptIndex, "index.html must load app.js after the SDK.");
@@ -281,12 +315,12 @@ class SocialInboxBundleStagingTest {
 
     verifyContainsNone(
         combined,
-        "localStorage",
-        "sessionStorage",
+        LOCAL_STORAGE_TOKEN,
+        SESSION_STORAGE_TOKEN,
         "indexedDB",
         "document.cookie",
-        "formPassword",
-        "CRYPTAD_APP_TOKEN",
+        FORM_PASSWORD_TOKEN,
+        APP_PROCESS_TOKEN,
         "/api/v1/",
         "innerHTML",
         "insertAdjacentHTML",
@@ -323,7 +357,11 @@ class SocialInboxBundleStagingTest {
         "createSocialMessageDocument",
         "/social-message");
     verifyContainsNone(
-        sdkScript, "formPassword", "CRYPTAD_APP_TOKEN", "localStorage", "sessionStorage");
+        sdkScript,
+        FORM_PASSWORD_TOKEN,
+        APP_PROCESS_TOKEN,
+        LOCAL_STORAGE_TOKEN,
+        SESSION_STORAGE_TOKEN);
   }
 
   private static void verifySocialInboxAppScript(String appScript) {
@@ -348,13 +386,17 @@ class SocialInboxBundleStagingTest {
         "CryptaPlatform.data.records.putJson",
         "CryptaPlatform.services.get",
         "CryptaPlatform.services.grants.list",
-        "CryptaPlatform.services.grants.request",
+        "CryptaPlatform.services.bundles.list",
+        "CryptaPlatform.services.bundles.request",
         "CryptaPlatform.services.invoke",
         "trustScoreProviderAppId = \"trust-graph\"",
         "trustScoreServiceId = \"trust.score\"",
         "trustScoreScope = \"score.read\"",
         "Trust score unavailable / grant required.",
+        "Trust score unavailable / grant bundle pending.",
         "trustScoreContext = \"message-author\"",
+        "trustServiceBundles",
+        "function pendingTrustServiceBundle",
         "function grantCoversTrustScore",
         "scopes.includes(trustScoreScope)",
         "function grantContextsCoverTrustScore",
@@ -444,12 +486,12 @@ class SocialInboxBundleStagingTest {
         "function apiError",
         "CryptaPlatform.trust.score",
         "/api/v1/",
-        "localStorage",
-        "sessionStorage",
+        LOCAL_STORAGE_TOKEN,
+        SESSION_STORAGE_TOKEN,
         "indexedDB",
         "document.cookie",
-        "formPassword",
-        "CRYPTAD_APP_TOKEN",
+        FORM_PASSWORD_TOKEN,
+        APP_PROCESS_TOKEN,
         "innerHTML",
         "insertAdjacentHTML",
         "persistOutboxSummary(await localOutboxSummary())");
