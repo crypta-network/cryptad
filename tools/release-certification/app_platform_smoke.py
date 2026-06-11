@@ -8465,7 +8465,11 @@ def collect_plugin_runtime_surface_violations(workspace: Path) -> list[dict[str,
             violations.append({"path": relative, "reason": "pluginmanager package"})
         if "/pluginmanager/" in f"/{relative}":
             violations.append({"path": relative, "reason": "pluginmanager source path"})
-        if re.search(r"^\s*import\s+network\.crypta\.pluginmanager\b", text, re.MULTILINE):
+        if re.search(
+            r"^\s*import\s+(?:static\s+)?network\.crypta\.pluginmanager\b",
+            text,
+            re.MULTILINE,
+        ):
             violations.append({"path": relative, "reason": "pluginmanager import"})
         if forbidden_declaration_re.search(text):
             violations.append({"path": relative, "reason": "old plugin runtime declaration"})
@@ -12648,6 +12652,33 @@ def run_self_test(repo_root: Path) -> None:
         assert "noRuntimePluginSurfaceViolations" in plugin_runtime_item.details["errors"], (
             plugin_runtime_item
         )
+        plugin_static_import_source = (
+            workspace
+            / "runtime-node/src/main/java/network/crypta/runtime/PluginImportProbe.java"
+        )
+        plugin_static_import_source.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            plugin_static_import_source.write_text(
+                "package network.crypta.runtime;\n"
+                "import static network.crypta.pluginmanager.PluginManager.start;\n"
+                "final class PluginImportProbe {}\n",
+                encoding="utf-8",
+            )
+            plugin_static_import_item = collect_legacy_plugin_freeze_policy_evidence(
+                dataclasses.replace(settings, mode="release-candidate")
+            )
+        finally:
+            plugin_static_import_source.unlink(missing_ok=True)
+        assert plugin_static_import_item.status == "fail", plugin_static_import_item
+        assert "noRuntimePluginSurfaceViolations" in plugin_static_import_item.details["errors"], (
+            plugin_static_import_item
+        )
+        assert any(
+            violation["path"]
+            == "runtime-node/src/main/java/network/crypta/runtime/PluginImportProbe.java"
+            and violation["reason"] == "pluginmanager import"
+            for violation in plugin_static_import_item.details["runtimeSurfaceViolations"]
+        ), plugin_static_import_item
         feed_reader_app_js = workspace / "apps/feed-reader/src/staged/static/app.js"
         original_feed_reader_js = feed_reader_app_js.read_text(encoding="utf-8")
         try:

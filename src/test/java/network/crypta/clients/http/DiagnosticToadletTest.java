@@ -64,15 +64,16 @@ class DiagnosticToadletTest {
   }
 
   @Test
-  void handleMethodHEAD_whenAccessDenied_doesNotCallPortOrWriteReply() throws Exception {
-    when(ctx.checkFullAccess(toadlet)).thenReturn(false);
+  void handleMethodHEAD_whenAccessDenied_sendsHeadersWithoutDiagnosticBody() throws Exception {
+    when(ctx.isAllowedFullAccess()).thenReturn(false);
 
     toadlet.handleMethodHEAD(URI.create("http://localhost/diagnostic/"), request, ctx);
 
-    verify(ctx).checkFullAccess(toadlet);
+    verify(ctx).isAllowedFullAccess();
     verifyNoInteractions(diagnostic);
-    verify(ctx, never())
-        .sendReplyHeaders(anyInt(), anyString(), any(), anyString(), anyLong(), anyBoolean());
+    verify(ctx).sendReplyHeaders(eq(403), eq("Forbidden"), isNull(), isNull(), eq(0L), eq(true));
+    verify(ctx, never()).checkFullAccess(toadlet);
+    verify(ctx, never()).sendReplyHeaders(anyInt(), anyString(), any(), anyString(), anyLong());
     verify(ctx, never()).writeData(any(byte[].class), anyInt(), anyInt());
     verifyNoMoreInteractions(ctx);
   }
@@ -108,7 +109,7 @@ class DiagnosticToadletTest {
 
   @Test
   void handleMethodHEAD_whenAuthorized_sendsHeadersWithoutDiagnosticBody() throws Exception {
-    when(ctx.checkFullAccess(toadlet)).thenReturn(true);
+    when(ctx.isAllowedFullAccess()).thenReturn(true);
     when(diagnostic.snapshot())
         .thenReturn(
             new DiagnosticReportSnapshot(

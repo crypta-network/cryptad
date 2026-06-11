@@ -18,6 +18,7 @@ import network.crypta.support.api.HTTPRequest;
  */
 public class DiagnosticToadlet extends Toadlet {
   private static final String PLAIN_TEXT_CONTENT_TYPE = "text/plain; charset=utf-8";
+  private static final String FORBIDDEN_REASON = "Forbidden";
 
   /**
    * Relative path where this toadlet is mounted within the HTTP interface.
@@ -54,7 +55,10 @@ public class DiagnosticToadlet extends Toadlet {
    *
    * <p>The Wave 4 explicit legacy fallback marker allows safe-read methods. HEAD therefore follows
    * the same access checks and snapshot rendering path as GET to report the matching content
-   * length, but intentionally suppresses the plaintext body.
+   * length, but intentionally suppresses the plaintext body. Access denial also stays header-only:
+   * the ordinary {@link ToadletContext#checkFullAccess(Toadlet)} helper renders an HTML page for
+   * GET, so this method performs the same boolean access check directly before sending a bodyless
+   * 403 response.
    *
    * @param uri request URI, including any explicit fallback marker already accepted by the removal
    *     policy
@@ -66,7 +70,8 @@ public class DiagnosticToadlet extends Toadlet {
   @SuppressWarnings("unused")
   public void handleMethodHEAD(URI uri, HTTPRequest request, ToadletContext ctx)
       throws ToadletContextClosedException, IOException {
-    if (!ctx.checkFullAccess(this)) {
+    if (!ctx.isAllowedFullAccess()) {
+      ctx.sendReplyHeaders(403, FORBIDDEN_REASON, null, null, 0L, true);
       return;
     }
 
