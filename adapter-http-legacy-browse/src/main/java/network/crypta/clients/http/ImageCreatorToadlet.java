@@ -195,8 +195,7 @@ public class ImageCreatorToadlet extends ContentToadlet {
     if (ctx.getHeaders().containsKey("if-modified-since")) {
       try {
         Instant ifModifiedSince =
-            ToadletContextImpl.parseHTTPDate(ctx.getHeaders().getFirst("if-modified-since"))
-                .toInstant();
+            ToadletContextImpl.parseHTTPDate(ctx.getHeaders().getFirst("if-modified-since"));
         if (ifModifiedSince.equals(LAST_MODIFIED)) {
           ctx.sendReplyHeadersStatic(304, "Not Modified", null, "image/png", 0, LAST_MODIFIED);
           return true;

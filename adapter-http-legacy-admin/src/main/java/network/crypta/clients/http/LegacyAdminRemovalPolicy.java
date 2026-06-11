@@ -1,6 +1,7 @@
 package network.crypta.clients.http;
 
 import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.Optional;
 import network.crypta.platform.webshell.routes.WebShellPaths;
 
@@ -119,6 +120,41 @@ final class LegacyAdminRemovalPolicy {
     return removedSurfaceForRequest(uri)
         .filter(LegacyAdminSurface::blockMutatingRequests)
         .isPresent();
+  }
+
+  /**
+   * Preserves an accepted explicit fallback marker across slash canonicalization.
+   *
+   * <p>Container-level permanent redirects are emitted before the legacy toadlet receives the
+   * request. For slashless aliases such as {@code /diagnostic}, the removal policy may already have
+   * accepted the exact safe-read legacy fallback query and returned empty so the plaintext fallback
+   * can render. This helper carries only that exact static marker to the canonical slash URL;
+   * arbitrary query strings remain stripped or handled by the normal replacement decision.
+   *
+   * @param method HTTP method from the request line
+   * @param requestUri original request URI
+   * @param redirectUri canonical redirect URI from the toadlet container
+   * @return redirect URI with an accepted fallback query preserved when applicable
+   */
+  static URI canonicalRedirectTargetForExplicitFallback(
+      String method, URI requestUri, URI redirectUri) {
+    if (isMutatingRequestMethod(method) || requestUri == null || redirectUri == null) {
+      return redirectUri;
+    }
+    String requestPath = requestUri.getPath();
+    String redirectPath = redirectUri.getPath();
+    if (requestPath == null || redirectPath == null || redirectUri.getRawQuery() != null) {
+      return redirectUri;
+    }
+    Optional<LegacyAdminSurface> surface =
+        LegacyAdminRetirementRegistry.findByLegacyPath(redirectPath);
+    if (surface.isEmpty() || !requestPath.equals(withoutTrailingSlash(redirectPath))) {
+      return redirectUri;
+    }
+    return explicitFallbackQueryFor(surface.orElseThrow())
+        .filter(query -> query.equals(requestUri.getRawQuery()))
+        .map(query -> withQuery(redirectUri, query))
+        .orElse(redirectUri);
   }
 
   /**
@@ -294,5 +330,13 @@ final class LegacyAdminRemovalPolicy {
       return path.substring(0, path.length() - 1);
     }
     return path;
+  }
+
+  private static URI withQuery(URI uri, String query) {
+    try {
+      return new URI(uri.getScheme(), uri.getAuthority(), uri.getPath(), query, uri.getFragment());
+    } catch (URISyntaxException e) {
+      throw new IllegalArgumentException("Invalid canonical fallback redirect target", e);
+    }
   }
 }

@@ -16,8 +16,13 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.text.ParseException;
 import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
+import java.time.format.ResolverStyle;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -32,12 +37,10 @@ import network.crypta.runtime.core.SSL;
 import network.crypta.support.HTMLEncoder;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.MultiValueTable;
-import network.crypta.support.TimeUtil;
 import network.crypta.support.URIPreEncoder;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.api.HTTPRequest;
-import network.crypta.support.http.HttpDateParser;
 import network.crypta.support.io.BucketTools;
 import network.crypta.support.io.IOUtils;
 import network.crypta.support.io.LineReadingInputStream;
@@ -45,8 +48,6 @@ import network.crypta.support.io.NoFreeBucket;
 import network.crypta.support.io.TooLongException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import static java.util.concurrent.TimeUnit.DAYS;
 
 /**
  * Concrete {@link ToadletContext} that encapsulates a single HTTP request lifecycle and the
@@ -82,6 +83,12 @@ public final class ToadletContextImpl implements ToadletContext {
   private static final String HTML_TITLE_PREFIX = "<html><head><title>";
   private static final String BAD_REQUEST = "Bad Request";
   private static final String CONNECTION_HEADER = "connection";
+  private static final long CACHE_MAX_AGE_SECONDS = 3600L * 24L * 30L;
+  private static final DateTimeFormatter HTTP_DATE_FORMATTER =
+      DateTimeFormatter.ofPattern("EEE, dd MMM uuuu HH:mm:ss 'GMT'", Locale.US)
+          .withResolverStyle(ResolverStyle.STRICT)
+          .withZone(ZoneOffset.UTC);
+  private static final String HTTP_EPOCH_DATE = formatHTTPDate(Instant.EPOCH);
 
   private static final Class<?>[] HANDLE_PARAMETERS =
       new Class<?>[] {URI.class, HTTPRequest.class, ToadletContext.class};
@@ -686,13 +693,12 @@ public final class ToadletContextImpl implements ToadletContext {
       mvt.put("content-length", Long.toString(options.contentLength()));
     }
 
-    addCachingHeaders(mvt, options.modifiedTime());
+    Instant now = Instant.now();
+    addCachingHeaders(mvt, options.modifiedTime(), now);
 
-    String nowString = TimeUtil.makeHTTPDate(System.currentTimeMillis());
+    String nowString = formatHTTPDate(now);
     String lastModString =
-        options.modifiedTime() == null
-            ? nowString
-            : TimeUtil.makeHTTPDate(options.modifiedTime().toEpochMilli());
+        options.modifiedTime() == null ? nowString : formatHTTPDate(options.modifiedTime());
 
     mvt.put("last-modified", lastModString);
     mvt.put("date", nowString);
@@ -732,15 +738,16 @@ public final class ToadletContextImpl implements ToadletContext {
     sockOutputStream.write(buf.toString().getBytes(StandardCharsets.US_ASCII));
   }
 
-  private static void addCachingHeaders(MultiValueTable<String, String> mvt, Instant mTime) {
+  private static void addCachingHeaders(
+      MultiValueTable<String, String> mvt, Instant mTime, Instant now) {
     boolean allowCaching = mTime != null;
     String expiresTime;
     String cacheControl;
     if (allowCaching) {
-      expiresTime = TimeUtil.makeHTTPDate(System.currentTimeMillis() + DAYS.toMillis(30));
-      cacheControl = "public, max-age=" + 3600 * 24 * 30;
+      expiresTime = formatHTTPDate(now.plus(30, ChronoUnit.DAYS));
+      cacheControl = "public, max-age=" + CACHE_MAX_AGE_SECONDS;
     } else {
-      expiresTime = "Thu, 01 Jan 1970 00:00:00 GMT";
+      expiresTime = HTTP_EPOCH_DATE;
       cacheControl =
           "private, max-age=0, must-revalidate, no-cache, no-store, post-check=0, pre-check=0";
       mvt.put("pragma", "no-cache");
@@ -789,20 +796,32 @@ public final class ToadletContextImpl implements ToadletContext {
   }
 
   /**
-   * Parses an RFC 7231/RFC 1123 HTTP date string into a {@link Date} in UTC. The parser is strict
-   * with respect to the {@code EEE, dd MMM yyyy HH:mm:ss 'GMT'} pattern and locale, matching the
-   * formatting used by {@link TimeUtil#makeHTTPDate(long)}. Callers can rely on this utility when
-   * interpreting headers such as {@code If-Modified-Since} or {@code Last-Modified}. Invalid input
-   * results in a {@link ParseException}, allowing callers to surface clear client errors without
-   * silently accepting malformed dates.
+   * Parses an RFC 7231/RFC 1123 HTTP date string into an {@link Instant} in UTC. The parser is
+   * strict with respect to the {@code EEE, dd MMM uuuu HH:mm:ss 'GMT'} pattern and US locale,
+   * matching the formatter used for outbound HTTP date headers. Callers can rely on this utility
+   * when interpreting headers such as {@code If-Modified-Since} or {@code Last-Modified}. Invalid
+   * input results in a {@link ParseException}, allowing callers to surface clear client errors
+   * without silently accepting malformed dates.
    *
    * @param httpDate Raw HTTP date string, usually sourced from client request headers.
-   * @return Parsed {@link Date} instance in UTC representing the provided timestamp.
+   * @return Parsed {@link Instant} in UTC representing the provided timestamp.
    * @throws ParseException If the supplied string does not conform to the expected HTTP date
    *     format.
    */
-  public static Date parseHTTPDate(String httpDate) throws ParseException {
-    return HttpDateParser.parseHTTPDate(httpDate);
+  public static Instant parseHTTPDate(String httpDate) throws ParseException {
+    try {
+      return LocalDateTime.parse(httpDate, HTTP_DATE_FORMATTER)
+          .atOffset(ZoneOffset.UTC)
+          .toInstant();
+    } catch (DateTimeParseException e) {
+      ParseException parseException = new ParseException(e.getParsedString(), e.getErrorIndex());
+      parseException.initCause(e);
+      throw parseException;
+    }
+  }
+
+  private static String formatHTTPDate(Instant instant) {
+    return HTTP_DATE_FORMATTER.format(instant);
   }
 
   /**
@@ -1140,8 +1159,10 @@ public final class ToadletContextImpl implements ToadletContext {
     if (trySendReplacementForCanonicalRedirect(toadletResult, method, currentUri, ctx)) {
       return true;
     }
-    Toadlet.writePermanentRedirect(
-        ctx, "Found elsewhere", toadletResult.permanentRedirectUri().toASCIIString());
+    URI redirectTarget =
+        LegacyAdminRemovalPolicy.canonicalRedirectTargetForExplicitFallback(
+            method, currentUri, toadletResult.permanentRedirectUri());
+    Toadlet.writePermanentRedirect(ctx, "Found elsewhere", redirectTarget.toASCIIString());
     recordLegacyAdminUsageIfAccepted(toadletResult.usageSurface(), ctx);
     return true;
   }

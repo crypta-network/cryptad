@@ -8480,6 +8480,7 @@ def collect_legacy_plugin_freeze_policy_evidence(settings: Settings) -> Evidence
     source = summary_source(settings)
     workspace = settings.workspace_root
     plugin_status_path = workspace / "docs/plugin-system.md"
+    freeze_policy_path = workspace / "docs/legacy-plugin-freeze-policy.md"
     migration_guide_path = workspace / "docs/legacy-plugin-migration-guide.md"
     portal_path = workspace / "docs/app-platform-developer-portal.md"
     beta_limits_path = workspace / "docs/app-platform-beta-known-limitations.md"
@@ -8491,16 +8492,19 @@ def collect_legacy_plugin_freeze_policy_evidence(settings: Settings) -> Evidence
     fcp_message_path = workspace / "adapter-fcp/src/main/java/network/crypta/clients/fcp/FCPMessage.java"
 
     plugin_status = read_source(plugin_status_path)
+    freeze_policy = read_source(freeze_policy_path)
     migration_guide = read_source(migration_guide_path)
     developer_docs = read_source(portal_path) + "\n" + read_source(beta_limits_path)
     release_docs = read_source(release_docs_path)
     unsupported_text = read_source(unsupported_path)
     fcp_message_text = read_source(fcp_message_path)
     combined_policy_docs = "\n".join(
-        [plugin_status, migration_guide, developer_docs, release_docs]
+        [plugin_status, freeze_policy, migration_guide, developer_docs, release_docs]
     )
     combined_policy_lower = combined_policy_docs.lower()
     plugin_status_lower = plugin_status.lower()
+    freeze_policy_lower = freeze_policy.lower()
+    freeze_policy_normalized = re.sub(r"\s+", " ", freeze_policy_lower)
     migration_guide_lower = migration_guide.lower()
     developer_docs_lower = developer_docs.lower()
 
@@ -8523,9 +8527,37 @@ def collect_legacy_plugin_freeze_policy_evidence(settings: Settings) -> Evidence
     runtime_violations = collect_plugin_runtime_surface_violations(workspace)
     checks = {
         "pluginSystemPolicyExists": plugin_status_path.is_file(),
+        "freezePolicyDocumentExists": freeze_policy_path.is_file(),
         "pluginSystemDeclaresFrozenRemoved": "removed" in plugin_status_lower
         and ("frozen" in plugin_status_lower or "freeze" in plugin_status_lower)
         and "production rc" in plugin_status_lower,
+        "pluginSystemLinksFreezePolicy": "legacy-plugin-freeze-policy.md" in plugin_status,
+        "freezePolicyDeclaresFrozenRemoved": "removed" in freeze_policy_lower
+        and ("frozen" in freeze_policy_lower or "freeze" in freeze_policy_lower)
+        and "production rc" in freeze_policy_lower,
+        "freezePolicyDeclaresNoNewCoreApis": (
+            "do not add new in-core plugin api" in freeze_policy_lower
+            or "do not add new in-core plugin apis" in freeze_policy_lower
+            or "do not add new daemon-core plugin api" in freeze_policy_lower
+            or "do not add new daemon-core plugin apis" in freeze_policy_lower
+        ),
+        "freezePolicyDeclaresNoOldPluginAbiCompatibility": (
+            "old plugin abi" in freeze_policy_lower
+            and ("do not restore" in freeze_policy_lower or "removed" in freeze_policy_lower)
+        ),
+        "freezePolicyDeclaresNoOldFcpCommandCompatibility": (
+            "old fcp plugin command compatibility" in freeze_policy_lower
+            and ("do not restore" in freeze_policy_lower or "no old" in freeze_policy_lower)
+        ),
+        "freezePolicyKeepsUnsupportedBoundary": "unsupportedpluginmessage" in freeze_policy_lower
+        and "deterministic unsupported" in freeze_policy_lower
+        and "must not execute plugin code" in freeze_policy_lower,
+        "freezePolicyDeclaresHistoricalDocsOnly": "docs/legacy" in freeze_policy_lower
+        and "historical" in freeze_policy_lower
+        and (
+            "not current implementation commitments" in freeze_policy_normalized
+            or "not an implementation commitment" in freeze_policy_normalized
+        ),
         "noNewInCorePluginApis": "no new in-core plugin api" in plugin_status_lower
         or "no new in-core plugin apis" in plugin_status_lower
         or "do not add new in-core plugin api" in plugin_status_lower
@@ -8543,9 +8575,10 @@ def collect_legacy_plugin_freeze_policy_evidence(settings: Settings) -> Evidence
         in combined_policy_lower,
         "legacyDocsHistoricalOnly": "docs/legacy" in combined_policy_lower
         and "historical" in combined_policy_lower,
-        "migrationGuideLinksFreezePolicy": "plugin-system.md" in migration_guide,
-        "appPlatformDocsLinkMigrationOrFreeze": "legacy-plugin-migration-guide.md" in developer_docs
-        or "plugin-system.md" in developer_docs,
+        "migrationGuideLinksFreezePolicy": "legacy-plugin-freeze-policy.md" in migration_guide,
+        "appPlatformDocsLinkMigrationOrFreeze": "legacy-plugin-freeze-policy.md" in developer_docs
+        or "legacy-plugin-migration-guide.md" in developer_docs,
+        "appPlatformDocsLinkFreezePolicy": "legacy-plugin-freeze-policy.md" in developer_docs,
         "releaseDocsListFreezeEvidence": "legacy-plugin.freeze-policy" in release_docs,
         "outOfProcessMigrationMechanisms": all(
             marker in combined_policy_lower
@@ -8587,6 +8620,7 @@ def collect_legacy_plugin_freeze_policy_evidence(settings: Settings) -> Evidence
     details = {
         "policyDocs": [
             display_path(plugin_status_path, workspace),
+            display_path(freeze_policy_path, workspace),
             display_path(migration_guide_path, workspace),
             display_path(portal_path, workspace),
             display_path(beta_limits_path, workspace),
@@ -12463,6 +12497,35 @@ def run_self_test(repo_root: Path) -> None:
         assert evidence_by_id["legacy-plugin.social-inbox-spike"]["status"] == "pass"
         assert evidence_by_id["legacy-plugin.freeze-policy"]["status"] == "pass"
         assert evidence_by_id["legacy-plugin.freeze-policy"]["requiredForReleaseCandidate"] is True
+        freeze_policy = workspace / "docs/legacy-plugin-freeze-policy.md"
+        freeze_policy_text = freeze_policy.read_text(encoding="utf-8")
+        try:
+            freeze_policy.unlink()
+            missing_freeze_policy_item = collect_legacy_plugin_freeze_policy_evidence(
+                dataclasses.replace(settings, mode="release-candidate")
+            )
+        finally:
+            freeze_policy.write_text(freeze_policy_text, encoding="utf-8")
+        assert missing_freeze_policy_item.status == "fail", missing_freeze_policy_item
+        assert "freezePolicyDocumentExists" in missing_freeze_policy_item.details["errors"], (
+            missing_freeze_policy_item
+        )
+        freeze_migration_guide = workspace / "docs/legacy-plugin-migration-guide.md"
+        freeze_migration_guide_text = freeze_migration_guide.read_text(encoding="utf-8")
+        try:
+            freeze_migration_guide.write_text(
+                freeze_migration_guide_text.replace("legacy-plugin-freeze-policy.md and ", ""),
+                encoding="utf-8",
+            )
+            missing_freeze_link_item = collect_legacy_plugin_freeze_policy_evidence(
+                dataclasses.replace(settings, mode="release-candidate")
+            )
+        finally:
+            freeze_migration_guide.write_text(freeze_migration_guide_text, encoding="utf-8")
+        assert missing_freeze_link_item.status == "fail", missing_freeze_link_item
+        assert "migrationGuideLinksFreezePolicy" in missing_freeze_link_item.details["errors"], (
+            missing_freeze_link_item
+        )
         social_inbox_app_js = workspace / "apps/social-inbox/src/staged/static/app.js"
         original_social_inbox_js = social_inbox_app_js.read_text(encoding="utf-8")
         try:
@@ -14774,7 +14837,8 @@ def make_self_test_workspace(workspace: Path) -> None:
         "app-update.data-migration-contract, catalog.production-channels, "
         "app-platform.trust-statement-signing, app-platform.social-message-signing, "
         "app-platform.identity-profile-publish, and app-platform.generated-document-insert. "
-        "Developers can find legacy-plugin-migration-guide.md and plugin-system.md from the app-platform portal. "
+        "Developers can find legacy-plugin-freeze-policy.md, legacy-plugin-migration-guide.md, "
+        "and plugin-system.md from the app-platform portal. "
         "The production RC plugin freeze policy says the old in-process plugin runtime is frozen "
         "and removed, with no new in-core plugin APIs, no old plugin ABI compatibility, no old FCP "
         "plugin command compatibility, and docs/legacy historical material only. Migration uses "
@@ -14807,8 +14871,22 @@ def make_self_test_workspace(workspace: Path) -> None:
     cert_readme = workspace / "tools/release-certification/README.md"
     cert_readme.parent.mkdir(parents=True, exist_ok=True)
     cert_readme.write_text(first_party_docs, encoding="utf-8")
+    (docs / "legacy-plugin-freeze-policy.md").write_text(
+        "This policy defines the production RC freeze boundary for the removed legacy plugin system. "
+        "The old in-process plugin runtime is frozen and removed. Do not add new in-core plugin APIs "
+        "or new daemon-core plugin APIs. Do not restore network.crypta.pluginmanager, old plugin ABI "
+        "classes, plugin toadlets, old plugin admin pages, or old FCP plugin command compatibility. "
+        "UnsupportedPluginMessage is the narrow boundary for historical FCP plugin command names; "
+        "those names must keep deterministic unsupported responses and must not execute plugin code. "
+        "Legacy docs under docs/legacy are historical only and not current implementation commitments. "
+        "Migration uses out-of-process apps, Platform API, signed catalogs, AppVault, content subscriptions, "
+        "durable app data, Trust Graph Local RC, and app-service grants. This is not full WoT, not old "
+        "WebOfTrust plugin compatibility, not Freetalk/Sone/Freemail compatibility, not encrypted mail "
+        "transport, and not a daemon-core social or mail protocol.\n",
+        encoding="utf-8",
+    )
     (docs / "legacy-plugin-migration-guide.md").write_text(
-        "See plugin-system.md for the production RC freeze policy. "
+        "See legacy-plugin-freeze-policy.md and plugin-system.md for the production RC freeze policy. "
         "The old plugin runtime removed status is intentional. There is no old plugin ABI "
         "compatibility and no old FCP plugin command compatibility. No new in-core plugin APIs "
         "will be added. WebOfTrust-like and WoT-like "
@@ -14829,9 +14907,10 @@ def make_self_test_workspace(workspace: Path) -> None:
         "There are no new in-core plugin APIs, no old plugin ABI compatibility, and no old FCP "
         "plugin command compatibility. Legacy FCP plugin command names must keep failing "
         "deterministically through UnsupportedPluginMessage. Legacy plugin migrations should use "
-        "legacy-plugin-migration-guide.md, out-of-process apps, Platform API, signed catalogs, "
-        "AppVault, content subscriptions, durable app data, Trust Graph Local RC, and app-service "
-        "grants. Legacy docs under docs/legacy are historical only and not an implementation "
+        "legacy-plugin-freeze-policy.md, legacy-plugin-migration-guide.md, out-of-process apps, "
+        "Platform API, signed catalogs, AppVault, content subscriptions, durable app data, "
+        "Trust Graph Local RC, and app-service grants. Legacy docs under docs/legacy are "
+        "historical only and not an implementation "
         "commitment. This is not full WoT, not old WebOfTrust plugin compatibility, not "
         "Freetalk/Sone/Freemail compatibility, not encrypted mail transport, and not a daemon-core "
         "social or mail protocol.\n",

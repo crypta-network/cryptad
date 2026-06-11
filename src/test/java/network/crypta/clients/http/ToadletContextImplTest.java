@@ -47,6 +47,7 @@ class ToadletContextImplTest {
   private static final String FRIENDS_SURFACE_ID = "friends";
   private static final String QUEUE_MANAGER_APP_ID = "queue-manager";
   private static final String CONFIG_SURFACE_ID = "config";
+  private static final String DIAGNOSTIC_SURFACE_ID = "diagnostic";
   private static final String WRONG_FORM_PASSWORD_BODY = "formPassword=wrong&confirm=true";
 
   @Mock private BucketFactory bucketFactory;
@@ -73,7 +74,7 @@ class ToadletContextImplTest {
 
   @Test
   void parseHTTPDate_whenValidString_parsesEpoch() throws Exception {
-    Instant parsed = ToadletContextImpl.parseHTTPDate("Thu, 01 Jan 1970 00:00:00 GMT").toInstant();
+    Instant parsed = ToadletContextImpl.parseHTTPDate("Thu, 01 Jan 1970 00:00:00 GMT");
     assertEquals(Instant.EPOCH, parsed);
   }
 
@@ -382,6 +383,50 @@ class ToadletContextImplTest {
   }
 
   @Test
+  void handle_whenDiagnosticFallbackSlashlessCanonicalRedirect_preservesFallbackQuery()
+      throws Exception {
+    try (var _ = clearedLegacyAdminUsage()) {
+      configureWebShellReplacementAvailable();
+      configurePermanentRedirect(URI.create(DiagnosticToadlet.TOADLET_URL));
+      Socket socket =
+          new FakeSocket(
+              rawGetRequest("/diagnostic?legacyFallback=diagnostic-export"), outputStream);
+
+      ToadletContextImpl.handle(socket, newRequestServices());
+
+      Map<String, List<String>> headers =
+          parseHeaders(outputStream.toString(StandardCharsets.UTF_8));
+      assertEquals("301", headers.get("__status").getFirst());
+      assertEquals(
+          "/diagnostic/?legacyFallback=diagnostic-export", headers.get("location").getFirst());
+      assertEquals(1L, usage(DIAGNOSTIC_SURFACE_ID).fallbackRenderCount());
+      assertEquals(0L, usage(DIAGNOSTIC_SURFACE_ID).replacementResponseCount());
+    }
+  }
+
+  @Test
+  void handle_whenDiagnosticFallbackSlashlessQueryIsNotExact_redirectsToReplacement()
+      throws Exception {
+    try (var _ = clearedLegacyAdminUsage()) {
+      configureWebShellReplacementAvailable();
+      configurePermanentRedirect(URI.create(DiagnosticToadlet.TOADLET_URL));
+      Socket socket =
+          new FakeSocket(
+              rawGetRequest("/diagnostic?legacyFallback=diagnostic-export&token=secret"),
+              outputStream);
+
+      ToadletContextImpl.handle(socket, newRequestServices());
+
+      Map<String, List<String>> headers =
+          parseHeaders(outputStream.toString(StandardCharsets.UTF_8));
+      assertEquals("303", headers.get("__status").getFirst());
+      assertEquals("/app/node/#diagnostics", headers.get("location").getFirst());
+      assertEquals(0L, usage(DIAGNOSTIC_SURFACE_ID).fallbackRenderCount());
+      assertEquals(1L, usage(DIAGNOSTIC_SURFACE_ID).replacementResponseCount());
+    }
+  }
+
+  @Test
   void handle_whenRemovedConfigGetHasNoConcreteToadlet_redirectsBeforeNoToadlet() throws Exception {
     try (var _ = clearedLegacyAdminUsage()) {
       configureWebShellReplacementAvailable();
@@ -559,8 +604,7 @@ class ToadletContextImplTest {
     assertEquals("keep-alive", parsed.get("connection").getFirst());
     assertEquals("text/html; charset=UTF-8", parsed.get("content-type").getFirst());
     assertTrue(parsed.get("cache-control").getFirst().startsWith("public"));
-    Instant lastModified =
-        ToadletContextImpl.parseHTTPDate(parsed.get("last-modified").getFirst()).toInstant();
+    Instant lastModified = ToadletContextImpl.parseHTTPDate(parsed.get("last-modified").getFirst());
     assertEquals(modified, lastModified);
     String csp = parsed.get("content-security-policy").getFirst();
     assertTrue(csp.contains("frame-src 'self'"));
