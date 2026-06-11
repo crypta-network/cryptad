@@ -40,6 +40,7 @@ Use this portal first, then follow the detailed source-of-truth pages for the ar
 | Social Inbox RC | [social-inbox-reference-app.md](social-inbox-reference-app.md) |
 | Feed Reader reference app | [feed-reader-reference-app.md](feed-reader-reference-app.md) |
 | Trust Graph Local RC | [trust-graph-preview.md](trust-graph-preview.md) |
+| Legacy plugin freeze policy | [legacy-plugin-freeze-policy.md](legacy-plugin-freeze-policy.md) |
 | Legacy plugin migration guide | [legacy-plugin-migration-guide.md](legacy-plugin-migration-guide.md) |
 | Legacy HTTP boundary | [legacy-http-boundary.md](legacy-http-boundary.md) |
 | Legacy retirement plan | [legacy-retirement-plan.md](legacy-retirement-plan.md) |
@@ -143,9 +144,9 @@ Public beta readiness treats these workstreams as one ecosystem beta release sto
 | Review governance | [app-review-governance.md](app-review-governance.md), `review receipt`, `reviewer key lifecycle`, `transparency log` evidence |
 | Updates, migrations, and rollback | [app-update-lifecycle.md](app-update-lifecycle.md), [app-upgrade-data-migrations.md](app-upgrade-data-migrations.md), `app-update.scheduler`, `app-update.rollback`, `app-update.data-migration-contract` evidence |
 | Public beta hardening | [app-platform-beta-known-limitations.md](app-platform-beta-known-limitations.md), `public-beta-security.*` evidence |
-| Legacy plugin migration | [legacy-plugin-migration-guide.md](legacy-plugin-migration-guide.md), `legacy-plugin.migration-guide`, `legacy-plugin.social-inbox-spike` |
-| Legacy admin status | [legacy-retirement-plan.md](legacy-retirement-plan.md), `legacy-admin.removal-wave-1`, `legacy-admin.removal-wave-2`, `legacy-admin.removal-wave-3`; FProxy browse remains retained |
-| Operator recovery and support | [operator-beta-dashboard.md](operator-beta-dashboard.md), `operator-beta.*` evidence, `operator-beta-ux-and-recovery` matrix row |
+| Legacy plugin freeze and migration | [legacy-plugin-freeze-policy.md](legacy-plugin-freeze-policy.md), [legacy-plugin-migration-guide.md](legacy-plugin-migration-guide.md), `legacy-plugin.freeze-policy`, `legacy-plugin.migration-guide`, `legacy-plugin.social-inbox-spike` |
+| Legacy admin status | [legacy-retirement-plan.md](legacy-retirement-plan.md), `legacy-admin.removal-wave-1`, `legacy-admin.removal-wave-2`, `legacy-admin.removal-wave-3`, `legacy-admin.removal-wave-4`; FProxy browse/content rendering, content filter, startup wizard, and security recovery remain retained or pending |
+| Operator recovery and support | [operator-beta-dashboard.md](operator-beta-dashboard.md), [app-data-backup-restore-portability.md](app-data-backup-restore-portability.md), `operator-beta.*` evidence, `operator-beta.app-data-backup-restore`, `operator-beta-ux-and-recovery` matrix row |
 | Live-network beta certification | [release-certification.md](release-certification.md), `live-network-beta.*` evidence, `live-network-beta-certification` matrix row when explicitly required |
 | Ecosystem matrix | [release-certification.md](release-certification.md), `ecosystem certification matrix` |
 | Docs and beta program | This portal, [app-platform-beta-tutorials.md](app-platform-beta-tutorials.md), [app-platform-beta-known-limitations.md](app-platform-beta-known-limitations.md), [app-platform-beta-program.md](app-platform-beta-program.md) |

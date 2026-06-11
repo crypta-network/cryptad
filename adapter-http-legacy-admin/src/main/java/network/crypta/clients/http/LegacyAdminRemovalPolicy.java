@@ -1,6 +1,7 @@
 package network.crypta.clients.http;
 
 import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.Optional;
 import network.crypta.platform.webshell.routes.WebShellPaths;
 
@@ -34,6 +35,9 @@ final class LegacyAdminRemovalPolicy {
   /** Exact static query used by Web Shell when it deliberately opens legacy security fallback. */
   private static final String SECURITY_LEVELS_LEGACY_FALLBACK_QUERY =
       "legacyFallback=security-levels";
+
+  /** Exact static query used by Web Shell when it deliberately opens diagnostic export fallback. */
+  private static final String DIAGNOSTIC_LEGACY_FALLBACK_QUERY = "legacyFallback=diagnostic-export";
 
   /** Prevents construction because the policy is stateless and entirely function-based. */
   private LegacyAdminRemovalPolicy() {}
@@ -75,7 +79,7 @@ final class LegacyAdminRemovalPolicy {
       return Optional.empty();
     }
     LegacyAdminSurface legacyAdminSurface = surface.orElseThrow();
-    if (isExplicitSecurityLevelsLegacyFallback(method, uri, legacyAdminSurface)) {
+    if (isExplicitSafeReadLegacyFallback(method, uri, legacyAdminSurface)) {
       return Optional.empty();
     }
     if (!replacementAvailable(legacyAdminSurface, ctx)) {
@@ -119,6 +123,41 @@ final class LegacyAdminRemovalPolicy {
   }
 
   /**
+   * Preserves an accepted explicit fallback marker across slash canonicalization.
+   *
+   * <p>Container-level permanent redirects are emitted before the legacy toadlet receives the
+   * request. For slashless aliases such as {@code /diagnostic}, the removal policy may already have
+   * accepted the exact safe-read legacy fallback query and returned empty so the plaintext fallback
+   * can render. This helper carries only that exact static marker to the canonical slash URL;
+   * arbitrary query strings remain stripped or handled by the normal replacement decision.
+   *
+   * @param method HTTP method from the request line
+   * @param requestUri original request URI
+   * @param redirectUri canonical redirect URI from the toadlet container
+   * @return redirect URI with an accepted fallback query preserved when applicable
+   */
+  static URI canonicalRedirectTargetForExplicitFallback(
+      String method, URI requestUri, URI redirectUri) {
+    if (isMutatingRequestMethod(method) || requestUri == null || redirectUri == null) {
+      return redirectUri;
+    }
+    String requestPath = requestUri.getPath();
+    String redirectPath = redirectUri.getPath();
+    if (requestPath == null || redirectPath == null || redirectUri.getRawQuery() != null) {
+      return redirectUri;
+    }
+    Optional<LegacyAdminSurface> surface =
+        LegacyAdminRetirementRegistry.findByLegacyPath(redirectPath);
+    if (surface.isEmpty() || !requestPath.equals(withoutTrailingSlash(redirectPath))) {
+      return redirectUri;
+    }
+    return explicitFallbackQueryFor(surface.orElseThrow())
+        .filter(query -> query.equals(requestUri.getRawQuery()))
+        .map(query -> withQuery(redirectUri, query))
+        .orElse(redirectUri);
+  }
+
+  /**
    * Converts a matched surface and HTTP method into the response decision.
    *
    * @param method uppercase HTTP method from the request line
@@ -145,11 +184,20 @@ final class LegacyAdminRemovalPolicy {
     return !"GET".equals(method) && !"HEAD".equals(method);
   }
 
-  private static boolean isExplicitSecurityLevelsLegacyFallback(
+  private static boolean isExplicitSafeReadLegacyFallback(
       String method, URI uri, LegacyAdminSurface surface) {
-    return "security-levels".equals(surface.id())
-        && !isMutatingRequestMethod(method)
-        && SECURITY_LEVELS_LEGACY_FALLBACK_QUERY.equals(uri.getRawQuery());
+    return !isMutatingRequestMethod(method)
+        && explicitFallbackQueryFor(surface)
+            .filter(query -> query.equals(uri.getRawQuery()))
+            .isPresent();
+  }
+
+  private static Optional<String> explicitFallbackQueryFor(LegacyAdminSurface surface) {
+    return switch (surface.id()) {
+      case "security-levels" -> Optional.of(SECURITY_LEVELS_LEGACY_FALLBACK_QUERY);
+      case "diagnostic" -> Optional.of(DIAGNOSTIC_LEGACY_FALLBACK_QUERY);
+      default -> Optional.empty();
+    };
   }
 
   /**
@@ -180,7 +228,8 @@ final class LegacyAdminRemovalPolicy {
           "config",
           "security-levels",
           "core-update",
-          "statistics" ->
+          "statistics",
+          "diagnostic" ->
           webShellReplacementAvailable(ctx);
       default -> true;
     };
@@ -281,5 +330,13 @@ final class LegacyAdminRemovalPolicy {
       return path.substring(0, path.length() - 1);
     }
     return path;
+  }
+
+  private static URI withQuery(URI uri, String query) {
+    try {
+      return new URI(uri.getScheme(), uri.getAuthority(), uri.getPath(), query, uri.getFragment());
+    } catch (URISyntaxException e) {
+      throw new IllegalArgumentException("Invalid canonical fallback redirect target", e);
+    }
   }
 }

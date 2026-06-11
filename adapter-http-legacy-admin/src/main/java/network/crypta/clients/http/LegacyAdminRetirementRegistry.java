@@ -55,12 +55,14 @@ public final class LegacyAdminRetirementRegistry {
   private static final int REMOVAL_WAVE_1 = 1;
   private static final int REMOVAL_WAVE_2 = 2;
   private static final int REMOVAL_WAVE_3 = 3;
+  private static final int REMOVAL_WAVE_4 = 4;
   private static final String REMOVED_BY_DEFAULT_SINCE_WAVE_1 = "phase-6-pr-8";
   private static final String REMOVED_BY_DEFAULT_SINCE_WAVE_2 = "phase-7-pr-230";
   private static final String REMOVED_BY_DEFAULT_SINCE_WAVE_3 = "phase-8-pr-244";
+  private static final String REMOVED_BY_DEFAULT_SINCE_WAVE_4 = "phase-9-pr-254";
   private static final String FALLBACK_POLICY_NONE = "none";
-  private static final String FALLBACK_POLICY_RENDER_LEGACY = "render-legacy";
   private static final String FALLBACK_POLICY_MUTATING_LEGACY = "mutating-legacy-fallback";
+  private static final String FALLBACK_POLICY_SUPPORT_EMERGENCY = "support-emergency-fallback";
   private static final String FALLBACK_POLICY_RETAINED = "retained";
   private static final String FALLBACK_POLICY_PENDING = "pending";
   private static final String FALLBACK_POLICY_INFRASTRUCTURE = "infrastructure";
@@ -191,7 +193,7 @@ public final class LegacyAdminRetirementRegistry {
                   LegacyAdminRemovalScope.EXPLICIT_CHILDREN,
                   List.of(StatisticsToadlet.TOADLET_URL + "requesters.html"),
                   REMOVAL_WAVE_2)),
-          diagnosticFallbackReplacement(),
+          diagnosticWave4Redirect(),
           pendingWizard(
               "first-time-wizard",
               "First-time wizard",
@@ -458,7 +460,7 @@ public final class LegacyAdminRetirementRegistry {
         MutatingRequestReplacement.PARTIAL_LEGACY_FALLBACK);
   }
 
-  private static LegacyAdminSurface diagnosticFallbackReplacement() {
+  private static LegacyAdminSurface diagnosticWave4Redirect() {
     return new LegacyAdminSurface(
         "diagnostic",
         "Diagnostic report",
@@ -466,11 +468,12 @@ public final class LegacyAdminRetirementRegistry {
         LegacyAdminRetirementState.PRIMARY_REPLACED,
         SHELL_DIAGNOSTICS_URL,
         "Web Shell diagnostics",
-        "The plain-text export remains useful as fallback and debug output.",
-        LegacyAdminRemovalMode.RENDER_LEGACY,
-        NO_REMOVAL_WAVE,
-        null,
-        FALLBACK_POLICY_RENDER_LEGACY,
+        "Web Shell diagnostics is the primary status surface; the legacy plain-text export remains"
+            + " available only through explicit support or emergency fallback.",
+        LegacyAdminRemovalMode.REDIRECT_TO_REPLACEMENT,
+        REMOVAL_WAVE_4,
+        REMOVED_BY_DEFAULT_SINCE_WAVE_4,
+        FALLBACK_POLICY_SUPPORT_EMERGENCY,
         LegacyAdminRemovalScope.CANONICAL_AND_SLASHLESS_ALIAS,
         NO_REMOVAL_WAVE,
         List.of(),

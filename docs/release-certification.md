@@ -164,7 +164,8 @@ Release-candidate mode requires these evidence ids:
 | `reference-app.social-inbox-trust-annotations` | App-platform smoke summary. | Social Inbox queries Trust Graph Local RC's `trust.score` service through an active app-service grant with `subjectKind=identity` and `context=message-author`, renders scores as advisory annotations, and keeps unscored or ungranted messages visible without hiding, archiving, blocking replies, or changing network behavior. |
 | `reference-app.social-inbox-rc-threading` | App-platform smoke summary. | Social Inbox RC builds local threads from `replyTo`, provides reply context, channel filters, bounded local search, thread-level read/unread/archive/pin behavior, safe author/profile display, and dedupe source summaries without storing raw fetched content or raw message bodies. |
 | `migration.social-mail-preview` | App-platform smoke summary. | The baseline migration evidence proves the social/mail-like layer composes AppVault, content insert/fetch/subscriptions, durable app data, and the mediated Trust Graph score service outside daemon core and legacy plugin APIs. |
-| `legacy-plugin.migration-guide` | App-platform smoke summary. | The legacy plugin migration guide exists, is linked from plugin-system and app-platform docs, documents old plugin runtime removal, and maps legacy plugin categories to app-platform mechanisms without restoring old plugin ABI or FCP command compatibility. |
+| `legacy-plugin.freeze-policy` | App-platform smoke summary. | The production RC freeze policy exists, is linked from plugin-system and app-platform docs, documents the old in-process plugin runtime as removed/frozen, keeps old FCP plugin commands mapped only to deterministic unsupported responses, and proves no in-core plugin runtime/API surface has been reintroduced. |
+| `legacy-plugin.migration-guide` | App-platform smoke summary. | The legacy plugin migration guide exists, is linked from plugin-system and app-platform docs, documents old plugin runtime removal, and maps legacy plugin categories to out-of-process app-platform mechanisms without restoring old plugin ABI or FCP command compatibility. |
 | `legacy-plugin.social-inbox-spike` | App-platform smoke summary. | Social Inbox is certified as the executable app-platform replacement path for social/message-board plugin patterns with AppVault, app data, content subscriptions, app-generated documents, and mediated Trust Graph score service grants. |
 | `reference-app.feed-reader` | App-platform smoke summary. | Feed Reader exists as the first content-subscription reference app, declares `content.fetch`, `content.subscribe`, and generated-document publication permissions, uses SDK feed helpers, and keeps evidence free of raw feed bodies and private fetch inputs. |
 | `reference-app.feed-reader-subscriptions` | App-platform smoke summary. | Feed Reader requires at least API v9, is tested through v14, uses `CryptaPlatform.content.subscriptions.*` for durable USK follow behavior, shows scheduler metadata, and does not rely on a tab-local timer as the durable follow path. |
@@ -176,6 +177,7 @@ Release-candidate mode requires these evidence ids:
 | `legacy-admin.removal-wave-1` | App-platform smoke summary. | The first removal wave records the removed-by-default route ids, replacement URLs, safe-read redirect behavior, mutating-request block behavior, retained browse status, diagnostics counters, and redaction checks without requiring a live node. |
 | `legacy-admin.removal-wave-2` | App-platform smoke summary. | The second removal wave records the next removed-by-default route ids, queue/config/statistics route-scope expansion metadata, replacement URLs, partial mutation fallback policy, retained diagnostic export status, diagnostics counters, and redaction checks without requiring a live node. |
 | `legacy-admin.removal-wave-3` | App-platform smoke summary. | The third removal wave records `security-levels` safe-read redirects to Web Shell security, mutating legacy fallback for incomplete security flows, stable wave 1/2 route sets, retained browse/filter/diagnostic/wizard surfaces, and redaction checks without requiring a live node. |
+| `legacy-admin.removal-wave-4` | App-platform smoke summary. | The fourth removal wave records `diagnostic` as the only new removed-by-default route, Web Shell diagnostics as the primary destination, exact safe-read plaintext export fallback behavior, retained FProxy/content-filter/startup/security fallback scope, and redaction checks without requiring a live node. |
 | `apphost.sandbox-provider` | App-platform smoke summary. | AppHost sandbox provider source and deterministic offline tests prove bubblewrap selection, enforced status reporting, fail-closed required sandbox behavior, and token/path-free public status. |
 | `public-beta-security.app-ui-csp` | App-platform smoke summary. | Static app UI CSP uses `default-src 'none'`, local script/style/connect directives, no object/base/frame/worker/media execution paths, defensive browser headers, and local-only origin validation for CSP roots. |
 | `public-beta-security.app-origin-policy` | App-platform smoke summary. | Web Shell app launch/probe logic accepts only registered local loopback isolated origins and safe same-origin fallback paths, rejects credentials, query/hash confusion, remote schemes, and keeps probe fetches credential-free CORS. |
@@ -220,18 +222,28 @@ reviewed queue count/key-list helpers are removed by default only when their rep
 reachable. It distinguishes covered config POST mutations from mutating legacy alert bulk actions
 and core-update installer and package-store actions that remain fallback. It also proves that
 FProxy browse remains retained, content filter remains retained, pending wizard and node-to-node
-message routes remain out of scope, the raw diagnostic export remains retained, and the new
-diagnostics scope metadata stays bounded and redacted.
+message routes remain out of scope, the diagnostic export remained retained at that stage, and the
+new diagnostics scope metadata stays bounded and redacted.
 
 `legacy-admin.removal-wave-3` is deterministic offline evidence for `/seclevels/` only. It proves
 that safe reads redirect to `/app/node/#security` when Web Shell security is reachable, that POST
 and other mutating requests remain legacy fallback for master-password, password-file, high
 physical security, and recovery flows, and that the route scope is limited to the canonical path
 and slashless alias. It also proves that FProxy browse and content rendering remain retained, the
-content filter remains retained, raw diagnostic export remains retained, startup wizard and
-emergency fallback remain pending, node-to-node messages remain pending, and evidence excludes
+content filter remains retained, diagnostic export remained retained before Wave 4, startup wizard
+and emergency fallback remain pending, node-to-node messages remain pending, and evidence excludes
 query strings, form passwords, tokens, private insert URIs, raw bodies, raw signatures, and local
 paths.
+
+`legacy-admin.removal-wave-4` is deterministic offline evidence for `/diagnostic/` only. It
+proves that `diagnostic` is the only Wave 4 route id, safe reads use Web Shell diagnostics at
+`/app/node/#diagnostics` when the shell is reachable, mutating requests are blocked before the
+legacy diagnostic handler runs, and the plaintext diagnostic export remains available only through
+the exact support/emergency fallback marker. It also proves that FProxy browse and content
+rendering remain retained, the content filter remains retained, startup wizard and recovery flows
+remain retained or pending, the Wave 3 security fallback remains intact, and evidence excludes
+arbitrary query strings, request bodies, form passwords, tokens, private insert URIs, raw
+diagnostic output, raw fetched content, raw app data, raw signatures, and absolute local paths.
 
 `interop.extended` is optional in the machine gate but required by the release runbook when a
 release changes compatibility-sensitive behavior. `apphost.sandbox-provider` does not require
@@ -363,8 +375,9 @@ Social Inbox RC supplies the threaded social inbox reference path. Release evide
 `reference-app.social-inbox-service-dependency`, `app-services.web-shell`,
 `app-services.redaction`, `app-services.dependency-redaction`, and `migration.social-mail-preview`
 before a release claims Social Inbox RC support.
-`legacy-plugin.migration-guide` and `legacy-plugin.social-inbox-spike` certify the broader legacy
-plugin-to-app migration guidance and the executable Social Inbox app-platform replacement path.
+`legacy-plugin.freeze-policy`, `legacy-plugin.migration-guide`, and
+`legacy-plugin.social-inbox-spike` certify the broader legacy plugin freeze boundary,
+plugin-to-app migration guidance, and the executable Social Inbox app-platform replacement path.
 Social Inbox evidence must not include raw social message bodies, raw fetched social documents,
 raw profile documents, raw request bodies, raw signature values, private insert URIs, private
 identity material, app process tokens, browser-session tokens, form passwords, private keys,
@@ -518,8 +531,9 @@ evidence disappears, Trust Graph Local RC evidence disappears, generated documen
 disappears, content-fetch evidence disappears, trust-statement signing evidence disappears, or a
 reference app no longer proves its required helper usage. Legacy
 retirement gates block missing removal-wave evidence, including
-`legacy-admin.removal-wave-2` and `legacy-admin.removal-wave-3`, or failed retained browse safety
-evidence and warn on removed-route count changes without update-note metadata.
+`legacy-admin.removal-wave-2`, `legacy-admin.removal-wave-3`, and
+`legacy-admin.removal-wave-4`, or failed retained browse safety evidence and warn on
+removed-route count changes without update-note metadata.
 
 ## Waivers
 

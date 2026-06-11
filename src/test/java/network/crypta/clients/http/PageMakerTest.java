@@ -281,7 +281,7 @@ class PageMakerTest {
   }
 
   @Test
-  void getPageNode_whenActiveToadletMissingAndRequestUriRendersLegacyNotice_expectNotice() {
+  void getPageNode_whenActiveToadletMissingAndRequestUriIsDiagnostic_expectNoLegacyNotice() {
     PageMaker maker = newPageMaker();
     stubPageRenderingContext(false);
     when(context.getUri()).thenReturn(URI.create(DiagnosticToadlet.TOADLET_URL));
@@ -294,8 +294,8 @@ class PageMakerTest {
 
     String html = page.generate();
 
-    assertTrue(html.contains("legacy-admin-retirement-notice"));
-    assertTrue(html.contains("Web Shell diagnostics"));
+    assertFalse(html.contains("legacy-admin-retirement-notice"));
+    assertFalse(html.contains("Web Shell diagnostics"));
   }
 
   @Test

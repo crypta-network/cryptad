@@ -56,6 +56,25 @@ class LegacyAdminUsageRecorderTest {
   }
 
   @Test
+  void snapshot_whenDiagnosticSurfaceIncluded_expectWaveFourMetadataAndExplicitFallback() {
+    LegacyAdminUsageRecorder recorder =
+        new LegacyAdminUsageRecorder(
+            Clock.fixed(Instant.ofEpochMilli(1_770_000_000_000L), ZoneOffset.UTC));
+
+    recorder.recordPath(DiagnosticToadlet.TOADLET_URL);
+
+    LegacyAdminSurfaceUsage usage = usage(recorder.snapshot(), "diagnostic");
+    assertEquals(1L, usage.count());
+    assertEquals(LegacyAdminRemovalMode.REDIRECT_TO_REPLACEMENT.name(), usage.removalMode());
+    assertEquals(4, usage.removalWave());
+    assertEquals("phase-9-pr-254", usage.removedByDefaultSince());
+    assertEquals("support-emergency-fallback", usage.fallbackPolicy());
+    assertEquals(
+        LegacyAdminRemovalScope.CANONICAL_AND_SLASHLESS_ALIAS.name(), usage.removalScope());
+    assertEquals(0, usage.scopeExpandedInWave());
+  }
+
+  @Test
   void recordSurface_whenRemovalEventsRecorded_expectSeparateCounters() {
     LegacyAdminUsageRecorder recorder =
         new LegacyAdminUsageRecorder(

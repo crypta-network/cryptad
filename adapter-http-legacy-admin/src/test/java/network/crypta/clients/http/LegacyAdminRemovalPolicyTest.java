@@ -53,10 +53,88 @@ class LegacyAdminRemovalPolicyTest {
   }
 
   @Test
-  void decide_whenDiagnosticPrimaryReplacedRequested_expectNoDecision() {
-    assertFalse(
+  void decide_whenWaveFourDiagnosticGetRequested_expectWebShellDiagnosticsRedirect() {
+    LegacyAdminRemovalDecision decision =
         LegacyAdminRemovalPolicy.decide("GET", URI.create(DiagnosticToadlet.TOADLET_URL))
+            .orElseThrow();
+
+    assertEquals("diagnostic", decision.surface().id());
+    assertEquals(303, decision.statusCode());
+    assertTrue(decision.redirect());
+    assertEquals("/app/node/#diagnostics", decision.replacementUrl());
+    assertEquals(LegacyAdminUsageEvent.REPLACEMENT_RESPONSE, decision.usageEvent());
+  }
+
+  @Test
+  void decide_whenWaveFourDiagnosticSlashlessHeadRequested_expectWebShellDiagnosticsRedirect() {
+    LegacyAdminRemovalDecision decision =
+        LegacyAdminRemovalPolicy.decide("HEAD", URI.create("/diagnostic")).orElseThrow();
+
+    assertEquals("diagnostic", decision.surface().id());
+    assertEquals(303, decision.statusCode());
+    assertTrue(decision.redirect());
+    assertEquals("/app/node/#diagnostics", decision.replacementUrl());
+  }
+
+  @Test
+  void decide_whenWaveFourDiagnosticExplicitFallbackRequested_expectLegacyExport() {
+    assertFalse(
+        LegacyAdminRemovalPolicy.decide(
+                "GET",
+                URI.create(DiagnosticToadlet.TOADLET_URL + "?legacyFallback=diagnostic-export"))
             .isPresent());
+  }
+
+  @Test
+  void decide_whenWaveFourDiagnosticExplicitFallbackHeadRequested_expectLegacyExport() {
+    assertFalse(
+        LegacyAdminRemovalPolicy.decide(
+                "HEAD",
+                URI.create(DiagnosticToadlet.TOADLET_URL + "?legacyFallback=diagnostic-export"))
+            .isPresent());
+  }
+
+  @ParameterizedTest(name = "{0} {1}")
+  @MethodSource("waveFourDiagnosticInvalidFallbackCases")
+  void decide_whenWaveFourDiagnosticInvalidFallbackRequested_expectWebShellRedirect(
+      String method, String path) {
+    LegacyAdminRemovalDecision decision =
+        LegacyAdminRemovalPolicy.decide(method, URI.create(path)).orElseThrow();
+
+    assertEquals("diagnostic", decision.surface().id());
+    assertEquals(303, decision.statusCode());
+    assertEquals("/app/node/#diagnostics", decision.replacementUrl());
+  }
+
+  @Test
+  void decide_whenWaveFourDiagnosticPostRequested_expectBlockedMutation() {
+    LegacyAdminRemovalDecision decision =
+        LegacyAdminRemovalPolicy.decide("POST", URI.create(DiagnosticToadlet.TOADLET_URL))
+            .orElseThrow();
+
+    assertEquals("diagnostic", decision.surface().id());
+    assertEquals(410, decision.statusCode());
+    assertFalse(decision.redirect());
+    assertEquals(LegacyAdminUsageEvent.BLOCKED_MUTATING_REQUEST, decision.usageEvent());
+  }
+
+  @Test
+  void decide_whenWaveFourDiagnosticMutatingFallbackMarkerRequested_expectBlockedMutation() {
+    LegacyAdminRemovalDecision decision =
+        LegacyAdminRemovalPolicy.decide(
+                "POST",
+                URI.create(DiagnosticToadlet.TOADLET_URL + "?legacyFallback=diagnostic-export"))
+            .orElseThrow();
+
+    assertEquals("diagnostic", decision.surface().id());
+    assertEquals(410, decision.statusCode());
+    assertEquals(LegacyAdminUsageEvent.BLOCKED_MUTATING_REQUEST, decision.usageEvent());
+  }
+
+  @Test
+  void decide_whenWaveFourDiagnosticChildRequested_expectNoPrefixFamilyRemoval() {
+    assertFalse(
+        LegacyAdminRemovalPolicy.decide("GET", URI.create("/diagnostic/requesters")).isPresent());
   }
 
   @Test
@@ -245,6 +323,8 @@ class LegacyAdminRemovalPolicyTest {
     assertTrue(
         LegacyAdminRemovalPolicy.isRemovedMutatingPath(
             URI.create(LegacyHttpPaths.CONFIG_PATH + "node")));
+    assertTrue(
+        LegacyAdminRemovalPolicy.isRemovedMutatingPath(URI.create(DiagnosticToadlet.TOADLET_URL)));
   }
 
   @Test
@@ -257,6 +337,8 @@ class LegacyAdminRemovalPolicyTest {
     assertFalse(LegacyAdminRemovalPolicy.decide("GET", URI.create("/chat/")).isPresent());
     assertFalse(LegacyAdminRemovalPolicy.decide("GET", URI.create("/")).isPresent());
     assertFalse(LegacyAdminRemovalPolicy.decide("GET", URI.create("/CHK@abc")).isPresent());
+    assertFalse(
+        LegacyAdminRemovalPolicy.decide("GET", URI.create("/diagnostic/requesters")).isPresent());
     assertFalse(
         LegacyAdminRemovalPolicy.decide("GET", URI.create("/api/v1/diagnostics")).isPresent());
     assertFalse(LegacyAdminRemovalPolicy.decide("GET", URI.create("/app/node/")).isPresent());
@@ -288,6 +370,9 @@ class LegacyAdminRemovalPolicyTest {
             .isPresent());
     assertFalse(
         LegacyAdminRemovalPolicy.decide("GET", URI.create(SecurityLevelsToadlet.PATH), ctx)
+            .isPresent());
+    assertFalse(
+        LegacyAdminRemovalPolicy.decide("GET", URI.create(DiagnosticToadlet.TOADLET_URL), ctx)
             .isPresent());
   }
 
@@ -349,6 +434,17 @@ class LegacyAdminRemovalPolicyTest {
             "statistics",
             303,
             "/app/node/#diagnostics"));
+  }
+
+  private static Stream<Arguments> waveFourDiagnosticInvalidFallbackCases() {
+    return Stream.of(
+        Arguments.of(
+            "GET",
+            DiagnosticToadlet.TOADLET_URL + "?legacyFallback=diagnostic-export&token=secret"),
+        Arguments.of(
+            "HEAD",
+            DiagnosticToadlet.TOADLET_URL + "?legacyFallback=diagnostic-export&token=secret"),
+        Arguments.of("GET", DiagnosticToadlet.TOADLET_URL + "?legacyFallback=unexpected"));
   }
 
   private static ToadletContainer availableReplacementContainer() {

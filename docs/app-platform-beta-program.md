@@ -1,7 +1,7 @@
 # App platform beta program
 
 This page defines the app ecosystem beta program, app submission expectations, feedback workflow,
-and Phase 7 closeout runbook.
+and current RC closeout runbook.
 
 ## Purpose
 
@@ -220,10 +220,13 @@ Use this runbook to decide whether the ecosystem beta is ready for a release can
 
 7. Confirm the app-review governance evidence passes: review receipts, reviewer key lifecycle,
    local transparency log, review-history API, and first-party review chain.
-8. Confirm the legacy plugin migration guide evidence passes:
-   `legacy-plugin.migration-guide` and `legacy-plugin.social-inbox-spike`.
-9. Confirm legacy retirement evidence passes, including `legacy-admin.removal-wave-3`, and FProxy
-   browse remains retained.
+8. Confirm the legacy plugin freeze and migration evidence passes:
+   `legacy-plugin.freeze-policy`, `legacy-plugin.migration-guide`, and
+   `legacy-plugin.social-inbox-spike`.
+9. Confirm legacy retirement evidence passes, including `legacy-admin.removal-wave-3` and
+   `legacy-admin.removal-wave-4`, and FProxy browse/content rendering, content filter, startup
+   wizard, security recovery fallback, and pending chat/translation/help/node-to-node routes remain
+   retained or pending.
 10. Confirm app-update evidence passes, including `app-update.lifecycle`, `app-update.scheduler`,
    `app-update.rollback`, `app-update.live-catalog-refresh`, and
    `app-update.data-migration-contract`.
@@ -241,14 +244,15 @@ Use this runbook to decide whether the ecosystem beta is ready for a release can
 Release-candidate mode should require docs and beta evidence unless a release-manager waiver
 explicitly accepts a docs-only gap. Do not waive redaction failures.
 
-## Phase 7 closeout statement
+## Phase 9 RC closeout statement
 
-The Phase 7 closeout story is:
+The current RC closeout story is:
 
 ```text
-first-party catalog + developer toolkit + reference apps + trust graph preview
-+ review governance + legacy plugin migration guide + legacy wave 3 + ecosystem certification matrix
--> documented and certified as Ecosystem Beta readiness
+first-party catalog + developer toolkit + reference apps + Trust Graph Local RC
++ review governance + app-data backup/restore + app-service dependency/grant bundles
++ legacy plugin freeze + legacy admin waves 1-4 + ecosystem certification matrix
+-> documented and certified as Ecosystem RC readiness
 ```
 
 The closeout evidence must be redacted and reproducible. It should show that docs are present,

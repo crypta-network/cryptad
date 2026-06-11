@@ -23,6 +23,7 @@ import network.crypta.platform.webshell.routes.WebShellPaths;
  *     null} when the shell should stay read-only
  * @param legacyRoot legacy HTTP root used for deep links back to existing pages
  * @param legacySecurityLevelsPath legacy security page path used for explicit fallback flows
+ * @param legacyDiagnosticPath legacy diagnostic export path used for explicit fallback flows
  * @param legacyLinks user-visible deep links back to the legacy admin pages
  */
 public record WebShellBootstrap(
@@ -34,6 +35,7 @@ public record WebShellBootstrap(
     String formPassword,
     String legacyRoot,
     String legacySecurityLevelsPath,
+    String legacyDiagnosticPath,
     List<LegacyLink> legacyLinks) {
   /** Default shell title used by the node-management UI. */
   public static final String DEFAULT_SHELL_TITLE = "Cryptad Web Shell";
@@ -49,20 +51,21 @@ public record WebShellBootstrap(
   public static final String DEFAULT_LEGACY_ROOT = "/";
 
   /**
-   * Creates the current shell bootstrap payload with an adapter-resolved legacy security path.
+   * Creates the current shell bootstrap payload with adapter-resolved legacy fallback paths.
    *
    * <p>The platform shell does not own the legacy security-levels route. The serving adapter must
-   * pass the route it registered for the legacy security toadlet, including deployments that
-   * customize that path through local configuration. Keeping the value as an explicit parameter
-   * prevents the browser bootstrap from drifting away from the route map that actually handles the
-   * fallback forms.
+   * pass the routes it registered for the legacy security and diagnostic toadlets, including
+   * deployments that customize those paths through local configuration. Keeping the values as
+   * explicit parameters prevents the browser bootstrap from drifting away from the route map that
+   * actually handles the fallback forms and exports.
    *
    * @param legacySecurityLevelsPath configured path for the legacy security-levels page
+   * @param legacyDiagnosticPath configured path for the legacy diagnostic export
    * @param legacyLinks user-visible deep links back to the legacy admin pages
    * @return bootstrap payload suitable for the first-party shell
    */
   public static WebShellBootstrap nodeManagement(
-      String legacySecurityLevelsPath, List<LegacyLink> legacyLinks) {
+      String legacySecurityLevelsPath, String legacyDiagnosticPath, List<LegacyLink> legacyLinks) {
     return new WebShellBootstrap(
         DEFAULT_SHELL_TITLE,
         DEFAULT_SHELL_DESCRIPTION,
@@ -72,6 +75,7 @@ public record WebShellBootstrap(
         null,
         DEFAULT_LEGACY_ROOT,
         legacySecurityLevelsPath,
+        legacyDiagnosticPath,
         legacyLinks);
   }
 
@@ -93,6 +97,7 @@ public record WebShellBootstrap(
         normalizedFormPassword,
         legacyRoot,
         legacySecurityLevelsPath,
+        legacyDiagnosticPath,
         legacyLinks);
   }
 
@@ -142,33 +147,31 @@ public record WebShellBootstrap(
    * Requires one same-origin absolute path for a legacy route that may be registered slashless.
    *
    * <p>Most Web Shell fields are route roots and therefore require a trailing slash. The legacy
-   * security route is different: it mirrors the configured legacy toadlet path exactly, including
-   * installations that set {@code network.crypta.seclevels.path} to a slashless route. The value is
-   * still constrained to a local path with no query or fragment so browser bootstrap data cannot
-   * become an open redirect or leak request metadata.
+   * fallback routes are different: they mirror configured legacy toadlet paths exactly, including
+   * installations that set a fallback route to a slashless path. The value is still constrained to
+   * a local path with no query or fragment so browser bootstrap data cannot become an open redirect
+   * or leak request metadata.
    *
    * @param value path value to validate
+   * @param label logical field name used in validation messages
    * @throws NullPointerException if {@code value} is {@code null}
    * @throws IllegalArgumentException if the path is blank, is not a single-leading-slash local
    *     path, or contains query/fragment data
    */
-  private static void requireLegacySecurityLevelsPath(String value) {
-    requireText(value, "legacySecurityLevelsPath");
+  private static void requireLegacyLocalPath(String value, String label) {
+    requireText(value, label);
     if (value.charAt(0) != '/' || value.startsWith("//")) {
-      throw new IllegalArgumentException(
-          "legacySecurityLevelsPath must start with a single leading '/'");
+      throw new IllegalArgumentException(label + " must start with a single leading '/'");
     }
     try {
       URI uri = URI.create("http://localhost" + value);
       if (!value.equals(uri.getRawPath())
           || uri.getRawQuery() != null
           || uri.getRawFragment() != null) {
-        throw new IllegalArgumentException(
-            "legacySecurityLevelsPath must be a valid absolute local path");
+        throw new IllegalArgumentException(label + " must be a valid absolute local path");
       }
     } catch (IllegalArgumentException e) {
-      throw new IllegalArgumentException(
-          "legacySecurityLevelsPath must be a valid absolute local path", e);
+      throw new IllegalArgumentException(label + " must be a valid absolute local path", e);
     }
   }
 
@@ -193,7 +196,8 @@ public record WebShellBootstrap(
       requireText(formPassword, "formPassword");
     }
     requireRootPath(legacyRoot, "legacyRoot");
-    requireLegacySecurityLevelsPath(legacySecurityLevelsPath);
+    requireLegacyLocalPath(legacySecurityLevelsPath, "legacySecurityLevelsPath");
+    requireLegacyLocalPath(legacyDiagnosticPath, "legacyDiagnosticPath");
     legacyLinks = List.copyOf(Objects.requireNonNull(legacyLinks, "legacyLinks"));
     if (legacyLinks.isEmpty()) {
       throw new IllegalArgumentException("legacyLinks must not be empty");

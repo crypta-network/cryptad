@@ -12,10 +12,14 @@
     bootstrap.legacySecurityLevelsPath,
     "/seclevels/",
   );
+  const legacyDiagnosticPath = normalizeLocalPath(bootstrap.legacyDiagnosticPath, null);
   const apiRootUrl = new URL(apiRoot, window.location.origin);
   const shellRootUrl = new URL(shellRoot, window.location.origin);
   const legacySecurityLevelsFallbackPath =
     legacySecurityLevelsPath + "?legacyFallback=security-levels";
+  const legacyDiagnosticExportFallbackPath = legacyDiagnosticPath
+    ? legacyDiagnosticPath + "?legacyFallback=diagnostic-export"
+    : null;
   let formPassword = typeof bootstrap.formPassword === "string" ? bootstrap.formPassword : "";
   const legacyLinks = Array.isArray(bootstrap.legacyLinks) ? bootstrap.legacyLinks : [];
   const catalogChannels = ["stable", "beta", "nightly", "deprecated"];
@@ -137,6 +141,7 @@
   };
   const diagnosticsControls = {
     refreshButton: document.getElementById("diagnostics-refresh-button"),
+    legacyExportLink: document.getElementById("diagnostics-legacy-export-link"),
   };
   const securityControls = {
     form: document.getElementById("security-form"),
@@ -332,6 +337,22 @@
     fallbackLink.className = "button button-secondary";
     actions.append(fallbackLink);
     return actions;
+  }
+
+  function configureDiagnosticLegacyExportAction() {
+    if (!diagnosticsControls.legacyExportLink) {
+      return;
+    }
+    if (!legacyDiagnosticExportFallbackPath) {
+      diagnosticsControls.legacyExportLink.hidden = true;
+      diagnosticsControls.legacyExportLink.removeAttribute("href");
+      return;
+    }
+    diagnosticsControls.legacyExportLink.href = legacyDiagnosticExportFallbackPath;
+    diagnosticsControls.legacyExportLink.hidden = false;
+    diagnosticsControls.legacyExportLink.addEventListener("click", () => {
+      setDiagnosticsStatus("Opening legacy plaintext diagnostic export fallback.", "is-warning");
+    });
   }
 
   function securityErrorRequiresLegacyFallback(error) {
@@ -1210,7 +1231,7 @@
 
     const lines = Array.isArray(section.lines) ? section.lines : [];
     if (!lines.length) {
-      card.append(text("p", "empty-state", "No diagnostic lines were exported."));
+      card.append(text("p", "empty-state", "No diagnostic lines were returned."));
     } else {
       const pre = document.createElement("pre");
       pre.className = "diagnostics-lines";
@@ -1228,8 +1249,19 @@
     return card;
   }
 
+  function redactedDiagnosticsSnapshot(data) {
+    if (!data || typeof data !== "object") {
+      return data;
+    }
+    const redacted = { ...data };
+    delete redacted.plainTextExport;
+    delete redacted.export;
+    delete redacted.textExport;
+    return redacted;
+  }
+
   function renderDiagnostics(data) {
-    shellState.diagnosticsSnapshot = data;
+    shellState.diagnosticsSnapshot = redactedDiagnosticsSnapshot(data);
     updateDiagnosticsToolbar();
     clear(sections.diagnostics);
 
@@ -1241,26 +1273,6 @@
     sections.diagnostics.append(
       summaryCard("Diagnostics summary", summaryEntries, sectionsList.length ? "" : "is-warning"),
     );
-
-    const exportText =
-      typeof data.plainTextExport === "string"
-        ? data.plainTextExport
-        : typeof data.export === "string"
-          ? data.export
-          : typeof data.textExport === "string"
-            ? data.textExport
-            : null;
-    if (exportText) {
-      const exportDetails = document.createElement("details");
-      exportDetails.className = "json-details";
-      const summary = document.createElement("summary");
-      summary.textContent = "Plain-text export";
-      const pre = document.createElement("pre");
-      pre.className = "json-code diagnostics-export";
-      pre.textContent = exportText;
-      exportDetails.append(summary, pre);
-      sections.diagnostics.append(exportDetails);
-    }
 
     if (!sectionsList.length) {
       sections.diagnostics.append(text("p", "empty-state", "No diagnostic sections were returned."));
@@ -7388,6 +7400,7 @@
 
   initializePublisherForm(publisherControls.fileForm);
   initializePublisherForm(publisherControls.directoryForm);
+  configureDiagnosticLegacyExportAction();
   renderLegacyLinks();
   bindAlertsInteractions();
   bindBetaDashboardInteractions();

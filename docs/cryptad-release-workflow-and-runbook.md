@@ -145,14 +145,18 @@ Treat these as release blockers, in order:
    `app-platform.content-subscriptions`, `network-content.subscription-scheduler`,
    `app-platform.durable-app-data-store`, `app-platform.trust-graph-preview`,
    `app-platform.trust-graph-durable-store`, `app-platform.trust-graph-exchange`,
+   `app-platform.trust-graph-rc-scope-and-safety`,
    `app-platform.trust-statement-signing`, `app-platform.social-message-signing`,
-   `app-services.registry`, `app-services.grants`, `app-services.trust-score-provider`,
-   `app-services.web-shell`, `app-services.redaction`, `reference-apps.content`,
+   `app-data.backup-restore-portability`, `app-services.registry`, `app-services.grants`,
+   `app-services.dependency-graph`, `app-services.grant-bundles`,
+   `app-services.grant-expiry-renewal`, `app-services.provider-revalidation`,
+   `app-services.trust-score-provider`, `app-services.web-shell`, `app-services.redaction`,
+   `app-services.dependency-redaction`, `reference-apps.content`,
    `reference-app.profile-publisher`, `reference-app.social-inbox`,
    `reference-app.social-inbox-signed-message`, `reference-app.social-inbox-subscriptions`,
    `reference-app.social-inbox-app-data`, `reference-app.social-inbox-trust-annotations`,
    `reference-app.social-inbox-service-grant`, `reference-app.social-inbox-rc-threading`,
-   `migration.social-mail-preview`,
+   `reference-app.social-inbox-service-dependency`, `migration.social-mail-preview`,
    `reference-app.feed-reader`, `reference-app.feed-reader-subscriptions`,
    `reference-app.feed-reader-app-data`, `reference-app.trust-graph`,
    `reference-app.trust-graph-durable-exchange`, and
@@ -175,6 +179,12 @@ Treat these as release blockers, in order:
    trust-statement subscription management, generated trust-statement publication permissions, and
    redaction of raw trust documents, raw fetched content, raw request bodies, tokens, form
    passwords, private insert URIs, raw signatures, and local paths.
+   App-data backup/restore evidence must stay host/operator-only and metadata-only in support
+   bundles and restore previews; do not include backup payload values, raw app data, form
+   passwords, tokens, or local paths in release artifacts.
+   App-service dependency and grant-bundle evidence must prove operator-mediated grants without
+   exposing raw service request bodies, raw subject URIs, raw trust data, provider app data, tokens,
+   private insert URIs, or local paths.
 9. **Trusted app-review receipt evidence** - verify the release certification report includes
    `app-review.trusted-receipts`, `app-review.policy`, `app-review.governance`,
    `app-review.reviewer-key-lifecycle`, `app-review.transparency-log`,
@@ -202,8 +212,13 @@ Treat these as release blockers, in order:
    primary-replaced, retained, and pending surface counts, confirm primary-replaced surfaces are
    absent from Web Shell fallback navigation, prove `legacy-admin.removal-wave-1` replacement and
    blocked-mutation behavior, prove `legacy-admin.removal-wave-2` safe-read replacement behavior,
-   route-scope expansion metadata, partial mutation fallbacks, and retained raw diagnostic export
-   status, and confirm retained/pending legacy routes remain documented.
+   route-scope expansion metadata and partial mutation fallbacks, prove
+   `legacy-admin.removal-wave-3` security-level redirects plus the exact
+   `legacyFallback=security-levels` fallback, prove `legacy-admin.removal-wave-4` diagnostic
+   redirects plus the exact `legacyFallback=diagnostic-export` plaintext export fallback, and
+   confirm retained/pending legacy routes remain documented. FProxy browse/content rendering,
+   content filter, startup wizard/recovery flows, security recovery fallback, chat, translation,
+   help, and node-to-node message routes remain outside Wave 4.
    Optional live evidence may read `GET /api/v1/diagnostics`; those counters are process-local and
    are not durable audit logs. The retirement source of truth is
    [legacy-retirement-plan.md](legacy-retirement-plan.md).
