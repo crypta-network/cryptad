@@ -1,6 +1,6 @@
 ---
 name: cryptad-platform-apps
-description: "Work on Cryptad's app platform: Platform API v1/contract, AppHost runtime/rollback, signed app bundles/catalogs, trusted app-review receipts, Trust Graph Preview, app-update lifecycle, durable app data, content subscriptions, local app-service grants, app-owned static UI, browser sessions, the browser SDK, the app UI design system/linter, developer CLI, app permissions/audit, sandbox providers, operator beta dashboard/support evidence, live-network beta certification evidence, and legacy admin retirement routing."
+description: "Work on Cryptad's app platform: Platform API v1/contract, AppHost runtime/rollback, signed app bundles/catalogs, trusted app-review receipts, Trust Graph Local RC, app-update lifecycle, durable app data, app-data backup/restore, content subscriptions, local app-service discovery/dependencies/grant bundles, app-owned static UI, browser sessions, the browser SDK, the app UI design system/linter, developer CLI, app permissions/audit, sandbox providers, operator beta dashboard/support evidence, live-network beta certification evidence, legacy plugin freeze, and legacy admin retirement routing."
 ---
 
 # Cryptad platform apps
@@ -23,6 +23,7 @@ Load only the docs needed for the change:
 - App update lifecycle and rollback: `docs/app-update-lifecycle.md`
 - App upgrade data migrations: `docs/app-upgrade-data-migrations.md`
 - Durable app data: `docs/app-data-store.md`
+- App-data backup/restore portability: `docs/app-data-backup-restore-portability.md`
 - Local app-service discovery and grants: `docs/app-service-discovery-and-grants.md`
 - App-owned static UI routes and bootstrap JSON: `docs/app-owned-ui.md`
 - App UI design-system assets and offline UI lint: `docs/app-ui-design-system.md`
@@ -34,6 +35,7 @@ Load only the docs needed for the change:
 - AppHost runtime/log/token boundary: `docs/apphost-runtime-hardening.md`
 - App-token permission matrix and audit model: `docs/app-permissions-and-audit.md`
 - Legacy admin replacement map and usage counters: `docs/legacy-retirement-plan.md`
+- Legacy plugin freeze policy: `docs/legacy-plugin-freeze-policy.md`
 - Operator beta dashboard and redacted support bundle: `docs/operator-beta-dashboard.md`
 - App-platform release evidence: `docs/release-certification.md`
 
@@ -42,10 +44,10 @@ Load only the docs needed for the change:
 - `:platform-api` owns the transport-neutral Platform API v1 router, route families,
   deterministic compatibility contract, app-token authorization decisions, browser-session
   authorization decisions, capabilities, app-vault route handlers, generated app-document queue
-  staging, bounded content fetch routing, durable content subscriptions, durable app data and
-  internal update snapshots, local Trust Graph Preview route handlers, local app-service
-  discovery/grants and adapters, bounded app audit logs, and the local app-update lifecycle service
-  plus scheduler above
+  staging, bounded content fetch routing, durable content subscriptions, durable app data,
+  app-data backup/restore planning and commit routes, internal update snapshots, local Trust Graph
+  Local RC route handlers, local app-service discovery/dependency/grant-bundle routes and adapters,
+  bounded app audit logs, and the local app-update lifecycle service plus scheduler above
   AppHost/catalog/vault/app-data/content/trust/runtime primitives, plus the host/operator-only
   beta dashboard, subscription recovery wrappers, and redacted support-bundle assembly.
 - `:platform-apphost` owns installed app layout, manifest parsing, app process lifecycle,
@@ -72,10 +74,10 @@ Load only the docs needed for the change:
   app-review receipts, trusted reviewer-key loading, review policy modes, and review trust
   decisions used by app update review, reviewer-key lifecycle parsing, local review transparency
   logging, governance snapshots, and review-history API support.
-- `:platform-trustgraph` owns the Trust Graph Preview statement model, strict JSON parser,
-  canonical payload and signature helpers, process-local anchor/store abstractions, and
-  deterministic direct-anchor scoring. It is a local preview library, not a peer protocol or full
-  Web of Trust implementation.
+- `:platform-trustgraph` owns the Trust Graph Local RC statement model, strict JSON parser,
+  canonical payload and signature helpers, process-local anchor/store abstractions, lifecycle
+  status records, and deterministic direct-anchor scoring. It is a local preview library, not a
+  peer protocol or full Web of Trust implementation.
 - `:platform-devtools` owns the standalone `crypta-app` CLI for scaffolding, validating, signing,
   packaging, verifying, catalog-authoring, API contract snapshotting, compatibility verification,
   mock dev serving, offline app tests, developer key generation, and dry-run publication planning
@@ -83,11 +85,12 @@ Load only the docs needed for the change:
   lint` and review receipt sign/verify helpers.
 - `:platform-web-shell` owns `/app/node/` browser shell assets, bootstrap, app/catalog/update/review
   operator views, the operator beta dashboard/support-bundle panel, subscription recovery controls,
-  and app-service grant approval/revocation UI.
+  app-data backup/restore controls, app-service dependency/grant-bundle review UI, and explicit
+  legacy security/diagnostic fallback actions.
 - `:adapter-http-legacy-admin` hosts the current `/api/v1/`, `/app/node/`, `/apps/{appId}/`
   compatibility bridge, isolated app-UI loopback origin server, Platform API form-password guard,
-  operator subscription-recovery form-password guard, and legacy admin retirement notices and
-  diagnostics counters.
+  operator subscription-recovery form-password guard, legacy admin retirement notices, diagnostic
+  Wave 4 replacement/fallback routing, and diagnostics counters.
 - `:apps:queue-manager` stages the first-party queue-control static UI bundle.
 - `:apps:publisher` stages the legacy-publisher replacement static UI bundle.
 - `:apps:site-publisher` stages the first-party content reference static UI bundle.
@@ -120,10 +123,13 @@ Load only the docs needed for the change:
   enforce bounded namespaces/keys/values/imports, and keep raw values, request bodies, store roots,
   app data directories, private insert URIs, tokens, and local paths out of public JSON, audit,
   docs, and release evidence.
+- App-data backup/restore is host/operator-only and is not an app-facing contract bump by itself.
+  Restore previews and support evidence must stay metadata-only: no raw backup payloads, raw app
+  data values, form passwords, private insert URIs, tokens, store roots, or absolute local paths.
 - App-generated document insert routes accept generated document bytes, not local source paths.
   Keep raw generated documents, raw feed/profile/trust bodies, private insert URIs, raw
   signatures, and request bodies out of audit entries, logs, and release evidence.
-- Trust Graph Preview is local preview scoring and bounded statement import/sign/publish support.
+- Trust Graph Local RC is local preview scoring and bounded statement import/sign/publish support.
   Do not claim full Web of Trust compatibility, old plugin compatibility, global moderation,
   background crawling, daemon-core identity sharing, or protocol/network behavior changes. Trust
   evidence must stay bounded and redacted; do not record raw trust documents from real users.
@@ -132,9 +138,19 @@ Load only the docs needed for the change:
   plugin ABIs, cross-app app-data access, or provider run/cache/store path exposure. Invocation must
   check the authenticated app principal, declared capabilities, current provider descriptor, active
   grant, scope, and context at call time.
+- App-service dependency graphs and grant bundles must remain bounded operator-mediated metadata.
+  Revalidate signed consumer manifests and current provider descriptors before approval, renewal,
+  or invocation. Evidence and Web Shell summaries must not include raw service request bodies, raw
+  subject URIs, raw Trust Graph data, provider app data, tokens, private keys, private insert URIs,
+  raw signatures, backup payloads, or local paths.
 - Social Inbox Preview is a migration spike for social/mail-like workflows. Do not present it as
   encrypted mail transport, Freetalk/Sone/Freemail compatibility, full WoT, or a daemon-core message
   protocol.
+- The legacy in-process plugin system is frozen and removed. Do not add
+  `network.crypta.pluginmanager`, plugin toadlets, old plugin ABIs, old
+  WebOfTrust/Freetalk/Sone/Freemail shims, or FCP plugin command execution. Legacy plugin FCP
+  command names may only map to deterministic unsupported responses through the existing
+  unsupported-command handler.
 - Audit entries are bounded and process-local. Do not add query strings, request bodies, form
   passwords, tokens, absolute filesystem paths, or large payloads.
 - Static UI routes must serve only immutable installed-bundle files. Reject traversal, encoded path
@@ -182,13 +198,19 @@ Load only the docs needed for the change:
   tokens, or host private configuration.
 - Legacy admin retirement changes must update both the code map
   (`LegacyAdminRetirementRegistry`) and `docs/legacy-retirement-plan.md`.
+- Legacy admin Wave 4 removes only the `diagnostic` surface by default. Safe reads should use Web
+  Shell diagnostics when available; the plaintext diagnostic export is retained only through the
+  exact same-origin fallback marker `legacyFallback=diagnostic-export`. Do not add FProxy browse,
+  content rendering, content filter, startup wizard/recovery, security recovery fallback, chat,
+  translation, help, or node-to-node message routes to a removal wave without a separate audited
+  replacement.
 - Release-certification evidence must not expose private signing keys, app process tokens,
   browser-session tokens, form passwords, raw request bodies, raw feed bodies, raw trust documents,
-  private insert URIs, non-localhost endpoint metadata, or unsanitized local paths. Optional live
-  AppHost smoke reads the form password from `CRYPTAD_CERT_FORM_PASSWORD`; do not pass it as a
-  command-line argument. Dedicated live-network beta certification must stay localhost-only,
-  env/protected-file driven for secrets, and disabled for normal PR/nightly/offline
-  release-candidate runs unless explicitly requested.
+  raw diagnostic exports, raw app-data backup payloads, private insert URIs, non-localhost endpoint
+  metadata, or unsanitized local paths. Optional live AppHost smoke reads the form password from
+  `CRYPTAD_CERT_FORM_PASSWORD`; do not pass it as a command-line argument. Dedicated live-network
+  beta certification must stay localhost-only, env/protected-file driven for secrets, and disabled
+  for normal PR/nightly/offline release-candidate runs unless explicitly requested.
 
 ## Release certification smoke
 
@@ -196,14 +218,15 @@ Load only the docs needed for the change:
   release certification. It validates first-party staged bundles, static UI/SDK coherence,
   design-system adoption, strict UI lint JSON evidence, `crypta-app init/validate/pack/dev/test`,
   Platform API contract snapshots, app-vault capability evidence, generated document insert
-  evidence, bounded content-fetch/subscription evidence, durable app-data evidence, signed bundle
-  evidence, signed catalog/live USK publication evidence, first-party beta catalog metadata, trusted
-  app-review receipt evidence, sandbox-provider evidence, app-update lifecycle/scheduler/rollback
-  and app-data migration contract evidence, Site Publisher/Profile Publisher/Social Inbox/Feed
-  Reader/Trust Graph Preview reference-app evidence, app-service registry/grant/redaction
+  evidence, bounded content-fetch/subscription evidence, durable app-data and app-data
+  backup/restore evidence, signed bundle evidence, signed catalog/live USK publication evidence,
+  first-party beta catalog metadata, trusted app-review receipt evidence, sandbox-provider
+  evidence, app-update lifecycle/scheduler/rollback and app-data migration contract evidence, Site
+  Publisher/Profile Publisher/Social Inbox/Feed Reader/Trust Graph Local RC reference-app evidence,
+  app-service registry/grant/dependency/grant-bundle/redaction evidence, legacy plugin freeze
   evidence, app-review governance and local transparency-log evidence, public-beta security
   hardening evidence, operator beta dashboard/recovery/support-bundle evidence, legacy-admin
-  retirement state, and optional
+  retirement and Wave 1-4 removal state, and optional
   localhost-only live AppHost lifecycle evidence.
 - `tools/release-certification/live_network_beta_smoke.py` is the explicit release-manager
   live-network beta evidence collector. It validates a prepared localhost node, live catalog
@@ -260,9 +283,10 @@ When changing `crypta-app` command wiring or distribution behavior, also run
 When changing signed bundle/catalog, live USK publication, app-review receipts, static UI,
 design-system assets, UI lint, SDK, Platform API contract, AppHost lifecycle, app-vault
 capabilities, generated document inserts, content fetch/subscriptions, durable app data,
-app-service grants/adapters, Trust Graph Preview, Social Inbox Preview, app-update
-lifecycle/scheduler/rollback, sandbox-provider evidence, operator beta dashboard/support-bundle
-behavior, live-network beta certification behavior, reference content/profile/social/feed/trust
+app-data backup/restore, app-service dependencies/grant bundles, Trust Graph Local RC, Social Inbox
+RC, app-update lifecycle/scheduler/rollback, sandbox-provider evidence, operator beta
+dashboard/support-bundle behavior, live-network beta certification behavior, reference
+content/profile/social/feed/trust
 apps, app platform beta docs evidence, or legacy-admin retirement evidence behavior, also run:
 
 ```bash

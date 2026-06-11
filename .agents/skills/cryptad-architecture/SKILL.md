@@ -1,7 +1,6 @@
 ---
 name: cryptad-architecture
 description: "Navigate Cryptad’s module/package architecture, key subsystems, design patterns, security model, and versioning scheme."
-compatibility: opencode
 metadata:
   area: architecture
   domain: cryptad
@@ -67,8 +66,9 @@ Use this skill when you need to:
   - `:platform-api` → `network.crypta.platform.api` (transport-neutral Platform API v1,
     compatibility contract, app capabilities/audit, app-vault routes, app-generated document
     inserts, bounded content fetch, durable content subscriptions, durable app data and internal
-    update snapshots, local app-service discovery/grants, app-update lifecycle/scheduler, and
-    host/operator-only beta dashboard/support-bundle/recovery routes)
+    update snapshots, app-data backup/restore routes, local app-service discovery/dependency
+    graph/grant-bundle routes, app-update lifecycle/scheduler, and host/operator-only beta
+    dashboard/support-bundle/recovery routes)
   - `:platform-apphost` → `network.crypta.platform.apphost` (transport-neutral out-of-process
     AppHost core, sandbox status, durable rollback records, and AppHost-managed quota enforcement)
   - `:platform-app-ui` → `network.crypta.platform.appui` (app-owned static UI route and asset
@@ -87,16 +87,17 @@ Use this skill when you need to:
     catalog writer/descriptors, Crypta catalog source handling, app-store/API compatibility
     metadata, independent app-review receipts, artifact verification, safe ZIP extraction, and
     verified staging)
-  - `:platform-trustgraph` → `network.crypta.platform.trustgraph` (Trust Graph Preview statement
-    parsing, canonicalization, verification, process-local store/anchor behavior, and deterministic
-    direct-anchor scoring)
+  - `:platform-trustgraph` → `network.crypta.platform.trustgraph` (Trust Graph Local RC statement
+    parsing, canonicalization, verification, process-local store/anchor behavior, lifecycle/status
+    records, and deterministic direct-anchor scoring)
   - `:platform-devtools` → `network.crypta.platform.devtools` (standalone `crypta-app` developer
     CLI for staged-bundle, UI lint, mock dev server, offline tests, catalog-authoring, developer
     keys, publication plans, explicit live USK catalog publication, API snapshot, and compatibility
     verification workflows)
   - `:platform-web-shell` → `network.crypta.platform.webshell` (browser-facing Web Shell v1,
     including Apps, catalog, update, review, operator beta dashboard/support-bundle, subscription
-    recovery, and app-service grant operator surfaces)
+    recovery, app-data backup/restore, app-service dependency/grant-bundle review, and explicit
+    legacy security/diagnostic fallback surfaces)
   - `:runtime-alerts` → the extracted leaf-safe `network.crypta.runtime.alerts` feed/model subset
     plus the detached `UserAlertSurface`
   - `:runtime-node` → extracted daemon runtime body across the remaining cyclic/high-level
@@ -179,9 +180,10 @@ Use this skill when you need to:
   `:platform-design-system` owns canonical local app UI assets, `:platform-sdk-js` owns the
   browser SDK resource, `:platform-appdist` owns signed local bundle distribution,
   `:platform-appcatalog` owns signed catalog sources, trusted app-review receipts, and verified
-  staging, `:platform-trustgraph` owns local trust statement parsing and deterministic preview
-  scoring, `:platform-devtools` owns the standalone app developer CLI and offline UI linter,
-  `:platform-web-shell` owns the browser-facing node-management shell and operator beta
+  staging, `:platform-trustgraph` owns local trust statement parsing, lifecycle records, and
+  deterministic preview scoring, `:platform-devtools` owns the standalone app developer CLI and
+  offline UI linter, `:platform-web-shell` owns the browser-facing node-management shell, app-data
+  backup/restore controls, app-service dependency/grant-bundle review, and operator beta
   dashboard, `:runtime-alerts` owns the extracted alert/feed model subset,
   `:runtime-node` owns the
   remaining runtime/node/client/support body, `:adapter-fcp` owns the FCP adapter tree,
@@ -346,6 +348,12 @@ Use this skill when you need to:
   - `LegacyAdminRetirementRegistry` maps replaced legacy admin surfaces, and
     `LegacyAdminUsageRecorder` feeds process-local legacy-page counters into Platform API
     diagnostics without storing query strings, form bodies, tokens, or remote addresses.
+  - Current legacy admin removal waves cover selected queue/publisher/peer/connectivity routes,
+    selected alert/config/core-update/statistics/queue helper routes, the security-levels safe-read
+    route with exact `legacyFallback=security-levels` support fallback, and the diagnostic safe-read
+    route with exact `legacyFallback=diagnostic-export` plaintext export fallback. FProxy
+    browse/content rendering, content filter, startup wizard/recovery flows, chat, translation,
+    help, and node-to-node message routes remain retained or pending.
   - `network.crypta.clients.http.updater.CoreActionToadlet` reaches updater availability,
     download triggers, and installer-path validation through `CoreUpdateActionPort`.
   - `FirstTimeWizardToadlet` and `FirstTimeWizardNewToadlet` use `FirstTimeWizardPort` for
@@ -373,8 +381,9 @@ Use this skill when you need to:
   It exposes node/config/peer/connectivity/security, queue, updates, wizard, alerts, diagnostics,
   apps, app updates, app-catalog control-plane families, app-vault route handlers, generated
   app-document inserts, bounded content fetch, durable content subscriptions, durable app data and
-  update migration snapshots, local app-service discovery/grants, and the deterministic Platform
-  API compatibility contract,
+  update migration snapshots, app-data backup/restore routes, local app-service
+  discovery/dependency graph/grant-bundle routes, and the deterministic Platform API compatibility
+  contract,
   and is currently mounted at `/api/v1/` by the legacy HTTP adapter. It also owns app-token and
   browser-session authorization decisions, bounded process-local app audit logs, and local
   app-update lifecycle/scheduler coordination above AppHost, signed catalog, vault, app-data,
@@ -414,10 +423,11 @@ Use this skill when you need to:
   compatibility metadata, verifies independent app-review receipts against trusted reviewer keys
   and local review policy, validates artifact size and SHA-256, safely extracts ZIP bundles, and
   delegates verified staged bundles to AppHost install/update flows.
-- `:platform-trustgraph` owns `network.crypta.platform.trustgraph`, the local Trust Graph Preview
+- `:platform-trustgraph` owns `network.crypta.platform.trustgraph`, the local Trust Graph Local RC
   model and scoring layer. It parses bounded trust statement documents, canonicalizes and verifies
-  statement payloads, stores process-local anchors/statements, and computes deterministic direct
-  trust scores without changing peer protocols or claiming full Web of Trust behavior.
+  statement payloads, stores process-local anchors/statements, records local lifecycle status, and
+  computes deterministic direct trust scores without changing peer protocols or claiming full Web
+  of Trust behavior.
 - `:platform-devtools` owns `network.crypta.platform.devtools`, the standalone `crypta-app` CLI. It
   wires app template scaffolding, bundle validation, signing, packaging, verification, permission
   linting, offline UI linting, mock dev serving, offline app tests, developer key generation,
@@ -429,8 +439,9 @@ Use this skill when you need to:
   `network.crypta.platform.webshell`. It provides the current node-management shell route
   constants, bootstrap payload, renderer, and static browser assets mounted at `/app/node/`; it
   opens app-owned `uiUrl` values when installed app summaries expose them and surfaces app catalog
-  review, update candidate, staged update, policy, health-gate, rollback, advertised app-service,
-  and service-grant approval/revocation state for operators.
+  review, update candidate, staged update, policy, health-gate, rollback, app-data backup/restore
+  controls, advertised app-service dependencies, grant-bundle approval/renewal state, and explicit
+  legacy security/diagnostic fallback actions for operators.
 
 ### Runtime SPI (`network.crypta.runtime.spi`)
 - Aggregate boundary: `RuntimePorts`
@@ -472,9 +483,13 @@ Use this skill when you need to:
   `FcpUserAlertFeedMessageFactory`, `FcpPersistentRequestServices`, and endpoint-handle wrappers
 
 ### Plugin system
-- The legacy plugin runtime has been removed from the node.
-- Do not expect `network.crypta.pluginmanager`, plugin toadlets, or plugin FCP commands in the
-  current codebase.
+- The legacy in-process plugin runtime is frozen and removed from the node.
+- Do not add `network.crypta.pluginmanager`, plugin toadlets, old plugin ABI compatibility, or old
+  WebOfTrust/Freetalk/Sone/Freemail shims. Legacy FCP plugin command names should continue to
+  fail deterministically through the unsupported-command handler, not execute plugin code.
+- Plugin-like functionality should use out-of-process apps, signed catalogs, Platform API,
+  AppVault, durable app data, content subscriptions, Trust Graph Local RC, and operator-approved
+  app-service grants.
 
 ### Configuration (`network.crypta.config`)
 - Main sources live in `:foundation-config`.

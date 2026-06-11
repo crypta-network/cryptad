@@ -43,7 +43,7 @@ INTEROP_MODE=extended INTEROP_SKIP_BUILD=1 tools/interop/run-hyphanet-interop-sm
 - The performance gate records lightweight packaged-node startup, local FCP/Platform API timing,
   distribution size, Web Shell asset size, SDK asset size, and first-party static app source and
   staged-bundle size signals for Queue Manager, Publisher, Site Publisher, Profile Publisher,
-  Social Inbox Preview, Feed Reader, and Trust Graph Preview. It is not a broad benchmark suite.
+  Social Inbox Preview, Feed Reader, and Trust Graph Local RC. It is not a broad benchmark suite.
 - The runner requires Python 3.12 or newer.
 - Normal local commands:
 
@@ -82,12 +82,13 @@ build/release-certification/live-network-beta-smoke/live-network-beta-smoke-repo
   receipts, app-owned UI origin behavior, app UI design-system/lint evidence, live USK catalog
   publication, Site Publisher reference-content coverage, Profile Publisher identity-profile
   coverage, Feed Reader content-fetch/subscription/app-data and app-data migration coverage,
-  Social Inbox migration coverage, Trust Graph Preview durable exchange and app-data migration
-  coverage, app-service registry/grant/redaction
-  coverage, generated document insert/content-fetch and trust redaction coverage, app-review
+  Social Inbox RC threading/trust/dependency coverage, Trust Graph Local RC durable exchange,
+  lifecycle, and app-data migration coverage, app-data backup/restore portability evidence,
+  app-service registry/grant/dependency/grant-bundle/redaction coverage, generated document
+  insert/content-fetch and trust redaction coverage, legacy plugin freeze evidence, app-review
   governance/reviewer-key/transparency-log evidence, public-beta security hardening evidence,
-  operator beta dashboard/recovery/support-bundle evidence, legacy-admin retirement/removal
-  evidence, sandbox provider selection, and app-update lifecycle/scheduler/rollback.
+  operator beta dashboard/recovery/support-bundle evidence, legacy-admin retirement/removal Wave
+  1-4 evidence, sandbox provider selection, and app-update lifecycle/scheduler/rollback.
 - `tools/release-certification/live_network_beta_smoke.py` is the explicit release-manager live
   network collector. Its self-test is offline and deterministic, but normal runs may call only a
   validated localhost node and use env/protected-file fixtures for form passwords, catalog expected
@@ -120,10 +121,14 @@ tools/release-certification/run-release-certification.sh --mode release-candidat
   `app-platform.identity-profile-publish`, `app-platform.generated-document-insert`,
   `app-platform.content-fetch`, `app-platform.content-subscriptions`,
   `network-content.subscription-scheduler`, `app-platform.durable-app-data-store`,
-  `app-platform.trust-graph-preview`, `app-platform.trust-graph-durable-store`,
+  `app-data.backup-restore-portability`, `app-platform.trust-graph-preview`,
+  `app-platform.trust-graph-rc-scope-and-safety`, `app-platform.trust-graph-durable-store`,
   `app-platform.trust-graph-exchange`, `app-platform.trust-statement-signing`,
   `app-platform.social-message-signing`, `app-services.registry`, `app-services.grants`,
+  `app-services.dependency-graph`, `app-services.grant-bundles`,
+  `app-services.grant-expiry-renewal`, `app-services.provider-revalidation`,
   `app-services.trust-score-provider`, `app-services.web-shell`, `app-services.redaction`,
+  `app-services.dependency-redaction`,
   `app-ui.design-system`, `app-ui.lint`, `app-ui.first-party-adoption`, `app-ui.smoke`,
   `reference-apps.content`, `reference-app.profile-publisher`,
   `reference-app.profile-publisher-app-data`, `reference-app.feed-reader`,
@@ -131,10 +136,13 @@ tools/release-certification/run-release-certification.sh --mode release-candidat
   `reference-app.social-inbox`, `reference-app.social-inbox-signed-message`,
   `reference-app.social-inbox-subscriptions`, `reference-app.social-inbox-app-data`,
   `reference-app.social-inbox-trust-annotations`, `reference-app.social-inbox-service-grant`,
+  `reference-app.social-inbox-rc-threading`, `reference-app.social-inbox-service-dependency`,
   `migration.social-mail-preview`, `reference-app.trust-graph`,
   `reference-app.trust-graph-durable-exchange`, `reference-app.trust-graph-app-data-preview`,
+  `legacy-plugin.freeze-policy`,
   `legacy.retirement`, `legacy-admin.removal-wave-1`, `legacy-admin.removal-wave-2`,
-  `legacy-admin.removal-wave-3`, `apphost.sandbox-provider`, `app-update.lifecycle`,
+  `legacy-admin.removal-wave-3`, `legacy-admin.removal-wave-4`, `apphost.sandbox-provider`,
+  `app-update.lifecycle`,
   `app-update.scheduler`, `app-update.rollback`, `app-update.live-catalog-refresh`,
   `app-update.data-migration-contract`,
   `public-beta-security.*`, `operator-beta.*`, `app-review.trusted-receipts`,

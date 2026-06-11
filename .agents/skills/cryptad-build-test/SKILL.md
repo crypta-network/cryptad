@@ -1,7 +1,6 @@
 ---
 name: cryptad-build-test
 description: "Build, test, and run Cryptad safely using the Gradle wrapper (Java 25+, JUnit 6)."
-compatibility: opencode
 metadata:
   area: build
   domain: cryptad
@@ -94,9 +93,10 @@ Use this skill when you need to:
   root test tree and run through the root build.
 - `:platform-api` owns the transport-neutral Platform API v1, deterministic compatibility contract,
   app capability/audit decisions, app-vault route handlers, content/app-data/subscription/service
-  routes, app-update lifecycle service, app-data migration planning/execution and internal update
-  snapshots, and host/operator-only beta dashboard/support-bundle routes. Its focused leaf tests
-  now live under `platform-api/src/test/java`.
+  routes, app-data backup/restore planning and commit routes, app-service dependency graph and
+  grant-bundle routes, app-update lifecycle service, app-data migration planning/execution and
+  internal update snapshots, and host/operator-only beta dashboard/support-bundle routes. Its
+  focused leaf tests now live under `platform-api/src/test/java`.
 - `:platform-apphost` owns the transport-neutral out-of-process AppHost core, sandbox
   policy/status reporting, Linux bubblewrap provider selection, durable rollback records,
   data/cache quota enforcement, and focused leaf tests under `platform-apphost/src/test/java`.
@@ -113,9 +113,9 @@ Use this skill when you need to:
   verification, `crypta:` catalog source fetching, app-store/API compatibility metadata,
   independent app-review receipt trust metadata, artifact download, safe ZIP extraction, and
   verified staging code plus focused tests under `platform-appcatalog/src/test/java`.
-- `:platform-trustgraph` owns Trust Graph Preview statement parsing, canonicalization,
-  verification, process-local store/anchor behavior, and deterministic scoring plus focused tests
-  under `platform-trustgraph/src/test/java`.
+- `:platform-trustgraph` owns Trust Graph Local RC statement parsing, canonicalization,
+  verification, process-local store/anchor behavior, lifecycle/status records, and deterministic
+  scoring plus focused tests under `platform-trustgraph/src/test/java`.
 - `:platform-design-system` owns the canonical local app UI CSS/JS resources plus safe
   asset-listing, hashing, and bundle-copy helpers. Its focused tests live under
   `platform-design-system/src/test/java`.
@@ -124,8 +124,10 @@ Use this skill when you need to:
   under `platform-devtools/src/test/java`.
 - `:platform-sdk-js` owns the dependency-free browser SDK resource and focused resource/boundary
   tests under `platform-sdk-js/src/test/java`.
-- `:platform-web-shell` owns the browser-facing Web Shell leaf, including the operator beta
-  dashboard panel, and its focused leaf tests under `platform-web-shell/src/test/java`.
+- `:platform-web-shell` owns the browser-facing Web Shell leaf, including app/catalog/update/review
+  views, app-service dependency/grant-bundle review, operator beta dashboard and app-data
+  backup/restore controls, legacy explicit fallback actions, and focused leaf tests under
+  `platform-web-shell/src/test/java`.
 - `:runtime-alerts` owns the extracted leaf-safe `network.crypta.runtime.alerts` feed/model
   subset plus the detached `UserAlertSurface` used by legacy HTTP/admin code.
 - `:runtime-node` is the extracted daemon runtime leaf. It now owns the remaining cyclic/high-level
@@ -256,7 +258,7 @@ When running ./gradlew test via OpenCode bash, set timeout ≥ 15 minutes (≥ 9
   - `./gradlew :platform-appdist:compileJava`
 - Compile the app catalog leaf when you touched `network.crypta.platform.appcatalog`:
   - `./gradlew :platform-appcatalog:compileJava`
-- Compile the Trust Graph Preview leaf when you touched `network.crypta.platform.trustgraph`:
+- Compile the Trust Graph Local RC leaf when you touched `network.crypta.platform.trustgraph`:
   - `./gradlew :platform-trustgraph:compileJava`
 - Compile the developer app CLI leaf when you touched `network.crypta.platform.devtools`:
   - `./gradlew :platform-devtools:compileJava`
@@ -288,7 +290,7 @@ When running ./gradlew test via OpenCode bash, set timeout ≥ 15 minutes (≥ 9
 ## First-party app bundle checks
 - Stage first-party app bundles, especially after changing `:platform-sdk-js` or
   `:platform-design-system` because Queue Manager, Publisher, Site Publisher, Profile Publisher,
-  Social Inbox Preview, Feed Reader, and Trust Graph Preview copy those assets into staged static UI
+  Social Inbox Preview, Feed Reader, and Trust Graph Local RC copy those assets into staged static UI
   bundles:
   - `./gradlew stageFirstPartyApps`
 - Run app project tests:

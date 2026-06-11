@@ -95,10 +95,11 @@ replacement pages, diagnostics, or release-certification evidence.
 | `/stats/` and `/stats/requesters.html` | `statistics` | `303 See Other` when Web Shell diagnostics are available; otherwise legacy fallback | No mutating legacy statistics action is removed in this wave | `/app/node/#diagnostics` |
 | `/downloads/countRequests.html`, `/downloads/listKeys.txt`, `/uploads/countRequests.html`, and `/uploads/listKeys.txt` | `queue-downloads`, `queue-uploads` | `303 See Other` when Queue Manager is available; otherwise legacy fallback | `410 Gone` when Queue Manager is available; otherwise legacy fallback | `/apps/queue-manager/` |
 
-The raw diagnostic export remains retained. `/diagnostic/` still renders the legacy plain-text
-diagnostic report because release, interop, and support workflows use that export and this PR does
-not add an equivalent explicit Platform API or Web Shell export. Security-level recovery and
-confirmation flows remain legacy fallback and are not covered by wave 2.
+During Wave 2, the raw diagnostic export remained retained. `/diagnostic/` still rendered the
+legacy plain-text diagnostic report because release, interop, and support workflows used that
+export and that PR did not add an equivalent explicit Platform API or Web Shell export.
+Security-level recovery and confirmation flows remain legacy fallback and are not covered by
+Wave 2.
 
 Wave 2 does not remove FProxy browse, key/content rendering, content filter, startup wizard,
 node-to-node messages, translation, help, chat/forum discovery, Platform API routes, Web Shell
@@ -135,7 +136,7 @@ Wave 3 explicitly retains or leaves pending:
 
 - FProxy browse and key/content rendering.
 - Content filter.
-- Raw diagnostic export.
+- Raw diagnostic export, before Wave 4 moves the default diagnostic safe-read path to Web Shell.
 - Startup wizard and emergency fallback.
 - Node-to-node messages.
 - Retained chat/forum discovery.

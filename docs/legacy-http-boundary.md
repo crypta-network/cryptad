@@ -64,10 +64,26 @@ helper routes `/downloads/countRequests.html`, `/downloads/listKeys.txt`,
 Config POST mutations are blocked when Web Shell config and Platform API config write endpoints
 are available. Mutating legacy alert bulk actions and core-update installer and package-store
 actions remain fallback because their replacements are incomplete or action-specific routing is not
-yet part of the central policy. `RETAINED` browse/FProxy surfaces, content filter, the raw
-diagnostic export, and `PENDING` admin routes stay in their current legacy entry points until a
-later batch proves a complete replacement. Queue and Friends category roots no longer use removed
-legacy URLs as normal fallbacks.
+yet part of the central policy. `RETAINED` browse/FProxy surfaces, content filter, and `PENDING`
+admin routes stay in their current legacy entry points until a later batch proves a complete
+replacement. The diagnostic export remained retained during Wave 2. Queue and Friends category
+roots no longer use removed legacy URLs as normal fallbacks.
+
+Wave 3, reported as `legacy-admin.removal-wave-3`, applies the same bounded replacement policy to
+the security-levels safe-read route only. `GET` and `HEAD` for the canonical route and slashless
+alias redirect to Web Shell security when that replacement is reachable. The legacy
+password/recovery page remains available only through the exact safe-read marker
+`legacyFallback=security-levels`; arbitrary query strings and mutating requests do not bypass the
+normal policy.
+
+Wave 4, reported as `legacy-admin.removal-wave-4`, applies removal-by-default only to the
+diagnostic route. Safe reads for `/diagnostic/` and its slashless alias redirect to Web Shell
+diagnostics when the shell is reachable. The plaintext diagnostic export remains available as an
+explicit support fallback through the exact safe-read marker
+`legacyFallback=diagnostic-export`; arbitrary diagnostic query strings, mutating requests, and
+diagnostic subpaths do not bypass the removal policy. FProxy browse/content rendering, content
+filter, startup wizard/recovery flows, the Wave 3 security fallback, chat, translation, help, and
+node-to-node message routes remain retained or pending.
 
 Production code outside `:adapter-http-legacy-admin`, `:adapter-http-legacy-browse`, and
 `:bridge-http-runtime` should keep depending on runtime-owned seams, `:platform-api`, or

@@ -1,7 +1,6 @@
 ---
 name: cryptad-packaging
 description: "Build and troubleshoot distributions and installers (assembleCryptadDist, jpackage, Windows wrapper assets, Flatpak, Linux DEB/RPM behavior)."
-compatibility: opencode
 metadata:
   area: packaging
   domain: cryptad
@@ -43,8 +42,10 @@ Use this skill when working on:
 - The `:runtime-spi` JAR is packaged like the other leaf artifacts; packaging still produces one
   daemon distribution rooted at `:cryptad`.
 - The `:platform-api` JAR contributes the transport-neutral Platform API v1 surface, compatibility
-  contract, app-vault route handlers, generated app-document inserts, bounded content fetch, and
-  app-update lifecycle/scheduler coordination, and the
+  contract, app-vault route handlers, generated app-document inserts, bounded content fetch,
+  durable app data, app-data backup/restore routes, app-service dependency graph/grant-bundle
+  routes, Trust Graph Local RC route handlers, and app-update lifecycle/scheduler coordination, and
+  the
   `:platform-apphost` JAR contributes the transport-neutral local AppHost core, sandbox-provider
   selection, and durable bundle rollback used by that API.
 - The `:platform-app-ui` JAR contributes app-owned static UI route/origin helpers used by the
@@ -59,9 +60,9 @@ Use this skill when working on:
   verification, Crypta catalog source fetching, app-store/API compatibility metadata parsing,
   independent app-review receipt trust metadata, artifact download, safe ZIP extraction, and
   verified staging support.
-- The `:platform-trustgraph` JAR contributes local Trust Graph Preview statement parsing,
-  canonicalization, verification, process-local store/anchor behavior, and deterministic scoring
-  used by Platform API trust routes.
+- The `:platform-trustgraph` JAR contributes local Trust Graph Local RC statement parsing,
+  canonicalization, verification, process-local store/anchor behavior, lifecycle/status records,
+  and deterministic scoring used by Platform API trust routes.
 - The `:platform-design-system` JAR contributes canonical local static app UI assets and helper
   APIs used by first-party app staging and the standalone developer CLI. It is packaged as a normal
   leaf artifact but the CSS/JS bytes are copied into app bundles, not loaded from a daemon-hosted
@@ -74,13 +75,17 @@ Use this skill when working on:
   app bundles and loaded by app-owned UIs on isolated loopback origins or the `/apps/{appId}/`
   fallback.
 - The `:platform-web-shell` JAR contributes the browser-facing node-management shell HTML, CSS,
-  JavaScript, and bootstrap resources that the legacy HTTP adapter mounts at `/app/node/`.
+  JavaScript, and bootstrap resources that the legacy HTTP adapter mounts at `/app/node/`,
+  including app-service dependency/grant-bundle review, operator app-data backup/restore controls,
+  and explicit legacy security/diagnostic fallback actions.
 - The `:runtime-alerts` JAR contributes the detached alert/feed model subset, including the
   `UserAlertSurface` consumed by the legacy HTTP/admin shell.
 - The `:runtime-node` JAR now carries a large extracted daemon runtime/node/client/support subset
   and participates in the root runtime classpath and packaged distribution like the other leaf
   artifacts.
-- The `:adapter-fcp` JAR carries the extracted FCP adapter code.
+- The `:adapter-fcp` JAR carries the extracted FCP adapter code, including the deterministic
+  unsupported-command handler for old plugin FCP command names. It must not package a restored
+  plugin runtime.
 - The `:bridge-fcp-runtime` JAR carries the concrete runtime-binding
   `network.crypta.clients.fcp.bridge` implementations.
 - The `:adapter-http-legacy-admin` JAR carries the shared legacy HTTP shell/admin classes plus the
@@ -88,7 +93,8 @@ Use this skill when working on:
   that leaf JAR on the runtime classpath, so packaged/runtime code must treat them as classpath
   resources rather than plain files. This leaf also hosts the current `/api/v1/` bridge for
   `:platform-api`, the `/app/node/` bridge for `:platform-web-shell`, and the per-app loopback
-  origin server used by isolated static app UIs.
+  origin server used by isolated static app UIs, plus legacy-admin retirement policy and the
+  Wave 4 diagnostic replacement/fallback route.
 - The `:adapter-http-legacy-browse` JAR carries the concrete legacy browse/FProxy classes.
 - The `:bridge-http-runtime` JAR carries the concrete `network.crypta.clients.http.bridge`
   runtime-binding implementations plus the legacy HTTP `network.crypta.clients.http.geoip`

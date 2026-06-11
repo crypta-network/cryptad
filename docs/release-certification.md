@@ -222,16 +222,16 @@ reviewed queue count/key-list helpers are removed by default only when their rep
 reachable. It distinguishes covered config POST mutations from mutating legacy alert bulk actions
 and core-update installer and package-store actions that remain fallback. It also proves that
 FProxy browse remains retained, content filter remains retained, pending wizard and node-to-node
-message routes remain out of scope, the raw diagnostic export remains retained, and the new
-diagnostics scope metadata stays bounded and redacted.
+message routes remain out of scope, the diagnostic export remained retained at that stage, and the
+new diagnostics scope metadata stays bounded and redacted.
 
 `legacy-admin.removal-wave-3` is deterministic offline evidence for `/seclevels/` only. It proves
 that safe reads redirect to `/app/node/#security` when Web Shell security is reachable, that POST
 and other mutating requests remain legacy fallback for master-password, password-file, high
 physical security, and recovery flows, and that the route scope is limited to the canonical path
 and slashless alias. It also proves that FProxy browse and content rendering remain retained, the
-content filter remains retained, raw diagnostic export remains retained, startup wizard and
-emergency fallback remain pending, node-to-node messages remain pending, and evidence excludes
+content filter remains retained, diagnostic export remained retained before Wave 4, startup wizard
+and emergency fallback remain pending, node-to-node messages remain pending, and evidence excludes
 query strings, form passwords, tokens, private insert URIs, raw bodies, raw signatures, and local
 paths.
 

@@ -1,8 +1,8 @@
 ---
 name: cryptad-release-workflow
 description: |
-  Cut and stabilize a release/<build-number> branch for Cryptad, using integer build-number versioning,
-  tags v<build>, and no-squash --no-ff merges into main and develop.
+  Cut and stabilize a Cryptad release branch using integer build-number versioning, v-number tags,
+  and no-squash --no-ff merges into main and develop.
 ---
 
 # Release workflow (release/<build-number>)
@@ -33,13 +33,13 @@ Build: 2
   staging/signing/verification, first-party beta catalog and trusted app-review receipt smoke,
   app-review governance/reviewer-key/transparency-log evidence, app-owned UI design-system/lint
   smoke, app-vault capability evidence, generated-document insert evidence, content-fetch evidence,
-  durable content-subscription evidence, durable app-data evidence, app-service grant evidence,
-  Trust Graph Preview evidence, Site Publisher/Profile Publisher/Social Inbox/Feed Reader/Trust
-  Graph Preview reference-app evidence, app platform beta docs/program evidence, live USK catalog
-  publication evidence, app-update lifecycle/scheduler/rollback and app-data migration contract
-  evidence, `crypta-app` developer
-  beta toolkit smoke, legacy-admin retirement/removal evidence, Hyphanet interop smoke/soak
-  evidence, and the packaged-node performance smoke.
+  durable content-subscription evidence, durable app-data and app-data backup/restore evidence,
+  app-service registry/grant/dependency/grant-bundle evidence, Trust Graph Local RC evidence, Site
+  Publisher/Profile Publisher/Social Inbox/Feed Reader/Trust Graph Local RC reference-app evidence,
+  app platform beta docs/program evidence, live USK catalog publication evidence, app-update
+  lifecycle/scheduler/rollback and app-data migration contract evidence, `crypta-app` developer
+  beta toolkit smoke, legacy plugin freeze evidence, legacy-admin retirement/removal Wave 1-4
+  evidence, Hyphanet interop smoke/soak evidence, and the packaged-node performance smoke.
 
 ---
 
@@ -104,13 +104,14 @@ git push origin v<build-number>
 - [ ] `crypta-app` CLI smoke completed when `:platform-devtools` changed.
 - [ ] Signed catalog, first-party beta catalog, trusted app-review receipt, Platform API contract,
       app-vault capability, generated-document insert, content-fetch/subscription, durable
-      app-data, app-service registry/grant/redaction, app UI design-system/lint, app-owned UI smoke,
-      Site Publisher reference-content, Profile Publisher identity-profile, Social Inbox migration,
-      Feed Reader content-subscription, Trust Graph Preview durable exchange, live USK catalog
-      refresh, app-review governance/reviewer-key lifecycle and transparency-log, app platform beta
+      app-data, app-data backup/restore, app-service registry/grant/dependency/grant-bundle/redaction,
+      app UI design-system/lint, app-owned UI smoke, Site Publisher reference-content, Profile
+      Publisher identity-profile, Social Inbox RC threading/trust/service-dependency, Feed Reader
+      content-subscription, Trust Graph Local RC durable exchange/scope, live USK catalog refresh,
+      app-review governance/reviewer-key lifecycle and transparency-log, app platform beta
       docs/program/redaction, AppHost sandbox-provider, app-update lifecycle, app-update scheduler,
-      app-update rollback, app-update data migration contract, developer beta toolkit, and
-      legacy-admin retirement/removal evidence are
+      app-update rollback, app-update data migration contract, developer beta toolkit, legacy plugin
+      freeze, and legacy-admin retirement/removal Wave 1-4 evidence are
       present in the certification summary.
 - [ ] Hyphanet interop smoke passed or CI evidence recorded; extended interop captured when
       compatibility-sensitive behavior changed.
@@ -119,8 +120,9 @@ git push origin v<build-number>
 - [ ] Release record excludes `artifacts/private-insert-uris.json`, private signing keys, private
       reviewer keys, form passwords, app tokens, browser-session tokens, raw request bodies, raw
       feed bodies, raw social message bodies, raw trust documents, raw app-data values, raw
-      app-service subject URIs, private insert URIs, raw trusted reviewer public key bytes, provider
-      app data, and unsanitized local paths.
+      app-data backup payloads, raw diagnostic exports, raw app-service subject URIs, private
+      insert URIs, raw trusted reviewer public key bytes, provider app data, raw signatures, and
+      unsanitized local paths.
 - [ ] Tag `v<build-number>` created.
 - [ ] Merged to `main` with `--no-ff` (no squash), then back-merged to `develop` with `--no-ff`.
 - [ ] Branches and tag pushed.

@@ -242,11 +242,12 @@ Cryptad now uses a partial multi-project Gradle build.
 - `:platform-api` owns the transport-neutral Platform API v1 under
   `network.crypta.platform.api`. It sits above `:runtime-spi`, exposes detached runtime snapshots
   and local AppHost control operations as JSON-oriented responses, and is currently mounted at
-  `/api/v1/` through a thin legacy HTTP bridge in `:adapter-http-legacy-admin`. The current Phase
-  3 surface covers node, connectivity, queue, peers, config, security levels, updates,
-  wizard/welcome, alerts, diagnostics, apps, app catalogs, app vault routes, and the deterministic
-  `/api/v1/platform/contract` compatibility snapshot; `GET /api/v1/config` defaults to the
-  effective `CURRENT` section when `sections=` is omitted.
+  `/api/v1/` through a thin legacy HTTP bridge in `:adapter-http-legacy-admin`. The current surface
+  covers node, connectivity, queue, peers, config, security levels, updates, wizard/welcome, alerts,
+  diagnostics, apps, app catalogs, app vault routes, app data and backup/restore, content
+  fetch/subscriptions, Trust Graph Local RC routes, app-service dependencies/grant bundles, operator
+  beta support routes, and the deterministic `/api/v1/platform/contract` compatibility snapshot;
+  `GET /api/v1/config` defaults to the effective `CURRENT` section when `sections=` is omitted.
 - `:platform-apphost` owns the transport-neutral out-of-process AppHost v1 core under
   `network.crypta.platform.apphost`. It defines the local manifest, installed-app layout, process
   lifecycle, per-start launch-token plumbing, sandbox status reporting, data/cache quota checks,
@@ -273,18 +274,20 @@ Cryptad now uses a partial multi-project Gradle build.
   remote/local/Crypta catalog fetching, app-store metadata parsing, artifact digest checks, safe
   ZIP extraction, reviewer-key lifecycle governance, local review transparency logging, and
   verified staging for AppHost install/update flows.
-- `:platform-trustgraph` owns the local Trust Graph Preview statement model, strict JSON parsing,
-  canonicalization, verification, process-local anchor/store behavior, and deterministic direct
-  scoring. It is a local preview service, not the old Web of Trust plugin or a network protocol
-  change.
+- `:platform-trustgraph` owns the local Trust Graph Local RC statement model, strict JSON parsing,
+  canonicalization, verification, process-local anchor/store behavior, lifecycle/status records,
+  and deterministic direct scoring. It is a local preview service, not the old Web of Trust plugin
+  or a network protocol change.
 - `:platform-devtools` owns the standalone `crypta-app` developer CLI for scaffolding, validating,
   UI linting, signing, packaging, verifying, catalog-authoring, API contract snapshotting, and
   compatibility verification for standalone staged bundles.
 - `:platform-web-shell` owns the first browser-facing Web Shell v1 under
   `network.crypta.platform.webshell`. It keeps the node-management shell's route constants,
   bootstrap payload, HTML renderer, and plain browser assets self-owned while staying separate
-  from runtime, adapter, Platform API, and AppHost implementation code. That shell is mounted at
-  `/app/node/` through a thin legacy HTTP bridge in `:adapter-http-legacy-admin`.
+  from runtime, adapter, Platform API, and AppHost implementation code. It also owns the operator
+  panels for app-service dependency/grant-bundle review, app-data backup/restore, and explicit
+  legacy security/diagnostic fallbacks. That shell is mounted at `/app/node/` through a thin legacy
+  HTTP bridge in `:adapter-http-legacy-admin`.
 - `:runtime-alerts` owns the extracted leaf-safe alert/feed subset under
   `network.crypta.runtime.alerts`, including the full `feed` package plus the reusable alert
   model/base types that no longer need direct daemon state, along with the detached
@@ -565,6 +568,9 @@ AppVault trust-statement signing route. Phase 8 expands the app platform with ex
 catalog publication, durable USK content subscriptions, durable app-owned data, a file-backed Trust
 Graph store with exchange/import support, Social Inbox Preview, and contract v12 app-service
 discovery/grants for local platform-mediated app-to-app calls.
+Later RC work adds app-data backup/restore portability, app-data schema migrations, Trust Graph
+Local RC lifecycle evidence, Social Inbox RC threading and trust annotations, and contract v16
+app-service dependency graphs plus grant bundles.
 Phase 6 PR-8, tracked as `legacy-admin.removal-wave-1`, removes `/downloads/`, `/uploads/`,
 `/insertfile/`, `/insert-browse/`, `/friends/`, `/addfriend/`, `/strangers/`, and
 `/connectivity/` by default when their replacements are reachable: safe reads redirect to Queue
@@ -576,8 +582,19 @@ Phase 7 PR-230, tracked as `legacy-admin.removal-wave-2`, extends removal-by-def
 for alerts, config, core-update status, statistics, and reviewed queue helper routes when their Web
 Shell or Queue Manager replacements are reachable. Config POST mutations are blocked through the
 replacement gate, while mutating legacy alert bulk actions, core-update installer and package-store
-actions, raw diagnostic export, content filter, FProxy browse, wizard, node-to-node messages,
+actions, diagnostic export, content filter, FProxy browse, wizard, node-to-node messages,
 translation, help, chat, Platform API, Web Shell, and app-owned UI routes remain reachable.
+Phase 8 PR-244, tracked as `legacy-admin.removal-wave-3`, redirects safe reads for the
+security-levels route to Web Shell security when that replacement is reachable. The exact
+`legacyFallback=security-levels` marker remains the explicit same-origin fallback for legacy
+password, recovery, and high-physical-security flows.
+Phase 9 PR-254, tracked as `legacy-admin.removal-wave-4`, makes Web Shell diagnostics the default
+destination for `/diagnostic/` safe reads when the shell is reachable. The legacy plaintext export
+is available only through the exact support fallback marker
+`legacyFallback=diagnostic-export`; arbitrary diagnostic query strings, mutating requests, and
+subpaths do not bypass the removal policy. FProxy browse/content rendering, content filter,
+startup wizard/recovery flows, security recovery fallback, chat, translation, help, and
+node-to-node messages remain outside Wave 4.
 
 Key docs:
 
@@ -596,6 +613,7 @@ Key docs:
 - [App UI design system](docs/app-ui-design-system.md)
 - [Platform JavaScript SDK](docs/platform-sdk-js.md)
 - [Durable app data store](docs/app-data-store.md)
+- [App-data backup, restore, and portability](docs/app-data-backup-restore-portability.md)
 - [Feed Reader reference app](docs/feed-reader-reference-app.md)
 - [Social Inbox Preview reference app](docs/social-inbox-reference-app.md)
 - [App-service discovery and grants](docs/app-service-discovery-and-grants.md)
@@ -607,6 +625,7 @@ Key docs:
 - [App update lifecycle](docs/app-update-lifecycle.md)
 - [App platform beta known limitations](docs/app-platform-beta-known-limitations.md)
 - [Legacy admin retirement plan](docs/legacy-retirement-plan.md)
+- [Legacy plugin freeze policy](docs/legacy-plugin-freeze-policy.md)
 - [Release certification](docs/release-certification.md)
 
 ## Hyphanet Interop Gate
@@ -649,12 +668,14 @@ tools/perf/run-performance-smoke.sh
 
 Release-candidate evidence is aggregated by the release certification tooling under
 `tools/release-certification/`. It consumes the interop, performance, app-platform, catalog,
-Platform API contract, app-owned UI, trusted app-review receipt, legacy-admin retirement,
-legacy-admin removal-wave evidence, and CI summaries and writes a redacted report plus a stable
-JSON companion. The report also includes historical comparison output and ecosystem gates when a
-previous certified summary is provided.
-`legacy-admin.removal-wave-2` is release-candidate-blocking deterministic evidence and does not
-require a live node.
+Platform API contract, app-owned UI, trusted app-review receipt, app-data backup/restore,
+app-service dependency/grant-bundle, legacy plugin freeze, legacy-admin retirement and
+removal-wave evidence, and CI summaries and writes a redacted report plus a stable JSON companion.
+The report also includes historical comparison output and ecosystem gates when a previous
+certified summary is provided. `legacy-admin.removal-wave-1` through
+`legacy-admin.removal-wave-4`, `legacy-plugin.freeze-policy`, and
+`app-data.backup-restore-portability` are release-candidate-blocking deterministic evidence and do
+not require a live node.
 
 Fast self-tests:
 
@@ -1060,8 +1081,9 @@ Root build also includes:
 - `:platform-api`: transport-neutral Platform API v1 built on top of `:runtime-spi` and
   `:platform-apphost`, currently mounted under `/api/v1/` through the legacy HTTP admin adapter.
   Its current family-level surface covers node, connectivity, queue, peers, config, security
-  levels, updates, wizard/welcome, alerts, diagnostics, apps, app catalogs, app vault routes, local
-  Trust Graph Preview routes, and the platform compatibility contract.
+  levels, updates, wizard/welcome, alerts, diagnostics, apps, app catalogs, app vault routes, app
+  data backup/restore, app-service dependencies/grant bundles, local Trust Graph Local RC routes,
+  and the platform compatibility contract.
 - `:platform-apphost`: transport-neutral out-of-process AppHost v1 core for installed local apps.
   Local staged and verified catalog app updates now flow through this core. It also reports sandbox
   provider status, selects the Linux bubblewrap provider for enforced restricted-process launches
@@ -1083,14 +1105,16 @@ Root build also includes:
 - `:platform-appcatalog`: signed catalog source parsing, catalog writing, signature verification,
   app-store metadata parsing, Crypta catalog source fetching, artifact digest checks, safe ZIP
   extraction, and verified staging for AppHost install/update flows.
-- `:platform-trustgraph`: local Trust Graph Preview statement parsing, canonicalization,
-  verification, process-local store/anchor behavior, and deterministic direct-anchor scoring.
+- `:platform-trustgraph`: local Trust Graph Local RC statement parsing, canonicalization,
+  verification, process-local store/anchor behavior, lifecycle/status records, and deterministic
+  direct-anchor scoring.
 - `:platform-devtools`: standalone `crypta-app` developer CLI for scaffolding, validating,
   UI linting, signing, packaging, verifying, catalog-authoring, API contract snapshotting, and
   compatibility verification for standalone staged bundles.
 - `:platform-web-shell`: browser-facing Web Shell v1 leaf owning the node-management shell route
   descriptors, bootstrap payload, and static browser assets that the legacy HTTP adapter mounts at
-  `/app/node/`.
+  `/app/node/`, including app-service dependency/grant-bundle review, app-data backup/restore, and
+  explicit legacy security/diagnostic fallback actions.
 - `:runtime-node`: extracted daemon runtime body across the remaining cyclic/high-level
   `network.crypta.client` body, the remaining peer/request/routing-engine and transport-heavy
   `network.crypta.node` / `network.crypta.runtime.*` slices, the retained node-coupled
