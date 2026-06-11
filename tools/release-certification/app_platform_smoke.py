@@ -8927,6 +8927,7 @@ def collect_legacy_removal_wave_two_evidence(settings: Settings) -> EvidenceItem
 
     wave_ids = legacy_removal_wave_two_ids(text["registry"])
     scope_expansion_ids = legacy_scope_expansion_wave_two_ids(text["registry"])
+    docs_lower = text["docs"].lower()
     checks = {
         "waveTwoIdsMatch": wave_ids == list(LEGACY_REMOVAL_WAVE_TWO_IDS),
         "waveOneIdsStable": legacy_removal_wave_one_ids(text["registry"]) == list(LEGACY_REMOVAL_WAVE_ONE_IDS),
@@ -8957,7 +8958,10 @@ def collect_legacy_removal_wave_two_evidence(settings: Settings) -> EvidenceItem
         "docsDescribeAvailabilityFallback": "replacement is reachable" in text["docs"]
         or "replacement is unavailable" in text["docs"],
         "docsRetainBrowse": "FProxy browse remains retained" in text["docs"],
-        "docsRetainDiagnosticExport": "raw diagnostic export remains retained" in text["docs"],
+        "docsRetainDiagnosticExport": (
+            "raw diagnostic export remains retained" in docs_lower
+            or "raw diagnostic export remained retained" in docs_lower
+        ),
         "liveNodeNotRequired": True,
     }
     retained_browse_safety = {
@@ -14862,7 +14866,8 @@ def make_self_test_workspace(workspace: Path) -> None:
         "when the replacement is reachable and render legacy fallback when the replacement is unavailable. "
         "legacy-admin.removal-wave-2 documents that safe reads redirect when the replacement is reachable, "
         "mutating legacy alert bulk actions and core-update installer and package-store actions remain fallback, "
-        "and raw diagnostic export remains retained. legacy-admin.removal-wave-3 documents that "
+        "and during Wave 2, the raw diagnostic export remained retained. "
+        "legacy-admin.removal-wave-3 documents that "
         "/seclevels/ safe reads redirect to /app/node/#security when Web Shell security is "
         "available. Security-level mutating requests keep legacy fallback; legacy fallback remains "
         "for master-password, "
