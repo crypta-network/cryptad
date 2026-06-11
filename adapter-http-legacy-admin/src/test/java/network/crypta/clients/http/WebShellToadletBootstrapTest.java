@@ -15,6 +15,7 @@ class WebShellToadletBootstrapTest {
     WebShellBootstrap bootstrap =
         WebShellToadlet.createNodeManagementBootstrap(
             "/security-custom/",
+            "/diagnostic-custom/",
             List.of(
                 new WebShellBootstrap.LegacyLink("/friends-custom/", "Friends"),
                 new WebShellBootstrap.LegacyLink("/strangers-custom/", "Strangers"),
@@ -27,6 +28,7 @@ class WebShellToadletBootstrapTest {
 
     assertEquals(WebShellPaths.SHELL_ROOT, bootstrap.shellRoot());
     assertEquals("/security-custom/", bootstrap.legacySecurityLevelsPath());
+    assertEquals("/diagnostic-custom/", bootstrap.legacyDiagnosticPath());
     assertEquals(
         List.of(
             "/friends-custom/",
@@ -48,15 +50,19 @@ class WebShellToadletBootstrapTest {
     assertEquals(
         LegacyAdminRetirementRegistry.require("security-levels").legacyPath(),
         bootstrap.legacySecurityLevelsPath());
+    assertEquals(
+        LegacyAdminRetirementRegistry.require("diagnostic").legacyPath(),
+        bootstrap.legacyDiagnosticPath());
   }
 
   @Test
-  void createNodeManagementBootstrap_whenSlashlessSecurityPathProvided_preservesConfiguredPath() {
+  void createNodeManagementBootstrap_whenSlashlessFallbackPathsProvided_preservesConfiguredPaths() {
     WebShellBootstrap bootstrap =
         WebShellToadlet.createNodeManagementBootstrap(
-            "/security-custom", WebShellToadlet.defaultLegacyLinks());
+            "/security-custom", "/diagnostic-custom", WebShellToadlet.defaultLegacyLinks());
 
     assertEquals("/security-custom", bootstrap.legacySecurityLevelsPath());
+    assertEquals("/diagnostic-custom", bootstrap.legacyDiagnosticPath());
   }
 
   @Test

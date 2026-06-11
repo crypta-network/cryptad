@@ -67,6 +67,9 @@ LEGACY_REMOVAL_WAVE_TWO_IDS = (
 LEGACY_REMOVAL_WAVE_THREE_IDS = (
     "security-levels",
 )
+LEGACY_REMOVAL_WAVE_FOUR_IDS = (
+    "diagnostic",
+)
 LEGACY_REMOVAL_WAVE_TWO_SCOPE_EXPANSION_IDS = (
     "queue-downloads",
     "queue-uploads",
@@ -8417,6 +8420,218 @@ def collect_legacy_plugin_social_inbox_spike_evidence(settings: Settings) -> Evi
     )
 
 
+def repo_relative_path(path: Path, workspace_root: Path) -> str:
+    try:
+        return path.resolve().relative_to(workspace_root.resolve()).as_posix()
+    except ValueError:
+        return display_path(path, workspace_root)
+
+
+def is_main_java_source(path: Path, workspace_root: Path) -> bool:
+    if path.suffix != ".java":
+        return False
+    relative = repo_relative_path(path, workspace_root)
+    parts = set(Path(relative).parts)
+    if parts.intersection({".git", ".gradle", "build"}):
+        return False
+    return "/src/main/java/" in f"/{relative}"
+
+
+def collect_plugin_runtime_surface_violations(workspace: Path) -> list[dict[str, str]]:
+    allowed_runtime_command_files = {
+        "adapter-fcp/src/main/java/network/crypta/clients/fcp/FCPMessage.java",
+        "adapter-fcp/src/main/java/network/crypta/clients/fcp/UnsupportedPluginMessage.java",
+    }
+    old_command_names = (
+        "FCPPluginMessage",
+        "GetPluginInfo",
+        "LoadPlugin",
+        "ReloadPlugin",
+        "RemovePlugin",
+    )
+    forbidden_declaration_re = re.compile(
+        r"\b(?:class|interface|enum|record)\s+"
+        r"(?:PluginManager|PluginRespirator|PluginTalker|PluginInfoWrapper|"
+        r"PluginConnection|PluginToadlet|FCPPluginMessage|LoadPlugin|ReloadPlugin|"
+        r"RemovePlugin|GetPluginInfo)\b"
+    )
+    violations: list[dict[str, str]] = []
+    for java_file in workspace.rglob("*.java"):
+        if not is_main_java_source(java_file, workspace):
+            continue
+        relative = repo_relative_path(java_file, workspace)
+        text = java_source_without_comments(read_source(java_file))
+        if re.search(r"^\s*package\s+network\.crypta\.pluginmanager\b", text, re.MULTILINE):
+            violations.append({"path": relative, "reason": "pluginmanager package"})
+        if "/pluginmanager/" in f"/{relative}":
+            violations.append({"path": relative, "reason": "pluginmanager source path"})
+        if re.search(r"^\s*import\s+network\.crypta\.pluginmanager\b", text, re.MULTILINE):
+            violations.append({"path": relative, "reason": "pluginmanager import"})
+        if forbidden_declaration_re.search(text):
+            violations.append({"path": relative, "reason": "old plugin runtime declaration"})
+        if relative not in allowed_runtime_command_files and any(
+            f'"{command_name}"' in text for command_name in old_command_names
+        ):
+            violations.append({"path": relative, "reason": "old plugin command runtime reference"})
+    return violations
+
+
+def collect_legacy_plugin_freeze_policy_evidence(settings: Settings) -> EvidenceItem:
+    source = summary_source(settings)
+    workspace = settings.workspace_root
+    plugin_status_path = workspace / "docs/plugin-system.md"
+    migration_guide_path = workspace / "docs/legacy-plugin-migration-guide.md"
+    portal_path = workspace / "docs/app-platform-developer-portal.md"
+    beta_limits_path = workspace / "docs/app-platform-beta-known-limitations.md"
+    release_docs_path = workspace / "docs/release-certification.md"
+    unsupported_path = (
+        workspace
+        / "adapter-fcp/src/main/java/network/crypta/clients/fcp/UnsupportedPluginMessage.java"
+    )
+    fcp_message_path = workspace / "adapter-fcp/src/main/java/network/crypta/clients/fcp/FCPMessage.java"
+
+    plugin_status = read_source(plugin_status_path)
+    migration_guide = read_source(migration_guide_path)
+    developer_docs = read_source(portal_path) + "\n" + read_source(beta_limits_path)
+    release_docs = read_source(release_docs_path)
+    unsupported_text = read_source(unsupported_path)
+    fcp_message_text = read_source(fcp_message_path)
+    combined_policy_docs = "\n".join(
+        [plugin_status, migration_guide, developer_docs, release_docs]
+    )
+    combined_policy_lower = combined_policy_docs.lower()
+    plugin_status_lower = plugin_status.lower()
+    migration_guide_lower = migration_guide.lower()
+    developer_docs_lower = developer_docs.lower()
+
+    old_command_names = (
+        "FCPPluginMessage",
+        "GetPluginInfo",
+        "LoadPlugin",
+        "ReloadPlugin",
+        "RemovePlugin",
+    )
+    command_mappings = {
+        command_name: bool(
+            re.search(
+                rf'case\s+"{re.escape(command_name)}"\s*->\s*new\s+UnsupportedPluginMessage',
+                fcp_message_text,
+            )
+        )
+        for command_name in old_command_names
+    }
+    runtime_violations = collect_plugin_runtime_surface_violations(workspace)
+    checks = {
+        "pluginSystemPolicyExists": plugin_status_path.is_file(),
+        "pluginSystemDeclaresFrozenRemoved": "removed" in plugin_status_lower
+        and ("frozen" in plugin_status_lower or "freeze" in plugin_status_lower)
+        and "production rc" in plugin_status_lower,
+        "noNewInCorePluginApis": "no new in-core plugin api" in plugin_status_lower
+        or "no new in-core plugin apis" in plugin_status_lower
+        or "do not add new in-core plugin api" in plugin_status_lower
+        or "do not add new in-core plugin apis" in plugin_status_lower,
+        "noOldPluginAbiCompatibility": "no old plugin abi compatibility" in combined_policy_lower
+        or "not old plugin abi compatibility" in combined_policy_lower
+        or (
+            "old plugin abi compatibility" in combined_policy_lower
+            and (
+                "does not restore" in combined_policy_lower
+                or "non-goals" in combined_policy_lower
+            )
+        ),
+        "noOldFcpPluginCommandCompatibility": "no old fcp plugin command compatibility"
+        in combined_policy_lower,
+        "legacyDocsHistoricalOnly": "docs/legacy" in combined_policy_lower
+        and "historical" in combined_policy_lower,
+        "migrationGuideLinksFreezePolicy": "plugin-system.md" in migration_guide,
+        "appPlatformDocsLinkMigrationOrFreeze": "legacy-plugin-migration-guide.md" in developer_docs
+        or "plugin-system.md" in developer_docs,
+        "releaseDocsListFreezeEvidence": "legacy-plugin.freeze-policy" in release_docs,
+        "outOfProcessMigrationMechanisms": all(
+            marker in combined_policy_lower
+            for marker in (
+                "out-of-process app",
+                "platform api",
+                "signed catalog",
+                "appvault",
+                "content subscriptions",
+                "durable app data",
+                "trust graph local rc",
+                "app-service grant",
+            )
+        ),
+        "nonGoalNotFullWot": "not full wot" in combined_policy_lower
+        or "not a full web of trust" in combined_policy_lower,
+        "nonGoalNoOldWebOfTrustPlugin": "not old weboftrust plugin" in combined_policy_lower
+        or "no old weboftrust plugin" in combined_policy_lower
+        or "does not provide old weboftrust" in combined_policy_lower,
+        "nonGoalNoFreetalkSoneFreemail": "freetalk" in combined_policy_lower
+        and "sone" in combined_policy_lower
+        and "freemail" in combined_policy_lower
+        and "compatibility" in combined_policy_lower,
+        "nonGoalNoEncryptedMailTransport": "not encrypted mail transport" in combined_policy_lower
+        or "not encrypted email delivery" in combined_policy_lower,
+        "nonGoalNoDaemonCoreSocialMailProtocol": (
+            "not a daemon-core social" in combined_policy_lower
+            or "no daemon-core social" in combined_policy_lower
+        )
+        and ("mail" in combined_policy_lower or "message protocol" in combined_policy_lower),
+        "unsupportedPluginHandlerExists": unsupported_path.is_file(),
+        "unsupportedPluginMessageRejectsDeterministically": "Plugin system has been removed"
+        in unsupported_text
+        and "ProtocolErrorMessage.INVALID_MESSAGE" in unsupported_text
+        and "handler.send" in unsupported_text,
+        "fcpPluginCommandsMapToUnsupported": all(command_mappings.values()),
+        "noRuntimePluginSurfaceViolations": not runtime_violations,
+    }
+    details = {
+        "policyDocs": [
+            display_path(plugin_status_path, workspace),
+            display_path(migration_guide_path, workspace),
+            display_path(portal_path, workspace),
+            display_path(beta_limits_path, workspace),
+            display_path(release_docs_path, workspace),
+        ],
+        "allowedRuntimeCompatibilityFiles": [
+            display_path(unsupported_path, workspace),
+            display_path(fcp_message_path, workspace),
+        ],
+        "commandMappingsToUnsupportedHandler": command_mappings,
+        "runtimeSurfaceViolations": runtime_violations,
+        "checks": checks,
+        "redaction": {
+            "queryStringsExcluded": True,
+            "requestBodiesExcluded": True,
+            "formPasswordsExcluded": True,
+            "tokensExcluded": True,
+            "privateInsertUrisExcluded": True,
+            "rawDiagnosticsExcluded": True,
+            "rawFetchedContentExcluded": True,
+            "rawAppDataExcluded": True,
+            "rawSignaturesExcluded": True,
+            "absoluteLocalPathsExcluded": True,
+        },
+    }
+    errors = [name for name, passed in checks.items() if not passed]
+    if errors:
+        return EvidenceItem(
+            "legacy-plugin.freeze-policy",
+            root_consequence(settings, "fail"),
+            True,
+            "Legacy plugin freeze policy evidence found problems.",
+            source,
+            {"errors": errors, **details},
+        )
+    return EvidenceItem(
+        "legacy-plugin.freeze-policy",
+        "pass",
+        True,
+        "Legacy plugin freeze policy and source-surface checks passed.",
+        source,
+        details,
+    )
+
+
 def legacy_counts_from_registry_text(text: str) -> dict[str, int]:
     start = text.index("List.of(")
     end = text.index("private static final Map", start)
@@ -8424,7 +8639,7 @@ def legacy_counts_from_registry_text(text: str) -> dict[str, int]:
     return {
         "PRIMARY_REPLACED": len(
             re.findall(
-                r"\n\s+(?:diagnosticFallbackReplacement|securityLevelsWave3Redirect|replaced|wave\d+Redirect)\(",
+                r"\n\s+(?:diagnosticFallbackReplacement|diagnosticWave4Redirect|securityLevelsWave3Redirect|replaced|wave\d+Redirect)\(",
                 block,
             )
         ),
@@ -8457,15 +8672,44 @@ def java_method_body(text: str, method_name: str) -> str:
     return ""
 
 
+def web_shell_toadlet_sources_security_fallback_path(text: str) -> bool:
+    """Return true when Web Shell bootstrap security fallback comes from the registry.
+
+    The source formatter may wrap the final `WebShellBootstrap.nodeManagement(...)`
+    call across lines, so this proof follows the small adapter chain instead of
+    depending on one contiguous substring.
+    """
+    return (
+        'LegacyAdminRetirementRegistry.require("security-levels").legacyPath()' in text
+        and bool(
+            re.search(
+                r"\bcreateNodeManagementBootstrap\(\s*legacySecurityLevelsPath\(\)\s*,",
+                text,
+                re.DOTALL,
+            )
+        )
+        and bool(
+            re.search(
+                r"\bWebShellBootstrap\.nodeManagement\(\s*legacySecurityLevelsPath\s*,",
+                text,
+                re.DOTALL,
+            )
+        )
+    )
+
+
 def legacy_fallback_link_checks(text: str) -> dict[str, bool]:
     fallback_body = java_method_body(text, "webShellFallbackSurfaces")
-    replaced_body = java_method_body(text, "diagnosticFallbackReplacement") or java_method_body(
-        text, "replaced"
+    replaced_body = (
+        java_method_body(text, "diagnosticWave4Redirect")
+        or java_method_body(text, "diagnosticFallbackReplacement")
+        or java_method_body(text, "replaced")
     )
     navigation_body = java_method_body(text, "shouldPromoteInLegacyNavigation")
-    replaced_marks_no_fallback = "FALLBACK_POLICY_RENDER_LEGACY" in replaced_body and bool(
-        re.search(r",\s*true\s*,\s*false\s*\)\s*;", replaced_body, re.DOTALL)
-    )
+    replaced_marks_no_fallback = (
+        "FALLBACK_POLICY_RENDER_LEGACY" in replaced_body
+        or "FALLBACK_POLICY_SUPPORT_EMERGENCY" in replaced_body
+    ) and bool(re.search(r",\s*true\s*,\s*false\s*\)\s*;", replaced_body, re.DOTALL))
     fallback_filters_include_flag = bool(
         re.search(r"\.filter\s*\(\s*LegacyAdminSurface::includeInWebShellFallbackLinks\s*\)", fallback_body)
     )
@@ -8542,6 +8786,13 @@ def legacy_removal_wave_three_ids(registry_text: str) -> list[str]:
     ids = re.findall(r"\n\s+wave3Redirect\(\s*\"([^\"]+)\"", registry_text)
     if re.search(r"\n\s+securityLevelsWave3Redirect\(\s*\)", registry_text):
         ids.insert(0, "security-levels")
+    return ids
+
+
+def legacy_removal_wave_four_ids(registry_text: str) -> list[str]:
+    ids = re.findall(r"\n\s+wave4Redirect\(\s*\"([^\"]+)\"", registry_text)
+    if re.search(r"\n\s+diagnosticWave4Redirect\(\s*\)", registry_text):
+        ids.insert(0, "diagnostic")
     return ids
 
 
@@ -8792,6 +9043,8 @@ def collect_legacy_removal_wave_three_evidence(settings: Settings) -> EvidenceIt
         / "platform-web-shell/src/main/java/network/crypta/platform/webshell/bootstrap/WebShellBootstrapJson.java",
         "webshell": root
         / "platform-web-shell/src/main/resources/network/crypta/platform/webshell/static/web-shell.js",
+        "webshellIndex": root
+        / "platform-web-shell/src/main/resources/network/crypta/platform/webshell/static/index.html",
         "docs": root / "docs/legacy-retirement-plan.md",
     }
     text: dict[str, str] = {}
@@ -8834,10 +9087,14 @@ def collect_legacy_removal_wave_three_evidence(settings: Settings) -> EvidenceIt
         and '"legacySecurityLevelsPath"' in text["bootstrapJson"],
         "securityFallbackAllowsSlashlessPath": "normalizeLocalPath(" in text["webshell"]
         and "bootstrap.legacySecurityLevelsPath" in text["webshell"]
-        and "requireLegacySecurityLevelsPath(legacySecurityLevelsPath" in text["bootstrap"],
-        "securityFallbackPathFromRegistry": 'LegacyAdminRetirementRegistry.require("security-levels").legacyPath()'
-        in text["webshellToadlet"]
-        and "WebShellBootstrap.nodeManagement(legacySecurityLevelsPath" in text["webshellToadlet"],
+        and (
+            "requireLegacySecurityLevelsPath(legacySecurityLevelsPath" in text["bootstrap"]
+            or 'requireLegacyLocalPath(legacySecurityLevelsPath, "legacySecurityLevelsPath")'
+            in text["bootstrap"]
+        ),
+        "securityFallbackPathFromRegistry": web_shell_toadlet_sources_security_fallback_path(
+            text["webshellToadlet"]
+        ),
         "securityFallbackPathNotHardCoded": '"/seclevels/?legacyFallback=security-levels"'
         not in text["webshell"],
         "securityCanonicalScopeOnly": "CANONICAL_AND_SLASHLESS_ALIAS" in text["registry"]
@@ -8913,6 +9170,208 @@ def collect_legacy_removal_wave_three_evidence(settings: Settings) -> EvidenceIt
         "pass",
         True,
         "Legacy-admin removal wave 3 replacement behavior is documented and observable.",
+        source,
+        details,
+    )
+
+
+def collect_legacy_removal_wave_four_evidence(settings: Settings) -> EvidenceItem:
+    source = summary_source(settings)
+    root = settings.workspace_root
+    files = {
+        "registry": root / "adapter-http-legacy-admin/src/main/java/network/crypta/clients/http/LegacyAdminRetirementRegistry.java",
+        "policy": root / "adapter-http-legacy-admin/src/main/java/network/crypta/clients/http/LegacyAdminRemovalPolicy.java",
+        "webshellToadlet": root
+        / "adapter-http-legacy-admin/src/main/java/network/crypta/clients/http/WebShellToadlet.java",
+        "bootstrap": root
+        / "platform-web-shell/src/main/java/network/crypta/platform/webshell/bootstrap/WebShellBootstrap.java",
+        "bootstrapJson": root
+        / "platform-web-shell/src/main/java/network/crypta/platform/webshell/bootstrap/WebShellBootstrapJson.java",
+        "webshell": root
+        / "platform-web-shell/src/main/resources/network/crypta/platform/webshell/static/web-shell.js",
+        "webshellIndex": root
+        / "platform-web-shell/src/main/resources/network/crypta/platform/webshell/static/index.html",
+        "docs": root / "docs/legacy-retirement-plan.md",
+        "policyTest": root
+        / "adapter-http-legacy-admin/src/test/java/network/crypta/clients/http/LegacyAdminRemovalPolicyTest.java",
+        "registryTest": root
+        / "adapter-http-legacy-admin/src/test/java/network/crypta/clients/http/LegacyAdminRetirementRegistryTest.java",
+        "bootstrapTest": root
+        / "platform-web-shell/src/test/java/network/crypta/platform/webshell/WebShellBootstrapTest.java",
+        "resourcesTest": root
+        / "platform-web-shell/src/test/java/network/crypta/platform/webshell/WebShellResourcesTest.java",
+        "toadletBootstrapTest": root
+        / "adapter-http-legacy-admin/src/test/java/network/crypta/clients/http/WebShellToadletBootstrapTest.java",
+    }
+    text: dict[str, str] = {}
+    missing = []
+    for key, path in files.items():
+        if not path.is_file():
+            missing.append(key)
+            text[key] = ""
+        else:
+            text[key] = path.read_text(encoding="utf-8")
+
+    wave_ids = legacy_removal_wave_four_ids(text["registry"])
+    diagnostic_body = java_method_body(text["registry"], "diagnosticWave4Redirect")
+    tests_text = "\n".join(
+        text[key]
+        for key in (
+            "policyTest",
+            "registryTest",
+            "bootstrapTest",
+            "resourcesTest",
+            "toadletBootstrapTest",
+        )
+    )
+    docs_lower = text["docs"].lower()
+    webshell_lower = text["webshell"].lower()
+    retained_scope = {
+        "fproxyBrowseRootOutOfScope": "/" not in wave_ids,
+        "contentRenderingOutOfScope": "browse" not in wave_ids and "content" not in wave_ids,
+        "contentFilterOutOfScope": "content-filter" not in wave_ids,
+        "firstTimeWizardOutOfScope": "first-time-wizard" not in wave_ids
+        and "first-time-wizard-js" not in wave_ids,
+        "securityRecoveryFallbackOutOfScope": "security-levels" not in wave_ids,
+        "chatOutOfScope": "chat" not in wave_ids,
+        "translationOutOfScope": "translation" not in wave_ids,
+        "helpOutOfScope": "help" not in wave_ids,
+        "nodeToNodeMessageOutOfScope": "node-to-node-message" not in wave_ids,
+    }
+    checks = {
+        "waveFourIdsMatch": wave_ids == list(LEGACY_REMOVAL_WAVE_FOUR_IDS),
+        "waveOneIdsStable": legacy_removal_wave_one_ids(text["registry"]) == list(LEGACY_REMOVAL_WAVE_ONE_IDS),
+        "waveTwoIdsStable": legacy_removal_wave_two_ids(text["registry"]) == list(LEGACY_REMOVAL_WAVE_TWO_IDS),
+        "waveThreeIdsStable": legacy_removal_wave_three_ids(text["registry"]) == list(LEGACY_REMOVAL_WAVE_THREE_IDS),
+        "waveFourConstantPresent": "REMOVAL_WAVE_4" in text["registry"],
+        "waveFourMarkerPresent": "phase-9-pr-254" in text["registry"],
+        "diagnosticRedirectModeDeclared": "diagnostic" in diagnostic_body
+        and "LegacyAdminRemovalMode.REDIRECT_TO_REPLACEMENT" in diagnostic_body
+        and "REMOVAL_WAVE_4" in diagnostic_body
+        and "REMOVED_BY_DEFAULT_SINCE_WAVE_4" in diagnostic_body,
+        "diagnosticReplacementUrl": (
+            "/app/node/#diagnostics" in text["registry"]
+            or "SHELL_DIAGNOSTICS_URL" in text["registry"]
+        )
+        and "/app/node/#diagnostics" in text["docs"],
+        "diagnosticFallbackMarkerPolicyExact": "legacyFallback=diagnostic-export" in text["policy"]
+        and "diagnostic" in text["policy"]
+        and "getRawQuery()" in text["policy"]
+        and "isMutatingRequestMethod" in text["policy"],
+        "diagnosticFallbackSafeReadOnly": "GET" in text["policy"]
+        and "HEAD" in text["policy"]
+        and "legacyFallback=diagnostic-export" in text["policy"],
+        "diagnosticReplacementAvailableThroughWebShell": '"diagnostic"' in text["policy"]
+        and "webShellReplacementAvailable" in text["policy"],
+        "safeReadReplacementResponses": "GET" in text["policy"]
+        and "HEAD" in text["policy"]
+        and "redirect(" in text["policy"],
+        "bootstrapDiagnosticPathValidated": "legacyDiagnosticPath" in text["bootstrap"]
+        and (
+            "requireLegacyDiagnosticPath" in text["bootstrap"]
+            or "requireLegacyLocalPath" in text["bootstrap"]
+            or "requireLocalPath" in text["bootstrap"]
+        )
+        and "getRawQuery()" in text["bootstrap"]
+        and "getRawFragment()" in text["bootstrap"],
+        "bootstrapDiagnosticPathSerialized": '"legacyDiagnosticPath"' in text["bootstrapJson"],
+        "diagnosticPathFromRegistry": 'LegacyAdminRetirementRegistry.require("diagnostic").legacyPath()'
+        in text["webshellToadlet"]
+        and "legacyDiagnosticPath" in text["webshellToadlet"]
+        and '"/diagnostic/"' not in text["webshellToadlet"],
+        "webShellUsesBootstrapDiagnosticPath": "bootstrap.legacyDiagnosticPath" in text["webshell"]
+        and "normalizeLocalPath" in text["webshell"]
+        and 'legacyDiagnosticPath + "?legacyFallback=diagnostic-export"' in text["webshell"],
+        "webShellDiagnosticFallbackAction": (
+            "Open legacy plaintext diagnostic export" in text["webshell"]
+            or "Open legacy plaintext diagnostic export" in text["webshellIndex"]
+        )
+        and (
+            "emergency" in webshell_lower
+            or "support fallback" in webshell_lower
+            or "emergency" in text["webshellIndex"].lower()
+            or "support fallback" in text["webshellIndex"].lower()
+        ),
+        "webShellDoesNotHardcodeRawFallbackPath": '"/diagnostic/?legacyFallback=diagnostic-export"'
+        not in text["webshell"]
+        and "'/diagnostic/?legacyFallback=diagnostic-export'" not in text["webshell"],
+        "webShellDoesNotStoreDiagnosticExport": not re.search(
+            r"(?:localStorage|sessionStorage|indexedDB)[^\n;]*(?:legacyDiagnostic|diagnostic-export|diagnostic export)",
+            text["webshell"],
+            re.IGNORECASE,
+        ),
+        "testsCoverDiagnosticFallbackMarker": "legacyFallback=diagnostic-export" in tests_text,
+        "testsCoverNonExactDiagnosticQuery": "diagnostic-export&" in tests_text
+        or "token=secret" in tests_text,
+        "testsCoverSlashlessDiagnosticAlias": '"/diagnostic"' in tests_text
+        or "slashless" in tests_text.lower(),
+        "testsCoverDiagnosticSubpathOutOfScope": "/diagnostic/requesters" in tests_text
+        or "subpath" in tests_text.lower(),
+        "testsCoverDiagnosticOnlyWaveFour": "REMOVAL_WAVE_4" in tests_text
+        or "wave 4" in tests_text.lower()
+        or "waveFour" in tests_text,
+        "docsDescribeWave": "legacy-admin.removal-wave-4" in text["docs"],
+        "docsPrimaryWebShellDiagnostics": "web shell diagnostics" in docs_lower
+        and "/app/node/#diagnostics" in text["docs"],
+        "docsFallbackSupportEmergency": "plain-text" in docs_lower
+        and ("support" in docs_lower or "emergency" in docs_lower),
+        "docsRetainFproxyBrowse": "fproxy browse" in docs_lower
+        and "content rendering" in docs_lower,
+        "docsRetainContentFilter": "content filter" in docs_lower,
+        "docsRetainStartupWizard": "startup wizard" in docs_lower
+        or "first-time wizard" in docs_lower,
+        "docsRetainSecurityFallback": "legacyFallback=security-levels" in text["docs"]
+        or "security fallback" in docs_lower,
+        "securityFallbackBehaviorUnchanged": "legacyFallback=security-levels" in text["policy"]
+        and "legacyFallback=security-levels" in text["webshell"],
+        "liveNodeNotRequired": True,
+    }
+    redaction = {
+        "queryStringsExcluded": True,
+        "requestBodiesExcluded": True,
+        "formPasswordsExcluded": True,
+        "tokensExcluded": True,
+        "privateInsertUrisExcluded": True,
+        "rawDiagnosticOutputExcluded": True,
+        "rawFetchedBodiesExcluded": True,
+        "rawAppDataExcluded": True,
+        "rawSignaturesExcluded": True,
+        "absoluteLocalPathsExcluded": True,
+    }
+    details = {
+        "removedByDefaultRouteIds": wave_ids,
+        "expectedRouteIds": list(LEGACY_REMOVAL_WAVE_FOUR_IDS),
+        "replacementUrls": {"diagnostic": "/app/node/#diagnostics"},
+        "fallbackUrlSource": "Web Shell bootstrap legacyDiagnosticPath from the registry diagnostic legacy path",
+        "statusBehavior": {
+            "safeRead": "303 See Other when Web Shell diagnostics are available",
+            "explicitFallback": "legacy plaintext diagnostic export remains support-only for exact safe-read fallback marker",
+            "mutating": "blocked before the removed legacy diagnostic route can execute",
+            "subpaths": "diagnostic subpaths remain outside removal scope unless separately registered",
+        },
+        "retainedScope": retained_scope,
+        "liveNodeRequired": False,
+        "checks": checks,
+        "redaction": redaction,
+        "missingSources": missing,
+    }
+    errors = [name for name, passed in checks.items() if not passed]
+    errors.extend(f"retainedScope.{name}" for name, passed in retained_scope.items() if not passed)
+    errors.extend(f"missing {name}" for name in missing)
+    if errors:
+        return EvidenceItem(
+            "legacy-admin.removal-wave-4",
+            "fail",
+            True,
+            "Legacy-admin removal wave 4 evidence is incomplete.",
+            source,
+            {"errors": errors, **details},
+        )
+    return EvidenceItem(
+        "legacy-admin.removal-wave-4",
+        "pass",
+        True,
+        "Legacy-admin removal wave 4 diagnostic replacement behavior is documented and observable.",
         source,
         details,
     )
@@ -11228,6 +11687,7 @@ def run(settings: Settings) -> tuple[dict[str, Any], int]:
         collect_social_mail_migration_preview_evidence(settings),
         collect_legacy_plugin_migration_evidence(settings),
         collect_legacy_plugin_social_inbox_spike_evidence(settings),
+        collect_legacy_plugin_freeze_policy_evidence(settings),
         collect_feed_reader_reference_app_evidence(settings),
         collect_feed_reader_subscription_evidence(settings),
         collect_feed_reader_app_data_evidence(settings),
@@ -11238,6 +11698,7 @@ def run(settings: Settings) -> tuple[dict[str, Any], int]:
         collect_legacy_removal_wave_one_evidence(settings),
         collect_legacy_removal_wave_two_evidence(settings),
         collect_legacy_removal_wave_three_evidence(settings),
+        collect_legacy_removal_wave_four_evidence(settings),
         collect_sandbox_provider_evidence(settings),
         *collect_public_beta_security_evidence(settings),
         collect_app_update_lifecycle_evidence(settings),
@@ -11340,12 +11801,13 @@ def run_self_test(repo_root: Path) -> None:
     registry_text = registry_fixture.read_text(encoding="utf-8")
     counts = legacy_counts_from_registry_text(registry_text)
     assert counts == {
-        "PRIMARY_REPLACED": 13,
+        "PRIMARY_REPLACED": 14,
         "PENDING": 2,
         "RETAINED": 1,
         "INFRASTRUCTURE": 1,
     }, counts
     assert legacy_removal_wave_three_ids(registry_text) == ["security-levels"]
+    assert legacy_removal_wave_four_ids(registry_text) == ["diagnostic"]
     extra_wave_three_text = registry_text.replace(
         "securityLevelsWave3Redirect()",
         'securityLevelsWave3Redirect(),\n'
@@ -11885,6 +12347,11 @@ def run_self_test(repo_root: Path) -> None:
         assert evidence_by_id["legacy-admin.removal-wave-2"]["requiredForReleaseCandidate"] is True
         assert evidence_by_id["legacy-admin.removal-wave-3"]["status"] == "pass"
         assert evidence_by_id["legacy-admin.removal-wave-3"]["requiredForReleaseCandidate"] is True
+        assert evidence_by_id["legacy-admin.removal-wave-4"]["status"] == "pass"
+        assert evidence_by_id["legacy-admin.removal-wave-4"]["requiredForReleaseCandidate"] is True
+        assert evidence_by_id["legacy-admin.removal-wave-4"]["details"][
+            "removedByDefaultRouteIds"
+        ] == ["diagnostic"]
         contract_item = evidence_by_id["platform-api.contract"]
         assert contract_item["status"] == "pass", contract_item
         vault_item = evidence_by_id["app-vault.capabilities"]
@@ -11990,6 +12457,8 @@ def run_self_test(repo_root: Path) -> None:
         assert evidence_by_id["migration.social-mail-preview"]["status"] == "pass"
         assert evidence_by_id["legacy-plugin.migration-guide"]["status"] == "pass"
         assert evidence_by_id["legacy-plugin.social-inbox-spike"]["status"] == "pass"
+        assert evidence_by_id["legacy-plugin.freeze-policy"]["status"] == "pass"
+        assert evidence_by_id["legacy-plugin.freeze-policy"]["requiredForReleaseCandidate"] is True
         social_inbox_app_js = workspace / "apps/social-inbox/src/staged/static/app.js"
         original_social_inbox_js = social_inbox_app_js.read_text(encoding="utf-8")
         try:
@@ -12071,6 +12540,46 @@ def run_self_test(repo_root: Path) -> None:
         assert extra_wave_three_item.status == "fail", extra_wave_three_item
         assert "waveThreeIdsMatch" in extra_wave_three_item.details["errors"], (
             extra_wave_three_item
+        )
+        removal_policy_source = (
+            workspace
+            / "adapter-http-legacy-admin/src/main/java/network/crypta/clients/http/LegacyAdminRemovalPolicy.java"
+        )
+        removal_policy_text = removal_policy_source.read_text(encoding="utf-8")
+        try:
+            removal_policy_source.write_text(
+                removal_policy_text.replace(
+                    "legacyFallback=diagnostic-export", "legacyFallback=unexpected"
+                ),
+                encoding="utf-8",
+            )
+            missing_diagnostic_marker_item = collect_legacy_removal_wave_four_evidence(
+                dataclasses.replace(settings, mode="release-candidate")
+            )
+        finally:
+            removal_policy_source.write_text(removal_policy_text, encoding="utf-8")
+        assert missing_diagnostic_marker_item.status == "fail", missing_diagnostic_marker_item
+        assert "diagnosticFallbackMarkerPolicyExact" in missing_diagnostic_marker_item.details[
+            "errors"
+        ], missing_diagnostic_marker_item
+        plugin_manager_source = (
+            workspace
+            / "runtime-node/src/main/java/network/crypta/pluginmanager/PluginManager.java"
+        )
+        plugin_manager_source.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            plugin_manager_source.write_text(
+                "package network.crypta.pluginmanager; public final class PluginManager {}\n",
+                encoding="utf-8",
+            )
+            plugin_runtime_item = collect_legacy_plugin_freeze_policy_evidence(
+                dataclasses.replace(settings, mode="release-candidate")
+            )
+        finally:
+            plugin_manager_source.unlink(missing_ok=True)
+        assert plugin_runtime_item.status == "fail", plugin_runtime_item
+        assert "noRuntimePluginSurfaceViolations" in plugin_runtime_item.details["errors"], (
+            plugin_runtime_item
         )
         feed_reader_app_js = workspace / "apps/feed-reader/src/staged/static/app.js"
         original_feed_reader_js = feed_reader_app_js.read_text(encoding="utf-8")
@@ -14122,12 +14631,25 @@ def make_self_test_workspace(workspace: Path) -> None:
     )
     web_shell_bootstrap_dir.mkdir(parents=True, exist_ok=True)
     (web_shell_bootstrap_dir / "WebShellBootstrap.java").write_text(
-        "record WebShellBootstrap(String legacySecurityLevelsPath) { "
-        "void compact(){ requireLegacySecurityLevelsPath(legacySecurityLevelsPath); } }\n",
+        "record WebShellBootstrap(String legacySecurityLevelsPath, String legacyDiagnosticPath) { "
+        "void compact(){ requireLegacyLocalPath(legacySecurityLevelsPath, \"legacySecurityLevelsPath\"); "
+        "requireLegacyLocalPath(legacyDiagnosticPath, \"legacyDiagnosticPath\"); } "
+        "void requireLegacyLocalPath(String value, String label) { uri.getRawQuery(); uri.getRawFragment(); } }\n",
         encoding="utf-8",
     )
     (web_shell_bootstrap_dir / "WebShellBootstrapJson.java").write_text(
-        'class WebShellBootstrapJson { String key = "legacySecurityLevelsPath"; }\n',
+        'class WebShellBootstrapJson { String security = "legacySecurityLevelsPath"; '
+        'String diagnostic = "legacyDiagnosticPath"; }\n',
+        encoding="utf-8",
+    )
+    web_shell_bootstrap_test = (
+        workspace
+        / "platform-web-shell/src/test/java/network/crypta/platform/webshell/WebShellBootstrapTest.java"
+    )
+    web_shell_bootstrap_test.parent.mkdir(parents=True, exist_ok=True)
+    web_shell_bootstrap_test.write_text(
+        "class WebShellBootstrapTest { String legacyDiagnosticPath = \"legacyDiagnosticPath\"; "
+        "String marker = \"legacyFallback=diagnostic-export\"; }\n",
         encoding="utf-8",
     )
     web_shell_test = (
@@ -14138,6 +14660,9 @@ def make_self_test_workspace(workspace: Path) -> None:
     web_shell_test.write_text(
         "class WebShellResourcesTest { String grants = \"App-service grants\"; "
         "String bundles = \"grant-bundles Renew bundle renderAppServiceDependencyGraph\"; "
+        "String diagnostic = \"legacyFallback=diagnostic-export "
+        "legacyDiagnosticPath + \\\"?legacyFallback=diagnostic-export\\\" "
+        "Open legacy plaintext diagnostic export\"; "
         "void assertAppUiOriginHardeningMarkersPresent() {} }\n",
         encoding="utf-8",
     )
@@ -14233,6 +14758,7 @@ def make_self_test_workspace(workspace: Path) -> None:
         "reference-app.social-inbox-service-dependency, "
         "migration.social-mail-preview, "
         "legacy-plugin.migration-guide, legacy-plugin.social-inbox-spike, "
+        "legacy-plugin.freeze-policy, legacy-admin.removal-wave-4, "
         "reference-app.feed-reader, reference-app.feed-reader-subscriptions, "
         "app-platform.content-fetch, app-platform.content-subscriptions, "
         "network-content.subscription-scheduler, "
@@ -14244,7 +14770,12 @@ def make_self_test_workspace(workspace: Path) -> None:
         "app-update.data-migration-contract, catalog.production-channels, "
         "app-platform.trust-statement-signing, app-platform.social-message-signing, "
         "app-platform.identity-profile-publish, and app-platform.generated-document-insert. "
-        "Developers can find legacy-plugin-migration-guide.md from the app-platform portal. "
+        "Developers can find legacy-plugin-migration-guide.md and plugin-system.md from the app-platform portal. "
+        "The production RC plugin freeze policy says the old in-process plugin runtime is frozen "
+        "and removed, with no new in-core plugin APIs, no old plugin ABI compatibility, no old FCP "
+        "plugin command compatibility, and docs/legacy historical material only. Migration uses "
+        "out-of-process apps, Platform API, signed catalogs, AppVault, content subscriptions, "
+        "durable app data, Trust Graph Local RC, and app-service grants. "
         "It excludes raw request bodies, private keys, private key material, raw signatures, private insert URIs, raw source URIs, and "
         "absolute staging paths. It also excludes raw feed bodies, raw message bodies, raw fetched content, raw fetched documents, raw trust statement bodies, browser-session tokens, "
         "form passwords, and local paths.\n"
@@ -14273,20 +14804,52 @@ def make_self_test_workspace(workspace: Path) -> None:
     cert_readme.parent.mkdir(parents=True, exist_ok=True)
     cert_readme.write_text(first_party_docs, encoding="utf-8")
     (docs / "legacy-plugin-migration-guide.md").write_text(
+        "See plugin-system.md for the production RC freeze policy. "
         "The old plugin runtime removed status is intentional. There is no old plugin ABI "
-        "compatibility and no old FCP plugin command compatibility. WebOfTrust-like and WoT-like "
+        "compatibility and no old FCP plugin command compatibility. No new in-core plugin APIs "
+        "will be added. WebOfTrust-like and WoT-like "
         "migration maps to Trust Graph Preview, durable trust graph storage, content subscriptions, "
-        "app vault identity grants, app data, and app-service grants for trust.score. "
+        "AppVault identity grants, durable app data, and app-service grants for trust.score. "
         "Freetalk/Sone-like migration maps to Social Inbox RC, Profile Publisher, Feed Reader, "
         "content subscriptions, app data, and Trust Graph annotations. Freemail-like migration uses "
         "Social Inbox as a bounded spike and is not encrypted mail transport or Freemail protocol "
         "compatibility. Distribution uses signed catalog entries, signed bundles, review receipt "
-        "evidence, and review governance. The guide links to social-inbox-reference-app.md.\n",
+        "evidence, and review governance. The guide links to social-inbox-reference-app.md. "
+        "Legacy docs under docs/legacy are historical only and are not implementation commitments. "
+        "This is not full WoT, not old WebOfTrust plugin compatibility, not Freetalk/Sone/Freemail "
+        "compatibility, not encrypted mail transport, and not a daemon-core social or mail protocol.\n",
         encoding="utf-8",
     )
     (docs / "plugin-system.md").write_text(
-        "The plugin runtime has been removed. Legacy plugin migrations should use "
-        "legacy-plugin-migration-guide.md and must not restore old plugin ABI compatibility.\n",
+        "Production RC freeze policy: the old in-process plugin runtime is frozen and removed. "
+        "There are no new in-core plugin APIs, no old plugin ABI compatibility, and no old FCP "
+        "plugin command compatibility. Legacy FCP plugin command names must keep failing "
+        "deterministically through UnsupportedPluginMessage. Legacy plugin migrations should use "
+        "legacy-plugin-migration-guide.md, out-of-process apps, Platform API, signed catalogs, "
+        "AppVault, content subscriptions, durable app data, Trust Graph Local RC, and app-service "
+        "grants. Legacy docs under docs/legacy are historical only and not an implementation "
+        "commitment. This is not full WoT, not old WebOfTrust plugin compatibility, not "
+        "Freetalk/Sone/Freemail compatibility, not encrypted mail transport, and not a daemon-core "
+        "social or mail protocol.\n",
+        encoding="utf-8",
+    )
+    adapter_fcp_dir = workspace / "adapter-fcp/src/main/java/network/crypta/clients/fcp"
+    adapter_fcp_dir.mkdir(parents=True, exist_ok=True)
+    (adapter_fcp_dir / "UnsupportedPluginMessage.java").write_text(
+        "final class UnsupportedPluginMessage { "
+        "String text = \"Plugin system has been removed; this command is no longer supported.\"; "
+        "void run(FCPConnectionHandler handler) { handler.send(new ProtocolErrorMessage("
+        "ProtocolErrorMessage.INVALID_MESSAGE, false, text, null, false)); } }\n",
+        encoding="utf-8",
+    )
+    (adapter_fcp_dir / "FCPMessage.java").write_text(
+        "class FCPMessage { Object create(String name, SimpleFieldSet fs) { return switch(name) { "
+        'case "FCPPluginMessage" -> new UnsupportedPluginMessage(fs, "FCPPluginMessage"); '
+        'case "GetPluginInfo" -> new UnsupportedPluginMessage(fs, "GetPluginInfo"); '
+        'case "LoadPlugin" -> new UnsupportedPluginMessage(fs, "LoadPlugin"); '
+        'case "ReloadPlugin" -> new UnsupportedPluginMessage(fs, "ReloadPlugin"); '
+        'case "RemovePlugin" -> new UnsupportedPluginMessage(fs, "RemovePlugin"); '
+        "default -> null; }; } }\n",
         encoding="utf-8",
     )
     registry = workspace / "adapter-http-legacy-admin/src/main/java/network/crypta/clients/http/LegacyAdminRetirementRegistry.java"
@@ -14305,7 +14868,11 @@ def make_self_test_workspace(workspace: Path) -> None:
         "for master-password, "
         "database/password-file, high physical security, and recovery flows. Wave 3 does not use "
         "prefix-family matching for security routes. A bootstrap-resolved explicit fallback link remains in "
-        "the Security panel for legacy security forms, and arbitrary query strings still receive replacement redirects. "
+        "the Security panel for legacy security forms with legacyFallback=security-levels, "
+        "and arbitrary query strings still receive replacement redirects. "
+        "legacy-admin.removal-wave-4 documents that diagnostic is the only Wave 4 route. Web Shell diagnostics "
+        "at /app/node/#diagnostics is primary, while the raw diagnostic export remains a plain-text support "
+        "or emergency fallback only through the exact bootstrap-resolved diagnostic fallback marker. "
         "Startup wizard and emergency fallback remain "
         "pending. Node-to-node messages remain pending. "
         "FProxy browse remains retained, FProxy browse and content rendering remain retained, "
@@ -14320,10 +14887,14 @@ def make_self_test_workspace(workspace: Path) -> None:
         'boolean blockMutatingRequests; boolean replacementAvailable; '
         'boolean isStaticAppUiAvailable; boolean primaryUiRoot; '
         'String legacyFallback = "legacyFallback=security-levels"; '
+        'String diagnosticFallback = "legacyFallback=diagnostic-export"; '
+        'boolean exactFallback = diagnosticFallback.equals(uri.getRawQuery()); '
         'String security = "security-levels"; boolean webShellReplacementAvailable; '
+        'String diagnostic = "diagnostic"; '
         'String s = "LegacyAdminRemovalScope EXPLICIT_CHILDREN PREFIX_FAMILY"; '
         'String m = "GET HEAD"; Object d = LegacyAdminRemovalDecision.redirect(null); '
-        'Object b = LegacyAdminRemovalDecision.blockedMutation(null); }\n',
+        'Object b = LegacyAdminRemovalDecision.blockedMutation(null); '
+        'boolean safe(String method) { return !isMutatingRequestMethod(method); } }\n',
         encoding="utf-8",
     )
     (legacy_admin_dir / "LegacyAdminReplacementResponse.java").write_text(
@@ -14331,9 +14902,37 @@ def make_self_test_workspace(workspace: Path) -> None:
         encoding="utf-8",
     )
     (legacy_admin_dir / "WebShellToadlet.java").write_text(
-        'class WebShellToadlet { Object create(Object links) { String legacySecurityLevelsPath = '
-        'LegacyAdminRetirementRegistry.require("security-levels").legacyPath(); '
-        'return WebShellBootstrap.nodeManagement(legacySecurityLevelsPath, links); } }\n',
+        'class WebShellToadlet { Object create(Object links) { return createNodeManagementBootstrap('
+        'legacySecurityLevelsPath(), legacyDiagnosticPath(), links); } Object createNodeManagementBootstrap('
+        'String legacySecurityLevelsPath, String legacyDiagnosticPath, Object links) { return '
+        'WebShellBootstrap.nodeManagement(\n legacySecurityLevelsPath, legacyDiagnosticPath, links); } '
+        'String legacySecurityLevelsPath() { return '
+        'LegacyAdminRetirementRegistry.require("security-levels").legacyPath(); } '
+        'String legacyDiagnosticPath() { return '
+        'LegacyAdminRetirementRegistry.require("diagnostic").legacyPath(); } }\n',
+        encoding="utf-8",
+    )
+    legacy_admin_test_dir = (
+        workspace / "adapter-http-legacy-admin/src/test/java/network/crypta/clients/http"
+    )
+    legacy_admin_test_dir.mkdir(parents=True, exist_ok=True)
+    (legacy_admin_test_dir / "LegacyAdminRemovalPolicyTest.java").write_text(
+        "class LegacyAdminRemovalPolicyTest { "
+        "String fallback = \"legacyFallback=diagnostic-export\"; "
+        "String nonExact = \"legacyFallback=diagnostic-export&token=secret\"; "
+        "String slashless = \"/diagnostic\"; "
+        "String subpath = \"/diagnostic/requesters\"; "
+        "String replacement = \"/app/node/#diagnostics\"; }\n",
+        encoding="utf-8",
+    )
+    (legacy_admin_test_dir / "LegacyAdminRetirementRegistryTest.java").write_text(
+        "class LegacyAdminRetirementRegistryTest { String waveFour = \"REMOVAL_WAVE_4 diagnostic\"; "
+        "String replacement = \"/app/node/#diagnostics\"; }\n",
+        encoding="utf-8",
+    )
+    (legacy_admin_test_dir / "WebShellToadletBootstrapTest.java").write_text(
+        "class WebShellToadletBootstrapTest { String marker = \"legacyFallback=diagnostic-export\"; "
+        "String path = \"legacyDiagnosticPath\"; }\n",
         encoding="utf-8",
     )
     (legacy_admin_dir / "LegacyAdminUsageRecorder.java").write_text(
@@ -15099,7 +15698,9 @@ class CoreHttpShellRuntimeSupport {
 function renderRecommendedCatalogs(){}
 function renderRecommendedCatalogCard(){}
 const legacySecurityLevelsPath = normalizeLocalPath(bootstrap.legacySecurityLevelsPath, "/seclevels/");
+const legacyDiagnosticPath = normalizeLocalPath(bootstrap.legacyDiagnosticPath, null);
 const legacySecurityLevelsFallbackPath = legacySecurityLevelsPath + "?legacyFallback=security-levels";
+const legacyDiagnosticExportFallbackPath = legacyDiagnosticPath + "?legacyFallback=diagnostic-export";
 const recommendedCatalogPath = "app-catalogs/recommended";
 const recommendedCatalogAction = "addRecommended";
 const catalogChannelSelect = "catalog-channel-select";
@@ -15109,6 +15710,7 @@ const deprecatedCatalogClass = "is-deprecated-channel";
 function appServiceGrantPath(){}
 function setSecurityLegacyFallbackStatus(){ return "Open the legacy security page"; }
 function renderSecurityLegacyFallbackAction(){ return "Open legacy password and recovery forms"; }
+function configureDiagnosticLegacyExportAction(){ return "Open legacy plaintext diagnostic export support fallback emergency"; }
 sections.security.append(renderSecurityLegacyFallbackAction());
 const appServiceTitle = "App-service grants";
 const approve = "Approve";
@@ -15190,6 +15792,8 @@ const quotaCheck = "quota.dataOverLimit || quota.cacheOverLimit";
     )
     web_shell_index.write_text(
         '<article id="beta-dashboard"><div id="beta-dashboard-body"></div>'
+        '<a id="diagnostics-legacy-export-link">Open legacy plaintext diagnostic export</a>'
+        '<p>Plaintext diagnostics remain only as support or emergency fallback.</p>'
         '<button id="support-bundle-download-button">Download support JSON</button>'
         '<button id="all-app-data-backup-button">Download all app-data backup</button>'
         '<form id="operator-app-data-restore-form">'

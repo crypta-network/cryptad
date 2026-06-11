@@ -35,6 +35,9 @@ final class LegacyAdminRemovalPolicy {
   private static final String SECURITY_LEVELS_LEGACY_FALLBACK_QUERY =
       "legacyFallback=security-levels";
 
+  /** Exact static query used by Web Shell when it deliberately opens diagnostic export fallback. */
+  private static final String DIAGNOSTIC_LEGACY_FALLBACK_QUERY = "legacyFallback=diagnostic-export";
+
   /** Prevents construction because the policy is stateless and entirely function-based. */
   private LegacyAdminRemovalPolicy() {}
 
@@ -75,7 +78,7 @@ final class LegacyAdminRemovalPolicy {
       return Optional.empty();
     }
     LegacyAdminSurface legacyAdminSurface = surface.orElseThrow();
-    if (isExplicitSecurityLevelsLegacyFallback(method, uri, legacyAdminSurface)) {
+    if (isExplicitSafeReadLegacyFallback(method, uri, legacyAdminSurface)) {
       return Optional.empty();
     }
     if (!replacementAvailable(legacyAdminSurface, ctx)) {
@@ -145,11 +148,20 @@ final class LegacyAdminRemovalPolicy {
     return !"GET".equals(method) && !"HEAD".equals(method);
   }
 
-  private static boolean isExplicitSecurityLevelsLegacyFallback(
+  private static boolean isExplicitSafeReadLegacyFallback(
       String method, URI uri, LegacyAdminSurface surface) {
-    return "security-levels".equals(surface.id())
-        && !isMutatingRequestMethod(method)
-        && SECURITY_LEVELS_LEGACY_FALLBACK_QUERY.equals(uri.getRawQuery());
+    return !isMutatingRequestMethod(method)
+        && explicitFallbackQueryFor(surface)
+            .filter(query -> query.equals(uri.getRawQuery()))
+            .isPresent();
+  }
+
+  private static Optional<String> explicitFallbackQueryFor(LegacyAdminSurface surface) {
+    return switch (surface.id()) {
+      case "security-levels" -> Optional.of(SECURITY_LEVELS_LEGACY_FALLBACK_QUERY);
+      case "diagnostic" -> Optional.of(DIAGNOSTIC_LEGACY_FALLBACK_QUERY);
+      default -> Optional.empty();
+    };
   }
 
   /**
@@ -180,7 +192,8 @@ final class LegacyAdminRemovalPolicy {
           "config",
           "security-levels",
           "core-update",
-          "statistics" ->
+          "statistics",
+          "diagnostic" ->
           webShellReplacementAvailable(ctx);
       default -> true;
     };

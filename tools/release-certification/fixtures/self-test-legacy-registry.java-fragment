@@ -15,6 +15,7 @@ final class LegacyAdminRetirementRegistry {
           securityLevelsWave3Redirect(),
           wave2Redirect("core-update", "Core update", "/core-update/", "/app/node/#updates", "Shell updates", "Done.", false),
           wave2Redirect("statistics", "Statistics", "/stats/", "/app/node/#diagnostics", "Shell diagnostics", "Done.", LegacyAdminRemovalScope.EXPLICIT_CHILDREN, List.of("/stats/requesters.html"), REMOVAL_WAVE_2, false),
+          diagnosticWave4Redirect(),
           pendingWizard("first-time-wizard", "First-time wizard", "/wizard/", "Pending."),
           pending("node-to-node-message", "N2NTM", "/send_n2ntm/", null, null, "Pending.", true),
           retained("help", "Help", "/help/", "Retained."));
@@ -22,6 +23,10 @@ final class LegacyAdminRetirementRegistry {
   private static final Map<String, LegacyAdminSurface> SURFACES_BY_ID = surfacesById();
   private static final int REMOVAL_WAVE_2 = 2;
   private static final int REMOVAL_WAVE_3 = 3;
+  private static final int REMOVAL_WAVE_4 = 4;
+  private static final int NO_REMOVAL_WAVE = 0;
+  private static final String REMOVED_BY_DEFAULT_SINCE_WAVE_4 = "phase-9-pr-254";
+  private static final String FALLBACK_POLICY_SUPPORT_EMERGENCY = "support-emergency-fallback";
 
   public static List<LegacyAdminSurface> webShellFallbackSurfaces() {
     return SURFACES.stream().filter(LegacyAdminSurface::includeInWebShellFallbackLinks).toList();
@@ -33,7 +38,7 @@ final class LegacyAdminRetirementRegistry {
         .orElse(true);
   }
 
-  private static LegacyAdminSurface diagnosticFallbackReplacement() {
+  private static LegacyAdminSurface diagnosticWave4Redirect() {
     return new LegacyAdminSurface(
         "diagnostic",
         "Diagnostic report",
@@ -41,11 +46,15 @@ final class LegacyAdminRetirementRegistry {
         LegacyAdminRetirementState.PRIMARY_REPLACED,
         "/app/node/#diagnostics",
         "Shell diagnostics",
-        "Done.",
-        LegacyAdminRemovalMode.RENDER_LEGACY,
-        0,
-        null,
-        FALLBACK_POLICY_RENDER_LEGACY,
+        "Web Shell diagnostics is primary; the plain-text export remains only for support or emergency fallback.",
+        LegacyAdminRemovalMode.REDIRECT_TO_REPLACEMENT,
+        REMOVAL_WAVE_4,
+        REMOVED_BY_DEFAULT_SINCE_WAVE_4,
+        FALLBACK_POLICY_SUPPORT_EMERGENCY,
+        LegacyAdminRemovalScope.CANONICAL_AND_SLASHLESS_ALIAS,
+        NO_REMOVAL_WAVE,
+        List.of(),
+        true,
         true,
         false);
   }

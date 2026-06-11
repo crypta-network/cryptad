@@ -165,13 +165,21 @@
             <h2>Runtime diagnostics</h2>
           </div>
           <p class="panel-description">
-            Review the exported diagnostic sections and the plain-text export without leaving the
-            shell.
+            Review the exported diagnostic sections in the shell. Use the legacy plaintext export
+            only as an explicit support or emergency fallback.
           </p>
           <div class="queue-toolbar">
             <button class="button button-secondary" id="diagnostics-refresh-button" type="button">
               Refresh diagnostics
             </button>
+            <a
+              class="button button-secondary"
+              hidden
+              id="diagnostics-legacy-export-link"
+              rel="noopener"
+            >
+              Open legacy plaintext diagnostic export
+            </a>
           </div>
           <div class="queue-status" id="diagnostics-status" aria-live="polite"></div>
           <div class="panel-body" id="diagnostics-body">

@@ -36,6 +36,9 @@ class WebShellResourcesTest {
         "Preview restore",
         "Restore app data",
         "App-data backups contain sensitive user data.",
+        "Use the legacy plaintext export",
+        "only as an explicit support or emergency fallback.",
+        "Open legacy plaintext diagnostic export",
         "Publisher fallback panel",
         "Retained and pending legacy tools",
         "Installed apps JSON",
@@ -73,6 +76,7 @@ class WebShellResourcesTest {
         "id=\"alerts-panel\"",
         "id=\"alerts-body\"",
         "id=\"diagnostics-panel\"",
+        "id=\"diagnostics-legacy-export-link\"",
         "id=\"diagnostics-body\"",
         "href=\"#publisher\"",
         "id=\"publisher\"",
@@ -142,6 +146,7 @@ class WebShellResourcesTest {
     assertTrue(stylesheet.contains(".publisher-forms {"));
     assertTrue(stylesheet.contains(".publisher-result-actions,"));
     assertTrue(stylesheet.contains(".security-fallback-actions {"));
+    assertFalse(stylesheet.contains(".diagnostics-export"));
     assertTrue(stylesheet.contains(".app-data-restore-form {"));
     assertTrue(stylesheet.contains(".app-data-restore-payload {"));
     assertTrue(stylesheet.contains(".app-data-restore-result {"));
@@ -1036,6 +1041,29 @@ class WebShellResourcesTest {
     assertTrue(script.contains("loadJson(apiUrl(\"diagnostics\"))"));
     assertTrue(script.contains("alertDismissPath(alertId),"));
     assertTrue(script.contains("plainTextExport"));
+    assertTrue(
+        script.contains(
+            "const legacyDiagnosticPath = normalizeLocalPath(bootstrap.legacyDiagnosticPath,"
+                + " null);"));
+    assertTrue(script.contains("const legacyDiagnosticExportFallbackPath = legacyDiagnosticPath"));
+    assertTrue(script.contains("legacyDiagnosticPath + \"?legacyFallback=diagnostic-export\""));
+    assertTrue(
+        script.contains(
+            "legacyExportLink: document.getElementById(\"diagnostics-legacy-export-link\"),"));
+    assertTrue(script.contains("function configureDiagnosticLegacyExportAction()"));
+    assertTrue(
+        script.contains(
+            "diagnosticsControls.legacyExportLink.href ="
+                + " legacyDiagnosticExportFallbackPath;"));
+    assertTrue(script.contains("Opening legacy plaintext diagnostic export fallback."));
+    assertTrue(script.contains("function redactedDiagnosticsSnapshot(data)"));
+    assertTrue(
+        script.contains("shellState.diagnosticsSnapshot = redactedDiagnosticsSnapshot(data);"));
+    assertTrue(script.contains("delete redacted.plainTextExport;"));
+    assertTrue(script.contains("configureDiagnosticLegacyExportAction();"));
+    assertFalse(script.contains("\"/diagnostic/?legacyFallback=diagnostic-export\""));
+    assertFalse(script.contains("summary.textContent = \"Plain-text export\";"));
+    assertFalse(script.contains("diagnostics-export"));
     assertTrue(script.contains("alert-dismiss-form"));
     assertTrue(script.contains("diagnostics-section-list"));
     assertTrue(

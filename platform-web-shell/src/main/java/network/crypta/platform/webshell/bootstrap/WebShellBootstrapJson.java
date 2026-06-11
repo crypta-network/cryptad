@@ -20,7 +20,7 @@ public final class WebShellBootstrapJson {
    * @return JSON representation suitable for browser bootstrap
    */
   public static String serialize(WebShellBootstrap bootstrap) {
-    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(9);
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(10);
     json.put("shellTitle", bootstrap.shellTitle());
     json.put("shellDescription", bootstrap.shellDescription());
     json.put("shellRoot", bootstrap.shellRoot());
@@ -29,6 +29,7 @@ public final class WebShellBootstrapJson {
     json.put("formPassword", bootstrap.formPassword());
     json.put("legacyRoot", bootstrap.legacyRoot());
     json.put("legacySecurityLevelsPath", bootstrap.legacySecurityLevelsPath());
+    json.put("legacyDiagnosticPath", bootstrap.legacyDiagnosticPath());
     json.put(
         "legacyLinks",
         bootstrap.legacyLinks().stream().map(WebShellBootstrapJson::serializeLink).toList());

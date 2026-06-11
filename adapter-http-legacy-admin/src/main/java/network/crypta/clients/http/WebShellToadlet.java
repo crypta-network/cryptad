@@ -100,7 +100,8 @@ public final class WebShellToadlet extends Toadlet {
    */
   static WebShellBootstrap createNodeManagementBootstrap(
       List<WebShellBootstrap.LegacyLink> legacyLinks) {
-    return createNodeManagementBootstrap(legacySecurityLevelsPath(), legacyLinks);
+    return createNodeManagementBootstrap(
+        legacySecurityLevelsPath(), legacyDiagnosticPath(), legacyLinks);
   }
 
   /**
@@ -110,13 +111,35 @@ public final class WebShellToadlet extends Toadlet {
    * @param legacyLinks ordered legacy deep links to surface in the shell footer area
    * @return immutable bootstrap model for the first-party node-management shell
    */
+  @SuppressWarnings("unused")
   static WebShellBootstrap createNodeManagementBootstrap(
       String legacySecurityLevelsPath, List<WebShellBootstrap.LegacyLink> legacyLinks) {
-    return WebShellBootstrap.nodeManagement(legacySecurityLevelsPath, legacyLinks);
+    return createNodeManagementBootstrap(
+        legacySecurityLevelsPath, legacyDiagnosticPath(), legacyLinks);
+  }
+
+  /**
+   * Creates the node-management bootstrap model with explicit legacy fallback paths.
+   *
+   * @param legacySecurityLevelsPath configured legacy security route for explicit fallback flows
+   * @param legacyDiagnosticPath configured legacy diagnostic route for explicit fallback export
+   * @param legacyLinks ordered legacy deep links to surface in the shell footer area
+   * @return immutable bootstrap model for the first-party node-management shell
+   */
+  static WebShellBootstrap createNodeManagementBootstrap(
+      String legacySecurityLevelsPath,
+      String legacyDiagnosticPath,
+      List<WebShellBootstrap.LegacyLink> legacyLinks) {
+    return WebShellBootstrap.nodeManagement(
+        legacySecurityLevelsPath, legacyDiagnosticPath, legacyLinks);
   }
 
   private static String legacySecurityLevelsPath() {
     return LegacyAdminRetirementRegistry.require("security-levels").legacyPath();
+  }
+
+  private static String legacyDiagnosticPath() {
+    return LegacyAdminRetirementRegistry.require("diagnostic").legacyPath();
   }
 
   /**

@@ -1459,6 +1459,33 @@
     {
       "details": {
         "checks": {
+          "fcpPluginCommandsMapToUnsupported": true,
+          "legacyDocsHistoricalOnly": true,
+          "noNewInCorePluginApis": true,
+          "noOldFcpPluginCommandCompatibility": true,
+          "noOldPluginAbiCompatibility": true,
+          "noRuntimePluginSurfaceViolations": true,
+          "outOfProcessMigrationMechanisms": true,
+          "pluginSystemDeclaresFrozenRemoved": true,
+          "unsupportedPluginHandlerExists": true
+        },
+        "commandMappingsToUnsupportedHandler": {
+          "FCPPluginMessage": true,
+          "GetPluginInfo": true,
+          "LoadPlugin": true,
+          "ReloadPlugin": true,
+          "RemovePlugin": true
+        }
+      },
+      "id": "legacy-plugin.freeze-policy",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Legacy plugin freeze policy and source-surface checks passed."
+    },
+    {
+      "details": {
+        "checks": {
           "appData": true,
           "appServiceGrants": true,
           "appVault": true,
@@ -1673,6 +1700,36 @@
       "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
       "status": "pass",
       "summary": "Legacy-admin removal wave 3 replacement behavior is documented and observable."
+    },
+    {
+      "details": {
+        "redaction": {
+          "absoluteLocalPathsExcluded": true,
+          "formPasswordsExcluded": true,
+          "privateInsertUrisExcluded": true,
+          "queryStringsExcluded": true,
+          "rawAppDataExcluded": true,
+          "rawDiagnosticOutputExcluded": true,
+          "rawFetchedBodiesExcluded": true,
+          "rawSignaturesExcluded": true,
+          "requestBodiesExcluded": true,
+          "tokensExcluded": true
+        },
+        "removedByDefaultRouteIds": [
+          "diagnostic"
+        ],
+        "statusBehavior": {
+          "explicitFallback": "legacy plaintext diagnostic export remains support-only for exact safe-read fallback marker",
+          "mutating": "blocked before the removed legacy diagnostic route can execute",
+          "safeRead": "303 See Other when Web Shell diagnostics are available",
+          "subpaths": "diagnostic subpaths remain outside removal scope unless separately registered"
+        }
+      },
+      "id": "legacy-admin.removal-wave-4",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Legacy-admin removal wave 4 diagnostic replacement behavior is documented and observable."
     },
     {
       "details": {

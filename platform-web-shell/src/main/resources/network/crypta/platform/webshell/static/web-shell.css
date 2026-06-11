@@ -786,8 +786,7 @@ a {
   overflow-wrap: anywhere;
 }
 
-.diagnostics-lines,
-.diagnostics-export {
+.diagnostics-lines {
   margin: 0;
   white-space: pre-wrap;
   overflow-wrap: anywhere;

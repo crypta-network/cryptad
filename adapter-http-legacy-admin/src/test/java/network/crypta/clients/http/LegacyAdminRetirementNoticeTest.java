@@ -1,5 +1,6 @@
 package network.crypta.clients.http;
 
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -10,9 +11,7 @@ class LegacyAdminRetirementNoticeTest {
   @Test
   void render_whenSurfacePrimaryReplaced_expectFallbackNoticeWithReplacementLink() {
     String html =
-        LegacyAdminRetirementNotice.render(LegacyAdminRetirementRegistry.require("diagnostic"))
-            .orElseThrow()
-            .generate();
+        LegacyAdminRetirementNotice.render(renderLegacySurface()).orElseThrow().generate();
 
     assertTrue(html.contains("Legacy fallback page"));
     assertTrue(html.contains("This legacy page remains available as a fallback and debug view."));
@@ -38,9 +37,7 @@ class LegacyAdminRetirementNoticeTest {
   @Test
   void renderPlainText_whenSurfacePrimaryReplaced_expectPlainFallbackNotice() {
     String notice =
-        LegacyAdminRetirementNotice.renderPlainText(
-                LegacyAdminRetirementRegistry.require("diagnostic"))
-            .orElseThrow();
+        LegacyAdminRetirementNotice.renderPlainText(renderLegacySurface()).orElseThrow();
 
     assertFalse(notice.contains("\r"));
     assertTrue(
@@ -51,5 +48,26 @@ class LegacyAdminRetirementNoticeTest {
             The primary flow is now in Web Shell diagnostics: /app/node/#diagnostics
 
             """));
+  }
+
+  private static LegacyAdminSurface renderLegacySurface() {
+    return new LegacyAdminSurface(
+        "diagnostic-fallback",
+        "Diagnostic fallback",
+        "/diagnostic-fallback/",
+        LegacyAdminRetirementState.PRIMARY_REPLACED,
+        "/app/node/#diagnostics",
+        "Web Shell diagnostics",
+        "notes",
+        LegacyAdminRemovalMode.RENDER_LEGACY,
+        0,
+        null,
+        "render-legacy",
+        LegacyAdminRemovalScope.CANONICAL_AND_SLASHLESS_ALIAS,
+        0,
+        List.of(),
+        true,
+        true,
+        false);
   }
 }

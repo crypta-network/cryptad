@@ -13,7 +13,9 @@ replacement redirect for safe reads or a gone-with-replacement response for muta
 Phase 7 PR-230, tracked as `legacy-admin.removal-wave-2`, expands that execution policy to the
 next bounded set of admin/control-plane pages only when the replacement is reachable for the
 current request. Phase 8 PR-244, tracked as `legacy-admin.removal-wave-3`, applies the same
-policy to the safe-read security-levels route only.
+policy to the safe-read security-levels route only. Phase 9 PR-254, tracked as
+`legacy-admin.removal-wave-4`, applies the same default replacement policy to the diagnostic
+export route only while keeping a bounded support fallback.
 
 FProxy browse remains retained. FProxy browse and content-rendering surfaces are explicitly
 retained. The browse split under
@@ -140,6 +142,42 @@ Wave 3 explicitly retains or leaves pending:
 - Translation and help.
 - Local directory/file helper infrastructure outside already-reviewed explicit queue helper paths.
 
+## Removal wave 4
+
+Wave 4 is tracked in release certification as `legacy-admin.removal-wave-4`. It applies
+removal-by-default only to the diagnostic canonical route and its slashless alias when Web Shell
+diagnostics is reachable for the current request. Web Shell diagnostics requires full operator
+access and Web Shell as the advertised primary UI. If that replacement is unavailable, direct
+legacy fallback remains available and diagnostics count a fallback render.
+
+Wave 4 intentionally does not use prefix-family matching for diagnostic routes. It does not remove
+`/diagnostic/` child paths unless a later audit separately registers and certifies those paths.
+Query strings, request bodies, form passwords, browser or app tokens, private insert URIs, raw
+diagnostic output, raw fetched content, raw app data, signatures, and local paths are never
+included in replacement pages, diagnostics counters, or release-certification evidence.
+
+Web Shell diagnostics is the primary operator status surface. The legacy diagnostic export remains
+available only as an explicit support or emergency fallback for operators who need the historical
+plain-text output. The fallback URL uses the configured `diagnostic` legacy route from the
+retirement registry, then appends the fixed `legacyFallback=diagnostic-export` marker. Only that
+exact marker bypasses the safe-read redirect for `GET` and `HEAD`; arbitrary query strings still
+receive the normal replacement redirect and are not reflected into responses or evidence.
+
+| Legacy route scope | Surface id | Safe read behavior | Mutating behavior | Replacement |
+| --- | --- | --- | --- | --- |
+| Configured diagnostic canonical path and slashless alias | `diagnostic` | `303 See Other` to Web Shell diagnostics when reachable; otherwise legacy fallback; Web Shell can open the exact bootstrap-resolved support fallback marker | `410 Gone` when Web Shell diagnostics is reachable; legacy mutation does not execute | `/app/node/#diagnostics` |
+
+Wave 4 explicitly retains or leaves pending:
+
+- FProxy browse and key/content rendering.
+- Content filter.
+- Startup wizard, first-time wizard, and emergency fallback.
+- Security password, recovery, and `legacyFallback=security-levels` fallback behavior from wave 3.
+- Node-to-node messages.
+- Retained chat/forum discovery.
+- Translation and help.
+- Local directory/file helper infrastructure outside already-reviewed explicit queue helper paths.
+
 ## Current map
 
 | Legacy surface | Legacy path | State | Primary path or reason |
@@ -160,7 +198,7 @@ Wave 3 explicitly retains or leaves pending:
 | Security levels | `/seclevels/` | `PRIMARY_REPLACED` | Web Shell security at `/app/node/#security`. |
 | Core update actions | `/core-update/` | `PRIMARY_REPLACED` | Web Shell updates at `/app/node/#updates`. |
 | Statistics | `/stats/` | `PRIMARY_REPLACED` | Web Shell diagnostics at `/app/node/#diagnostics`. |
-| Diagnostic report | `/diagnostic/` | `PRIMARY_REPLACED` | Web Shell diagnostics at `/app/node/#diagnostics`; plain-text export remains useful. |
+| Diagnostic report | `/diagnostic/` | `PRIMARY_REPLACED` | Web Shell diagnostics at `/app/node/#diagnostics`; plain-text export remains available only through the explicit support fallback marker. |
 | First-time wizard | `/wizard/` and `/wiz/` | `PENDING` | Web Shell wizard exists at `/app/node/#wizard`, but startup routing still uses the legacy wizard gate. |
 | Node-to-node messages | `/send_n2ntm/` | `PENDING` | No complete Web Shell or app replacement is established. |
 | Chat and forums | `/chat/` | `RETAINED` | On-network browse-adjacent discovery remains retained. |
@@ -184,18 +222,20 @@ but it is a content reference app rather than a legacy admin replacement target.
 
 Primary-replaced legacy admin pages that are not removed by default still render a non-blocking
 notice that links to the Web Shell or first-party app replacement. Wave-1 and wave-2 removed
-routes, plus the wave-3 `security-levels` safe-read route, do not render that notice by default
-when their replacements are reachable because the central request gate returns the replacement
-response before the legacy toadlet is invoked.
+routes, plus the wave-3 `security-levels` safe-read route and the wave-4 `diagnostic` route, do not
+render that notice by default when their replacements are reachable because the central request
+gate returns the replacement response before the legacy toadlet is invoked.
 
 `PRIMARY_REPLACED` pages are omitted from the Web Shell legacy-link panel and from legacy
 page-chrome entry points when a Web Shell or first-party app path is now primary. Wave-1 canonical
 URLs now return replacement responses instead of rendering the old page. Wave-2 URLs for alerts,
 config, core-update status, statistics, and selected queue helpers do the same under their explicit
 route scopes. Wave-3 safe reads for `/seclevels/` redirect to Web Shell security under the
-canonical route scope while mutating requests remain legacy fallback. Later-wave primary-replaced
-URLs still render the legacy page and replacement notice until a future removal wave changes their
-execution mode.
+canonical route scope while mutating requests remain legacy fallback. Wave-4 safe reads for
+`/diagnostic/` redirect to Web Shell diagnostics under the canonical route scope, while the
+plain-text export remains reachable only through the exact support fallback marker. Later-wave
+primary-replaced URLs still render the legacy page and replacement notice until a future removal
+wave changes their execution mode.
 
 The legacy top-level Queue and Friends category roots no longer fall back to `/downloads/` or
 `/friends/` as normal navigation. Queue is shown only when Queue Manager is installed, static, and

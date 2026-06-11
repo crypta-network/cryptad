@@ -61,9 +61,10 @@ This page records conservative limits and safety boundaries for the Crypta app e
 - Trust Graph Preview has durable local backend storage for anchors and imported public
   statements, but it remains a local preview. It is not full Web of Trust, old plugin
   compatibility, global moderation, routing policy, peer selection, or a background crawler.
-- The [legacy plugin migration guide](legacy-plugin-migration-guide.md) documents app-platform
-  migration patterns, but it does not restore old plugin ABI compatibility or old FCP plugin
-  command compatibility.
+- The [legacy plugin freeze policy](legacy-plugin-freeze-policy.md) and
+  [legacy plugin migration guide](legacy-plugin-migration-guide.md) document the app-platform path,
+  but they do not restore old plugin ABI compatibility, old FCP plugin command compatibility, or
+  old plugin API shims.
 - Social Inbox RC is a threaded reference app outside daemon core and legacy plugin APIs. Its
   `crypta.social.message.v1` route is bounded social-message signing only; local threads,
   channel filters, search, and read state operate over bounded summaries. It is not a generic

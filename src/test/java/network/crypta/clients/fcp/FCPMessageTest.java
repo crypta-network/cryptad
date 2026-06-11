@@ -3,16 +3,20 @@ package network.crypta.clients.fcp;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.util.List;
+import java.util.Objects;
 import network.crypta.support.SimpleFieldSet;
 import network.crypta.support.api.BucketFactory;
 import network.crypta.support.io.ArrayBucket;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.nullValue;
 import static org.hamcrest.Matchers.sameInstance;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
@@ -83,6 +87,45 @@ class FCPMessageTest {
     OutputStream outputStream = mock(OutputStream.class);
     wrappedMessage.send(outputStream);
     verify(originalMessage).send(outputStream);
+  }
+
+  @Test
+  void create_whenLegacyPluginCommandsAreReceived_returnsUnsupportedPluginMessage()
+      throws Exception {
+    for (String command :
+        List.of(
+            "FCPPluginMessage", "GetPluginInfo", "LoadPlugin", "ReloadPlugin", "RemovePlugin")) {
+      FCPMessage message = FCPMessage.create(command, new SimpleFieldSet(true), null, null);
+
+      assertInstanceOf(UnsupportedPluginMessage.class, message);
+      assertEquals(command, message.getName());
+    }
+  }
+
+  @Test
+  void run_whenUnsupportedPluginCommandRuns_sendsDeterministicRemovalError() throws Exception {
+    SimpleFieldSet fs = new SimpleFieldSet(true);
+    fs.putSingle(FCPMessage.IDENTIFIER, IDENTIFIER);
+    UnsupportedPluginMessage message =
+        Objects.requireNonNull(
+            assertInstanceOf(
+                UnsupportedPluginMessage.class, FCPMessage.create("LoadPlugin", fs, null, null)));
+    FCPConnectionHandler handler = mock(FCPConnectionHandler.class);
+
+    message.run(handler);
+
+    ArgumentCaptor<FCPMessage> sentMessage = ArgumentCaptor.forClass(FCPMessage.class);
+    verify(handler).send(sentMessage.capture());
+    ProtocolErrorMessage error =
+        assertInstanceOf(ProtocolErrorMessage.class, sentMessage.getValue());
+    SimpleFieldSet fields = error.getFieldSet();
+    assertEquals(ProtocolErrorMessage.INVALID_MESSAGE, fields.getInt("Code", -1));
+    assertEquals(IDENTIFIER, fields.get("Identifier"));
+    assertEquals(
+        "Plugin system has been removed; this command is no longer supported.",
+        fields.get("ExtraDescription"));
+    assertFalse(fields.getBoolean("Fatal", true));
+    assertFalse(fields.getBoolean("Global", true));
   }
 
   @Test

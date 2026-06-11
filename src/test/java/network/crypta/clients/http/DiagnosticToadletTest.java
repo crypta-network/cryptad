@@ -20,6 +20,8 @@ import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -62,6 +64,20 @@ class DiagnosticToadletTest {
   }
 
   @Test
+  void handleMethodHEAD_whenAccessDenied_doesNotCallPortOrWriteReply() throws Exception {
+    when(ctx.checkFullAccess(toadlet)).thenReturn(false);
+
+    toadlet.handleMethodHEAD(URI.create("http://localhost/diagnostic/"), request, ctx);
+
+    verify(ctx).checkFullAccess(toadlet);
+    verifyNoInteractions(diagnostic);
+    verify(ctx, never())
+        .sendReplyHeaders(anyInt(), anyString(), any(), anyString(), anyLong(), anyBoolean());
+    verify(ctx, never()).writeData(any(byte[].class), anyInt(), anyInt());
+    verifyNoMoreInteractions(ctx);
+  }
+
+  @Test
   void handleMethodGET_whenAuthorized_rendersDetachedDiagnosticReport() throws Exception {
     when(ctx.checkFullAccess(toadlet)).thenReturn(true);
     when(diagnostic.snapshot())
@@ -78,10 +94,6 @@ class DiagnosticToadletTest {
 
     assertEquals(
         """
-        Legacy fallback page
-        This legacy page remains available as a fallback and debug view.
-        The primary flow is now in Web Shell diagnostics: /app/node/#diagnostics
-
         Crypta Version:
         3.0
         System Information:
@@ -92,6 +104,34 @@ class DiagnosticToadletTest {
     verify(diagnostic).snapshot();
     verify(ctx)
         .sendReplyHeaders(anyInt(), anyString(), any(), anyString(), anyLong(), anyBoolean());
+  }
+
+  @Test
+  void handleMethodHEAD_whenAuthorized_sendsHeadersWithoutDiagnosticBody() throws Exception {
+    when(ctx.checkFullAccess(toadlet)).thenReturn(true);
+    when(diagnostic.snapshot())
+        .thenReturn(
+            new DiagnosticReportSnapshot(
+                List.of(new DiagnosticSectionSnapshot("Crypta Version:", List.of("3.0")))));
+    String expectedBody =
+        """
+        Crypta Version:
+        3.0
+        """;
+
+    toadlet.handleMethodHEAD(
+        URI.create("http://localhost/diagnostic/?legacyFallback=diagnostic-export"), request, ctx);
+
+    verify(diagnostic).snapshot();
+    verify(ctx)
+        .sendReplyHeaders(
+            eq(200),
+            eq("OK"),
+            isNull(),
+            eq("text/plain; charset=utf-8"),
+            eq((long) expectedBody.getBytes(StandardCharsets.UTF_8).length),
+            eq(true));
+    verify(ctx, never()).writeData(any(byte[].class), anyInt(), anyInt());
   }
 
   private ByteArrayOutputStream captureBody(ToadletContext context) throws Exception {

@@ -14,6 +14,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @SuppressWarnings("java:S100")
 class WebShellBootstrapTest {
   private static final String CONFIGURED_SECURITY_LEVELS_PATH = "/security-custom/";
+  private static final String CONFIGURED_DIAGNOSTIC_PATH = "/diagnostic-custom/";
 
   @Test
   void nodeManagement_whenLegacyLinksAndSecurityPathProvided_expectStableRoutesAndProvidedLinks() {
@@ -22,7 +23,8 @@ class WebShellBootstrapTest {
             new WebShellBootstrap.LegacyLink("/friends-custom/", "Friends"),
             new WebShellBootstrap.LegacyLink("/downloads-custom/", "Downloads"));
     WebShellBootstrap bootstrap =
-        WebShellBootstrap.nodeManagement(CONFIGURED_SECURITY_LEVELS_PATH, legacyLinks);
+        WebShellBootstrap.nodeManagement(
+            CONFIGURED_SECURITY_LEVELS_PATH, CONFIGURED_DIAGNOSTIC_PATH, legacyLinks);
 
     assertEquals(WebShellBootstrap.DEFAULT_SHELL_TITLE, bootstrap.shellTitle());
     assertEquals(WebShellPaths.SHELL_ROOT, bootstrap.shellRoot());
@@ -31,6 +33,7 @@ class WebShellBootstrapTest {
     assertNull(bootstrap.formPassword());
     assertEquals(WebShellBootstrap.DEFAULT_LEGACY_ROOT, bootstrap.legacyRoot());
     assertEquals(CONFIGURED_SECURITY_LEVELS_PATH, bootstrap.legacySecurityLevelsPath());
+    assertEquals(CONFIGURED_DIAGNOSTIC_PATH, bootstrap.legacyDiagnosticPath());
     assertEquals(legacyLinks, bootstrap.legacyLinks());
   }
 
@@ -39,18 +42,33 @@ class WebShellBootstrapTest {
     WebShellBootstrap bootstrap =
         WebShellBootstrap.nodeManagement(
             CONFIGURED_SECURITY_LEVELS_PATH,
+            CONFIGURED_DIAGNOSTIC_PATH,
             List.of(new WebShellBootstrap.LegacyLink("/friends/", "Friends")));
 
     assertEquals(CONFIGURED_SECURITY_LEVELS_PATH, bootstrap.legacySecurityLevelsPath());
+    assertEquals(CONFIGURED_DIAGNOSTIC_PATH, bootstrap.legacyDiagnosticPath());
   }
 
   @Test
   void nodeManagement_whenSlashlessSecurityPathProvided_expectConfiguredPathPreserved() {
     WebShellBootstrap bootstrap =
         WebShellBootstrap.nodeManagement(
-            "/security-custom", List.of(new WebShellBootstrap.LegacyLink("/friends/", "Friends")));
+            "/security-custom",
+            CONFIGURED_DIAGNOSTIC_PATH,
+            List.of(new WebShellBootstrap.LegacyLink("/friends/", "Friends")));
 
     assertEquals("/security-custom", bootstrap.legacySecurityLevelsPath());
+  }
+
+  @Test
+  void nodeManagement_whenSlashlessDiagnosticPathProvided_expectConfiguredPathPreserved() {
+    WebShellBootstrap bootstrap =
+        WebShellBootstrap.nodeManagement(
+            CONFIGURED_SECURITY_LEVELS_PATH,
+            "/diagnostic-custom",
+            List.of(new WebShellBootstrap.LegacyLink("/friends/", "Friends")));
+
+    assertEquals("/diagnostic-custom", bootstrap.legacyDiagnosticPath());
   }
 
   @Test
@@ -65,6 +83,7 @@ class WebShellBootstrapTest {
             "secret<token>",
             "/",
             "/security-custom/",
+            "/diagnostic-custom/",
             List.of(new WebShellBootstrap.LegacyLink("/friends/", "Friends & Allies")));
 
     assertEquals(
@@ -76,6 +95,7 @@ class WebShellBootstrapTest {
             + "\"formPassword\":\"secret\\u003ctoken\\u003e\","
             + "\"legacyRoot\":\"/\","
             + "\"legacySecurityLevelsPath\":\"/security-custom/\","
+            + "\"legacyDiagnosticPath\":\"/diagnostic-custom/\","
             + "\"legacyLinks\":[{\"path\":\"/friends/\",\"label\":\"Friends \\u0026 Allies\"}]}",
         WebShellBootstrapJson.serialize(bootstrap));
   }
@@ -85,6 +105,7 @@ class WebShellBootstrapTest {
     WebShellBootstrap bootstrap =
         WebShellBootstrap.nodeManagement(
                 CONFIGURED_SECURITY_LEVELS_PATH,
+                CONFIGURED_DIAGNOSTIC_PATH,
                 List.of(new WebShellBootstrap.LegacyLink("/friends/", "Friends")))
             .withFormPassword("");
 
@@ -113,6 +134,25 @@ class WebShellBootstrapTest {
         () -> new WebShellBootstrap.LegacyLink("/friends/?tab=all", "Friends"));
     assertThrows(
         IllegalArgumentException.class,
-        () -> WebShellBootstrap.nodeManagement("/seclevels/?tab=legacy", validLegacyLinks));
+        () ->
+            WebShellBootstrap.nodeManagement(
+                "/seclevels/?tab=legacy", CONFIGURED_DIAGNOSTIC_PATH, validLegacyLinks));
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            WebShellBootstrap.nodeManagement(
+                CONFIGURED_SECURITY_LEVELS_PATH,
+                "/diagnostic/?legacyFallback=diagnostic-export",
+                validLegacyLinks));
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            WebShellBootstrap.nodeManagement(
+                CONFIGURED_SECURITY_LEVELS_PATH, "/diagnostic/#export", validLegacyLinks));
+    assertThrows(
+        IllegalArgumentException.class,
+        () ->
+            WebShellBootstrap.nodeManagement(
+                CONFIGURED_SECURITY_LEVELS_PATH, "//evil.example/diagnostic/", validLegacyLinks));
   }
 }

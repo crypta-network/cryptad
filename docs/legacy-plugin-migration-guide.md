@@ -4,13 +4,16 @@ This guide explains how legacy plugin-style functionality should move to the Cry
 
 ## Status and non-goals
 
-The old plugin runtime removed status is intentional: the Cryptad node no longer implements the
-old in-process plugin runtime, `network.crypta.pluginmanager`, plugin toadlets, or old plugin FCP
-commands.
+The old plugin runtime removed status is intentional and frozen for production RC. See
+[legacy-plugin-freeze-policy.md](legacy-plugin-freeze-policy.md) and
+[plugin-system.md](plugin-system.md) for the current policy. The Cryptad node no longer implements
+the old in-process plugin runtime, `network.crypta.pluginmanager`, plugin toadlets, or old plugin
+FCP commands.
 
-This PR does not restore old plugin ABI compatibility, old FCP plugin command compatibility, or
-compatibility shims for WebOfTrust, Freetalk, Sone, or Freemail plugin APIs. Migration work should
-use out-of-process apps, Platform API routes, signed bundles, signed catalogs, app review
+Production RC migration work does not restore old plugin ABI compatibility, old FCP plugin command
+compatibility, or compatibility shims for WebOfTrust, Freetalk, Sone, or Freemail plugin APIs.
+Migration work should use out-of-process apps, signed bundles, signed catalogs, Platform API
+routes, AppVault, content subscriptions, durable app data, Trust Graph Local RC, app review
 governance, and operator-approved local app-service grants instead of daemon-core plugins.
 
 The migration path also does not change FNP, FCP, Hyphanet/Freenet wire behavior, FProxy browse,

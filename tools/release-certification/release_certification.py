@@ -1073,12 +1073,14 @@ def app_platform_evidence(
         "reference-app.social-inbox-trust-annotations",
         "reference-app.social-inbox-rc-threading",
         "migration.social-mail-preview",
+        "legacy-plugin.freeze-policy",
         "legacy-plugin.migration-guide",
         "legacy-plugin.social-inbox-spike",
         "legacy.retirement",
         "legacy-admin.removal-wave-1",
         "legacy-admin.removal-wave-2",
         "legacy-admin.removal-wave-3",
+        "legacy-admin.removal-wave-4",
         "apphost.sandbox-provider",
         *PUBLIC_BETA_SECURITY_EVIDENCE_IDS,
         "app-update.lifecycle",
@@ -2082,17 +2084,19 @@ def ecosystem_matrix_row_specs() -> list[MatrixRowSpec]:
             category="legacy-retirement",
             title="Legacy plugin-to-app migration guidance",
             required_evidence_ids=(
+                "legacy-plugin.freeze-policy",
                 "legacy-plugin.migration-guide",
                 "legacy-plugin.social-inbox-spike",
             ),
             gate_ids=("ecosystem.reference-content-apps",),
             docs=(
+                "docs/legacy-plugin-freeze-policy.md",
                 "docs/legacy-plugin-migration-guide.md",
                 "docs/plugin-system.md",
                 "docs/social-inbox-reference-app.md",
             ),
             first_party_apps=("social-inbox", "trust-graph"),
-            phase="phase-8",
+            phase="phase-9",
         ),
         MatrixRowSpec(
             id="legacy-retirement",
@@ -2103,10 +2107,11 @@ def ecosystem_matrix_row_specs() -> list[MatrixRowSpec]:
                 "legacy-admin.removal-wave-1",
                 "legacy-admin.removal-wave-2",
                 "legacy-admin.removal-wave-3",
+                "legacy-admin.removal-wave-4",
             ),
             gate_ids=("ecosystem.legacy-retirement",),
             docs=("docs/legacy-retirement-plan.md", "docs/release-certification.md"),
-            phase="phase-8",
+            phase="phase-9",
         ),
         MatrixRowSpec(
             id="redaction-and-private-artifacts",
@@ -4666,6 +4671,7 @@ def evaluate_legacy_retirement_gate(
         "legacy-admin.removal-wave-1",
         "legacy-admin.removal-wave-2",
         "legacy-admin.removal-wave-3",
+        "legacy-admin.removal-wave-4",
     ):
         status = evidence_status(current.get(evidence_id))
         previous_status = evidence_status(previous.get(evidence_id))
@@ -5068,6 +5074,7 @@ def render_report(summary: dict[str, Any]) -> str:
     append_detail(lines, summary, "legacy-admin.removal-wave-1")
     append_detail(lines, summary, "legacy-admin.removal-wave-2")
     append_detail(lines, summary, "legacy-admin.removal-wave-3")
+    append_detail(lines, summary, "legacy-admin.removal-wave-4")
     lines.extend(
         [
             "",
@@ -5846,10 +5853,12 @@ def run_self_test(repo_root: Path) -> None:
             "reference-app.social-inbox",
             "reference-app.social-inbox-rc-threading",
             "migration.social-mail-preview",
+            "legacy-plugin.freeze-policy",
             "legacy-plugin.migration-guide",
             "legacy-plugin.social-inbox-spike",
             "legacy-admin.removal-wave-2",
             "legacy-admin.removal-wave-3",
+            "legacy-admin.removal-wave-4",
             "app-platform.docs-portal",
             "app-platform.beta-program",
             "app-platform.beta-tutorials",
@@ -5978,6 +5987,7 @@ def run_self_test(repo_root: Path) -> None:
             "reference-app.social-inbox-rc-threading",
             "reference-app.social-inbox-service-grant",
             "migration.social-mail-preview",
+            "legacy-plugin.freeze-policy",
             "legacy-plugin.migration-guide",
             "legacy-plugin.social-inbox-spike",
         ):
@@ -5998,6 +6008,8 @@ def run_self_test(repo_root: Path) -> None:
         assert evidence_by_id["legacy-admin.removal-wave-2"]["requiredForReleaseCandidate"] is True
         assert evidence_by_id["legacy-admin.removal-wave-3"]["status"] == "pass", evidence_by_id
         assert evidence_by_id["legacy-admin.removal-wave-3"]["requiredForReleaseCandidate"] is True
+        assert evidence_by_id["legacy-admin.removal-wave-4"]["status"] == "pass", evidence_by_id
+        assert evidence_by_id["legacy-admin.removal-wave-4"]["requiredForReleaseCandidate"] is True
         optional_skip_status, optional_skip_release_passed = determine_overall_status(
             "release-candidate",
             [
@@ -7482,6 +7494,28 @@ def run_self_test(repo_root: Path) -> None:
         assert legacy_wave_three_removed_exit_code == 1, legacy_wave_three_removed_summary
         assert (
             gate_by_id(legacy_wave_three_removed_summary, "ecosystem.legacy-retirement")["status"]
+            == "fail"
+        )
+
+        legacy_wave_four_removed_path = write_app_summary_variant(
+            "legacy-wave-four-removed",
+            lambda value: value.update(
+                {
+                    "evidence": [
+                        entry
+                        for entry in value["evidence"]
+                        if entry.get("id") != "legacy-admin.removal-wave-4"
+                    ]
+                }
+            ),
+        )
+        legacy_wave_four_removed_summary, legacy_wave_four_removed_exit_code = run_with_previous(
+            "legacy-wave-four-removed-cert",
+            app_platform_summary=legacy_wave_four_removed_path,
+        )
+        assert legacy_wave_four_removed_exit_code == 1, legacy_wave_four_removed_summary
+        assert (
+            gate_by_id(legacy_wave_four_removed_summary, "ecosystem.legacy-retirement")["status"]
             == "fail"
         )
 

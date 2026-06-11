@@ -87,6 +87,22 @@ class LegacyAdminRetirementRegistryTest {
   }
 
   @Test
+  void removalWaveSurfaces_whenWaveFourRequested_expectDiagnosticOnly() {
+    List<String> waveFourIds =
+        LegacyAdminRetirementRegistry.removalWaveSurfaces(4).stream()
+            .map(LegacyAdminSurface::id)
+            .toList();
+
+    assertEquals(List.of("diagnostic"), waveFourIds);
+    assertFalse(waveFourIds.contains("queue-downloads"));
+    assertFalse(waveFourIds.contains("alerts"));
+    assertFalse(waveFourIds.contains("security-levels"));
+    assertFalse(waveFourIds.contains("content-filter"));
+    assertFalse(waveFourIds.contains("first-time-wizard"));
+    assertFalse(waveFourIds.contains("node-to-node-message"));
+  }
+
+  @Test
   void scopeExpandedInWaveSurfaces_whenWaveTwoRequested_expectExpandedScopeSurfaces() {
     List<String> expandedIds =
         LegacyAdminRetirementRegistry.scopeExpandedInWaveSurfaces(2).stream()
@@ -129,12 +145,19 @@ class LegacyAdminRetirementRegistryTest {
   }
 
   @Test
-  void require_whenDiagnosticRequested_expectPlainTextExportRetainedAsLegacyFallback() {
+  void require_whenDiagnosticRequested_expectWaveFourRedirectWithExplicitFallback() {
     LegacyAdminSurface surface = LegacyAdminRetirementRegistry.require("diagnostic");
 
     assertEquals(LegacyAdminRetirementState.PRIMARY_REPLACED, surface.state());
-    assertEquals(LegacyAdminRemovalMode.RENDER_LEGACY, surface.removalMode());
-    assertEquals(0, surface.removalWave());
+    assertEquals(LegacyAdminRemovalMode.REDIRECT_TO_REPLACEMENT, surface.removalMode());
+    assertEquals(4, surface.removalWave());
+    assertEquals("phase-9-pr-254", surface.removedByDefaultSince());
+    assertEquals("support-emergency-fallback", surface.fallbackPolicy());
+    assertEquals(LegacyAdminRemovalScope.CANONICAL_AND_SLASHLESS_ALIAS, surface.removalScope());
+    assertEquals(0, surface.scopeExpandedInWave());
+    assertEquals(List.of(), surface.explicitRemovalChildPaths());
+    assertTrue(surface.blockMutatingRequests());
+    assertEquals(DiagnosticToadlet.TOADLET_URL, surface.legacyPath());
     assertEquals(WebShellPaths.SHELL_ROOT + "#diagnostics", surface.replacementUrl());
   }
 
