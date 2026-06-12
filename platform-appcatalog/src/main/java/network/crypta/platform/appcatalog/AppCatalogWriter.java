@@ -52,6 +52,7 @@ import network.crypta.platform.appdist.AppDistributionException;
 public final class AppCatalogWriter {
   private static final int COPY_BUFFER_BYTES = 64 * 1024;
   private static final String CATALOG_PARAMETER_NAME = "catalog";
+  private static final String REPLACEMENT_APP_ID = "replacementAppId";
 
   private AppCatalogWriter() {}
 
@@ -77,10 +78,11 @@ public final class AppCatalogWriter {
         buildEntries(checkedRequest.entryDescriptorFiles(), checkedRequest.reviewReceiptFiles());
     AppCatalog catalog =
         new AppCatalog(
-            catalogVersion(entries),
+            catalogVersion(entries, checkedRequest.securityPolicy()),
             checkedRequest.catalogId(),
             checkedRequest.catalogName(),
             checkedRequest.generatedAt(),
+            checkedRequest.securityPolicy(),
             entries);
     byte[] catalogBytes = serialize(catalog);
     AppCatalog parsedCatalog = AppCatalogParser.parse(catalogBytes);
@@ -113,6 +115,7 @@ public final class AppCatalogWriter {
     appendProperty(builder, "catalog.name", checkedCatalog.name());
     appendProperty(builder, "catalog.generatedAt", checkedCatalog.generatedAt().toString());
     appendProperty(builder, "catalog.entries", joinAppIds(checkedCatalog.entries()));
+    appendSecurityPolicy(builder, checkedCatalog.securityPolicy());
     for (AppCatalogEntry entry : checkedCatalog.entries()) {
       appendEntry(builder, entry);
     }
@@ -196,7 +199,11 @@ public final class AppCatalogWriter {
         descriptor, toEntry(descriptor, artifact), artifact.manifest());
   }
 
-  private static int catalogVersion(List<AppCatalogEntry> entries) {
+  private static int catalogVersion(
+      List<AppCatalogEntry> entries, AppCatalogSecurityPolicy securityPolicy) {
+    if (securityPolicy.hasCatalogFields()) {
+      return AppCatalog.VERSION_SECURITY_POLICY;
+    }
     for (AppCatalogEntry entry : entries) {
       if (entry.hasProductionMetadata()) {
         return AppCatalog.VERSION_PRODUCTION_CHANNELS;
@@ -211,7 +218,12 @@ public final class AppCatalogWriter {
   }
 
   private static void requireCatalogVersionMatchesEntries(AppCatalog catalog) {
-    if (catalog.version() == AppCatalog.VERSION_PRODUCTION_CHANNELS) {
+    if (catalog.securityPolicy().hasCatalogFields()
+        && catalog.version() < AppCatalog.VERSION_SECURITY_POLICY) {
+      throw AppCatalogSidecars.invalidEntry(
+          "catalog.version 4 is required when security policy metadata is present");
+    }
+    if (catalog.version() >= AppCatalog.VERSION_PRODUCTION_CHANNELS) {
       return;
     }
     for (AppCatalogEntry entry : catalog.entries()) {
@@ -624,7 +636,7 @@ public final class AppCatalogWriter {
         .ifPresent(value -> appendProperty(builder, prefix + "deprecation.message", value));
     metadata
         .replacementAppId()
-        .ifPresent(value -> appendProperty(builder, prefix + "replacementAppId", value));
+        .ifPresent(value -> appendProperty(builder, prefix + REPLACEMENT_APP_ID, value));
     if (metadata.securityAdvisories().isEmpty()) {
       return;
     }
@@ -638,6 +650,59 @@ public final class AppCatalogWriter {
           builder,
           prefix + "securityAdvisory." + advisory.id() + ".uri",
           advisory.uri().toString());
+    }
+  }
+
+  private static void appendSecurityPolicy(
+      StringBuilder builder, AppCatalogSecurityPolicy securityPolicy) {
+    if (!securityPolicy.hasCatalogFields()) {
+      return;
+    }
+    if (!securityPolicy.advisories().isEmpty()) {
+      appendProperty(
+          builder,
+          "catalog.securityAdvisories",
+          joinValues(
+              securityPolicy.advisories().stream()
+                  .map(AppCatalogSecurityAdvisoryRecord::id)
+                  .toList()));
+      for (AppCatalogSecurityAdvisoryRecord advisory : securityPolicy.advisories()) {
+        String prefix = "catalog.securityAdvisory." + advisory.id() + ".";
+        appendProperty(builder, prefix + "uri", advisory.uri().toString());
+        appendProperty(builder, prefix + "title", advisory.title());
+        appendProperty(builder, prefix + "severity", advisory.severity().catalogValue());
+        appendProperty(builder, prefix + "status", advisory.status().catalogValue());
+        appendProperty(builder, prefix + "action", advisory.action().catalogValue());
+        appendProperty(builder, prefix + "summary", advisory.summary());
+        appendProperty(builder, prefix + "publishedAt", advisory.publishedAt().toString());
+        appendProperty(builder, prefix + "updatedAt", advisory.updatedAt().toString());
+        advisory
+            .replacementAppId()
+            .ifPresent(value -> appendProperty(builder, prefix + REPLACEMENT_APP_ID, value));
+        advisory
+            .safeUninstallGuidance()
+            .ifPresent(value -> appendProperty(builder, prefix + "safeUninstallGuidance", value));
+      }
+    }
+    if (!securityPolicy.denylist().isEmpty()) {
+      appendProperty(
+          builder,
+          "catalog.securityDenylist",
+          joinValues(
+              securityPolicy.denylist().stream().map(AppCatalogVersionDenylistEntry::id).toList()));
+      for (AppCatalogVersionDenylistEntry denylistEntry : securityPolicy.denylist()) {
+        String prefix = "catalog.securityDenylist." + denylistEntry.id() + ".";
+        appendProperty(builder, prefix + "appId", denylistEntry.appId());
+        appendProperty(builder, prefix + "version", denylistEntry.version());
+        appendProperty(builder, prefix + "advisoryId", denylistEntry.advisoryId());
+        appendProperty(builder, prefix + "reason", denylistEntry.reason());
+        denylistEntry
+            .replacementAppId()
+            .ifPresent(value -> appendProperty(builder, prefix + REPLACEMENT_APP_ID, value));
+        denylistEntry
+            .safeUninstallGuidance()
+            .ifPresent(value -> appendProperty(builder, prefix + "safeUninstallGuidance", value));
+      }
     }
   }
 

@@ -18,9 +18,12 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HexFormat;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.platform.api.PlatformApiContract;
@@ -32,9 +35,15 @@ import network.crypta.platform.api.PlatformApiContractVerifier;
 import network.crypta.platform.appcatalog.AppCatalog;
 import network.crypta.platform.appcatalog.AppCatalogBuildRequest;
 import network.crypta.platform.appcatalog.AppCatalogCompatibilityMetadata;
+import network.crypta.platform.appcatalog.AppCatalogSecurityAction;
+import network.crypta.platform.appcatalog.AppCatalogSecurityAdvisoryRecord;
+import network.crypta.platform.appcatalog.AppCatalogSecurityPolicy;
+import network.crypta.platform.appcatalog.AppCatalogSecuritySeverity;
+import network.crypta.platform.appcatalog.AppCatalogSecurityStatus;
 import network.crypta.platform.appcatalog.AppCatalogSignature;
 import network.crypta.platform.appcatalog.AppCatalogSigner;
 import network.crypta.platform.appcatalog.AppCatalogVerifier;
+import network.crypta.platform.appcatalog.AppCatalogVersionDenylistEntry;
 import network.crypta.platform.appcatalog.AppCatalogWriter;
 import network.crypta.platform.appcatalog.AppReviewPolicy;
 import network.crypta.platform.appcatalog.AppReviewReceipt;
@@ -98,6 +107,13 @@ import picocli.CommandLine;
     })
 public final class CryptaAppCli implements Runnable {
   private static final String WARNING_PREFIX = "Warning: ";
+  private static final String FIELD_ACTION = "action";
+  private static final String FIELD_REPLACEMENT_APP_ID = "replacementAppId";
+  private static final String FIELD_SAFE_UNINSTALL_GUIDANCE = "safeUninstallGuidance";
+  private static final String FIELD_SEVERITY = "severity";
+  private static final String FIELD_STATUS = "status";
+  private static final String OPTION_SECURITY_ADVISORY_RECORD = "--security-advisory-record";
+  private static final String OPTION_SECURITY_DENYLIST_ENTRY = "--security-denylist-entry";
 
   private static final AtomicReference<LiveUskPublisher> LIVE_USK_PUBLISHER_OVERRIDE =
       new AtomicReference<>();
@@ -702,6 +718,7 @@ public final class CryptaAppCli implements Runnable {
       subcommands = {
         ReviewSignCommand.class,
         ReviewVerifyCommand.class,
+        ReviewFingerprintCommand.class,
         ReviewKeysCommand.class,
         ReviewTransparencyCommand.class
       })
@@ -866,7 +883,32 @@ public final class CryptaAppCli implements Runnable {
               "Verified review receipt: "
                   + decision.status().jsonValue()
                   + " reviewer="
-                  + decision.reviewerKeyId());
+                  + decision.reviewerKeyId()
+                  + " fingerprintSha256="
+                  + receipt.fingerprintSha256());
+      return CommandLine.ExitCode.OK;
+    }
+  }
+
+  /** Implements {@code crypta-app review fingerprint}. */
+  @Command(name = "fingerprint", description = "Print a redacted review receipt fingerprint.")
+  static final class ReviewFingerprintCommand extends SpecAwareCommand
+      implements Callable<Integer> {
+    @Option(names = "--receipt-file", required = true, description = "Receipt properties file.")
+    private Path receiptFile;
+
+    @Override
+    public Integer call() throws Exception {
+      AppReviewReceipt receipt = AppReviewReceiptIO.read(receiptFile);
+      super.commandLine()
+          .getOut()
+          .println(
+              "Review receipt fingerprint: fingerprintSha256="
+                  + receipt.fingerprintSha256()
+                  + " payloadSha256="
+                  + receipt.payloadSha256()
+                  + " reviewer="
+                  + receipt.payload().reviewerKeyId());
       return CommandLine.ExitCode.OK;
     }
   }
@@ -906,6 +948,7 @@ public final class CryptaAppCli implements Runnable {
               + keys.registryVersion()
               + " configured="
               + !keys.isEmpty());
+      out.println("Receipt revocations: " + keys.receiptRevocations().size());
       for (var summary : keys.summaries()) {
         out.println(
             "Reviewer key: "
@@ -981,7 +1024,7 @@ public final class CryptaAppCli implements Runnable {
         key.policyVersion()
             .ifPresent(
                 value -> appendReviewerProperty(builder, reviewerIndex, "policy.version", value));
-        appendReviewerProperty(builder, reviewerIndex, "status", key.status().jsonValue());
+        appendReviewerProperty(builder, reviewerIndex, FIELD_STATUS, key.status().jsonValue());
         key.lifecycle()
             .validFrom()
             .ifPresent(
@@ -1050,6 +1093,8 @@ public final class CryptaAppCli implements Runnable {
       out.println(
           "Reviewer key lifecycle valid: keys="
               + keys.summaries().size()
+              + " receiptRevocations="
+              + keys.receiptRevocations().size()
               + " warnings="
               + warnings.size());
       for (String warning : warnings) {
@@ -1429,6 +1474,18 @@ public final class CryptaAppCli implements Runnable {
         description = "Review receipt properties file to embed; repeatable.")
     private List<Path> reviewReceipts = new ArrayList<>();
 
+    @Option(
+        names = OPTION_SECURITY_ADVISORY_RECORD,
+        description =
+            "Catalog security advisory as semicolon-separated key=value fields; repeatable.")
+    private List<String> securityAdvisoryRecords = new ArrayList<>();
+
+    @Option(
+        names = OPTION_SECURITY_DENYLIST_ENTRY,
+        description =
+            "Exact app-version denylist as semicolon-separated key=value fields; repeatable.")
+    private List<String> securityDenylistEntries = new ArrayList<>();
+
     @Option(names = "--overwrite", description = "Replace an existing catalog file.")
     private boolean overwrite;
 
@@ -1446,6 +1503,7 @@ public final class CryptaAppCli implements Runnable {
                   generatedAt == null ? Instant.now() : generatedAt,
                   entries,
                   reviewReceipts,
+                  securityPolicy(securityAdvisoryRecords, securityDenylistEntries),
                   normalizedCatalogFile));
       int entryCount = result.catalog().entries().size();
       super.commandLine()
@@ -1458,6 +1516,114 @@ public final class CryptaAppCli implements Runnable {
                   + " "
                   + (entryCount == 1 ? "entry" : "entries"));
       return CommandLine.ExitCode.OK;
+    }
+
+    private static AppCatalogSecurityPolicy securityPolicy(
+        List<String> advisorySpecs, List<String> denylistSpecs) {
+      if (advisorySpecs.isEmpty() && denylistSpecs.isEmpty()) {
+        return AppCatalogSecurityPolicy.EMPTY;
+      }
+      List<AppCatalogSecurityAdvisoryRecord> advisories =
+          advisorySpecs.stream().map(CatalogCreateCommand::securityAdvisory).toList();
+      List<AppCatalogVersionDenylistEntry> denylist =
+          denylistSpecs.stream().map(CatalogCreateCommand::securityDenylistEntry).toList();
+      return new AppCatalogSecurityPolicy(advisories, denylist);
+    }
+
+    private static AppCatalogSecurityAdvisoryRecord securityAdvisory(String spec) {
+      Map<String, String> fields = fieldSpec(spec, OPTION_SECURITY_ADVISORY_RECORD);
+      rejectUnknownFields(
+          fields,
+          OPTION_SECURITY_ADVISORY_RECORD,
+          Set.of(
+              "id",
+              "uri",
+              "title",
+              FIELD_SEVERITY,
+              FIELD_STATUS,
+              FIELD_ACTION,
+              "summary",
+              "publishedAt",
+              "updatedAt",
+              FIELD_REPLACEMENT_APP_ID,
+              FIELD_SAFE_UNINSTALL_GUIDANCE));
+      return new AppCatalogSecurityAdvisoryRecord(
+          requiredField(fields, "id", OPTION_SECURITY_ADVISORY_RECORD),
+          URI.create(requiredField(fields, "uri", OPTION_SECURITY_ADVISORY_RECORD)),
+          requiredField(fields, "title", OPTION_SECURITY_ADVISORY_RECORD),
+          AppCatalogSecuritySeverity.parseCatalog(
+              requiredField(fields, FIELD_SEVERITY, OPTION_SECURITY_ADVISORY_RECORD),
+              FIELD_SEVERITY),
+          AppCatalogSecurityStatus.parse(
+              requiredField(fields, FIELD_STATUS, OPTION_SECURITY_ADVISORY_RECORD), FIELD_STATUS),
+          AppCatalogSecurityAction.parse(
+              requiredField(fields, FIELD_ACTION, OPTION_SECURITY_ADVISORY_RECORD), FIELD_ACTION),
+          requiredField(fields, "summary", OPTION_SECURITY_ADVISORY_RECORD),
+          Instant.parse(requiredField(fields, "publishedAt", OPTION_SECURITY_ADVISORY_RECORD)),
+          Instant.parse(requiredField(fields, "updatedAt", OPTION_SECURITY_ADVISORY_RECORD)),
+          Optional.ofNullable(optionalField(fields, FIELD_REPLACEMENT_APP_ID)),
+          Optional.ofNullable(optionalField(fields, FIELD_SAFE_UNINSTALL_GUIDANCE)));
+    }
+
+    private static AppCatalogVersionDenylistEntry securityDenylistEntry(String spec) {
+      Map<String, String> fields = fieldSpec(spec, OPTION_SECURITY_DENYLIST_ENTRY);
+      rejectUnknownFields(
+          fields,
+          OPTION_SECURITY_DENYLIST_ENTRY,
+          Set.of(
+              "id",
+              "appId",
+              "version",
+              "advisoryId",
+              "reason",
+              FIELD_REPLACEMENT_APP_ID,
+              FIELD_SAFE_UNINSTALL_GUIDANCE));
+      return new AppCatalogVersionDenylistEntry(
+          requiredField(fields, "id", OPTION_SECURITY_DENYLIST_ENTRY),
+          requiredField(fields, "appId", OPTION_SECURITY_DENYLIST_ENTRY),
+          requiredField(fields, "version", OPTION_SECURITY_DENYLIST_ENTRY),
+          requiredField(fields, "advisoryId", OPTION_SECURITY_DENYLIST_ENTRY),
+          requiredField(fields, "reason", OPTION_SECURITY_DENYLIST_ENTRY),
+          Optional.ofNullable(optionalField(fields, FIELD_REPLACEMENT_APP_ID)),
+          Optional.ofNullable(optionalField(fields, FIELD_SAFE_UNINSTALL_GUIDANCE)));
+    }
+
+    private static Map<String, String> fieldSpec(String spec, String optionName) {
+      LinkedHashMap<String, String> fields = new LinkedHashMap<>();
+      for (String field : spec.split(";", -1)) {
+        int separator = field.indexOf('=');
+        if (separator <= 0 || separator == field.length() - 1) {
+          throw new IllegalArgumentException(optionName + " fields must use key=value syntax");
+        }
+        String key = field.substring(0, separator).trim();
+        String value = field.substring(separator + 1).trim();
+        if (fields.putIfAbsent(key, value) != null) {
+          throw new IllegalArgumentException(optionName + " duplicate field: " + key);
+        }
+      }
+      return Map.copyOf(fields);
+    }
+
+    private static void rejectUnknownFields(
+        Map<String, String> fields, String optionName, Set<String> allowedKeys) {
+      for (String key : fields.keySet()) {
+        if (!allowedKeys.contains(key)) {
+          throw new IllegalArgumentException(optionName + " unknown field: " + key);
+        }
+      }
+    }
+
+    private static String requiredField(Map<String, String> fields, String key, String optionName) {
+      String value = optionalField(fields, key);
+      if (value == null) {
+        throw new IllegalArgumentException(optionName + " missing field: " + key);
+      }
+      return value;
+    }
+
+    private static String optionalField(Map<String, String> fields, String key) {
+      String value = fields.get(key);
+      return value == null || value.isBlank() ? null : value;
     }
   }
 

@@ -288,6 +288,12 @@ the same descriptor parser used by `catalog create`, so generated descriptors wi
 maximum-version, support, deprecation, replacement, or advisory metadata produce
 `catalog.version=3` when written into a catalog.
 
+`crypta-app catalog create` can also author catalog-level security response metadata. Repeat
+`--security-advisory-record` for signed advisory records and `--security-denylist-entry` for exact
+app-version denylist entries. Those records produce `catalog.version=4` and are enforced by
+install, update, stage, apply, and scheduler gates. Unknown fields in the semicolon `key=value`
+specs fail closed. See [ecosystem-security-advisories.md](ecosystem-security-advisories.md).
+
 ```properties
 # catalog-entry.properties
 artifact.path=/abs/path/to/dist/apps/hello-queue-0.1.0.zip
@@ -342,7 +348,7 @@ permissions.rationale.queue.write=Creates insert requests for the publish operat
 permissions.rationale.queue.read=Displays publish progress from the local transfer queue.
 changelog.summary=Adds the first content reference app.
 api.minimumVersion=3
-api.maximumTestedVersion=16
+api.maximumTestedVersion=17
 api.experimentalCapabilitiesAccepted=false
 ```
 
@@ -373,7 +379,7 @@ permissions.rationale.app.data.read=Restores bounded profile drafts and publish 
 permissions.rationale.app.data.write=Saves bounded profile drafts and publish summaries.
 changelog.summary=Adds the first identity-profile reference app.
 api.minimumVersion=9
-api.maximumTestedVersion=16
+api.maximumTestedVersion=17
 api.experimentalCapabilitiesAccepted=true
 ```
 
@@ -408,7 +414,7 @@ permissions.rationale.app.data.read=Restores the app-owned feed list, selected s
 permissions.rationale.app.data.write=Saves bounded app-owned reader state through the durable app-data API.
 changelog.summary=Adds the first feed reader and publisher reference app.
 api.minimumVersion=9
-api.maximumTestedVersion=16
+api.maximumTestedVersion=17
 api.experimentalCapabilitiesAccepted=false
 ```
 
@@ -453,7 +459,7 @@ service-request.trust-score.contexts=message-author
 service-request.trust-score.purpose=Annotate Social Inbox message authors using the local Trust Graph Local RC score service.
 changelog.summary=Adds the Social Inbox RC threaded reference app.
 api.minimumVersion=16
-api.maximumTestedVersion=16
+api.maximumTestedVersion=17
 api.experimentalCapabilitiesAccepted=true
 ```
 
@@ -559,6 +565,9 @@ crypta-app review verify \
   --catalog-entry catalog-entry.properties \
   --receipt-file review-receipt.properties \
   --trusted-reviewer-keys-file /abs/path/to/trusted-reviewers.properties
+
+crypta-app review fingerprint \
+  --receipt-file review-receipt.properties
 ```
 
 Reviewer private keys are local reviewer material, not app or catalog signing keys. Do not commit
@@ -589,6 +598,11 @@ reviewer.1.status=active
 reviewer.1.valid.from=2026-04-01T00:00:00Z
 reviewer.1.valid.until=2026-07-01T00:00:00Z
 ```
+
+Registry version 3 adds `review.revocations` entries for exact receipt revocation by
+`receiptFingerprintSha256`. A revoked receipt evaluates as `revoked_receipt` and no longer counts
+as trusted positive evidence. Reviewer-key compromise still uses the existing `status=revoked`
+lifecycle and evaluates matching receipts as `revoked_reviewer`.
 
 Inspect, migrate, and validate reviewer registries with:
 

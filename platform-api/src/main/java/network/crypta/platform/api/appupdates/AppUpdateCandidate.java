@@ -34,6 +34,7 @@ import java.util.Objects;
  * @param supportStatus signed catalog support status for the candidate
  * @param deprecation signed catalog deprecation metadata for the candidate
  * @param securityAdvisories signed catalog security-advisory references for the candidate
+ * @param securityDecision redacted signed catalog security decision for the target version
  * @param channelPolicyAllowed whether automatic policy may process this channel
  * @param policyBlockReason stable reason automatic policy would skip the candidate
  * @param bundleSha256 expected SHA-256 digest of the catalog bundle artifact
@@ -60,6 +61,7 @@ public record AppUpdateCandidate(
     String supportStatus,
     Map<String, Object> deprecation,
     List<Map<String, Object>> securityAdvisories,
+    Map<String, Object> securityDecision,
     boolean channelPolicyAllowed,
     String policyBlockReason,
     String bundleSha256,
@@ -78,6 +80,8 @@ public record AppUpdateCandidate(
   private static final String JSON_BLOCKS_UPDATE = "blocksUpdate";
   private static final String JSON_BLOCKS_POLICY_APPLY = "blocksPolicyApply";
   private static final String JSON_SECURITY_ADVISORIES = "securityAdvisories";
+  private static final String JSON_SECURITY_DECISION = "securityDecision";
+  private static final String JSON_BLOCKS_AUTOMATIC_APPLY = "blocksAutomaticApply";
   private static final String API_STATUS_COMPATIBLE = "compatible";
   private static final String REVIEW_STATUS_REVIEWED = "reviewed";
   private static final String REVIEW_TRUST_STATUS_PUBLISHER_CLAIM_ONLY = "publisher_claim_only";
@@ -102,6 +106,7 @@ public record AppUpdateCandidate(
    * @param supportStatus signed catalog support status for the candidate
    * @param deprecation signed catalog deprecation metadata for the candidate
    * @param securityAdvisories signed catalog security-advisory references for the candidate
+   * @param securityDecision redacted signed catalog security decision for the target version
    * @param channelPolicyAllowed whether automatic policy may process this channel
    * @param policyBlockReason stable reason automatic policy would skip the candidate
    * @param bundleSha256 expected SHA-256 digest of the candidate bundle
@@ -126,6 +131,7 @@ public record AppUpdateCandidate(
     supportStatus = requireText(supportStatus, "supportStatus");
     deprecation = copyInOrder(deprecation, "deprecation");
     securityAdvisories = copySecurityAdvisories(securityAdvisories);
+    securityDecision = copyInOrder(securityDecision, JSON_SECURITY_DECISION);
     if (policyBlockReason != null && policyBlockReason.isBlank()) {
       throw new IllegalArgumentException("policyBlockReason must not be blank");
     }
@@ -166,6 +172,7 @@ public record AppUpdateCandidate(
     return eligibleByDefault()
         && channelPolicyAllowed
         && policyBlockReason == null
+        && securityDecisionAllowsAutomaticStage()
         && dataMigrationAllowsAutomaticStage();
   }
 
@@ -185,8 +192,15 @@ public record AppUpdateCandidate(
   public boolean eligibleForAutomaticApply() {
     return eligibleForAutomaticStage()
         && reviewTrustAllowsAutomaticApply()
+        && securityDecisionAllowsAutomaticStage()
         && apiCompatibilityAllowsAutomaticApply()
         && dataMigrationAllowsAutomaticStage();
+  }
+
+  boolean securityDecisionAllowsAutomaticStage() {
+    return !Boolean.TRUE.equals(securityDecision.get(JSON_REQUIRES_ACKNOWLEDGEMENT))
+        && !Boolean.TRUE.equals(securityDecision.get(JSON_BLOCKS_UPDATE))
+        && !Boolean.TRUE.equals(securityDecision.get(JSON_BLOCKS_AUTOMATIC_APPLY));
   }
 
   boolean reviewTrustAllowsAutomaticApply() {
@@ -225,6 +239,7 @@ public record AppUpdateCandidate(
     json.put("supportStatus", supportStatus);
     json.put("deprecation", deprecation);
     json.put(JSON_SECURITY_ADVISORIES, securityAdvisories);
+    json.put(JSON_SECURITY_DECISION, securityDecision);
     json.put("channelPolicyAllowed", channelPolicyAllowed);
     json.put("policyBlockReason", policyBlockReason);
     json.put("bundle", bundleSummary());
@@ -248,6 +263,12 @@ public record AppUpdateCandidate(
     if (status == AppUpdateCandidateStatus.AVAILABLE
         && (Boolean.TRUE.equals(reviewTrust.get(JSON_REQUIRES_ACKNOWLEDGEMENT))
             || Boolean.TRUE.equals(reviewTrust.get(JSON_BLOCKS_UPDATE)))) {
+      return true;
+    }
+    if (status == AppUpdateCandidateStatus.AVAILABLE
+        && (Boolean.TRUE.equals(securityDecision.get(JSON_REQUIRES_ACKNOWLEDGEMENT))
+            || Boolean.TRUE.equals(securityDecision.get(JSON_BLOCKS_UPDATE))
+            || Boolean.TRUE.equals(securityDecision.get(JSON_BLOCKS_AUTOMATIC_APPLY)))) {
       return true;
     }
     if (status == AppUpdateCandidateStatus.AVAILABLE

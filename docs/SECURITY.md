@@ -76,6 +76,20 @@ should prefer v2 entries with active, retired, or revoked lifecycle state, stric
 rotation metadata, and policy-version constraints. Revoked keys fail closed for all receipts;
 retired keys can verify only historical receipts inside their configured windows.
 
+Reviewer-key registry v3 can also revoke one exact receipt by `receiptFingerprintSha256`.
+Revoked receipts fail closed as `revoked_receipt`; they are not treated as trusted positive,
+trusted caution, or trusted rejection evidence. A compromised reviewer key should be marked
+`status=revoked` with `revoked.at` and `revocation.reason`; receipts signed by that key fail as
+`revoked_reviewer`.
+
+Catalog v4 security policy is signed catalog metadata. It can define catalog-level advisory
+records and exact app-version denylist entries. `denylist` blocks install, update, stage, apply,
+and automatic policy apply. `warn` requires the independent `securityAcknowledged=true` manual
+acknowledgement and blocks unattended automation. Security acknowledgement cannot bypass review,
+channel, migration, service dependency, compatibility, digest, signed catalog, or signed bundle
+gates. Web Shell may show safe uninstall guidance for installed vulnerable versions, but Cryptad
+does not automatically uninstall apps and does not silently migrate replacements.
+
 The app-review transparency log is local and tamper-evident. It is not a global public log and does
 not create trust by itself. Platform API, Web Shell, CLI, and release-certification review surfaces
 may expose reviewer key ids, display names, lifecycle status, policy ids/versions, timestamps,

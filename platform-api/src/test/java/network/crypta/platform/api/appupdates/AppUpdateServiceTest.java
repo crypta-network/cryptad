@@ -33,6 +33,10 @@ import network.crypta.platform.appcatalog.AppCatalogManager;
 import network.crypta.platform.appcatalog.AppCatalogProductionMetadata;
 import network.crypta.platform.appcatalog.AppCatalogReviewMetadata;
 import network.crypta.platform.appcatalog.AppCatalogReviewStatus;
+import network.crypta.platform.appcatalog.AppCatalogSecurityAction;
+import network.crypta.platform.appcatalog.AppCatalogSecurityDecision;
+import network.crypta.platform.appcatalog.AppCatalogSecurityDecisionStatus;
+import network.crypta.platform.appcatalog.AppCatalogSecuritySeverity;
 import network.crypta.platform.appcatalog.AppCatalogSourceSnapshot;
 import network.crypta.platform.appcatalog.AppCatalogSupportStatus;
 import network.crypta.platform.appcatalog.AppReviewPolicy;
@@ -150,6 +154,172 @@ class AppUpdateServiceTest {
     assertEquals(false, staged.get(AVAILABLE));
     verifyNoInstallPlanPreparation();
     verify(appHost, never()).updateFromDirectory(any(), any());
+  }
+
+  @Test
+  void check_whenCatalogSecurityDecisionWarns_expectCandidateIncludesSecurityDecision()
+      throws Exception {
+    AppUpdateService service =
+        serviceWithInstalled(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listApps(CATALOG_ID))
+        .thenReturn(List.of(entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED)));
+    when(catalogManager.securityDecision(CATALOG_ID, APP_ID)).thenReturn(warningSecurityDecision());
+
+    Map<String, Object> summary = service.check(APP_ID, false);
+
+    Map<String, Object> candidate = (Map<String, Object>) summary.get(CANDIDATE);
+    Map<String, Object> securityDecision = (Map<String, Object>) candidate.get("securityDecision");
+    assertEquals("warning", securityDecision.get(STATUS));
+    assertEquals("warn", securityDecision.get("action"));
+    assertEquals(true, securityDecision.get("requiresAcknowledgement"));
+    assertEquals(true, securityDecision.get("blocksAutomaticApply"));
+    assertEquals(true, candidate.get(OPERATOR_ACTION_REQUIRED));
+  }
+
+  @Test
+  void stage_whenSecurityWarningIsNotAcknowledged_expectStableSecurityAckError() throws Exception {
+    AppUpdateService service =
+        serviceWithInstalled(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listApps(CATALOG_ID))
+        .thenReturn(List.of(entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED)));
+    when(catalogManager.securityDecision(CATALOG_ID, APP_ID)).thenReturn(warningSecurityDecision());
+
+    service.check(APP_ID, false);
+    PlatformApiException exception =
+        assertThrows(PlatformApiException.class, () -> service.stage(APP_ID));
+
+    assertEquals(409, exception.statusCode());
+    assertEquals("app_security_acknowledgement_required", exception.errorCode());
+    verifyNoInstallPlanPreparation();
+  }
+
+  @Test
+  void stage_whenSecurityDecisionIsDenylisted_expectStableSecurityError() throws Exception {
+    AppUpdateService service =
+        serviceWithInstalled(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listApps(CATALOG_ID))
+        .thenReturn(List.of(entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED)));
+    when(catalogManager.securityDecision(CATALOG_ID, APP_ID))
+        .thenReturn(denylistedSecurityDecision());
+
+    service.check(APP_ID, false);
+    PlatformApiException exception =
+        assertThrows(PlatformApiException.class, () -> service.stage(APP_ID, false, true, false));
+
+    assertEquals(409, exception.statusCode());
+    assertEquals("app_security_denylisted", exception.errorCode());
+    verifyNoInstallPlanPreparation();
+  }
+
+  @Test
+  void check_whenTargetVersionDenylistedByConfiguredCatalog_expectCandidateCarriesDenylist()
+      throws Exception {
+    AppUpdateService service =
+        serviceWithInstalled(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listApps(CATALOG_ID))
+        .thenReturn(List.of(entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED)));
+    when(catalogManager.installedSecurityDecision(APP_ID, INSTALLED_VERSION))
+        .thenReturn(AppCatalogSecurityDecision.OK);
+    when(catalogManager.installedSecurityDecision(APP_ID, UPDATE_VERSION))
+        .thenReturn(denylistedSecurityDecision());
+
+    Map<String, Object> summary = service.check(APP_ID, false);
+
+    Map<String, Object> candidate = (Map<String, Object>) summary.get(CANDIDATE);
+    Map<String, Object> securityDecision = (Map<String, Object>) candidate.get("securityDecision");
+    assertEquals("denylisted", securityDecision.get(STATUS));
+    assertEquals("denylist", securityDecision.get("action"));
+    assertEquals(true, securityDecision.get("blocksUpdate"));
+    assertEquals(true, candidate.get(OPERATOR_ACTION_REQUIRED));
+
+    PlatformApiException exception =
+        assertThrows(PlatformApiException.class, () -> service.stage(APP_ID, false, true, false));
+
+    assertEquals(409, exception.statusCode());
+    assertEquals("app_security_denylisted", exception.errorCode());
+    verifyNoInstallPlanPreparation();
+  }
+
+  @Test
+  void stage_whenCachedCandidateTargetVersionBecomesDenylisted_expectCandidateChangedFailure()
+      throws Exception {
+    AppUpdateService service =
+        serviceWithInstalled(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
+    AppCatalogEntry entry = entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED);
+    AppCatalogInstallPlan plan = plan(entry);
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.installedSecurityDecision(APP_ID, INSTALLED_VERSION))
+        .thenReturn(AppCatalogSecurityDecision.OK);
+    when(catalogManager.installedSecurityDecision(APP_ID, UPDATE_VERSION))
+        .thenReturn(AppCatalogSecurityDecision.OK, denylistedSecurityDecision());
+    when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
+    service.check(APP_ID, false);
+
+    PlatformApiException exception =
+        assertThrows(PlatformApiException.class, () -> service.stage(APP_ID));
+
+    assertEquals(409, exception.statusCode());
+    assertEquals(UPDATE_CANDIDATE_CHANGED, exception.errorCode());
+    assertEquals(false, ((Map<?, ?>) service.summary(APP_ID).get(STAGED)).get(AVAILABLE));
+    assertFalse(Files.exists(plan.scratchDirectory()));
+    verify(appHost, never()).updateFromDirectory(any(), any());
+  }
+
+  @Test
+  void stage_whenSecurityDecisionWarnsAndBlocksUpdate_expectStableSecurityBlockedError()
+      throws Exception {
+    AppUpdateService service =
+        serviceWithInstalled(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listApps(CATALOG_ID))
+        .thenReturn(List.of(entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED)));
+    when(catalogManager.securityDecision(CATALOG_ID, APP_ID))
+        .thenReturn(blockUpdateAndWarningSecurityDecision());
+    when(catalogManager.installedSecurityDecision(APP_ID, INSTALLED_VERSION))
+        .thenReturn(AppCatalogSecurityDecision.OK);
+    when(catalogManager.installedSecurityDecision(APP_ID, UPDATE_VERSION))
+        .thenReturn(AppCatalogSecurityDecision.OK);
+
+    service.check(APP_ID, false);
+    PlatformApiException exception =
+        assertThrows(PlatformApiException.class, () -> service.stage(APP_ID));
+
+    assertEquals(409, exception.statusCode());
+    assertEquals("app_security_blocked", exception.errorCode());
+    verifyNoInstallPlanPreparation();
+  }
+
+  @Test
+  void check_whenStagePolicySecurityDecisionWarnsAndBlocksUpdate_expectPolicyBlockedHistory()
+      throws Exception {
+    AppUpdateService service =
+        serviceWithInstalled(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listApps(CATALOG_ID))
+        .thenReturn(List.of(entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED)));
+    when(catalogManager.securityDecision(CATALOG_ID, APP_ID))
+        .thenReturn(blockUpdateAndWarningSecurityDecision());
+    when(catalogManager.installedSecurityDecision(APP_ID, INSTALLED_VERSION))
+        .thenReturn(AppCatalogSecurityDecision.OK);
+    when(catalogManager.installedSecurityDecision(APP_ID, UPDATE_VERSION))
+        .thenReturn(AppCatalogSecurityDecision.OK);
+    service.setPolicy(APP_ID, AppUpdatePolicyMode.STAGE);
+
+    Map<String, Object> summary = service.check(APP_ID, false);
+
+    Map<String, Object> historyEntry =
+        ((List<Map<String, Object>>) summary.get("history"))
+            .stream()
+                .filter(entryJson -> "stage".equals(entryJson.get("action")))
+                .findFirst()
+                .orElseThrow();
+    assertEquals("security_policy_blocked", historyEntry.get(ERROR_CODE));
+    verifyNoInstallPlanPreparation();
   }
 
   @Test
@@ -1026,6 +1196,63 @@ class AppUpdateServiceTest {
     assertEquals(false, ((Map<?, ?>) service.summary(APP_ID).get(STAGED)).get(AVAILABLE));
     assertFalse(Files.exists(plan.scratchDirectory()));
     verify(appHost, never()).updateFromDirectory(any(), any());
+  }
+
+  @Test
+  void apply_whenStagedTargetVersionBecomesDenylisted_expectStageInvalidatedAndApplyBlocked()
+      throws Exception {
+    AppUpdateService service =
+        serviceWithInstalled(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
+    AppCatalogEntry entry = entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED);
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.securityDecision(CATALOG_ID, APP_ID))
+        .thenReturn(AppCatalogSecurityDecision.OK);
+    when(catalogManager.installedSecurityDecision(APP_ID, INSTALLED_VERSION))
+        .thenReturn(AppCatalogSecurityDecision.OK);
+    when(catalogManager.installedSecurityDecision(APP_ID, UPDATE_VERSION))
+        .thenReturn(
+            AppCatalogSecurityDecision.OK,
+            AppCatalogSecurityDecision.OK,
+            AppCatalogSecurityDecision.OK,
+            denylistedSecurityDecision());
+    AppCatalogInstallPlan plan = plan(entry);
+    when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
+    service.stage(APP_ID);
+
+    PlatformApiException exception =
+        assertThrows(
+            PlatformApiException.class, () -> service.apply(APP_ID, APPLY_NO_RESTART_NO_HEALTH));
+
+    assertEquals(409, exception.statusCode());
+    assertEquals("app_security_denylisted", exception.errorCode());
+    assertEquals(false, ((Map<?, ?>) service.summary(APP_ID).get(STAGED)).get(AVAILABLE));
+    assertFalse(Files.exists(plan.scratchDirectory()));
+    verify(appHost, never()).updateFromDirectory(any(), any());
+  }
+
+  @Test
+  void apply_whenStagedWarningDecisionStillApplies_expectCandidateApplied() throws Exception {
+    InstalledAppSnapshot updated = installed(UPDATE_VERSION, List.of(QUEUE_READ_PERMISSION));
+    AppUpdateService service =
+        serviceWithInstalled(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
+    AppCatalogEntry entry = entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED);
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.securityDecision(CATALOG_ID, APP_ID)).thenReturn(warningSecurityDecision());
+    when(catalogManager.installedSecurityDecision(APP_ID, INSTALLED_VERSION))
+        .thenReturn(AppCatalogSecurityDecision.OK);
+    when(catalogManager.installedSecurityDecision(APP_ID, UPDATE_VERSION))
+        .thenReturn(AppCatalogSecurityDecision.OK);
+    AppCatalogInstallPlan plan = plan(entry);
+    when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
+    when(appHost.updateFromDirectory(APP_ID, plan.stagedBundleDirectory())).thenReturn(updated);
+    service.stage(APP_ID, false, true, false);
+
+    Map<String, Object> summary = service.apply(APP_ID, APPLY_NO_RESTART_NO_HEALTH);
+
+    assertEquals(UPDATE_VERSION, summary.get(INSTALLED_VERSION_FIELD));
+    verify(appHost).updateFromDirectory(APP_ID, plan.stagedBundleDirectory());
   }
 
   @Test
@@ -3338,6 +3565,51 @@ class AppUpdateServiceTest {
             keyPair.getPublic().getEncoded(),
             "Crypta First-Party Review",
             REVIEW_POLICY_ID));
+  }
+
+  private static AppCatalogSecurityDecision warningSecurityDecision() {
+    return new AppCatalogSecurityDecision(
+        AppCatalogSecurityDecisionStatus.WARNING,
+        AppCatalogSecurityAction.WARN,
+        AppCatalogSecuritySeverity.HIGH,
+        List.of("CRYPTA-2026-0002"),
+        true,
+        false,
+        false,
+        true,
+        null,
+        null,
+        List.of("Security advisory requires operator acknowledgement."));
+  }
+
+  private static AppCatalogSecurityDecision blockUpdateAndWarningSecurityDecision() {
+    return new AppCatalogSecurityDecision(
+        AppCatalogSecurityDecisionStatus.BLOCKED,
+        AppCatalogSecurityAction.BLOCK_UPDATE,
+        AppCatalogSecuritySeverity.CRITICAL,
+        List.of("CRYPTA-2026-0002", "CRYPTA-2026-0003"),
+        true,
+        false,
+        true,
+        true,
+        null,
+        null,
+        List.of("Security advisory requires operator acknowledgement."));
+  }
+
+  private static AppCatalogSecurityDecision denylistedSecurityDecision() {
+    return new AppCatalogSecurityDecision(
+        AppCatalogSecurityDecisionStatus.DENYLISTED,
+        AppCatalogSecurityAction.DENYLIST,
+        AppCatalogSecuritySeverity.CRITICAL,
+        List.of("CRYPTA-2026-0001"),
+        false,
+        true,
+        true,
+        true,
+        "Export app data before uninstalling.",
+        APP_ID,
+        List.of("Known vulnerable release."));
   }
 
   private static KeyPair reviewerKeyPair() throws NoSuchAlgorithmException {

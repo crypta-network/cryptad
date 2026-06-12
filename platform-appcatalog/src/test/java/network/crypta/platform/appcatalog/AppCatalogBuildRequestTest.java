@@ -10,6 +10,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SuppressWarnings("java:S100")
 class AppCatalogBuildRequestTest {
@@ -64,6 +65,36 @@ class AppCatalogBuildRequestTest {
     assertEquals(List.of(receiptFile.toAbsolutePath().normalize()), request.reviewReceiptFiles());
     assertEquals(request.reviewReceiptFiles(), withOutput.reviewReceiptFiles());
     assertEquals(outputFile.toAbsolutePath().normalize(), withOutput.outputFile().orElseThrow());
+  }
+
+  @Test
+  void constructor_whenLiteralNullOutputFileProvided_expectInMemoryRequest() {
+    Path descriptorFile = tempDir.resolve("entry.properties");
+
+    AppCatalogBuildRequest request =
+        new AppCatalogBuildRequest(
+            "dev", CATALOG_NAME, GENERATED_AT, List.of(descriptorFile), List.of(), null);
+
+    assertTrue(request.outputFile().isEmpty());
+    assertEquals(AppCatalogSecurityPolicy.EMPTY, request.securityPolicy());
+  }
+
+  @Test
+  void constructor_whenSecurityPolicyAndNullOutputFileProvided_expectPolicyPreserved() {
+    Path descriptorFile = tempDir.resolve("entry.properties");
+
+    AppCatalogBuildRequest request =
+        new AppCatalogBuildRequest(
+            "dev",
+            CATALOG_NAME,
+            GENERATED_AT,
+            List.of(descriptorFile),
+            List.of(),
+            AppCatalogSecurityPolicy.EMPTY,
+            null);
+
+    assertTrue(request.outputFile().isEmpty());
+    assertEquals(AppCatalogSecurityPolicy.EMPTY, request.securityPolicy());
   }
 
   @Test

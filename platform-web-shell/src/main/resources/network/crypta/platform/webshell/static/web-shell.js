@@ -2130,6 +2130,11 @@
     }
     if (action === "stage") {
       appendReviewAcknowledgement(form, updateReviewTrustForAction(appUpdateState(app), action), action);
+      appendSecurityAcknowledgement(
+        form,
+        securityDecisionForUpdateAction(appUpdateState(app), action),
+        action,
+      );
       appendMigrationAcknowledgement(
         form,
         updateDataMigrationForAction(appUpdateState(app), action),
@@ -2155,7 +2160,10 @@
     form.dataset.catalogAction = action;
     form.dataset.catalogAppName = app ? appDisplayName(app) : catalogId;
     const reviewTrust = app ? recordValue(app.reviewTrust) : {};
-    const disabledReason = app ? reviewTrustActionReason(reviewTrust, action) : "";
+    const securityDecision = app ? securityDecisionForCatalogAction(app) : {};
+    const disabledReason = app
+      ? reviewTrustActionReason(reviewTrust, action) || securityDecisionActionReason(securityDecision, action)
+      : "";
 
     const submit = document.createElement("button");
     submit.className = "button button-secondary";
@@ -2167,6 +2175,7 @@
       form.dataset.disabledReason = disabledReason;
     }
     appendReviewAcknowledgement(form, reviewTrust, action);
+    appendSecurityAcknowledgement(form, securityDecision, action);
     form.append(submit);
     return form;
   }
@@ -2831,6 +2840,13 @@
       if (reviewReason) {
         return reviewReason;
       }
+      const securityReason = securityDecisionActionReason(
+        securityDecisionForUpdateAction(updateState, action),
+        action,
+      );
+      if (securityReason) {
+        return securityReason;
+      }
       const migrationReason = migrationActionReason(
         updateDataMigrationForAction(updateState, action),
         action,
@@ -2865,6 +2881,9 @@
     const rollback = recordValue(updateState.rollback);
     const applyMigration = updateDataMigrationForAction(updateState, "apply");
     const candidateMigration = updateDataMigrationForAction(updateState, "stage");
+    const installedSecurity = recordValue(updateState.installedSecurityDecision);
+    const candidateSecurity = securityDecisionForUpdateAction(updateState, "stage");
+    const applySecurity = securityDecisionForUpdateAction(updateState, "apply");
     const visibleMigration = Object.keys(recordValue(applyMigration)).length
       ? applyMigration
       : candidateMigration;
@@ -2876,6 +2895,10 @@
         ["Policy", updatePolicySummary(updateState.policy)],
         ["Permission changes before apply", updatePermissionDeltaSummary(staged)],
         ["API compatibility before apply", updateApiRiskSummary(staged)],
+        ["Installed security decision", securityDecisionLabel(installedSecurity)],
+        ["Candidate security decision", securityDecisionLabel(candidateSecurity)],
+        ["Security policy before apply", securityDecisionLabel(applySecurity)],
+        ["Security policy handling", securityDecisionWarnings(applySecurity)],
         ["Trusted review before apply", reviewTrustLabel(updateReviewTrustForAction(updateState, "apply"))],
         ["Review policy handling", reviewTrustWarnings(updateReviewTrustForAction(updateState, "apply"))],
         ["Candidate app-data migration", updateDataMigrationSummary(candidateMigration)],
@@ -3120,7 +3143,11 @@
     }
     if (hasUpdateState) {
       const updateStatus = appUpdateStatus(updateState);
+      const installedSecurity = recordValue(updateState.installedSecurityDecision);
       pills.append(createPill(updateStatus ? normalizedStatus(updateStatus) : "Update status", "is-warning"));
+      if (securityDecisionStatus(installedSecurity) !== "ok") {
+        pills.append(createPill(securityDecisionLabel(installedSecurity), securityDecisionTone(installedSecurity)));
+      }
       if (stagedUpdateAvailable(updateState)) {
         pills.append(createPill("Update staged", "is-warning"));
       }
@@ -3206,6 +3233,12 @@
       ],
     ];
     card.append(definitionList(entries));
+    if (hasUpdateState) {
+      const installedSecurityNotice = securityDecisionNoticeNode(updateState.installedSecurityDecision, true);
+      if (installedSecurityNotice) {
+        card.append(installedSecurityNotice);
+      }
+    }
     card.append(apiCompatibilityDetailsNode(app));
     card.append(appPermissionsDetailsNode(app));
     card.append(appVaultDetailsNode(app));
@@ -4336,6 +4369,149 @@
     return list;
   }
 
+  function securityDecisionStatus(securityDecision) {
+    const decision = recordValue(securityDecision);
+    return typeof decision.status === "string" && decision.status ? decision.status : "ok";
+  }
+
+  function securityDecisionLabel(securityDecision) {
+    const decision = recordValue(securityDecision);
+    const status = securityDecisionStatus(decision);
+    if (status === "ok") {
+      return "No active security advisory";
+    }
+    if (status === "denylisted") {
+      return "Denylisted by catalog security policy";
+    }
+    return normalizedStatus(status);
+  }
+
+  function securityDecisionTone(securityDecision) {
+    const status = securityDecisionStatus(securityDecision);
+    if (status === "ok") {
+      return "is-success";
+    }
+    if (status === "informational") {
+      return "is-info";
+    }
+    if (status === "warning") {
+      return "is-warning";
+    }
+    return "is-error";
+  }
+
+  function securityDecisionAdvisoryIds(securityDecision) {
+    const ids = stringList(recordValue(securityDecision).advisoryIds);
+    return ids.length ? ids.join(", ") : "None";
+  }
+
+  function securityDecisionWarnings(securityDecision) {
+    const warnings = stringList(recordValue(securityDecision).warnings);
+    return warnings.length ? warnings.join("; ") : "None";
+  }
+
+  function securityDecisionActionReason(securityDecision, action) {
+    const decision = recordValue(securityDecision);
+    if (action === "install" && decision.blocksInstall === true) {
+      return `Install blocked by catalog security policy: ${securityDecisionLabel(decision)}.`;
+    }
+    if ((action === "update" || action === "stage" || action === "apply") && decision.blocksUpdate === true) {
+      return `${normalizedStatus(action)} blocked by catalog security policy: ${securityDecisionLabel(decision)}.`;
+    }
+    return "";
+  }
+
+  function securityDecisionForCatalogAction(app) {
+    return recordValue(app && app.securityDecision);
+  }
+
+  function installedSecurityDecisionForCatalogApp(app) {
+    return recordValue(app && app.installedSecurityDecision);
+  }
+
+  function securityDecisionForUpdateAction(updateState, action) {
+    const state = recordValue(updateState);
+    const candidate = recordValue(state.candidate);
+    const staged = recordValue(state.staged);
+    if (action === "apply") {
+      return recordValue(staged.securityDecision || candidate.securityDecision);
+    }
+    if (action === "stage") {
+      return recordValue(candidate.securityDecision);
+    }
+    return {};
+  }
+
+  function appendSecurityAcknowledgement(form, securityDecision, action) {
+    const decision = recordValue(securityDecision);
+    if (decision.requiresAcknowledgement !== true) {
+      return;
+    }
+    if (securityDecisionActionReason(decision, action)) {
+      return;
+    }
+    const label = document.createElement("label");
+    label.className = "checkbox-field security-acknowledgement";
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.name = "securityAcknowledged";
+    input.value = "true";
+    input.required = true;
+    label.append(input, document.createTextNode(` Acknowledge ${securityDecisionLabel(decision)}`));
+    form.append(label);
+  }
+
+  function securityDecisionNoticeNode(securityDecision, installed) {
+    const decision = recordValue(securityDecision);
+    const status = securityDecisionStatus(decision);
+    if (status === "ok") {
+      return null;
+    }
+    const parts = [installed ? "Installed version security warning." : "Catalog security warning."];
+    parts.push(securityDecisionLabel(decision));
+    if (decision.severity && decision.severity !== "none") {
+      parts.push(`Severity: ${normalizedStatus(decision.severity)}.`);
+    }
+    if (decision.safeUninstallGuidance) {
+      parts.push(`Safe uninstall guidance: ${scalar(decision.safeUninstallGuidance)}`);
+    }
+    if (decision.replacementAppId) {
+      parts.push(`Replacement guidance: ${scalar(decision.replacementAppId)}.`);
+    }
+    return text(
+      "p",
+      `status-message ${securityDecisionTone(decision)}`,
+      parts.filter(Boolean).join(" "),
+    );
+  }
+
+  function catalogSecurityDetailsNode(app) {
+    const decision = securityDecisionForCatalogAction(app);
+    const installedDecision = installedSecurityDecisionForCatalogApp(app);
+    const details = document.createElement("details");
+    details.className = "json-details catalog-security-details";
+    const summary = document.createElement("summary");
+    summary.textContent = "Security policy";
+    details.append(summary);
+    details.append(
+      definitionList([
+        ["Catalog target decision", securityDecisionLabel(decision)],
+        ["Catalog target action", normalizedStatus(decision.action, "Inform")],
+        ["Catalog target severity", normalizedStatus(decision.severity, "None")],
+        ["Catalog target advisory IDs", securityDecisionAdvisoryIds(decision)],
+        ["Target install handling", decision.blocksInstall ? "Blocked" : decision.requiresAcknowledgement ? "Acknowledgement required" : "Allowed"],
+        ["Target update handling", decision.blocksUpdate ? "Blocked" : decision.requiresAcknowledgement ? "Acknowledgement required" : "Allowed"],
+        ["Safe uninstall guidance", scalar(decision.safeUninstallGuidance)],
+        ["Replacement guidance", scalar(decision.replacementAppId)],
+        ["Warnings", securityDecisionWarnings(decision)],
+        ["Installed version decision", securityDecisionLabel(installedDecision)],
+        ["Installed advisory IDs", securityDecisionAdvisoryIds(installedDecision)],
+        ["Installed safe uninstall guidance", scalar(installedDecision.safeUninstallGuidance)],
+      ]),
+    );
+    return details;
+  }
+
   function deprecationNoticeNode(app) {
     const deprecation = catalogAppDeprecation(app);
     const replacement =
@@ -4666,8 +4842,13 @@
 
     const review = recordValue(app.review);
     const reviewTrust = recordValue(app.reviewTrust);
+    const securityDecision = securityDecisionForCatalogAction(app);
+    const installedSecurityDecision = installedSecurityDecisionForCatalogApp(app);
     const compatibility = recordValue(app.compatibility);
     const apiCompatibility = recordValue(app.apiCompatibility);
+    if (securityDecisionStatus(securityDecision) !== "ok") {
+      card.className += " has-security-warning";
+    }
     const header = document.createElement("div");
     header.className = "catalog-app-header";
     const heading = document.createElement("div");
@@ -4691,6 +4872,12 @@
     }
     pills.append(createPill(`Advisory: ${normalizedStatus(review.status, "Unreviewed")}`, reviewTone(review.status)));
     pills.append(createPill(reviewTrustLabel(reviewTrust), reviewTrustTone(reviewTrust)));
+    if (securityDecisionStatus(securityDecision) !== "ok") {
+      pills.append(createPill(securityDecisionLabel(securityDecision), securityDecisionTone(securityDecision)));
+    }
+    if (securityDecisionStatus(installedSecurityDecision) !== "ok") {
+      pills.append(createPill("Installed version vulnerable", securityDecisionTone(installedSecurityDecision)));
+    }
     pills.append(createPill(versionLabel(app), versionTone(app)));
     pills.append(createPill(compatibilityLabel(compatibility), compatibilityTone(compatibility)));
     pills.append(createPill(apiCompatibilityLabel(apiCompatibility), apiCompatibilityTone(apiCompatibility)));
@@ -4708,6 +4895,12 @@
         ["Replacement app", scalar(deprecation.replacementAppId)],
         ["Deprecation message", scalar(deprecation.message)],
         ["Security advisories", securityAdvisoryListNode(app.securityAdvisories)],
+        ["Security decision", securityDecisionLabel(securityDecision)],
+        ["Security action", normalizedStatus(securityDecision.action, "Inform")],
+        ["Security severity", normalizedStatus(securityDecision.severity, "None")],
+        ["Security advisory IDs", securityDecisionAdvisoryIds(securityDecision)],
+        ["Installed security decision", securityDecisionLabel(installedSecurityDecision)],
+        ["Safe uninstall guidance", scalar(installedSecurityDecision.safeUninstallGuidance || securityDecision.safeUninstallGuidance)],
         ["Summary", scalar(app.summary)],
         ["Homepage", metadataLinkNode(app.homepage)],
         ["Source", metadataLinkNode(app.source)],
@@ -4731,9 +4924,18 @@
       ]),
     );
     card.append(catalogReviewDetailsNode(app));
+    const securityNotice = securityDecisionNoticeNode(securityDecision, false);
+    if (securityNotice) {
+      card.append(securityNotice);
+    }
+    const installedSecurityNotice = securityDecisionNoticeNode(installedSecurityDecision, true);
+    if (installedSecurityNotice) {
+      card.append(installedSecurityNotice);
+    }
     if (deprecated) {
       card.append(deprecationNoticeNode(app));
     }
+    card.append(catalogSecurityDetailsNode(app));
     card.append(catalogCompatibilityDetailsNode(app));
     card.append(apiCompatibilityDetailsNode(app));
     card.append(catalogPermissionReviewDetailsNode(app));
@@ -4749,10 +4951,15 @@
             ? "Apply catalog version"
             : "Update installed app"
         : "Install from catalog";
-      const form = buildCatalogActionForm(catalog, app, action, label);
-      if (form) {
-        actions.append(form);
-        card.append(actions);
+      const securityBlockReason = securityDecisionActionReason(securityDecision, action);
+      if (securityBlockReason) {
+        card.append(text("p", "status-message is-error", securityBlockReason));
+      } else {
+        const form = buildCatalogActionForm(catalog, app, action, label);
+        if (form) {
+          actions.append(form);
+          card.append(actions);
+        }
       }
     }
     return card;

@@ -44,7 +44,7 @@ class FeedReaderBundleStagingTest {
           "<a href=\"javascript:alert(1)\">click</a>",
           "<iframe srcdoc=\"<script>alert(1)</script>\"></iframe>");
   private static final int EXPECTED_PLATFORM_API_MINIMUM_VERSION = 9;
-  private static final int EXPECTED_PLATFORM_API_MAXIMUM_TESTED_VERSION = 16;
+  private static final int EXPECTED_PLATFORM_API_MAXIMUM_TESTED_VERSION = 17;
   private static final Path PLATFORM_SDK_SOURCE_PATH =
       Path.of(
           "platform-sdk-js",

@@ -35,6 +35,7 @@ import network.crypta.platform.appcatalog.AppCatalogProductionMetadata;
 import network.crypta.platform.appcatalog.AppCatalogReviewMetadata;
 import network.crypta.platform.appcatalog.AppCatalogReviewStatus;
 import network.crypta.platform.appcatalog.AppCatalogSecurityAdvisory;
+import network.crypta.platform.appcatalog.AppCatalogSecurityDecision;
 import network.crypta.platform.appcatalog.AppCatalogSourceSnapshot;
 import network.crypta.platform.appcatalog.AppReviewPolicy;
 import network.crypta.platform.appcatalog.AppReviewReceiptVerifier;
@@ -130,6 +131,14 @@ public final class AppUpdateService {
   private static final String ERROR_APP_REVIEW_REJECTED = "app_review_rejected";
   private static final String ERROR_APP_REVIEW_MISMATCH = "app_review_mismatch";
   private static final String ERROR_APP_REVIEW_EXPIRED = "app_review_expired";
+  private static final String ERROR_APP_SECURITY_ACKNOWLEDGEMENT_REQUIRED =
+      "app_security_acknowledgement_required";
+  private static final String ERROR_APP_SECURITY_BLOCKED = "app_security_blocked";
+  private static final String ERROR_APP_SECURITY_DENYLISTED = "app_security_denylisted";
+  private static final String POLICY_SECURITY_ACKNOWLEDGEMENT_REQUIRED =
+      "security_acknowledgement_required";
+  private static final String POLICY_SECURITY_BLOCKED = "security_policy_blocked";
+  private static final String POLICY_SECURITY_DENYLIST_BLOCKED = "security_denylist_blocked";
   private static final String MESSAGE_APPLY_FAILED = "Failed to apply staged update.";
   private static final String MESSAGE_APPLY_VAULT_CLEANUP_FAILED =
       "Staged update applied; vault grant cleanup failed and requires operator review.";
@@ -151,6 +160,7 @@ public final class AppUpdateService {
   private static final String JSON_REQUIRES_ACKNOWLEDGEMENT = "requiresAcknowledgement";
   private static final String JSON_BLOCKS_UPDATE = "blocksUpdate";
   private static final String JSON_BLOCKS_POLICY_APPLY = "blocksPolicyApply";
+  private static final String JSON_BLOCKS_AUTOMATIC_APPLY = "blocksAutomaticApply";
   private static final String JSON_MESSAGE = "message";
 
   private final AppHost appHost;
@@ -582,11 +592,30 @@ public final class AppUpdateService {
    */
   public synchronized Map<String, Object> stage(
       String appId, boolean reviewAcknowledged, boolean migrationAcknowledged) {
+    return stage(appId, reviewAcknowledged, false, migrationAcknowledged);
+  }
+
+  /**
+   * Stages a verified catalog update candidate with explicit review, security, and migration
+   * acknowledgement options.
+   *
+   * @param appId app id from the request path
+   * @param reviewAcknowledged whether the operator acknowledged an untrusted review decision
+   * @param securityAcknowledged whether the operator acknowledged warning-level security advisory
+   * @param migrationAcknowledged whether the operator acknowledged rollback-incompatible migration
+   *     risk
+   * @return path-free update summary after a verified candidate is staged
+   */
+  public synchronized Map<String, Object> stage(
+      String appId,
+      boolean reviewAcknowledged,
+      boolean securityAcknowledged,
+      boolean migrationAcknowledged) {
     String normalizedAppId = normalizeInstalledAppId(appId);
     InstalledAppSnapshot installed = requireInstalled(normalizedAppId);
     AppUpdateCandidate candidate = candidateOrDetect(normalizedAppId, installed);
     try {
-      requireStageableCandidate(candidate, reviewAcknowledged);
+      requireStageableCandidate(candidate, reviewAcknowledged, securityAcknowledged);
       recordUpdateReviewGate(
           AppReviewTransparencyEventKind.REVIEW_GATE_UPDATE, candidate, "explicit_stage_allowed");
     } catch (PlatformApiException exception) {
@@ -801,6 +830,7 @@ public final class AppUpdateService {
       throw lifecycleFailure(
           409, ERROR_UPDATE_POLICY_BLOCKED, "The staged update is not eligible by default.");
     }
+    requireCurrentStagedSecurityDecision(appId, staged);
     if (stageDiffersFromInstalled(staged, installed)) {
       closeStage(appId);
       candidates.remove(appId);
@@ -834,6 +864,39 @@ public final class AppUpdateService {
           400, ERROR_INVALID_UPDATE_OPTION, "healthCheck=process requires restart=true.");
     }
     return wasRunning;
+  }
+
+  private void requireCurrentStagedSecurityDecision(String appId, StagedUpdate staged) {
+    Map<String, Object> currentDecision =
+        targetSecurityDecision(staged.candidate().catalogId(), staged.entry()).toJsonValue();
+    if (stagedSecurityDecisionStillAllowsApply(staged, currentDecision)) {
+      return;
+    }
+    closeStage(appId);
+    candidates.remove(appId);
+    String errorCode =
+        securityGateRequiresOperator(currentDecision)
+            ? securityGateFailureCode(currentDecision)
+            : ERROR_UPDATE_CANDIDATE_CHANGED;
+    appendHistory(
+        appId,
+        ACTION_APPLY,
+        STATUS_FAILED,
+        staged.candidate().catalogId(),
+        staged.candidate().targetVersion(),
+        errorCode,
+        "Staged update security policy changed before apply.");
+    throw lifecycleFailure(
+        409, errorCode, "Staged update security policy changed; check for updates again.");
+  }
+
+  private static boolean stagedSecurityDecisionStillAllowsApply(
+      StagedUpdate staged, Map<String, Object> currentDecision) {
+    boolean securityDecisionUnchanged =
+        staged.candidate().securityDecision().equals(currentDecision);
+    return securityDecisionUnchanged
+        && (securityDecisionAllowsAutomaticApply(currentDecision)
+            || !Boolean.TRUE.equals(currentDecision.get(JSON_BLOCKS_UPDATE)));
   }
 
   private void verifyStageStillMatchesInstalledForApply(
@@ -885,7 +948,7 @@ public final class AppUpdateService {
 
   private void verifyStagedBundleBeforeApply(StagedUpdate staged) {
     try {
-      catalogManager.verifyInstallPlan(staged.plan());
+      catalogManager.verifyInstallPlan(staged.plan);
     } catch (AppCatalogException exception) {
       throw catalogFailure(exception);
     } catch (IOException _) {
@@ -1323,50 +1386,75 @@ public final class AppUpdateService {
       return;
     }
     if (!candidate.eligibleForAutomaticStage()) {
-      appendChannelPolicyHistory(appId, policy.mode(), candidate);
+      appendAutomaticStageBlockHistory(appId, candidate, policy.mode());
       return;
     }
     if (policy.mode() == AppUpdatePolicyMode.STAGE) {
-      if (reviewGateRequiresOperator(candidate)) {
-        appendReviewGateHistory(appId, ACTION_STAGE, candidate);
-        return;
-      }
-      stageCandidateForAutomaticPolicy(appId, installed, candidate);
+      followStagePolicyAfterCheck(appId, installed, candidate);
       return;
     }
-    if (policy.mode() == AppUpdatePolicyMode.APPLY_WHEN_STOPPED) {
-      if (appHost.status(appId).isPresent()) {
-        appendHistory(
-            appId,
-            ACTION_APPLY,
-            STATUS_FAILED,
-            candidate.catalogId(),
-            candidate.targetVersion(),
-            ERROR_APP_RUNNING,
-            "Policy skipped apply because the app is running.");
-        recordUpdateReviewGate(
-            AppReviewTransparencyEventKind.REVIEW_GATE_POLICY_APPLY,
-            candidate,
-            "policy_apply_skipped:" + ERROR_APP_RUNNING);
-        return;
-      }
-      if (!candidate.reviewTrustAllowsAutomaticApply()) {
-        appendReviewGateHistory(appId, ACTION_APPLY, candidate);
-        return;
-      }
-      if (!candidate.apiCompatibilityAllowsAutomaticApply()) {
-        appendCompatibilityGateHistory(appId, candidate);
-        recordUpdateReviewGate(
-            AppReviewTransparencyEventKind.REVIEW_GATE_POLICY_APPLY,
-            candidate,
-            "policy_apply_blocked:" + ERROR_UPDATE_INCOMPATIBLE);
-        return;
-      }
-      if (!stageCandidateForAutomaticPolicy(appId, installed, candidate)) {
-        return;
-      }
-      apply(appId, ApplyOptions.policyDefault());
+    followApplyWhenStoppedPolicyAfterCheck(appId, installed, candidate);
+  }
+
+  private void appendAutomaticStageBlockHistory(
+      String appId, AppUpdateCandidate candidate, AppUpdatePolicyMode policyMode) {
+    if (securityGateRequiresOperator(candidate)) {
+      appendSecurityGateHistory(appId, automaticAction(policyMode), candidate);
+    } else {
+      appendChannelPolicyHistory(appId, policyMode, candidate);
     }
+  }
+
+  private void followStagePolicyAfterCheck(
+      String appId, InstalledAppSnapshot installed, AppUpdateCandidate candidate) {
+    if (reviewGateRequiresOperator(candidate)) {
+      appendReviewGateHistory(appId, ACTION_STAGE, candidate);
+      return;
+    }
+    stageCandidateForAutomaticPolicy(appId, installed, candidate);
+  }
+
+  private void followApplyWhenStoppedPolicyAfterCheck(
+      String appId, InstalledAppSnapshot installed, AppUpdateCandidate candidate) {
+    if (appHost.status(appId).isPresent()) {
+      appendPolicyApplyRunningHistory(appId, candidate);
+      return;
+    }
+    if (!candidate.reviewTrustAllowsAutomaticApply()) {
+      appendReviewGateHistory(appId, ACTION_APPLY, candidate);
+      return;
+    }
+    if (!securityDecisionAllowsAutomaticApply(candidate.securityDecision())) {
+      appendSecurityGateHistory(appId, ACTION_APPLY, candidate);
+      return;
+    }
+    if (!candidate.apiCompatibilityAllowsAutomaticApply()) {
+      appendCompatibilityGateHistory(appId, candidate);
+      recordUpdateReviewGate(
+          AppReviewTransparencyEventKind.REVIEW_GATE_POLICY_APPLY,
+          candidate,
+          "policy_apply_blocked:" + ERROR_UPDATE_INCOMPATIBLE);
+      return;
+    }
+    if (!stageCandidateForAutomaticPolicy(appId, installed, candidate)) {
+      return;
+    }
+    apply(appId, ApplyOptions.policyDefault());
+  }
+
+  private void appendPolicyApplyRunningHistory(String appId, AppUpdateCandidate candidate) {
+    appendHistory(
+        appId,
+        ACTION_APPLY,
+        STATUS_FAILED,
+        candidate.catalogId(),
+        candidate.targetVersion(),
+        ERROR_APP_RUNNING,
+        "Policy skipped apply because the app is running.");
+    recordUpdateReviewGate(
+        AppReviewTransparencyEventKind.REVIEW_GATE_POLICY_APPLY,
+        candidate,
+        "policy_apply_skipped:" + ERROR_APP_RUNNING);
   }
 
   private boolean stageCandidateForAutomaticPolicy(
@@ -1415,29 +1503,11 @@ public final class AppUpdateService {
           ERROR_UPDATE_CANDIDATE_CHANGED,
           "Installed app version changed since candidate detection.");
     }
-    AppCatalogInstallPlan plan = prepareStagePlan(appId, candidate);
-    if (planDiffersFromCandidate(candidate, installed, plan)) {
-      closeStage(appId);
-      closePlan(plan);
-      candidates.remove(appId);
-      appendHistory(
-          appId,
-          ACTION_STAGE,
-          STATUS_FAILED,
-          candidate.catalogId(),
-          candidate.targetVersion(),
-          ERROR_UPDATE_CANDIDATE_CHANGED,
-          "Prepared catalog plan no longer matches the reviewed candidate.");
-      recordUpdateReviewGate(
-          AppReviewTransparencyEventKind.REVIEW_GATE_UPDATE,
-          candidate,
-          "stage_blocked:" + ERROR_UPDATE_CANDIDATE_CHANGED);
-      throw lifecycleFailure(
-          409,
-          ERROR_UPDATE_CANDIDATE_CHANGED,
-          "Catalog candidate changed since review; check for updates again.");
-    }
-    try {
+    try (StagePlanLease planLease = prepareStagePlanLease(appId, candidate)) {
+      AppCatalogInstallPlan plan = planLease.plan();
+      if (planDiffersFromCandidate(candidate, installed, plan)) {
+        rejectChangedStagePlan(appId, candidate);
+      }
       AppManifest targetManifest = stagedManifestOrReject(appId, candidate, plan);
       AppDataMigrationPlan migrationPlan =
           buildMigrationPlan(appId, installed.manifest(), targetManifest);
@@ -1449,7 +1519,6 @@ public final class AppUpdateService {
         AppDataMigrationRunner.MigrationExecutionResult dryRunResult =
             runStageDryRunOrReject(appId, candidate, plan, migrationPlan, targetManifest);
         if (!dryRunResult.success()) {
-          closePlan(plan);
           throw lifecycleFailure(
               409,
               ERROR_APP_DATA_MIGRATION_DRY_RUN_FAILED,
@@ -1459,7 +1528,8 @@ public final class AppUpdateService {
       AppUpdateCandidate stagedCandidate = candidateWithMigrationPlan(candidate, migrationPlan);
       closeStage(appId);
       stagedUpdates.put(
-          appId, new StagedUpdate(stagedCandidate, plan, migrationPlan, Instant.now()));
+          appId,
+          new StagedUpdate(stagedCandidate, planLease.release(), migrationPlan, Instant.now()));
       appendHistory(
           appId,
           ACTION_STAGE,
@@ -1470,10 +1540,28 @@ public final class AppUpdateService {
           "Verified update candidate staged.");
       recordUpdateReviewGate(
           AppReviewTransparencyEventKind.REVIEW_GATE_UPDATE, stagedCandidate, "stage_staged");
-    } catch (RuntimeException exception) {
-      closePlan(plan);
-      throw exception;
     }
+  }
+
+  private void rejectChangedStagePlan(String appId, AppUpdateCandidate candidate) {
+    closeStage(appId);
+    candidates.remove(appId);
+    appendHistory(
+        appId,
+        ACTION_STAGE,
+        STATUS_FAILED,
+        candidate.catalogId(),
+        candidate.targetVersion(),
+        ERROR_UPDATE_CANDIDATE_CHANGED,
+        "Prepared catalog plan no longer matches the reviewed candidate.");
+    recordUpdateReviewGate(
+        AppReviewTransparencyEventKind.REVIEW_GATE_UPDATE,
+        candidate,
+        "stage_blocked:" + ERROR_UPDATE_CANDIDATE_CHANGED);
+    throw lifecycleFailure(
+        409,
+        ERROR_UPDATE_CANDIDATE_CHANGED,
+        "Catalog candidate changed since review; check for updates again.");
   }
 
   private void verifyStagedBundleBeforeStageDryRun(
@@ -1489,9 +1577,9 @@ public final class AppUpdateService {
     }
   }
 
-  private AppCatalogInstallPlan prepareStagePlan(String appId, AppUpdateCandidate candidate) {
+  private StagePlanLease prepareStagePlanLease(String appId, AppUpdateCandidate candidate) {
     try {
-      return catalogManager.prepareInstallPlan(candidate.catalogId(), appId);
+      return new StagePlanLease(catalogManager.prepareInstallPlan(candidate.catalogId(), appId));
     } catch (AppCatalogException exception) {
       recordStageFailure(appId, candidate, exception.errorCode());
       throw catalogFailure(exception);
@@ -2050,6 +2138,7 @@ public final class AppUpdateService {
         candidate.supportStatus(),
         candidate.deprecation(),
         candidate.securityAdvisories(),
+        candidate.securityDecision(),
         candidate.channelPolicyAllowed(),
         candidate.policyBlockReason(),
         candidate.bundleSha256(),
@@ -2187,6 +2276,14 @@ public final class AppUpdateService {
   }
 
   private static int stageabilityRank(AppUpdateCandidate candidate) {
+    Map<String, Object> securityDecision = candidate.securityDecision();
+    if (Boolean.TRUE.equals(securityDecision.get(JSON_BLOCKS_UPDATE))
+        || Boolean.TRUE.equals(securityDecision.get(JSON_BLOCKS_AUTOMATIC_APPLY))) {
+      return 0;
+    }
+    if (Boolean.TRUE.equals(securityDecision.get(JSON_REQUIRES_ACKNOWLEDGEMENT))) {
+      return 1;
+    }
     Map<String, Object> reviewTrust = candidate.reviewTrust();
     if (Boolean.TRUE.equals(reviewTrust.get(JSON_BLOCKS_UPDATE))
         || Boolean.TRUE.equals(reviewTrust.get(JSON_BLOCKS_POLICY_APPLY))) {
@@ -2217,6 +2314,7 @@ public final class AppUpdateService {
           case "publisher_claim_only" -> 40;
           case "missing_receipt", "not_configured" -> 30;
           case "unknown_reviewer",
+              "revoked_receipt",
               "retired_reviewer",
               "revoked_reviewer",
               "reviewer_not_yet_valid",
@@ -2260,6 +2358,7 @@ public final class AppUpdateService {
         productionMetadata.supportStatus().catalogValue(),
         deprecationSummary(productionMetadata),
         securityAdvisoriesSummary(productionMetadata),
+        targetSecurityDecision(catalogId, entry).toJsonValue(),
         channelPolicyAllowed,
         channelPolicyAllowed ? null : ERROR_CHANNEL_POLICY_BLOCKED,
         entry.bundleSha256(),
@@ -2308,6 +2407,40 @@ public final class AppUpdateService {
         entry, trustedReviewerKeysOrEmpty(), reviewPolicy, Instant.now());
   }
 
+  private AppCatalogSecurityDecision securityDecision(String catalogId, AppCatalogEntry entry) {
+    try {
+      AppCatalogSecurityDecision decision =
+          catalogManager.securityDecision(catalogId, entry.appId());
+      return decision == null ? AppCatalogSecurityDecision.OK : decision;
+    } catch (AppCatalogException exception) {
+      throw catalogFailure(exception);
+    } catch (IOException _) {
+      throw lifecycleFailure(
+          500, "catalog_security_policy_failed", "Failed to read catalog security policy.");
+    }
+  }
+
+  private AppCatalogSecurityDecision installedSecurityDecision(String appId, String version) {
+    try {
+      AppCatalogSecurityDecision decision =
+          catalogManager.installedSecurityDecision(appId, version);
+      return decision == null ? AppCatalogSecurityDecision.OK : decision;
+    } catch (AppCatalogException exception) {
+      throw catalogFailure(exception);
+    } catch (IOException _) {
+      throw lifecycleFailure(
+          500, "catalog_security_policy_failed", "Failed to read catalog security policy.");
+    }
+  }
+
+  private AppCatalogSecurityDecision targetSecurityDecision(
+      String catalogId, AppCatalogEntry entry) {
+    return AppCatalogSecurityDecision.combine(
+        List.of(
+            securityDecision(catalogId, entry),
+            installedSecurityDecision(entry.appId(), entry.version())));
+  }
+
   private AppReviewTransparencyLog reviewTransparencyLog() {
     AppReviewTransparencyLog log = catalogManager.reviewTransparencyLog();
     return log == null ? AppReviewTransparencyLog.disabled() : log;
@@ -2349,6 +2482,7 @@ public final class AppUpdateService {
         "supported",
         deprecationSummary(AppCatalogProductionMetadata.DEFAULT),
         List.of(),
+        AppCatalogSecurityDecision.OK.toJsonValue(),
         true,
         null,
         "not_applicable",
@@ -2445,7 +2579,7 @@ public final class AppUpdateService {
   }
 
   private static void requireStageableCandidate(
-      AppUpdateCandidate candidate, boolean reviewAcknowledged) {
+      AppUpdateCandidate candidate, boolean reviewAcknowledged, boolean securityAcknowledged) {
     if (candidate.status() == AppUpdateCandidateStatus.INCOMPATIBLE) {
       throw lifecycleFailure(
           409, ERROR_UPDATE_INCOMPATIBLE, "Candidate is incompatible with this Platform API.");
@@ -2454,7 +2588,25 @@ public final class AppUpdateService {
       throw lifecycleFailure(
           409, ERROR_UPDATE_NOT_AVAILABLE, "No safely newer update candidate is available.");
     }
+    requireSecurityGate(candidate.securityDecision(), securityAcknowledged);
     requireReviewGate(candidate.reviewTrust(), reviewAcknowledged);
+  }
+
+  private static void requireSecurityGate(
+      Map<String, Object> securityDecision, boolean securityAcknowledged) {
+    if (Boolean.TRUE.equals(securityDecision.get(JSON_BLOCKS_UPDATE))) {
+      throw lifecycleFailure(
+          409,
+          securityGateFailureCode(securityDecision),
+          "Update blocked by catalog security policy.");
+    }
+    if (Boolean.TRUE.equals(securityDecision.get(JSON_REQUIRES_ACKNOWLEDGEMENT))
+        && !securityAcknowledged) {
+      throw lifecycleFailure(
+          409,
+          ERROR_APP_SECURITY_ACKNOWLEDGEMENT_REQUIRED,
+          "Update requires explicit acknowledgement of the security advisory.");
+    }
   }
 
   private static void requireReviewGate(
@@ -2477,6 +2629,23 @@ public final class AppUpdateService {
     return Boolean.TRUE.equals(reviewTrust.get(JSON_BLOCKS_UPDATE))
         || Boolean.TRUE.equals(reviewTrust.get(JSON_BLOCKS_POLICY_APPLY))
         || Boolean.TRUE.equals(reviewTrust.get(JSON_REQUIRES_ACKNOWLEDGEMENT));
+  }
+
+  private static boolean securityGateRequiresOperator(AppUpdateCandidate candidate) {
+    return securityGateRequiresOperator(candidate.securityDecision());
+  }
+
+  private static boolean securityGateRequiresOperator(Map<String, Object> securityDecision) {
+    return Boolean.TRUE.equals(securityDecision.get(JSON_BLOCKS_UPDATE))
+        || Boolean.TRUE.equals(securityDecision.get(JSON_BLOCKS_AUTOMATIC_APPLY))
+        || Boolean.TRUE.equals(securityDecision.get(JSON_REQUIRES_ACKNOWLEDGEMENT));
+  }
+
+  private static boolean securityDecisionAllowsAutomaticApply(
+      Map<String, Object> securityDecision) {
+    return !Boolean.TRUE.equals(securityDecision.get(JSON_BLOCKS_UPDATE))
+        && !Boolean.TRUE.equals(securityDecision.get(JSON_BLOCKS_AUTOMATIC_APPLY))
+        && !Boolean.TRUE.equals(securityDecision.get(JSON_REQUIRES_ACKNOWLEDGEMENT));
   }
 
   private void appendReviewGateHistory(String appId, String action, AppUpdateCandidate candidate) {
@@ -2515,6 +2684,18 @@ public final class AppUpdateService {
         "policy_" + action + "_blocked:" + ERROR_CHANNEL_POLICY_BLOCKED);
   }
 
+  private void appendSecurityGateHistory(
+      String appId, String action, AppUpdateCandidate candidate) {
+    appendHistory(
+        appId,
+        action,
+        STATUS_FAILED,
+        candidate.catalogId(),
+        candidate.targetVersion(),
+        automaticSecurityGateFailureCode(candidate.securityDecision()),
+        "Policy skipped update because catalog security policy requires operator action.");
+  }
+
   private void appendCompatibilityGateHistory(String appId, AppUpdateCandidate candidate) {
     appendHistory(
         appId,
@@ -2540,6 +2721,39 @@ public final class AppUpdateService {
     };
   }
 
+  private static String securityGateFailureCode(Map<String, Object> securityDecision) {
+    Object statusValue = securityDecision.get(JSON_STATUS);
+    if ("denylisted".equals(statusValue)) {
+      return ERROR_APP_SECURITY_DENYLISTED;
+    }
+    if (Boolean.TRUE.equals(securityDecision.get(JSON_BLOCKS_UPDATE))) {
+      return ERROR_APP_SECURITY_BLOCKED;
+    }
+    if (Boolean.TRUE.equals(securityDecision.get(JSON_REQUIRES_ACKNOWLEDGEMENT))) {
+      return ERROR_APP_SECURITY_ACKNOWLEDGEMENT_REQUIRED;
+    }
+    return ERROR_APP_SECURITY_BLOCKED;
+  }
+
+  private static String automaticSecurityGateFailureCode(Map<String, Object> securityDecision) {
+    Object statusValue = securityDecision.get(JSON_STATUS);
+    if ("denylisted".equals(statusValue)) {
+      return POLICY_SECURITY_DENYLIST_BLOCKED;
+    }
+    if (Boolean.TRUE.equals(securityDecision.get(JSON_BLOCKS_UPDATE))
+        || Boolean.TRUE.equals(securityDecision.get(JSON_BLOCKS_AUTOMATIC_APPLY))) {
+      return POLICY_SECURITY_BLOCKED;
+    }
+    if (Boolean.TRUE.equals(securityDecision.get(JSON_REQUIRES_ACKNOWLEDGEMENT))) {
+      return POLICY_SECURITY_ACKNOWLEDGEMENT_REQUIRED;
+    }
+    return POLICY_SECURITY_BLOCKED;
+  }
+
+  private static String automaticAction(AppUpdatePolicyMode mode) {
+    return mode == AppUpdatePolicyMode.APPLY_WHEN_STOPPED ? ACTION_APPLY : ACTION_STAGE;
+  }
+
   private Map<String, Object> summary(String appId, InstalledAppSnapshot installed) {
     invalidateStaleSummaryState(appId, installed);
     RunningAppSnapshot running = appHost.status(appId).orElse(null);
@@ -2549,6 +2763,9 @@ public final class AppUpdateService {
     json.put("running", running != null);
     json.put("policy", policyFor(appId).toJsonValue());
     json.put("candidate", candidateSummary(appId, installed));
+    json.put(
+        "installedSecurityDecision",
+        installedSecurityDecision(appId, installed.manifest().appVersion()).toJsonValue());
     json.put("staged", stagedSummary(appId));
     json.put(ACTION_ROLLBACK, rollbackSummary(appId));
     json.put("lastCheck", lastCheckSummary(appId));
@@ -2587,6 +2804,7 @@ public final class AppUpdateService {
     json.put("supportStatus", candidate.supportStatus());
     json.put("deprecation", candidate.deprecation());
     json.put("securityAdvisories", candidate.securityAdvisories());
+    json.put("securityDecision", candidate.securityDecision());
     json.put("bundleSha256", candidate.bundleSha256());
     json.put("bundleSizeBytes", candidate.bundleSizeBytes());
     json.put("review", candidate.review());
@@ -2686,6 +2904,7 @@ public final class AppUpdateService {
         candidate.supportStatus(),
         candidate.deprecation(),
         candidate.securityAdvisories(),
+        candidate.securityDecision(),
         candidate.channelPolicyAllowed(),
         candidate.policyBlockReason(),
         candidate.bundleSha256(),
@@ -2728,6 +2947,9 @@ public final class AppUpdateService {
         || !candidate.supportStatus().equals(productionMetadata.supportStatus().catalogValue())
         || !candidate.deprecation().equals(deprecationSummary(productionMetadata))
         || !candidate.securityAdvisories().equals(securityAdvisoriesSummary(productionMetadata))
+        || !candidate
+            .securityDecision()
+            .equals(targetSecurityDecision(plan.catalogId(), entry).toJsonValue())
         || !candidate.reviewTrust().equals(reviewTrust(entry).toJsonValue())
         || !candidate.apiCompatibility().equals(apiCompatibility)
         || !candidate.permissionDelta().equals(permissionDelta);
@@ -2768,6 +2990,7 @@ public final class AppUpdateService {
         candidate.supportStatus(),
         candidate.deprecation(),
         candidate.securityAdvisories(),
+        candidate.securityDecision(),
         candidate.channelPolicyAllowed(),
         candidate.policyBlockReason(),
         candidate.bundleSha256(),
@@ -2908,7 +3131,7 @@ public final class AppUpdateService {
 
   private boolean stageDiffersFromInstalled(StagedUpdate staged, InstalledAppSnapshot installed) {
     return candidateDiffersFromInstalled(staged.candidate(), installed)
-        || planDiffersFromCandidate(staged.candidate(), installed, staged.plan());
+        || planDiffersFromCandidate(staged.candidate(), installed, staged.plan);
   }
 
   private static boolean candidateDiffersFromInstalled(
@@ -2964,6 +3187,7 @@ public final class AppUpdateService {
         && stagedCandidate.supportStatus().equals(currentCandidate.supportStatus())
         && stagedCandidate.deprecation().equals(currentCandidate.deprecation())
         && stagedCandidate.securityAdvisories().equals(currentCandidate.securityAdvisories())
+        && stagedCandidate.securityDecision().equals(currentCandidate.securityDecision())
         && stagedCandidate.bundleSha256().equals(currentCandidate.bundleSha256())
         && stagedCandidate.bundleSizeBytes() == currentCandidate.bundleSizeBytes()
         && stagedCandidate.bundleType().equals(currentCandidate.bundleType())
@@ -2976,7 +3200,7 @@ public final class AppUpdateService {
   private void closeStage(String appId) {
     StagedUpdate staged = stagedUpdates.remove(appId);
     if (staged != null) {
-      closePlan(staged.plan());
+      closePlan(staged.plan);
     }
   }
 
@@ -3143,6 +3367,34 @@ public final class AppUpdateService {
 
     private Path stagedBundleDirectory() {
       return plan.stagedBundleDirectory();
+    }
+
+    private AppCatalogEntry entry() {
+      return plan.entry();
+    }
+  }
+
+  private static final class StagePlanLease implements AutoCloseable {
+    private AppCatalogInstallPlan plan;
+
+    private StagePlanLease(AppCatalogInstallPlan plan) {
+      this.plan = Objects.requireNonNull(plan, "plan");
+    }
+
+    private AppCatalogInstallPlan plan() {
+      return Objects.requireNonNull(plan, "plan");
+    }
+
+    private AppCatalogInstallPlan release() {
+      AppCatalogInstallPlan retainedPlan = plan();
+      plan = null;
+      return retainedPlan;
+    }
+
+    @Override
+    public void close() {
+      closePlan(plan);
+      plan = null;
     }
   }
 

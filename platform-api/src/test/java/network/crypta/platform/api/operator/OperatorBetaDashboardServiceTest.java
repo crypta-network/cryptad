@@ -78,6 +78,24 @@ class OperatorBetaDashboardServiceTest {
   }
 
   @Test
+  void dashboard_whenCandidateSecurityAckRequired_expectWarningAndNoStageAction() {
+    AppUpdateService updateService = mock(AppUpdateService.class);
+    when(updateService.summary(APP_ID))
+        .thenReturn(
+            updateSummary(
+                availableCandidate(
+                    Map.of(), Map.of("requiresAcknowledgement", true, "blocksUpdate", false))));
+
+    Map<String, Object> dashboard = service(appsHandler(), updateService).dashboard();
+
+    Map<String, Object> summary = mapValue(dashboard.get(SUMMARY_FIELD));
+    List<Map<String, Object>> actions = recoveryActionsForFirstApp(dashboard);
+    assertEquals(1L, summary.get("pendingUpdateCount"));
+    assertFalse(actionAvailable(actions, STAGE_APP_UPDATE_ACTION));
+    assertTrue(warningsForFirstApp(dashboard).contains("app_update_security_advisory"));
+  }
+
+  @Test
   void dashboard_whenAppRunningWithStagedUpdateAndRollback_expectApplyAndRollbackUnavailable() {
     AppUpdateService updateService = mock(AppUpdateService.class);
     when(updateService.summary(APP_ID))
@@ -101,6 +119,24 @@ class OperatorBetaDashboardServiceTest {
     List<Map<String, Object>> actions = recoveryActionsForFirstApp(dashboard);
     assertTrue(actionAvailable(actions, APPLY_APP_UPDATE_ACTION));
     assertTrue(actionAvailable(actions, ROLLBACK_APP_ACTION));
+  }
+
+  @Test
+  void dashboard_whenStagedUpdateSecurityBlocksUpdate_expectApplyUnavailableAndWarning() {
+    AppUpdateService updateService = mock(AppUpdateService.class);
+    when(updateService.summary(APP_ID))
+        .thenReturn(
+            updateSummary(
+                availableCandidate(),
+                stagedUpdate(Map.of("blocksUpdate", true)),
+                rollbackAvailable()));
+
+    Map<String, Object> dashboard = service(appsHandler(), updateService).dashboard();
+
+    List<Map<String, Object>> actions = recoveryActionsForFirstApp(dashboard);
+    assertFalse(actionAvailable(actions, APPLY_APP_UPDATE_ACTION));
+    assertTrue(actionAvailable(actions, ROLLBACK_APP_ACTION));
+    assertTrue(warningsForFirstApp(dashboard).contains("app_update_security_blocked"));
   }
 
   @Test
@@ -409,6 +445,11 @@ class OperatorBetaDashboardServiceTest {
   }
 
   private static Map<String, Object> availableCandidate(Map<String, Object> reviewTrust) {
+    return availableCandidate(reviewTrust, Map.of());
+  }
+
+  private static Map<String, Object> availableCandidate(
+      Map<String, Object> reviewTrust, Map<String, Object> securityDecision) {
     return Map.of(
         "status",
         AVAILABLE,
@@ -417,11 +458,17 @@ class OperatorBetaDashboardServiceTest {
         "operatorActionRequired",
         false,
         "reviewTrust",
-        reviewTrust);
+        reviewTrust,
+        "securityDecision",
+        securityDecision);
   }
 
   private static Map<String, Object> stagedUpdate() {
-    return Map.of(AVAILABLE, true, "reviewTrust", Map.of());
+    return stagedUpdate(Map.of());
+  }
+
+  private static Map<String, Object> stagedUpdate(Map<String, Object> securityDecision) {
+    return Map.of(AVAILABLE, true, "reviewTrust", Map.of(), "securityDecision", securityDecision);
   }
 
   private static Map<String, Object> rollbackAvailable() {

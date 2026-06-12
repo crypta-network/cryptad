@@ -32,6 +32,7 @@ class AppReviewReceiptTest {
   private static final String REVIEWER_KEY_ID = "crypta-first-party-review";
   private static final String POLICY_ID = "crypta-app-review-v1";
   private static final String POLICY_VERSION = "1";
+  private static final String RECEIPT_REVOCATION_ID = "receipt-1";
   private static final Instant REVIEWED_AT = Instant.parse("2026-05-01T00:00:00Z");
   private static final Instant FUTURE = Instant.parse("2026-06-01T00:00:00Z");
 
@@ -77,6 +78,19 @@ class AppReviewReceiptTest {
     assertTrue(decision.trusted());
     assertTrue(decision.positive());
     assertEquals(REVIEWER_KEY_ID, decision.reviewerKeyId());
+  }
+
+  @Test
+  void fingerprintSha256_whenReceiptRoundTrips_expectStableFingerprint() throws Exception {
+    KeyPair keyPair = reviewerKeyPair();
+    AppReviewReceipt receipt =
+        AppReviewReceiptSigner.sign(payload(AppReviewReceiptStatus.REVIEWED), keyPair.getPrivate());
+    AppReviewReceipt parsed = AppReviewReceiptIO.parse(AppReviewReceiptIO.serialize(receipt));
+
+    assertEquals(receipt.fingerprintSha256(), parsed.fingerprintSha256());
+    assertEquals(receipt.payloadSha256(), parsed.payloadSha256());
+    assertTrue(receipt.fingerprintSha256().matches("[0-9a-f]{64}"));
+    assertTrue(receipt.payloadSha256().matches("[0-9a-f]{64}"));
   }
 
   @Test
@@ -483,6 +497,123 @@ class AppReviewReceiptTest {
     assertFalse(
         keys.summaries().getFirst().toJsonValue().containsKey("publicKey"),
         "raw public key bytes must not appear in trusted reviewer summaries");
+  }
+
+  @Test
+  void trustedReviewerKeysLoad_whenV3ReceiptRevocationConfigured_expectParsesRevocation()
+      throws Exception {
+    KeyPair keyPair = reviewerKeyPair();
+    AppReviewReceipt receipt =
+        AppReviewReceiptSigner.sign(payload(AppReviewReceiptStatus.REVIEWED), keyPair.getPrivate());
+    Path trustedReviewers = tempDir.resolve("trusted-reviewers-v3.properties");
+    Files.writeString(
+        trustedReviewers,
+        lines(
+            "trusted.reviewers.version=3",
+            reviewerProperties("reviewer.1", keyPair),
+            "reviewer.1.policy.version=1",
+            "reviewer.1.status=active",
+            receiptRevocationProperties(receipt)),
+        StandardCharsets.UTF_8);
+
+    TrustedReviewerKeys keys = TrustedReviewerKeys.load(trustedReviewers);
+
+    assertEquals(3, keys.registryVersion());
+    assertEquals(1, keys.receiptRevocations().size());
+    assertEquals(1, keys.summary().receiptRevocationCount());
+    assertTrue(keys.findReceiptRevocation(receipt).isPresent());
+  }
+
+  @Test
+  void evaluate_whenReceiptFingerprintIsRevoked_expectRevokedReceiptNotTrusted() throws Exception {
+    KeyPair keyPair = reviewerKeyPair();
+    AppReviewReceipt receipt =
+        AppReviewReceiptSigner.sign(payload(AppReviewReceiptStatus.REVIEWED), keyPair.getPrivate());
+    Path trustedReviewers = tempDir.resolve("trusted-reviewers-revoked-receipt.properties");
+    Files.writeString(
+        trustedReviewers,
+        lines(
+            "trusted.reviewers.version=3",
+            reviewerProperties("reviewer.1", keyPair),
+            "reviewer.1.policy.version=1",
+            "reviewer.1.status=active",
+            receiptRevocationProperties(receipt)),
+        StandardCharsets.UTF_8);
+
+    AppReviewTrustDecision decision =
+        AppReviewReceiptVerifier.evaluate(
+            entry(receipt, AppCatalogReviewMetadata.EMPTY),
+            TrustedReviewerKeys.load(trustedReviewers),
+            AppReviewPolicy.DEFAULT,
+            REVIEWED_AT);
+
+    assertEquals(AppReviewTrustStatus.REVOKED_RECEIPT, decision.status());
+    assertFalse(decision.trusted());
+    assertFalse(decision.positive());
+    assertTrue(decision.blocksInstall());
+    assertTrue(decision.blocksUpdate());
+  }
+
+  @Test
+  void evaluate_whenRevokedReceiptIsAlsoExpired_expectRevocationWins() throws Exception {
+    KeyPair keyPair = reviewerKeyPair();
+    AppReviewReceipt receipt = AppReviewReceiptSigner.sign(expiredPayload(), keyPair.getPrivate());
+
+    AppReviewTrustDecision decision =
+        AppReviewReceiptVerifier.evaluate(
+            entry(receipt, AppCatalogReviewMetadata.EMPTY),
+            trustedKeysWithRevokedReceipt(keyPair, receipt),
+            AppReviewPolicy.DEFAULT,
+            FUTURE);
+
+    assertEquals(AppReviewTrustStatus.REVOKED_RECEIPT, decision.status());
+    assertFalse(decision.trusted());
+    assertTrue(decision.blocksInstall());
+    assertTrue(decision.blocksUpdate());
+  }
+
+  @Test
+  void evaluate_whenRevokedReceiptIsAlsoMismatched_expectRevocationWins() throws Exception {
+    KeyPair keyPair = reviewerKeyPair();
+    AppReviewReceipt receipt =
+        AppReviewReceiptSigner.sign(
+            payloadWithBinding("other-app", ARTIFACT_SHA256), keyPair.getPrivate());
+
+    AppReviewTrustDecision decision =
+        AppReviewReceiptVerifier.evaluate(
+            entry(receipt, AppCatalogReviewMetadata.EMPTY),
+            trustedKeysWithRevokedReceipt(keyPair, receipt),
+            AppReviewPolicy.DEFAULT,
+            REVIEWED_AT);
+
+    assertEquals(AppReviewTrustStatus.REVOKED_RECEIPT, decision.status());
+    assertFalse(decision.trusted());
+    assertTrue(decision.blocksInstall());
+    assertTrue(decision.blocksUpdate());
+  }
+
+  @Test
+  void trustedReviewerKeysLoad_whenV2RegistryContainsReceiptRevocation_expectInvalidCatalogEntry()
+      throws Exception {
+    KeyPair keyPair = reviewerKeyPair();
+    AppReviewReceipt receipt =
+        AppReviewReceiptSigner.sign(payload(AppReviewReceiptStatus.REVIEWED), keyPair.getPrivate());
+    Path trustedReviewers = tempDir.resolve("trusted-reviewers-v2-revocation.properties");
+    Files.writeString(
+        trustedReviewers,
+        lines(
+            "trusted.reviewers.version=2",
+            reviewerProperties("reviewer.1", keyPair),
+            "reviewer.1.policy.version=1",
+            "reviewer.1.status=active",
+            receiptRevocationProperties(receipt)),
+        StandardCharsets.UTF_8);
+
+    AppCatalogException exception =
+        assertThrows(AppCatalogException.class, () -> TrustedReviewerKeys.load(trustedReviewers));
+
+    assertEquals(AppCatalogSidecars.INVALID_CATALOG_ENTRY, exception.errorCode());
+    assertTrue(exception.getMessage().contains("unsupported trusted reviewer keys property"));
   }
 
   @Test
@@ -1011,6 +1142,22 @@ class AppReviewReceiptTest {
             lifecycle));
   }
 
+  private TrustedReviewerKeys trustedKeysWithRevokedReceipt(
+      KeyPair keyPair, AppReviewReceipt receipt) throws IOException {
+    Path trustedReviewers =
+        tempDir.resolve("trusted-reviewers-revoked-" + receipt.fingerprintSha256() + ".properties");
+    Files.writeString(
+        trustedReviewers,
+        lines(
+            "trusted.reviewers.version=3",
+            reviewerProperties("reviewer.1", keyPair),
+            "reviewer.1.policy.version=1",
+            "reviewer.1.status=active",
+            receiptRevocationProperties(receipt)),
+        StandardCharsets.UTF_8);
+    return TrustedReviewerKeys.load(trustedReviewers);
+  }
+
   private static FileAppReviewTransparencyStore storeWithReceiptObservationForBooleanTamper(
       Path logFile, AppCatalogEntry entry) throws IOException {
     FileAppReviewTransparencyStore store = new FileAppReviewTransparencyStore(logFile);
@@ -1068,6 +1215,20 @@ class AppReviewReceiptTest {
             + Base64.getEncoder().encodeToString(keyPair.getPublic().getEncoded()),
         prefix + ".display.name=Crypta First-Party Review",
         prefix + ".policy.id=" + POLICY_ID);
+  }
+
+  private static String receiptRevocationProperties(AppReviewReceipt receipt) {
+    AppReviewReceiptPayload payload = receipt.payload();
+    String propertyPrefix = "review.revocation." + RECEIPT_REVOCATION_ID + ".";
+    return lines(
+        "review.revocations=" + RECEIPT_REVOCATION_ID,
+        propertyPrefix + "receiptFingerprintSha256=" + receipt.fingerprintSha256(),
+        propertyPrefix + "appId=" + payload.appId(),
+        propertyPrefix + "appVersion=" + payload.appVersion(),
+        propertyPrefix + "bundleSha256=" + payload.artifactSha256(),
+        propertyPrefix + "reviewerKeyId=" + payload.reviewerKeyId(),
+        propertyPrefix + "revokedAt=2026-06-11T00:00:00Z",
+        propertyPrefix + "reason=Receipt revoked after advisory CRYPTA-2026-0001.");
   }
 
   private static String lines(String... values) {

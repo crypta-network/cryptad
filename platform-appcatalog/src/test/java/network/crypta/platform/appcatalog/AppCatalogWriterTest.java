@@ -201,6 +201,61 @@ class AppCatalogWriterTest {
   }
 
   @Test
+  void serialize_whenCatalogHasSecurityPolicy_expectVersionFourDeterministicOutput() {
+    AppCatalog catalog =
+        new AppCatalog(
+            AppCatalog.VERSION_SECURITY_POLICY,
+            CATALOG_ID,
+            CATALOG_NAME,
+            GENERATED_AT,
+            securityPolicy(),
+            List.of(directEntryWithProductionMetadata()));
+
+    String serialized = new String(AppCatalogWriter.serialize(catalog), StandardCharsets.UTF_8);
+
+    assertEquals(
+        lines(
+            "catalog.version=4",
+            "catalog.id=core",
+            "catalog.name=Crypta Core Apps",
+            "catalog.generatedAt=2026-04-21T18:22:40Z",
+            "catalog.entries=queue-manager",
+            "catalog.securityAdvisories=CRYPTA-2026-0001",
+            "catalog.securityAdvisory.CRYPTA-2026-0001.uri=https://example.invalid/advisories/CRYPTA-2026-0001",
+            "catalog.securityAdvisory.CRYPTA-2026-0001.title=Queue Manager vulnerable release",
+            "catalog.securityAdvisory.CRYPTA-2026-0001.severity=critical",
+            "catalog.securityAdvisory.CRYPTA-2026-0001.status=active",
+            "catalog.securityAdvisory.CRYPTA-2026-0001.action=denylist",
+            "catalog.securityAdvisory.CRYPTA-2026-0001.summary=Upgrade to a reviewed replacement.",
+            "catalog.securityAdvisory.CRYPTA-2026-0001.publishedAt=2026-06-11T00:00:00Z",
+            "catalog.securityAdvisory.CRYPTA-2026-0001.updatedAt=2026-06-11T00:00:00Z",
+            "catalog.securityAdvisory.CRYPTA-2026-0001.replacementAppId=queue-manager",
+            "catalog.securityAdvisory.CRYPTA-2026-0001.safeUninstallGuidance=Export app data before"
+                + " removal.",
+            "catalog.securityDenylist=deny-queue-1-0-0",
+            "catalog.securityDenylist.deny-queue-1-0-0.appId=queue-manager",
+            "catalog.securityDenylist.deny-queue-1-0-0.version=1.0.0",
+            "catalog.securityDenylist.deny-queue-1-0-0.advisoryId=CRYPTA-2026-0001",
+            "catalog.securityDenylist.deny-queue-1-0-0.reason=Known vulnerable release.",
+            "catalog.securityDenylist.deny-queue-1-0-0.replacementAppId=queue-manager",
+            "catalog.securityDenylist.deny-queue-1-0-0.safeUninstallGuidance=Use app-data export"
+                + " before removal.",
+            "app.queue-manager.id=queue-manager",
+            "app.queue-manager.name=Queue Manager",
+            "app.queue-manager.version=1.0.0",
+            "app.queue-manager.summary=Manage local queues.",
+            "app.queue-manager.channel=beta",
+            "app.queue-manager.support.status=experimental",
+            "app.queue-manager.deprecation.status=none",
+            "app.queue-manager.bundle.uri=https://example.invalid/apps/queue-manager.zip",
+            "app.queue-manager.bundle.sha256=" + "0".repeat(64),
+            "app.queue-manager.bundle.size.bytes=0",
+            "app.queue-manager.bundle.type=zip",
+            "app.queue-manager.permissions=queue.read"),
+        serialized);
+  }
+
+  @Test
   void serialize_whenPermissionRationalesAreUnordered_expectDeclaredPermissionOrder() {
     Map<String, String> rationales = new LinkedHashMap<>();
     rationales.put("queue.write", "Writes queue state.");
@@ -420,6 +475,32 @@ class AppCatalogWriterTest {
         AppCatalogEntry.ZIP_BUNDLE_TYPE,
         List.of(QUEUE_READ_PERMISSION),
         Map.of());
+  }
+
+  private static AppCatalogSecurityPolicy securityPolicy() {
+    return new AppCatalogSecurityPolicy(
+        List.of(
+            new AppCatalogSecurityAdvisoryRecord(
+                "CRYPTA-2026-0001",
+                URI.create("https://example.invalid/advisories/CRYPTA-2026-0001"),
+                "Queue Manager vulnerable release",
+                AppCatalogSecuritySeverity.CRITICAL,
+                AppCatalogSecurityStatus.ACTIVE,
+                AppCatalogSecurityAction.DENYLIST,
+                "Upgrade to a reviewed replacement.",
+                Instant.parse("2026-06-11T00:00:00Z"),
+                Instant.parse("2026-06-11T00:00:00Z"),
+                java.util.Optional.of(QUEUE_APP_ID),
+                java.util.Optional.of("Export app data before removal."))),
+        List.of(
+            new AppCatalogVersionDenylistEntry(
+                "deny-queue-1-0-0",
+                QUEUE_APP_ID,
+                QUEUE_APP_VERSION,
+                "CRYPTA-2026-0001",
+                "Known vulnerable release.",
+                java.util.Optional.of(QUEUE_APP_ID),
+                java.util.Optional.of("Use app-data export before removal."))));
   }
 
   private Path descriptor(

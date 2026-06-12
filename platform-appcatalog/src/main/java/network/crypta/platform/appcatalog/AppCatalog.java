@@ -26,6 +26,7 @@ import network.crypta.platform.appdist.AppBundleManifest;
  * @param catalogId stable catalog identifier used by API paths and local storage
  * @param name human-readable catalog name
  * @param generatedAt timestamp declared by the catalog producer
+ * @param securityPolicy catalog-level security advisory and exact-version denylist policy
  * @param entries catalog entries in declared deterministic order
  */
 public record AppCatalog(
@@ -33,6 +34,7 @@ public record AppCatalog(
     String catalogId,
     String name,
     Instant generatedAt,
+    AppCatalogSecurityPolicy securityPolicy,
     List<AppCatalogEntry> entries) {
   /** Minimal signed-catalog schema. */
   public static final int VERSION_MINIMAL = 1;
@@ -42,6 +44,30 @@ public record AppCatalog(
 
   /** Signed-catalog schema that can carry production channel and support metadata. */
   public static final int VERSION_PRODUCTION_CHANNELS = 3;
+
+  /** Signed-catalog schema that can carry enforceable catalog-level security policy. */
+  public static final int VERSION_SECURITY_POLICY = 4;
+
+  /**
+   * Creates a catalog without root security policy.
+   *
+   * <p>This overload preserves source compatibility for tests and tooling that construct v1-v3
+   * catalog models directly. New v4 policy-aware callers should use the canonical constructor.
+   *
+   * @param version catalog schema version
+   * @param catalogId stable catalog identifier used by API paths and local storage
+   * @param name human-readable catalog name shown to operators
+   * @param generatedAt timestamp declared by the catalog producer
+   * @param entries catalog entries in declared deterministic order
+   */
+  public AppCatalog(
+      int version,
+      String catalogId,
+      String name,
+      Instant generatedAt,
+      List<AppCatalogEntry> entries) {
+    this(version, catalogId, name, generatedAt, AppCatalogSecurityPolicy.EMPTY, entries);
+  }
 
   /**
    * Creates a validated immutable catalog.
@@ -55,6 +81,7 @@ public record AppCatalog(
    * @param catalogId stable catalog identifier used by API paths and local storage
    * @param name human-readable catalog name shown to operators
    * @param generatedAt timestamp declared by the catalog producer
+   * @param securityPolicy catalog-level security advisory and exact-version denylist policy
    * @param entries catalog entries in declared deterministic order
    * @throws AppCatalogException if the catalog header or entry set is invalid
    */
@@ -67,6 +94,11 @@ public record AppCatalog(
         AppCatalogSidecars.requireNonBlankSingleLine(
             name, "catalog.name", AppCatalogSidecars.INVALID_CATALOG_ENTRY);
     Objects.requireNonNull(generatedAt, "generatedAt");
+    Objects.requireNonNull(securityPolicy, "securityPolicy");
+    if (securityPolicy.hasCatalogFields() && version < VERSION_SECURITY_POLICY) {
+      throw AppCatalogSidecars.invalidEntry(
+          "catalog.version 4 is required when security policy metadata is present");
+    }
     entries = List.copyOf(Objects.requireNonNull(entries, "entries"));
     rejectDuplicateEntries(entries);
   }
@@ -74,7 +106,8 @@ public record AppCatalog(
   static boolean isUnsupportedVersion(int version) {
     return version != VERSION_MINIMAL
         && version != VERSION_STORE_METADATA
-        && version != VERSION_PRODUCTION_CHANNELS;
+        && version != VERSION_PRODUCTION_CHANNELS
+        && version != VERSION_SECURITY_POLICY;
   }
 
   /**

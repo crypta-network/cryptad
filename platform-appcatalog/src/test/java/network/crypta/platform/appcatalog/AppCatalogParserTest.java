@@ -200,6 +200,77 @@ class AppCatalogParserTest {
   }
 
   @Test
+  void parse_whenCatalogHasSecurityPolicy_expectDecisionDenylisted() {
+    AppCatalog catalog = AppCatalogParser.parse(bytes(validSecurityPolicyCatalog()));
+
+    AppCatalogEntry entry = catalog.entries().getFirst();
+    AppCatalogSecurityDecision decision = catalog.securityPolicy().decisionFor(entry);
+
+    assertEquals(AppCatalog.VERSION_SECURITY_POLICY, catalog.version());
+    assertEquals(1, catalog.securityPolicy().advisories().size());
+    assertEquals(1, catalog.securityPolicy().denylist().size());
+    assertEquals(AppCatalogSecurityDecisionStatus.DENYLISTED, decision.status());
+    assertEquals(AppCatalogSecurityAction.DENYLIST, decision.action());
+    assertEquals(AppCatalogSecuritySeverity.CRITICAL, decision.severity());
+    assertEquals(List.of("CRYPTA-2026-0001"), decision.advisoryIds());
+    assertTrue(decision.blocksInstall());
+    assertTrue(decision.blocksUpdate());
+    assertEquals("Export app data before removal.", decision.safeUninstallGuidance());
+  }
+
+  @Test
+  void parse_whenEntryHasMultipleSecurityActions_expectDecisionAccumulatesAllGates() {
+    AppCatalog catalog = AppCatalogParser.parse(bytes(multiActionSecurityPolicyCatalog()));
+
+    AppCatalogSecurityDecision decision =
+        catalog.securityPolicy().decisionFor(catalog.entries().getFirst());
+
+    assertEquals(AppCatalogSecurityDecisionStatus.BLOCKED, decision.status());
+    assertEquals(AppCatalogSecurityAction.BLOCK_UPDATE, decision.action());
+    assertEquals(AppCatalogSecuritySeverity.HIGH, decision.severity());
+    assertEquals(
+        List.of("CRYPTA-2026-0001", "CRYPTA-2026-0002", "CRYPTA-2026-0003"),
+        decision.advisoryIds());
+    assertTrue(decision.requiresAcknowledgement());
+    assertTrue(decision.blocksInstall());
+    assertTrue(decision.blocksUpdate());
+    assertTrue(decision.blocksAutomaticApply());
+  }
+
+  @Test
+  void parse_whenVersionThreeCatalogDeclaresSecurityPolicy_expectInvalidCatalogEntry() {
+    assertInvalidEntry(
+        validSecurityPolicyCatalog().replace("catalog.version=4", "catalog.version=3"));
+  }
+
+  @Test
+  void parse_whenSecurityPolicyHasDuplicateAdvisoryId_expectInvalidCatalogEntry() {
+    assertInvalidEntry(
+        validSecurityPolicyCatalog()
+            .replace(
+                "catalog.securityAdvisories=CRYPTA-2026-0001",
+                "catalog.securityAdvisories=CRYPTA-2026-0001,CRYPTA-2026-0001"));
+  }
+
+  @Test
+  void parse_whenSecurityPolicyHasInvalidSeverity_expectInvalidCatalogEntry() {
+    assertInvalidEntry(
+        validSecurityPolicyCatalog()
+            .replace(
+                "catalog.securityAdvisory.CRYPTA-2026-0001.severity=critical",
+                "catalog.securityAdvisory.CRYPTA-2026-0001.severity=severe"));
+  }
+
+  @Test
+  void parse_whenSecurityPolicyDenylistReferencesUnknownAdvisory_expectInvalidCatalogEntry() {
+    assertInvalidEntry(
+        validSecurityPolicyCatalog()
+            .replace(
+                "catalog.securityDenylist.deny-queue-1-2-0.advisoryId=CRYPTA-2026-0001",
+                "catalog.securityDenylist.deny-queue-1-2-0.advisoryId=CRYPTA-2026-9999"));
+  }
+
+  @Test
   void parse_whenVersionTwoCatalogOmitsProductionMetadata_expectStableDefaults() {
     AppCatalog catalog = AppCatalogParser.parse(bytes(validStoreMetadataCatalog()));
 
@@ -464,6 +535,97 @@ class AppCatalogParserTest {
         .replace(
             "app.queue-manager.bundle.uri=",
             "app.queue-manager.channel=beta\napp.queue-manager.bundle.uri=");
+  }
+
+  private static String validSecurityPolicyCatalog() {
+    return """
+    catalog.version=4
+    catalog.id=core
+    catalog.name=Crypta Core Apps
+    catalog.generatedAt=%s
+    catalog.entries=queue-manager
+    catalog.securityAdvisories=CRYPTA-2026-0001
+    catalog.securityAdvisory.CRYPTA-2026-0001.uri=https://example.invalid/advisories/CRYPTA-2026-0001
+    catalog.securityAdvisory.CRYPTA-2026-0001.title=Queue Manager vulnerable draft handling
+    catalog.securityAdvisory.CRYPTA-2026-0001.severity=critical
+    catalog.securityAdvisory.CRYPTA-2026-0001.status=active
+    catalog.securityAdvisory.CRYPTA-2026-0001.action=denylist
+    catalog.securityAdvisory.CRYPTA-2026-0001.summary=Upgrade to a reviewed replacement version.
+    catalog.securityAdvisory.CRYPTA-2026-0001.publishedAt=2026-06-11T00:00:00Z
+    catalog.securityAdvisory.CRYPTA-2026-0001.updatedAt=2026-06-11T00:00:00Z
+    catalog.securityAdvisory.CRYPTA-2026-0001.replacementAppId=queue-manager
+    catalog.securityAdvisory.CRYPTA-2026-0001.safeUninstallGuidance=Export app data before uninstalling.
+    catalog.securityDenylist=deny-queue-1-2-0
+    catalog.securityDenylist.deny-queue-1-2-0.appId=queue-manager
+    catalog.securityDenylist.deny-queue-1-2-0.version=1.2.0
+    catalog.securityDenylist.deny-queue-1-2-0.advisoryId=CRYPTA-2026-0001
+    catalog.securityDenylist.deny-queue-1-2-0.reason=Known vulnerable release.
+    catalog.securityDenylist.deny-queue-1-2-0.replacementAppId=queue-manager
+    catalog.securityDenylist.deny-queue-1-2-0.safeUninstallGuidance=Export app data before removal.
+    app.queue-manager.id=queue-manager
+    app.queue-manager.name=Queue Manager
+    app.queue-manager.version=1.2.0
+    app.queue-manager.summary=Manage transfer queues.
+    app.queue-manager.channel=beta
+    app.queue-manager.securityAdvisories=CRYPTA-2026-0001
+    app.queue-manager.securityAdvisory.CRYPTA-2026-0001.uri=https://example.invalid/advisories/CRYPTA-2026-0001
+    app.queue-manager.bundle.uri=https://example.invalid/queue-manager.zip
+    app.queue-manager.bundle.sha256=%s
+    app.queue-manager.bundle.size.bytes=0
+    app.queue-manager.bundle.type=zip
+    app.queue-manager.permissions=queue.read
+    """
+        .formatted(GENERATED_AT, SHA256);
+  }
+
+  private static String multiActionSecurityPolicyCatalog() {
+    return """
+    catalog.version=4
+    catalog.id=core
+    catalog.name=Crypta Core Apps
+    catalog.generatedAt=%s
+    catalog.entries=queue-manager
+    catalog.securityAdvisories=CRYPTA-2026-0001,CRYPTA-2026-0002,CRYPTA-2026-0003
+    catalog.securityAdvisory.CRYPTA-2026-0001.uri=https://example.invalid/advisories/CRYPTA-2026-0001
+    catalog.securityAdvisory.CRYPTA-2026-0001.title=Queue Manager warning advisory
+    catalog.securityAdvisory.CRYPTA-2026-0001.severity=low
+    catalog.securityAdvisory.CRYPTA-2026-0001.status=active
+    catalog.securityAdvisory.CRYPTA-2026-0001.action=warn
+    catalog.securityAdvisory.CRYPTA-2026-0001.summary=Acknowledge before manual action.
+    catalog.securityAdvisory.CRYPTA-2026-0001.publishedAt=2026-06-11T00:00:00Z
+    catalog.securityAdvisory.CRYPTA-2026-0001.updatedAt=2026-06-11T00:00:00Z
+    catalog.securityAdvisory.CRYPTA-2026-0002.uri=https://example.invalid/advisories/CRYPTA-2026-0002
+    catalog.securityAdvisory.CRYPTA-2026-0002.title=Queue Manager install block
+    catalog.securityAdvisory.CRYPTA-2026-0002.severity=medium
+    catalog.securityAdvisory.CRYPTA-2026-0002.status=active
+    catalog.securityAdvisory.CRYPTA-2026-0002.action=block_install
+    catalog.securityAdvisory.CRYPTA-2026-0002.summary=Do not install this release.
+    catalog.securityAdvisory.CRYPTA-2026-0002.publishedAt=2026-06-11T00:00:00Z
+    catalog.securityAdvisory.CRYPTA-2026-0002.updatedAt=2026-06-11T00:00:00Z
+    catalog.securityAdvisory.CRYPTA-2026-0003.uri=https://example.invalid/advisories/CRYPTA-2026-0003
+    catalog.securityAdvisory.CRYPTA-2026-0003.title=Queue Manager update block
+    catalog.securityAdvisory.CRYPTA-2026-0003.severity=high
+    catalog.securityAdvisory.CRYPTA-2026-0003.status=active
+    catalog.securityAdvisory.CRYPTA-2026-0003.action=block_update
+    catalog.securityAdvisory.CRYPTA-2026-0003.summary=Do not update to this release.
+    catalog.securityAdvisory.CRYPTA-2026-0003.publishedAt=2026-06-11T00:00:00Z
+    catalog.securityAdvisory.CRYPTA-2026-0003.updatedAt=2026-06-11T00:00:00Z
+    app.queue-manager.id=queue-manager
+    app.queue-manager.name=Queue Manager
+    app.queue-manager.version=1.2.0
+    app.queue-manager.summary=Manage transfer queues.
+    app.queue-manager.channel=beta
+    app.queue-manager.securityAdvisories=CRYPTA-2026-0001,CRYPTA-2026-0002,CRYPTA-2026-0003
+    app.queue-manager.securityAdvisory.CRYPTA-2026-0001.uri=https://example.invalid/advisories/CRYPTA-2026-0001
+    app.queue-manager.securityAdvisory.CRYPTA-2026-0002.uri=https://example.invalid/advisories/CRYPTA-2026-0002
+    app.queue-manager.securityAdvisory.CRYPTA-2026-0003.uri=https://example.invalid/advisories/CRYPTA-2026-0003
+    app.queue-manager.bundle.uri=https://example.invalid/queue-manager.zip
+    app.queue-manager.bundle.sha256=%s
+    app.queue-manager.bundle.size.bytes=0
+    app.queue-manager.bundle.type=zip
+    app.queue-manager.permissions=queue.read
+    """
+        .formatted(GENERATED_AT, SHA256);
   }
 
   private static byte[] bytes(String value) {

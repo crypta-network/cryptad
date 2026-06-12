@@ -9,7 +9,7 @@ The current app-facing values are:
 
 ```text
 apiVersion=v1
-contractVersion=16
+contractVersion=17
 ```
 
 The contract does not change Platform API behavior. It publishes metadata that answers which
@@ -37,7 +37,7 @@ The response shape is:
 {
   "contract": {
     "apiVersion": "v1",
-    "contractVersion": 16,
+    "contractVersion": 17,
     "generatedBy": "cryptad",
     "stabilityPolicy": "...",
     "capabilities": [],
@@ -142,6 +142,14 @@ review routes:
 | `POST /api/v1/app-services/grant-bundles/{bundleId}/approve` | Host/operator only | Approve a pending bundle after revalidating the signed consumer manifest and current provider descriptors. |
 | `POST /api/v1/app-services/grant-bundles/{bundleId}/reject` | Host/operator only | Reject a pending bundle without leaving active grants. |
 | `POST /api/v1/app-services/grant-bundles/{bundleId}/renew` | Host/operator only | Renew or revalidate bundle-approved grants after descriptor compatibility checks. |
+
+Contract version 17 adds redacted ecosystem security advisory and review revocation summaries to
+catalog/update surfaces. App-facing and operator-facing summaries can expose bounded status,
+advisory IDs, receipt fingerprints, lifecycle status, and block flags. They must not expose raw
+public keys, private keys, raw signatures, raw receipt contents, local registry paths, catalog
+scratch paths, staged bundle paths, private insert URIs, tokens, request bodies, or raw fetched
+content. The enforcement APIs remain the existing catalog install/update and app update stage/apply
+routes; `securityAcknowledged=true` can acknowledge only warning-level security decisions.
 
 Dependency metadata is review and UX metadata, not authorization. Bundle proposals do not approve
 access. Invocation still requires a non-expired active grant on every call. Provider descriptor

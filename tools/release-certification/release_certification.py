@@ -42,7 +42,11 @@ CERT_STATUSES = ("pass", "warn", "fail", "skip", "missing")
 MODES = ("pr", "nightly", "release-candidate")
 PRIVATE_ARTIFACT_NAMES = ("private-insert-uris.json",)
 REDACTION_FINDING_EVIDENCE_IDS = frozenset(
-    {"app-platform.docs-redaction", "live-network-beta.redaction"}
+    {
+        "app-platform.docs-redaction",
+        "ecosystem-security.advisory-revocation-redaction",
+        "live-network-beta.redaction",
+    }
 )
 PUBLIC_BETA_SECURITY_EVIDENCE_IDS = (
     "public-beta-security.app-ui-csp",
@@ -67,6 +71,15 @@ OPERATOR_BETA_EVIDENCE_IDS = (
     "operator-beta.app-data-backup-restore",
     "operator-beta.support-bundle-redaction",
     "operator-beta.web-shell",
+)
+ECOSYSTEM_SECURITY_EVIDENCE_IDS = (
+    "catalog.security-advisories",
+    "catalog.version-denylist",
+    "app-review.receipt-revocation",
+    "app-review.reviewer-key-compromise-flow",
+    "app-update.security-denylist-gates",
+    "web-shell.security-advisory-trust-warnings",
+    "ecosystem-security.advisory-revocation-redaction",
 )
 LIVE_NETWORK_BETA_EVIDENCE_IDS = (
     "live-network-beta.preflight",
@@ -94,6 +107,8 @@ SENSITIVE_KEY_PATTERN = (
     r"raw[-_ ]?trust[-_ ]?statement[-_ ]?bod(?:y|ies)|trust[-_ ]?statement[-_ ]?bod(?:y|ies)"
     r"|raw[-_ ]?message[-_ ]?bod(?:y|ies)|message[-_ ]?bod(?:y|ies)"
     r"|raw[-_ ]?fetched[-_ ]?bod(?:y|ies)|fetched[-_ ]?bod(?:y|ies)"
+    r"|raw[-_ ]?public[-_ ]?key[-_ ]?byt(?:e|es)|public[-_ ]?key[-_ ]?byt(?:e|es)"
+    r"|raw[-_ ]?review[-_ ]?receipt|review[-_ ]?receipt[-_ ]?content|raw[-_ ]?receipt"
     r"|raw[-_ ]?signature[-_ ]?valu(?:e|es)|signature[-_ ]?valu(?:e|es)"
     r"|app[-_ ]?data[-_ ]?backup|backup[-_ ]?payload|payloadBase64|"
     r"raw[-_ ]?app[-_ ]?data[-_ ]?valu(?:e|es)|record[-_ ]?valu(?:e|es)"
@@ -115,6 +130,8 @@ SENSITIVE_TEXT_LABEL_RE = re.compile(
     r"trust[-_ ]+statement[-_ ]+bod(?:y|ies)|"
     r"raw[-_ ]+message[-_ ]+bod(?:y|ies)|message[-_ ]+bod(?:y|ies)|"
     r"raw[-_ ]+fetched[-_ ]+bod(?:y|ies)|fetched[-_ ]+bod(?:y|ies)|"
+    r"raw[-_ ]+public[-_ ]+key[-_ ]+byt(?:e|es)|public[-_ ]+key[-_ ]+byt(?:e|es)|"
+    r"raw[-_ ]+review[-_ ]+receipt|review[-_ ]+receipt[-_ ]+content|raw[-_ ]+receipt|"
     r"raw[-_ ]+trust[-_ ]+signature|trust[-_ ]+signature|"
     r"raw[-_ ]+signature[-_ ]+valu(?:e|es)|signature[-_ ]+valu(?:e|es)"
     r")\s*:\s*)"
@@ -526,6 +543,11 @@ def should_redact_key_name(key_hint: str, value: Any | None = None) -> bool:
         "passwd",
         "browsersessiontoken",
         "xcryptaappsession",
+        "rawpublickeybytes",
+        "publickeybytes",
+        "rawreviewreceipt",
+        "reviewreceiptcontent",
+        "rawreceipt",
     }:
         return True
     if "signature" in normalized and any(
@@ -1083,6 +1105,7 @@ def app_platform_evidence(
         "legacy-admin.removal-wave-4",
         "apphost.sandbox-provider",
         *PUBLIC_BETA_SECURITY_EVIDENCE_IDS,
+        *ECOSYSTEM_SECURITY_EVIDENCE_IDS,
         "app-update.lifecycle",
         "app-update.scheduler",
         "app-update.live-catalog-refresh",
@@ -1957,6 +1980,24 @@ def ecosystem_matrix_row_specs() -> list[MatrixRowSpec]:
                 "docs/app-catalogs.md",
                 "docs/app-update-lifecycle.md",
                 "docs/platform-api-surface.md",
+            ),
+            phase="phase-9",
+        ),
+        MatrixRowSpec(
+            id="ecosystem-security-advisory-and-revocation",
+            category="security-redaction",
+            title="Ecosystem security advisory and revocation response",
+            required_evidence_ids=ECOSYSTEM_SECURITY_EVIDENCE_IDS,
+            gate_ids=("ecosystem.security-advisory-revocation",),
+            docs=(
+                "docs/ecosystem-security-advisories.md",
+                "docs/app-catalogs.md",
+                "docs/production-first-party-catalog-channels.md",
+                "docs/app-review-governance.md",
+                "docs/app-update-lifecycle.md",
+                "docs/SECURITY.md",
+                "docs/release-certification.md",
+                "tools/release-certification/README.md",
             ),
             phase="phase-9",
         ),
@@ -3544,6 +3585,44 @@ def evaluate_app_update_rollback_gate(
     )
 
 
+def evaluate_ecosystem_security_advisory_revocation_gate(
+    current: dict[str, dict[str, Any]], previous: dict[str, dict[str, Any]]
+) -> GateResult:
+    failures: list[str] = []
+    warnings: list[str] = []
+    details: dict[str, Any] = {}
+    for evidence_id in ECOSYSTEM_SECURITY_EVIDENCE_IDS:
+        status = evidence_status(current.get(evidence_id))
+        previous_status = evidence_status(previous.get(evidence_id))
+        details[evidence_id] = {"currentStatus": status, "previousStatus": previous_status}
+        if status in {"fail", "missing", "skip"}:
+            failures.append(f"{evidence_id} evidence is not passing")
+            add_evidence_issue(details, "failureEvidenceIds", evidence_id)
+        elif status == "warn":
+            warnings.append(f"{evidence_id} evidence is warning")
+            add_evidence_issue(details, "warningEvidenceIds", evidence_id)
+        if previous_status == "pass" and status in {"fail", "missing", "skip"}:
+            failures.append(f"{evidence_id} regressed from pass to {status}")
+            add_evidence_issue(details, "failureEvidenceIds", evidence_id)
+    redaction_details = evidence_details(
+        current.get("ecosystem-security.advisory-revocation-redaction")
+    )
+    redaction = nested_dict(redaction_details, "redaction")
+    if redaction and redaction.get("leaks"):
+        failures.append("Ecosystem security redaction evidence contains forbidden payload leaks")
+        add_evidence_issue(
+            details, "failureEvidenceIds", "ecosystem-security.advisory-revocation-redaction"
+        )
+    details["evidenceIds"] = list(ECOSYSTEM_SECURITY_EVIDENCE_IDS)
+    return gate_from_issues(
+        "ecosystem.security-advisory-revocation",
+        "Ecosystem security advisory, denylist, and review revocation evidence passed.",
+        failures,
+        warnings,
+        details,
+    )
+
+
 def evaluate_live_network_beta_gate(
     current: dict[str, dict[str, Any]],
     settings: Settings,
@@ -4751,6 +4830,7 @@ def evaluate_ecosystem_gates(
         evaluate_app_ui_quality_gate(current, previous),
         evaluate_app_review_trust_gate(current, previous, metadata, settings.mode),
         evaluate_app_update_rollback_gate(current, previous),
+        evaluate_ecosystem_security_advisory_revocation_gate(current, previous),
         evaluate_live_network_beta_gate(current, settings),
         evaluate_app_vault_gate(current, previous),
         evaluate_sandbox_provider_gate(current, previous, settings.mode, metadata),
@@ -5800,6 +5880,7 @@ def run_self_test(repo_root: Path) -> None:
             "app-update",
             "first-party-beta-catalog",
             "production-catalog-channels",
+            "ecosystem-security-advisory-and-revocation",
             "developer-beta-toolkit",
             "app-platform-beta-docs-and-program",
             "review-governance-transparency",
@@ -5865,6 +5946,7 @@ def run_self_test(repo_root: Path) -> None:
             "app-platform.docs-redaction",
             "app-data.backup-restore-portability",
             "operator-beta.app-data-backup-restore",
+            *ECOSYSTEM_SECURITY_EVIDENCE_IDS,
         ):
             assert evidence_id in covered_evidence_ids, evidence_id
         gate_ids = {gate["id"] for gate in summary["ecosystemGates"]}
@@ -5884,6 +5966,9 @@ def run_self_test(repo_root: Path) -> None:
         assert evidence_by_id["app-update.scheduler"]["requiredForReleaseCandidate"] is True
         assert evidence_by_id["app-update.rollback"]["status"] == "pass", evidence_by_id
         assert evidence_by_id["app-update.rollback"]["requiredForReleaseCandidate"] is True
+        for evidence_id in ECOSYSTEM_SECURITY_EVIDENCE_IDS:
+            assert evidence_by_id[evidence_id]["status"] == "pass", evidence_by_id
+            assert evidence_by_id[evidence_id]["requiredForReleaseCandidate"] is True
         for evidence_id in (
             "app-platform.docs-portal",
             "app-platform.beta-program",

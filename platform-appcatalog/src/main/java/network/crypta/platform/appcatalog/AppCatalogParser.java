@@ -61,8 +61,10 @@ public final class AppCatalogParser {
     int version = parseVersion(removeRequired(properties, "catalog.version"));
     String catalogId = removeRequired(properties, "catalog.id");
     String catalogName = removeRequired(properties, "catalog.name");
-    Instant generatedAt = parseInstant(removeRequired(properties, "catalog.generatedAt"));
+    Instant generatedAt =
+        parseInstant(removeRequired(properties, "catalog.generatedAt"), "catalog.generatedAt");
     List<String> entryIds = parseEntryIds(removeRequired(properties, "catalog.entries"));
+    AppCatalogSecurityPolicy securityPolicy = parseCatalogSecurityPolicy(properties, version);
     List<AppCatalogEntry> entries = new ArrayList<>(entryIds.size());
     for (String appId : entryIds) {
       entries.add(parseEntry(properties, appId, version));
@@ -71,7 +73,7 @@ public final class AppCatalogParser {
       throw AppCatalogSidecars.invalidEntry(
           "unsupported catalog property: " + properties.keySet().iterator().next());
     }
-    return new AppCatalog(version, catalogId, catalogName, generatedAt, entries);
+    return new AppCatalog(version, catalogId, catalogName, generatedAt, securityPolicy, entries);
   }
 
   private static int parseVersion(String versionText) throws AppCatalogException {
@@ -89,15 +91,93 @@ public final class AppCatalogParser {
     }
   }
 
-  private static Instant parseInstant(String text) throws AppCatalogException {
+  private static Instant parseInstant(String text, String fieldName) throws AppCatalogException {
     try {
       return Instant.parse(text);
     } catch (DateTimeParseException exception) {
       throw new AppCatalogException(
           AppCatalogSidecars.INVALID_CATALOG_ENTRY,
-          "invalid catalog.generatedAt: " + text,
+          "invalid " + fieldName + ": " + text,
           exception);
     }
+  }
+
+  private static AppCatalogSecurityPolicy parseCatalogSecurityPolicy(
+      Map<String, String> properties, int version) {
+    if (version < AppCatalog.VERSION_SECURITY_POLICY) {
+      return AppCatalogSecurityPolicy.EMPTY;
+    }
+    List<AppCatalogSecurityAdvisoryRecord> advisories =
+        parseCatalogSecurityAdvisoryRecords(properties);
+    List<AppCatalogVersionDenylistEntry> denylist = parseCatalogSecurityDenylist(properties);
+    return new AppCatalogSecurityPolicy(advisories, denylist);
+  }
+
+  private static List<AppCatalogSecurityAdvisoryRecord> parseCatalogSecurityAdvisoryRecords(
+      Map<String, String> properties) {
+    List<String> advisoryIds = parseSecurityPolicyIds(properties, "catalog.securityAdvisories");
+    if (advisoryIds.isEmpty()) {
+      return List.of();
+    }
+    ArrayList<AppCatalogSecurityAdvisoryRecord> advisories = new ArrayList<>(advisoryIds.size());
+    for (String advisoryId : advisoryIds) {
+      String prefix = "catalog.securityAdvisory." + advisoryId + ".";
+      advisories.add(
+          new AppCatalogSecurityAdvisoryRecord(
+              advisoryId,
+              parseUri(removeRequired(properties, prefix + "uri"), prefix + "uri"),
+              removeRequired(properties, prefix + "title"),
+              AppCatalogSecuritySeverity.parseCatalog(
+                  removeRequired(properties, prefix + "severity"), prefix + "severity"),
+              AppCatalogSecurityStatus.parse(
+                  removeRequired(properties, prefix + "status"), prefix + "status"),
+              AppCatalogSecurityAction.parse(
+                  removeRequired(properties, prefix + "action"), prefix + "action"),
+              removeRequired(properties, prefix + "summary"),
+              parseInstant(
+                  removeRequired(properties, prefix + "publishedAt"), prefix + "publishedAt"),
+              parseInstant(removeRequired(properties, prefix + "updatedAt"), prefix + "updatedAt"),
+              removeOptional(properties, prefix + REPLACEMENT_APP_ID),
+              removeOptional(properties, prefix + "safeUninstallGuidance")));
+    }
+    return List.copyOf(advisories);
+  }
+
+  private static List<AppCatalogVersionDenylistEntry> parseCatalogSecurityDenylist(
+      Map<String, String> properties) {
+    List<String> denylistIds = parseSecurityPolicyIds(properties, "catalog.securityDenylist");
+    if (denylistIds.isEmpty()) {
+      return List.of();
+    }
+    ArrayList<AppCatalogVersionDenylistEntry> denylist = new ArrayList<>(denylistIds.size());
+    for (String denylistId : denylistIds) {
+      String prefix = "catalog.securityDenylist." + denylistId + ".";
+      denylist.add(
+          new AppCatalogVersionDenylistEntry(
+              denylistId,
+              removeRequired(properties, prefix + "appId"),
+              removeRequired(properties, prefix + "version"),
+              removeRequired(properties, prefix + "advisoryId"),
+              removeRequired(properties, prefix + "reason"),
+              removeOptional(properties, prefix + REPLACEMENT_APP_ID),
+              removeOptional(properties, prefix + "safeUninstallGuidance")));
+    }
+    return List.copyOf(denylist);
+  }
+
+  private static List<String> parseSecurityPolicyIds(Map<String, String> properties, String key) {
+    Optional<String> rawIds = removeOptional(properties, key);
+    if (rawIds.isEmpty() || rawIds.orElseThrow().isBlank()) {
+      return List.of();
+    }
+    LinkedHashSet<String> ids = new LinkedHashSet<>();
+    for (String rawId : rawIds.orElseThrow().split(",", -1)) {
+      String id = AppCatalogSecurityAdvisory.normalizeId(rawId.trim(), key);
+      if (!ids.add(id)) {
+        throw AppCatalogSidecars.invalidEntry("duplicate " + key + " id: " + id);
+      }
+    }
+    return List.copyOf(ids);
   }
 
   private static List<String> parseEntryIds(String rawEntries) throws AppCatalogException {

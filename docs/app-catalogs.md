@@ -9,7 +9,8 @@ wire formats, application sandboxing, or AppHost process launching. A catalog te
 where to fetch a signed app bundle ZIP and which digest, size, app id, and version to expect. It
 can also carry optional app-store display metadata for review, compatibility, source, license,
 permissions, screenshots, changelog links, production catalog channels, support status,
-deprecation/replacement hints, and security advisory references.
+deprecation/replacement hints, security advisory references, and catalog-level security response
+policy.
 
 The runtime verifies data in this order:
 
@@ -20,12 +21,19 @@ The runtime verifies data in this order:
 4. The extracted manifest `app.id` and `app.version` against the catalog entry.
 5. If present, the app review receipt signature over canonical receipt payload bytes, using the
    node's separate trusted reviewer-key registry.
+6. If present, the catalog-level security decision for the exact app version.
 
 These are separate trust layers. The catalog signature authenticates catalog bytes and publisher
 metadata. The artifact digest binds one catalog entry to one downloaded ZIP. The bundle signature
 authenticates the extracted app bundle. A review receipt signature independently authenticates
 review evidence from a reviewer key that the local node trusts for app review. Legacy
 `review.status` and `review.note` catalog metadata remains publisher-advisory only.
+
+Catalog-level security policy starts at `catalog.version=4`. It can define signed advisory records
+and exact app-version denylist entries. Those records are enforceable: denylisted versions cannot
+be installed, updated, staged, applied, or applied by automatic policy, and warning-level
+advisories require the independent `securityAcknowledged=true` acknowledgement for manual
+install/update. See [ecosystem-security-advisories.md](ecosystem-security-advisories.md).
 
 For third-party app authors, `crypta-app catalog entry` can generate the descriptor input for
 `catalog create`, `crypta-app publish-usk --dry-run` can produce an offline publication checklist,
@@ -100,7 +108,7 @@ app.site-publisher.permissions.rationale.queue.write=Creates insert requests for
 app.site-publisher.permissions.rationale.queue.read=Displays publish progress from the local transfer queue.
 app.site-publisher.changelog.summary=Adds the first content reference app.
 app.site-publisher.api.minimumVersion=3
-app.site-publisher.api.maximumTestedVersion=16
+app.site-publisher.api.maximumTestedVersion=17
 app.site-publisher.api.experimentalCapabilitiesAccepted=false
 
 app.profile-publisher.id=profile-publisher
@@ -127,7 +135,7 @@ app.profile-publisher.permissions.rationale.app.data.read=Restores bounded profi
 app.profile-publisher.permissions.rationale.app.data.write=Saves bounded profile drafts and publish summaries.
 app.profile-publisher.changelog.summary=Adds the first identity-profile reference app.
 app.profile-publisher.api.minimumVersion=9
-app.profile-publisher.api.maximumTestedVersion=16
+app.profile-publisher.api.maximumTestedVersion=17
 app.profile-publisher.api.experimentalCapabilitiesAccepted=true
 
 app.social-inbox.id=social-inbox
@@ -165,7 +173,7 @@ app.social-inbox.service-request.trust-score.contexts=message-author
 app.social-inbox.service-request.trust-score.purpose=Annotate Social Inbox message authors using the local Trust Graph Local RC score service.
 app.social-inbox.changelog.summary=Adds the Social Inbox RC threaded reference app.
 app.social-inbox.api.minimumVersion=16
-app.social-inbox.api.maximumTestedVersion=16
+app.social-inbox.api.maximumTestedVersion=17
 app.social-inbox.api.experimentalCapabilitiesAccepted=true
 
 app.feed-reader.id=feed-reader
@@ -192,7 +200,7 @@ app.feed-reader.permissions.rationale.app.data.read=Restores the app-owned feed 
 app.feed-reader.permissions.rationale.app.data.write=Saves bounded app-owned reader state through the durable app-data API.
 app.feed-reader.changelog.summary=Adds the first feed reader and publisher reference app.
 app.feed-reader.api.minimumVersion=9
-app.feed-reader.api.maximumTestedVersion=16
+app.feed-reader.api.maximumTestedVersion=17
 app.feed-reader.api.experimentalCapabilitiesAccepted=false
 
 app.trust-graph.id=trust-graph
@@ -232,7 +240,7 @@ app.trust-graph.service.trust-score.contexts=message-author,profile
 app.trust-graph.service.trust-score.description=Returns a bounded local RC Trust Graph score summary for an app-provided public subject.
 app.trust-graph.changelog.summary=Adds the local Trust Graph Local RC reference app.
 app.trust-graph.api.minimumVersion=10
-app.trust-graph.api.maximumTestedVersion=16
+app.trust-graph.api.maximumTestedVersion=17
 app.trust-graph.api.experimentalCapabilitiesAccepted=true
 app.queue-manager.review.receipt.version=1
 app.queue-manager.review.receipt.app.id=queue-manager

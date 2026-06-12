@@ -116,6 +116,13 @@ Release-candidate mode requires these evidence ids:
 | `catalog.live-usk-source-verification` | App-platform smoke summary. | `crypta:USK@.../cryptad-app-catalog.properties` refresh resolves matching editions, fetches `cryptad-app-catalog.signature` from the same USK edition, and stores replacements only after signed catalog verification. |
 | `app-catalog.first-party-beta` | App-platform smoke summary. | Recommended first-party beta catalog descriptor, Platform API/Web Shell onboarding, CHK artifact transport tests, first-party metadata docs, and configuration readiness reporting are present without a live public-network fetch. |
 | `catalog.production-channels` | App-platform smoke summary. | Catalog schema v3, stable/beta/nightly/deprecated metadata, stable-only default automation, deprecated replacement metadata, API/Web Shell exposure, signed catalog/review verification, and redaction guarantees are present. |
+| `catalog.security-advisories` | App-platform smoke summary. | Catalog schema v4 parser/writer support for strict signed catalog-level security advisory records is present. |
+| `catalog.version-denylist` | App-platform smoke summary. | Exact app-version denylist records reference known advisory IDs, expose redacted security decisions, and surface installed vulnerable versions with safe uninstall guidance. |
+| `app-review.receipt-revocation` | App-platform smoke summary. | Receipt fingerprints, registry v3 receipt revocations, `revoked_receipt` trust status, and fail-closed review policy behavior are present. |
+| `app-review.reviewer-key-compromise-flow` | App-platform smoke summary. | Reviewer-key `status=revoked` compromise handling remains fail-closed as `revoked_reviewer` and is visible through governance, CLI, and Web Shell summaries. |
+| `app-update.security-denylist-gates` | App-platform smoke summary. | Install, update, stage, apply, and scheduler policy paths block denylisted candidates, warning advisories require `securityAcknowledged=true` for manual actions, and security acknowledgement does not bypass other gates. |
+| `web-shell.security-advisory-trust-warnings` | App-platform smoke summary. | Web Shell renders advisory, denylist, revoked-review, security acknowledgement, and safe uninstall guidance using safe DOM construction. |
+| `ecosystem-security.advisory-revocation-redaction` | App-platform smoke summary. | Advisory and revocation evidence excludes raw signatures, raw public keys, private keys, private insert URIs, tokens, request bodies, raw fetched content, app-data backup payloads, local filesystem paths, catalog scratch paths, and staged bundle paths. |
 | `app-review.governance` | App-platform smoke summary. | Reviewer-key lifecycle statuses, policy-version constraints, governance API routes, and Web Shell governance rendering are present and redacted. |
 | `app-review.reviewer-key-lifecycle` | App-platform smoke summary. | Trusted reviewer registry v2 parsing, active/retired/revoked semantics, duplicate-id fail-closed behavior, strict instants, and lifecycle verifier tests are present. |
 | `app-review.transparency-log` | App-platform smoke summary. | A local hash-chained review transparency log exists, can be verified, deduplicates receipt observation, and has tamper/redaction tests. |
@@ -276,6 +283,13 @@ default channel policy, `channel_policy_blocked` handling, deprecated-entry repl
 API and Web Shell exposure, and redaction of private insert URIs, tokens, private keys, raw fetched
 content, raw app data, catalog scratch paths, staged bundle paths, and absolute local paths. See
 [production-first-party-catalog-channels.md](production-first-party-catalog-channels.md).
+
+`ecosystem-security-advisory-and-revocation` is the Phase 9 security response matrix row. The
+`ecosystem.security-advisory-revocation` gate checks catalog v4 advisory records, exact
+app-version denylists, warning acknowledgements, install/update/stage/apply/scheduler enforcement,
+review receipt revocation, reviewer-key compromise, Web Shell warning rendering, safe uninstall
+guidance, and redaction. See
+[ecosystem-security-advisories.md](ecosystem-security-advisories.md).
 
 `catalog.live-usk-publication` and `catalog.live-usk-source-verification` are offline source
 evidence by default. They prove live publication support, redaction behavior, same USK sibling

@@ -33,6 +33,7 @@ public final class AppUpdatesApiHandler {
   private static final String PARAM_RESTART = "restart";
   private static final String PARAM_REVIEW_ACKNOWLEDGED = "reviewAcknowledged";
   private static final String PARAM_ROLLBACK_ON_HEALTH_FAILURE = "rollbackOnHealthFailure";
+  private static final String PARAM_SECURITY_ACKNOWLEDGED = "securityAcknowledged";
 
   private final AppUpdateService updateService;
 
@@ -101,6 +102,7 @@ public final class AppUpdatesApiHandler {
     return updateService.stage(
         appId,
         optionalBoolean(queryParameters, PARAM_REVIEW_ACKNOWLEDGED),
+        optionalBoolean(queryParameters, PARAM_SECURITY_ACKNOWLEDGED),
         optionalBoolean(queryParameters, PARAM_MIGRATION_ACKNOWLEDGED));
   }
 

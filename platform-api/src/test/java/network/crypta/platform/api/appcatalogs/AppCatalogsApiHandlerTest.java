@@ -26,7 +26,11 @@ import network.crypta.platform.appcatalog.AppCatalogManager;
 import network.crypta.platform.appcatalog.AppCatalogProductionMetadata;
 import network.crypta.platform.appcatalog.AppCatalogReviewMetadata;
 import network.crypta.platform.appcatalog.AppCatalogReviewStatus;
+import network.crypta.platform.appcatalog.AppCatalogSecurityAction;
 import network.crypta.platform.appcatalog.AppCatalogSecurityAdvisory;
+import network.crypta.platform.appcatalog.AppCatalogSecurityDecision;
+import network.crypta.platform.appcatalog.AppCatalogSecurityDecisionStatus;
+import network.crypta.platform.appcatalog.AppCatalogSecuritySeverity;
 import network.crypta.platform.appcatalog.AppCatalogSourceSnapshot;
 import network.crypta.platform.appcatalog.AppCatalogSupportStatus;
 import network.crypta.platform.appcatalog.AppReviewPolicy;
@@ -72,7 +76,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
-@SuppressWarnings({"java:S100", "unchecked"})
+@SuppressWarnings({"java:S100", "unchecked", "resource"})
 class AppCatalogsApiHandlerTest {
   private static final String APP_ID = "queue-manager";
   private static final String REVIEWER_KEY_ID = "crypta-first-party-review";
@@ -482,6 +486,45 @@ class AppCatalogsApiHandlerTest {
   }
 
   @Test
+  void listApps_whenCatalogSecurityDecisionExists_expectRedactedDecisionIncluded()
+      throws Exception {
+    AppCatalogsApiHandler handler = new AppCatalogsApiHandler(catalogManager, appHost, () -> null);
+    when(catalogManager.listApps("core")).thenReturn(List.of(richCatalogEntry()));
+    when(catalogManager.securityDecision("core", APP_ID)).thenReturn(denylistedSecurityDecision());
+    when(appHost.describe(APP_ID)).thenReturn(Optional.empty());
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+
+    Map<String, Object> app = handler.listApps("core").getFirst();
+
+    Map<String, Object> securityDecision = (Map<String, Object>) app.get("securityDecision");
+    assertEquals("denylisted", securityDecision.get("status"));
+    assertEquals("denylist", securityDecision.get("action"));
+    assertEquals("critical", securityDecision.get("severity"));
+    assertEquals(List.of("CRYPTA-2026-0001"), securityDecision.get("advisoryIds"));
+    assertEquals(true, securityDecision.get("blocksInstall"));
+    assertFalse(securityDecision.toString().contains(tempDir.toString()));
+  }
+
+  @Test
+  void listApps_whenTargetVersionDenylistedByConfiguredCatalog_expectRedactedDecisionIncluded()
+      throws Exception {
+    AppCatalogsApiHandler handler = new AppCatalogsApiHandler(catalogManager, appHost, () -> null);
+    AppCatalogEntry entry = richCatalogEntry();
+    when(catalogManager.listApps("core")).thenReturn(List.of(entry));
+    when(catalogManager.installedSecurityDecision(APP_ID, entry.version()))
+        .thenReturn(denylistedSecurityDecision());
+    when(appHost.describe(APP_ID)).thenReturn(Optional.empty());
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+
+    Map<String, Object> app = handler.listApps("core").getFirst();
+
+    Map<String, Object> securityDecision = (Map<String, Object>) app.get("securityDecision");
+    assertEquals("denylisted", securityDecision.get("status"));
+    assertEquals("denylist", securityDecision.get("action"));
+    assertEquals(true, securityDecision.get("blocksInstall"));
+  }
+
+  @Test
   void listApps_whenInstalledVersionAndPermissionsMatchCatalog_expectCurrentVersionReview()
       throws Exception {
     AppCatalogsApiHandler handler =
@@ -761,6 +804,83 @@ class AppCatalogsApiHandlerTest {
     assertEquals(409, exception.statusCode());
     assertEquals("app_review_missing", exception.errorCode());
     assertFalse(exception.getMessage().contains(tempDir.toString()));
+  }
+
+  @Test
+  void install_whenCatalogSecurityDecisionIsDenylisted_expectStableSecurityError()
+      throws Exception {
+    AppCatalogsApiHandler handler = new AppCatalogsApiHandler(catalogManager, appHost, () -> null);
+    when(catalogManager.getApp("core", APP_ID)).thenReturn(richCatalogEntry());
+    when(catalogManager.securityDecision("core", APP_ID)).thenReturn(denylistedSecurityDecision());
+    when(appHost.describe(APP_ID)).thenReturn(Optional.empty());
+
+    PlatformApiException exception =
+        assertThrows(PlatformApiException.class, () -> handler.install("core", APP_ID));
+
+    assertEquals(409, exception.statusCode());
+    assertEquals("app_security_denylisted", exception.errorCode());
+    verify(catalogManager, never()).prepareInstallPlan(any(), any());
+    verify(appHost, never()).installFromDirectory(any());
+  }
+
+  @Test
+  void install_whenTargetVersionDenylistedByConfiguredCatalog_expectStableSecurityError()
+      throws Exception {
+    AppCatalogsApiHandler handler = new AppCatalogsApiHandler(catalogManager, appHost, () -> null);
+    AppCatalogEntry entry = richCatalogEntry();
+    when(catalogManager.getApp("core", APP_ID)).thenReturn(entry);
+    when(catalogManager.installedSecurityDecision(APP_ID, entry.version()))
+        .thenReturn(denylistedSecurityDecision());
+    when(appHost.describe(APP_ID)).thenReturn(Optional.empty());
+
+    PlatformApiException exception =
+        assertThrows(PlatformApiException.class, () -> handler.install("core", APP_ID));
+
+    assertEquals(409, exception.statusCode());
+    assertEquals("app_security_denylisted", exception.errorCode());
+    verify(catalogManager, never()).prepareInstallPlan(any(), any());
+    verify(appHost, never()).installFromDirectory(any());
+  }
+
+  @Test
+  void install_whenCatalogSecurityDecisionWarnsWithoutAcknowledgement_expectSecurityAckError()
+      throws Exception {
+    AppCatalogsApiHandler handler = new AppCatalogsApiHandler(catalogManager, appHost, () -> null);
+    when(catalogManager.getApp("core", APP_ID)).thenReturn(richCatalogEntry());
+    when(catalogManager.securityDecision("core", APP_ID)).thenReturn(warningSecurityDecision());
+    when(appHost.describe(APP_ID)).thenReturn(Optional.empty());
+
+    PlatformApiException exception =
+        assertThrows(PlatformApiException.class, () -> handler.install("core", APP_ID));
+
+    assertEquals(409, exception.statusCode());
+    assertEquals("app_security_acknowledgement_required", exception.errorCode());
+    verify(catalogManager, never()).prepareInstallPlan(any(), any());
+    verify(appHost, never()).installFromDirectory(any());
+  }
+
+  @Test
+  void update_whenTargetVersionDenylistedByConfiguredCatalog_expectStableSecurityError()
+      throws Exception {
+    AppCatalogsApiHandler handler = new AppCatalogsApiHandler(catalogManager, appHost, () -> null);
+    AppCatalogEntry entry = richCatalogEntry();
+    when(catalogManager.getApp("core", APP_ID)).thenReturn(entry);
+    when(catalogManager.installedSecurityDecision(APP_ID, entry.version()))
+        .thenReturn(denylistedSecurityDecision());
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installedSnapshot()));
+    Map<String, List<String>> securityAcknowledgedQuery =
+        Map.of("securityAcknowledged", List.of("true"));
+
+    PlatformApiException exception =
+        assertThrows(
+            PlatformApiException.class,
+            () -> handler.update("core", APP_ID, securityAcknowledgedQuery));
+
+    assertEquals(409, exception.statusCode());
+    assertEquals("app_security_denylisted", exception.errorCode());
+    verify(catalogManager, never()).prepareInstallPlan(any(), any());
+    verify(appHost, never()).updateFromDirectory(any(), any());
   }
 
   @Test
@@ -1161,6 +1281,36 @@ class AppCatalogsApiHandlerTest {
             keyPair.getPublic().getEncoded(),
             "Crypta First-Party Review",
             REVIEW_POLICY_ID));
+  }
+
+  private static AppCatalogSecurityDecision denylistedSecurityDecision() {
+    return new AppCatalogSecurityDecision(
+        AppCatalogSecurityDecisionStatus.DENYLISTED,
+        AppCatalogSecurityAction.DENYLIST,
+        AppCatalogSecuritySeverity.CRITICAL,
+        List.of("CRYPTA-2026-0001"),
+        false,
+        true,
+        true,
+        true,
+        "Export app data before uninstalling.",
+        APP_ID,
+        List.of("Known vulnerable release."));
+  }
+
+  private static AppCatalogSecurityDecision warningSecurityDecision() {
+    return new AppCatalogSecurityDecision(
+        AppCatalogSecurityDecisionStatus.WARNING,
+        AppCatalogSecurityAction.WARN,
+        AppCatalogSecuritySeverity.HIGH,
+        List.of("CRYPTA-2026-0002"),
+        true,
+        false,
+        false,
+        true,
+        null,
+        null,
+        List.of("Security advisory requires operator acknowledgement."));
   }
 
   private static Map<String, List<String>> reviewAcknowledgedQuery() {

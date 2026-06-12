@@ -73,6 +73,9 @@ public record AppReviewPolicy(AppReviewPolicyMode mode) {
   }
 
   boolean requiresAcknowledgement(AppReviewTrustStatus status) {
+    if (forcedBlock(status)) {
+      return false;
+    }
     if (trustedPositive(status)) {
       return false;
     }
@@ -81,17 +84,24 @@ public record AppReviewPolicy(AppReviewPolicyMode mode) {
   }
 
   boolean blocksManualInstallOrUpdate(AppReviewTrustStatus status) {
-    return mode == AppReviewPolicyMode.REQUIRE_TRUSTED_REVIEW && !trustedPositive(status);
+    return forcedBlock(status)
+        || (mode == AppReviewPolicyMode.REQUIRE_TRUSTED_REVIEW && !trustedPositive(status));
   }
 
   boolean blocksPolicyApply(AppReviewTrustStatus status) {
-    return (mode == AppReviewPolicyMode.REQUIRE_TRUSTED_REVIEW
-            || mode == AppReviewPolicyMode.REQUIRE_TRUSTED_REVIEW_FOR_APPLY_WHEN_STOPPED)
-        && !trustedPositive(status);
+    return forcedBlock(status)
+        || ((mode == AppReviewPolicyMode.REQUIRE_TRUSTED_REVIEW
+                || mode == AppReviewPolicyMode.REQUIRE_TRUSTED_REVIEW_FOR_APPLY_WHEN_STOPPED)
+            && !trustedPositive(status));
   }
 
   private static boolean trustedPositive(AppReviewTrustStatus status) {
     return status == AppReviewTrustStatus.TRUSTED_REVIEWED;
+  }
+
+  private static boolean forcedBlock(AppReviewTrustStatus status) {
+    return status == AppReviewTrustStatus.REVOKED_RECEIPT
+        || status == AppReviewTrustStatus.REVOKED_REVIEWER;
   }
 
   private static String configuredPolicyMode() {
