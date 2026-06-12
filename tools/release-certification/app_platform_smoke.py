@@ -272,6 +272,8 @@ NON_SECRET_METADATA_SUFFIXES = (
     "source",
 )
 BODY_KEY_FRAGMENTS = (
+    "appdatabackup",
+    "backuppayload",
     "requestbody",
     "rawrequestbody",
     "requestbodies",
@@ -301,6 +303,10 @@ BODY_KEY_FRAGMENTS = (
     "fetchedbodies",
     "rawfetchedbodies",
 )
+SENSITIVE_PATH_KEYS = {
+    "catalogscratchpath",
+    "stagedbundlepath",
+}
 
 
 @dataclasses.dataclass(frozen=True)
@@ -644,6 +650,8 @@ def should_redact_key_name(key_hint: str, value: Any | None = None) -> bool:
         return False
     if any(fragment in normalized for fragment in BODY_KEY_FRAGMENTS):
         return not (isinstance(value, bool) and normalized.endswith(NON_SECRET_METADATA_SUFFIXES))
+    if normalized in SENSITIVE_PATH_KEYS:
+        return True
     if normalized.endswith(NON_SECRET_METADATA_SUFFIXES):
         return False
     if normalized in {
@@ -669,6 +677,7 @@ def should_redact_key_name(key_hint: str, value: Any | None = None) -> bool:
         "rawreviewreceipt",
         "reviewreceiptcontent",
         "rawreceipt",
+        "payloadbase64",
     }:
         return True
     if "signature" in normalized and any(
@@ -10451,7 +10460,7 @@ def collect_ecosystem_security_advisory_revocation_evidence(
                 "stageAndApplyRevalidation": (
                     "PARAM_SECURITY_ACKNOWLEDGED" in update_handler_text
                     and "requireCurrentStagedSecurityDecision" in update_text
-                    and "targetSecurityDecision(staged.candidate().catalogId(), staged.plan().entry())"
+                    and "targetSecurityDecision(staged.candidate().catalogId(), staged.entry())"
                     in update_text
                     and "targetSecurityDecision(plan.catalogId(), entry).toJsonValue()"
                     in update_text
@@ -16117,7 +16126,7 @@ class AppUpdateService {
 
 		  public synchronized Map<String, Object> apply(String appId, ApplyOptions options) {
 	    requireCurrentStagedSecurityDecision(staged);
-	    targetSecurityDecision(staged.candidate().catalogId(), staged.plan().entry());
+	    targetSecurityDecision(staged.candidate().catalogId(), staged.entry());
 	    verifyStagedBundleBeforeApply(staged);
 	    if (shouldHoldApplyMigrationWriteBarrier(targetManifest)) {
 	      targetManifest.dataSchemaContract().declared();
