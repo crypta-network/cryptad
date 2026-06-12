@@ -86,6 +86,8 @@ public final class OperatorBetaDashboardService {
       "retainedOrPendingRenderCount";
   private static final String REVIEW_TRUST_FIELD = "reviewTrust";
   private static final String SECURITY_DECISION_FIELD = "securityDecision";
+  private static final String BLOCKS_UPDATE_FIELD = "blocksUpdate";
+  private static final String REQUIRES_ACKNOWLEDGEMENT_FIELD = "requiresAcknowledgement";
   private static final String RUNNING_FIELD = "running";
   private static final String SANDBOX_FIELD = "sandbox";
   private static final String SECTION_COUNT_FIELD = "sectionCount";
@@ -955,18 +957,18 @@ public final class OperatorBetaDashboardService {
 
   private static boolean isUpdateBlocked(Map<String, Object> update) {
     Map<String, Object> reviewTrust = updateReviewTrust(update);
-    return booleanValue(reviewTrust.get("blocksUpdate"))
+    return booleanValue(reviewTrust.get(BLOCKS_UPDATE_FIELD))
         || booleanValue(reviewTrust.get("blocksPolicyApply"));
   }
 
   private static boolean isSecurityUpdateBlocked(Map<String, Object> update) {
     Map<String, Object> securityDecision = updateSecurityDecision(update);
-    return booleanValue(securityDecision.get("blocksUpdate"));
+    return booleanValue(securityDecision.get(BLOCKS_UPDATE_FIELD));
   }
 
   private static boolean isSecurityAcknowledgementRequired(Map<String, Object> update) {
     Map<String, Object> securityDecision = updateSecurityDecision(update);
-    return booleanValue(securityDecision.get("requiresAcknowledgement"))
+    return booleanValue(securityDecision.get(REQUIRES_ACKNOWLEDGEMENT_FIELD))
         || booleanValue(securityDecision.get("blocksAutomaticApply"));
   }
 
@@ -985,16 +987,16 @@ public final class OperatorBetaDashboardService {
     Map<String, Object> reviewTrust = mapValue(candidate.get(REVIEW_TRUST_FIELD));
     Map<String, Object> securityDecision = mapValue(candidate.get(SECURITY_DECISION_FIELD));
     return hasAvailableUpdateCandidate(update)
-        && !booleanValue(reviewTrust.get("blocksUpdate"))
-        && !booleanValue(reviewTrust.get("requiresAcknowledgement"))
-        && !booleanValue(securityDecision.get("blocksUpdate"))
-        && !booleanValue(securityDecision.get("requiresAcknowledgement"));
+        && !booleanValue(reviewTrust.get(BLOCKS_UPDATE_FIELD))
+        && !booleanValue(reviewTrust.get(REQUIRES_ACKNOWLEDGEMENT_FIELD))
+        && !booleanValue(securityDecision.get(BLOCKS_UPDATE_FIELD))
+        && !booleanValue(securityDecision.get(REQUIRES_ACKNOWLEDGEMENT_FIELD));
   }
 
   private static boolean stagedSecurityBlocksUpdate(Map<String, Object> update) {
     Map<String, Object> stagedSecurity =
         mapValue(mapValue(update.get(STAGED_FIELD)).get(SECURITY_DECISION_FIELD));
-    return booleanValue(stagedSecurity.get("blocksUpdate"));
+    return booleanValue(stagedSecurity.get(BLOCKS_UPDATE_FIELD));
   }
 
   private static Map<String, Object> legacySurfaceSummary(Map<String, Object> surface) {
