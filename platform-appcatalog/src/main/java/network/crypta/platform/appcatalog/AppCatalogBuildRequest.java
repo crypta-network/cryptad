@@ -29,6 +29,7 @@ public final class AppCatalogBuildRequest {
   private final Instant generatedAt;
   private final List<Path> entryDescriptorFiles;
   private final List<Path> reviewReceiptFiles;
+  private final AppCatalogSecurityPolicy securityPolicy;
   private final Path outputFile;
 
   /**
@@ -46,7 +47,14 @@ public final class AppCatalogBuildRequest {
    */
   public AppCatalogBuildRequest(
       String catalogId, String catalogName, Instant generatedAt, List<Path> entryDescriptorFiles) {
-    this(catalogId, catalogName, generatedAt, entryDescriptorFiles, List.of(), null);
+    this(
+        catalogId,
+        catalogName,
+        generatedAt,
+        entryDescriptorFiles,
+        List.of(),
+        AppCatalogSecurityPolicy.EMPTY,
+        null);
   }
 
   /**
@@ -68,7 +76,42 @@ public final class AppCatalogBuildRequest {
       Instant generatedAt,
       List<Path> entryDescriptorFiles,
       List<Path> reviewReceiptFiles) {
-    this(catalogId, catalogName, generatedAt, entryDescriptorFiles, reviewReceiptFiles, null);
+    this(
+        catalogId,
+        catalogName,
+        generatedAt,
+        entryDescriptorFiles,
+        reviewReceiptFiles,
+        AppCatalogSecurityPolicy.EMPTY,
+        null);
+  }
+
+  /**
+   * Creates a request with review receipt files, root security policy, and no output file.
+   *
+   * @param catalogId stable catalog identifier used as the catalog namespace
+   * @param catalogName human-readable catalog name shown in developer output
+   * @param generatedAt deterministic generation timestamp for the catalog metadata
+   * @param entryDescriptorFiles descriptor files in the exact order written to the catalog
+   * @param reviewReceiptFiles receipt files to embed into matching catalog entries
+   * @param securityPolicy catalog-level security advisory and denylist policy
+   */
+  @SuppressWarnings("unused")
+  public AppCatalogBuildRequest(
+      String catalogId,
+      String catalogName,
+      Instant generatedAt,
+      List<Path> entryDescriptorFiles,
+      List<Path> reviewReceiptFiles,
+      AppCatalogSecurityPolicy securityPolicy) {
+    this(
+        catalogId,
+        catalogName,
+        generatedAt,
+        entryDescriptorFiles,
+        reviewReceiptFiles,
+        securityPolicy,
+        null);
   }
 
   /**
@@ -88,12 +131,43 @@ public final class AppCatalogBuildRequest {
    * @param outputFile optional destination for the generated catalog properties bytes
    * @throws AppCatalogException if catalog metadata or descriptor-file inputs are malformed
    */
+  @SuppressWarnings("unused")
   public AppCatalogBuildRequest(
       String catalogId,
       String catalogName,
       Instant generatedAt,
       List<Path> entryDescriptorFiles,
       List<Path> reviewReceiptFiles,
+      Path outputFile) {
+    this(
+        catalogId,
+        catalogName,
+        generatedAt,
+        entryDescriptorFiles,
+        reviewReceiptFiles,
+        AppCatalogSecurityPolicy.EMPTY,
+        outputFile);
+  }
+
+  /**
+   * Creates a normalized immutable build request with root security policy.
+   *
+   * @param catalogId stable catalog identifier used as the catalog namespace
+   * @param catalogName human-readable catalog name shown in developer output
+   * @param generatedAt deterministic generation timestamp for the catalog metadata
+   * @param entryDescriptorFiles descriptor files in the exact order written to the catalog
+   * @param reviewReceiptFiles receipt files to embed into matching catalog entries
+   * @param securityPolicy catalog-level security advisory and denylist policy
+   * @param outputFile optional destination for the generated catalog properties bytes
+   * @throws AppCatalogException if catalog metadata or descriptor-file inputs are malformed
+   */
+  public AppCatalogBuildRequest(
+      String catalogId,
+      String catalogName,
+      Instant generatedAt,
+      List<Path> entryDescriptorFiles,
+      List<Path> reviewReceiptFiles,
+      AppCatalogSecurityPolicy securityPolicy,
       Path outputFile) {
     this.catalogId = AppCatalog.normalizeCatalogId(catalogId);
     this.catalogName =
@@ -102,6 +176,7 @@ public final class AppCatalogBuildRequest {
     this.generatedAt = Objects.requireNonNull(generatedAt, "generatedAt");
     this.entryDescriptorFiles = normalizeDescriptorFiles(entryDescriptorFiles);
     this.reviewReceiptFiles = normalizeReviewReceiptFiles(reviewReceiptFiles);
+    this.securityPolicy = Objects.requireNonNull(securityPolicy, "securityPolicy");
     this.outputFile = normalizeOutputFile(outputFile);
   }
 
@@ -155,6 +230,15 @@ public final class AppCatalogBuildRequest {
   }
 
   /**
+   * Returns the catalog-level security policy to write.
+   *
+   * @return immutable security policy
+   */
+  public AppCatalogSecurityPolicy securityPolicy() {
+    return securityPolicy;
+  }
+
+  /**
    * Returns the optional output file for generated catalog properties.
    *
    * <p>An empty value means the writer should return catalog bytes without writing them to disk.
@@ -178,7 +262,13 @@ public final class AppCatalogBuildRequest {
    */
   public AppCatalogBuildRequest withOutputFile(Path outputFile) {
     return new AppCatalogBuildRequest(
-        catalogId, catalogName, generatedAt, entryDescriptorFiles, reviewReceiptFiles, outputFile);
+        catalogId,
+        catalogName,
+        generatedAt,
+        entryDescriptorFiles,
+        reviewReceiptFiles,
+        securityPolicy,
+        outputFile);
   }
 
   @Override
@@ -194,13 +284,20 @@ public final class AppCatalogBuildRequest {
         && generatedAt.equals(that.generatedAt)
         && entryDescriptorFiles.equals(that.entryDescriptorFiles)
         && reviewReceiptFiles.equals(that.reviewReceiptFiles)
+        && securityPolicy.equals(that.securityPolicy)
         && Objects.equals(outputFile, that.outputFile);
   }
 
   @Override
   public int hashCode() {
     return Objects.hash(
-        catalogId, catalogName, generatedAt, entryDescriptorFiles, reviewReceiptFiles, outputFile);
+        catalogId,
+        catalogName,
+        generatedAt,
+        entryDescriptorFiles,
+        reviewReceiptFiles,
+        securityPolicy,
+        outputFile);
   }
 
   @Override
@@ -216,6 +313,8 @@ public final class AppCatalogBuildRequest {
         + entryDescriptorFiles
         + ", reviewReceiptFiles="
         + reviewReceiptFiles
+        + ", securityPolicy="
+        + securityPolicy
         + ", outputFile="
         + outputFile()
         + ']';

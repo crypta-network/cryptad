@@ -1561,6 +1561,86 @@ class CryptaAppCliTest {
   }
 
   @Test
+  void catalogCreate_whenSecurityPolicyFlagsProvided_expectVersionFourPolicyWritten()
+      throws Exception {
+    Path appDir = tempDir.resolve("sample-app");
+    Path outputZip = tempDir.resolve("sample-app.zip");
+    Path descriptor = tempDir.resolve("entry.properties");
+    Path catalogFile = tempDir.resolve("cryptad-app-catalog.properties");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "sample-app",
+        "--name",
+        "Sample App",
+        "--version",
+        "0.1.0");
+    runCli("pack", "--bundle-dir", appDir.toString(), "--output", outputZip.toString());
+    Files.writeString(
+        descriptor,
+        lines(
+            "artifact.path=" + outputZip.toAbsolutePath().normalize(),
+            "bundle.uri=" + outputZip.toUri(),
+            "summary=Sample catalog entry."),
+        StandardCharsets.UTF_8);
+
+    CliResult result =
+        runCli(
+            "catalog",
+            "create",
+            "--catalog-file",
+            catalogFile.toString(),
+            "--catalog-id",
+            "dev",
+            "--name",
+            "Development Apps",
+            "--entry",
+            descriptor.toString(),
+            "--security-advisory-record",
+            String.join(
+                ";",
+                "id=CRYPTA-2026-0001",
+                "uri=https://example.invalid/advisories/CRYPTA-2026-0001",
+                "title=Sample App 0.1.0 vulnerable",
+                "severity=critical",
+                "status=active",
+                "action=denylist",
+                "summary=Upgrade to a reviewed replacement.",
+                "publishedAt=2026-06-11T00:00:00Z",
+                "updatedAt=2026-06-11T00:00:00Z",
+                "replacementAppId=sample-app",
+                "safeUninstallGuidance=Export app data before removal."),
+            "--security-denylist-entry",
+            String.join(
+                ";",
+                "id=deny-sample-app-0-1-0",
+                "appId=sample-app",
+                "version=0.1.0",
+                "advisoryId=CRYPTA-2026-0001",
+                "reason=Known vulnerable release.",
+                "replacementAppId=sample-app",
+                "safeUninstallGuidance=Export app data before removal."));
+
+    String catalog = Files.readString(catalogFile, StandardCharsets.UTF_8);
+    assertEquals(CommandLine.ExitCode.OK, result.exitCode());
+    assertTrue(result.out().contains("Created catalog: dev with 1 entry"));
+    assertTrue(catalog.contains("catalog.version=4\n"));
+    assertTrue(catalog.contains("catalog.securityAdvisories=CRYPTA-2026-0001\n"));
+    assertTrue(catalog.contains("catalog.securityAdvisory.CRYPTA-2026-0001.action=denylist\n"));
+    assertTrue(
+        catalog.contains(
+            "catalog.securityAdvisory.CRYPTA-2026-0001.safeUninstallGuidance=Export app data before"
+                + " removal.\n"));
+    assertTrue(catalog.contains("catalog.securityDenylist=deny-sample-app-0-1-0\n"));
+    assertTrue(catalog.contains("catalog.securityDenylist.deny-sample-app-0-1-0.version=0.1.0\n"));
+    assertTrue(
+        catalog.contains(
+            "catalog.securityDenylist.deny-sample-app-0-1-0.advisoryId=CRYPTA-2026-0001\n"));
+  }
+
+  @Test
   void catalogCreate_whenDescriptorUsesCryptaChkBundleUri_expectCatalogWithCryptaArtifact()
       throws Exception {
     Path appDir = tempDir.resolve("sample-app");
@@ -1747,6 +1827,66 @@ class CryptaAppCliTest {
     assertTrue(catalog.contains("app.sample-app.review.receipt.status=reviewed\n"));
     assertTrue(catalog.contains("app.sample-app.review.receipt.reviewer.key.id=dev-review\n"));
     assertTrue(catalog.contains("app.sample-app.review.receipt.signature.value.base64="));
+  }
+
+  @Test
+  void reviewFingerprint_whenReceiptProvided_expectRedactedFingerprintSummary() throws Exception {
+    Path appDir = tempDir.resolve("sample-app");
+    Path outputZip = tempDir.resolve("sample-app.zip");
+    Path descriptor = tempDir.resolve("entry.properties");
+    Path receiptFile = tempDir.resolve("review-receipt.properties");
+    KeyPair keyPair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
+    Path privateKey = tempDir.resolve("review-private.der");
+    Files.write(privateKey, keyPair.getPrivate().getEncoded());
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "sample-app",
+        "--name",
+        "Sample App",
+        "--version",
+        "0.1.0");
+    runCli("pack", "--bundle-dir", appDir.toString(), "--output", outputZip.toString());
+    Files.writeString(
+        descriptor,
+        lines(
+            "artifact.path=" + outputZip.toAbsolutePath().normalize(),
+            "bundle.uri=" + outputZip.toUri(),
+            "summary=Sample catalog entry."),
+        StandardCharsets.UTF_8);
+    runCli(
+        "review",
+        "sign",
+        "--catalog-entry",
+        descriptor.toString(),
+        "--receipt-file",
+        receiptFile.toString(),
+        "--reviewer-key-id",
+        "dev-review",
+        "--reviewer-private-key-file",
+        privateKey.toString(),
+        "--policy-id",
+        "dev-review-v1",
+        "--policy-version",
+        "1",
+        "--status",
+        "reviewed",
+        "--reviewed-at",
+        "2026-05-01T00:00:00Z");
+
+    CliResult result = runCli("review", "fingerprint", "--receipt-file", receiptFile.toString());
+
+    assertEquals(CommandLine.ExitCode.OK, result.exitCode());
+    assertTrue(
+        result
+            .out()
+            .matches(
+                "(?s).*Review receipt fingerprint: fingerprintSha256=[0-9a-f]{64} "
+                    + "payloadSha256=[0-9a-f]{64} reviewer=dev-review.*"));
+    assertFalse(result.out().contains("signature.value.base64"));
+    assertFalse(result.out().contains(privateKey.toString()));
   }
 
   @Test

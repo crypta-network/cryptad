@@ -94,6 +94,13 @@ app-platform.signed-bundles
 catalog.smoke
 app-catalog.first-party-beta
 catalog.production-channels
+catalog.security-advisories
+catalog.version-denylist
+app-review.receipt-revocation
+app-review.reviewer-key-compromise-flow
+app-update.security-denylist-gates
+web-shell.security-advisory-trust-warnings
+ecosystem-security.advisory-revocation-redaction
 platform-api.contract
 app-vault.capabilities
 app-platform.identity-profile-publish
@@ -186,6 +193,15 @@ coverage, issue templates, internal Markdown links, README/portal links, and obv
 public Crypta catalog. `catalog.production-channels` verifies schema v3 stable/beta/nightly/
 deprecated metadata, stable-only default update automation, deprecated replacement metadata, API
 and Web Shell exposure, signature/review verification preservation, and redaction guarantees.
+The `catalog.security-advisories`, `catalog.version-denylist`,
+`app-review.receipt-revocation`, `app-review.reviewer-key-compromise-flow`,
+`app-update.security-denylist-gates`, `web-shell.security-advisory-trust-warnings`, and
+`ecosystem-security.advisory-revocation-redaction` rows verify the Phase 9
+`ecosystem-security-advisory-and-revocation` matrix row and
+`ecosystem.security-advisory-revocation` gate. They prove catalog v4 security policy, exact
+app-version denylist records, warning acknowledgement, install/update/stage/apply/scheduler
+security gates, review receipt revocation, reviewer-key compromise handling, Web Shell warnings,
+safe uninstall guidance, and redaction.
 `app-update.data-migration-contract` verifies signed app-data schema migration metadata, dry-run
 before bundle replacement, internal app-scoped snapshot/restore, missing-path and
 rollback-incompatible blockers, Feed Reader and Trust Graph Local RC UI-state examples, and path-free

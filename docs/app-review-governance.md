@@ -53,6 +53,27 @@ trusted reviewer registry stores public verification keys only. API, Web Shell, 
 certification evidence expose redacted summaries: key ids, display names, algorithms, lifecycle
 status, policy constraints, validity bounds, and rotation ids.
 
+Registry version 3 adds local review receipt revocation. Receipt revocation is distinct from
+revoking a reviewer key. It identifies one exact receipt by `receiptFingerprintSha256`, which
+covers the canonical payload and detached signature metadata/value:
+
+```properties
+trusted.reviewers.version=3
+review.revocations=receipt-1
+review.revocation.receipt-1.receiptFingerprintSha256=<sha256>
+review.revocation.receipt-1.appId=social-inbox
+review.revocation.receipt-1.appVersion=0.1.0
+review.revocation.receipt-1.bundleSha256=<bundle-sha256>
+review.revocation.receipt-1.reviewerKeyId=crypta-first-party-review-2026q2
+review.revocation.receipt-1.revokedAt=2026-06-11T00:00:00Z
+review.revocation.receipt-1.reason=Receipt revoked after advisory CRYPTA-2026-0001.
+```
+
+A revoked receipt evaluates as `revoked_receipt`. It must not be treated as `trusted_reviewed`,
+`trusted_caution`, or `trusted_rejected`, and review policy treats it as fail-closed evidence.
+See [ecosystem-security-advisories.md](ecosystem-security-advisories.md) for the full advisory and
+revocation response process.
+
 ## Lifecycle Semantics
 
 Reviewer key statuses are local governance state:
@@ -70,6 +91,11 @@ a receipt reviewed at or after that instant is outside the key window.
 
 Rotation metadata (`rotates.from` and `rotates.to`) is informational. It helps operators audit key
 lifecycle continuity, but it does not automatically trust a successor or predecessor key.
+
+For reviewer-key compromise, mark the affected key `status=revoked`, set `revoked.at`, and add a
+bounded `revocation.reason`. Receipts signed by that key remain fail-closed as `revoked_reviewer`;
+operators can inspect the lifecycle warning without seeing raw public key bytes, private key
+material, or raw signatures.
 
 ## Policy ID And Version
 
@@ -117,11 +143,14 @@ or review policy mode change, even if the signed catalog bytes remain the same.
 
 ## Developer Tooling
 
-`crypta-app review` includes lifecycle and transparency helpers:
+`crypta-app review` includes lifecycle, fingerprint, and transparency helpers:
 
 ```bash
 crypta-app review keys inspect \
   --trusted-reviewer-keys-file trusted-reviewers.properties
+
+crypta-app review fingerprint \
+  --receipt-file social-inbox-review.properties
 
 crypta-app review keys migrate \
   --trusted-reviewer-keys-file trusted-reviewers-v1.properties \
@@ -134,7 +163,7 @@ crypta-app review transparency verify \
   --log-file review-transparency-log.jsonl
 ```
 
-CLI output is redacted. It may print reviewer key ids, display names, policy ids/versions, lifecycle
-status, counts, warnings, record counts, and latest transparency hashes. It must not print private
-key material, raw public key bytes, raw signatures, local evidence contents, local store paths, or
-tokens.
+CLI output is redacted. It may print reviewer key ids, display names, policy ids/versions,
+lifecycle status, receipt fingerprints, receipt revocation counts, warnings, record counts, and
+latest transparency hashes. It must not print private key material, raw public key bytes, raw
+signatures, raw receipt contents, local evidence contents, local store paths, or tokens.

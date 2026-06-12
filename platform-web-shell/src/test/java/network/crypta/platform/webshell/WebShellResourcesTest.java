@@ -648,6 +648,12 @@ class WebShellResourcesTest {
     assertTrue(script.contains("function catalogAppDeprecation(app)"));
     assertTrue(script.contains("function catalogAppDeprecated(app)"));
     assertTrue(script.contains("function securityAdvisoryListNode(values)"));
+    assertTrue(script.contains("function securityDecisionLabel(securityDecision)"));
+    assertTrue(
+        script.contains("function appendSecurityAcknowledgement(form, securityDecision, action)"));
+    assertTrue(script.contains("input.name = \"securityAcknowledged\";"));
+    assertTrue(script.contains("function catalogSecurityDetailsNode(app)"));
+    assertTrue(script.contains("Safe uninstall guidance"));
     assertTrue(script.contains("function deprecationNoticeNode(app)"));
     assertTrue(
         script.contains(

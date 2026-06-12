@@ -117,6 +117,10 @@ public final class AppReviewReceiptVerifier {
       return missingReceiptDecision(target.review(), keys, checkedPolicy);
     }
     AppReviewReceipt receipt = target.receipt();
+    AppReviewReceiptRevocation revocation = keys.findReceiptRevocation(receipt).orElse(null);
+    if (revocation != null) {
+      return revokedReceiptDecision(receipt, checkedPolicy, revocation);
+    }
     AppReviewTrustDecision mismatchDecision = bindingMismatchDecision(target, checkedPolicy);
     if (mismatchDecision != null) {
       return mismatchDecision;
@@ -184,6 +188,16 @@ public final class AppReviewReceiptVerifier {
           case REJECTED -> AppReviewTrustStatus.TRUSTED_REJECTED;
         };
     return decision(status, receipt, reviewerKey, checkedPolicy, warnings);
+  }
+
+  private static AppReviewTrustDecision revokedReceiptDecision(
+      AppReviewReceipt receipt, AppReviewPolicy policy, AppReviewReceiptRevocation revocation) {
+    return decision(
+        AppReviewTrustStatus.REVOKED_RECEIPT,
+        receipt,
+        null,
+        policy,
+        List.of("Review receipt fingerprint is revoked by local policy: " + revocation.reason()));
   }
 
   private static AppReviewTrustDecision missingReceiptDecision(

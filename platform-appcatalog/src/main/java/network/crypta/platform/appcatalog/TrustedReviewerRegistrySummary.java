@@ -22,10 +22,15 @@ import java.util.Map;
  * @param configured whether at least one local reviewer key is configured
  * @param version trusted-reviewer registry format version that was loaded
  * @param counts lifecycle counts keyed by stable lowercase status values
+ * @param receiptRevocationCount number of exact receipt fingerprints revoked locally
  * @param warnings display-safe registry and lifecycle warnings
  */
 public record TrustedReviewerRegistrySummary(
-    boolean configured, int version, Map<String, Integer> counts, List<String> warnings) {
+    boolean configured,
+    int version,
+    Map<String, Integer> counts,
+    int receiptRevocationCount,
+    List<String> warnings) {
   /**
    * Converts this registry summary to JSON-compatible values.
    *
@@ -35,10 +40,11 @@ public record TrustedReviewerRegistrySummary(
    * @return redacted registry summary with counts and warnings
    */
   public Map<String, Object> toJsonValue() {
-    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(4);
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(5);
     json.put("configured", configured);
     json.put("version", version);
     json.put("counts", counts);
+    json.put("receiptRevocationCount", receiptRevocationCount);
     json.put("warnings", warnings);
     return json;
   }

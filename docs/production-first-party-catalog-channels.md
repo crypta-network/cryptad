@@ -41,6 +41,11 @@ rejected by the strict parser instead of being partially accepted.
 advisory URIs use the same safe metadata URI policy as homepage, source, changelog, and screenshot
 metadata.
 
+Catalog-level security response metadata is introduced separately in `catalog.version=4`. It adds
+signed advisory records and exact app-version denylist records while preserving the entry-level
+security advisory references above. See
+[ecosystem-security-advisories.md](ecosystem-security-advisories.md).
+
 ## API and Web Shell
 
 Catalog APIs expose channel metadata through `GET /api/v1/app-catalogs`,
@@ -97,7 +102,9 @@ If a candidate is excluded by channel policy, the candidate remains visible with
 
 Deprecated entries are blocked from automatic staging/apply even if a policy includes
 `deprecated`. PR-248 only surfaces deprecation and replacement metadata; it does not implement
-app-data migration, backup/restore, advisory denylist enforcement, or automated replacement flows.
+app-data migration, backup/restore, or automated replacement flows. Catalog v4 advisory denylist
+enforcement is a separate Phase 9 gate; it still does not automatically uninstall apps or silently
+migrate to replacements.
 PR-249 app-data migration acknowledgement is an additional update gate only; it does not override
 `allowedChannels`, `channel_policy_blocked`, signed catalog verification, trusted review receipt
 policy, or deprecated-entry automation blocking.

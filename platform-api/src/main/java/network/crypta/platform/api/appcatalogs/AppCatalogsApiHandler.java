@@ -27,6 +27,7 @@ import network.crypta.platform.appcatalog.AppCatalogManager;
 import network.crypta.platform.appcatalog.AppCatalogProductionMetadata;
 import network.crypta.platform.appcatalog.AppCatalogReviewMetadata;
 import network.crypta.platform.appcatalog.AppCatalogSecurityAdvisory;
+import network.crypta.platform.appcatalog.AppCatalogSecurityDecision;
 import network.crypta.platform.appcatalog.AppCatalogSourceSnapshot;
 import network.crypta.platform.appcatalog.AppReviewPolicy;
 import network.crypta.platform.appcatalog.AppReviewReceiptVerifier;
@@ -103,13 +104,19 @@ public final class AppCatalogsApiHandler {
   private static final String VAULT_GRANT_CLEANUP_WARNING =
       "Vault grant cleanup failed and requires operator review.";
   private static final String PARAM_REVIEW_ACKNOWLEDGED = "reviewAcknowledged";
+  private static final String PARAM_SECURITY_ACKNOWLEDGED = "securityAcknowledged";
   private static final String REVIEW_TRUST_FIELD = "reviewTrust";
+  private static final String SECURITY_DECISION_FIELD = "securityDecision";
   private static final String STATUS_FIELD = "status";
   private static final String ERROR_APP_REVIEW_MISSING = "app_review_missing";
   private static final String ERROR_APP_REVIEW_UNTRUSTED = "app_review_untrusted";
   private static final String ERROR_APP_REVIEW_REJECTED = "app_review_rejected";
   private static final String ERROR_APP_REVIEW_MISMATCH = "app_review_mismatch";
   private static final String ERROR_APP_REVIEW_EXPIRED = "app_review_expired";
+  private static final String ERROR_APP_SECURITY_ACKNOWLEDGEMENT_REQUIRED =
+      "app_security_acknowledgement_required";
+  private static final String ERROR_APP_SECURITY_BLOCKED = "app_security_blocked";
+  private static final String ERROR_APP_SECURITY_DENYLISTED = "app_security_denylisted";
   private static final String ERROR_RECOMMENDED_CATALOG_NOT_FOUND = "recommended_catalog_not_found";
   private static final String ERROR_RECOMMENDED_CATALOG_ALREADY_CONFIGURED =
       "recommended_catalog_already_configured";
@@ -586,7 +593,9 @@ public final class AppCatalogsApiHandler {
    */
   public List<Map<String, Object>> listApps(String catalogId) {
     try {
-      return catalogManager.listApps(catalogId).stream().map(this::summarizeEntry).toList();
+      return catalogManager.listApps(catalogId).stream()
+          .map(entry -> summarizeEntry(catalogId, entry))
+          .toList();
     } catch (AppCatalogException exception) {
       throw catalogFailure(exception);
     } catch (IOException _) {
@@ -607,7 +616,7 @@ public final class AppCatalogsApiHandler {
    */
   public Map<String, Object> getApp(String catalogId, String appId) {
     try {
-      return summarizeEntry(catalogManager.getApp(catalogId, appId));
+      return summarizeEntry(catalogId, catalogManager.getApp(catalogId, appId));
     } catch (AppCatalogException exception) {
       throw catalogFailure(exception);
     } catch (IOException _) {
@@ -730,13 +739,17 @@ public final class AppCatalogsApiHandler {
       String catalogId, String appId, Map<String, List<String>> queryParameters) {
     String normalizedAppId;
     AppReviewTrustDecision initialReviewTrust;
+    AppCatalogSecurityDecision initialSecurityDecision;
     boolean reviewAcknowledged = reviewAcknowledged(queryParameters);
+    boolean securityAcknowledged = securityAcknowledged(queryParameters);
     try {
       AppCatalogEntry entry = catalogManager.getApp(catalogId, appId);
       normalizedAppId = entry.appId();
       if (appHost.describe(normalizedAppId).isPresent()) {
         throw conflict(APP_ALREADY_INSTALLED_PREFIX + normalizedAppId);
       }
+      initialSecurityDecision = targetSecurityDecision(catalogId, entry);
+      requireSecurityGate(initialSecurityDecision, securityAcknowledged, true);
       initialReviewTrust = reviewTrust(entry);
       recordReviewGate(
           AppReviewTransparencyEventKind.REVIEW_GATE_INSTALL,
@@ -754,6 +767,13 @@ public final class AppCatalogsApiHandler {
     AppCatalogInstallPlan plan = null;
     try {
       plan = catalogManager.prepareInstallPlan(catalogId, normalizedAppId);
+      AppCatalogSecurityDecision preparedSecurityDecision =
+          targetSecurityDecision(plan.catalogId(), plan.entry());
+      requireSecurityGate(
+          preparedSecurityDecision,
+          securityAcknowledgementStillApplies(
+              initialSecurityDecision, preparedSecurityDecision, securityAcknowledged),
+          true);
       AppReviewTrustDecision preparedReviewTrust = reviewTrust(plan.entry());
       recordReviewGate(
           AppReviewTransparencyEventKind.REVIEW_GATE_INSTALL,
@@ -829,6 +849,9 @@ public final class AppCatalogsApiHandler {
     }
     AppReviewTrustDecision initialReviewTrust = reviewTrust(entry);
     boolean reviewAcknowledged = reviewAcknowledged(queryParameters);
+    AppCatalogSecurityDecision initialSecurityDecision = targetSecurityDecision(catalogId, entry);
+    boolean securityAcknowledged = securityAcknowledged(queryParameters);
+    requireSecurityGate(initialSecurityDecision, securityAcknowledged, false);
     recordReviewGate(
         AppReviewTransparencyEventKind.REVIEW_GATE_UPDATE,
         catalogId,
@@ -840,6 +863,13 @@ public final class AppCatalogsApiHandler {
     AppCatalogInstallPlan plan = null;
     try {
       plan = catalogManager.prepareInstallPlan(catalogId, normalizedAppId);
+      AppCatalogSecurityDecision preparedSecurityDecision =
+          targetSecurityDecision(plan.catalogId(), plan.entry());
+      requireSecurityGate(
+          preparedSecurityDecision,
+          securityAcknowledgementStillApplies(
+              initialSecurityDecision, preparedSecurityDecision, securityAcknowledged),
+          false);
       AppReviewTrustDecision preparedReviewTrust = reviewTrust(plan.entry());
       recordReviewGate(
           AppReviewTransparencyEventKind.REVIEW_GATE_UPDATE,
@@ -903,6 +933,41 @@ public final class AppCatalogsApiHandler {
   private AppReviewTrustDecision reviewTrust(AppCatalogEntry entry) {
     return AppReviewReceiptVerifier.evaluate(
         entry, trustedReviewerKeysOrEmpty(), reviewPolicy, Instant.now());
+  }
+
+  private AppCatalogSecurityDecision securityDecision(String catalogId, AppCatalogEntry entry) {
+    try {
+      AppCatalogSecurityDecision decision =
+          catalogManager.securityDecision(catalogId, entry.appId());
+      return decision == null ? AppCatalogSecurityDecision.OK : decision;
+    } catch (AppCatalogException exception) {
+      throw catalogFailure(exception);
+    } catch (IOException _) {
+      throw internalError("Failed to read catalog app security policy.");
+    }
+  }
+
+  private AppCatalogSecurityDecision targetSecurityDecision(
+      String catalogId, AppCatalogEntry entry) {
+    return AppCatalogSecurityDecision.combine(
+        List.of(
+            securityDecision(catalogId, entry),
+            installedSecurityDecision(entry.appId(), entry.version())));
+  }
+
+  private AppCatalogSecurityDecision installedSecurityDecision(String appId, String version) {
+    if (version == null || version.isBlank()) {
+      return AppCatalogSecurityDecision.OK;
+    }
+    try {
+      AppCatalogSecurityDecision decision =
+          catalogManager.installedSecurityDecision(appId, version);
+      return decision == null ? AppCatalogSecurityDecision.OK : decision;
+    } catch (AppCatalogException exception) {
+      throw catalogFailure(exception);
+    } catch (IOException _) {
+      throw internalError("Failed to read installed app security policy.");
+    }
   }
 
   private void recordReviewGate(
@@ -1015,11 +1080,48 @@ public final class AppCatalogsApiHandler {
     }
   }
 
+  private static void requireSecurityGate(
+      AppCatalogSecurityDecision decision, boolean securityAcknowledged, boolean install) {
+    Map<String, Object> securityDecision = decision.toJsonValue();
+    String action = install ? "Install" : "Update";
+    if (ERROR_APP_SECURITY_DENYLISTED.equals(securityGateFailureCode(securityDecision))) {
+      throw new PlatformApiException(
+          409, ERROR_APP_SECURITY_DENYLISTED, action + " blocked by app security denylist.");
+    }
+    String blockField = install ? "blocksInstall" : "blocksUpdate";
+    if (Boolean.TRUE.equals(securityDecision.get(blockField))) {
+      throw new PlatformApiException(
+          409, ERROR_APP_SECURITY_BLOCKED, action + " blocked by app security policy.");
+    }
+    if (Boolean.TRUE.equals(securityDecision.get("requiresAcknowledgement"))
+        && !securityAcknowledged) {
+      throw new PlatformApiException(
+          409,
+          ERROR_APP_SECURITY_ACKNOWLEDGEMENT_REQUIRED,
+          action + " requires explicit acknowledgement of the security advisory.");
+    }
+  }
+
   private static boolean reviewAcknowledgementStillApplies(
       AppReviewTrustDecision initialDecision,
       AppReviewTrustDecision preparedDecision,
       boolean reviewAcknowledged) {
     return reviewAcknowledged && initialDecision.equals(preparedDecision);
+  }
+
+  private static boolean securityAcknowledgementStillApplies(
+      AppCatalogSecurityDecision initialDecision,
+      AppCatalogSecurityDecision preparedDecision,
+      boolean securityAcknowledged) {
+    return securityAcknowledged && initialDecision.equals(preparedDecision);
+  }
+
+  private static String securityGateFailureCode(Map<String, Object> securityDecision) {
+    Object statusValue = securityDecision.get(STATUS_FIELD);
+    if ("denylisted".equals(statusValue)) {
+      return ERROR_APP_SECURITY_DENYLISTED;
+    }
+    return ERROR_APP_SECURITY_BLOCKED;
   }
 
   private static String reviewGateFailureCode(Map<String, Object> reviewTrust) {
@@ -1119,7 +1221,7 @@ public final class AppCatalogsApiHandler {
     }
   }
 
-  private Map<String, Object> summarizeEntry(AppCatalogEntry entry) {
+  private Map<String, Object> summarizeEntry(String catalogId, AppCatalogEntry entry) {
     InstalledAppSnapshot installed = installed(entry.appId());
     RunningAppSnapshot running = appHost.status(entry.appId()).orElse(null);
     String installedVersion = installed == null ? null : installed.manifest().appVersion();
@@ -1136,6 +1238,12 @@ public final class AppCatalogsApiHandler {
     json.put("supportStatus", entry.productionMetadata().supportStatus().catalogValue());
     json.put("deprecation", summarizeDeprecation(entry.productionMetadata()));
     json.put("securityAdvisories", summarizeSecurityAdvisories(entry.productionMetadata()));
+    json.put(SECURITY_DECISION_FIELD, targetSecurityDecision(catalogId, entry).toJsonValue());
+    json.put(
+        "installedSecurityDecision",
+        installed == null
+            ? AppCatalogSecurityDecision.OK.toJsonValue()
+            : installedSecurityDecision(entry.appId(), installedVersion).toJsonValue());
     json.put("review", summarizeReview(entry.review()));
     json.put(REVIEW_TRUST_FIELD, reviewTrust(entry).toJsonValue());
     json.put("permissions", entry.permissions());
@@ -1389,6 +1497,24 @@ public final class AppCatalogsApiHandler {
     }
     throw new PlatformApiException(
         400, "invalid_query_parameter", PARAM_REVIEW_ACKNOWLEDGED + " must be 'true' or 'false'.");
+  }
+
+  private static boolean securityAcknowledged(Map<String, List<String>> queryParameters) {
+    String value =
+        PlatformApiParameters.readOptionalString(queryParameters, PARAM_SECURITY_ACKNOWLEDGED);
+    if (value == null || value.isBlank()) {
+      return false;
+    }
+    if ("true".equalsIgnoreCase(value.trim())) {
+      return true;
+    }
+    if ("false".equalsIgnoreCase(value.trim())) {
+      return false;
+    }
+    throw new PlatformApiException(
+        400,
+        "invalid_query_parameter",
+        PARAM_SECURITY_ACKNOWLEDGED + " must be 'true' or 'false'.");
   }
 
   private static Map<String, Object> summarizeInstalledApp(AppManifest manifest) {

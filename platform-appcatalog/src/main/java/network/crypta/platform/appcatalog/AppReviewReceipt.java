@@ -65,4 +65,35 @@ public record AppReviewReceipt(
     }
     return null;
   }
+
+  /**
+   * Returns a stable SHA-256 fingerprint for this exact receipt.
+   *
+   * <p>The fingerprint covers the deterministic receipt serialization, including canonical payload
+   * fields and detached signature algorithm/value fields. A receipt revocation therefore names the
+   * exact receipt instance, not merely the reviewed payload. The lowercase hex result is safe for
+   * registry files, CLI output, API summaries, and release-certification evidence.
+   *
+   * @return lowercase SHA-256 fingerprint of payload and detached signature metadata
+   */
+  public String fingerprintSha256() {
+    return sha256Hex(AppReviewReceiptIO.serialize(this));
+  }
+
+  /**
+   * Returns a stable SHA-256 digest for the canonical signed payload only.
+   *
+   * <p>This diagnostic digest excludes the detached signature fields. It is useful when comparing
+   * payload-equivalent receipts, while {@link #fingerprintSha256()} remains the revocation key.
+   *
+   * @return lowercase SHA-256 digest of canonical payload bytes
+   */
+  public String payloadSha256() {
+    return sha256Hex(payload.canonicalPayloadBytes());
+  }
+
+  private static String sha256Hex(byte[] bytes) {
+    java.security.MessageDigest digest = AppCatalogSidecars.newArtifactSha256Digest();
+    return AppCatalogSidecars.lowercaseHex(digest.digest(bytes));
+  }
 }

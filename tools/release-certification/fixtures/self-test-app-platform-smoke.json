@@ -60,7 +60,7 @@
       "details": {
         "apiVersion": "v1",
         "capabilityCount": 25,
-        "contractVersion": 16,
+        "contractVersion": 17,
         "endpointCount": 65,
         "flaggedStability": [],
         "stabilityCounts": {
@@ -140,8 +140,8 @@
     {
       "details": {
         "checks": {
-          "webShellOmitsPrivateMaterial": true,
           "webShellLoadsAppServiceData": true,
+          "webShellOmitsPrivateMaterial": true,
           "webShellRendersGrantActions": true,
           "webShellTestsPresent": true
         }
@@ -186,9 +186,9 @@
           "capabilitiesDocumented": true,
           "devtoolsVocabularyPresent": true,
           "futureExtensionPoint": true,
-          "profileDocumentRoute": true,
           "grantLifecycle": true,
-          "processBrowserRestrictions": true
+          "processBrowserRestrictions": true,
+          "profileDocumentRoute": true
         },
         "redaction": {
           "capabilityNamesRetained": true,
@@ -664,9 +664,9 @@
       "details": {
         "catalogId": "crypta-first-party-beta",
         "configuration": {
+          "apphostTrustedKeyConfigured": false,
           "sourceConfigured": false,
-          "trustedCatalogKeyHintConfigured": false,
-          "apphostTrustedKeyConfigured": false
+          "trustedCatalogKeyHintConfigured": false
         },
         "requiredFirstPartyApps": [
           "queue-manager",
@@ -803,10 +803,10 @@
     {
       "details": {
         "checks": {
-          "dedupTest": true,
           "bestEffortMalformedLogTest": true,
           "bestEffortNullRecordIdTest": true,
           "booleanTypeTamperTest": true,
+          "dedupTest": true,
           "gateReceiptStatusTest": true,
           "hashChain": true,
           "publisherOnlyNoReceiptStatusTest": true,
@@ -818,8 +818,8 @@
           "tamperTest": true,
           "trailingDataTest": true,
           "unknownFieldTest": true,
-          "warningListTamperTest": true,
-          "verifyEndpoint": true
+          "verifyEndpoint": true,
+          "warningListTamperTest": true
         },
         "redaction": {
           "browserSessionsExcluded": true,
@@ -856,23 +856,6 @@
     },
     {
       "details": {
-        "firstPartyApps": [
-          "queue-manager",
-          "publisher",
-          "site-publisher",
-          "profile-publisher",
-          "feed-reader",
-          "social-inbox",
-          "trust-graph"
-        ],
-        "coverage": {
-          "catalogAppsInspected": 7,
-          "expiredOrMismatchedOrUnknownReviewer": 0,
-          "missingReceipts": 0,
-          "promotionBlocked": false,
-          "trustedPositiveReceipts": 7,
-          "trustedRejectedReceipts": 0
-        },
         "catalog": {
           "inspectedAppIds": [
             "feed-reader",
@@ -893,6 +876,23 @@
             "trust-graph": "reviewed"
           }
         },
+        "coverage": {
+          "catalogAppsInspected": 7,
+          "expiredOrMismatchedOrUnknownReviewer": 0,
+          "missingReceipts": 0,
+          "promotionBlocked": false,
+          "trustedPositiveReceipts": 7,
+          "trustedRejectedReceipts": 0
+        },
+        "firstPartyApps": [
+          "queue-manager",
+          "publisher",
+          "site-publisher",
+          "profile-publisher",
+          "feed-reader",
+          "social-inbox",
+          "trust-graph"
+        ],
         "policyMode": "release-candidate requires trusted positive receipts",
         "referenceContentApp": "site-publisher"
       },
@@ -929,10 +929,10 @@
           "crypta-ui-components.js": {
             "present": true
           },
-          "crypta-ui.css": {
+          "crypta-ui-tokens.css": {
             "present": true
           },
-          "crypta-ui-tokens.css": {
+          "crypta-ui.css": {
             "present": true
           }
         }
@@ -953,6 +953,13 @@
               "warnings": 0
             }
           },
+          "profile-publisher": {
+            "summary": {
+              "errors": 0,
+              "notes": 0,
+              "warnings": 0
+            }
+          },
           "publisher": {
             "summary": {
               "errors": 0,
@@ -961,13 +968,6 @@
             }
           },
           "queue-manager": {
-            "summary": {
-              "errors": 0,
-              "notes": 0,
-              "warnings": 0
-            }
-          },
-          "profile-publisher": {
             "summary": {
               "errors": 0,
               "notes": 0,
@@ -1009,13 +1009,13 @@
           "feed-reader": {
             "usesDesignSystemClasses": true
           },
+          "profile-publisher": {
+            "usesDesignSystemClasses": true
+          },
           "publisher": {
             "usesDesignSystemClasses": true
           },
           "queue-manager": {
-            "usesDesignSystemClasses": true
-          },
-          "profile-publisher": {
             "usesDesignSystemClasses": true
           },
           "site-publisher": {
@@ -1083,9 +1083,9 @@
         "appId": "profile-publisher",
         "checks": {
           "manifestAvoidsUnneededVaultManagement": true,
-          "manifestUsesAppDataContract": true,
           "manifestDeclaresProfilePermissions": true,
           "manifestDeclaresProfilePublisher": true,
+          "manifestUsesAppDataContract": true,
           "moduleExists": true,
           "noPersistentBrowserStorage": true,
           "noRawAdminApiReference": true,
@@ -1095,9 +1095,9 @@
           "stagedDesignSystemPresent": true,
           "stagedManifestPresent": true,
           "stagedSdkPresent": true,
+          "usesAppDataHelpers": true,
           "usesBrowserSafeIdentityCreation": true,
           "usesGeneratedDocumentInsertRoute": true,
-          "usesAppDataHelpers": true,
           "usesProfileDocumentRoute": true,
           "usesSdkBootstrap": true,
           "usesUploadQueueSnapshot": true
@@ -1366,8 +1366,8 @@
           "docsFrameScoresAsAnnotations": true,
           "manifestDeclaresAppServiceCapabilities": true,
           "manifestDeclaresTrustScoreRequest": true,
-          "unknownScoresRemainUnscored": true,
-          "uiShowsNeutralAndScoredStates": true
+          "uiShowsNeutralAndScoredStates": true,
+          "unknownScoresRemainUnscored": true
         },
         "redaction": {
           "messageBodiesExcludedFromEvidence": true,
@@ -1550,8 +1550,8 @@
           "stagedSdkPresent": true,
           "usesAppDataPreviewState": true,
           "usesBoundedTrustSigningHelper": true,
-          "usesTrustExchangeAndQueuePreview": true,
           "usesSdkBootstrap": true,
+          "usesTrustExchangeAndQueuePreview": true,
           "usesTrustHelpers": true
         },
         "expectedPermissions": [
@@ -1860,14 +1860,86 @@
     },
     {
       "details": {
+        "fixtureBacked": true
+      },
+      "id": "catalog.security-advisories",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Catalog v4 security advisory records passed deterministic evidence checks."
+    },
+    {
+      "details": {
+        "fixtureBacked": true
+      },
+      "id": "catalog.version-denylist",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Exact app-version denylist records passed deterministic evidence checks."
+    },
+    {
+      "details": {
+        "fixtureBacked": true
+      },
+      "id": "app-review.receipt-revocation",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Review receipt revocation evidence passed deterministic source checks."
+    },
+    {
+      "details": {
+        "fixtureBacked": true
+      },
+      "id": "app-review.reviewer-key-compromise-flow",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Reviewer-key compromise flow evidence passed deterministic source checks."
+    },
+    {
+      "details": {
+        "fixtureBacked": true
+      },
+      "id": "app-update.security-denylist-gates",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Install, update, stage, apply, and automatic-policy security gates passed."
+    },
+    {
+      "details": {
+        "fixtureBacked": true
+      },
+      "id": "web-shell.security-advisory-trust-warnings",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Web Shell security advisory and trust-warning evidence passed."
+    },
+    {
+      "details": {
+        "fixtureBacked": true,
+        "redaction": {
+          "leaks": [],
+          "publicMetadataRetained": true
+        }
+      },
+      "id": "ecosystem-security.advisory-revocation-redaction",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Ecosystem security advisory and revocation redaction evidence passed."
+    },
+    {
+      "details": {
         "checks": {
-          "updateApplyRunningConflictTest": true,
-          "updateApplyRunningConflictRouteTest": true,
+          "apphostUpdateEntryPoint": true,
           "candidateCompatibilityMetadata": true,
           "candidateDetectionSemantics": true,
           "candidateReviewMetadata": true,
           "catalogVersionComparison": true,
-          "apphostUpdateEntryPoint": true,
           "hostApplyWhenStoppedGate": true,
           "lifecycleHandlerRoutesStageAndApply": true,
           "lifecycleServiceApplyDelegatesToAppHost": true,
@@ -1876,7 +1948,9 @@
           "manualApplyPolicyDocumented": true,
           "matchingAppIdGate": true,
           "permissionDeltaReview": true,
-          "policyModes": true
+          "policyModes": true,
+          "updateApplyRunningConflictRouteTest": true,
+          "updateApplyRunningConflictTest": true
         },
         "liveNodeRequired": false,
         "policy": "manual/stage/apply_when_stopped",
@@ -1944,8 +2018,8 @@
           "installedBundleRecordedForRollback": true,
           "managedBackupAllocated": true,
           "manualRollbackSwapsBundles": true,
-          "mutableDirectoriesPreservedByUpdate": true,
           "mutableDirectoriesPreservedByRollback": true,
+          "mutableDirectoriesPreservedByUpdate": true,
           "replacementCommitToleratesPreviousRecordCleanupFailure": true,
           "restorePreviousBundleOnReplacementFailure": true,
           "rollbackHealthGate": true,

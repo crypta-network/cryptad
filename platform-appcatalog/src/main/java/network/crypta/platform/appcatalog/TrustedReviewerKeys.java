@@ -42,17 +42,23 @@ public final class TrustedReviewerKeys {
           "reviewer\\.(\\d+)\\.(id|algorithm|public\\.key\\.base64|display\\.name|policy\\.id|"
               + "policy\\.version|status|valid\\.from|valid\\.until|revoked\\.at|"
               + "revocation\\.reason|rotates\\.from|rotates\\.to)");
-  private static final TrustedReviewerKeys EMPTY = new TrustedReviewerKeys(1, Map.of());
+  private static final TrustedReviewerKeys EMPTY = new TrustedReviewerKeys(1, Map.of(), List.of());
   private static final String DUPLICATE_KEY_ID_MESSAGE_PREFIX =
       "duplicate trusted reviewer key id: ";
   private static final String REVIEWER_ENTRY_PREFIX = "reviewer.";
+  private static final String REVIEW_REVOCATIONS_PROPERTY = "review.revocations";
 
   private final int registryVersion;
   private final Map<String, TrustedReviewerKey> keysById;
+  private final List<AppReviewReceiptRevocation> receiptRevocations;
 
-  private TrustedReviewerKeys(int registryVersion, Map<String, TrustedReviewerKey> keysById) {
+  private TrustedReviewerKeys(
+      int registryVersion,
+      Map<String, TrustedReviewerKey> keysById,
+      List<AppReviewReceiptRevocation> receiptRevocations) {
     this.registryVersion = registryVersion;
     this.keysById = Map.copyOf(keysById);
+    this.receiptRevocations = List.copyOf(receiptRevocations);
   }
 
   /**
@@ -75,7 +81,7 @@ public final class TrustedReviewerKeys {
         throw AppCatalogSidecars.invalidEntry(DUPLICATE_KEY_ID_MESSAGE_PREFIX + trustedKey.keyId());
       }
     }
-    return new TrustedReviewerKeys(1, byId);
+    return new TrustedReviewerKeys(1, byId, List.of());
   }
 
   /**
@@ -134,11 +140,13 @@ public final class TrustedReviewerKeys {
             AppCatalogSidecars.utf8(bytes), "trusted reviewer keys file");
     int version = validateVersion(properties.remove("trusted.reviewers.version"));
     SortedMap<Integer, TrustedReviewerKeyBuilder> builders = readBuilders(properties);
+    List<AppReviewReceiptRevocation> receiptRevocations =
+        version >= 3 ? readReceiptRevocations(properties) : List.of();
     if (!properties.isEmpty()) {
       throw AppCatalogSidecars.invalidEntry(
           "unsupported trusted reviewer keys property: " + properties.keySet().iterator().next());
     }
-    return buildKeys(version, builders);
+    return buildKeys(version, builders, receiptRevocations);
   }
 
   /**
@@ -192,6 +200,28 @@ public final class TrustedReviewerKeys {
   }
 
   /**
+   * Returns configured receipt revocations sorted in registry order.
+   *
+   * @return exact receipt revocation entries
+   */
+  public List<AppReviewReceiptRevocation> receiptRevocations() {
+    return receiptRevocations;
+  }
+
+  /**
+   * Finds the local revocation entry for a receipt, when configured.
+   *
+   * @param receipt receipt to evaluate
+   * @return matching revocation entry
+   */
+  public Optional<AppReviewReceiptRevocation> findReceiptRevocation(AppReviewReceipt receipt) {
+    Objects.requireNonNull(receipt, "receipt");
+    return receiptRevocations.stream()
+        .filter(revocation -> revocation.matches(receipt))
+        .findFirst();
+  }
+
+  /**
    * Returns redacted reviewer-key summaries.
    *
    * @return key summaries sorted by key id
@@ -211,7 +241,7 @@ public final class TrustedReviewerKeys {
     counts.put("retired", count(TrustedReviewerKeyStatus.RETIRED));
     counts.put("revoked", count(TrustedReviewerKeyStatus.REVOKED));
     return new TrustedReviewerRegistrySummary(
-        !isEmpty(), registryVersion, counts, registryWarnings());
+        !isEmpty(), registryVersion, counts, receiptRevocations.size(), registryWarnings());
   }
 
   /**
@@ -231,7 +261,7 @@ public final class TrustedReviewerKeys {
     if (previous != null) {
       throw AppCatalogSidecars.invalidEntry(DUPLICATE_KEY_ID_MESSAGE_PREFIX + trustedKey.keyId());
     }
-    return new TrustedReviewerKeys(registryVersion, combined);
+    return new TrustedReviewerKeys(registryVersion, combined, receiptRevocations);
   }
 
   private int count(TrustedReviewerKeyStatus status) {
@@ -269,7 +299,7 @@ public final class TrustedReviewerKeys {
     }
     try {
       int version = Integer.parseInt(versionText);
-      if (version != 1 && version != 2) {
+      if (version != 1 && version != 2 && version != 3) {
         throw AppCatalogSidecars.invalidEntry("unsupported trusted.reviewers.version: " + version);
       }
       return version;
@@ -299,9 +329,11 @@ public final class TrustedReviewerKeys {
   }
 
   private static TrustedReviewerKeys buildKeys(
-      int version, SortedMap<Integer, TrustedReviewerKeyBuilder> builders) {
+      int version,
+      SortedMap<Integer, TrustedReviewerKeyBuilder> builders,
+      List<AppReviewReceiptRevocation> receiptRevocations) {
     if (builders.isEmpty()) {
-      return new TrustedReviewerKeys(version, Map.of());
+      return new TrustedReviewerKeys(version, Map.of(), receiptRevocations);
     }
     int start = builders.firstKey();
     if (start != 0 && start != 1) {
@@ -323,7 +355,62 @@ public final class TrustedReviewerKeys {
         throw AppCatalogSidecars.invalidEntry(DUPLICATE_KEY_ID_MESSAGE_PREFIX + key.keyId());
       }
     }
-    return new TrustedReviewerKeys(version, byId);
+    return new TrustedReviewerKeys(version, byId, receiptRevocations);
+  }
+
+  private static List<AppReviewReceiptRevocation> readReceiptRevocations(
+      Map<String, String> properties) {
+    String rawIds = properties.remove(REVIEW_REVOCATIONS_PROPERTY);
+    if (rawIds == null || rawIds.isBlank()) {
+      return List.of();
+    }
+    List<String> ids = parseReceiptRevocationIds(rawIds);
+    List<AppReviewReceiptRevocation> revocations = new ArrayList<>(ids.size());
+    Map<String, AppReviewReceiptRevocation> byFingerprint = new LinkedHashMap<>();
+    for (String id : ids) {
+      String prefix = "review.revocation." + id + ".";
+      AppReviewReceiptRevocation revocation =
+          new AppReviewReceiptRevocation(
+              id,
+              removeRequired(properties, prefix + "receiptFingerprintSha256"),
+              removeRequired(properties, prefix + "appId"),
+              removeRequired(properties, prefix + "appVersion"),
+              removeRequired(properties, prefix + "bundleSha256"),
+              removeRequired(properties, prefix + "reviewerKeyId"),
+              parseOptionalInstant(
+                  removeRequired(properties, prefix + "revokedAt"), prefix + "revokedAt"),
+              removeRequired(properties, prefix + "reason"));
+      AppReviewReceiptRevocation previous =
+          byFingerprint.putIfAbsent(revocation.receiptFingerprintSha256(), revocation);
+      if (previous != null) {
+        throw AppCatalogSidecars.invalidEntry(
+            "duplicate review receipt revocation fingerprint: "
+                + revocation.receiptFingerprintSha256());
+      }
+      revocations.add(revocation);
+    }
+    return List.copyOf(revocations);
+  }
+
+  private static List<String> parseReceiptRevocationIds(String rawIds) {
+    List<String> ids = new ArrayList<>();
+    java.util.LinkedHashSet<String> unique = new java.util.LinkedHashSet<>();
+    for (String token : rawIds.split(",", -1)) {
+      String id = AppCatalogSecurityAdvisory.normalizeId(token.trim(), REVIEW_REVOCATIONS_PROPERTY);
+      if (!unique.add(id)) {
+        throw AppCatalogSidecars.invalidEntry("duplicate review revocation id: " + id);
+      }
+      ids.add(id);
+    }
+    return List.copyOf(ids);
+  }
+
+  private static String removeRequired(Map<String, String> properties, String key) {
+    String value = properties.remove(key);
+    if (value == null) {
+      throw AppCatalogSidecars.invalidEntry("missing " + key);
+    }
+    return value;
   }
 
   private static TrustedReviewerKey buildKey(

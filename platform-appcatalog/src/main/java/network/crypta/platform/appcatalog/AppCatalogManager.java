@@ -341,6 +341,56 @@ public final class AppCatalogManager {
   }
 
   /**
+   * Computes the signed catalog security decision for one catalog app entry.
+   *
+   * <p>The catalog is verified before the decision is derived. The returned value is path-free and
+   * suitable for API, Web Shell, CLI, and release-certification summaries.
+   *
+   * @param catalogId catalog id to read
+   * @param appId app id to evaluate
+   * @return redacted security decision for the catalog entry
+   * @throws IOException if catalog state cannot be read
+   */
+  public synchronized AppCatalogSecurityDecision securityDecision(String catalogId, String appId)
+      throws IOException {
+    AppCatalog catalog = readVerifiedCatalog(catalogId);
+    AppCatalogEntry entry =
+        catalog
+            .entry(appId)
+            .orElseThrow(
+                () ->
+                    new AppCatalogException(
+                        AppCatalogSidecars.APP_NOT_FOUND, "Catalog app not found."));
+    return catalog.securityPolicy().decisionFor(entry);
+  }
+
+  /**
+   * Computes the strongest security decision for an installed app version across configured
+   * catalogs.
+   *
+   * <p>Each catalog is verified before its exact-version denylist is considered. The method returns
+   * an OK decision when no configured verified catalog denies or warns about the installed version.
+   *
+   * @param appId installed app id
+   * @param version installed app version
+   * @return strongest redacted security decision across configured catalogs
+   * @throws IOException if catalog state cannot be listed or verified
+   */
+  public synchronized AppCatalogSecurityDecision installedSecurityDecision(
+      String appId, String version) throws IOException {
+    String normalizedAppId = AppCatalogEntry.normalizeAppId(appId);
+    TrustedAppKeys trustedKeys = trustedKeyProvider.trustedKeys();
+    List<AppCatalogSecurityDecision> decisions =
+        sourceStore.list().stream()
+            .map(stored -> verifyStoredCatalog(stored, trustedKeys))
+            .map(
+                catalog ->
+                    catalog.securityPolicy().decisionForInstalledVersion(normalizedAppId, version))
+            .toList();
+    return AppCatalogSecurityDecision.combine(decisions);
+  }
+
+  /**
    * Downloads, extracts, and verifies one app bundle from a catalog.
    *
    * <p>The returned plan is the only output of the catalog install/update preparation path. The

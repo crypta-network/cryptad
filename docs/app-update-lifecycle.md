@@ -15,6 +15,7 @@ The v1 policy is:
 | Detect | Catalog detail and listing responses compare the installed app version with the verified catalog entry. | `app-update.lifecycle` |
 | Schedule | The background scheduler refreshes configured signed catalogs and checks installed apps. It delegates app checks to the same lifecycle service used by manual requests. | `app-update.scheduler` |
 | Review | Web Shell and API callers can review signed catalog metadata, compatibility hints, publisher-advisory review notes, trusted review receipt decisions, changelog text, and permission deltas before acting. | `app-update.lifecycle` |
+| Security policy | Catalog-level security decisions can inform, warn, block install, block update, or denylist an exact app version before any install/update mutation. | `app-update.security-denylist-gates` |
 | Stage | Local and catalog-backed updates prepare a copied, verified staged bundle before AppHost mutates the installed bundle. | `app-update.lifecycle` |
 | App-data migration | A candidate that changes durable app-data schema must declare a signed migration contract, pass dry-run before bundle replacement, and create an internal app-data snapshot before apply. | `app-update.data-migration-contract` |
 | Apply | Applying an update is manual by default. The target app must be stopped unless an explicit restart request allows stop/start choreography. | `app-update.lifecycle` |
@@ -62,6 +63,34 @@ When channel policy excludes an otherwise newer candidate, the update summary ke
 visible with `channelPolicyAllowed=false`, `policyBlockReason=channel_policy_blocked`, and
 `autoStageAllowed=false`. Update history records the same stable reason without exposing catalog
 scratch paths, staged bundle paths, private insert URIs, tokens, or raw app data.
+
+## Security advisory gates
+
+Catalog v4 security policy adds a separate `securityDecision` summary to catalog apps, install and
+update checks, app-update candidates, staged update summaries, and operator dashboard cards. The
+decision is redacted and path-free. It includes status, action, severity, advisory IDs,
+acknowledgement requirements, block flags, replacement guidance, and safe uninstall guidance.
+
+Security actions are enforced independently from review, migration, channel, dependency,
+compatibility, signed catalog, digest, and signed bundle gates:
+
+- `inform` is display-only.
+- `warn` requires `securityAcknowledged=true` for manual install/update/stage and blocks unattended
+  automation.
+- `block_install` blocks install and cannot be overridden.
+- `block_update` blocks update, stage, apply, and policy apply and cannot be overridden.
+- `denylist` blocks install, update, stage, apply, and policy apply and cannot be overridden.
+
+`securityAcknowledged=true` is independent from `reviewAcknowledged=true` and
+`migrationAcknowledged=true`. It can acknowledge only warning-level security advisories. Staged
+updates are revalidated against the current catalog security policy before apply, so a newly
+denylisted staged candidate is closed and rejected with a stable security error.
+
+If an installed version matches a denylist entry in a trusted configured catalog, update summaries
+expose `installedSecurityDecision` even when no replacement is available. Web Shell displays safe
+uninstall guidance and export-before-delete guidance, but Cryptad does not automatically uninstall
+the app and does not silently migrate to a replacement. See
+[ecosystem-security-advisories.md](ecosystem-security-advisories.md).
 
 ## App-data migration contract
 

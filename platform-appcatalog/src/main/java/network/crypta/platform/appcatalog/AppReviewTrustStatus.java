@@ -70,6 +70,14 @@ public enum AppReviewTrustStatus {
   REVOKED_REVIEWER("revoked_reviewer"),
 
   /**
+   * The exact review receipt fingerprint is revoked by local governance.
+   *
+   * <p>Receipt revocation is narrower than reviewer-key revocation. It fails closed for one
+   * fingerprint even when the reviewer key remains otherwise trusted.
+   */
+  REVOKED_RECEIPT("revoked_receipt"),
+
+  /**
    * The receipt was produced before the reviewer key's configured validity window.
    *
    * <p>The review timestamp, not the local wall clock, is used for this lifecycle decision.

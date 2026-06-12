@@ -85,6 +85,7 @@ public final class OperatorBetaDashboardService {
   private static final String RETAINED_OR_PENDING_RENDER_COUNT_FIELD =
       "retainedOrPendingRenderCount";
   private static final String REVIEW_TRUST_FIELD = "reviewTrust";
+  private static final String SECURITY_DECISION_FIELD = "securityDecision";
   private static final String RUNNING_FIELD = "running";
   private static final String SANDBOX_FIELD = "sandbox";
   private static final String SECTION_COUNT_FIELD = "sectionCount";
@@ -383,6 +384,11 @@ public final class OperatorBetaDashboardService {
     }
     if (isUpdateBlocked(update)) {
       warnings.add("app_update_blocked");
+    }
+    if (isSecurityUpdateBlocked(update)) {
+      warnings.add("app_update_security_blocked");
+    } else if (isSecurityAcknowledgementRequired(update)) {
+      warnings.add("app_update_security_advisory");
     }
     if (isUnavailable(update) && appId != null) {
       dashboardWarnings.add("App " + appId + " update state is unavailable.");
@@ -825,7 +831,8 @@ public final class OperatorBetaDashboardService {
             APPS_ROUTE_PREFIX + encodedAppId + "/updates/apply",
             updateRoutesAvailable
                 && !running
-                && booleanValue(mapValue(update.get(STAGED_FIELD)).get(AVAILABLE_FIELD))));
+                && booleanValue(mapValue(update.get(STAGED_FIELD)).get(AVAILABLE_FIELD))
+                && !stagedSecurityBlocksUpdate(update)));
     actions.add(
         action(
             "rollback-app",
@@ -937,10 +944,30 @@ public final class OperatorBetaDashboardService {
     return mapValue(mapValue(update.get(CANDIDATE_FIELD)).get(REVIEW_TRUST_FIELD));
   }
 
+  private static Map<String, Object> updateSecurityDecision(Map<String, Object> update) {
+    Map<String, Object> stagedSecurity =
+        mapValue(mapValue(update.get(STAGED_FIELD)).get(SECURITY_DECISION_FIELD));
+    if (!stagedSecurity.isEmpty()) {
+      return stagedSecurity;
+    }
+    return mapValue(mapValue(update.get(CANDIDATE_FIELD)).get(SECURITY_DECISION_FIELD));
+  }
+
   private static boolean isUpdateBlocked(Map<String, Object> update) {
     Map<String, Object> reviewTrust = updateReviewTrust(update);
     return booleanValue(reviewTrust.get("blocksUpdate"))
         || booleanValue(reviewTrust.get("blocksPolicyApply"));
+  }
+
+  private static boolean isSecurityUpdateBlocked(Map<String, Object> update) {
+    Map<String, Object> securityDecision = updateSecurityDecision(update);
+    return booleanValue(securityDecision.get("blocksUpdate"));
+  }
+
+  private static boolean isSecurityAcknowledgementRequired(Map<String, Object> update) {
+    Map<String, Object> securityDecision = updateSecurityDecision(update);
+    return booleanValue(securityDecision.get("requiresAcknowledgement"))
+        || booleanValue(securityDecision.get("blocksAutomaticApply"));
   }
 
   private static boolean isUnavailable(Map<String, Object> section) {
@@ -956,9 +983,18 @@ public final class OperatorBetaDashboardService {
   private static boolean stageUpdateActionAvailable(Map<String, Object> update) {
     Map<String, Object> candidate = mapValue(update.get(CANDIDATE_FIELD));
     Map<String, Object> reviewTrust = mapValue(candidate.get(REVIEW_TRUST_FIELD));
+    Map<String, Object> securityDecision = mapValue(candidate.get(SECURITY_DECISION_FIELD));
     return hasAvailableUpdateCandidate(update)
         && !booleanValue(reviewTrust.get("blocksUpdate"))
-        && !booleanValue(reviewTrust.get("requiresAcknowledgement"));
+        && !booleanValue(reviewTrust.get("requiresAcknowledgement"))
+        && !booleanValue(securityDecision.get("blocksUpdate"))
+        && !booleanValue(securityDecision.get("requiresAcknowledgement"));
+  }
+
+  private static boolean stagedSecurityBlocksUpdate(Map<String, Object> update) {
+    Map<String, Object> stagedSecurity =
+        mapValue(mapValue(update.get(STAGED_FIELD)).get(SECURITY_DECISION_FIELD));
+    return booleanValue(stagedSecurity.get("blocksUpdate"));
   }
 
   private static Map<String, Object> legacySurfaceSummary(Map<String, Object> surface) {

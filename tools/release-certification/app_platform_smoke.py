@@ -47,7 +47,7 @@ APP_IDS = (
     "feed-reader",
     "trust-graph",
 )
-CURRENT_PLATFORM_API_CONTRACT_VERSION = 16
+CURRENT_PLATFORM_API_CONTRACT_VERSION = 17
 LEGACY_REMOVAL_WAVE_ONE_IDS = (
     "queue-downloads",
     "queue-uploads",
@@ -155,6 +155,8 @@ SENSITIVE_KEY_PATTERN = (
     r"raw[-_ ]?trust[-_ ]?statement[-_ ]?bod(?:y|ies)|trust[-_ ]?statement[-_ ]?bod(?:y|ies)"
     r"|raw[-_ ]?message[-_ ]?bod(?:y|ies)|message[-_ ]?bod(?:y|ies)"
     r"|raw[-_ ]?fetched[-_ ]?bod(?:y|ies)|fetched[-_ ]?bod(?:y|ies)"
+    r"|raw[-_ ]?public[-_ ]?key[-_ ]?byt(?:e|es)|public[-_ ]?key[-_ ]?byt(?:e|es)"
+    r"|raw[-_ ]?review[-_ ]?receipt|review[-_ ]?receipt[-_ ]?content|raw[-_ ]?receipt"
     r"|raw[-_ ]?signature[-_ ]?valu(?:e|es)|signature[-_ ]?valu(?:e|es)"
     r"|app[-_ ]?data[-_ ]?backup|backup[-_ ]?payload|payloadBase64|"
     r"raw[-_ ]?app[-_ ]?data[-_ ]?valu(?:e|es)|record[-_ ]?valu(?:e|es)"
@@ -176,6 +178,8 @@ SENSITIVE_TEXT_LABEL_RE = re.compile(
     r"trust[-_ ]+statement[-_ ]+bod(?:y|ies)|"
     r"raw[-_ ]+message[-_ ]+bod(?:y|ies)|message[-_ ]+bod(?:y|ies)|"
     r"raw[-_ ]+fetched[-_ ]+bod(?:y|ies)|fetched[-_ ]+bod(?:y|ies)|"
+    r"raw[-_ ]+public[-_ ]+key[-_ ]+byt(?:e|es)|public[-_ ]+key[-_ ]+byt(?:e|es)|"
+    r"raw[-_ ]+review[-_ ]+receipt|review[-_ ]+receipt[-_ ]+content|raw[-_ ]+receipt|"
     r"raw[-_ ]+trust[-_ ]+signature|trust[-_ ]+signature|"
     r"raw[-_ ]+signature[-_ ]+valu(?:e|es)|signature[-_ ]+valu(?:e|es)"
     r")\s*:\s*)"
@@ -207,6 +211,15 @@ PUBLIC_BETA_SECURITY_EVIDENCE_IDS = (
     "public-beta-security.sandbox-host-checks",
     "public-beta-security.audit-redaction-fuzz",
     "public-beta-security.transparency-log-privacy",
+)
+ECOSYSTEM_SECURITY_EVIDENCE_IDS = (
+    "catalog.security-advisories",
+    "catalog.version-denylist",
+    "app-review.receipt-revocation",
+    "app-review.reviewer-key-compromise-flow",
+    "app-update.security-denylist-gates",
+    "web-shell.security-advisory-trust-warnings",
+    "ecosystem-security.advisory-revocation-redaction",
 )
 PUBLIC_BETA_SECURITY_SENSITIVE_FIXTURES = (
     "CRYPTAD_APP_TOKEN=0123456789abcdef0123456789abcdef",
@@ -651,6 +664,11 @@ def should_redact_key_name(key_hint: str, value: Any | None = None) -> bool:
         "seed",
         "browsersessiontoken",
         "xcryptaappsession",
+        "rawpublickeybytes",
+        "publickeybytes",
+        "rawreviewreceipt",
+        "reviewreceiptcontent",
+        "rawreceipt",
     }:
         return True
     if "signature" in normalized and any(
@@ -1984,7 +2002,7 @@ def collect_app_services_evidence(settings: Settings) -> list[EvidenceItem]:
 
     registry_checks = {
         "contractV12AndCapabilitiesPresent": (
-            "CURRENT_CONTRACT_VERSION = 16" in contract_text
+            "CURRENT_CONTRACT_VERSION = 17" in contract_text
             and "APP_SERVICES_CONTRACT_VERSION = 12" in contract_text
             and "APP_SERVICE_DEPENDENCY_BUNDLES_CONTRACT_VERSION = 16" in contract_text
             and "APP_SERVICES_READ" in capabilities_text
@@ -4589,7 +4607,7 @@ def collect_content_subscription_evidence(settings: Settings) -> EvidenceItem:
             or "CURRENT_CONTRACT_VERSION = 13" in contract_text
             or "CURRENT_CONTRACT_VERSION = 14" in contract_text
             or "CURRENT_CONTRACT_VERSION = 15" in contract_text
-            or "CURRENT_CONTRACT_VERSION = 16" in contract_text
+            or "CURRENT_CONTRACT_VERSION = 17" in contract_text
         ),
         "capabilityDescriptorPresent": (
             "CONTENT_SUBSCRIBE" in contract_text
@@ -4953,7 +4971,7 @@ def collect_app_data_store_evidence(settings: Settings) -> EvidenceItem:
                 or "CURRENT_CONTRACT_VERSION = 13" in text["contract"]
                 or "CURRENT_CONTRACT_VERSION = 14" in text["contract"]
                 or "CURRENT_CONTRACT_VERSION = 15" in text["contract"]
-                or "CURRENT_CONTRACT_VERSION = 16" in text["contract"]
+                or "CURRENT_CONTRACT_VERSION = 17" in text["contract"]
             )
             and "APP_DATA_STORE_CONTRACT_VERSION = 9" in text["contract"]
             and "app.data.read" in text["capabilities"]
@@ -6608,7 +6626,7 @@ def collect_trust_graph_rc_scope_and_safety_evidence(settings: Settings) -> Evid
     docs_lower = normalized_source_text(docs_text)
     checks = {
         "contractV15AndRoutesPresent": (
-            "CURRENT_CONTRACT_VERSION = 16" in contract_text
+            "CURRENT_CONTRACT_VERSION = 17" in contract_text
             and "TRUST_GRAPH_RC_SCOPE_CONTRACT_VERSION = 15" in contract_text
             and "/trust-graph/statements/{fingerprint}" in contract_text
             and "/trust-graph/statements/{fingerprint}/deprecate" in contract_text
@@ -6948,7 +6966,7 @@ def collect_trust_graph_exchange_evidence(settings: Settings) -> EvidenceItem:
     route_source_text = router_text + "\n" + route_text
     checks = {
         "contractVersionV10": (
-            "CURRENT_CONTRACT_VERSION = 16" in contract_text
+            "CURRENT_CONTRACT_VERSION = 17" in contract_text
             and "TRUST_GRAPH_EXCHANGE_CONTRACT_VERSION = 10" in contract_text
         ),
         "contractDescriptorsPresent": (
@@ -7296,7 +7314,7 @@ def collect_social_message_signing_evidence(settings: Settings) -> EvidenceItem:
     )
     checks = {
         "routeInContract": "/app-vault/identities/{identityId}/social-message" in contract_text,
-        "contractVersionV11": "CURRENT_CONTRACT_VERSION = 16" in contract_text
+        "contractVersionV11": "CURRENT_CONTRACT_VERSION = 17" in contract_text
         and "SOCIAL_MESSAGE_CONTRACT_VERSION = 11" in contract_text,
         "capabilitiesInContract": all(
             fragment in contract_text
@@ -10104,6 +10122,424 @@ def collect_public_beta_security_evidence(settings: Settings) -> list[EvidenceIt
     ]
 
 
+def ecosystem_security_item(
+    settings: Settings,
+    evidence_id: str,
+    pass_summary: str,
+    checks: dict[str, bool],
+    details: dict[str, Any],
+) -> EvidenceItem:
+    errors = [key for key, passed in checks.items() if not passed]
+    if errors:
+        return EvidenceItem(
+            evidence_id,
+            root_consequence(settings, "fail"),
+            True,
+            f"{evidence_id} evidence is incomplete.",
+            summary_source(settings),
+            {"errors": errors, **details},
+        )
+    return EvidenceItem(evidence_id, "pass", True, pass_summary, summary_source(settings), details)
+
+
+def ecosystem_security_redaction_checks(settings: Settings) -> dict[str, Any]:
+    raw = {
+        "advisoryId": "CRYPTA-2026-0001",
+        "appId": "social-inbox",
+        "version": "0.1.0",
+        "receiptFingerprintSha256": "a" * 64,
+        "reviewerKeyId": "crypta-first-party-review-2026q2",
+        "rawSignatureValue": "MEUCIQD-secret-signature",
+        "rawPublicKeyBytes": "public-key-der-secret",
+        "rawReviewReceipt": "review.receipt.signature.value.base64=MEUCIQD",
+        "reviewReceiptContent": "raw receipt content",
+        "privateInsertUri": "USK@PRIVATE-INSERT-URI",
+        "catalogScratchPath": "/home/alice/.crypta/catalog-scratch/current",
+        "stagedBundlePath": "/home/alice/.crypta/apps/social-inbox/staged/bundle.zip",
+        "rawRequestBody": "{\"token\":\"secret\"}",
+        "rawFetchedBody": "<script>alert(1)</script>",
+        "appDataBackupPayload": "base64-private-backup",
+    }
+    redacted = sanitize_value(raw, settings.workspace_root, "ecosystemSecurity")
+    encoded = json.dumps(redacted, sort_keys=True)
+    leaks = [
+        value
+        for value in (
+            "MEUCIQD-secret-signature",
+            "public-key-der-secret",
+            "review.receipt.signature.value.base64",
+            "raw receipt content",
+            "PRIVATE-INSERT-URI",
+            "/home/alice/.crypta",
+            "bundle.zip",
+            "secret",
+            "<script>alert(1)</script>",
+            "base64-private-backup",
+        )
+        if value in encoded
+    ]
+    return {
+        "redacted": redacted,
+        "encoded": encoded,
+        "leaks": leaks,
+        "publicMetadataRetained": all(
+            value in encoded
+            for value in (
+                "CRYPTA-2026-0001",
+                "social-inbox",
+                "0.1.0",
+                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "crypta-first-party-review-2026q2",
+            )
+        ),
+    }
+
+
+def collect_ecosystem_security_advisory_revocation_evidence(
+    settings: Settings,
+) -> list[EvidenceItem]:
+    workspace = settings.workspace_root
+    appcatalog_dir = workspace / "platform-appcatalog/src/main/java/network/crypta/platform/appcatalog"
+    appcatalog_tests = workspace / "platform-appcatalog/src/test/java/network/crypta/platform/appcatalog"
+    api_catalogs = (
+        workspace
+        / "platform-api/src/main/java/network/crypta/platform/api/appcatalogs/AppCatalogsApiHandler.java"
+    )
+    api_updates = (
+        workspace
+        / "platform-api/src/main/java/network/crypta/platform/api/appupdates/AppUpdateService.java"
+    )
+    api_update_candidate = (
+        workspace
+        / "platform-api/src/main/java/network/crypta/platform/api/appupdates/AppUpdateCandidate.java"
+    )
+    api_update_handler = (
+        workspace
+        / "platform-api/src/main/java/network/crypta/platform/api/appupdates/AppUpdatesApiHandler.java"
+    )
+    api_update_tests = (
+        workspace / "platform-api/src/test/java/network/crypta/platform/api/appupdates/AppUpdateServiceTest.java"
+    )
+    api_catalog_tests = (
+        workspace
+        / "platform-api/src/test/java/network/crypta/platform/api/appcatalogs/AppCatalogsApiHandlerTest.java"
+    )
+    devtools = workspace / "platform-devtools/src/main/java/network/crypta/platform/devtools/CryptaAppCli.java"
+    shell = workspace / "platform-web-shell/src/main/resources/network/crypta/platform/webshell/static/web-shell.js"
+    shell_tests = workspace / "platform-web-shell/src/test/java/network/crypta/platform/webshell/WebShellResourcesTest.java"
+    docs = "\n".join(
+        read_source(workspace / path)
+        for path in (
+            "docs/ecosystem-security-advisories.md",
+            "docs/app-catalogs.md",
+            "docs/production-first-party-catalog-channels.md",
+            "docs/app-review-governance.md",
+            "docs/app-update-lifecycle.md",
+            "docs/SECURITY.md",
+            "docs/release-certification.md",
+            "tools/release-certification/README.md",
+        )
+    )
+    docs_lower = docs.lower()
+    catalog_text = read_source(appcatalog_dir / "AppCatalog.java")
+    parser_text = read_source(appcatalog_dir / "AppCatalogParser.java")
+    writer_text = read_source(appcatalog_dir / "AppCatalogWriter.java")
+    policy_text = read_source(appcatalog_dir / "AppCatalogSecurityPolicy.java")
+    decision_text = read_source(appcatalog_dir / "AppCatalogSecurityDecision.java")
+    advisory_text = read_source(appcatalog_dir / "AppCatalogSecurityAdvisoryRecord.java")
+    denylist_text = read_source(appcatalog_dir / "AppCatalogVersionDenylistEntry.java")
+    receipt_text = read_source(appcatalog_dir / "AppReviewReceipt.java")
+    keys_text = read_source(appcatalog_dir / "TrustedReviewerKeys.java")
+    verifier_text = read_source(appcatalog_dir / "AppReviewReceiptVerifier.java")
+    status_text = read_source(appcatalog_dir / "AppReviewTrustStatus.java")
+    review_policy_text = read_source(appcatalog_dir / "AppReviewPolicy.java")
+    registry_summary_text = read_source(appcatalog_dir / "TrustedReviewerRegistrySummary.java")
+    review_tests = read_source(appcatalog_tests / "AppReviewReceiptTest.java")
+    catalog_tests_text = "\n".join(
+        read_source(path) for path in sorted(appcatalog_tests.glob("*.java"))
+    )
+    catalog_api_text = read_source(api_catalogs)
+    update_text = read_source(api_updates)
+    candidate_text = read_source(api_update_candidate)
+    update_handler_text = read_source(api_update_handler)
+    update_tests = read_source(api_update_tests)
+    catalog_api_tests_text = read_source(api_catalog_tests)
+    devtools_text = read_source(devtools)
+    shell_text = read_source(shell)
+    shell_test_text = read_source(shell_tests)
+    redaction_checks = ecosystem_security_redaction_checks(settings)
+    common_sources = {
+        "catalog": display_path(appcatalog_dir, workspace),
+        "catalogTests": display_path(appcatalog_tests, workspace),
+        "catalogApi": display_path(api_catalogs, workspace),
+        "updateService": display_path(api_updates, workspace),
+        "webShell": display_path(shell, workspace),
+        "docs": "docs/ecosystem-security-advisories.md",
+    }
+    return [
+        ecosystem_security_item(
+            settings,
+            "catalog.security-advisories",
+            "Catalog v4 security advisory records passed deterministic evidence checks.",
+            {
+                "schemaVersionFour": "VERSION_SECURITY_POLICY = 4" in catalog_text,
+                "catalogLevelRecords": (
+                    "record AppCatalogSecurityAdvisoryRecord" in advisory_text
+                    and "AppCatalogSecuritySeverity" in advisory_text
+                    and "AppCatalogSecurityStatus" in advisory_text
+                    and "AppCatalogSecurityAction" in advisory_text
+                ),
+                "parserAcceptsV4Fields": (
+                    "catalog.securityAdvisories" in parser_text
+                    and "catalog.securityAdvisory." in parser_text
+                    and "parseCatalogSecurityPolicy" in parser_text
+                ),
+                "olderVersionsFailClosed": (
+                    "version < AppCatalog.VERSION_SECURITY_POLICY" in parser_text
+                    and "version < VERSION_SECURITY_POLICY" in catalog_text
+                ),
+                "boundedStrictValidation": (
+                    "duplicate catalog security advisory id" in policy_text
+                    and "safeUninstallGuidance" in advisory_text
+                    and "single-line" in advisory_text.lower()
+                    and "Instant.parse" in parser_text
+                ),
+                "writerDeterministic": (
+                    "appendSecurityPolicy" in writer_text
+                    and "catalog.securityAdvisories" in writer_text
+                    and "catalog.securityAdvisory." in writer_text
+                ),
+                "testsCoverStrictSchema": all(
+                    marker in catalog_tests_text
+                    for marker in (
+                        "parse_whenCatalogHasSecurityPolicy_expectDecisionDenylisted",
+                        "parse_whenVersionThreeCatalogDeclaresSecurityPolicy_expectInvalidCatalogEntry",
+                        "parse_whenSecurityPolicyHasDuplicateAdvisoryId_expectInvalidCatalogEntry",
+                        "serialize_whenCatalogHasSecurityPolicy_expectVersionFourDeterministicOutput",
+                    )
+                ),
+            },
+            {"sources": common_sources},
+        ),
+        ecosystem_security_item(
+            settings,
+            "catalog.version-denylist",
+            "Exact app-version denylist records passed deterministic evidence checks.",
+            {
+                "denylistModel": (
+                    "record AppCatalogVersionDenylistEntry" in denylist_text
+                    and "matches(String candidateAppId, String candidateVersion)" in denylist_text
+                ),
+                "denylistParserWriter": (
+                    "catalog.securityDenylist" in parser_text
+                    and "catalog.securityDenylist" in writer_text
+                    and "denylist entry references unknown advisory" in policy_text
+                ),
+                "denylistDecision": (
+                    "decisionForInstalledVersion" in policy_text
+                    and "AppCatalogSecurityDecisionStatus.DENYLISTED" in policy_text
+                    and "DENYLIST" in policy_text
+                ),
+                "redactedDecisionShape": all(
+                    marker in decision_text
+                    for marker in (
+                        "blocksInstall",
+                        "blocksUpdate",
+                        "blocksAutomaticApply",
+                        "safeUninstallGuidance",
+                        "replacementAppId",
+                    )
+                ),
+                "installedVersionVisibility": (
+                    "installedSecurityDecision" in catalog_api_text
+                    and "installedSecurityDecision" in update_text
+                    and "installedSecurityDecisionForCatalogApp" in shell_text
+                ),
+                "testsCoverUnknownAdvisory": (
+                    "parse_whenSecurityPolicyDenylistReferencesUnknownAdvisory_expectInvalidCatalogEntry"
+                    in catalog_tests_text
+                ),
+            },
+            {"sources": common_sources},
+        ),
+        ecosystem_security_item(
+            settings,
+            "app-review.receipt-revocation",
+            "Review receipt revocation evidence passed deterministic source checks.",
+            {
+                "stableFingerprint": (
+                    "fingerprintSha256()" in receipt_text
+                    and "payloadSha256()" in receipt_text
+                    and "canonicalPayloadBytes" in receipt_text
+                ),
+                "registryV3Revocations": (
+                    "version >= 3 ? readReceiptRevocations(properties) : List.of()" in keys_text
+                    and "review.revocations" in keys_text
+                    and "receiptFingerprintSha256" in keys_text
+                ),
+                "verifierFailsClosed": (
+                    "AppReviewTrustStatus.REVOKED_RECEIPT" in verifier_text
+                    and "findReceiptRevocation(receipt)" in verifier_text
+                    and "false" in verifier_text
+                ),
+                "trustStatusAndPolicy": (
+                    'REVOKED_RECEIPT("revoked_receipt")' in status_text
+                    and "REVOKED_RECEIPT" in review_policy_text
+                ),
+                "redactedSummaryCount": "receiptRevocationCount" in registry_summary_text,
+                "testsCoverRevocation": all(
+                    marker in review_tests
+                    for marker in (
+                        "fingerprintSha256_whenReceiptRoundTrips_expectStableFingerprint",
+                        "evaluate_whenReceiptFingerprintIsRevoked_expectRevokedReceiptNotTrusted",
+                        "trustedReviewerKeysLoad_whenV3ReceiptRevocationConfigured_expectParsesRevocation",
+                        "trustedReviewerKeysLoad_whenV2RegistryContainsReceiptRevocation_expectInvalidCatalogEntry",
+                    )
+                ),
+            },
+            {"sources": common_sources},
+        ),
+        ecosystem_security_item(
+            settings,
+            "app-review.reviewer-key-compromise-flow",
+            "Reviewer-key compromise flow evidence passed deterministic source checks.",
+            {
+                "revokedReviewerStatus": (
+                    "REVOKED_REVIEWER" in verifier_text and "REVOKED_REVIEWER" in review_policy_text
+                ),
+                "lifecycleMetadata": (
+                    "revoked.at" in keys_text
+                    and "revocation.reason" in keys_text
+                    and "revocation metadata requires status=revoked" in read_source(
+                        appcatalog_dir / "TrustedReviewerKeyLifecycle.java"
+                    )
+                ),
+                "governanceUiWarns": (
+                    "Review governance" in shell_text
+                    and "revoked" in shell_text.lower()
+                    and "reviewerKeyStatus" in shell_text
+                ),
+                "cliInspectCounts": (
+                    "Receipt revocations:" in devtools_text
+                    and "receiptRevocations=" in devtools_text
+                    and "review fingerprint" in devtools_text.lower()
+                ),
+                "docsCompromiseProcess": (
+                    "compromise" in docs_lower
+                    and "status=revoked" in docs
+                    and "revoked_reviewer" in docs
+                ),
+            },
+            {"sources": common_sources | {"devtools": display_path(devtools, workspace)}},
+        ),
+        ecosystem_security_item(
+            settings,
+            "app-update.security-denylist-gates",
+            "Install, update, stage, apply, and automatic-policy security gates passed.",
+            {
+                "catalogInstallUpdateGates": (
+                    "PARAM_SECURITY_ACKNOWLEDGED" in catalog_api_text
+                    and "ERROR_APP_SECURITY_DENYLISTED" in catalog_api_text
+                    and "requireSecurityGate" in catalog_api_text
+                    and "securityAcknowledgementStillApplies" in catalog_api_text
+                ),
+                "updateCandidateCarriesDecision": (
+                    '"securityDecision"' in candidate_text
+                    and "blocksAutomaticApply" in candidate_text
+                    and "eligibleForAutomaticApply" in candidate_text
+                ),
+                "stageAndApplyRevalidation": (
+                    "PARAM_SECURITY_ACKNOWLEDGED" in update_handler_text
+                    and "requireCurrentStagedSecurityDecision" in update_text
+                    and "targetSecurityDecision(staged.candidate().catalogId(), staged.plan().entry())"
+                    in update_text
+                    and "targetSecurityDecision(plan.catalogId(), entry).toJsonValue()"
+                    in update_text
+                    and "AppCatalogSecurityDecision.combine" in update_text
+                    and "installedSecurityDecision(entry.appId(), entry.version())" in update_text
+                    and "requireSecurityGate(" in update_text
+                    and "ERROR_APP_SECURITY_DENYLISTED" in update_text
+                ),
+                "automationSkip": (
+                    "securityGateRequiresOperator" in update_text
+                    and "automaticSecurityGateFailureCode" in update_text
+                    and "security_denylist_blocked" in update_text
+                ),
+                "ackDoesNotBypassBlock": (
+                    "stage_whenSecurityDecisionIsDenylisted_expectStableSecurityError" in update_tests
+                    and "install_whenCatalogSecurityDecisionIsDenylisted_expectStableSecurityError"
+                    in catalog_api_tests_text
+                ),
+                "warningRequiresAck": (
+                    "stage_whenSecurityWarningIsNotAcknowledged_expectStableSecurityAckError"
+                    in update_tests
+                    and "install_whenCatalogSecurityDecisionWarnsWithoutAcknowledgement_expectSecurityAckError"
+                    in catalog_api_tests_text
+                ),
+            },
+            {"sources": common_sources | {"candidate": display_path(api_update_candidate, workspace)}},
+        ),
+        ecosystem_security_item(
+            settings,
+            "web-shell.security-advisory-trust-warnings",
+            "Web Shell security advisory and trust-warning evidence passed.",
+            {
+                "catalogWarningUi": (
+                    "securityDecisionNoticeNode" in shell_text
+                    and "catalogSecurityDetailsNode" in shell_text
+                    and "Safe uninstall guidance" in shell_text
+                ),
+                "denylistedActionsHidden": (
+                    "securityDecisionActionReason" in shell_text
+                    and "Installed version vulnerable" in shell_text
+                    and "app-card-actions" in shell_text
+                ),
+                "warningAcknowledgement": (
+                    "appendSecurityAcknowledgement" in shell_text
+                    and 'input.name = "securityAcknowledged"' in shell_text
+                    and "security-acknowledgement" in shell_text
+                ),
+                "safeDomMarkers": (
+                    "definitionList" in shell_text
+                    and "text(" in shell_text
+                    and "safeUninstallGuidance" in shell_text
+                ),
+                "testsCoverUiMarkers": (
+                    "function appendSecurityAcknowledgement(form, securityDecision, action)"
+                    in shell_test_text
+                    and "securityAcknowledged" in shell_test_text
+                ),
+            },
+            {"sources": common_sources | {"webShellTests": display_path(shell_tests, workspace)}},
+        ),
+        ecosystem_security_item(
+            settings,
+            "ecosystem-security.advisory-revocation-redaction",
+            "Ecosystem security advisory and revocation redaction evidence passed.",
+            {
+                "noForbiddenFixtureLeaks": not redaction_checks["leaks"],
+                "publicMetadataRetained": bool(redaction_checks["publicMetadataRetained"]),
+                "docsDescribeRedaction": all(
+                    fragment in docs_lower
+                    for fragment in (
+                        "raw signatures",
+                        "raw public keys",
+                        "private insert uris",
+                        "local filesystem paths",
+                    )
+                ),
+                "releaseDocsListEvidence": all(
+                    evidence_id in docs for evidence_id in ECOSYSTEM_SECURITY_EVIDENCE_IDS
+                ),
+            },
+            {
+                "redaction": {k: v for k, v in redaction_checks.items() if k != "encoded"},
+                "sources": common_sources,
+            },
+        ),
+    ]
+
+
 def collect_app_update_lifecycle_evidence(settings: Settings) -> EvidenceItem:
     source = summary_source(settings)
     apphost_source = (
@@ -11743,6 +12179,7 @@ def run(settings: Settings) -> tuple[dict[str, Any], int]:
         collect_legacy_removal_wave_four_evidence(settings),
         collect_sandbox_provider_evidence(settings),
         *collect_public_beta_security_evidence(settings),
+        *collect_ecosystem_security_advisory_revocation_evidence(settings),
         collect_app_update_lifecycle_evidence(settings),
         collect_app_update_scheduler_evidence(settings),
         collect_app_update_live_catalog_refresh_evidence(settings),
@@ -13709,6 +14146,76 @@ def make_self_test_workspace(workspace: Path) -> None:
         "final class AppReviewTransparencyLog { String latestHash; String recordCount; }\n",
         encoding="utf-8",
     )
+    (appcatalog_dir / "AppReviewReceipt.java").write_text(
+        "record AppReviewReceipt() { String fingerprintSha256() { return \"a\"; } "
+        "String payloadSha256() { return \"b\"; } "
+        "String s = \"canonicalPayloadBytes AppReviewTrustStatus.ARTIFACT_MISMATCH "
+        "AppReviewTrustStatus.APP_MISMATCH\"; }\n",
+        encoding="utf-8",
+    )
+    (appcatalog_dir / "AppReviewReceiptPayload.java").write_text(
+        "record AppReviewReceiptPayload() { byte[] canonicalPayloadBytes() { return new byte[0]; } "
+        "String s = \"binding.appId() binding.version() binding.artifactSha256() binding.artifactSizeBytes()\"; }\n",
+        encoding="utf-8",
+    )
+    (appcatalog_dir / "AppReviewReceiptIO.java").write_text(
+        "final class AppReviewReceiptIO { String s = \"parseProperties appendReceiptProperties "
+        "review.receipt.signature.value.base64\"; }\n",
+        encoding="utf-8",
+    )
+    (appcatalog_dir / "AppReviewReceiptVerifier.java").write_text(
+        "final class AppReviewReceiptVerifier { String s = \"Signature.getInstance(receipt.signature().algorithm()) "
+        "receipt.payload().canonicalPayloadBytes() receipt.mismatchStatus( binding.appId() binding.version() "
+        "binding.artifactSha256() binding.artifactSizeBytes() AppReviewTrustStatus.EXPIRED "
+        "AppReviewTrustStatus.UNKNOWN_REVIEWER AppReviewTrustStatus.REVOKED_RECEIPT "
+        "REVOKED_REVIEWER RETIRED_REVIEWER REVIEWER_NOT_YET_VALID REVIEWER_EXPIRED REVIEW_POLICY_MISMATCH "
+        "findReceiptRevocation(receipt) false\"; }\n",
+        encoding="utf-8",
+    )
+    (appcatalog_dir / "AppReviewTrustStatus.java").write_text(
+        'enum AppReviewTrustStatus { REVOKED_RECEIPT("revoked_receipt"), REVOKED_REVIEWER("revoked_reviewer"); '
+        "AppReviewTrustStatus(String value) {} }\n",
+        encoding="utf-8",
+    )
+    (appcatalog_dir / "AppReviewPolicy.java").write_text(
+        "final class AppReviewPolicy { String s = \"AppReviewPolicyMode.ADVISORY "
+        "REVOKED_RECEIPT REVOKED_REVIEWER\"; }\n",
+        encoding="utf-8",
+    )
+    (appcatalog_dir / "AppReviewPolicyMode.java").write_text(
+        "enum AppReviewPolicyMode { ADVISORY, WARN_UNTRUSTED, REQUIRE_TRUSTED_REVIEW, "
+        "REQUIRE_TRUSTED_REVIEW_FOR_APPLY_WHEN_STOPPED }\n",
+        encoding="utf-8",
+    )
+    (appcatalog_dir / "AppReviewTrustDecision.java").write_text(
+        "record AppReviewTrustDecision(boolean requiresAcknowledgement, boolean blocksInstall, "
+        "boolean blocksUpdate, boolean blocksPolicyApply) {}\n",
+        encoding="utf-8",
+    )
+    (appcatalog_dir / "TrustedReviewerKeys.java").write_text(
+        "final class TrustedReviewerKeys { String s = \"trusted.reviewers.version public.key.base64 "
+        "policy.version valid.from revoked.at duplicate trusted reviewer key id Instant.parse "
+        "version >= 3 ? readReceiptRevocations(properties) : List.of() review.revocations "
+        "receiptFingerprintSha256 review.revocation.\"; int receiptRevocations; }\n",
+        encoding="utf-8",
+    )
+    (appcatalog_dir / "TrustedReviewerRegistrySummary.java").write_text(
+        "record TrustedReviewerRegistrySummary(int receiptRevocationCount) {}\n",
+        encoding="utf-8",
+    )
+    (appcatalog_dir / "TrustedReviewerKeyStatus.java").write_text(
+        "enum TrustedReviewerKeyStatus { ACTIVE, RETIRED, REVOKED }\n",
+        encoding="utf-8",
+    )
+    (appcatalog_dir / "TrustedReviewerKeyLifecycle.java").write_text(
+        "record TrustedReviewerKeyLifecycle() { String s = \"valid.from valid.until revoked.at "
+        "revocation.reason revocation metadata requires status=revoked reviewer valid.until must be after valid.from\"; }\n",
+        encoding="utf-8",
+    )
+    (appcatalog_dir / "TrustedReviewerPolicyConstraint.java").write_text(
+        "record TrustedReviewerPolicyConstraint() {}\n",
+        encoding="utf-8",
+    )
     appcatalog_test_dir = workspace / "platform-appcatalog/src/test/java/network/crypta/platform/appcatalog"
     appcatalog_test_dir.mkdir(parents=True, exist_ok=True)
     (appcatalog_test_dir / "AppReviewReceiptTest.java").write_text(
@@ -13718,6 +14225,10 @@ def make_self_test_workspace(workspace: Path) -> None:
         "void evaluate_whenRetiredReviewerHasNoValidityEnd_expectRetiredReviewer() {} "
         "void evaluate_whenPolicyVersionDoesNotMatchReviewerConstraint_expectPolicyMismatch() {} "
         "void trustedReviewerKeysLoad_whenPolicyVersionOmitsPolicyId_expectInvalidCatalogEntry() {} "
+        "void fingerprintSha256_whenReceiptRoundTrips_expectStableFingerprint() {} "
+        "void evaluate_whenReceiptFingerprintIsRevoked_expectRevokedReceiptNotTrusted() {} "
+        "void trustedReviewerKeysLoad_whenV3ReceiptRevocationConfigured_expectParsesRevocation() {} "
+        "void trustedReviewerKeysLoad_whenV2RegistryContainsReceiptRevocation_expectInvalidCatalogEntry() {} "
         "void transparency_whenSummarized_expectNoRawPublicKeyBytesOrPaths() { String s = \"raw public key\"; } }\n",
         encoding="utf-8",
     )
@@ -13744,17 +14255,22 @@ def make_self_test_workspace(workspace: Path) -> None:
         encoding="utf-8",
     )
     (appcatalog_dir / "AppCatalog.java").write_text(
-        "final class AppCatalog { static final int VERSION_PRODUCTION_CHANNELS = 3; }\n",
+        "final class AppCatalog { static final int VERSION_PRODUCTION_CHANNELS = 3; "
+        "static final int VERSION_SECURITY_POLICY = 4; "
+        "Object securityPolicy; if (securityPolicy.hasCatalogFields() && version < VERSION_SECURITY_POLICY) throw new IllegalArgumentException(); }\n",
         encoding="utf-8",
     )
     (appcatalog_dir / "AppCatalogParser.java").write_text(
         "final class AppCatalogParser { String fields = \"VERSION_PRODUCTION_CHANNELS = 3 "
-        "maximumCryptaVersion securityAdvisory replacementAppId\"; }\n",
+        "maximumCryptaVersion securityAdvisory replacementAppId catalog.securityAdvisories "
+        "catalog.securityAdvisory. catalog.securityDenylist parseCatalogSecurityPolicy "
+        "parseSecurityPolicyIds version < AppCatalog.VERSION_SECURITY_POLICY Instant.parse\"; }\n",
         encoding="utf-8",
     )
     (appcatalog_dir / "AppCatalogWriter.java").write_text(
         "final class AppCatalogWriter { String fields = \"VERSION_PRODUCTION_CHANNELS = 3 "
-        "maximumCryptaVersion securityAdvisory replacementAppId\"; }\n",
+        "maximumCryptaVersion securityAdvisory replacementAppId appendSecurityPolicy "
+        "catalog.securityAdvisories catalog.securityAdvisory. catalog.securityDenylist\"; }\n",
         encoding="utf-8",
     )
     (appcatalog_dir / "AppCatalogEntryDescriptor.java").write_text(
@@ -13764,6 +14280,47 @@ def make_self_test_workspace(workspace: Path) -> None:
     )
     (appcatalog_dir / "AppCatalogSecurityAdvisory.java").write_text(
         "record AppCatalogSecurityAdvisory(String id, java.net.URI uri) { }\n",
+        encoding="utf-8",
+    )
+    (appcatalog_dir / "AppCatalogSecurityAdvisoryRecord.java").write_text(
+        "record AppCatalogSecurityAdvisoryRecord(AppCatalogSecuritySeverity severity, "
+        "AppCatalogSecurityStatus status, AppCatalogSecurityAction action) { "
+        "String doc = \"bounded single-line safeUninstallGuidance\"; }\n",
+        encoding="utf-8",
+    )
+    (appcatalog_dir / "AppCatalogVersionDenylistEntry.java").write_text(
+        "record AppCatalogVersionDenylistEntry(String appId, String version) { "
+        "boolean matches(String candidateAppId, String candidateVersion) { return true; } "
+        "String doc = \"bounded single-line reason safeUninstallGuidance\"; }\n",
+        encoding="utf-8",
+    )
+    (appcatalog_dir / "AppCatalogSecurityPolicy.java").write_text(
+        "final class AppCatalogSecurityPolicy { "
+        "String duplicate = \"duplicate catalog security advisory id duplicate catalog security denylist id "
+        "denylist entry references unknown advisory\"; "
+        "Object decisionForInstalledVersion(String appId, String version) { return AppCatalogSecurityDecisionStatus.DENYLISTED; } "
+        "String action = \"DENYLIST\"; }\n",
+        encoding="utf-8",
+    )
+    (appcatalog_dir / "AppCatalogSecurityDecision.java").write_text(
+        "record AppCatalogSecurityDecision(boolean blocksInstall, boolean blocksUpdate, "
+        "boolean blocksAutomaticApply, String safeUninstallGuidance, String replacementAppId) { }\n",
+        encoding="utf-8",
+    )
+    (appcatalog_dir / "AppCatalogSecurityDecisionStatus.java").write_text(
+        "enum AppCatalogSecurityDecisionStatus { OK, INFORMATIONAL, WARNING, BLOCKED, DENYLISTED }\n",
+        encoding="utf-8",
+    )
+    (appcatalog_dir / "AppCatalogSecuritySeverity.java").write_text(
+        "enum AppCatalogSecuritySeverity { NONE, LOW, MEDIUM, HIGH, CRITICAL }\n",
+        encoding="utf-8",
+    )
+    (appcatalog_dir / "AppCatalogSecurityStatus.java").write_text(
+        "enum AppCatalogSecurityStatus { ACTIVE, RESOLVED, WITHDRAWN }\n",
+        encoding="utf-8",
+    )
+    (appcatalog_dir / "AppCatalogSecurityAction.java").write_text(
+        "enum AppCatalogSecurityAction { INFORM, WARN, BLOCK_INSTALL, BLOCK_UPDATE, DENYLIST }\n",
         encoding="utf-8",
     )
     (appcatalog_dir / "AppCatalogSource.java").write_text(
@@ -13791,6 +14348,8 @@ def make_self_test_workspace(workspace: Path) -> None:
         "final class AppCatalogManager { Object downloader = new AppCatalogArtifactDownloader(contentFetchPort); "
         "String s = \"AppCatalogVerifier.verify sourceStore.write(catalog, source, fetched "
         "CATALOG_ID_MISMATCH recordRefreshFailure previous stored sidecars remain in place\"; "
+        "Object securityDecision(String catalogId, String appId) { return null; } "
+        "Object installedSecurityDecision(String appId, String version) { return null; } "
         "void verifyInstallPlan(AppCatalogInstallPlan plan) { bundleExtractor.verifyStagedBundle(plan.entry(), plan.stagedBundleDirectory(), trustedKeyProvider.trustedKeys()); } }\n",
         encoding="utf-8",
     )
@@ -13816,6 +14375,14 @@ def make_self_test_workspace(workspace: Path) -> None:
     )
     (appcatalog_tests / "AppCatalogWriterTest.java").write_text(
         "void serialize_whenVersionTwoCatalogHasProductionMetadata_expectInvalidCatalogEntry() {}\n",
+        encoding="utf-8",
+    )
+    (appcatalog_tests / "AppCatalogSecurityPolicyTest.java").write_text(
+        "void parse_whenCatalogHasSecurityPolicy_expectDecisionDenylisted() {}\n"
+        "void parse_whenVersionThreeCatalogDeclaresSecurityPolicy_expectInvalidCatalogEntry() {}\n"
+        "void parse_whenSecurityPolicyHasDuplicateAdvisoryId_expectInvalidCatalogEntry() {}\n"
+        "void parse_whenSecurityPolicyDenylistReferencesUnknownAdvisory_expectInvalidCatalogEntry() {}\n"
+        "void serialize_whenCatalogHasSecurityPolicy_expectVersionFourDeterministicOutput() {}\n",
         encoding="utf-8",
     )
     (appcatalog_tests / "AppCatalogEntryDescriptorTest.java").write_text(
@@ -13909,7 +14476,7 @@ def make_self_test_workspace(workspace: Path) -> None:
         encoding="utf-8",
     )
     (api_dir / "PlatformApiContract.java").write_text(
-        "final class PlatformApiContract { static final int CURRENT_CONTRACT_VERSION = 16; "
+        "final class PlatformApiContract { static final int CURRENT_CONTRACT_VERSION = 17; "
         "static final int TRUST_GRAPH_PREVIEW_CONTRACT_VERSION = 7; "
         "static final int TRUST_GRAPH_EXCHANGE_CONTRACT_VERSION = 10; "
         "static final int TRUST_GRAPH_RC_SCOPE_CONTRACT_VERSION = 15; "
@@ -14675,7 +15242,10 @@ def make_self_test_workspace(workspace: Path) -> None:
     (appcatalog_api_tests / "AppCatalogsApiHandlerTest.java").write_text(
         "void listRecommendedCatalogs_whenConfiguredAndTrusted_expectCanAddAndRedactedSource() {}\n"
         "void listRecommendedCatalogs_whenHttpsSourceHasQuery_expectQueryRedacted() {}\n"
-        "void listRecommendedCatalogs_whenFileSourceConfigured_expectPathRedacted() {}\n",
+        "void listRecommendedCatalogs_whenFileSourceConfigured_expectPathRedacted() {}\n"
+        "void listApps_whenCatalogSecurityDecisionExists_expectRedactedDecisionIncluded() {}\n"
+        "void install_whenCatalogSecurityDecisionIsDenylisted_expectStableSecurityError() {}\n"
+        "void install_whenCatalogSecurityDecisionWarnsWithoutAcknowledgement_expectSecurityAckError() {}\n",
         encoding="utf-8",
     )
     shell = workspace / "platform-web-shell/src/main/resources/network/crypta/platform/webshell/static/web-shell.js"
@@ -14773,6 +15343,11 @@ def make_self_test_workspace(workspace: Path) -> None:
         "Bubblewrap filesystem containment does not enforce CPU, memory, or network isolation. "
         "Public-beta release evidence is redacted evidence. "
         "Review governance reports record counts, latest hashes, raw receipt signatures exclusions, and catalog scratch paths exclusions. "
+        "Ecosystem security advisories use signed catalog.version=4 metadata with inform, warn, block_install, block_update, and denylist actions. "
+        "Exact app-version denylists show vulnerable installed versions with safe uninstall guidance and export app data before delete guidance, but no automatic uninstall, no global moderation, no plugin compatibility restoration, and no network crawler. "
+        "Review receipt revocation uses receiptFingerprintSha256 and revoked_receipt, while reviewer-key compromise uses status=revoked and revoked_reviewer. "
+        "Release evidence includes catalog.security-advisories, catalog.version-denylist, app-review.receipt-revocation, app-review.reviewer-key-compromise-flow, app-update.security-denylist-gates, web-shell.security-advisory-trust-warnings, ecosystem-security.advisory-revocation-redaction, and gate ecosystem.security-advisory-revocation. "
+        "Security response reports exclude raw signatures, raw public keys, private insert URIs, local filesystem paths, raw request bodies, raw fetched content, and app-data backup payloads. "
         "The local transparency log is not a global public log. "
         "queue-manager publisher site-publisher profile-publisher social-inbox feed-reader trust-graph use permissions.rationale entries, "
         "Profile Publisher is the identity-profile reference app. "
@@ -14881,6 +15456,7 @@ def make_self_test_workspace(workspace: Path) -> None:
     )
     for doc_name in (
         "app-catalogs.md",
+        "app-review-governance.md",
         "app-data-backup-restore-portability.md",
         "app-data-store.md",
         "app-dev-cli.md",
@@ -14893,6 +15469,9 @@ def make_self_test_workspace(workspace: Path) -> None:
         "platform-api-contract.md",
         "platform-api-surface.md",
         "platform-sdk-js.md",
+        "production-first-party-catalog-channels.md",
+        "ecosystem-security-advisories.md",
+        "SECURITY.md",
         "social-inbox-reference-app.md",
         "trust-graph-preview.md",
         "first-party-beta-catalog.md",
@@ -15096,8 +15675,12 @@ def make_self_test_workspace(workspace: Path) -> None:
         '@Command(name = "dev") class DevCommand {}\n'
         '@Command(name = "test") class AppTestCommand {}\n'
         '@Command(name = "generate") class KeysGenerateCommand {}\n'
+        '@Command(name = "review") class ReviewCommand { String s = "ReviewSignCommand '
+        'ReviewVerifyCommand review fingerprint Receipt revocations: receiptRevocations="; }\n'
         '@Command(name = "entry") class CatalogEntryCommand { String options = '
         '"--channel --support-status --security-advisory --maximum-crypta-version"; }\n'
+        'class CatalogCreateCommand { String options = "--security-advisory-record '
+        '--security-denylist-entry"; }\n'
         '@Command(name = "publish-usk") class PublishUskCommand { String dry = "--dry-run"; '
         'String live = "--live"; String insertEnv = "--private-insert-uri-env"; '
         'String insertFile = "--private-insert-uri-file"; String passwordEnv = "--form-password-env"; '
@@ -15420,8 +16003,11 @@ record AppUpdateCandidate() {
     json.put("apiCompatibility", apiCompatibility);
     json.put("permissionDelta", permissionDelta(candidatePermissions, installedPermissions));
     json.put("dataMigration", dataMigration);
+    json.put("securityDecision", securityDecision);
     return json;
   }
+  Map<String, Object> securityDecision() { return securityDecision; }
+  boolean eligibleForAutomaticApply() { return !Boolean.TRUE.equals(securityDecision.get("blocksAutomaticApply")); }
   boolean dataMigrationAllowsAutomaticStage() { return dataMigration.get("blockReason") == null; }
   static Map<String, Object> reviewSummary(String status, String note) { return Map.of(); }
   static Map<String, Object> permissionDelta(List<String> candidatePermissions, List<String> local) { return Map.of(); }
@@ -15485,6 +16071,10 @@ class AppUpdatePolicy {
         """
 class AppUpdateService {
   static final String ERROR_CHANNEL_POLICY_BLOCKED = "channel_policy_blocked";
+  static final String ERROR_APP_SECURITY_ACKNOWLEDGEMENT_REQUIRED = "app_security_acknowledgement_required";
+  static final String ERROR_APP_SECURITY_BLOCKED = "app_security_blocked";
+  static final String ERROR_APP_SECURITY_DENYLISTED = "app_security_denylisted";
+  static final String POLICY_SECURITY_DENYLIST_BLOCKED = "security_denylist_blocked";
 	  static final String ERROR_APP_DATA_MIGRATION_MISSING = "app_data_migration_missing";
 	  static final String ERROR_APP_DATA_MIGRATION_DRY_RUN_FAILED = "app_data_migration_dry_run_failed";
 	  static final String ERROR_APP_DATA_MIGRATION_REVIEW_REQUIRED = "app_data_migration_review_required";
@@ -15498,6 +16088,7 @@ class AppUpdateService {
 
   public synchronized Map<String, Object> stage(String appId) {
     AppUpdateCandidate candidate = candidateOrDetect(appId, installed);
+    requireSecurityGate(candidate.securityDecision(), securityAcknowledged);
     AppCatalogInstallPlan plan = catalogManager.prepareInstallPlan(candidate.catalogId(), appId);
     if (planDiffersFromCandidate(candidate, installed, plan)) {
       throw new PlatformApiException(409, "update_candidate_changed", "changed");
@@ -15519,7 +16110,14 @@ class AppUpdateService {
     return summary(appId, installed);
   }
 
+  boolean planDiffersFromCandidate(AppUpdateCandidate candidate, InstalledAppSnapshot installed, AppCatalogInstallPlan plan) {
+    AppCatalogEntry entry = plan.entry();
+    return !candidate.securityDecision().equals(targetSecurityDecision(plan.catalogId(), entry).toJsonValue());
+  }
+
 		  public synchronized Map<String, Object> apply(String appId, ApplyOptions options) {
+	    requireCurrentStagedSecurityDecision(staged);
+	    targetSecurityDecision(staged.candidate().catalogId(), staged.plan().entry());
 	    verifyStagedBundleBeforeApply(staged);
 	    if (shouldHoldApplyMigrationWriteBarrier(targetManifest)) {
 	      targetManifest.dataSchemaContract().declared();
@@ -15572,11 +16170,32 @@ class AppUpdateService {
 		  Map<String, Object> summary(String appId, InstalledAppSnapshot installed) {
     json.put("scheduler", schedulerSummaryProvider.schedulerSummary(appId));
     json.put("dataMigration", migrationPlan.toJsonValue());
+    json.put("installedSecurityDecision", installedSecurityDecision(appId, installed.manifest().appVersion()).toJsonValue());
     if (productionMetadata.deprecatedForAutomaticUpdates()) {
       throw new PlatformApiException(409, ERROR_CHANNEL_POLICY_BLOCKED, "blocked");
     }
+    if (securityGateRequiresOperator(candidate.securityDecision())) {
+      appendSecurityGateHistory(appId, automaticAction(policy.mode()), candidate);
+    }
+    if (automaticSecurityGateFailureCode(candidate.securityDecision()).equals("security_denylist_blocked")) {
+      return json;
+    }
     AppReviewReceiptVerifier.evaluate(entry, keys, policy, now);
     return json;
+  }
+
+  void requireSecurityGate(Map<String, Object> securityDecision, boolean securityAcknowledged) {}
+  void requireCurrentStagedSecurityDecision(StagedUpdate staged) {}
+  Object targetSecurityDecision(String catalogId, AppCatalogEntry entry) {
+    return AppCatalogSecurityDecision.combine(
+        List.of(securityDecision(catalogId, entry), installedSecurityDecision(entry.appId(), entry.version())));
+  }
+  Object installedSecurityDecision(String appId, String version) { return null; }
+  boolean securityGateRequiresOperator(Map<String, Object> securityDecision) { return true; }
+  String automaticSecurityGateFailureCode(Map<String, Object> securityDecision) { return POLICY_SECURITY_DENYLIST_BLOCKED; }
+  String securityGateFailureCode(Map<String, Object> securityDecision) { return ERROR_APP_SECURITY_DENYLISTED; }
+  void appendSecurityGateHistory(String appId, String action, AppUpdateCandidate candidate) {
+    automaticSecurityGateFailureCode(candidate.securityDecision());
   }
 
   void closeMigrationScratch() {
@@ -15666,13 +16285,15 @@ public final class AppUpdateScheduler {
     (appupdates_dir / "AppUpdatesApiHandler.java").write_text(
         """
 class AppUpdatesApiHandler {
+  static final String PARAM_SECURITY_ACKNOWLEDGED = "securityAcknowledged";
   public Map<String, Object> stage(String appId) {
     return updateService.stage(appId);
   }
 
   public Map<String, Object> stage(String appId, Map<String, List<String>> queryParameters) {
     boolean migrationAcknowledged = true;
-    return updateService.stage(appId, reviewAcknowledged, migrationAcknowledged);
+    boolean securityAcknowledged = true;
+    return updateService.stage(appId, reviewAcknowledged, securityAcknowledged, migrationAcknowledged);
   }
 
   public Map<String, Object> apply(String appId, Map<String, List<String>> queryParameters) {
@@ -15710,6 +16331,9 @@ class AppUpdateServiceTest {
 			  void check_whenApplyWhenStoppedPolicyMigrationDryRunFails_expectCandidateSummaryWithoutApply() {}
 			  void stage_whenMigrationBundleRequestsOptionalSandbox_expectDryRunAndStage() {}
 		  void check_whenApplyWhenStoppedPolicySandboxMigration_expectCandidateSummaryWithoutApply() {}
+		  void check_whenCatalogSecurityDecisionWarns_expectCandidateIncludesSecurityDecision() {}
+		  void stage_whenSecurityWarningIsNotAcknowledged_expectStableSecurityAckError() {}
+		  void stage_whenSecurityDecisionIsDenylisted_expectStableSecurityError() {}
 		  void stage_whenStagedMigrationBundleVerificationFails_expectDryRunBlockedBeforeRunner() {}
 		  void stage_whenMigrationHasDeadEndBranch_expectCompletePathSelected() {}
 	  void stage_whenCompatibleChainCompetesWithIncompatibleDirectStep_expectCompatiblePathSelected() {}
@@ -15898,6 +16522,13 @@ function submitOperatorRecoveryAction(form){}
 sections.betaDashboard.addEventListener("submit", async () => submitOperatorRecoveryAction(form));
 const quotaText = ["Quota warnings", "Data quota"];
 const quotaCheck = "quota.dataOverLimit || quota.cacheOverLimit";
+function text(value){ return document.createTextNode(value); }
+function securityDecisionNoticeNode(securityDecision, installed){ text("Safe uninstall guidance"); }
+function catalogSecurityDetailsNode(app){ definitionList([["Safe uninstall guidance", app.safeUninstallGuidance]]); }
+function appendSecurityAcknowledgement(form, securityDecision, action){ const input = document.createElement("input"); input.name = "securityAcknowledged"; input.className = "security-acknowledgement"; form.append(input); }
+function securityDecisionActionReason(app){ return "app-card-actions"; }
+const installedSecurityWarning = "Installed version vulnerable";
+const safeSecurityDom = "definitionList text safeUninstallGuidance";
 """,
         encoding="utf-8",
     )
@@ -15921,6 +16552,9 @@ const quotaCheck = "quota.dataOverLimit || quota.cacheOverLimit";
         + "void assertBetaDashboardMarkersPresent(String script) {} "
         "void assertBetaDashboardLoadSequencing(String script) {} "
         "void assertAppDataBackupRestoreMarkersPresent(String script) {} "
+        "void assertSecurityMarkersPresent(String script) { String s = "
+        "\"function appendSecurityAcknowledgement(form, securityDecision, action) "
+        "input.name = \\\"securityAcknowledged\\\";\"; } "
         "void calls() { assertBetaDashboardMarkersPresent(script); "
         "assertBetaDashboardLoadSequencing(script); "
         "assertAppDataBackupRestoreMarkersPresent(script); }\n",
@@ -15939,6 +16573,7 @@ final class OperatorBetaDashboardService {
     dashboard.put("subscriptions", subscriptions);
     dashboard.put("trustGraph", trustGraph);
     dashboard.put("appServices", appServices);
+    dashboard.put("installedSecurityDecision", installedSecurityDecision);
     dashboard.put("legacyAdmin", legacyAdmin);
     dashboard.put("diagnostics", diagnostics);
     dashboard.put("recoveryActions", actions);
@@ -16121,6 +16756,9 @@ class PlatformApiRouterTest {
     catalog_handler.write_text(
         """
 class AppCatalogsApiHandler {
+  static final String PARAM_SECURITY_ACKNOWLEDGED = "securityAcknowledged";
+  static final String ERROR_APP_SECURITY_DENYLISTED = "app_security_denylisted";
+  static final String ERROR_APP_SECURITY_BLOCKED = "app_security_blocked";
   String recommendedCatalogError = "recommended_catalog_trusted_key_missing";
   void listRecommendedCatalogs() {}
   void addRecommended() {}
@@ -16133,12 +16771,20 @@ class AppCatalogsApiHandler {
     json.put("versionDifferent", versionDifferent(entry.version(), installedVersion, installed != null));
     json.put("updateAvailable", updateAvailable(entry.version(), installedVersion, installed != null).orElse(null));
     json.put("review", summarizeReview(entry.review()));
+    json.put("securityDecision", securityDecision(catalogId, entry.appId()));
+    json.put("installedSecurityDecision", installedSecurityDecision(entry.appId(), installedVersion));
     json.put("compatibility", summarizeCompatibility(entry.compatibility()));
     json.put("apiCompatibility", apiCompatibility(entry.compatibility().apiCompatibility(), entry.permissions()));
     json.put("permissionDelta", summarizePermissionDelta(entry.permissions(), installed));
+    requireSecurityGate(securityDecision(catalogId, entry.appId()), securityAcknowledged, true);
+    securityAcknowledgementStillApplies(initialDecision, preparedDecision, securityAcknowledged);
     AppCatalogInstallPlan plan = catalogManager.prepareInstallPlan(catalogId, normalizedAppId);
     InstalledAppSnapshot updated = appHost.updateFromDirectory(entry.appId(), plan.stagedBundleDirectory());
   }
+  private Object securityDecision(String catalogId, String appId) { return catalogManager.securityDecision(catalogId, appId); }
+  private Object installedSecurityDecision(String appId, String version) { return catalogManager.installedSecurityDecision(appId, version); }
+  private void requireSecurityGate(Object decision, boolean securityAcknowledged, boolean install) {}
+  private boolean securityAcknowledgementStillApplies(Object initialDecision, Object preparedDecision, boolean securityAcknowledged) { return securityAcknowledged; }
   private static boolean versionDifferent(String catalogVersion, String installedVersion, boolean installed) { return false; }
   private static Optional<Boolean> updateAvailable(String catalogVersion, String installedVersion, boolean installed) { return Optional.empty(); }
 }
@@ -16155,6 +16801,9 @@ The policy modes are manual, stage, and apply_when_stopped.
 The background scheduler uses AppUpdateService.check after live USK catalog refresh and manual remains the default.
 Catalog refresh records the last verified signed catalog state before candidate discovery.
 Release evidence is app-update.scheduler.
+Security denylist gates block install, update, stage, apply, and automatic policy apply.
+Warning advisories require securityAcknowledged=true for manual actions and remain blocked for unattended automation.
+The security acknowledgement does not bypass review, migration, channel, service dependency, digest, signed catalog, or signed bundle gates.
 Rollback covers only the immutable installed bundle.
 Rollback does not roll back app data directories or app cache directories.
 """,
@@ -16169,7 +16818,7 @@ import os
 import sys
 from pathlib import Path
 
-CURRENT_PLATFORM_API_CONTRACT_VERSION = 16
+CURRENT_PLATFORM_API_CONTRACT_VERSION = 17
 
 
 def option_value(args, name):
@@ -16361,7 +17010,7 @@ def api_snapshot(args):
             {
                 "contract": {
                     "apiVersion": "v1",
-                    "contractVersion": 16,
+                    "contractVersion": 17,
                     "generatedBy": "cryptad",
                     "stabilityPolicy": "self-test",
                     "capabilities": [
@@ -16634,7 +17283,7 @@ case "$cmd" in
       if [ "$1" = "--dir" ]; then dir="$2"; shift 2; else shift; fi
     done
     mkdir -p "$dir/bin" "$dir/static/crypta-ui"
-    printf '%s\n' 'manifest.version=1' 'app.id=cert-smoke' 'app.name=Certification Smoke' 'app.version=0.1.0' 'app.exec=bin/start.sh' 'api.minimumVersion=1' 'api.maximumTestedVersion=16' 'api.experimentalCapabilitiesAccepted=false' 'app.ui.mode=static' 'app.ui.entry=static/index.html' 'app.permissions=queue.read' > "$dir/cryptad-app.properties"
+    printf '%s\n' 'manifest.version=1' 'app.id=cert-smoke' 'app.name=Certification Smoke' 'app.version=0.1.0' 'app.exec=bin/start.sh' 'api.minimumVersion=1' 'api.maximumTestedVersion=17' 'api.experimentalCapabilitiesAccepted=false' 'app.ui.mode=static' 'app.ui.entry=static/index.html' 'app.permissions=queue.read' > "$dir/cryptad-app.properties"
     printf '%s\n' '#!/usr/bin/env sh' 'exit 0' > "$dir/bin/start.sh"
     printf '%s\n' '<!doctype html><html lang="en"><head><meta name="viewport" content="width=device-width, initial-scale=1"><title>Certification Smoke</title><link rel="stylesheet" href="./crypta-ui/crypta-ui-tokens.css"><link rel="stylesheet" href="./crypta-ui/crypta-ui.css"><link rel="stylesheet" href="./app.css"></head><body class="cr-app"><main class="cr-shell"><section class="cr-permission-summary" data-crypta-permission-summary><code>queue.read</code></section><h1>Certification Smoke</h1></main><script src="./crypta-platform.js"></script><script src="./app.js"></script></body></html>' > "$dir/static/index.html"
     printf '%s\n' 'CryptaPlatform.bootstrap.load({ appId: "cert-smoke" });' > "$dir/static/app.js"
@@ -16811,7 +17460,7 @@ PY
 {
   "contract": {
     "apiVersion": "v1",
-    "contractVersion": 16,
+    "contractVersion": 17,
     "generatedBy": "cryptad",
     "stabilityPolicy": "self-test",
     "capabilities": [
