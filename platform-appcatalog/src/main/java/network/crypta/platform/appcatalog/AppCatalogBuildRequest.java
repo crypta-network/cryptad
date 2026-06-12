@@ -87,34 +87,6 @@ public final class AppCatalogBuildRequest {
   }
 
   /**
-   * Creates a request with review receipt files, root security policy, and no output file.
-   *
-   * @param catalogId stable catalog identifier used as the catalog namespace
-   * @param catalogName human-readable catalog name shown in developer output
-   * @param generatedAt deterministic generation timestamp for the catalog metadata
-   * @param entryDescriptorFiles descriptor files in the exact order written to the catalog
-   * @param reviewReceiptFiles receipt files to embed into matching catalog entries
-   * @param securityPolicy catalog-level security advisory and denylist policy
-   */
-  @SuppressWarnings("unused")
-  public AppCatalogBuildRequest(
-      String catalogId,
-      String catalogName,
-      Instant generatedAt,
-      List<Path> entryDescriptorFiles,
-      List<Path> reviewReceiptFiles,
-      AppCatalogSecurityPolicy securityPolicy) {
-    this(
-        catalogId,
-        catalogName,
-        generatedAt,
-        entryDescriptorFiles,
-        reviewReceiptFiles,
-        securityPolicy,
-        null);
-  }
-
-  /**
    * Creates a normalized immutable build request.
    *
    * <p>The constructor normalizes the catalog identifier through the same rules used by parsed
