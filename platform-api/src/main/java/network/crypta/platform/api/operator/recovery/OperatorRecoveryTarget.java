@@ -46,8 +46,8 @@ public record OperatorRecoveryTarget(
    *
    * <p>Subscription targets combine app id and subscription id so cross-app operator recovery
    * events remain distinguishable. Other target kinds prefer their natural single identifier. The
-   * returned value can still contain unsafe operator input and must be redacted before support
-   * output.
+   * returned value can still contain unsafe operator input. Use {@link #safePrimaryId()} before
+   * placing the value in response text, support summaries, or other operator-visible metadata.
    *
    * @return the best available target identifier for this target kind, or {@code null}
    */
@@ -77,6 +77,22 @@ public record OperatorRecoveryTarget(
       return grantId;
     }
     return bundleId;
+  }
+
+  /**
+   * Returns the primary target id in the same redacted display form used by {@link #toJson()}.
+   *
+   * <p>The display value preserves ordinary app, catalog, subscription, grant, and bundle ids, but
+   * replaces private content keys, local paths, credentials, and overlong identifiers with bounded
+   * correlation text. It is intended for operator-facing labels such as destructive-action
+   * confirmation phrases where the raw request value must not be echoed before target-specific
+   * validation has completed.
+   *
+   * @return a safe display identifier, or an empty string when the target has no identifier
+   */
+  public String safePrimaryId() {
+    String value = primaryId();
+    return value == null || value.isBlank() ? "" : safeIdentifier(value.trim());
   }
 
   /**

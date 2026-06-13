@@ -266,8 +266,7 @@ class OperatorRecoveryServiceTest {
   @Test
   void planResultAndSupportContext_whenUnsafeTargetIdSupplied_expectTargetIdRedacted() {
     OperatorRecoveryService service = service();
-    String unsafeCatalogId =
-        UNSAFE_PATH_PREFIX + "/" + UNSAFE_CONTENT_URI_PREFIX + "/secret/0/catalog.json";
+    String unsafeCatalogId = unsafeTargetId("secret/0/catalog.json");
     OperatorRecoveryPlan plan =
         service.plan(
             Map.of(
@@ -298,6 +297,24 @@ class OperatorRecoveryServiceTest {
     assertTrue(planJson.contains(SAFE_DIGEST_PREFIX));
     assertTrue(resultJson.contains(SAFE_DIGEST_PREFIX));
     assertTrue(supportJson.contains(SAFE_DIGEST_PREFIX));
+  }
+
+  @Test
+  void plan_whenDestructiveUnsafeTargetIdSupplied_expectConfirmationPhraseRedacted() {
+    OperatorRecoveryService service = service();
+    String unsafeAppId = unsafeTargetId(APP_FEED_READER);
+
+    OperatorRecoveryPlan plan =
+        service.plan(
+            Map.of(
+                PARAM_ACTION_ID, List.of(ACTION_APP_ROLLBACK), PARAM_APP_ID, List.of(unsafeAppId)));
+
+    String planJson = plan.toJson().toString();
+    assertFalse(plan.confirmationPhrase().contains(UNSAFE_PATH_PREFIX));
+    assertFalse(plan.confirmationPhrase().contains(UNSAFE_CONTENT_URI_PREFIX));
+    assertFalse(planJson.contains(UNSAFE_PATH_PREFIX));
+    assertFalse(planJson.contains(UNSAFE_CONTENT_URI_PREFIX));
+    assertTrue(plan.confirmationPhrase().contains(SAFE_DIGEST_PREFIX));
   }
 
   @Test
@@ -554,6 +571,10 @@ class OperatorRecoveryServiceTest {
         new AppDataStoreConfig(256, 16, 4, 8192, 8192, 8),
         Clock.fixed(NOW, ZoneOffset.UTC),
         new AppDiskUsageScanner());
+  }
+
+  private static String unsafeTargetId(String suffix) {
+    return UNSAFE_PATH_PREFIX + "/" + UNSAFE_CONTENT_URI_PREFIX + "/" + suffix;
   }
 
   private static final class RecordingAppUninstallCleanup

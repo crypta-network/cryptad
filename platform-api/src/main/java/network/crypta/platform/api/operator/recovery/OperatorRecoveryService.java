@@ -1191,7 +1191,7 @@ public final class OperatorRecoveryService {
     if (!actionId.requiresConfirmation()) {
       return null;
     }
-    String targetId = target.primaryId();
+    String targetId = target.safePrimaryId();
     return switch (actionId) {
       case APP_APPLY_UPDATE -> "APPLY " + targetId;
       case APP_ROLLBACK -> "ROLLBACK " + targetId;

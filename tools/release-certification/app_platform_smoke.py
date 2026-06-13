@@ -12621,9 +12621,13 @@ def collect_operator_beta_evidence(settings: Settings) -> list[EvidenceItem]:
                     and "redactedMap(json)" in recovery_service_text
                     and "safeIdentifier(value.trim())" in recovery_target_text
                     and "OperatorSupportRedactor.redact(value).value()" in recovery_target_text
+                    and "safePrimaryId()" in recovery_target_text
                     and "fingerprintSource()" in recovery_target_text
                     and "target.fingerprintSource()" in recovery_service_text
+                    and "target.safePrimaryId()" in recovery_service_text
                     and "planResultAndSupportContext_whenUnsafeTargetIdSupplied_expectTargetIdRedacted"
+                    in recovery_service_test_text
+                    and "plan_whenDestructiveUnsafeTargetIdSupplied_expectConfirmationPhraseRedacted"
                     in recovery_service_test_text
                     and '"plantoken"' in redactor_text
                 ),
@@ -17704,6 +17708,7 @@ final class OperatorRecoveryService {
   Object redactedMap(Object json) { return json; }
   String safeAuditTargetId(OperatorRecoveryTarget target) { return "sha256:"; }
   void appendAudit(OperatorRecoveryTarget target) { safeAuditTargetId(target); }
+  String confirmationPhrase(OperatorRecoveryTarget target) { return target.safePrimaryId(); }
 }
 """,
         encoding="utf-8",
@@ -17717,6 +17722,7 @@ final class OperatorRecoveryService {
         """
 record OperatorRecoveryTarget() {
   Object toJson() { return safeIdentifier(value.trim()); }
+  String safePrimaryId() { return safeIdentifier(primaryId()); }
   String safeIdentifier(String value) {
     Object redacted = OperatorSupportRedactor.redact(value).value();
     return redacted.equals(value) ? value : "sha256:";
@@ -17842,6 +17848,7 @@ class OperatorRecoveryServiceTest {
   void plan_whenAppStartRequested_expectStoppedAppRequirementReported() {}
   void plan_whenTrustGraphResetRequested_expectUnavailableInsteadOfFakeSuccess() {}
   void planResultAndSupportContext_whenUnsafeTargetIdSupplied_expectTargetIdRedacted() {}
+  void plan_whenDestructiveUnsafeTargetIdSupplied_expectConfirmationPhraseRedacted() {}
 }
 """,
         encoding="utf-8",
