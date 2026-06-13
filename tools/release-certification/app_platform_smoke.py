@@ -4985,12 +4985,17 @@ def collect_network_scale_evidence(settings: Settings) -> list[EvidenceItem]:
         "async function refreshAllActiveSources",
         "async function refreshAllSources",
     )
+    trust_import_uri = function_slice(
+        trust_handler,
+        "public Map<String, Object> importUri",
+        "private AppNetworkBudgetLease",
+    )
     queue_before_poll = source_index_before(
         subscription_scheduler, "pressureGate.assess()", "service.schedulerPoll"
     )
     import_budget_before_fetch = source_index_before(
-        trust_handler,
-        "AppNetworkBudgetOperation.TRUST_GRAPH_IMPORT))",
+        trust_import_uri,
+        "acquireTrustGraphImportBudgetLease(appId)",
         "new ContentApiHandler",
     )
     checks_by_id: dict[str, dict[str, bool]] = {
@@ -5057,9 +5062,12 @@ def collect_network_scale_evidence(settings: Settings) -> list[EvidenceItem]:
                 for fragment in (
                     "AppNetworkBudgetOperation.FOREGROUND_CONTENT_FETCH",
                     "networkBudgetService.acquire",
-                    "try (AppNetworkBudgetLease",
                     "contentFetchPort.fetchContent",
                 )
+            )
+            and (
+                "try (var _ = acquireBudget(appId))" in content_handler
+                or "try (AppNetworkBudgetLease" in content_handler
             ),
             "routesPassAppPrincipalId": (
                 "optionalAppPrincipalId(request)" in content_routes
@@ -5096,10 +5104,13 @@ def collect_network_scale_evidence(settings: Settings) -> list[EvidenceItem]:
             "leasesAndRetryAreBounded": all(
                 fragment in subscription_service
                 for fragment in (
-                    "try (AppNetworkBudgetLease",
                     "nextAfterBudgetDenied",
                     "budgetDecision.message()",
                 )
+            )
+            and (
+                "try (var _ = budgetDecision.lease())" in subscription_service
+                or "try (AppNetworkBudgetLease" in subscription_service
             ),
             "testsCoverManualSchedulerAndLeaseRelease": all(
                 fragment in platform_tests
@@ -5115,7 +5126,11 @@ def collect_network_scale_evidence(settings: Settings) -> list[EvidenceItem]:
             and "if (!pressure.allowed())" in subscription_scheduler,
             "budgetSkipDoesNotCountAsAttempt": (
                 "ContentSubscriptionStatus.BUDGET_EXHAUSTED" in subscription_scheduler
-                and "attempted++" in subscription_scheduler
+                and (
+                    "new SchedulerPollOutcome(0, 1, 1" in subscription_scheduler
+                    or "if (result == ContentSubscriptionStatus.BUDGET_EXHAUSTED) { return; } attempted++"
+                    in subscription_scheduler
+                )
             ),
             "pressureGateUsesStableSpiNoHtml": (
                 "QueueSupportPort" in pressure_gate
@@ -5131,8 +5146,13 @@ def collect_network_scale_evidence(settings: Settings) -> list[EvidenceItem]:
                 fragment in trust_handler
                 for fragment in (
                     "AppNetworkBudgetOperation.TRUST_GRAPH_IMPORT",
-                    "acquireBudgetLease(appId, AppNetworkBudgetOperation.TRUST_GRAPH_IMPORT)",
+                    "networkBudgetService.acquire",
                 )
+            )
+            and (
+                "acquireTrustGraphImportBudgetLease(appId)" in trust_handler
+                or "acquireBudgetLease(appId, AppNetworkBudgetOperation.TRUST_GRAPH_IMPORT)"
+                in trust_handler
             ),
             "importUriUsesImportAndContentFetchBudgets": (
                 import_budget_before_fetch
@@ -15414,13 +15434,16 @@ def make_self_test_workspace(workspace: Path) -> None:
         "noBlocking noRoutingDecisions noLegacyWoTCompatibility\"; "
         "Object lifecycle = statementLifecycleJson(); String max = \"maxEvidenceRows\"; return null; } "
         "Object statementLifecycleJson() { return null; } "
-        "void importStatement() { acquireBudgetLease(appId, AppNetworkBudgetOperation.TRUST_GRAPH_IMPORT); "
-        "TrustStatementParser.parse(\"{}\"); } "
-        "void importUri(ContentFetchPort port) { acquireBudgetLease(appId, AppNetworkBudgetOperation.TRUST_GRAPH_IMPORT)); "
+        "public Map<String, Object> importStatement() { "
+        "try (var ignored = acquireTrustGraphImportBudgetLease(appId)) { "
+        "TrustStatementParser.parse(\"{}\"); } return null; } "
+        "public Map<String, Object> importUri(ContentFetchPort port) { "
+        "try (var ignored = acquireTrustGraphImportBudgetLease(appId)) { "
         "Object handler = new ContentApiHandler(port, networkBudgetService, AppNetworkBudgetOperation.TRUST_GRAPH_IMPORT_URI); "
         "String max = \"maxStoredDocumentBytes\"; String format = \"format\"; "
-        "String event = \"TrustGraphAuditEvent sourceUriHash redactedUriSummary redactedRejectedUriSummary\"; } "
-        "Object acquireBudgetLease(Object appId, Object operation) { return null; } "
+        "String event = \"TrustGraphAuditEvent sourceUriHash redactedUriSummary redactedRejectedUriSummary\"; } return null; } "
+        "private AppNetworkBudgetLease acquireTrustGraphImportBudgetLease(Object appId) { "
+        "networkBudgetService.acquire(appId, AppNetworkBudgetOperation.TRUST_GRAPH_IMPORT); return null; } "
         "Object score = new TrustGraphScorer(null, null); }\n",
         encoding="utf-8",
     )
