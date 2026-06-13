@@ -250,12 +250,11 @@ public final class ContentSubscriptionScheduler {
         skipped++;
         nextDueAt = earliest(nextDueAt, skippedSubscription.nextCheckAt());
       } else {
-        attempted++;
-        ContentSubscription result = service.schedulerPoll(subscription, now);
-        if (result.status() == ContentSubscriptionStatus.BACKOFF) {
-          failures++;
-        }
-        nextDueAt = earliest(nextDueAt, result.nextCheckAt());
+        SchedulerPollOutcome outcome = pollDueSubscription(subscription, now);
+        attempted += outcome.attempted();
+        failures += outcome.failures();
+        skipped += outcome.skipped();
+        nextDueAt = earliest(nextDueAt, outcome.nextDueAt());
       }
     }
     return new ContentSubscriptionSchedulerTickResult(
@@ -266,6 +265,17 @@ public final class ContentSubscriptionScheduler {
         skipped,
         nextDueAt,
         aggregateMessage(attempted, failures, skipped));
+  }
+
+  private SchedulerPollOutcome pollDueSubscription(ContentSubscription subscription, Instant now) {
+    ContentSubscription result = service.schedulerPoll(subscription, now);
+    if (result.status() == ContentSubscriptionStatus.BUDGET_EXHAUSTED) {
+      return new SchedulerPollOutcome(0, 1, 1, result.nextCheckAt());
+    }
+    if (result.status() == ContentSubscriptionStatus.BACKOFF) {
+      return new SchedulerPollOutcome(1, 1, 0, result.nextCheckAt());
+    }
+    return new SchedulerPollOutcome(1, 0, 0, result.nextCheckAt());
   }
 
   private Map<String, InstalledAppSnapshot> installedAppsById() {
@@ -325,4 +335,7 @@ public final class ContentSubscriptionScheduler {
     }
     return left.isBefore(right) ? left : right;
   }
+
+  private record SchedulerPollOutcome(
+      int attempted, int failures, int skipped, Instant nextDueAt) {}
 }

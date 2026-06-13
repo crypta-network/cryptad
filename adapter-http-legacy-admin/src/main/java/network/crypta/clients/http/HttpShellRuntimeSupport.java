@@ -6,6 +6,7 @@ import network.crypta.platform.api.appdata.AppDataService;
 import network.crypta.platform.api.appservices.AppServiceCoordinator;
 import network.crypta.platform.api.appupdates.AppUpdateService;
 import network.crypta.platform.api.content.subscriptions.ContentSubscriptionService;
+import network.crypta.platform.api.networkbudget.AppNetworkBudgetService;
 import network.crypta.platform.api.trust.TrustGraphApiHandler;
 import network.crypta.platform.appcatalog.AppCatalogManager;
 import network.crypta.platform.apphost.AppHost;
@@ -141,6 +142,19 @@ public interface HttpShellRuntimeSupport {
    * @return shared app-service coordinator, or {@code null} when unavailable
    */
   default AppServiceCoordinator appServiceCoordinator() {
+    return null;
+  }
+
+  /**
+   * Returns the shared app-network budget service used by Platform API network operations.
+   *
+   * <p>A {@code null} value means the embedding has not configured shared app-network budgets. The
+   * production HTTP runtime returns one service shared by foreground content fetch, content
+   * subscriptions, and Trust Graph import-by-URI.
+   *
+   * @return shared app-network budget service, or {@code null} when unavailable
+   */
+  default AppNetworkBudgetService appNetworkBudgetService() {
     return null;
   }
 

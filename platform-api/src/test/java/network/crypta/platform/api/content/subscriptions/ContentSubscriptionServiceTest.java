@@ -1,5 +1,6 @@
 package network.crypta.platform.api.content.subscriptions;
 
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Duration;
@@ -8,8 +9,13 @@ import java.time.ZoneOffset;
 import java.util.ArrayDeque;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Random;
 import network.crypta.platform.api.PlatformApiException;
+import network.crypta.platform.api.networkbudget.AppNetworkBudgetConfig;
+import network.crypta.platform.api.networkbudget.AppNetworkBudgetOperation;
+import network.crypta.platform.api.networkbudget.AppNetworkBudgetService;
+import network.crypta.platform.api.networkbudget.InMemoryAppNetworkBudgetStore;
 import network.crypta.runtime.spi.BoundedContentFetchRequest;
 import network.crypta.runtime.spi.BoundedContentFetchResult;
 import network.crypta.runtime.spi.ContentFetchException;
@@ -31,6 +37,8 @@ class ContentSubscriptionServiceTest {
   private static final String RUNTIME_SOURCE = "USK@example/feed/7/feed.json";
   private static final int GLOBAL_SUBSCRIPTION_LIMIT = 4;
   private static final int PER_TICK_FETCH_LIMIT = 2;
+  private static final int CONTENT_FETCH_GLOBAL_PER_MINUTE = 100;
+  private static final int SUBSCRIPTION_POLL_CONCURRENT_PER_APP = 1;
 
   @Test
   void create_whenSourceIsUsk_expectSafeScheduledSummary() {
@@ -151,6 +159,78 @@ class ContentSubscriptionServiceTest {
   }
 
   @Test
+  void refresh_whenSubscriptionBudgetExhausted_expectSafeStatusWithoutFetch() {
+    RecordingFetchPort fetchPort = new RecordingFetchPort();
+    ContentSubscriptionService service = service(fetchPort, config(2), subscriptionBudget(1));
+    String subscriptionId =
+        (String) service.create(APP_ID, createParams(SOURCE)).get("subscriptionId");
+    fetchPort.enqueue("first body", "USK@example/feed/7/feed.json");
+    service.refresh(APP_ID, subscriptionId);
+
+    Map<String, Object> denied = service.refresh(APP_ID, subscriptionId);
+
+    assertEquals(1, fetchPort.calls);
+    assertEquals("budget_exhausted", denied.get("status"));
+    assertEquals("content_subscription_budget_exhausted", denied.get("lastErrorCode"));
+    assertEquals("Content subscription network budget is exhausted.", denied.get("message"));
+    assertFalse(denied.toString().contains("first body"));
+  }
+
+  @Test
+  void schedulerPoll_whenSubscriptionBudgetExhausted_expectNoFetch() {
+    RecordingFetchPort fetchPort = new RecordingFetchPort();
+    AppNetworkBudgetService budget = subscriptionBudget(1);
+    ContentSubscriptionService service = service(fetchPort, config(2), budget);
+    service.create(APP_ID, createParams(SOURCE));
+    ContentSubscription snapshot = service.listAllForScheduler().getFirst();
+    budget.acquire(APP_ID, AppNetworkBudgetOperation.SUBSCRIPTION_POLL).lease().close();
+
+    ContentSubscription result = service.schedulerPoll(snapshot, NOW);
+
+    assertEquals(ContentSubscriptionStatus.BUDGET_EXHAUSTED, result.status());
+    assertEquals("content_subscription_budget_exhausted", result.lastErrorCode());
+    assertEquals(0, fetchPort.calls);
+  }
+
+  @Test
+  void refresh_whenFetchThrows_expectBudgetLeaseReleasedForNextRefresh() {
+    RecordingFetchPort fetchPort = new RecordingFetchPort();
+    ContentSubscriptionService service = service(fetchPort, config(2), subscriptionBudget(10));
+    String subscriptionId =
+        (String) service.create(APP_ID, createParams(SOURCE)).get("subscriptionId");
+    fetchPort.enqueueTimeoutFailure();
+
+    Map<String, Object> failed = service.refresh(APP_ID, subscriptionId);
+    fetchPort.enqueue("second body", "USK@example/feed/8/feed.json");
+    Map<String, Object> succeeded = service.refresh(APP_ID, subscriptionId);
+
+    assertEquals("backoff", failed.get("status"));
+    assertEquals("success", succeeded.get("status"));
+    assertEquals(2, fetchPort.calls);
+  }
+
+  @Test
+  void refresh_whenRunningStateWriteFails_expectBudgetLeaseReleasedForNextRefresh() {
+    RecordingFetchPort fetchPort = new RecordingFetchPort();
+    FailingWriteContentSubscriptionStore store = new FailingWriteContentSubscriptionStore();
+    ContentSubscriptionService service =
+        service(store, fetchPort, config(2), subscriptionBudget(10));
+    String subscriptionId =
+        (String) service.create(APP_ID, createParams(SOURCE)).get("subscriptionId");
+    store.failNextWrite();
+
+    PlatformApiException failure =
+        assertThrows(PlatformApiException.class, () -> service.refresh(APP_ID, subscriptionId));
+    fetchPort.enqueue("second body", "USK@example/feed/8/feed.json");
+    Map<String, Object> succeeded = service.refresh(APP_ID, subscriptionId);
+
+    assertEquals(503, failure.statusCode());
+    assertEquals("content_subscription_store_failed", failure.errorCode());
+    assertEquals("success", succeeded.get("status"));
+    assertEquals(1, fetchPort.calls);
+  }
+
+  @Test
   void schedulerPoll_whenSubscriptionDeletedAfterTickSnapshot_expectNoFetchOrResurrection() {
     RecordingFetchPort fetchPort = new RecordingFetchPort();
     ContentSubscriptionService service = service(fetchPort, config(2));
@@ -256,12 +336,42 @@ class ContentSubscriptionServiceTest {
 
   private static ContentSubscriptionService service(
       RecordingFetchPort fetchPort, ContentSubscriptionSchedulerConfig config) {
+    return service(fetchPort, config, null);
+  }
+
+  private static ContentSubscriptionService service(
+      RecordingFetchPort fetchPort,
+      ContentSubscriptionSchedulerConfig config,
+      AppNetworkBudgetService budgetService) {
+    return service(new InMemoryContentSubscriptionStore(), fetchPort, config, budgetService);
+  }
+
+  private static ContentSubscriptionService service(
+      ContentSubscriptionStore store,
+      RecordingFetchPort fetchPort,
+      ContentSubscriptionSchedulerConfig config,
+      AppNetworkBudgetService budgetService) {
     return new ContentSubscriptionService(
-        new InMemoryContentSubscriptionStore(),
-        fetchPort,
-        config,
-        Clock.fixed(NOW, ZoneOffset.UTC),
-        new Random(0));
+        store, fetchPort, config, budgetService, Clock.fixed(NOW, ZoneOffset.UTC), new Random(0));
+  }
+
+  private static AppNetworkBudgetService subscriptionBudget(int subscriptionPerAppPerHour) {
+    return new AppNetworkBudgetService(
+        new InMemoryAppNetworkBudgetStore(),
+        new AppNetworkBudgetConfig(
+            20,
+            CONTENT_FETCH_GLOBAL_PER_MINUTE,
+            2,
+            16,
+            subscriptionPerAppPerHour,
+            1024,
+            SUBSCRIPTION_POLL_CONCURRENT_PER_APP,
+            8,
+            120,
+            1024,
+            1,
+            8),
+        Clock.fixed(NOW, ZoneOffset.UTC));
   }
 
   private static Map<String, List<String>> createParams(String source) {
@@ -330,6 +440,50 @@ class ContentSubscriptionServiceTest {
       results.addLast(
           new ContentFetchException(
               ContentFetchException.CATALOG_FETCH_TIMEOUT, "timeout below /tmp/secret/feed.json"));
+    }
+  }
+
+  static final class FailingWriteContentSubscriptionStore implements ContentSubscriptionStore {
+    private final InMemoryContentSubscriptionStore delegate =
+        new InMemoryContentSubscriptionStore();
+    private boolean failNextWrite;
+
+    void failNextWrite() {
+      failNextWrite = true;
+    }
+
+    @Override
+    public List<ContentSubscription> listForApp(String appId) {
+      return delegate.listForApp(appId);
+    }
+
+    @Override
+    public List<ContentSubscription> listAll() {
+      return delegate.listAll();
+    }
+
+    @Override
+    public Optional<ContentSubscription> read(String appId, String subscriptionId) {
+      return delegate.read(appId, subscriptionId);
+    }
+
+    @Override
+    public void write(ContentSubscription subscription) throws IOException {
+      if (failNextWrite) {
+        failNextWrite = false;
+        throw new IOException("simulated subscription store failure below /tmp/secret");
+      }
+      delegate.write(subscription);
+    }
+
+    @Override
+    public boolean delete(String appId, String subscriptionId) {
+      return delegate.delete(appId, subscriptionId);
+    }
+
+    @Override
+    public void deleteAllForApp(String appId) {
+      delegate.deleteAllForApp(appId);
     }
   }
 }

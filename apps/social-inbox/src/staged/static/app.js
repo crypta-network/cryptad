@@ -34,6 +34,17 @@
   const maxSourcesPerMessage = 8;
   const maxFetchedDocumentChars = 128 * 1024;
   const sourcePollIntervalSeconds = 15 * 60;
+  const subscriptionStatusLabels = Object.freeze({
+    queue_pressure: "Queue pressure",
+    runtime_unavailable: "Runtime unavailable",
+    backoff: "Backoff",
+    budget_exhausted: "Budget exhausted",
+    scheduled: "Scheduled",
+    running: "Polling",
+    success: "Active",
+    paused: "Paused",
+    disabled: "Disabled",
+  });
   const dataSchemaVersion = 1;
   const messageIdPattern = /^msg-[0-9a-f]{64}$/;
 
@@ -348,6 +359,8 @@
       subscriptionId: "",
       lastCheckedAt: "",
       lastStatus: "Not fetched",
+      lastSubscriptionStatus: "",
+      lastSubscriptionRetry: "",
       lastSeenEdition: "",
       lastSeenResolvedUriSummary: "",
       updateCount: 0,
@@ -1258,6 +1271,7 @@
       return;
     }
     for (const source of state.sources) {
+      const subscription = subscriptionForSource(source);
       const item = document.createElement("article");
       item.className = "source-item";
       item.append(
@@ -1265,11 +1279,19 @@
         sourceStatusBadges(source),
         paragraph("source-uri", source.uriSummary),
         summaryRow("Status", source.lastStatus || "Not fetched"),
+        summaryRow(
+          "Subscription state",
+          subscriptionStatusSummary(subscription) || source.lastSubscriptionStatus
+        ),
         summaryRow("Last check", source.lastCheckedAt || ""),
         summaryRow("Last seen edition", source.lastSeenEdition || ""),
         summaryRow("Resolved URI", source.lastSeenResolvedUriSummary || ""),
         summaryRow("Source URI SHA-256", source.uriHash || ""),
         summaryRow("Updates", String(source.updateCount || 0)),
+        summaryRow(
+          "Retry window",
+          subscriptionRetrySummary(subscription) || source.lastSubscriptionRetry
+        ),
         summaryRow("Backoff or error", source.lastError || "")
       );
       const actions = document.createElement("div");
@@ -1282,16 +1304,24 @@
 
   function sourceStatusBadges(source) {
     const values = [];
+    const subscription = subscriptionForSource(source);
+    const attentionStatus = subscriptionAttentionStatusSummary(subscription);
     if (source.lastError || source.lastStatus === "Error") {
-      values.push("error");
+      values.push("Error");
+    }
+    if (attentionStatus) {
+      values.push(attentionStatus);
     }
     if (isSourceStale(source)) {
-      values.push("stale");
+      values.push("Stale");
     }
     if (source.subscriptionId) {
-      values.push("subscribed");
+      values.push("Subscribed");
     }
-    return badges(values.length > 0 ? values : ["not checked"], values.includes("error") ? "warning" : "neutral");
+    return badges(
+      values.length > 0 ? values : ["Not checked"],
+      values.includes("Error") || attentionStatus ? "warning" : "neutral",
+    );
   }
 
   function isSourceStale(source) {
@@ -1315,14 +1345,15 @@
       item.append(
         headingText(stringField(subscription, "label") || id, "h3"),
         summaryRow("Subscription", id),
-        summaryRow("Status", stringField(subscription, "status", "state")),
+        summaryRow("Status", subscriptionStatusSummary(subscription)),
         summaryRow("Last check", stringField(subscription, "lastCheckedAt", "lastCheckAt")),
         summaryRow("Last seen edition", stringField(subscription, "lastSeenEdition")),
         summaryRow("Resolved URI", redactedPublicUri(stringField(subscription, "lastSeenResolvedUri"))),
         summaryRow("Updates", String(numberField(subscription, "updateCount"))),
+        summaryRow("Retry window", subscriptionRetrySummary(subscription)),
         summaryRow(
           "Backoff or error",
-          stringField(subscription, "lastError", "lastErrorCode", "errorSummary")
+          subscriptionErrorSummary(subscription)
         )
       );
       const actions = document.createElement("div");
@@ -1824,16 +1855,20 @@
       if (!subscription) {
         return source;
       }
+      const attentionStatus = subscriptionAttentionStatusSummary(subscription);
       return Object.assign({}, source, {
         lastCheckedAt: stringField(subscription, "lastCheckedAt", "lastCheckAt") || source.lastCheckedAt,
+        lastStatus: sourceStatusAfterSubscriptionUpdate(source, attentionStatus),
+        lastSubscriptionStatus:
+          subscriptionStatusSummary(subscription) || source.lastSubscriptionStatus,
+        lastSubscriptionRetry:
+          subscriptionRetrySummary(subscription) || source.lastSubscriptionRetry,
         lastSeenEdition: stringField(subscription, "lastSeenEdition") || source.lastSeenEdition,
         lastSeenResolvedUriSummary:
           redactedPublicUri(stringField(subscription, "lastSeenResolvedUri")) ||
           source.lastSeenResolvedUriSummary,
         updateCount: numberField(subscription, "updateCount") || source.updateCount || 0,
-        lastError:
-          stringField(subscription, "lastError", "lastErrorCode", "errorSummary") ||
-          source.lastError,
+        lastError: sourceErrorAfterSubscriptionUpdate(source, subscription, attentionStatus),
       });
     });
   }
@@ -2250,6 +2285,86 @@
     return state.subscriptions.find((subscription) => subscriptionId(subscription) === source.subscriptionId);
   }
 
+  function subscriptionStatusCode(subscription) {
+    const rawStatus = stringField(subscription, "status", "state");
+    return rawStatus.toLowerCase().replace(/-/g, "_");
+  }
+
+  function subscriptionErrorCode(subscription) {
+    const rawCode = stringField(subscription, "lastErrorCode", "errorCode");
+    return rawCode.toLowerCase().replace(/-/g, "_");
+  }
+
+  function subscriptionStatusSummary(subscription) {
+    const code = subscriptionStatusCode(subscription);
+    const errorCode = subscriptionErrorCode(subscription);
+    if (
+      errorCode === "content_subscription_budget_exhausted" ||
+      errorCode === "content_subscription_concurrency_limited"
+    ) {
+      return "Budget exhausted";
+    }
+    return subscriptionStatusLabels[code] || boundedPreview(stringField(subscription, "status", "state"), 80);
+  }
+
+  function subscriptionAttentionStatusSummary(subscription) {
+    const code = subscriptionStatusCode(subscription);
+    const summary = subscriptionStatusSummary(subscription);
+    if (summary === "Budget exhausted") {
+      return summary;
+    }
+    return ["queue_pressure", "runtime_unavailable", "backoff", "budget_exhausted"].includes(code)
+      ? summary
+      : "";
+  }
+
+  function sourceStatusAfterSubscriptionUpdate(source, attentionStatus) {
+    if (attentionStatus) {
+      return attentionStatus;
+    }
+    if (isSubscriptionAttentionStatus(source.lastStatus)) {
+      return source.subscriptionId ? "Subscribed" : "";
+    }
+    return source.lastStatus;
+  }
+
+  function sourceErrorAfterSubscriptionUpdate(source, subscription, attentionStatus) {
+    const errorSummary = subscriptionErrorSummary(subscription);
+    if (errorSummary) {
+      return errorSummary;
+    }
+    if (attentionStatus || isSubscriptionAttentionStatus(source.lastError)) {
+      return "";
+    }
+    return source.lastError;
+  }
+
+  function isSubscriptionAttentionStatus(status) {
+    return ["Queue pressure", "Runtime unavailable", "Backoff", "Budget exhausted"].includes(status);
+  }
+
+  function subscriptionRetrySummary(subscription) {
+    return stringField(
+      subscription,
+      "nextCheckAt",
+      "nextPollAt",
+      "nextDueAt",
+      "nextAvailableAt",
+      "nextRetryAt",
+    );
+  }
+
+  function subscriptionErrorSummary(subscription) {
+    const attentionStatus = subscriptionAttentionStatusSummary(subscription);
+    if (attentionStatus) {
+      return attentionStatus;
+    }
+    if (subscriptionStatusSummary(subscription) === "Budget exhausted") {
+      return "Budget exhausted";
+    }
+    return stringField(subscription, "lastError", "lastErrorCode", "errorSummary");
+  }
+
   function sourceFetchUri(source) {
     const subscription = subscriptionForSource(source);
     return normalizedCryptaContentUri(
@@ -2340,6 +2455,8 @@
       subscriptionId: boundedPreview(source.subscriptionId, 120),
       lastCheckedAt: boundedPreview(source.lastCheckedAt, 64),
       lastStatus: boundedPreview(source.lastStatus, 80),
+      lastSubscriptionStatus: boundedPreview(source.lastSubscriptionStatus, 80),
+      lastSubscriptionRetry: boundedPreview(source.lastSubscriptionRetry, 64),
       lastSeenEdition: boundedPreview(source.lastSeenEdition, 40),
       lastSeenResolvedUriSummary: boundedPreview(
         source.lastSeenResolvedUriSummary,

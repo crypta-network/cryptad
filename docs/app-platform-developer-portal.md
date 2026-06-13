@@ -58,13 +58,13 @@ The current source declares:
 
 ```text
 PlatformApiContract.CURRENT_API_VERSION = "v1"
-PlatformApiContract.CURRENT_CONTRACT_VERSION = 17
+PlatformApiContract.CURRENT_CONTRACT_VERSION = 18
 ```
 
 In docs, manifests, and catalog descriptors:
 
 - `/api/v1` identifies the transport route family.
-- `contractVersion=17` identifies the Platform API compatibility contract snapshot.
+- `contractVersion=18` identifies the Platform API compatibility contract snapshot.
 - `api.minimumVersion` and `api.maximumTestedVersion` compare against the integer contract
   version, not against the URL route prefix or the Cryptad build number.
 

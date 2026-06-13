@@ -59,7 +59,7 @@ class SocialInboxBundleStagingTest {
           "<a href=\"javascript:alert(1)\">click</a>",
           "<iframe srcdoc=\"<script>alert(1)</script>\"></iframe>");
   private static final int EXPECTED_PLATFORM_API_MINIMUM_VERSION = 16;
-  private static final int EXPECTED_PLATFORM_API_MAXIMUM_TESTED_VERSION = 17;
+  private static final int EXPECTED_PLATFORM_API_MAXIMUM_TESTED_VERSION = 18;
   private static final Path PLATFORM_SDK_SOURCE_PATH =
       Path.of(
           "platform-sdk-js",
@@ -424,6 +424,20 @@ class SocialInboxBundleStagingTest {
         "function prepareReply",
         "function renderReplyContext",
         "function refreshAllActiveSources",
+        "const subscriptionStatusLabels = Object.freeze",
+        "queue_pressure: \"Queue pressure\"",
+        "runtime_unavailable: \"Runtime unavailable\"",
+        "backoff: \"Backoff\"",
+        "budget_exhausted: \"Budget exhausted\"",
+        "values.push(\"Stale\")",
+        "function subscriptionStatusSummary",
+        "function subscriptionAttentionStatusSummary",
+        "function sourceStatusAfterSubscriptionUpdate",
+        "function sourceErrorAfterSubscriptionUpdate",
+        "function isSubscriptionAttentionStatus",
+        "lastStatus: sourceStatusAfterSubscriptionUpdate(source, attentionStatus)",
+        "lastError: sourceErrorAfterSubscriptionUpdate(source, subscription, attentionStatus)",
+        "function subscriptionRetrySummary",
         "function sourceSummariesForDedupe",
         "function boundedReadStateEntry",
         "sourceSummariesForDedupe(current)",
@@ -476,6 +490,7 @@ class SocialInboxBundleStagingTest {
         "FormData",
         "application/vnd.crypta.social.outbox+json",
         "social-outbox.json");
+    verifyBoundedRefreshAll(appScript);
     verifyAdversarialMarkupFixturesCovered(appScript);
     verifyContainsNone(
         appScript,
@@ -495,6 +510,16 @@ class SocialInboxBundleStagingTest {
         "innerHTML",
         "insertAdjacentHTML",
         "persistOutboxSummary(await localOutboxSummary())");
+  }
+
+  private static void verifyBoundedRefreshAll(String appScript) {
+    String refreshAll = refreshAllActiveSourcesSlice(appScript);
+    verifyContainsAll(
+        refreshAll,
+        ".slice(0, maxSources)",
+        "for (const sourceId of activeSourceIds)",
+        "await CryptaPlatform.content.subscriptions.refresh(source.subscriptionId)");
+    verifyContainsNone(refreshAll, "Promise.all", "map(async", "allSettled");
   }
 
   private static void verifyAdversarialMarkupFixturesCovered(String appScript) {
@@ -522,6 +547,16 @@ class SocialInboxBundleStagingTest {
           text.contains(forbiddenFragment),
           () -> "Forbidden fragment present: " + forbiddenFragment);
     }
+  }
+
+  private static String refreshAllActiveSourcesSlice(String text) {
+    String startFragment = "async function refreshAllActiveSources";
+    String endFragment = "async function refreshAllSources";
+    int start = text.indexOf(startFragment);
+    assertTrue(start >= 0, () -> "Expected function start missing: " + startFragment);
+    int end = text.indexOf(endFragment, start + startFragment.length());
+    assertTrue(end > start, () -> "Expected function end marker missing: " + endFragment);
+    return text.substring(start, end);
   }
 
   private static String canonicalSdkScript() throws Exception {

@@ -8,11 +8,17 @@ SKIP_APP_SMOKE="${CRYPTAD_CERT_SKIP_APP_SMOKE:-0}"
 LIVE_NETWORK_BETA="${CRYPTAD_CERT_LIVE_NETWORK_BETA:-0}"
 REQUIRE_LIVE_NETWORK_BETA="${CRYPTAD_CERT_REQUIRE_LIVE_NETWORK_BETA:-0}"
 NODE_BASE_URL="${CRYPTAD_CERT_NODE_BASE_URL:-}"
+NETWORK_SCALE_SOAK_SUMMARY="${CRYPTAD_CERT_NETWORK_SCALE_SOAK_SUMMARY:-}"
+NETWORK_SCALE_SOAK_SUMMARY_PROVIDED=0
 SKIP_GRADLE_ARG=()
 LIVE_ARGS=()
 LIVE_NETWORK_ARGS=()
 CERT_LIVE_ARGS=()
 CERT_ARGS=()
+
+if [[ -n "$NETWORK_SCALE_SOAK_SUMMARY" ]]; then
+  NETWORK_SCALE_SOAK_SUMMARY_PROVIDED=1
+fi
 
 normalize_flag() {
   case "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')" in
@@ -72,6 +78,16 @@ while [[ $# -gt 0 ]]; do
       NODE_BASE_URL="${1#--node-base-url=}"
       shift
       ;;
+    --network-scale-soak-summary)
+      NETWORK_SCALE_SOAK_SUMMARY="$2"
+      NETWORK_SCALE_SOAK_SUMMARY_PROVIDED=1
+      shift 2
+      ;;
+    --network-scale-soak-summary=*)
+      NETWORK_SCALE_SOAK_SUMMARY="${1#--network-scale-soak-summary=}"
+      NETWORK_SCALE_SOAK_SUMMARY_PROVIDED=1
+      shift
+      ;;
     --form-password)
       echo "--form-password is not supported; set CRYPTAD_CERT_FORM_PASSWORD in the environment." >&2
       exit 2
@@ -116,6 +132,19 @@ case "$OUT_DIR" in
     ;;
 esac
 
+case "$NETWORK_SCALE_SOAK_SUMMARY" in
+  "")
+    NETWORK_SCALE_SOAK_SUMMARY_PROVIDED=0
+    NETWORK_SCALE_SOAK_SUMMARY="$OUT_DIR/network-scale-soak/summary.json"
+    ;;
+  /*)
+    ;;
+  *)
+    NETWORK_SCALE_SOAK_SUMMARY="$ROOT_DIR/$NETWORK_SCALE_SOAK_SUMMARY"
+    ;;
+esac
+NETWORK_SCALE_SOAK_OUT_DIR="$(dirname "$NETWORK_SCALE_SOAK_SUMMARY")"
+
 if ! command -v python3 >/dev/null 2>&1; then
   mkdir -p "$OUT_DIR"
   echo "python3 is required." | tee "$OUT_DIR/shell-error.txt" >&2
@@ -158,6 +187,9 @@ fi
 
 rm -f "$APP_SMOKE_SUMMARY" "$APP_SMOKE_OUT_DIR/app-platform-smoke-report.md"
 rm -f "$LIVE_NETWORK_SUMMARY" "$LIVE_NETWORK_OUT_DIR/live-network-beta-smoke-report.md"
+if [[ "$NETWORK_SCALE_SOAK_SUMMARY_PROVIDED" != "1" ]]; then
+  rm -f "$NETWORK_SCALE_SOAK_SUMMARY"
+fi
 
 if [[ "$SKIP_APP_SMOKE" != "1" ]]; then
   set +e
@@ -190,11 +222,25 @@ if [[ "$LIVE_NETWORK_BETA" == "1" ]]; then
   fi
 fi
 
+if [[ "$NETWORK_SCALE_SOAK_SUMMARY_PROVIDED" != "1" ]]; then
+  mkdir -p "$NETWORK_SCALE_SOAK_OUT_DIR"
+  set +e
+  python3 "$ROOT_DIR/tools/release-certification/network_scale_soak.py" \
+    --output "$NETWORK_SCALE_SOAK_SUMMARY"
+  NETWORK_SCALE_SOAK_EXIT=$?
+  set -e
+  if [[ "$NETWORK_SCALE_SOAK_EXIT" -ne 0 ]]; then
+    echo "Network-scale soak evidence exited with $NETWORK_SCALE_SOAK_EXIT; certification aggregation will record" \
+      "the evidence state." >&2
+  fi
+fi
+
 exec python3 "$ROOT_DIR/tools/release-certification/release_certification.py" \
   --workspace-root "$ROOT_DIR" \
   --out-dir "$OUT_DIR" \
   --mode "$MODE" \
   --app-platform-summary "$APP_SMOKE_SUMMARY" \
   --live-network-summary "$LIVE_NETWORK_SUMMARY" \
+  --network-scale-soak-summary "$NETWORK_SCALE_SOAK_SUMMARY" \
   "${CERT_LIVE_ARGS[@]}" \
   "${CERT_ARGS[@]}"

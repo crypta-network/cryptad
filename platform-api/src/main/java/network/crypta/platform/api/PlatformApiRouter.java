@@ -324,7 +324,9 @@ public final class PlatformApiRouter {
             trustGraphRoutes.trustGraphApiHandler());
     contentRoutes =
         new PlatformApiContentRoutes(
-            checkedRuntimePorts, checkedAppServices.contentSubscriptionService());
+            checkedRuntimePorts,
+            checkedAppServices.contentSubscriptionService(),
+            checkedAppServices.networkBudgetService());
     appDataRoutes = new PlatformApiAppDataRoutes(checkedAppServices.appDataService());
     appServiceRoutes = new PlatformApiAppServiceRoutes(checkedAppServices.appServiceCoordinator());
   }

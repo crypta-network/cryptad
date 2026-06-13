@@ -44,6 +44,9 @@ import network.crypta.platform.api.content.subscriptions.ContentSubscriptionSche
 import network.crypta.platform.api.content.subscriptions.ContentSubscriptionService;
 import network.crypta.platform.api.content.subscriptions.ContentSubscriptionStore;
 import network.crypta.platform.api.content.subscriptions.FileContentSubscriptionStore;
+import network.crypta.platform.api.networkbudget.AppNetworkBudgetConfig;
+import network.crypta.platform.api.networkbudget.AppNetworkBudgetService;
+import network.crypta.platform.api.networkbudget.FileAppNetworkBudgetStore;
 import network.crypta.platform.api.trust.TrustGraphApiHandler;
 import network.crypta.platform.appcatalog.AppCatalogManager.TrustedKeyProvider;
 import network.crypta.platform.appcatalog.AppCatalogManager;
@@ -87,6 +90,8 @@ import org.slf4j.LoggerFactory;
  * @param appDataService shared durable app-data service used by Platform API app-data routes
  * @param trustGraphApiHandler shared durable trust graph handler used by Platform API trust routes
  * @param appServiceCoordinator shared app-service coordinator used by Platform API service routes
+ * @param appNetworkBudgetService shared app-network budget service used by Platform API network
+ *     routes
  * @param appVaultService shared app vault used by the platform control plane
  */
 public record CoreHttpShellRuntimeSupport(
@@ -100,6 +105,7 @@ public record CoreHttpShellRuntimeSupport(
     AppDataService appDataService,
     TrustGraphApiHandler trustGraphApiHandler,
     AppServiceCoordinator appServiceCoordinator,
+    AppNetworkBudgetService appNetworkBudgetService,
     AppVaultService appVaultService)
     implements network.crypta.runtime.http.HttpShellRuntimeSupport, HttpShellRuntimeSupport {
   private static final Logger LOG = LoggerFactory.getLogger(CoreHttpShellRuntimeSupport.class);
@@ -145,6 +151,7 @@ public record CoreHttpShellRuntimeSupport(
         services.appDataService(),
         services.trustGraphApiHandler(),
         services.appServiceCoordinator(),
+        services.appNetworkBudgetService(),
         services.appVaultService());
   }
 
@@ -200,6 +207,7 @@ public record CoreHttpShellRuntimeSupport(
         null,
         null,
         null,
+        null,
         appVaultService);
   }
 
@@ -228,6 +236,7 @@ public record CoreHttpShellRuntimeSupport(
         appCatalogManager,
         appUpdateService,
         appUpdateScheduler,
+        null,
         null,
         null,
         null,
@@ -267,6 +276,7 @@ public record CoreHttpShellRuntimeSupport(
         appUpdateScheduler,
         contentSubscriptionService,
         contentSubscriptionScheduler,
+        null,
         null,
         null,
         null,
@@ -312,6 +322,7 @@ public record CoreHttpShellRuntimeSupport(
         appDataService,
         trustGraphApiHandler,
         null,
+        null,
         appVaultService);
   }
 
@@ -329,6 +340,8 @@ public record CoreHttpShellRuntimeSupport(
    * @param trustGraphApiHandler shared durable trust graph handler, or {@code null} when
    *     unavailable
    * @param appServiceCoordinator shared app-service coordinator, or {@code null} when unavailable
+   * @param appNetworkBudgetService shared app-network budget service, or {@code null} when
+   *     unavailable
    * @param appVaultService shared app-vault service, or {@code null} when unavailable
    * @throws NullPointerException if {@code core} or {@code appHost} is {@code null}
    */
@@ -343,6 +356,7 @@ public record CoreHttpShellRuntimeSupport(
       AppDataService appDataService,
       TrustGraphApiHandler trustGraphApiHandler,
       AppServiceCoordinator appServiceCoordinator,
+      AppNetworkBudgetService appNetworkBudgetService,
       AppVaultService appVaultService) {
     this.core = Objects.requireNonNull(core, "core");
     this.appHost = Objects.requireNonNull(appHost, "appHost");
@@ -354,6 +368,7 @@ public record CoreHttpShellRuntimeSupport(
     this.appDataService = appDataService;
     this.trustGraphApiHandler = trustGraphApiHandler;
     this.appServiceCoordinator = appServiceCoordinator;
+    this.appNetworkBudgetService = appNetworkBudgetService;
     this.appVaultService = appVaultService;
   }
 
@@ -540,6 +555,7 @@ public record CoreHttpShellRuntimeSupport(
         createAppCatalogManager(layout, trustConfiguration, core.getRuntimePorts());
     AppVaultService appVaultService = createAppVaultService(layout);
     AppDataService appDataService = createAppDataService(layout, appHost);
+    AppNetworkBudgetService appNetworkBudgetService = createAppNetworkBudgetService(layout);
     AppUpdateService appUpdateService =
         new AppUpdateService(appHost, appCatalogManager, appVaultService, appDataService);
     AppUpdateSchedulerConfig schedulerConfig = AppUpdateSchedulerConfig.loadFromSystem();
@@ -554,14 +570,16 @@ public record CoreHttpShellRuntimeSupport(
     ContentSubscriptionSchedulerConfig contentSchedulerConfig =
         ContentSubscriptionSchedulerConfig.loadFromSystem();
     ContentSubscriptionService contentSubscriptionService =
-        createContentSubscriptionService(layout, core.getRuntimePorts(), contentSchedulerConfig);
+        createContentSubscriptionService(
+            layout, core.getRuntimePorts(), contentSchedulerConfig, appNetworkBudgetService);
     ContentSubscriptionScheduler contentSubscriptionScheduler =
         createContentSubscriptionScheduler(
             appHost, contentSubscriptionService, contentSchedulerConfig, core.getRuntimePorts());
     if (contentSubscriptionScheduler != null && contentSchedulerConfig.enabled()) {
       contentSubscriptionScheduler.start();
     }
-    TrustGraphApiHandler trustGraphApiHandler = createTrustGraphApiHandler(layout);
+    TrustGraphApiHandler trustGraphApiHandler =
+        createTrustGraphApiHandler(layout, appNetworkBudgetService);
     AppServiceCoordinator appServiceCoordinator =
         createAppServiceCoordinator(layout, appHost, trustGraphApiHandler);
     return new AppPlatformServices(
@@ -574,6 +592,7 @@ public record CoreHttpShellRuntimeSupport(
         appDataService,
         trustGraphApiHandler,
         appServiceCoordinator,
+        appNetworkBudgetService,
         appVaultService);
   }
 
@@ -628,7 +647,8 @@ public record CoreHttpShellRuntimeSupport(
   private static ContentSubscriptionService createContentSubscriptionService(
       AppHostLayout layout,
       RuntimePorts runtimePorts,
-      ContentSubscriptionSchedulerConfig schedulerConfig) {
+      ContentSubscriptionSchedulerConfig schedulerConfig,
+      AppNetworkBudgetService appNetworkBudgetService) {
     if (runtimePorts == null || runtimePorts.contentFetch() == null) {
       LOG.warn(
           "Content fetch runtime port is unavailable; content subscription Platform API routes will"
@@ -638,7 +658,8 @@ public record CoreHttpShellRuntimeSupport(
     ContentSubscriptionStore store =
         new FileContentSubscriptionStore(
             layout.dataDir().resolve("apps").resolve("content-subscriptions"));
-    return new ContentSubscriptionService(store, runtimePorts.contentFetch(), schedulerConfig);
+    return new ContentSubscriptionService(
+        store, runtimePorts.contentFetch(), schedulerConfig, appNetworkBudgetService);
   }
 
   private static ContentSubscriptionScheduler createContentSubscriptionScheduler(
@@ -664,12 +685,21 @@ public record CoreHttpShellRuntimeSupport(
     return new AppDataService(new FileAppDataStore(storeRoot, config), appHost, config, true);
   }
 
-  private static TrustGraphApiHandler createTrustGraphApiHandler(AppHostLayout layout) {
+  private static AppNetworkBudgetService createAppNetworkBudgetService(AppHostLayout layout) {
+    return new AppNetworkBudgetService(
+        new FileAppNetworkBudgetStore(layout.dataDir().resolve("apps").resolve("network-budget")),
+        AppNetworkBudgetConfig.loadFromSystem());
+  }
+
+  private static TrustGraphApiHandler createTrustGraphApiHandler(
+      AppHostLayout layout, AppNetworkBudgetService appNetworkBudgetService) {
     try {
       Path appPlatformDataRoot = layout.dataDir();
       Path storeRoot = appPlatformDataRoot.resolve("apps").resolve("trust-graph");
       return new TrustGraphApiHandler(
-          new FileTrustGraphStore(storeRoot, appPlatformDataRoot), java.time.Clock.systemUTC());
+          new FileTrustGraphStore(storeRoot, appPlatformDataRoot),
+          java.time.Clock.systemUTC(),
+          appNetworkBudgetService);
     } catch (RuntimeException _) {
       LOG.warn(
           "Trust graph store initialization failed; trust graph Platform API routes will report"
@@ -831,6 +861,7 @@ public record CoreHttpShellRuntimeSupport(
       AppDataService appDataService,
       TrustGraphApiHandler trustGraphApiHandler,
       AppServiceCoordinator appServiceCoordinator,
+      AppNetworkBudgetService appNetworkBudgetService,
       AppVaultService appVaultService) {}
 
   /**

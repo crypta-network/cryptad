@@ -98,6 +98,16 @@ LIVE_NETWORK_BETA_REQUIRED_EVIDENCE_IDS = tuple(
     for evidence_id in LIVE_NETWORK_BETA_EVIDENCE_IDS
     if evidence_id != "live-network-beta.app-service-score"
 )
+NETWORK_SCALE_EVIDENCE_IDS = (
+    "network-scale.app-network-budget",
+    "network-scale.content-fetch-budget",
+    "network-scale.subscription-budget",
+    "network-scale.queue-pressure-backoff",
+    "network-scale.trust-graph-import-budget",
+    "network-scale.social-inbox-multi-source-soak",
+    "network-scale.redaction",
+)
+NETWORK_SCALE_SOAK_EVIDENCE_ID = "network-scale.rc-soak-summary"
 SENSITIVE_KEY_PATTERN = (
     r"token|password|passwd|secret|credential|authorization|cookie|set-cookie|"
     r"private[-_ ]?key|formPassword|browserSessionToken|CRYPTAD_APP_TOKEN|X-Crypta-App-Session|"
@@ -345,6 +355,7 @@ class Settings:
     perf_smoke_summary: Path
     app_platform_summary: Path
     live_network_summary: Path
+    network_scale_soak_summary: Path
     live_network_beta_enabled: bool
     live_network_beta_required: bool
     waivers: dict[str, str]
@@ -1047,6 +1058,7 @@ def app_platform_evidence(
         "app-platform.content-fetch",
         "app-platform.content-subscriptions",
         "network-content.subscription-scheduler",
+        *NETWORK_SCALE_EVIDENCE_IDS,
         "app-platform.durable-app-data-store",
         "app-data.backup-restore-portability",
         "app-platform.trust-graph-preview",
@@ -1343,6 +1355,96 @@ def live_network_beta_evidence(
             )
         )
     return items
+
+
+def network_scale_soak_evidence(
+    path: Path, workspace_root: Path, out_dir: Path, mode: str
+) -> EvidenceItem:
+    source = display_path(path, workspace_root, out_dir)
+    summary = read_json(path)
+    required = mode == "release-candidate"
+    if summary is None:
+        return EvidenceItem(
+            NETWORK_SCALE_SOAK_EVIDENCE_ID,
+            "missing" if required else "skip",
+            required,
+            "Network-scale RC soak summary is missing.",
+            source,
+            {"requiredInMode": required},
+        )
+    sanitized_summary = sanitize_value(summary, workspace_root, out_dir)
+    errors: list[str] = []
+    summary_mode = str(summary.get("mode", ""))
+    status = str(summary.get("status", ""))
+    if summary_mode not in {"simulated-rc-soak", "live-rc-soak"}:
+        errors.append("mode must be simulated-rc-soak or live-rc-soak")
+    if status != "success":
+        errors.append("status must be success")
+    try:
+        duration = int(summary.get("durationHoursSimulated", 0))
+    except (TypeError, ValueError):
+        duration = 0
+    if duration < 24:
+        errors.append("durationHoursSimulated must be at least 24")
+    apps = summary.get("apps", {})
+    if not isinstance(apps, dict):
+        errors.append("apps must be an object")
+        apps = {}
+    for app_id in ("social-inbox", "feed-reader"):
+        app = apps.get(app_id)
+        if not isinstance(app, dict):
+            errors.append(f"{app_id} app summary is missing")
+            continue
+        if app.get("rawContentPersisted") is not False:
+            errors.append(f"{app_id} must report rawContentPersisted=false")
+    trust_graph = summary.get("trustGraph", {})
+    if not isinstance(trust_graph, dict) or trust_graph.get("rawStatementsInEvidence") is not False:
+        errors.append("trustGraph must exclude raw statements from evidence")
+    for section, keys in (
+        (
+            "budgets",
+            ("globalFetchBudgetEnforced", "perAppFetchBudgetEnforced", "concurrencyLeasesReleased"),
+        ),
+        (
+            "redaction",
+            (
+                "rawFetchedContentExcluded",
+                "privateInsertUrisExcluded",
+                "tokensExcluded",
+                "absolutePathsExcluded",
+                "queueHtmlExcluded",
+            ),
+        ),
+    ):
+        values = summary.get(section, {})
+        if not isinstance(values, dict):
+            errors.append(f"{section} must be an object")
+            continue
+        for key in keys:
+            if values.get(key) is not True:
+                errors.append(f"{section}.{key} must be true")
+    details = {
+        "mode": sanitize_value(summary_mode, workspace_root, out_dir),
+        "durationHoursSimulated": duration,
+        "summary": sanitized_summary,
+    }
+    if errors:
+        return EvidenceItem(
+            NETWORK_SCALE_SOAK_EVIDENCE_ID,
+            "fail" if required else "warn",
+            required,
+            "Network-scale RC soak summary failed validation.",
+            source,
+            {"errors": errors, **details},
+        )
+    return EvidenceItem(
+        NETWORK_SCALE_SOAK_EVIDENCE_ID,
+        "pass",
+        required,
+        "Network-scale RC soak summary passed redacted budget and pressure checks.",
+        source,
+        details,
+    )
 
 
 def app_platform_docs_evidence(workspace_root: Path, out_dir: Path) -> list[EvidenceItem]:
@@ -1841,6 +1943,24 @@ def ecosystem_matrix_row_specs() -> list[MatrixRowSpec]:
                 "docs/feed-reader-reference-app.md",
                 "docs/app-data-store.md",
             ),
+        ),
+        MatrixRowSpec(
+            id="network-scale-soak-and-subscription-budget",
+            category="app-platform",
+            title="Network-scale soak and subscription budget",
+            required_evidence_ids=(
+                *NETWORK_SCALE_EVIDENCE_IDS,
+                NETWORK_SCALE_SOAK_EVIDENCE_ID,
+            ),
+            docs=(
+                "docs/network-scale-soak-and-subscription-budget.md",
+                "docs/release-certification.md",
+                "docs/social-inbox-reference-app.md",
+                "docs/feed-reader-reference-app.md",
+                "docs/trust-graph-preview.md",
+            ),
+            phase="phase-9",
+            first_party_apps=("social-inbox", "feed-reader", "trust-graph"),
         ),
         MatrixRowSpec(
             id="app-data-backup-restore-portability",
@@ -4915,6 +5035,7 @@ def collect_source_artifacts(settings: Settings, out_dir: Path) -> list[str]:
         "interop-extended-report.md": settings.interop_extended_summary.parent / "artifacts" / "interop-report.md",
         "performance-smoke-report.md": settings.perf_smoke_summary.parent / "artifacts" / "perf-report.md",
         "app-platform-smoke-report.md": settings.app_platform_summary.parent / "app-platform-smoke-report.md",
+        "network-scale-soak-summary.json": settings.network_scale_soak_summary,
     }
     if settings.live_network_beta_enabled or settings.live_network_beta_required:
         source_map.update(
@@ -5472,6 +5593,14 @@ def gather_evidence(settings: Settings, waiver_context: WaiverContext) -> list[E
             settings.live_network_beta_required,
         )
     )
+    evidence.append(
+        network_scale_soak_evidence(
+            settings.network_scale_soak_summary,
+            settings.workspace_root,
+            settings.out_dir,
+            settings.mode,
+        )
+    )
     evidence.extend(app_platform_docs_evidence(settings.workspace_root, settings.out_dir))
     return [
         sanitize_evidence_item(
@@ -5708,6 +5837,7 @@ def settings_from_args(args: argparse.Namespace) -> Settings:
         perf_smoke_summary=resolve_path(workspace_root, args.perf_smoke_summary),
         app_platform_summary=resolve_path(workspace_root, args.app_platform_summary),
         live_network_summary=resolve_path(workspace_root, args.live_network_summary),
+        network_scale_soak_summary=resolve_path(workspace_root, args.network_scale_soak_summary),
         live_network_beta_enabled=live_network_beta_enabled,
         live_network_beta_required=live_network_beta_required,
         waivers=parse_key_value(args.waive),
@@ -5745,6 +5875,11 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=DEFAULT_OUT_DIR / "live-network-beta-smoke" / "summary.json",
     )
+    parser.add_argument(
+        "--network-scale-soak-summary",
+        type=Path,
+        default=DEFAULT_OUT_DIR / "network-scale-soak" / "summary.json",
+    )
     parser.add_argument("--live-network-beta", action="store_true", help="Expect optional live-network beta evidence.")
     parser.add_argument(
         "--require-live-network-beta",
@@ -5772,6 +5907,7 @@ def run_self_test(repo_root: Path) -> None:
         (workspace / "build/interop-extended").mkdir(parents=True)
         (workspace / "build/perf-smoke").mkdir(parents=True)
         (out_dir / "app-platform-smoke").mkdir(parents=True)
+        (out_dir / "network-scale-soak").mkdir(parents=True)
         for spec in ecosystem_matrix_row_specs():
             for doc_path in spec.docs:
                 source_doc = repo_root / doc_path
@@ -5805,6 +5941,10 @@ def run_self_test(repo_root: Path) -> None:
             fixture_dir / "self-test-app-platform-smoke.json",
             out_dir / "app-platform-smoke/summary.json",
         )
+        shutil.copy2(
+            fixture_dir / "self-test-network-scale-soak.json",
+            out_dir / "network-scale-soak/summary.json",
+        )
         settings = Settings(
             workspace_root=workspace.resolve(),
             out_dir=out_dir.resolve(),
@@ -5814,6 +5954,7 @@ def run_self_test(repo_root: Path) -> None:
             perf_smoke_summary=workspace / "build/perf-smoke/summary.json",
             app_platform_summary=out_dir / "app-platform-smoke/summary.json",
             live_network_summary=out_dir / "live-network-beta-smoke/summary.json",
+            network_scale_soak_summary=out_dir / "network-scale-soak/summary.json",
             live_network_beta_enabled=False,
             live_network_beta_required=False,
             waivers={},

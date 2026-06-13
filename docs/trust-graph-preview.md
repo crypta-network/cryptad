@@ -24,7 +24,7 @@ The RC service has these release boundaries:
 
 PR-252 and later work remains out of scope here. Trust Graph Local RC does not add Social Inbox
 message threading, app-service dependency bundles, ecosystem advisory or denylist policy,
-network-scale soak requirements, operator RC recovery workflows, or the final ecosystem RC gate.
+operator RC recovery workflows, or the final ecosystem RC gate.
 
 ## Components
 
@@ -225,6 +225,12 @@ content API, rejects oversized content before parsing, stores only the normalize
 statement and redacted source metadata, and never returns raw fetched content. Private insert URIs
 must not be stored or exposed.
 
+Platform API v18 adds import budgets. Direct `import` consumes Trust Graph import budget before
+parsing a document. `import-uri` consumes both Trust Graph import budget and the shared content-fetch
+budget family before imported content can reach the store. If import budget is exhausted, `import-uri`
+does not fetch. If content-fetch budget is exhausted, it does not import. Safe failures use stable
+codes such as `trust_graph_import_budget_exhausted` and `content_fetch_budget_exhausted`.
+
 `GET /api/v1/trust-graph/score` accepts `subjectKind`, `subjectUri`, `context`, and optional
 `includeEvidence=true`. The direct route requires `trust.read`. Apps can import statements, manage
 anchors, or mutate lifecycle records only when their manifest grants `trust.write`.
@@ -259,7 +265,8 @@ permissive than direct score output and must preserve evidence limits.
 
 Trust statement subscription management uses the content subscription routes through SDK trust
 exchange helpers. This avoids a Trust Graph crawler and keeps subscription ownership, restart
-durability, refresh, pause, resume, and delete semantics in the content subscription service.
+durability, refresh, pause, resume, delete, queue-pressure backoff, and network budget semantics in
+the content subscription service.
 
 The bounded signing route is:
 
@@ -304,8 +311,8 @@ used for private data, raw statements, app-service tokens, or app-data backup pa
 Model `toString()` output, API errors, trust audit entries, authorization audit entries, UI errors,
 support bundles, release evidence, and developer-tooling reports must not include raw trust
 statement bodies from real users, raw request bodies, raw fetched content, private insert URIs,
-private keys, seed material, app process tokens, browser-session tokens, form passwords, absolute
-local paths, raw app-data backup payloads, or raw signatures. Release-certification evidence should
+queue HTML, private keys, seed material, app process tokens, browser-session tokens, form passwords,
+absolute local paths, raw app-data backup payloads, or raw signatures. Release-certification evidence should
 use route names, capability labels, booleans, counts, fixture hashes, lifecycle status labels,
 reason codes, and redacted summaries. Durable UI-local app-data evidence should similarly use
 counts and summary fields instead of raw trust statements, private insert URIs, or raw form bodies.

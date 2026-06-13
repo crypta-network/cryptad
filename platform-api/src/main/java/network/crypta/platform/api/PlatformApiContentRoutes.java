@@ -6,6 +6,7 @@ import java.util.Objects;
 import network.crypta.platform.api.content.ContentApiHandler;
 import network.crypta.platform.api.content.subscriptions.ContentSubscriptionService;
 import network.crypta.platform.api.content.subscriptions.ContentSubscriptionsApiHandler;
+import network.crypta.platform.api.networkbudget.AppNetworkBudgetService;
 import network.crypta.runtime.spi.ContentFetchPort;
 import network.crypta.runtime.spi.RuntimePorts;
 
@@ -28,6 +29,7 @@ final class PlatformApiContentRoutes {
 
   private final RuntimePorts runtimePorts;
   private final ContentSubscriptionService contentSubscriptionService;
+  private final AppNetworkBudgetService networkBudgetService;
 
   /**
    * Creates content routes from runtime ports and the optional subscription service.
@@ -37,9 +39,12 @@ final class PlatformApiContentRoutes {
    * @throws NullPointerException if {@code runtimePorts} is {@code null}
    */
   PlatformApiContentRoutes(
-      RuntimePorts runtimePorts, ContentSubscriptionService contentSubscriptionService) {
+      RuntimePorts runtimePorts,
+      ContentSubscriptionService contentSubscriptionService,
+      AppNetworkBudgetService networkBudgetService) {
     this.runtimePorts = Objects.requireNonNull(runtimePorts, "runtimePorts");
     this.contentSubscriptionService = contentSubscriptionService;
+    this.networkBudgetService = networkBudgetService;
   }
 
   /**
@@ -54,7 +59,8 @@ final class PlatformApiContentRoutes {
       if (!METHOD_POST.equals(request.method())) {
         return methodNotAllowed(METHOD_POST, POST_ONLY_MESSAGE);
       }
-      return PlatformApiResponse.ok(contentApiHandler().fetch(request.queryParameters()));
+      return PlatformApiResponse.ok(
+          contentApiHandler().fetch(request.queryParameters(), optionalAppPrincipalId(request)));
     }
     if (segments.size() >= 2 && "subscriptions".equals(segments.get(1))) {
       return routeContentSubscriptionsRequest(segments, request);
@@ -105,7 +111,7 @@ final class PlatformApiContentRoutes {
       throw new PlatformApiException(
           503, "content_fetch_failed", "Content fetch service is unavailable.");
     }
-    return new ContentApiHandler(contentFetchPort);
+    return new ContentApiHandler(contentFetchPort, networkBudgetService);
   }
 
   private ContentSubscriptionsApiHandler contentSubscriptionsApiHandler() {
@@ -124,6 +130,10 @@ final class PlatformApiContentRoutes {
           403, "forbidden", "This Platform API route requires an app principal.");
     }
     return request.principal().appId();
+  }
+
+  private static String optionalAppPrincipalId(PlatformApiRequest request) {
+    return request.principal().isApp() ? request.principal().appId() : null;
   }
 
   private static PlatformApiResponse methodNotAllowed(String allow, String message) {

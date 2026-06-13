@@ -14,6 +14,9 @@ import java.util.Random;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import network.crypta.platform.api.networkbudget.AppNetworkBudgetConfig;
+import network.crypta.platform.api.networkbudget.AppNetworkBudgetService;
+import network.crypta.platform.api.networkbudget.InMemoryAppNetworkBudgetStore;
 import network.crypta.platform.appdist.AppUiMode;
 import network.crypta.platform.apphost.AppHost;
 import network.crypta.platform.apphost.InstalledAppPaths;
@@ -31,7 +34,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-@SuppressWarnings({"java:S100", "resource"})
+@SuppressWarnings({"java:S100"})
 class ContentSubscriptionSchedulerTest {
   private static final String APP_ID = "feed-reader";
   private static final int GLOBAL_SUBSCRIPTION_LIMIT = 4;
@@ -169,6 +172,35 @@ class ContentSubscriptionSchedulerTest {
   }
 
   @Test
+  void tick_whenQueuePressureSkipsPoll_expectBudgetNotConsumed() throws IOException {
+    RecordingFetchPort fetchPort = new RecordingFetchPort();
+    ContentSubscriptionSchedulerConfig config = config(Duration.ZERO, 2, 2);
+    AppNetworkBudgetService budgetService = subscriptionBudget();
+    ContentSubscriptionService service = service(fetchPort, config, budgetService);
+    String subscriptionId =
+        (String) service.create(APP_ID, createParams(SOURCE, "Daily feed")).get("subscriptionId");
+    QueueSupportPort queueSupportPort = mock(QueueSupportPort.class);
+    when(queueSupportPort.isQueueBackendEnabled()).thenReturn(false);
+    ContentSubscriptionScheduler scheduler =
+        new ContentSubscriptionScheduler(
+            appHost(installed(SUBSCRIPTION_CAPABILITIES)),
+            service,
+            config,
+            new ContentSubscriptionPressureGate(queueSupportPort, null),
+            Clock.fixed(NOW, ZoneOffset.UTC),
+            new Random(0));
+
+    ContentSubscriptionSchedulerTickResult skipped = scheduler.tick(NOW);
+    fetchPort.enqueue("feed body", "USK@example/feed/7/feed.json");
+    Map<String, Object> refreshed = service.refresh(APP_ID, subscriptionId);
+
+    assertEquals(ContentSubscriptionStatus.BACKOFF, skipped.status());
+    assertEquals(0, skipped.pollsAttempted());
+    assertEquals("success", refreshed.get("status"));
+    assertEquals(1, fetchPort.calls);
+  }
+
+  @Test
   void tick_whenAlreadyRunning_expectNoOverlappingFetch() throws Exception {
     BlockingFetchPort fetchPort = new BlockingFetchPort();
     ContentSubscriptionSchedulerConfig config = config(Duration.ZERO, 2, 2);
@@ -205,12 +237,27 @@ class ContentSubscriptionSchedulerTest {
 
   private static ContentSubscriptionService service(
       ContentFetchPort fetchPort, ContentSubscriptionSchedulerConfig config) {
+    return service(fetchPort, config, null);
+  }
+
+  private static ContentSubscriptionService service(
+      ContentFetchPort fetchPort,
+      ContentSubscriptionSchedulerConfig config,
+      AppNetworkBudgetService budgetService) {
     return new ContentSubscriptionService(
         new InMemoryContentSubscriptionStore(),
         fetchPort,
         config,
+        budgetService,
         Clock.fixed(NOW, ZoneOffset.UTC),
         new Random(0));
+  }
+
+  private static AppNetworkBudgetService subscriptionBudget() {
+    return new AppNetworkBudgetService(
+        new InMemoryAppNetworkBudgetStore(),
+        new AppNetworkBudgetConfig(20, 100, 2, 16, 1, 1024, 1, 8, 120, 1024, 1, 8),
+        Clock.fixed(NOW, ZoneOffset.UTC));
   }
 
   private AppHost appHost(InstalledAppSnapshot... installedApps) throws IOException {

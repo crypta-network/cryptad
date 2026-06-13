@@ -6,6 +6,11 @@ import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
+import network.crypta.platform.api.networkbudget.AppNetworkBudgetConfig;
+import network.crypta.platform.api.networkbudget.AppNetworkBudgetOperation;
+import network.crypta.platform.api.networkbudget.AppNetworkBudgetScope;
+import network.crypta.platform.api.networkbudget.AppNetworkBudgetService;
+import network.crypta.platform.api.networkbudget.InMemoryAppNetworkBudgetStore;
 import network.crypta.platform.api.trust.TrustGraphApiHandler;
 import network.crypta.platform.appui.AppUiOriginRegistry;
 import network.crypta.platform.trustgraph.InMemoryTrustGraphStore;
@@ -225,6 +230,74 @@ class TrustGraphApiRouterTest {
   }
 
   @Test
+  void route_whenDirectImportBudgetExhausted_expectSafeTooManyRequests() {
+    AppNetworkBudgetService budgetService = trustImportBudget(1, 100);
+    PlatformApiRouter router =
+        router(
+            null,
+            new TrustGraphApiHandler(new InMemoryTrustGraphStore(), FIXED_CLOCK, budgetService));
+    PlatformApiPrincipal principal =
+        PlatformApiPrincipal.appBrowserSession(APP_ID, List.of("trust.write"));
+    PlatformApiResponse first =
+        router.route(
+            request(
+                "POST",
+                List.of("trust-graph", "import"),
+                Map.of("document", List.of(validStatement())),
+                principal));
+
+    PlatformApiResponse denied =
+        router.route(
+            request(
+                "POST",
+                List.of("trust-graph", "import"),
+                Map.of("document", List.of(validStatement())),
+                principal));
+
+    assertEquals(200, first.statusCode());
+    assertEquals(429, denied.statusCode());
+    assertTrue(denied.body().contains("\"code\":\"trust_graph_import_budget_exhausted\""));
+    assertFalse(denied.body().contains("signature-value"));
+    assertFalse(denied.body().contains(validStatement()));
+  }
+
+  @Test
+  void route_whenHostOperatorImports_expectOperatorAppImportBudgetIsSeparate() {
+    AppNetworkBudgetService budgetService = trustImportBudget(1, 100);
+    PlatformApiRouter router =
+        router(
+            null,
+            new TrustGraphApiHandler(new InMemoryTrustGraphStore(), FIXED_CLOCK, budgetService));
+    PlatformApiResponse hostImport =
+        router.route(
+            request(
+                "POST",
+                List.of("trust-graph", "import"),
+                Map.of("document", List.of(validStatement())),
+                PlatformApiPrincipal.hostOperator()));
+
+    PlatformApiResponse operatorAppImport =
+        router.route(
+            request(
+                "POST",
+                List.of("trust-graph", "import"),
+                Map.of("document", List.of(validStatement())),
+                PlatformApiPrincipal.appBrowserSession("operator", List.of("trust.write"))));
+
+    assertEquals(200, hostImport.statusCode());
+    assertEquals(200, operatorAppImport.statusCode());
+    assertEquals(
+        1,
+        budgetService.snapshots().stream()
+            .filter(snapshot -> snapshot.appId().equals(AppNetworkBudgetScope.HOST_OPERATOR))
+            .filter(
+                snapshot -> snapshot.operation() == AppNetworkBudgetOperation.TRUST_GRAPH_IMPORT)
+            .mapToInt(network.crypta.platform.api.networkbudget.AppNetworkBudgetSnapshot::count)
+            .findFirst()
+            .orElse(0));
+  }
+
+  @Test
   void route_whenAuditReadAfterImport_expectRedactedAuditEvents() {
     PlatformApiRouter router = router();
     PlatformApiPrincipal writer =
@@ -428,6 +501,109 @@ class TrustGraphApiRouterTest {
   }
 
   @Test
+  void route_whenImportUriImportBudgetExhausted_expectNoFetch() {
+    AtomicBoolean fetchCalled = new AtomicBoolean(false);
+    ContentFetchPort fetchPort =
+        request -> {
+          fetchCalled.set(true);
+          return new BoundedContentFetchResult(new byte[0], request.uri(), request.uri(), "ok");
+        };
+    AppNetworkBudgetService budgetService = trustImportBudget(1, 100);
+    budgetService.acquire(APP_ID, AppNetworkBudgetOperation.TRUST_GRAPH_IMPORT).lease().close();
+    PlatformApiRouter router =
+        router(
+            fetchPort,
+            new TrustGraphApiHandler(new InMemoryTrustGraphStore(), FIXED_CLOCK, budgetService));
+
+    PlatformApiResponse response =
+        router.route(
+            request(
+                "POST",
+                List.of("trust-graph", "import-uri"),
+                Map.of("uri", List.of("CHK@statement")),
+                PlatformApiPrincipal.appBrowserSession(
+                    APP_ID, List.of("trust.write", "content.fetch"))));
+
+    assertEquals(429, response.statusCode());
+    assertTrue(response.body().contains("\"code\":\"trust_graph_import_budget_exhausted\""));
+    assertFalse(fetchCalled.get());
+    assertFalse(response.body().contains("CHK@statement"));
+  }
+
+  @Test
+  void route_whenImportUriContentFetchBudgetExhausted_expectNoFetchOrImport() {
+    AtomicBoolean fetchCalled = new AtomicBoolean(false);
+    ContentFetchPort fetchPort =
+        request -> {
+          fetchCalled.set(true);
+          return new BoundedContentFetchResult(
+              validStatement().getBytes(java.nio.charset.StandardCharsets.UTF_8),
+              request.uri(),
+              request.uri(),
+              "ok");
+        };
+    AppNetworkBudgetService budgetService = trustImportBudget(10, 1);
+    budgetService
+        .acquire("feed-reader", AppNetworkBudgetOperation.FOREGROUND_CONTENT_FETCH)
+        .lease()
+        .close();
+    InMemoryTrustGraphStore store = new InMemoryTrustGraphStore();
+    PlatformApiRouter router =
+        router(fetchPort, new TrustGraphApiHandler(store, FIXED_CLOCK, budgetService));
+
+    PlatformApiResponse response =
+        router.route(
+            request(
+                "POST",
+                List.of("trust-graph", "import-uri"),
+                Map.of("uri", List.of("CHK@statement")),
+                PlatformApiPrincipal.appBrowserSession(
+                    APP_ID, List.of("trust.write", "content.fetch"))));
+
+    assertEquals(429, response.statusCode());
+    assertTrue(response.body().contains("\"code\":\"content_fetch_budget_exhausted\""));
+    assertFalse(fetchCalled.get());
+    assertEquals(0, store.statementCount());
+    assertFalse(response.body().contains("CHK@statement"));
+  }
+
+  @Test
+  void route_whenHostOperatorImportUriContentFetchBudgetExhausted_expectNoFetchOrImport() {
+    AtomicBoolean fetchCalled = new AtomicBoolean(false);
+    ContentFetchPort fetchPort =
+        request -> {
+          fetchCalled.set(true);
+          return new BoundedContentFetchResult(
+              validStatement().getBytes(java.nio.charset.StandardCharsets.UTF_8),
+              request.uri(),
+              request.uri(),
+              "ok");
+        };
+    AppNetworkBudgetService budgetService = trustImportBudget(10, 1);
+    budgetService
+        .acquire("feed-reader", AppNetworkBudgetOperation.FOREGROUND_CONTENT_FETCH)
+        .lease()
+        .close();
+    InMemoryTrustGraphStore store = new InMemoryTrustGraphStore();
+    PlatformApiRouter router =
+        router(fetchPort, new TrustGraphApiHandler(store, FIXED_CLOCK, budgetService));
+
+    PlatformApiResponse response =
+        router.route(
+            request(
+                "POST",
+                List.of("trust-graph", "import-uri"),
+                Map.of("uri", List.of("CHK@statement")),
+                PlatformApiPrincipal.hostOperator()));
+
+    assertEquals(429, response.statusCode());
+    assertTrue(response.body().contains("\"code\":\"content_fetch_budget_exhausted\""));
+    assertFalse(fetchCalled.get());
+    assertEquals(0, store.statementCount());
+    assertFalse(response.body().contains("CHK@statement"));
+  }
+
+  @Test
   void route_whenImportUriLacksContentFetchCapability_expectForbiddenBeforeHandler() {
     PlatformApiResponse response =
         router()
@@ -623,6 +799,26 @@ class TrustGraphApiRouterTest {
           Class<?> returnType = invocation.getMethod().getReturnType();
           return returnType.isInterface() ? mock(returnType) : null;
         });
+  }
+
+  private static AppNetworkBudgetService trustImportBudget(
+      int trustGraphImportPerAppPerHour, int contentFetchGlobalPerMinute) {
+    return new AppNetworkBudgetService(
+        new InMemoryAppNetworkBudgetStore(),
+        new AppNetworkBudgetConfig(
+            20,
+            contentFetchGlobalPerMinute,
+            2,
+            16,
+            48,
+            1024,
+            1,
+            8,
+            trustGraphImportPerAppPerHour,
+            1024,
+            1,
+            8),
+        FIXED_CLOCK);
   }
 
   private static String validStatement() {
