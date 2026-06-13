@@ -43,9 +43,9 @@ Use this skill when working on:
   daemon distribution rooted at `:cryptad`.
 - The `:platform-api` JAR contributes the transport-neutral Platform API v1 surface, compatibility
   contract, app-vault route handlers, generated app-document inserts, bounded content fetch,
-  durable app data, app-data backup/restore routes, app-service dependency graph/grant-bundle
-  routes, Trust Graph Local RC route handlers, and app-update lifecycle/scheduler coordination, and
-  the
+  shared app-network budget service/store, durable content subscriptions, durable app data,
+  app-data backup/restore routes, app-service dependency graph/grant-bundle routes, Trust Graph
+  Local RC route handlers, and app-update lifecycle/scheduler coordination, and the
   `:platform-apphost` JAR contributes the transport-neutral local AppHost core, sandbox-provider
   selection, and durable bundle rollback used by that API.
 - The `:platform-app-ui` JAR contributes app-owned static UI route/origin helpers used by the
@@ -58,8 +58,8 @@ Use this skill when working on:
   tooling, and AppHost validation.
 - The `:platform-appcatalog` JAR contributes signed catalog source parsing, catalog writing,
   verification, Crypta catalog source fetching, app-store/API compatibility metadata parsing,
-  independent app-review receipt trust metadata, artifact download, safe ZIP extraction, and
-  verified staging support.
+  independent app-review receipt trust metadata, catalog security advisory/denylist policy,
+  artifact download, safe ZIP extraction, and verified staging support.
 - The `:platform-trustgraph` JAR contributes local Trust Graph Local RC statement parsing,
   canonicalization, verification, process-local store/anchor behavior, lifecycle/status records,
   and deterministic scoring used by Platform API trust routes.

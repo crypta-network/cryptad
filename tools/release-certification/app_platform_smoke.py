@@ -47,7 +47,16 @@ APP_IDS = (
     "feed-reader",
     "trust-graph",
 )
-CURRENT_PLATFORM_API_CONTRACT_VERSION = 17
+CURRENT_PLATFORM_API_CONTRACT_VERSION = 18
+NETWORK_SCALE_EVIDENCE_IDS = (
+    "network-scale.app-network-budget",
+    "network-scale.content-fetch-budget",
+    "network-scale.subscription-budget",
+    "network-scale.queue-pressure-backoff",
+    "network-scale.trust-graph-import-budget",
+    "network-scale.social-inbox-multi-source-soak",
+    "network-scale.redaction",
+)
 LEGACY_REMOVAL_WAVE_ONE_IDS = (
     "queue-downloads",
     "queue-uploads",
@@ -2011,7 +2020,7 @@ def collect_app_services_evidence(settings: Settings) -> list[EvidenceItem]:
 
     registry_checks = {
         "contractV12AndCapabilitiesPresent": (
-            "CURRENT_CONTRACT_VERSION = 17" in contract_text
+            "CURRENT_CONTRACT_VERSION = 18" in contract_text
             and "APP_SERVICES_CONTRACT_VERSION = 12" in contract_text
             and "APP_SERVICE_DEPENDENCY_BUNDLES_CONTRACT_VERSION = 16" in contract_text
             and "APP_SERVICES_READ" in capabilities_text
@@ -4616,7 +4625,7 @@ def collect_content_subscription_evidence(settings: Settings) -> EvidenceItem:
             or "CURRENT_CONTRACT_VERSION = 13" in contract_text
             or "CURRENT_CONTRACT_VERSION = 14" in contract_text
             or "CURRENT_CONTRACT_VERSION = 15" in contract_text
-            or "CURRENT_CONTRACT_VERSION = 17" in contract_text
+            or "CURRENT_CONTRACT_VERSION = 18" in contract_text
         ),
         "capabilityDescriptorPresent": (
             "CONTENT_SUBSCRIBE" in contract_text
@@ -4928,6 +4937,367 @@ def collect_content_subscription_scheduler_evidence(settings: Settings) -> Evide
     )
 
 
+def collect_network_scale_evidence(settings: Settings) -> list[EvidenceItem]:
+    source = summary_source(settings)
+    workspace = settings.workspace_root
+    api_dir = workspace / "platform-api/src/main/java/network/crypta/platform/api"
+    budget_dir = api_dir / "networkbudget"
+    budget_test_dir = workspace / "platform-api/src/test/java/network/crypta/platform/api/networkbudget"
+    content_routes = read_source(api_dir / "PlatformApiContentRoutes.java")
+    content_handler = read_source(api_dir / "content/ContentApiHandler.java")
+    shared_services = read_source(api_dir / "PlatformApiSharedAppServices.java")
+    router = read_source(api_dir / "PlatformApiRouter.java")
+    subscription_dir = api_dir / "content/subscriptions"
+    subscription_service = read_source(subscription_dir / "ContentSubscriptionService.java")
+    subscription_scheduler = read_source(subscription_dir / "ContentSubscriptionScheduler.java")
+    subscription_status = read_source(subscription_dir / "ContentSubscriptionStatus.java")
+    pressure_gate = read_source(subscription_dir / "ContentSubscriptionPressureGate.java")
+    trust_handler = read_source(api_dir / "trust/TrustGraphApiHandler.java")
+    runtime = read_source(
+        workspace / "bridge-http-runtime/src/main/java/network/crypta/clients/http/bridge/CoreHttpShellRuntimeSupport.java"
+    )
+    social_app = read_source(workspace / "apps/social-inbox/src/staged/static/app.js")
+    social_test = read_source(
+        workspace / "apps/social-inbox/src/test/java/network/crypta/apps/socialinbox/SocialInboxBundleStagingTest.java"
+    )
+    platform_tests = "\n".join(
+        read_source(path)
+        for path in sorted((workspace / "platform-api/src/test/java/network/crypta/platform/api").rglob("*.java"))
+    )
+    budget_text = "\n".join(read_source(path) for path in sorted(budget_dir.glob("*.java")))
+    budget_tests = "\n".join(read_source(path) for path in sorted(budget_test_dir.glob("*.java")))
+    docs_text = "\n".join(
+        read_source(workspace / path)
+        for path in (
+            "docs/network-scale-soak-and-subscription-budget.md",
+            "docs/release-certification.md",
+            "docs/platform-api-contract.md",
+            "docs/platform-api-surface.md",
+            "docs/feed-reader-reference-app.md",
+            "docs/social-inbox-reference-app.md",
+            "docs/trust-graph-preview.md",
+            "docs/operator-beta-dashboard.md",
+        )
+    )
+    lower_docs = docs_text.lower()
+    refresh_all = function_slice(
+        social_app,
+        "async function refreshAllActiveSources",
+        "async function refreshAllSources",
+    )
+    trust_import_uri = function_slice(
+        trust_handler,
+        "public Map<String, Object> importUri",
+        "private AppNetworkBudgetLease",
+    )
+    queue_before_poll = source_index_before(
+        subscription_scheduler, "pressureGate.assess()", "service.schedulerPoll"
+    )
+    import_budget_before_fetch = source_index_before(
+        trust_import_uri,
+        "reserveTrustGraphImportBudget(appId)",
+        "new ContentApiHandler",
+    )
+    checks_by_id: dict[str, dict[str, bool]] = {
+        "network-scale.app-network-budget": {
+            "packagePresent": budget_dir.is_dir()
+            and all(
+                name in budget_text
+                for name in (
+                    "AppNetworkBudgetConfig",
+                    "AppNetworkBudgetService",
+                    "AppNetworkBudgetStore",
+                    "FileAppNetworkBudgetStore",
+                    "InMemoryAppNetworkBudgetStore",
+                    "AppNetworkBudgetDecision",
+                    "AppNetworkBudgetOperation",
+                    "AppNetworkBudgetReservation",
+                    "AppNetworkBudgetScope",
+                    "AppNetworkBudgetSnapshot",
+                    "AppNetworkBudgetUsage",
+                    "AppNetworkBudgetLease",
+                )
+            ),
+            "finiteDefaultsPresent": all(
+                value in budget_text
+                for value in ("20, 200, 2, 16, 48, 1024, 1, 8, 120, 1024, 1, 8", "requirePositive")
+            ),
+            "systemAndEnvironmentConfigPresent": all(
+                value in budget_text
+                for value in (
+                    "cryptad.appNetworkBudget.foregroundContentFetchPerAppPerMinute",
+                    "CRYPTAD_APP_NETWORK_BUDGET_FOREGROUND_CONTENT_FETCH_PER_APP_PER_MINUTE",
+                    "cryptad.appNetworkBudget.subscriptionPollPerAppPerHour",
+                    "CRYPTAD_APP_NETWORK_BUDGET_SUBSCRIPTION_POLL_PER_APP_PER_HOUR",
+                    "cryptad.appNetworkBudget.trustGraphImportPerAppPerHour",
+                    "CRYPTAD_APP_NETWORK_BUDGET_TRUST_GRAPH_IMPORT_PER_APP_PER_HOUR",
+                )
+            ),
+            "pathSafeStoreAndRuntimeWiring": (
+                "AppManifest.normalizeAppId" in budget_text
+                and "_cryptad_global" in budget_text
+                and "_cryptad_operator" in budget_text
+                and "ATOMIC_MOVE" in budget_text
+                and "network-budget" in runtime
+                and "AppNetworkBudgetService" in shared_services
+                and "checkedAppServices.networkBudgetService()" in router
+                and "new PlatformApiContentRoutes" in router
+                and "new ContentApiHandler(contentFetchPort, networkBudgetService)" in content_routes
+            ),
+            "deterministicTestsPresent": all(
+                fragment in budget_tests
+                for fragment in (
+                    "acquire_whenPerAppRateLimitReached_expectDeniedUntilWindowReset",
+                    "acquire_whenGlobalRateLimitReachedAcrossApps_expectDenied",
+                    "acquire_whenLeaseClosedByExceptionPath_expectConcurrencyReleased",
+                    "acquire_whenAppIdMatchesFormerGlobalScope_expectGlobalCounterIsSeparate",
+                    "acquire_whenHostOperatorScopeUsesTrustBudget_expectOperatorAppBudgetIsSeparate",
+                    "write_whenMetadataPersisted_expectNoRawContentSecretsOrPaths",
+                    "write_whenInternalScopePersisted_expectPathSafeNonAppDirectory",
+                )
+            ),
+        },
+        "network-scale.content-fetch-budget": {
+            "handlerUsesBudgetBeforeRuntimeFetch": all(
+                fragment in content_handler
+                for fragment in (
+                    "AppNetworkBudgetOperation.FOREGROUND_CONTENT_FETCH",
+                    "networkBudgetService.acquire",
+                    "contentFetchPort.fetchContent",
+                )
+            )
+            and (
+                "try (var _ = acquireBudget(appId))" in content_handler
+                or "try (AppNetworkBudgetLease" in content_handler
+            ),
+            "routesPassAppPrincipalId": (
+                "optionalAppPrincipalId(request)" in content_routes
+                and ".fetch(request.queryParameters(), optionalAppPrincipalId(request))" in content_routes
+            ),
+            "safeBudgetErrorsCovered": all(
+                fragment in platform_tests
+                for fragment in (
+                    "content_fetch_budget_exhausted",
+                    "fetch_whenBudgetExhausted_expectDeniedBeforeRuntimePort",
+                    "route_whenBrowserAppExhaustsFetchBudget_expectTooManyRequestsBeforeRuntimeFetch",
+                )
+            ),
+            "contentPolicyStillPresent": (
+                "ContentFetchPolicy.normalizeForegroundSource" in content_handler
+                and (
+                    "unsupported_content_source" in content_handler
+                    or "unsupported_content_source" in platform_tests
+                    or "unsupported content source" in docs_text.lower()
+                )
+            ),
+        },
+        "network-scale.subscription-budget": {
+            "manualAndSchedulerUseBudgetOperations": all(
+                fragment in subscription_service
+                for fragment in (
+                    "AppNetworkBudgetOperation.SUBSCRIPTION_MANUAL_REFRESH",
+                    "AppNetworkBudgetOperation.SUBSCRIPTION_POLL",
+                    "networkBudgetService.reserve",
+                    "ContentSubscriptionStatus.BUDGET_EXHAUSTED",
+                )
+            ),
+            "statusIsPublicAndSafe": "BUDGET_EXHAUSTED(\"budget_exhausted\")" in subscription_status,
+            "leasesAndRetryAreBounded": all(
+                fragment in subscription_service
+                for fragment in (
+                    "nextAfterBudgetDenied",
+                    "budgetDecision.message()",
+                )
+            )
+            and (
+                "try (var budgetReservation = reserveBudget" in subscription_service
+                and "budgetReservation.commit()" in subscription_service
+                or "try (AppNetworkBudgetLease" in subscription_service
+            ),
+            "testsCoverManualSchedulerAndLeaseRelease": all(
+                fragment in platform_tests
+                for fragment in (
+                    "refresh_whenSubscriptionBudgetExhausted_expectSafeStatusWithoutFetch",
+                    "schedulerPoll_whenSubscriptionBudgetExhausted_expectNoFetch",
+                    "refresh_whenFetchThrows_expectBudgetLeaseReleasedForNextRefresh",
+                    "refresh_whenRunningStateWriteFails_expectBudgetReservedUntilNextRefresh",
+                )
+            ),
+        },
+        "network-scale.queue-pressure-backoff": {
+            "pressurePrecedesBudgetAndFetch": queue_before_poll
+            and "if (!pressure.allowed())" in subscription_scheduler,
+            "budgetSkipDoesNotCountAsAttempt": (
+                "ContentSubscriptionStatus.BUDGET_EXHAUSTED" in subscription_scheduler
+                and (
+                    "new SchedulerPollOutcome(0, 1, 1" in subscription_scheduler
+                    or "if (result == ContentSubscriptionStatus.BUDGET_EXHAUSTED) { return; } attempted++"
+                    in subscription_scheduler
+                )
+            ),
+            "pressureGateUsesStableSpiNoHtml": (
+                "QueueSupportPort" in pressure_gate
+                and "RequestQueuePort" in pressure_gate
+                and "queueHtml" not in pressure_gate
+            ),
+            "testsProvePressureSkipsBudgetAndFetch": (
+                "tick_whenQueuePressureSkipsPoll_expectBudgetNotConsumed" in platform_tests
+            ),
+        },
+        "network-scale.trust-graph-import-budget": {
+            "directImportUsesImportBudget": all(
+                fragment in trust_handler
+                for fragment in (
+                    "AppNetworkBudgetOperation.TRUST_GRAPH_IMPORT",
+                    "networkBudgetService.acquire",
+                )
+            )
+            and (
+                "acquireTrustGraphImportBudgetLease(appId)" in trust_handler
+                or "acquireBudgetLease(appId, AppNetworkBudgetOperation.TRUST_GRAPH_IMPORT)"
+                in trust_handler
+            ),
+            "importUriUsesImportAndContentFetchBudgets": (
+                import_budget_before_fetch
+                and "AppNetworkBudgetOperation.TRUST_GRAPH_IMPORT_URI" in trust_handler
+                and "new ContentApiHandler" in trust_handler
+                and "commitTrustGraphImportBudget(importReservation)" in trust_import_uri
+            ),
+            "safeErrorsAndNoRawContentCovered": all(
+                fragment in platform_tests
+                for fragment in (
+                    "route_whenDirectImportBudgetExhausted_expectSafeTooManyRequests",
+                    "route_whenImportUriImportBudgetExhausted_expectNoFetch",
+                    "route_whenImportUriContentFetchBudgetExhausted_expectNoFetchOrImport",
+                    "trust_graph_import_budget_exhausted",
+                    "content_fetch_budget_exhausted",
+                )
+            ),
+        },
+        "network-scale.social-inbox-multi-source-soak": {
+            "refreshAllIsCappedAndSequential": (
+                ".slice(0, maxSources)" in refresh_all
+                and "for (const sourceId of activeSourceIds)" in refresh_all
+                and "Promise.all" not in refresh_all
+            ),
+            "statusWordingCoversPressureBudgetStale": all(
+                fragment in social_app
+                for fragment in (
+                    "Queue pressure",
+                    "Runtime unavailable",
+                    "Backoff",
+                    "Budget exhausted",
+                    "Stale",
+                )
+            ),
+            "trustAnnotationsRemainMediated": (
+                "CryptaPlatform.services.invoke" in social_app
+                and "CryptaPlatform.trust.score" not in social_app
+                and "/api/v1/trust-graph/score" not in social_app
+            ),
+            "staticTestsCoverBoundsAndNoBrowserCache": all(
+                fragment in social_test
+                for fragment in (
+                    "verifyBoundedRefreshAll",
+                    "Promise.all",
+                    "CryptaPlatform.trust.score",
+                    "indexedDB",
+                )
+            ),
+        },
+        "network-scale.redaction": {
+            "budgetStorePersistsSafeCountersOnly": all(
+                fragment in budget_text
+                for fragment in (
+                    "appId",
+                    "operation",
+                    "windowStart",
+                    "lastDecision",
+                    "nextAvailableAt",
+                )
+            )
+            and all(fragment not in budget_text for fragment in ("contentText", "queueHtml", "browserSessionToken")),
+            "releaseDocsForbidSensitiveEvidence": all(
+                phrase in lower_docs
+                for phrase in (
+                    "raw fetched content",
+                    "queue html",
+                    "browser-session tokens",
+                    "private insert uris",
+                    "raw signatures",
+                    "absolute local paths",
+                )
+            ),
+            "soakFixtureIsRedactionOnly": (
+                "self-test-network-scale-soak.json" in docs_text
+                or (workspace / "tools/release-certification/fixtures/self-test-network-scale-soak.json").is_file()
+            ),
+        },
+    }
+    sources = {
+        "budget": display_path(budget_dir, workspace),
+        "contentRoutes": display_path(api_dir / "PlatformApiContentRoutes.java", workspace),
+        "contentHandler": display_path(api_dir / "content/ContentApiHandler.java", workspace),
+        "subscriptionService": display_path(subscription_dir / "ContentSubscriptionService.java", workspace),
+        "subscriptionScheduler": display_path(subscription_dir / "ContentSubscriptionScheduler.java", workspace),
+        "trustGraphHandler": display_path(api_dir / "trust/TrustGraphApiHandler.java", workspace),
+        "socialInbox": display_path(workspace / "apps/social-inbox/src/staged/static/app.js", workspace),
+        "docs": "docs/network-scale-soak-and-subscription-budget.md",
+    }
+    items: list[EvidenceItem] = []
+    for evidence_id in NETWORK_SCALE_EVIDENCE_IDS:
+        checks = checks_by_id[evidence_id]
+        errors = [name for name, passed in checks.items() if passed is not True]
+        details = {
+            "checks": checks,
+            "sources": sources,
+            "redaction": {
+                "rawFetchedContentExcluded": True,
+                "privateInsertUrisExcluded": True,
+                "tokensExcluded": True,
+                "absolutePathsExcluded": True,
+                "queueHtmlExcluded": True,
+            },
+        }
+        if errors:
+            items.append(
+                EvidenceItem(
+                    evidence_id,
+                    root_consequence(settings, "fail"),
+                    True,
+                    f"{evidence_id} evidence is incomplete.",
+                    source,
+                    {"errors": errors, **details},
+                )
+            )
+        else:
+            items.append(
+                EvidenceItem(
+                    evidence_id,
+                    "pass",
+                    True,
+                    f"{evidence_id} passed deterministic network-scale checks.",
+                    source,
+                    details,
+                )
+            )
+    return items
+
+
+def source_index_before(source: str, earlier: str, later: str) -> bool:
+    earlier_index = source.find(earlier)
+    later_index = source.find(later)
+    return earlier_index >= 0 and later_index >= 0 and earlier_index < later_index
+
+
+def function_slice(source: str, start_marker: str, end_marker: str) -> str:
+    start = source.find(start_marker)
+    end = source.find(end_marker, start + len(start_marker)) if start >= 0 else -1
+    if start < 0 or end <= start:
+        return ""
+    return source[start:end]
+
+
 def collect_app_data_store_evidence(settings: Settings) -> EvidenceItem:
     source = summary_source(settings)
     workspace = settings.workspace_root
@@ -4980,7 +5350,7 @@ def collect_app_data_store_evidence(settings: Settings) -> EvidenceItem:
                 or "CURRENT_CONTRACT_VERSION = 13" in text["contract"]
                 or "CURRENT_CONTRACT_VERSION = 14" in text["contract"]
                 or "CURRENT_CONTRACT_VERSION = 15" in text["contract"]
-                or "CURRENT_CONTRACT_VERSION = 17" in text["contract"]
+                or "CURRENT_CONTRACT_VERSION = 18" in text["contract"]
             )
             and "APP_DATA_STORE_CONTRACT_VERSION = 9" in text["contract"]
             and "app.data.read" in text["capabilities"]
@@ -6635,7 +7005,7 @@ def collect_trust_graph_rc_scope_and_safety_evidence(settings: Settings) -> Evid
     docs_lower = normalized_source_text(docs_text)
     checks = {
         "contractV15AndRoutesPresent": (
-            "CURRENT_CONTRACT_VERSION = 17" in contract_text
+            "CURRENT_CONTRACT_VERSION = 18" in contract_text
             and "TRUST_GRAPH_RC_SCOPE_CONTRACT_VERSION = 15" in contract_text
             and "/trust-graph/statements/{fingerprint}" in contract_text
             and "/trust-graph/statements/{fingerprint}/deprecate" in contract_text
@@ -6975,7 +7345,7 @@ def collect_trust_graph_exchange_evidence(settings: Settings) -> EvidenceItem:
     route_source_text = router_text + "\n" + route_text
     checks = {
         "contractVersionV10": (
-            "CURRENT_CONTRACT_VERSION = 17" in contract_text
+            "CURRENT_CONTRACT_VERSION = 18" in contract_text
             and "TRUST_GRAPH_EXCHANGE_CONTRACT_VERSION = 10" in contract_text
         ),
         "contractDescriptorsPresent": (
@@ -7323,7 +7693,7 @@ def collect_social_message_signing_evidence(settings: Settings) -> EvidenceItem:
     )
     checks = {
         "routeInContract": "/app-vault/identities/{identityId}/social-message" in contract_text,
-        "contractVersionV11": "CURRENT_CONTRACT_VERSION = 17" in contract_text
+        "contractVersionV11": "CURRENT_CONTRACT_VERSION = 18" in contract_text
         and "SOCIAL_MESSAGE_CONTRACT_VERSION = 11" in contract_text,
         "capabilitiesInContract": all(
             fragment in contract_text
@@ -12136,6 +12506,7 @@ def run(settings: Settings) -> tuple[dict[str, Any], int]:
         collect_content_fetch_evidence(settings),
         collect_content_subscription_evidence(settings),
         collect_content_subscription_scheduler_evidence(settings),
+        *collect_network_scale_evidence(settings),
         collect_app_data_store_evidence(settings),
         collect_app_data_backup_restore_evidence(settings),
         collect_trust_graph_preview_evidence(settings),
@@ -13784,7 +14155,15 @@ def make_self_test_workspace(workspace: Path) -> None:
             "function archiveThread(thread) { thread.messages.forEach((message) => isSafeMessageId(message.messageId)); }\n"
             "function toggleThreadPin(thread) { thread.pinned = !thread.pinned; }\n"
             "function copyProfileUri(uri) { return optionalCryptaContentUri(uri); }\n"
-            "function refreshAllSources() { return 'Refresh all active sources'; }\n"
+            "const subscriptionStatusLabels = Object.freeze({ queue_pressure: \"Queue pressure\", "
+            "runtime_unavailable: \"Runtime unavailable\", backoff: \"Backoff\", budget_exhausted: \"Budget exhausted\" });\n"
+            "function subscriptionStatusSummary(subscription) { return subscriptionStatusLabels[subscription.status] || \"Stale\"; }\n"
+            "function subscriptionAttentionStatusSummary(subscription) { return subscriptionStatusSummary(subscription); }\n"
+            "function subscriptionRetrySummary(subscription) { return subscription.nextCheckAt; }\n"
+            "async function refreshAllActiveSources() { const activeSourceIds = state.sources.map((source) => source.id).slice(0, maxSources); "
+            "for (const sourceId of activeSourceIds) { const source = { subscriptionId: sourceId }; "
+            "await CryptaPlatform.content.subscriptions.refresh(source.subscriptionId); } }\n"
+            "async function refreshAllSources() { return 'Refresh all active sources'; }\n"
             "const threadSourceSummary = { seenCount: 1, firstImportedAt: '2026-01-01T00:00:00Z', lastSeenAt: '2026-01-01T00:00:00Z', sourcesSeen: [{ sourceUriHash: 'redacted', sourceLabel: 'source' }] };\n"
             "function sourceSummariesForDedupe(message) { return message.sourcesSeen || [{ sourceUriHash: 'redacted' }]; }\n"
             "const lastCheckedAt = '2026-01-01T00:00:00Z'; const lastSeenEdition = 1;\n"
@@ -14131,7 +14510,8 @@ def make_self_test_workspace(workspace: Path) -> None:
     (social_test_dir / "SocialInboxBundleStagingTest.java").write_text(
         "class SocialInboxBundleStagingTest { String fixtures = "
         + repr(adversarial_markup_test_text)
-        + "; String rendering = \"textContent innerHTML insertAdjacentHTML\"; }\n",
+        + "; String rendering = \"textContent innerHTML insertAdjacentHTML\"; "
+        "void verifyBoundedRefreshAll() { String checks = \"Promise.all CryptaPlatform.trust.score indexedDB\"; } }\n",
         encoding="utf-8",
     )
     profile_test_dir = workspace / "apps/profile-publisher/src/test/java/network/crypta/apps/profilepublisher"
@@ -14485,7 +14865,7 @@ def make_self_test_workspace(workspace: Path) -> None:
         encoding="utf-8",
     )
     (api_dir / "PlatformApiContract.java").write_text(
-        "final class PlatformApiContract { static final int CURRENT_CONTRACT_VERSION = 17; "
+        "final class PlatformApiContract { static final int CURRENT_CONTRACT_VERSION = 18; "
         "static final int TRUST_GRAPH_PREVIEW_CONTRACT_VERSION = 7; "
         "static final int TRUST_GRAPH_EXCHANGE_CONTRACT_VERSION = 10; "
         "static final int TRUST_GRAPH_RC_SCOPE_CONTRACT_VERSION = 15; "
@@ -14584,12 +14964,69 @@ def make_self_test_workspace(workspace: Path) -> None:
         "static final String APP_SERVICES_CALL = \"app.services.call\"; }\n",
         encoding="utf-8",
     )
+    networkbudget_dir = api_dir / "networkbudget"
+    networkbudget_dir.mkdir(parents=True, exist_ok=True)
+    (networkbudget_dir / "AppNetworkBudgetConfig.java").write_text(
+        "record AppNetworkBudgetConfig() { "
+        "static final Object DEFAULT = new AppNetworkBudgetConfig(20, 200, 2, 16, 48, 1024, 1, 8, 120, 1024, 1, 8); "
+        "String props = \"cryptad.appNetworkBudget.foregroundContentFetchPerAppPerMinute "
+        "CRYPTAD_APP_NETWORK_BUDGET_FOREGROUND_CONTENT_FETCH_PER_APP_PER_MINUTE "
+        "cryptad.appNetworkBudget.subscriptionPollPerAppPerHour "
+        "CRYPTAD_APP_NETWORK_BUDGET_SUBSCRIPTION_POLL_PER_APP_PER_HOUR "
+        "cryptad.appNetworkBudget.trustGraphImportPerAppPerHour "
+        "CRYPTAD_APP_NETWORK_BUDGET_TRUST_GRAPH_IMPORT_PER_APP_PER_HOUR\"; "
+        "void requirePositive() {} static AppNetworkBudgetConfig loadFromSystem() { return new AppNetworkBudgetConfig(); } }\n",
+        encoding="utf-8",
+    )
+    (networkbudget_dir / "AppNetworkBudgetOperation.java").write_text(
+        "enum AppNetworkBudgetOperation { FOREGROUND_CONTENT_FETCH, SUBSCRIPTION_POLL, "
+        "SUBSCRIPTION_MANUAL_REFRESH, TRUST_GRAPH_IMPORT, TRUST_GRAPH_IMPORT_URI, CONTENT_FETCH_GLOBAL }\n",
+        encoding="utf-8",
+    )
+    (networkbudget_dir / "AppNetworkBudgetScope.java").write_text(
+        "final class AppNetworkBudgetScope { "
+        "static final String GLOBAL = \"_cryptad_global\"; "
+        "static final String HOST_OPERATOR = \"_cryptad_operator\"; "
+        "String normalize(String appId) { return AppManifest.normalizeAppId(appId); } }\n",
+        encoding="utf-8",
+    )
+    (networkbudget_dir / "AppNetworkBudgetService.java").write_text(
+        "final class AppNetworkBudgetService { AppNetworkBudgetDecision acquire(String appId, AppNetworkBudgetOperation op) { "
+        "return null; } String safe = \"content_fetch_budget_exhausted content_subscription_budget_exhausted "
+        "trust_graph_import_budget_exhausted\"; }\n",
+        encoding="utf-8",
+    )
+    (networkbudget_dir / "AppNetworkBudgetStore.java").write_text(
+        "interface AppNetworkBudgetStore {}\n", encoding="utf-8"
+    )
+    (networkbudget_dir / "FileAppNetworkBudgetStore.java").write_text(
+        "final class FileAppNetworkBudgetStore implements AppNetworkBudgetStore { "
+        "void write() { AppManifest.normalizeAppId(\"app\"); String move = \"ATOMIC_MOVE\"; } }\n",
+        encoding="utf-8",
+    )
+    (networkbudget_dir / "InMemoryAppNetworkBudgetStore.java").write_text(
+        "final class InMemoryAppNetworkBudgetStore implements AppNetworkBudgetStore {}\n",
+        encoding="utf-8",
+    )
+    for name in (
+        "AppNetworkBudgetDecision",
+        "AppNetworkBudgetSnapshot",
+        "AppNetworkBudgetUsage",
+        "AppNetworkBudgetLease",
+    ):
+        (networkbudget_dir / f"{name}.java").write_text(
+            f"record {name}(String appId, String operation, String windowStart, String lastDecision, String nextAvailableAt) {{}}\n",
+            encoding="utf-8",
+        )
     (api_dir / "PlatformApiRouter.java").write_text(
         "final class PlatformApiRouter { String a = \"/trust-graph/status\"; "
         "String b = \"/trust-graph/anchors\"; String c = \"/trust-graph/import\"; "
         "String d = \"/trust-graph/subjects\"; String e = \"/trust-graph/statements\"; "
         "String f = \"/trust-graph/score\"; String g = \"/trust-graph/import-uri\"; "
         "Object audit = envelope(\"audit\"); void importUri() {} "
+        "PlatformApiSharedAppServices checkedAppServices; Object checkedRuntimePorts; "
+        "Object content = new PlatformApiContentRoutes(checkedRuntimePorts, "
+        "checkedAppServices.contentSubscriptionService(), checkedAppServices.networkBudgetService()); "
         "void routeContentSubscriptionsRequest() { requireAppPrincipalId(request); "
         "requireAllCapabilities(ContentSubscriptionService.CAPABILITY_CONTENT_SUBSCRIBE, "
         "ContentSubscriptionService.CAPABILITY_CONTENT_FETCH); "
@@ -14601,6 +15038,15 @@ def make_self_test_workspace(workspace: Path) -> None:
         "Object app = appServiceRoutes.route(null, null); }\n",
         encoding="utf-8",
     )
+    (api_dir / "PlatformApiContentRoutes.java").write_text(
+        "final class PlatformApiContentRoutes { "
+        "Object contentFetchPort; AppNetworkBudgetService networkBudgetService; "
+        "Object contentApiHandler() { return new ContentApiHandler(contentFetchPort, networkBudgetService); } "
+        "void fetch(Request request) { contentApiHandler().fetch(request.queryParameters(), optionalAppPrincipalId(request)); } "
+        "String optionalAppPrincipalId(Object request) { return \"social-inbox\"; } "
+        "void routeContentSubscriptionsRequest() { requireAppPrincipalId(request); } }\n",
+        encoding="utf-8",
+    )
     (api_dir / "PlatformApiTrustGraphRoutes.java").write_text(
         "final class PlatformApiTrustGraphRoutes { Object routeNestedResourceAction; "
         "String routes = \"statements deprecate revoke reactivate\"; }\n",
@@ -14608,7 +15054,7 @@ def make_self_test_workspace(workspace: Path) -> None:
     )
     (api_dir / "PlatformApiSharedAppServices.java").write_text(
         "record PlatformApiSharedAppServices(TrustGraphApiHandler trustGraphApiHandler, "
-        "AppServiceCoordinator appServiceCoordinator) {}\n",
+        "AppServiceCoordinator appServiceCoordinator, AppNetworkBudgetService networkBudgetService) {}\n",
         encoding="utf-8",
     )
     (api_dir / "PlatformApiAppServiceRoutes.java").write_text(
@@ -14800,7 +15246,10 @@ def make_self_test_workspace(workspace: Path) -> None:
         "final class TrustGraphApiRouterTest { void route_whenImportUriHasContentFetchCapability() {} "
         "void route_whenAuditReadAfterImport() { String summary = \"uri:redacted token=secret\"; } "
         "void route_whenWriterRevokesImportedStatement_expectLifecycleVisibleAndReimportDoesNotErase() {} "
-        "void route_whenReaderAttemptsLifecycleMutation_expectForbiddenBeforeHandler() {} }\n",
+        "void route_whenReaderAttemptsLifecycleMutation_expectForbiddenBeforeHandler() {} "
+        "void route_whenDirectImportBudgetExhausted_expectSafeTooManyRequests() { String error = \"trust_graph_import_budget_exhausted\"; } "
+        "void route_whenImportUriImportBudgetExhausted_expectNoFetch() {} "
+        "void route_whenImportUriContentFetchBudgetExhausted_expectNoFetchOrImport() { String error = \"content_fetch_budget_exhausted\"; } }\n",
         encoding="utf-8",
     )
     sdk_test_dir = workspace / "platform-sdk-js/src/test/java/network/crypta/platform/sdk/js"
@@ -14817,10 +15266,19 @@ def make_self_test_workspace(workspace: Path) -> None:
     bridge_dir.mkdir(parents=True, exist_ok=True)
     (bridge_dir / "CoreHttpShellRuntimeSupport.java").write_text(
         "final class CoreHttpShellRuntimeSupport { void create() { "
+        "AppNetworkBudgetService appNetworkBudgetService = new AppNetworkBudgetService("
+        "new FileAppNetworkBudgetStore(layout.dataDir().resolve(\"apps\").resolve(\"network-budget\")), "
+        "AppNetworkBudgetConfig.loadFromSystem()); "
         "Object handler = new TrustGraphApiHandler(new FileTrustGraphStore("
-        "layout.dataDir().resolve(\"apps\").resolve(\"trust-graph\"))); "
+        "layout.dataDir().resolve(\"apps\").resolve(\"trust-graph\")), appNetworkBudgetService); "
         "Object appServices = new AppServiceCoordinator(layout.dataDir().resolve(\"apps\").resolve(\"app-services\"), "
-        "new TrustGraphScoreAppServiceAdapter(handler)); } }\n",
+        "new TrustGraphScoreAppServiceAdapter(handler)); "
+        "ContentSubscriptionService contentSubscriptionService() { return contentSubscriptionService; } "
+        "ContentSubscriptionService createContentSubscriptionService() { return new ContentSubscriptionService("
+        "new FileContentSubscriptionStore(layout.dataDir().resolve(\"apps\").resolve(\"content-subscriptions\")), "
+        "appNetworkBudgetService); } "
+        "ContentSubscriptionScheduler createContentSubscriptionScheduler() { return new ContentSubscriptionScheduler(contentSubscriptionService); } "
+        "void start() { contentSubscriptionScheduler.start(); contentSubscriptionScheduler::close; } }\n",
         encoding="utf-8",
     )
     appdata_api_dir = api_dir / "appdata"
@@ -14980,10 +15438,20 @@ def make_self_test_workspace(workspace: Path) -> None:
         "noBlocking noRoutingDecisions noLegacyWoTCompatibility\"; "
         "Object lifecycle = statementLifecycleJson(); String max = \"maxEvidenceRows\"; return null; } "
         "Object statementLifecycleJson() { return null; } "
-        "void importStatement() { TrustStatementParser.parse(\"{}\"); } "
-        "void importUri(ContentFetchPort port) { Object handler = new ContentApiHandler(null); "
+        "public Map<String, Object> importStatement() { "
+        "try (var ignored = acquireTrustGraphImportBudgetLease(appId)) { "
+        "TrustStatementParser.parse(\"{}\"); } return null; } "
+        "public Map<String, Object> importUri(ContentFetchPort port) { "
+        "try (var importReservation = reserveTrustGraphImportBudget(appId)) { "
+        "Object handler = new ContentApiHandler(port, networkBudgetService, AppNetworkBudgetOperation.TRUST_GRAPH_IMPORT_URI); "
+        "commitTrustGraphImportBudget(importReservation); "
         "String max = \"maxStoredDocumentBytes\"; String format = \"format\"; "
-        "String event = \"TrustGraphAuditEvent sourceUriHash redactedUriSummary redactedRejectedUriSummary\"; } "
+        "String event = \"TrustGraphAuditEvent sourceUriHash redactedUriSummary redactedRejectedUriSummary\"; } return null; } "
+        "private AppNetworkBudgetReservation reserveTrustGraphImportBudget(Object appId) { "
+        "networkBudgetService.reserve(appId, AppNetworkBudgetOperation.TRUST_GRAPH_IMPORT); return null; } "
+        "private void commitTrustGraphImportBudget(AppNetworkBudgetReservation reservation) { reservation.commit(); } "
+        "private AppNetworkBudgetLease acquireTrustGraphImportBudgetLease(Object appId) { "
+        "networkBudgetService.acquire(appId, AppNetworkBudgetOperation.TRUST_GRAPH_IMPORT); return null; } "
         "Object score = new TrustGraphScorer(null, null); }\n",
         encoding="utf-8",
     )
@@ -15109,7 +15577,11 @@ def make_self_test_workspace(workspace: Path) -> None:
     )
     (content_api_dir / "ContentApiHandler.java").write_text(
         "final class ContentApiHandler { void contentFetch() { String route = \"content/fetch\"; "
-        "Object coding = CodingErrorAction.REPORT; String error = \"unsupported_content_encoding content_fetch_failed\"; } }\n",
+        "Object policy = ContentFetchPolicy.normalizeForegroundSource(null); "
+        "Object operation = AppNetworkBudgetOperation.FOREGROUND_CONTENT_FETCH; "
+        "AppNetworkBudgetDecision decision = networkBudgetService.acquire(appId, operation); "
+        "try (AppNetworkBudgetLease ignored = decision.lease()) { contentFetchPort.fetchContent(null); } "
+        "Object coding = CodingErrorAction.REPORT; String error = \"unsupported_content_source unsupported_content_encoding content_fetch_failed\"; } }\n",
         encoding="utf-8",
     )
     content_subscriptions_dir = content_api_dir / "subscriptions"
@@ -15122,8 +15594,22 @@ def make_self_test_workspace(workspace: Path) -> None:
         "String contentSha256; int bytes.length; String lastSeenEdition; "
         "String lastSeenResolvedUri; int updateCount; "
         "// raw fetched content is digested and then discarded. "
-        "void contentChanged(){} void failureBackoff(){} void withFailure(){} "
+        "void refresh() { pollSubscription(null, null, AppNetworkBudgetOperation.SUBSCRIPTION_MANUAL_REFRESH); } "
+        "void schedulerPoll() { pollSubscription(null, null, AppNetworkBudgetOperation.SUBSCRIPTION_POLL); } "
+        "void pollSubscription(Object s, Object now, Object op) { try (var budgetReservation = reserveBudget(\"app\", op)) { "
+        "AppNetworkBudgetDecision budgetDecision = budgetReservation.decision(); "
+        "if (!budgetDecision.allowed()) { Object status = ContentSubscriptionStatus.BUDGET_EXHAUSTED; "
+        "nextAfterBudgetDenied(now, null, budgetDecision); String msg = budgetDecision.message(); return; } "
+        "Object running = \"write(running)\"; AppNetworkBudgetDecision committedBudget = budgetReservation.commit(); "
+        "if (!committedBudget.allowed()) { nextAfterBudgetDenied(now, null, committedBudget); String msg = committedBudget.message(); return; } "
+        "contentFetchPort.fetchContent(null); } } "
+        "AppNetworkBudgetReservation reserveBudget(Object appId, Object operation) { networkBudgetService.reserve(appId, operation); return null; } "
+        "void contentChanged(){} void failureBackoff(){} void withFailure(){} void nextAfterBudgetDenied(Object n, Object s, Object d){} "
         "String error = \"content_fetch_failed\"; }\n",
+        encoding="utf-8",
+    )
+    (content_subscriptions_dir / "ContentSubscriptionStatus.java").write_text(
+        "enum ContentSubscriptionStatus { BUDGET_EXHAUSTED(\"budget_exhausted\"); ContentSubscriptionStatus(String value){} }\n",
         encoding="utf-8",
     )
     (content_subscriptions_dir / "ContentSubscription.java").write_text(
@@ -15144,7 +15630,9 @@ def make_self_test_workspace(workspace: Path) -> None:
     (content_subscriptions_dir / "ContentSubscriptionScheduler.java").write_text(
         "public final class ContentSubscriptionScheduler { ContentSubscriptionSchedulerConfig c; "
         "ContentSubscriptionPressureGate p; AtomicBoolean running; "
-        "void tick(Instant now) { running.compareAndSet(false, true); String alreadyRunning = \"alreadyRunning\"; } "
+        "void tick(Instant now) { running.compareAndSet(false, true); String alreadyRunning = \"alreadyRunning\"; "
+        "Object pressure = pressureGate.assess(); if (!pressure.allowed()) { return; } "
+        "Object result = service.schedulerPoll(null, now); if (result == ContentSubscriptionStatus.BUDGET_EXHAUSTED) { return; } attempted++; } "
         "void start(){ scheduleWithFixedDelay(); config.initialDelay().plus(jitter()); } "
         "void close(){ shutdownNow(); } int perTickFetchLimit; }\n",
         encoding="utf-8",
@@ -15185,6 +15673,16 @@ def make_self_test_workspace(workspace: Path) -> None:
         "String rejected = \"http:// https:// file:// //example.invalid C:\\\\Users SECRET\"; }\n",
         encoding="utf-8",
     )
+    (platform_api_tests / "ContentApiHandlerTest.java").write_text(
+        "void fetch_whenBudgetExhausted_expectDeniedBeforeRuntimePort() { "
+        "String error = \"content_fetch_budget_exhausted\"; }\n",
+        encoding="utf-8",
+    )
+    (platform_api_tests / "PlatformApiContentRouterTest.java").write_text(
+        "void route_whenBrowserAppExhaustsFetchBudget_expectTooManyRequestsBeforeRuntimeFetch() { "
+        "String error = \"content_fetch_budget_exhausted\"; }\n",
+        encoding="utf-8",
+    )
     (platform_api_tests / "PlatformApiContentSubscriptionsRouterTest.java").write_text(
         "void route_whenAppLacksContentSubscribe_expectForbidden() { "
         "String c = \"ContentSubscriptionService.CAPABILITY_CONTENT_SUBSCRIBE\"; }\n"
@@ -15204,17 +15702,37 @@ def make_self_test_workspace(workspace: Path) -> None:
     content_subscription_tests.mkdir(parents=True, exist_ok=True)
     (content_subscription_tests / "ContentSubscriptionServiceTest.java").write_text(
         "void create_whenSourceIsUnsupported_expectBadRequest() {}\n"
-        "void refresh_whenContentMetadataChanges_expectDigestEditionAndDedupe() {}\n",
+        "void refresh_whenContentMetadataChanges_expectDigestEditionAndDedupe() {}\n"
+        "void refresh_whenSubscriptionBudgetExhausted_expectSafeStatusWithoutFetch() {}\n"
+        "void schedulerPoll_whenSubscriptionBudgetExhausted_expectNoFetch() {}\n"
+        "void refresh_whenFetchThrows_expectBudgetLeaseReleasedForNextRefresh() {}\n"
+        "void refresh_whenRunningStateWriteFails_expectBudgetReservedUntilNextRefresh() {}\n",
         encoding="utf-8",
     )
     (content_subscription_tests / "ContentSubscriptionSchedulerTest.java").write_text(
         "void tick_whenSubscriptionIsDue_expectOneBoundedFetchAndUpdatedMetadata() {}\n"
         "void tick_whenQueueBackendUnavailable_expectSafePressureSkip() {}\n"
+        "void tick_whenQueuePressureSkipsPoll_expectBudgetNotConsumed() {}\n"
         "void tick_whenAlreadyRunning_expectNoOverlappingFetch() { String overlapping = \"overlapping\"; }\n",
         encoding="utf-8",
     )
     (content_subscription_tests / "FileContentSubscriptionStoreTest.java").write_text(
         "void writeAndRead_whenSubscriptionContainsSourceUri_expectPathUsesAppAndSubscriptionIdsOnly() {}\n",
+        encoding="utf-8",
+    )
+    networkbudget_tests = platform_api_tests / "networkbudget"
+    networkbudget_tests.mkdir(parents=True, exist_ok=True)
+    (networkbudget_tests / "AppNetworkBudgetServiceTest.java").write_text(
+        "void acquire_whenPerAppRateLimitReached_expectDeniedUntilWindowReset() {}\n"
+        "void acquire_whenGlobalRateLimitReachedAcrossApps_expectDenied() {}\n"
+        "void acquire_whenLeaseClosedByExceptionPath_expectConcurrencyReleased() {}\n"
+        "void acquire_whenAppIdMatchesFormerGlobalScope_expectGlobalCounterIsSeparate() {}\n"
+        "void acquire_whenHostOperatorScopeUsesTrustBudget_expectOperatorAppBudgetIsSeparate() {}\n",
+        encoding="utf-8",
+    )
+    (networkbudget_tests / "FileAppNetworkBudgetStoreTest.java").write_text(
+        "void write_whenMetadataPersisted_expectNoRawContentSecretsOrPaths() {}\n"
+        "void write_whenInternalScopePersisted_expectPathSafeNonAppDirectory() {}\n",
         encoding="utf-8",
     )
     appdata_tests = platform_api_tests / "appdata"
@@ -15459,6 +15977,18 @@ def make_self_test_workspace(workspace: Path) -> None:
         "plugin command compatibility, and docs/legacy historical material only. Migration uses "
         "out-of-process apps, Platform API, signed catalogs, AppVault, content subscriptions, "
         "durable app data, Trust Graph Local RC, and app-service grants. "
+        "Network-scale soak and subscription budget evidence covers network-scale.app-network-budget, "
+        "network-scale.content-fetch-budget, network-scale.subscription-budget, "
+        "network-scale.queue-pressure-backoff, network-scale.trust-graph-import-budget, "
+        "network-scale.social-inbox-multi-source-soak, and network-scale.redaction. "
+        "The self-test-network-scale-soak.json fixture represents simulated RC soak evidence; "
+        "literal 24h live soak is an RC release activity, not a unit test. "
+        "Foreground content fetches, subscription polling, manual refreshes, and Trust Graph import-uri "
+        "share relevant global budgets; subscriptions are not a generic crawler. "
+        "Budget exhaustion returns safe 429/status metadata and queue pressure can delay polls "
+        "without queue HTML or raw daemon exceptions. Evidence excludes raw fetched content, "
+        "raw request bodies, queue HTML, browser-session tokens, app process tokens, private insert URIs, "
+        "raw signatures, raw app-data payloads, and absolute local paths. "
         "It excludes raw request bodies, private keys, private key material, raw signatures, private insert URIs, raw source URIs, and "
         "absolute staging paths. It also excludes raw feed bodies, raw message bodies, raw fetched content, raw fetched documents, raw trust statement bodies, browser-session tokens, "
         "form passwords, and local paths.\n"
@@ -15485,6 +16015,7 @@ def make_self_test_workspace(workspace: Path) -> None:
         "trust-graph-preview.md",
         "first-party-beta-catalog.md",
         "release-certification.md",
+        "network-scale-soak-and-subscription-budget.md",
     ):
         (docs / doc_name).write_text(first_party_docs, encoding="utf-8")
     cert_readme = workspace / "tools/release-certification/README.md"
@@ -16827,7 +17358,7 @@ import os
 import sys
 from pathlib import Path
 
-CURRENT_PLATFORM_API_CONTRACT_VERSION = 17
+CURRENT_PLATFORM_API_CONTRACT_VERSION = 18
 
 
 def option_value(args, name):
@@ -17019,7 +17550,7 @@ def api_snapshot(args):
             {
                 "contract": {
                     "apiVersion": "v1",
-                    "contractVersion": 17,
+                    "contractVersion": 18,
                     "generatedBy": "cryptad",
                     "stabilityPolicy": "self-test",
                     "capabilities": [
@@ -17292,7 +17823,7 @@ case "$cmd" in
       if [ "$1" = "--dir" ]; then dir="$2"; shift 2; else shift; fi
     done
     mkdir -p "$dir/bin" "$dir/static/crypta-ui"
-    printf '%s\n' 'manifest.version=1' 'app.id=cert-smoke' 'app.name=Certification Smoke' 'app.version=0.1.0' 'app.exec=bin/start.sh' 'api.minimumVersion=1' 'api.maximumTestedVersion=17' 'api.experimentalCapabilitiesAccepted=false' 'app.ui.mode=static' 'app.ui.entry=static/index.html' 'app.permissions=queue.read' > "$dir/cryptad-app.properties"
+    printf '%s\n' 'manifest.version=1' 'app.id=cert-smoke' 'app.name=Certification Smoke' 'app.version=0.1.0' 'app.exec=bin/start.sh' 'api.minimumVersion=1' 'api.maximumTestedVersion=18' 'api.experimentalCapabilitiesAccepted=false' 'app.ui.mode=static' 'app.ui.entry=static/index.html' 'app.permissions=queue.read' > "$dir/cryptad-app.properties"
     printf '%s\n' '#!/usr/bin/env sh' 'exit 0' > "$dir/bin/start.sh"
     printf '%s\n' '<!doctype html><html lang="en"><head><meta name="viewport" content="width=device-width, initial-scale=1"><title>Certification Smoke</title><link rel="stylesheet" href="./crypta-ui/crypta-ui-tokens.css"><link rel="stylesheet" href="./crypta-ui/crypta-ui.css"><link rel="stylesheet" href="./app.css"></head><body class="cr-app"><main class="cr-shell"><section class="cr-permission-summary" data-crypta-permission-summary><code>queue.read</code></section><h1>Certification Smoke</h1></main><script src="./crypta-platform.js"></script><script src="./app.js"></script></body></html>' > "$dir/static/index.html"
     printf '%s\n' 'CryptaPlatform.bootstrap.load({ appId: "cert-smoke" });' > "$dir/static/app.js"
@@ -17469,7 +18000,7 @@ PY
 {
   "contract": {
     "apiVersion": "v1",
-    "contractVersion": 17,
+    "contractVersion": 18,
     "generatedBy": "cryptad",
     "stabilityPolicy": "self-test",
     "capabilities": [

@@ -3,6 +3,10 @@ package network.crypta.platform.api;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
+import network.crypta.platform.api.networkbudget.AppNetworkBudgetConfig;
+import network.crypta.platform.api.networkbudget.AppNetworkBudgetService;
+import network.crypta.platform.api.networkbudget.InMemoryAppNetworkBudgetStore;
+import network.crypta.platform.appui.AppUiOriginRegistry;
 import network.crypta.runtime.spi.BoundedContentFetchRequest;
 import network.crypta.runtime.spi.BoundedContentFetchResult;
 import network.crypta.runtime.spi.ContentFetchPort;
@@ -68,6 +72,32 @@ class PlatformApiContentRouterTest {
     assertTrue(response.body().contains("Content fetch service is unavailable."));
   }
 
+  @Test
+  void route_whenBrowserAppExhaustsFetchBudget_expectTooManyRequestsBeforeRuntimeFetch() {
+    RecordingContentFetchPort fetchPort = new RecordingContentFetchPort();
+    PlatformApiRouter router =
+        new PlatformApiRouter(
+            runtimePorts(fetchPort),
+            null,
+            null,
+            null,
+            AppUiOriginRegistry.sameOriginOnly(),
+            PlatformApiSharedAppServices.of(
+                null, null, null, null, null, null, oneForegroundFetchPerMinuteBudget()));
+    PlatformApiPrincipal principal =
+        PlatformApiPrincipal.appBrowserSession("feed-reader", List.of("content.fetch"));
+
+    PlatformApiResponse first = router.route(request(principal));
+    PlatformApiResponse second = router.route(request(principal));
+
+    assertEquals(200, first.statusCode());
+    assertEquals(429, second.statusCode());
+    assertEquals(1, fetchPort.callCount);
+    assertTrue(second.body().contains("\"code\":\"content_fetch_budget_exhausted\""));
+    assertFalse(second.body().contains("USK@example/feed/42/feed.json"));
+    assertFalse(second.body().contains("CRYPTAD_APP_TOKEN"));
+  }
+
   private static PlatformApiRequest request(PlatformApiPrincipal principal) {
     return new PlatformApiRequest(
         "POST",
@@ -92,13 +122,21 @@ class PlatformApiContentRouterTest {
     return runtimePorts;
   }
 
+  private static AppNetworkBudgetService oneForegroundFetchPerMinuteBudget() {
+    return new AppNetworkBudgetService(
+        new InMemoryAppNetworkBudgetStore(),
+        new AppNetworkBudgetConfig(1, 100, 2, 16, 48, 1024, 1, 8, 120, 1024, 1, 8));
+  }
+
   private static final class RecordingContentFetchPort implements ContentFetchPort {
     private boolean called;
+    private int callCount;
     private BoundedContentFetchRequest lastRequest;
 
     @Override
     public BoundedContentFetchResult fetchContent(BoundedContentFetchRequest request) {
       called = true;
+      callCount++;
       lastRequest = request;
       assertNotNull(request);
       return new BoundedContentFetchResult(

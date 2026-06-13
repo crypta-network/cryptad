@@ -51,6 +51,9 @@ This page records conservative limits and safety boundaries for the Crypta app e
   Subscription evidence and summaries must not include raw fetched content, queue HTML, private
   keys, browser-session tokens, app process tokens, form passwords, private insert URIs, or
   absolute paths.
+- Platform API v18 applies shared app/global network budgets to foreground content fetch,
+  subscription refresh/polling, and Trust Graph import-by-URI. Budget exhaustion or queue pressure
+  should surface as bounded status/retry metadata, not raw daemon exceptions.
 - `app.data.read` and `app.data.write` expose bounded app-owned durable state. They are not a
   filesystem API, database engine, browser storage replacement for secrets, or AppVault bypass.
   Apps can read and write only their own records, and evidence must summarize counts, bytes,

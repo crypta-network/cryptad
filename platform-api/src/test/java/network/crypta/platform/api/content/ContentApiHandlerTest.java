@@ -1,10 +1,16 @@
 package network.crypta.platform.api.content;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 import network.crypta.platform.api.PlatformApiException;
+import network.crypta.platform.api.networkbudget.AppNetworkBudgetConfig;
+import network.crypta.platform.api.networkbudget.AppNetworkBudgetService;
+import network.crypta.platform.api.networkbudget.InMemoryAppNetworkBudgetStore;
 import network.crypta.runtime.spi.BoundedContentFetchRequest;
 import network.crypta.runtime.spi.BoundedContentFetchResult;
 import network.crypta.runtime.spi.ContentFetchException;
@@ -328,6 +334,55 @@ class ContentApiHandlerTest {
     assertFalse(exception.getMessage().contains("request token"));
   }
 
+  @Test
+  void fetch_whenBudgetExhausted_expectDeniedBeforeRuntimePort() {
+    FakeContentFetchPort port =
+        new FakeContentFetchPort(
+            request ->
+                new BoundedContentFetchResult(
+                    "ok".getBytes(StandardCharsets.UTF_8), request.uri(), null, null));
+    AppNetworkBudgetService budgetService = oneForegroundFetchPerMinuteBudget();
+    ContentApiHandler handler = new ContentApiHandler(port, budgetService);
+
+    Map<String, List<String>> firstFetchParameters = Map.of("uri", List.of("CHK@first"));
+    Map<String, List<String>> secondFetchParameters = Map.of("uri", List.of("CHK@second"));
+
+    handler.fetch(firstFetchParameters, "feed-reader");
+    PlatformApiException exception =
+        assertThrows(
+            PlatformApiException.class, () -> handler.fetch(secondFetchParameters, "feed-reader"));
+
+    assertEquals(429, exception.statusCode());
+    assertEquals("content_fetch_budget_exhausted", exception.errorCode());
+    assertEquals("Content fetch budget is exhausted.", exception.getMessage());
+    assertEquals("CHK@first", port.lastRequest.uri());
+  }
+
+  @Test
+  void fetch_whenSourceInvalid_expectRejectedBeforeBudgetAndRuntimePort() {
+    FakeContentFetchPort port =
+        new FakeContentFetchPort(
+            request ->
+                new BoundedContentFetchResult(
+                    "ok".getBytes(StandardCharsets.UTF_8), request.uri(), null, null));
+    AppNetworkBudgetService budgetService = oneForegroundFetchPerMinuteBudget();
+    ContentApiHandler handler = new ContentApiHandler(port, budgetService);
+
+    Map<String, List<String>> unsafeSourceParameters =
+        Map.of("uri", List.of("file:///tmp/private"));
+    Map<String, List<String>> allowedSourceParameters = Map.of("uri", List.of("CHK@allowed"));
+
+    PlatformApiException first =
+        assertThrows(
+            PlatformApiException.class, () -> handler.fetch(unsafeSourceParameters, "feed-reader"));
+    Map<String, Object> second = handler.fetch(allowedSourceParameters, "feed-reader");
+
+    assertEquals(400, first.statusCode());
+    assertEquals("unsupported_content_source", first.errorCode());
+    assertEquals("CHK@allowed", port.lastRequest.uri());
+    assertEquals("ok", second.get("contentText"));
+  }
+
   private static PlatformApiException assertFetchFails(
       ContentApiHandler handler, Map<String, List<String>> parameters) {
     return assertThrows(PlatformApiException.class, () -> handler.fetch(parameters));
@@ -336,6 +391,13 @@ class ContentApiHandlerTest {
   private static PlatformApiException assertFetchFails(
       ContentApiHandler handler, Map<String, List<String>> parameters, String message) {
     return assertThrows(PlatformApiException.class, () -> handler.fetch(parameters), message);
+  }
+
+  private static AppNetworkBudgetService oneForegroundFetchPerMinuteBudget() {
+    return new AppNetworkBudgetService(
+        new InMemoryAppNetworkBudgetStore(),
+        new AppNetworkBudgetConfig(1, 100, 2, 16, 48, 1024, 1, 8, 120, 1024, 1, 8),
+        Clock.fixed(Instant.parse("2026-06-12T00:00:00Z"), ZoneOffset.UTC));
   }
 
   private static final class FakeContentFetchPort implements ContentFetchPort {

@@ -43,7 +43,7 @@ Replacement work should use out-of-process app/platform mechanisms:
 | Node interaction | Bounded Platform API routes with declared capabilities |
 | Identity and private material | AppVault grants and bounded AppVault signing routes |
 | Mutable app state | Durable app data namespaces and records |
-| Content polling or follows | Content subscriptions |
+| Content polling or follows | Budgeted USK content subscriptions |
 | Trust annotations | Trust Graph Local RC plus operator-approved `trust.score` app-service grants |
 | Cross-app local services | App-service descriptors, dependency bundles, operator approval, expiry, and revalidation |
 
@@ -70,7 +70,7 @@ checks. The evidence should prove:
   execution.
 - App-platform docs preserve the non-goals: not full Web of Trust, not old WebOfTrust plugin
   compatibility, not Freetalk/Sone/Freemail compatibility, not encrypted mail transport, and not a
-  daemon-core social or mail protocol.
+  daemon-core social or mail protocol, generic crawler, or unbounded subscription polling.
 
 Evidence must remain redacted. It should record booleans, route ids, filenames, class names, and
 bounded status strings only. It must not include private insert URIs, tokens, request bodies, form

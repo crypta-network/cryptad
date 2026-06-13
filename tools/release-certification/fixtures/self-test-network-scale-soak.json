@@ -1,0 +1,40 @@
+{
+  "apps": {
+    "feed-reader": {
+      "budgetSkips": 1,
+      "pollAttempts": 192,
+      "queuePressureSkips": 1,
+      "rawContentPersisted": false,
+      "subscriptions": 8,
+      "updatesObserved": 4
+    },
+    "social-inbox": {
+      "budgetSkips": 3,
+      "pollAttempts": 288,
+      "queuePressureSkips": 2,
+      "rawContentPersisted": false,
+      "subscriptions": 12,
+      "updatesObserved": 5
+    }
+  },
+  "budgets": {
+    "concurrencyLeasesReleased": true,
+    "globalFetchBudgetEnforced": true,
+    "perAppFetchBudgetEnforced": true
+  },
+  "durationHoursSimulated": 24,
+  "mode": "simulated-rc-soak",
+  "redaction": {
+    "absolutePathsExcluded": true,
+    "privateInsertUrisExcluded": true,
+    "queueHtmlExcluded": true,
+    "rawFetchedContentExcluded": true,
+    "tokensExcluded": true
+  },
+  "status": "success",
+  "trustGraph": {
+    "budgetSkips": 2,
+    "importsAttempted": 120,
+    "rawStatementsInEvidence": false
+  }
+}

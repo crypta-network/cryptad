@@ -36,7 +36,7 @@ Plugin-like functionality should move to out-of-process app/platform mechanisms:
 - App-owned isolated UI plus the browser SDK for local user workflows.
 - AppVault for app-owned identity, secret material, and bounded signing operations.
 - Durable app data for app-owned mutable state.
-- Content subscriptions for bounded follow/poll workflows.
+- Budgeted USK content subscriptions for bounded follow/poll workflows.
 - Trust Graph Local RC for local advisory trust scoring, exposed to other apps through
   operator-approved app-service grants.
 - App-service discovery, grant bundles, and active grants for mediated local app-to-app service

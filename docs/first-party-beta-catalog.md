@@ -110,7 +110,7 @@ permissions=queue.read,queue.write
 permissions.rationale.queue.read=Reads local transfer queue state.
 permissions.rationale.queue.write=Updates local queue state after operator action.
 api.minimumVersion=1
-api.maximumTestedVersion=17
+api.maximumTestedVersion=18
 review.status=reviewed
 review.note=First-party beta review completed.
 changelog.summary=First public beta catalog entry.
@@ -126,7 +126,7 @@ permissions.rationale.content.insert.app-document=Queues the generated profile d
 permissions.rationale.app.data.read=Restores bounded profile drafts and publish summaries.
 permissions.rationale.app.data.write=Saves bounded profile drafts and publish summaries.
 api.minimumVersion=9
-api.maximumTestedVersion=17
+api.maximumTestedVersion=18
 api.experimentalCapabilitiesAccepted=true
 ```
 
@@ -146,7 +146,7 @@ categories=reader,publishing,content
 review.status=reviewed
 review.note=First-party feed reference app.
 api.minimumVersion=9
-api.maximumTestedVersion=17
+api.maximumTestedVersion=18
 api.experimentalCapabilitiesAccepted=false
 ```
 
@@ -179,7 +179,7 @@ categories=social,identity,reference
 review.status=reviewed
 review.note=First-party Social Inbox RC reference app; local threading and Trust Graph annotations only, not full WoT, plugin compatibility, Freetalk/Sone/Freemail, encrypted mail, crawler, or daemon-core protocol.
 api.minimumVersion=16
-api.maximumTestedVersion=17
+api.maximumTestedVersion=18
 api.experimentalCapabilitiesAccepted=true
 ```
 
@@ -216,7 +216,7 @@ deprecation.status=none
 review.status=reviewed
 review.note=First-party local trust graph preview; not full WoT or moderation.
 api.minimumVersion=10
-api.maximumTestedVersion=17
+api.maximumTestedVersion=18
 api.experimentalCapabilitiesAccepted=true
 ```
 

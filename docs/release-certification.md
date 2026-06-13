@@ -18,6 +18,7 @@ build/release-certification/artifacts/
 build/release-certification/app-platform-smoke/summary.json
 build/release-certification/app-platform-smoke/app-platform-smoke-report.md
 build/release-certification/app-platform-smoke/artifacts/
+build/release-certification/network-scale-soak/summary.json
 build/release-certification/live-network-beta-smoke/summary.json
 build/release-certification/live-network-beta-smoke/live-network-beta-smoke-report.md
 ```
@@ -46,6 +47,7 @@ Run self-tests first:
 python3 tools/release-certification/app_platform_docs_check.py --self-test
 python3 tools/release-certification/release_certification.py --self-test
 python3 tools/release-certification/app_platform_smoke.py --self-test
+python3 tools/release-certification/network_scale_soak.py --self-test
 python3 tools/release-certification/live_network_beta_smoke.py --self-test
 ```
 
@@ -84,6 +86,7 @@ build/interop-extended/summary.json
 build/perf-smoke/summary.json
 build/perf-smoke/artifacts/perf-report.md
 build/release-certification/app-platform-smoke/summary.json
+build/release-certification/network-scale-soak/summary.json
 build/release-certification/live-network-beta-smoke/summary.json
 ```
 
@@ -414,8 +417,8 @@ Freemail compatibility claim. Trust and app-service evidence must not include ra
 bodies from real users, raw fetched content, raw request bodies, raw signature values, private
 insert URIs, private identity material, app process tokens, browser-session tokens, form passwords,
 absolute staging paths, store roots, provider app data, raw subject URIs, app-data backup payloads,
-or local paths. Advisory/denylist policy, network-scale soak, operator RC recovery workflows, and
-final ecosystem RC certification remain deferred to later PRs.
+or local paths. Operator RC recovery workflows and final ecosystem RC certification remain deferred
+to later PRs.
 
 ## Historical comparison
 
@@ -513,6 +516,43 @@ reference content row. `profile-publisher`, `feed-reader`, and `trust-graph` eac
 rows because they validate distinct identity publishing, content fetch, and Trust Graph Local RC
 behavior. The `app-platform-beta-docs-and-program` row records Phase 7 docs portal, tutorials,
 beta program, issue-template, link, and redaction readiness.
+
+The `network-scale-soak-and-subscription-budget` row records PR-256 evidence. It requires
+`network-scale.app-network-budget`, `network-scale.content-fetch-budget`,
+`network-scale.subscription-budget`, `network-scale.queue-pressure-backoff`,
+`network-scale.trust-graph-import-budget`, `network-scale.social-inbox-multi-source-soak`,
+`network-scale.redaction`, and `network-scale.rc-soak-summary`. These evidence items prove that
+foreground content fetch, subscription polling/manual refresh, and Trust Graph import-by-URI share
+bounded budgets, queue pressure can delay polling without budget consumption, Social Inbox
+multi-source refresh remains capped, and release evidence excludes raw content, queue HTML, tokens,
+private insert URIs, raw signatures, app-data payloads, and absolute local paths.
+
+## Network-scale soak
+
+Normal PR and CI evidence uses deterministic simulated time, not a wall-clock 24-hour test:
+
+```bash
+tools/release-certification/run-release-certification.sh \
+  --mode release-candidate \
+  --out-dir build/release-certification
+```
+
+The wrapper writes a fresh `build/release-certification/network-scale-soak/summary.json` with
+`network_scale_soak.py` and forwards that exact path to `release_certification.py`. When a release
+candidate has externally collected live RC soak evidence, pass
+`--network-scale-soak-summary <path>` to the wrapper or set
+`CRYPTAD_CERT_NETWORK_SCALE_SOAK_SUMMARY`; the attached file is then used instead of generating the
+deterministic simulated summary.
+
+The summary may be `simulated-rc-soak` or `live-rc-soak`, but it must use the same redacted schema:
+bounded app counts, budget skips, queue-pressure skips, update counts, Trust Graph import counts,
+budget enforcement booleans, and redaction booleans. It must not include raw fetched content, raw
+request bodies, queue HTML, browser-session tokens, app process tokens, private insert URIs, raw
+signatures, raw Trust Graph statement bodies, app-data values, app-data backup payloads, rejected
+source strings, or absolute local paths.
+
+A literal 24-hour live soak is a release-candidate activity. It is represented by an attached
+summary; it is not part of ordinary unit tests or Python self-tests.
 
 In `release-candidate` mode, unmapped required evidence, unmapped ecosystem gates, missing docs,
 or failed redaction make the matrix fail. In `pr` and `nightly` mode, coverage gaps warn unless

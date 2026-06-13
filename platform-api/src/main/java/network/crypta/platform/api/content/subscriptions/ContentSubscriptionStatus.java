@@ -71,6 +71,15 @@ public enum ContentSubscriptionStatus {
   RUNTIME_UNAVAILABLE("runtime_unavailable"),
 
   /**
+   * Polling was skipped because the app-network budget was exhausted.
+   *
+   * <p>No detached content fetch is started for this status. The durable record carries a stable
+   * budget error code and next retry time, but never contains raw URI, queue, or runtime exception
+   * details.
+   */
+  BUDGET_EXHAUSTED("budget_exhausted"),
+
+  /**
    * The scheduler is locally disabled.
    *
    * <p>The status is used for scheduler-level tick summaries. Individual subscription records are

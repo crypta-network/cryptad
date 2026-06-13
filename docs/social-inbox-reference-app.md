@@ -30,7 +30,7 @@ For broader legacy plugin categories and migration recipes, see
 app.id=social-inbox
 app.name=Social Inbox RC
 api.minimumVersion=16
-api.maximumTestedVersion=17
+api.maximumTestedVersion=18
 api.experimentalCapabilitiesAccepted=true
 app.data.schema.current=1
 ```
@@ -185,6 +185,14 @@ checked time, last seen edition, update count, and bounded backoff or error summ
 source URI is passed to the subscription/fetch request path only and is not copied into
 `social/sources`.
 
+Platform API v18 budgets foreground fetches, manual subscription refreshes, scheduler polls, and
+Trust Graph import-by-URI work. Social Inbox inherits those shared app/global limits and is not a
+crawler. Refresh-all is capped by the app's source limit and requests subscription refreshes
+sequentially. Queue pressure may delay polls without consuming budget, and budget exhaustion records
+safe `budget_exhausted`/retry metadata rather than raw daemon exceptions. The UI surfaces queue
+pressure, runtime unavailable, backoff, budget exhausted, and stale source states without hiding,
+archiving, moderating, or blocking messages.
+
 Manual import fetches the current resolved source using `content.fetch`, parses only bounded JSON
 objects with `type=crypta.social.outbox.v1`, and imports only bounded signed
 `crypta.social.message.v1` entries. Unsupported document types, unsupported message formats,
@@ -299,6 +307,11 @@ reference-app.social-inbox-trust-annotations
 reference-app.social-inbox-service-grant
 reference-app.social-inbox-service-dependency
 reference-app.social-inbox-rc-threading
+network-scale.subscription-budget
+network-scale.queue-pressure-backoff
+network-scale.social-inbox-multi-source-soak
+network-scale.redaction
+network-scale.rc-soak-summary
 app-services.registry
 app-services.grants
 app-services.dependency-graph
@@ -320,6 +333,7 @@ filtering and bounded local search, renders safe author/profile metadata, reques
 `trust-annotations` bundle, uses a mediated Trust Score Service grant for message-author scores,
 verifies expiry/revocation/provider-revalidation failure, and documents the migration boundary.
 
-Evidence must not include raw message bodies, raw fetched content, raw request bodies, raw
-signatures, private insert URIs, private keys, private identity material, browser-session tokens,
-app process tokens, form passwords, local staging paths, or local vault paths.
+Evidence must not include raw message bodies, raw fetched content, raw request bodies, queue HTML,
+raw signatures, private insert URIs, private keys, private identity material, browser-session
+tokens, app process tokens, form passwords, local staging paths, absolute local paths, or local
+vault paths.

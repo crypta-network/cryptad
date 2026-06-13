@@ -9,7 +9,7 @@ The current app-facing values are:
 
 ```text
 apiVersion=v1
-contractVersion=17
+contractVersion=18
 ```
 
 The contract does not change Platform API behavior. It publishes metadata that answers which
@@ -37,7 +37,7 @@ The response shape is:
 {
   "contract": {
     "apiVersion": "v1",
-    "contractVersion": 17,
+    "contractVersion": 18,
     "generatedBy": "cryptad",
     "stabilityPolicy": "...",
     "capabilities": [],
@@ -151,6 +151,11 @@ scratch paths, staged bundle paths, private insert URIs, tokens, request bodies,
 content. The enforcement APIs remain the existing catalog install/update and app update stage/apply
 routes; `securityAcknowledged=true` can acknowledge only warning-level security decisions.
 
+Contract version 18 adds app-visible network budget status and safe budget-exhausted errors for
+content fetch, content subscriptions, and Trust Graph import routes. The route descriptors remain
+where they first appeared, but app-facing callers can now observe `429` budget denials and the
+subscription status `budget_exhausted`.
+
 Dependency metadata is review and UX metadata, not authorization. Bundle proposals do not approve
 access. Invocation still requires a non-expired active grant on every call. Provider descriptor
 version, scope, context, kind, adapter, and compatibility fingerprint drift produces
@@ -177,6 +182,12 @@ values are bounded by the daemon: the default byte cap is 262144, the hard byte 
 default timeout is 30000 milliseconds, and the hard timeout is 60000 milliseconds. `format=text`
 returns UTF-8 `contentText`; `format=base64` returns `contentBase64`. App principals cannot use this
 route for `file:`, `http:`, `https:`, loopback, LAN, or absolute local-path fetches.
+
+Contract v18 applies a shared app-network budget after this validation and before the runtime
+fetch port is called. Budget exhaustion returns safe `429` errors such as
+`content_fetch_budget_exhausted` or `network_budget_concurrency_limited`; it does not call the
+runtime fetch port, consume budget for rejected unsafe sources, or expose raw daemon exception
+text.
 
 Contract version 7 adds the local Trust Graph service and the bounded AppVault
 trust-statement signing route:
@@ -239,7 +250,9 @@ fetched content, raw request bodies, browser-session tokens, app process tokens,
 private insert URIs, private keys, absolute staging paths, store root paths, queue HTML, or raw
 daemon exception messages. The scheduler records queue pressure with stable runtime signals, not
 by parsing legacy queue HTML; when pressure is clear, it records safe statuses such as
-`queue_pressure` or `runtime_unavailable`. This is not a generic crawler and does not add
+`queue_pressure`, `runtime_unavailable`, or `budget_exhausted`. Queue pressure skips do not consume
+network budget or call the fetch port. Budget skips record safe retry metadata and error codes such
+as `content_subscription_budget_exhausted`. This is not a generic crawler and does not add
 arbitrary HTTP/HTTPS fetch support.
 
 Contract version 9 adds bounded durable app-owned data under `/api/v1/app-data`:
@@ -290,6 +303,11 @@ redacted source metadata, and enough public document data to score after restart
 persist raw request bodies, raw fetched content outside normalized trust statement records,
 private insert URIs, private identity material, browser-session tokens, form passwords, absolute
 paths, or raw signatures.
+
+Contract v18 budgets both Trust Graph import paths. Direct `import` consumes Trust Graph import
+budget before parsing and storing a statement. `import-uri` consumes Trust Graph import budget and
+the content-fetch budget family, so it cannot bypass content-fetch limits. If import budget is
+denied, `import-uri` does not fetch. If content-fetch budget is denied, `import-uri` does not import.
 
 Contract version 11 adds bounded Social Inbox RC message signing:
 
@@ -496,6 +514,11 @@ separate release evidence: `app-platform.identity-profile-publish` for the profi
 has separate release evidence: `app-platform.content-fetch` for `POST /api/v1/content/fetch`,
 `app-platform.content-subscriptions` for the v8 subscription routes,
 `network-content.subscription-scheduler` for deterministic bounded scheduler behavior, and
+`network-scale.app-network-budget`, `network-scale.content-fetch-budget`,
+`network-scale.subscription-budget`, `network-scale.queue-pressure-backoff`,
+`network-scale.trust-graph-import-budget`, `network-scale.social-inbox-multi-source-soak`, and
+`network-scale.redaction` for PR-256 network-scale budget behavior, plus
+`network-scale.rc-soak-summary` for attached simulated or live RC soak summary evidence, and
 `reference-app.feed-reader` plus `reference-app.feed-reader-subscriptions` for the first-party
 Feed Reader bundle. Social Inbox RC has separate evidence:
 `app-platform.social-message-signing` for the bounded v11 AppVault social-message route,

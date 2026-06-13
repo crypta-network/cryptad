@@ -58,13 +58,13 @@ The current source declares:
 
 ```text
 PlatformApiContract.CURRENT_API_VERSION = "v1"
-PlatformApiContract.CURRENT_CONTRACT_VERSION = 17
+PlatformApiContract.CURRENT_CONTRACT_VERSION = 18
 ```
 
 In docs, manifests, and catalog descriptors:
 
 - `/api/v1` identifies the transport route family.
-- `contractVersion=17` identifies the Platform API compatibility contract snapshot.
+- `contractVersion=18` identifies the Platform API compatibility contract snapshot.
 - `api.minimumVersion` and `api.maximumTestedVersion` compare against the integer contract
   version, not against the URL route prefix or the Cryptad build number.
 
@@ -141,6 +141,7 @@ Public beta readiness treats these workstreams as one ecosystem beta release sto
 | First-party catalog | [first-party-beta-catalog.md](first-party-beta-catalog.md), [production-first-party-catalog-channels.md](production-first-party-catalog-channels.md), `app-catalog.first-party-beta`, `catalog.production-channels`, `catalog.smoke` |
 | Developer toolkit | [developer-beta-toolkit.md](developer-beta-toolkit.md), `app-platform.devtools-cli`, `app-platform.developer-beta-toolkit` |
 | Reference apps | [social-inbox-reference-app.md](social-inbox-reference-app.md), [feed-reader-reference-app.md](feed-reader-reference-app.md), [trust-graph-preview.md](trust-graph-preview.md), `reference-app.*` evidence, `app-platform.trust-graph-rc-scope-and-safety` |
+| Network-scale budgets and soak | [network-scale-soak-and-subscription-budget.md](network-scale-soak-and-subscription-budget.md), [release-certification.md](release-certification.md), `network-scale.*` evidence, `network-scale-soak-and-subscription-budget` matrix row |
 | Review governance | [app-review-governance.md](app-review-governance.md), `review receipt`, `reviewer key lifecycle`, `transparency log` evidence |
 | Updates, migrations, and rollback | [app-update-lifecycle.md](app-update-lifecycle.md), [app-upgrade-data-migrations.md](app-upgrade-data-migrations.md), `app-update.scheduler`, `app-update.rollback`, `app-update.data-migration-contract` evidence |
 | Public beta hardening | [app-platform-beta-known-limitations.md](app-platform-beta-known-limitations.md), `public-beta-security.*` evidence |
@@ -157,15 +158,16 @@ Release candidates should run the normal build/test gates plus release certifica
 python3 tools/release-certification/app_platform_docs_check.py --self-test
 python3 tools/release-certification/release_certification.py --self-test
 python3 tools/release-certification/app_platform_smoke.py --self-test
+python3 tools/release-certification/network_scale_soak.py --self-test
 python3 tools/release-certification/live_network_beta_smoke.py --self-test
 tools/release-certification/run-release-certification.sh --mode release-candidate --out-dir build/release-certification
 ```
 
 The generated release summary, release report, app-platform smoke report, review transparency-log
-evidence, legacy retirement evidence, optional live-network beta evidence, and ecosystem
-certification matrix are the closeout record. Live-network beta mode remains opt-in and should use
-only a localhost node with disposable fixtures unless the release manager is intentionally
-publishing the candidate first-party beta catalog.
+evidence, network-scale soak summary, legacy retirement evidence, optional live-network beta
+evidence, and ecosystem certification matrix are the closeout record. Live-network beta mode
+remains opt-in and should use only a localhost node with disposable fixtures unless the release
+manager is intentionally publishing the candidate first-party beta catalog.
 
 ## Security entry points
 

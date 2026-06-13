@@ -8,6 +8,12 @@ import java.util.Map;
 import network.crypta.platform.api.PlatformApiException;
 import network.crypta.platform.api.PlatformApiParameters;
 import network.crypta.platform.api.content.ContentApiHandler;
+import network.crypta.platform.api.networkbudget.AppNetworkBudgetDecision;
+import network.crypta.platform.api.networkbudget.AppNetworkBudgetLease;
+import network.crypta.platform.api.networkbudget.AppNetworkBudgetOperation;
+import network.crypta.platform.api.networkbudget.AppNetworkBudgetReservation;
+import network.crypta.platform.api.networkbudget.AppNetworkBudgetScope;
+import network.crypta.platform.api.networkbudget.AppNetworkBudgetService;
 import network.crypta.platform.trustgraph.InMemoryTrustGraphStore;
 import network.crypta.platform.trustgraph.TrustAnchor;
 import network.crypta.platform.trustgraph.TrustDocumentTypes;
@@ -73,6 +79,7 @@ public final class TrustGraphApiHandler {
 
   private final TrustGraphStore store;
   private final Clock clock;
+  private final AppNetworkBudgetService networkBudgetService;
 
   /**
    * Creates a handler backed by a process-local in-memory store.
@@ -105,8 +112,21 @@ public final class TrustGraphApiHandler {
    * @param clock clock used for anchor timestamps and expiry-sensitive score calculations
    */
   public TrustGraphApiHandler(TrustGraphStore store, Clock clock) {
+    this(store, clock, null);
+  }
+
+  /**
+   * Creates a handler backed by an explicit local store and optional shared network budget.
+   *
+   * @param store local trust graph store used for imports, anchors, and score queries
+   * @param clock clock used for anchor timestamps and expiry-sensitive score calculations
+   * @param networkBudgetService optional shared app-network budget service
+   */
+  public TrustGraphApiHandler(
+      TrustGraphStore store, Clock clock, AppNetworkBudgetService networkBudgetService) {
     this.store = java.util.Objects.requireNonNull(store, "store");
     this.clock = java.util.Objects.requireNonNull(clock, "clock");
+    this.networkBudgetService = networkBudgetService;
   }
 
   /**
@@ -251,16 +271,18 @@ public final class TrustGraphApiHandler {
       Map<String, List<String>> queryParameters, String appId) {
     try {
       String documentJson = PlatformApiParameters.requireString(queryParameters, PARAM_DOCUMENT);
-      TrustStatementDocument document = TrustStatementParser.parse(documentJson);
-      TrustGraphImportResult result =
-          store.importStatement(
-              document,
-              importSource(queryParameters),
-              PlatformApiParameters.readOptionalString(queryParameters, PARAM_SOURCE_URI),
-              PlatformApiParameters.readOptionalString(queryParameters, PARAM_SOURCE_LABEL),
-              PlatformApiParameters.readOptionalString(queryParameters, PARAM_SUBSCRIPTION_ID));
-      appendImportAudit("statement_imported", appId, result);
-      return result.toJson();
+      try (var _ = acquireTrustGraphImportBudgetLease(appId)) {
+        TrustStatementDocument document = TrustStatementParser.parse(documentJson);
+        TrustGraphImportResult result =
+            store.importStatement(
+                document,
+                importSource(queryParameters),
+                PlatformApiParameters.readOptionalString(queryParameters, PARAM_SOURCE_URI),
+                PlatformApiParameters.readOptionalString(queryParameters, PARAM_SOURCE_LABEL),
+                PlatformApiParameters.readOptionalString(queryParameters, PARAM_SUBSCRIPTION_ID));
+        appendImportAudit("statement_imported", appId, result);
+        return result.toJson();
+      }
     } catch (TrustGraphException exception) {
       appendRejectedAudit(
           AUDIT_EVENT_STATEMENT_IMPORT_REJECTED,
@@ -268,6 +290,13 @@ public final class TrustGraphApiHandler {
           PlatformApiParameters.readOptionalString(queryParameters, PARAM_SOURCE_URI),
           exception.errorCode());
       throw toPlatformException(exception);
+    } catch (PlatformApiException exception) {
+      appendRejectedAudit(
+          AUDIT_EVENT_STATEMENT_IMPORT_REJECTED,
+          appId,
+          PlatformApiParameters.readOptionalString(queryParameters, PARAM_SOURCE_URI),
+          exception.errorCode());
+      throw exception;
     }
   }
 
@@ -291,37 +320,46 @@ public final class TrustGraphApiHandler {
     String uri = PlatformApiParameters.requireString(queryParameters, PARAM_URI);
     int maxBytes = readMaxBytes(queryParameters);
     try {
-      Map<String, Object> fetched =
-          new ContentApiHandler(contentFetchPort)
-              .fetch(
-                  Map.of(
-                      PARAM_URI,
-                      List.of(uri),
-                      PARAM_MAX_BYTES,
-                      List.of(Integer.toString(maxBytes)),
-                      "format",
-                      List.of("text"),
-                      "purpose",
-                      List.of("trust-graph-import")));
-      Object contentText = fetched.get("contentText");
-      if (!(contentText instanceof String documentJson)) {
-        throw new PlatformApiException(
-            415, "unsupported_content_encoding", "Fetched trust statement is not valid UTF-8.");
+      try (var importReservation = reserveTrustGraphImportBudget(appId)) {
+        Map<String, Object> fetched =
+            new ContentApiHandler(
+                    contentFetchPort,
+                    networkBudgetService,
+                    AppNetworkBudgetOperation.TRUST_GRAPH_IMPORT_URI)
+                .fetch(
+                    Map.of(
+                        PARAM_URI,
+                        List.of(uri),
+                        PARAM_MAX_BYTES,
+                        List.of(Integer.toString(maxBytes)),
+                        "format",
+                        List.of("text"),
+                        "purpose",
+                        List.of("trust-graph-import")),
+                    budgetAppId(appId));
+        Object contentText = fetched.get("contentText");
+        if (!(contentText instanceof String documentJson)) {
+          throw new PlatformApiException(
+              415, "unsupported_content_encoding", "Fetched trust statement is not valid UTF-8.");
+        }
+        if (documentJson.getBytes(StandardCharsets.UTF_8).length > maxBytes) {
+          throw new PlatformApiException(
+              502,
+              "content_fetch_too_large",
+              "Fetched content exceeded the configured byte bound.");
+        }
+        commitTrustGraphImportBudget(importReservation);
+        TrustStatementDocument document = TrustStatementParser.parse(documentJson);
+        TrustGraphImportResult result =
+            store.importStatement(
+                document,
+                "content-fetch",
+                uri,
+                PlatformApiParameters.readOptionalString(queryParameters, PARAM_SOURCE_LABEL),
+                PlatformApiParameters.readOptionalString(queryParameters, PARAM_SUBSCRIPTION_ID));
+        appendImportAudit("statement_imported_from_uri", appId, result);
+        return result.toJson();
       }
-      if (documentJson.getBytes(StandardCharsets.UTF_8).length > maxBytes) {
-        throw new PlatformApiException(
-            502, "content_fetch_too_large", "Fetched content exceeded the configured byte bound.");
-      }
-      TrustStatementDocument document = TrustStatementParser.parse(documentJson);
-      TrustGraphImportResult result =
-          store.importStatement(
-              document,
-              "content-fetch",
-              uri,
-              PlatformApiParameters.readOptionalString(queryParameters, PARAM_SOURCE_LABEL),
-              PlatformApiParameters.readOptionalString(queryParameters, PARAM_SUBSCRIPTION_ID));
-      appendImportAudit("statement_imported_from_uri", appId, result);
-      return result.toJson();
     } catch (TrustGraphException exception) {
       appendRejectedAudit(AUDIT_EVENT_STATEMENT_IMPORT_REJECTED, appId, uri, exception.errorCode());
       throw toPlatformException(exception);
@@ -329,6 +367,48 @@ public final class TrustGraphApiHandler {
       appendRejectedAudit(AUDIT_EVENT_STATEMENT_IMPORT_REJECTED, appId, uri, exception.errorCode());
       throw exception;
     }
+  }
+
+  private AppNetworkBudgetReservation reserveTrustGraphImportBudget(String appId) {
+    if (networkBudgetService == null) {
+      return AppNetworkBudgetReservation.noop(
+          budgetAppId(appId), AppNetworkBudgetOperation.TRUST_GRAPH_IMPORT, clock.instant());
+    }
+    AppNetworkBudgetReservation reservation =
+        networkBudgetService.reserve(
+            budgetAppId(appId), AppNetworkBudgetOperation.TRUST_GRAPH_IMPORT);
+    AppNetworkBudgetDecision decision = reservation.decision();
+    if (!decision.allowed()) {
+      throw new PlatformApiException(
+          decision.statusCode(), decision.errorCode(), decision.message());
+    }
+    return reservation;
+  }
+
+  private static void commitTrustGraphImportBudget(AppNetworkBudgetReservation reservation) {
+    AppNetworkBudgetDecision decision = reservation.commit();
+    if (!decision.allowed()) {
+      throw new PlatformApiException(
+          decision.statusCode(), decision.errorCode(), decision.message());
+    }
+  }
+
+  private AppNetworkBudgetLease acquireTrustGraphImportBudgetLease(String appId) {
+    if (networkBudgetService == null) {
+      return AppNetworkBudgetLease.noop();
+    }
+    AppNetworkBudgetDecision decision =
+        networkBudgetService.acquire(
+            budgetAppId(appId), AppNetworkBudgetOperation.TRUST_GRAPH_IMPORT);
+    if (!decision.allowed()) {
+      throw new PlatformApiException(
+          decision.statusCode(), decision.errorCode(), decision.message());
+    }
+    return decision.lease();
+  }
+
+  private static String budgetAppId(String appId) {
+    return appId == null || appId.isBlank() ? AppNetworkBudgetScope.HOST_OPERATOR : appId;
   }
 
   /**

@@ -1,6 +1,6 @@
 ---
 name: cryptad-platform-apps
-description: "Work on Cryptad's app platform: Platform API v1/contract, AppHost runtime/rollback, signed app bundles/catalogs, trusted app-review receipts, Trust Graph Local RC, app-update lifecycle, durable app data, app-data backup/restore, content subscriptions, local app-service discovery/dependencies/grant bundles, app-owned static UI, browser sessions, the browser SDK, the app UI design system/linter, developer CLI, app permissions/audit, sandbox providers, operator beta dashboard/support evidence, live-network beta certification evidence, legacy plugin freeze, and legacy admin retirement routing."
+description: "Work on Cryptad's app platform: Platform API v1/contract, AppHost runtime/rollback, signed app bundles/catalogs, trusted app-review receipts, Trust Graph Local RC, app-update lifecycle, durable app data, app-data backup/restore, content subscriptions, app-network budgets, local app-service discovery/dependencies/grant bundles, app-owned static UI, browser sessions, the browser SDK, the app UI design system/linter, developer CLI, app permissions/audit, sandbox providers, operator beta dashboard/support evidence, live-network beta certification evidence, legacy plugin freeze, and legacy admin retirement routing."
 ---
 
 # Cryptad platform apps
@@ -31,6 +31,7 @@ Load only the docs needed for the change:
 - Feed Reader and content-fetch reference app: `docs/feed-reader-reference-app.md`
 - Social Inbox Preview reference app: `docs/social-inbox-reference-app.md`
 - Trust Graph Preview reference app and local trust-service API: `docs/trust-graph-preview.md`
+- Network-scale content/subscription budget: `docs/network-scale-soak-and-subscription-budget.md`
 - App secret and identity vault: `docs/app-secret-and-identity-vault.md`
 - AppHost runtime/log/token boundary: `docs/apphost-runtime-hardening.md`
 - App-token permission matrix and audit model: `docs/app-permissions-and-audit.md`
@@ -44,12 +45,13 @@ Load only the docs needed for the change:
 - `:platform-api` owns the transport-neutral Platform API v1 router, route families,
   deterministic compatibility contract, app-token authorization decisions, browser-session
   authorization decisions, capabilities, app-vault route handlers, generated app-document queue
-  staging, bounded content fetch routing, durable content subscriptions, durable app data,
-  app-data backup/restore planning and commit routes, internal update snapshots, local Trust Graph
-  Local RC route handlers, local app-service discovery/dependency/grant-bundle routes and adapters,
-  bounded app audit logs, and the local app-update lifecycle service plus scheduler above
-  AppHost/catalog/vault/app-data/content/trust/runtime primitives, plus the host/operator-only
-  beta dashboard, subscription recovery wrappers, and redacted support-bundle assembly.
+  staging, bounded content fetch routing, shared app-network budget service/store, durable content
+  subscriptions, durable app data, app-data backup/restore planning and commit routes, internal
+  update snapshots, local Trust Graph Local RC route handlers, local app-service
+  discovery/dependency/grant-bundle routes and adapters, bounded app audit logs, and the local
+  app-update lifecycle service plus scheduler above AppHost, catalog, vault, app-data, content,
+  trust, and runtime primitives, plus the host/operator-only beta dashboard, subscription recovery
+  wrappers, and redacted support-bundle assembly.
 - `:platform-apphost` owns installed app layout, manifest parsing, app process lifecycle,
   per-launch `CRYPTAD_APP_TOKEN`, runtime status, process-log capture/redaction, and restart
   attempts, durable previous-bundle rollback records, plus sandbox policy/status reporting,
@@ -116,7 +118,13 @@ Load only the docs needed for the change:
   require `content.fetch`, cap bytes and timeouts, allow only Crypta/Freenet content-key forms, and
   reject `file:`, arbitrary HTTP(S), loopback/LAN URLs, and absolute local paths before calling the
   runtime fetch port.
+- Shared app-network budgets are required for app-initiated network work: foreground content
+  fetch, subscription manual refresh, subscription scheduler poll, Trust Graph direct import, and
+  Trust Graph import-by-URI. Use `AppNetworkBudgetService` with reserved internal scopes for
+  global and host/operator counters; do not add per-feature counters that bypass the shared global
+  content-fetch budget. Full runtime should fail closed when durable budget state is unavailable.
 - Durable content subscriptions are bounded USK follow metadata plus scheduled refresh requests.
+  Manual refresh and scheduler polls consume shared app-network budget after queue-pressure checks.
   They must not become a crawler, arbitrary HTTP client, queue-HTML parser, raw content archive, or
   source of private insert URIs.
 - Durable app data is app-owned state only. It must remain scoped to the authenticated caller app,
@@ -130,9 +138,11 @@ Load only the docs needed for the change:
   Keep raw generated documents, raw feed/profile/trust bodies, private insert URIs, raw
   signatures, and request bodies out of audit entries, logs, and release evidence.
 - Trust Graph Local RC is local preview scoring and bounded statement import/sign/publish support.
-  Do not claim full Web of Trust compatibility, old plugin compatibility, global moderation,
-  background crawling, daemon-core identity sharing, or protocol/network behavior changes. Trust
-  evidence must stay bounded and redacted; do not record raw trust documents from real users.
+  Direct import consumes Trust Graph import budget, and import-by-URI consumes both Trust Graph
+  import budget and the shared content-fetch budget. Do not claim full Web of Trust compatibility,
+  old plugin compatibility, global moderation, background crawling, daemon-core identity sharing,
+  or protocol/network behavior changes. Trust evidence must stay bounded and redacted; do not
+  record raw trust documents from real users.
 - App-service discovery and grants are local Platform API mediation only. Do not add generic RPC,
   arbitrary localhost proxying, bearer tokens apps can pass around, remote discovery, daemon-core
   plugin ABIs, cross-app app-data access, or provider run/cache/store path exposure. Invocation must
@@ -219,7 +229,8 @@ Load only the docs needed for the change:
   design-system adoption, strict UI lint JSON evidence, `crypta-app init/validate/pack/dev/test`,
   Platform API contract snapshots, app-vault capability evidence, generated document insert
   evidence, bounded content-fetch/subscription evidence, durable app-data and app-data
-  backup/restore evidence, signed bundle evidence, signed catalog/live USK publication evidence,
+  backup/restore evidence, app-network budget and network-scale soak evidence, signed bundle
+  evidence, signed catalog/live USK publication evidence,
   first-party beta catalog metadata, trusted app-review receipt evidence, sandbox-provider
   evidence, app-update lifecycle/scheduler/rollback and app-data migration contract evidence, Site
   Publisher/Profile Publisher/Social Inbox/Feed Reader/Trust Graph Local RC reference-app evidence,
@@ -270,6 +281,7 @@ Use `$cryptad-build-test` for Gradle rules and timeouts. Common focused checks:
 ./gradlew stageFirstPartyApps
 python3 tools/release-certification/app_platform_docs_check.py --self-test
 python3 tools/release-certification/app_platform_smoke.py --self-test
+python3 tools/release-certification/network_scale_soak.py --self-test
 python3 tools/release-certification/live_network_beta_smoke.py --self-test
 ```
 
@@ -282,16 +294,17 @@ When changing `crypta-app` command wiring or distribution behavior, also run
 
 When changing signed bundle/catalog, live USK publication, app-review receipts, static UI,
 design-system assets, UI lint, SDK, Platform API contract, AppHost lifecycle, app-vault
-capabilities, generated document inserts, content fetch/subscriptions, durable app data,
-app-data backup/restore, app-service dependencies/grant bundles, Trust Graph Local RC, Social Inbox
-RC, app-update lifecycle/scheduler/rollback, sandbox-provider evidence, operator beta
-dashboard/support-bundle behavior, live-network beta certification behavior, reference
-content/profile/social/feed/trust
+capabilities, generated document inserts, content fetch/subscriptions, shared app-network budgets,
+network-scale soak evidence, durable app data, app-data backup/restore, app-service
+dependencies/grant bundles, Trust Graph Local RC, Social Inbox RC, app-update
+lifecycle/scheduler/rollback, sandbox-provider evidence, operator beta dashboard/support-bundle
+behavior, live-network beta certification behavior, reference content/profile/social/feed/trust
 apps, app platform beta docs evidence, or legacy-admin retirement evidence behavior, also run:
 
 ```bash
 python3 tools/release-certification/app_platform_docs_check.py --self-test
 python3 tools/release-certification/app_platform_smoke.py --self-test
+python3 tools/release-certification/network_scale_soak.py --self-test
 python3 tools/release-certification/live_network_beta_smoke.py --self-test
 tools/release-certification/run-release-certification.sh --mode pr --skip-gradle --skip-git-metadata
 ```

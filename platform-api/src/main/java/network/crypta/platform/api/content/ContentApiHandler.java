@@ -12,6 +12,10 @@ import java.util.Map;
 import java.util.Objects;
 import network.crypta.platform.api.PlatformApiException;
 import network.crypta.platform.api.PlatformApiParameters;
+import network.crypta.platform.api.networkbudget.AppNetworkBudgetDecision;
+import network.crypta.platform.api.networkbudget.AppNetworkBudgetLease;
+import network.crypta.platform.api.networkbudget.AppNetworkBudgetOperation;
+import network.crypta.platform.api.networkbudget.AppNetworkBudgetService;
 import network.crypta.runtime.spi.BoundedContentFetchRequest;
 import network.crypta.runtime.spi.BoundedContentFetchResult;
 import network.crypta.runtime.spi.ContentFetchException;
@@ -50,6 +54,8 @@ public final class ContentApiHandler {
   private static final String FORMAT_BASE64 = "base64";
 
   private final ContentFetchPort contentFetchPort;
+  private final AppNetworkBudgetService networkBudgetService;
+  private final AppNetworkBudgetOperation budgetOperation;
 
   /**
    * Creates a handler bound to one detached runtime fetch port.
@@ -63,7 +69,40 @@ public final class ContentApiHandler {
    * @throws NullPointerException when {@code contentFetchPort} is {@code null}
    */
   public ContentApiHandler(ContentFetchPort contentFetchPort) {
+    this(contentFetchPort, null, AppNetworkBudgetOperation.FOREGROUND_CONTENT_FETCH);
+  }
+
+  /**
+   * Creates a handler with an optional shared app-network budget service.
+   *
+   * <p>When the service is present and callers supply an app id to {@link #fetch(Map, String)}, the
+   * handler acquires budget after source validation and before invoking the runtime fetch port.
+   * Reduced embeddings and host/operator callers can omit the service or app id to preserve the
+   * existing unbudgeted path.
+   *
+   * @param contentFetchPort runtime content-fetch port used after request validation succeeds
+   * @param networkBudgetService optional shared app-network budget service
+   */
+  public ContentApiHandler(
+      ContentFetchPort contentFetchPort, AppNetworkBudgetService networkBudgetService) {
+    this(
+        contentFetchPort, networkBudgetService, AppNetworkBudgetOperation.FOREGROUND_CONTENT_FETCH);
+  }
+
+  /**
+   * Creates a handler with an explicit budget operation for internal content-fetch users.
+   *
+   * @param contentFetchPort runtime content-fetch port used after request validation succeeds
+   * @param networkBudgetService optional shared app-network budget service
+   * @param budgetOperation budget operation charged when an app id is supplied
+   */
+  public ContentApiHandler(
+      ContentFetchPort contentFetchPort,
+      AppNetworkBudgetService networkBudgetService,
+      AppNetworkBudgetOperation budgetOperation) {
     this.contentFetchPort = Objects.requireNonNull(contentFetchPort, "contentFetchPort");
+    this.networkBudgetService = networkBudgetService;
+    this.budgetOperation = Objects.requireNonNull(budgetOperation, "budgetOperation");
   }
 
   /**
@@ -81,14 +120,44 @@ public final class ContentApiHandler {
    * @throws PlatformApiException when validation, fetching, bounds checking, or text decoding fails
    */
   public Map<String, Object> fetch(Map<String, List<String>> parameters) {
+    return fetch(parameters, null);
+  }
+
+  /**
+   * Fetches one bounded Crypta content document with optional app budget enforcement.
+   *
+   * <p>Budget acquisition happens only after the request URI and app-facing bounds pass validation.
+   * That prevents rejected local paths, arbitrary URLs, and malformed sources from consuming quota.
+   *
+   * @param parameters decoded form parameters keyed by Platform API parameter name
+   * @param appId authenticated app id to charge, or {@code null} for host/operator/reduced callers
+   * @return ordered JSON-compatible response containing fetch metadata and content bytes
+   * @throws PlatformApiException when validation, budget, fetching, bounds checking, or text
+   *     decoding fails
+   */
+  public Map<String, Object> fetch(Map<String, List<String>> parameters, String appId) {
     FetchRequest request = parseRequest(parameters);
-    BoundedContentFetchResult result = fetchContent(request);
-    byte[] bytes = result.bytes();
-    if (bytes.length > request.maxBytes()) {
-      throw new PlatformApiException(
-          502, "content_fetch_too_large", "Fetched content exceeded the configured byte bound.");
+    try (var _ = acquireBudget(appId)) {
+      BoundedContentFetchResult result = fetchContent(request);
+      byte[] bytes = result.bytes();
+      if (bytes.length > request.maxBytes()) {
+        throw new PlatformApiException(
+            502, "content_fetch_too_large", "Fetched content exceeded the configured byte bound.");
+      }
+      return responseBody(request, result, bytes);
     }
-    return responseBody(request, result, bytes);
+  }
+
+  private AppNetworkBudgetLease acquireBudget(String appId) {
+    if (networkBudgetService == null || appId == null || appId.isBlank()) {
+      return AppNetworkBudgetLease.noop();
+    }
+    AppNetworkBudgetDecision decision = networkBudgetService.acquire(appId, budgetOperation);
+    if (!decision.allowed()) {
+      throw new PlatformApiException(
+          decision.statusCode(), decision.errorCode(), decision.message());
+    }
+    return decision.lease();
   }
 
   private FetchRequest parseRequest(Map<String, List<String>> parameters) {

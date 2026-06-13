@@ -46,6 +46,10 @@ Recovery actions are intentionally narrow:
   the existing update policy and running-app guards.
 - Subscription recovery uses the operator wrapper around the shared content-subscription service.
   It does not grant apps authority over other apps' subscriptions.
+- Subscription status wording may include `queue_pressure`, `runtime_unavailable`, `backoff`, and
+  `budget_exhausted`. These are diagnostic statuses only; budget exhaustion and queue pressure do
+  not expose queue HTML, fetched content, source documents, or raw daemon exception text, and this
+  dashboard does not add PR-257 recovery workflows.
 - App-data backup and restore uses the durable app-data backup layer. Backups are sensitive user
   data, restore plans are metadata-only, and destructive `replaceNamespace`, `replaceApp`, and
   export-before-delete steps require explicit operator confirmation.

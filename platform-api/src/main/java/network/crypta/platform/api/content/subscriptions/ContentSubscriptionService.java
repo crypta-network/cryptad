@@ -15,6 +15,10 @@ import java.util.Objects;
 import java.util.Random;
 import network.crypta.platform.api.PlatformApiException;
 import network.crypta.platform.api.PlatformApiParameters;
+import network.crypta.platform.api.networkbudget.AppNetworkBudgetDecision;
+import network.crypta.platform.api.networkbudget.AppNetworkBudgetOperation;
+import network.crypta.platform.api.networkbudget.AppNetworkBudgetReservation;
+import network.crypta.platform.api.networkbudget.AppNetworkBudgetService;
 import network.crypta.platform.apphost.manifest.AppManifest;
 import network.crypta.runtime.spi.BoundedContentFetchRequest;
 import network.crypta.runtime.spi.BoundedContentFetchResult;
@@ -61,6 +65,7 @@ public final class ContentSubscriptionService {
   private final ContentSubscriptionStore store;
   private final ContentFetchPort contentFetchPort;
   private final ContentSubscriptionSchedulerConfig config;
+  private final AppNetworkBudgetService networkBudgetService;
   private final Clock clock;
   private final Random random;
 
@@ -80,7 +85,29 @@ public final class ContentSubscriptionService {
       ContentSubscriptionStore store,
       ContentFetchPort contentFetchPort,
       ContentSubscriptionSchedulerConfig config) {
-    this(store, contentFetchPort, config, Clock.systemUTC(), new SecureRandom());
+    this(store, contentFetchPort, config, null, Clock.systemUTC(), new SecureRandom());
+  }
+
+  /**
+   * Creates a service using system UTC time, secure random subscription ids, and shared budgets.
+   *
+   * @param store durable metadata store for subscription records
+   * @param contentFetchPort bounded runtime fetch port used for polls
+   * @param config scheduler and app-facing request limits
+   * @param networkBudgetService optional shared app-network budget service
+   */
+  public ContentSubscriptionService(
+      ContentSubscriptionStore store,
+      ContentFetchPort contentFetchPort,
+      ContentSubscriptionSchedulerConfig config,
+      AppNetworkBudgetService networkBudgetService) {
+    this(
+        store,
+        contentFetchPort,
+        config,
+        networkBudgetService,
+        Clock.systemUTC(),
+        new SecureRandom());
   }
 
   /**
@@ -103,9 +130,30 @@ public final class ContentSubscriptionService {
       ContentSubscriptionSchedulerConfig config,
       Clock clock,
       Random random) {
+    this(store, contentFetchPort, config, null, clock, random);
+  }
+
+  /**
+   * Creates a service with deterministic time, id randomness, and optional shared budgets.
+   *
+   * @param store durable metadata store for subscription records
+   * @param contentFetchPort bounded runtime fetch port used for polls
+   * @param config scheduler and app-facing request limits
+   * @param networkBudgetService optional shared app-network budget service
+   * @param clock clock used for API actions and state transitions
+   * @param random random source used for id generation and jitter
+   */
+  public ContentSubscriptionService(
+      ContentSubscriptionStore store,
+      ContentFetchPort contentFetchPort,
+      ContentSubscriptionSchedulerConfig config,
+      AppNetworkBudgetService networkBudgetService,
+      Clock clock,
+      Random random) {
     this.store = Objects.requireNonNull(store, "store");
     this.contentFetchPort = Objects.requireNonNull(contentFetchPort, "contentFetchPort");
     this.config = Objects.requireNonNull(config, "config");
+    this.networkBudgetService = networkBudgetService;
     this.clock = Objects.requireNonNull(clock, "clock");
     this.random = Objects.requireNonNull(random, "random");
   }
@@ -201,7 +249,11 @@ public final class ContentSubscriptionService {
    * @throws PlatformApiException if the subscription is missing or metadata cannot be persisted
    */
   public synchronized Map<String, Object> refresh(String appId, String subscriptionId) {
-    return summaryValues(pollSubscription(requireOwned(appId, subscriptionId), clock.instant()));
+    return summaryValues(
+        pollSubscription(
+            requireOwned(appId, subscriptionId),
+            clock.instant(),
+            AppNetworkBudgetOperation.SUBSCRIPTION_MANUAL_REFRESH));
   }
 
   /**
@@ -317,7 +369,7 @@ public final class ContentSubscriptionService {
     if (current.shouldSkipPollAt(now)) {
       return current;
     }
-    return pollSubscription(current, now);
+    return pollSubscription(current, now, AppNetworkBudgetOperation.SUBSCRIPTION_POLL);
   }
 
   synchronized ContentSubscription schedulerSkip(
@@ -340,9 +392,40 @@ public final class ContentSubscriptionService {
     return skipped;
   }
 
-  private ContentSubscription pollSubscription(ContentSubscription subscription, Instant now) {
-    ContentSubscription running = subscription.withRunning(now);
-    write(running);
+  private ContentSubscription pollSubscription(
+      ContentSubscription subscription, Instant now, AppNetworkBudgetOperation operation) {
+    try (var budgetReservation = reserveBudget(subscription.appId(), operation)) {
+      AppNetworkBudgetDecision budgetDecision = budgetReservation.decision();
+      if (!budgetDecision.allowed()) {
+        ContentSubscription skipped =
+            subscription.withSkipped(
+                now,
+                nextAfterBudgetDenied(now, subscription, budgetDecision),
+                ContentSubscriptionStatus.BUDGET_EXHAUSTED,
+                budgetDecision.errorCode(),
+                budgetDecision.message());
+        write(skipped);
+        return skipped;
+      }
+      ContentSubscription running = subscription.withRunning(now);
+      write(running);
+      AppNetworkBudgetDecision committedBudget = budgetReservation.commit();
+      if (!committedBudget.allowed()) {
+        ContentSubscription skipped =
+            running.withSkipped(
+                now,
+                nextAfterBudgetDenied(now, running, committedBudget),
+                ContentSubscriptionStatus.BUDGET_EXHAUSTED,
+                committedBudget.errorCode(),
+                committedBudget.message());
+        write(skipped);
+        return skipped;
+      }
+      return fetchAndRecordResult(running, now);
+    }
+  }
+
+  private ContentSubscription fetchAndRecordResult(ContentSubscription running, Instant now) {
     try {
       BoundedContentFetchResult result =
           contentFetchPort.fetchContent(
@@ -396,6 +479,25 @@ public final class ContentSubscriptionService {
       write(failed);
       return failed;
     }
+  }
+
+  private AppNetworkBudgetReservation reserveBudget(
+      String appId, AppNetworkBudgetOperation operation) {
+    if (networkBudgetService == null) {
+      return AppNetworkBudgetReservation.noop(
+          AppManifest.normalizeAppId(appId), operation, clock.instant());
+    }
+    return networkBudgetService.reserve(appId, operation);
+  }
+
+  private Instant nextAfterBudgetDenied(
+      Instant now, ContentSubscription subscription, AppNetworkBudgetDecision decision) {
+    Instant backoffNext = nextAfterFailure(now, subscription);
+    Instant budgetNext = decision.nextAvailableAt();
+    if (budgetNext == null) {
+      return backoffNext;
+    }
+    return budgetNext.isAfter(backoffNext) ? budgetNext : backoffNext;
   }
 
   private ContentSubscriptionRequest parseCreateRequest(Map<String, List<String>> parameters) {

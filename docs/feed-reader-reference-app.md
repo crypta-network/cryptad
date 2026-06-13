@@ -109,7 +109,7 @@ permissions.rationale.queue.read=Displays publication progress from the local tr
 permissions.rationale.app.data.read=Restores the app-owned feed list, selected subscriptions, read state, and safe draft metadata.
 permissions.rationale.app.data.write=Saves bounded app-owned reader state through the durable app-data API.
 api.minimumVersion=9
-api.maximumTestedVersion=17
+api.maximumTestedVersion=18
 api.experimentalCapabilitiesAccepted=false
 
 app.data.schema.current=2
@@ -136,13 +136,20 @@ Release certification records these required evidence ids for this workflow:
 | `app-platform.content-fetch` | `POST /api/v1/content/fetch` is documented, capability-gated by `content.fetch`, represented in the Platform API contract, and covered by redaction evidence. |
 | `app-platform.content-subscriptions` | `/api/v1/content/subscriptions` is documented, capability-gated by `content.subscribe` plus `content.fetch` for create/refresh, app-principal scoped, represented in contract v8, and covered by redaction evidence. |
 | `network-content.subscription-scheduler` | The background scheduler has deterministic offline evidence for bounded due checks, per-app/global/per-tick limits, backoff, dedupe, queue pressure handling with no queue HTML parsing, and path-free durable metadata. |
+| `network-scale.content-fetch-budget` | Feed Reader foreground fetches inherit the shared per-app/global content-fetch budget and safe `429` budget errors. |
+| `network-scale.subscription-budget` | Feed Reader subscription refreshes and scheduler polls inherit the shared subscription budget and cannot bypass the global content-fetch budget family. |
+| `network-scale.rc-soak-summary` | RC certification may attach simulated or live network-scale soak evidence; ordinary unit tests do not run for 24 hours. |
 | `reference-app.feed-reader` | Feed Reader exists as a first-party static app, declares the expected permissions, uses SDK feed helpers, and publishes generated feed documents without local source-path authority. |
 | `reference-app.feed-reader-subscriptions` | Feed Reader declares `content.subscribe`, uses the contract v8 platform subscription helpers, and no longer relies on a tab-local follow loop as the durable follow path. |
-| `reference-app.feed-reader-app-data` | Feed Reader declares `app.data.read` and `app.data.write`, requires at least API v9, is tested through v14, uses SDK app-data helpers, declares a signed v1-to-v2 migration example, and keeps durable app-data evidence redacted. |
+| `reference-app.feed-reader-app-data` | Feed Reader declares `app.data.read` and `app.data.write`, requires at least API v9, is tested through v18, uses SDK app-data helpers, declares a signed v1-to-v2 migration example, and keeps durable app-data evidence redacted. |
 | `app-update.data-migration-contract` | Feed Reader declares `ui-state-v1-v2` and stages `bin/migrate-feed-data.sh` as a deterministic dry-run/apply-capable migration entrypoint without logging raw app-data values. |
 
+Feed Reader subscriptions are app-scoped USK subscriptions, not a generic crawler. Queue pressure
+can delay polling, and budget exhaustion records retry/status metadata instead of raw daemon
+exceptions.
+
 Evidence and reports must not include raw feed bodies, raw fetched content, raw request bodies,
-private insert URIs, app process tokens, browser-session tokens, form passwords, private keys,
+queue HTML, private insert URIs, app process tokens, browser-session tokens, form passwords, private keys,
 absolute staging paths, store root paths, queue HTML, or local paths. Subscription state is
 metadata only, and app-data state is bounded app-owned state rather than a generic filesystem,
 database, or secret vault.

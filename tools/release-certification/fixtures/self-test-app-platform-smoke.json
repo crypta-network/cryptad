@@ -60,7 +60,7 @@
       "details": {
         "apiVersion": "v1",
         "capabilityCount": 25,
-        "contractVersion": 17,
+        "contractVersion": 18,
         "endpointCount": 65,
         "flaggedStability": [],
         "stabilityCounts": {
@@ -353,6 +353,159 @@
       "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
       "status": "pass",
       "summary": "Content subscription scheduler passed deterministic offline evidence checks."
+    },
+    {
+      "details": {
+        "checks": {
+          "deterministicTestsPresent": true,
+          "finiteDefaultsPresent": true,
+          "packagePresent": true,
+          "pathSafeStoreAndRuntimeWiring": true,
+          "systemAndEnvironmentConfigPresent": true
+        },
+        "redaction": {
+          "absolutePathsExcluded": true,
+          "privateInsertUrisExcluded": true,
+          "queueHtmlExcluded": true,
+          "rawFetchedContentExcluded": true,
+          "tokensExcluded": true
+        }
+      },
+      "id": "network-scale.app-network-budget",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "network-scale.app-network-budget passed deterministic network-scale checks."
+    },
+    {
+      "details": {
+        "checks": {
+          "contentPolicyStillPresent": true,
+          "handlerUsesBudgetBeforeRuntimeFetch": true,
+          "routesPassAppPrincipalId": true,
+          "safeBudgetErrorsCovered": true
+        },
+        "redaction": {
+          "absolutePathsExcluded": true,
+          "privateInsertUrisExcluded": true,
+          "queueHtmlExcluded": true,
+          "rawFetchedContentExcluded": true,
+          "tokensExcluded": true
+        }
+      },
+      "id": "network-scale.content-fetch-budget",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "network-scale.content-fetch-budget passed deterministic network-scale checks."
+    },
+    {
+      "details": {
+        "checks": {
+          "leasesAndRetryAreBounded": true,
+          "manualAndSchedulerUseBudgetOperations": true,
+          "statusIsPublicAndSafe": true,
+          "testsCoverManualSchedulerAndLeaseRelease": true
+        },
+        "redaction": {
+          "absolutePathsExcluded": true,
+          "privateInsertUrisExcluded": true,
+          "queueHtmlExcluded": true,
+          "rawFetchedContentExcluded": true,
+          "tokensExcluded": true
+        }
+      },
+      "id": "network-scale.subscription-budget",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "network-scale.subscription-budget passed deterministic network-scale checks."
+    },
+    {
+      "details": {
+        "checks": {
+          "budgetSkipDoesNotCountAsAttempt": true,
+          "pressureGateUsesStableSpiNoHtml": true,
+          "pressurePrecedesBudgetAndFetch": true,
+          "testsProvePressureSkipsBudgetAndFetch": true
+        },
+        "redaction": {
+          "absolutePathsExcluded": true,
+          "privateInsertUrisExcluded": true,
+          "queueHtmlExcluded": true,
+          "rawFetchedContentExcluded": true,
+          "tokensExcluded": true
+        }
+      },
+      "id": "network-scale.queue-pressure-backoff",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "network-scale.queue-pressure-backoff passed deterministic network-scale checks."
+    },
+    {
+      "details": {
+        "checks": {
+          "directImportUsesImportBudget": true,
+          "importUriUsesImportAndContentFetchBudgets": true,
+          "safeErrorsAndNoRawContentCovered": true
+        },
+        "redaction": {
+          "absolutePathsExcluded": true,
+          "privateInsertUrisExcluded": true,
+          "queueHtmlExcluded": true,
+          "rawFetchedContentExcluded": true,
+          "tokensExcluded": true
+        }
+      },
+      "id": "network-scale.trust-graph-import-budget",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "network-scale.trust-graph-import-budget passed deterministic network-scale checks."
+    },
+    {
+      "details": {
+        "checks": {
+          "refreshAllIsCappedAndSequential": true,
+          "staticTestsCoverBoundsAndNoBrowserCache": true,
+          "statusWordingCoversPressureBudgetStale": true,
+          "trustAnnotationsRemainMediated": true
+        },
+        "redaction": {
+          "absolutePathsExcluded": true,
+          "privateInsertUrisExcluded": true,
+          "queueHtmlExcluded": true,
+          "rawFetchedContentExcluded": true,
+          "tokensExcluded": true
+        }
+      },
+      "id": "network-scale.social-inbox-multi-source-soak",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "network-scale.social-inbox-multi-source-soak passed deterministic network-scale checks."
+    },
+    {
+      "details": {
+        "checks": {
+          "budgetStorePersistsSafeCountersOnly": true,
+          "releaseDocsForbidSensitiveEvidence": true,
+          "soakFixtureIsRedactionOnly": true
+        },
+        "redaction": {
+          "absolutePathsExcluded": true,
+          "privateInsertUrisExcluded": true,
+          "queueHtmlExcluded": true,
+          "rawFetchedContentExcluded": true,
+          "tokensExcluded": true
+        }
+      },
+      "id": "network-scale.redaction",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "network-scale.redaction passed deterministic network-scale checks."
     },
     {
       "details": {

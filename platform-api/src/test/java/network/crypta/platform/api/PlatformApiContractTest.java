@@ -20,7 +20,7 @@ class PlatformApiContractTest {
     String second = PlatformApiContractJson.writeEnvelope(PlatformApiContract.current());
 
     assertEquals(first, second);
-    assertTrue(first.startsWith("{\"contract\":{\"apiVersion\":\"v1\",\"contractVersion\":17"));
+    assertTrue(first.startsWith("{\"contract\":{\"apiVersion\":\"v1\",\"contractVersion\":18"));
     assertFalse(first.contains("CRYPTAD_APP_TOKEN"));
     assertFalse(first.contains("browserSessionToken"));
     assertFalse(first.contains("password"));
@@ -41,7 +41,7 @@ class PlatformApiContractTest {
     PlatformApiContractVersion version = PlatformApiContract.current().version();
 
     assertEquals("v1", version.apiVersion());
-    assertEquals(17, version.contractVersion());
+    assertEquals(18, version.contractVersion());
   }
 
   @Test
