@@ -1407,13 +1407,10 @@ def network_scale_safe_int(
     *,
     minimum: int = 0,
 ) -> int:
-    try:
-        if isinstance(value, bool):
-            raise ValueError
-        parsed = int(value)
-    except (TypeError, ValueError):
+    if isinstance(value, bool) or not isinstance(value, int):
         errors.append(f"{field_name} must be an integer")
         return 0
+    parsed = value
     if parsed < minimum:
         errors.append(f"{field_name} must be at least {minimum}")
     return parsed
@@ -6705,6 +6702,50 @@ def run_self_test(repo_root: Path) -> None:
             "private redaction field",
         ):
             assert forbidden not in encoded_raw_network_soak, encoded_raw_network_soak
+
+        fractional_network_soak = read_json(settings.network_scale_soak_summary)
+        assert fractional_network_soak is not None
+        fractional_network_soak["durationHoursSimulated"] = 24.5
+        fractional_network_soak["apps"]["social-inbox"]["pollAttempts"] = -0.1
+        fractional_network_soak["trustGraph"]["importsAttempted"] = float("nan")
+        fractional_network_soak_path = workspace / "build/network-scale-fractional-soak/summary.json"
+        write_json(fractional_network_soak_path, fractional_network_soak)
+        fractional_network_soak_summary, fractional_network_soak_exit_code = run_with_previous(
+            "network-scale-fractional-soak-cert",
+            network_scale_soak_summary=fractional_network_soak_path,
+        )
+        assert fractional_network_soak_exit_code == 1, fractional_network_soak_summary
+        fractional_network_soak_item = evidence_by_id(
+            fractional_network_soak_summary,
+            NETWORK_SCALE_SOAK_EVIDENCE_ID,
+        )
+        assert fractional_network_soak_item["status"] == "fail", fractional_network_soak_item
+        assert (
+            fractional_network_soak_item["details"]["errors"].count(
+                "durationHoursSimulated must be an integer"
+            )
+            == 1
+        ), fractional_network_soak_item
+        assert (
+            "apps.social-inbox.pollAttempts must be an integer"
+            in fractional_network_soak_item["details"]["errors"]
+        ), fractional_network_soak_item
+        assert (
+            "trustGraph.importsAttempted must be an integer"
+            in fractional_network_soak_item["details"]["errors"]
+        ), fractional_network_soak_item
+        copied_fractional_network_soak = read_json(
+            workspace
+            / "build/network-scale-fractional-soak-cert/artifacts/network-scale-soak-summary.json"
+        )
+        assert copied_fractional_network_soak is not None, fractional_network_soak_summary
+        encoded_fractional_network_soak = (
+            json.dumps(fractional_network_soak_summary, sort_keys=True)
+            + json.dumps(copied_fractional_network_soak, sort_keys=True)
+        )
+        assert "NaN" not in encoded_fractional_network_soak, encoded_fractional_network_soak
+        assert "24.5" not in encoded_fractional_network_soak, encoded_fractional_network_soak
+        assert "-0.1" not in encoded_fractional_network_soak, encoded_fractional_network_soak
 
         live_disabled_evidence = {item["id"]: item for item in summary["evidence"]}
         for evidence_id in LIVE_NETWORK_BETA_EVIDENCE_IDS:

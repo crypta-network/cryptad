@@ -56,6 +56,23 @@ class AppNetworkBudgetServiceTest {
   }
 
   @Test
+  void check_whenAllowed_expectNoRateCounterConsumed() {
+    AppNetworkBudgetService service = service(config(1, 20, 4, 8), new MutableClock(START));
+
+    AppNetworkBudgetDecision preflight =
+        service.check("feed-reader", AppNetworkBudgetOperation.FOREGROUND_CONTENT_FETCH);
+    AppNetworkBudgetDecision firstAcquire =
+        service.acquire("feed-reader", AppNetworkBudgetOperation.FOREGROUND_CONTENT_FETCH);
+    AppNetworkBudgetDecision denied =
+        service.acquire("feed-reader", AppNetworkBudgetOperation.FOREGROUND_CONTENT_FETCH);
+
+    assertAllowed(preflight);
+    assertAllowed(firstAcquire);
+    assertFalse(denied.allowed());
+    assertEquals("content_fetch_budget_exhausted", denied.errorCode());
+  }
+
+  @Test
   void acquire_whenPerAppConcurrencyReached_expectDeniedUntilLeaseClosed() {
     AppNetworkBudgetService service = service(config(10, 20, 1, 8), new MutableClock(START));
     AppNetworkBudgetDecision first =

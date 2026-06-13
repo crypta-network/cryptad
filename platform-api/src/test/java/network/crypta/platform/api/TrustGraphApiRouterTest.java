@@ -564,6 +564,15 @@ class TrustGraphApiRouterTest {
     assertTrue(response.body().contains("\"code\":\"content_fetch_budget_exhausted\""));
     assertFalse(fetchCalled.get());
     assertEquals(0, store.statementCount());
+    assertEquals(
+        0,
+        budgetService.snapshots().stream()
+            .filter(snapshot -> snapshot.appId().equals(APP_ID))
+            .filter(
+                snapshot -> snapshot.operation() == AppNetworkBudgetOperation.TRUST_GRAPH_IMPORT)
+            .mapToInt(network.crypta.platform.api.networkbudget.AppNetworkBudgetSnapshot::count)
+            .findFirst()
+            .orElse(0));
     assertFalse(response.body().contains("CHK@statement"));
   }
 

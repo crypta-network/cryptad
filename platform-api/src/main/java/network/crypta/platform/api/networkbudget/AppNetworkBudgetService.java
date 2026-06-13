@@ -132,6 +132,57 @@ public final class AppNetworkBudgetService {
   }
 
   /**
+   * Checks whether an operation would be allowed without consuming rate or concurrency budget.
+   *
+   * <p>This is a preflight decision for composed operations that need to fail before starting an
+   * expensive or separately budgeted prerequisite. It reads the same fixed-window counters and
+   * process-local concurrency counters as {@link #acquire(String, AppNetworkBudgetOperation)}, but
+   * it does not increment durable counters, record denial metadata, or reserve a concurrency lease.
+   * Callers that proceed after an allowed preflight must still call {@link #acquire(String,
+   * AppNetworkBudgetOperation)} immediately before the operation being charged, because another
+   * request can consume the budget after the preflight decision.
+   *
+   * <p>Store read failures still fail closed with {@code network_budget_unavailable}. The returned
+   * allowed decision carries only a no-op lease, which is safe to close but does not grant
+   * capacity.
+   *
+   * @param appId authenticated app id or reserved internal scope to check
+   * @param operation requested network operation and budget family
+   * @return non-mutating allowed or denied decision with safe failure metadata
+   */
+  public synchronized AppNetworkBudgetDecision check(
+      String appId, AppNetworkBudgetOperation operation) {
+    String normalizedAppId = AppNetworkBudgetScope.normalize(appId);
+    AppNetworkBudgetOperation checkedOperation = Objects.requireNonNull(operation, "operation");
+    Instant now = clock.instant();
+    List<RateLimit> rateLimits = rateLimits(normalizedAppId, checkedOperation);
+    List<ConcurrencyLimit> concurrencyLimits = concurrencyLimits(normalizedAppId, checkedOperation);
+    try {
+      AppNetworkBudgetDecision concurrencyDecision =
+          concurrencyDecision(normalizedAppId, checkedOperation, now, concurrencyLimits);
+      if (!concurrencyDecision.allowed()) {
+        return concurrencyDecision;
+      }
+      AppNetworkBudgetDecision rateDecision =
+          rateCheckDecision(normalizedAppId, checkedOperation, now, rateLimits);
+      if (!rateDecision.allowed()) {
+        return rateDecision;
+      }
+      return AppNetworkBudgetDecision.allowed(
+          normalizedAppId, checkedOperation, now, AppNetworkBudgetLease.noop());
+    } catch (IOException _) {
+      return AppNetworkBudgetDecision.denied(
+          503,
+          normalizedAppId,
+          checkedOperation,
+          "network_budget_unavailable",
+          "App network budget service is unavailable.",
+          now,
+          null);
+    }
+  }
+
+  /**
    * Returns safe snapshots for currently stored counters.
    *
    * <p>Snapshots are intended for operator diagnostics and release evidence. They expose normalized
@@ -182,6 +233,26 @@ public final class AppNetworkBudgetService {
             concurrencyMessage(operation),
             now,
             null);
+      }
+    }
+    return AppNetworkBudgetDecision.allowed(appId, operation, now, AppNetworkBudgetLease.noop());
+  }
+
+  private AppNetworkBudgetDecision rateCheckDecision(
+      String appId, AppNetworkBudgetOperation operation, Instant now, List<RateLimit> rateLimits)
+      throws IOException {
+    for (RateLimit limit : rateLimits) {
+      AppNetworkBudgetUsage usage = usage(limit, now);
+      if (usage.count() >= limit.limit()) {
+        Instant nextAvailableAt = usage.windowStart().plus(usage.window());
+        return AppNetworkBudgetDecision.denied(
+            429,
+            appId,
+            operation,
+            rateErrorCode(operation),
+            rateMessage(operation),
+            now,
+            nextAvailableAt);
       }
     }
     return AppNetworkBudgetDecision.allowed(appId, operation, now, AppNetworkBudgetLease.noop());

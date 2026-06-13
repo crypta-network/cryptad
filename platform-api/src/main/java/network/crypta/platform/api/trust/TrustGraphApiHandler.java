@@ -319,34 +319,33 @@ public final class TrustGraphApiHandler {
     String uri = PlatformApiParameters.requireString(queryParameters, PARAM_URI);
     int maxBytes = readMaxBytes(queryParameters);
     try {
+      precheckTrustGraphImportBudget(appId);
+      Map<String, Object> fetched =
+          new ContentApiHandler(
+                  contentFetchPort,
+                  networkBudgetService,
+                  AppNetworkBudgetOperation.TRUST_GRAPH_IMPORT_URI)
+              .fetch(
+                  Map.of(
+                      PARAM_URI,
+                      List.of(uri),
+                      PARAM_MAX_BYTES,
+                      List.of(Integer.toString(maxBytes)),
+                      "format",
+                      List.of("text"),
+                      "purpose",
+                      List.of("trust-graph-import")),
+                  budgetAppId(appId));
+      Object contentText = fetched.get("contentText");
+      if (!(contentText instanceof String documentJson)) {
+        throw new PlatformApiException(
+            415, "unsupported_content_encoding", "Fetched trust statement is not valid UTF-8.");
+      }
+      if (documentJson.getBytes(StandardCharsets.UTF_8).length > maxBytes) {
+        throw new PlatformApiException(
+            502, "content_fetch_too_large", "Fetched content exceeded the configured byte bound.");
+      }
       try (var _ = acquireTrustGraphImportBudgetLease(appId)) {
-        Map<String, Object> fetched =
-            new ContentApiHandler(
-                    contentFetchPort,
-                    networkBudgetService,
-                    AppNetworkBudgetOperation.TRUST_GRAPH_IMPORT_URI)
-                .fetch(
-                    Map.of(
-                        PARAM_URI,
-                        List.of(uri),
-                        PARAM_MAX_BYTES,
-                        List.of(Integer.toString(maxBytes)),
-                        "format",
-                        List.of("text"),
-                        "purpose",
-                        List.of("trust-graph-import")),
-                    budgetAppId(appId));
-        Object contentText = fetched.get("contentText");
-        if (!(contentText instanceof String documentJson)) {
-          throw new PlatformApiException(
-              415, "unsupported_content_encoding", "Fetched trust statement is not valid UTF-8.");
-        }
-        if (documentJson.getBytes(StandardCharsets.UTF_8).length > maxBytes) {
-          throw new PlatformApiException(
-              502,
-              "content_fetch_too_large",
-              "Fetched content exceeded the configured byte bound.");
-        }
         TrustStatementDocument document = TrustStatementParser.parse(documentJson);
         TrustGraphImportResult result =
             store.importStatement(
@@ -364,6 +363,19 @@ public final class TrustGraphApiHandler {
     } catch (PlatformApiException exception) {
       appendRejectedAudit(AUDIT_EVENT_STATEMENT_IMPORT_REJECTED, appId, uri, exception.errorCode());
       throw exception;
+    }
+  }
+
+  private void precheckTrustGraphImportBudget(String appId) {
+    if (networkBudgetService == null) {
+      return;
+    }
+    AppNetworkBudgetDecision decision =
+        networkBudgetService.check(
+            budgetAppId(appId), AppNetworkBudgetOperation.TRUST_GRAPH_IMPORT);
+    if (!decision.allowed()) {
+      throw new PlatformApiException(
+          decision.statusCode(), decision.errorCode(), decision.message());
     }
   }
 

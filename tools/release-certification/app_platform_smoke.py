@@ -4995,7 +4995,7 @@ def collect_network_scale_evidence(settings: Settings) -> list[EvidenceItem]:
     )
     import_budget_before_fetch = source_index_before(
         trust_import_uri,
-        "acquireTrustGraphImportBudgetLease(appId)",
+        "precheckTrustGraphImportBudget(appId)",
         "new ContentApiHandler",
     )
     checks_by_id: dict[str, dict[str, bool]] = {
@@ -5158,6 +5158,7 @@ def collect_network_scale_evidence(settings: Settings) -> list[EvidenceItem]:
                 import_budget_before_fetch
                 and "AppNetworkBudgetOperation.TRUST_GRAPH_IMPORT_URI" in trust_handler
                 and "new ContentApiHandler" in trust_handler
+                and "acquireTrustGraphImportBudgetLease(appId)" in trust_import_uri
             ),
             "safeErrorsAndNoRawContentCovered": all(
                 fragment in platform_tests
@@ -15438,10 +15439,13 @@ def make_self_test_workspace(workspace: Path) -> None:
         "try (var ignored = acquireTrustGraphImportBudgetLease(appId)) { "
         "TrustStatementParser.parse(\"{}\"); } return null; } "
         "public Map<String, Object> importUri(ContentFetchPort port) { "
-        "try (var ignored = acquireTrustGraphImportBudgetLease(appId)) { "
+        "precheckTrustGraphImportBudget(appId); "
         "Object handler = new ContentApiHandler(port, networkBudgetService, AppNetworkBudgetOperation.TRUST_GRAPH_IMPORT_URI); "
+        "try (var ignored = acquireTrustGraphImportBudgetLease(appId)) { "
         "String max = \"maxStoredDocumentBytes\"; String format = \"format\"; "
         "String event = \"TrustGraphAuditEvent sourceUriHash redactedUriSummary redactedRejectedUriSummary\"; } return null; } "
+        "private void precheckTrustGraphImportBudget(Object appId) { "
+        "networkBudgetService.check(appId, AppNetworkBudgetOperation.TRUST_GRAPH_IMPORT); } "
         "private AppNetworkBudgetLease acquireTrustGraphImportBudgetLease(Object appId) { "
         "networkBudgetService.acquire(appId, AppNetworkBudgetOperation.TRUST_GRAPH_IMPORT); return null; } "
         "Object score = new TrustGraphScorer(null, null); }\n",
