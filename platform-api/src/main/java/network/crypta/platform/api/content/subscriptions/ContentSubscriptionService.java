@@ -16,8 +16,8 @@ import java.util.Random;
 import network.crypta.platform.api.PlatformApiException;
 import network.crypta.platform.api.PlatformApiParameters;
 import network.crypta.platform.api.networkbudget.AppNetworkBudgetDecision;
-import network.crypta.platform.api.networkbudget.AppNetworkBudgetLease;
 import network.crypta.platform.api.networkbudget.AppNetworkBudgetOperation;
+import network.crypta.platform.api.networkbudget.AppNetworkBudgetReservation;
 import network.crypta.platform.api.networkbudget.AppNetworkBudgetService;
 import network.crypta.platform.apphost.manifest.AppManifest;
 import network.crypta.runtime.spi.BoundedContentFetchRequest;
@@ -394,21 +394,33 @@ public final class ContentSubscriptionService {
 
   private ContentSubscription pollSubscription(
       ContentSubscription subscription, Instant now, AppNetworkBudgetOperation operation) {
-    AppNetworkBudgetDecision budgetDecision = acquireBudget(subscription.appId(), operation);
-    if (!budgetDecision.allowed()) {
-      ContentSubscription skipped =
-          subscription.withSkipped(
-              now,
-              nextAfterBudgetDenied(now, subscription, budgetDecision),
-              ContentSubscriptionStatus.BUDGET_EXHAUSTED,
-              budgetDecision.errorCode(),
-              budgetDecision.message());
-      write(skipped);
-      return skipped;
-    }
-    ContentSubscription running = subscription.withRunning(now);
-    try (var _ = budgetDecision.lease()) {
+    try (var budgetReservation = reserveBudget(subscription.appId(), operation)) {
+      AppNetworkBudgetDecision budgetDecision = budgetReservation.decision();
+      if (!budgetDecision.allowed()) {
+        ContentSubscription skipped =
+            subscription.withSkipped(
+                now,
+                nextAfterBudgetDenied(now, subscription, budgetDecision),
+                ContentSubscriptionStatus.BUDGET_EXHAUSTED,
+                budgetDecision.errorCode(),
+                budgetDecision.message());
+        write(skipped);
+        return skipped;
+      }
+      ContentSubscription running = subscription.withRunning(now);
       write(running);
+      AppNetworkBudgetDecision committedBudget = budgetReservation.commit();
+      if (!committedBudget.allowed()) {
+        ContentSubscription skipped =
+            running.withSkipped(
+                now,
+                nextAfterBudgetDenied(now, running, committedBudget),
+                ContentSubscriptionStatus.BUDGET_EXHAUSTED,
+                committedBudget.errorCode(),
+                committedBudget.message());
+        write(skipped);
+        return skipped;
+      }
       return fetchAndRecordResult(running, now);
     }
   }
@@ -469,21 +481,13 @@ public final class ContentSubscriptionService {
     }
   }
 
-  private AppNetworkBudgetDecision acquireBudget(
+  private AppNetworkBudgetReservation reserveBudget(
       String appId, AppNetworkBudgetOperation operation) {
     if (networkBudgetService == null) {
-      return new AppNetworkBudgetDecision(
-          true,
-          200,
-          AppManifest.normalizeAppId(appId),
-          operation,
-          null,
-          null,
-          clock.instant(),
-          null,
-          AppNetworkBudgetLease.noop());
+      return AppNetworkBudgetReservation.noop(
+          AppManifest.normalizeAppId(appId), operation, clock.instant());
     }
-    return networkBudgetService.acquire(appId, operation);
+    return networkBudgetService.reserve(appId, operation);
   }
 
   private Instant nextAfterBudgetDenied(

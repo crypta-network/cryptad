@@ -5097,7 +5097,7 @@ def collect_network_scale_evidence(settings: Settings) -> list[EvidenceItem]:
                 for fragment in (
                     "AppNetworkBudgetOperation.SUBSCRIPTION_MANUAL_REFRESH",
                     "AppNetworkBudgetOperation.SUBSCRIPTION_POLL",
-                    "networkBudgetService.acquire",
+                    "networkBudgetService.reserve",
                     "ContentSubscriptionStatus.BUDGET_EXHAUSTED",
                 )
             ),
@@ -5110,7 +5110,8 @@ def collect_network_scale_evidence(settings: Settings) -> list[EvidenceItem]:
                 )
             )
             and (
-                "try (var _ = budgetDecision.lease())" in subscription_service
+                "try (var budgetReservation = reserveBudget" in subscription_service
+                and "budgetReservation.commit()" in subscription_service
                 or "try (AppNetworkBudgetLease" in subscription_service
             ),
             "testsCoverManualSchedulerAndLeaseRelease": all(
@@ -5119,6 +5120,7 @@ def collect_network_scale_evidence(settings: Settings) -> list[EvidenceItem]:
                     "refresh_whenSubscriptionBudgetExhausted_expectSafeStatusWithoutFetch",
                     "schedulerPoll_whenSubscriptionBudgetExhausted_expectNoFetch",
                     "refresh_whenFetchThrows_expectBudgetLeaseReleasedForNextRefresh",
+                    "refresh_whenRunningStateWriteFails_expectBudgetReservedUntilNextRefresh",
                 )
             ),
         },
@@ -15594,10 +15596,14 @@ def make_self_test_workspace(workspace: Path) -> None:
         "// raw fetched content is digested and then discarded. "
         "void refresh() { pollSubscription(null, null, AppNetworkBudgetOperation.SUBSCRIPTION_MANUAL_REFRESH); } "
         "void schedulerPoll() { pollSubscription(null, null, AppNetworkBudgetOperation.SUBSCRIPTION_POLL); } "
-        "void pollSubscription(Object s, Object now, Object op) { AppNetworkBudgetDecision budgetDecision = networkBudgetService.acquire(\"app\", op); "
+        "void pollSubscription(Object s, Object now, Object op) { try (var budgetReservation = reserveBudget(\"app\", op)) { "
+        "AppNetworkBudgetDecision budgetDecision = budgetReservation.decision(); "
         "if (!budgetDecision.allowed()) { Object status = ContentSubscriptionStatus.BUDGET_EXHAUSTED; "
         "nextAfterBudgetDenied(now, null, budgetDecision); String msg = budgetDecision.message(); return; } "
-        "try (AppNetworkBudgetLease ignored = budgetDecision.lease()) { contentFetchPort.fetchContent(null); } } "
+        "Object running = \"write(running)\"; AppNetworkBudgetDecision committedBudget = budgetReservation.commit(); "
+        "if (!committedBudget.allowed()) { nextAfterBudgetDenied(now, null, committedBudget); String msg = committedBudget.message(); return; } "
+        "contentFetchPort.fetchContent(null); } } "
+        "AppNetworkBudgetReservation reserveBudget(Object appId, Object operation) { networkBudgetService.reserve(appId, operation); return null; } "
         "void contentChanged(){} void failureBackoff(){} void withFailure(){} void nextAfterBudgetDenied(Object n, Object s, Object d){} "
         "String error = \"content_fetch_failed\"; }\n",
         encoding="utf-8",
@@ -15699,7 +15705,8 @@ def make_self_test_workspace(workspace: Path) -> None:
         "void refresh_whenContentMetadataChanges_expectDigestEditionAndDedupe() {}\n"
         "void refresh_whenSubscriptionBudgetExhausted_expectSafeStatusWithoutFetch() {}\n"
         "void schedulerPoll_whenSubscriptionBudgetExhausted_expectNoFetch() {}\n"
-        "void refresh_whenFetchThrows_expectBudgetLeaseReleasedForNextRefresh() {}\n",
+        "void refresh_whenFetchThrows_expectBudgetLeaseReleasedForNextRefresh() {}\n"
+        "void refresh_whenRunningStateWriteFails_expectBudgetReservedUntilNextRefresh() {}\n",
         encoding="utf-8",
     )
     (content_subscription_tests / "ContentSubscriptionSchedulerTest.java").write_text(

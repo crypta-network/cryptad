@@ -210,11 +210,11 @@ class ContentSubscriptionServiceTest {
   }
 
   @Test
-  void refresh_whenRunningStateWriteFails_expectBudgetLeaseReleasedForNextRefresh() {
+  void refresh_whenRunningStateWriteFails_expectBudgetReservedUntilNextRefresh() {
     RecordingFetchPort fetchPort = new RecordingFetchPort();
     FailingWriteContentSubscriptionStore store = new FailingWriteContentSubscriptionStore();
     ContentSubscriptionService service =
-        service(store, fetchPort, config(2), subscriptionBudget(10));
+        service(store, fetchPort, config(2), subscriptionBudget(1));
     String subscriptionId =
         (String) service.create(APP_ID, createParams(SOURCE)).get("subscriptionId");
     store.failNextWrite();
