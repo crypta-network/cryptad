@@ -2325,6 +2325,121 @@
     },
     {
       "details": {
+        "fixtureBacked": true
+      },
+      "id": "operator-rc.dashboard",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Operator RC dashboard evidence passed."
+    },
+    {
+      "details": {
+        "fixtureBacked": true
+      },
+      "id": "operator-rc.recovery-plan-execute",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Operator RC recovery plan/execute evidence passed."
+    },
+    {
+      "details": {
+        "fixtureBacked": true
+      },
+      "id": "operator-rc.catalog-repair",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Operator RC catalog repair evidence passed."
+    },
+    {
+      "details": {
+        "fixtureBacked": true
+      },
+      "id": "operator-rc.app-reinstall-rollback",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Operator RC app rollback/reinstall evidence passed."
+    },
+    {
+      "details": {
+        "fixtureBacked": true,
+        "rawBackupPayloadsExcludedFromEvidence": true
+      },
+      "id": "operator-rc.export-before-uninstall",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Operator RC export-before-uninstall evidence passed."
+    },
+    {
+      "details": {
+        "fixtureBacked": true
+      },
+      "id": "operator-rc.subscription-recovery",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Operator RC subscription recovery evidence passed."
+    },
+    {
+      "details": {
+        "fixtureBacked": true
+      },
+      "id": "operator-rc.app-service-grant-recovery",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Operator RC app-service grant recovery evidence passed."
+    },
+    {
+      "details": {
+        "fixtureBacked": true,
+        "metadataOnly": true
+      },
+      "id": "operator-rc.trust-graph-recovery",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Operator RC Trust Graph recovery evidence passed."
+    },
+    {
+      "details": {
+        "fixtureBacked": true
+      },
+      "id": "operator-rc.network-budget-visibility",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Operator RC network budget visibility evidence passed."
+    },
+    {
+      "details": {
+        "fixtureBacked": true
+      },
+      "id": "operator-rc.support-bundle-wizard",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Operator RC support-bundle wizard evidence passed."
+    },
+    {
+      "details": {
+        "checks": {
+          "redactorTest": true
+        },
+        "fixtureBacked": true
+      },
+      "id": "operator-rc.redaction",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Operator RC redaction evidence passed."
+    },
+    {
+      "details": {
         "enabled": false
       },
       "id": "apphost.live",

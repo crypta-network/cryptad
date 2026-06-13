@@ -212,6 +212,17 @@ Release-candidate mode requires these evidence ids:
 | `operator-beta.app-data-backup-restore` | App-platform smoke summary. | Web Shell and operator route evidence expose sensitive app-data backup, restore preview, restore commit, all-app backup, and export-before-delete controls while keeping restore previews metadata-only and support bundles free of raw backup values. |
 | `operator-beta.support-bundle-redaction` | App-platform smoke summary. | The support bundle route, redactor, and tests exclude tokens, form passwords, raw bodies, private insert URIs, local paths, command lines, and app-private values. |
 | `operator-beta.web-shell` | App-platform smoke summary. | Web Shell renders the operator beta panel, refresh controls, support-bundle export/copy actions, read-only hints, and recovery submit handling. |
+| `operator-rc.dashboard` | App-platform smoke summary. | Host/operator-only RC dashboard route, Web Shell RC-first load, beta fallback, typed recovery state, network-budget visibility, and app-principal denial are present. |
+| `operator-rc.recovery-plan-execute` | App-platform smoke summary. | Recovery actions use closed `OperatorRecoveryActionId` dispatch, one-time plan-token enforcement, unknown-action rejection, destructive confirmation, and route-proxy rejection. |
+| `operator-rc.catalog-repair` | App-platform smoke summary. | Catalog refresh, reverify, and safe first-party recommended-source repair use existing signed-catalog APIs without bypassing channel, security, review, or signature gates. |
+| `operator-rc.app-reinstall-rollback` | App-platform smoke summary. | App update check/stage/apply/rollback, start/stop, and reinstall planning preserve running-app guards and block reinstall until a dedicated verified catalog reinstall API exists. |
+| `operator-rc.export-before-uninstall` | App-platform smoke summary. | Export-before-uninstall creates an explicit sensitive backup response before uninstall while keeping raw backup payloads out of support bundles, dashboards, audit, and release evidence. |
+| `operator-rc.subscription-recovery` | App-platform smoke summary. | Subscription refresh/pause/resume/reset-backoff/reschedule-now/delete recovery keeps reset/reschedule metadata-only and keeps refresh budgeted through the PR-256 budget services. |
+| `operator-rc.app-service-grant-recovery` | App-platform smoke summary. | Grant revoke and bundle renew/revalidate/reject recovery uses the app-service coordinator while preserving expired-grant and descriptor-drift fail-closed behavior. |
+| `operator-rc.trust-graph-recovery` | App-platform smoke summary. | Trust Graph export/recompute are metadata-only, while reset and audit-clear plans remain unavailable until tested store clear methods exist. |
+| `operator-rc.network-budget-visibility` | App-platform smoke summary. | Operator network-budget snapshots expose safe counters only: app id, operation, window, counts, limits, active leases, and next availability. |
+| `operator-rc.support-bundle-wizard` | App-platform smoke summary. | Web Shell and operator routes expose support-bundle preview metadata, included sections, omitted fields, and review-before-sharing workflow. |
+| `operator-rc.redaction` | App-platform smoke summary. | RC recovery responses, support bundles, Web Shell panels, audit events, and release evidence exclude tokens, private URIs, raw content, raw app data, backup payloads, Trust Graph raw statements/signatures, and local paths. |
 | `app-review.trusted-receipts` | App-platform smoke summary. | Offline source and test evidence proves signed review receipts, canonical payload verification, reviewer-key trust, rejection handling, and publisher-advisory-only fallback behavior. |
 | `app-review.policy` | App-platform smoke summary. | Review policy evidence proves `advisory`, `warn_untrusted`, `require_trusted_review`, and `require_trusted_review_for_apply_when_stopped` modes are present and fail closed. |
 | `app-review.first-party-catalog` | App-platform smoke summary. | First-party catalog evidence packs every staged first-party app, then signs, verifies, and embeds an independent review receipt for each catalog entry with configured reviewer inputs, without private reviewer key material in the report. |
@@ -271,9 +282,15 @@ wiring; missing operator beta evidence blocks release-candidate mode unless a re
 waiver is recorded. `app-data.backup-restore-portability` and
 `operator-beta.app-data-backup-restore` are deterministic PR-250 checks for durable app-data
 backup/restore portability. They verify source, docs, Web Shell, and redaction behavior without
-placing raw backup payloads or raw app-data values in release evidence. `apphost.live` is optional
-stronger evidence because normal PR and scheduled CI must not require a live local node or operator
-form password.
+placing raw backup payloads or raw app-data values in release evidence. The `operator-rc.*`
+evidence ids are deterministic PR-257 checks for the RC recovery workflow, typed
+plan-before-execute dispatch, destructive confirmation, catalog/app/subscription/app-service/
+Trust Graph/network-budget coverage, the support-bundle wizard, and redaction. They verify the
+`operator-rc-recovery-and-support-workflow` matrix row and the
+`ecosystem.operator-rc-recovery` gate without requiring a live node, raw backup payloads, raw
+Trust Graph statements, app tokens, private insert URIs, or local paths. `apphost.live` is
+optional stronger evidence because normal PR and scheduled CI must not require a live local node or
+operator form password.
 
 `app-catalog.first-party-beta` reports whether `CRYPTAD_FIRST_PARTY_CATALOG_SOURCE` and the trusted
 catalog key hints are configured in the certification environment, but it does not fetch a public
@@ -476,6 +493,8 @@ ecosystem.first-party-apps
 ecosystem.app-ui-quality
 ecosystem.app-review-trust
 ecosystem.app-update-rollback
+ecosystem.operator-rc-recovery
+ecosystem.security-advisory-revocation
 ecosystem.app-vault
 ecosystem.sandbox-provider
 ecosystem.reference-content-apps

@@ -873,6 +873,18 @@ public final class OperatorBetaDashboardService {
             + encodePathSegment(subscriptionId);
     return List.of(
         action("refresh-subscription", "Refresh subscription", "POST", base + "/refresh", true),
+        action(
+            "reset-subscription-backoff",
+            "Reset subscription backoff",
+            "POST",
+            base + "/reset-backoff",
+            true),
+        action(
+            "reschedule-subscription-now",
+            "Reschedule subscription now",
+            "POST",
+            base + "/reschedule-now",
+            true),
         action("pause-subscription", "Pause subscription", "POST", base + "/pause", true),
         action("resume-subscription", "Resume subscription", "POST", base + "/resume", true));
   }

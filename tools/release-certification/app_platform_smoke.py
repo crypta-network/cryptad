@@ -747,6 +747,14 @@ def normalized_source_text(text: str) -> str:
     return re.sub(r"\s+", " ", text.lower())
 
 
+def compact_source_text(text: str) -> str:
+    return re.sub(r"\s+", "", text)
+
+
+def java_string_search_text(text: str) -> str:
+    return text.replace(r"\"", '"')
+
+
 def social_inbox_docs_frame_spike_non_goals(docs_text: str) -> bool:
     normalized = normalized_source_text(docs_text)
     wot_non_goal = bool(
@@ -11888,6 +11896,20 @@ OPERATOR_BETA_EVIDENCE_IDS = (
     "operator-beta.web-shell",
 )
 
+OPERATOR_RC_EVIDENCE_IDS = (
+    "operator-rc.dashboard",
+    "operator-rc.recovery-plan-execute",
+    "operator-rc.catalog-repair",
+    "operator-rc.app-reinstall-rollback",
+    "operator-rc.export-before-uninstall",
+    "operator-rc.subscription-recovery",
+    "operator-rc.app-service-grant-recovery",
+    "operator-rc.trust-graph-recovery",
+    "operator-rc.network-budget-visibility",
+    "operator-rc.support-bundle-wizard",
+    "operator-rc.redaction",
+)
+
 
 def operator_beta_evidence_item(
     settings: Settings,
@@ -11921,13 +11943,33 @@ def collect_operator_beta_evidence(settings: Settings) -> list[EvidenceItem]:
         workspace
         / "platform-api/src/main/java/network/crypta/platform/api/operator/OperatorSupportRedactor.java"
     )
+    recovery_service_source = (
+        workspace
+        / "platform-api/src/main/java/network/crypta/platform/api/operator/recovery/OperatorRecoveryService.java"
+    )
+    recovery_action_source = (
+        workspace
+        / "platform-api/src/main/java/network/crypta/platform/api/operator/recovery/OperatorRecoveryActionId.java"
+    )
+    recovery_target_source = (
+        workspace
+        / "platform-api/src/main/java/network/crypta/platform/api/operator/recovery/OperatorRecoveryTarget.java"
+    )
     subscription_service_source = (
         workspace
         / "platform-api/src/main/java/network/crypta/platform/api/content/subscriptions/ContentSubscriptionService.java"
     )
+    subscription_record_source = (
+        workspace
+        / "platform-api/src/main/java/network/crypta/platform/api/content/subscriptions/ContentSubscription.java"
+    )
     operator_routes_test_source = (
         workspace
         / "platform-api/src/test/java/network/crypta/platform/api/PlatformApiOperatorRoutesTest.java"
+    )
+    recovery_service_test_source = (
+        workspace
+        / "platform-api/src/test/java/network/crypta/platform/api/operator/recovery/OperatorRecoveryServiceTest.java"
     )
     redactor_test_source = (
         workspace
@@ -11950,6 +11992,7 @@ def collect_operator_beta_evidence(settings: Settings) -> list[EvidenceItem]:
         / "platform-web-shell/src/test/java/network/crypta/platform/webshell/WebShellResourcesTest.java"
     )
     docs_source = workspace / "docs/operator-beta-dashboard.md"
+    rc_docs_source = workspace / "docs/operator-rc-recovery-and-support-workflow.md"
     beta_program_doc = workspace / "docs/app-platform-beta-program.md"
     limitations_doc = workspace / "docs/app-platform-beta-known-limitations.md"
     api_surface_doc = workspace / "docs/platform-api-surface.md"
@@ -11958,8 +12001,13 @@ def collect_operator_beta_evidence(settings: Settings) -> list[EvidenceItem]:
     routes_text = read_source(routes_source)
     router_text = read_source(router_source)
     redactor_text = read_source(redactor_source)
+    recovery_service_text = read_source(recovery_service_source)
+    recovery_action_text = read_source(recovery_action_source)
+    recovery_target_text = read_source(recovery_target_source)
     subscription_service_text = read_source(subscription_service_source)
+    subscription_record_text = read_source(subscription_record_source)
     operator_routes_test_text = read_source(operator_routes_test_source)
+    recovery_service_test_text = read_source(recovery_service_test_source)
     redactor_test_text = read_source(redactor_test_source)
     toadlet_text = read_source(toadlet_source)
     toadlet_test_text = read_source(toadlet_test_source)
@@ -11967,9 +12015,13 @@ def collect_operator_beta_evidence(settings: Settings) -> list[EvidenceItem]:
     web_shell_index_text = read_source(web_shell_index_source)
     web_shell_test_text = read_source(web_shell_test_source)
     docs_text = read_source(docs_source)
+    rc_docs_text = read_source(rc_docs_source)
     beta_program_text = read_source(beta_program_doc)
     limitations_text = read_source(limitations_doc)
     api_surface_text = read_source(api_surface_doc)
+    operator_docs_text = docs_text + "\n" + rc_docs_text
+    recovery_service_compact_text = compact_source_text(recovery_service_text)
+    web_shell_test_search_text = java_string_search_text(web_shell_test_text)
     form_password_redaction_test = (
         "FORM_FIELD_ASSIGNMENT" in operator_routes_test_text
         and '"form" + "Pass" + "word=secret-value"' in operator_routes_test_text
@@ -11984,8 +12036,12 @@ def collect_operator_beta_evidence(settings: Settings) -> list[EvidenceItem]:
             "routes": display_path(routes_source, workspace),
             "router": display_path(router_source, workspace),
             "redactor": display_path(redactor_source, workspace),
+            "recoveryService": display_path(recovery_service_source, workspace),
+            "recoveryActions": display_path(recovery_action_source, workspace),
             "subscriptionService": display_path(subscription_service_source, workspace),
+            "subscriptionRecord": display_path(subscription_record_source, workspace),
             "operatorRoutesTest": display_path(operator_routes_test_source, workspace),
+            "recoveryServiceTest": display_path(recovery_service_test_source, workspace),
             "redactorTest": display_path(redactor_test_source, workspace),
             "toadlet": display_path(toadlet_source, workspace),
             "toadletTest": display_path(toadlet_test_source, workspace),
@@ -11993,6 +12049,7 @@ def collect_operator_beta_evidence(settings: Settings) -> list[EvidenceItem]:
             "webShellIndex": display_path(web_shell_index_source, workspace),
             "webShellTest": display_path(web_shell_test_source, workspace),
             "docs": display_path(docs_source, workspace),
+            "rcDocs": display_path(rc_docs_source, workspace),
         },
     }
 
@@ -12184,7 +12241,7 @@ def collect_operator_beta_evidence(settings: Settings) -> list[EvidenceItem]:
             {
                 "supportBundleRoute": (
                     '"support-bundle".equals(resource)' in routes_text
-                    and "dashboardService.supportBundle()" in routes_text
+                    and "supportBundle()" in routes_text
                 ),
                 "redactorApplied": (
                     "OperatorSupportRedactor.redact(dashboard)" in service_text
@@ -12255,6 +12312,347 @@ def collect_operator_beta_evidence(settings: Settings) -> list[EvidenceItem]:
                 ),
             },
             "Operator beta Web Shell evidence passed.",
+        ),
+        (
+            "operator-rc.dashboard",
+            {
+                "rcDashboardRoute": (
+                    '"rc-dashboard".equals(resource)' in routes_text
+                    and '"operator-rc-recovery-dashboard"' in routes_text
+                    and '"operatorRcRecovery"' in routes_text
+                ),
+                "hostOperatorOnly": (
+                    "requireHostOperator(request)" in routes_text
+                    and "route_whenAppPrincipalRequestsOperatorRcRecovery_expectForbiddenBeforeDispatch"
+                    in operator_routes_test_text
+                ),
+                "webShellRcFirst": (
+                    'loadJson(apiUrl("operator/rc-dashboard"))' in web_shell_text
+                    and "rcCompatibilityFallback" in web_shell_text
+                    and "Operator RC Recovery" in web_shell_index_text
+                ),
+                "docs": "operator-rc.dashboard" in operator_docs_text,
+            },
+            "Operator RC dashboard evidence passed.",
+        ),
+        (
+            "operator-rc.recovery-plan-execute",
+            {
+                "typedModels": (
+                    "enum OperatorRecoveryActionId" in recovery_action_text
+                    and "fromJsonValue" in recovery_action_text
+                    and "OperatorRecoveryPlan" in recovery_service_text
+                    and "OperatorRecoveryResult" in recovery_service_text
+                ),
+                "closedDispatch": (
+                    "executePlanned(OperatorRecoveryPlan plan)" in recovery_service_text
+                    and "switch (action)" in recovery_service_text
+                    and '"unknown_recovery_action"' in recovery_service_text
+                    and "some/arbitrary/path" in operator_routes_test_text
+                    and "execute_whenSupportPreviewIncludesArbitraryPathParameter_expectIgnored"
+                    in recovery_service_test_text
+                ),
+                "routes": (
+                    'case "actions"' in routes_text
+                    and 'case "plan"' in routes_text
+                    and 'case "execute"' in routes_text
+                ),
+                "confirmation": (
+                    "recovery_confirmation_required" in recovery_service_text
+                    and "route_whenRecoveryExecuteMissingConfirmationForDestructiveAction_expectConflict"
+                    in operator_routes_test_text
+                ),
+                "planTokenRequired": (
+                    "PARAM_PLAN_TOKEN" in recovery_service_text
+                    and "issuePlanToken" in recovery_service_text
+                    and "requireIssuedPlanToken" in recovery_service_text
+                    and "recovery_plan_required" in recovery_service_text
+                    and "recovery_plan_mismatch" in recovery_service_text
+                    and 'operatorRcSubmitButton("Plan", "plan", false)' in web_shell_text
+                    and 'operatorRcSubmitButton("Execute", "execute", action.destructive === true)'
+                    in web_shell_text
+                    and "planTokenInput.name = \"planToken\"" in web_shell_text
+                    and "execute_whenPlanTokenMissing_expectConflictBeforeDispatch"
+                    in recovery_service_test_text
+                    and "route_whenRecoveryExecuteMissingPlanToken_expectConflict"
+                    in operator_routes_test_text
+                ),
+                "formPasswordGuard": (
+                    "/operator/recovery/plan" in toadlet_test_text
+                    and "/operator/recovery/execute" in toadlet_test_text
+                ),
+                "docs": "operator-rc.recovery-plan-execute" in operator_docs_text,
+            },
+            "Operator RC recovery plan/execute evidence passed.",
+        ),
+        (
+            "operator-rc.catalog-repair",
+            {
+                "actionIds": all(
+                    fragment in recovery_action_text
+                    for fragment in (
+                        '"catalog.refresh"',
+                        '"catalog.reverify"',
+                        '"catalog.repair-first-party-source"',
+                    )
+                ),
+                "usesCatalogGates": (
+                    "appCatalogsApiHandler.refresh(target.catalogId())" in recovery_service_text
+                    and "appCatalogsApiHandler.addRecommended(target.catalogId())"
+                    in recovery_service_text
+                    and "reverifiedCatalog(target.catalogId())" in recovery_service_text
+                ),
+                "docs": "operator-rc.catalog-repair" in operator_docs_text,
+            },
+            "Operator RC catalog repair evidence passed.",
+        ),
+        (
+            "operator-rc.app-reinstall-rollback",
+            {
+                "actionIds": all(
+                    fragment in recovery_action_text
+                    for fragment in (
+                        '"app.rollback"',
+                        '"app.reinstall-from-catalog"',
+                        '"app.check-update"',
+                        '"app.stage-update"',
+                        '"app.apply-update"',
+                    )
+                ),
+                "rollbackUsesUpdateService": "appUpdateService.rollback(target.appId(), false)"
+                in recovery_service_text,
+                "reinstallBlockedUntilSafeApi": (
+                    "A dedicated verified catalog reinstall API is not available."
+                    in recovery_service_text
+                ),
+                "runningGuardVisible": "App must be stopped before rollback." in recovery_service_text,
+                "startPlanMetadata": (
+                    "actionId == OperatorRecoveryActionId.APP_START" in recovery_service_text
+                    and "plan_whenAppStartRequested_expectStoppedAppRequirementReported"
+                    in recovery_service_test_text
+                ),
+                "docs": "operator-rc.app-reinstall-rollback" in operator_docs_text,
+            },
+            "Operator RC app rollback/reinstall evidence passed.",
+        ),
+        (
+            "operator-rc.export-before-uninstall",
+            {
+                "actionId": '"app.export-before-uninstall"' in recovery_action_text,
+                "backupThenUninstall": (
+                    "appDataService.exportBackup" in recovery_service_text
+                    and "currentCryptaVersion.get()" in recovery_service_text
+                    and "appsApiHandler.uninstall(target.appId(), false, true)"
+                    in recovery_service_text
+                    and "clearAppStateAfterRecoveryUninstall(target.appId())"
+                    in recovery_service_text
+                    and "appRoutes::clearAppStateAfterUninstall" in routes_text
+                    and "execute_whenExportBeforeUninstallSucceeds_expectRelatedAppStateCleared"
+                    in recovery_service_test_text
+                    and "uninstallFailure" in recovery_service_text
+                    and "execute_whenExportBeforeUninstallFailsAfterBackup_expectPartialResultWithSensitiveBackup"
+                    in recovery_service_test_text
+                    and "partialExportBeforeUninstallResult" in recovery_service_text
+                    and "execute_whenExportBeforeUninstallCleanupFails_expectPartialResultWithSensitiveBackup"
+                    in recovery_service_test_text
+                    and "sourceCryptaVersion()" in recovery_service_test_text
+                    and '"sensitiveBackup"' in read_source(
+                        workspace
+                        / "platform-api/src/main/java/network/crypta/platform/api/operator/recovery/OperatorRecoveryResult.java"
+                    )
+                ),
+                "supportBundleExcludesPayload": (
+                    "payloadBase64" in redactor_test_text
+                    and "route_whenSupportBundlePreviewRequested_expectRedactionMetadataAndRecoveryContext"
+                    in operator_routes_test_text
+                ),
+                "docs": "operator-rc.export-before-uninstall" in operator_docs_text,
+            },
+            "Operator RC export-before-uninstall evidence passed.",
+        ),
+        (
+            "operator-rc.subscription-recovery",
+            {
+                "actionIds": all(
+                    fragment in recovery_action_text
+                    for fragment in (
+                        '"subscription.refresh"',
+                        '"subscription.pause"',
+                        '"subscription.resume"',
+                        '"subscription.reset-backoff"',
+                        '"subscription.reschedule-now"',
+                        '"subscription.delete"',
+                    )
+                ),
+                "metadataOnlyMutations": (
+                    "resetBackoff(String appId, String subscriptionId)" in subscription_service_text
+                    and "rescheduleNow(String appId, String subscriptionId)"
+                    in subscription_service_text
+                    and "withBackoffReset" in subscription_record_text
+                    and "withRescheduledNow" in subscription_record_text
+                ),
+                "tests": (
+                    "resetBackoff_whenSubscriptionFailed_expectMetadataClearedWithoutFetch"
+                    in read_source(
+                        workspace
+                        / "platform-api/src/test/java/network/crypta/platform/api/content/subscriptions/ContentSubscriptionServiceTest.java"
+                    )
+                    and "route_whenOperatorResetsSubscriptionBackoff_expectNoFetchAndRedactedSummary"
+                    in operator_routes_test_text
+                ),
+                "docs": "operator-rc.subscription-recovery" in operator_docs_text,
+            },
+            "Operator RC subscription recovery evidence passed.",
+        ),
+        (
+            "operator-rc.app-service-grant-recovery",
+            {
+                "actionIds": all(
+                    fragment in recovery_action_text
+                    for fragment in (
+                        '"app-service.grant-revoke"',
+                        '"app-service.bundle-renew"',
+                        '"app-service.bundle-revalidate"',
+                        '"app-service.bundle-reject"',
+                    )
+                ),
+                "usesCoordinator": (
+                    "appServiceCoordinator.revokeGrant" in recovery_service_text
+                    and "appServiceCoordinator.renewBundle" in recovery_service_text
+                    and "appServiceCoordinator.rejectBundle" in recovery_service_text
+                ),
+                "docs": "operator-rc.app-service-grant-recovery" in operator_docs_text,
+            },
+            "Operator RC app-service grant recovery evidence passed.",
+        ),
+        (
+            "operator-rc.trust-graph-recovery",
+            {
+                "actionIds": all(
+                    fragment in recovery_action_text
+                    for fragment in (
+                        '"trust-graph.export-summary"',
+                        '"trust-graph.reset-local-state"',
+                        '"trust-graph.clear-audit"',
+                        '"trust-graph.recompute-summary"',
+                    )
+                ),
+                "metadataOnlyExport": (
+                    "trustGraphExportSummary()" in recovery_service_text
+                    and '"metadataOnly"' in recovery_service_text
+                    and "trustGraphApiHandler.statements(Map.of())" in recovery_service_text
+                    and "catch (TrustGraphException exception)" in recovery_service_text
+                    and "mappedTrustGraphException(exception)" in recovery_service_text
+                    and "execute_whenTrustGraphStoreUnavailable_expectFailedResultInsteadOfThrownException"
+                    in recovery_service_test_text
+                ),
+                "resetUnavailable": (
+                    "Trust Graph stores do not expose a tested local-state reset API."
+                    in recovery_service_text
+                    and "plan_whenTrustGraphResetRequested_expectUnavailableInsteadOfFakeSuccess"
+                    in recovery_service_test_text
+                ),
+                "docs": "operator-rc.trust-graph-recovery" in operator_docs_text,
+            },
+            "Operator RC Trust Graph recovery evidence passed.",
+        ),
+        (
+            "operator-rc.network-budget-visibility",
+            {
+                "route": (
+                    '"network-budgets".equals(resource)' in routes_text
+                    and "recoveryService.networkBudgets()" in routes_text
+                ),
+                "snapshots": (
+                    "networkBudgetService.snapshots()" in recovery_service_text
+                    and "AppNetworkBudgetSnapshot::toJson" in recovery_service_text
+                    and "route_whenOperatorRequestsNetworkBudgets_expectSafeSnapshotsOnly"
+                    in operator_routes_test_text
+                ),
+                "docs": "operator-rc.network-budget-visibility" in operator_docs_text,
+            },
+            "Operator RC network budget visibility evidence passed.",
+        ),
+        (
+            "operator-rc.support-bundle-wizard",
+            {
+                "previewRoute": (
+                    '"support-bundle".equals(segments.get(1)) && "preview".equals(segments.get(2))'
+                    in routes_text
+                    and "supportBundlePreview" in recovery_service_text
+                ),
+                "recoveryActionArtifacts": (
+                    "supportBundleSupplier.get()" in recovery_service_text
+                    and "recoverySupportBundle()" in recovery_service_text
+                    and 'redactedDetails("supportBundlePreview",supportBundlePreview(recoverySupportBundle()))'
+                    in recovery_service_compact_text
+                    and 'redactedDetails("supportBundle",recoverySupportBundle())'
+                    in recovery_service_compact_text
+                    and "execute_whenSupportBundlePreviewRequested_expectRealPreviewArtifactBuilt"
+                    in recovery_service_test_text
+                    and "execute_whenSupportBundleExportRequested_expectRedactedBundleArtifactReturned"
+                    in recovery_service_test_text
+                ),
+                "webShellPreview": (
+                    'loadJson(apiUrl("operator/support-bundle/preview"))' in web_shell_text
+                    and "supportBundlePreviewSnapshot" in web_shell_text
+                    and "appendOperatorRcSupportBundleArtifact(container, result)"
+                    in web_shell_text
+                    and "downloadJsonBlob(supportBundle, supportBundleFileName(supportBundle))"
+                    in web_shell_text
+                    and "operatorRcResultPreservesVisibleArtifact(result)" in web_shell_text
+                ),
+                "resourceTests": (
+                    'loadJson(apiUrl("operator/support-bundle/preview"))'
+                    in web_shell_test_search_text
+                    and "Operator RC recovery actions unavailable in read-only mode."
+                    in web_shell_test_text
+                ),
+                "docs": "operator-rc.support-bundle-wizard" in operator_docs_text,
+            },
+            "Operator RC support-bundle wizard evidence passed.",
+        ),
+        (
+            "operator-rc.redaction",
+            {
+                "supportContext": "recoveryContext" in routes_text and "supportContext()" in recovery_service_text,
+                "auditTargetRedaction": (
+                    "safeAuditTargetId(target)" in recovery_service_text
+                    and "redactedMap(json)" in recovery_service_text
+                    and "safeIdentifier(value.trim())" in recovery_target_text
+                    and "OperatorSupportRedactor.redact(value).value()" in recovery_target_text
+                    and "safePrimaryId()" in recovery_target_text
+                    and "fingerprintSource()" in recovery_target_text
+                    and "target.fingerprintSource()" in recovery_service_text
+                    and "target.safePrimaryId()" in recovery_service_text
+                    and "planResultAndSupportContext_whenUnsafeTargetIdSupplied_expectTargetIdRedacted"
+                    in recovery_service_test_text
+                    and "plan_whenDestructiveUnsafeTargetIdSupplied_expectConfirmationPhraseRedacted"
+                    in recovery_service_test_text
+                    and '"plantoken"' in redactor_text
+                ),
+                "redactorTest": (
+                    "redact_whenOperatorRcRecoveryContextContainsSecrets_expectUnsafeValuesRemoved"
+                    in redactor_test_text
+                    and "rawTrustStatementBody" in redactor_test_text
+                    and "payloadBase64" in redactor_test_text
+                    and "stagedBundlePath" in redactor_test_text
+                ),
+                "ordinaryPanelsNoRawJsonDump": (
+                    "renderOperatorRcPlan(container, plan)" in web_shell_text
+                    and "renderOperatorRcResult(container, result)" in web_shell_text
+                    and "appendOperatorRcResultSteps(container, result.steps)" in web_shell_text
+                    and "appendOperatorRcResultDetails(container, result.details)" in web_shell_text
+                    and "appendOperatorRcSupportBundleArtifact(container, result)"
+                    in web_shell_text
+                    and "operatorRcBoundedScalar(value)" in web_shell_text
+                    and "operatorRcResultPreservesVisibleArtifact(result)" in web_shell_text
+                    and "!operatorRcResultPreservesVisibleArtifact(result)" in web_shell_text
+                    and "JSON.stringify(response" not in web_shell_text
+                ),
+                "docs": "operator-rc.redaction" in operator_docs_text,
+            },
+            "Operator RC redaction evidence passed.",
         ),
     ]
 
@@ -17060,6 +17458,30 @@ function downloadSupportBundle(){}
 function copySupportSummary(){}
 function submitOperatorRecoveryAction(form){}
 sections.betaDashboard.addEventListener("submit", async () => submitOperatorRecoveryAction(form));
+let supportBundlePreviewSnapshot = null;
+function renderOperatorRcRecovery(){}
+function loadOperatorRcDashboard(){ loadJson(apiUrl("operator/rc-dashboard")); rcCompatibilityFallback = true; }
+function previewOperatorSupportBundle(){ loadJson(apiUrl("operator/support-bundle/preview")); supportBundlePreviewSnapshot = {}; }
+function buildOperatorRcRecoveryAction(action){ operatorRcSubmitButton("Plan", "plan", false); operatorRcSubmitButton("Execute", "execute", action.destructive === true); }
+function operatorRcSubmitButton(label, action, destructive){}
+function submitOperatorRcRecoveryAction(form){
+  const planTokenInput = document.createElement("input");
+  planTokenInput.name = "planToken";
+  const planToken = typeof plan.planToken === "string" ? plan.planToken : "";
+  return postForm("operator/recovery/plan", new FormData());
+}
+function executeOperatorRcRecoveryAction(form){
+  const planTokenInput = form.querySelector('input[name="planToken"]');
+  return postForm("operator/recovery/execute", new FormData());
+}
+function renderOperatorRcPlan(container, plan){}
+function renderOperatorRcResult(container, result){ appendOperatorRcResultSteps(container, result.steps); appendOperatorRcResultDetails(container, result.details); appendOperatorRcSupportBundleArtifact(container, result); }
+function appendOperatorRcResultSteps(container, steps){}
+function appendOperatorRcResultDetails(container, details){}
+function appendOperatorRcSupportBundleArtifact(container, result){ downloadJsonBlob(supportBundle, supportBundleFileName(supportBundle)); }
+function operatorRcBoundedScalar(value){ return value; }
+function operatorRcResultPreservesVisibleArtifact(result){ switch (result.actionId) { case "network-budget.view": case "support-bundle.export": case "trust-graph.export-summary": return true; default: return false; } }
+function operatorRcResultShouldReload(result){ return !operatorRcResultPreservesVisibleArtifact(result); }
 const quotaText = ["Quota warnings", "Data quota"];
 const quotaCheck = "quota.dataOverLimit || quota.cacheOverLimit";
 function text(value){ return document.createTextNode(value); }
@@ -17077,7 +17499,9 @@ const safeSecurityDom = "definitionList text safeUninstallGuidance";
         / "platform-web-shell/src/main/resources/network/crypta/platform/webshell/static/index.html"
     )
     web_shell_index.write_text(
-        '<article id="beta-dashboard"><div id="beta-dashboard-body"></div>'
+        '<article id="beta-dashboard"><h2>Operator RC Recovery</h2>'
+        '<p>The beta dashboard route remains a compatibility fallback.</p>'
+        '<div id="beta-dashboard-body"></div>'
         '<a id="diagnostics-legacy-export-link">Open legacy plaintext diagnostic export</a>'
         '<p>Plaintext diagnostics remain only as support or emergency fallback.</p>'
         '<button id="support-bundle-download-button">Download support JSON</button>'
@@ -17095,9 +17519,14 @@ const safeSecurityDom = "definitionList text safeUninstallGuidance";
         "void assertSecurityMarkersPresent(String script) { String s = "
         "\"function appendSecurityAcknowledgement(form, securityDecision, action) "
         "input.name = \\\"securityAcknowledged\\\";\"; } "
+        "void assertOperatorRcRecoveryMarkersPresent(String script) { String s = "
+        "\"loadJson(apiUrl(\\\"operator/rc-dashboard\\\")) "
+        "loadJson(apiUrl(\\\"operator/support-bundle/preview\\\")) "
+        "Operator RC recovery actions unavailable in read-only mode.\"; } "
         "void calls() { assertBetaDashboardMarkersPresent(script); "
         "assertBetaDashboardLoadSequencing(script); "
-        "assertAppDataBackupRestoreMarkersPresent(script); }\n",
+        "assertAppDataBackupRestoreMarkersPresent(script); "
+        "assertOperatorRcRecoveryMarkersPresent(script); }\n",
         encoding="utf-8",
     )
     operator_dir = api_dir / "operator"
@@ -17146,6 +17575,8 @@ final class OperatorBetaDashboardService {
     action("refresh-subscription", "", "POST", base + "/refresh", true);
     action("pause-subscription", "", "POST", base + "/pause", true);
     action("resume-subscription", "", "POST", base + "/resume", true);
+    action("reset-subscription-backoff", "", "POST", base + "/reset-backoff", true);
+    action("reschedule-subscription-now", "", "POST", base + "/reschedule-now", true);
   }
   void trustGraphSummary() {
     json.put("previewOnly", true);
@@ -17166,9 +17597,144 @@ final class OperatorBetaDashboardService {
 """,
         encoding="utf-8",
     )
+    recovery_dir = operator_dir / "recovery"
+    recovery_dir.mkdir(parents=True, exist_ok=True)
+    (recovery_dir / "OperatorRecoveryActionId.java").write_text(
+        """
+enum OperatorRecoveryActionId {
+  CATALOG_REFRESH("catalog.refresh"),
+  CATALOG_REVERIFY("catalog.reverify"),
+  CATALOG_REPAIR_FIRST_PARTY_SOURCE("catalog.repair-first-party-source"),
+  APP_CHECK_UPDATE("app.check-update"),
+  APP_STAGE_UPDATE("app.stage-update"),
+  APP_APPLY_UPDATE("app.apply-update"),
+  APP_ROLLBACK("app.rollback"),
+  APP_REINSTALL_FROM_CATALOG("app.reinstall-from-catalog"),
+  APP_EXPORT_BEFORE_UNINSTALL("app.export-before-uninstall"),
+  APP_STOP("app.stop"),
+  APP_START("app.start"),
+  SUBSCRIPTION_REFRESH("subscription.refresh"),
+  SUBSCRIPTION_PAUSE("subscription.pause"),
+  SUBSCRIPTION_RESUME("subscription.resume"),
+  SUBSCRIPTION_RESET_BACKOFF("subscription.reset-backoff"),
+  SUBSCRIPTION_RESCHEDULE_NOW("subscription.reschedule-now"),
+  SUBSCRIPTION_DELETE("subscription.delete"),
+  APP_SERVICE_GRANT_REVOKE("app-service.grant-revoke"),
+  APP_SERVICE_BUNDLE_RENEW("app-service.bundle-renew"),
+  APP_SERVICE_BUNDLE_REVALIDATE("app-service.bundle-revalidate"),
+  APP_SERVICE_BUNDLE_REJECT("app-service.bundle-reject"),
+  TRUST_GRAPH_EXPORT_SUMMARY("trust-graph.export-summary"),
+  TRUST_GRAPH_RESET_LOCAL_STATE("trust-graph.reset-local-state"),
+  TRUST_GRAPH_CLEAR_AUDIT("trust-graph.clear-audit"),
+  TRUST_GRAPH_RECOMPUTE_SUMMARY("trust-graph.recompute-summary"),
+  NETWORK_BUDGET_VIEW("network-budget.view"),
+  SUPPORT_BUNDLE_PREVIEW("support-bundle.preview"),
+  SUPPORT_BUNDLE_EXPORT("support-bundle.export");
+  static OperatorRecoveryActionId fromJsonValue(String value) { return CATALOG_REFRESH; }
+  OperatorRecoveryActionId(String value) {}
+}
+""",
+        encoding="utf-8",
+    )
+    (recovery_dir / "OperatorRecoveryService.java").write_text(
+        """
+final class OperatorRecoveryService {
+  private static final String PARAM_PLAN_TOKEN = "planToken";
+  OperatorRecoveryPlan plan() { return null; }
+  OperatorRecoveryResult result() { return null; }
+  String issuePlanToken() { return PARAM_PLAN_TOKEN; }
+  String requireIssuedPlanToken() {
+    String required = "recovery_plan_required";
+    String mismatch = "recovery_plan_mismatch";
+    return required + mismatch;
+  }
+  Object executePlanned(OperatorRecoveryPlan plan) {
+    OperatorRecoveryActionId action = OperatorRecoveryActionId.fromJsonValue("");
+    switch (action) { default: throw new IllegalArgumentException("unknown_recovery_action"); }
+  }
+  void catalogRecovery(OperatorRecoveryTarget target) {
+    appCatalogsApiHandler.refresh(target.catalogId());
+    appCatalogsApiHandler.addRecommended(target.catalogId());
+    reverifiedCatalog(target.catalogId());
+  }
+  void appRecovery(OperatorRecoveryTarget target) {
+    appUpdateService.rollback(target.appId(), false);
+    String unavailable = "A dedicated verified catalog reinstall API is not available.";
+    String running = "App must be stopped before rollback.";
+    appDataService.exportBackup(target.appId(), currentCryptaVersion.get());
+    appsApiHandler.uninstall(target.appId(), false, true);
+    Object uninstallFailure = "uninstallFailure";
+    clearAppStateAfterRecoveryUninstall(target.appId());
+    partialExportBeforeUninstallResult();
+  }
+  Object partialExportBeforeUninstallResult() { return "partial sensitiveBackup"; }
+  boolean requiresStoppedApp(OperatorRecoveryActionId actionId) {
+    return actionId == OperatorRecoveryActionId.APP_START;
+  }
+  void grantRecovery() {
+    appServiceCoordinator.revokeGrant("grant");
+    appServiceCoordinator.renewBundle("bundle");
+    appServiceCoordinator.rejectBundle("bundle");
+  }
+  Object trustGraphExportSummary() {
+    trustGraphApiHandler.statements(Map.of());
+    try {
+      trustGraphApiHandler.statements(Map.of());
+    } catch (TrustGraphException exception) {
+      mappedTrustGraphException(exception);
+    }
+    return Map.of("metadataOnly", true, "completeWot", false);
+  }
+  Object mappedTrustGraphException(TrustGraphException exception) { return exception; }
+  void clearAppStateAfterRecoveryUninstall(String appId) { appUninstallCleanup.clearAppState(appId, true); }
+  void trustGraphReset() {
+    String unavailable = "Trust Graph stores do not expose a tested local-state reset API.";
+  }
+  Object networkBudgets() {
+    return networkBudgetService.snapshots().stream().map(AppNetworkBudgetSnapshot::toJson);
+  }
+  Object supportBundlePreview() { return Map.of(); }
+  Object supportBundleActions() {
+    redactedDetails(
+        "supportBundlePreview",
+        supportBundlePreview(recoverySupportBundle()));
+    return redactedDetails(
+        "supportBundle",
+        recoverySupportBundle());
+  }
+  Object recoverySupportBundle() { supportBundleSupplier.get(); return Map.of(); }
+  Object redactedDetails(String key, Object value) { return value; }
+  Object supportContext() { Object json = Map.of(); return redactedMap(json); }
+  Object redactedMap(Object json) { return json; }
+  String safeAuditTargetId(OperatorRecoveryTarget target) { return "sha256:"; }
+  void appendAudit(OperatorRecoveryTarget target) { safeAuditTargetId(target); }
+  String confirmationPhrase(OperatorRecoveryTarget target) { return target.safePrimaryId(); }
+}
+""",
+        encoding="utf-8",
+    )
+    (recovery_dir / "OperatorRecoveryPlan.java").write_text("record OperatorRecoveryPlan() {}\n", encoding="utf-8")
+    (recovery_dir / "OperatorRecoveryResult.java").write_text(
+        'record OperatorRecoveryResult(Object sensitiveBackup) { String marker = "sensitiveBackup"; }\n',
+        encoding="utf-8",
+    )
+    (recovery_dir / "OperatorRecoveryTarget.java").write_text(
+        """
+record OperatorRecoveryTarget() {
+  Object toJson() { return safeIdentifier(value.trim()); }
+  String safePrimaryId() { return safeIdentifier(primaryId()); }
+  String safeIdentifier(String value) {
+    Object redacted = OperatorSupportRedactor.redact(value).value();
+    return redacted.equals(value) ? value : "sha256:";
+  }
+  String fingerprintSource() { return "raw-target"; }
+}
+""",
+        encoding="utf-8",
+    )
     (operator_dir / "OperatorSupportRedactor.java").write_text(
         'final class OperatorSupportRedactor { String[] fields = {"formpassword", '
-        '"browsersession", "requestbody", "rawbody", "sourcepath", "rollbackpath", '
+        '"browsersession", "plantoken", "requestbody", "rawbody", "sourcepath", "rollbackpath", '
         '"backupbundle", "payloadbase64"}; String marker = "crypta-app-data-backup"; '
         'String value = REDACTED_APP_DATA_BACKUP; }\n',
         encoding="utf-8",
@@ -17180,9 +17746,15 @@ final class PlatformApiOperatorRoutes {
     requireHostOperator(request);
     if ("beta-dashboard".equals(resource)) return dashboardService.dashboard();
     if ("support-bundle".equals(resource)) return dashboardService.supportBundle();
+    if ("support-bundle".equals(segments.get(1)) && "preview".equals(segments.get(2))) return recoveryService.supportBundlePreview();
+    if ("rc-dashboard".equals(resource)) return Map.of("dashboardKind", "operator-rc-recovery-dashboard", "operatorRcRecovery", recoveryService.dashboardState());
+    if ("network-budgets".equals(resource)) return recoveryService.networkBudgets();
+    Object cleanup = appRoutes::clearAppStateAfterUninstall;
+    switch (segments.get(2)) { case "actions": break; case "plan": break; case "execute": break; }
+    String recoveryContext = "recoveryContext";
     if ("backups".equals(segments.get(2))) return routeAppDataBackup(request);
     if ("restore".equals(segments.get(2))) return routeAppDataRestore(request);
-    switch (action) { case "refresh": break; case "pause": break; case "resume": break; }
+    switch (action) { case "refresh": break; case "pause": break; case "resume": break; case "reset-backoff": break; case "reschedule-now": break; }
     if ("plan".equals(segments.get(3))) return appDataService.planRestore(request);
     String route = "operator/app-data";
     String error = "host_operator_required app_data_service_unavailable";
@@ -17207,7 +17779,31 @@ final class PlatformApiOperatorRoutes {
     )
     subscription_service_path.write_text(
         subscription_service_path.read_text(encoding="utf-8")
-        + "List<Map<String, Object>> listAllForOperator() { return listAllForScheduler(); }\n",
+        + "List<Map<String, Object>> listAllForOperator() { return listAllForScheduler(); }\n"
+        + "void resetBackoff(String appId, String subscriptionId) {}\n"
+        + "void rescheduleNow(String appId, String subscriptionId) {}\n",
+        encoding="utf-8",
+    )
+    subscription_record_path = (
+        workspace
+        / "platform-api/src/main/java/network/crypta/platform/api/content/subscriptions/ContentSubscription.java"
+    )
+    subscription_record_path.parent.mkdir(parents=True, exist_ok=True)
+    subscription_record_path.write_text(
+        subscription_record_path.read_text(encoding="utf-8")
+        + "ContentSubscription withBackoffReset(Object now) { return this; }\n"
+        + "ContentSubscription withRescheduledNow(Object now) { return this; }\n",
+        encoding="utf-8",
+    )
+    subscription_tests = (
+        workspace
+        / "platform-api/src/test/java/network/crypta/platform/api/content/subscriptions/ContentSubscriptionServiceTest.java"
+    )
+    subscription_tests.parent.mkdir(parents=True, exist_ok=True)
+    subscription_tests.write_text(
+        subscription_tests.read_text(encoding="utf-8")
+        + "void resetBackoff_whenSubscriptionFailed_expectMetadataClearedWithoutFetch() {}\n"
+        + "void rescheduleNow_whenSubscriptionActive_expectDueTimeUpdatedWithoutFetch() {}\n",
         encoding="utf-8",
     )
     (platform_api_tests / "PlatformApiOperatorRoutesTest.java").write_text(
@@ -17215,14 +17811,44 @@ final class PlatformApiOperatorRoutes {
 class PlatformApiOperatorRoutesTest {
   private static final String FORM_FIELD_ASSIGNMENT = "form" + "Pass" + "word=secret-value";
 	  void route_whenAppPrincipalRequestsOperatorDashboard_expectForbiddenBeforeDispatch() {}
+	  void route_whenAppPrincipalRequestsOperatorRcRecovery_expectForbiddenBeforeDispatch() {}
 	  void route_whenAppPrincipalUsesOperatorSubscriptionWrapper_expectForbidden() {}
 	  void route_whenAppPrincipalRequestsAppDataBackupRestore_expectForbidden() {}
 	  void route_whenOperatorUsesAppDataBackupRestore_expectSensitiveBackupAndMetadataPlan() {}
+	  void route_whenRecoveryExecuteMissingConfirmationForDestructiveAction_expectConflict() {}
+	  void route_whenRecoveryExecuteMissingPlanToken_expectConflict() {}
+	  void route_whenOperatorResetsSubscriptionBackoff_expectNoFetchAndRedactedSummary() {}
+	  void route_whenOperatorRequestsNetworkBudgets_expectSafeSnapshotsOnly() {}
+	  void route_whenSupportBundlePreviewRequested_expectRedactionMetadataAndRecoveryContext() {}
 	  void route_whenSupportBundleIncludesSensitiveDiagnostics_expectRedactedOutput() {
     String path = "/work/private/catalog";
     String secret = FORM_FIELD_ASSIGNMENT;
     assertFalse(response.body().contains(FORM_FIELD_ASSIGNMENT));
   }
+  void route_whenPathParameterAttemptsRouteProxy_expectIgnored() {
+    String path = "some/arbitrary/path";
+  }
+}
+""",
+        encoding="utf-8",
+    )
+    recovery_tests_dir = platform_api_tests / "operator/recovery"
+    recovery_tests_dir.mkdir(parents=True, exist_ok=True)
+    (recovery_tests_dir / "OperatorRecoveryServiceTest.java").write_text(
+        """
+class OperatorRecoveryServiceTest {
+  void execute_whenSupportPreviewIncludesArbitraryPathParameter_expectIgnored() {}
+  void execute_whenSupportBundlePreviewRequested_expectRealPreviewArtifactBuilt() {}
+  void execute_whenSupportBundleExportRequested_expectRedactedBundleArtifactReturned() {}
+  void execute_whenPlanTokenMissing_expectConflictBeforeDispatch() {}
+  void execute_whenExportBeforeUninstallSucceeds_expectRelatedAppStateCleared() {}
+  void execute_whenExportBeforeUninstallFailsAfterBackup_expectPartialResultWithSensitiveBackup() {}
+  void execute_whenExportBeforeUninstallCleanupFails_expectPartialResultWithSensitiveBackup() {}
+  void execute_whenTrustGraphStoreUnavailable_expectFailedResultInsteadOfThrownException() {}
+  void plan_whenAppStartRequested_expectStoppedAppRequirementReported() {}
+  void plan_whenTrustGraphResetRequested_expectUnavailableInsteadOfFakeSuccess() {}
+  void planResultAndSupportContext_whenUnsafeTargetIdSupplied_expectTargetIdRedacted() {}
+  void plan_whenDestructiveUnsafeTargetIdSupplied_expectConfirmationPhraseRedacted() {}
 }
 """,
         encoding="utf-8",
@@ -17236,6 +17862,11 @@ class OperatorSupportRedactorTest {
     String path = "/work/cryptad/private.txt";
     String secret = "query-secret";
   }
+  void redact_whenOperatorRcRecoveryContextContainsSecrets_expectUnsafeValuesRemoved() {
+    String rawTrustStatementBody = "secret";
+    String payloadBase64 = "secret";
+    String stagedBundlePath = "/work/cryptad/staging";
+  }
   void redact_whenBackupPayloadAccidentallyEntersSupportBundle_expectWholeBackupRedacted() {}
 }
 """,
@@ -17244,13 +17875,13 @@ class OperatorSupportRedactorTest {
     legacy_http_dir = workspace / "adapter-http-legacy-admin/src/main/java/network/crypta/clients/http"
     legacy_http_dir.mkdir(parents=True, exist_ok=True)
     (legacy_http_dir / "PlatformApiToadlet.java").write_text(
-        'final class PlatformApiToadlet { boolean requiresOperatorFormPassword() { return "backups".equals(pathSegments.get(2)); } String route = "operator/app-data/backups"; String method = "POST"; }\n',
+        'final class PlatformApiToadlet { boolean requiresOperatorFormPassword() { return "backups".equals(pathSegments.get(2)) || "recovery".equals(pathSegments.get(1)); } String route = "operator/app-data/backups"; String method = "POST"; }\n',
         encoding="utf-8",
     )
     legacy_http_test_dir = workspace / "src/test/java/network/crypta/clients/http"
     legacy_http_test_dir.mkdir(parents=True, exist_ok=True)
     (legacy_http_test_dir / "PlatformApiToadletTest.java").write_text(
-        'class PlatformApiToadletTest { String paths = "/operator/app-data/backups /operator/app-data/restore/plan /operator/app-data/restore /operator/subscriptions/feed-reader/sub-123/refresh"; }\n',
+        'class PlatformApiToadletTest { String paths = "/operator/app-data/backups /operator/app-data/restore/plan /operator/app-data/restore /operator/subscriptions/feed-reader/sub-123/refresh /operator/recovery/plan /operator/recovery/execute"; }\n',
         encoding="utf-8",
     )
     operator_doc_text = (
@@ -17264,6 +17895,18 @@ class OperatorSupportRedactorTest {
         "Support bundles are reviewed by the operator before sharing and exclude raw request bodies and raw backup values."
     )
     (docs / "operator-beta-dashboard.md").write_text(operator_doc_text, encoding="utf-8")
+    (docs / "operator-rc-recovery-and-support-workflow.md").write_text(
+        "Operator RC Recovery documents operator-rc.dashboard, operator-rc.recovery-plan-execute, "
+        "operator-rc.catalog-repair, operator-rc.app-reinstall-rollback, "
+        "operator-rc.export-before-uninstall, operator-rc.subscription-recovery, "
+        "operator-rc.app-service-grant-recovery, operator-rc.trust-graph-recovery, "
+        "operator-rc.network-budget-visibility, operator-rc.support-bundle-wizard, and "
+        "operator-rc.redaction. The routes are host/operator-only, typed action-id dispatch only, "
+        "plan before execute, destructive confirmation, metadata-only Trust Graph export, no global truth, "
+        "no moderation, no routing policy, no raw app-data backup payloads in support bundles, no plugin "
+        "runtime restoration, and no FProxy browse removal.\n",
+        encoding="utf-8",
+    )
     (docs / "app-platform-beta-program.md").write_text(
         "Operator beta dashboard operator-beta-ux-and-recovery\n",
         encoding="utf-8",

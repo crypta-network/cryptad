@@ -705,9 +705,15 @@ public final class PlatformApiToadlet extends Toadlet {
             || (pathSegments.size() == 4 && "plan".equals(pathSegments.get(3)));
       }
     }
+    if ("recovery".equals(pathSegments.get(1))) {
+      return pathSegments.size() == 3
+          && ("plan".equals(pathSegments.get(2)) || "execute".equals(pathSegments.get(2)));
+    }
     return pathSegments.size() == 5
         && "subscriptions".equals(pathSegments.get(1))
         && ("refresh".equals(pathSegments.get(4))
+            || "reset-backoff".equals(pathSegments.get(4))
+            || "reschedule-now".equals(pathSegments.get(4))
             || "pause".equals(pathSegments.get(4))
             || "resume".equals(pathSegments.get(4)));
   }

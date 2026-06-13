@@ -159,6 +159,41 @@ class ContentSubscriptionServiceTest {
   }
 
   @Test
+  void resetBackoff_whenSubscriptionFailed_expectMetadataClearedWithoutFetch() {
+    RecordingFetchPort fetchPort = new RecordingFetchPort();
+    ContentSubscriptionService service = service(fetchPort, config(2));
+    String subscriptionId =
+        (String) service.create(APP_ID, createParams(SOURCE)).get("subscriptionId");
+    fetchPort.enqueueTimeoutFailure();
+    service.refresh(APP_ID, subscriptionId);
+
+    Map<String, Object> reset = service.resetBackoff(APP_ID, subscriptionId);
+
+    assertEquals(1, fetchPort.calls);
+    assertEquals("scheduled", reset.get("status"));
+    assertEquals(0, reset.get("failureCount"));
+    assertNull(reset.get("lastErrorCode"));
+    assertNull(reset.get("lastFailureAt"));
+    assertEquals(NOW.toString(), reset.get("nextCheckAt"));
+    assertEquals("Subscription backoff metadata was reset.", reset.get("message"));
+  }
+
+  @Test
+  void rescheduleNow_whenSubscriptionActive_expectDueTimeUpdatedWithoutFetch() {
+    RecordingFetchPort fetchPort = new RecordingFetchPort();
+    ContentSubscriptionService service = service(fetchPort, config(2));
+    String subscriptionId =
+        (String) service.create(APP_ID, createParams(SOURCE)).get("subscriptionId");
+
+    Map<String, Object> rescheduled = service.rescheduleNow(APP_ID, subscriptionId);
+
+    assertEquals(0, fetchPort.calls);
+    assertEquals("scheduled", rescheduled.get("status"));
+    assertEquals(NOW.toString(), rescheduled.get("nextCheckAt"));
+    assertEquals("Subscription is scheduled for immediate polling.", rescheduled.get("message"));
+  }
+
+  @Test
   void refresh_whenSubscriptionBudgetExhausted_expectSafeStatusWithoutFetch() {
     RecordingFetchPort fetchPort = new RecordingFetchPort();
     ContentSubscriptionService service = service(fetchPort, config(2), subscriptionBudget(1));

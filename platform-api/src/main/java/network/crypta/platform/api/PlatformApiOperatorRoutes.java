@@ -10,6 +10,7 @@ import network.crypta.platform.api.apps.AppsApiHandler;
 import network.crypta.platform.api.content.subscriptions.ContentSubscriptionService;
 import network.crypta.platform.api.diagnostics.DiagnosticsApiHandler;
 import network.crypta.platform.api.operator.OperatorBetaDashboardService;
+import network.crypta.platform.api.operator.recovery.OperatorRecoveryService;
 import network.crypta.platform.api.trust.TrustGraphApiHandler;
 import network.crypta.platform.appcatalog.AppCatalogManager;
 import network.crypta.platform.apphost.AppHost;
@@ -53,8 +54,14 @@ final class PlatformApiOperatorRoutes {
   /** Path segment that identifies app-data backup and restore routes. */
   private static final String APP_DATA_SEGMENT = "app-data";
 
+  /** Path segment that identifies typed RC recovery routes. */
+  private static final String RECOVERY_SEGMENT = "recovery";
+
   /** Builds redacted dashboard and support-bundle payloads from shared app-platform services. */
   private final OperatorBetaDashboardService dashboardService;
+
+  /** Plans and executes closed allowlisted operator RC recovery actions. */
+  private final OperatorRecoveryService recoveryService;
 
   /** Shared durable subscription service used by operator-initiated refresh and pause actions. */
   private final ContentSubscriptionService contentSubscriptionService;
@@ -146,6 +153,21 @@ final class PlatformApiOperatorRoutes {
                 appServices.appDataService(),
                 trustGraphApiHandler,
                 appServices.appServiceCoordinator()));
+    recoveryService =
+        new OperatorRecoveryService(
+            new OperatorRecoveryService.Dependencies(
+                appsApiHandler,
+                appCatalogsApiHandler,
+                appRoutes.appUpdateService(),
+                contentSubscriptionService,
+                appDataService,
+                trustGraphApiHandler,
+                appServices.appServiceCoordinator(),
+                appServices.networkBudgetService(),
+                dashboardService,
+                appRoutes::clearAppStateAfterUninstall,
+                currentCryptaVersion,
+                dashboardService::supportBundle));
   }
 
   /**
@@ -164,7 +186,7 @@ final class PlatformApiOperatorRoutes {
     requireHostOperator(request);
     return switch (segments.size()) {
       case 2 -> routeCollection(segments.get(1), request);
-      case 3 -> routeAppData(segments, request);
+      case 3 -> routeThreeSegmentResource(segments, request);
       case 4 -> routeAppDataRestore(segments, request);
       case 5 -> routeSubscriptionAction(segments, request);
       default -> throw notFound();
@@ -185,13 +207,95 @@ final class PlatformApiOperatorRoutes {
       }
       return PlatformApiResponse.ok(dashboardService.dashboard());
     }
+    if ("rc-dashboard".equals(resource)) {
+      if (!METHOD_GET.equals(request.method())) {
+        return methodNotAllowed(METHOD_GET, GET_ONLY_MESSAGE);
+      }
+      return PlatformApiResponse.ok(rcDashboard());
+    }
     if ("support-bundle".equals(resource)) {
       if (!METHOD_GET.equals(request.method())) {
         return methodNotAllowed(METHOD_GET, GET_ONLY_MESSAGE);
       }
-      return PlatformApiResponse.ok(dashboardService.supportBundle());
+      return PlatformApiResponse.ok(supportBundle());
+    }
+    if ("network-budgets".equals(resource)) {
+      if (!METHOD_GET.equals(request.method())) {
+        return methodNotAllowed(METHOD_GET, GET_ONLY_MESSAGE);
+      }
+      return PlatformApiResponse.ok(recoveryService.networkBudgets());
     }
     throw notFound();
+  }
+
+  private PlatformApiResponse routeThreeSegmentResource(
+      List<String> segments, PlatformApiRequest request) {
+    if (APP_DATA_SEGMENT.equals(segments.get(1))) {
+      return routeAppData(segments, request);
+    }
+    if ("support-bundle".equals(segments.get(1)) && "preview".equals(segments.get(2))) {
+      if (!METHOD_GET.equals(request.method())) {
+        return methodNotAllowed(METHOD_GET, GET_ONLY_MESSAGE);
+      }
+      return PlatformApiResponse.ok(recoveryService.supportBundlePreview(supportBundle()));
+    }
+    if (RECOVERY_SEGMENT.equals(segments.get(1))) {
+      return routeRecovery(segments.get(2), request);
+    }
+    throw notFound();
+  }
+
+  private PlatformApiResponse routeRecovery(String action, PlatformApiRequest request) {
+    return switch (action) {
+      case "actions" -> {
+        if (!METHOD_GET.equals(request.method())) {
+          yield methodNotAllowed(METHOD_GET, GET_ONLY_MESSAGE);
+        }
+        yield PlatformApiResponse.ok(envelope("actions", recoveryService.actions()));
+      }
+      case "plan" -> {
+        if (!METHOD_POST.equals(request.method())) {
+          yield methodNotAllowed(METHOD_POST, POST_ONLY_MESSAGE);
+        }
+        yield PlatformApiResponse.ok(
+            envelope("plan", recoveryService.plan(request.queryParameters()).toJson()));
+      }
+      case "execute" -> {
+        if (!METHOD_POST.equals(request.method())) {
+          yield methodNotAllowed(METHOD_POST, POST_ONLY_MESSAGE);
+        }
+        yield PlatformApiResponse.ok(
+            envelope("result", recoveryService.execute(request.queryParameters()).toJson()));
+      }
+      default -> throw notFound();
+    };
+  }
+
+  private Map<String, Object> rcDashboard() {
+    LinkedHashMap<String, Object> dashboard = LinkedHashMap.newLinkedHashMap(16);
+    dashboard.putAll(dashboardService.dashboard());
+    dashboard.put("dashboardKind", "operator-rc-recovery-dashboard");
+    dashboard.put(
+        "betaCompatibility",
+        Map.of(
+            "route",
+            "operator/beta-dashboard",
+            "retained",
+            true,
+            "operatorRoutesInAppContract",
+            false));
+    dashboard.put("operatorRcRecovery", recoveryService.dashboardState());
+    dashboard.put("networkBudgets", recoveryService.networkBudgets());
+    dashboard.put("supportBundlePreviewRoute", "operator/support-bundle/preview");
+    return dashboard;
+  }
+
+  private Map<String, Object> supportBundle() {
+    LinkedHashMap<String, Object> bundle = LinkedHashMap.newLinkedHashMap(12);
+    bundle.putAll(dashboardService.supportBundle());
+    bundle.put("supportBundleVersion", bundle.get("schemaVersion"));
+    bundle.put("recoveryContext", recoveryService.supportContext());
+    return bundle;
   }
 
   /**
@@ -297,6 +401,8 @@ final class PlatformApiOperatorRoutes {
           case "refresh" -> contentSubscriptionService.refresh(appId, subscriptionId);
           case "pause" -> contentSubscriptionService.pause(appId, subscriptionId);
           case "resume" -> contentSubscriptionService.resume(appId, subscriptionId);
+          case "reset-backoff" -> contentSubscriptionService.resetBackoff(appId, subscriptionId);
+          case "reschedule-now" -> contentSubscriptionService.rescheduleNow(appId, subscriptionId);
           default -> throw notFound();
         };
     LinkedHashMap<String, Object> envelope = LinkedHashMap.newLinkedHashMap(1);
@@ -337,5 +443,11 @@ final class PlatformApiOperatorRoutes {
    */
   private static PlatformApiException notFound() {
     return new PlatformApiException(404, "not_found", "Platform API route not found.");
+  }
+
+  private static Map<String, Object> envelope(String key, Object value) {
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(1);
+    json.put(key, value);
+    return json;
   }
 }

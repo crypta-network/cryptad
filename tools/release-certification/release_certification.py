@@ -72,6 +72,19 @@ OPERATOR_BETA_EVIDENCE_IDS = (
     "operator-beta.support-bundle-redaction",
     "operator-beta.web-shell",
 )
+OPERATOR_RC_EVIDENCE_IDS = (
+    "operator-rc.dashboard",
+    "operator-rc.recovery-plan-execute",
+    "operator-rc.catalog-repair",
+    "operator-rc.app-reinstall-rollback",
+    "operator-rc.export-before-uninstall",
+    "operator-rc.subscription-recovery",
+    "operator-rc.app-service-grant-recovery",
+    "operator-rc.trust-graph-recovery",
+    "operator-rc.network-budget-visibility",
+    "operator-rc.support-bundle-wizard",
+    "operator-rc.redaction",
+)
 ECOSYSTEM_SECURITY_EVIDENCE_IDS = (
     "catalog.security-advisories",
     "catalog.version-denylist",
@@ -1145,6 +1158,7 @@ def app_platform_evidence(
         "app-update.rollback",
         "app-update.data-migration-contract",
         *OPERATOR_BETA_EVIDENCE_IDS,
+        *OPERATOR_RC_EVIDENCE_IDS,
         "apphost.live",
     ]
     if summary is None:
@@ -2236,6 +2250,22 @@ def ecosystem_matrix_row_specs() -> list[MatrixRowSpec]:
                 "docs/release-certification.md",
             ),
             phase="phase-8",
+        ),
+        MatrixRowSpec(
+            id="operator-rc-recovery-and-support-workflow",
+            category="app-platform",
+            title="Operator RC recovery and support workflow",
+            required_evidence_ids=OPERATOR_RC_EVIDENCE_IDS,
+            gate_ids=("ecosystem.operator-rc-recovery",),
+            docs=(
+                "docs/operator-rc-recovery-and-support-workflow.md",
+                "docs/operator-beta-dashboard.md",
+                "docs/platform-api-surface.md",
+                "docs/app-platform-beta-known-limitations.md",
+                "docs/release-certification.md",
+                "tools/release-certification/README.md",
+            ),
+            phase="phase-9",
         ),
         MatrixRowSpec(
             id="first-party-beta-catalog",
@@ -3865,6 +3895,41 @@ def evaluate_app_update_rollback_gate(
     )
 
 
+def evaluate_operator_rc_recovery_gate(
+    current: dict[str, dict[str, Any]], previous: dict[str, dict[str, Any]]
+) -> GateResult:
+    failures: list[str] = []
+    warnings: list[str] = []
+    details: dict[str, Any] = {"evidenceIds": list(OPERATOR_RC_EVIDENCE_IDS)}
+    for evidence_id in OPERATOR_RC_EVIDENCE_IDS:
+        status = evidence_status(current.get(evidence_id))
+        previous_status = evidence_status(previous.get(evidence_id))
+        details[evidence_id] = {"currentStatus": status, "previousStatus": previous_status}
+        if status in {"fail", "missing", "skip"}:
+            failures.append(f"{evidence_id} evidence is not passing")
+            add_evidence_issue(details, "failureEvidenceIds", evidence_id)
+        elif status == "warn":
+            warnings.append(f"{evidence_id} evidence is warning")
+            add_evidence_issue(details, "warningEvidenceIds", evidence_id)
+        if previous_status == "pass" and status in {"fail", "missing", "skip"}:
+            failures.append(f"{evidence_id} regressed from pass to {status}")
+            add_evidence_issue(details, "failureEvidenceIds", evidence_id)
+    redaction_details = evidence_details(current.get("operator-rc.redaction"))
+    checks = redaction_details.get("checks") if isinstance(redaction_details, dict) else None
+    if isinstance(checks, dict) and checks.get("redactorTest") is not True:
+        failures.append("Operator RC redaction evidence did not prove support-bundle redaction")
+        add_evidence_issue(details, "failureEvidenceIds", "operator-rc.redaction")
+    details["planBeforeExecute"] = evidence_status(current.get("operator-rc.recovery-plan-execute"))
+    details["supportBundleWizard"] = evidence_status(current.get("operator-rc.support-bundle-wizard"))
+    return gate_from_issues(
+        "ecosystem.operator-rc-recovery",
+        "Operator RC recovery and support workflow evidence passed.",
+        failures,
+        warnings,
+        details,
+    )
+
+
 def evaluate_ecosystem_security_advisory_revocation_gate(
     current: dict[str, dict[str, Any]], previous: dict[str, dict[str, Any]]
 ) -> GateResult:
@@ -5110,6 +5175,7 @@ def evaluate_ecosystem_gates(
         evaluate_app_ui_quality_gate(current, previous),
         evaluate_app_review_trust_gate(current, previous, metadata, settings.mode),
         evaluate_app_update_rollback_gate(current, previous),
+        evaluate_operator_rc_recovery_gate(current, previous),
         evaluate_ecosystem_security_advisory_revocation_gate(current, previous),
         evaluate_live_network_beta_gate(current, settings),
         evaluate_app_vault_gate(current, previous),
@@ -5431,6 +5497,7 @@ def render_report(summary: dict[str, Any]) -> str:
         "app-update.live-catalog-refresh",
         "app-update.rollback",
         *OPERATOR_BETA_EVIDENCE_IDS,
+        *OPERATOR_RC_EVIDENCE_IDS,
         "apphost.live",
     ):
         append_detail(lines, summary, evidence_id)
@@ -6198,6 +6265,7 @@ def run_self_test(repo_root: Path) -> None:
             "apphost-sandbox-provider",
             "public-beta-security-hardening",
             "operator-beta-ux-and-recovery",
+            "operator-rc-recovery-and-support-workflow",
             "platform-api-contract",
             "interop-smoke",
             "performance-smoke",
@@ -6251,6 +6319,7 @@ def run_self_test(repo_root: Path) -> None:
             "app-platform.docs-redaction",
             "app-data.backup-restore-portability",
             "operator-beta.app-data-backup-restore",
+            *OPERATOR_RC_EVIDENCE_IDS,
             *ECOSYSTEM_SECURITY_EVIDENCE_IDS,
         ):
             assert evidence_id in covered_evidence_ids, evidence_id
@@ -6272,6 +6341,9 @@ def run_self_test(repo_root: Path) -> None:
         assert evidence_by_id["app-update.rollback"]["status"] == "pass", evidence_by_id
         assert evidence_by_id["app-update.rollback"]["requiredForReleaseCandidate"] is True
         for evidence_id in ECOSYSTEM_SECURITY_EVIDENCE_IDS:
+            assert evidence_by_id[evidence_id]["status"] == "pass", evidence_by_id
+            assert evidence_by_id[evidence_id]["requiredForReleaseCandidate"] is True
+        for evidence_id in OPERATOR_RC_EVIDENCE_IDS:
             assert evidence_by_id[evidence_id]["status"] == "pass", evidence_by_id
             assert evidence_by_id[evidence_id]["requiredForReleaseCandidate"] is True
         for evidence_id in (

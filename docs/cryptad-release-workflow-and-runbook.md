@@ -77,7 +77,8 @@ Treat these as release blockers, in order:
    `app-platform-beta-docs-and-program` matrix row are present. Docs-only gaps require an explicit
    release-manager waiver; redaction findings must remain blockers.
    Also confirm the deterministic `public-beta-security.*` evidence ids, `operator-beta.*`
-   evidence ids, `operator-beta-ux-and-recovery` matrix row, and disabled-or-passing
+   evidence ids, `operator-rc.*` evidence ids, `operator-beta-ux-and-recovery` and
+   `operator-rc-recovery-and-support-workflow` matrix rows, and disabled-or-passing
    `live-network-beta-certification` row match the release plan. Live-network beta evidence is
    release-blocking only when the release manager explicitly enables required live-network beta
    mode.
