@@ -1281,7 +1281,9 @@ public final class OperatorRecoveryService {
       OperatorRecoveryTarget target,
       OperatorRecoveryStatus status) {
     LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(3);
-    json.put("safeDigest", safeDigest(actionId.jsonValue() + "|" + target.toJson() + "|" + status));
+    json.put(
+        "safeDigest",
+        safeDigest(actionId.jsonValue() + "|" + target.fingerprintSource() + "|" + status));
     json.put("includeInSupportBundle", true);
     json.put("auditEventType", "operator_recovery_executed");
     return json;
@@ -1385,7 +1387,7 @@ public final class OperatorRecoveryService {
 
   private static String planFingerprint(
       OperatorRecoveryActionId actionId, OperatorRecoveryTarget target) {
-    return safeDigest(actionId.jsonValue() + "|" + target.toJson());
+    return safeDigest(actionId.jsonValue() + "|" + target.fingerprintSource());
   }
 
   private static PlatformApiException mappedTrustGraphException(TrustGraphException exception) {

@@ -46,7 +46,11 @@ class OperatorRecoveryServiceTest {
   private static final String PARAM_PLAN_TOKEN = "planToken";
   private static final String PAYLOAD_BASE64 = "payloadBase64";
   private static final String PROPERTY_RUNNING = "running";
+  private static final String SAFE_DIGEST_PREFIX = "sha256:";
   private static final String TEST_CRYPTA_VERSION = "cryptad-rc-test-version";
+  private static final String UNSAFE_CONTENT_URI_PREFIX = "USK@example";
+  private static final String UNSAFE_PATH_PREFIX =
+      String.join("/", "", "work", "cryptad", "private");
   private static final String UNSAFE_ROUTE = "apps/feed-reader/updates/rollback";
 
   @Test
@@ -260,9 +264,10 @@ class OperatorRecoveryServiceTest {
   }
 
   @Test
-  void supportContext_whenUnsafeTargetIdAudited_expectTargetIdRedacted() {
+  void planResultAndSupportContext_whenUnsafeTargetIdSupplied_expectTargetIdRedacted() {
     OperatorRecoveryService service = service();
-    String unsafeCatalogId = "/work/cryptad/private/USK@example/secret/0/catalog.json";
+    String unsafeCatalogId =
+        UNSAFE_PATH_PREFIX + "/" + UNSAFE_CONTENT_URI_PREFIX + "/secret/0/catalog.json";
     OperatorRecoveryPlan plan =
         service.plan(
             Map.of(
@@ -271,19 +276,28 @@ class OperatorRecoveryServiceTest {
                 PARAM_CATALOG_ID,
                 List.of(unsafeCatalogId)));
 
-    service.execute(
-        Map.of(
-            PARAM_ACTION_ID,
-            List.of(ACTION_CATALOG_REFRESH),
-            PARAM_CATALOG_ID,
-            List.of(unsafeCatalogId),
-            PARAM_PLAN_TOKEN,
-            List.of(plan.planToken())));
+    OperatorRecoveryResult result =
+        service.execute(
+            Map.of(
+                PARAM_ACTION_ID,
+                List.of(ACTION_CATALOG_REFRESH),
+                PARAM_CATALOG_ID,
+                List.of(unsafeCatalogId),
+                PARAM_PLAN_TOKEN,
+                List.of(plan.planToken())));
 
-    String rendered = service.supportContext().toString();
-    assertFalse(rendered.contains("/work/cryptad/private"));
-    assertFalse(rendered.contains("USK@example"));
-    assertTrue(rendered.contains("sha256:"));
+    String planJson = plan.toJson().toString();
+    String resultJson = result.toJson().toString();
+    String supportJson = service.supportContext().toString();
+    assertFalse(planJson.contains(UNSAFE_PATH_PREFIX));
+    assertFalse(planJson.contains(UNSAFE_CONTENT_URI_PREFIX));
+    assertFalse(resultJson.contains(UNSAFE_PATH_PREFIX));
+    assertFalse(resultJson.contains(UNSAFE_CONTENT_URI_PREFIX));
+    assertFalse(supportJson.contains(UNSAFE_PATH_PREFIX));
+    assertFalse(supportJson.contains(UNSAFE_CONTENT_URI_PREFIX));
+    assertTrue(planJson.contains(SAFE_DIGEST_PREFIX));
+    assertTrue(resultJson.contains(SAFE_DIGEST_PREFIX));
+    assertTrue(supportJson.contains(SAFE_DIGEST_PREFIX));
   }
 
   @Test

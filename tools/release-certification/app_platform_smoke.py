@@ -11951,6 +11951,10 @@ def collect_operator_beta_evidence(settings: Settings) -> list[EvidenceItem]:
         workspace
         / "platform-api/src/main/java/network/crypta/platform/api/operator/recovery/OperatorRecoveryActionId.java"
     )
+    recovery_target_source = (
+        workspace
+        / "platform-api/src/main/java/network/crypta/platform/api/operator/recovery/OperatorRecoveryTarget.java"
+    )
     subscription_service_source = (
         workspace
         / "platform-api/src/main/java/network/crypta/platform/api/content/subscriptions/ContentSubscriptionService.java"
@@ -11999,6 +12003,7 @@ def collect_operator_beta_evidence(settings: Settings) -> list[EvidenceItem]:
     redactor_text = read_source(redactor_source)
     recovery_service_text = read_source(recovery_service_source)
     recovery_action_text = read_source(recovery_action_source)
+    recovery_target_text = read_source(recovery_target_source)
     subscription_service_text = read_source(subscription_service_source)
     subscription_record_text = read_source(subscription_record_source)
     operator_routes_test_text = read_source(operator_routes_test_source)
@@ -12614,7 +12619,11 @@ def collect_operator_beta_evidence(settings: Settings) -> list[EvidenceItem]:
                 "auditTargetRedaction": (
                     "safeAuditTargetId(target)" in recovery_service_text
                     and "redactedMap(json)" in recovery_service_text
-                    and "supportContext_whenUnsafeTargetIdAudited_expectTargetIdRedacted"
+                    and "safeIdentifier(value.trim())" in recovery_target_text
+                    and "OperatorSupportRedactor.redact(value).value()" in recovery_target_text
+                    and "fingerprintSource()" in recovery_target_text
+                    and "target.fingerprintSource()" in recovery_service_text
+                    and "planResultAndSupportContext_whenUnsafeTargetIdSupplied_expectTargetIdRedacted"
                     in recovery_service_test_text
                     and '"plantoken"' in redactor_text
                 ),
@@ -17704,7 +17713,19 @@ final class OperatorRecoveryService {
         'record OperatorRecoveryResult(Object sensitiveBackup) { String marker = "sensitiveBackup"; }\n',
         encoding="utf-8",
     )
-    (recovery_dir / "OperatorRecoveryTarget.java").write_text("record OperatorRecoveryTarget() {}\n", encoding="utf-8")
+    (recovery_dir / "OperatorRecoveryTarget.java").write_text(
+        """
+record OperatorRecoveryTarget() {
+  Object toJson() { return safeIdentifier(value.trim()); }
+  String safeIdentifier(String value) {
+    Object redacted = OperatorSupportRedactor.redact(value).value();
+    return redacted.equals(value) ? value : "sha256:";
+  }
+  String fingerprintSource() { return "raw-target"; }
+}
+""",
+        encoding="utf-8",
+    )
     (operator_dir / "OperatorSupportRedactor.java").write_text(
         'final class OperatorSupportRedactor { String[] fields = {"formpassword", '
         '"browsersession", "plantoken", "requestbody", "rawbody", "sourcepath", "rollbackpath", '
@@ -17820,7 +17841,7 @@ class OperatorRecoveryServiceTest {
   void execute_whenTrustGraphStoreUnavailable_expectFailedResultInsteadOfThrownException() {}
   void plan_whenAppStartRequested_expectStoppedAppRequirementReported() {}
   void plan_whenTrustGraphResetRequested_expectUnavailableInsteadOfFakeSuccess() {}
-  void supportContext_whenUnsafeTargetIdAudited_expectTargetIdRedacted() {}
+  void planResultAndSupportContext_whenUnsafeTargetIdSupplied_expectTargetIdRedacted() {}
 }
 """,
         encoding="utf-8",
