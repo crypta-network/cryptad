@@ -63,8 +63,8 @@ PERF_MODE=collect PERF_SKIP_BUILD=1 tools/perf/run-performance-smoke.sh
 ## Release certification gate
 
 - `tools/release-certification/release_certification.py` aggregates interop, performance,
-  app-platform, catalog, app-owned UI, operator beta recovery, optional live-network beta
-  certification, legacy-admin retirement, and CI metadata into:
+  app-platform, network-scale soak, catalog, app-owned UI, operator beta recovery, optional
+  live-network beta certification, legacy-admin retirement, and CI metadata into:
 
 ```text
 build/release-certification/release-certification-summary.json
@@ -72,6 +72,7 @@ build/release-certification/release-certification-report.md
 build/release-certification/ecosystem-certification-matrix.json
 build/release-certification/ecosystem-certification-matrix.md
 build/release-certification/artifacts/
+build/release-certification/network-scale-soak/summary.json
 build/release-certification/live-network-beta-smoke/summary.json
 build/release-certification/live-network-beta-smoke/live-network-beta-smoke-report.md
 ```
@@ -85,10 +86,15 @@ build/release-certification/live-network-beta-smoke/live-network-beta-smoke-repo
   Social Inbox RC threading/trust/dependency coverage, Trust Graph Local RC durable exchange,
   lifecycle, and app-data migration coverage, app-data backup/restore portability evidence,
   app-service registry/grant/dependency/grant-bundle/redaction coverage, generated document
-  insert/content-fetch and trust redaction coverage, legacy plugin freeze evidence, app-review
-  governance/reviewer-key/transparency-log evidence, public-beta security hardening evidence,
-  operator beta dashboard/recovery/support-bundle evidence, legacy-admin retirement/removal Wave
-  1-4 evidence, sandbox provider selection, and app-update lifecycle/scheduler/rollback.
+  insert/content-fetch and trust redaction coverage, app-network budget source evidence, legacy
+  plugin freeze evidence, app-review governance/reviewer-key/transparency-log evidence,
+  public-beta security hardening evidence, operator beta dashboard/recovery/support-bundle
+  evidence, legacy-admin retirement/removal Wave 1-4 evidence, sandbox provider selection, and
+  app-update lifecycle/scheduler/rollback.
+- `tools/release-certification/network_scale_soak.py` produces the deterministic simulated
+  network-scale soak summary consumed by the aggregator. Normal PR and CI runs must use simulated
+  time instead of a literal 24-hour test. Release-candidate runs may attach an external
+  `simulated-rc-soak` or `live-rc-soak` summary with the same redacted schema.
 - `tools/release-certification/live_network_beta_smoke.py` is the explicit release-manager live
   network collector. Its self-test is offline and deterministic, but normal runs may call only a
   validated localhost node and use env/protected-file fixtures for form passwords, catalog expected
@@ -98,14 +104,17 @@ build/release-certification/live-network-beta-smoke/live-network-beta-smoke-repo
 - `tools/release-certification/app_platform_docs_check.py` produces deterministic app-platform
   beta docs evidence for the developer portal, tutorials, beta program, issue templates, relative
   Markdown links, and docs redaction checks.
-- The wrapper resolves relative `--out-dir` values under the repository root, then runs the
-  app-platform smoke collector before aggregation.
+- The wrapper resolves relative `--out-dir` values under the repository root, runs the
+  app-platform smoke collector, regenerates the default network-scale soak summary unless an
+  explicit summary path or `CRYPTAD_CERT_NETWORK_SCALE_SOAK_SUMMARY` is set, then aggregates the
+  evidence.
 - Normal local commands:
 
 ```bash
 python3 tools/release-certification/app_platform_docs_check.py --self-test
 python3 tools/release-certification/release_certification.py --self-test
 python3 tools/release-certification/app_platform_smoke.py --self-test
+python3 tools/release-certification/network_scale_soak.py --self-test
 python3 tools/release-certification/live_network_beta_smoke.py --self-test
 tools/release-certification/run-release-certification.sh
 tools/release-certification/run-release-certification.sh --mode release-candidate --out-dir build/release-certification
@@ -149,7 +158,14 @@ tools/release-certification/run-release-certification.sh --mode release-candidat
   `app-review.policy`, `app-review.governance`, `app-review.reviewer-key-lifecycle`,
   `app-review.transparency-log`, `app-review.review-history-api`,
   `app-review.first-party-catalog`, `app-review.first-party-review-chain`, and
+  `network-scale.app-network-budget`, `network-scale.content-fetch-budget`,
+  `network-scale.subscription-budget`, `network-scale.queue-pressure-backoff`,
+  `network-scale.trust-graph-import-budget`, `network-scale.social-inbox-multi-source-soak`,
+  `network-scale.redaction`, `network-scale.rc-soak-summary`, and
   `release-certification.ecosystem-matrix`.
+- Network-scale release-candidate evidence must be generated fresh by the wrapper or attached
+  explicitly. Do not let the aggregator reuse stale default `network-scale-soak/summary.json`
+  files across release workspaces.
 - `live-network-beta.*` evidence is release-blocking only when `--require-live-network-beta` or
   `CRYPTAD_CERT_REQUIRE_LIVE_NETWORK_BETA=1` is set. When live-network beta is disabled, the
   aggregator must ignore stale live summaries and must not copy stale live artifacts into the
@@ -163,9 +179,10 @@ tools/release-certification/run-release-certification.sh --mode release-candidat
   reviewer keys, raw trusted reviewer public key bytes, raw request bodies, raw feed bodies, raw
   trust documents from real users, raw social message bodies, raw fetched social documents, raw
   app-service subject URIs, provider app data, raw app-data values, raw update/rollback command
-  output, private insert URIs, non-localhost endpoint metadata, catalog scratch paths, staged bundle
-  paths, rollback backup paths, UI lint report paths, or other unsanitized local paths. The
-  aggregator filters `artifacts/private-insert-uris.json` even when interop summaries reference it.
+  output, queue HTML, budget-store file paths, private insert URIs, non-localhost endpoint
+  metadata, catalog scratch paths, staged bundle paths, rollback backup paths, UI lint report
+  paths, or other unsanitized local paths. The aggregator filters
+  `artifacts/private-insert-uris.json` even when interop summaries reference it.
 - Treat docs redaction findings as non-waivable blockers. Link-only or presence-only docs gaps can
   be waived by a release manager when policy allows, but raw secret/path findings must keep the
   evidence and matrix row failing.

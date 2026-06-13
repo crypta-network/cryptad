@@ -145,6 +145,10 @@ content subscriptions are bounded USK metadata only. Neither surface may become 
 arbitrary HTTP(S) fetch, generic crawling, or LAN probing. Invalid or stale
 `X-Crypta-App-Token` values fail authentication, and missing capabilities fail authorization
 without echoing the token.
+Foreground content fetches, subscription refresh/polling, and Trust Graph import-by-URI also share
+finite app/global app-network budgets. Budget and queue-pressure failures must use stable redacted
+status codes and retry metadata rather than daemon exceptions, raw queue output, or raw fetched
+content.
 
 App-owned static browser UI uses a separate browser app session. On isolated app origins, the
 dynamic bootstrap at `/.well-known/cryptad-bootstrap.json` returns route metadata, the absolute

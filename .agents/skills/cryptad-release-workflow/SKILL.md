@@ -33,8 +33,9 @@ Build: 2
   staging/signing/verification, first-party beta catalog and trusted app-review receipt smoke,
   app-review governance/reviewer-key/transparency-log evidence, app-owned UI design-system/lint
   smoke, app-vault capability evidence, generated-document insert evidence, content-fetch evidence,
-  durable content-subscription evidence, durable app-data and app-data backup/restore evidence,
-  app-service registry/grant/dependency/grant-bundle evidence, Trust Graph Local RC evidence, Site
+  durable content-subscription evidence, shared app-network budget and network-scale soak evidence,
+  durable app-data and app-data backup/restore evidence, app-service
+  registry/grant/dependency/grant-bundle evidence, Trust Graph Local RC evidence, Site
   Publisher/Profile Publisher/Social Inbox/Feed Reader/Trust Graph Local RC reference-app evidence,
   app platform beta docs/program evidence, live USK catalog publication evidence, app-update
   lifecycle/scheduler/rollback and app-data migration contract evidence, `crypta-app` developer
@@ -63,7 +64,8 @@ git checkout -b release/<build-number>
      --out-dir build/release-certification
    ```
    Preserve `build/release-certification/release-certification-summary.json`,
-   `build/release-certification/release-certification-report.md`, and sanitized
+   `build/release-certification/release-certification-report.md`,
+   `build/release-certification/network-scale-soak/summary.json`, and sanitized
    `build/release-certification/artifacts/`.
 
 3) Stabilize on `release/<build-number>` (critical fixes only). Keep diffs minimal.
@@ -103,9 +105,10 @@ git push origin v<build-number>
 - [ ] First-party AppHost bundles staged, signed, and verified when shipping app-platform artifacts.
 - [ ] `crypta-app` CLI smoke completed when `:platform-devtools` changed.
 - [ ] Signed catalog, first-party beta catalog, trusted app-review receipt, Platform API contract,
-      app-vault capability, generated-document insert, content-fetch/subscription, durable
-      app-data, app-data backup/restore, app-service registry/grant/dependency/grant-bundle/redaction,
-      app UI design-system/lint, app-owned UI smoke, Site Publisher reference-content, Profile
+      app-vault capability, generated-document insert, content-fetch/subscription, shared
+      app-network budget, network-scale soak, durable app-data, app-data backup/restore, app-service
+      registry/grant/dependency/grant-bundle/redaction, app UI design-system/lint, app-owned UI
+      smoke, Site Publisher reference-content, Profile
       Publisher identity-profile, Social Inbox RC threading/trust/service-dependency, Feed Reader
       content-subscription, Trust Graph Local RC durable exchange/scope, live USK catalog refresh,
       app-review governance/reviewer-key lifecycle and transparency-log, app platform beta

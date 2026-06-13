@@ -65,10 +65,10 @@ Use this skill when you need to:
   - `:runtime-spi` → `network.crypta.runtime.spi` (JDK-only runtime/config boundary)
   - `:platform-api` → `network.crypta.platform.api` (transport-neutral Platform API v1,
     compatibility contract, app capabilities/audit, app-vault routes, app-generated document
-    inserts, bounded content fetch, durable content subscriptions, durable app data and internal
-    update snapshots, app-data backup/restore routes, local app-service discovery/dependency
-    graph/grant-bundle routes, app-update lifecycle/scheduler, and host/operator-only beta
-    dashboard/support-bundle/recovery routes)
+    inserts, bounded content fetch, shared app-network budget service/store, durable content
+    subscriptions, durable app data and internal update snapshots, app-data backup/restore routes,
+    local app-service discovery/dependency graph/grant-bundle routes, app-update
+    lifecycle/scheduler, and host/operator-only beta dashboard/support-bundle/recovery routes)
   - `:platform-apphost` → `network.crypta.platform.apphost` (transport-neutral out-of-process
     AppHost core, sandbox status, durable rollback records, and AppHost-managed quota enforcement)
   - `:platform-app-ui` → `network.crypta.platform.appui` (app-owned static UI route and asset
@@ -85,8 +85,8 @@ Use this skill when you need to:
     deterministic packager, and distribution tooling)
   - `:platform-appcatalog` → `network.crypta.platform.appcatalog` (signed catalog sources,
     catalog writer/descriptors, Crypta catalog source handling, app-store/API compatibility
-    metadata, independent app-review receipts, artifact verification, safe ZIP extraction, and
-    verified staging)
+    metadata, independent app-review receipts, catalog security advisory/denylist policy, artifact
+    verification, safe ZIP extraction, and verified staging)
   - `:platform-trustgraph` → `network.crypta.platform.trustgraph` (Trust Graph Local RC statement
     parsing, canonicalization, verification, process-local store/anchor behavior, lifecycle/status
     records, and deterministic direct-anchor scoring)
@@ -132,15 +132,15 @@ Use this skill when you need to:
     creation and app-generated document insertion
   - `:apps:social-inbox` → staged Social Inbox Preview social/mail migration reference AppHost
     bundle with a static UI under an isolated app origin when available, using bounded AppVault
-    social-message signing, generated outbox insertion, durable content subscriptions, durable app
-    data, and operator-approved Trust Graph score app-service grants
+    social-message signing, generated outbox insertion, budgeted durable content subscriptions,
+    durable app data, and operator-approved Trust Graph score app-service grants
   - `:apps:feed-reader` → staged Feed Reader content-fetch and subscription reference AppHost bundle
     with a static UI under an isolated app origin when available, using bounded Crypta content
-    fetch, durable USK content subscriptions, durable app data, and app-generated feed document
-    insertion
+    fetch, budgeted durable USK content subscriptions, durable app data, and app-generated feed
+    document insertion
   - `:apps:trust-graph` → staged Trust Graph Preview local trust-service reference AppHost bundle
     with a static UI under an isolated app origin when available, using `trust.read`,
-    `trust.write`, durable trust graph storage/exchange, bounded content fetch/subscriptions,
+    `trust.write`, durable trust graph storage/exchange, budgeted content fetch/subscriptions,
     AppVault trust-statement signing, app-generated trust statement insertion, and the
     `trust.score` app-service provider
 - The runtime boundary is split intentionally:
@@ -171,8 +171,9 @@ Use this skill when you need to:
   `:kernel-routing` owns the compile-neutral phase-1 routing/helper slice,
   `:platform-api` owns the transport-neutral Platform API surface including app-vault route
   handlers, social-message signing, app-generated document inserts, bounded content fetch,
-  durable content subscriptions, durable app data and internal app-update snapshots, local
-  app-service discovery/grants, app-update scheduling, and host/operator-only beta
+  shared app-network budget service/store, durable content subscriptions, durable app data and
+  internal app-update snapshots, local app-service discovery/grants, app-update scheduling, and
+  host/operator-only beta
   dashboard/support-bundle/recovery routes,
   `:platform-apphost` owns the transport-neutral AppHost core, `:platform-app-ui` owns
   app-owned static UI route helpers,
@@ -380,8 +381,9 @@ Use this skill when you need to:
 - `:platform-api` owns the transport-neutral Platform API v1 under `network.crypta.platform.api`.
   It exposes node/config/peer/connectivity/security, queue, updates, wizard, alerts, diagnostics,
   apps, app updates, app-catalog control-plane families, app-vault route handlers, generated
-  app-document inserts, bounded content fetch, durable content subscriptions, durable app data and
-  update migration snapshots, app-data backup/restore routes, local app-service
+  app-document inserts, bounded content fetch, shared app-network budget service/store, durable
+  content subscriptions, durable app data and update migration snapshots, app-data backup/restore
+  routes, local app-service
   discovery/dependency graph/grant-bundle routes, and the deterministic Platform API compatibility
   contract,
   and is currently mounted at `/api/v1/` by the legacy HTTP adapter. It also owns app-token and
@@ -421,8 +423,9 @@ Use this skill when you need to:
   artifact staging layer. It writes catalogs from descriptors, verifies catalog signatures,
   enforces source/URI policy including `crypta:` catalog sources, parses optional review/API
   compatibility metadata, verifies independent app-review receipts against trusted reviewer keys
-  and local review policy, validates artifact size and SHA-256, safely extracts ZIP bundles, and
-  delegates verified staged bundles to AppHost install/update flows.
+  and local review policy, enforces catalog security advisory and exact-version denylist decisions,
+  validates artifact size and SHA-256, safely extracts ZIP bundles, and delegates verified staged
+  bundles to AppHost install/update flows.
 - `:platform-trustgraph` owns `network.crypta.platform.trustgraph`, the local Trust Graph Local RC
   model and scoring layer. It parses bounded trust statement documents, canonicalizes and verifies
   statement payloads, stores process-local anchors/statements, records local lifecycle status, and
@@ -488,8 +491,8 @@ Use this skill when you need to:
   WebOfTrust/Freetalk/Sone/Freemail shims. Legacy FCP plugin command names should continue to
   fail deterministically through the unsupported-command handler, not execute plugin code.
 - Plugin-like functionality should use out-of-process apps, signed catalogs, Platform API,
-  AppVault, durable app data, content subscriptions, Trust Graph Local RC, and operator-approved
-  app-service grants.
+  AppVault, durable app data, budgeted content subscriptions, Trust Graph Local RC, and
+  operator-approved app-service grants.
 
 ### Configuration (`network.crypta.config`)
 - Main sources live in `:foundation-config`.

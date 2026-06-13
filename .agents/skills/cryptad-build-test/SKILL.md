@@ -94,9 +94,10 @@ Use this skill when you need to:
 - `:platform-api` owns the transport-neutral Platform API v1, deterministic compatibility contract,
   app capability/audit decisions, app-vault route handlers, content/app-data/subscription/service
   routes, app-data backup/restore planning and commit routes, app-service dependency graph and
-  grant-bundle routes, app-update lifecycle service, app-data migration planning/execution and
-  internal update snapshots, and host/operator-only beta dashboard/support-bundle routes. Its
-  focused leaf tests now live under `platform-api/src/test/java`.
+  grant-bundle routes, shared app-network budget service/store, app-update lifecycle service,
+  app-data migration planning/execution and internal update snapshots, and host/operator-only beta
+  dashboard/support-bundle routes. Its focused leaf tests now live under
+  `platform-api/src/test/java`.
 - `:platform-apphost` owns the transport-neutral out-of-process AppHost core, sandbox
   policy/status reporting, Linux bubblewrap provider selection, durable rollback records,
   data/cache quota enforcement, and focused leaf tests under `platform-apphost/src/test/java`.

@@ -80,6 +80,7 @@ Use the closest category when filing beta feedback:
 - Platform API compatibility issue.
 - AppVault/identity issue.
 - Content fetch/insert issue.
+- Network budget, subscription pressure, or stale-source issue.
 - Trust Graph Preview issue.
 - UI/design-system issue.
 - Legacy replacement issue.
@@ -187,6 +188,7 @@ Use this runbook to decide whether the ecosystem beta is ready for a release can
    ./gradlew :platform-devtools:installDist
    python3 tools/release-certification/app_platform_docs_check.py --self-test
    python3 tools/release-certification/app_platform_smoke.py --self-test
+   python3 tools/release-certification/network_scale_soak.py --self-test
    ```
 
 3. Run release certification self-tests.
@@ -216,6 +218,7 @@ Use this runbook to decide whether the ecosystem beta is ready for a release can
    build/release-certification/ecosystem-certification-matrix.md
    build/release-certification/app-platform-smoke/summary.json
    build/release-certification/app-platform-smoke/app-platform-smoke-report.md
+   build/release-certification/network-scale-soak/summary.json
    ```
 
 7. Confirm the app-review governance evidence passes: review receipts, reviewer key lifecycle,
@@ -230,15 +233,20 @@ Use this runbook to decide whether the ecosystem beta is ready for a release can
 10. Confirm app-update evidence passes, including `app-update.lifecycle`, `app-update.scheduler`,
    `app-update.rollback`, `app-update.live-catalog-refresh`, and
    `app-update.data-migration-contract`.
-11. Confirm the [Operator beta dashboard](operator-beta-dashboard.md) evidence passes, including
+11. Confirm network-scale evidence passes, including `network-scale.app-network-budget`,
+   `network-scale.content-fetch-budget`, `network-scale.subscription-budget`,
+   `network-scale.queue-pressure-backoff`, `network-scale.trust-graph-import-budget`,
+   `network-scale.social-inbox-multi-source-soak`, `network-scale.redaction`, and
+   `network-scale.rc-soak-summary`.
+12. Confirm the [Operator beta dashboard](operator-beta-dashboard.md) evidence passes, including
    `operator-beta.dashboard`, `operator-beta.subscription-recovery`,
    `operator-beta.support-bundle-redaction`, and `operator-beta.web-shell`.
-12. Confirm docs evidence passes: portal, beta tutorials, beta program, known limitations, issue
+13. Confirm docs evidence passes: portal, beta tutorials, beta program, known limitations, issue
    templates, internal links, and redaction checks.
-13. Confirm the ecosystem certification matrix includes `app-platform-beta-docs-and-program`,
-   `operator-beta-ux-and-recovery`, and no active blocker remains unless a release manager recorded
-   an explicit waiver.
-14. Publish release notes with the known beta limitations and any accepted waivers or residual
+14. Confirm the ecosystem certification matrix includes `app-platform-beta-docs-and-program`,
+   `operator-beta-ux-and-recovery`, `network-scale-soak-and-subscription-budget`, and no active
+   blocker remains unless a release manager recorded an explicit waiver.
+15. Publish release notes with the known beta limitations and any accepted waivers or residual
     risks.
 
 Release-candidate mode should require docs and beta evidence unless a release-manager waiver
@@ -251,7 +259,8 @@ The current RC closeout story is:
 ```text
 first-party catalog + developer toolkit + reference apps + Trust Graph Local RC
 + review governance + app-data backup/restore + app-service dependency/grant bundles
-+ legacy plugin freeze + legacy admin waves 1-4 + ecosystem certification matrix
++ network-scale budgets/subscription soak + legacy plugin freeze + legacy admin waves 1-4
++ ecosystem certification matrix
 -> documented and certified as Ecosystem RC readiness
 ```
 
