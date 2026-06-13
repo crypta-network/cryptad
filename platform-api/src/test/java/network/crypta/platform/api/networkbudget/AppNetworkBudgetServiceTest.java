@@ -73,6 +73,81 @@ class AppNetworkBudgetServiceTest {
   }
 
   @Test
+  void reserve_whenAllowedButNotCommitted_expectNoRateCounterConsumed() {
+    AppNetworkBudgetConfig config =
+        new AppNetworkBudgetConfig(10, 20, 4, 8, 10, 10, 2, 4, 1, 10, 1, 8);
+    AppNetworkBudgetService service = service(config, new MutableClock(START));
+
+    try (var reservation =
+        service.reserve("trust-graph", AppNetworkBudgetOperation.TRUST_GRAPH_IMPORT)) {
+      assertTrue(reservation.allowed());
+      assertEquals(0, trustGraphImportCount(service, "trust-graph"));
+    }
+    AppNetworkBudgetDecision allowedAfterClose =
+        service.acquire("trust-graph", AppNetworkBudgetOperation.TRUST_GRAPH_IMPORT);
+
+    assertAllowed(allowedAfterClose);
+  }
+
+  @Test
+  void reserve_whenCommitted_expectRateCounterConsumed() {
+    AppNetworkBudgetConfig config =
+        new AppNetworkBudgetConfig(10, 20, 4, 8, 10, 10, 2, 4, 1, 10, 1, 8);
+    AppNetworkBudgetService service = service(config, new MutableClock(START));
+
+    try (var reservation =
+        service.reserve("trust-graph", AppNetworkBudgetOperation.TRUST_GRAPH_IMPORT)) {
+      assertTrue(reservation.allowed());
+      assertAllowed(reservation.commit());
+    }
+    AppNetworkBudgetDecision denied =
+        service.acquire("trust-graph", AppNetworkBudgetOperation.TRUST_GRAPH_IMPORT);
+
+    assertFalse(denied.allowed());
+    assertEquals("trust_graph_import_budget_exhausted", denied.errorCode());
+  }
+
+  @Test
+  void reserve_whenClosedBeforeCommit_expectCommitDeniedAndRateCounterNotConsumed() {
+    AppNetworkBudgetConfig config =
+        new AppNetworkBudgetConfig(10, 20, 4, 8, 10, 10, 2, 4, 1, 10, 1, 8);
+    AppNetworkBudgetService service = service(config, new MutableClock(START));
+    AppNetworkBudgetReservation reservation =
+        service.reserve("trust-graph", AppNetworkBudgetOperation.TRUST_GRAPH_IMPORT);
+
+    reservation.close();
+    AppNetworkBudgetDecision deniedCommit = reservation.commit();
+    AppNetworkBudgetDecision allowedAfterClose =
+        service.acquire("trust-graph", AppNetworkBudgetOperation.TRUST_GRAPH_IMPORT);
+
+    assertFalse(deniedCommit.allowed());
+    assertEquals("network_budget_unavailable", deniedCommit.errorCode());
+    assertAllowed(allowedAfterClose);
+  }
+
+  @Test
+  void reserve_whenPerAppConcurrencyReached_expectDeniedUntilReservationClosed() {
+    AppNetworkBudgetConfig config =
+        new AppNetworkBudgetConfig(10, 20, 4, 8, 10, 10, 2, 4, 10, 10, 1, 8);
+    AppNetworkBudgetService service = service(config, new MutableClock(START));
+    AppNetworkBudgetReservation first =
+        service.reserve("trust-graph", AppNetworkBudgetOperation.TRUST_GRAPH_IMPORT);
+
+    AppNetworkBudgetReservation denied =
+        service.reserve("trust-graph", AppNetworkBudgetOperation.TRUST_GRAPH_IMPORT);
+
+    assertTrue(first.allowed());
+    assertFalse(denied.allowed());
+    assertEquals("trust_graph_import_concurrency_limited", denied.decision().errorCode());
+
+    first.close();
+    try (var allowed =
+        service.reserve("trust-graph", AppNetworkBudgetOperation.TRUST_GRAPH_IMPORT)) {
+      assertTrue(allowed.allowed());
+    }
+  }
+
+  @Test
   void acquire_whenPerAppConcurrencyReached_expectDeniedUntilLeaseClosed() {
     AppNetworkBudgetService service = service(config(10, 20, 1, 8), new MutableClock(START));
     AppNetworkBudgetDecision first =
@@ -295,6 +370,15 @@ class AppNetworkBudgetServiceTest {
     return service.snapshots().stream()
         .filter(snapshot -> snapshot.appId().equals(appId))
         .filter(snapshot -> snapshot.operation() == AppNetworkBudgetOperation.SUBSCRIPTION_POLL)
+        .mapToInt(AppNetworkBudgetSnapshot::count)
+        .findFirst()
+        .orElse(0);
+  }
+
+  private static int trustGraphImportCount(AppNetworkBudgetService service, String appId) {
+    return service.snapshots().stream()
+        .filter(snapshot -> snapshot.appId().equals(appId))
+        .filter(snapshot -> snapshot.operation() == AppNetworkBudgetOperation.TRUST_GRAPH_IMPORT)
         .mapToInt(AppNetworkBudgetSnapshot::count)
         .findFirst()
         .orElse(0);

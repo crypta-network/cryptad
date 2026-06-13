@@ -10,6 +10,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Shared deterministic app-network budget service.
@@ -41,6 +42,7 @@ public final class AppNetworkBudgetService {
   private final AppNetworkBudgetConfig config;
   private final Clock clock;
   private final Map<String, Integer> activeLeases = new LinkedHashMap<>();
+  private final Map<String, Integer> pendingRateReservations = new LinkedHashMap<>();
 
   /**
    * Creates a service using the system UTC clock.
@@ -183,6 +185,70 @@ public final class AppNetworkBudgetService {
   }
 
   /**
+   * Reserves budget capacity for a composed operation without durably consuming rate quota.
+   *
+   * <p>The reservation checks the same rate and concurrency limits as {@link #acquire(String,
+   * AppNetworkBudgetOperation)}. When allowed, it records process-local concurrency and an
+   * in-memory rate hold, then returns a closeable reservation. The rate hold prevents other
+   * requests handled by this service instance from overbooking the fixed-window quota while the
+   * prerequisite work runs. Durable rate counters are written only when the caller invokes {@link
+   * AppNetworkBudgetReservation#commit()}.
+   *
+   * <p>This method is for short composed workflows that need fail-closed admission before starting
+   * separately budgeted work. Callers must close the returned reservation in a try-with-resources
+   * block so rejected prerequisite work releases the held capacity.
+   *
+   * @param appId authenticated app id or reserved internal scope to reserve
+   * @param operation requested network operation and budget family
+   * @return allowed reservation with held capacity or denied reservation with safe metadata
+   */
+  public synchronized AppNetworkBudgetReservation reserve(
+      String appId, AppNetworkBudgetOperation operation) {
+    String normalizedAppId = AppNetworkBudgetScope.normalize(appId);
+    AppNetworkBudgetOperation checkedOperation = Objects.requireNonNull(operation, "operation");
+    Instant now = clock.instant();
+    List<RateLimit> rateLimits = rateLimits(normalizedAppId, checkedOperation);
+    List<ConcurrencyLimit> concurrencyLimits = concurrencyLimits(normalizedAppId, checkedOperation);
+    try {
+      AppNetworkBudgetDecision concurrencyDecision =
+          concurrencyDecision(normalizedAppId, checkedOperation, now, concurrencyLimits);
+      if (!concurrencyDecision.allowed()) {
+        recordConcurrencyDenial(normalizedAppId, checkedOperation, now, rateLimits);
+        return deniedReservation(concurrencyDecision);
+      }
+      AppNetworkBudgetDecision rateDecision =
+          rateCheckDecision(normalizedAppId, checkedOperation, now, rateLimits);
+      if (!rateDecision.allowed()) {
+        return deniedReservation(rateDecision);
+      }
+      List<String> rateReservationKeys = reserveRateCapacity(rateLimits, now);
+      for (ConcurrencyLimit limit : concurrencyLimits) {
+        activeLeases.merge(limit.key(), 1, Integer::sum);
+      }
+      AtomicBoolean rateReservationActive = new AtomicBoolean(true);
+      AppNetworkBudgetDecision decision =
+          AppNetworkBudgetDecision.allowed(
+              normalizedAppId, checkedOperation, now, AppNetworkBudgetLease.noop());
+      return new AppNetworkBudgetReservation(
+          decision,
+          () ->
+              commitReservation(
+                  normalizedAppId, checkedOperation, rateReservationKeys, rateReservationActive),
+          () -> releaseReservation(concurrencyLimits, rateReservationKeys, rateReservationActive));
+    } catch (IOException _) {
+      return deniedReservation(
+          AppNetworkBudgetDecision.denied(
+              503,
+              normalizedAppId,
+              checkedOperation,
+              "network_budget_unavailable",
+              "App network budget service is unavailable.",
+              now,
+              null));
+    }
+  }
+
+  /**
    * Returns safe snapshots for currently stored counters.
    *
    * <p>Snapshots are intended for operator diagnostics and release evidence. They expose normalized
@@ -243,7 +309,7 @@ public final class AppNetworkBudgetService {
       throws IOException {
     for (RateLimit limit : rateLimits) {
       AppNetworkBudgetUsage usage = usage(limit, now);
-      if (usage.count() >= limit.limit()) {
+      if (usage.count() + pendingRateReservations(limit, usage.windowStart()) >= limit.limit()) {
         Instant nextAvailableAt = usage.windowStart().plus(usage.window());
         return AppNetworkBudgetDecision.denied(
             429,
@@ -263,7 +329,7 @@ public final class AppNetworkBudgetService {
       throws IOException {
     for (RateLimit limit : rateLimits) {
       AppNetworkBudgetUsage usage = usage(limit, now);
-      if (usage.count() >= limit.limit()) {
+      if (usage.count() + pendingRateReservations(limit, usage.windowStart()) >= limit.limit()) {
         Instant nextAvailableAt = usage.windowStart().plus(usage.window());
         store.write(usage.deniedAt(now, "rate_limited", nextAvailableAt));
         return AppNetworkBudgetDecision.denied(
@@ -301,10 +367,83 @@ public final class AppNetworkBudgetService {
     }
   }
 
+  private List<String> reserveRateCapacity(List<RateLimit> rateLimits, Instant now) {
+    ArrayList<String> reservationKeys = new ArrayList<>(rateLimits.size());
+    for (RateLimit limit : rateLimits) {
+      String key = rateReservationKey(limit, truncate(now, limit.window()));
+      pendingRateReservations.merge(key, 1, Integer::sum);
+      reservationKeys.add(key);
+    }
+    return reservationKeys;
+  }
+
+  private synchronized AppNetworkBudgetDecision commitReservation(
+      String appId,
+      AppNetworkBudgetOperation operation,
+      List<String> rateReservationKeys,
+      AtomicBoolean rateReservationActive) {
+    Instant now = clock.instant();
+    if (rateReservationActive.compareAndSet(true, false)) {
+      releasePendingRateReservations(rateReservationKeys);
+    }
+    List<RateLimit> rateLimits = rateLimits(appId, operation);
+    try {
+      AppNetworkBudgetDecision rateDecision = rateDecision(appId, operation, now, rateLimits);
+      if (!rateDecision.allowed()) {
+        return rateDecision;
+      }
+      for (RateLimit limit : rateLimits) {
+        store.write(usage(limit, now).allowedAt(now));
+      }
+      return AppNetworkBudgetDecision.allowed(appId, operation, now, AppNetworkBudgetLease.noop());
+    } catch (IOException _) {
+      return AppNetworkBudgetDecision.denied(
+          503,
+          appId,
+          operation,
+          "network_budget_unavailable",
+          "App network budget service is unavailable.",
+          now,
+          null);
+    }
+  }
+
+  private static AppNetworkBudgetReservation deniedReservation(AppNetworkBudgetDecision decision) {
+    return new AppNetworkBudgetReservation(decision, () -> decision, () -> {});
+  }
+
   private synchronized void release(List<ConcurrencyLimit> limits) {
     for (ConcurrencyLimit limit : limits) {
       activeLeases.computeIfPresent(limit.key(), (_, count) -> count <= 1 ? null : count - 1);
     }
+  }
+
+  private synchronized void releaseReservation(
+      List<ConcurrencyLimit> concurrencyLimits,
+      List<String> rateReservationKeys,
+      AtomicBoolean rateReservationActive) {
+    release(concurrencyLimits);
+    if (rateReservationActive.compareAndSet(true, false)) {
+      releasePendingRateReservations(rateReservationKeys);
+    }
+  }
+
+  private void releasePendingRateReservations(List<String> reservationKeys) {
+    for (String key : reservationKeys) {
+      pendingRateReservations.computeIfPresent(key, (_, count) -> count <= 1 ? null : count - 1);
+    }
+  }
+
+  private int pendingRateReservations(RateLimit limit, Instant windowStart) {
+    return pendingRateReservations.getOrDefault(rateReservationKey(limit, windowStart), 0);
+  }
+
+  private static String rateReservationKey(RateLimit limit, Instant windowStart) {
+    return AppNetworkBudgetScope.normalize(limit.appId())
+        + '\n'
+        + limit.operation().jsonValue()
+        + '\n'
+        + windowStart;
   }
 
   private List<RateLimit> rateLimits(String appId, AppNetworkBudgetOperation operation) {

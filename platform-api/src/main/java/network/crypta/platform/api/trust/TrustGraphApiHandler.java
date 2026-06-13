@@ -11,6 +11,7 @@ import network.crypta.platform.api.content.ContentApiHandler;
 import network.crypta.platform.api.networkbudget.AppNetworkBudgetDecision;
 import network.crypta.platform.api.networkbudget.AppNetworkBudgetLease;
 import network.crypta.platform.api.networkbudget.AppNetworkBudgetOperation;
+import network.crypta.platform.api.networkbudget.AppNetworkBudgetReservation;
 import network.crypta.platform.api.networkbudget.AppNetworkBudgetScope;
 import network.crypta.platform.api.networkbudget.AppNetworkBudgetService;
 import network.crypta.platform.trustgraph.InMemoryTrustGraphStore;
@@ -319,33 +320,35 @@ public final class TrustGraphApiHandler {
     String uri = PlatformApiParameters.requireString(queryParameters, PARAM_URI);
     int maxBytes = readMaxBytes(queryParameters);
     try {
-      precheckTrustGraphImportBudget(appId);
-      Map<String, Object> fetched =
-          new ContentApiHandler(
-                  contentFetchPort,
-                  networkBudgetService,
-                  AppNetworkBudgetOperation.TRUST_GRAPH_IMPORT_URI)
-              .fetch(
-                  Map.of(
-                      PARAM_URI,
-                      List.of(uri),
-                      PARAM_MAX_BYTES,
-                      List.of(Integer.toString(maxBytes)),
-                      "format",
-                      List.of("text"),
-                      "purpose",
-                      List.of("trust-graph-import")),
-                  budgetAppId(appId));
-      Object contentText = fetched.get("contentText");
-      if (!(contentText instanceof String documentJson)) {
-        throw new PlatformApiException(
-            415, "unsupported_content_encoding", "Fetched trust statement is not valid UTF-8.");
-      }
-      if (documentJson.getBytes(StandardCharsets.UTF_8).length > maxBytes) {
-        throw new PlatformApiException(
-            502, "content_fetch_too_large", "Fetched content exceeded the configured byte bound.");
-      }
-      try (var _ = acquireTrustGraphImportBudgetLease(appId)) {
+      try (var importReservation = reserveTrustGraphImportBudget(appId)) {
+        Map<String, Object> fetched =
+            new ContentApiHandler(
+                    contentFetchPort,
+                    networkBudgetService,
+                    AppNetworkBudgetOperation.TRUST_GRAPH_IMPORT_URI)
+                .fetch(
+                    Map.of(
+                        PARAM_URI,
+                        List.of(uri),
+                        PARAM_MAX_BYTES,
+                        List.of(Integer.toString(maxBytes)),
+                        "format",
+                        List.of("text"),
+                        "purpose",
+                        List.of("trust-graph-import")),
+                    budgetAppId(appId));
+        Object contentText = fetched.get("contentText");
+        if (!(contentText instanceof String documentJson)) {
+          throw new PlatformApiException(
+              415, "unsupported_content_encoding", "Fetched trust statement is not valid UTF-8.");
+        }
+        if (documentJson.getBytes(StandardCharsets.UTF_8).length > maxBytes) {
+          throw new PlatformApiException(
+              502,
+              "content_fetch_too_large",
+              "Fetched content exceeded the configured byte bound.");
+        }
+        commitTrustGraphImportBudget(importReservation);
         TrustStatementDocument document = TrustStatementParser.parse(documentJson);
         TrustGraphImportResult result =
             store.importStatement(
@@ -366,13 +369,24 @@ public final class TrustGraphApiHandler {
     }
   }
 
-  private void precheckTrustGraphImportBudget(String appId) {
+  private AppNetworkBudgetReservation reserveTrustGraphImportBudget(String appId) {
     if (networkBudgetService == null) {
-      return;
+      return AppNetworkBudgetReservation.noop(
+          budgetAppId(appId), AppNetworkBudgetOperation.TRUST_GRAPH_IMPORT, clock.instant());
     }
-    AppNetworkBudgetDecision decision =
-        networkBudgetService.check(
+    AppNetworkBudgetReservation reservation =
+        networkBudgetService.reserve(
             budgetAppId(appId), AppNetworkBudgetOperation.TRUST_GRAPH_IMPORT);
+    AppNetworkBudgetDecision decision = reservation.decision();
+    if (!decision.allowed()) {
+      throw new PlatformApiException(
+          decision.statusCode(), decision.errorCode(), decision.message());
+    }
+    return reservation;
+  }
+
+  private static void commitTrustGraphImportBudget(AppNetworkBudgetReservation reservation) {
+    AppNetworkBudgetDecision decision = reservation.commit();
     if (!decision.allowed()) {
       throw new PlatformApiException(
           decision.statusCode(), decision.errorCode(), decision.message());

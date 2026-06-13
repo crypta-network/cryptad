@@ -577,6 +577,42 @@ class TrustGraphApiRouterTest {
   }
 
   @Test
+  void route_whenImportUriTrustGraphReservationActive_expectNoFetchOrImport() {
+    AtomicBoolean fetchCalled = new AtomicBoolean(false);
+    ContentFetchPort fetchPort =
+        request -> {
+          fetchCalled.set(true);
+          return new BoundedContentFetchResult(
+              validStatement().getBytes(java.nio.charset.StandardCharsets.UTF_8),
+              request.uri(),
+              request.uri(),
+              "ok");
+        };
+    AppNetworkBudgetService budgetService = trustImportBudget(10, 10);
+    InMemoryTrustGraphStore store = new InMemoryTrustGraphStore();
+    PlatformApiRouter router =
+        router(fetchPort, new TrustGraphApiHandler(store, FIXED_CLOCK, budgetService));
+
+    try (var reservation =
+        budgetService.reserve(APP_ID, AppNetworkBudgetOperation.TRUST_GRAPH_IMPORT)) {
+      assertTrue(reservation.allowed());
+      PlatformApiResponse response =
+          router.route(
+              request(
+                  "POST",
+                  List.of("trust-graph", "import-uri"),
+                  Map.of("uri", List.of("CHK@statement")),
+                  PlatformApiPrincipal.appBrowserSession(
+                      APP_ID, List.of("trust.write", "content.fetch"))));
+
+      assertEquals(429, response.statusCode());
+      assertTrue(response.body().contains("\"code\":\"trust_graph_import_concurrency_limited\""));
+      assertFalse(fetchCalled.get());
+      assertEquals(0, store.statementCount());
+    }
+  }
+
+  @Test
   void route_whenHostOperatorImportUriContentFetchBudgetExhausted_expectNoFetchOrImport() {
     AtomicBoolean fetchCalled = new AtomicBoolean(false);
     ContentFetchPort fetchPort =

@@ -55,10 +55,11 @@ public enum AppNetworkBudgetOperation {
   /**
    * Content-fetch portion of Trust Graph import by URI.
    *
-   * <p>Trust Graph import-by-URI first performs a non-consuming Trust Graph import precheck, then
-   * charges this value for the bounded content fetch, and finally acquires the real Trust Graph
-   * import lease before parsing/importing the fetched statement. The service maps this value onto
-   * content-fetch counters rather than maintaining an independent URI-import fetch quota.
+   * <p>Trust Graph import-by-URI first reserves Trust Graph import capacity without writing durable
+   * import rate counters, then charges this value for the bounded content fetch, and finally
+   * commits the Trust Graph import reservation before parsing/importing the fetched statement. The
+   * service maps this value onto content-fetch counters rather than maintaining an independent
+   * URI-import fetch quota.
    */
   TRUST_GRAPH_IMPORT_URI("trust_graph_import_uri"),
 
