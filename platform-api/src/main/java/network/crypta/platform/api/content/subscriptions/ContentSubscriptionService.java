@@ -293,6 +293,43 @@ public final class ContentSubscriptionService {
   }
 
   /**
+   * Clears failure and backoff metadata without fetching content.
+   *
+   * <p>This operator recovery path leaves the source URI, last successful digest, edition, and
+   * content metadata intact. It does not call the runtime fetch port and therefore does not consume
+   * app-network budget. Enabled subscriptions become due immediately; paused subscriptions remain
+   * paused so operators can decide when to resume them.
+   *
+   * @param appId app id that owns the subscription
+   * @param subscriptionId subscription id path segment from the request
+   * @return safe subscription summary after the metadata reset is persisted
+   */
+  public synchronized Map<String, Object> resetBackoff(String appId, String subscriptionId) {
+    ContentSubscription reset =
+        requireOwned(appId, subscriptionId).withBackoffReset(clock.instant());
+    write(reset);
+    return summaryValues(reset);
+  }
+
+  /**
+   * Makes one enabled subscription due immediately without fetching content.
+   *
+   * <p>The scheduler still owns the next actual fetch and may skip it because of queue pressure,
+   * app capability changes, no-overlap protection, or network budget policy. This method performs
+   * only a metadata update and never calls the runtime fetch port.
+   *
+   * @param appId app id that owns the subscription
+   * @param subscriptionId subscription id path segment from the request
+   * @return safe subscription summary after the next due time is updated
+   */
+  public synchronized Map<String, Object> rescheduleNow(String appId, String subscriptionId) {
+    ContentSubscription rescheduled =
+        requireOwned(appId, subscriptionId).withRescheduledNow(clock.instant());
+    write(rescheduled);
+    return summaryValues(rescheduled);
+  }
+
+  /**
    * Deletes one app-owned subscription.
    *
    * <p>The durable record is removed from the store before a deleted-state summary is returned. The

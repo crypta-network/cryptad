@@ -108,6 +108,48 @@ class OperatorSupportRedactorTest {
   }
 
   @Test
+  void redact_whenOperatorRcRecoveryContextContainsSecrets_expectUnsafeValuesRemoved() {
+    Map<String, Object> recoveryContext =
+        Map.ofEntries(
+            Map.entry("actionId", "app.export-before-uninstall"),
+            Map.entry("route", "/api/v1/operator/recovery/execute"),
+            Map.entry("formPassword", "operator-form-secret"),
+            Map.entry("planToken", "operator-plan-token"),
+            Map.entry("browserSessionToken", "browser-session-secret"),
+            Map.entry("appToken", "app-process-token"),
+            Map.entry("rawRequestBody", "raw request payload"),
+            Map.entry("rawTrustStatementBody", "{\"signature\":{\"value\":\"raw-signature\"}}"),
+            Map.entry("payloadBase64", "raw-backup-payload"),
+            Map.entry("valueBase64", "raw-app-data-value"),
+            Map.entry("commandLine", "java -jar /work/cryptad/private/cryptad.jar"),
+            Map.entry("stagedBundlePath", "/work/cryptad/private/staged-bundle"),
+            Map.entry("privateUri", "USK@example/private/0/data.json"),
+            Map.entry(
+                "privateKey", "-----BEGIN PRIVATE KEY-----\nsecret\n-----END PRIVATE KEY-----"),
+            Map.entry("recoveryPhrase", "correct horse battery staple"));
+
+    OperatorSupportRedactor.RedactionResult result =
+        OperatorSupportRedactor.redact(Map.of("operatorRcRecovery", recoveryContext));
+
+    String rendered = result.value().toString();
+    assertTrue(rendered.contains("/api/v1/operator/recovery/execute"));
+    assertFalse(rendered.contains("operator-form-secret"));
+    assertFalse(rendered.contains("operator-plan-token"));
+    assertFalse(rendered.contains("browser-session-secret"));
+    assertFalse(rendered.contains("app-process-token"));
+    assertFalse(rendered.contains("raw request payload"));
+    assertFalse(rendered.contains("raw-signature"));
+    assertFalse(rendered.contains("raw-backup-payload"));
+    assertFalse(rendered.contains("raw-app-data-value"));
+    assertFalse(rendered.contains("/work/cryptad/private"));
+    assertFalse(rendered.contains("USK@example/private"));
+    assertFalse(rendered.contains("BEGIN PRIVATE KEY"));
+    assertFalse(rendered.contains("correct horse battery staple"));
+    assertTrue(result.omittedFields().contains("payloadBase64"));
+    assertTrue(result.omittedFields().contains("valueBase64"));
+  }
+
+  @Test
   void redact_whenArbitraryAbsolutePathsPresent_expectUnsafePathsRemoved() {
     String posixPath = posixAppPath();
     String macSupportPath = macSupportAppPath();

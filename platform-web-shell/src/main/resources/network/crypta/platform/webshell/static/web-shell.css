@@ -586,6 +586,33 @@ a {
   gap: 8px;
 }
 
+.operator-rc-action-list,
+.operator-rc-action-forms {
+  align-items: stretch;
+}
+
+.operator-rc-action-form {
+  align-items: stretch;
+  border: 1px solid var(--shell-border);
+  border-radius: 8px;
+  padding: 10px;
+  min-width: min(100%, 280px);
+}
+
+.operator-rc-target-field,
+.operator-rc-confirmation-field {
+  min-width: min(100%, 220px);
+}
+
+.operator-rc-plan-result {
+  width: 100%;
+}
+
+.button-danger {
+  border-color: #b42318;
+  color: #b42318;
+}
+
 .app-data-restore-details {
   display: grid;
   gap: 10px;

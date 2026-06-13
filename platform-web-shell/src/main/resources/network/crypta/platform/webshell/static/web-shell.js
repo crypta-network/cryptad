@@ -743,6 +743,8 @@
     const subscriptions = arrayValue(data.subscriptions);
     const appServices = recordValue(data.appServices);
     const trustGraph = recordValue(data.trustGraph);
+    const operatorRcRecovery = recordValue(data.operatorRcRecovery);
+    const networkBudgets = recordValue(data.networkBudgets);
 
     const summaryCards = document.createElement("div");
     summaryCards.className = "app-card-list";
@@ -789,12 +791,22 @@
     if (warnings.length) {
       sections.betaDashboard.append(renderBetaWarningList(warnings));
     }
+    if (data.rcCompatibilityFallback === true) {
+      sections.betaDashboard.append(
+        text(
+          "p",
+          "error-state",
+          "Operator RC Recovery is using the beta dashboard compatibility fallback.",
+        ),
+      );
+    }
 
     sections.betaDashboard.append(
       renderBetaCatalogs(catalogs),
       renderBetaApps(apps),
       renderBetaSubscriptions(subscriptions),
       renderBetaTrustAndServices(trustGraph, appServices),
+      renderOperatorRcRecovery(operatorRcRecovery, networkBudgets),
       renderBetaRecoveryActions(arrayValue(data.recoveryActions)),
     );
   }
@@ -1032,6 +1044,88 @@
     return group;
   }
 
+  function renderOperatorRcRecovery(recovery, networkBudgets) {
+    const group = document.createElement("section");
+    group.className = "diagnostics-section";
+    group.append(text("h3", "diagnostics-section-title", "Operator RC Recovery"));
+    const actionGroups = recordValue(recovery.actions);
+    const networkSnapshots = arrayValue(networkBudgets.snapshots);
+    const summaryCards = document.createElement("div");
+    summaryCards.className = "app-card-list";
+    summaryCards.append(
+      summaryCard(
+        normalizedStatus(recovery.status || "unavailable", "Unavailable"),
+        [
+          ["Plan before execute", yesNoText(recovery.planBeforeExecute, false)],
+          ["Closed action dispatch", yesNoText(recovery.closedActionDispatch, false)],
+          ["Recent recovery events", scalar(arrayValue(recovery.recentAudit).length)],
+        ],
+        recovery.status === "available" ? "is-success" : "is-warning",
+      ),
+      summaryCard(
+        "Network budgets",
+        [
+          ["Available", yesNoText(networkBudgets.available, false)],
+          ["Snapshots", scalar(networkSnapshots.length)],
+          ["Safe fields", "app id, operation, window, counts, limits"],
+        ],
+        networkBudgets.available === true ? "" : "is-warning",
+      ),
+    );
+    group.append(summaryCards);
+
+    const categories = Object.keys(actionGroups);
+    if (!categories.length) {
+      group.append(text("p", "empty-state", "No typed RC recovery actions were returned."));
+      return group;
+    }
+
+    const list = document.createElement("div");
+    list.className = "app-card-list operator-rc-action-list";
+    categories.forEach((category) => {
+      const actions = arrayValue(actionGroups[category]);
+      if (!actions.length) {
+        return;
+      }
+      const card = document.createElement("article");
+      card.className = "app-card";
+      card.append(betaCardHeader(operatorRecoveryCategoryLabel(category), `${actions.length} actions`, ""));
+      const forms = document.createElement("div");
+      forms.className = "app-card-actions operator-rc-action-forms";
+      actions.forEach((action) => {
+        const form = buildOperatorRcRecoveryAction(action);
+        if (form) {
+          forms.append(form);
+        }
+      });
+      card.append(forms);
+      list.append(card);
+    });
+    group.append(list);
+    return group;
+  }
+
+  function operatorRecoveryCategoryLabel(category) {
+    switch (category) {
+      case "catalog":
+        return "Catalog health and repair";
+      case "app":
+        return "App lifecycle and update";
+      case "subscription":
+        return "Content subscriptions";
+      case "app-service":
+        return "App-service grants and bundles";
+      case "trust-graph":
+        return "Trust Graph Local RC";
+      case "network-budget":
+        return "Network budgets";
+      case "support":
+        return "Support bundle";
+      default:
+        return normalizedStatus(category, "Recovery");
+    }
+  }
+
   function betaCardHeader(title, subtitle, tone) {
     const header = document.createElement("div");
     header.className = "app-card-header";
@@ -1097,6 +1191,98 @@
     submit.disabled = !formPassword || action.available === false;
     form.append(submit);
     return form;
+  }
+
+  function buildOperatorRcRecoveryAction(action) {
+    const actionId = typeof action?.actionId === "string" ? action.actionId : "";
+    if (!actionId) {
+      return null;
+    }
+    const form = document.createElement("form");
+    form.className = "app-action-form operator-rc-action-form";
+    form.dataset.operatorRcRecoveryActionId = actionId;
+    form.dataset.operatorRcRecoveryPlanned = "false";
+    const actionInput = document.createElement("input");
+    actionInput.type = "hidden";
+    actionInput.name = "actionId";
+    actionInput.value = actionId;
+    form.append(actionInput);
+    const planTokenInput = document.createElement("input");
+    planTokenInput.type = "hidden";
+    planTokenInput.name = "planToken";
+    form.append(planTokenInput);
+    form.append(
+      text(
+        "p",
+        "app-card-subtitle",
+        typeof action.description === "string" ? action.description : actionId,
+      ),
+    );
+
+    arrayValue(action.targetFields).forEach((fieldName) => {
+      if (typeof fieldName !== "string" || !fieldName) {
+        return;
+      }
+      const label = document.createElement("label");
+      label.className = "queue-field operator-rc-target-field";
+      label.append(text("span", "", fieldName));
+      const input = document.createElement("input");
+      input.name = fieldName;
+      input.autocomplete = "off";
+      input.spellcheck = false;
+      input.placeholder = fieldName;
+      input.addEventListener("input", () => {
+        form.dataset.operatorRcRecoveryPlanned = "false";
+        planTokenInput.value = "";
+      });
+      label.append(input);
+      form.append(label);
+    });
+
+    if (action.destructive === true) {
+      const confirmLabel = document.createElement("label");
+      confirmLabel.className = "queue-checkbox";
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.name = "confirm";
+      checkbox.value = "true";
+      confirmLabel.append(checkbox, document.createTextNode(" Confirm destructive action"));
+      form.append(confirmLabel);
+
+      const phraseLabel = document.createElement("label");
+      phraseLabel.className = "queue-field operator-rc-confirmation-field";
+      phraseLabel.append(text("span", "", "confirmationPhrase"));
+      const phrase = document.createElement("input");
+      phrase.name = "confirmationPhrase";
+      phrase.autocomplete = "off";
+      phrase.spellcheck = false;
+      phrase.placeholder = "Use phrase from plan";
+      phraseLabel.append(phrase);
+      form.append(phraseLabel);
+    }
+
+    const buttons = document.createElement("div");
+    buttons.className = "app-card-actions";
+    buttons.append(
+      operatorRcSubmitButton("Plan", "plan", false),
+      operatorRcSubmitButton("Execute", "execute", action.destructive === true),
+    );
+    form.append(buttons);
+    const result = document.createElement("div");
+    result.className = "app-data-restore-result operator-rc-plan-result";
+    result.hidden = true;
+    form.append(result);
+    return form;
+  }
+
+  function operatorRcSubmitButton(label, action, destructive) {
+    const button = document.createElement("button");
+    button.className = destructive ? "button button-danger" : "button button-secondary";
+    button.type = "submit";
+    button.textContent = label;
+    button.dataset.operatorRcRecoverySubmit = action;
+    button.disabled = !formPassword;
+    return button;
   }
 
   function operatorStatusTone(status) {
@@ -5939,18 +6125,31 @@
     updateBetaDashboardToolbar();
 
     try {
-      const snapshot = await loadJson(apiUrl("operator/beta-dashboard"));
+      const snapshot = await loadJson(apiUrl("operator/rc-dashboard"));
       if (loadGeneration !== betaDashboardLoadGeneration) {
         return;
       }
       renderBetaDashboard(snapshot);
-      setBetaDashboardStatus("Beta dashboard refreshed.", "is-success");
+      setBetaDashboardStatus("Operator RC Recovery refreshed.", "is-success");
     } catch (error) {
       if (loadGeneration !== betaDashboardLoadGeneration) {
         return;
       }
-      renderError(sections.betaDashboard, "beta dashboard", error);
-      setBetaDashboardStatus(error instanceof Error ? error.message : String(error), "is-error");
+      try {
+        const fallback = await loadJson(apiUrl("operator/beta-dashboard"));
+        if (loadGeneration !== betaDashboardLoadGeneration) {
+          return;
+        }
+        fallback.rcCompatibilityFallback = true;
+        renderBetaDashboard(fallback);
+        setBetaDashboardStatus("Operator RC Recovery fallback loaded from beta dashboard.", "is-warning");
+      } catch (fallbackError) {
+        renderError(sections.betaDashboard, "operator RC recovery", fallbackError);
+        setBetaDashboardStatus(
+          fallbackError instanceof Error ? fallbackError.message : String(fallbackError),
+          "is-error",
+        );
+      }
     }
   }
 
@@ -6406,6 +6605,8 @@
 
   async function loadSupportBundle() {
     try {
+      shellState.supportBundlePreviewSnapshot = await loadJson(apiUrl("operator/support-bundle/preview"))
+        .catch(() => null);
       const bundle = await loadJson(apiUrl("operator/support-bundle"));
       shellState.supportBundleSnapshot = bundle;
       updateBetaDashboardToolbar();
@@ -6784,6 +6985,360 @@
       await Promise.all([loadBetaDashboardSection(), loadAppsSection()]);
     } catch (error) {
       setBetaDashboardStatus(error instanceof Error ? error.message : String(error), "is-error");
+    }
+  }
+
+  async function submitOperatorRcRecoveryAction(form, submitter) {
+    const action = submitter?.dataset?.operatorRcRecoverySubmit || "plan";
+    const planTokenInput = form.querySelector('input[name="planToken"]');
+    if (
+      action === "execute" &&
+      (form.dataset.operatorRcRecoveryPlanned !== "true" || !planTokenInput?.value)
+    ) {
+      setBetaDashboardStatus("Review the recovery plan before executing.", "is-error");
+      return;
+    }
+    const path = action === "execute" ? "operator/recovery/execute" : "operator/recovery/plan";
+    const resultContainer = form.querySelector(".operator-rc-plan-result");
+    try {
+      const response = await submitFormMutation(
+        "POST",
+        path,
+        new FormData(form),
+        "Operator RC recovery actions unavailable in read-only mode.",
+      );
+      if (action === "execute") {
+        const result = recordValue(response.result);
+        renderOperatorRcResult(resultContainer, result);
+        form.dataset.operatorRcRecoveryPlanned = "false";
+        if (planTokenInput) {
+          planTokenInput.value = "";
+        }
+        setBetaDashboardStatus(operatorRcResultStatusMessage(result), operatorRcResultTone(result));
+        if (operatorRcResultHasSensitiveBackup(result)) {
+          await loadAppsSection();
+        } else if (operatorRcResultShouldReload(result)) {
+          await Promise.all([loadBetaDashboardSection(), loadAppsSection()]);
+        }
+        return;
+      }
+      const plan = recordValue(response.plan);
+      renderOperatorRcPlan(resultContainer, plan);
+      const planExecutable = operatorRcPlanExecutable(plan);
+      const planToken = typeof plan.planToken === "string" ? plan.planToken : "";
+      if (planTokenInput) {
+        planTokenInput.value = planExecutable ? planToken : "";
+      }
+      form.dataset.operatorRcRecoveryPlanned = planExecutable && planToken ? "true" : "false";
+      setBetaDashboardStatus("Operator RC recovery plan generated.", "is-success");
+    } catch (error) {
+      if (action === "plan" && planTokenInput) {
+        planTokenInput.value = "";
+        form.dataset.operatorRcRecoveryPlanned = "false";
+      }
+      if (resultContainer) {
+        clear(resultContainer);
+        resultContainer.hidden = false;
+        resultContainer.append(
+          text("p", "error-state", error instanceof Error ? error.message : String(error)),
+        );
+      }
+      setBetaDashboardStatus(error instanceof Error ? error.message : String(error), "is-error");
+    }
+  }
+
+  function renderOperatorRcPlan(container, plan) {
+    if (!container) {
+      return;
+    }
+    clear(container);
+    container.hidden = false;
+    container.append(text("h4", "app-card-title", "Recovery plan"));
+    container.append(
+      definitionList([
+        ["Action", scalar(plan.actionId)],
+        ["Status", scalar(plan.status)],
+        ["Confirmation phrase", scalar(plan.confirmationPhrase || "Not required")],
+        ["Requires stopped app", yesNoText(plan.requiresStoppedApp, false)],
+        ["Backup recommended", yesNoText(plan.backupRecommended, false)],
+      ]),
+    );
+    appendRecoveryTextList(container, "Warnings", stringList(plan.warnings));
+    appendRecoveryTextList(container, "Blockers", stringList(plan.blockReasons));
+  }
+
+  function renderOperatorRcResult(container, result) {
+    if (!container) {
+      return;
+    }
+    clear(container);
+    container.hidden = false;
+    container.append(text("h4", "app-card-title", "Recovery result"));
+    container.append(
+      definitionList([
+        ["Action", scalar(result.actionId)],
+        ["Status", scalar(result.status)],
+        ["Completed", scalar(result.completedAt)],
+        ["Reason", scalar(result.reasonCode)],
+      ]),
+    );
+    appendOperatorRcResultSteps(container, result.steps);
+    appendOperatorRcResultDetails(container, result.details);
+    appendOperatorRcSupportBundleArtifact(container, result);
+    appendRecoveryTextList(container, "Warnings", stringList(result.warnings));
+    appendOperatorRcSensitiveBackup(container, result);
+  }
+
+  function appendOperatorRcResultSteps(container, steps) {
+    const entries = arrayValue(steps)
+      .map(recordValue)
+      .filter((step) => Object.keys(step).length)
+      .slice(0, 8);
+    if (!entries.length) {
+      return;
+    }
+    container.append(text("p", "app-card-subtitle", "Steps"));
+    const list = document.createElement("ul");
+    list.className = "permission-list operator-rc-result-steps";
+    entries.forEach((step) => {
+      const item = document.createElement("li");
+      const parts = [
+        step.id,
+        step.status,
+        step.summary || step.label || step.kind,
+      ]
+        .map(operatorRcBoundedScalar)
+        .filter((value) => value && value !== "Unavailable");
+      item.textContent = parts.join(" - ");
+      list.append(item);
+    });
+    if (arrayValue(steps).length > entries.length) {
+      const item = document.createElement("li");
+      item.textContent = `${arrayValue(steps).length - entries.length} more steps omitted.`;
+      list.append(item);
+    }
+    container.append(list);
+  }
+
+  function appendOperatorRcResultDetails(container, details) {
+    const entries = Object.entries(recordValue(details)).slice(0, 12);
+    if (!entries.length) {
+      return;
+    }
+    container.append(text("p", "app-card-subtitle", "Details"));
+    const list = document.createElement("div");
+    list.className = "kv-list operator-rc-result-details";
+    entries.forEach(([label, value]) => {
+      const row = document.createElement("div");
+      row.className = "kv-row";
+      row.append(text("div", "kv-label", operatorRcBoundedScalar(label)));
+      const valueNode = document.createElement("div");
+      valueNode.className = "kv-value";
+      valueNode.append(operatorRcDetailNode(value, 0));
+      row.append(valueNode);
+      list.append(row);
+    });
+    const totalEntries = Object.keys(recordValue(details)).length;
+    if (totalEntries > entries.length) {
+      const row = document.createElement("div");
+      row.className = "kv-row";
+      row.append(text("div", "kv-label", "Omitted"));
+      row.append(text("div", "kv-value", `${totalEntries - entries.length} more fields.`));
+      list.append(row);
+    }
+    container.append(list);
+  }
+
+  function operatorRcDetailNode(value, depth) {
+    if (Array.isArray(value)) {
+      return operatorRcArrayDetailNode(value, depth);
+    }
+    const record = recordValue(value);
+    if (Object.keys(record).length) {
+      return operatorRcRecordDetailNode(record, depth);
+    }
+    return text("span", "", operatorRcBoundedScalar(value));
+  }
+
+  function operatorRcArrayDetailNode(values, depth) {
+    if (depth >= 2) {
+      return text("span", "", `${values.length} item${values.length === 1 ? "" : "s"}`);
+    }
+    const list = document.createElement("ul");
+    list.className = "permission-list operator-rc-detail-list";
+    values.slice(0, 6).forEach((value, index) => {
+      const item = document.createElement("li");
+      item.append(text("span", "", `${index + 1}. `), operatorRcDetailNode(value, depth + 1));
+      list.append(item);
+    });
+    if (values.length > 6) {
+      const item = document.createElement("li");
+      item.textContent = `${values.length - 6} more items omitted.`;
+      list.append(item);
+    }
+    return list;
+  }
+
+  function operatorRcRecordDetailNode(record, depth) {
+    const entries = Object.entries(record);
+    if (depth >= 2) {
+      return text("span", "", `${entries.length} field${entries.length === 1 ? "" : "s"}`);
+    }
+    const list = document.createElement("div");
+    list.className = "kv-list operator-rc-detail-list";
+    entries.slice(0, 8).forEach(([label, value]) => {
+      const row = document.createElement("div");
+      row.className = "kv-row";
+      row.append(text("div", "kv-label", operatorRcBoundedScalar(label)));
+      const valueNode = document.createElement("div");
+      valueNode.className = "kv-value";
+      valueNode.append(operatorRcDetailNode(value, depth + 1));
+      row.append(valueNode);
+      list.append(row);
+    });
+    if (entries.length > 8) {
+      const row = document.createElement("div");
+      row.className = "kv-row";
+      row.append(text("div", "kv-label", "Omitted"));
+      row.append(text("div", "kv-value", `${entries.length - 8} more fields.`));
+      list.append(row);
+    }
+    return list;
+  }
+
+  function operatorRcBoundedScalar(value) {
+    const display = scalar(value);
+    return display.length > 240 ? `${display.slice(0, 237)}...` : display;
+  }
+
+  function appendOperatorRcSupportBundleArtifact(container, result) {
+    const supportBundle = recordValue(recordValue(result.details).supportBundle);
+    if (supportBundle.kind !== "cryptad-operator-support-bundle") {
+      return;
+    }
+    container.append(
+      text(
+        "p",
+        "app-card-subtitle",
+        "A redacted support bundle was returned. Review it before sharing.",
+      ),
+    );
+    const actions = document.createElement("div");
+    actions.className = "app-card-actions";
+    const download = document.createElement("button");
+    download.type = "button";
+    download.className = "button button-secondary";
+    download.textContent = "Download support bundle";
+    download.addEventListener("click", () => {
+      downloadJsonBlob(supportBundle, supportBundleFileName(supportBundle));
+      setBetaDashboardStatus("Support bundle download prepared.", "is-success");
+    });
+    actions.append(download);
+    container.append(actions);
+  }
+
+  function appendOperatorRcSensitiveBackup(container, result) {
+    const sensitiveBackup = recordValue(result.sensitiveBackup);
+    if (!Object.keys(sensitiveBackup).length) {
+      return;
+    }
+    const target = recordValue(result.target);
+    container.append(
+      text(
+        "p",
+        "app-card-subtitle",
+        "A sensitive app-data backup was returned. Download it before refreshing this dashboard.",
+      ),
+    );
+    const actions = document.createElement("div");
+    actions.className = "app-card-actions";
+    const download = document.createElement("button");
+    download.type = "button";
+    download.className = "button button-secondary";
+    download.textContent = "Download app-data backup";
+    download.addEventListener("click", () => {
+      downloadAppDataBackupPayload(sensitiveBackup, "single-app", scalar(target.appId || ""));
+    });
+    actions.append(download);
+    container.append(actions);
+  }
+
+  function appendRecoveryTextList(container, label, values) {
+    if (!values.length) {
+      return;
+    }
+    container.append(text("p", "app-card-subtitle", label));
+    const list = document.createElement("ul");
+    list.className = "permission-list";
+    values.forEach((value) => {
+      const item = document.createElement("li");
+      item.textContent = value;
+      list.append(item);
+    });
+    container.append(list);
+  }
+
+  function operatorRcPlanExecutable(plan) {
+    return ["ready", "warning", "destructive"].includes(String(plan.status || "").toLowerCase());
+  }
+
+  function operatorRcResultStatus(result) {
+    return String(recordValue(result).status || "").toLowerCase();
+  }
+
+  function operatorRcResultHasSensitiveBackup(result) {
+    return Object.keys(recordValue(recordValue(result).sensitiveBackup)).length > 0;
+  }
+
+  function operatorRcResultPreservesVisibleArtifact(result) {
+    switch (String(recordValue(result).actionId || "")) {
+      case "catalog.reverify":
+      case "network-budget.view":
+      case "support-bundle.preview":
+      case "support-bundle.export":
+      case "trust-graph.export-summary":
+      case "trust-graph.recompute-summary":
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  function operatorRcResultShouldReload(result) {
+    return (
+      ["completed", "partial"].includes(operatorRcResultStatus(result)) &&
+      !operatorRcResultPreservesVisibleArtifact(result)
+    );
+  }
+
+  function operatorRcResultTone(result) {
+    switch (operatorRcResultStatus(result)) {
+      case "completed":
+        return "is-success";
+      case "partial":
+        return "is-warning";
+      case "blocked":
+      case "failed":
+        return "is-error";
+      default:
+        return "is-warning";
+    }
+  }
+
+  function operatorRcResultStatusMessage(result) {
+    switch (operatorRcResultStatus(result)) {
+      case "completed":
+        return operatorRcResultHasSensitiveBackup(result)
+          ? "Operator RC recovery completed. Download the returned backup before refreshing."
+          : "Operator RC recovery action completed.";
+      case "partial":
+        return "Operator RC recovery action partially completed. Review the result before continuing.";
+      case "blocked":
+        return "Operator RC recovery action was blocked. Review the result before retrying.";
+      case "failed":
+        return "Operator RC recovery action failed. Review the result before retrying.";
+      default:
+        return "Operator RC recovery action returned an unexpected status. Review the result.";
     }
   }
 
@@ -7420,6 +7975,11 @@
     sections.betaDashboard.addEventListener("submit", async (event) => {
       const form = event.target;
       if (!(form instanceof HTMLFormElement)) {
+        return;
+      }
+      if (form.dataset.operatorRcRecoveryActionId) {
+        event.preventDefault();
+        await submitOperatorRcRecoveryAction(form, event.submitter);
         return;
       }
       if (!form.dataset.operatorRecoveryPath) {

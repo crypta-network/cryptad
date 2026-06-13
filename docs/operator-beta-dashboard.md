@@ -1,10 +1,18 @@
 # Operator Beta Dashboard
 
 The operator beta dashboard is a local host/operator-only surface for checking whether the app
-platform is ready for public beta use. It is exposed through the Web Shell and the internal
-operator route family:
+platform is ready for public beta use. PR-257 keeps this route as compatibility evidence while
+the Web Shell now presents the RC workflow documented in
+[operator-rc-recovery-and-support-workflow.md](operator-rc-recovery-and-support-workflow.md).
+It is exposed through the Web Shell and the internal operator route family:
 
+- `GET /api/v1/operator/rc-dashboard`
 - `GET /api/v1/operator/beta-dashboard`
+- `GET /api/v1/operator/recovery/actions`
+- `POST /api/v1/operator/recovery/plan`
+- `POST /api/v1/operator/recovery/execute`
+- `GET /api/v1/operator/network-budgets`
+- `GET /api/v1/operator/support-bundle/preview`
 - `GET /api/v1/operator/support-bundle`
 - `POST /api/v1/operator/app-data/backups` with `appId=<app-id>`
 - `POST /api/v1/operator/app-data/backups` with `scope=all`
@@ -13,6 +21,8 @@ operator route family:
 - `POST /api/v1/operator/subscriptions/{appId}/{subscriptionId}/refresh`
 - `POST /api/v1/operator/subscriptions/{appId}/{subscriptionId}/pause`
 - `POST /api/v1/operator/subscriptions/{appId}/{subscriptionId}/resume`
+- `POST /api/v1/operator/subscriptions/{appId}/{subscriptionId}/reset-backoff`
+- `POST /api/v1/operator/subscriptions/{appId}/{subscriptionId}/reschedule-now`
 
 These routes are not part of the app-facing Platform API contract. App principals must not call
 them, and app compatibility descriptors should not depend on them. Mutating subscription recovery
@@ -37,25 +47,66 @@ contract or release certification reports.
 | `operator-beta.support-bundle-redaction` | Exports a redacted support bundle for issue triage. |
 | `operator-beta.web-shell` | Pins the Web Shell panel, refresh controls, support-bundle export/copy controls, read-only hints, and recovery-action submit handling. |
 
+## Beta Compatibility and RC Recovery
+
+The beta dashboard route remains a read-only compatibility alias for older operator tooling and
+for the `operator-beta.*` release evidence. The RC dashboard composes the same summary data with
+typed recovery actions and support-bundle preview metadata. Web Shell loads the RC route first and
+falls back to the beta route only with a visible compatibility note.
+
+The RC workflow adds these deterministic evidence ids:
+
+- `operator-rc.dashboard`
+- `operator-rc.recovery-plan-execute`
+- `operator-rc.catalog-repair`
+- `operator-rc.app-reinstall-rollback`
+- `operator-rc.export-before-uninstall`
+- `operator-rc.subscription-recovery`
+- `operator-rc.app-service-grant-recovery`
+- `operator-rc.trust-graph-recovery`
+- `operator-rc.network-budget-visibility`
+- `operator-rc.support-bundle-wizard`
+- `operator-rc.redaction`
+
+See the RC workflow guide for the closed `OperatorRecoveryActionId` list, typed target model,
+plan-before-execute semantics, destructive confirmation requirements, and unavailable reset
+limitations.
+
 ## Recovery Actions
 
 Recovery actions are intentionally narrow:
 
 - Catalog recovery refreshes a configured catalog through the existing catalog route.
+- RC catalog repair can also reverify catalog metadata and add a recommended first-party source
+  only through existing catalog-manager APIs. It does not silently switch stable operators to beta,
+  nightly, or deprecated channels.
 - App recovery delegates to existing app lifecycle and app-update routes. Stage/apply/rollback keep
-  the existing update policy and running-app guards.
+  the existing update policy and running-app guards. RC reinstall is represented as unavailable
+  until a dedicated verified catalog reinstall API exists; rollback stays scoped to the immutable
+  installed bundle and does not bypass migration, security, review, dependency, catalog-signature,
+  signed-bundle, digest, or running-app gates.
 - Subscription recovery uses the operator wrapper around the shared content-subscription service.
   It does not grant apps authority over other apps' subscriptions.
 - Subscription status wording may include `queue_pressure`, `runtime_unavailable`, `backoff`, and
   `budget_exhausted`. These are diagnostic statuses only; budget exhaustion and queue pressure do
-  not expose queue HTML, fetched content, source documents, or raw daemon exception text, and this
-  dashboard does not add PR-257 recovery workflows.
+  not expose queue HTML, fetched content, source documents, or raw daemon exception text.
+  `reset-backoff` and `reschedule-now` are metadata-only actions; `refresh` still consumes the
+  PR-256 content-subscription and content-fetch budgets.
 - App-data backup and restore uses the durable app-data backup layer. Backups are sensitive user
   data, restore plans are metadata-only, and destructive `replaceNamespace`, `replaceApp`, and
-  export-before-delete steps require explicit operator confirmation.
+  export-before-delete steps require explicit operator confirmation. RC export-before-uninstall
+  returns its backup payload only as the explicit sensitive action response and keeps it out of
+  support bundles.
+- App-service grant and bundle recovery delegates to the app-service coordinator. Expired grants
+  remain non-authorizing until renewal succeeds, and provider descriptor drift remains fail-closed
+  until operator renewal or revalidation succeeds.
 - Trust Graph lifecycle actions, when exposed from the dashboard or Web Shell, update only local
   statement policy such as `active`, `deprecated`, or `revoked`. They are not global revocation,
-  content removal, app blocking, routing policy, or an operator RC recovery workflow.
+  content removal, app blocking, routing policy, or legacy Web of Trust compatibility. RC export
+  is metadata-only by default. Reset and audit-clear plans are blocked until tested store clear
+  methods exist.
+- Network-budget visibility exposes app id, operation, window, usage, limit, active leases, and
+  next availability only. It does not reset budgets.
 - Support-bundle export is read-only.
 
 The dashboard should prefer "unavailable" or warning cards when optional services are missing. A
@@ -94,8 +145,10 @@ Release certification remains the source of truth for promotion. The dashboard h
 find and recover beta issues on a local node, while release certification records deterministic
 source, docs, and fixture evidence. Certification for this surface is recorded under the
 `operator-beta-ux-and-recovery` ecosystem matrix row and the `operator-beta.*` evidence ids above,
-including `operator-beta.app-data-backup-restore`. The app-data portability layer also records
-`app-data.backup-restore-portability`; see
+including `operator-beta.app-data-backup-restore`. The RC workflow is recorded separately under
+the `operator-rc-recovery-and-support-workflow` ecosystem matrix row, the
+`ecosystem.operator-rc-recovery` gate, and the `operator-rc.*` evidence ids. The app-data
+portability layer also records `app-data.backup-restore-portability`; see
 [app-data-backup-restore-portability.md](app-data-backup-restore-portability.md).
 
 The dashboard does not introduce a public app store, full Web of Trust, global trust propagation,

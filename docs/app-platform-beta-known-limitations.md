@@ -158,17 +158,32 @@ Release certification and issue templates should record statuses, relative repo 
 app ids, capability names, evidence ids, public fixture URIs, and redacted summaries instead of
 raw payloads.
 
-## Operator dashboard limitations
+## Operator RC recovery limitations
 
-The [Operator beta dashboard](operator-beta-dashboard.md) is a local recovery and support surface,
-not an app-facing Platform API contract. Apps cannot use the operator routes, and compatibility
-checks must continue to use the app-facing contract snapshot. Recovery buttons delegate to existing
-catalog, app-update, app lifecycle, and content-subscription services; they do not bypass review
-policy, running-app update guards, app ownership boundaries, or form-password checks.
+The [Operator RC recovery workflow](operator-rc-recovery-and-support-workflow.md) and
+[Operator beta dashboard](operator-beta-dashboard.md) are local recovery and support surfaces, not
+app-facing Platform API contracts. Apps cannot use the operator routes, and compatibility checks
+must continue to use the app-facing contract snapshot. Recovery actions delegate to existing
+catalog, app-update, app lifecycle, app-data, app-service, Trust Graph, and content-subscription
+services; they do not bypass catalog channel policy, signed catalog verification, signed bundle
+verification, digest verification, review policy, security advisory gates, migration gates,
+dependency/grant gates, running-app update guards, app ownership boundaries, network-budget policy,
+or form-password checks.
+
+RC recovery is intentionally typed and incomplete where no safe primitive exists:
+
+- `app.reinstall-from-catalog` plans as unavailable until a dedicated verified catalog reinstall
+  API exists.
+- `trust-graph.reset-local-state` and `trust-graph.clear-audit` plan as unavailable until the
+  Trust Graph stores expose tested clear-all methods.
+- Network-budget visibility is read-only. There is no broad operator budget reset action.
+- The workflow does not do automatic stop-update-restart choreography. Operators must review plans
+  and confirmation phrases before destructive execution.
 
 Support bundles are redacted release/support summaries. They still need operator review before
 sharing, and they must not include raw request bodies, raw fetched content, private insert URIs,
-tokens, local paths, app-private values, or Trust Graph document bodies.
+tokens, local paths, app-private values, raw app-data backup payloads, app-service invocation
+request/response bodies, or Trust Graph document bodies/signatures.
 
 ## Non-goals
 
@@ -176,5 +191,6 @@ The beta does not introduce a live public app store, a normal PR/nightly live-ne
 global transparency log, full Web of Trust, old plugin ABI compatibility, old FCP plugin command
 compatibility, generic crawling, arbitrary HTTP/HTTPS fetching, a generic filesystem or database
 API for apps, Freetalk/Sone/Freemail compatibility, encrypted mail delivery, daemon-core social or
-mail protocols, new sandbox provider, new update scheduler policy, or any FNP/FCP/wire protocol
-change.
+mail protocols, legacy plugin runtime restoration, FProxy browse removal, content-filter removal,
+startup wizard/security recovery removal, new sandbox provider, new update scheduler policy, or
+any FNP/FCP/wire protocol change.

@@ -27,7 +27,8 @@ class WebShellResourcesTest {
         "Operator subset",
         "First-time setup",
         "Installed apps",
-        "Operator beta dashboard",
+        "Operator RC Recovery",
+        "The beta dashboard route remains a compatibility fallback.",
         "Generate support bundle",
         "Download support JSON",
         "Copy support summary",
@@ -421,6 +422,23 @@ class WebShellResourcesTest {
         "function renderBetaApps(apps)",
         "function renderBetaSubscriptions(subscriptions)",
         "function renderBetaTrustAndServices(trustGraph, appServices)",
+        "function renderOperatorRcRecovery(recovery, networkBudgets)",
+        "function buildOperatorRcRecoveryAction(action)",
+        "function submitOperatorRcRecoveryAction(form, submitter)",
+        "function renderOperatorRcPlan(container, plan)",
+        "function renderOperatorRcResult(container, result)",
+        "function appendOperatorRcResultSteps(container, steps)",
+        "function appendOperatorRcResultDetails(container, details)",
+        "function operatorRcDetailNode(value, depth)",
+        "function operatorRcBoundedScalar(value)",
+        "function appendOperatorRcSupportBundleArtifact(container, result)",
+        "function appendOperatorRcSensitiveBackup(container, result)",
+        "function operatorRcResultStatus(result)",
+        "function operatorRcResultHasSensitiveBackup(result)",
+        "function operatorRcResultPreservesVisibleArtifact(result)",
+        "function operatorRcResultShouldReload(result)",
+        "function operatorRcResultTone(result)",
+        "function operatorRcResultStatusMessage(result)",
         "function renderBetaRecoveryActions(actions)",
         "function buildOperatorRecoveryAction(action)",
         "function loadBetaDashboardSection()",
@@ -432,8 +450,35 @@ class WebShellResourcesTest {
         "function submitAppDataRestoreForm(form, restoreAction, statusSetter)",
         "function submitOperatorRecoveryAction(form)",
         "function bindBetaDashboardInteractions()",
+        "loadJson(apiUrl(\"operator/rc-dashboard\"))",
         "loadJson(apiUrl(\"operator/beta-dashboard\"))",
+        "loadJson(apiUrl(\"operator/support-bundle/preview\"))",
         "loadJson(apiUrl(\"operator/support-bundle\"))",
+        "\"operator/recovery/plan\"",
+        "\"operator/recovery/execute\"",
+        "operatorRcSubmitButton(\"Plan\", \"plan\", false)",
+        "operatorRcSubmitButton(\"Execute\", \"execute\", action.destructive === true)",
+        "input[name=\"planToken\"]",
+        "planTokenInput.name = \"planToken\"",
+        "typeof plan.planToken === \"string\" ? plan.planToken : \"\"",
+        "form.dataset.operatorRcRecoveryPlanned !== \"true\"",
+        "Review the recovery plan before executing.",
+        "operatorRcResultStatus(result)",
+        "operatorRcResultHasSensitiveBackup(result)",
+        "Operator RC recovery action was blocked. Review the result before retrying.",
+        "Operator RC recovery action failed. Review the result before retrying.",
+        "appendOperatorRcResultSteps(container, result.steps)",
+        "appendOperatorRcResultDetails(container, result.details)",
+        "appendOperatorRcSupportBundleArtifact(container, result)",
+        "downloadJsonBlob(supportBundle, supportBundleFileName(supportBundle))",
+        "case \"support-bundle.export\":",
+        "case \"trust-graph.export-summary\":",
+        "case \"network-budget.view\":",
+        "!operatorRcResultPreservesVisibleArtifact(result)",
+        "A sensitive app-data backup was returned. Download it before refreshing this dashboard.",
+        "downloadAppDataBackupPayload(sensitiveBackup, \"single-app\", scalar(target.appId ||"
+            + " \"\"))",
+        "Operator RC recovery actions unavailable in read-only mode.",
         "submitFormMutation(",
         "new FormData(),",
         "Operator recovery actions unavailable in read-only mode.",
@@ -441,6 +486,7 @@ class WebShellResourcesTest {
         "bindBetaDashboardInteractions();",
         "updateBetaDashboardToolbar();",
         "loadBetaDashboardSection().catch((error) => {");
+    assertFalse(script.contains("operatorRcSubmitButton(\"Plan\", \"plan\", action.destructive"));
   }
 
   private static void assertAppDataBackupRestoreMarkersPresent(String script) {
@@ -488,17 +534,25 @@ class WebShellResourcesTest {
     int generationIndex =
         script.indexOf("const loadGeneration = ++betaDashboardLoadGeneration;", loadIndex);
     int resetIndex = script.indexOf("shellState.betaDashboardSnapshot = null;", generationIndex);
-    int fetchIndex = script.indexOf("loadJson(apiUrl(\"operator/beta-dashboard\"))", resetIndex);
+    int fetchIndex = script.indexOf("loadJson(apiUrl(\"operator/rc-dashboard\"))", resetIndex);
     int successGuardIndex =
         script.indexOf("if (loadGeneration !== betaDashboardLoadGeneration) {", fetchIndex);
     int renderIndex = script.indexOf("renderBetaDashboard(snapshot);", successGuardIndex);
     int errorGuardIndex =
         script.indexOf("if (loadGeneration !== betaDashboardLoadGeneration) {", renderIndex);
+    int fallbackIndex =
+        script.indexOf("loadJson(apiUrl(\"operator/beta-dashboard\"))", errorGuardIndex);
     int renderErrorIndex =
         script.indexOf(
-            "renderError(sections.betaDashboard, \"beta dashboard\", error);", errorGuardIndex);
+            "renderError(sections.betaDashboard, \"operator RC recovery\", fallbackError);",
+            fallbackIndex);
     int bindIndex = script.indexOf("function bindBetaDashboardInteractions()");
-    int actionPathIndex = script.indexOf("if (!form.dataset.operatorRecoveryPath) {", bindIndex);
+    int rcActionIndex = script.indexOf("if (form.dataset.operatorRcRecoveryActionId) {", bindIndex);
+    int rcMutationIndex =
+        script.indexOf(
+            "await submitOperatorRcRecoveryAction(form, event.submitter);", rcActionIndex);
+    int actionPathIndex =
+        script.indexOf("if (!form.dataset.operatorRecoveryPath) {", rcMutationIndex);
     int preventDefaultIndex = script.indexOf(EVENT_PREVENT_DEFAULT, actionPathIndex);
     int mutationIndex =
         script.indexOf("await submitOperatorRecoveryAction(form);", preventDefaultIndex);
@@ -510,8 +564,11 @@ class WebShellResourcesTest {
     assertTrue(successGuardIndex > fetchIndex);
     assertTrue(renderIndex > successGuardIndex);
     assertTrue(errorGuardIndex > renderIndex);
+    assertTrue(fallbackIndex > errorGuardIndex);
     assertTrue(renderErrorIndex > errorGuardIndex);
     assertTrue(bindIndex > renderErrorIndex);
+    assertTrue(rcActionIndex > bindIndex);
+    assertTrue(rcMutationIndex > rcActionIndex);
     assertTrue(actionPathIndex > bindIndex);
     assertTrue(preventDefaultIndex > actionPathIndex);
     assertTrue(mutationIndex > preventDefaultIndex);

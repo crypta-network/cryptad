@@ -180,6 +180,17 @@ operator-beta.app-data-quota-warnings
 operator-beta.app-data-backup-restore
 operator-beta.support-bundle-redaction
 operator-beta.web-shell
+operator-rc.dashboard
+operator-rc.recovery-plan-execute
+operator-rc.catalog-repair
+operator-rc.app-reinstall-rollback
+operator-rc.export-before-uninstall
+operator-rc.subscription-recovery
+operator-rc.app-service-grant-recovery
+operator-rc.trust-graph-recovery
+operator-rc.network-budget-visibility
+operator-rc.support-bundle-wizard
+operator-rc.redaction
 app-review.trusted-receipts
 app-review.policy
 app-review.governance
@@ -224,6 +235,14 @@ modes, Web Shell controls, first-party app backup-scope docs, and support-bundle
 recording raw backup payloads. `operator-beta.app-data-backup-restore` verifies the operator
 dashboard controls for sensitive backup, restore preview, restore commit, all-app backup, and
 export-before-delete.
+The `operator-rc.*` evidence verifies PR-257's
+`operator-rc-recovery-and-support-workflow` matrix row and the
+`ecosystem.operator-rc-recovery` gate. The checks cover host/operator-only route enforcement,
+app-principal denial, closed action-id dispatch, plan-before-execute behavior, destructive
+confirmation, one-time plan-token enforcement, catalog repair/reverify, app
+rollback/reinstall/export-before-uninstall planning,
+stuck-subscription recovery, app-service grant/bundle recovery, metadata-only Trust Graph recovery,
+network-budget visibility, the support-bundle wizard, and redaction.
 `app-platform.trust-graph-rc-scope-and-safety` verifies Trust Graph Local RC scope and safety:
 local anchors, imported public signed statements, local lifecycle states, bounded score
 explanations, redacted source metadata, read-only `trust.score` service boundaries, no crawling, no
@@ -281,6 +300,8 @@ ecosystem.first-party-apps
 ecosystem.app-ui-quality
 ecosystem.app-review-trust
 ecosystem.app-update-rollback
+ecosystem.operator-rc-recovery
+ecosystem.security-advisory-revocation
 ecosystem.app-vault
 ecosystem.sandbox-provider
 ecosystem.reference-content-apps

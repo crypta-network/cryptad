@@ -951,7 +951,11 @@ End
         "http://localhost/api/v1/operator/app-data/backups",
         "http://localhost/api/v1/operator/app-data/restore/plan",
         "http://localhost/api/v1/operator/app-data/restore",
+        "http://localhost/api/v1/operator/recovery/plan",
+        "http://localhost/api/v1/operator/recovery/execute",
         "http://localhost/api/v1/operator/subscriptions/feed-reader/sub-123/refresh",
+        "http://localhost/api/v1/operator/subscriptions/feed-reader/sub-123/reset-backoff",
+        "http://localhost/api/v1/operator/subscriptions/feed-reader/sub-123/reschedule-now",
       })
   void handleMethodPOST_whenProtectedMutationPasswordMissing_expectJson403WithoutRouting(
       String requestUri) throws Exception {

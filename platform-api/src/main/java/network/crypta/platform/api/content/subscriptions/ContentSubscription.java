@@ -267,6 +267,48 @@ public record ContentSubscription(
         "Subscription is scheduled.");
   }
 
+  ContentSubscription withBackoffReset(Instant now) {
+    return copy(
+        enabled,
+        enabled ? ContentSubscriptionStatus.SCHEDULED : ContentSubscriptionStatus.PAUSED,
+        now,
+        lastCheckAt,
+        enabled ? now : null,
+        lastSuccessAt,
+        null,
+        0,
+        null,
+        lastSeenResolvedUri,
+        lastSeenEdition,
+        contentSha256,
+        bytesLength,
+        updateCount,
+        enabled
+            ? "Subscription backoff metadata was reset."
+            : "Subscription backoff metadata was reset while paused.");
+  }
+
+  ContentSubscription withRescheduledNow(Instant now) {
+    return copy(
+        enabled,
+        enabled ? ContentSubscriptionStatus.SCHEDULED : ContentSubscriptionStatus.PAUSED,
+        now,
+        lastCheckAt,
+        enabled ? now : null,
+        lastSuccessAt,
+        lastFailureAt,
+        failureCount,
+        lastErrorCode,
+        lastSeenResolvedUri,
+        lastSeenEdition,
+        contentSha256,
+        bytesLength,
+        updateCount,
+        enabled
+            ? "Subscription is scheduled for immediate polling."
+            : "Subscription remains paused and was not scheduled.");
+  }
+
   ContentSubscription withDeleted(Instant now) {
     return copy(
         false,

@@ -273,11 +273,11 @@ final class PlatformApiAppRoutes {
       String appId, boolean includeVaultDetails, boolean preserveData) {
     try {
       Map<String, Object> app = appsApiHandler.uninstall(appId, includeVaultDetails, preserveData);
-      clearAppState(appId, preserveData);
+      clearAppStateAfterUninstall(appId, preserveData);
       return PlatformApiResponse.ok(envelope("app", app));
     } catch (PlatformApiException exception) {
       if (exception.statusCode() == 404) {
-        clearAppState(appId, preserveData);
+        clearAppStateAfterUninstall(appId, preserveData);
       }
       throw exception;
     } catch (RuntimeException exception) {
@@ -285,10 +285,14 @@ final class PlatformApiAppRoutes {
         throw exception;
       }
       if (!appsApiHandler.stillInstalledBestEffort(appId)) {
-        clearAppState(appId, preserveData);
+        clearAppStateAfterUninstall(appId, preserveData);
       }
       throw exception;
     }
+  }
+
+  void clearAppStateAfterUninstall(String appId, boolean preserveData) {
+    clearAppState(appId, preserveData);
   }
 
   private void clearAppState(String appId, boolean preserveData) {

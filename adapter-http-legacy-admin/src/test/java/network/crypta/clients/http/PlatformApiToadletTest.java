@@ -24,6 +24,19 @@ class PlatformApiToadletTest {
   }
 
   @Test
+  void requiresFormPassword_whenPostingOperatorRecoveryPlanOrExecute_expectProtected()
+      throws Exception {
+    assertTrue(requiresFormPassword("POST", "/api/v1/operator/recovery/plan"));
+    assertTrue(requiresFormPassword("POST", "/api/v1/operator/recovery/execute"));
+  }
+
+  @Test
+  void requiresFormPassword_whenReadingOperatorRecoveryActions_expectNotProtected()
+      throws Exception {
+    assertFalse(requiresFormPassword("GET", "/api/v1/operator/recovery/actions"));
+  }
+
+  @Test
   void requiresFormPassword_whenPostingAppServiceGrantBundleActions_expectProtected()
       throws Exception {
     assertTrue(
