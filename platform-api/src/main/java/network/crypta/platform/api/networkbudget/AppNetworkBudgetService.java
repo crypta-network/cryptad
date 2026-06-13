@@ -34,6 +34,10 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * operation. Store failures fail closed with safe metadata instead of resetting quota.
  */
 public final class AppNetworkBudgetService {
+  private static final String PARAM_OPERATION = "operation";
+  private static final String ERROR_NETWORK_BUDGET_UNAVAILABLE = "network_budget_unavailable";
+  private static final String MESSAGE_NETWORK_BUDGET_UNAVAILABLE =
+      "App network budget service is unavailable.";
   private static final String GLOBAL_SCOPE_ID = AppNetworkBudgetScope.GLOBAL;
   private static final Duration MINUTE_WINDOW = Duration.ofMinutes(1);
   private static final Duration HOUR_WINDOW = Duration.ofHours(1);
@@ -94,7 +98,7 @@ public final class AppNetworkBudgetService {
   public synchronized AppNetworkBudgetDecision acquire(
       String appId, AppNetworkBudgetOperation operation) {
     String normalizedAppId = AppNetworkBudgetScope.normalize(appId);
-    AppNetworkBudgetOperation checkedOperation = Objects.requireNonNull(operation, "operation");
+    AppNetworkBudgetOperation checkedOperation = Objects.requireNonNull(operation, PARAM_OPERATION);
     Instant now = clock.instant();
     List<RateLimit> rateLimits = rateLimits(normalizedAppId, checkedOperation);
     List<ConcurrencyLimit> concurrencyLimits = concurrencyLimits(normalizedAppId, checkedOperation);
@@ -126,8 +130,8 @@ public final class AppNetworkBudgetService {
           503,
           normalizedAppId,
           checkedOperation,
-          "network_budget_unavailable",
-          "App network budget service is unavailable.",
+          ERROR_NETWORK_BUDGET_UNAVAILABLE,
+          MESSAGE_NETWORK_BUDGET_UNAVAILABLE,
           now,
           null);
     }
@@ -155,7 +159,7 @@ public final class AppNetworkBudgetService {
   public synchronized AppNetworkBudgetDecision check(
       String appId, AppNetworkBudgetOperation operation) {
     String normalizedAppId = AppNetworkBudgetScope.normalize(appId);
-    AppNetworkBudgetOperation checkedOperation = Objects.requireNonNull(operation, "operation");
+    AppNetworkBudgetOperation checkedOperation = Objects.requireNonNull(operation, PARAM_OPERATION);
     Instant now = clock.instant();
     List<RateLimit> rateLimits = rateLimits(normalizedAppId, checkedOperation);
     List<ConcurrencyLimit> concurrencyLimits = concurrencyLimits(normalizedAppId, checkedOperation);
@@ -177,8 +181,8 @@ public final class AppNetworkBudgetService {
           503,
           normalizedAppId,
           checkedOperation,
-          "network_budget_unavailable",
-          "App network budget service is unavailable.",
+          ERROR_NETWORK_BUDGET_UNAVAILABLE,
+          MESSAGE_NETWORK_BUDGET_UNAVAILABLE,
           now,
           null);
     }
@@ -205,7 +209,7 @@ public final class AppNetworkBudgetService {
   public synchronized AppNetworkBudgetReservation reserve(
       String appId, AppNetworkBudgetOperation operation) {
     String normalizedAppId = AppNetworkBudgetScope.normalize(appId);
-    AppNetworkBudgetOperation checkedOperation = Objects.requireNonNull(operation, "operation");
+    AppNetworkBudgetOperation checkedOperation = Objects.requireNonNull(operation, PARAM_OPERATION);
     Instant now = clock.instant();
     List<RateLimit> rateLimits = rateLimits(normalizedAppId, checkedOperation);
     List<ConcurrencyLimit> concurrencyLimits = concurrencyLimits(normalizedAppId, checkedOperation);
@@ -241,8 +245,8 @@ public final class AppNetworkBudgetService {
               503,
               normalizedAppId,
               checkedOperation,
-              "network_budget_unavailable",
-              "App network budget service is unavailable.",
+              ERROR_NETWORK_BUDGET_UNAVAILABLE,
+              MESSAGE_NETWORK_BUDGET_UNAVAILABLE,
               now,
               null));
     }
@@ -401,8 +405,8 @@ public final class AppNetworkBudgetService {
           503,
           appId,
           operation,
-          "network_budget_unavailable",
-          "App network budget service is unavailable.",
+          ERROR_NETWORK_BUDGET_UNAVAILABLE,
+          MESSAGE_NETWORK_BUDGET_UNAVAILABLE,
           now,
           null);
     }
