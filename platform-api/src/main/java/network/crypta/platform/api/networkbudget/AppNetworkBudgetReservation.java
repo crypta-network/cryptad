@@ -3,6 +3,7 @@ package network.crypta.platform.api.networkbudget;
 import java.time.Instant;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 
 /**
@@ -27,9 +28,8 @@ public final class AppNetworkBudgetReservation implements AutoCloseable {
   private final AppNetworkBudgetDecision decision;
   private final Supplier<AppNetworkBudgetDecision> commitAction;
   private final Runnable closeAction;
-  private final AtomicBoolean committed = new AtomicBoolean();
   private final AtomicBoolean closed = new AtomicBoolean();
-  private volatile AppNetworkBudgetDecision commitDecision;
+  private final AtomicReference<AppNetworkBudgetDecision> commitDecision = new AtomicReference<>();
 
   AppNetworkBudgetReservation(
       AppNetworkBudgetDecision decision,
@@ -97,9 +97,13 @@ public final class AppNetworkBudgetReservation implements AutoCloseable {
    *
    * @return allowed decision when durable rate usage was charged, or denied safe metadata
    */
-  public AppNetworkBudgetDecision commit() {
+  public synchronized AppNetworkBudgetDecision commit() {
     if (!decision.allowed()) {
       return decision;
+    }
+    AppNetworkBudgetDecision previousDecision = commitDecision.get();
+    if (previousDecision != null) {
+      return previousDecision;
     }
     if (closed.get()) {
       return AppNetworkBudgetDecision.denied(
@@ -111,15 +115,13 @@ public final class AppNetworkBudgetReservation implements AutoCloseable {
           decision.decidedAt(),
           null);
     }
-    if (committed.compareAndSet(false, true)) {
-      commitDecision = commitAction.get();
-    }
-    AppNetworkBudgetDecision result = commitDecision;
-    return result == null ? decision : result;
+    AppNetworkBudgetDecision result = Objects.requireNonNull(commitAction.get(), "commitDecision");
+    commitDecision.set(result);
+    return result;
   }
 
   @Override
-  public void close() {
+  public synchronized void close() {
     if (closed.compareAndSet(false, true)) {
       closeAction.run();
     }
