@@ -108,6 +108,27 @@ NETWORK_SCALE_EVIDENCE_IDS = (
     "network-scale.redaction",
 )
 NETWORK_SCALE_SOAK_EVIDENCE_ID = "network-scale.rc-soak-summary"
+NETWORK_SCALE_SOAK_APP_IDS = ("social-inbox", "feed-reader")
+NETWORK_SCALE_SOAK_APP_COUNT_KEYS = (
+    "subscriptions",
+    "pollAttempts",
+    "budgetSkips",
+    "queuePressureSkips",
+    "updatesObserved",
+)
+NETWORK_SCALE_SOAK_TRUST_GRAPH_COUNT_KEYS = ("importsAttempted", "budgetSkips")
+NETWORK_SCALE_SOAK_BUDGET_KEYS = (
+    "globalFetchBudgetEnforced",
+    "perAppFetchBudgetEnforced",
+    "concurrencyLeasesReleased",
+)
+NETWORK_SCALE_SOAK_REDACTION_KEYS = (
+    "rawFetchedContentExcluded",
+    "privateInsertUrisExcluded",
+    "tokensExcluded",
+    "absolutePathsExcluded",
+    "queueHtmlExcluded",
+)
 SENSITIVE_KEY_PATTERN = (
     r"token|password|passwd|secret|credential|authorization|cookie|set-cookie|"
     r"private[-_ ]?key|formPassword|browserSessionToken|CRYPTAD_APP_TOKEN|X-Crypta-App-Session|"
@@ -1357,6 +1378,198 @@ def live_network_beta_evidence(
     return items
 
 
+def add_network_scale_unexpected_field_error(
+    value: dict[str, Any],
+    allowed_keys: set[str],
+    errors: list[str],
+    context: str,
+) -> None:
+    if any(str(key) not in allowed_keys for key in value):
+        errors.append(f"{context} contains unsupported fields")
+
+
+def network_scale_safe_enum(
+    value: Any,
+    allowed_values: set[str],
+    errors: list[str],
+    field_name: str,
+) -> str:
+    if isinstance(value, str) and value in allowed_values:
+        return value
+    errors.append(f"{field_name} must be one of the supported values")
+    return "invalid"
+
+
+def network_scale_safe_int(
+    value: Any,
+    errors: list[str],
+    field_name: str,
+    *,
+    minimum: int = 0,
+) -> int:
+    try:
+        if isinstance(value, bool):
+            raise ValueError
+        parsed = int(value)
+    except (TypeError, ValueError):
+        errors.append(f"{field_name} must be an integer")
+        return 0
+    if parsed < minimum:
+        errors.append(f"{field_name} must be at least {minimum}")
+    return parsed
+
+
+def network_scale_safe_bool(
+    value: Any,
+    errors: list[str],
+    field_name: str,
+    *,
+    expected: bool,
+) -> bool | None:
+    if value is expected:
+        return value
+    expected_text = "true" if expected else "false"
+    errors.append(f"{field_name} must be {expected_text}")
+    return None
+
+
+def allowlisted_network_scale_app_summary(
+    app_id: str,
+    value: Any,
+    errors: list[str],
+) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        errors.append(f"{app_id} app summary is missing")
+        return {}
+    allowed_keys = {*NETWORK_SCALE_SOAK_APP_COUNT_KEYS, "rawContentPersisted"}
+    add_network_scale_unexpected_field_error(value, allowed_keys, errors, f"apps.{app_id}")
+    summary = {
+        key: network_scale_safe_int(value.get(key), errors, f"apps.{app_id}.{key}")
+        for key in NETWORK_SCALE_SOAK_APP_COUNT_KEYS
+    }
+    summary["rawContentPersisted"] = network_scale_safe_bool(
+        value.get("rawContentPersisted"),
+        errors,
+        f"apps.{app_id}.rawContentPersisted",
+        expected=False,
+    )
+    return summary
+
+
+def allowlisted_network_scale_bool_section(
+    summary: dict[str, Any],
+    section_name: str,
+    required_keys: tuple[str, ...],
+    errors: list[str],
+) -> dict[str, Any]:
+    value = summary.get(section_name, {})
+    if not isinstance(value, dict):
+        errors.append(f"{section_name} must be an object")
+        value = {}
+    else:
+        add_network_scale_unexpected_field_error(value, set(required_keys), errors, section_name)
+    return {
+        key: network_scale_safe_bool(
+            value.get(key),
+            errors,
+            f"{section_name}.{key}",
+            expected=True,
+        )
+        for key in required_keys
+    }
+
+
+def allowlisted_network_scale_soak_summary(
+    summary: dict[str, Any],
+) -> tuple[dict[str, Any], list[str]]:
+    """Return a redaction-safe network-scale soak summary and schema errors."""
+
+    errors: list[str] = []
+    add_network_scale_unexpected_field_error(
+        summary,
+        {
+            "mode",
+            "status",
+            "durationHoursSimulated",
+            "apps",
+            "trustGraph",
+            "budgets",
+            "redaction",
+        },
+        errors,
+        "summary",
+    )
+    duration = network_scale_safe_int(
+        summary.get("durationHoursSimulated"),
+        errors,
+        "durationHoursSimulated",
+        minimum=24,
+    )
+    apps_value = summary.get("apps", {})
+    if not isinstance(apps_value, dict):
+        errors.append("apps must be an object")
+        apps_value = {}
+    else:
+        add_network_scale_unexpected_field_error(
+            apps_value,
+            set(NETWORK_SCALE_SOAK_APP_IDS),
+            errors,
+            "apps",
+        )
+    safe_apps = {
+        app_id: allowlisted_network_scale_app_summary(app_id, apps_value.get(app_id), errors)
+        for app_id in NETWORK_SCALE_SOAK_APP_IDS
+    }
+    trust_graph_value = summary.get("trustGraph", {})
+    if not isinstance(trust_graph_value, dict):
+        errors.append("trustGraph must be an object")
+        trust_graph_value = {}
+    else:
+        add_network_scale_unexpected_field_error(
+            trust_graph_value,
+            {*NETWORK_SCALE_SOAK_TRUST_GRAPH_COUNT_KEYS, "rawStatementsInEvidence"},
+            errors,
+            "trustGraph",
+        )
+    safe_trust_graph = {
+        key: network_scale_safe_int(trust_graph_value.get(key), errors, f"trustGraph.{key}")
+        for key in NETWORK_SCALE_SOAK_TRUST_GRAPH_COUNT_KEYS
+    }
+    safe_trust_graph["rawStatementsInEvidence"] = network_scale_safe_bool(
+        trust_graph_value.get("rawStatementsInEvidence"),
+        errors,
+        "trustGraph.rawStatementsInEvidence",
+        expected=False,
+    )
+    return (
+        {
+            "mode": network_scale_safe_enum(
+                summary.get("mode"),
+                {"simulated-rc-soak", "live-rc-soak"},
+                errors,
+                "mode",
+            ),
+            "status": network_scale_safe_enum(summary.get("status"), {"success"}, errors, "status"),
+            "durationHoursSimulated": duration,
+            "apps": safe_apps,
+            "trustGraph": safe_trust_graph,
+            "budgets": allowlisted_network_scale_bool_section(
+                summary,
+                "budgets",
+                NETWORK_SCALE_SOAK_BUDGET_KEYS,
+                errors,
+            ),
+            "redaction": allowlisted_network_scale_bool_section(
+                summary,
+                "redaction",
+                NETWORK_SCALE_SOAK_REDACTION_KEYS,
+                errors,
+            ),
+        },
+        errors,
+    )
+
+
 def network_scale_soak_evidence(
     path: Path, workspace_root: Path, out_dir: Path, mode: str
 ) -> EvidenceItem:
@@ -1372,61 +1585,11 @@ def network_scale_soak_evidence(
             source,
             {"requiredInMode": required},
         )
-    sanitized_summary = sanitize_value(summary, workspace_root, out_dir)
-    errors: list[str] = []
-    summary_mode = str(summary.get("mode", ""))
-    status = str(summary.get("status", ""))
-    if summary_mode not in {"simulated-rc-soak", "live-rc-soak"}:
-        errors.append("mode must be simulated-rc-soak or live-rc-soak")
-    if status != "success":
-        errors.append("status must be success")
-    try:
-        duration = int(summary.get("durationHoursSimulated", 0))
-    except (TypeError, ValueError):
-        duration = 0
-    if duration < 24:
-        errors.append("durationHoursSimulated must be at least 24")
-    apps = summary.get("apps", {})
-    if not isinstance(apps, dict):
-        errors.append("apps must be an object")
-        apps = {}
-    for app_id in ("social-inbox", "feed-reader"):
-        app = apps.get(app_id)
-        if not isinstance(app, dict):
-            errors.append(f"{app_id} app summary is missing")
-            continue
-        if app.get("rawContentPersisted") is not False:
-            errors.append(f"{app_id} must report rawContentPersisted=false")
-    trust_graph = summary.get("trustGraph", {})
-    if not isinstance(trust_graph, dict) or trust_graph.get("rawStatementsInEvidence") is not False:
-        errors.append("trustGraph must exclude raw statements from evidence")
-    for section, keys in (
-        (
-            "budgets",
-            ("globalFetchBudgetEnforced", "perAppFetchBudgetEnforced", "concurrencyLeasesReleased"),
-        ),
-        (
-            "redaction",
-            (
-                "rawFetchedContentExcluded",
-                "privateInsertUrisExcluded",
-                "tokensExcluded",
-                "absolutePathsExcluded",
-                "queueHtmlExcluded",
-            ),
-        ),
-    ):
-        values = summary.get(section, {})
-        if not isinstance(values, dict):
-            errors.append(f"{section} must be an object")
-            continue
-        for key in keys:
-            if values.get(key) is not True:
-                errors.append(f"{section}.{key} must be true")
+    safe_summary, errors = allowlisted_network_scale_soak_summary(summary)
     details = {
-        "mode": sanitize_value(summary_mode, workspace_root, out_dir),
-        "durationHoursSimulated": duration,
-        "summary": sanitized_summary,
+        "mode": safe_summary["mode"],
+        "durationHoursSimulated": safe_summary["durationHoursSimulated"],
+        "summary": safe_summary,
     }
     if errors:
         return EvidenceItem(
@@ -5056,7 +5219,11 @@ def collect_source_artifacts(settings: Settings, out_dir: Path) -> list[str]:
             value = read_json(source_path)
             if value is None:
                 continue
-            write_json(target_path, sanitize_value(value, settings.workspace_root, out_dir))
+            if target_name == "network-scale-soak-summary.json":
+                safe_value, _ = allowlisted_network_scale_soak_summary(value)
+            else:
+                safe_value = sanitize_value(value, settings.workspace_root, out_dir)
+            write_json(target_path, safe_value)
         else:
             target_path.write_text(
                 scrub_text(source_path.read_text(encoding="utf-8"), settings.workspace_root, out_dir),
@@ -6407,6 +6574,12 @@ def run_self_test(repo_root: Path) -> None:
                     return row
             raise AssertionError(f"missing matrix row {row_id}")
 
+        def evidence_by_id(summary_value: dict[str, Any], evidence_id: str) -> dict[str, Any]:
+            for item in summary_value.get("evidence", []):
+                if isinstance(item, dict) and item.get("id") == evidence_id:
+                    return item
+            raise AssertionError(f"missing evidence {evidence_id}")
+
         def write_live_network_summary(
             name: str,
             *,
@@ -6480,6 +6653,58 @@ def run_self_test(repo_root: Path) -> None:
                 },
             )
             return path
+
+        raw_network_soak = read_json(settings.network_scale_soak_summary)
+        assert raw_network_soak is not None
+        raw_network_soak["queueHtml"] = "<html>private queue details</html>"
+        raw_network_soak["rawFetchedContent"] = "USK@private-fetched-content"
+        raw_network_soak["apps"]["social-inbox"]["rawFetchedContent"] = (
+            "private social inbox document"
+        )
+        raw_network_soak["apps"]["feed-reader"]["queueHtml"] = "<html>feed queue</html>"
+        raw_network_soak["trustGraph"]["rawStatementBody"] = "raw trust statement body"
+        raw_network_soak["redaction"]["rawContent"] = "private redaction field"
+        raw_network_soak_path = workspace / "build/network-scale-raw-soak/summary.json"
+        write_json(raw_network_soak_path, raw_network_soak)
+        raw_network_soak_summary, raw_network_soak_exit_code = run_with_previous(
+            "network-scale-raw-soak-cert",
+            network_scale_soak_summary=raw_network_soak_path,
+        )
+        assert raw_network_soak_exit_code == 1, raw_network_soak_summary
+        raw_network_soak_item = evidence_by_id(
+            raw_network_soak_summary,
+            NETWORK_SCALE_SOAK_EVIDENCE_ID,
+        )
+        assert raw_network_soak_item["status"] == "fail", raw_network_soak_item
+        assert any(
+            "unsupported fields" in error
+            for error in raw_network_soak_item["details"]["errors"]
+        ), raw_network_soak_item
+        copied_raw_network_soak = read_json(
+            workspace
+            / "build/network-scale-raw-soak-cert/artifacts/network-scale-soak-summary.json"
+        )
+        assert copied_raw_network_soak is not None, raw_network_soak_summary
+        assert "rawFetchedContent" not in copied_raw_network_soak["apps"]["social-inbox"]
+        assert "queueHtml" not in copied_raw_network_soak["apps"]["feed-reader"]
+        assert "rawStatementBody" not in copied_raw_network_soak["trustGraph"]
+        raw_network_soak_report = (
+            workspace / "build/network-scale-raw-soak-cert" / REPORT_FILE_NAME
+        ).read_text(encoding="utf-8")
+        encoded_raw_network_soak = (
+            json.dumps(raw_network_soak_summary, sort_keys=True)
+            + json.dumps(copied_raw_network_soak, sort_keys=True)
+            + raw_network_soak_report
+        )
+        for forbidden in (
+            "<html>private queue details</html>",
+            "private-fetched-content",
+            "private social inbox document",
+            "<html>feed queue</html>",
+            "raw trust statement body",
+            "private redaction field",
+        ):
+            assert forbidden not in encoded_raw_network_soak, encoded_raw_network_soak
 
         live_disabled_evidence = {item["id"]: item for item in summary["evidence"]}
         for evidence_id in LIVE_NETWORK_BETA_EVIDENCE_IDS:
