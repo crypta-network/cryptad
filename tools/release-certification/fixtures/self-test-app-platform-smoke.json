@@ -109,6 +109,64 @@
     {
       "details": {
         "checks": {
+          "dependencyModelsPresent": true,
+          "dependencyParserStrictFieldsPresent": true,
+          "dependencyRoutesPresent": true,
+          "dependencyTestsPresent": true
+        }
+      },
+      "id": "app-services.dependency-graph",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "App-service dependency graph evidence passed deterministic checks."
+    },
+    {
+      "details": {
+        "checks": {
+          "bundleCoordinatorHostOnly": true,
+          "bundleModelsAndStorePresent": true,
+          "bundleRoutesPresent": true,
+          "bundleTestsPresent": true
+        }
+      },
+      "id": "app-services.grant-bundles",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "App-service grant-bundle evidence passed deterministic checks."
+    },
+    {
+      "details": {
+        "checks": {
+          "expiredGrantsFailClosed": true,
+          "grantExpiryFieldsPresent": true,
+          "renewalRevalidates": true
+        }
+      },
+      "id": "app-services.grant-expiry-renewal",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "App-service grant expiry and renewal evidence passed deterministic checks."
+    },
+    {
+      "details": {
+        "checks": {
+          "compatibilityFingerprintPresent": true,
+          "descriptorDriftNonAuthorizing": true,
+          "descriptorMatchingChecksVersionScopeContextKindAdapter": true
+        }
+      },
+      "id": "app-services.provider-revalidation",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "App-service provider descriptor revalidation evidence passed deterministic checks."
+    },
+    {
+      "details": {
+        "checks": {
           "adapterIsBoundedNotProxy": true,
           "adapterTestsCoverRedaction": true,
           "providerDocsAndUiDescribePreviewGrantBoundary": true,
@@ -140,6 +198,20 @@
     {
       "details": {
         "checks": {
+          "socialDegradesSafely": true,
+          "socialDependencyDocsPresent": true,
+          "socialManifestDeclaresOptionalDependency": true
+        }
+      },
+      "id": "reference-app.social-inbox-service-dependency",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Social Inbox service dependency evidence passed deterministic checks."
+    },
+    {
+      "details": {
+        "checks": {
           "webShellLoadsAppServiceData": true,
           "webShellOmitsPrivateMaterial": true,
           "webShellRendersGrantActions": true,
@@ -167,6 +239,20 @@
       "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
       "status": "pass",
       "summary": "App-service redaction and boundary evidence passed deterministic checks."
+    },
+    {
+      "details": {
+        "checks": {
+          "bundlePublicJsonFieldsSafe": true,
+          "dependencyJsonPathFreeByConstruction": true,
+          "uiAndEvidenceAvoidRawSensitiveValues": true
+        }
+      },
+      "id": "app-services.dependency-redaction",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "App-service dependency and bundle redaction evidence passed deterministic checks."
     },
     {
       "details": {

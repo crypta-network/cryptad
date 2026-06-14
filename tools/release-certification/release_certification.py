@@ -41,13 +41,6 @@ ECOSYSTEM_MATRIX_SCHEMA_VERSION = 1
 CERT_STATUSES = ("pass", "warn", "fail", "skip", "missing")
 MODES = ("pr", "nightly", "release-candidate")
 PRIVATE_ARTIFACT_NAMES = ("private-insert-uris.json",)
-REDACTION_FINDING_EVIDENCE_IDS = frozenset(
-    {
-        "app-platform.docs-redaction",
-        "ecosystem-security.advisory-revocation-redaction",
-        "live-network-beta.redaction",
-    }
-)
 PUBLIC_BETA_SECURITY_EVIDENCE_IDS = (
     "public-beta-security.app-ui-csp",
     "public-beta-security.app-origin-policy",
@@ -141,6 +134,132 @@ NETWORK_SCALE_SOAK_REDACTION_KEYS = (
     "tokensExcluded",
     "absolutePathsExcluded",
     "queueHtmlExcluded",
+)
+ECOSYSTEM_RC_GATE_ID = "ecosystem.rc-certification"
+ECOSYSTEM_RC_EVIDENCE_ID = "release-certification.ecosystem-rc-gate"
+ECOSYSTEM_RC_MATRIX_ROW_ID = "ecosystem-rc-certification-gate"
+APP_SERVICE_DEPENDENCY_AND_GRANT_BUNDLE_EVIDENCE_IDS = (
+    "app-services.dependency-graph",
+    "app-services.grant-bundles",
+    "app-services.grant-expiry-renewal",
+    "app-services.provider-revalidation",
+    "reference-app.social-inbox-service-dependency",
+    "app-services.dependency-redaction",
+)
+APP_SERVICE_DISCOVERY_AND_GRANT_EVIDENCE_IDS = (
+    "app-services.registry",
+    "app-services.grants",
+    *APP_SERVICE_DEPENDENCY_AND_GRANT_BUNDLE_EVIDENCE_IDS,
+    "app-services.trust-score-provider",
+    "reference-app.social-inbox-service-grant",
+    "app-services.web-shell",
+    "app-services.redaction",
+)
+ECOSYSTEM_RC_REQUIRED_GATE_IDS = (
+    "ecosystem.required-evidence-regressions",
+    "ecosystem.platform-api-compatibility",
+    "ecosystem.first-party-apps",
+    "ecosystem.app-ui-quality",
+    "ecosystem.app-review-trust",
+    "ecosystem.app-update-rollback",
+    "ecosystem.operator-rc-recovery",
+    "ecosystem.security-advisory-revocation",
+    "ecosystem.app-vault",
+    "ecosystem.sandbox-provider",
+    "ecosystem.reference-content-apps",
+    "ecosystem.legacy-retirement",
+)
+ECOSYSTEM_RC_REQUIRED_EVIDENCE_IDS = (
+    "interop.smoke",
+    "performance.smoke",
+    "release-certification.ecosystem-matrix",
+    "platform-api.contract",
+    "app-platform.first-party",
+    "app-platform.devtools-cli",
+    "app-platform.developer-beta-toolkit",
+    *app_platform_docs_check.EVIDENCE_IDS,
+    "catalog.smoke",
+    "catalog.live-usk-publication",
+    "catalog.live-usk-source-verification",
+    "app-catalog.first-party-beta",
+    "app-platform.signed-bundles",
+    "catalog.production-channels",
+    *ECOSYSTEM_SECURITY_EVIDENCE_IDS,
+    "app-review.trusted-receipts",
+    "app-review.policy",
+    "app-review.governance",
+    "app-review.reviewer-key-lifecycle",
+    "app-review.transparency-log",
+    "app-review.review-history-api",
+    "app-review.first-party-catalog",
+    "app-review.first-party-review-chain",
+    "app-update.lifecycle",
+    "app-update.scheduler",
+    "app-update.live-catalog-refresh",
+    "app-update.rollback",
+    "app-update.data-migration-contract",
+    "app-platform.durable-app-data-store",
+    "app-data.backup-restore-portability",
+    "operator-beta.app-data-backup-restore",
+    "app-vault.capabilities",
+    "app-platform.identity-profile-publish",
+    "app-platform.generated-document-insert",
+    "app-platform.content-fetch",
+    "app-platform.content-subscriptions",
+    "network-content.subscription-scheduler",
+    "app-platform.trust-graph-preview",
+    "app-platform.trust-graph-rc-scope-and-safety",
+    "app-platform.trust-graph-durable-store",
+    "app-platform.trust-graph-exchange",
+    "app-platform.trust-statement-signing",
+    "reference-app.trust-graph",
+    "reference-app.trust-graph-durable-exchange",
+    "reference-app.trust-graph-app-data-preview",
+    "app-platform.social-message-signing",
+    "reference-app.social-inbox",
+    "reference-app.social-inbox-signed-message",
+    "reference-app.social-inbox-subscriptions",
+    "reference-app.social-inbox-app-data",
+    "reference-app.social-inbox-trust-annotations",
+    "reference-app.social-inbox-rc-threading",
+    "reference-app.social-inbox-service-grant",
+    "reference-app.social-inbox-service-dependency",
+    "migration.social-mail-preview",
+    *APP_SERVICE_DISCOVERY_AND_GRANT_EVIDENCE_IDS,
+    *NETWORK_SCALE_EVIDENCE_IDS,
+    NETWORK_SCALE_SOAK_EVIDENCE_ID,
+    *OPERATOR_RC_EVIDENCE_IDS,
+    "legacy.retirement",
+    "legacy-admin.removal-wave-1",
+    "legacy-admin.removal-wave-2",
+    "legacy-admin.removal-wave-3",
+    "legacy-admin.removal-wave-4",
+    "legacy-plugin.freeze-policy",
+    "legacy-plugin.migration-guide",
+    "legacy-plugin.social-inbox-spike",
+    "app-ui.design-system",
+    "app-ui.lint",
+    "app-ui.first-party-adoption",
+    "app-ui.smoke",
+    "apphost.sandbox-provider",
+    *PUBLIC_BETA_SECURITY_EVIDENCE_IDS,
+    "reference-apps.content",
+    "reference-app.profile-publisher",
+    "reference-app.profile-publisher-app-data",
+    "reference-app.feed-reader",
+    "reference-app.feed-reader-subscriptions",
+    "reference-app.feed-reader-app-data",
+)
+ECOSYSTEM_RC_REDACTION_EVIDENCE_IDS = (
+    "app-platform.docs-redaction",
+    "ecosystem-security.advisory-revocation-redaction",
+    "live-network-beta.redaction",
+    "network-scale.redaction",
+    "app-services.redaction",
+    "app-services.dependency-redaction",
+    "operator-beta.support-bundle-redaction",
+    "operator-rc.redaction",
+    "public-beta-security.audit-redaction-fuzz",
 )
 SENSITIVE_KEY_PATTERN = (
     r"token|password|passwd|secret|credential|authorization|cookie|set-cookie|"
@@ -796,13 +915,9 @@ def unique_non_empty_strings(values: Any) -> list[str]:
     return result
 
 
-def has_unwaivable_redaction_findings(evidence_id: str, details: dict[str, Any]) -> bool:
+def has_unwaivable_redaction_findings(_evidence_id: str, details: dict[str, Any]) -> bool:
     redaction_findings = details.get("redactionFindings")
-    return (
-        evidence_id in REDACTION_FINDING_EVIDENCE_IDS
-        and isinstance(redaction_findings, list)
-        and bool(redaction_findings)
-    )
+    return isinstance(redaction_findings, list) and bool(redaction_findings)
 
 
 def evidence_item_has_unwaivable_redaction_findings(item: EvidenceItem) -> bool:
@@ -1101,12 +1216,7 @@ def app_platform_evidence(
         "app-platform.trust-graph-exchange",
         "app-platform.trust-statement-signing",
         "app-platform.social-message-signing",
-        "app-services.registry",
-        "app-services.grants",
-        "app-services.trust-score-provider",
-        "reference-app.social-inbox-service-grant",
-        "app-services.web-shell",
-        "app-services.redaction",
+        *APP_SERVICE_DISCOVERY_AND_GRANT_EVIDENCE_IDS,
         "app-platform.signed-bundles",
         "catalog.smoke",
         "catalog.live-usk-publication",
@@ -2020,6 +2130,20 @@ def ecosystem_matrix_row_specs() -> list[MatrixRowSpec]:
             ),
         ),
         MatrixRowSpec(
+            id=ECOSYSTEM_RC_MATRIX_ROW_ID,
+            category="release-operations",
+            title="Ecosystem RC certification gate",
+            required_evidence_ids=(ECOSYSTEM_RC_EVIDENCE_ID,),
+            gate_ids=(ECOSYSTEM_RC_GATE_ID,),
+            docs=(
+                "docs/release-certification.md",
+                "docs/ecosystem-rc-certification-gate.md",
+                "docs/cryptad-release-workflow-and-runbook.md",
+                "tools/release-certification/README.md",
+            ),
+            phase="phase-9",
+        ),
+        MatrixRowSpec(
             id="interop-smoke",
             category="network-compatibility",
             title="Hyphanet interop smoke certification",
@@ -2171,15 +2295,8 @@ def ecosystem_matrix_row_specs() -> list[MatrixRowSpec]:
         MatrixRowSpec(
             id="app-service-discovery-and-grants",
             category="app-platform",
-            title="App-service discovery, grants, and Trust Score Service",
-            required_evidence_ids=(
-                "app-services.registry",
-                "app-services.grants",
-                "app-services.trust-score-provider",
-                "reference-app.social-inbox-service-grant",
-                "app-services.web-shell",
-                "app-services.redaction",
-            ),
+            title="App-service discovery, grants, dependency graph, and grant bundles",
+            required_evidence_ids=APP_SERVICE_DISCOVERY_AND_GRANT_EVIDENCE_IDS,
             gate_ids=("ecosystem.reference-content-apps",),
             docs=(
                 "docs/app-service-discovery-and-grants.md",
@@ -2419,6 +2536,7 @@ def ecosystem_matrix_row_specs() -> list[MatrixRowSpec]:
                 "reference-app.social-inbox-trust-annotations",
                 "reference-app.social-inbox-rc-threading",
                 "reference-app.social-inbox-service-grant",
+                "reference-app.social-inbox-service-dependency",
                 "migration.social-mail-preview",
             ),
             gate_ids=("ecosystem.reference-content-apps",),
@@ -2770,6 +2888,8 @@ def evaluate_matrix_row(
                 and not bool(evidence_details_value.get("enabled"))
             )
             if live_beta_disabled_skip:
+                continue
+            if evidence_id == "apphost.live":
                 continue
             if evidence_id == "live-network-beta.app-service-score" and not bool(
                 evidence_details_value.get("enabled")
@@ -3298,6 +3418,86 @@ def placeholder_ecosystem_matrix_evidence(workspace_root: Path, out_dir: Path) -
                     out_dir,
                 ),
                 "schemaVersion": ECOSYSTEM_MATRIX_SCHEMA_VERSION,
+            },
+        ),
+        workspace_root,
+        out_dir,
+    )
+
+
+def ecosystem_rc_gate_evidence(
+    gate: GateResult | None,
+    workspace_root: Path,
+    out_dir: Path,
+) -> EvidenceItem:
+    if gate is None:
+        return placeholder_ecosystem_rc_gate_evidence(workspace_root, out_dir)
+    waiver_ids = gate_waiver_ids(gate)
+    compact_details = {
+        key: gate.details.get(key)
+        for key in (
+            "phase",
+            "requiredEvidenceIds",
+            "requiredGateIds",
+            "failedEvidenceIds",
+            "warningEvidenceIds",
+            "missingEvidenceIds",
+            "skippedEvidenceIds",
+            "blockingGateIds",
+            "warningGateIds",
+            "waivedEvidenceIds",
+            "waivedGateIds",
+            "historyComparisonStatus",
+            "liveNetworkRequired",
+            "liveNetworkSatisfied",
+            "networkScaleSoakSatisfied",
+            "redactionPassed",
+            "redactionFailureEvidenceIds",
+            "firstPartyAppsCovered",
+            "promotionReady",
+        )
+        if key in gate.details
+    }
+    if waiver_ids:
+        compact_details["waiverIds"] = waiver_ids
+    details = {
+        "gateId": gate.id,
+        "releaseBlocker": gate.release_blocker,
+        "promotionReady": bool(gate.details.get("promotionReady", not gate.release_blocker)),
+        "failedEvidenceCount": len(gate.details.get("failedEvidenceIds", [])),
+        "missingEvidenceCount": len(gate.details.get("missingEvidenceIds", [])),
+        "warningEvidenceCount": len(gate.details.get("warningEvidenceIds", [])),
+        "blockingGateCount": len(gate.details.get("blockingGateIds", [])),
+        "warningGateCount": len(gate.details.get("warningGateIds", [])),
+        "waiverCount": len(waiver_ids),
+        "details": compact_details,
+    }
+    return sanitize_evidence_item(
+        EvidenceItem(
+            ECOSYSTEM_RC_EVIDENCE_ID,
+            gate.status,
+            True,
+            gate.summary,
+            display_path(out_dir / SUMMARY_FILE_NAME, workspace_root, out_dir),
+            details,
+        ),
+        workspace_root,
+        out_dir,
+    )
+
+
+def placeholder_ecosystem_rc_gate_evidence(workspace_root: Path, out_dir: Path) -> EvidenceItem:
+    return sanitize_evidence_item(
+        EvidenceItem(
+            ECOSYSTEM_RC_EVIDENCE_ID,
+            "pass",
+            True,
+            "Ecosystem RC certification gate evaluation is pending.",
+            display_path(out_dir / SUMMARY_FILE_NAME, workspace_root, out_dir),
+            {
+                "gateId": ECOSYSTEM_RC_GATE_ID,
+                "phase": "phase-9",
+                "promotionReady": False,
             },
         ),
         workspace_root,
@@ -3864,6 +4064,7 @@ def evaluate_app_update_rollback_gate(
         "app-update.scheduler",
         "app-update.live-catalog-refresh",
         "app-update.rollback",
+        "app-update.data-migration-contract",
     ):
         status = evidence_status(current.get(evidence_id))
         previous_status = evidence_status(previous.get(evidence_id))
@@ -4271,16 +4472,34 @@ def evaluate_reference_content_gate(
     previous_app_services_registry_item = previous.get("app-services.registry")
     app_services_grants_item = current.get("app-services.grants")
     previous_app_services_grants_item = previous.get("app-services.grants")
+    app_services_dependency_graph_item = current.get("app-services.dependency-graph")
+    previous_app_services_dependency_graph_item = previous.get("app-services.dependency-graph")
+    app_services_grant_bundles_item = current.get("app-services.grant-bundles")
+    previous_app_services_grant_bundles_item = previous.get("app-services.grant-bundles")
+    app_services_grant_expiry_item = current.get("app-services.grant-expiry-renewal")
+    previous_app_services_grant_expiry_item = previous.get("app-services.grant-expiry-renewal")
+    app_services_provider_revalidation_item = current.get("app-services.provider-revalidation")
+    previous_app_services_provider_revalidation_item = previous.get("app-services.provider-revalidation")
     app_services_provider_item = current.get("app-services.trust-score-provider")
     previous_app_services_provider_item = previous.get("app-services.trust-score-provider")
     social_inbox_service_grant_item = current.get("reference-app.social-inbox-service-grant")
     previous_social_inbox_service_grant_item = previous.get(
         "reference-app.social-inbox-service-grant"
     )
+    social_inbox_service_dependency_item = current.get(
+        "reference-app.social-inbox-service-dependency"
+    )
+    previous_social_inbox_service_dependency_item = previous.get(
+        "reference-app.social-inbox-service-dependency"
+    )
     app_services_web_shell_item = current.get("app-services.web-shell")
     previous_app_services_web_shell_item = previous.get("app-services.web-shell")
     app_services_redaction_item = current.get("app-services.redaction")
     previous_app_services_redaction_item = previous.get("app-services.redaction")
+    app_services_dependency_redaction_item = current.get("app-services.dependency-redaction")
+    previous_app_services_dependency_redaction_item = previous.get(
+        "app-services.dependency-redaction"
+    )
     details = evidence_details(item)
     profile_details = evidence_details(profile_item)
     profile_app_data_details = evidence_details(profile_app_data_item)
@@ -4311,10 +4530,22 @@ def evaluate_reference_content_gate(
     trust_statement_signing_details = evidence_details(trust_statement_signing_item)
     app_services_registry_details = evidence_details(app_services_registry_item)
     app_services_grants_details = evidence_details(app_services_grants_item)
+    app_services_dependency_graph_details = evidence_details(app_services_dependency_graph_item)
+    app_services_grant_bundles_details = evidence_details(app_services_grant_bundles_item)
+    app_services_grant_expiry_details = evidence_details(app_services_grant_expiry_item)
+    app_services_provider_revalidation_details = evidence_details(
+        app_services_provider_revalidation_item
+    )
     app_services_provider_details = evidence_details(app_services_provider_item)
     social_inbox_service_grant_details = evidence_details(social_inbox_service_grant_item)
+    social_inbox_service_dependency_details = evidence_details(
+        social_inbox_service_dependency_item
+    )
     app_services_web_shell_details = evidence_details(app_services_web_shell_item)
     app_services_redaction_details = evidence_details(app_services_redaction_item)
+    app_services_dependency_redaction_details = evidence_details(
+        app_services_dependency_redaction_item
+    )
     checks = nested_dict(details, "checks")
     profile_checks = nested_dict(profile_details, "checks")
     profile_app_data_checks = nested_dict(profile_app_data_details, "checks")
@@ -4338,9 +4569,21 @@ def evaluate_reference_content_gate(
     social_mail_migration_checks = nested_dict(social_mail_migration_details, "checks")
     app_services_registry_checks = nested_dict(app_services_registry_details, "checks")
     app_services_grants_checks = nested_dict(app_services_grants_details, "checks")
+    app_services_dependency_graph_checks = nested_dict(app_services_dependency_graph_details, "checks")
+    app_services_grant_bundles_checks = nested_dict(app_services_grant_bundles_details, "checks")
+    app_services_grant_expiry_checks = nested_dict(app_services_grant_expiry_details, "checks")
+    app_services_provider_revalidation_checks = nested_dict(
+        app_services_provider_revalidation_details, "checks"
+    )
     app_services_provider_checks = nested_dict(app_services_provider_details, "checks")
     app_services_web_shell_checks = nested_dict(app_services_web_shell_details, "checks")
     app_services_redaction_checks = nested_dict(app_services_redaction_details, "checks")
+    social_inbox_service_dependency_checks = nested_dict(
+        social_inbox_service_dependency_details, "checks"
+    )
+    app_services_dependency_redaction_checks = nested_dict(
+        app_services_dependency_redaction_details, "checks"
+    )
     status = evidence_status(item)
     previous_status = evidence_status(previous_item)
     profile_status = evidence_status(profile_item)
@@ -4415,16 +4658,44 @@ def evaluate_reference_content_gate(
     previous_app_services_registry_status = evidence_status(previous_app_services_registry_item)
     app_services_grants_status = evidence_status(app_services_grants_item)
     previous_app_services_grants_status = evidence_status(previous_app_services_grants_item)
+    app_services_dependency_graph_status = evidence_status(app_services_dependency_graph_item)
+    previous_app_services_dependency_graph_status = evidence_status(
+        previous_app_services_dependency_graph_item
+    )
+    app_services_grant_bundles_status = evidence_status(app_services_grant_bundles_item)
+    previous_app_services_grant_bundles_status = evidence_status(
+        previous_app_services_grant_bundles_item
+    )
+    app_services_grant_expiry_status = evidence_status(app_services_grant_expiry_item)
+    previous_app_services_grant_expiry_status = evidence_status(
+        previous_app_services_grant_expiry_item
+    )
+    app_services_provider_revalidation_status = evidence_status(
+        app_services_provider_revalidation_item
+    )
+    previous_app_services_provider_revalidation_status = evidence_status(
+        previous_app_services_provider_revalidation_item
+    )
     app_services_provider_status = evidence_status(app_services_provider_item)
     previous_app_services_provider_status = evidence_status(previous_app_services_provider_item)
     social_inbox_service_grant_status = evidence_status(social_inbox_service_grant_item)
     previous_social_inbox_service_grant_status = evidence_status(
         previous_social_inbox_service_grant_item
     )
+    social_inbox_service_dependency_status = evidence_status(social_inbox_service_dependency_item)
+    previous_social_inbox_service_dependency_status = evidence_status(
+        previous_social_inbox_service_dependency_item
+    )
     app_services_web_shell_status = evidence_status(app_services_web_shell_item)
     previous_app_services_web_shell_status = evidence_status(previous_app_services_web_shell_item)
     app_services_redaction_status = evidence_status(app_services_redaction_item)
     previous_app_services_redaction_status = evidence_status(previous_app_services_redaction_item)
+    app_services_dependency_redaction_status = evidence_status(
+        app_services_dependency_redaction_item
+    )
+    previous_app_services_dependency_redaction_status = evidence_status(
+        previous_app_services_dependency_redaction_item
+    )
     gate_details: dict[str, Any] = {}
     failures: list[str] = []
     warnings: list[str] = []
@@ -4557,6 +4828,26 @@ def evaluate_reference_content_gate(
         ("app-services.registry", app_services_registry_status, previous_app_services_registry_status),
         ("app-services.grants", app_services_grants_status, previous_app_services_grants_status),
         (
+            "app-services.dependency-graph",
+            app_services_dependency_graph_status,
+            previous_app_services_dependency_graph_status,
+        ),
+        (
+            "app-services.grant-bundles",
+            app_services_grant_bundles_status,
+            previous_app_services_grant_bundles_status,
+        ),
+        (
+            "app-services.grant-expiry-renewal",
+            app_services_grant_expiry_status,
+            previous_app_services_grant_expiry_status,
+        ),
+        (
+            "app-services.provider-revalidation",
+            app_services_provider_revalidation_status,
+            previous_app_services_provider_revalidation_status,
+        ),
+        (
             "app-services.trust-score-provider",
             app_services_provider_status,
             previous_app_services_provider_status,
@@ -4567,6 +4858,11 @@ def evaluate_reference_content_gate(
             previous_social_inbox_service_grant_status,
         ),
         (
+            "reference-app.social-inbox-service-dependency",
+            social_inbox_service_dependency_status,
+            previous_social_inbox_service_dependency_status,
+        ),
+        (
             "app-services.web-shell",
             app_services_web_shell_status,
             previous_app_services_web_shell_status,
@@ -4575,6 +4871,11 @@ def evaluate_reference_content_gate(
             "app-services.redaction",
             app_services_redaction_status,
             previous_app_services_redaction_status,
+        ),
+        (
+            "app-services.dependency-redaction",
+            app_services_dependency_redaction_status,
+            previous_app_services_dependency_redaction_status,
         ),
     ):
         if current_status in {"fail", "missing", "skip"}:
@@ -4862,6 +5163,19 @@ def evaluate_reference_content_gate(
                     "failureEvidenceIds",
                     "reference-app.social-inbox-service-grant",
                 )
+    if social_inbox_service_dependency_checks:
+        for key in (
+            "socialManifestDeclaresOptionalDependency",
+            "socialDegradesSafely",
+            "socialDependencyDocsPresent",
+        ):
+            if social_inbox_service_dependency_checks.get(key) is not True:
+                failures.append(f"Social Inbox service-dependency check {key} failed")
+                add_evidence_issue(
+                    gate_details,
+                    "failureEvidenceIds",
+                    "reference-app.social-inbox-service-dependency",
+                )
     if app_services_registry_checks:
         for key in (
             "contractV12AndCapabilitiesPresent",
@@ -4885,6 +5199,52 @@ def evaluate_reference_content_gate(
             if app_services_grants_checks.get(key) is not True:
                 failures.append(f"App-service grant check {key} failed")
                 add_evidence_issue(gate_details, "failureEvidenceIds", "app-services.grants")
+    if app_services_dependency_graph_checks:
+        for key in (
+            "dependencyModelsPresent",
+            "dependencyParserStrictFieldsPresent",
+            "dependencyRoutesPresent",
+            "dependencyTestsPresent",
+        ):
+            if app_services_dependency_graph_checks.get(key) is not True:
+                failures.append(f"App-service dependency graph check {key} failed")
+                add_evidence_issue(
+                    gate_details, "failureEvidenceIds", "app-services.dependency-graph"
+                )
+    if app_services_grant_bundles_checks:
+        for key in (
+            "bundleModelsAndStorePresent",
+            "bundleRoutesPresent",
+            "bundleCoordinatorHostOnly",
+            "bundleTestsPresent",
+        ):
+            if app_services_grant_bundles_checks.get(key) is not True:
+                failures.append(f"App-service grant-bundle check {key} failed")
+                add_evidence_issue(
+                    gate_details, "failureEvidenceIds", "app-services.grant-bundles"
+                )
+    if app_services_grant_expiry_checks:
+        for key in (
+            "grantExpiryFieldsPresent",
+            "expiredGrantsFailClosed",
+            "renewalRevalidates",
+        ):
+            if app_services_grant_expiry_checks.get(key) is not True:
+                failures.append(f"App-service grant expiry check {key} failed")
+                add_evidence_issue(
+                    gate_details, "failureEvidenceIds", "app-services.grant-expiry-renewal"
+                )
+    if app_services_provider_revalidation_checks:
+        for key in (
+            "compatibilityFingerprintPresent",
+            "descriptorDriftNonAuthorizing",
+            "descriptorMatchingChecksVersionScopeContextKindAdapter",
+        ):
+            if app_services_provider_revalidation_checks.get(key) is not True:
+                failures.append(f"App-service provider revalidation check {key} failed")
+                add_evidence_issue(
+                    gate_details, "failureEvidenceIds", "app-services.provider-revalidation"
+                )
     if app_services_provider_checks:
         for key in (
             "trustGraphManifestAdvertisesService",
@@ -4918,6 +5278,17 @@ def evaluate_reference_content_gate(
             if app_services_redaction_checks.get(key) is not True:
                 failures.append(f"App-service redaction check {key} failed")
                 add_evidence_issue(gate_details, "failureEvidenceIds", "app-services.redaction")
+    if app_services_dependency_redaction_checks:
+        for key in (
+            "dependencyJsonPathFreeByConstruction",
+            "bundlePublicJsonFieldsSafe",
+            "uiAndEvidenceAvoidRawSensitiveValues",
+        ):
+            if app_services_dependency_redaction_checks.get(key) is not True:
+                failures.append(f"App-service dependency-redaction check {key} failed")
+                add_evidence_issue(
+                    gate_details, "failureEvidenceIds", "app-services.dependency-redaction"
+                )
     if social_mail_migration_checks:
         for key in (
             "migrationFramingPresent",
@@ -5069,6 +5440,24 @@ def evaluate_reference_content_gate(
             "previousTrustGraphPreviewStatus": previous_trust_graph_preview_status,
             "trustStatementSigningStatus": trust_statement_signing_status,
             "previousTrustStatementSigningStatus": previous_trust_statement_signing_status,
+            "appServicesDependencyGraphStatus": app_services_dependency_graph_status,
+            "previousAppServicesDependencyGraphStatus": previous_app_services_dependency_graph_status,
+            "appServicesGrantBundlesStatus": app_services_grant_bundles_status,
+            "previousAppServicesGrantBundlesStatus": previous_app_services_grant_bundles_status,
+            "appServicesGrantExpiryStatus": app_services_grant_expiry_status,
+            "previousAppServicesGrantExpiryStatus": previous_app_services_grant_expiry_status,
+            "appServicesProviderRevalidationStatus": app_services_provider_revalidation_status,
+            "previousAppServicesProviderRevalidationStatus": (
+                previous_app_services_provider_revalidation_status
+            ),
+            "socialInboxServiceDependencyStatus": social_inbox_service_dependency_status,
+            "previousSocialInboxServiceDependencyStatus": (
+                previous_social_inbox_service_dependency_status
+            ),
+            "appServicesDependencyRedactionStatus": app_services_dependency_redaction_status,
+            "previousAppServicesDependencyRedactionStatus": (
+                previous_app_services_dependency_redaction_status
+            ),
             "profilePublisherAppId": profile_details.get("appId"),
             "feedReaderAppId": feed_reader_details.get("appId"),
             "trustGraphAppId": trust_graph_details.get("appId"),
@@ -5155,6 +5544,245 @@ def evaluate_waiver_validation_gate(context: WaiverContext, mode: str) -> GateRe
     )
 
 
+def unique_ids(values: Any) -> list[str]:
+    return sorted(dict.fromkeys(str(value) for value in values if str(value).strip()))
+
+
+def evidence_detail_waiver_id(entry: dict[str, Any] | None) -> str:
+    details = evidence_details(entry)
+    waiver_id = details.get("waiverId")
+    return str(waiver_id) if waiver_id else ""
+
+
+def gate_detail_waiver_id(gate: GateResult | None) -> str:
+    if gate is None:
+        return ""
+    waiver_id = gate.details.get("waiverId")
+    return str(waiver_id) if waiver_id else ""
+
+
+def gate_waiver_ids(gate: GateResult | None) -> list[str]:
+    if gate is None:
+        return []
+    waiver_ids: list[Any] = []
+    details = gate.details
+    existing_ids = details.get("waiverIds", [])
+    if isinstance(existing_ids, list):
+        waiver_ids.extend(existing_ids)
+    elif existing_ids:
+        waiver_ids.append(existing_ids)
+    direct_waiver_id = details.get("waiverId")
+    if direct_waiver_id:
+        waiver_ids.append(direct_waiver_id)
+    return unique_ids(waiver_ids)
+
+
+def conditional_ecosystem_rc_required_evidence_ids(settings: Settings) -> list[str]:
+    evidence_ids = list(ECOSYSTEM_RC_REQUIRED_EVIDENCE_IDS)
+    if settings.live_network_beta_required:
+        evidence_ids.extend(LIVE_NETWORK_BETA_REQUIRED_EVIDENCE_IDS)
+    return unique_ids(evidence_ids)
+
+
+def conditional_ecosystem_rc_required_gate_ids(
+    settings: Settings, gate_entries: dict[str, GateResult]
+) -> list[str]:
+    gate_ids = list(ECOSYSTEM_RC_REQUIRED_GATE_IDS)
+    if settings.live_network_beta_required:
+        gate_ids.append("ecosystem.live-network-beta")
+    if "ecosystem.waivers" in gate_entries:
+        gate_ids.append("ecosystem.waivers")
+    return unique_ids(gate_ids)
+
+
+def evaluate_ecosystem_rc_certification_gate(
+    settings: Settings,
+    current_evidence: list[EvidenceItem],
+    child_gates: list[GateResult],
+    history_comparison: dict[str, Any],
+    waiver_context: WaiverContext,
+) -> GateResult:
+    current = evidence_map_from_items(current_evidence)
+    gate_entries = {gate.id: gate for gate in child_gates}
+    required_evidence_ids = conditional_ecosystem_rc_required_evidence_ids(settings)
+    required_gate_ids = conditional_ecosystem_rc_required_gate_ids(settings, gate_entries)
+    optional_gate_ids = [] if settings.live_network_beta_required else ["ecosystem.live-network-beta"]
+    failed_evidence_ids: list[str] = []
+    warning_evidence_ids: list[str] = []
+    missing_evidence_ids: list[str] = []
+    skipped_evidence_ids: list[str] = []
+    waived_evidence_ids: list[str] = []
+    waived_gate_ids: list[str] = []
+    waiver_ids: list[str] = []
+    redaction_failure_ids: list[str] = []
+
+    for evidence_id in required_evidence_ids:
+        entry = current.get(evidence_id)
+        status = evidence_status(entry)
+        waiver_id = evidence_detail_waiver_id(entry)
+        if waiver_id:
+            waived_evidence_ids.append(evidence_id)
+            waiver_ids.append(waiver_id)
+        if evidence_entry_has_unwaivable_redaction_findings(entry):
+            redaction_failure_ids.append(evidence_id)
+            failed_evidence_ids.append(evidence_id)
+            continue
+        if status == "fail":
+            if waiver_id:
+                warning_evidence_ids.append(evidence_id)
+            else:
+                failed_evidence_ids.append(evidence_id)
+        elif status == "missing":
+            missing_evidence_ids.append(evidence_id)
+        elif status == "skip":
+            if settings.mode == "release-candidate":
+                skipped_evidence_ids.append(evidence_id)
+            else:
+                warning_evidence_ids.append(evidence_id)
+        elif status == "warn":
+            warning_evidence_ids.append(evidence_id)
+
+    blocking_gate_ids: list[str] = []
+    warning_gate_ids: list[str] = []
+    for gate_id in required_gate_ids:
+        gate = gate_entries.get(gate_id)
+        if gate is None:
+            blocking_gate_ids.append(gate_id)
+            continue
+        waiver_id = gate_detail_waiver_id(gate)
+        if waiver_id:
+            waived_gate_ids.append(gate_id)
+            waiver_ids.append(waiver_id)
+        if gate.status == "fail" and gate.release_blocker:
+            blocking_gate_ids.append(gate_id)
+        elif gate.status in {"warn", "fail", "missing"}:
+            warning_gate_ids.append(gate_id)
+    for gate_id in optional_gate_ids:
+        gate = gate_entries.get(gate_id)
+        if gate is not None and gate.status in {"warn", "fail", "missing"}:
+            warning_gate_ids.append(gate_id)
+
+    history_status = normalize_evidence_status(str(history_comparison.get("status", "missing")))
+    if history_status == "fail":
+        blocking_gate_ids.append("history-comparison")
+    elif history_status in {"warn", "missing"}:
+        warning_gate_ids.append("history-comparison")
+
+    matrix_entry = current.get("release-certification.ecosystem-matrix")
+    matrix_coverage = evidence_details(matrix_entry).get("coverage", {})
+    matrix_redaction_passed = (
+        bool(matrix_coverage.get("redactionPassed", True))
+        if isinstance(matrix_coverage, dict)
+        else True
+    )
+    redaction_evidence_passed = True
+    for evidence_id in ECOSYSTEM_RC_REDACTION_EVIDENCE_IDS:
+        entry = current.get(evidence_id)
+        status = evidence_status(entry)
+        has_redaction_findings = evidence_entry_has_unwaivable_redaction_findings(entry)
+        if (
+            evidence_id == "live-network-beta.redaction"
+            and not settings.live_network_beta_required
+            and status in {"missing", "skip"}
+            and not has_redaction_findings
+        ):
+            continue
+        if has_redaction_findings or status in {
+            "fail",
+            "missing",
+            "skip",
+        }:
+            redaction_evidence_passed = False
+            if evidence_id not in redaction_failure_ids:
+                redaction_failure_ids.append(evidence_id)
+    redaction_passed = matrix_redaction_passed and redaction_evidence_passed
+
+    live_required = settings.live_network_beta_required
+    live_required_statuses = [
+        evidence_status(current.get(evidence_id))
+        for evidence_id in LIVE_NETWORK_BETA_REQUIRED_EVIDENCE_IDS
+    ]
+    live_network_satisfied = (not live_required) or not any(
+        status in {"fail", "missing", "skip"} for status in live_required_statuses
+    )
+    network_scale_soak_status = evidence_status(current.get(NETWORK_SCALE_SOAK_EVIDENCE_ID))
+    network_scale_soak_satisfied = network_scale_soak_status not in {"fail", "missing", "skip"}
+    first_party_gate = gate_entries.get("ecosystem.first-party-apps")
+    first_party_apps_covered = first_party_gate is not None and first_party_gate.status in {"pass", "warn"}
+
+    failed_evidence_ids = unique_ids(failed_evidence_ids)
+    warning_evidence_ids = unique_ids(warning_evidence_ids)
+    missing_evidence_ids = unique_ids(missing_evidence_ids)
+    skipped_evidence_ids = unique_ids(skipped_evidence_ids)
+    blocking_gate_ids = unique_ids(blocking_gate_ids)
+    warning_gate_ids = unique_ids(warning_gate_ids)
+    waived_evidence_ids = unique_ids(waived_evidence_ids)
+    waived_gate_ids = unique_ids(waived_gate_ids)
+    waiver_ids = unique_ids(waiver_ids)
+    redaction_failure_ids = unique_ids(redaction_failure_ids)
+
+    has_blockers = bool(
+        failed_evidence_ids
+        or missing_evidence_ids
+        or (settings.mode == "release-candidate" and skipped_evidence_ids)
+        or blocking_gate_ids
+        or not redaction_passed
+        or not network_scale_soak_satisfied
+        or not live_network_satisfied
+    )
+    has_warnings = bool(
+        warning_evidence_ids
+        or skipped_evidence_ids
+        or warning_gate_ids
+        or waiver_ids
+        or history_status in {"warn", "missing"}
+    )
+    release_blocker = has_blockers and (settings.mode == "release-candidate" or not redaction_passed)
+    status = "fail" if release_blocker else ("warn" if has_blockers or has_warnings else "pass")
+    promotion_ready = not release_blocker
+    details = {
+        "phase": "phase-9",
+        "requiredEvidenceIds": required_evidence_ids,
+        "requiredGateIds": required_gate_ids,
+        "optionalGateIds": optional_gate_ids,
+        "failedEvidenceIds": failed_evidence_ids,
+        "warningEvidenceIds": warning_evidence_ids,
+        "missingEvidenceIds": missing_evidence_ids,
+        "skippedEvidenceIds": skipped_evidence_ids,
+        "blockingGateIds": blocking_gate_ids,
+        "warningGateIds": warning_gate_ids,
+        "waiverIds": waiver_ids,
+        "waivedEvidenceIds": waived_evidence_ids,
+        "waivedGateIds": waived_gate_ids,
+        "historyComparisonStatus": history_status,
+        "liveNetworkRequired": live_required,
+        "liveNetworkSatisfied": live_network_satisfied,
+        "networkScaleSoakSatisfied": network_scale_soak_satisfied,
+        "redactionPassed": redaction_passed,
+        "redactionFailureEvidenceIds": redaction_failure_ids,
+        "firstPartyAppsCovered": first_party_apps_covered,
+        "promotionReady": promotion_ready,
+    }
+    if failed_evidence_ids or missing_evidence_ids or skipped_evidence_ids:
+        details["failureEvidenceIds"] = unique_ids(
+            failed_evidence_ids + missing_evidence_ids + skipped_evidence_ids
+        )
+    if redaction_failure_ids:
+        details["unwaivableFailureEvidenceIds"] = redaction_failure_ids
+    if warning_evidence_ids:
+        details["warningEvidenceIds"] = warning_evidence_ids
+    summary = (
+        "Ecosystem RC certification is ready for promotion."
+        if status == "pass"
+        else (
+            "Ecosystem RC certification has warnings or waived blockers."
+            if status == "warn"
+            else "Ecosystem RC certification has release-blocking failures."
+        )
+    )
+    return GateResult(ECOSYSTEM_RC_GATE_ID, status, release_blocker, summary, details)
+
+
 def evaluate_ecosystem_gates(
     settings: Settings,
     current_evidence: list[EvidenceItem],
@@ -5168,7 +5796,7 @@ def evaluate_ecosystem_gates(
     diffs = history_comparison.get("evidenceDiffs", [])
     if not isinstance(diffs, list):
         diffs = []
-    gates = [
+    child_gates = [
         evaluate_required_evidence_regressions([diff for diff in diffs if isinstance(diff, dict)]),
         evaluate_platform_api_gate(current, previous),
         evaluate_first_party_apps_gate(current, previous),
@@ -5185,8 +5813,21 @@ def evaluate_ecosystem_gates(
     ]
     waiver_gate = evaluate_waiver_validation_gate(waiver_context, settings.mode)
     if waiver_gate is not None:
-        gates.append(waiver_gate)
-    return [apply_waiver_to_gate(gate, waiver_context, settings.mode) for gate in gates]
+        child_gates.append(waiver_gate)
+    waived_child_gates = [
+        apply_waiver_to_gate(gate, waiver_context, settings.mode) for gate in child_gates
+    ]
+    final_gate = evaluate_ecosystem_rc_certification_gate(
+        settings,
+        current_evidence,
+        waived_child_gates,
+        history_comparison,
+        waiver_context,
+    )
+    return [
+        *waived_child_gates,
+        apply_waiver_to_gate(final_gate, waiver_context, settings.mode),
+    ]
 
 
 def history_status_affects_decision(status: str) -> bool:
@@ -5245,6 +5886,43 @@ def aggregate_gate_status(gates: list[GateResult]) -> str:
     if any(gate.status == "warn" for gate in gates):
         return "warn"
     return "pass"
+
+
+def ecosystem_rc_gate_summary(gates: list[GateResult]) -> dict[str, Any]:
+    gate = next((candidate for candidate in gates if candidate.id == ECOSYSTEM_RC_GATE_ID), None)
+    if gate is None:
+        return {
+            "id": ECOSYSTEM_RC_GATE_ID,
+            "status": "missing",
+            "releaseBlocker": True,
+            "promotionReady": False,
+            "failedEvidenceCount": 0,
+            "missingEvidenceCount": 0,
+            "blockingGateCount": 1,
+            "waiverCount": 0,
+        }
+    details = gate.details
+    waiver_ids = gate_waiver_ids(gate)
+    return {
+        "id": gate.id,
+        "status": gate.status,
+        "releaseBlocker": gate.release_blocker,
+        "promotionReady": bool(details.get("promotionReady", not gate.release_blocker)),
+        "failedEvidenceCount": len(details.get("failedEvidenceIds", [])),
+        "missingEvidenceCount": len(details.get("missingEvidenceIds", [])),
+        "warningEvidenceCount": len(details.get("warningEvidenceIds", [])),
+        "blockingGateCount": len(details.get("blockingGateIds", [])),
+        "warningGateCount": len(details.get("warningGateIds", [])),
+        "waiverCount": len(waiver_ids),
+    }
+
+
+def ecosystem_rc_decision(compact_gate: dict[str, Any]) -> str:
+    if compact_gate.get("releaseBlocker") or compact_gate.get("status") in {"fail", "missing"}:
+        return "FAIL"
+    if compact_gate.get("status") == "warn":
+        return "PASS_WITH_WARNINGS"
+    return "PASS"
 
 
 def collect_source_artifacts(settings: Settings, out_dir: Path) -> list[str]:
@@ -5330,6 +6008,13 @@ def build_summary(
     ecosystem_status = aggregate_gate_status(ecosystem_gates)
     cli_waivers = sanitized_cli_waivers(settings)
     compact_matrix = matrix_compact_summary(ecosystem_matrix)
+    compact_rc_gate = ecosystem_rc_gate_summary(ecosystem_gates)
+    compact_rc_gate_decision = ecosystem_rc_decision(compact_rc_gate)
+    compact_rc_decision = compact_rc_gate_decision if release_candidate_passed else "FAIL"
+    ecosystem_rc_passed = (
+        compact_rc_decision != "FAIL"
+        and bool(compact_rc_gate.get("promotionReady", False))
+    )
     return {
         "schemaVersion": SCHEMA_VERSION,
         "tool": TOOL_NAME,
@@ -5364,6 +6049,9 @@ def build_summary(
         "historyComparison": history_comparison,
         "ecosystemGateStatus": ecosystem_status,
         "ecosystemGates": [gate.to_json() for gate in ecosystem_gates],
+        "ecosystemRcGate": compact_rc_gate,
+        "ecosystemRcPassed": ecosystem_rc_passed,
+        "ecosystemRcDecision": compact_rc_decision,
         "ecosystemMatrix": compact_matrix,
         "copiedArtifacts": copied_artifacts,
         "redaction": {
@@ -5406,6 +6094,7 @@ def render_report(summary: dict[str, Any]) -> str:
         "",
     ]
     append_history_comparison(lines, summary)
+    append_ecosystem_rc_gate(lines, summary)
     append_ecosystem_gates(lines, summary)
     append_ecosystem_matrix_summary(lines, summary)
     append_waivers(lines, summary)
@@ -5422,6 +6111,9 @@ def render_report(summary: dict[str, Any]) -> str:
                 summary_text=str(item["summary"]).replace("|", "\\|"),
             )
         )
+    lines.extend(["", "## Release Operations", ""])
+    append_detail(lines, summary, "release-certification.ecosystem-matrix")
+    append_detail(lines, summary, ECOSYSTEM_RC_EVIDENCE_ID)
     lines.extend(["", "## Hyphanet Interop", ""])
     append_detail(lines, summary, "interop.smoke")
     append_detail(lines, summary, "interop.extended")
@@ -5488,6 +6180,7 @@ def render_report(summary: dict[str, Any]) -> str:
         "reference-app.social-inbox-trust-annotations",
         "reference-app.social-inbox-rc-threading",
         "migration.social-mail-preview",
+        *APP_SERVICE_DISCOVERY_AND_GRANT_EVIDENCE_IDS,
         "legacy-plugin.migration-guide",
         "legacy-plugin.social-inbox-spike",
         "apphost.sandbox-provider",
@@ -5496,6 +6189,7 @@ def render_report(summary: dict[str, Any]) -> str:
         "app-update.scheduler",
         "app-update.live-catalog-refresh",
         "app-update.rollback",
+        "app-update.data-migration-contract",
         *OPERATOR_BETA_EVIDENCE_IDS,
         *OPERATOR_RC_EVIDENCE_IDS,
         "apphost.live",
@@ -5658,6 +6352,41 @@ def append_ecosystem_matrix_summary(lines: list[str], summary: dict[str, Any]) -
             f"- Release blockers: `{matrix.get('releaseBlockerCount', 0)}`",
             f"- Required evidence covered: `{'yes' if coverage.get('requiredEvidenceCovered') else 'no'}`",
             f"- Ecosystem gates covered: `{'yes' if coverage.get('ecosystemGatesCovered') else 'no'}`",
+            "",
+        ]
+    )
+
+
+def append_ecosystem_rc_gate(lines: list[str], summary: dict[str, Any]) -> None:
+    compact = summary.get("ecosystemRcGate", {})
+    gates = summary.get("ecosystemGates", [])
+    gate = None
+    if isinstance(gates, list):
+        gate = next(
+            (
+                candidate
+                for candidate in gates
+                if isinstance(candidate, dict) and candidate.get("id") == ECOSYSTEM_RC_GATE_ID
+            ),
+            None,
+        )
+    details = gate.get("details", {}) if isinstance(gate, dict) and isinstance(gate.get("details"), dict) else {}
+    lines.extend(
+        [
+            "## Ecosystem RC Certification Gate",
+            "",
+            f"- Gate: `{ECOSYSTEM_RC_GATE_ID}`",
+            f"- Status: `{compact.get('status', 'missing')}`",
+            f"- Promotion decision: `{summary.get('ecosystemRcDecision', 'FAIL')}`",
+            f"- Release blocker: `{'yes' if compact.get('releaseBlocker') else 'no'}`",
+            f"- Blocking gates: {markdown_code_list(details.get('blockingGateIds'))}",
+            f"- Failed evidence: `{compact.get('failedEvidenceCount', 0)}`",
+            f"- Missing evidence: `{compact.get('missingEvidenceCount', 0)}`",
+            f"- Warning evidence: `{compact.get('warningEvidenceCount', 0)}`",
+            f"- Live-network required: `{'yes' if details.get('liveNetworkRequired') else 'no'}`",
+            f"- Network-scale soak satisfied: `{'yes' if details.get('networkScaleSoakSatisfied') else 'no'}`",
+            f"- Redaction passed: `{'yes' if details.get('redactionPassed') else 'no'}`",
+            f"- Waivers: `{compact.get('waiverCount', 0)}` {markdown_code_list(details.get('waiverIds'))}",
             "",
         ]
     )
@@ -5971,15 +6700,21 @@ def run(settings: Settings) -> tuple[dict[str, Any], int]:
         return comparison, sanitized_gates
 
     matrix_evidence = placeholder_ecosystem_matrix_evidence(settings.workspace_root, settings.out_dir)
-    evidence = [*base_evidence, matrix_evidence]
+    rc_gate_evidence = placeholder_ecosystem_rc_gate_evidence(settings.workspace_root, settings.out_dir)
+    evidence = [*base_evidence, matrix_evidence, rc_gate_evidence]
     history_comparison: dict[str, Any] = {}
     ecosystem_gates: list[GateResult] = []
     ecosystem_matrix: dict[str, Any] = {}
     for _ in range(5):
         history_comparison, ecosystem_gates = evaluate_history_and_gates(evidence)
+        final_gate = next((gate for gate in ecosystem_gates if gate.id == ECOSYSTEM_RC_GATE_ID), None)
+        next_rc_gate_evidence = ecosystem_rc_gate_evidence(
+            final_gate, settings.workspace_root, settings.out_dir
+        )
+        evidence_for_matrix = [*base_evidence, matrix_evidence, next_rc_gate_evidence]
         ecosystem_matrix = build_ecosystem_matrix(
             settings,
-            evidence,
+            evidence_for_matrix,
             previous_summary,
             history_comparison,
             ecosystem_gates,
@@ -5990,11 +6725,19 @@ def run(settings: Settings) -> tuple[dict[str, Any], int]:
             ecosystem_matrix, settings.workspace_root, settings.out_dir
         )
         if next_matrix_evidence == matrix_evidence:
-            break
+            if next_rc_gate_evidence == rc_gate_evidence:
+                evidence = evidence_for_matrix
+                break
         matrix_evidence = next_matrix_evidence
-        evidence = [*base_evidence, matrix_evidence]
+        rc_gate_evidence = next_rc_gate_evidence
+        evidence = [*base_evidence, matrix_evidence, rc_gate_evidence]
     else:
         history_comparison, ecosystem_gates = evaluate_history_and_gates(evidence)
+        final_gate = next((gate for gate in ecosystem_gates if gate.id == ECOSYSTEM_RC_GATE_ID), None)
+        rc_gate_evidence = ecosystem_rc_gate_evidence(
+            final_gate, settings.workspace_root, settings.out_dir
+        )
+        evidence = [*base_evidence, matrix_evidence, rc_gate_evidence]
         ecosystem_matrix = build_ecosystem_matrix(
             settings,
             evidence,
@@ -6225,6 +6968,10 @@ def run_self_test(repo_root: Path) -> None:
         assert summary["status"] == "warn", summary
         assert summary["promotionDecision"] == "PASS WITH WARNINGS", summary
         assert summary["releaseCandidatePassed"] is True, summary
+        assert summary["ecosystemRcDecision"] == "PASS_WITH_WARNINGS", summary
+        assert summary["ecosystemRcPassed"] is True, summary
+        assert summary["ecosystemRcGate"]["id"] == ECOSYSTEM_RC_GATE_ID, summary
+        assert summary["ecosystemRcGate"]["status"] == "warn", summary
         assert not any("live-network-beta" in artifact for artifact in summary["copiedArtifacts"]), summary[
             "copiedArtifacts"
         ]
@@ -6248,6 +6995,7 @@ def run_self_test(repo_root: Path) -> None:
         assert matrix["coverage"]["redactionPassed"] is True, matrix
         assert set(matrix["coverage"]["coveredFirstPartyApps"]) == set(EXPECTED_FIRST_PARTY_APPS), matrix
         matrix_rows_by_id = {row["id"]: row for row in matrix["rows"]}
+        pr253_app_service_evidence_ids = APP_SERVICE_DEPENDENCY_AND_GRANT_BUNDLE_EVIDENCE_IDS
         for row_id in (
             "app-update",
             "first-party-beta-catalog",
@@ -6272,8 +7020,16 @@ def run_self_test(repo_root: Path) -> None:
             "live-network-beta-certification",
             "legacy-retirement",
             "ecosystem-certification-matrix",
+            ECOSYSTEM_RC_MATRIX_ROW_ID,
+            "app-service-discovery-and-grants",
         ):
             assert row_id in matrix_rows_by_id, row_id
+        rc_gate_row = matrix_rows_by_id[ECOSYSTEM_RC_MATRIX_ROW_ID]
+        assert ECOSYSTEM_RC_EVIDENCE_ID in rc_gate_row["requiredEvidenceIds"], rc_gate_row
+        assert ECOSYSTEM_RC_GATE_ID in rc_gate_row["gateIds"], rc_gate_row
+        app_services_row = matrix_rows_by_id["app-service-discovery-and-grants"]
+        for evidence_id in pr253_app_service_evidence_ids:
+            assert evidence_id in app_services_row["requiredEvidenceIds"], app_services_row
         disabled_live_row = matrix_rows_by_id["live-network-beta-certification"]
         assert disabled_live_row["status"] == "pass", disabled_live_row
         assert disabled_live_row["releaseBlocker"] is False, disabled_live_row
@@ -6319,11 +7075,14 @@ def run_self_test(repo_root: Path) -> None:
             "app-platform.docs-redaction",
             "app-data.backup-restore-portability",
             "operator-beta.app-data-backup-restore",
+            *pr253_app_service_evidence_ids,
+            ECOSYSTEM_RC_EVIDENCE_ID,
             *OPERATOR_RC_EVIDENCE_IDS,
             *ECOSYSTEM_SECURITY_EVIDENCE_IDS,
         ):
             assert evidence_id in covered_evidence_ids, evidence_id
         gate_ids = {gate["id"] for gate in summary["ecosystemGates"]}
+        assert ECOSYSTEM_RC_GATE_ID in gate_ids, gate_ids
         covered_gate_ids = {gate_id for row in matrix["rows"] for gate_id in row.get("gateIds", [])}
         assert gate_ids <= covered_gate_ids, (gate_ids, covered_gate_ids)
         assert summary["ecosystemMatrixPath"].endswith(ECOSYSTEM_MATRIX_FILE_NAME), summary
@@ -6334,6 +7093,8 @@ def run_self_test(repo_root: Path) -> None:
         assert evidence_by_id["release-certification.ecosystem-matrix"][
             "requiredForReleaseCandidate"
         ] is True
+        assert evidence_by_id[ECOSYSTEM_RC_EVIDENCE_ID]["requiredForReleaseCandidate"] is True
+        assert evidence_by_id[ECOSYSTEM_RC_EVIDENCE_ID]["status"] == "warn", evidence_by_id
         assert evidence_by_id["app-update.lifecycle"]["status"] == "pass", evidence_by_id
         assert evidence_by_id["app-update.lifecycle"]["requiredForReleaseCandidate"] is True
         assert evidence_by_id["app-update.scheduler"]["status"] == "pass", evidence_by_id
@@ -6458,6 +7219,7 @@ def run_self_test(repo_root: Path) -> None:
         for evidence_id in (
             "app-services.registry",
             "app-services.grants",
+            *pr253_app_service_evidence_ids,
             "app-services.trust-score-provider",
             "app-services.web-shell",
             "app-services.redaction",
@@ -6485,6 +7247,7 @@ def run_self_test(repo_root: Path) -> None:
         matrix_report = (out_dir / ECOSYSTEM_MATRIX_REPORT_FILE_NAME).read_text(encoding="utf-8")
         assert "Release Certification Report" in report
         assert "Historical Comparison" in report
+        assert "Ecosystem RC Certification Gate" in report
         assert "Ecosystem Gates" in report
         assert "Ecosystem Certification Matrix" in report
         assert ECOSYSTEM_MATRIX_REPORT_FILE_NAME in report
@@ -6533,6 +7296,35 @@ def run_self_test(repo_root: Path) -> None:
         interop_item = next(item for item in summary["evidence"] if item["id"] == "interop.smoke")
         assert "artifacts/private-insert-uris.json" not in json.dumps(interop_item)
 
+        direct_rc_waiver_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/direct-rc-gate-waiver-cert").resolve(),
+            waivers={ECOSYSTEM_RC_GATE_ID: "Release manager accepted temporary RC gate warning."},
+        )
+        direct_rc_waiver_summary, direct_rc_waiver_exit_code = run(direct_rc_waiver_settings)
+        assert direct_rc_waiver_exit_code == 0, direct_rc_waiver_summary
+        assert direct_rc_waiver_summary["ecosystemRcGate"]["status"] == "warn", (
+            direct_rc_waiver_summary
+        )
+        assert direct_rc_waiver_summary["ecosystemRcGate"]["waiverCount"] == 1, (
+            direct_rc_waiver_summary
+        )
+        direct_rc_gate = next(
+            gate
+            for gate in direct_rc_waiver_summary["ecosystemGates"]
+            if gate["id"] == ECOSYSTEM_RC_GATE_ID
+        )
+        assert direct_rc_gate["details"]["waiverId"] == ECOSYSTEM_RC_GATE_ID, direct_rc_gate
+        direct_rc_evidence = next(
+            item
+            for item in direct_rc_waiver_summary["evidence"]
+            if item["id"] == ECOSYSTEM_RC_EVIDENCE_ID
+        )
+        assert direct_rc_evidence["details"]["waiverCount"] == 1, direct_rc_evidence
+        assert ECOSYSTEM_RC_GATE_ID in direct_rc_evidence["details"]["details"]["waiverIds"], (
+            direct_rc_evidence
+        )
+
         previous_good_path = workspace / "build/previous-good/release-certification-summary.json"
         previous_good = {
             "schemaVersion": SCHEMA_VERSION,
@@ -6573,7 +7365,8 @@ def run_self_test(repo_root: Path) -> None:
         assert with_previous_exit_code == 0, with_previous_summary
         assert with_previous_summary["status"] == "warn", with_previous_summary
         assert with_previous_summary["historyComparison"]["status"] == "pass", with_previous_summary
-        assert with_previous_summary["ecosystemGateStatus"] == "pass", with_previous_summary
+        assert with_previous_summary["ecosystemGateStatus"] == "warn", with_previous_summary
+        assert with_previous_summary["ecosystemRcGate"]["status"] == "warn", with_previous_summary
         assert with_previous_summary["ecosystemMatrix"]["coverage"]["requiredEvidenceCovered"] is True
         assert with_previous_summary["ecosystemMatrix"]["coverage"]["ecosystemGatesCovered"] is True
         with_previous_matrix = read_json(with_previous_settings.out_dir / ECOSYSTEM_MATRIX_FILE_NAME)
@@ -6648,6 +7441,167 @@ def run_self_test(repo_root: Path) -> None:
                 if isinstance(item, dict) and item.get("id") == evidence_id:
                     return item
             raise AssertionError(f"missing evidence {evidence_id}")
+
+        clean_happy_summary, clean_happy_exit_code = run_with_previous(
+            "clean-happy-cert",
+            previous_summary=previous_matrix_good_path,
+        )
+        assert clean_happy_exit_code == 0, clean_happy_summary
+        assert clean_happy_summary["status"] == "pass", clean_happy_summary
+        assert clean_happy_summary["promotionDecision"] == "PASS", clean_happy_summary
+        assert clean_happy_summary["releaseCandidatePassed"] is True, clean_happy_summary
+        assert clean_happy_summary["ecosystemGateStatus"] == "pass", clean_happy_summary
+        assert clean_happy_summary["ecosystemRcDecision"] == "PASS", clean_happy_summary
+        assert clean_happy_summary["ecosystemRcPassed"] is True, clean_happy_summary
+        assert clean_happy_summary["ecosystemRcGate"]["status"] == "pass", clean_happy_summary
+        clean_happy_row = matrix_row_by_id(
+            workspace / "build/clean-happy-cert",
+            ECOSYSTEM_RC_MATRIX_ROW_ID,
+        )
+        assert clean_happy_row["status"] == "pass", clean_happy_row
+        assert clean_happy_summary["ecosystemMatrix"]["status"] == "pass", clean_happy_summary
+
+        waived_rc_gate_missing_soak_summary, waived_rc_gate_missing_soak_exit_code = run_with_previous(
+            "waived-rc-gate-missing-network-scale-soak-cert",
+            previous_summary=previous_matrix_good_path,
+            network_scale_soak_summary=workspace / "build/missing-network-scale-soak/summary.json",
+            waivers={ECOSYSTEM_RC_GATE_ID: "Release manager waived aggregate RC gate."},
+        )
+        assert waived_rc_gate_missing_soak_exit_code == 1, waived_rc_gate_missing_soak_summary
+        assert waived_rc_gate_missing_soak_summary["releaseCandidatePassed"] is False, (
+            waived_rc_gate_missing_soak_summary
+        )
+        assert waived_rc_gate_missing_soak_summary["ecosystemRcDecision"] == "FAIL", (
+            waived_rc_gate_missing_soak_summary
+        )
+        assert waived_rc_gate_missing_soak_summary["ecosystemRcPassed"] is False, (
+            waived_rc_gate_missing_soak_summary
+        )
+        waived_rc_gate = gate_by_id(
+            waived_rc_gate_missing_soak_summary,
+            ECOSYSTEM_RC_GATE_ID,
+        )
+        assert waived_rc_gate["status"] == "warn", waived_rc_gate
+        assert waived_rc_gate["releaseBlocker"] is False, waived_rc_gate
+        assert waived_rc_gate["details"]["waiverId"] == ECOSYSTEM_RC_GATE_ID, waived_rc_gate
+
+        missing_pr253_path = write_app_summary_variant(
+            "missing-pr253-app-service-evidence",
+            lambda value: value.update(
+                {
+                    "evidence": [
+                        item
+                        for item in value["evidence"]
+                        if item.get("id") not in pr253_app_service_evidence_ids
+                    ]
+                }
+            ),
+        )
+        missing_pr253_items = app_platform_evidence(
+            missing_pr253_path,
+            workspace,
+            out_dir,
+            "release-candidate",
+        )
+        missing_pr253_by_id = {item.id: item for item in missing_pr253_items}
+        for evidence_id in pr253_app_service_evidence_ids:
+            assert missing_pr253_by_id[evidence_id].status == "missing", missing_pr253_by_id
+            assert missing_pr253_by_id[evidence_id].required_for_release_candidate is True
+        missing_pr253_summary, missing_pr253_exit_code = run_with_previous(
+            "missing-pr253-app-service-cert",
+            app_platform_summary=missing_pr253_path,
+            previous_summary=previous_matrix_good_path,
+        )
+        assert missing_pr253_exit_code == 1, missing_pr253_summary
+        assert missing_pr253_summary["status"] == "fail", missing_pr253_summary
+        assert missing_pr253_summary["releaseCandidatePassed"] is False, missing_pr253_summary
+        assert missing_pr253_summary["ecosystemRcGate"]["status"] == "fail", missing_pr253_summary
+        assert gate_by_id(missing_pr253_summary, "ecosystem.reference-content-apps")[
+            "status"
+        ] == "fail"
+        missing_pr253_row = matrix_row_by_id(
+            workspace / "build/missing-pr253-app-service-cert",
+            "app-service-discovery-and-grants",
+        )
+        assert missing_pr253_row["status"] == "fail", missing_pr253_row
+        assert missing_pr253_row["releaseBlocker"] is True, missing_pr253_row
+
+        dependency_redaction_findings_path = write_app_summary_variant(
+            "dependency-redaction-findings",
+            lambda value: update_evidence(
+                value,
+                "app-services.dependency-redaction",
+                lambda entry: (
+                    entry.update({"status": "fail"}),
+                    entry.setdefault("details", {}).update(
+                        {
+                            "redactionFindings": [
+                                {
+                                    "path": "tools/release-certification/app-platform-smoke/summary.json",
+                                    "issue": "raw-service-invocation-body",
+                                }
+                            ]
+                        }
+                    ),
+                ),
+            ),
+        )
+        waived_dependency_redaction_summary, waived_dependency_redaction_exit_code = run_with_previous(
+            "waived-dependency-redaction-findings-cert",
+            app_platform_summary=dependency_redaction_findings_path,
+            previous_summary=previous_matrix_good_path,
+            waivers={
+                ECOSYSTEM_RC_GATE_ID: (
+                    "Release manager attempted to waive aggregate RC gate redaction failure."
+                ),
+                "app-services.dependency-redaction": (
+                    "Release manager attempted to waive app-service dependency redaction findings."
+                )
+            },
+        )
+        assert waived_dependency_redaction_exit_code == 1, waived_dependency_redaction_summary
+        assert waived_dependency_redaction_summary["releaseCandidatePassed"] is False, (
+            waived_dependency_redaction_summary
+        )
+        assert waived_dependency_redaction_summary["ecosystemRcPassed"] is False, (
+            waived_dependency_redaction_summary
+        )
+        dependency_redaction_evidence = evidence_by_id(
+            waived_dependency_redaction_summary,
+            "app-services.dependency-redaction",
+        )
+        assert dependency_redaction_evidence["status"] == "fail", dependency_redaction_evidence
+        assert "waived" not in dependency_redaction_evidence["details"], (
+            dependency_redaction_evidence
+        )
+        dependency_redaction_rc_gate = gate_by_id(
+            waived_dependency_redaction_summary,
+            ECOSYSTEM_RC_GATE_ID,
+        )
+        assert dependency_redaction_rc_gate["status"] == "fail", dependency_redaction_rc_gate
+        assert dependency_redaction_rc_gate["releaseBlocker"] is True, dependency_redaction_rc_gate
+        assert "waived" not in dependency_redaction_rc_gate["details"], dependency_redaction_rc_gate
+        assert dependency_redaction_rc_gate["details"]["redactionPassed"] is False, (
+            dependency_redaction_rc_gate
+        )
+        assert "app-services.dependency-redaction" in dependency_redaction_rc_gate["details"][
+            "redactionFailureEvidenceIds"
+        ], dependency_redaction_rc_gate
+        assert dependency_redaction_rc_gate["details"]["unwaivableFailureEvidenceIds"] == [
+            "app-services.dependency-redaction"
+        ], dependency_redaction_rc_gate
+        dependency_redaction_row = matrix_row_by_id(
+            workspace / "build/waived-dependency-redaction-findings-cert",
+            "app-service-discovery-and-grants",
+        )
+        assert dependency_redaction_row["status"] == "fail", dependency_redaction_row
+        assert dependency_redaction_row["releaseBlocker"] is True, dependency_redaction_row
+        assert "app-services.dependency-redaction" not in dependency_redaction_row.get(
+            "waiverIds", []
+        ), dependency_redaction_row
+        assert dependency_redaction_row["details"]["unwaivableRedactionEvidenceIds"] == [
+            "app-services.dependency-redaction"
+        ], dependency_redaction_row
 
         def write_live_network_summary(
             name: str,
@@ -6841,6 +7795,9 @@ def run_self_test(repo_root: Path) -> None:
             live_network_beta_enabled=True,
         )
         assert optional_live_exit_code == 0, optional_live_summary
+        assert optional_live_summary["releaseCandidatePassed"] is True, optional_live_summary
+        assert optional_live_summary["promotionDecision"] == "PASS WITH WARNINGS", optional_live_summary
+        assert optional_live_summary["ecosystemRcDecision"] == "PASS_WITH_WARNINGS", optional_live_summary
         optional_live_gate = gate_by_id(optional_live_summary, "ecosystem.live-network-beta")
         assert optional_live_gate["status"] == "warn", optional_live_gate
         assert optional_live_gate["releaseBlocker"] is False, optional_live_gate
@@ -6851,6 +7808,44 @@ def run_self_test(repo_root: Path) -> None:
         assert optional_live_row["status"] == "warn", optional_live_row
         assert optional_live_row["releaseBlocker"] is False, optional_live_row
 
+        optional_missing_live_summary, optional_missing_live_exit_code = run_with_previous(
+            "live-network-optional-missing-cert",
+            live_network_summary=workspace / "build/missing-live-network-optional/summary.json",
+            live_network_beta_enabled=True,
+        )
+        assert optional_missing_live_exit_code == 0, optional_missing_live_summary
+        assert optional_missing_live_summary["releaseCandidatePassed"] is True, (
+            optional_missing_live_summary
+        )
+        assert optional_missing_live_summary["ecosystemRcDecision"] == "PASS_WITH_WARNINGS", (
+            optional_missing_live_summary
+        )
+        optional_missing_rc_gate = gate_by_id(
+            optional_missing_live_summary,
+            ECOSYSTEM_RC_GATE_ID,
+        )
+        assert optional_missing_rc_gate["status"] == "warn", optional_missing_rc_gate
+        assert optional_missing_rc_gate["releaseBlocker"] is False, optional_missing_rc_gate
+        assert optional_missing_rc_gate["details"]["redactionPassed"] is True, optional_missing_rc_gate
+        assert "live-network-beta.redaction" not in optional_missing_rc_gate["details"].get(
+            "redactionFailureEvidenceIds", []
+        ), optional_missing_rc_gate
+        optional_missing_live_gate = gate_by_id(
+            optional_missing_live_summary,
+            "ecosystem.live-network-beta",
+        )
+        assert optional_missing_live_gate["status"] == "warn", optional_missing_live_gate
+        assert optional_missing_live_gate["releaseBlocker"] is False, optional_missing_live_gate
+        optional_missing_live_evidence = {
+            item["id"]: item for item in optional_missing_live_summary["evidence"]
+        }
+        assert optional_missing_live_evidence["live-network-beta.redaction"]["status"] == "missing", (
+            optional_missing_live_evidence
+        )
+        assert optional_missing_live_evidence["live-network-beta.redaction"][
+            "requiredForReleaseCandidate"
+        ] is False
+
         required_missing_summary, required_missing_exit_code = run_with_previous(
             "live-network-required-missing-cert",
             live_network_summary=workspace / "build/missing-live-network/summary.json",
@@ -6858,6 +7853,8 @@ def run_self_test(repo_root: Path) -> None:
             live_network_beta_required=True,
         )
         assert required_missing_exit_code == 1, required_missing_summary
+        assert required_missing_summary["releaseCandidatePassed"] is False, required_missing_summary
+        assert required_missing_summary["ecosystemRcGate"]["status"] == "fail", required_missing_summary
         required_missing_gate = gate_by_id(required_missing_summary, "ecosystem.live-network-beta")
         assert required_missing_gate["status"] == "fail", required_missing_gate
         assert required_missing_gate["releaseBlocker"] is True, required_missing_gate
@@ -6881,6 +7878,8 @@ def run_self_test(repo_root: Path) -> None:
             live_network_beta_required=True,
         )
         assert required_failing_exit_code == 1, required_failing_summary
+        assert required_failing_summary["releaseCandidatePassed"] is False, required_failing_summary
+        assert required_failing_summary["ecosystemRcGate"]["status"] == "fail", required_failing_summary
         required_failing_gate = gate_by_id(required_failing_summary, "ecosystem.live-network-beta")
         assert required_failing_gate["status"] == "fail", required_failing_gate
         assert required_failing_gate["details"]["failureEvidenceIds"] == [
@@ -6906,6 +7905,7 @@ def run_self_test(repo_root: Path) -> None:
             live_network_beta_required=True,
         )
         assert required_passing_exit_code == 0, required_passing_summary
+        assert required_passing_summary["releaseCandidatePassed"] is True, required_passing_summary
         required_passing_gate = gate_by_id(required_passing_summary, "ecosystem.live-network-beta")
         assert required_passing_gate["status"] == "pass", required_passing_gate
         required_passing_evidence = {item["id"]: item for item in required_passing_summary["evidence"]}
@@ -6993,6 +7993,14 @@ def run_self_test(repo_root: Path) -> None:
             assert (
                 waived_docs_redaction_summary["releaseCandidatePassed"] is False
             ), waived_docs_redaction_summary
+            docs_redaction_rc_gate = gate_by_id(
+                waived_docs_redaction_summary, ECOSYSTEM_RC_GATE_ID
+            )
+            assert docs_redaction_rc_gate["status"] == "fail", docs_redaction_rc_gate
+            assert docs_redaction_rc_gate["releaseBlocker"] is True, docs_redaction_rc_gate
+            assert docs_redaction_rc_gate["details"]["redactionPassed"] is False, (
+                docs_redaction_rc_gate
+            )
             waived_docs_redaction_evidence = {
                 item["id"]: item for item in waived_docs_redaction_summary["evidence"]
             }
@@ -7954,6 +8962,26 @@ def run_self_test(repo_root: Path) -> None:
         assert waived_vault_row["status"] == "warn", waived_vault_row
         assert waived_vault_row["releaseBlocker"] is False, waived_vault_row
         assert "app-vault.capabilities" in waived_vault_row["waiverIds"], waived_vault_row
+        waived_vault_clean_summary, waived_vault_clean_exit_code = run_with_previous(
+            "waived-vault-clean-history-cert",
+            app_platform_summary=vault_missing_capability_path,
+            previous_summary=previous_matrix_good_path,
+            waivers={"app-vault.capabilities": "Release manager accepted vault evidence gap."},
+        )
+        assert waived_vault_clean_exit_code == 0, waived_vault_clean_summary
+        assert waived_vault_clean_summary["status"] == "warn", waived_vault_clean_summary
+        assert waived_vault_clean_summary["promotionDecision"] == "PASS WITH WARNINGS", (
+            waived_vault_clean_summary
+        )
+        assert waived_vault_clean_summary["releaseCandidatePassed"] is True, (
+            waived_vault_clean_summary
+        )
+        assert waived_vault_clean_summary["ecosystemRcGate"]["status"] == "warn", (
+            waived_vault_clean_summary
+        )
+        assert waived_vault_clean_summary["ecosystemRcGate"]["waiverCount"] == 1, (
+            waived_vault_clean_summary
+        )
 
         vault_missing_redaction_path = write_app_summary_variant(
             "vault-missing-redaction",

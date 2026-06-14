@@ -22,9 +22,13 @@ The RC service has these release boundaries:
 | No routing decisions | Scores never change peer selection, request routing, FProxy browse behavior, content filters, or daemon-core protocols. |
 | No legacy compatibility promise | The service does not implement old WebOfTrust plugin APIs, `FCPPluginMessage`, PluginTalker, Freetalk, Sone, Freemail, or old WoT data formats. |
 
-PR-252 and later work remains out of scope here. Trust Graph Local RC does not add Social Inbox
-message threading, app-service dependency bundles, ecosystem advisory or denylist policy,
-operator RC recovery workflows, or the final ecosystem RC gate.
+Trust Graph Local RC does not by itself add Social Inbox message threading, ecosystem advisory or
+denylist policy, operator RC recovery workflows, or final ecosystem RC certification. Later
+release-candidate evidence composes Trust Graph with app-service dependency bundles, Social Inbox
+RC threading, network-scale soak, operator RC recovery, and the
+`ecosystem.rc-certification` gate. The final gate is documented in
+[ecosystem-rc-certification-gate.md](ecosystem-rc-certification-gate.md), and Trust Graph remains
+limited to the local RC trust-service scope described here.
 
 ## Components
 

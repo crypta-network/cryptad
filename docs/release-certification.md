@@ -2,8 +2,8 @@
 
 Release certification is the reproducible evidence bundle for a Cryptad release candidate. It
 aggregates compatibility, performance, app-platform, catalog, app-owned UI, operator beta recovery,
-optional live-network beta certification, legacy-admin retirement, and CI metadata into one
-redacted report.
+network-scale soak, ecosystem RC certification, optional live-network beta certification,
+legacy-admin retirement, and CI metadata into one redacted report.
 
 The generated artifacts are:
 
@@ -434,8 +434,10 @@ Freemail compatibility claim. Trust and app-service evidence must not include ra
 bodies from real users, raw fetched content, raw request bodies, raw signature values, private
 insert URIs, private identity material, app process tokens, browser-session tokens, form passwords,
 absolute staging paths, store roots, provider app data, raw subject URIs, app-data backup payloads,
-or local paths. Operator RC recovery workflows and final ecosystem RC certification remain deferred
-to later PRs.
+or local paths. Final ecosystem RC certification is covered by
+[ecosystem-rc-certification-gate.md](ecosystem-rc-certification-gate.md) through the
+`ecosystem.rc-certification` gate and the `ecosystem-rc-certification-gate` matrix row. Trust
+Graph evidence contributes to that final gate without expanding the Trust Graph non-goals above.
 
 ## Historical comparison
 
@@ -499,6 +501,8 @@ ecosystem.app-vault
 ecosystem.sandbox-provider
 ecosystem.reference-content-apps
 ecosystem.legacy-retirement
+ecosystem.live-network-beta
+ecosystem.rc-certification
 ```
 
 ## Ecosystem certification matrix
@@ -546,6 +550,15 @@ bounded budgets, queue pressure can delay polling without budget consumption, So
 multi-source refresh remains capped, and release evidence excludes raw content, queue HTML, tokens,
 private insert URIs, raw signatures, app-data payloads, and absolute local paths.
 
+The `ecosystem-rc-certification-gate` row records PR-258 final ecosystem release-candidate
+certification. It is the release-manager summary row for the `ecosystem.rc-certification` gate and
+is documented in [ecosystem-rc-certification-gate.md](ecosystem-rc-certification-gate.md). The row
+must remain sensitive to required-evidence failures, ecosystem-gate failures, matrix coverage gaps,
+network-scale RC soak status, live-network beta status when required, redaction failures, and
+waiver visibility. Passing the row means the release evidence is complete enough for promotion; it
+does not claim global network propagation, deletion of published bytes, legacy WebOfTrust or
+plugin compatibility, production-key handling, or third-party app safety beyond the recorded gates.
+
 ## Network-scale soak
 
 Normal PR and CI evidence uses deterministic simulated time, not a wall-clock 24-hour test:
@@ -570,8 +583,10 @@ request bodies, queue HTML, browser-session tokens, app process tokens, private 
 signatures, raw Trust Graph statement bodies, app-data values, app-data backup payloads, rejected
 source strings, or absolute local paths.
 
-A literal 24-hour live soak is a release-candidate activity. It is represented by an attached
-summary; it is not part of ordinary unit tests or Python self-tests.
+A literal 24-hour live soak is optional release-candidate evidence. It is represented by an
+attached redacted summary; it is not part of ordinary unit tests, nightly certification, or
+Python-only self-tests. Record the external soak source, collector mode, runner identity, and
+redaction status in the release log without copying raw node output into the release record.
 
 In `release-candidate` mode, unmapped required evidence, unmapped ecosystem gates, missing docs,
 or failed redaction make the matrix fail. In `pr` and `nightly` mode, coverage gaps warn unless
@@ -587,8 +602,11 @@ row-level regressions are compared directly.
 
 ## Ecosystem gate behavior
 
-The gates are intentionally conservative. Platform API compatibility blocks on contract status
-failure, contract version rollback, or available stable endpoint/capability removals. First-party
+The gates are intentionally conservative. Final ecosystem RC certification blocks on any unwaived
+required-evidence failure, release-blocking ecosystem gate, matrix coverage gap, stale or missing
+network-scale RC soak evidence, required live-network beta failure, or redaction failure. Platform
+API compatibility blocks on contract status failure, contract version rollback, or available stable
+endpoint/capability removals. First-party
 app gates require `queue-manager`, `publisher`, `site-publisher`, `profile-publisher`,
 `feed-reader`, and `trust-graph`, and
 block when a previously certified first-party app disappears without a waiver. App UI gates block failing or missing
@@ -753,6 +771,10 @@ The aggregator records the live evidence under `ecosystem.live-network-beta` and
 `live-network-beta.feed-subscription`, `live-network-beta.profile-publish`,
 `live-network-beta.trust-statement-publish-import`,
 `live-network-beta.interop-perf-budget`, and `live-network-beta.redaction` to pass.
+When live-network beta is disabled, stale `live-network-beta-smoke/` summaries must be ignored and
+must not be copied into the release record. When live-network beta is enabled but not required,
+failing, missing, or warning live evidence is visible as a warning. It becomes release-blocking
+only when `--require-live-network-beta` or `CRYPTAD_CERT_REQUIRE_LIVE_NETWORK_BETA=1` is set.
 
 ## Redaction
 
