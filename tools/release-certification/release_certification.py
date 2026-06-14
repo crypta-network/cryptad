@@ -1856,12 +1856,26 @@ def collect_ci_metadata(env: dict[str, str]) -> dict[str, str]:
     return metadata
 
 
-def determine_overall_status(mode: str, evidence: list[EvidenceItem]) -> tuple[str, bool]:
+def evidence_item_has_active_rc_waiver(
+    item: EvidenceItem, waiver_context: WaiverContext, mode: str
+) -> bool:
+    if item.details.get("waived"):
+        return True
+    if evidence_item_has_unwaivable_redaction_findings(item):
+        return False
+    return (
+        active_waiver_for_ecosystem_rc_evidence(waiver_context, item.id, mode) is not None
+    )
+
+
+def determine_overall_status(
+    mode: str, evidence: list[EvidenceItem], waiver_context: WaiverContext
+) -> tuple[str, bool]:
     required_bad = [
         item
         for item in evidence
         if item.required_for_release_candidate and item.status in {"fail", "missing", "skip"}
-        and not item.details.get("waived")
+        and not evidence_item_has_active_rc_waiver(item, waiver_context, mode)
     ]
     required_warn = [
         item
@@ -1882,7 +1896,8 @@ def determine_overall_status(mode: str, evidence: list[EvidenceItem]) -> tuple[s
         required_fail = [
             item
             for item in evidence
-            if item.required_for_release_candidate and item.status == "fail" and not item.details.get("waived")
+            if item.required_for_release_candidate and item.status == "fail"
+            and not evidence_item_has_active_rc_waiver(item, waiver_context, mode)
         ]
         if required_fail:
             return "fail", False
@@ -3584,9 +3599,15 @@ def classify_evidence_diff(
     issue_ids = [
         f"history.{classification}.{evidence_id}",
         f"history.evidence.{evidence_id}",
+        f"evidence.{evidence_id}",
+        *ecosystem_matrix_row_ids_for_evidence(evidence_id),
     ]
     waived = bool(current and evidence_details(current).get("waived"))
-    waiver = active_waiver_for(waiver_context, evidence_id, issue_ids, mode)
+    waiver = (
+        None
+        if evidence_entry_has_unwaivable_redaction_findings(current)
+        else active_waiver_for(waiver_context, evidence_id, issue_ids, mode)
+    )
     release_blocker = False
     reason = "Evidence status is unchanged."
     if classification == "new":
@@ -5578,6 +5599,22 @@ def gate_waiver_ids(gate: GateResult | None) -> list[str]:
     return detail_waiver_ids(gate.details)
 
 
+def ecosystem_matrix_row_ids_for_evidence(evidence_id: str) -> list[str]:
+    return unique_ids(
+        spec.id for spec in ecosystem_matrix_row_specs() if evidence_id in spec.evidence_ids()
+    )
+
+
+def active_waiver_for_ecosystem_rc_evidence(
+    context: WaiverContext, evidence_id: str, mode: str
+) -> WaiverRecord | None:
+    issue_ids = [
+        f"evidence.{evidence_id}",
+        *ecosystem_matrix_row_ids_for_evidence(evidence_id),
+    ]
+    return active_waiver_for(context, evidence_id, issue_ids, mode)
+
+
 def conditional_ecosystem_rc_required_evidence_ids(settings: Settings) -> list[str]:
     evidence_ids = list(ECOSYSTEM_RC_REQUIRED_EVIDENCE_IDS)
     if settings.live_network_beta_required:
@@ -5620,23 +5657,34 @@ def evaluate_ecosystem_rc_certification_gate(
     for evidence_id in required_evidence_ids:
         entry = current.get(evidence_id)
         status = evidence_status(entry)
-        waiver_id = evidence_detail_waiver_id(entry)
-        if waiver_id:
-            waived_evidence_ids.append(evidence_id)
-            waiver_ids.append(waiver_id)
         if evidence_entry_has_unwaivable_redaction_findings(entry):
             redaction_failure_ids.append(evidence_id)
             failed_evidence_ids.append(evidence_id)
             continue
+        waiver_id = evidence_detail_waiver_id(entry)
+        if not waiver_id and status in {"fail", "missing", "skip", "warn"}:
+            waiver = active_waiver_for_ecosystem_rc_evidence(
+                waiver_context, evidence_id, settings.mode
+            )
+            if waiver is not None:
+                waiver_id = waiver.id
+        if waiver_id:
+            waived_evidence_ids.append(evidence_id)
+            waiver_ids.append(waiver_id)
         if status == "fail":
             if waiver_id:
                 warning_evidence_ids.append(evidence_id)
             else:
                 failed_evidence_ids.append(evidence_id)
         elif status == "missing":
-            missing_evidence_ids.append(evidence_id)
+            if waiver_id:
+                warning_evidence_ids.append(evidence_id)
+            else:
+                missing_evidence_ids.append(evidence_id)
         elif status == "skip":
-            if settings.mode == "release-candidate":
+            if waiver_id:
+                warning_evidence_ids.append(evidence_id)
+            elif settings.mode == "release-candidate":
                 skipped_evidence_ids.append(evidence_id)
             else:
                 warning_evidence_ids.append(evidence_id)
@@ -5688,11 +5736,7 @@ def evaluate_ecosystem_rc_certification_gate(
             and not has_redaction_findings
         ):
             continue
-        if has_redaction_findings or status in {
-            "fail",
-            "missing",
-            "skip",
-        }:
+        if has_redaction_findings:
             redaction_evidence_passed = False
             if evidence_id not in redaction_failure_ids:
                 redaction_failure_ids.append(evidence_id)
@@ -5840,8 +5884,11 @@ def determine_certification_status(
     evidence: list[EvidenceItem],
     history_comparison: dict[str, Any],
     ecosystem_gates: list[GateResult],
+    waiver_context: WaiverContext,
 ) -> tuple[str, bool]:
-    evidence_status_value, evidence_release_passed = determine_overall_status(mode, evidence)
+    evidence_status_value, evidence_release_passed = determine_overall_status(
+        mode, evidence, waiver_context
+    )
     history_status = normalize_evidence_status(str(history_comparison.get("status", "missing")))
     gate_failures = [gate for gate in ecosystem_gates if gate.status == "fail" and gate.release_blocker]
     gate_warnings = [gate for gate in ecosystem_gates if gate.status in {"warn", "fail", "missing"}]
@@ -6004,7 +6051,7 @@ def build_summary(
     ecosystem_matrix: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     status, release_candidate_passed = determine_certification_status(
-        settings.mode, evidence, history_comparison, ecosystem_gates
+        settings.mode, evidence, history_comparison, ecosystem_gates, waiver_context
     )
     ecosystem_status = aggregate_gate_status(ecosystem_gates)
     cli_waivers = sanitized_cli_waivers(settings)
@@ -7246,6 +7293,7 @@ def run_self_test(repo_root: Path) -> None:
                 EvidenceItem("catalog.smoke", "pass", True, "passed", "<repo>/summary.json", {}),
                 EvidenceItem("apphost.live", "skip", False, "not requested", "<repo>/summary.json", {}),
             ],
+            WaiverContext(),
         )
         assert optional_skip_status == "pass", optional_skip_status
         assert optional_skip_release_passed is True, optional_skip_release_passed
@@ -7984,6 +8032,52 @@ def run_self_test(repo_root: Path) -> None:
                 "target": "missing-docs-only-link.md",
                 "reason": "missing",
             } in docs_link_evidence["details"]["brokenLinks"], docs_link_evidence
+            waived_docs_link_row_summary, waived_docs_link_row_exit_code = run_with_previous(
+                "waived-docs-link-row-cert",
+                waivers={
+                    "app-platform-beta-docs-and-program": (
+                        "Release manager accepted a temporary docs-only row gap."
+                    )
+                },
+            )
+            assert waived_docs_link_row_exit_code == 0, waived_docs_link_row_summary
+            assert waived_docs_link_row_summary["releaseCandidatePassed"] is True, (
+                waived_docs_link_row_summary
+            )
+            docs_link_row_evidence = {
+                item["id"]: item for item in waived_docs_link_row_summary["evidence"]
+            }
+            docs_link_row_docs_evidence = docs_link_row_evidence["app-platform.docs-redaction"]
+            assert docs_link_row_docs_evidence["status"] == "fail", docs_link_row_docs_evidence
+            assert docs_link_row_docs_evidence["details"]["redactionFindings"] == [], (
+                docs_link_row_docs_evidence
+            )
+            docs_link_row = matrix_row_by_id(
+                workspace / "build/waived-docs-link-row-cert",
+                "app-platform-beta-docs-and-program",
+            )
+            assert docs_link_row["status"] == "warn", docs_link_row
+            assert docs_link_row["releaseBlocker"] is False, docs_link_row
+            assert "app-platform-beta-docs-and-program" in docs_link_row["waiverIds"], (
+                docs_link_row
+            )
+            docs_link_row_rc_gate = gate_by_id(
+                waived_docs_link_row_summary, ECOSYSTEM_RC_GATE_ID
+            )
+            assert docs_link_row_rc_gate["status"] == "warn", docs_link_row_rc_gate
+            assert docs_link_row_rc_gate["releaseBlocker"] is False, docs_link_row_rc_gate
+            assert docs_link_row_rc_gate["details"]["redactionPassed"] is True, (
+                docs_link_row_rc_gate
+            )
+            assert "app-platform.docs-redaction" in docs_link_row_rc_gate["details"][
+                "waivedEvidenceIds"
+            ], docs_link_row_rc_gate
+            assert "app-platform.docs-redaction" not in docs_link_row_rc_gate["details"][
+                "failedEvidenceIds"
+            ], docs_link_row_rc_gate
+            assert "app-platform-beta-docs-and-program" in docs_link_row_rc_gate["details"][
+                "waiverIds"
+            ], docs_link_row_rc_gate
 
             portal_linked_doc.write_text(
                 original_portal_linked_doc
@@ -7999,6 +8093,9 @@ def run_self_test(repo_root: Path) -> None:
                     "evidence.app-platform.docs-redaction": (
                         "Release manager attempted to waive a docs redaction issue id."
                     ),
+                    "app-platform-beta-docs-and-program": (
+                        "Release manager attempted to waive a docs redaction row."
+                    ),
                 },
             )
             assert waived_docs_redaction_exit_code == 1, waived_docs_redaction_summary
@@ -8013,6 +8110,9 @@ def run_self_test(repo_root: Path) -> None:
             assert docs_redaction_rc_gate["details"]["redactionPassed"] is False, (
                 docs_redaction_rc_gate
             )
+            assert "app-platform-beta-docs-and-program" not in docs_redaction_rc_gate[
+                "details"
+            ].get("waiverIds", []), docs_redaction_rc_gate
             waived_docs_redaction_evidence = {
                 item["id"]: item for item in waived_docs_redaction_summary["evidence"]
             }
@@ -8035,6 +8135,9 @@ def run_self_test(repo_root: Path) -> None:
                 "waiverIds", []
             ), docs_redaction_row
             assert "evidence.app-platform.docs-redaction" not in docs_redaction_row.get(
+                "waiverIds", []
+            ), docs_redaction_row
+            assert "app-platform-beta-docs-and-program" not in docs_redaction_row.get(
                 "waiverIds", []
             ), docs_redaction_row
             assert "Waiver recorded" not in docs_redaction_row["summary"], docs_redaction_row
