@@ -942,6 +942,18 @@ def active_waivers_for_all(
     return records
 
 
+def active_waivers_for_all_ecosystem_rc_evidence(
+    context: WaiverContext, evidence_ids: list[str], mode: str
+) -> list[WaiverRecord]:
+    records: list[WaiverRecord] = []
+    for evidence_id in evidence_ids:
+        waiver = active_waiver_for_ecosystem_rc_evidence(context, evidence_id, mode)
+        if waiver is None:
+            return []
+        records.append(waiver)
+    return records
+
+
 def with_waiver_record(item: EvidenceItem, waiver: WaiverRecord | None) -> EvidenceItem:
     if waiver is None or item.status == "pass":
         return item
@@ -986,7 +998,7 @@ def apply_waiver_to_gate(gate: GateResult, context: WaiverContext, mode: str) ->
         evidence_waivers = (
             []
             if unwaivable_failure_evidence_ids.intersection(failure_evidence_ids)
-            else active_waivers_for_all(context, failure_evidence_ids, mode)
+            else active_waivers_for_all_ecosystem_rc_evidence(context, failure_evidence_ids, mode)
         )
         if evidence_waivers:
             waiver = evidence_waivers[-1]
@@ -3603,9 +3615,10 @@ def classify_evidence_diff(
         *ecosystem_matrix_row_ids_for_evidence(evidence_id),
     ]
     waived = bool(current and evidence_details(current).get("waived"))
+    unwaivable_redaction_findings = evidence_entry_has_unwaivable_redaction_findings(current)
     waiver = (
         None
-        if evidence_entry_has_unwaivable_redaction_findings(current)
+        if unwaivable_redaction_findings
         else active_waiver_for(waiver_context, evidence_id, issue_ids, mode)
     )
     release_blocker = False
@@ -3646,6 +3659,7 @@ def classify_evidence_diff(
         "requiredForReleaseCandidate": bool(current_required or previous_required),
         "releaseBlocker": release_blocker,
         "reason": reason,
+        "unwaivableRedactionFindings": unwaivable_redaction_findings,
     }
 
 
@@ -3800,6 +3814,8 @@ def evaluate_required_evidence_regressions(diffs: list[dict[str, Any]]) -> GateR
             if diff.get("releaseBlocker"):
                 failures.append(f"{diff['id']} regressed from {diff['previousStatus']} to {current_status}")
                 add_evidence_issue(details, "failureEvidenceIds", str(diff["id"]))
+                if diff.get("unwaivableRedactionFindings"):
+                    add_evidence_issue(details, "unwaivableFailureEvidenceIds", str(diff["id"]))
             else:
                 warnings.append(f"{diff['id']} regressed from {diff['previousStatus']} to {current_status}")
                 add_evidence_issue(details, "warningEvidenceIds", str(diff["id"]))
@@ -3812,6 +3828,8 @@ def evaluate_required_evidence_regressions(diffs: list[dict[str, Any]]) -> GateR
             if current_status in {"fail", "missing", "skip"}:
                 failures.append(f"New required evidence {diff['id']} is {current_status}")
                 add_evidence_issue(details, "failureEvidenceIds", str(diff["id"]))
+                if diff.get("unwaivableRedactionFindings"):
+                    add_evidence_issue(details, "unwaivableFailureEvidenceIds", str(diff["id"]))
             elif current_status == "warn":
                 warnings.append(f"New required evidence {diff['id']} is warning")
                 add_evidence_issue(details, "warningEvidenceIds", str(diff["id"]))
@@ -5615,6 +5633,34 @@ def active_waiver_for_ecosystem_rc_evidence(
     return active_waiver_for(context, evidence_id, issue_ids, mode)
 
 
+def ecosystem_rc_evidence_waiver_id(
+    entry: dict[str, Any] | None,
+    context: WaiverContext,
+    evidence_id: str,
+    mode: str,
+) -> str:
+    if evidence_entry_has_unwaivable_redaction_findings(entry):
+        return ""
+    waiver_id = evidence_detail_waiver_id(entry)
+    if waiver_id:
+        return waiver_id
+    waiver = active_waiver_for_ecosystem_rc_evidence(context, evidence_id, mode)
+    return waiver.id if waiver is not None else ""
+
+
+def ecosystem_rc_evidence_satisfied(
+    entries: dict[str, dict[str, Any]],
+    context: WaiverContext,
+    evidence_id: str,
+    mode: str,
+) -> bool:
+    entry = entries.get(evidence_id)
+    status = evidence_status(entry)
+    if status not in {"fail", "missing", "skip"}:
+        return True
+    return bool(ecosystem_rc_evidence_waiver_id(entry, context, evidence_id, mode))
+
+
 def conditional_ecosystem_rc_required_evidence_ids(settings: Settings) -> list[str]:
     evidence_ids = list(ECOSYSTEM_RC_REQUIRED_EVIDENCE_IDS)
     if settings.live_network_beta_required:
@@ -5661,13 +5707,11 @@ def evaluate_ecosystem_rc_certification_gate(
             redaction_failure_ids.append(evidence_id)
             failed_evidence_ids.append(evidence_id)
             continue
-        waiver_id = evidence_detail_waiver_id(entry)
-        if not waiver_id and status in {"fail", "missing", "skip", "warn"}:
-            waiver = active_waiver_for_ecosystem_rc_evidence(
-                waiver_context, evidence_id, settings.mode
-            )
-            if waiver is not None:
-                waiver_id = waiver.id
+        waiver_id = (
+            ecosystem_rc_evidence_waiver_id(entry, waiver_context, evidence_id, settings.mode)
+            if status in {"fail", "missing", "skip", "warn"}
+            else evidence_detail_waiver_id(entry)
+        )
         if waiver_id:
             waived_evidence_ids.append(evidence_id)
             waiver_ids.append(waiver_id)
@@ -5743,15 +5787,21 @@ def evaluate_ecosystem_rc_certification_gate(
     redaction_passed = matrix_redaction_passed and redaction_evidence_passed
 
     live_required = settings.live_network_beta_required
-    live_required_statuses = [
-        evidence_status(current.get(evidence_id))
+    live_network_satisfied = (not live_required) or all(
+        ecosystem_rc_evidence_satisfied(
+            current,
+            waiver_context,
+            evidence_id,
+            settings.mode,
+        )
         for evidence_id in LIVE_NETWORK_BETA_REQUIRED_EVIDENCE_IDS
-    ]
-    live_network_satisfied = (not live_required) or not any(
-        status in {"fail", "missing", "skip"} for status in live_required_statuses
     )
-    network_scale_soak_status = evidence_status(current.get(NETWORK_SCALE_SOAK_EVIDENCE_ID))
-    network_scale_soak_satisfied = network_scale_soak_status not in {"fail", "missing", "skip"}
+    network_scale_soak_satisfied = ecosystem_rc_evidence_satisfied(
+        current,
+        waiver_context,
+        NETWORK_SCALE_SOAK_EVIDENCE_ID,
+        settings.mode,
+    )
     first_party_gate = gate_entries.get("ecosystem.first-party-apps")
     first_party_apps_covered = first_party_gate is not None and first_party_gate.status in {"pass", "warn"}
 
@@ -7544,6 +7594,41 @@ def run_self_test(repo_root: Path) -> None:
         assert waived_rc_gate["status"] == "warn", waived_rc_gate
         assert waived_rc_gate["releaseBlocker"] is False, waived_rc_gate
         assert waived_rc_gate["details"]["waiverId"] == ECOSYSTEM_RC_GATE_ID, waived_rc_gate
+        waived_soak_row_summary, waived_soak_row_exit_code = run_with_previous(
+            "waived-network-scale-soak-row-cert",
+            previous_summary=previous_matrix_good_path,
+            network_scale_soak_summary=workspace / "build/missing-network-scale-soak/summary.json",
+            waivers={
+                "network-scale-soak-and-subscription-budget": (
+                    "Release manager accepted temporary missing network-scale soak evidence."
+                )
+            },
+        )
+        assert waived_soak_row_exit_code == 0, waived_soak_row_summary
+        assert waived_soak_row_summary["releaseCandidatePassed"] is True, (
+            waived_soak_row_summary
+        )
+        assert waived_soak_row_summary["promotionDecision"] == "PASS WITH WARNINGS", (
+            waived_soak_row_summary
+        )
+        waived_soak_rc_gate = gate_by_id(waived_soak_row_summary, ECOSYSTEM_RC_GATE_ID)
+        assert waived_soak_rc_gate["status"] == "warn", waived_soak_rc_gate
+        assert waived_soak_rc_gate["releaseBlocker"] is False, waived_soak_rc_gate
+        assert waived_soak_rc_gate["details"]["networkScaleSoakSatisfied"] is True, (
+            waived_soak_rc_gate
+        )
+        assert NETWORK_SCALE_SOAK_EVIDENCE_ID in waived_soak_rc_gate["details"][
+            "waivedEvidenceIds"
+        ], waived_soak_rc_gate
+        assert NETWORK_SCALE_SOAK_EVIDENCE_ID not in waived_soak_rc_gate["details"][
+            "failedEvidenceIds"
+        ], waived_soak_rc_gate
+        waived_soak_row = matrix_row_by_id(
+            workspace / "build/waived-network-scale-soak-row-cert",
+            "network-scale-soak-and-subscription-budget",
+        )
+        assert waived_soak_row["status"] == "warn", waived_soak_row
+        assert waived_soak_row["releaseBlocker"] is False, waived_soak_row
 
         missing_pr253_path = write_app_summary_variant(
             "missing-pr253-app-service-evidence",
@@ -7924,6 +8009,60 @@ def run_self_test(repo_root: Path) -> None:
             assert required_missing_evidence[evidence_id]["requiredForReleaseCandidate"] is True, (
                 required_missing_evidence
             )
+        waived_required_missing_live_summary, waived_required_missing_live_exit_code = (
+            run_with_previous(
+                "live-network-required-missing-row-waived-cert",
+                live_network_summary=workspace / "build/missing-live-network-waived/summary.json",
+                live_network_beta_enabled=True,
+                live_network_beta_required=True,
+                waivers={
+                    "live-network-beta-certification": (
+                        "Release manager accepted temporary missing required live-network beta evidence."
+                    )
+                },
+            )
+        )
+        assert waived_required_missing_live_exit_code == 0, waived_required_missing_live_summary
+        assert waived_required_missing_live_summary["releaseCandidatePassed"] is True, (
+            waived_required_missing_live_summary
+        )
+        assert waived_required_missing_live_summary["promotionDecision"] == "PASS WITH WARNINGS", (
+            waived_required_missing_live_summary
+        )
+        waived_required_missing_live_gate = gate_by_id(
+            waived_required_missing_live_summary,
+            "ecosystem.live-network-beta",
+        )
+        assert waived_required_missing_live_gate["status"] == "warn", (
+            waived_required_missing_live_gate
+        )
+        assert waived_required_missing_live_gate["releaseBlocker"] is False, (
+            waived_required_missing_live_gate
+        )
+        waived_required_missing_rc_gate = gate_by_id(
+            waived_required_missing_live_summary,
+            ECOSYSTEM_RC_GATE_ID,
+        )
+        assert waived_required_missing_rc_gate["status"] == "warn", (
+            waived_required_missing_rc_gate
+        )
+        assert waived_required_missing_rc_gate["releaseBlocker"] is False, (
+            waived_required_missing_rc_gate
+        )
+        assert waived_required_missing_rc_gate["details"]["liveNetworkSatisfied"] is True, (
+            waived_required_missing_rc_gate
+        )
+        assert set(LIVE_NETWORK_BETA_REQUIRED_EVIDENCE_IDS).issubset(
+            set(waived_required_missing_rc_gate["details"]["waivedEvidenceIds"])
+        ), waived_required_missing_rc_gate
+        waived_required_missing_live_row = matrix_row_by_id(
+            workspace / "build/live-network-required-missing-row-waived-cert",
+            "live-network-beta-certification",
+        )
+        assert waived_required_missing_live_row["status"] == "warn", waived_required_missing_live_row
+        assert waived_required_missing_live_row["releaseBlocker"] is False, (
+            waived_required_missing_live_row
+        )
 
         required_failing_path = write_live_network_summary(
             "live-network-required-failing",
