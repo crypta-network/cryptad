@@ -2728,8 +2728,7 @@ def row_waivers(
     for evidence_id in spec.evidence_ids():
         if evidence_id in unwaivable_evidence_ids:
             continue
-        waiver_id = evidence_details(evidence_entries.get(evidence_id)).get("waiverId")
-        if waiver_id:
+        for waiver_id in detail_waiver_ids(evidence_details(evidence_entries.get(evidence_id))):
             waiver = active_waiver_for(context, str(waiver_id), waivable_issue_ids, mode)
             if waiver is not None:
                 records[waiver.id] = waiver
@@ -2737,8 +2736,7 @@ def row_waivers(
         gate = gate_entries.get(gate_id)
         details = gate.get("details", {}) if isinstance(gate, dict) else {}
         if isinstance(details, dict):
-            waiver_id = details.get("waiverId")
-            if waiver_id:
+            for waiver_id in detail_waiver_ids(details):
                 if str(waiver_id) in unwaivable_issue_ids:
                     continue
                 waiver = active_waiver_for(context, str(waiver_id), waivable_issue_ids, mode)
@@ -5548,6 +5546,19 @@ def unique_ids(values: Any) -> list[str]:
     return sorted(dict.fromkeys(str(value) for value in values if str(value).strip()))
 
 
+def detail_waiver_ids(details: dict[str, Any]) -> list[str]:
+    waiver_ids: list[Any] = []
+    existing_ids = details.get("waiverIds", [])
+    if isinstance(existing_ids, list):
+        waiver_ids.extend(existing_ids)
+    elif existing_ids:
+        waiver_ids.append(existing_ids)
+    direct_waiver_id = details.get("waiverId")
+    if direct_waiver_id:
+        waiver_ids.append(direct_waiver_id)
+    return unique_ids(waiver_ids)
+
+
 def evidence_detail_waiver_id(entry: dict[str, Any] | None) -> str:
     details = evidence_details(entry)
     waiver_id = details.get("waiverId")
@@ -5564,17 +5575,7 @@ def gate_detail_waiver_id(gate: GateResult | None) -> str:
 def gate_waiver_ids(gate: GateResult | None) -> list[str]:
     if gate is None:
         return []
-    waiver_ids: list[Any] = []
-    details = gate.details
-    existing_ids = details.get("waiverIds", [])
-    if isinstance(existing_ids, list):
-        waiver_ids.extend(existing_ids)
-    elif existing_ids:
-        waiver_ids.append(existing_ids)
-    direct_waiver_id = details.get("waiverId")
-    if direct_waiver_id:
-        waiver_ids.append(direct_waiver_id)
-    return unique_ids(waiver_ids)
+    return detail_waiver_ids(gate.details)
 
 
 def conditional_ecosystem_rc_required_evidence_ids(settings: Settings) -> list[str]:
@@ -6370,7 +6371,12 @@ def append_ecosystem_rc_gate(lines: list[str], summary: dict[str, Any]) -> None:
             ),
             None,
         )
-    details = gate.get("details", {}) if isinstance(gate, dict) and isinstance(gate.get("details"), dict) else {}
+    details = (
+        gate.get("details", {})
+        if isinstance(gate, dict) and isinstance(gate.get("details"), dict)
+        else {}
+    )
+    waiver_ids = detail_waiver_ids(details)
     lines.extend(
         [
             "## Ecosystem RC Certification Gate",
@@ -6386,7 +6392,7 @@ def append_ecosystem_rc_gate(lines: list[str], summary: dict[str, Any]) -> None:
             f"- Live-network required: `{'yes' if details.get('liveNetworkRequired') else 'no'}`",
             f"- Network-scale soak satisfied: `{'yes' if details.get('networkScaleSoakSatisfied') else 'no'}`",
             f"- Redaction passed: `{'yes' if details.get('redactionPassed') else 'no'}`",
-            f"- Waivers: `{compact.get('waiverCount', 0)}` {markdown_code_list(details.get('waiverIds'))}",
+            f"- Waivers: `{compact.get('waiverCount', 0)}` {markdown_code_list(waiver_ids)}",
             "",
         ]
     )
@@ -7324,6 +7330,12 @@ def run_self_test(repo_root: Path) -> None:
         assert ECOSYSTEM_RC_GATE_ID in direct_rc_evidence["details"]["details"]["waiverIds"], (
             direct_rc_evidence
         )
+        direct_rc_report = (
+            direct_rc_waiver_settings.out_dir / REPORT_FILE_NAME
+        ).read_text(encoding="utf-8")
+        assert (
+            f"- Waivers: `1` `{ECOSYSTEM_RC_GATE_ID}`" in direct_rc_report
+        ), direct_rc_report
 
         previous_good_path = workspace / "build/previous-good/release-certification-summary.json"
         previous_good = {
@@ -8982,6 +8994,13 @@ def run_self_test(repo_root: Path) -> None:
         assert waived_vault_clean_summary["ecosystemRcGate"]["waiverCount"] == 1, (
             waived_vault_clean_summary
         )
+        waived_vault_rc_row = matrix_row_by_id(
+            workspace / "build/waived-vault-clean-history-cert",
+            ECOSYSTEM_RC_MATRIX_ROW_ID,
+        )
+        assert waived_vault_rc_row["status"] == "warn", waived_vault_rc_row
+        assert waived_vault_rc_row["releaseBlocker"] is False, waived_vault_rc_row
+        assert "app-vault.capabilities" in waived_vault_rc_row["waiverIds"], waived_vault_rc_row
 
         vault_missing_redaction_path = write_app_summary_variant(
             "vault-missing-redaction",
