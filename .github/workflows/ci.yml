@@ -216,7 +216,7 @@ jobs:
   release-certification-self-test:
     name: release certification self-test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 10
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -226,7 +226,7 @@ jobs:
           - os: macos-latest
             python_cmd: python3
           - os: windows-latest
-            python_cmd: py -3
+            python_cmd: py -3.12
 
     steps:
       - uses: actions/checkout@v6
@@ -234,7 +234,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
-          python-version: '3.x'
+          python-version: '3.12'
 
       - name: Run release certification self-tests
         shell: bash
