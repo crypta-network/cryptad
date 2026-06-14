@@ -2,8 +2,9 @@
 
 > Updated June 1, 2026, to cover the release certification report that aggregates interop,
 > performance, app-platform, beta documentation, public-beta hardening, operator beta recovery,
-> live-network beta certification, app-review governance, catalog, app-owned UI,
-> legacy-admin retirement, and CI evidence for a release candidate.
+> network-scale soak, ecosystem RC certification, optional live-network beta certification,
+> app-review governance, catalog, app-owned UI, legacy-admin retirement, and CI evidence for a
+> release candidate.
 
 ## Overview
 - Purpose: publish a Cryptad release so running nodes discover a new `info/<edition>` descriptor, download OS-specific installers, and guide operators through installation without self-replacing the running JAR.
@@ -72,6 +73,18 @@ Treat these as release blockers, in order:
    evidence coverage, ecosystem gate coverage, first-party app coverage, docs coverage, waivers,
    and row-level regressions. The workflow is documented in
    [release-certification.md](release-certification.md).
+   Confirm the final `ecosystem.rc-certification` gate and
+   `ecosystem-rc-certification-gate` matrix row match the release plan. That row is the
+   release-manager summary for required-evidence status, ecosystem gate status, matrix coverage,
+   network-scale soak, required live-network beta evidence, redaction, and waivers. Its scope and
+   non-claims are documented in
+   [ecosystem-rc-certification-gate.md](ecosystem-rc-certification-gate.md).
+   Confirm the `network-scale-soak-and-subscription-budget` row and
+   `network-scale.rc-soak-summary` evidence are present. The wrapper generates a fresh simulated
+   summary by default. Use `--network-scale-soak-summary <path>` or
+   `CRYPTAD_CERT_NETWORK_SCALE_SOAK_SUMMARY` only for an externally collected
+   `simulated-rc-soak` or `live-rc-soak` summary that uses the same redacted schema. Record any
+   external soak source and redaction status in the release log.
    Confirm `app-platform.docs-portal`, `app-platform.beta-program`,
    `app-platform.beta-tutorials`, `app-platform.docs-redaction`, and the
    `app-platform-beta-docs-and-program` matrix row are present. Docs-only gaps require an explicit
@@ -80,8 +93,9 @@ Treat these as release blockers, in order:
    evidence ids, `operator-rc.*` evidence ids, `operator-beta-ux-and-recovery` and
    `operator-rc-recovery-and-support-workflow` matrix rows, and disabled-or-passing
    `live-network-beta-certification` row match the release plan. Live-network beta evidence is
-   release-blocking only when the release manager explicitly enables required live-network beta
-   mode.
+   optional unless the release manager explicitly enables required live-network beta mode with
+   `--require-live-network-beta` or `CRYPTAD_CERT_REQUIRE_LIVE_NETWORK_BETA=1`; stale live-network
+   summaries must not be copied when the mode is disabled.
 3. **First-party app staging** - stage repo-owned AppHost bundles with the app module tasks or `./gradlew stageFirstPartyApps`. The app workflow source of truth is [app-distribution.md](app-distribution.md).
 4. **First-party app signing and verification** - sign with the intended release or staging key inputs, then verify with the matching trusted public key inputs. Gate promotion on successful `./gradlew signFirstPartyApps` and `./gradlew verifyFirstPartyApps` runs. Keep private signing keys outside the repository.
 5. **App catalog smoke, when catalog sources ship** - verify each signed catalog source refreshes,
@@ -94,7 +108,8 @@ Treat these as release blockers, in order:
    [app-catalogs.md](app-catalogs.md).
    PR-246 live-network beta certification is an explicit release-manager wrapper mode. Run it only
    with a localhost node, redacted environment variables, and disposable live fixtures unless the
-   release manager is intentionally publishing the candidate first-party beta catalog:
+   release manager is intentionally publishing the candidate first-party beta catalog. It becomes
+   release-blocking only when required live-network beta mode is enabled:
    ```bash
    CRYPTAD_CERT_LIVE_NETWORK_BETA=1 \
    CRYPTAD_CERT_REQUIRE_LIVE_NETWORK_BETA=1 \
@@ -373,8 +388,10 @@ Treat these as release blockers, in order:
   Missing required evidence, failed required evidence, missing signed bundle/catalog/review
   evidence, missing app UI design-system/lint evidence, missing beta documentation evidence,
   failing docs redaction, missing `apphost.sandbox-provider` evidence, required evidence
-  regressions, or failing ecosystem gates block release-candidate promotion unless a release
-  manager records an explicit waiver for a waivable gap. If the previous summary predates PR-231
+  regressions, failing ecosystem gates, missing or stale network-scale RC soak evidence, required
+  live-network beta failures, or a failing `ecosystem.rc-certification` gate block
+  release-candidate promotion unless a release manager records an explicit waiver for a waivable
+  gap. Redaction findings remain blockers. If the previous summary predates PR-231
   and the matrix
   reports `previousMatrixPresent=false`, record that baseline transition in the release log and
   continue only after the row-level evidence and gate coverage checks pass or have explicit

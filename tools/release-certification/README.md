@@ -1,6 +1,7 @@
 # Release certification tooling
 
-This directory contains the release-candidate evidence aggregator used by the release runbook.
+This directory contains the release-candidate evidence aggregator used by the release runbook,
+including the final ecosystem RC certification gate.
 
 The tooling requires Python 3.10 or newer and depends only on the Python standard library.  The
 self-tests do not start Cryptad, download a Hyphanet baseline, require signing keys, or contact the
@@ -39,6 +40,10 @@ performance summaries when they are present.  It also generates a fresh determin
 attached simulated or live soak summary.  In `pr` mode it skips Gradle by default so local and
 normal CI use stay lightweight.  Set `CRYPTAD_CERT_RUN_GRADLE=1` or pass `--mode nightly` or
 `--mode release-candidate` to run the app-platform Gradle staging and CLI checks.
+Attached network-scale summaries must use the same redacted schema as the deterministic collector.
+The summary kind may be `simulated-rc-soak` or `live-rc-soak`, but raw fetched content, queue HTML,
+tokens, private insert URIs, raw signatures, app-data values, backup payloads, rejected source
+strings, and absolute local paths must stay out of the release record.
 
 ## Outputs
 
@@ -261,6 +266,12 @@ stronger evidence. Extended interop is still required by the release runbook whe
 compatibility-sensitive behavior changed. Live AppHost lifecycle evidence is optional because
 normal PR CI must not require a running node or operator credentials.
 
+PR-258 final ecosystem RC certification is represented by the `ecosystem.rc-certification` gate
+and the `ecosystem-rc-certification-gate` matrix row. That row summarizes whether the
+release-candidate evidence set is complete enough for promotion. It is documented in
+[../../docs/ecosystem-rc-certification-gate.md](../../docs/ecosystem-rc-certification-gate.md) and
+does not replace the detailed required evidence listed above.
+
 Record an explicit waiver when a release manager accepts missing optional or replacement evidence:
 
 ```bash
@@ -306,6 +317,8 @@ ecosystem.app-vault
 ecosystem.sandbox-provider
 ecosystem.reference-content-apps
 ecosystem.legacy-retirement
+ecosystem.live-network-beta
+ecosystem.rc-certification
 ```
 
 The aggregator also writes `ecosystem-certification-matrix.json` and
@@ -330,6 +343,11 @@ app bundle row. `site-publisher` is covered by the reference content row, while
 `profile-publisher`, `feed-reader`, and `trust-graph` have app-specific rows for their distinct
 networked app-layer behavior. The `app-platform-beta-docs-and-program` row records Phase 7 docs
 portal, tutorials, beta program, issue-template, link, and redaction readiness.
+The `ecosystem-rc-certification-gate` row records final release-candidate readiness for
+`ecosystem.rc-certification`: required evidence, emitted ecosystem gates, matrix coverage,
+network-scale RC soak status, required live-network beta status, waiver visibility, and redaction.
+The row is documented in
+[../../docs/ecosystem-rc-certification-gate.md](../../docs/ecosystem-rc-certification-gate.md).
 
 In `release-candidate` mode, unmapped required evidence, unmapped ecosystem gates, missing docs,
 or failed redaction make the matrix fail. In `pr` and `nightly` mode, coverage gaps are warnings
@@ -419,6 +437,9 @@ emitted under `waiverRecords`. Active waivers downgrade matching evidence or eco
 blockers to `warn`; they do not remove the evidence, gate, or reason.
 Expired, unapproved, malformed, or release-candidate-disallowed waivers do not apply. A malformed
 waiver file fails `release-candidate` mode and warns in `pr` or `nightly` mode.
+Redaction findings are not waiver material. Raw secrets, private URIs, credentials, raw payloads,
+or local-path leaks keep the evidence, matrix row, and final ecosystem RC gate failing even when a
+waiver targets the same evidence id, row id, gate id, or issue id.
 
 ## App-platform smoke
 
@@ -539,7 +560,11 @@ can also invoke the read-only Trust Graph `trust.score` app-service when
 `CRYPTAD_CERT_LIVE_APP_SERVICE_SCORE=1` is set; otherwise
 `live-network-beta.app-service-score` is reported as optional skipped evidence, not a false pass.
 Aggregation records these results under the `ecosystem.live-network-beta` gate and the
-`live-network-beta-certification` matrix row.
+`live-network-beta-certification` matrix row. Live-network beta remains optional when
+`--require-live-network-beta` and `CRYPTAD_CERT_REQUIRE_LIVE_NETWORK_BETA=1` are absent; disabled
+runs must ignore stale live summaries and must not copy stale live artifacts. When live-network
+beta is enabled but not required, failing or missing live evidence is a warning. Required mode
+turns the required `live-network-beta.*` evidence into release blockers.
 Lifecycle cleanup deletes only an app that was absent before the smoke and installed successfully
 by this run. Use a disposable app id when the prepared node already has first-party apps installed.
 It does not prove global network propagation, app safety beyond signature/review policy, catalog
