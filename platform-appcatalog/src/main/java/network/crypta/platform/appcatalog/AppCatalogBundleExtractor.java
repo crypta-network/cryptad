@@ -525,7 +525,7 @@ public final class AppCatalogBundleExtractor {
 
   private static boolean isIgnoredArchiveMetadata(String normalizedName) {
     for (String segment : normalizedName.split("/", -1)) {
-      if (segment.equals("__MACOSX") || segment.startsWith("._")) {
+      if (segment.equals("__MACOSX") || segment.startsWith("._") || segment.equals(".DS_Store")) {
         return true;
       }
     }

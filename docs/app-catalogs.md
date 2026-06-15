@@ -672,8 +672,8 @@ and artifact downloads. Artifact bytes are written to catalog-owned scratch stor
 against the catalog size and SHA-256, then extracted into a separate staging directory. The
 extractor rejects artifacts with more than 4096 ZIP entries, absolute ZIP paths, `..`, Windows drive
 prefixes, backslash path separators, duplicate normalized entries, and rootless bundles. It drops
-macOS archive metadata entries such as `__MACOSX/**` and AppleDouble `._*` files before
-signed-bundle verification, so those files are not installed as app payload.
+macOS archive metadata entries such as `__MACOSX/**`, AppleDouble `._*` files, and `.DS_Store`
+before signed-bundle verification, so those files are not installed as app payload.
 
 ## First-party beta catalog onboarding
 

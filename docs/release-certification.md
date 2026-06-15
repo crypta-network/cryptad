@@ -36,6 +36,14 @@ enabled.
 | `nightly` | Scheduled/manual evidence aggregation. | Records missing optional evidence as warnings and can run heavier app-platform checks. |
 | `release-candidate` | Strict release gate. | Fails when required evidence is missing, skipped, or failing unless a release-manager waiver is recorded. |
 
+Production beta candidates use a separate wrapper around this release-candidate evidence gate:
+`tools/release-certification/run-production-beta-release.sh`. That command builds and signs
+first-party app bundles, creates a signed first-party catalog, generates review receipts, runs the
+app-platform/live-network/soak/certification collectors, scans the final public artifact tree, and
+writes `reports/production-beta-summary.json`. See
+[production-beta-release-pipeline.md](production-beta-release-pipeline.md) for the exact command,
+mode semantics, required secrets, artifact layout, failure classes, and rerun guidance.
+
 ## Run locally
 
 The release-certification tools require Python 3.10 or newer and use only the Python standard
@@ -60,6 +68,24 @@ tools/release-certification/run-release-certification.sh \
   --mode release-candidate \
   --out-dir build/release-certification
 ```
+
+Run a production beta candidate from the repository root:
+
+```bash
+tools/release-certification/run-production-beta-release.sh \
+  --workspace-root . \
+  --out-dir build/production-beta-release \
+  --mode production-beta \
+  --catalog-channel stable \
+  --artifact-base-uri "$CRYPTAD_PRODUCTION_BETA_ARTIFACT_BASE_URI" \
+  --require-live-network \
+  --require-sandbox-provider-tests
+```
+
+Use `--mode developer-dry-run` for local and PR-safe non-release artifacts. Dry-runs do not require
+real signing keys or live-network evidence, and the summary marks the output as `nonRelease=true`.
+`release-candidate` and `production-beta` runs require a real HTTPS artifact base URI through
+`--artifact-base-uri` or `CRYPTAD_PRODUCTION_BETA_ARTIFACT_BASE_URI`.
 
 The wrapper may be invoked from outside the repository. Relative `--out-dir` values are resolved
 under the repository root so shell cleanup, app-platform smoke output, and aggregation read the same

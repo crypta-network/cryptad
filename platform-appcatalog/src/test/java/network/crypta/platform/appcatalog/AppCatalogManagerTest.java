@@ -259,6 +259,8 @@ class AppCatalogManagerTest {
       assertFalse(Files.exists(plan.stagedBundleDirectory().resolve("._cryptad-app.properties")));
       assertFalse(Files.exists(plan.stagedBundleDirectory().resolve("__MACOSX")));
       assertFalse(Files.exists(plan.stagedBundleDirectory().resolve("bin").resolve("._launch.sh")));
+      assertFalse(Files.exists(plan.stagedBundleDirectory().resolve(".DS_Store")));
+      assertFalse(Files.exists(plan.stagedBundleDirectory().resolve("bin").resolve(".DS_Store")));
     }
   }
 
@@ -1407,6 +1409,12 @@ class AppCatalogManagerTest {
       zip.write(FINDER_METADATA.getBytes(StandardCharsets.UTF_8));
       zip.closeEntry();
       zip.putNextEntry(new ZipEntry("bin/._launch.sh"));
+      zip.write(FINDER_METADATA.getBytes(StandardCharsets.UTF_8));
+      zip.closeEntry();
+      zip.putNextEntry(new ZipEntry(".DS_Store"));
+      zip.write(FINDER_METADATA.getBytes(StandardCharsets.UTF_8));
+      zip.closeEntry();
+      zip.putNextEntry(new ZipEntry("bin/.DS_Store"));
       zip.write(FINDER_METADATA.getBytes(StandardCharsets.UTF_8));
       zip.closeEntry();
     }
