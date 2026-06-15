@@ -1,6 +1,6 @@
 ---
 name: cryptad-platform-apps
-description: "Work on Cryptad's app platform: Platform API v1/contract, AppHost runtime/rollback, signed app bundles/catalogs, trusted app-review receipts, Trust Graph Local RC, app-update lifecycle, durable app data, app-data backup/restore, content subscriptions, app-network budgets, local app-service discovery/dependencies/grant bundles, app-owned static UI, browser sessions, the browser SDK, the app UI design system/linter, developer CLI, app permissions/audit, sandbox providers, operator beta dashboard/support evidence, live-network beta certification evidence, legacy plugin freeze, and legacy admin retirement routing."
+description: "Work on Cryptad's app platform: Platform API v1/contract, AppHost runtime/rollback, signed app bundles/catalogs, trusted app-review receipts, Trust Graph Local RC, app-update lifecycle, durable app data, app-data backup/restore, content subscriptions, app-network budgets, local app-service discovery/dependencies/grant bundles, app-owned static UI, browser sessions, the browser SDK, the app UI design system/linter, developer CLI, app permissions/audit, sandbox providers, operator beta dashboard/support evidence, operator RC recovery/support workflows, live-network beta certification evidence, legacy plugin freeze, and legacy admin retirement routing."
 ---
 
 # Cryptad platform apps
@@ -38,7 +38,9 @@ Load only the docs needed for the change:
 - Legacy admin replacement map and usage counters: `docs/legacy-retirement-plan.md`
 - Legacy plugin freeze policy: `docs/legacy-plugin-freeze-policy.md`
 - Operator beta dashboard and redacted support bundle: `docs/operator-beta-dashboard.md`
+- Operator RC recovery and support workflow: `docs/operator-rc-recovery-and-support-workflow.md`
 - App-platform release evidence: `docs/release-certification.md`
+- Production beta release pipeline: `docs/production-beta-release-pipeline.md`
 
 ## Ownership map
 
@@ -51,7 +53,8 @@ Load only the docs needed for the change:
   discovery/dependency/grant-bundle routes and adapters, bounded app audit logs, and the local
   app-update lifecycle service plus scheduler above AppHost, catalog, vault, app-data, content,
   trust, and runtime primitives, plus the host/operator-only beta dashboard, subscription recovery
-  wrappers, and redacted support-bundle assembly.
+  wrappers, typed operator RC recovery action planning/execution, safe network-budget snapshots,
+  support-bundle preview metadata, and redacted support-bundle assembly.
 - `:platform-apphost` owns installed app layout, manifest parsing, app process lifecycle,
   per-launch `CRYPTAD_APP_TOKEN`, runtime status, process-log capture/redaction, and restart
   attempts, durable previous-bundle rollback records, plus sandbox policy/status reporting,
@@ -86,12 +89,12 @@ Load only the docs needed for the change:
   or explicit live USK publication for developer-owned staged bundles, including `crypta-app ui
   lint` and review receipt sign/verify helpers.
 - `:platform-web-shell` owns `/app/node/` browser shell assets, bootstrap, app/catalog/update/review
-  operator views, the operator beta dashboard/support-bundle panel, subscription recovery controls,
-  app-data backup/restore controls, app-service dependency/grant-bundle review UI, and explicit
-  legacy security/diagnostic fallback actions.
+  operator views, the operator beta dashboard/support-bundle panel, the Operator RC Recovery
+  surface, subscription recovery controls, app-data backup/restore controls, app-service
+  dependency/grant-bundle review UI, and explicit legacy security/diagnostic fallback actions.
 - `:adapter-http-legacy-admin` hosts the current `/api/v1/`, `/app/node/`, `/apps/{appId}/`
   compatibility bridge, isolated app-UI loopback origin server, Platform API form-password guard,
-  operator subscription-recovery form-password guard, legacy admin retirement notices, diagnostic
+  operator recovery/subscription form-password guards, legacy admin retirement notices, diagnostic
   Wave 4 replacement/fallback routing, and diagnostics counters.
 - `:apps:queue-manager` stages the first-party queue-control static UI bundle.
 - `:apps:publisher` stages the legacy-publisher replacement static UI bundle.
@@ -200,6 +203,12 @@ Load only the docs needed for the change:
   principals, and should not bump the integer contract version. Support bundles and dashboard
   summaries must exclude raw bodies, private insert URIs, app/session/process tokens, form
   passwords, local paths, command lines, and app-private values.
+- Operator RC recovery routes must stay typed and allowlisted. Clients request an
+  `OperatorRecoveryPlan` for a known `OperatorRecoveryActionId`, then execute that exact action
+  with the matching one-time `planToken`; destructive actions require explicit confirmation. Do
+  not add generic route proxying, arbitrary method/path execution, broad shell commands,
+  token-persistent dashboards, or support bundles that include plan tokens, raw backup payloads,
+  raw Trust Graph statements, private insert URIs, raw app data, command lines, or local paths.
 - Positive AppHost data/cache quotas must block launch or restart when usage is over limit or an
   enforced area cannot be measured completely. Quotas and current sandbox providers are operational
   controls, not hard OS isolation.
@@ -236,8 +245,8 @@ Load only the docs needed for the change:
   Publisher/Profile Publisher/Social Inbox/Feed Reader/Trust Graph Local RC reference-app evidence,
   app-service registry/grant/dependency/grant-bundle/redaction evidence, legacy plugin freeze
   evidence, app-review governance and local transparency-log evidence, public-beta security
-  hardening evidence, operator beta dashboard/recovery/support-bundle evidence, legacy-admin
-  retirement and Wave 1-4 removal state, and optional
+  hardening evidence, operator beta dashboard/recovery/support-bundle evidence, operator RC
+  recovery/support workflow evidence, legacy-admin retirement and Wave 1-4 removal state, and optional
   localhost-only live AppHost lifecycle evidence.
 - `tools/release-certification/live_network_beta_smoke.py` is the explicit release-manager
   live-network beta evidence collector. It validates a prepared localhost node, live catalog
@@ -299,12 +308,14 @@ network-scale soak evidence, durable app data, app-data backup/restore, app-serv
 dependencies/grant bundles, Trust Graph Local RC, Social Inbox RC, app-update
 lifecycle/scheduler/rollback, sandbox-provider evidence, operator beta dashboard/support-bundle
 behavior, live-network beta certification behavior, reference content/profile/social/feed/trust
-apps, app platform beta docs evidence, or legacy-admin retirement evidence behavior, also run:
+apps, app platform beta docs evidence, operator RC recovery/support behavior, or legacy-admin
+retirement evidence behavior, also run:
 
 ```bash
 python3 tools/release-certification/app_platform_docs_check.py --self-test
 python3 tools/release-certification/app_platform_smoke.py --self-test
 python3 tools/release-certification/network_scale_soak.py --self-test
 python3 tools/release-certification/live_network_beta_smoke.py --self-test
+python3 tools/release-certification/production_beta_release.py --self-test
 tools/release-certification/run-release-certification.sh --mode pr --skip-gradle --skip-git-metadata
 ```

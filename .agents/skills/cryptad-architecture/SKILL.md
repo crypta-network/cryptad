@@ -68,7 +68,8 @@ Use this skill when you need to:
     inserts, bounded content fetch, shared app-network budget service/store, durable content
     subscriptions, durable app data and internal update snapshots, app-data backup/restore routes,
     local app-service discovery/dependency graph/grant-bundle routes, app-update
-    lifecycle/scheduler, and host/operator-only beta dashboard/support-bundle/recovery routes)
+    lifecycle/scheduler, and host/operator-only beta dashboard/support-bundle, typed operator RC
+    recovery, and safe network-budget snapshot routes)
   - `:platform-apphost` → `network.crypta.platform.apphost` (transport-neutral out-of-process
     AppHost core, sandbox status, durable rollback records, and AppHost-managed quota enforcement)
   - `:platform-app-ui` → `network.crypta.platform.appui` (app-owned static UI route and asset
@@ -95,9 +96,9 @@ Use this skill when you need to:
     keys, publication plans, explicit live USK catalog publication, API snapshot, and compatibility
     verification workflows)
   - `:platform-web-shell` → `network.crypta.platform.webshell` (browser-facing Web Shell v1,
-    including Apps, catalog, update, review, operator beta dashboard/support-bundle, subscription
-    recovery, app-data backup/restore, app-service dependency/grant-bundle review, and explicit
-    legacy security/diagnostic fallback surfaces)
+    including Apps, catalog, update, review, operator beta dashboard/support-bundle, Operator RC
+    Recovery, subscription recovery, app-data backup/restore, app-service dependency/grant-bundle
+    review, and explicit legacy security/diagnostic fallback surfaces)
   - `:runtime-alerts` → the extracted leaf-safe `network.crypta.runtime.alerts` feed/model subset
     plus the detached `UserAlertSurface`
   - `:runtime-node` → extracted daemon runtime body across the remaining cyclic/high-level
@@ -173,8 +174,8 @@ Use this skill when you need to:
   handlers, social-message signing, app-generated document inserts, bounded content fetch,
   shared app-network budget service/store, durable content subscriptions, durable app data and
   internal app-update snapshots, local app-service discovery/grants, app-update scheduling, and
-  host/operator-only beta
-  dashboard/support-bundle/recovery routes,
+  host/operator-only beta dashboard/support-bundle, typed operator RC recovery, and
+  network-budget snapshot routes,
   `:platform-apphost` owns the transport-neutral AppHost core, `:platform-app-ui` owns
   app-owned static UI route helpers,
   `:platform-appvault` owns app secret and identity vault records/grants,
@@ -184,8 +185,8 @@ Use this skill when you need to:
   staging, `:platform-trustgraph` owns local trust statement parsing, lifecycle records, and
   deterministic preview scoring, `:platform-devtools` owns the standalone app developer CLI and
   offline UI linter, `:platform-web-shell` owns the browser-facing node-management shell, app-data
-  backup/restore controls, app-service dependency/grant-bundle review, and operator beta
-  dashboard, `:runtime-alerts` owns the extracted alert/feed model subset,
+  backup/restore controls, app-service dependency/grant-bundle review, operator beta dashboard,
+  and Operator RC Recovery, `:runtime-alerts` owns the extracted alert/feed model subset,
   `:runtime-node` owns the
   remaining runtime/node/client/support body, `:adapter-fcp` owns the FCP adapter tree,
   `:bridge-fcp-runtime` owns the concrete FCP bridge implementations,

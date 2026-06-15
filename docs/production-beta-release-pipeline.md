@@ -150,7 +150,8 @@ The pipeline classifies failures into these groups:
 ## Redaction enforcement
 
 The final scanner checks the public output tree before the tarball is created, then checks the
-tarball entries after packaging. It fails on:
+tarball entries after packaging. It expands public ZIP and JAR artifacts while scanning, rejects
+secret-bearing binary filenames before treating binary content as unscannable, and fails on:
 
 - private insert URIs;
 - private key blocks;
@@ -161,7 +162,9 @@ tarball entries after packaging. It fails on:
 - AppleDouble `._*` files;
 - `__MACOSX/` directories;
 - `.DS_Store`;
-- known CI secret environment variable names with values.
+- known CI secret environment variable names with values;
+- non-empty protected secret values present in the runner environment, including live-network
+  private insert URI indirection values such as `CRYPTAD_CERT_LIVE_TEST_INSERT_URI_ENV`.
 
 The scan writes `reports/redaction-report.json`. If the report status is `fail`, the top-level
 summary also fails and the pipeline does not mark the candidate promotion-ready.

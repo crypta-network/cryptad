@@ -96,7 +96,8 @@ Use this skill when you need to:
   routes, app-data backup/restore planning and commit routes, app-service dependency graph and
   grant-bundle routes, shared app-network budget service/store, app-update lifecycle service,
   app-data migration planning/execution and internal update snapshots, and host/operator-only beta
-  dashboard/support-bundle routes. Its focused leaf tests now live under
+  dashboard/support-bundle, typed operator RC recovery, and network-budget snapshot routes. Its
+  focused leaf tests now live under
   `platform-api/src/test/java`.
 - `:platform-apphost` owns the transport-neutral out-of-process AppHost core, sandbox
   policy/status reporting, Linux bubblewrap provider selection, durable rollback records,
@@ -126,9 +127,9 @@ Use this skill when you need to:
 - `:platform-sdk-js` owns the dependency-free browser SDK resource and focused resource/boundary
   tests under `platform-sdk-js/src/test/java`.
 - `:platform-web-shell` owns the browser-facing Web Shell leaf, including app/catalog/update/review
-  views, app-service dependency/grant-bundle review, operator beta dashboard and app-data
-  backup/restore controls, legacy explicit fallback actions, and focused leaf tests under
-  `platform-web-shell/src/test/java`.
+  views, app-service dependency/grant-bundle review, operator beta dashboard, Operator RC
+  Recovery, app-data backup/restore controls, legacy explicit fallback actions, and focused leaf
+  tests under `platform-web-shell/src/test/java`.
 - `:runtime-alerts` owns the extracted leaf-safe `network.crypta.runtime.alerts` feed/model
   subset plus the detached `UserAlertSurface` used by legacy HTTP/admin code.
 - `:runtime-node` is the extracted daemon runtime leaf. It now owns the remaining cyclic/high-level

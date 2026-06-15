@@ -37,10 +37,11 @@ Build: 2
   durable app-data and app-data backup/restore evidence, app-service
   registry/grant/dependency/grant-bundle evidence, Trust Graph Local RC evidence, Site
   Publisher/Profile Publisher/Social Inbox/Feed Reader/Trust Graph Local RC reference-app evidence,
-  app platform beta docs/program evidence, live USK catalog publication evidence, app-update
-  lifecycle/scheduler/rollback and app-data migration contract evidence, `crypta-app` developer
-  beta toolkit smoke, legacy plugin freeze evidence, legacy-admin retirement/removal Wave 1-4
-  evidence, Hyphanet interop smoke/soak evidence, and the packaged-node performance smoke.
+  app platform beta docs/program evidence, live USK catalog publication evidence, production beta
+  artifact redaction evidence when app artifacts ship, app-update lifecycle/scheduler/rollback and
+  app-data migration contract evidence, `crypta-app` developer beta toolkit smoke, operator RC
+  recovery/support evidence, legacy plugin freeze evidence, legacy-admin retirement/removal Wave
+  1-4 evidence, Hyphanet interop smoke/soak evidence, and the packaged-node performance smoke.
 
 ---
 
@@ -67,6 +68,24 @@ git checkout -b release/<build-number>
    `build/release-certification/release-certification-report.md`,
    `build/release-certification/network-scale-soak/summary.json`, and sanitized
    `build/release-certification/artifacts/`.
+
+   When the release includes production beta app-ecosystem artifacts, run the top-level production
+   beta pipeline instead of manually assembling app bundles, catalogs, review receipts, lower-level
+   certification output, and the public archive:
+   ```sh
+   tools/release-certification/run-production-beta-release.sh \
+     --workspace-root . \
+     --out-dir build/production-beta-release \
+     --mode production-beta \
+     --catalog-channel stable \
+     --artifact-base-uri "$CRYPTAD_PRODUCTION_BETA_ARTIFACT_BASE_URI" \
+     --require-live-network \
+     --require-sandbox-provider-tests
+   ```
+   Preserve the JSON/Markdown summaries, redaction report, extracted `evidence/`, and
+   `dist/checksums.txt`. Any summary with `nonRelease=true`, `promotionReady=false`, failed
+   redaction, dirty workspace, fixture evidence, test signing, or an emergency live-network skip is
+   not promotable.
 
 3) Stabilize on `release/<build-number>` (critical fixes only). Keep diffs minimal.
 
@@ -102,6 +121,10 @@ git push origin v<build-number>
 - [ ] CI green on `release/<build-number>`.
 - [ ] Release certification report generated in `release-candidate` mode and required evidence
       passed or has an explicit release-manager waiver.
+- [ ] Production beta app-ecosystem pipeline summary reviewed when first-party app artifacts ship;
+      `promotionReady=true`, `nonRelease=false`, production signing, clean workspace, public HTTPS
+      artifact base URI, required live-network evidence, and redaction `pass` are all present
+      before publication.
 - [ ] First-party AppHost bundles staged, signed, and verified when shipping app-platform artifacts.
 - [ ] `crypta-app` CLI smoke completed when `:platform-devtools` changed.
 - [ ] Signed catalog, first-party beta catalog, trusted app-review receipt, Platform API contract,
@@ -113,8 +136,8 @@ git push origin v<build-number>
       content-subscription, Trust Graph Local RC durable exchange/scope, live USK catalog refresh,
       app-review governance/reviewer-key lifecycle and transparency-log, app platform beta
       docs/program/redaction, AppHost sandbox-provider, app-update lifecycle, app-update scheduler,
-      app-update rollback, app-update data migration contract, developer beta toolkit, legacy plugin
-      freeze, and legacy-admin retirement/removal Wave 1-4 evidence are
+      app-update rollback, app-update data migration contract, developer beta toolkit, operator RC
+      recovery/support, legacy plugin freeze, and legacy-admin retirement/removal Wave 1-4 evidence are
       present in the certification summary.
 - [ ] Hyphanet interop smoke passed or CI evidence recorded; extended interop captured when
       compatibility-sensitive behavior changed.
