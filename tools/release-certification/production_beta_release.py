@@ -252,6 +252,7 @@ SECRET_ENV_VALUE_NAME_RE = re.compile(
 )
 SECRET_ENV_VALUE_SKIP_SUFFIXES = ("_ENV", "_FILE", "_PATH", "_DIR")
 SECRET_ENV_INDIRECTION_NAMES = {"CRYPTAD_CERT_LIVE_TEST_INSERT_URI_ENV"}
+SECRET_ENV_FILE_INDIRECTION_NAMES = {"CRYPTAD_CERT_LIVE_TEST_INSERT_URI_FILE"}
 MIN_SECRET_ENV_VALUE_LENGTH = 6
 URL_USERINFO_RE = re.compile(r"\b[a-z][a-z0-9+.-]*://[^/\s:@]+:[^/\s@]+@", re.IGNORECASE)
 FILE_URI_RE = re.compile(r"\bfile:///[^\s\"'<>]+", re.IGNORECASE)
@@ -443,6 +444,11 @@ def git_tracked_files_under(workspace: Path, out_dir: Path) -> list[str] | None:
 
 def validate_out_dir_has_no_tracked_files(workspace: Path, out_dir: Path) -> None:
     tracked_files = git_tracked_files_under(workspace, out_dir)
+    if tracked_files is None:
+        raise SystemExit(
+            "--out-dir cleanup refused because git-tracked file status could not be verified; "
+            "run from a Git checkout with git available or choose a fresh dedicated output directory."
+        )
     if not tracked_files:
         return
     sample = ", ".join(tracked_files[:3])
@@ -466,9 +472,9 @@ def ensure_safe_out_dir(settings: Settings) -> None:
     parts = relative_workspace_parts(workspace, out_dir)
     if parts and parts[0] in PROTECTED_CLEAN_TOP_LEVELS:
         raise SystemExit(f"--out-dir refused for protected workspace path: {parts[0]}")
-    validate_out_dir_has_no_tracked_files(workspace, out_dir)
     if out_dir.exists():
         validate_clean_out_dir_target(workspace, out_dir)
+        validate_out_dir_has_no_tracked_files(workspace, out_dir)
     if out_dir.exists() and settings.clean_out_dir:
         shutil.rmtree(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -1687,11 +1693,26 @@ def protected_secret_environment_values(env: dict[str, str] | None = None) -> li
         seen.add(value)
         values.append((name, value))
 
+    def add_file_contents(name: str, raw_path: str) -> None:
+        path_text = raw_path.strip()
+        if not path_text:
+            return
+        try:
+            content = Path(path_text).read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            return
+        add(name, content)
+        for line in content.splitlines():
+            add(name, line)
+
     for name, raw_value in source.items():
         if name in SECRET_ENV_INDIRECTION_NAMES:
             target_name = raw_value.strip()
             if target_name:
                 add(target_name, source.get(target_name, ""))
+            continue
+        if name in SECRET_ENV_FILE_INDIRECTION_NAMES:
+            add_file_contents(name, raw_value)
             continue
         if name.endswith(SECRET_ENV_VALUE_SKIP_SUFFIXES):
             continue
@@ -3183,7 +3204,7 @@ def assert_no_clean_refuses_tracked_directory_before_sentinel() -> None:
         try:
             ensure_safe_out_dir(settings)
         except SystemExit as exc:
-            assert "contains git-tracked files" in str(exc), exc
+            assert "without a production beta sentinel" in str(exc), exc
         else:
             raise AssertionError("no-clean output validation accepted a git-tracked source directory")
         assert (tracked_dir / "source.txt").is_file(), "tracked source directory was modified"
@@ -3208,11 +3229,36 @@ def assert_cleanup_refuses_tracked_directory_even_with_sentinel() -> None:
         assert cleanup_sentinel(tracked_dir).is_file(), "test sentinel unexpectedly disappeared"
 
 
+def assert_cleanup_refuses_unknown_tracked_file_status() -> None:
+    with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-clean-unknown-tracked-") as temp_name:
+        workspace = Path(temp_name) / "repo"
+        out_dir = workspace / "build/production-beta-unknown-tracked"
+        out_dir.mkdir(parents=True)
+        write_text(cleanup_sentinel(out_dir), "Crypta production beta release output directory.\n")
+        write_text(out_dir / "important.txt", "do not delete\n")
+        settings = cleanup_test_settings(workspace, out_dir)
+        original_git_tracked_files_under = globals()["git_tracked_files_under"]
+        try:
+            globals()["git_tracked_files_under"] = lambda _workspace, _out_dir: None
+            try:
+                ensure_safe_out_dir(settings)
+            except SystemExit as exc:
+                assert "git-tracked file status could not be verified" in str(exc), exc
+            else:
+                raise AssertionError("cleanup accepted an output directory with unknown git-tracked file status")
+        finally:
+            globals()["git_tracked_files_under"] = original_git_tracked_files_under
+        assert (out_dir / "important.txt").is_file(), "output directory was deleted despite unknown tracked-file status"
+        assert cleanup_sentinel(out_dir).is_file(), "test sentinel unexpectedly disappeared"
+
+
 def assert_cleanup_allows_default_release_output_prefix() -> None:
     with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-clean-default-") as temp_name:
         workspace = Path(temp_name) / "repo"
         out_dir = workspace / "build/production-beta-self-test"
         out_dir.mkdir(parents=True)
+        if not run_git(workspace, "init"):
+            return
         write_text(out_dir / "stale.txt", "delete me\n")
         settings = cleanup_test_settings(workspace, out_dir)
         ensure_safe_out_dir(settings)
@@ -3225,6 +3271,8 @@ def assert_cleanup_allows_sentinel_directory() -> None:
         workspace = Path(temp_name) / "repo"
         out_dir = workspace / "custom-output"
         out_dir.mkdir(parents=True)
+        if not run_git(workspace, "init"):
+            return
         write_text(cleanup_sentinel(out_dir), "Crypta production beta release output directory.\n")
         write_text(out_dir / "stale.txt", "delete me\n")
         settings = cleanup_test_settings(workspace, out_dir)
@@ -3377,6 +3425,8 @@ def assert_no_clean_rerun_drops_stale_dist_files() -> None:
     with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-stale-dist-") as temp_name:
         workspace = Path(temp_name) / "repo"
         make_self_test_workspace(workspace)
+        if not run_git(workspace, "init"):
+            return
         out_dir = workspace / "build/production-beta"
         write_text(cleanup_sentinel(out_dir), "Crypta production beta release output directory.\n")
         write_text(out_dir / "dist/leak.txt", "CRYPTAD_APP_TOKEN=abc1234567890abcdef\n")
@@ -3612,6 +3662,7 @@ def run_self_test() -> None:
     assert_no_clean_refuses_arbitrary_existing_directory_without_sentinel()
     assert_no_clean_refuses_tracked_directory_before_sentinel()
     assert_cleanup_refuses_tracked_directory_even_with_sentinel()
+    assert_cleanup_refuses_unknown_tracked_file_status()
     assert_cleanup_allows_default_release_output_prefix()
     assert_cleanup_allows_sentinel_directory()
     assert_strict_skip_gradle_requires_emergency_build_flag()
@@ -3877,6 +3928,7 @@ def run_self_test() -> None:
     saved_env = {
         "CRYPTAD_CERT_FORM_PASSWORD": os.environ.get("CRYPTAD_CERT_FORM_PASSWORD"),
         "CRYPTAD_CERT_LIVE_TEST_INSERT_URI_ENV": os.environ.get("CRYPTAD_CERT_LIVE_TEST_INSERT_URI_ENV"),
+        "CRYPTAD_CERT_LIVE_TEST_INSERT_URI_FILE": os.environ.get("CRYPTAD_CERT_LIVE_TEST_INSERT_URI_FILE"),
         "SELF_TEST_PRIVATE_INSERT_VALUE": os.environ.get("SELF_TEST_PRIVATE_INSERT_VALUE"),
     }
     try:
@@ -3891,6 +3943,14 @@ def run_self_test() -> None:
             "bare-live-private-insert-indirection-value",
             lambda out_dir: write_text(out_dir / "live.txt", "unit-test-private-insert-material-9f4b6a\n"),
         )
+        with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-private-insert-file-") as secret_temp_name:
+            secret_file = Path(secret_temp_name) / "private-insert-uri.txt"
+            write_text(secret_file, "unit-test-private-insert-file-material-9f4b6a\n")
+            os.environ["CRYPTAD_CERT_LIVE_TEST_INSERT_URI_FILE"] = str(secret_file)
+            assert_redaction_fails(
+                "bare-live-private-insert-file-value",
+                lambda out_dir: write_text(out_dir / "live.txt", "unit-test-private-insert-file-material-9f4b6a\n"),
+            )
     finally:
         for name, value in saved_env.items():
             if value is None:
