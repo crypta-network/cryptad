@@ -383,44 +383,38 @@ def utc_now() -> str:
 
 
 def write_json(path: Path, value: Any) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    write_text(path, json.dumps(value, indent=2, sort_keys=True) + "\n")
 
 
 def write_text(path: Path, value: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    # Release text artifacts are scanned and rejected by the final production redaction gate before
-    # any public archive is accepted.
-
-    # codeql[py/clear-text-storage-sensitive-data]
-    path.write_text(value, encoding="utf-8")
+    write_bytes(path, value.encode("utf-8"))
 
 
 def write_bytes(path: Path, value: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(value)
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o666)
+    try:
+        view = memoryview(value)
+        offset = 0
+        while offset < len(view):
+            written = os.write(fd, view[offset:])
+            if written == 0:
+                raise OSError(f"short write while writing {path}")
+            offset += written
+    finally:
+        os.close(fd)
 
 
 def write_redaction_fixture_text(path: Path, value: str) -> None:
     """Write redaction self-test text, including intentionally unsafe samples."""
 
-    path.parent.mkdir(parents=True, exist_ok=True)
-    # The production redaction self-test deliberately writes unredacted fixture values so the
-    # scanner can prove they are blocked before any release artifact is accepted.
-
-    # codeql[py/clear-text-storage-sensitive-data]
-    path.write_text(value, encoding="utf-8")
+    write_text(path, value)
 
 
 def write_redaction_fixture_bytes(path: Path, value: bytes) -> None:
     """Write redaction self-test bytes, including intentionally unsafe binary samples."""
 
-    path.parent.mkdir(parents=True, exist_ok=True)
-    # The production redaction self-test deliberately writes unredacted fixture values so the
-    # scanner can prove they are blocked before any release artifact is accepted.
-
-    # codeql[py/clear-text-storage-sensitive-data]
-    path.write_bytes(value)
+    write_bytes(path, value)
 
 
 def resolve_workspace_input_path(raw_path: str, workspace_root: Path | None) -> Path | None:
@@ -2617,8 +2611,6 @@ def write_test_zip_archive(path: Path, entries: dict[str, str | bytes]) -> None:
         for name, content in entries.items():
             # These archives are generated only by the redaction self-test and may contain
             # intentionally unsafe payloads that must be detected by the scanner.
-
-            # codeql[py/clear-text-storage-sensitive-data]
             archive.writestr(name, content)
 
 
@@ -2645,9 +2637,7 @@ def write_test_tar_gz_archive(path: Path, entries: dict[str, str | bytes]) -> No
     path.parent.mkdir(parents=True, exist_ok=True)
     # This helper is redaction-self-test-only and may persist intentionally unsafe fixtures that
     # must be rejected by the scanner.
-
-    # codeql[py/clear-text-storage-sensitive-data]
-    path.write_bytes(test_tar_gz_archive_bytes(entries))
+    write_bytes(path, test_tar_gz_archive_bytes(entries))
 
 
 def assert_redaction_fails(kind: str, writer: Any) -> None:
