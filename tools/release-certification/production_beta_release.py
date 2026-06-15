@@ -325,6 +325,20 @@ class ReleaseArtifactError(RuntimeError):
     """Raised when a staged release artifact source is unsafe to publish."""
 
 
+def production_build_skipped(settings: Settings) -> bool:
+    return settings.mode == "production-beta" and (settings.skip_gradle or settings.skip_full_build)
+
+
+def release_config_non_release(settings: Settings, profile: SigningProfile | None, state: PipelineState) -> bool:
+    return (
+        settings.mode == "developer-dry-run"
+        or production_build_skipped(settings)
+        or state.dirty_workspace
+        or not state.workspace_status_known
+        or bool(profile and profile.kind != "production")
+    )
+
+
 def utc_now() -> str:
     return dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
@@ -365,6 +379,10 @@ def relative_artifact_path(path: Path, root: Path) -> str:
         return path.relative_to(root).as_posix()
     except ValueError:
         return path.name
+
+
+def release_artifact_uri(settings: Settings, artifact: Path) -> str:
+    return f"{settings.artifact_base_uri.rstrip('/')}/{relative_artifact_path(artifact, settings.out_dir)}"
 
 
 def relative_workspace_parts(workspace: Path, path: Path) -> tuple[str, ...]:
@@ -992,7 +1010,7 @@ def package_catalog_and_reviews(
             env=profile.env,
             timeout_seconds=300,
         )
-        artifact_uri = f"{state.settings.artifact_base_uri.rstrip('/')}/apps/{zip_path.name}"
+        artifact_uri = release_artifact_uri(state.settings, zip_path)
         entry_args = [
             str(cli),
             "catalog",
@@ -1252,10 +1270,7 @@ def release_config(state: PipelineState) -> dict[str, Any]:
         "useFixtureEvidence": settings.use_fixture_evidence,
         "workspaceStatusKnown": state.workspace_status_known,
         "dirtyWorkspace": state.dirty_workspace,
-        "nonRelease": settings.mode == "developer-dry-run"
-        or state.dirty_workspace
-        or not state.workspace_status_known
-        or bool(profile and profile.kind != "production"),
+        "nonRelease": release_config_non_release(settings, profile, state),
         "signingProfile": None
         if profile is None
         else {
@@ -1521,6 +1536,11 @@ def evaluate_promotion(state: PipelineState, summaries: dict[str, Any]) -> dict[
     production_signing = bool(profile and profile.kind == "production" and not profile.generated_test_keys)
     if settings.mode == "production-beta":
         add_gate(
+            "build.production-beta-complete",
+            not production_build_skipped(settings),
+            "Production beta promotion requires the Gradle build and first-party app staging/signing stages to run in this pipeline execution.",
+        )
+        add_gate(
             "workspace.clean-production-beta",
             state.workspace_status_known and not state.dirty_workspace,
             "Production beta promotion requires a clean git workspace.",
@@ -1540,6 +1560,7 @@ def evaluate_promotion(state: PipelineState, summaries: dict[str, Any]) -> dict[
     failed = [gate for gate in gates if gate["status"] != "pass"]
     non_release = (
         settings.mode == "developer-dry-run"
+        or production_build_skipped(settings)
         or state.dirty_workspace
         or not state.workspace_status_known
         or bool(profile and profile.kind != "production")
@@ -2253,7 +2274,12 @@ def write_fake_crypta_app_cli(workspace: Path) -> Path:
                 if args[:1] == ["pack"]:
                     pathlib.Path(value(args, "--output")).write_bytes(b"fixture bundle\\n")
                 elif args[:2] == ["catalog", "entry"]:
-                    pathlib.Path(value(args, "--output")).write_text("entry=ok\\n", encoding="utf-8")
+                    pathlib.Path(value(args, "--output")).write_text(
+                        "entry=ok\\n"
+                        + "bundle.uri=" + value(args, "--bundle-uri") + "\\n"
+                        + "artifact=" + value(args, "--artifact") + "\\n",
+                        encoding="utf-8",
+                    )
                 elif args[:2] == ["review", "sign"]:
                     pathlib.Path(value(args, "--receipt-file")).write_text(
                         "reviewedAt=" + value(args, "--reviewed-at") + "\\n", encoding="utf-8"
@@ -2261,9 +2287,11 @@ def write_fake_crypta_app_cli(workspace: Path) -> Path:
                 elif args[:2] == ["review", "verify"]:
                     pass
                 elif args[:2] == ["catalog", "create"]:
-                    pathlib.Path(value(args, "--catalog-file")).write_text(
-                        "generatedAt=" + value(args, "--generated-at") + "\\n", encoding="utf-8"
-                    )
+                    catalog_text = "generatedAt=" + value(args, "--generated-at") + "\\n"
+                    for index, arg in enumerate(args):
+                        if arg == "--entry":
+                            catalog_text += pathlib.Path(args[index + 1]).read_text(encoding="utf-8")
+                    pathlib.Path(value(args, "--catalog-file")).write_text(catalog_text, encoding="utf-8")
                 elif args[:2] == ["catalog", "sign"]:
                     catalog = pathlib.Path(value(args, "--catalog-file"))
                     catalog.with_name("{CANONICAL_CATALOG_SIGNATURE}").write_text("signature=ok\\n", encoding="utf-8")
@@ -2541,6 +2569,89 @@ def assert_dirty_production_beta_is_non_promotable() -> None:
         promotion = evaluate_promotion(state, {})
         failed_ids = {gate["id"] for gate in promotion["gates"] if gate["status"] == "fail"}
         assert "workspace.clean-production-beta" in failed_ids, failed_ids
+        assert promotion["nonRelease"] is True, promotion
+        assert promotion["promotionReady"] is False, promotion
+
+
+def write_minimal_promotion_artifacts(out_dir: Path) -> None:
+    for app_id in APP_IDS:
+        write_text(out_dir / "build/staged-apps" / app_id / "cryptad-app.signature", "signature=ok\n")
+        write_text(out_dir / "reviews/review-receipts" / f"{app_id}-review-receipt.properties", "status=reviewed\n")
+    write_text(out_dir / "catalog/first-party-catalog.properties", "catalog=ok\n")
+    write_text(out_dir / "catalog" / CANONICAL_CATALOG_SIGNATURE, "signature=ok\n")
+
+
+def passing_promotion_summaries() -> dict[str, Any]:
+    cert_evidence = [
+        {
+            "id": evidence_id,
+            "status": "pass",
+            "summary": f"{evidence_id} passed.",
+            "details": {},
+        }
+        for evidence_id in CRITICAL_PRODUCTION_BETA_EVIDENCE_IDS
+    ]
+    live_evidence = [
+        {
+            "id": evidence_id,
+            "status": "pass",
+            "summary": f"{evidence_id} passed.",
+            "details": {},
+        }
+        for evidence_id in LIVE_NETWORK_REQUIRED_IDS
+    ]
+    return {
+        "certification": {"releaseCandidatePassed": True, "evidence": cert_evidence},
+        "liveNetwork": {"status": "pass", "evidence": live_evidence},
+        "matrix": {"status": "pass", "releaseBlockerCount": 0},
+    }
+
+
+def production_signing_profile() -> SigningProfile:
+    return SigningProfile(
+        kind="production",
+        generated_test_keys=False,
+        env={},
+        private_paths=[],
+        app_key_id="app-key",
+        reviewer_key_id="reviewer-key",
+        review_policy_id="crypta-app-review-v1",
+        review_policy_version="1",
+    )
+
+
+def assert_emergency_build_skip_is_non_promotable() -> None:
+    with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-build-skip-") as temp_name:
+        workspace = Path(temp_name) / "repo"
+        make_self_test_workspace(workspace)
+        out_dir = workspace / "build/production-beta"
+        write_minimal_promotion_artifacts(out_dir)
+        settings = Settings(
+            workspace_root=workspace,
+            out_dir=out_dir,
+            mode="production-beta",
+            catalog_channel="stable",
+            artifact_base_uri="https://downloads.crypta.network/production-beta/self-test",
+            require_live_network=True,
+            require_sandbox_provider_tests=True,
+            skip_gradle=False,
+            skip_full_build=True,
+            use_fixture_evidence=False,
+            allow_dirty_workspace=False,
+            emergency_skip_live_network=False,
+            emergency_skip_build=True,
+            allow_test_signing_in_production=False,
+            previous_summary=None,
+            waiver_file=None,
+            timeout_seconds=60,
+            clean_out_dir=True,
+        )
+        state = PipelineState(settings, "self-test", utc_now(), [], [], [])
+        state.signing_profile = production_signing_profile()
+        assert release_config(state)["nonRelease"] is True
+        promotion = evaluate_promotion(state, passing_promotion_summaries())
+        failed_ids = {gate["id"] for gate in promotion["gates"] if gate["status"] == "fail"}
+        assert "build.production-beta-complete" in failed_ids, promotion
         assert promotion["nonRelease"] is True, promotion
         assert promotion["promotionReady"] is False, promotion
 
@@ -3002,6 +3113,11 @@ def assert_catalog_signature_and_timestamps_are_canonical() -> None:
         ), "catalog signature alias diverged from canonical sidecar"
         catalog_text = (out_dir / "catalog/first-party-catalog.properties").read_text(encoding="utf-8")
         assert f"generatedAt={started_at}" in catalog_text
+        assert (
+            "bundle.uri=https://downloads.crypta.invalid/self-test/build/app-bundles/queue-manager-1.2.3.zip"
+            in catalog_text
+        ), catalog_text
+        assert "/apps/queue-manager-1.2.3.zip" not in catalog_text, catalog_text
         assert f"reviewedAt={started_at}" in (
             out_dir / "reviews/review-receipts/queue-manager-review-receipt.properties"
         ).read_text(encoding="utf-8")
@@ -3235,6 +3351,7 @@ def run_self_test() -> None:
     assert_tarball_redaction_rejects_symlink_member()
     assert_blank_review_policy_env_uses_defaults()
     assert_dirty_production_beta_is_non_promotable()
+    assert_emergency_build_skip_is_non_promotable()
     assert_waived_critical_evidence_is_accepted_without_redaction_findings()
     assert_developer_dry_run_exit_code_fails_on_recorded_failures()
     assert_certification_failure_marks_dry_run_failed()

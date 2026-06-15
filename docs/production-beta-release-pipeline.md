@@ -39,15 +39,18 @@ upload.
 | --- | --- | --- | --- |
 | `developer-dry-run` | Local and PR-safe pipeline exercise. | Uses configured keys when present, otherwise generates ephemeral non-production keys outside the artifact tree. Live network is not required. If no artifact base URI is supplied, the command uses a `.invalid` non-release URI. | Exits successfully only when pipeline commands and redaction pass, and always marks artifacts as `nonRelease=true` and `promotionReady=false`. |
 | `release-candidate` | Release branch or manual candidate evidence. | Requires staged apps, signed bundles, signed catalog artifacts, review receipts, smoke summaries, ecosystem certification, and a real HTTPS artifact base URI. Test keys are allowed when no release keys are configured, and outputs remain labeled non-production. | Fails on critical missing evidence. Promotion is not marked ready unless all production-beta-only requirements are also satisfied. |
-| `production-beta` | Protected production beta candidate build. | Requires real signing/reviewer inputs, a real HTTPS artifact base URI, app-platform evidence, sandbox evidence, ecosystem RC certification, and live-network beta evidence unless an explicitly named emergency/test flag is used. | Fails closed when critical evidence, live evidence, production signing, or redaction is missing. |
+| `production-beta` | Protected production beta candidate build. | Requires real signing/reviewer inputs, a full in-pipeline Gradle build/stage/sign run, a real HTTPS artifact base URI, app-platform evidence, sandbox evidence, ecosystem RC certification, and live-network beta evidence unless an explicitly named emergency/test flag is used. | Fails closed when critical evidence, live evidence, production signing, a complete build, or redaction is missing. |
 
 `--use-fixture-evidence` is accepted only with `developer-dry-run` and internal self-tests. Strict
 `release-candidate` and `production-beta` runs reject fixture evidence before certification.
 
-Production beta supports two explicit test/emergency escape hatches:
+Production beta supports three explicit test/emergency escape hatches:
 
 - `--emergency-skip-live-network` records that live-network evidence was skipped. The run still
   records a failed live-skip gate and keeps `promotionReady=false`.
+- `--emergency-skip-build` allows a controlled test or emergency run to continue after
+  `--skip-gradle` or `--skip-full-build`. The run still records a failed build-complete gate,
+  sets `nonRelease=true`, and keeps `promotionReady=false`.
 - `--allow-test-signing-in-production` permits a controlled test run of production-beta mode with
   non-production signing labels. It must not be used for release publication.
 
@@ -58,7 +61,7 @@ inputs through environment variables or protected files:
 
 | Input | Purpose |
 | --- | --- |
-| `CRYPTAD_PRODUCTION_BETA_ARTIFACT_BASE_URI` or `--artifact-base-uri` | Public HTTPS base URI where the staged app bundle artifacts will be published. Required for `release-candidate` and `production-beta`; `.invalid`, localhost, query-string, and credentialed URIs are rejected. |
+| `CRYPTAD_PRODUCTION_BETA_ARTIFACT_BASE_URI` or `--artifact-base-uri` | Public HTTPS base URI where the production beta artifact layout will be published. Signed catalog bundle URLs resolve under this root, for example `<base>/build/app-bundles/<app>-<version>.zip`. Required for `release-candidate` and `production-beta`; `.invalid`, localhost, query-string, and credentialed URIs are rejected. |
 | `CRYPTAD_APP_SIGNING_KEY_ID` | Key id written into first-party bundle and catalog signatures. |
 | `CRYPTAD_APP_SIGNING_PRIVATE_KEY_FILE` or `CRYPTAD_APP_SIGNING_PRIVATE_KEY_BASE64` | App/catalog signing private key source. Prefer protected files in CI. |
 | `CRYPTAD_APP_SIGNING_PUBLIC_KEY_FILE` or `CRYPTAD_APP_SIGNING_PUBLIC_KEY_BASE64` | Trusted public key for bundle and catalog verification. |
@@ -123,8 +126,8 @@ directories are kept outside the public artifact tree.
 | Field | Meaning |
 | --- | --- |
 | `status` | `pass` when command execution and redaction passed. For release-candidate and production-beta runs, critical promotion gates must also pass. |
-| `promotionReady` | `true` only for production-beta mode with production signing, a clean workspace, and all required gates passing. |
-| `nonRelease` | `true` for developer dry-runs, fixture runs, generated test keys, explicit test signing, or dirty-workspace runs. |
+| `promotionReady` | `true` only for production-beta mode with production signing, a complete in-pipeline build/stage/sign run, a clean workspace, and all required gates passing. |
+| `nonRelease` | `true` for developer dry-runs, fixture runs, generated test keys, explicit test signing, skipped production-beta build stages, or dirty-workspace runs. |
 | `workspaceStatusKnown` | `false` when `git status --porcelain` could not be read. Strict `release-candidate` and `production-beta` runs fail closed when workspace cleanliness is unknown. |
 | `dirtyWorkspace` | `true` when `git status --porcelain` found uncommitted changes. Dirty production-beta runs fail the `workspace.clean-production-beta` gate even if `--allow-dirty-workspace` was used for a controlled rerun. |
 | `signingProfile.kind` | `production`, `configured`, `test`, `test-fixture`, or `missing`. |

@@ -64,7 +64,9 @@ review receipts, extracted evidence, a redaction report, JSON/Markdown summaries
 `dist/crypta-production-beta-<version>.tar.gz` archive. `release-candidate` and `production-beta`
 runs require a real HTTPS artifact base URI through `--artifact-base-uri` or
 `CRYPTAD_PRODUCTION_BETA_ARTIFACT_BASE_URI`; developer dry-runs may use the non-release fallback
-URI. `--use-fixture-evidence` is accepted only for `developer-dry-run` and internal self-tests. Use
+URI. Catalog bundle URLs are signed under the published layout root, for example
+`<base>/build/app-bundles/<app>-<version>.zip`. `--use-fixture-evidence` is accepted only for
+`developer-dry-run` and internal self-tests. Use
 `developer-dry-run` for PR-safe local runs without release keys or live-network access. See
 [docs/production-beta-release-pipeline.md](../../docs/production-beta-release-pipeline.md) for
 mode semantics, required environment variables, artifact layout, failure classes, redaction rules,

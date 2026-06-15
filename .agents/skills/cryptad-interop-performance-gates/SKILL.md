@@ -85,9 +85,11 @@ build/release-certification/live-network-beta-smoke/live-network-beta-smoke-repo
   live-network beta smoke when required, network-scale soak, ecosystem RC certification, final
   artifact redaction, and public archive creation under `build/production-beta-release/`.
   `developer-dry-run` is CI-safe and non-release; `release-candidate` is strict but may use
-  non-production signing labels; `production-beta` requires production signing, a public HTTPS
-  artifact base URI, live-network evidence unless the explicit emergency skip is used, and a clean
-  workspace before `promotionReady` can become true.
+  non-production signing labels; `production-beta` requires production signing, a complete
+  in-pipeline Gradle build/stage/sign run, a public HTTPS artifact base URI, live-network evidence
+  unless the explicit emergency skip is used, and a clean workspace before `promotionReady` can
+  become true. Emergency build skips must leave `nonRelease=true` and fail the build-complete
+  promotion gate.
 - `tools/release-certification/app_platform_smoke.py` produces the app-platform summary consumed by
   the aggregator. It keeps `--self-test` offline and Python-only, including source/test evidence
   for the Platform API contract, app-vault capability docs, signed catalogs, trusted app-review

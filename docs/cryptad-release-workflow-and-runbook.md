@@ -67,9 +67,11 @@ Treat these as release blockers, in order:
    ```
    Use `--mode developer-dry-run` for local or PR-safe rehearsal and `--mode release-candidate`
    for release-branch evidence that does not have production signing or protected live inputs yet.
-   A promotable `production-beta` run requires production signing inputs, a clean git workspace,
-   a public HTTPS artifact base URI, required live-network beta evidence, ecosystem RC
-   certification, and a passing final redaction scan. Preserve
+   A promotable `production-beta` run requires production signing inputs, a complete in-pipeline
+   Gradle build/stage/sign run, a clean git workspace, a public HTTPS artifact base URI, required
+   live-network beta evidence, ecosystem RC certification, and a passing final redaction scan.
+   Signed catalog bundle URLs resolve under the published artifact root, for example
+   `<base>/build/app-bundles/<app>-<version>.zip`. Preserve
    `build/production-beta-release/reports/production-beta-summary.json`,
    `build/production-beta-release/reports/production-beta-summary.md`,
    `build/production-beta-release/reports/redaction-report.json`,

@@ -84,8 +84,8 @@ git checkout -b release/<build-number>
    ```
    Preserve the JSON/Markdown summaries, redaction report, extracted `evidence/`, and
    `dist/checksums.txt`. Any summary with `nonRelease=true`, `promotionReady=false`, failed
-   redaction, dirty workspace, fixture evidence, test signing, or an emergency live-network skip is
-   not promotable.
+   redaction, dirty workspace, fixture evidence, test signing, skipped production-beta build
+   stages, or an emergency live-network skip is not promotable.
 
 3) Stabilize on `release/<build-number>` (critical fixes only). Keep diffs minimal.
 
@@ -122,9 +122,9 @@ git push origin v<build-number>
 - [ ] Release certification report generated in `release-candidate` mode and required evidence
       passed or has an explicit release-manager waiver.
 - [ ] Production beta app-ecosystem pipeline summary reviewed when first-party app artifacts ship;
-      `promotionReady=true`, `nonRelease=false`, production signing, clean workspace, public HTTPS
-      artifact base URI, required live-network evidence, and redaction `pass` are all present
-      before publication.
+      `promotionReady=true`, `nonRelease=false`, production signing, complete in-pipeline build,
+      clean workspace, public HTTPS artifact base URI, required live-network evidence, and
+      redaction `pass` are all present before publication.
 - [ ] First-party AppHost bundles staged, signed, and verified when shipping app-platform artifacts.
 - [ ] `crypta-app` CLI smoke completed when `:platform-devtools` changed.
 - [ ] Signed catalog, first-party beta catalog, trusted app-review receipt, Platform API contract,
