@@ -548,10 +548,13 @@ def ensure_safe_out_dir(settings: Settings) -> None:
 def read_project_version(workspace_root: Path) -> str:
     build_file = workspace_root / "build.gradle.kts"
     text = build_file.read_text(encoding="utf-8")
-    match = re.search(r"(?m)^\s*version\s*=\s*\"([^\"]+)\"", text)
+    match = re.search(r'(?m)^\s*version\s*=\s*(?:"([^"\r\n]+)"|([0-9]+))\s*(?://.*)?$', text)
     if not match:
-        return "unknown"
-    return match.group(1)
+        raise SystemExit(
+            "Unable to parse project version from build.gradle.kts; expected "
+            'version = "<build-number>" or version = <build-number>.'
+        )
+    return match.group(1) or match.group(2)
 
 
 def run_command(
@@ -3986,6 +3989,30 @@ def assert_dirty_workspace_state_is_sticky_across_checks() -> None:
         assert promotion["promotionReady"] is False, promotion
 
 
+def assert_project_version_parser_accepts_release_build_numbers() -> None:
+    with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-version-") as temp_name:
+        workspace = Path(temp_name) / "repo"
+        workspace.mkdir(parents=True)
+        build_file = workspace / "build.gradle.kts"
+
+        write_text(build_file, 'version = "41"\n')
+        assert read_project_version(workspace) == "41"
+
+        write_text(build_file, "version = 42\n")
+        assert read_project_version(workspace) == "42"
+
+        write_text(build_file, "version = 43 // release build\n")
+        assert read_project_version(workspace) == "43"
+
+        write_text(build_file, "version = releaseBuild\n")
+        try:
+            read_project_version(workspace)
+        except SystemExit as exc:
+            assert "Unable to parse project version" in str(exc), exc
+        else:
+            raise AssertionError("read_project_version accepted an unsupported version assignment")
+
+
 def run_self_test() -> None:
     assert_safe_copy_tree_rejects_symlink()
     assert_safe_copy_tree_rejects_symlinked_root()
@@ -4017,6 +4044,7 @@ def run_self_test() -> None:
     assert_custom_out_dir_does_not_dirty_workspace_before_check()
     assert_post_artifact_workspace_recheck_detects_mutation()
     assert_dirty_workspace_state_is_sticky_across_checks()
+    assert_project_version_parser_accepts_release_build_numbers()
 
     with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-self-test-") as temp_name:
         workspace = Path(temp_name) / "repo"
