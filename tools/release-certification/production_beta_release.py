@@ -15,6 +15,7 @@ import base64
 import dataclasses
 import datetime as dt
 import hashlib
+import io
 import ipaddress
 import json
 import os
@@ -62,6 +63,8 @@ PRIVATE_ARTIFACT_HOST_SUFFIXES = (
     ".example",
 )
 ZIP_ARCHIVE_SUFFIXES = {".zip", ".jar"}
+TAR_GZ_ARCHIVE_SUFFIXES = (".tar.gz", ".tgz")
+MAX_NESTED_ARCHIVE_DEPTH = 4
 TEXT_SCAN_BINARY_PROBE_BYTES = 4096
 TEXT_SCAN_CHUNK_BYTES = 1024 * 1024
 TEXT_SCAN_OVERLAP_BYTES = 64 * 1024
@@ -1777,6 +1780,12 @@ def iter_handle_chunks(handle: BinaryIO) -> Iterator[bytes]:
         yield chunk
 
 
+def iter_prefixed_chunks(prefix: bytes, chunks: Iterable[bytes]) -> Iterator[bytes]:
+    if prefix:
+        yield prefix
+    yield from chunks
+
+
 def scan_byte_chunks(chunks: Iterable[bytes], rel_path: str, settings: Settings) -> list[dict[str, str]]:
     findings: list[dict[str, str]] = []
     binary_probe = b""
@@ -1800,25 +1809,115 @@ def scan_regular_file(path: Path, rel_path: str, settings: Settings) -> list[dic
         return [{"path": rel_path, "kind": "unreadable"}]
 
 
-def scan_zip_file(path: Path, rel_path: str, settings: Settings) -> list[dict[str, str]]:
+def archive_kind_for_name_or_prefix(name: str, prefix: bytes = b"") -> str | None:
+    lower_name = name.lower()
+    if Path(lower_name).suffix in ZIP_ARCHIVE_SUFFIXES or prefix.startswith(b"PK\x03\x04"):
+        return "zip"
+    if lower_name.endswith(TAR_GZ_ARCHIVE_SUFFIXES):
+        return "tar-gz"
+    return None
+
+
+def scan_embedded_archive_bytes(data: bytes, rel_path: str, settings: Settings, depth: int) -> list[dict[str, str]]:
+    if depth > MAX_NESTED_ARCHIVE_DEPTH:
+        return [
+            {
+                "path": rel_path,
+                "kind": "archive-nesting-too-deep",
+                "detail": "Nested archive depth exceeds the production beta redaction scanner limit.",
+            }
+        ]
+    kind = archive_kind_for_name_or_prefix(rel_path, data[:4])
+    if kind == "zip":
+        try:
+            with zipfile.ZipFile(io.BytesIO(data)) as archive:
+                return scan_zip_members(archive, rel_path, settings, depth)
+        except (EOFError, OSError, RuntimeError, zipfile.BadZipFile):
+            return [{"path": rel_path, "kind": "invalid-zip"}]
+    if kind == "tar-gz":
+        try:
+            with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as archive:
+                return scan_tar_members(archive, rel_path, settings, depth)
+        except (EOFError, OSError, tarfile.TarError):
+            return [{"path": rel_path, "kind": "invalid-tar"}]
+    return scan_byte_chunks([data], rel_path, settings)
+
+
+def scan_zip_members(zip_archive: zipfile.ZipFile, rel_path: str, settings: Settings, depth: int) -> list[dict[str, str]]:
     findings: list[dict[str, str]] = []
+    for info in zip_archive.infolist():
+        member_rel = f"{rel_path}!/{info.filename}"
+        reason = bad_artifact_name(info.filename)
+        if reason:
+            findings.append({"path": member_rel, "kind": "forbidden-zip-entry", "detail": reason})
+        if info.is_dir():
+            continue
+        try:
+            with zip_archive.open(info) as member:
+                prefix = member.read(4)
+                archive_kind = archive_kind_for_name_or_prefix(info.filename, prefix)
+                if archive_kind:
+                    findings.extend(
+                        scan_embedded_archive_bytes(prefix + member.read(), member_rel, settings, depth + 1)
+                    )
+                else:
+                    findings.extend(
+                        scan_byte_chunks(iter_prefixed_chunks(prefix, iter_handle_chunks(member)), member_rel, settings)
+                    )
+        except (EOFError, NotImplementedError, OSError, RuntimeError, zipfile.BadZipFile):
+            findings.append({"path": member_rel, "kind": "unreadable-zip-entry"})
+    return findings
+
+
+def scan_zip_file(path: Path, rel_path: str, settings: Settings) -> list[dict[str, str]]:
     try:
         with zipfile.ZipFile(path) as archive:
-            for info in archive.infolist():
-                member_rel = f"{rel_path}!/{info.filename}"
-                reason = bad_artifact_name(info.filename)
-                if reason:
-                    findings.append({"path": member_rel, "kind": "forbidden-zip-entry", "detail": reason})
-                if info.is_dir():
-                    continue
-                try:
-                    with archive.open(info) as member:
-                        findings.extend(scan_byte_chunks(iter_handle_chunks(member), member_rel, settings))
-                except (EOFError, NotImplementedError, OSError, RuntimeError, zipfile.BadZipFile):
-                    findings.append({"path": member_rel, "kind": "unreadable-zip-entry"})
+            return scan_zip_members(archive, rel_path, settings, 0)
     except (EOFError, OSError, zipfile.BadZipFile):
-        findings.append({"path": rel_path, "kind": "invalid-zip"})
+        return [{"path": rel_path, "kind": "invalid-zip"}]
+
+
+def scan_tar_members(tar_archive: tarfile.TarFile, rel_path: str, settings: Settings, depth: int) -> list[dict[str, str]]:
+    findings: list[dict[str, str]] = []
+    for member in tar_archive.getmembers():
+        member_rel = member.name if not rel_path else f"{rel_path}!/{member.name}"
+        reason = bad_artifact_name(member.name)
+        if reason:
+            findings.append({"path": member_rel, "kind": "forbidden-tar-entry", "detail": reason})
+        if member.isdir():
+            continue
+        if not member.isfile():
+            findings.append(
+                {
+                    "path": member_rel,
+                    "kind": "forbidden-tar-entry",
+                    "detail": "Only regular files and directories are allowed in production beta archives.",
+                }
+            )
+            continue
+        extracted = tar_archive.extractfile(member)
+        if extracted is None:
+            continue
+        try:
+            prefix = extracted.read(4)
+            archive_kind = archive_kind_for_name_or_prefix(member.name, prefix)
+            if archive_kind:
+                findings.extend(scan_embedded_archive_bytes(prefix + extracted.read(), member_rel, settings, depth + 1))
+            else:
+                findings.extend(
+                    scan_byte_chunks(iter_prefixed_chunks(prefix, iter_handle_chunks(extracted)), member_rel, settings)
+                )
+        except (EOFError, NotImplementedError, OSError, RuntimeError, tarfile.TarError):
+            findings.append({"path": member_rel, "kind": "unreadable-tar-entry"})
     return findings
+
+
+def scan_tar_gz_file(path: Path, rel_path: str, settings: Settings) -> list[dict[str, str]]:
+    try:
+        with tarfile.open(path, "r:gz") as archive:
+            return scan_tar_members(archive, rel_path, settings, 0)
+    except (EOFError, OSError, tarfile.TarError):
+        return [{"path": rel_path, "kind": "invalid-tar"}]
 
 
 def scan_tree(root: Path, settings: Settings, include_dist: bool = False) -> list[dict[str, str]]:
@@ -1852,45 +1951,19 @@ def scan_tree(root: Path, settings: Settings, include_dist: bool = False) -> lis
             continue
         if path.suffix.lower() in ZIP_ARCHIVE_SUFFIXES:
             findings.extend(scan_zip_file(path, rel_path, settings))
-        elif path.name.endswith(".tar.gz"):
-            continue
+        elif rel_path.lower().endswith(TAR_GZ_ARCHIVE_SUFFIXES):
+            findings.extend(scan_tar_gz_file(path, rel_path, settings))
         else:
             findings.extend(scan_regular_file(path, rel_path, settings))
     return findings
 
 
 def scan_tarball(path: Path, settings: Settings) -> list[dict[str, str]]:
-    findings: list[dict[str, str]] = []
     try:
         with tarfile.open(path, "r:gz") as archive:
-            for member in archive.getmembers():
-                reason = bad_artifact_name(member.name)
-                if reason:
-                    findings.append({"path": member.name, "kind": "forbidden-tar-entry", "detail": reason})
-                if member.isdir():
-                    continue
-                if not member.isfile():
-                    findings.append(
-                        {
-                            "path": member.name,
-                            "kind": "forbidden-tar-entry",
-                            "detail": "Only regular files and directories are allowed in production beta archives.",
-                        }
-                    )
-                    continue
-                if member.size > 5 * 1024 * 1024:
-                    continue
-                extracted = archive.extractfile(member)
-                if extracted is None:
-                    continue
-                data = extracted.read()
-                if Path(member.name).suffix.lower() in ZIP_ARCHIVE_SUFFIXES:
-                    continue
-                if b"\x00" not in data[:4096]:
-                    findings.extend(scan_text_for_findings(data.decode("utf-8", errors="ignore"), member.name, settings))
+            return scan_tar_members(archive, "", settings, 0)
     except (OSError, tarfile.TarError):
-        findings.append({"path": path.name, "kind": "invalid-tar"})
-    return findings
+        return [{"path": path.name, "kind": "invalid-tar"}]
 
 
 def render_markdown_summary(summary: dict[str, Any]) -> str:
@@ -2330,6 +2403,30 @@ def write_test_zip_archive(path: Path, entries: dict[str, str | bytes]) -> None:
     with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         for name, content in entries.items():
             archive.writestr(name, content)
+
+
+def test_zip_archive_bytes(entries: dict[str, str | bytes]) -> bytes:
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for name, content in entries.items():
+            archive.writestr(name, content)
+    return buffer.getvalue()
+
+
+def test_tar_gz_archive_bytes(entries: dict[str, str | bytes]) -> bytes:
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
+        for name, content in entries.items():
+            data = content.encode("utf-8") if isinstance(content, str) else content
+            info = tarfile.TarInfo(name)
+            info.size = len(data)
+            archive.addfile(info, io.BytesIO(data))
+    return buffer.getvalue()
+
+
+def write_test_tar_gz_archive(path: Path, entries: dict[str, str | bytes]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(test_tar_gz_archive_bytes(entries))
 
 
 def assert_redaction_fails(kind: str, writer: Any) -> None:
@@ -3718,6 +3815,31 @@ def run_self_test() -> None:
         "jar-token-entry",
         lambda out_dir: write_test_zip_archive(
             out_dir / "build/crypta-app-launcher/lib/app.jar",
+            {"fixtures/token.txt": "CRYPTAD_APP_TOKEN=abcdefghijklmnop\n"},
+        ),
+    )
+    assert_redaction_fails(
+        "nested-tar-gz-token-zip-member",
+        lambda out_dir: write_test_zip_archive(
+            out_dir / "build/app-bundles/queue-manager-0.0.0-test.zip",
+            {
+                "fixtures.tar.gz": test_tar_gz_archive_bytes(
+                    {"fixtures/token.txt": "CRYPTAD_APP_TOKEN=abcdefghijklmnop\n"}
+                )
+            },
+        ),
+    )
+    assert_redaction_fails(
+        "nested-zip-token-jar-member",
+        lambda out_dir: write_test_zip_archive(
+            out_dir / "build/crypta-app-launcher/lib/app.jar",
+            {"fixtures.zip": test_zip_archive_bytes({"fixtures/token.txt": "CRYPTAD_APP_TOKEN=abcdefghijklmnop\n"})},
+        ),
+    )
+    assert_redaction_fails(
+        "direct-tar-gz-token-artifact",
+        lambda out_dir: write_test_tar_gz_archive(
+            out_dir / "build/app-bundles/fixtures.tar.gz",
             {"fixtures/token.txt": "CRYPTAD_APP_TOKEN=abcdefghijklmnop\n"},
         ),
     )
