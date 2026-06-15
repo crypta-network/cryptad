@@ -397,6 +397,16 @@ def write_bytes(path: Path, value: bytes) -> None:
     path.write_bytes(value)
 
 
+def resolve_workspace_input_path(raw_path: str, workspace_root: Path | None) -> Path | None:
+    path_text = raw_path.strip()
+    if not path_text:
+        return None
+    path = Path(path_text)
+    if path.is_absolute() or workspace_root is None:
+        return path
+    return workspace_root / path
+
+
 def sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -1766,7 +1776,9 @@ def normalized_secret_env_value(name: str, raw_value: str) -> str | None:
     return value
 
 
-def protected_secret_environment_values(env: dict[str, str] | None = None) -> list[tuple[str, str]]:
+def protected_secret_environment_values(
+    env: dict[str, str] | None = None, workspace_root: Path | None = None
+) -> list[tuple[str, str]]:
     source = os.environ if env is None else env
     values: list[tuple[str, str]] = []
     seen: set[str] = set()
@@ -1779,11 +1791,11 @@ def protected_secret_environment_values(env: dict[str, str] | None = None) -> li
         values.append((name, value))
 
     def add_file_contents(name: str, raw_path: str) -> None:
-        path_text = raw_path.strip()
-        if not path_text:
+        path = resolve_workspace_input_path(raw_path, workspace_root)
+        if path is None:
             return
         try:
-            content_bytes = Path(path_text).read_bytes()
+            content_bytes = path.read_bytes()
         except OSError:
             return
         if not content_bytes:
@@ -1810,7 +1822,9 @@ def protected_secret_environment_values(env: dict[str, str] | None = None) -> li
     return values
 
 
-def protected_secret_environment_byte_values(env: dict[str, str] | None = None) -> list[tuple[str, bytes]]:
+def protected_secret_environment_byte_values(
+    env: dict[str, str] | None = None, workspace_root: Path | None = None
+) -> list[tuple[str, bytes]]:
     source = os.environ if env is None else env
     values: list[tuple[str, bytes]] = []
     seen: set[bytes] = set()
@@ -1818,11 +1832,11 @@ def protected_secret_environment_byte_values(env: dict[str, str] | None = None) 
     for name, raw_value in source.items():
         if name not in SECRET_ENV_FILE_INDIRECTION_NAMES:
             continue
-        path_text = raw_value.strip()
-        if not path_text:
+        path = resolve_workspace_input_path(raw_value, workspace_root)
+        if path is None:
             continue
         try:
-            value = Path(path_text).read_bytes()
+            value = path.read_bytes()
         except OSError:
             continue
         if len(value) < MIN_SECRET_ENV_VALUE_LENGTH or value in seen:
@@ -1832,8 +1846,10 @@ def protected_secret_environment_byte_values(env: dict[str, str] | None = None) 
     return values
 
 
-def add_protected_secret_value_findings(findings: list[dict[str, str]], text: str, rel_path: str) -> None:
-    for name, value in protected_secret_environment_values():
+def add_protected_secret_value_findings(
+    findings: list[dict[str, str]], text: str, rel_path: str, workspace_root: Path | None
+) -> None:
+    for name, value in protected_secret_environment_values(workspace_root=workspace_root):
         if value in text:
             findings.append(
                 {
@@ -1902,7 +1918,7 @@ def scan_text_for_findings(text: str, rel_path: str, settings: Settings) -> list
     add_value_findings(findings, text, rel_path, "form-password", FORM_PASSWORD_VALUE_RE, allow_code_like=False)
     add_value_findings(findings, text, rel_path, "raw-content-or-app-data", RAW_BODY_VALUE_RE, allow_code_like=False)
     add_value_findings(findings, text, rel_path, "ci-secret-value", CI_SECRET_VALUE_RE, allow_code_like=False)
-    add_protected_secret_value_findings(findings, text, rel_path)
+    add_protected_secret_value_findings(findings, text, rel_path, settings.workspace_root)
     for kind, value in (("workspace-path", workspace_text), ("home-path", home_text), ("temp-path", temp_text)):
         if contains_path_prefix(text, value):
             findings.append({"path": rel_path, "kind": kind})
@@ -1954,7 +1970,7 @@ def scan_decoded_byte_window(window: bytes, rel_path: str, settings: Settings) -
 
 def scan_byte_chunks(chunks: Iterable[bytes], rel_path: str, settings: Settings) -> list[dict[str, str]]:
     findings: list[dict[str, str]] = []
-    protected_byte_values = protected_secret_environment_byte_values()
+    protected_byte_values = protected_secret_environment_byte_values(workspace_root=settings.workspace_root)
     tail = b""
     for chunk in chunks:
         window = tail + chunk
@@ -3668,6 +3684,57 @@ def assert_reviewer_public_key_file_resolves_from_workspace() -> None:
         assert "reviewer.1.public.key.base64=AQID" in trusted_text, trusted_text
 
 
+def assert_protected_secret_file_redaction_resolves_from_workspace() -> None:
+    with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-redaction-secret-file-") as temp_name:
+        workspace = Path(temp_name) / "repo"
+        make_self_test_workspace(workspace)
+        secret_bytes = b"\x30\x82\x01\x00workspace-relative-private-key-material-9f4b6a"
+        write_bytes(workspace / "protected/app-signing-private.der", secret_bytes)
+        out_dir = workspace / "build/redaction"
+        write_bytes(out_dir / "neutral.bin", b"prefix-" + secret_bytes + b"-suffix")
+        write_text(out_dir / "neutral-base64.txt", base64.b64encode(secret_bytes).decode("ascii") + "\n")
+        settings = Settings(
+            workspace_root=workspace,
+            out_dir=out_dir,
+            mode="developer-dry-run",
+            catalog_channel="stable",
+            artifact_base_uri="https://downloads.crypta.invalid/self-test",
+            require_live_network=False,
+            require_sandbox_provider_tests=False,
+            skip_gradle=True,
+            skip_full_build=True,
+            use_fixture_evidence=True,
+            allow_dirty_workspace=True,
+            emergency_skip_live_network=False,
+            emergency_skip_build=False,
+            allow_test_signing_in_production=False,
+            previous_summary=None,
+            waiver_file=None,
+            timeout_seconds=60,
+            clean_out_dir=False,
+        )
+        outside = Path(temp_name) / "outside"
+        outside.mkdir()
+        saved_secret_file = os.environ.get("CRYPTAD_APP_SIGNING_PRIVATE_KEY_FILE")
+        original_cwd = Path.cwd()
+        try:
+            os.environ["CRYPTAD_APP_SIGNING_PRIVATE_KEY_FILE"] = "protected/app-signing-private.der"
+            os.chdir(outside)
+            findings = scan_tree(out_dir, settings, include_dist=True)
+        finally:
+            os.chdir(original_cwd)
+            if saved_secret_file is None:
+                os.environ.pop("CRYPTAD_APP_SIGNING_PRIVATE_KEY_FILE", None)
+            else:
+                os.environ["CRYPTAD_APP_SIGNING_PRIVATE_KEY_FILE"] = saved_secret_file
+        protected_paths = {
+            finding["path"]
+            for finding in findings
+            if finding.get("kind") == "protected-secret-value"
+        }
+        assert {"neutral.bin", "neutral-base64.txt"}.issubset(protected_paths), findings
+
+
 def assert_no_clean_rerun_drops_stale_dist_files() -> None:
     with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-stale-dist-") as temp_name:
         workspace = Path(temp_name) / "repo"
@@ -3917,6 +3984,7 @@ def run_self_test() -> None:
     assert_unknown_workspace_status_fails_strict_modes()
     assert_catalog_signature_and_timestamps_are_canonical()
     assert_reviewer_public_key_file_resolves_from_workspace()
+    assert_protected_secret_file_redaction_resolves_from_workspace()
     assert_no_clean_rerun_drops_stale_dist_files()
     assert_custom_out_dir_does_not_dirty_workspace_before_check()
     assert_post_artifact_workspace_recheck_detects_mutation()
