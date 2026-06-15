@@ -67,6 +67,19 @@ TAR_GZ_ARCHIVE_SUFFIXES = (".tar.gz", ".tgz")
 MAX_NESTED_ARCHIVE_DEPTH = 4
 TEXT_SCAN_CHUNK_BYTES = 1024 * 1024
 TEXT_SCAN_OVERLAP_BYTES = 64 * 1024
+COMPILED_ARCHIVE_MEMBER_SUFFIXES = {
+    ".a",
+    ".class",
+    ".dll",
+    ".dylib",
+    ".exe",
+    ".jnilib",
+    ".lib",
+    ".o",
+    ".obj",
+    ".so",
+    ".wasm",
+}
 FORBIDDEN_SECRET_ARTIFACT_SUFFIXES = {".p12", ".pfx", ".jks", ".keystore", ".p8", ".pkcs8"}
 SECRET_ARTIFACT_BINARY_SUFFIXES = {".der", ".key", ".pem", ".bin"}
 CODE_LIKE_ARTIFACT_SUFFIXES = {
@@ -1850,6 +1863,11 @@ def archive_kind_for_name_or_prefix(name: str, prefix: bytes = b"") -> str | Non
     return None
 
 
+def is_compiled_archive_member(name: str) -> bool:
+    suffixes = Path(name.lower()).suffixes
+    return any(suffix in COMPILED_ARCHIVE_MEMBER_SUFFIXES for suffix in suffixes)
+
+
 def scan_embedded_archive_bytes(data: bytes, rel_path: str, settings: Settings, depth: int) -> list[dict[str, str]]:
     if depth > MAX_NESTED_ARCHIVE_DEPTH:
         return [
@@ -1892,6 +1910,8 @@ def scan_zip_members(zip_archive: zipfile.ZipFile, rel_path: str, settings: Sett
                     findings.extend(
                         scan_embedded_archive_bytes(prefix + member.read(), member_rel, settings, depth + 1)
                     )
+                elif is_compiled_archive_member(info.filename):
+                    continue
                 else:
                     findings.extend(
                         scan_byte_chunks(iter_prefixed_chunks(prefix, iter_handle_chunks(member)), member_rel, settings)
@@ -1935,6 +1955,8 @@ def scan_tar_members(tar_archive: tarfile.TarFile, rel_path: str, settings: Sett
             archive_kind = archive_kind_for_name_or_prefix(member.name, prefix)
             if archive_kind:
                 findings.extend(scan_embedded_archive_bytes(prefix + extracted.read(), member_rel, settings, depth + 1))
+            elif is_compiled_archive_member(member.name):
+                continue
             else:
                 findings.extend(
                     scan_byte_chunks(iter_prefixed_chunks(prefix, iter_handle_chunks(extracted)), member_rel, settings)
@@ -3845,6 +3867,38 @@ def run_self_test() -> None:
         lambda out_dir: write_test_zip_archive(
             out_dir / "build/crypta-app-launcher/lib/crypto.jar",
             {"org/example/PrivateKeyInfo.class": b"\xca\xfe\xba\xbe\x00\x00\x00\x3d"},
+        ),
+    )
+    assert_redaction_allows(
+        "compiled-class-token-constant",
+        lambda out_dir: write_test_zip_archive(
+            out_dir / "build/crypta-app-launcher/lib/app.jar",
+            {"org/example/AppTokenConstants.class": b"\xca\xfe\xba\xbe\x00CRYPTAD_APP_TOKEN=abcdefghijklmnop"},
+        ),
+    )
+    assert_redaction_allows(
+        "native-archive-member-token-bytes",
+        lambda out_dir: write_test_zip_archive(
+            out_dir / "build/crypta-app-launcher/lib/jna.jar",
+            {"native/linux-x86-64/libjnidispatch.so": b"\x7fELF\x00Authorization: Bearer abcdefghijklmnopqrstuvwxyz"},
+        ),
+    )
+    assert_redaction_fails(
+        "secret-bearing-native-archive-member-name",
+        lambda out_dir: write_test_zip_archive(
+            out_dir / "build/crypta-app-launcher/lib/native.jar",
+            {"native/app-token.so": b"\x7fELF\x00"},
+        ),
+    )
+    assert_redaction_fails(
+        "compiled-suffix-nested-archive-token",
+        lambda out_dir: write_test_zip_archive(
+            out_dir / "build/crypta-app-launcher/lib/app.jar",
+            {
+                "fixtures/archive.class": test_zip_archive_bytes(
+                    {"fixtures/token.txt": "CRYPTAD_APP_TOKEN=abcdefghijklmnop\n"}
+                )
+            },
         ),
     )
     assert_redaction_fails(
