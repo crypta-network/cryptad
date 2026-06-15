@@ -397,6 +397,26 @@ def write_bytes(path: Path, value: bytes) -> None:
     path.write_bytes(value)
 
 
+def write_redaction_fixture_text(path: Path, value: str) -> None:
+    """Write redaction self-test text, including intentionally unsafe samples."""
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # The production redaction self-test deliberately writes unredacted fixture values so the
+    # scanner can prove they are blocked before any release artifact is accepted.
+    # codeql[py/clear-text-storage-sensitive-data]
+    path.write_text(value, encoding="utf-8")
+
+
+def write_redaction_fixture_bytes(path: Path, value: bytes) -> None:
+    """Write redaction self-test bytes, including intentionally unsafe binary samples."""
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # The production redaction self-test deliberately writes unredacted fixture values so the
+    # scanner can prove they are blocked before any release artifact is accepted.
+    # codeql[py/clear-text-storage-sensitive-data]
+    path.write_bytes(value)
+
+
 def resolve_workspace_input_path(raw_path: str, workspace_root: Path | None) -> Path | None:
     path_text = raw_path.strip()
     if not path_text:
@@ -2589,6 +2609,9 @@ def write_test_zip_archive(path: Path, entries: dict[str, str | bytes]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         for name, content in entries.items():
+            # These archives are generated only by the redaction self-test and may contain
+            # intentionally unsafe payloads that must be detected by the scanner.
+            # codeql[py/clear-text-storage-sensitive-data]
             archive.writestr(name, content)
 
 
@@ -2613,6 +2636,9 @@ def test_tar_gz_archive_bytes(entries: dict[str, str | bytes]) -> bytes:
 
 def write_test_tar_gz_archive(path: Path, entries: dict[str, str | bytes]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+    # This helper is redaction-self-test-only and may persist intentionally unsafe fixtures that
+    # must be rejected by the scanner.
+    # codeql[py/clear-text-storage-sensitive-data]
     path.write_bytes(test_tar_gz_archive_bytes(entries))
 
 
@@ -2730,7 +2756,9 @@ def assert_redaction_rejects_release_output_symlink() -> None:
         try:
             link.symlink_to(target)
         except (NotImplementedError, OSError):
-            write_text(out_dir / "reports" / "fallback.txt", "CRYPTAD_APP_TOKEN=abc1234567890abcdef\n")
+            write_redaction_fixture_text(
+                out_dir / "reports" / "fallback.txt", "CRYPTAD_APP_TOKEN=abc1234567890abcdef\n"
+            )
 
     assert_redaction_fails("release-output-symlink", writer)
 
@@ -3689,10 +3717,12 @@ def assert_protected_secret_file_redaction_resolves_from_workspace() -> None:
         workspace = Path(temp_name) / "repo"
         make_self_test_workspace(workspace)
         secret_bytes = b"\x30\x82\x01\x00workspace-relative-private-key-material-9f4b6a"
-        write_bytes(workspace / "protected/app-signing-private.der", secret_bytes)
+        write_redaction_fixture_bytes(workspace / "protected/app-signing-private.der", secret_bytes)
         out_dir = workspace / "build/redaction"
-        write_bytes(out_dir / "neutral.bin", b"prefix-" + secret_bytes + b"-suffix")
-        write_text(out_dir / "neutral-base64.txt", base64.b64encode(secret_bytes).decode("ascii") + "\n")
+        write_redaction_fixture_bytes(out_dir / "neutral.bin", b"prefix-" + secret_bytes + b"-suffix")
+        write_redaction_fixture_text(
+            out_dir / "neutral-base64.txt", base64.b64encode(secret_bytes).decode("ascii") + "\n"
+        )
         settings = Settings(
             workspace_root=workspace,
             out_dir=out_dir,
@@ -3743,7 +3773,7 @@ def assert_no_clean_rerun_drops_stale_dist_files() -> None:
             return
         out_dir = workspace / "build/production-beta"
         write_text(cleanup_sentinel(out_dir), "Crypta production beta release output directory.\n")
-        write_text(out_dir / "dist/leak.txt", "CRYPTAD_APP_TOKEN=abc1234567890abcdef\n")
+        write_redaction_fixture_text(out_dir / "dist/leak.txt", "CRYPTAD_APP_TOKEN=abc1234567890abcdef\n")
         write_text(out_dir / "build/app-bundles/stale-old-version.zip", "stale bundle from an earlier run\n")
         write_text(out_dir / "reports/stale-report.txt", "stale report from an earlier run\n")
         settings = Settings(
@@ -4047,25 +4077,25 @@ def run_self_test() -> None:
 
     assert_redaction_fails(
         "private-insert-uri",
-        lambda out_dir: write_text(out_dir / "leak.txt", "insert=USK@PRIVATE-INSERT/test\n"),
+        lambda out_dir: write_redaction_fixture_text(out_dir / "leak.txt", "insert=USK@PRIVATE-INSERT/test\n"),
     )
     assert_redaction_fails(
         "private-insert-concrete-usk",
-        lambda out_dir: write_text(
+        lambda out_dir: write_redaction_fixture_text(
             out_dir / "leak.json",
             '{"privateInsertUri":"USK@abcdefghijklmno,qrstuvwxyz0123456789ABCDEFG/name/0"}\n',
         ),
     )
     assert_redaction_fails(
         "private-insert-concrete-ssk",
-        lambda out_dir: write_text(
+        lambda out_dir: write_redaction_fixture_text(
             out_dir / "leak.txt",
             "Insert URI: crypta:SSK@abcdefghijklmno,qrstuvwxyz0123456789ABCDEFG/name\n",
         ),
     )
     assert_redaction_allows(
         "public-usk-placeholders",
-        lambda out_dir: write_text(
+        lambda out_dir: write_redaction_fixture_text(
             out_dir / "static/index.html",
             "\n".join(
                 [
@@ -4080,32 +4110,34 @@ def run_self_test() -> None:
     )
     assert_redaction_allows(
         "public-concrete-catalog-source",
-        lambda out_dir: write_text(
+        lambda out_dir: write_redaction_fixture_text(
             out_dir / "source.json",
             '{"catalogSource":"crypta:USK@abcdefghijklmno,qrstuvwxyz0123456789ABCDEFG/catalog/0/cryptad-app-catalog.properties"}\n',
         ),
     )
     assert_redaction_allows(
         "sdk-profile-document-code",
-        lambda out_dir: write_text(
+        lambda out_dir: write_redaction_fixture_text(
             out_dir / "static/crypta-platform.js",
             "const result = { profileDocument: profileDocumentResponse };\n",
         ),
     )
     assert_redaction_allows(
         "api-profile-document-metadata",
-        lambda out_dir: write_text(out_dir / "evidence/api.json", '{"capability":"profile-document:experimental"}\n'),
+        lambda out_dir: write_redaction_fixture_text(
+            out_dir / "evidence/api.json", '{"capability":"profile-document:experimental"}\n'
+        ),
     )
     assert_redaction_fails(
         "private-key",
-        lambda out_dir: write_text(
+        lambda out_dir: write_redaction_fixture_text(
             out_dir / "key.pem",
             "-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----\n",
         ),
     )
     assert_redaction_fails(
         "binary-private-der",
-        lambda out_dir: write_bytes(
+        lambda out_dir: write_redaction_fixture_bytes(
             out_dir / "build/staged-apps/queue-manager/app-signing-private.der",
             b"\x30\x82\x00\x01private-key-material",
         ),
@@ -4158,26 +4190,28 @@ def run_self_test() -> None:
     )
     assert_redaction_fails(
         "bearer",
-        lambda out_dir: write_text(out_dir / "auth.txt", "Authorization: Bearer abcdefghijklmnopqrstuvwxyz\n"),
+        lambda out_dir: write_redaction_fixture_text(
+            out_dir / "auth.txt", "Authorization: Bearer abcdefghijklmnopqrstuvwxyz\n"
+        ),
     )
     assert_redaction_fails(
         "app-token",
-        lambda out_dir: write_text(out_dir / "token.txt", "CRYPTAD_APP_TOKEN=abc1234567890abcdef\n"),
+        lambda out_dir: write_redaction_fixture_text(out_dir / "token.txt", "CRYPTAD_APP_TOKEN=abc1234567890abcdef\n"),
     )
     assert_redaction_fails(
         "identifier-app-token",
-        lambda out_dir: write_text(out_dir / "token.txt", "CRYPTAD_APP_TOKEN=abcdefghijklmnop\n"),
+        lambda out_dir: write_redaction_fixture_text(out_dir / "token.txt", "CRYPTAD_APP_TOKEN=abcdefghijklmnop\n"),
     )
     assert_redaction_allows(
         "app-token-code-expression",
-        lambda out_dir: write_text(
+        lambda out_dir: write_redaction_fixture_text(
             out_dir / "static/crypta-platform.js",
             "const browserSessionToken = sessionTokenFromBootstrap(data);\n",
         ),
     )
     assert_redaction_fails(
         "nul-bearing-app-token",
-        lambda out_dir: write_bytes(
+        lambda out_dir: write_redaction_fixture_bytes(
             out_dir / "resource.bin",
             "CRYPTAD_APP_TOKEN=abcdefghijklmnop\n".encode("utf-16le"),
         ),
@@ -4191,51 +4225,63 @@ def run_self_test() -> None:
     )
     assert_redaction_fails(
         "identifier-ci-secret",
-        lambda out_dir: write_text(out_dir / "secret.txt", "CRYPTAD_CERT_FORM_PASSWORD=abcdefghijklmnop\n"),
+        lambda out_dir: write_redaction_fixture_text(
+            out_dir / "secret.txt", "CRYPTAD_CERT_FORM_PASSWORD=abcdefghijklmnop\n"
+        ),
     )
     assert_redaction_fails(
         "form-password-field",
-        lambda out_dir: write_text(out_dir / "secret.json", '{"formPassword": "hunter2-password"}\n'),
+        lambda out_dir: write_redaction_fixture_text(out_dir / "secret.json", '{"formPassword": "hunter2-password"}\n'),
     )
     assert_redaction_fails(
         "parenthesized-form-password-field",
-        lambda out_dir: write_text(out_dir / "secret.json", '{"formPassword": "(hunter2-password)"}\n'),
+        lambda out_dir: write_redaction_fixture_text(
+            out_dir / "secret.json", '{"formPassword": "(hunter2-password)"}\n'
+        ),
     )
     assert_redaction_fails(
         "quoted-function-like-form-password-field",
-        lambda out_dir: write_text(out_dir / "secret.json", '{"formPassword": "secret(password)"}\n'),
+        lambda out_dir: write_redaction_fixture_text(
+            out_dir / "secret.json", '{"formPassword": "secret(password)"}\n'
+        ),
     )
     assert_redaction_allows(
         "redacted-form-password-field",
-        lambda out_dir: write_text(out_dir / "secret.json", '{"formPassword": "<redacted>"}\n'),
+        lambda out_dir: write_redaction_fixture_text(out_dir / "secret.json", '{"formPassword": "<redacted>"}\n'),
     )
     assert_redaction_fails(
         "parenthesized-authorization-header",
-        lambda out_dir: write_text(out_dir / "auth.txt", "Authorization: Bearer (abcdefghijklmnopqrstuvwxyz)\n"),
+        lambda out_dir: write_redaction_fixture_text(
+            out_dir / "auth.txt", "Authorization: Bearer (abcdefghijklmnopqrstuvwxyz)\n"
+        ),
     )
     assert_redaction_fails(
         "json-browser-session-token",
-        lambda out_dir: write_text(out_dir / "token.json", '{"browserSessionToken": "abc1234567890abcdef"}\n'),
+        lambda out_dir: write_redaction_fixture_text(
+            out_dir / "token.json", '{"browserSessionToken": "abc1234567890abcdef"}\n'
+        ),
     )
     assert_redaction_fails(
         "json-app-process-token",
-        lambda out_dir: write_text(out_dir / "token.json", '{"appProcessToken": "abc1234567890abcdef"}\n'),
+        lambda out_dir: write_redaction_fixture_text(
+            out_dir / "token.json", '{"appProcessToken": "abc1234567890abcdef"}\n'
+        ),
     )
     assert_redaction_fails(
         "raw-content",
-        lambda out_dir: write_text(out_dir / "raw.txt", "raw fetched body: unredacted body value\n"),
+        lambda out_dir: write_redaction_fixture_text(out_dir / "raw.txt", "raw fetched body: unredacted body value\n"),
     )
     assert_redaction_fails(
         "raw-app-data-value",
-        lambda out_dir: write_text(out_dir / "raw.txt", "rawAppDataValue=abcdefghijklmnop\n"),
+        lambda out_dir: write_redaction_fixture_text(out_dir / "raw.txt", "rawAppDataValue=abcdefghijklmnop\n"),
     )
     assert_redaction_fails(
         "unredacted-payload",
-        lambda out_dir: write_text(out_dir / "raw.txt", "unredacted payload=abcdefghijklmnop\n"),
+        lambda out_dir: write_redaction_fixture_text(out_dir / "raw.txt", "unredacted payload=abcdefghijklmnop\n"),
     )
     assert_redaction_fails(
         "appledouble",
-        lambda out_dir: write_text(out_dir / "._bad", "metadata\n"),
+        lambda out_dir: write_redaction_fixture_text(out_dir / "._bad", "metadata\n"),
     )
     assert_redaction_fails(
         "jar-appledouble-entry",
@@ -4296,15 +4342,19 @@ def run_self_test() -> None:
     )
     assert_redaction_fails(
         "absolute-path",
-        lambda out_dir: write_text(out_dir / "path.txt", "localPath=/home/alice/private/key.pem\n"),
+        lambda out_dir: write_redaction_fixture_text(out_dir / "path.txt", "localPath=/home/alice/private/key.pem\n"),
     )
     assert_redaction_fails(
         "root-gradle-path",
-        lambda out_dir: write_text(out_dir / "path.txt", "localPath=/root/.gradle/caches/modules-2/files-2.1\n"),
+        lambda out_dir: write_redaction_fixture_text(
+            out_dir / "path.txt", "localPath=/root/.gradle/caches/modules-2/files-2.1\n"
+        ),
     )
     assert_redaction_fails(
         "hostedtoolcache-path",
-        lambda out_dir: write_text(out_dir / "path.txt", "javaHome=/opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/25\n"),
+        lambda out_dir: write_redaction_fixture_text(
+            out_dir / "path.txt", "javaHome=/opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/25\n"
+        ),
     )
 
     saved_env = {
@@ -4318,35 +4368,39 @@ def run_self_test() -> None:
         os.environ["CRYPTAD_CERT_FORM_PASSWORD"] = "unit-test-live-password-9f4b6a"
         assert_redaction_fails(
             "bare-live-form-password-env-value",
-            lambda out_dir: write_text(out_dir / "live.txt", "unit-test-live-password-9f4b6a\n"),
+            lambda out_dir: write_redaction_fixture_text(out_dir / "live.txt", "unit-test-live-password-9f4b6a\n"),
         )
         os.environ["CRYPTAD_CERT_LIVE_TEST_INSERT_URI_ENV"] = "SELF_TEST_PRIVATE_INSERT_VALUE"
         os.environ["SELF_TEST_PRIVATE_INSERT_VALUE"] = "unit-test-private-insert-material-9f4b6a"
         assert_redaction_fails(
             "bare-live-private-insert-indirection-value",
-            lambda out_dir: write_text(out_dir / "live.txt", "unit-test-private-insert-material-9f4b6a\n"),
+            lambda out_dir: write_redaction_fixture_text(
+                out_dir / "live.txt", "unit-test-private-insert-material-9f4b6a\n"
+            ),
         )
         with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-private-insert-file-") as secret_temp_name:
             secret_file = Path(secret_temp_name) / "private-insert-uri.txt"
-            write_text(secret_file, "unit-test-private-insert-file-material-9f4b6a\n")
+            write_redaction_fixture_text(secret_file, "unit-test-private-insert-file-material-9f4b6a\n")
             os.environ["CRYPTAD_CERT_LIVE_TEST_INSERT_URI_FILE"] = str(secret_file)
             assert_redaction_fails(
                 "bare-live-private-insert-file-value",
-                lambda out_dir: write_text(out_dir / "live.txt", "unit-test-private-insert-file-material-9f4b6a\n"),
+                lambda out_dir: write_redaction_fixture_text(
+                    out_dir / "live.txt", "unit-test-private-insert-file-material-9f4b6a\n"
+                ),
             )
         with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-private-key-file-") as secret_temp_name:
             secret_file = Path(secret_temp_name) / "app-signing-private.der"
             secret_bytes = b"\x30\x82\x01\x00unit-test-private-key-material-9f4b6a"
-            write_bytes(secret_file, secret_bytes)
+            write_redaction_fixture_bytes(secret_file, secret_bytes)
             os.environ["CRYPTAD_APP_SIGNING_PRIVATE_KEY_FILE"] = str(secret_file)
             secret_base64 = base64.b64encode(secret_bytes).decode("ascii")
             assert_redaction_fails(
                 "private-key-file-base64-value",
-                lambda out_dir: write_text(out_dir / "neutral.txt", f"{secret_base64}\n"),
+                lambda out_dir: write_redaction_fixture_text(out_dir / "neutral.txt", f"{secret_base64}\n"),
             )
             assert_redaction_fails(
                 "private-key-file-raw-bytes",
-                lambda out_dir: write_bytes(out_dir / "neutral.bin", secret_bytes),
+                lambda out_dir: write_redaction_fixture_bytes(out_dir / "neutral.bin", secret_bytes),
             )
     finally:
         for name, value in saved_env.items():
@@ -4549,11 +4603,9 @@ def main(argv: list[str] | None = None) -> int:
         print("production beta release self-test passed")
         return 0
     settings = settings_from_args(args)
-    summary, exit_code = run_pipeline(settings)
-    print(
-        f"Production beta release {summary['status']}: "
-        f"{settings.out_dir / 'reports/production-beta-summary.json'}"
-    )
+    _, exit_code = run_pipeline(settings)
+    result = "pass" if exit_code == 0 else "fail"
+    print(f"Production beta release {result}: <out-dir>/reports/production-beta-summary.json")
     return exit_code
 
 
