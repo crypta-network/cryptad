@@ -1,10 +1,10 @@
 # Cryptad Release Workflow and Runbook
 
-> Updated June 1, 2026, to cover the release certification report that aggregates interop,
-> performance, app-platform, beta documentation, public-beta hardening, operator beta recovery,
-> network-scale soak, ecosystem RC certification, optional live-network beta certification,
-> app-review governance, catalog, app-owned UI, legacy-admin retirement, and CI evidence for a
-> release candidate.
+> Updated June 15, 2026, to cover the production beta app-ecosystem release pipeline and the
+> release certification report that aggregates interop, performance, app-platform, beta
+> documentation, public-beta hardening, operator beta recovery, network-scale soak, ecosystem RC
+> certification, optional live-network beta certification, app-review governance, catalog,
+> app-owned UI, legacy-admin retirement, and CI evidence for a release candidate.
 
 ## Overview
 - Purpose: publish a Cryptad release so running nodes discover a new `info/<edition>` descriptor, download OS-specific installers, and guide operators through installation without self-replacing the running JAR.
@@ -51,7 +51,36 @@
 Treat these as release blockers, in order:
 
 1. **Normal Gradle checks** - run the standard repository build and test path before any publish step. For release readiness, this means the usual Gradle verification path for the branch, including `./gradlew clean build` and any project-required test tasks used in CI.
-2. **Release certification report** - generate the release-candidate report after the source gates
+2. **Production beta app-ecosystem pipeline, when shipping production beta app artifacts** - use
+   the top-level production beta wrapper when the release includes first-party app bundles,
+   signed catalog output, review receipts, live-network beta evidence, and a redacted public app
+   artifact archive:
+   ```bash
+   tools/release-certification/run-production-beta-release.sh \
+     --workspace-root . \
+     --out-dir build/production-beta-release \
+     --mode production-beta \
+     --catalog-channel stable \
+     --artifact-base-uri "$CRYPTAD_PRODUCTION_BETA_ARTIFACT_BASE_URI" \
+     --require-live-network \
+     --require-sandbox-provider-tests
+   ```
+   Use `--mode developer-dry-run` for local or PR-safe rehearsal and `--mode release-candidate`
+   for release-branch evidence that does not have production signing or protected live inputs yet.
+   A promotable `production-beta` run requires production signing inputs, a complete in-pipeline
+   Gradle build/stage/sign run, a clean git workspace, a public HTTPS artifact base URI, required
+   live-network beta evidence, ecosystem RC certification, and a passing final redaction scan.
+   Signed catalog bundle URLs resolve under the published artifact root, for example
+   `<base>/build/app-bundles/<app>-<version>.zip`. Preserve
+   `build/production-beta-release/reports/production-beta-summary.json`,
+   `build/production-beta-release/reports/production-beta-summary.md`,
+   `build/production-beta-release/reports/redaction-report.json`,
+   `build/production-beta-release/evidence/`, and
+   `build/production-beta-release/dist/checksums.txt`. The public archive is
+   `build/production-beta-release/dist/crypta-production-beta-<version>.tar.gz`. The workflow,
+   modes, required secrets, artifact layout, cleanup guard, and rerun rules are documented in
+   [production-beta-release-pipeline.md](production-beta-release-pipeline.md).
+3. **Release certification report** - generate the release-candidate report after the source gates
    below have produced their summaries:
    ```bash
    tools/release-certification/run-release-certification.sh \
@@ -96,9 +125,9 @@ Treat these as release blockers, in order:
    optional unless the release manager explicitly enables required live-network beta mode with
    `--require-live-network-beta` or `CRYPTAD_CERT_REQUIRE_LIVE_NETWORK_BETA=1`; stale live-network
    summaries must not be copied when the mode is disabled.
-3. **First-party app staging** - stage repo-owned AppHost bundles with the app module tasks or `./gradlew stageFirstPartyApps`. The app workflow source of truth is [app-distribution.md](app-distribution.md).
-4. **First-party app signing and verification** - sign with the intended release or staging key inputs, then verify with the matching trusted public key inputs. Gate promotion on successful `./gradlew signFirstPartyApps` and `./gradlew verifyFirstPartyApps` runs. Keep private signing keys outside the repository.
-5. **App catalog smoke, when catalog sources ship** - verify each signed catalog source refreshes,
+4. **First-party app staging** - stage repo-owned AppHost bundles with the app module tasks or `./gradlew stageFirstPartyApps`. The app workflow source of truth is [app-distribution.md](app-distribution.md).
+5. **First-party app signing and verification** - sign with the intended release or staging key inputs, then verify with the matching trusted public key inputs. Gate promotion on successful `./gradlew signFirstPartyApps` and `./gradlew verifyFirstPartyApps` runs. Keep private signing keys outside the repository.
+6. **App catalog smoke, when catalog sources ship** - verify each signed catalog source refreshes,
    validates artifact size/SHA-256, extracts safely, and can install or update through
    `/api/v1/app-catalogs`. For first-party live USK catalog publication, verify the report includes
    `catalog.live-usk-publication` and `catalog.live-usk-source-verification`; the public source is
@@ -377,6 +406,12 @@ Treat these as release blockers, in order:
     --mode release-candidate \
     --out-dir build/release-certification
   ```
+  If the production beta pipeline already ran for this candidate, inspect
+  `build/production-beta-release/reports/production-beta-summary.json` first. Its extracted
+  `evidence/ecosystem-rc-certification.json` and `evidence/ecosystem-certification-matrix.json`
+  are the lower-level release certification outputs used by the app artifact archive. Rerun
+  `run-release-certification.sh` separately only when debugging or regenerating that lower-level
+  evidence.
   Add `--previous-summary build/release-certification-history/latest-summary.json` after restoring
   the previous release's sanitized summary locally or in CI.
   Inspect `build/release-certification/release-certification-report.md` and

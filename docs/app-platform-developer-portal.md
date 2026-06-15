@@ -23,6 +23,7 @@ Use this portal first, then follow the detailed source-of-truth pages for the ar
 | Signed catalogs and catalog sources | [app-catalogs.md](app-catalogs.md) |
 | First-party beta catalog | [first-party-beta-catalog.md](first-party-beta-catalog.md) |
 | Production catalog channels | [production-first-party-catalog-channels.md](production-first-party-catalog-channels.md) |
+| Production beta release pipeline | [production-beta-release-pipeline.md](production-beta-release-pipeline.md) |
 | Platform API contract | [platform-api-contract.md](platform-api-contract.md) |
 | Platform API route surface | [platform-api-surface.md](platform-api-surface.md) |
 | Browser SDK | [platform-sdk-js.md](platform-sdk-js.md) |

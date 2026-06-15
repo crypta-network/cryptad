@@ -40,6 +40,7 @@ REQUIRED_DOCS = (
     "docs/app-data-backup-restore-portability.md",
     "docs/first-party-beta-catalog.md",
     "docs/production-first-party-catalog-channels.md",
+    "docs/production-beta-release-pipeline.md",
     "docs/feed-reader-reference-app.md",
     "docs/social-inbox-reference-app.md",
     "docs/trust-graph-preview.md",

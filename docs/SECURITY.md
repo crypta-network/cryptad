@@ -99,8 +99,8 @@ paths, transparency-log paths, catalog scratch paths, staging paths, browser ses
 request bodies, form passwords, or AppHost process tokens.
 
 Catalog fetches support local files, `https:`, and loopback-only `http:` sources. Catalog ZIP
-extraction drops macOS `__MACOSX/**` and AppleDouble `._*` metadata entries before verification;
-executable app payload still has to match the signed bundle digest.
+extraction drops macOS `__MACOSX/**`, AppleDouble `._*`, and `.DS_Store` metadata entries before
+verification; executable app payload still has to match the signed bundle digest.
 
 App-owned static UI routes serve files from the immutable installed bundle. Static apps prefer a
 distinct loopback-only browser origin per app, with `/apps/{appId}/` retained as a compatibility

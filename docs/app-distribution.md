@@ -73,6 +73,10 @@ The digest includes `cryptad-app.properties` and regular bundle files. It exclud
 distribution sidecars such as `cryptad-app.digests`, `cryptad-app.signature`,
 `cryptad-app.catalog`, and `cryptad-app.catalog.signature`.
 
+The packager rejects archive metadata that can appear in local working trees, including
+AppleDouble `._*` files, `__MACOSX/` directories, and `.DS_Store`. Remove those files before
+signing or packaging a bundle.
+
 ## UI Manifest Fields
 
 App bundles can declare browser UI ownership with `app.ui.mode` and `app.ui.entry`.

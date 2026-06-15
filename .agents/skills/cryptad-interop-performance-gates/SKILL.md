@@ -1,6 +1,6 @@
 ---
 name: cryptad-interop-performance-gates
-description: "Maintain Cryptad's Hyphanet interop, performance regression, and release-certification evidence gates under tools/interop, tools/perf, tools/release-certification, CI jobs, and release-readiness documentation."
+description: "Maintain Cryptad's Hyphanet interop, performance regression, release-certification evidence gates, and production beta release pipeline under tools/interop, tools/perf, tools/release-certification, CI jobs, and release-readiness documentation."
 ---
 
 # Cryptad interop and performance gates
@@ -13,6 +13,8 @@ related CI jobs, or release-gate documentation.
 - Hyphanet interop gate: `tools/interop/README.md`
 - Performance regression gate: `tools/perf/README.md`
 - Release certification workflow: `docs/release-certification.md`
+- Production beta release pipeline: `docs/production-beta-release-pipeline.md`
+- Ecosystem RC certification gate: `docs/ecosystem-rc-certification-gate.md`
 - Release certification tooling: `tools/release-certification/README.md`
 - Release readiness gates: `docs/cryptad-release-workflow-and-runbook.md`
 - Phase 3 platform closeout context: `docs/phase-3-platform-primacy-closeout.md`
@@ -77,6 +79,17 @@ build/release-certification/live-network-beta-smoke/summary.json
 build/release-certification/live-network-beta-smoke/live-network-beta-smoke-report.md
 ```
 
+- `tools/release-certification/production_beta_release.py` is the top-level production beta
+  app-ecosystem release pipeline. It orchestrates Gradle build/install tasks, first-party app
+  staging/signing/verification, signed catalog and review receipt generation, app-platform smoke,
+  live-network beta smoke when required, network-scale soak, ecosystem RC certification, final
+  artifact redaction, and public archive creation under `build/production-beta-release/`.
+  `developer-dry-run` is CI-safe and non-release; `release-candidate` is strict but may use
+  non-production signing labels; `production-beta` requires production signing, a complete
+  in-pipeline Gradle build/stage/sign run, a public HTTPS artifact base URI, live-network evidence
+  unless the explicit emergency skip is used, and a clean workspace before `promotionReady` can
+  become true. Emergency build skips must leave `nonRelease=true` and fail the build-complete
+  promotion gate.
 - `tools/release-certification/app_platform_smoke.py` produces the app-platform summary consumed by
   the aggregator. It keeps `--self-test` offline and Python-only, including source/test evidence
   for the Platform API contract, app-vault capability docs, signed catalogs, trusted app-review
@@ -116,8 +129,10 @@ python3 tools/release-certification/release_certification.py --self-test
 python3 tools/release-certification/app_platform_smoke.py --self-test
 python3 tools/release-certification/network_scale_soak.py --self-test
 python3 tools/release-certification/live_network_beta_smoke.py --self-test
+python3 tools/release-certification/production_beta_release.py --self-test
 tools/release-certification/run-release-certification.sh
 tools/release-certification/run-release-certification.sh --mode release-candidate --out-dir build/release-certification
+tools/release-certification/run-production-beta-release.sh --mode developer-dry-run --out-dir build/production-beta-dry-run
 ```
 
 - Release-candidate mode fails when required evidence is missing, skipped, malformed, wrong-mode,
@@ -154,7 +169,7 @@ tools/release-certification/run-release-certification.sh --mode release-candidat
   `app-update.lifecycle`,
   `app-update.scheduler`, `app-update.rollback`, `app-update.live-catalog-refresh`,
   `app-update.data-migration-contract`,
-  `public-beta-security.*`, `operator-beta.*`, `app-review.trusted-receipts`,
+  `public-beta-security.*`, `operator-beta.*`, `operator-rc.*`, `app-review.trusted-receipts`,
   `app-review.policy`, `app-review.governance`, `app-review.reviewer-key-lifecycle`,
   `app-review.transparency-log`, `app-review.review-history-api`,
   `app-review.first-party-catalog`, `app-review.first-party-review-chain`, and
@@ -196,5 +211,10 @@ tools/release-certification/run-release-certification.sh --mode release-candidat
 - `.github/workflows/release-certification.yml` runs scheduled/manual/release-ref certification,
   uploads sanitized certification artifacts, and uses `release-candidate` mode for `release/**`
   branches and `v*` tags.
+- `.github/workflows/production-beta-release.yml` runs the production beta pipeline in
+  `developer-dry-run` for PR-safe checks, `release-candidate` for release refs/manual dispatch, and
+  protected `production-beta` only when release secrets, live-node inputs, and a real artifact base
+  URI are available. Artifact uploads must stay gated on a passing production-beta redaction
+  summary.
 - Release notes should mention interop, performance, or certification gate changes only when they
   affect release readiness, operator confidence, app/platform behavior, or packager workflows.

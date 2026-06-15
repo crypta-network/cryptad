@@ -114,6 +114,33 @@ class AppCatalogBundleExtractorTest {
     assertFalse(Files.exists(stagedRoot.resolve("._cryptad-app.properties")));
   }
 
+  @Test
+  void extractZip_whenIgnoredDsStoreEntryExceedsExtractedCap_expectInvalidAppBundle()
+      throws Exception {
+    Path artifact = ignoredDsStoreZip(tempDir.resolve("dsstore-large.zip"));
+    Path stagedRoot = Files.createDirectory(tempDir.resolve("staged-dsstore"));
+
+    AppCatalogException exception =
+        assertThrows(
+            AppCatalogException.class,
+            () -> AppCatalogBundleExtractor.extractZip(artifact, stagedRoot, 16L));
+
+    assertEquals(AppCatalogSidecars.INVALID_APP_BUNDLE, exception.errorCode());
+    assertEquals("zip artifact exceeds extracted size cap", exception.getMessage());
+    assertFalse(Files.exists(stagedRoot.resolve(".DS_Store")));
+  }
+
+  @Test
+  void extractZip_whenIgnoredNestedDsStoreEntry_expectMetadataNotExtracted() throws Exception {
+    Path artifact = ignoredNestedDsStoreZip(tempDir.resolve("nested-dsstore.zip"));
+    Path stagedRoot = Files.createDirectory(tempDir.resolve("staged-nested-dsstore"));
+
+    AppCatalogBundleExtractor.extractZip(artifact, stagedRoot, IGNORED_METADATA_BYTES);
+
+    assertFalse(Files.exists(stagedRoot.resolve("bin").resolve(".DS_Store")));
+    assertFalse(Files.exists(stagedRoot.resolve("bin")));
+  }
+
   private Path createBundle(String appId) throws IOException {
     Path bundleRoot = Files.createTempDirectory(tempDir, appId + "-");
     Files.createDirectories(bundleRoot.resolve("bin"));
@@ -163,6 +190,26 @@ class AppCatalogBundleExtractorTest {
     byte[] payload = "x".repeat(IGNORED_METADATA_BYTES).getBytes(StandardCharsets.UTF_8);
     try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(targetZip))) {
       zip.putNextEntry(new ZipEntry("._cryptad-app.properties"));
+      zip.write(payload);
+      zip.closeEntry();
+    }
+    return targetZip;
+  }
+
+  private static Path ignoredDsStoreZip(Path targetZip) throws IOException {
+    byte[] payload = "x".repeat(IGNORED_METADATA_BYTES).getBytes(StandardCharsets.UTF_8);
+    try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(targetZip))) {
+      zip.putNextEntry(new ZipEntry(".DS_Store"));
+      zip.write(payload);
+      zip.closeEntry();
+    }
+    return targetZip;
+  }
+
+  private static Path ignoredNestedDsStoreZip(Path targetZip) throws IOException {
+    byte[] payload = "x".repeat(IGNORED_METADATA_BYTES).getBytes(StandardCharsets.UTF_8);
+    try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(targetZip))) {
+      zip.putNextEntry(new ZipEntry("bin/.DS_Store"));
       zip.write(payload);
       zip.closeEntry();
     }

@@ -124,6 +124,34 @@ class AppBundlePackagerTest {
   }
 
   @Test
+  void packageBundle_whenBundleContainsDsStoreEntry_expectFailure() throws Exception {
+    Path bundleRoot = createBundle("dsstore-bundle");
+    Files.writeString(bundleRoot.resolve(".DS_Store"), "junk", StandardCharsets.UTF_8);
+
+    AppDistributionException exception =
+        assertThrows(
+            AppDistributionException.class,
+            () -> AppBundlePackager.packageBundle(bundleRoot, tempDir.resolve("dsstore.zip")));
+
+    assertTrue(exception.getMessage().contains("macOS archive metadata"));
+  }
+
+  @Test
+  void packageBundle_whenBundleContainsNestedDsStoreEntry_expectFailure() throws Exception {
+    Path bundleRoot = createBundle("nested-dsstore-bundle");
+    Files.writeString(
+        bundleRoot.resolve("bin").resolve(".DS_Store"), "junk", StandardCharsets.UTF_8);
+
+    AppDistributionException exception =
+        assertThrows(
+            AppDistributionException.class,
+            () ->
+                AppBundlePackager.packageBundle(bundleRoot, tempDir.resolve("nested-dsstore.zip")));
+
+    assertTrue(exception.getMessage().contains("macOS archive metadata"));
+  }
+
+  @Test
   void packageBundle_whenBundleContainsCatalogSidecar_expectFailure() throws Exception {
     Path bundleRoot = createBundle("catalog-sidecar-bundle");
     Files.writeString(bundleRoot.resolve("cryptad-app.catalog"), "catalog", StandardCharsets.UTF_8);

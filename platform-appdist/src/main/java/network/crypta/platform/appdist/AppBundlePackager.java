@@ -590,7 +590,7 @@ public final class AppBundlePackager {
     private static void rejectArchiveMetadataEntry(String relativePath)
         throws AppDistributionException {
       for (String segment : relativePath.split("/", -1)) {
-        if (segment.equals("__MACOSX") || segment.startsWith("._")) {
+        if (segment.equals("__MACOSX") || segment.startsWith("._") || segment.equals(".DS_Store")) {
           throw new AppDistributionException(
               "bundle must not contain macOS archive metadata: " + relativePath);
         }

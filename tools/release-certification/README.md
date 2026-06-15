@@ -17,6 +17,7 @@ python3 tools/release-certification/release_certification.py --self-test
 python3 tools/release-certification/app_platform_smoke.py --self-test
 python3 tools/release-certification/network_scale_soak.py --self-test
 python3 tools/release-certification/live_network_beta_smoke.py --self-test
+python3 tools/release-certification/production_beta_release.py --self-test
 ```
 
 Run the offline wrapper modes from a clean release workspace:
@@ -45,6 +46,38 @@ The summary kind may be `simulated-rc-soak` or `live-rc-soak`, but raw fetched c
 tokens, private insert URIs, raw signatures, app-data values, backup payloads, rejected source
 strings, and absolute local paths must stay out of the release record.
 
+Build a production beta app-ecosystem candidate:
+
+```bash
+tools/release-certification/run-production-beta-release.sh \
+  --workspace-root . \
+  --out-dir build/production-beta-release \
+  --mode production-beta \
+  --catalog-channel stable \
+  --artifact-base-uri "$CRYPTAD_PRODUCTION_BETA_ARTIFACT_BASE_URI" \
+  --require-live-network \
+  --require-sandbox-provider-tests
+```
+
+The production beta command writes signed first-party app bundles, a signed first-party catalog,
+review receipts, extracted evidence, a redaction report, JSON/Markdown summaries, and a final
+`dist/crypta-production-beta-<version>.tar.gz` archive. `release-candidate` and `production-beta`
+runs require a real HTTPS artifact base URI through `--artifact-base-uri` or
+`CRYPTAD_PRODUCTION_BETA_ARTIFACT_BASE_URI`; developer dry-runs may use the non-release fallback
+URI. Catalog bundle URLs are signed under the published layout root, for example
+`<base>/build/app-bundles/<app>-<version>.zip`. `--use-fixture-evidence` is accepted only for
+`developer-dry-run` and internal self-tests. Use
+`developer-dry-run` for PR-safe local runs without release keys or live-network access. See
+[docs/production-beta-release-pipeline.md](../../docs/production-beta-release-pipeline.md) for
+mode semantics, required environment variables, artifact layout, failure classes, redaction rules,
+and rerun guidance.
+
+The command cleans existing output directories only under `build/production-beta*` or when the
+directory already contains the `.cryptad-production-beta-release-output` sentinel. Output is
+refused for source-controlled workspace paths such as `docs`, `tools`, `apps`, `.git`, and
+`.github`. The `dist/` directory is regenerated on every run, including `--no-clean-out-dir`
+reruns, so stale archives or side files are not carried into uploaded artifacts.
+
 ## Outputs
 
 The stable release evidence outputs are:
@@ -67,6 +100,28 @@ build/release-certification/
   live-network-beta-smoke/
     summary.json
     live-network-beta-smoke-report.md
+```
+
+The production beta wrapper uses a separate public artifact layout under
+`build/production-beta-release/`:
+
+```text
+inputs/release-config.json
+build/staged-apps/
+build/app-bundles/
+build/crypta-app-launcher/
+catalog/first-party-catalog.properties
+catalog/cryptad-app-catalog.signature
+catalog/first-party-catalog.sig
+catalog/channel-metadata.json
+reviews/review-receipts/
+reviews/review-transparency-log.json
+evidence/
+reports/production-beta-summary.json
+reports/production-beta-summary.md
+reports/redaction-report.json
+dist/crypta-production-beta-<version>.tar.gz
+dist/checksums.txt
 ```
 
 The `live-network-beta-smoke/` directory is present only when `--live-network-beta` or
