@@ -278,6 +278,24 @@ HOST_PATH_RE = re.compile(
     r"(?:Users|home|work|workspace|tmp|private/tmp|var/folders|mnt|Volumes|root|opt|runner|__w)"
     r"(?:/[^\s\"'<>),;]+)+"
 )
+DEFAULT_REVIEW_POLICY_ID = "crypta-app-review-v1"
+DEFAULT_REVIEW_POLICY_VERSION = "1"
+FIXTURE_APP_SIGNING_KEY_ID = "crypta-production-beta-test-app"
+FIXTURE_REVIEWER_KEY_ID = "crypta-production-beta-test-review"
+SIGNING_PROFILE_ENV_KEYS = (
+    "CRYPTAD_APP_SIGNING_KEY_ID",
+    "CRYPTAD_APP_SIGNING_PRIVATE_KEY_FILE",
+    "CRYPTAD_APP_SIGNING_PRIVATE_KEY_BASE64",
+    "CRYPTAD_APP_SIGNING_PUBLIC_KEY_FILE",
+    "CRYPTAD_APP_SIGNING_PUBLIC_KEY_BASE64",
+    "CRYPTAD_APP_REVIEWER_KEY_ID",
+    "CRYPTAD_APP_REVIEWER_PRIVATE_KEY_FILE",
+    "CRYPTAD_APP_REVIEWER_PRIVATE_KEY_BASE64",
+    "CRYPTAD_APP_REVIEWER_PUBLIC_KEY_FILE",
+    "CRYPTAD_APP_REVIEWER_PUBLIC_KEY_BASE64",
+    "CRYPTAD_APP_REVIEW_POLICY_ID",
+    "CRYPTAD_APP_REVIEW_POLICY_VERSION",
+)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -694,6 +712,21 @@ def env_value_or_default(env: dict[str, str], key: str, default: str) -> str:
     return env.get(key, "").strip() or default
 
 
+def fixture_signing_env(source: dict[str, str]) -> dict[str, str]:
+    env = source.copy()
+    for key in SIGNING_PROFILE_ENV_KEYS:
+        env.pop(key, None)
+    env.update(
+        {
+            "CRYPTAD_APP_SIGNING_KEY_ID": FIXTURE_APP_SIGNING_KEY_ID,
+            "CRYPTAD_APP_REVIEWER_KEY_ID": FIXTURE_REVIEWER_KEY_ID,
+            "CRYPTAD_APP_REVIEW_POLICY_ID": DEFAULT_REVIEW_POLICY_ID,
+            "CRYPTAD_APP_REVIEW_POLICY_VERSION": DEFAULT_REVIEW_POLICY_VERSION,
+        }
+    )
+    return env
+
+
 def generate_key_pair(
     state: PipelineState,
     cli: Path,
@@ -733,8 +766,22 @@ def prepare_signing_profile(state: PipelineState, key_dir: Path) -> SigningProfi
     private_paths: list[Path] = []
     app_key_id = env.get("CRYPTAD_APP_SIGNING_KEY_ID", "").strip()
     reviewer_key_id = env.get("CRYPTAD_APP_REVIEWER_KEY_ID", "").strip()
-    review_policy_id = env_value_or_default(env, "CRYPTAD_APP_REVIEW_POLICY_ID", "crypta-app-review-v1")
-    review_policy_version = env_value_or_default(env, "CRYPTAD_APP_REVIEW_POLICY_VERSION", "1")
+    review_policy_id = env_value_or_default(env, "CRYPTAD_APP_REVIEW_POLICY_ID", DEFAULT_REVIEW_POLICY_ID)
+    review_policy_version = env_value_or_default(env, "CRYPTAD_APP_REVIEW_POLICY_VERSION", DEFAULT_REVIEW_POLICY_VERSION)
+
+    if state.settings.use_fixture_evidence:
+        env = fixture_signing_env(env)
+        state.warnings.append("Fixture evidence mode ignores ambient signing and reviewer inputs.")
+        return SigningProfile(
+            kind="test-fixture",
+            generated_test_keys=True,
+            env=env,
+            private_paths=[],
+            app_key_id=FIXTURE_APP_SIGNING_KEY_ID,
+            reviewer_key_id=FIXTURE_REVIEWER_KEY_ID,
+            review_policy_id=DEFAULT_REVIEW_POLICY_ID,
+            review_policy_version=DEFAULT_REVIEW_POLICY_VERSION,
+        )
 
     if has_env_signing(env) and has_env_reviewer(env):
         kind = "production" if state.settings.mode == "production-beta" else "configured"
@@ -773,17 +820,16 @@ def prepare_signing_profile(state: PipelineState, key_dir: Path) -> SigningProfi
     if cli is None or not cli.is_file():
         if state.settings.use_fixture_evidence or state.settings.skip_gradle:
             state.warnings.append("crypta-app is unavailable; fixture/test signing metadata will be used.")
-            env.setdefault("CRYPTAD_APP_SIGNING_KEY_ID", "crypta-production-beta-test-app")
-            env.setdefault("CRYPTAD_APP_REVIEWER_KEY_ID", "crypta-production-beta-test-review")
+            env = fixture_signing_env(env)
             return SigningProfile(
                 kind="test-fixture",
                 generated_test_keys=True,
                 env=env,
                 private_paths=[],
-                app_key_id=env["CRYPTAD_APP_SIGNING_KEY_ID"],
-                reviewer_key_id=env["CRYPTAD_APP_REVIEWER_KEY_ID"],
-                review_policy_id=review_policy_id,
-                review_policy_version=review_policy_version,
+                app_key_id=FIXTURE_APP_SIGNING_KEY_ID,
+                reviewer_key_id=FIXTURE_REVIEWER_KEY_ID,
+                review_policy_id=DEFAULT_REVIEW_POLICY_ID,
+                review_policy_version=DEFAULT_REVIEW_POLICY_VERSION,
             )
         state.failures.append("crypta-app launcher is required to generate dry-run signing keys.")
         return SigningProfile("missing", False, env, [], app_key_id, reviewer_key_id, review_policy_id, review_policy_version)
@@ -2763,6 +2809,75 @@ def assert_blank_review_policy_env_uses_defaults() -> None:
                 os.environ[key] = value
 
 
+def assert_fixture_signing_profile_ignores_ambient_env() -> None:
+    saved = {key: os.environ.get(key) for key in SIGNING_PROFILE_ENV_KEYS}
+    try:
+        os.environ.update(
+            {
+                "CRYPTAD_APP_SIGNING_KEY_ID": "ambient-production-app-key",
+                "CRYPTAD_APP_SIGNING_PRIVATE_KEY_BASE64": "YW1iaWVudC1hcHAtcHJpdmF0ZQ==",
+                "CRYPTAD_APP_SIGNING_PUBLIC_KEY_BASE64": "YW1iaWVudC1hcHAtcHVibGlj",
+                "CRYPTAD_APP_REVIEWER_KEY_ID": "ambient-production-reviewer-key",
+                "CRYPTAD_APP_REVIEWER_PRIVATE_KEY_BASE64": "YW1iaWVudC1yZXZpZXdlci1wcml2YXRl",
+                "CRYPTAD_APP_REVIEWER_PUBLIC_KEY_BASE64": "YW1iaWVudC1yZXZpZXdlci1wdWJsaWM=",
+                "CRYPTAD_APP_REVIEW_POLICY_ID": "ambient-review-policy",
+                "CRYPTAD_APP_REVIEW_POLICY_VERSION": "99",
+            }
+        )
+        with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-fixture-profile-") as temp_name:
+            workspace = Path(temp_name) / "repo"
+            make_self_test_workspace(workspace)
+            settings = Settings(
+                workspace_root=workspace,
+                out_dir=workspace / "build/production-beta",
+                mode="developer-dry-run",
+                catalog_channel="stable",
+                artifact_base_uri="https://downloads.crypta.invalid/self-test",
+                require_live_network=False,
+                require_sandbox_provider_tests=False,
+                skip_gradle=True,
+                skip_full_build=True,
+                use_fixture_evidence=True,
+                allow_dirty_workspace=True,
+                emergency_skip_live_network=False,
+                emergency_skip_build=False,
+                allow_test_signing_in_production=False,
+                previous_summary=None,
+                waiver_file=None,
+                timeout_seconds=60,
+                clean_out_dir=True,
+            )
+            state = PipelineState(settings, "self-test", utc_now(), [], [], [])
+            profile = prepare_signing_profile(state, workspace / "keys")
+            assert profile.kind == "test-fixture", profile
+            assert profile.generated_test_keys is True, profile
+            assert profile.app_key_id == FIXTURE_APP_SIGNING_KEY_ID, profile
+            assert profile.reviewer_key_id == FIXTURE_REVIEWER_KEY_ID, profile
+            assert profile.review_policy_id == DEFAULT_REVIEW_POLICY_ID, profile
+            assert profile.review_policy_version == DEFAULT_REVIEW_POLICY_VERSION, profile
+            assert profile.env["CRYPTAD_APP_SIGNING_KEY_ID"] == FIXTURE_APP_SIGNING_KEY_ID, profile.env
+            assert profile.env["CRYPTAD_APP_REVIEWER_KEY_ID"] == FIXTURE_REVIEWER_KEY_ID, profile.env
+            assert profile.env["CRYPTAD_APP_REVIEW_POLICY_ID"] == DEFAULT_REVIEW_POLICY_ID, profile.env
+            assert profile.env["CRYPTAD_APP_REVIEW_POLICY_VERSION"] == DEFAULT_REVIEW_POLICY_VERSION, profile.env
+            for key in (
+                "CRYPTAD_APP_SIGNING_PRIVATE_KEY_FILE",
+                "CRYPTAD_APP_SIGNING_PRIVATE_KEY_BASE64",
+                "CRYPTAD_APP_SIGNING_PUBLIC_KEY_FILE",
+                "CRYPTAD_APP_SIGNING_PUBLIC_KEY_BASE64",
+                "CRYPTAD_APP_REVIEWER_PRIVATE_KEY_FILE",
+                "CRYPTAD_APP_REVIEWER_PRIVATE_KEY_BASE64",
+                "CRYPTAD_APP_REVIEWER_PUBLIC_KEY_FILE",
+                "CRYPTAD_APP_REVIEWER_PUBLIC_KEY_BASE64",
+            ):
+                assert key not in profile.env, (key, profile.env)
+    finally:
+        for key, value in saved.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+
+
 def assert_dirty_production_beta_is_non_promotable() -> None:
     with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-dirty-") as temp_name:
         workspace = Path(temp_name) / "repo"
@@ -3782,6 +3897,7 @@ def run_self_test() -> None:
     assert_redaction_rejects_release_output_symlink()
     assert_tarball_redaction_rejects_symlink_member()
     assert_blank_review_policy_env_uses_defaults()
+    assert_fixture_signing_profile_ignores_ambient_env()
     assert_dirty_production_beta_is_non_promotable()
     assert_emergency_build_skip_is_non_promotable()
     assert_allow_test_signing_env_profile_is_non_release()
@@ -4175,23 +4291,30 @@ def run_self_test() -> None:
         workspace = Path(temp_name) / "repo"
         make_self_test_workspace(workspace)
         parser = build_parser()
+        saved_artifact_base_uri = os.environ.pop("CRYPTAD_PRODUCTION_BETA_ARTIFACT_BASE_URI", None)
         try:
-            settings_from_args(
-                parser.parse_args(
-                    [
-                        "--workspace-root",
-                        str(workspace),
-                        "--out-dir",
-                        "build/production-beta",
-                        "--mode",
-                        "release-candidate",
-                    ]
+            try:
+                settings_from_args(
+                    parser.parse_args(
+                        [
+                            "--workspace-root",
+                            str(workspace),
+                            "--out-dir",
+                            "build/production-beta",
+                            "--mode",
+                            "release-candidate",
+                        ]
+                    )
                 )
-            )
-        except SystemExit as exc:
-            assert "artifact-base-uri" in str(exc), exc
-        else:
-            raise AssertionError("release-candidate mode accepted a missing artifact base URI")
+            except SystemExit as exc:
+                assert "artifact-base-uri" in str(exc), exc
+            else:
+                raise AssertionError("release-candidate mode accepted a missing artifact base URI")
+        finally:
+            if saved_artifact_base_uri is None:
+                os.environ.pop("CRYPTAD_PRODUCTION_BETA_ARTIFACT_BASE_URI", None)
+            else:
+                os.environ["CRYPTAD_PRODUCTION_BETA_ARTIFACT_BASE_URI"] = saved_artifact_base_uri
         try:
             settings_from_args(
                 parser.parse_args(
