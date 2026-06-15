@@ -65,7 +65,6 @@ PRIVATE_ARTIFACT_HOST_SUFFIXES = (
 ZIP_ARCHIVE_SUFFIXES = {".zip", ".jar"}
 TAR_GZ_ARCHIVE_SUFFIXES = (".tar.gz", ".tgz")
 MAX_NESTED_ARCHIVE_DEPTH = 4
-TEXT_SCAN_BINARY_PROBE_BYTES = 4096
 TEXT_SCAN_CHUNK_BYTES = 1024 * 1024
 TEXT_SCAN_OVERLAP_BYTES = 64 * 1024
 FORBIDDEN_SECRET_ARTIFACT_SUFFIXES = {".p12", ".pfx", ".jks", ".keystore", ".p8", ".pkcs8"}
@@ -949,10 +948,20 @@ def public_key_base64(raw_file: Path | None, raw_value: str) -> str:
     return base64.b64encode(raw).decode("ascii")
 
 
-def write_trusted_reviewer_keys(path: Path, profile: SigningProfile) -> None:
+def workspace_file_path(raw_file: str, workspace_root: Path) -> Path:
+    path = Path(raw_file)
+    if path.is_absolute():
+        return path
+    return workspace_root / path
+
+
+def write_trusted_reviewer_keys(path: Path, profile: SigningProfile, workspace_root: Path) -> None:
     public_file = profile.env.get("CRYPTAD_APP_REVIEWER_PUBLIC_KEY_FILE", "").strip()
     public_base64 = profile.env.get("CRYPTAD_APP_REVIEWER_PUBLIC_KEY_BASE64", "").strip()
-    public_key = public_key_base64(Path(public_file) if public_file else None, public_base64)
+    public_key = public_key_base64(
+        workspace_file_path(public_file, workspace_root) if public_file else None,
+        public_base64,
+    )
     write_text(
         path,
         "\n".join(
@@ -1001,7 +1010,7 @@ def package_catalog_and_reviews(
     descriptor_dir = work_dir / "catalog-descriptors"
     descriptor_dir.mkdir(parents=True, exist_ok=True)
     trusted_reviewers = work_dir / "trusted-reviewers.properties"
-    write_trusted_reviewer_keys(trusted_reviewers, profile)
+    write_trusted_reviewer_keys(trusted_reviewers, profile, state.settings.workspace_root)
     artifact_timestamp = state.started_at
 
     descriptors: list[Path] = []
@@ -1807,18 +1816,20 @@ def iter_prefixed_chunks(prefix: bytes, chunks: Iterable[bytes]) -> Iterator[byt
     yield from chunks
 
 
+def scan_decoded_byte_window(window: bytes, rel_path: str, settings: Settings) -> list[dict[str, str]]:
+    findings = scan_text_for_findings(window.decode("utf-8", errors="ignore"), rel_path, settings)
+    if b"\x00" in window:
+        nul_stripped_text = window.replace(b"\x00", b"").decode("utf-8", errors="ignore")
+        findings.extend(scan_text_for_findings(nul_stripped_text, rel_path, settings))
+    return findings
+
+
 def scan_byte_chunks(chunks: Iterable[bytes], rel_path: str, settings: Settings) -> list[dict[str, str]]:
     findings: list[dict[str, str]] = []
-    binary_probe = b""
     tail = b""
     for chunk in chunks:
-        if len(binary_probe) < TEXT_SCAN_BINARY_PROBE_BYTES:
-            remaining = TEXT_SCAN_BINARY_PROBE_BYTES - len(binary_probe)
-            binary_probe += chunk[:remaining]
-            if b"\x00" in binary_probe:
-                return []
         window = tail + chunk
-        findings.extend(scan_text_for_findings(window.decode("utf-8", errors="ignore"), rel_path, settings))
+        findings.extend(scan_decoded_byte_window(window, rel_path, settings))
         tail = window[-TEXT_SCAN_OVERLAP_BYTES:]
     return deduplicate_findings(findings)
 
@@ -3421,6 +3432,34 @@ def assert_catalog_signature_and_timestamps_are_canonical() -> None:
         ).read_text(encoding="utf-8")
 
 
+def assert_reviewer_public_key_file_resolves_from_workspace() -> None:
+    with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-reviewer-key-") as temp_name:
+        workspace = Path(temp_name) / "repo"
+        workspace.mkdir(parents=True)
+        write_bytes(workspace / "protected/reviewer-public.der", b"\x01\x02\x03")
+        profile = SigningProfile(
+            kind="production",
+            generated_test_keys=False,
+            env={"CRYPTAD_APP_REVIEWER_PUBLIC_KEY_FILE": "protected/reviewer-public.der"},
+            private_paths=[],
+            app_key_id="app-key",
+            reviewer_key_id="reviewer-key",
+            review_policy_id="crypta-app-review-v1",
+            review_policy_version="1",
+        )
+        output = workspace / "work/trusted-reviewers.properties"
+        outside = Path(temp_name) / "outside"
+        outside.mkdir()
+        original_cwd = Path.cwd()
+        try:
+            os.chdir(outside)
+            write_trusted_reviewer_keys(output, profile, workspace)
+        finally:
+            os.chdir(original_cwd)
+        trusted_text = output.read_text(encoding="utf-8")
+        assert "reviewer.1.public.key.base64=AQID" in trusted_text, trusted_text
+
+
 def assert_no_clean_rerun_drops_stale_dist_files() -> None:
     with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-stale-dist-") as temp_name:
         workspace = Path(temp_name) / "repo"
@@ -3668,6 +3707,7 @@ def run_self_test() -> None:
     assert_strict_skip_gradle_requires_emergency_build_flag()
     assert_unknown_workspace_status_fails_strict_modes()
     assert_catalog_signature_and_timestamps_are_canonical()
+    assert_reviewer_public_key_file_resolves_from_workspace()
     assert_no_clean_rerun_drops_stale_dist_files()
     assert_custom_out_dir_does_not_dirty_workspace_before_check()
     assert_post_artifact_workspace_recheck_detects_mutation()
@@ -3818,6 +3858,20 @@ def run_self_test() -> None:
     assert_redaction_fails(
         "identifier-app-token",
         lambda out_dir: write_text(out_dir / "token.txt", "CRYPTAD_APP_TOKEN=abcdefghijklmnop\n"),
+    )
+    assert_redaction_fails(
+        "nul-bearing-app-token",
+        lambda out_dir: write_bytes(
+            out_dir / "resource.bin",
+            "CRYPTAD_APP_TOKEN=abcdefghijklmnop\n".encode("utf-16le"),
+        ),
+    )
+    assert_redaction_fails(
+        "nul-bearing-jar-token-entry",
+        lambda out_dir: write_test_zip_archive(
+            out_dir / "build/crypta-app-launcher/lib/app.jar",
+            {"fixtures/resource.dat": "CRYPTAD_APP_TOKEN=abcdefghijklmnop\n".encode("utf-16le")},
+        ),
     )
     assert_redaction_fails(
         "identifier-ci-secret",
