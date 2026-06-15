@@ -264,7 +264,11 @@ SECRET_ENV_VALUE_NAME_RE = re.compile(
 )
 SECRET_ENV_VALUE_SKIP_SUFFIXES = ("_ENV", "_FILE", "_PATH", "_DIR")
 SECRET_ENV_INDIRECTION_NAMES = {"CRYPTAD_CERT_LIVE_TEST_INSERT_URI_ENV"}
-SECRET_ENV_FILE_INDIRECTION_NAMES = {"CRYPTAD_CERT_LIVE_TEST_INSERT_URI_FILE"}
+SECRET_ENV_FILE_INDIRECTION_NAMES = {
+    "CRYPTAD_APP_REVIEWER_PRIVATE_KEY_FILE",
+    "CRYPTAD_APP_SIGNING_PRIVATE_KEY_FILE",
+    "CRYPTAD_CERT_LIVE_TEST_INSERT_URI_FILE",
+}
 MIN_SECRET_ENV_VALUE_LENGTH = 6
 URL_USERINFO_RE = re.compile(r"\b[a-z][a-z0-9+.-]*://[^/\s:@]+:[^/\s@]+@", re.IGNORECASE)
 FILE_URI_RE = re.compile(r"\bfile:///[^\s\"'<>]+", re.IGNORECASE)
@@ -1662,10 +1666,10 @@ def is_redacted_or_code_value(raw_value: str, allow_code_like: bool = True) -> b
         return True
     if (value.startswith("<") and value.endswith(">")) or normalized.startswith("<redacted") or normalized.startswith("${{"):
         return True
-    if "(" in value or ")" in value:
-        return True
     if not allow_code_like:
         return False
+    if "(" in value or ")" in value:
+        return True
     if re.fullmatch(r"[A-Za-z_$][A-Za-z0-9_$]*", value) and not (
         len(value) >= 16 and any(character.isdigit() for character in value)
     ):
@@ -1675,6 +1679,16 @@ def is_redacted_or_code_value(raw_value: str, allow_code_like: bool = True) -> b
     return False
 
 
+def is_unquoted_code_expression(match: re.Match[str]) -> bool:
+    value = match.group(1).strip().rstrip(",;")
+    if not value:
+        return False
+    value_start = match.start(1)
+    if value_start > 0 and match.string[value_start - 1] in {"'", '"'}:
+        return False
+    return bool(re.fullmatch(r"(?:[A-Za-z_$][A-Za-z0-9_$]*\.)*[A-Za-z_$][A-Za-z0-9_$]*\([^;{}\"']*\)", value))
+
+
 def add_value_findings(
     findings: list[dict[str, str]],
     text: str,
@@ -1682,8 +1696,11 @@ def add_value_findings(
     kind: str,
     regex: re.Pattern[str],
     allow_code_like: bool = True,
+    allow_unquoted_code_expression: bool = False,
 ) -> None:
     for match in regex.finditer(text):
+        if allow_unquoted_code_expression and is_unquoted_code_expression(match):
+            continue
         value = match.group(1)
         if not is_redacted_or_code_value(value, allow_code_like=allow_code_like):
             findings.append({"path": rel_path, "kind": kind})
@@ -1720,9 +1737,13 @@ def protected_secret_environment_values(env: dict[str, str] | None = None) -> li
         if not path_text:
             return
         try:
-            content = Path(path_text).read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError):
+            content_bytes = Path(path_text).read_bytes()
+        except OSError:
             return
+        if not content_bytes:
+            return
+        add(name, base64.b64encode(content_bytes).decode("ascii"))
+        content = content_bytes.decode("utf-8", errors="ignore")
         add(name, content)
         for line in content.splitlines():
             add(name, line)
@@ -1743,9 +1764,49 @@ def protected_secret_environment_values(env: dict[str, str] | None = None) -> li
     return values
 
 
+def protected_secret_environment_byte_values(env: dict[str, str] | None = None) -> list[tuple[str, bytes]]:
+    source = os.environ if env is None else env
+    values: list[tuple[str, bytes]] = []
+    seen: set[bytes] = set()
+
+    for name, raw_value in source.items():
+        if name not in SECRET_ENV_FILE_INDIRECTION_NAMES:
+            continue
+        path_text = raw_value.strip()
+        if not path_text:
+            continue
+        try:
+            value = Path(path_text).read_bytes()
+        except OSError:
+            continue
+        if len(value) < MIN_SECRET_ENV_VALUE_LENGTH or value in seen:
+            continue
+        seen.add(value)
+        values.append((name, value))
+    return values
+
+
 def add_protected_secret_value_findings(findings: list[dict[str, str]], text: str, rel_path: str) -> None:
     for name, value in protected_secret_environment_values():
         if value in text:
+            findings.append(
+                {
+                    "path": rel_path,
+                    "kind": "protected-secret-value",
+                    "detail": f"{name} value appeared unredacted.",
+                }
+            )
+            return
+
+
+def add_protected_secret_byte_findings(
+    findings: list[dict[str, str]],
+    window: bytes,
+    rel_path: str,
+    protected_values: list[tuple[str, bytes]],
+) -> None:
+    for name, value in protected_values:
+        if value in window:
             findings.append(
                 {
                     "path": rel_path,
@@ -1783,7 +1844,15 @@ def scan_text_for_findings(text: str, rel_path: str, settings: Settings) -> list
         if regex.search(text):
             findings.append({"path": rel_path, "kind": kind})
     add_value_findings(findings, text, rel_path, "authorization-header", AUTH_HEADER_RE, allow_code_like=False)
-    add_value_findings(findings, text, rel_path, "app-token", APP_TOKEN_VALUE_RE, allow_code_like=False)
+    add_value_findings(
+        findings,
+        text,
+        rel_path,
+        "app-token",
+        APP_TOKEN_VALUE_RE,
+        allow_code_like=False,
+        allow_unquoted_code_expression=True,
+    )
     add_value_findings(findings, text, rel_path, "form-password", FORM_PASSWORD_VALUE_RE, allow_code_like=False)
     add_value_findings(findings, text, rel_path, "raw-content-or-app-data", RAW_BODY_VALUE_RE, allow_code_like=False)
     add_value_findings(findings, text, rel_path, "ci-secret-value", CI_SECRET_VALUE_RE, allow_code_like=False)
@@ -1839,9 +1908,11 @@ def scan_decoded_byte_window(window: bytes, rel_path: str, settings: Settings) -
 
 def scan_byte_chunks(chunks: Iterable[bytes], rel_path: str, settings: Settings) -> list[dict[str, str]]:
     findings: list[dict[str, str]] = []
+    protected_byte_values = protected_secret_environment_byte_values()
     tail = b""
     for chunk in chunks:
         window = tail + chunk
+        add_protected_secret_byte_findings(findings, window, rel_path, protected_byte_values)
         findings.extend(scan_decoded_byte_window(window, rel_path, settings))
         tail = window[-TEXT_SCAN_OVERLAP_BYTES:]
     return deduplicate_findings(findings)
@@ -3913,6 +3984,13 @@ def run_self_test() -> None:
         "identifier-app-token",
         lambda out_dir: write_text(out_dir / "token.txt", "CRYPTAD_APP_TOKEN=abcdefghijklmnop\n"),
     )
+    assert_redaction_allows(
+        "app-token-code-expression",
+        lambda out_dir: write_text(
+            out_dir / "static/crypta-platform.js",
+            "const browserSessionToken = sessionTokenFromBootstrap(data);\n",
+        ),
+    )
     assert_redaction_fails(
         "nul-bearing-app-token",
         lambda out_dir: write_bytes(
@@ -3935,9 +4013,21 @@ def run_self_test() -> None:
         "form-password-field",
         lambda out_dir: write_text(out_dir / "secret.json", '{"formPassword": "hunter2-password"}\n'),
     )
+    assert_redaction_fails(
+        "parenthesized-form-password-field",
+        lambda out_dir: write_text(out_dir / "secret.json", '{"formPassword": "(hunter2-password)"}\n'),
+    )
+    assert_redaction_fails(
+        "quoted-function-like-form-password-field",
+        lambda out_dir: write_text(out_dir / "secret.json", '{"formPassword": "secret(password)"}\n'),
+    )
     assert_redaction_allows(
         "redacted-form-password-field",
         lambda out_dir: write_text(out_dir / "secret.json", '{"formPassword": "<redacted>"}\n'),
+    )
+    assert_redaction_fails(
+        "parenthesized-authorization-header",
+        lambda out_dir: write_text(out_dir / "auth.txt", "Authorization: Bearer (abcdefghijklmnopqrstuvwxyz)\n"),
     )
     assert_redaction_fails(
         "json-browser-session-token",
@@ -4034,6 +4124,7 @@ def run_self_test() -> None:
     )
 
     saved_env = {
+        "CRYPTAD_APP_SIGNING_PRIVATE_KEY_FILE": os.environ.get("CRYPTAD_APP_SIGNING_PRIVATE_KEY_FILE"),
         "CRYPTAD_CERT_FORM_PASSWORD": os.environ.get("CRYPTAD_CERT_FORM_PASSWORD"),
         "CRYPTAD_CERT_LIVE_TEST_INSERT_URI_ENV": os.environ.get("CRYPTAD_CERT_LIVE_TEST_INSERT_URI_ENV"),
         "CRYPTAD_CERT_LIVE_TEST_INSERT_URI_FILE": os.environ.get("CRYPTAD_CERT_LIVE_TEST_INSERT_URI_FILE"),
@@ -4058,6 +4149,20 @@ def run_self_test() -> None:
             assert_redaction_fails(
                 "bare-live-private-insert-file-value",
                 lambda out_dir: write_text(out_dir / "live.txt", "unit-test-private-insert-file-material-9f4b6a\n"),
+            )
+        with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-private-key-file-") as secret_temp_name:
+            secret_file = Path(secret_temp_name) / "app-signing-private.der"
+            secret_bytes = b"\x30\x82\x01\x00unit-test-private-key-material-9f4b6a"
+            write_bytes(secret_file, secret_bytes)
+            os.environ["CRYPTAD_APP_SIGNING_PRIVATE_KEY_FILE"] = str(secret_file)
+            secret_base64 = base64.b64encode(secret_bytes).decode("ascii")
+            assert_redaction_fails(
+                "private-key-file-base64-value",
+                lambda out_dir: write_text(out_dir / "neutral.txt", f"{secret_base64}\n"),
+            )
+            assert_redaction_fails(
+                "private-key-file-raw-bytes",
+                lambda out_dir: write_bytes(out_dir / "neutral.bin", secret_bytes),
             )
     finally:
         for name, value in saved_env.items():
