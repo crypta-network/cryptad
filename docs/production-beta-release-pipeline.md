@@ -52,7 +52,8 @@ Production beta supports three explicit test/emergency escape hatches:
   `--skip-gradle` or `--skip-full-build`. The run still records a failed build-complete gate,
   sets `nonRelease=true`, and keeps `promotionReady=false`.
 - `--allow-test-signing-in-production` permits a controlled test run of production-beta mode with
-  non-production signing labels. It must not be used for release publication.
+  non-production signing labels. It sets `nonRelease=true`, keeps `promotionReady=false`, and must
+  not be used for release publication.
 
 ## Required inputs
 
@@ -126,7 +127,7 @@ directories are kept outside the public artifact tree.
 | Field | Meaning |
 | --- | --- |
 | `status` | `pass` when command execution and redaction passed. For release-candidate and production-beta runs, critical promotion gates must also pass. |
-| `promotionReady` | `true` only for production-beta mode with production signing, a complete in-pipeline build/stage/sign run, a clean workspace, and all required gates passing. |
+| `promotionReady` | `true` only for production-beta mode when the final summary `status` is `pass`, production signing is used, the in-pipeline build/stage/sign run completed, the workspace is clean, redaction passed, and all required gates passed. |
 | `nonRelease` | `true` for developer dry-runs, fixture runs, generated test keys, explicit test signing, skipped production-beta build stages, or dirty-workspace runs. |
 | `workspaceStatusKnown` | `false` when `git status --porcelain` could not be read. Strict `release-candidate` and `production-beta` runs fail closed when workspace cleanliness is unknown. |
 | `dirtyWorkspace` | `true` when `git status --porcelain` found uncommitted changes. Dirty production-beta runs fail the `workspace.clean-production-beta` gate even if `--allow-dirty-workspace` was used for a controlled rerun. |

@@ -332,6 +332,7 @@ def production_build_skipped(settings: Settings) -> bool:
 def release_config_non_release(settings: Settings, profile: SigningProfile | None, state: PipelineState) -> bool:
     return (
         settings.mode == "developer-dry-run"
+        or settings.allow_test_signing_in_production
         or production_build_skipped(settings)
         or state.dirty_workspace
         or not state.workspace_status_known
@@ -712,6 +713,11 @@ def prepare_signing_profile(state: PipelineState, key_dir: Path) -> SigningProfi
 
     if has_env_signing(env) and has_env_reviewer(env):
         kind = "production" if state.settings.mode == "production-beta" else "configured"
+        if state.settings.mode == "production-beta" and state.settings.allow_test_signing_in_production:
+            kind = "configured"
+            state.warnings.append(
+                "Production-beta test-signing escape hatch is enabled; configured signing inputs are labelled non-production and outputs remain non-release."
+            )
         return SigningProfile(
             kind=kind,
             generated_test_keys=False,
@@ -1548,7 +1554,7 @@ def evaluate_promotion(state: PipelineState, summaries: dict[str, Any]) -> dict[
         add_gate(
             "signing.production-keys",
             production_signing or settings.allow_test_signing_in_production,
-            "Production beta uses configured production signing inputs.",
+            "Production beta uses configured production signing inputs or the explicit test-signing escape hatch.",
         )
     else:
         add_gate(
@@ -1560,6 +1566,7 @@ def evaluate_promotion(state: PipelineState, summaries: dict[str, Any]) -> dict[
     failed = [gate for gate in gates if gate["status"] != "pass"]
     non_release = (
         settings.mode == "developer-dry-run"
+        or settings.allow_test_signing_in_production
         or production_build_skipped(settings)
         or state.dirty_workspace
         or not state.workspace_status_known
@@ -1997,6 +2004,9 @@ def build_final_summary(
         status = "pass" if command_and_redaction_ok else "fail"
     else:
         status = "pass" if command_and_redaction_ok and promotion["status"] == "pass" else "fail"
+    summary_promotion_ready = bool(command_and_redaction_ok and status == "pass" and promotion["promotionReady"])
+    final_promotion = dict(promotion)
+    final_promotion["promotionReady"] = summary_promotion_ready
     return {
         "schemaVersion": SCHEMA_VERSION,
         "tool": TOOL_NAME,
@@ -2005,7 +2015,7 @@ def build_final_summary(
         "mode": settings.mode,
         "version": state.version,
         "status": status,
-        "promotionReady": promotion["promotionReady"],
+        "promotionReady": summary_promotion_ready,
         "nonRelease": promotion["nonRelease"],
         "workspaceStatusKnown": state.workspace_status_known,
         "dirtyWorkspace": state.dirty_workspace,
@@ -2022,7 +2032,7 @@ def build_final_summary(
         "certificationExitCode": state.certification_exit_code,
         "warnings": state.warnings,
         "failures": state.failures,
-        "promotion": promotion,
+        "promotion": final_promotion,
         "redaction": redaction_report,
         "commands": [dataclasses.asdict(command) for command in state.commands],
         "artifacts": artifacts,
@@ -2654,6 +2664,149 @@ def assert_emergency_build_skip_is_non_promotable() -> None:
         assert "build.production-beta-complete" in failed_ids, promotion
         assert promotion["nonRelease"] is True, promotion
         assert promotion["promotionReady"] is False, promotion
+
+
+def assert_allow_test_signing_env_profile_is_non_release() -> None:
+    env_keys = (
+        "CRYPTAD_APP_SIGNING_KEY_ID",
+        "CRYPTAD_APP_SIGNING_PRIVATE_KEY_FILE",
+        "CRYPTAD_APP_SIGNING_PRIVATE_KEY_BASE64",
+        "CRYPTAD_APP_SIGNING_PUBLIC_KEY_FILE",
+        "CRYPTAD_APP_SIGNING_PUBLIC_KEY_BASE64",
+        "CRYPTAD_APP_REVIEWER_KEY_ID",
+        "CRYPTAD_APP_REVIEWER_PRIVATE_KEY_FILE",
+        "CRYPTAD_APP_REVIEWER_PRIVATE_KEY_BASE64",
+        "CRYPTAD_APP_REVIEWER_PUBLIC_KEY_FILE",
+        "CRYPTAD_APP_REVIEWER_PUBLIC_KEY_BASE64",
+        "CRYPTAD_APP_REVIEW_POLICY_ID",
+        "CRYPTAD_APP_REVIEW_POLICY_VERSION",
+    )
+    saved = {key: os.environ.get(key) for key in env_keys}
+    try:
+        for key in env_keys:
+            os.environ.pop(key, None)
+        os.environ.update(
+            {
+                "CRYPTAD_APP_SIGNING_KEY_ID": "test-app-key",
+                "CRYPTAD_APP_SIGNING_PRIVATE_KEY_BASE64": "dGVzdC1hcHAtcHJpdmF0ZS1rZXk=",
+                "CRYPTAD_APP_SIGNING_PUBLIC_KEY_BASE64": "dGVzdC1hcHAtcHVibGljLWtleQ==",
+                "CRYPTAD_APP_REVIEWER_KEY_ID": "test-reviewer-key",
+                "CRYPTAD_APP_REVIEWER_PRIVATE_KEY_BASE64": "dGVzdC1yZXZpZXdlci1wcml2YXRlLWtleQ==",
+                "CRYPTAD_APP_REVIEWER_PUBLIC_KEY_BASE64": "dGVzdC1yZXZpZXdlci1wdWJsaWMta2V5",
+            }
+        )
+        with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-test-signing-") as temp_name:
+            workspace = Path(temp_name) / "repo"
+            make_self_test_workspace(workspace)
+            out_dir = workspace / "build/production-beta"
+            write_minimal_promotion_artifacts(out_dir)
+            settings = Settings(
+                workspace_root=workspace,
+                out_dir=out_dir,
+                mode="production-beta",
+                catalog_channel="stable",
+                artifact_base_uri="https://downloads.crypta.network/production-beta/self-test",
+                require_live_network=True,
+                require_sandbox_provider_tests=True,
+                skip_gradle=False,
+                skip_full_build=False,
+                use_fixture_evidence=False,
+                allow_dirty_workspace=False,
+                emergency_skip_live_network=False,
+                emergency_skip_build=False,
+                allow_test_signing_in_production=True,
+                previous_summary=None,
+                waiver_file=None,
+                timeout_seconds=60,
+                clean_out_dir=True,
+            )
+            state = PipelineState(settings, "self-test", utc_now(), [], [], [])
+            profile = prepare_signing_profile(state, workspace / "keys")
+            state.signing_profile = profile
+            assert profile.kind == "configured", profile
+            assert profile.generated_test_keys is False, profile
+            assert release_config(state)["nonRelease"] is True
+            promotion = evaluate_promotion(state, passing_promotion_summaries())
+            assert promotion_gate_by_id(promotion, "signing.production-keys")["status"] == "pass", promotion
+            assert promotion["status"] == "pass", promotion
+            assert promotion["nonRelease"] is True, promotion
+            assert promotion["promotionReady"] is False, promotion
+    finally:
+        for key, value in saved.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+
+
+def assert_failed_final_summary_clears_promotion_ready() -> None:
+    with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-summary-ready-") as temp_name:
+        workspace = Path(temp_name) / "repo"
+        make_self_test_workspace(workspace)
+        settings = Settings(
+            workspace_root=workspace,
+            out_dir=workspace / "build/production-beta",
+            mode="production-beta",
+            catalog_channel="stable",
+            artifact_base_uri="https://downloads.crypta.network/production-beta/self-test",
+            require_live_network=True,
+            require_sandbox_provider_tests=True,
+            skip_gradle=False,
+            skip_full_build=False,
+            use_fixture_evidence=False,
+            allow_dirty_workspace=False,
+            emergency_skip_live_network=False,
+            emergency_skip_build=False,
+            allow_test_signing_in_production=False,
+            previous_summary=None,
+            waiver_file=None,
+            timeout_seconds=60,
+            clean_out_dir=True,
+        )
+        promotion = {
+            "status": "pass",
+            "promotionReady": True,
+            "nonRelease": False,
+            "failedGateCount": 0,
+            "gates": [],
+            "knownLimitations": [],
+        }
+        redaction_pass = {"schemaVersion": 1, "status": "pass", "scannedRoot": "<release-out>", "findingCount": 0, "findings": []}
+        redaction_fail = {
+            "schemaVersion": 1,
+            "status": "fail",
+            "scannedRoot": "<release-out>",
+            "findingCount": 1,
+            "findings": [{"kind": "app-token", "path": "reports/leak.txt"}],
+        }
+
+        command_failed_state = PipelineState(
+            settings,
+            "self-test",
+            utc_now(),
+            [],
+            [],
+            ["gradle-stage-sign-verify-first-party-apps failed with exit code 1"],
+            signing_profile=production_signing_profile(),
+        )
+        command_failed_summary = build_final_summary(command_failed_state, promotion, redaction_pass, None)
+        assert command_failed_summary["status"] == "fail", command_failed_summary
+        assert command_failed_summary["promotionReady"] is False, command_failed_summary
+        assert command_failed_summary["promotion"]["promotionReady"] is False, command_failed_summary
+
+        redaction_failed_state = PipelineState(
+            settings,
+            "self-test",
+            utc_now(),
+            [],
+            [],
+            [],
+            signing_profile=production_signing_profile(),
+        )
+        redaction_failed_summary = build_final_summary(redaction_failed_state, promotion, redaction_fail, None)
+        assert redaction_failed_summary["status"] == "fail", redaction_failed_summary
+        assert redaction_failed_summary["promotionReady"] is False, redaction_failed_summary
+        assert redaction_failed_summary["promotion"]["promotionReady"] is False, redaction_failed_summary
 
 
 def promotion_gate_by_id(promotion: dict[str, Any], gate_id: str) -> dict[str, Any]:
@@ -3352,6 +3505,8 @@ def run_self_test() -> None:
     assert_blank_review_policy_env_uses_defaults()
     assert_dirty_production_beta_is_non_promotable()
     assert_emergency_build_skip_is_non_promotable()
+    assert_allow_test_signing_env_profile_is_non_release()
+    assert_failed_final_summary_clears_promotion_ready()
     assert_waived_critical_evidence_is_accepted_without_redaction_findings()
     assert_developer_dry_run_exit_code_fails_on_recorded_failures()
     assert_certification_failure_marks_dry_run_failed()
