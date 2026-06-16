@@ -9,7 +9,7 @@ The current app-facing values are:
 
 ```text
 apiVersion=v1
-contractVersion=18
+contractVersion=19
 ```
 
 The contract does not change Platform API behavior. It publishes metadata that answers which
@@ -37,7 +37,7 @@ The response shape is:
 {
   "contract": {
     "apiVersion": "v1",
-    "contractVersion": 18,
+    "contractVersion": 19,
     "generatedBy": "cryptad",
     "stabilityPolicy": "...",
     "capabilities": [],
@@ -155,6 +155,11 @@ Contract version 18 adds app-visible network budget status and safe budget-exhau
 content fetch, content subscriptions, and Trust Graph import routes. The route descriptors remain
 where they first appeared, but app-facing callers can now observe `429` budget denials and the
 subscription status `budget_exhausted`.
+
+Contract version 19 adds the signed first-party `maintenance` object to catalog app listing/detail
+responses. The existing catalog routes and capability requirements do not change; the new response
+metadata reports owner, support level, data schema policy, migration policy, backup/restore support,
+security policy, deprecation policy, and safe owner/support links from signed catalog v5 fields.
 
 Dependency metadata is review and UX metadata, not authorization. Bundle proposals do not approve
 access. Invocation still requires a non-expired active grant on every call. Provider descriptor
@@ -403,6 +408,11 @@ include the same channel/support/deprecation/advisory fields plus `channelPolicy
 `policyBlockReason`; policy summaries include `allowedChannels` and
 `deprecatedAutoUpdatesBlocked`. These fields are app-facing metadata and are path-free,
 token-free, and secret-free.
+
+Contract version 19 extends catalog app listing/detail responses with a nested `maintenance`
+object. The object is present for old catalogs with `null` values and populated from signed catalog
+v5 metadata when declared. It is metadata-only and must not expose local paths, tokens, private
+insert URIs, raw app data, raw fetched content, or signing material.
 
 App-update summaries also include scheduler metadata for background catalog refresh and app update
 checks. The scheduler fields are path-free and token-free: they expose enabled/status, last and

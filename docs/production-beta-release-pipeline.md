@@ -9,7 +9,8 @@ The production beta pipeline is a release-manager workflow for first-party app e
 It does not rewrite the app platform, change peer protocols, or publish a public app store by
 itself. It combines the existing Gradle build, first-party app staging tasks, `crypta-app` signing
 and catalog tools, app-platform smoke checks, live-network beta evidence, network-scale soak
-evidence, ecosystem RC certification, and final artifact redaction.
+evidence, first-party app maintenance policy metadata, ecosystem RC certification, and final
+artifact redaction.
 
 The entrypoint is:
 
@@ -87,6 +88,7 @@ The production beta command writes this deterministic public layout:
 build/production-beta-release/
   inputs/
     release-config.json
+    first-party-app-maintenance-policy.json
   build/
     staged-apps/
     app-bundles/
@@ -133,6 +135,7 @@ directories are kept outside the public artifact tree.
 | `dirtyWorkspace` | `true` when `git status --porcelain` found uncommitted changes. Dirty production-beta runs fail the `workspace.clean-production-beta` gate even if `--allow-dirty-workspace` was used for a controlled rerun. |
 | `signingProfile.kind` | `production`, `configured`, `test`, `test-fixture`, or `missing`. |
 | `promotion.gates` | Per-gate pass/fail records for signed artifacts, evidence ids, live-network evidence, ecosystem certification, and signing profile checks. |
+| `artifacts.firstPartyMaintenancePolicy` | Redacted copy of the checked-in first-party maintenance policy source used to generate signed catalog descriptors. |
 | `redaction` | Final artifact scanner result and findings. |
 | `commands` | Redacted command metadata, exit codes, durations, and scrubbed output tails. |
 
@@ -147,7 +150,7 @@ The pipeline classifies failures into these groups:
 | --- | --- | --- |
 | Build and staging | Gradle toolchain failure, `stageFirstPartyApps` failure, missing `crypta-app` launcher. | Fails release-candidate and production-beta. |
 | Signing and catalog | Missing production keys in production-beta, bundle verification failure, catalog signature failure, review receipt verification failure. | Fails release-candidate and production-beta. |
-| Evidence | Missing Platform API, UI lint, sandbox, app-platform smoke, network-scale soak, or ecosystem certification evidence. | Fails release-candidate and production-beta when critical. |
+| Evidence | Missing Platform API, UI lint, sandbox, app-platform smoke, first-party maintenance policy, network-scale soak, or ecosystem certification evidence. | Fails release-candidate and production-beta when critical. |
 | Live network | Required live-network beta evidence missing, stale, wrong mode, failed, or explicitly skipped. | Blocks production-beta promotion. `--emergency-skip-live-network` records an explicit failed skip gate instead of silently treating missing live evidence as acceptable. |
 | Redaction | Private insert URI, private key, bearer token, app/browser session token, raw fetched content, raw app data, host path, AppleDouble, `__MACOSX`, `.DS_Store`, or CI secret value found. | Always fails. Redaction findings are not waivable. |
 
@@ -172,6 +175,19 @@ secret-bearing binary filenames before treating binary content as unscannable, a
 
 The scan writes `reports/redaction-report.json`. If the report status is `fail`, the top-level
 summary also fails and the pipeline does not mark the candidate promotion-ready.
+
+## First-party maintenance policy
+
+The pipeline reads `tools/release-certification/first-party-app-maintenance-policy.json` and passes
+the declared `maintenance.*` fields to `crypta-app catalog entry` for every first-party app. The
+signed catalog entries therefore expose maintenance owner, support level, data schema policy,
+migration policy, backup/restore support, security policy, deprecation policy, and support links.
+
+`catalog/channel-metadata.json` includes a redacted per-app `maintenance` object plus
+`maintenancePolicyComplete`. Strict `release-candidate` and `production-beta` modes fail when a
+required first-party app is missing from the policy or has an incomplete maintenance block.
+`developer-dry-run` records warnings for the same condition. Release certification records the
+deterministic evidence id `app-catalog.first-party-maintenance-policy`.
 
 ## Rerunning failed stages
 

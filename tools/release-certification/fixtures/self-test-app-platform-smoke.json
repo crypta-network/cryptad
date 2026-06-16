@@ -60,7 +60,7 @@
       "details": {
         "apiVersion": "v1",
         "capabilityCount": 25,
-        "contractVersion": 18,
+        "contractVersion": 19,
         "endpointCount": 65,
         "flaggedStability": [],
         "stabilityCounts": {
@@ -970,6 +970,118 @@
       "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
       "status": "pass",
       "summary": "Production first-party catalog channel evidence passed deterministic checks."
+    },
+    {
+      "details": {
+        "apps": {
+          "feed-reader": {
+            "maintenance": {
+              "backupRestore": "export-import",
+              "dataSchemaPolicy": "migratable",
+              "deprecationPolicy": "none",
+              "migrationPolicy": "dry-run-required",
+              "owner": "crypta-core",
+              "ownerUri": "https://example.invalid/crypta/owners/core",
+              "securityPolicy": "catalog-advisories",
+              "supportLevel": "maintained",
+              "supportUri": "https://example.invalid/crypta/apps/feed-reader/support"
+            }
+          },
+          "profile-publisher": {
+            "maintenance": {
+              "backupRestore": "operator-supported",
+              "dataSchemaPolicy": "declared",
+              "deprecationPolicy": "none",
+              "migrationPolicy": "declared",
+              "owner": "crypta-core",
+              "ownerUri": "https://example.invalid/crypta/owners/core",
+              "securityPolicy": "catalog-advisories",
+              "supportLevel": "maintained",
+              "supportUri": "https://example.invalid/crypta/apps/profile-publisher/support"
+            }
+          },
+          "publisher": {
+            "maintenance": {
+              "backupRestore": "not-applicable",
+              "dataSchemaPolicy": "stateless",
+              "deprecationPolicy": "none",
+              "migrationPolicy": "none",
+              "owner": "crypta-core",
+              "ownerUri": "https://example.invalid/crypta/owners/core",
+              "securityPolicy": "catalog-advisories",
+              "supportLevel": "core",
+              "supportUri": "https://example.invalid/crypta/apps/publisher/support"
+            }
+          },
+          "queue-manager": {
+            "maintenance": {
+              "backupRestore": "not-applicable",
+              "dataSchemaPolicy": "stateless",
+              "deprecationPolicy": "none",
+              "migrationPolicy": "none",
+              "owner": "crypta-core",
+              "ownerUri": "https://example.invalid/crypta/owners/core",
+              "securityPolicy": "catalog-advisories",
+              "supportLevel": "core",
+              "supportUri": "https://example.invalid/crypta/apps/queue-manager/support"
+            }
+          },
+          "site-publisher": {
+            "maintenance": {
+              "backupRestore": "not-applicable",
+              "dataSchemaPolicy": "stateless",
+              "deprecationPolicy": "none",
+              "migrationPolicy": "none",
+              "owner": "crypta-core",
+              "ownerUri": "https://example.invalid/crypta/owners/core",
+              "securityPolicy": "catalog-advisories",
+              "supportLevel": "maintained",
+              "supportUri": "https://example.invalid/crypta/apps/site-publisher/support"
+            }
+          },
+          "social-inbox": {
+            "maintenance": {
+              "backupRestore": "operator-supported",
+              "dataSchemaPolicy": "declared",
+              "deprecationPolicy": "none",
+              "migrationPolicy": "operator-approved",
+              "owner": "crypta-core",
+              "ownerUri": "https://example.invalid/crypta/owners/core",
+              "securityPolicy": "catalog-advisories",
+              "supportLevel": "local-rc",
+              "supportUri": "https://example.invalid/crypta/apps/social-inbox/support"
+            }
+          },
+          "trust-graph": {
+            "maintenance": {
+              "backupRestore": "operator-supported",
+              "dataSchemaPolicy": "migratable",
+              "deprecationPolicy": "none",
+              "migrationPolicy": "dry-run-required",
+              "owner": "crypta-core",
+              "ownerUri": "https://example.invalid/crypta/owners/core",
+              "securityPolicy": "catalog-advisories",
+              "supportLevel": "local-rc",
+              "supportUri": "https://example.invalid/crypta/apps/trust-graph/support"
+            }
+          }
+        },
+        "policy": "<repo>/tools/release-certification/first-party-app-maintenance-policy.json",
+        "requiredFirstPartyApps": [
+          "queue-manager",
+          "publisher",
+          "site-publisher",
+          "profile-publisher",
+          "social-inbox",
+          "feed-reader",
+          "trust-graph"
+        ]
+      },
+      "id": "app-catalog.first-party-maintenance-policy",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "First-party maintenance policy evidence passed deterministic checks."
     },
     {
       "details": {

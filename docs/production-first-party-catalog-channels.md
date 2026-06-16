@@ -46,6 +46,13 @@ signed advisory records and exact app-version denylist records while preserving 
 security advisory references above. See
 [ecosystem-security-advisories.md](ecosystem-security-advisories.md).
 
+First-party app maintenance policy metadata is introduced separately in `catalog.version=5`. It
+adds signed `app.<id>.maintenance.*` fields for owner, support level, data schema policy, migration
+policy, backup/restore support, security policy, deprecation policy, and support links. It does
+not duplicate or override `channel`, `support.status`, `minimumCryptaVersion`,
+`maximumCryptaVersion`, `securityAdvisories`, `deprecation.*`, or `replacementAppId`. See
+[first-party-app-maintenance-policy.md](first-party-app-maintenance-policy.md).
+
 ## API and Web Shell
 
 Catalog APIs expose channel metadata through `GET /api/v1/app-catalogs`,
@@ -125,3 +132,8 @@ offline-friendly. It verifies:
 
 Live-network beta certification remains separate. The production-channel evidence row is a Phase 9
 release-candidate gate and does not require a live node.
+
+Phase 10 adds `app-catalog.first-party-maintenance-policy` evidence. That evidence verifies the
+checked-in first-party maintenance policy source, catalog v5 parser/writer/descriptor support,
+developer CLI flags, Platform API exposure, Web Shell display, production beta pipeline
+integration, and docs coverage for first-party app support commitments.

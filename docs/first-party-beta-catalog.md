@@ -19,6 +19,10 @@ range. Operators can browse beta entries in Web Shell by selecting the beta cata
 automatic update staging/apply remains stable-only unless local app-update policy explicitly
 allows beta. Deprecated entries should use the production-channel deprecation and replacement
 metadata documented in [production-first-party-catalog-channels.md](production-first-party-catalog-channels.md).
+First-party entries must also carry the signed maintenance metadata documented in
+[first-party-app-maintenance-policy.md](first-party-app-maintenance-policy.md). That metadata is
+additive: `channel`, `support.status`, deprecation, replacement, advisory, and version-bound fields
+remain authoritative for their existing meanings.
 
 The third-party developer beta toolkit extends the standalone CLI with scaffold templates, a mock
 dev server, offline app tests, catalog entry generation, a dry-run USK publication checklist, and
@@ -110,7 +114,7 @@ permissions=queue.read,queue.write
 permissions.rationale.queue.read=Reads local transfer queue state.
 permissions.rationale.queue.write=Updates local queue state after operator action.
 api.minimumVersion=1
-api.maximumTestedVersion=18
+api.maximumTestedVersion=19
 review.status=reviewed
 review.note=First-party beta review completed.
 changelog.summary=First public beta catalog entry.
@@ -126,7 +130,7 @@ permissions.rationale.content.insert.app-document=Queues the generated profile d
 permissions.rationale.app.data.read=Restores bounded profile drafts and publish summaries.
 permissions.rationale.app.data.write=Saves bounded profile drafts and publish summaries.
 api.minimumVersion=9
-api.maximumTestedVersion=18
+api.maximumTestedVersion=19
 api.experimentalCapabilitiesAccepted=true
 ```
 
@@ -146,8 +150,17 @@ categories=reader,publishing,content
 review.status=reviewed
 review.note=First-party feed reference app.
 api.minimumVersion=9
-api.maximumTestedVersion=18
+api.maximumTestedVersion=19
 api.experimentalCapabilitiesAccepted=false
+maintenance.owner=crypta-core
+maintenance.ownerUri=https://example.invalid/crypta/owners/core
+maintenance.supportLevel=core
+maintenance.dataSchemaPolicy=stateless
+maintenance.migrationPolicy=none
+maintenance.backupRestore=not-applicable
+maintenance.securityPolicy=catalog-advisories
+maintenance.deprecationPolicy=none
+maintenance.supportUri=https://example.invalid/crypta/apps/queue-manager/support
 ```
 
 Social Inbox RC descriptors should include vault, content-fetch, content-subscription,
@@ -179,7 +192,7 @@ categories=social,identity,reference
 review.status=reviewed
 review.note=First-party Social Inbox RC reference app; local threading and Trust Graph annotations only, not full WoT, plugin compatibility, Freetalk/Sone/Freemail, encrypted mail, crawler, or daemon-core protocol.
 api.minimumVersion=16
-api.maximumTestedVersion=18
+api.maximumTestedVersion=19
 api.experimentalCapabilitiesAccepted=true
 ```
 
@@ -216,7 +229,7 @@ deprecation.status=none
 review.status=reviewed
 review.note=First-party local trust graph preview; not full WoT or moderation.
 api.minimumVersion=10
-api.maximumTestedVersion=18
+api.maximumTestedVersion=19
 api.experimentalCapabilitiesAccepted=true
 ```
 

@@ -171,6 +171,7 @@ public final class AppCatalogWriter {
         entry.changelog(),
         entry.screenshots(),
         entry.productionMetadata(),
+        entry.maintenanceMetadata(),
         entry.bundleUri(),
         entry.bundleSha256(),
         entry.bundleSizeBytes(),
@@ -201,6 +202,11 @@ public final class AppCatalogWriter {
 
   private static int catalogVersion(
       List<AppCatalogEntry> entries, AppCatalogSecurityPolicy securityPolicy) {
+    for (AppCatalogEntry entry : entries) {
+      if (entry.hasMaintenanceMetadata()) {
+        return AppCatalog.VERSION_FIRST_PARTY_MAINTENANCE;
+      }
+    }
     if (securityPolicy.hasCatalogFields()) {
       return AppCatalog.VERSION_SECURITY_POLICY;
     }
@@ -222,6 +228,13 @@ public final class AppCatalogWriter {
         && catalog.version() < AppCatalog.VERSION_SECURITY_POLICY) {
       throw AppCatalogSidecars.invalidEntry(
           "catalog.version 4 is required when security policy metadata is present");
+    }
+    for (AppCatalogEntry entry : catalog.entries()) {
+      if (entry.hasMaintenanceMetadata()
+          && catalog.version() < AppCatalog.VERSION_FIRST_PARTY_MAINTENANCE) {
+        throw AppCatalogSidecars.invalidEntry(
+            "catalog.version 5 is required when maintenance metadata is present");
+      }
     }
     if (catalog.version() >= AppCatalog.VERSION_PRODUCTION_CHANNELS) {
       return;
@@ -264,6 +277,7 @@ public final class AppCatalogWriter {
         descriptor.changelog(),
         descriptor.screenshots(),
         descriptor.productionMetadata(),
+        descriptor.maintenanceMetadata(),
         descriptor.bundleUri(),
         artifact.sha256(),
         artifact.sizeBytes(),
@@ -555,6 +569,7 @@ public final class AppCatalogWriter {
     }
     appendApiCompatibility(builder, prefix, entry.compatibility());
     appendProductionMetadata(builder, prefix, entry.productionMetadata());
+    appendMaintenanceMetadata(builder, prefix, entry.maintenanceMetadata());
     if (entry.review().hasCatalogFields()) {
       appendProperty(builder, prefix + "review.status", entry.review().status().catalogValue());
       entry
@@ -651,6 +666,45 @@ public final class AppCatalogWriter {
           prefix + "securityAdvisory." + advisory.id() + ".uri",
           advisory.uri().toString());
     }
+  }
+
+  private static void appendMaintenanceMetadata(
+      StringBuilder builder, String prefix, AppCatalogMaintenanceMetadata metadata) {
+    if (!metadata.hasCatalogFields()) {
+      return;
+    }
+    appendProperty(builder, prefix + "maintenance.owner", metadata.owner().orElseThrow());
+    metadata
+        .ownerUri()
+        .ifPresent(uri -> appendProperty(builder, prefix + "maintenance.ownerUri", uri.toString()));
+    appendProperty(
+        builder,
+        prefix + "maintenance.supportLevel",
+        metadata.supportLevel().orElseThrow().catalogValue());
+    appendProperty(
+        builder,
+        prefix + "maintenance.dataSchemaPolicy",
+        metadata.dataSchemaPolicy().orElseThrow().catalogValue());
+    appendProperty(
+        builder,
+        prefix + "maintenance.migrationPolicy",
+        metadata.migrationPolicy().orElseThrow().catalogValue());
+    appendProperty(
+        builder,
+        prefix + "maintenance.backupRestore",
+        metadata.backupRestore().orElseThrow().catalogValue());
+    appendProperty(
+        builder,
+        prefix + "maintenance.securityPolicy",
+        metadata.securityPolicy().orElseThrow().catalogValue());
+    appendProperty(
+        builder,
+        prefix + "maintenance.deprecationPolicy",
+        metadata.deprecationPolicy().orElseThrow().catalogValue());
+    metadata
+        .supportUri()
+        .ifPresent(
+            uri -> appendProperty(builder, prefix + "maintenance.supportUri", uri.toString()));
   }
 
   private static void appendSecurityPolicy(

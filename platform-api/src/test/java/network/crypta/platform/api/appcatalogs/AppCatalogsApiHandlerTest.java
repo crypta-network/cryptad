@@ -22,6 +22,7 @@ import network.crypta.platform.appcatalog.AppCatalogEntry;
 import network.crypta.platform.appcatalog.AppCatalogException;
 import network.crypta.platform.appcatalog.AppCatalogFetchStatus;
 import network.crypta.platform.appcatalog.AppCatalogInstallPlan;
+import network.crypta.platform.appcatalog.AppCatalogMaintenanceMetadata;
 import network.crypta.platform.appcatalog.AppCatalogManager;
 import network.crypta.platform.appcatalog.AppCatalogProductionMetadata;
 import network.crypta.platform.appcatalog.AppCatalogReviewMetadata;
@@ -363,6 +364,28 @@ class AppCatalogsApiHandlerTest {
             "supportStatus",
             "experimental"),
         fields(app, "categories", "homepage", "source", "license", "channel", "supportStatus"));
+    Map<String, Object> maintenance = (Map<String, Object>) app.get("maintenance");
+    assertEquals(
+        Map.of(
+            "owner",
+            "crypta-core",
+            "ownerUri",
+            "https://example.invalid/crypta/owners/core",
+            "supportLevel",
+            "core",
+            "dataSchemaPolicy",
+            "stateless",
+            "migrationPolicy",
+            "none",
+            "backupRestore",
+            "not-applicable",
+            "securityPolicy",
+            "catalog-advisories",
+            "deprecationPolicy",
+            "none",
+            "supportUri",
+            "https://example.invalid/crypta/apps/queue-manager/support"),
+        maintenance);
     Map<String, Object> deprecation = (Map<String, Object>) app.get("deprecation");
     assertEquals(
         Map.of(
@@ -461,6 +484,10 @@ class AppCatalogsApiHandlerTest {
     assertEquals(List.of(), app.get("categories"));
     assertEquals("stable", app.get("channel"));
     assertEquals("supported", app.get("supportStatus"));
+    Map<String, Object> maintenance = (Map<String, Object>) app.get("maintenance");
+    assertNull(maintenance.get("owner"));
+    assertNull(maintenance.get("supportLevel"));
+    assertNull(maintenance.get("supportUri"));
     assertEquals("none", ((Map<?, ?>) app.get("deprecation")).get("status"));
     assertEquals(List.of(), app.get("securityAdvisories"));
     assertFalse((Boolean) app.get("installed"));
@@ -1196,6 +1223,7 @@ class AppCatalogsApiHandlerTest {
             Optional.of(URI.create("https://example.invalid/changelog.txt"))),
         List.of(URI.create("https://example.invalid/shot-1.png")),
         productionMetadata(),
+        maintenanceMetadata(),
         URI.create("https://example.invalid/apps/queue-manager.zip"),
         "0".repeat(64),
         0L,
@@ -1232,6 +1260,7 @@ class AppCatalogsApiHandlerTest {
         entry.changelog(),
         entry.screenshots(),
         entry.productionMetadata(),
+        entry.maintenanceMetadata(),
         entry.bundleUri(),
         entry.bundleSha256(),
         entry.bundleSizeBytes(),
@@ -1251,6 +1280,20 @@ class AppCatalogsApiHandlerTest {
             new AppCatalogSecurityAdvisory(
                 "CRYPTA-2026-0001",
                 URI.create("https://example.invalid/advisories/CRYPTA-2026-0001"))),
+        true);
+  }
+
+  private static AppCatalogMaintenanceMetadata maintenanceMetadata() {
+    return new AppCatalogMaintenanceMetadata(
+        Optional.of("crypta-core"),
+        Optional.of(URI.create("https://example.invalid/crypta/owners/core")),
+        Optional.of(AppCatalogMaintenanceMetadata.SupportLevel.CORE),
+        Optional.of(AppCatalogMaintenanceMetadata.DataSchemaPolicy.STATELESS),
+        Optional.of(AppCatalogMaintenanceMetadata.MigrationPolicy.NONE),
+        Optional.of(AppCatalogMaintenanceMetadata.BackupRestoreSupport.NOT_APPLICABLE),
+        Optional.of(AppCatalogMaintenanceMetadata.SecurityPolicy.CATALOG_ADVISORIES),
+        Optional.of(AppCatalogMaintenanceMetadata.DeprecationPolicy.NONE),
+        Optional.of(URI.create("https://example.invalid/crypta/apps/queue-manager/support")),
         true);
   }
 

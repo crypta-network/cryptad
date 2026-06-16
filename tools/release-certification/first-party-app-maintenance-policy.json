@@ -1,0 +1,132 @@
+{
+  "schemaVersion": 1,
+  "owner": "crypta-core",
+  "apps": {
+    "queue-manager": {
+      "channel": "stable",
+      "supportStatus": "supported",
+      "deprecationStatus": "none",
+      "minimumCryptaVersion": null,
+      "maximumCryptaVersion": null,
+      "maintenance": {
+        "owner": "crypta-core",
+        "ownerUri": "https://example.invalid/crypta/owners/core",
+        "supportLevel": "core",
+        "dataSchemaPolicy": "stateless",
+        "migrationPolicy": "none",
+        "backupRestore": "not-applicable",
+        "securityPolicy": "catalog-advisories",
+        "deprecationPolicy": "none",
+        "supportUri": "https://example.invalid/crypta/apps/queue-manager/support"
+      }
+    },
+    "publisher": {
+      "channel": "stable",
+      "supportStatus": "supported",
+      "deprecationStatus": "none",
+      "minimumCryptaVersion": null,
+      "maximumCryptaVersion": null,
+      "maintenance": {
+        "owner": "crypta-core",
+        "ownerUri": "https://example.invalid/crypta/owners/core",
+        "supportLevel": "core",
+        "dataSchemaPolicy": "stateless",
+        "migrationPolicy": "none",
+        "backupRestore": "not-applicable",
+        "securityPolicy": "catalog-advisories",
+        "deprecationPolicy": "none",
+        "supportUri": "https://example.invalid/crypta/apps/publisher/support"
+      }
+    },
+    "site-publisher": {
+      "channel": "stable",
+      "supportStatus": "supported",
+      "deprecationStatus": "none",
+      "minimumCryptaVersion": null,
+      "maximumCryptaVersion": null,
+      "maintenance": {
+        "owner": "crypta-core",
+        "ownerUri": "https://example.invalid/crypta/owners/core",
+        "supportLevel": "maintained",
+        "dataSchemaPolicy": "stateless",
+        "migrationPolicy": "none",
+        "backupRestore": "not-applicable",
+        "securityPolicy": "catalog-advisories",
+        "deprecationPolicy": "none",
+        "supportUri": "https://example.invalid/crypta/apps/site-publisher/support"
+      }
+    },
+    "profile-publisher": {
+      "channel": "stable",
+      "supportStatus": "supported",
+      "deprecationStatus": "none",
+      "minimumCryptaVersion": null,
+      "maximumCryptaVersion": null,
+      "maintenance": {
+        "owner": "crypta-core",
+        "ownerUri": "https://example.invalid/crypta/owners/core",
+        "supportLevel": "maintained",
+        "dataSchemaPolicy": "declared",
+        "migrationPolicy": "declared",
+        "backupRestore": "operator-supported",
+        "securityPolicy": "catalog-advisories",
+        "deprecationPolicy": "none",
+        "supportUri": "https://example.invalid/crypta/apps/profile-publisher/support"
+      }
+    },
+    "social-inbox": {
+      "channel": "stable",
+      "supportStatus": "supported",
+      "deprecationStatus": "none",
+      "minimumCryptaVersion": null,
+      "maximumCryptaVersion": null,
+      "maintenance": {
+        "owner": "crypta-core",
+        "ownerUri": "https://example.invalid/crypta/owners/core",
+        "supportLevel": "local-rc",
+        "dataSchemaPolicy": "declared",
+        "migrationPolicy": "operator-approved",
+        "backupRestore": "operator-supported",
+        "securityPolicy": "catalog-advisories",
+        "deprecationPolicy": "none",
+        "supportUri": "https://example.invalid/crypta/apps/social-inbox/support"
+      }
+    },
+    "feed-reader": {
+      "channel": "stable",
+      "supportStatus": "supported",
+      "deprecationStatus": "none",
+      "minimumCryptaVersion": null,
+      "maximumCryptaVersion": null,
+      "maintenance": {
+        "owner": "crypta-core",
+        "ownerUri": "https://example.invalid/crypta/owners/core",
+        "supportLevel": "maintained",
+        "dataSchemaPolicy": "migratable",
+        "migrationPolicy": "dry-run-required",
+        "backupRestore": "export-import",
+        "securityPolicy": "catalog-advisories",
+        "deprecationPolicy": "none",
+        "supportUri": "https://example.invalid/crypta/apps/feed-reader/support"
+      }
+    },
+    "trust-graph": {
+      "channel": "stable",
+      "supportStatus": "supported",
+      "deprecationStatus": "none",
+      "minimumCryptaVersion": null,
+      "maximumCryptaVersion": null,
+      "maintenance": {
+        "owner": "crypta-core",
+        "ownerUri": "https://example.invalid/crypta/owners/core",
+        "supportLevel": "local-rc",
+        "dataSchemaPolicy": "migratable",
+        "migrationPolicy": "dry-run-required",
+        "backupRestore": "operator-supported",
+        "securityPolicy": "catalog-advisories",
+        "deprecationPolicy": "none",
+        "supportUri": "https://example.invalid/crypta/apps/trust-graph/support"
+      }
+    }
+  }
+}

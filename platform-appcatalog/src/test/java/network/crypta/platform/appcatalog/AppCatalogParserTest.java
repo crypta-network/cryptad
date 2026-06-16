@@ -200,6 +200,39 @@ class AppCatalogParserTest {
   }
 
   @Test
+  void parse_whenCatalogHasMaintenanceMetadata_expectMetadataNormalized() {
+    AppCatalog catalog = AppCatalogParser.parse(bytes(validMaintenanceCatalog()));
+
+    AppCatalogEntry entry = catalog.entries().getFirst();
+    AppCatalogMaintenanceMetadata metadata = entry.maintenanceMetadata();
+
+    assertEquals(AppCatalog.VERSION_FIRST_PARTY_MAINTENANCE, catalog.version());
+    assertEquals("crypta-core", metadata.owner().orElseThrow());
+    assertEquals(
+        "https://example.invalid/crypta/owners/core", metadata.ownerUri().orElseThrow().toString());
+    assertEquals(
+        AppCatalogMaintenanceMetadata.SupportLevel.CORE, metadata.supportLevel().orElseThrow());
+    assertEquals(
+        AppCatalogMaintenanceMetadata.DataSchemaPolicy.STATELESS,
+        metadata.dataSchemaPolicy().orElseThrow());
+    assertEquals(
+        AppCatalogMaintenanceMetadata.MigrationPolicy.NONE,
+        metadata.migrationPolicy().orElseThrow());
+    assertEquals(
+        AppCatalogMaintenanceMetadata.BackupRestoreSupport.NOT_APPLICABLE,
+        metadata.backupRestore().orElseThrow());
+    assertEquals(
+        AppCatalogMaintenanceMetadata.SecurityPolicy.CATALOG_ADVISORIES,
+        metadata.securityPolicy().orElseThrow());
+    assertEquals(
+        AppCatalogMaintenanceMetadata.DeprecationPolicy.NONE,
+        metadata.deprecationPolicy().orElseThrow());
+    assertEquals(
+        "https://example.invalid/crypta/apps/queue-manager/support",
+        metadata.supportUri().orElseThrow().toString());
+  }
+
+  @Test
   void parse_whenCatalogHasSecurityPolicy_expectDecisionDenylisted() {
     AppCatalog catalog = AppCatalogParser.parse(bytes(validSecurityPolicyCatalog()));
 
@@ -292,6 +325,11 @@ class AppCatalogParserTest {
   }
 
   @Test
+  void parse_whenVersionFourCatalogDeclaresMaintenanceMetadata_expectInvalidCatalogEntry() {
+    assertInvalidEntry(validMaintenanceCatalog().replace("catalog.version=5", "catalog.version=4"));
+  }
+
+  @Test
   void parse_whenVersionOneCatalogDeclaresStoreMetadata_expectInvalidCatalogEntry() {
     assertInvalidEntry(
         validSingleEntryCatalog()
@@ -375,6 +413,89 @@ class AppCatalogParserTest {
     assertInvalidEntry(
         validProductionCatalog()
             .replace("app.queue-manager.channel=beta", "app.queue-manager.channel=preview"));
+  }
+
+  @Test
+  void parse_whenMaintenanceSupportLevelIsMalformed_expectInvalidCatalogEntry() {
+    assertInvalidEntry(
+        validMaintenanceCatalog()
+            .replace(
+                "app.queue-manager.maintenance.supportLevel=core",
+                "app.queue-manager.maintenance.supportLevel=forever"));
+  }
+
+  @Test
+  void parse_whenMaintenanceOwnerIsBlank_expectInvalidCatalogEntry() {
+    assertInvalidEntry(
+        validMaintenanceCatalog()
+            .replace(
+                "app.queue-manager.maintenance.owner=crypta-core",
+                "app.queue-manager.maintenance.owner=   "));
+  }
+
+  @Test
+  void parse_whenMaintenanceOwnerUriUsesUnsafeScheme_expectInvalidCatalogEntry() {
+    assertInvalidEntry(
+        validMaintenanceCatalog()
+            .replace(
+                "app.queue-manager.maintenance.ownerUri=https://example.invalid/crypta/owners/core",
+                "app.queue-manager.maintenance.ownerUri=file:///tmp/owner"));
+  }
+
+  @Test
+  void parse_whenMaintenanceSupportUriUsesUnsafeScheme_expectInvalidCatalogEntry() {
+    assertInvalidEntry(
+        validMaintenanceCatalog()
+            .replace(
+                "app.queue-manager.maintenance.supportUri=https://example.invalid/crypta/apps/queue-manager/support",
+                "app.queue-manager.maintenance.supportUri=file:///tmp/support"));
+  }
+
+  @Test
+  void parse_whenMaintenancePolicyIsIncomplete_expectInvalidCatalogEntry() {
+    assertInvalidEntry(
+        validMaintenanceCatalog()
+            .replace("app.queue-manager.maintenance.migrationPolicy=none\n", ""));
+  }
+
+  @Test
+  void parse_whenDottedAppIdContainsMaintenance_expectNoMaintenanceVersionGate() {
+    AppCatalog catalog =
+        AppCatalogParser.parse(
+            bytes(
+                """
+                catalog.version=4
+                catalog.id=core
+                catalog.name=Crypta Core Apps
+                catalog.generatedAt=%s
+                catalog.entries=foo,foo.maintenance
+                app.foo.id=foo
+                app.foo.name=Foo
+                app.foo.version=1.0.0
+                app.foo.summary=First dotted id regression fixture.
+                app.foo.channel=stable
+                app.foo.bundle.uri=https://example.invalid/foo.zip
+                app.foo.bundle.sha256=%s
+                app.foo.bundle.size.bytes=0
+                app.foo.bundle.type=zip
+                app.foo.permissions=
+                app.foo.maintenance.id=foo.maintenance
+                app.foo.maintenance.name=Foo Maintenance
+                app.foo.maintenance.version=1.0.0
+                app.foo.maintenance.summary=Ordinary app whose id contains maintenance.
+                app.foo.maintenance.channel=stable
+                app.foo.maintenance.bundle.uri=https://example.invalid/foo-maintenance.zip
+                app.foo.maintenance.bundle.sha256=%s
+                app.foo.maintenance.bundle.size.bytes=0
+                app.foo.maintenance.bundle.type=zip
+                app.foo.maintenance.permissions=
+                """
+                    .formatted(GENERATED_AT, SHA256, SHA256)));
+
+    assertEquals(AppCatalog.VERSION_SECURITY_POLICY, catalog.version());
+    assertEquals(
+        List.of("foo", "foo.maintenance"),
+        catalog.entries().stream().map(AppCatalogEntry::appId).toList());
   }
 
   @Test
@@ -569,6 +690,38 @@ class AppCatalogParserTest {
     app.queue-manager.channel=beta
     app.queue-manager.securityAdvisories=CRYPTA-2026-0001
     app.queue-manager.securityAdvisory.CRYPTA-2026-0001.uri=https://example.invalid/advisories/CRYPTA-2026-0001
+    app.queue-manager.bundle.uri=https://example.invalid/queue-manager.zip
+    app.queue-manager.bundle.sha256=%s
+    app.queue-manager.bundle.size.bytes=0
+    app.queue-manager.bundle.type=zip
+    app.queue-manager.permissions=queue.read
+    """
+        .formatted(GENERATED_AT, SHA256);
+  }
+
+  private static String validMaintenanceCatalog() {
+    return """
+    catalog.version=5
+    catalog.id=core
+    catalog.name=Crypta Core Apps
+    catalog.generatedAt=%s
+    catalog.entries=queue-manager
+    app.queue-manager.id=queue-manager
+    app.queue-manager.name=Queue Manager
+    app.queue-manager.version=1.2.0
+    app.queue-manager.summary=Manage transfer queues.
+    app.queue-manager.channel=stable
+    app.queue-manager.support.status=supported
+    app.queue-manager.deprecation.status=none
+    app.queue-manager.maintenance.owner=crypta-core
+    app.queue-manager.maintenance.ownerUri=https://example.invalid/crypta/owners/core
+    app.queue-manager.maintenance.supportLevel=core
+    app.queue-manager.maintenance.dataSchemaPolicy=stateless
+    app.queue-manager.maintenance.migrationPolicy=none
+    app.queue-manager.maintenance.backupRestore=not-applicable
+    app.queue-manager.maintenance.securityPolicy=catalog-advisories
+    app.queue-manager.maintenance.deprecationPolicy=none
+    app.queue-manager.maintenance.supportUri=https://example.invalid/crypta/apps/queue-manager/support
     app.queue-manager.bundle.uri=https://example.invalid/queue-manager.zip
     app.queue-manager.bundle.sha256=%s
     app.queue-manager.bundle.size.bytes=0

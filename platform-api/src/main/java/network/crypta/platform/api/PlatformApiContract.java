@@ -57,7 +57,7 @@ public record PlatformApiContract(
    * way that tooling should be able to compare. It is not the Cryptad build number, and it is not
    * the URL API version.
    */
-  public static final int CURRENT_CONTRACT_VERSION = 18;
+  public static final int CURRENT_CONTRACT_VERSION = 19;
 
   private static final int INITIAL_CONTRACT_VERSION = 1;
   private static final int APP_UPDATE_LIFECYCLE_CONTRACT_VERSION = 2;
@@ -75,6 +75,7 @@ public record PlatformApiContract(
   private static final int APP_SERVICE_DEPENDENCY_BUNDLES_CONTRACT_VERSION = 16;
   private static final int ECOSYSTEM_SECURITY_ADVISORY_CONTRACT_VERSION = 17;
   private static final int NETWORK_SCALE_BUDGET_CONTRACT_VERSION = 18;
+  private static final int FIRST_PARTY_MAINTENANCE_CONTRACT_VERSION = 19;
 
   /**
    * Stable producer label written into generated contract snapshots.
@@ -102,6 +103,9 @@ public record PlatformApiContract(
           + NETWORK_SCALE_BUDGET_CONTRACT_VERSION
           + " adds app-visible network budget status and safe budget-exhausted errors for"
           + " content fetches, content subscriptions, and Trust Graph imports"
+          + ". Contract version "
+          + FIRST_PARTY_MAINTENANCE_CONTRACT_VERSION
+          + " adds signed first-party maintenance policy metadata to catalog app summaries"
           + ". Endpoint descriptors retain the contract version where each route first appeared. "
           + "Experimental, deprecated, scheduled-for-removal, and internal entries are flagged for "
           + "developer tooling and release review before behavior changes.";

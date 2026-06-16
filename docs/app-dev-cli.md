@@ -273,6 +273,14 @@ crypta-app catalog entry \
   --maximum-crypta-version 1499 \
   --support-status supported \
   --deprecation-status none \
+  --maintenance-owner crypta-core \
+  --maintenance-support-level maintained \
+  --maintenance-data-schema-policy declared \
+  --maintenance-migration-policy declared \
+  --maintenance-backup-restore operator-supported \
+  --maintenance-security-policy catalog-advisories \
+  --maintenance-deprecation-policy none \
+  --maintenance-support-uri https://example.invalid/crypta/apps/hello-queue/support \
   --security-advisory CRYPTA-2026-0001=https://example.invalid/advisories/CRYPTA-2026-0001 \
   --permission-rationale queue.read="Reads the local transfer queue." \
   --permission-rationale queue.write="Lets the app cancel or reprioritize requests." \
@@ -287,6 +295,15 @@ entries can also use `--deprecation-message` and `--replacement-app-id`; repeat
 the same descriptor parser used by `catalog create`, so generated descriptors with channel,
 maximum-version, support, deprecation, replacement, or advisory metadata produce
 `catalog.version=3` when written into a catalog.
+
+First-party entries can also declare signed maintenance policy metadata with
+`--maintenance-owner`, `--maintenance-owner-uri`, `--maintenance-support-level`,
+`--maintenance-data-schema-policy`, `--maintenance-migration-policy`,
+`--maintenance-backup-restore`, `--maintenance-security-policy`,
+`--maintenance-deprecation-policy`, and `--maintenance-support-uri`. These fields produce
+`catalog.version=5`. They do not replace `--channel`, `--support-status`,
+`--minimum-crypta-version`, `--maximum-crypta-version`, deprecation fields, replacement app ids, or
+security advisories. See [first-party-app-maintenance-policy.md](first-party-app-maintenance-policy.md).
 
 `crypta-app catalog create` can also author catalog-level security response metadata. Repeat
 `--security-advisory-record` for signed advisory records and `--security-denylist-entry` for exact
@@ -312,6 +329,15 @@ minimumCryptaVersion=1481
 maximumCryptaVersion=1499
 support.status=supported
 deprecation.status=none
+maintenance.owner=crypta-core
+maintenance.ownerUri=https://example.invalid/crypta/owners/core
+maintenance.supportLevel=maintained
+maintenance.dataSchemaPolicy=declared
+maintenance.migrationPolicy=declared
+maintenance.backupRestore=operator-supported
+maintenance.securityPolicy=catalog-advisories
+maintenance.deprecationPolicy=none
+maintenance.supportUri=https://example.invalid/crypta/apps/hello-queue/support
 securityAdvisories=CRYPTA-2026-0001
 securityAdvisory.CRYPTA-2026-0001.uri=https://example.invalid/advisories/CRYPTA-2026-0001
 review.status=reviewed
@@ -348,7 +374,7 @@ permissions.rationale.queue.write=Creates insert requests for the publish operat
 permissions.rationale.queue.read=Displays publish progress from the local transfer queue.
 changelog.summary=Adds the first content reference app.
 api.minimumVersion=3
-api.maximumTestedVersion=18
+api.maximumTestedVersion=19
 api.experimentalCapabilitiesAccepted=false
 ```
 
@@ -379,7 +405,7 @@ permissions.rationale.app.data.read=Restores bounded profile drafts and publish 
 permissions.rationale.app.data.write=Saves bounded profile drafts and publish summaries.
 changelog.summary=Adds the first identity-profile reference app.
 api.minimumVersion=9
-api.maximumTestedVersion=18
+api.maximumTestedVersion=19
 api.experimentalCapabilitiesAccepted=true
 ```
 
@@ -414,7 +440,7 @@ permissions.rationale.app.data.read=Restores the app-owned feed list, selected s
 permissions.rationale.app.data.write=Saves bounded app-owned reader state through the durable app-data API.
 changelog.summary=Adds the first feed reader and publisher reference app.
 api.minimumVersion=9
-api.maximumTestedVersion=18
+api.maximumTestedVersion=19
 api.experimentalCapabilitiesAccepted=false
 ```
 
@@ -459,7 +485,7 @@ service-request.trust-score.contexts=message-author
 service-request.trust-score.purpose=Annotate Social Inbox message authors using the local Trust Graph Local RC score service.
 changelog.summary=Adds the Social Inbox RC threaded reference app.
 api.minimumVersion=16
-api.maximumTestedVersion=18
+api.maximumTestedVersion=19
 api.experimentalCapabilitiesAccepted=true
 ```
 
@@ -490,6 +516,7 @@ Descriptors can also author optional app-store metadata:
 | `replacementAppId` | `app.<id>.replacementAppId` |
 | `securityAdvisories` | `app.<id>.securityAdvisories` |
 | `securityAdvisory.<id>.uri` | `app.<id>.securityAdvisory.<id>.uri` |
+| `maintenance.*` | `app.<id>.maintenance.*` |
 | `review.status` | `app.<id>.review.status` |
 | `review.note` | `app.<id>.review.note` |
 | `permissions.rationale.<permission>` | `app.<id>.permissions.rationale.<permission>` |
@@ -512,6 +539,7 @@ any app-store metadata, or descriptors/artifacts that declare API compatibility 
 accepting unknown fields. Descriptors that declare production channel metadata, maximum Cryptad
 compatibility, support status, deprecation metadata, replacement app ids, or security advisory
 references generate `catalog.version=3`.
+Descriptors that declare first-party maintenance policy metadata generate `catalog.version=5`.
 `homepage`, `source`, `screenshot.N`, and `changelog.uri` are URI metadata for operator display.
 `review.status` and `review.note` are advisory and do not replace signed catalog or signed bundle
 verification. `minimumCryptaVersion` is advisory and does not block install/update by itself;
@@ -527,6 +555,13 @@ listed in `securityAdvisories` must have matching `securityAdvisory.<id>.uri` me
 same safe URI policy as homepage, source, screenshot, and changelog URIs. These fields are
 operator-visible metadata only: they do not bypass catalog signatures, bundle signatures, review
 receipts, artifact digests, or update review gates.
+
+Maintenance metadata is strict and deterministic. `maintenance.supportLevel`,
+`maintenance.dataSchemaPolicy`, `maintenance.migrationPolicy`, `maintenance.backupRestore`,
+`maintenance.securityPolicy`, and `maintenance.deprecationPolicy` must use the enum tokens from
+[first-party-app-maintenance-policy.md](first-party-app-maintenance-policy.md). Maintenance owner
+and URI fields must be bounded single-line metadata and must not contain secrets, private insert
+URIs, credentials, or local paths.
 
 API compatibility metadata is advisory. The signed bundle manifest remains authoritative for the
 app artifact, and catalog-vs-bundle mismatches are reported by `crypta-app compat verify`.

@@ -703,6 +703,9 @@ class WebShellResourcesTest {
     assertTrue(script.contains("function catalogChannelLabel(channel)"));
     assertTrue(script.contains("function catalogChannelTone(channel)"));
     assertTrue(script.contains("function catalogAppDeprecation(app)"));
+    assertTrue(script.contains("function catalogMaintenancePolicy(app)"));
+    assertTrue(script.contains("function catalogMaintenanceDeclared(maintenance)"));
+    assertTrue(script.contains("function maintenancePolicyTone(supportLevel)"));
     assertTrue(script.contains("function catalogAppDeprecated(app)"));
     assertTrue(script.contains("function securityAdvisoryListNode(values)"));
     assertTrue(script.contains("function securityDecisionLabel(securityDecision)"));
@@ -710,7 +713,12 @@ class WebShellResourcesTest {
         script.contains("function appendSecurityAcknowledgement(form, securityDecision, action)"));
     assertTrue(script.contains("input.name = \"securityAcknowledged\";"));
     assertTrue(script.contains("function catalogSecurityDetailsNode(app)"));
+    assertTrue(script.contains("function catalogMaintenancePolicyNode(app)"));
     assertTrue(script.contains("Safe uninstall guidance"));
+    assertTrue(script.contains("Maintenance policy"));
+    assertTrue(script.contains("[\"Maintenance owner\","));
+    assertTrue(script.contains("[\"Maintenance support level\","));
+    assertTrue(script.contains("[\"Backup/restore support\","));
     assertTrue(script.contains("function deprecationNoticeNode(app)"));
     assertTrue(
         script.contains(
@@ -883,6 +891,7 @@ class WebShellResourcesTest {
     assertTrue(script.contains("function apiCompatibilityTone(apiCompatibility)"));
     assertTrue(script.contains("function catalogPermissionReviewDetailsNode(app)"));
     assertTrue(script.contains("function catalogReleaseDetailsNode(app)"));
+    assertTrue(script.contains("function catalogMaintenancePolicyNode(app)"));
     assertTrue(script.contains("Review and trust"));
     assertTrue(script.contains("Publisher advisory review"));
     assertTrue(script.contains("Trusted review receipt"));
@@ -894,6 +903,8 @@ class WebShellResourcesTest {
     assertTrue(script.contains("[\"Homepage\", metadataLinkNode(app.homepage)]"));
     assertTrue(script.contains("[\"Source\", metadataLinkNode(app.source)]"));
     assertTrue(script.contains("[\"Categories\", chipListNode(app.categories)]"));
+    assertTrue(script.contains("[\"Maintenance owner\","));
+    assertTrue(script.contains("[\"Maintenance support\","));
     assertTrue(script.contains("[\"Permission changes\","));
     assertTrue(script.contains("[\"API contract\", apiCompatibilityLabel(apiCompatibility)]"));
     assertTrue(

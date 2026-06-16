@@ -23,6 +23,13 @@ import network.crypta.platform.appcatalog.AppCatalogCompatibilityMetadata;
 import network.crypta.platform.appcatalog.AppCatalogEntry;
 import network.crypta.platform.appcatalog.AppCatalogException;
 import network.crypta.platform.appcatalog.AppCatalogInstallPlan;
+import network.crypta.platform.appcatalog.AppCatalogMaintenanceMetadata.BackupRestoreSupport;
+import network.crypta.platform.appcatalog.AppCatalogMaintenanceMetadata.DataSchemaPolicy;
+import network.crypta.platform.appcatalog.AppCatalogMaintenanceMetadata.DeprecationPolicy;
+import network.crypta.platform.appcatalog.AppCatalogMaintenanceMetadata.MigrationPolicy;
+import network.crypta.platform.appcatalog.AppCatalogMaintenanceMetadata.SecurityPolicy;
+import network.crypta.platform.appcatalog.AppCatalogMaintenanceMetadata.SupportLevel;
+import network.crypta.platform.appcatalog.AppCatalogMaintenanceMetadata;
 import network.crypta.platform.appcatalog.AppCatalogManager;
 import network.crypta.platform.appcatalog.AppCatalogProductionMetadata;
 import network.crypta.platform.appcatalog.AppCatalogReviewMetadata;
@@ -1236,6 +1243,7 @@ public final class AppCatalogsApiHandler {
     json.put("categories", entry.categories());
     json.put("channel", entry.productionMetadata().channel().catalogValue());
     json.put("supportStatus", entry.productionMetadata().supportStatus().catalogValue());
+    json.put("maintenance", summarizeMaintenance(entry.maintenanceMetadata()));
     json.put("deprecation", summarizeDeprecation(entry.productionMetadata()));
     json.put("securityAdvisories", summarizeSecurityAdvisories(entry.productionMetadata()));
     json.put(SECURITY_DECISION_FIELD, targetSecurityDecision(catalogId, entry).toJsonValue());
@@ -1317,6 +1325,29 @@ public final class AppCatalogsApiHandler {
     json.put(STATUS_FIELD, metadata.deprecationStatus().catalogValue());
     json.put("message", metadata.deprecationMessage().orElse(null));
     json.put("replacementAppId", metadata.replacementAppId().orElse(null));
+    return json;
+  }
+
+  private static Map<String, Object> summarizeMaintenance(AppCatalogMaintenanceMetadata metadata) {
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(9);
+    json.put("owner", metadata.owner().orElse(null));
+    json.put("ownerUri", metadata.ownerUri().map(URI::toString).orElse(null));
+    json.put("supportLevel", metadata.supportLevel().map(SupportLevel::catalogValue).orElse(null));
+    json.put(
+        "dataSchemaPolicy",
+        metadata.dataSchemaPolicy().map(DataSchemaPolicy::catalogValue).orElse(null));
+    json.put(
+        "migrationPolicy",
+        metadata.migrationPolicy().map(MigrationPolicy::catalogValue).orElse(null));
+    json.put(
+        "backupRestore",
+        metadata.backupRestore().map(BackupRestoreSupport::catalogValue).orElse(null));
+    json.put(
+        "securityPolicy", metadata.securityPolicy().map(SecurityPolicy::catalogValue).orElse(null));
+    json.put(
+        "deprecationPolicy",
+        metadata.deprecationPolicy().map(DeprecationPolicy::catalogValue).orElse(null));
+    json.put("supportUri", metadata.supportUri().map(URI::toString).orElse(null));
     return json;
   }
 

@@ -40,6 +40,29 @@ public final class AppCatalogParser {
   private static final String SECURITY_ADVISORIES = "securityAdvisories";
   private static final String SECURITY_ADVISORY_PREFIX = "securityAdvisory.";
   private static final String SECURITY_ADVISORY_URI_SUFFIX = ".uri";
+  private static final String MAINTENANCE_PREFIX = "maintenance.";
+  private static final String MAINTENANCE_OWNER = MAINTENANCE_PREFIX + "owner";
+  private static final String MAINTENANCE_OWNER_URI = MAINTENANCE_PREFIX + "ownerUri";
+  private static final String MAINTENANCE_SUPPORT_LEVEL = MAINTENANCE_PREFIX + "supportLevel";
+  private static final String MAINTENANCE_DATA_SCHEMA_POLICY =
+      MAINTENANCE_PREFIX + "dataSchemaPolicy";
+  private static final String MAINTENANCE_MIGRATION_POLICY = MAINTENANCE_PREFIX + "migrationPolicy";
+  private static final String MAINTENANCE_BACKUP_RESTORE = MAINTENANCE_PREFIX + "backupRestore";
+  private static final String MAINTENANCE_SECURITY_POLICY = MAINTENANCE_PREFIX + "securityPolicy";
+  private static final String MAINTENANCE_DEPRECATION_POLICY =
+      MAINTENANCE_PREFIX + "deprecationPolicy";
+  private static final String MAINTENANCE_SUPPORT_URI = MAINTENANCE_PREFIX + "supportUri";
+  private static final Set<String> MAINTENANCE_FIELDS =
+      Set.of(
+          MAINTENANCE_OWNER,
+          MAINTENANCE_OWNER_URI,
+          MAINTENANCE_SUPPORT_LEVEL,
+          MAINTENANCE_DATA_SCHEMA_POLICY,
+          MAINTENANCE_MIGRATION_POLICY,
+          MAINTENANCE_BACKUP_RESTORE,
+          MAINTENANCE_SECURITY_POLICY,
+          MAINTENANCE_DEPRECATION_POLICY,
+          MAINTENANCE_SUPPORT_URI);
 
   private AppCatalogParser() {}
 
@@ -206,6 +229,11 @@ public final class AppCatalogParser {
     List<String> permissions = parsePermissions(removeRequired(properties, prefix + "permissions"));
     boolean storeMetadataAllowed = version >= AppCatalog.VERSION_STORE_METADATA;
     boolean productionMetadataAllowed = version >= AppCatalog.VERSION_PRODUCTION_CHANNELS;
+    boolean maintenanceMetadataAllowed = version >= AppCatalog.VERSION_FIRST_PARTY_MAINTENANCE;
+    if (!maintenanceMetadataAllowed && hasMaintenanceMetadata(properties, prefix)) {
+      throw AppCatalogSidecars.invalidEntry(
+          "catalog.version 5 is required when maintenance metadata is present");
+    }
     String maximumCryptaVersion =
         productionMetadataAllowed
             ? removeOptional(properties, prefix + MAXIMUM_CRYPTA_VERSION).orElse(null)
@@ -234,6 +262,9 @@ public final class AppCatalogParser {
         productionMetadataAllowed
             ? parseProductionMetadata(properties, prefix)
             : AppCatalogProductionMetadata.DEFAULT,
+        maintenanceMetadataAllowed
+            ? parseMaintenanceMetadata(properties, prefix)
+            : AppCatalogMaintenanceMetadata.EMPTY,
         parseUri(removeRequired(properties, prefix + "bundle.uri"), prefix + "bundle.uri"),
         removeRequired(properties, prefix + "bundle.sha256"),
         parseSize(removeRequired(properties, prefix + "bundle.size.bytes"), appId),
@@ -404,6 +435,72 @@ public final class AppCatalogParser {
         deprecationMessage,
         replacementAppId,
         advisories,
+        declared);
+  }
+
+  private static boolean hasMaintenanceMetadata(Map<String, String> properties, String prefix) {
+    return MAINTENANCE_FIELDS.stream().anyMatch(field -> properties.containsKey(prefix + field));
+  }
+
+  private static AppCatalogMaintenanceMetadata parseMaintenanceMetadata(
+      Map<String, String> properties, String prefix) {
+    Optional<String> owner = removeOptional(properties, prefix + MAINTENANCE_OWNER);
+    Optional<URI> ownerUri =
+        removeOptional(properties, prefix + MAINTENANCE_OWNER_URI)
+            .map(value -> parseUri(value, prefix + MAINTENANCE_OWNER_URI));
+    Optional<String> supportLevelText =
+        removeOptional(properties, prefix + MAINTENANCE_SUPPORT_LEVEL);
+    Optional<String> dataSchemaPolicyText =
+        removeOptional(properties, prefix + MAINTENANCE_DATA_SCHEMA_POLICY);
+    Optional<String> migrationPolicyText =
+        removeOptional(properties, prefix + MAINTENANCE_MIGRATION_POLICY);
+    Optional<String> backupRestoreText =
+        removeOptional(properties, prefix + MAINTENANCE_BACKUP_RESTORE);
+    Optional<String> securityPolicyText =
+        removeOptional(properties, prefix + MAINTENANCE_SECURITY_POLICY);
+    Optional<String> deprecationPolicyText =
+        removeOptional(properties, prefix + MAINTENANCE_DEPRECATION_POLICY);
+    Optional<URI> supportUri =
+        removeOptional(properties, prefix + MAINTENANCE_SUPPORT_URI)
+            .map(value -> parseUri(value, prefix + MAINTENANCE_SUPPORT_URI));
+    boolean declared =
+        owner.isPresent()
+            || ownerUri.isPresent()
+            || supportLevelText.isPresent()
+            || dataSchemaPolicyText.isPresent()
+            || migrationPolicyText.isPresent()
+            || backupRestoreText.isPresent()
+            || securityPolicyText.isPresent()
+            || deprecationPolicyText.isPresent()
+            || supportUri.isPresent();
+    return new AppCatalogMaintenanceMetadata(
+        owner,
+        ownerUri,
+        supportLevelText.map(
+            value ->
+                AppCatalogMaintenanceMetadata.SupportLevel.parse(
+                    value, prefix + MAINTENANCE_SUPPORT_LEVEL)),
+        dataSchemaPolicyText.map(
+            value ->
+                AppCatalogMaintenanceMetadata.DataSchemaPolicy.parse(
+                    value, prefix + MAINTENANCE_DATA_SCHEMA_POLICY)),
+        migrationPolicyText.map(
+            value ->
+                AppCatalogMaintenanceMetadata.MigrationPolicy.parse(
+                    value, prefix + MAINTENANCE_MIGRATION_POLICY)),
+        backupRestoreText.map(
+            value ->
+                AppCatalogMaintenanceMetadata.BackupRestoreSupport.parse(
+                    value, prefix + MAINTENANCE_BACKUP_RESTORE)),
+        securityPolicyText.map(
+            value ->
+                AppCatalogMaintenanceMetadata.SecurityPolicy.parse(
+                    value, prefix + MAINTENANCE_SECURITY_POLICY)),
+        deprecationPolicyText.map(
+            value ->
+                AppCatalogMaintenanceMetadata.DeprecationPolicy.parse(
+                    value, prefix + MAINTENANCE_DEPRECATION_POLICY)),
+        supportUri,
         declared);
   }
 
