@@ -1,6 +1,15 @@
 name: codex-crypta
 
 services:
+  latest-versions:
+    build:
+      context: .
+      dockerfile: Dockerfile.versions
+      no_cache: true
+    image: codex-crypta-latest-versions:local
+    pull_policy: build
+    command: ["cat", "/latest/versions.env"]
+
   tailscale-shell:
     build:
       context: tailscale-shell
@@ -37,14 +46,12 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      no_cache: true
+      additional_contexts:
+        latest_versions: service:latest-versions
       args:
-        GITHUB_MCP_VERSION: ${GITHUB_MCP_VERSION:-v1.3.0}
-        GITHUB_MCP_ARCH: ${GITHUB_MCP_ARCH:-arm64}
-        ACTIONLINT_VERSION: ${ACTIONLINT_VERSION:-1.7.12}
-        ACTIONLINT_ARCH: ${ACTIONLINT_ARCH:-arm64}
-        PLAYWRIGHT_VERSION: ${PLAYWRIGHT_VERSION:-1.60.0}
         CODEX_SSH_AUTHORIZED_KEYS: ${CODEX_SSH_AUTHORIZED_KEYS:-}
-    image: codex-crypta:${CODEX_IMAGE_TAG:-0.138.0}
+    image: codex-crypta:${CODEX_IMAGE_TAG:-0.140.0}
     pull_policy: build
     container_name: codex-crypta-0
     restart: unless-stopped
@@ -80,14 +87,17 @@ services:
         ipv4_address: ${CRYPTAD_CODEX_IPV4:-172.30.70.10}
 
   playwright:
-    image: mcr.microsoft.com/playwright:v${PLAYWRIGHT_VERSION:-1.60.0}-noble
+    build:
+      context: .
+      dockerfile: Dockerfile.playwright
+      no_cache: true
+      additional_contexts:
+        latest_versions: service:latest-versions
+    image: codex-crypta-playwright:local
+    pull_policy: build
     init: true
     user: pwuser
     working_dir: /home/pwuser
-    command:
-      - /bin/sh
-      - -lc
-      - npx -y playwright@${PLAYWRIGHT_VERSION:-1.60.0} run-server --port 3000 --host 0.0.0.0
     restart: unless-stopped
     ipc: host
     ports:

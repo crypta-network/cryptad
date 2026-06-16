@@ -1,0 +1,80 @@
+# syntax=docker/dockerfile:1.7
+FROM debian:bookworm-slim
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+      ca-certificates \
+      coreutils \
+      curl \
+      jq; \
+    apt-get clean; \
+    rm -rf /var/lib/apt/lists/*
+
+RUN set -eux; \
+    mkdir -p /latest; \
+    github_latest_tag() { \
+      local repository="$1"; \
+      local url tag; \
+      url="$(curl -fsSIL -o /dev/null -w '%{url_effective}' "https://github.com/${repository}/releases/latest")"; \
+      tag="${url##*/}"; \
+      if [ -z "${tag}" ] || [ "${tag}" = "latest" ]; then \
+        echo "Could not resolve latest stable GitHub release for ${repository}: ${url}" >&2; \
+        return 1; \
+      fi; \
+      printf '%s\n' "${tag}"; \
+    }; \
+    GITHUB_MCP_VERSION="$(github_latest_tag github/github-mcp-server)"; \
+    ACTIONLINT_TAG="$(github_latest_tag rhysd/actionlint)"; \
+    ACTIONLINT_VERSION="${ACTIONLINT_TAG#v}"; \
+    MOSH_TAG="$(github_latest_tag mobile-shell/mosh)"; \
+    if [[ ! "${MOSH_TAG}" =~ ^mosh-.+ ]]; then \
+      echo "Unexpected Mosh release tag: ${MOSH_TAG}" >&2; \
+      exit 1; \
+    fi; \
+    MOSH_VERSION="${MOSH_TAG#mosh-}"; \
+    MOSH_TARBALL_URL="https://github.com/mobile-shell/mosh/releases/download/${MOSH_TAG}/mosh-${MOSH_VERSION}.tar.gz"; \
+    TMUX_VERSION="$(github_latest_tag tmux/tmux)"; \
+    if [[ "${TMUX_VERSION}" =~ -rc ]]; then \
+      echo "Refusing tmux prerelease tag: ${TMUX_VERSION}" >&2; \
+      exit 1; \
+    fi; \
+    TMUX_TARBALL_URL="https://github.com/tmux/tmux/releases/download/${TMUX_VERSION}/tmux-${TMUX_VERSION}.tar.gz"; \
+    PLAYWRIGHT_VERSION="$(curl -fsSL https://registry.npmjs.org/playwright/latest | jq -r '.version // empty')"; \
+    if [ -z "${PLAYWRIGHT_VERSION}" ] || [ "${PLAYWRIGHT_VERSION}" = "null" ]; then \
+      echo "Could not resolve playwright latest npm version." >&2; \
+      exit 1; \
+    fi; \
+    NCURSES_VERSION="$( \
+      curl -fsSL https://ftp.gnu.org/pub/gnu/ncurses/ \
+        | sed -n 's/.*href="ncurses-\([^"]*\)\.tar\.gz".*/\1/p' \
+        | grep -E '^[0-9]+(\.[0-9]+)+[A-Za-z0-9._-]*$' \
+        | sort -V \
+        | tail -n 1 \
+    )"; \
+    if [ -z "${NCURSES_VERSION}" ]; then \
+      echo "Could not resolve ncurses latest GNU release." >&2; \
+      exit 1; \
+    fi; \
+    NCURSES_TARBALL_URL="https://ftp.gnu.org/pub/gnu/ncurses/ncurses-${NCURSES_VERSION}.tar.gz"; \
+    NCURSES_SIG_URL="${NCURSES_TARBALL_URL}.sig"; \
+    curl -fsSIL "${MOSH_TARBALL_URL}" >/dev/null; \
+    curl -fsSIL "${TMUX_TARBALL_URL}" >/dev/null; \
+    curl -fsSIL "${NCURSES_TARBALL_URL}" >/dev/null; \
+    curl -fsSIL "${NCURSES_SIG_URL}" >/dev/null; \
+    { \
+      printf 'GITHUB_MCP_VERSION=%s\n' "${GITHUB_MCP_VERSION}"; \
+      printf 'ACTIONLINT_VERSION=%s\n' "${ACTIONLINT_VERSION}"; \
+      printf 'MOSH_VERSION=%s\n' "${MOSH_VERSION}"; \
+      printf 'MOSH_TARBALL_URL=%s\n' "${MOSH_TARBALL_URL}"; \
+      printf 'TMUX_VERSION=%s\n' "${TMUX_VERSION}"; \
+      printf 'TMUX_TARBALL_URL=%s\n' "${TMUX_TARBALL_URL}"; \
+      printf 'PLAYWRIGHT_VERSION=%s\n' "${PLAYWRIGHT_VERSION}"; \
+      printf 'NCURSES_VERSION=%s\n' "${NCURSES_VERSION}"; \
+      printf 'NCURSES_TARBALL_URL=%s\n' "${NCURSES_TARBALL_URL}"; \
+      printf 'NCURSES_SIG_URL=%s\n' "${NCURSES_SIG_URL}"; \
+    } | tee /latest/versions.env
