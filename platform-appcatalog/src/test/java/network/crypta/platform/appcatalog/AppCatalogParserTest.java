@@ -459,6 +459,46 @@ class AppCatalogParserTest {
   }
 
   @Test
+  void parse_whenDottedAppIdContainsMaintenance_expectNoMaintenanceVersionGate() {
+    AppCatalog catalog =
+        AppCatalogParser.parse(
+            bytes(
+                """
+                catalog.version=4
+                catalog.id=core
+                catalog.name=Crypta Core Apps
+                catalog.generatedAt=%s
+                catalog.entries=foo,foo.maintenance
+                app.foo.id=foo
+                app.foo.name=Foo
+                app.foo.version=1.0.0
+                app.foo.summary=First dotted id regression fixture.
+                app.foo.channel=stable
+                app.foo.bundle.uri=https://example.invalid/foo.zip
+                app.foo.bundle.sha256=%s
+                app.foo.bundle.size.bytes=0
+                app.foo.bundle.type=zip
+                app.foo.permissions=
+                app.foo.maintenance.id=foo.maintenance
+                app.foo.maintenance.name=Foo Maintenance
+                app.foo.maintenance.version=1.0.0
+                app.foo.maintenance.summary=Ordinary app whose id contains maintenance.
+                app.foo.maintenance.channel=stable
+                app.foo.maintenance.bundle.uri=https://example.invalid/foo-maintenance.zip
+                app.foo.maintenance.bundle.sha256=%s
+                app.foo.maintenance.bundle.size.bytes=0
+                app.foo.maintenance.bundle.type=zip
+                app.foo.maintenance.permissions=
+                """
+                    .formatted(GENERATED_AT, SHA256, SHA256)));
+
+    assertEquals(AppCatalog.VERSION_SECURITY_POLICY, catalog.version());
+    assertEquals(
+        List.of("foo", "foo.maintenance"),
+        catalog.entries().stream().map(AppCatalogEntry::appId).toList());
+  }
+
+  @Test
   void parse_whenReplacementAppIdIsMalformed_expectInvalidCatalogEntry() {
     assertInvalidEntry(
         validProductionCatalog()

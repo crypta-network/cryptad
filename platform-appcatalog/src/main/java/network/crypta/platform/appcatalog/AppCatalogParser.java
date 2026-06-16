@@ -52,6 +52,17 @@ public final class AppCatalogParser {
   private static final String MAINTENANCE_DEPRECATION_POLICY =
       MAINTENANCE_PREFIX + "deprecationPolicy";
   private static final String MAINTENANCE_SUPPORT_URI = MAINTENANCE_PREFIX + "supportUri";
+  private static final Set<String> MAINTENANCE_FIELDS =
+      Set.of(
+          MAINTENANCE_OWNER,
+          MAINTENANCE_OWNER_URI,
+          MAINTENANCE_SUPPORT_LEVEL,
+          MAINTENANCE_DATA_SCHEMA_POLICY,
+          MAINTENANCE_MIGRATION_POLICY,
+          MAINTENANCE_BACKUP_RESTORE,
+          MAINTENANCE_SECURITY_POLICY,
+          MAINTENANCE_DEPRECATION_POLICY,
+          MAINTENANCE_SUPPORT_URI);
 
   private AppCatalogParser() {}
 
@@ -428,8 +439,7 @@ public final class AppCatalogParser {
   }
 
   private static boolean hasMaintenanceMetadata(Map<String, String> properties, String prefix) {
-    String maintenancePrefix = prefix + MAINTENANCE_PREFIX;
-    return properties.keySet().stream().anyMatch(key -> key.startsWith(maintenancePrefix));
+    return MAINTENANCE_FIELDS.stream().anyMatch(field -> properties.containsKey(prefix + field));
   }
 
   private static AppCatalogMaintenanceMetadata parseMaintenanceMetadata(
