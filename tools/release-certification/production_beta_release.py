@@ -1291,6 +1291,18 @@ def maintenance_policy_args(policy: dict[str, Any]) -> list[str]:
     return args
 
 
+def policy_version_bound_args(policy: dict[str, Any]) -> list[str]:
+    args: list[str] = []
+    for field, flag in (
+        ("minimumCryptaVersion", "--minimum-crypta-version"),
+        ("maximumCryptaVersion", "--maximum-crypta-version"),
+    ):
+        value = policy.get(field)
+        if isinstance(value, str) and value.strip():
+            args.extend([flag, value.strip()])
+    return args
+
+
 def maintenance_summary(policy: dict[str, Any]) -> dict[str, Any]:
     maintenance = policy.get("maintenance") if isinstance(policy, dict) else {}
     if not isinstance(maintenance, dict):
@@ -1470,6 +1482,7 @@ def package_catalog_and_reviews(
             f"Production beta candidate for {app_name}.",
             "--overwrite",
         ]
+        entry_args.extend(policy_version_bound_args(app_policy))
         entry_args.extend(maintenance_policy_args(app_policy))
         permissions = manifest.get("app.permissions", "")
         entry_args.extend(permission_rationale_args(permissions))
@@ -2919,6 +2932,8 @@ def write_fake_crypta_app_cli(workspace: Path) -> Path:
                         + "artifact=" + value(args, "--artifact") + "\\n"
                     )
                     for flag, key in (
+                        ("--minimum-crypta-version", "minimumCryptaVersion"),
+                        ("--maximum-crypta-version", "maximumCryptaVersion"),
                         ("--maintenance-owner", "maintenance.owner"),
                         ("--maintenance-owner-uri", "maintenance.ownerUri"),
                         ("--maintenance-support-level", "maintenance.supportLevel"),
@@ -3977,6 +3992,11 @@ def assert_catalog_signature_and_timestamps_are_canonical() -> None:
         workspace = Path(temp_name) / "repo"
         make_self_test_workspace(workspace)
         write_fake_crypta_app_cli(workspace)
+        policy_file = workspace / FIRST_PARTY_MAINTENANCE_POLICY_FILE
+        policy = json.loads(policy_file.read_text(encoding="utf-8"))
+        policy["apps"]["queue-manager"]["minimumCryptaVersion"] = "41"
+        policy["apps"]["queue-manager"]["maximumCryptaVersion"] = "43"
+        write_json(policy_file, policy)
         out_dir = workspace / "build/production-beta"
         app_dir = out_dir / "build/staged-apps/queue-manager"
         write_text(
@@ -4041,6 +4061,8 @@ def assert_catalog_signature_and_timestamps_are_canonical() -> None:
             "bundle.uri=https://downloads.crypta.invalid/self-test/build/app-bundles/queue-manager-1.2.3.zip"
             in catalog_text
         ), catalog_text
+        assert "minimumCryptaVersion=41" in catalog_text, catalog_text
+        assert "maximumCryptaVersion=43" in catalog_text, catalog_text
         assert "maintenance.owner=crypta-core" in catalog_text, catalog_text
         assert "maintenance.supportLevel=core" in catalog_text, catalog_text
         assert "/apps/queue-manager-1.2.3.zip" not in catalog_text, catalog_text
