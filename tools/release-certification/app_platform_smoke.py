@@ -141,7 +141,7 @@ FIRST_PARTY_MAINTENANCE_ENUMS = {
     "securityPolicy": {"catalog-advisories", "project-security-policy", "unsupported"},
     "deprecationPolicy": {"none", "notice-only", "replacement-required", "security-only"},
 }
-CURRENT_PLATFORM_API_CONTRACT_VERSION = 18
+CURRENT_PLATFORM_API_CONTRACT_VERSION = 19
 NETWORK_SCALE_EVIDENCE_IDS = (
     "network-scale.app-network-budget",
     "network-scale.content-fetch-budget",
@@ -2122,7 +2122,7 @@ def collect_app_services_evidence(settings: Settings) -> list[EvidenceItem]:
 
     registry_checks = {
         "contractV12AndCapabilitiesPresent": (
-            "CURRENT_CONTRACT_VERSION = 18" in contract_text
+            "CURRENT_CONTRACT_VERSION = 19" in contract_text
             and "APP_SERVICES_CONTRACT_VERSION = 12" in contract_text
             and "APP_SERVICE_DEPENDENCY_BUNDLES_CONTRACT_VERSION = 16" in contract_text
             and "APP_SERVICES_READ" in capabilities_text
@@ -5012,7 +5012,7 @@ def collect_content_subscription_evidence(settings: Settings) -> EvidenceItem:
             or "CURRENT_CONTRACT_VERSION = 13" in contract_text
             or "CURRENT_CONTRACT_VERSION = 14" in contract_text
             or "CURRENT_CONTRACT_VERSION = 15" in contract_text
-            or "CURRENT_CONTRACT_VERSION = 18" in contract_text
+            or "CURRENT_CONTRACT_VERSION = 19" in contract_text
         ),
         "capabilityDescriptorPresent": (
             "CONTENT_SUBSCRIBE" in contract_text
@@ -5737,7 +5737,7 @@ def collect_app_data_store_evidence(settings: Settings) -> EvidenceItem:
                 or "CURRENT_CONTRACT_VERSION = 13" in text["contract"]
                 or "CURRENT_CONTRACT_VERSION = 14" in text["contract"]
                 or "CURRENT_CONTRACT_VERSION = 15" in text["contract"]
-                or "CURRENT_CONTRACT_VERSION = 18" in text["contract"]
+                or "CURRENT_CONTRACT_VERSION = 19" in text["contract"]
             )
             and "APP_DATA_STORE_CONTRACT_VERSION = 9" in text["contract"]
             and "app.data.read" in text["capabilities"]
@@ -7392,7 +7392,7 @@ def collect_trust_graph_rc_scope_and_safety_evidence(settings: Settings) -> Evid
     docs_lower = normalized_source_text(docs_text)
     checks = {
         "contractV15AndRoutesPresent": (
-            "CURRENT_CONTRACT_VERSION = 18" in contract_text
+            "CURRENT_CONTRACT_VERSION = 19" in contract_text
             and "TRUST_GRAPH_RC_SCOPE_CONTRACT_VERSION = 15" in contract_text
             and "/trust-graph/statements/{fingerprint}" in contract_text
             and "/trust-graph/statements/{fingerprint}/deprecate" in contract_text
@@ -7732,7 +7732,7 @@ def collect_trust_graph_exchange_evidence(settings: Settings) -> EvidenceItem:
     route_source_text = router_text + "\n" + route_text
     checks = {
         "contractVersionV10": (
-            "CURRENT_CONTRACT_VERSION = 18" in contract_text
+            "CURRENT_CONTRACT_VERSION = 19" in contract_text
             and "TRUST_GRAPH_EXCHANGE_CONTRACT_VERSION = 10" in contract_text
         ),
         "contractDescriptorsPresent": (
@@ -8080,7 +8080,7 @@ def collect_social_message_signing_evidence(settings: Settings) -> EvidenceItem:
     )
     checks = {
         "routeInContract": "/app-vault/identities/{identityId}/social-message" in contract_text,
-        "contractVersionV11": "CURRENT_CONTRACT_VERSION = 18" in contract_text
+        "contractVersionV11": "CURRENT_CONTRACT_VERSION = 19" in contract_text
         and "SOCIAL_MESSAGE_CONTRACT_VERSION = 11" in contract_text,
         "capabilitiesInContract": all(
             fragment in contract_text
@@ -15753,7 +15753,7 @@ def make_self_test_workspace(workspace: Path) -> None:
         encoding="utf-8",
     )
     (api_dir / "PlatformApiContract.java").write_text(
-        "final class PlatformApiContract { static final int CURRENT_CONTRACT_VERSION = 18; "
+        "final class PlatformApiContract { static final int CURRENT_CONTRACT_VERSION = 19; "
         "static final int TRUST_GRAPH_PREVIEW_CONTRACT_VERSION = 7; "
         "static final int TRUST_GRAPH_EXCHANGE_CONTRACT_VERSION = 10; "
         "static final int TRUST_GRAPH_RC_SCOPE_CONTRACT_VERSION = 15; "
@@ -16818,7 +16818,7 @@ def make_self_test_workspace(workspace: Path) -> None:
         "Stable is the default automatic update channel, beta and nightly require explicit policy, "
         "channel_policy_blocked records excluded automation candidates, and deprecated entries expose "
         "replacement metadata without bypassing signed catalog verification. "
-        "Contract v18 catalog.version=5 adds first-party app maintenance metadata with "
+        "Contract v19 catalog.version=5 adds first-party app maintenance metadata with "
         "maintenance.owner, maintenance.supportLevel, maintenance.dataSchemaPolicy, "
         "maintenance.migrationPolicy, maintenance.backupRestore, maintenance.securityPolicy, "
         "maintenance.deprecationPolicy, and app-catalog.first-party-maintenance-policy evidence. "
@@ -18541,7 +18541,7 @@ import os
 import sys
 from pathlib import Path
 
-CURRENT_PLATFORM_API_CONTRACT_VERSION = 18
+CURRENT_PLATFORM_API_CONTRACT_VERSION = 19
 
 
 def option_value(args, name):
@@ -18733,7 +18733,7 @@ def api_snapshot(args):
             {
                 "contract": {
                     "apiVersion": "v1",
-                    "contractVersion": 18,
+                    "contractVersion": 19,
                     "generatedBy": "cryptad",
                     "stabilityPolicy": "self-test",
                     "capabilities": [
@@ -19006,7 +19006,7 @@ case "$cmd" in
       if [ "$1" = "--dir" ]; then dir="$2"; shift 2; else shift; fi
     done
     mkdir -p "$dir/bin" "$dir/static/crypta-ui"
-    printf '%s\n' 'manifest.version=1' 'app.id=cert-smoke' 'app.name=Certification Smoke' 'app.version=0.1.0' 'app.exec=bin/start.sh' 'api.minimumVersion=1' 'api.maximumTestedVersion=18' 'api.experimentalCapabilitiesAccepted=false' 'app.ui.mode=static' 'app.ui.entry=static/index.html' 'app.permissions=queue.read' > "$dir/cryptad-app.properties"
+    printf '%s\n' 'manifest.version=1' 'app.id=cert-smoke' 'app.name=Certification Smoke' 'app.version=0.1.0' 'app.exec=bin/start.sh' 'api.minimumVersion=1' 'api.maximumTestedVersion=19' 'api.experimentalCapabilitiesAccepted=false' 'app.ui.mode=static' 'app.ui.entry=static/index.html' 'app.permissions=queue.read' > "$dir/cryptad-app.properties"
     printf '%s\n' '#!/usr/bin/env sh' 'exit 0' > "$dir/bin/start.sh"
     printf '%s\n' '<!doctype html><html lang="en"><head><meta name="viewport" content="width=device-width, initial-scale=1"><title>Certification Smoke</title><link rel="stylesheet" href="./crypta-ui/crypta-ui-tokens.css"><link rel="stylesheet" href="./crypta-ui/crypta-ui.css"><link rel="stylesheet" href="./app.css"></head><body class="cr-app"><main class="cr-shell"><section class="cr-permission-summary" data-crypta-permission-summary><code>queue.read</code></section><h1>Certification Smoke</h1></main><script src="./crypta-platform.js"></script><script src="./app.js"></script></body></html>' > "$dir/static/index.html"
     printf '%s\n' 'CryptaPlatform.bootstrap.load({ appId: "cert-smoke" });' > "$dir/static/app.js"
@@ -19183,7 +19183,7 @@ PY
 {
   "contract": {
     "apiVersion": "v1",
-    "contractVersion": 18,
+    "contractVersion": 19,
     "generatedBy": "cryptad",
     "stabilityPolicy": "self-test",
     "capabilities": [

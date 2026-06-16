@@ -100,7 +100,8 @@ uses the existing signed `replacementAppId` field.
 
 ## API and Web Shell
 
-Catalog API summaries include a nested `maintenance` object with the signed fields:
+Starting with Platform API contract version 19, catalog API summaries include a nested
+`maintenance` object with the signed fields:
 
 ```json
 {
