@@ -68,48 +68,59 @@ FIRST_PARTY_MAINTENANCE_POLICY_METADATA_EXPECTATIONS = {
 }
 FIRST_PARTY_MAINTENANCE_OWNER = "crypta-core"
 FIRST_PARTY_MAINTENANCE_OWNER_URI = "https://example.invalid/crypta/owners/core"
+FIRST_PARTY_MAINTENANCE_COMMON_EXPECTATIONS = {
+    "securityPolicy": "catalog-advisories",
+    "deprecationPolicy": "none",
+}
 FIRST_PARTY_MAINTENANCE_EXPECTATIONS = {
     "queue-manager": {
         "supportLevel": "core",
         "dataSchemaPolicy": "stateless",
         "migrationPolicy": "none",
         "backupRestore": "not-applicable",
+        **FIRST_PARTY_MAINTENANCE_COMMON_EXPECTATIONS,
     },
     "publisher": {
         "supportLevel": "core",
         "dataSchemaPolicy": "stateless",
         "migrationPolicy": "none",
         "backupRestore": "not-applicable",
+        **FIRST_PARTY_MAINTENANCE_COMMON_EXPECTATIONS,
     },
     "site-publisher": {
         "supportLevel": "maintained",
         "dataSchemaPolicy": "stateless",
         "migrationPolicy": "none",
         "backupRestore": "not-applicable",
+        **FIRST_PARTY_MAINTENANCE_COMMON_EXPECTATIONS,
     },
     "profile-publisher": {
         "supportLevel": "maintained",
         "dataSchemaPolicy": "declared",
         "migrationPolicy": "declared",
         "backupRestore": "operator-supported",
+        **FIRST_PARTY_MAINTENANCE_COMMON_EXPECTATIONS,
     },
     "feed-reader": {
         "supportLevel": "maintained",
         "dataSchemaPolicy": "migratable",
         "migrationPolicy": "dry-run-required",
         "backupRestore": "export-import",
+        **FIRST_PARTY_MAINTENANCE_COMMON_EXPECTATIONS,
     },
     "social-inbox": {
         "supportLevel": "local-rc",
         "dataSchemaPolicy": "declared",
         "migrationPolicy": "operator-approved",
         "backupRestore": "operator-supported",
+        **FIRST_PARTY_MAINTENANCE_COMMON_EXPECTATIONS,
     },
     "trust-graph": {
         "supportLevel": "local-rc",
         "dataSchemaPolicy": "migratable",
         "migrationPolicy": "dry-run-required",
         "backupRestore": "operator-supported",
+        **FIRST_PARTY_MAINTENANCE_COMMON_EXPECTATIONS,
     },
 }
 FIRST_PARTY_MAINTENANCE_ENUMS = {
@@ -13478,9 +13489,41 @@ def assert_maintenance_policy_evidence_rejects_redacted_uri_values() -> None:
         assert "support-uri-secret" not in encoded, encoded
 
 
+def assert_maintenance_policy_evidence_rejects_allowed_policy_drift() -> None:
+    with tempfile.TemporaryDirectory(prefix="cryptad-maintenance-policy-drift-") as temp_name:
+        workspace = Path(temp_name) / "repo"
+        make_self_test_workspace(workspace)
+        policy_path = workspace / FIRST_PARTY_MAINTENANCE_POLICY_PATH
+        policy = json.loads(policy_path.read_text(encoding="utf-8"))
+        maintenance = policy["apps"]["queue-manager"]["maintenance"]
+        maintenance["securityPolicy"] = "unsupported"
+        maintenance["deprecationPolicy"] = "security-only"
+        write_json(policy_path, policy)
+        settings = Settings(
+            workspace_root=workspace.resolve(),
+            out_dir=(workspace / DEFAULT_OUT_DIR).resolve(),
+            mode="pr",
+            skip_gradle=True,
+            cli_path=None,
+            live=False,
+            live_base_url="",
+            live_form_password="",
+            timeout_seconds=60,
+        )
+
+        item = collect_first_party_maintenance_policy_evidence(settings)
+        encoded = json.dumps(item.to_json(), sort_keys=True)
+
+        assert item.status == "warn", item
+        assert "queue-manager: policyMatchesExpectedAppClass" in encoded, encoded
+        assert '"securityPolicy": "unsupported"' in encoded, encoded
+        assert '"deprecationPolicy": "security-only"' in encoded, encoded
+
+
 def run_self_test(repo_root: Path) -> None:
     assert_maintenance_policy_evidence_redacts_invalid_values()
     assert_maintenance_policy_evidence_rejects_redacted_uri_values()
+    assert_maintenance_policy_evidence_rejects_allowed_policy_drift()
     fixture_dir = repo_root / "tools/release-certification/fixtures"
     catalog_fixture = fixture_dir / "self-test-catalog.properties"
     registry_fixture = fixture_dir / "self-test-legacy-registry.java-fragment"
@@ -16940,8 +16983,8 @@ def make_self_test_workspace(workspace: Path) -> None:
                 "dataSchemaPolicy": expected_policy["dataSchemaPolicy"],
                 "migrationPolicy": expected_policy["migrationPolicy"],
                 "backupRestore": expected_policy["backupRestore"],
-                "securityPolicy": "catalog-advisories",
-                "deprecationPolicy": "none",
+                "securityPolicy": expected_policy["securityPolicy"],
+                "deprecationPolicy": expected_policy["deprecationPolicy"],
                 "supportUri": f"https://example.invalid/crypta/apps/{app_id}/support",
             },
         }
