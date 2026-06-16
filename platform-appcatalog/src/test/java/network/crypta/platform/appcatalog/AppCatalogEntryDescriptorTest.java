@@ -65,6 +65,7 @@ class AppCatalogEntryDescriptorTest {
                 "api.minimumVersion=1",
                 "api.maximumTestedVersion=2",
                 "api.optionalCapabilities=alerts.read,diagnostics.read",
+                "api.targetStability=experimental",
                 "api.experimentalCapabilitiesAccepted=true",
                 "review.status= reviewed ",
                 "review.note= Reviewed for local operator safety. ",
@@ -151,6 +152,10 @@ class AppCatalogEntryDescriptorTest {
     assertEquals(
         List.of("alerts.read", "diagnostics.read"),
         parsed.compatibility().apiCompatibility().optionalCapabilities());
+    assertEquals(
+        network.crypta.platform.appdist.AppApiCompatibilityMetadata.TargetStability.EXPERIMENTAL,
+        parsed.compatibility().apiCompatibility().targetStability());
+    assertTrue(parsed.compatibility().apiCompatibility().targetStabilityDeclared());
     assertTrue(parsed.compatibility().apiCompatibility().experimentalCapabilitiesAccepted());
   }
 

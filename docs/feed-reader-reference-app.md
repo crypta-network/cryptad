@@ -110,6 +110,7 @@ permissions.rationale.app.data.read=Restores the app-owned feed list, selected s
 permissions.rationale.app.data.write=Saves bounded app-owned reader state through the durable app-data API.
 api.minimumVersion=9
 api.maximumTestedVersion=19
+api.targetStability=stable
 api.experimentalCapabilitiesAccepted=false
 
 app.data.schema.current=2

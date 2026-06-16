@@ -629,6 +629,10 @@ public final class AppCatalogWriter {
       appendProperty(
           builder, prefix + "api.optionalCapabilities", joinValues(api.optionalCapabilities()));
     }
+    if (api.targetStabilityDeclared()) {
+      appendProperty(
+          builder, prefix + "api.targetStability", api.targetStability().manifestValue());
+    }
     if (api.declared()) {
       appendProperty(
           builder,

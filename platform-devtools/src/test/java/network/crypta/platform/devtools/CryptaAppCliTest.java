@@ -86,6 +86,7 @@ class CryptaAppCliTest {
     assertFalse(manifest.contains("app.permissions="));
     assertTrue(manifest.contains("api.minimumVersion=" + currentContractVersion() + "\n"));
     assertTrue(manifest.contains("api.maximumTestedVersion=" + currentContractVersion() + "\n"));
+    assertTrue(manifest.contains("api.targetStability=stable\n"));
     assertTrue(manifest.contains("api.experimentalCapabilitiesAccepted=false\n"));
   }
 
@@ -116,6 +117,57 @@ class CryptaAppCliTest {
     assertTrue(manifest.contains("app.permissions=queue.read\n"));
     assertTrue(indexHtml.contains("<code>queue.read</code>"));
     assertFalse(indexHtml.contains("Queue.Read"));
+  }
+
+  @Test
+  void init_whenExperimentalPermissionRequested_expectExperimentalMetadataAndStrictValidation()
+      throws Exception {
+    Path appDir = tempDir.resolve("sample-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "sample-app",
+        "--name",
+        "Sample App",
+        "--version",
+        "0.1.0",
+        "--permission",
+        "vault.identities.read");
+
+    CliResult result = runCli("validate", "--bundle-dir", appDir.toString(), "--strict");
+    String manifest =
+        Files.readString(appDir.resolve("cryptad-app.properties"), StandardCharsets.UTF_8);
+
+    assertEquals(CommandLine.ExitCode.OK, result.exitCode());
+    assertTrue(manifest.contains("app.permissions=vault.identities.read\n"));
+    assertTrue(manifest.contains("api.targetStability=experimental\n"));
+    assertTrue(manifest.contains("api.experimentalCapabilitiesAccepted=true\n"));
+    assertEquals("", result.err());
+  }
+
+  @Test
+  void init_whenOperatorOnlyPermissionRequested_expectFailureBeforeManifestWrite() {
+    Path appDir = tempDir.resolve("sample-app");
+
+    CliResult result =
+        runCli(
+            "init",
+            "--dir",
+            appDir.toString(),
+            "--app-id",
+            "sample-app",
+            "--name",
+            "Sample App",
+            "--version",
+            "0.1.0",
+            "--permission",
+            "vault.identities.manage");
+
+    assertEquals(CommandLine.ExitCode.SOFTWARE, result.exitCode());
+    assertTrue(result.err().contains("permission vault.identities.manage is operator-only"));
+    assertFalse(Files.exists(appDir.resolve("cryptad-app.properties")));
   }
 
   @Test
@@ -1350,22 +1402,18 @@ class CryptaAppCliTest {
         "vault.secrets.read",
         "--permission",
         "vault.identities.use");
-    Path manifest = appDir.resolve("cryptad-app.properties");
-    Files.writeString(
-        manifest,
-        Files.readString(manifest, StandardCharsets.UTF_8)
-            .replace(
-                "api.experimentalCapabilitiesAccepted=false\n",
-                "api.experimentalCapabilitiesAccepted=true\n"),
-        StandardCharsets.UTF_8);
 
     CliResult result = runCli("validate", "--bundle-dir", appDir.toString(), "--strict");
+    String manifest =
+        Files.readString(appDir.resolve("cryptad-app.properties"), StandardCharsets.UTF_8);
     String indexHtml =
         Files.readString(appDir.resolve("static").resolve("index.html"), StandardCharsets.UTF_8);
 
     assertEquals(CommandLine.ExitCode.OK, result.exitCode());
     assertTrue(result.out().contains("Bundle is valid: sample-app 0.1.0"));
     assertEquals("", result.err());
+    assertTrue(manifest.contains("api.targetStability=experimental\n"));
+    assertTrue(manifest.contains("api.experimentalCapabilitiesAccepted=true\n"));
     assertTrue(indexHtml.contains("<code>vault.secrets.read</code>"));
     assertTrue(indexHtml.contains("<code>vault.identities.use</code>"));
   }
@@ -1560,6 +1608,7 @@ class CryptaAppCliTest {
             "app.sample-app.maintenance.supportUri=https://example.invalid/crypta/apps/sample-app/support\n",
             "app.sample-app.api.minimumVersion=" + currentContractVersion() + "\n",
             "app.sample-app.api.maximumTestedVersion=" + currentContractVersion() + "\n",
+            "app.sample-app.api.targetStability=stable\n",
             "app.sample-app.api.experimentalCapabilitiesAccepted=false\n",
             "app.sample-app.review.status=reviewed\n",
             "app.sample-app.review.note=Reviewed for local operator safety.\n",
@@ -1964,6 +2013,7 @@ class CryptaAppCliTest {
     assertTrue(catalog.contains("catalog.version=2\n"));
     assertTrue(
         catalog.contains("app.sample-app.api.minimumVersion=" + currentContractVersion() + "\n"));
+    assertTrue(catalog.contains("app.sample-app.api.targetStability=stable\n"));
     assertTrue(catalog.contains("app.sample-app.api.experimentalCapabilitiesAccepted=false\n"));
     CliResult signResult =
         runCli(

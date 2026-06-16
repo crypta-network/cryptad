@@ -91,15 +91,6 @@ enum AppTemplateKind {
   }
 
   /**
-   * Returns whether the generated manifest should accept experimental Platform API capabilities.
-   *
-   * @return {@code true} when the template's default permissions demonstrate experimental APIs
-   */
-  boolean experimentalCapabilitiesAccepted() {
-    return this == VAULT_PROFILE;
-  }
-
-  /**
    * Returns a comma-separated list of supported template names for help and diagnostics.
    *
    * @return deterministic template name list

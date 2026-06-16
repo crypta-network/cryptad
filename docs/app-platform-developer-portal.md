@@ -68,9 +68,14 @@ In docs, manifests, and catalog descriptors:
 - `contractVersion=19` identifies the Platform API compatibility contract snapshot.
 - `api.minimumVersion` and `api.maximumTestedVersion` compare against the integer contract
   version, not against the URL route prefix or the Cryptad build number.
+- `api.targetStability=stable` selects the Platform API 1.0 stable baseline for third-party app
+  compatibility. Use `api.targetStability=experimental` only when the app knowingly uses
+  app-facing experimental capability names and also sets
+  `api.experimentalCapabilitiesAccepted=true`.
 
 Use [platform-api-contract.md](platform-api-contract.md) for compatibility rules and
-[platform-api-surface.md](platform-api-surface.md) for route families.
+[platform-api-1.0-stable-reference.md](platform-api-1.0-stable-reference.md) for the frozen
+stable baseline. Use [platform-api-surface.md](platform-api-surface.md) for route families.
 
 ## First-party app set
 

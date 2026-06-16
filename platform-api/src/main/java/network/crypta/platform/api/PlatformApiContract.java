@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.stream.Collectors;
 
 /**
  * Deterministic compatibility contract for one Platform API surface.
@@ -31,6 +32,7 @@ import java.util.TreeSet;
  * @param contractVersion integer app compatibility contract version
  * @param generatedBy stable producer label for snapshots
  * @param stabilityPolicy short human-readable stability policy
+ * @param stableBaseline deterministic Platform API 1.0 stable app-facing baseline metadata
  * @param capabilities deterministic public capability descriptors
  * @param endpoints deterministic public endpoint descriptors
  */
@@ -39,6 +41,7 @@ public record PlatformApiContract(
     int contractVersion,
     String generatedBy,
     String stabilityPolicy,
+    StableBaseline stableBaseline,
     List<PlatformApiCapabilityDescriptor> capabilities,
     List<PlatformApiEndpointDescriptor> endpoints) {
   /**
@@ -58,6 +61,24 @@ public record PlatformApiContract(
    * the URL API version.
    */
   public static final int CURRENT_CONTRACT_VERSION = 19;
+
+  /** Stable app-facing Platform API baseline name published in contract snapshots. */
+  public static final String PLATFORM_API_STABLE_BASELINE_NAME = "1.0";
+
+  /** Contract version whose stable descriptors define the Platform API 1.0 baseline. */
+  public static final int PLATFORM_API_STABLE_BASELINE_CONTRACT_VERSION = 19;
+
+  private static final Set<String> PLATFORM_API_STABLE_BASELINE_CAPABILITIES =
+      Set.of(
+          PlatformApiCapabilities.APP_DATA_READ,
+          PlatformApiCapabilities.APP_DATA_WRITE,
+          PlatformApiCapabilities.CONTENT_FETCH,
+          PlatformApiCapabilities.CONTENT_INSERT,
+          PlatformApiCapabilities.CONTENT_INSERT_APP_DOCUMENT,
+          PlatformApiCapabilities.CONTENT_SUBSCRIBE,
+          PlatformApiCapabilities.PLATFORM_CONTRACT_READ,
+          PlatformApiCapabilities.QUEUE_READ,
+          PlatformApiCapabilities.QUEUE_WRITE);
 
   private static final int INITIAL_CONTRACT_VERSION = 1;
   private static final int APP_UPDATE_LIFECYCLE_CONTRACT_VERSION = 2;
@@ -138,6 +159,7 @@ public record PlatformApiContract(
           CURRENT_CONTRACT_VERSION,
           GENERATED_BY,
           STABILITY_POLICY,
+          null,
           capabilityDescriptors(),
           endpointDescriptors());
 
@@ -160,6 +182,38 @@ public record PlatformApiContract(
     capabilities = List.copyOf(Objects.requireNonNull(capabilities, "capabilities"));
     endpoints = List.copyOf(Objects.requireNonNull(endpoints, "endpoints"));
     requireEndpointCapabilitiesKnown(capabilities, endpoints);
+    StableBaseline derivedBaseline =
+        StableBaseline.fromDescriptors(
+            PLATFORM_API_STABLE_BASELINE_NAME,
+            PLATFORM_API_STABLE_BASELINE_CONTRACT_VERSION,
+            capabilities,
+            endpoints);
+    stableBaseline = stableBaseline == null ? derivedBaseline : stableBaseline;
+    stableBaseline.requireMatches(derivedBaseline);
+  }
+
+  /**
+   * Creates a normalized contract model using the stable baseline derived from descriptors.
+   *
+   * <p>This overload preserves the pre-freeze constructor shape used by tests and offline tooling
+   * that build synthetic contracts. New callers can pass an explicit baseline through the canonical
+   * record constructor; it must match the descriptor-derived baseline.
+   *
+   * @param apiVersion URL API version such as {@code v1}
+   * @param contractVersion integer app compatibility contract version
+   * @param generatedBy stable producer label for snapshots
+   * @param stabilityPolicy short human-readable stability policy
+   * @param capabilities deterministic public capability descriptors
+   * @param endpoints deterministic public endpoint descriptors
+   */
+  public PlatformApiContract(
+      String apiVersion,
+      int contractVersion,
+      String generatedBy,
+      String stabilityPolicy,
+      List<PlatformApiCapabilityDescriptor> capabilities,
+      List<PlatformApiEndpointDescriptor> endpoints) {
+    this(apiVersion, contractVersion, generatedBy, stabilityPolicy, null, capabilities, endpoints);
   }
 
   /**
@@ -247,6 +301,33 @@ public record PlatformApiContract(
       byName.put(descriptor.name(), descriptor);
     }
     return java.util.Collections.unmodifiableMap(byName);
+  }
+
+  Map<String, PlatformApiEndpointDescriptor> stableBaselineEndpointsByIdentity() {
+    LinkedHashMap<String, PlatformApiEndpointDescriptor> byIdentity = new LinkedHashMap<>();
+    for (PlatformApiEndpointDescriptor endpoint : endpoints) {
+      if (isStableBaselineEndpoint(endpoint)) {
+        byIdentity.put(endpointIdentity(endpoint), endpoint);
+      }
+    }
+    return java.util.Collections.unmodifiableMap(byIdentity);
+  }
+
+  static boolean isStableBaselineCapability(PlatformApiCapabilityDescriptor descriptor) {
+    return descriptor.stability().isStableAppFacing()
+        && descriptor.sinceContractVersion() <= PLATFORM_API_STABLE_BASELINE_CONTRACT_VERSION
+        && PLATFORM_API_STABLE_BASELINE_CAPABILITIES.contains(descriptor.name());
+  }
+
+  static boolean isStableBaselineEndpoint(PlatformApiEndpointDescriptor descriptor) {
+    return descriptor.stability().isStableAppFacing()
+        && descriptor.sinceContractVersion() <= PLATFORM_API_STABLE_BASELINE_CONTRACT_VERSION
+        && (descriptor.appProcessAllowed() || descriptor.appBrowserAllowed())
+        && PLATFORM_API_STABLE_BASELINE_CAPABILITIES.containsAll(descriptor.requiredCapabilities());
+  }
+
+  static String endpointIdentity(PlatformApiEndpointDescriptor endpoint) {
+    return endpoint.method() + " " + endpoint.routeTemplate();
   }
 
   private static void requireEndpointCapabilitiesKnown(
@@ -364,8 +445,11 @@ public record PlatformApiContract(
         experimentalCapability(
             PlatformApiCapabilities.VAULT_IDENTITIES_CREATE,
             "Create app-owned vault identities without exposing private key material."),
-        experimentalCapability(
+        new PlatformApiCapabilityDescriptor(
             PlatformApiCapabilities.VAULT_IDENTITIES_MANAGE,
+            PlatformApiStabilityLevel.OPERATOR_ONLY,
+            APP_VAULT_CONTRACT_VERSION,
+            null,
             "Manage vault identity grants through host/operator routes."),
         experimentalCapability(
             PlatformApiCapabilities.VAULT_IDENTITIES_READ,
@@ -844,6 +928,106 @@ public record PlatformApiContract(
       String name, int sinceContractVersion, String description) {
     return new PlatformApiCapabilityDescriptor(
         name, PlatformApiStabilityLevel.EXPERIMENTAL, sinceContractVersion, null, description);
+  }
+
+  /**
+   * Machine-readable Platform API stable app-facing baseline metadata.
+   *
+   * <p>The baseline name is a semantic app-authoring label such as {@code 1.0}; it is intentionally
+   * separate from the integer contract version that changes when the Platform API compatibility
+   * metadata changes. Capability names and endpoint identities are sorted and counted so release
+   * certification can detect stable removals without depending on local filesystem paths or
+   * generated report ordering.
+   *
+   * @param name stable baseline name, currently {@code 1.0}
+   * @param contractVersion contract version whose stable descriptors define this baseline
+   * @param capabilityCount number of stable app-facing capabilities in the baseline
+   * @param endpointCount number of stable app-facing endpoints in the baseline
+   * @param capabilities sorted stable app-facing capability names
+   * @param endpoints sorted stable app-facing endpoint identities in {@code METHOD /path} form
+   */
+  public record StableBaseline(
+      String name,
+      int contractVersion,
+      int capabilityCount,
+      int endpointCount,
+      List<String> capabilities,
+      List<String> endpoints) {
+    /** Creates a validated stable-baseline descriptor. */
+    public StableBaseline {
+      name = requireText(name, "stableBaseline.name");
+      if (contractVersion <= 0) {
+        throw new IllegalArgumentException("stableBaseline.contractVersion must be positive");
+      }
+      capabilities = sortedCopy(capabilities, "stableBaseline.capabilities");
+      endpoints = sortedCopy(endpoints, "stableBaseline.endpoints");
+      if (capabilityCount != capabilities.size()) {
+        throw new IllegalArgumentException(
+            "stableBaseline.capabilityCount must match capabilities size");
+      }
+      if (endpointCount != endpoints.size()) {
+        throw new IllegalArgumentException(
+            "stableBaseline.endpointCount must match endpoints size");
+      }
+    }
+
+    private static StableBaseline fromDescriptors(
+        String name,
+        int contractVersion,
+        List<PlatformApiCapabilityDescriptor> capabilities,
+        List<PlatformApiEndpointDescriptor> endpoints) {
+      List<String> stableCapabilities =
+          stableBaselineCapabilityNames(capabilities, endpoints).stream().sorted().toList();
+      List<String> stableEndpoints =
+          endpoints.stream()
+              .filter(PlatformApiContract::isStableBaselineEndpoint)
+              .map(PlatformApiContract::endpointIdentity)
+              .sorted()
+              .toList();
+      return new StableBaseline(
+          name,
+          contractVersion,
+          stableCapabilities.size(),
+          stableEndpoints.size(),
+          stableCapabilities,
+          stableEndpoints);
+    }
+
+    private static Set<String> stableBaselineCapabilityNames(
+        List<PlatformApiCapabilityDescriptor> capabilities,
+        List<PlatformApiEndpointDescriptor> endpoints) {
+      Set<String> stableCapabilityNames =
+          capabilities.stream()
+              .filter(PlatformApiContract::isStableBaselineCapability)
+              .map(PlatformApiCapabilityDescriptor::name)
+              .collect(Collectors.toCollection(TreeSet::new));
+      Set<String> baselineNames = new TreeSet<>();
+      for (PlatformApiEndpointDescriptor endpoint : endpoints) {
+        if (PlatformApiContract.isStableBaselineEndpoint(endpoint)) {
+          for (String capability : endpoint.requiredCapabilities()) {
+            if (stableCapabilityNames.contains(capability)) {
+              baselineNames.add(capability);
+            }
+          }
+        }
+      }
+      return baselineNames;
+    }
+
+    private void requireMatches(StableBaseline expected) {
+      if (!equals(expected)) {
+        throw new IllegalArgumentException(
+            "stableBaseline must match stable app-facing descriptor membership");
+      }
+    }
+
+    private static List<String> sortedCopy(List<String> values, String fieldName) {
+      TreeSet<String> sorted = new TreeSet<>();
+      for (String value : Objects.requireNonNull(values, fieldName)) {
+        sorted.add(requireText(value, fieldName + " value"));
+      }
+      return List.copyOf(sorted);
+    }
   }
 
   private static String requireText(String value, String fieldName) {
@@ -1383,7 +1567,9 @@ public record PlatformApiContract(
               spec.access().hostOperatorBypassAllowed(),
               spec.access().appProcessAllowed(),
               spec.access().appBrowserAllowed(),
-              PlatformApiStabilityLevel.EXPERIMENTAL,
+              spec.access().equals(EndpointAccess.HOST_OPERATOR_ONLY)
+                  ? PlatformApiStabilityLevel.OPERATOR_ONLY
+                  : PlatformApiStabilityLevel.EXPERIMENTAL,
               spec.description()));
     }
 
@@ -1655,7 +1841,7 @@ public record PlatformApiContract(
               true,
               false,
               false,
-              PlatformApiStabilityLevel.EXPERIMENTAL,
+              PlatformApiStabilityLevel.OPERATOR_ONLY,
               description));
     }
 

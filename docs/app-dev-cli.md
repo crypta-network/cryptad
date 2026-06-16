@@ -80,11 +80,12 @@ crypta-app init \
 Repeat `--permission` for each Platform API capability the app needs. Current capability names are
 listed in [app-permissions-and-audit.md](app-permissions-and-audit.md). The developer tooling also
 recognizes the app-vault capability names `vault.secrets.read`, `vault.secrets.write`,
-`vault.identities.read`, `vault.identities.create`, `vault.identities.use`, and
-`vault.identities.manage`; see [app-secret-and-identity-vault.md](app-secret-and-identity-vault.md)
-before requesting them. It also recognizes Trust Graph Preview capabilities `trust.read` and
-`trust.write`; see [trust-graph-preview.md](trust-graph-preview.md) before using them. It recognizes
-local app-service capabilities `app.services.read` and `app.services.call`; see
+`vault.identities.read`, `vault.identities.create`, and `vault.identities.use`; see
+[app-secret-and-identity-vault.md](app-secret-and-identity-vault.md) before requesting them.
+`vault.identities.manage` is host/operator-only and is rejected in third-party app manifests. The
+tooling also recognizes Trust Graph Preview capabilities `trust.read` and `trust.write`; see
+[trust-graph-preview.md](trust-graph-preview.md) before using them. It recognizes local app-service
+capabilities `app.services.read` and `app.services.call`; see
 [app-service-discovery-and-grants.md](app-service-discovery-and-grants.md) before using them. Use
 `--overwrite` only when you deliberately want to replace an existing
 scaffolded directory.
@@ -120,8 +121,13 @@ the same SDK and design-system assets, declare the permissions they demonstrate,
 permission disclosure. They are intended as staged bundles for app authors, not new Gradle
 subprojects. The `publisher` template uses the same `sourcePath`, `insertUri`, and `identifier`
 form fields accepted by `/api/v1/queue/inserts/file`; it does not read local files through browser
-file inputs. The `vault-profile` template sets `api.experimentalCapabilitiesAccepted=true` because
-the current vault capabilities are experimental. See
+file inputs. The scaffolder derives `api.targetStability` from the final permission set after
+template defaults and repeatable `--permission` values are merged. Stable-only permission sets keep
+`api.targetStability=stable`; app-facing experimental or other non-baseline permissions switch the
+manifest to `api.targetStability=experimental` and `api.experimentalCapabilitiesAccepted=true`.
+Operator-only and internal permissions are rejected during scaffolding because third-party app
+manifests cannot make them compatible. The `vault-profile` template uses the experimental target
+because the current vault capabilities are experimental. See
 [developer-beta-toolkit.md](developer-beta-toolkit.md) for the complete mock-dev, offline-test,
 signing, catalog, and dry-run publication flow.
 
@@ -140,6 +146,7 @@ sandbox.required=false
 app.permissions=queue.read,queue.write
 api.minimumVersion=1
 api.maximumTestedVersion=1
+api.targetStability=stable
 api.experimentalCapabilitiesAccepted=false
 quota.data.bytes=0
 quota.cache.bytes=0
@@ -250,9 +257,12 @@ crypta-app compat verify \
 The verifier checks unknown manifest permissions, unknown optional capabilities, malformed
 `api.*` metadata, app-declared minimum contract versions above the target, target contract versions
 above the app's maximum-tested version, experimental capability use without
-`api.experimentalCapabilitiesAccepted=true`, and deprecated or scheduled capabilities. It also
-checks catalog entry descriptors against the referenced bundle when `--catalog-entry` is used.
-Warnings become failures with `--strict`.
+`api.experimentalCapabilitiesAccepted=true`, stable-target use of capabilities outside the
+Platform API 1.0 stable baseline, internal/operator-only capability use, and deprecated or
+scheduled capabilities. It also checks catalog entry descriptors against the referenced bundle when
+`--catalog-entry` is used, including `api.targetStability` mismatches. Version range and
+deprecation warnings become failures with `--strict`; experimental, internal, operator-only, and
+stable-baseline violations are incompatible in default and strict mode.
 
 ## Catalog descriptor and flow
 
@@ -349,7 +359,7 @@ changelog.summary=Adds queue retry controls.
 changelog.uri=https://example.invalid/apps/hello-queue-0.1.0-changelog.txt
 api.minimumVersion=1
 api.maximumTestedVersion=1
-api.optionalCapabilities=alerts.read,diagnostics.read
+api.targetStability=stable
 api.experimentalCapabilitiesAccepted=false
 ```
 
@@ -375,6 +385,7 @@ permissions.rationale.queue.read=Displays publish progress from the local transf
 changelog.summary=Adds the first content reference app.
 api.minimumVersion=3
 api.maximumTestedVersion=19
+api.targetStability=stable
 api.experimentalCapabilitiesAccepted=false
 ```
 
@@ -406,6 +417,7 @@ permissions.rationale.app.data.write=Saves bounded profile drafts and publish su
 changelog.summary=Adds the first identity-profile reference app.
 api.minimumVersion=9
 api.maximumTestedVersion=19
+api.targetStability=experimental
 api.experimentalCapabilitiesAccepted=true
 ```
 
@@ -441,6 +453,7 @@ permissions.rationale.app.data.write=Saves bounded app-owned reader state throug
 changelog.summary=Adds the first feed reader and publisher reference app.
 api.minimumVersion=9
 api.maximumTestedVersion=19
+api.targetStability=stable
 api.experimentalCapabilitiesAccepted=false
 ```
 
@@ -486,6 +499,7 @@ service-request.trust-score.purpose=Annotate Social Inbox message authors using 
 changelog.summary=Adds the Social Inbox RC threaded reference app.
 api.minimumVersion=16
 api.maximumTestedVersion=19
+api.targetStability=experimental
 api.experimentalCapabilitiesAccepted=true
 ```
 
@@ -530,6 +544,7 @@ Descriptors can also author optional app-store metadata:
 | `api.minimumVersion` | `app.<id>.api.minimumVersion` |
 | `api.maximumTestedVersion` | `app.<id>.api.maximumTestedVersion` |
 | `api.optionalCapabilities` | `app.<id>.api.optionalCapabilities` |
+| `api.targetStability` | `app.<id>.api.targetStability` |
 | `api.experimentalCapabilitiesAccepted` | `app.<id>.api.experimentalCapabilitiesAccepted` |
 
 These fields are optional. A descriptor and artifact with no app-store metadata and no API
@@ -786,6 +801,7 @@ review keys outside the repository.
    permissions.rationale.queue.read=Reads local transfer queue state.
    api.minimumVersion=1
    api.maximumTestedVersion=10
+   api.targetStability=stable
    review.status=reviewed
    changelog.summary=First public beta catalog entry.
    ```

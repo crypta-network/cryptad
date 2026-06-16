@@ -94,7 +94,7 @@ app.queue-manager.changelog.summary=Adds queue retry controls.
 app.queue-manager.changelog.uri=https://example.invalid/apps/queue-manager-1.0.0-changelog.txt
 app.queue-manager.api.minimumVersion=1
 app.queue-manager.api.maximumTestedVersion=10
-app.queue-manager.api.optionalCapabilities=alerts.read,diagnostics.read
+app.queue-manager.api.targetStability=stable
 app.queue-manager.api.experimentalCapabilitiesAccepted=false
 
 app.site-publisher.id=site-publisher
@@ -118,6 +118,7 @@ app.site-publisher.permissions.rationale.queue.read=Displays publish progress fr
 app.site-publisher.changelog.summary=Adds the first content reference app.
 app.site-publisher.api.minimumVersion=3
 app.site-publisher.api.maximumTestedVersion=19
+app.site-publisher.api.targetStability=stable
 app.site-publisher.api.experimentalCapabilitiesAccepted=false
 
 app.profile-publisher.id=profile-publisher
@@ -145,6 +146,7 @@ app.profile-publisher.permissions.rationale.app.data.write=Saves bounded profile
 app.profile-publisher.changelog.summary=Adds the first identity-profile reference app.
 app.profile-publisher.api.minimumVersion=9
 app.profile-publisher.api.maximumTestedVersion=19
+app.profile-publisher.api.targetStability=experimental
 app.profile-publisher.api.experimentalCapabilitiesAccepted=true
 
 app.social-inbox.id=social-inbox
@@ -183,6 +185,7 @@ app.social-inbox.service-request.trust-score.purpose=Annotate Social Inbox messa
 app.social-inbox.changelog.summary=Adds the Social Inbox RC threaded reference app.
 app.social-inbox.api.minimumVersion=16
 app.social-inbox.api.maximumTestedVersion=19
+app.social-inbox.api.targetStability=experimental
 app.social-inbox.api.experimentalCapabilitiesAccepted=true
 
 app.feed-reader.id=feed-reader
@@ -210,6 +213,7 @@ app.feed-reader.permissions.rationale.app.data.write=Saves bounded app-owned rea
 app.feed-reader.changelog.summary=Adds the first feed reader and publisher reference app.
 app.feed-reader.api.minimumVersion=9
 app.feed-reader.api.maximumTestedVersion=19
+app.feed-reader.api.targetStability=stable
 app.feed-reader.api.experimentalCapabilitiesAccepted=false
 
 app.trust-graph.id=trust-graph
@@ -250,6 +254,7 @@ app.trust-graph.service.trust-score.description=Returns a bounded local RC Trust
 app.trust-graph.changelog.summary=Adds the local Trust Graph Local RC reference app.
 app.trust-graph.api.minimumVersion=10
 app.trust-graph.api.maximumTestedVersion=19
+app.trust-graph.api.targetStability=experimental
 app.trust-graph.api.experimentalCapabilitiesAccepted=true
 app.queue-manager.review.receipt.version=1
 app.queue-manager.review.receipt.app.id=queue-manager
@@ -380,6 +385,7 @@ Catalog entries can include these optional fields:
 | `app.<id>.api.minimumVersion` | Advisory minimum Platform API compatibility contract version. |
 | `app.<id>.api.maximumTestedVersion` | Advisory maximum Platform API compatibility contract version tested by the app author. |
 | `app.<id>.api.optionalCapabilities` | Advisory comma-separated optional capability names used for verifier and review warnings. |
+| `app.<id>.api.targetStability` | App author target: `stable` for the Platform API 1.0 stable baseline or `experimental` for opt-in app-facing experimental API. |
 | `app.<id>.api.experimentalCapabilitiesAccepted` | Whether the app author explicitly accepts experimental capability use. |
 | `app.<id>.review.receipt.*` | Optional independently signed review receipt. See [Trusted review receipts](#trusted-review-receipts). |
 
@@ -564,7 +570,7 @@ changelog.summary=Adds queue retry controls.
 changelog.uri=https://example.invalid/apps/hello-queue-0.1.0-changelog.txt
 api.minimumVersion=1
 api.maximumTestedVersion=1
-api.optionalCapabilities=alerts.read,diagnostics.read
+api.targetStability=stable
 api.experimentalCapabilitiesAccepted=false
 ```
 

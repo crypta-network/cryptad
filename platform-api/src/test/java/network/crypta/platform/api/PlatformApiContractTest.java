@@ -1,15 +1,18 @@
 package network.crypta.platform.api;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.stream.Stream;
+import network.crypta.platform.api.json.PlatformApiJsonWriter;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SuppressWarnings("java:S100")
@@ -40,11 +43,123 @@ class PlatformApiContractTest {
   }
 
   @Test
+  void parse_whenStableBaselineMetadataChanges_expectSnapshotRejected() {
+    String json = PlatformApiContractJson.writeEnvelope(PlatformApiContract.current());
+    String baselineVersion =
+        "\"stableBaseline\":{\"name\":\"1.0\",\"contractVersion\":"
+            + PlatformApiContract.PLATFORM_API_STABLE_BASELINE_CONTRACT_VERSION;
+    assertTrue(json.contains(baselineVersion));
+    String staleJson =
+        json.replace(
+            baselineVersion,
+            "\"stableBaseline\":{\"name\":\"1.0\",\"contractVersion\":"
+                + (PlatformApiContract.PLATFORM_API_STABLE_BASELINE_CONTRACT_VERSION - 1));
+
+    IllegalArgumentException thrown =
+        assertThrows(
+            IllegalArgumentException.class, () -> PlatformApiContractJson.parse(staleJson));
+
+    assertTrue(thrown.getMessage().contains("stableBaseline"), thrown.getMessage());
+  }
+
+  @Test
+  void parse_whenStableBaselineMissingFromCurrentSnapshot_expectSnapshotRejected() {
+    String json = contractJsonWithoutStableBaseline(PlatformApiContract.CURRENT_CONTRACT_VERSION);
+
+    IllegalArgumentException thrown =
+        assertThrows(IllegalArgumentException.class, () -> PlatformApiContractJson.parse(json));
+
+    assertTrue(thrown.getMessage().contains("stableBaseline"), thrown.getMessage());
+  }
+
+  @Test
+  void parse_whenStableBaselineMissingFromLegacySnapshot_expectSnapshotRemainsReadable() {
+    int legacyContractVersion =
+        PlatformApiContract.PLATFORM_API_STABLE_BASELINE_CONTRACT_VERSION - 1;
+    String json = contractJsonWithoutStableBaseline(legacyContractVersion);
+
+    PlatformApiContract parsed = PlatformApiContractJson.parse(json);
+
+    assertEquals(legacyContractVersion, parsed.contractVersion());
+    assertEquals(
+        PlatformApiContract.PLATFORM_API_STABLE_BASELINE_CONTRACT_VERSION,
+        parsed.stableBaseline().contractVersion());
+  }
+
+  @Test
   void current_whenReadingVersion_expectTypedApiAndContractVersion() {
     PlatformApiContractVersion version = PlatformApiContract.current().version();
 
     assertEquals("v1", version.apiVersion());
     assertEquals(PlatformApiContract.CURRENT_CONTRACT_VERSION, version.contractVersion());
+  }
+
+  @Test
+  void current_whenInspectingStableBaseline_expectDeterministicAppFacingStableMetadata() {
+    PlatformApiContract.StableBaseline baseline = PlatformApiContract.current().stableBaseline();
+
+    assertEquals("1.0", baseline.name());
+    assertEquals(
+        PlatformApiContract.PLATFORM_API_STABLE_BASELINE_CONTRACT_VERSION,
+        baseline.contractVersion());
+    assertEquals(baseline.capabilities().size(), baseline.capabilityCount());
+    assertEquals(baseline.endpoints().size(), baseline.endpointCount());
+    assertEquals(
+        List.of(
+            "app.data.read",
+            "app.data.write",
+            "content.fetch",
+            "content.insert",
+            "content.insert.app-document",
+            "content.subscribe",
+            "platform.contract.read",
+            "queue.read",
+            "queue.write"),
+        baseline.capabilities());
+    assertFalse(baseline.capabilities().contains("trust.read"));
+    assertFalse(baseline.capabilities().contains("app.services.read"));
+    assertTrue(baseline.endpoints().contains("POST /content/fetch"));
+    assertTrue(baseline.endpoints().contains("POST /queue/inserts/app-document"));
+    assertTrue(baseline.endpoints().contains("GET /platform/contract"));
+    assertTrue(baseline.endpoints().contains("POST /queue/inserts/file"));
+    assertFalse(baseline.endpoints().stream().anyMatch(endpoint -> endpoint.contains("app-vault")));
+    assertFalse(baseline.endpoints().stream().anyMatch(endpoint -> endpoint.contains("operator")));
+  }
+
+  @Test
+  void constructor_whenContractVersionBumps_expectStableBaselineRemainsAnchoredToFrozenVersion() {
+    PlatformApiContract contract =
+        new PlatformApiContract(
+            "v1",
+            PlatformApiContract.CURRENT_CONTRACT_VERSION + 1,
+            "test",
+            "test policy",
+            PlatformApiContract.current().capabilities(),
+            PlatformApiContract.current().endpoints());
+
+    assertEquals(PlatformApiContract.CURRENT_CONTRACT_VERSION + 1, contract.contractVersion());
+    assertEquals(
+        PlatformApiContract.PLATFORM_API_STABLE_BASELINE_CONTRACT_VERSION,
+        contract.stableBaseline().contractVersion());
+  }
+
+  @Test
+  void constructor_whenFutureStableEndpointExists_expectBaselineMembershipFrozen() {
+    List<PlatformApiEndpointDescriptor> endpoints = endpointsWithFutureStableQueueView();
+
+    PlatformApiContract contract =
+        new PlatformApiContract(
+            "v1",
+            PlatformApiContract.CURRENT_CONTRACT_VERSION + 1,
+            "test",
+            "test policy",
+            PlatformApiContract.current().capabilities(),
+            endpoints);
+
+    assertFalse(contract.stableBaseline().endpoints().contains("GET /queue/future"));
+    assertEquals(
+        PlatformApiContract.current().stableBaseline().endpoints(),
+        contract.stableBaseline().endpoints());
   }
 
   @Test
@@ -284,7 +399,11 @@ class PlatformApiContractTest {
       seen.add(key);
       assertEquals(7, endpoint.sinceContractVersion(), key);
       assertEquals("trust-graph", endpoint.routeFamily(), key);
-      assertEquals(PlatformApiStabilityLevel.EXPERIMENTAL, endpoint.stability(), key);
+      PlatformApiStabilityLevel expectedStability =
+          expectedCapabilities.get(key).isEmpty()
+              ? PlatformApiStabilityLevel.OPERATOR_ONLY
+              : PlatformApiStabilityLevel.EXPERIMENTAL;
+      assertEquals(expectedStability, endpoint.stability(), key);
       assertTrue(endpoint.appProcessAllowed(), key);
       assertTrue(endpoint.appBrowserAllowed(), key);
       assertEquals(expectedCapabilities.get(key), endpoint.requiredCapabilities(), key);
@@ -331,24 +450,27 @@ class PlatformApiContractTest {
           endpoint.sinceContractVersion(),
           key);
       assertEquals("app-services", endpoint.routeFamily(), key);
-      assertEquals(PlatformApiStabilityLevel.EXPERIMENTAL, endpoint.stability(), key);
       assertEquals(expectedCapabilities.get(key), endpoint.requiredCapabilities(), key);
       if (key.endsWith("/approve")
           || key.endsWith("/reject")
           || key.endsWith("/renew")
           || key.equals("GET /app-services/audit")) {
+        assertEquals(PlatformApiStabilityLevel.OPERATOR_ONLY, endpoint.stability(), key);
         assertTrue(endpoint.hostOperatorBypassAllowed(), key);
         assertFalse(endpoint.appProcessAllowed(), key);
         assertFalse(endpoint.appBrowserAllowed(), key);
       } else if (key.equals("POST /app-services/grants")
           || key.equals("POST /app-services/grant-bundles")
           || key.equals("POST /app-services/{providerAppId}/services/{serviceId}/invoke")) {
+        assertEquals(PlatformApiStabilityLevel.EXPERIMENTAL, endpoint.stability(), key);
         assertEquals(
             key.equals("POST /app-services/grant-bundles"),
             endpoint.hostOperatorBypassAllowed(),
             key);
         assertTrue(endpoint.appProcessAllowed(), key);
         assertTrue(endpoint.appBrowserAllowed(), key);
+      } else {
+        assertEquals(PlatformApiStabilityLevel.EXPERIMENTAL, endpoint.stability(), key);
       }
     }
     assertEquals(expectedCapabilities.keySet(), seen);
@@ -543,10 +665,15 @@ class PlatformApiContractTest {
   private static PlatformApiStabilityLevel expectedStability(
       PlatformApiEndpointDescriptor endpoint) {
     if (endpoint.routeTemplate().startsWith("/trust-graph")
-        || endpoint.routeTemplate().startsWith("/app-services")
         || endpoint.routeTemplate().startsWith("/app-vault")
-        || endpoint.routeTemplate().startsWith("/identity-vault")) {
+        || endpoint.routeTemplate().startsWith("/app-services")) {
+      if (!endpoint.appProcessAllowed() && !endpoint.appBrowserAllowed()) {
+        return PlatformApiStabilityLevel.OPERATOR_ONLY;
+      }
       return PlatformApiStabilityLevel.EXPERIMENTAL;
+    }
+    if (endpoint.routeTemplate().startsWith("/identity-vault")) {
+      return PlatformApiStabilityLevel.OPERATOR_ONLY;
     }
     return PlatformApiStabilityLevel.STABLE;
   }
@@ -574,5 +701,35 @@ class PlatformApiContractTest {
     return Stream.of(relative.split("/", -1))
         .map(segment -> segment.startsWith("{") && segment.endsWith("}") ? "sample" : segment)
         .toList();
+  }
+
+  private static List<PlatformApiEndpointDescriptor> endpointsWithFutureStableQueueView() {
+    java.util.ArrayList<PlatformApiEndpointDescriptor> endpoints =
+        new java.util.ArrayList<>(PlatformApiContract.current().endpoints());
+    endpoints.add(
+        new PlatformApiEndpointDescriptor(
+            "queue",
+            "GET",
+            "/queue/future",
+            "queue.future",
+            List.of(PlatformApiCapabilities.QUEUE_READ),
+            true,
+            true,
+            true,
+            PlatformApiStabilityLevel.STABLE,
+            PlatformApiContract.PLATFORM_API_STABLE_BASELINE_CONTRACT_VERSION + 1,
+            null,
+            "Read a future queue view."));
+    return endpoints;
+  }
+
+  private static String contractJsonWithoutStableBaseline(int contractVersion) {
+    LinkedHashMap<String, Object> contract =
+        new LinkedHashMap<>(PlatformApiContractJson.toJsonValue(PlatformApiContract.current()));
+    contract.put("contractVersion", contractVersion);
+    contract.remove("stableBaseline");
+    LinkedHashMap<String, Object> envelope = LinkedHashMap.newLinkedHashMap(1);
+    envelope.put("contract", contract);
+    return PlatformApiJsonWriter.write(envelope);
   }
 }

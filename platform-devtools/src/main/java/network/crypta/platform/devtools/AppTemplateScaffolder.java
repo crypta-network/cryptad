@@ -9,10 +9,14 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import network.crypta.platform.api.PlatformApiCapabilityDescriptor;
 import network.crypta.platform.api.PlatformApiContract;
 import network.crypta.platform.appdist.AppBundleManifest;
 import network.crypta.platform.appdist.AppBundleManifestParser;
@@ -690,6 +694,43 @@ final class AppTemplateScaffolder {
     return List.copyOf(normalized);
   }
 
+  private static ApiMetadataDefaults apiMetadataDefaults(List<String> permissions)
+      throws AppDistributionException {
+    PlatformApiContract contract = DevtoolsCapabilityVocabulary.currentValidationContract();
+    Set<String> stableBaselineCapabilities = Set.copyOf(contract.stableBaseline().capabilities());
+    Map<String, PlatformApiCapabilityDescriptor> capabilitiesByName = capabilitiesByName(contract);
+    boolean usesNonBaselineAppFacingApi = false;
+    for (String permission : permissions) {
+      PlatformApiCapabilityDescriptor descriptor = capabilitiesByName.get(permission);
+      if (descriptor == null) {
+        continue;
+      }
+      if (descriptor.stability().isRestrictedAudience()) {
+        throw new AppDistributionException(
+            "permission "
+                + permission
+                + " is "
+                + descriptor.stability().jsonValue()
+                + " and cannot be used by third-party app scaffolds");
+      }
+      if (!stableBaselineCapabilities.contains(descriptor.name())) {
+        usesNonBaselineAppFacingApi = true;
+      }
+    }
+    return usesNonBaselineAppFacingApi
+        ? new ApiMetadataDefaults("experimental", true)
+        : new ApiMetadataDefaults("stable", false);
+  }
+
+  private static Map<String, PlatformApiCapabilityDescriptor> capabilitiesByName(
+      PlatformApiContract contract) {
+    LinkedHashMap<String, PlatformApiCapabilityDescriptor> byName = new LinkedHashMap<>();
+    for (PlatformApiCapabilityDescriptor descriptor : contract.capabilities()) {
+      byName.put(descriptor.name(), descriptor);
+    }
+    return Map.copyOf(byName);
+  }
+
   /**
    * Renders the README that explains the local developer workflow.
    *
@@ -867,9 +908,10 @@ final class AppTemplateScaffolder {
      *
      * @return UTF-8 compatible manifest properties content for {@code cryptad-app.properties}
      */
-    String manifestContent() {
+    String manifestContent() throws AppDistributionException {
       StringBuilder builder = new StringBuilder();
       int currentContractVersion = PlatformApiContract.current().contractVersion();
+      ApiMetadataDefaults apiMetadataDefaults = apiMetadataDefaults(permissions);
       builder
           .append("manifest.version=1\n")
           .append("app.id=")
@@ -887,8 +929,11 @@ final class AppTemplateScaffolder {
           .append("api.maximumTestedVersion=")
           .append(currentContractVersion)
           .append('\n')
+          .append("api.targetStability=")
+          .append(apiMetadataDefaults.targetStability())
+          .append('\n')
           .append("api.experimentalCapabilitiesAccepted=")
-          .append(templateKind.experimentalCapabilitiesAccepted())
+          .append(apiMetadataDefaults.experimentalCapabilitiesAccepted())
           .append('\n')
           .append("app.exec=bin/start.sh\n")
           .append("app.ui.mode=")
@@ -913,4 +958,7 @@ final class AppTemplateScaffolder {
       return builder.toString();
     }
   }
+
+  private record ApiMetadataDefaults(
+      String targetStability, boolean experimentalCapabilitiesAccepted) {}
 }

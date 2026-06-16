@@ -88,6 +88,7 @@ class AppCatalogWriterTest {
             api.minimumVersion=1
             api.maximumTestedVersion=1
             api.optionalCapabilities=alerts.read,diagnostics.read
+            api.targetStability=experimental
             api.experimentalCapabilitiesAccepted=true
             review.status=reviewed
             review.note=Reviewed for local operator safety.
@@ -123,6 +124,7 @@ class AppCatalogWriterTest {
             "app.queue-manager.api.minimumVersion=1",
             "app.queue-manager.api.maximumTestedVersion=1",
             "app.queue-manager.api.optionalCapabilities=alerts.read,diagnostics.read",
+            "app.queue-manager.api.targetStability=experimental",
             "app.queue-manager.api.experimentalCapabilitiesAccepted=true",
             "app.queue-manager.channel=beta",
             "app.queue-manager.support.status=experimental",

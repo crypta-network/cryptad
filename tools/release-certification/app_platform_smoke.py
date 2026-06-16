@@ -153,6 +153,7 @@ FIRST_PARTY_MAINTENANCE_ENUMS = {
     "deprecationPolicy": {"none", "notice-only", "replacement-required", "security-only"},
 }
 CURRENT_PLATFORM_API_CONTRACT_VERSION = 19
+CURRENT_PLATFORM_API_STABLE_BASELINE_CONTRACT_VERSION = 19
 NETWORK_SCALE_EVIDENCE_IDS = (
     "network-scale.app-network-budget",
     "network-scale.content-fetch-budget",
@@ -1034,6 +1035,10 @@ def first_party_app_specs(settings: Settings) -> list[dict[str, Any]]:
             "sourceDir": settings.workspace_root / "apps/queue-manager/src/staged",
             "launcher": "bin/queue-manager.sh",
             "permissions": {"queue.read", "queue.write"},
+            "apiMinimumVersion": 1,
+            "apiMaximumTestedVersion": CURRENT_PLATFORM_API_CONTRACT_VERSION,
+            "apiTargetStability": "stable",
+            "experimentalCapabilitiesAccepted": False,
         },
         {
             "appId": "publisher",
@@ -1042,6 +1047,10 @@ def first_party_app_specs(settings: Settings) -> list[dict[str, Any]]:
             "sourceDir": settings.workspace_root / "apps/publisher/src/staged",
             "launcher": "bin/publisher.sh",
             "permissions": {"queue.read", "queue.write", "content.insert"},
+            "apiMinimumVersion": 1,
+            "apiMaximumTestedVersion": CURRENT_PLATFORM_API_CONTRACT_VERSION,
+            "apiTargetStability": "stable",
+            "experimentalCapabilitiesAccepted": False,
         },
         {
             "appId": "site-publisher",
@@ -1055,6 +1064,8 @@ def first_party_app_specs(settings: Settings) -> list[dict[str, Any]]:
             "permissions": {"queue.read", "queue.write", "content.insert"},
             "apiMinimumVersion": 3,
             "apiMaximumTestedVersion": CURRENT_PLATFORM_API_CONTRACT_VERSION,
+            "apiTargetStability": "stable",
+            "experimentalCapabilitiesAccepted": False,
         },
         {
             "appId": "profile-publisher",
@@ -1068,6 +1079,8 @@ def first_party_app_specs(settings: Settings) -> list[dict[str, Any]]:
             "permissions": PROFILE_PUBLISHER_PERMISSIONS,
             "apiMinimumVersion": 9,
             "apiMaximumTestedVersion": CURRENT_PLATFORM_API_CONTRACT_VERSION,
+            "apiTargetStability": "experimental",
+            "experimentalCapabilitiesAccepted": True,
         },
         {
             "appId": "social-inbox",
@@ -1081,6 +1094,7 @@ def first_party_app_specs(settings: Settings) -> list[dict[str, Any]]:
             "permissions": SOCIAL_INBOX_PERMISSIONS,
             "apiMinimumVersion": 16,
             "apiMaximumTestedVersion": CURRENT_PLATFORM_API_CONTRACT_VERSION,
+            "apiTargetStability": "experimental",
             "experimentalCapabilitiesAccepted": True,
         },
         {
@@ -1094,6 +1108,8 @@ def first_party_app_specs(settings: Settings) -> list[dict[str, Any]]:
             "permissions": FEED_READER_PERMISSIONS,
             "apiMinimumVersion": 9,
             "apiMaximumTestedVersion": CURRENT_PLATFORM_API_CONTRACT_VERSION,
+            "apiTargetStability": "stable",
+            "experimentalCapabilitiesAccepted": False,
         },
         {
             "appId": "trust-graph",
@@ -1106,6 +1122,7 @@ def first_party_app_specs(settings: Settings) -> list[dict[str, Any]]:
             "permissions": TRUST_GRAPH_PERMISSIONS,
             "apiMinimumVersion": 10,
             "apiMaximumTestedVersion": CURRENT_PLATFORM_API_CONTRACT_VERSION,
+            "apiTargetStability": "experimental",
             "experimentalCapabilitiesAccepted": True,
         },
     ]
@@ -1132,6 +1149,8 @@ def validate_app_bundle(bundle_dir: Path, spec: dict[str, Any], settings: Settin
         "permissions": sorted(parse_permission_set(manifest.get("app.permissions", ""))),
         "apiMinimumVersion": manifest.get("api.minimumVersion"),
         "apiMaximumTestedVersion": manifest.get("api.maximumTestedVersion"),
+        "apiTargetStability": manifest.get("api.targetStability"),
+        "experimentalCapabilitiesAccepted": manifest.get("api.experimentalCapabilitiesAccepted"),
     }
     for key in ("app.id", "app.name", "app.version"):
         if not manifest.get(key):
@@ -1158,6 +1177,13 @@ def validate_app_bundle(bundle_dir: Path, spec: dict[str, Any], settings: Settin
         spec["apiMaximumTestedVersion"]
     ):
         errors.append("api.maximumTestedVersion does not match expected first-party metadata")
+    if manifest.get("api.targetStability") != spec.get("apiTargetStability"):
+        errors.append("api.targetStability does not match expected first-party metadata")
+    expected_experimental = "true" if spec.get("experimentalCapabilitiesAccepted") else "false"
+    if manifest.get("api.experimentalCapabilitiesAccepted") != expected_experimental:
+        errors.append(
+            "api.experimentalCapabilitiesAccepted does not match expected first-party metadata"
+        )
     for relative in (spec["launcher"], "static/index.html", "static/app.js", "static/app.css", "static/crypta-platform.js"):
         if not (bundle_dir / relative).is_file():
             errors.append(f"{relative} is missing")
@@ -1744,6 +1770,82 @@ def stable_endpoint_identities(endpoints: list[Any]) -> list[str]:
     return sorted(identities)
 
 
+def endpoint_identity(entry: dict[str, Any]) -> str:
+    route = str(entry.get("routeTemplate") or entry.get("path") or entry.get("route") or "").strip()
+    if not route:
+        return ""
+    method = str(entry.get("method", "")).strip().upper()
+    return f"{method} {route}" if method else route
+
+
+def string_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    result: list[str] = []
+    for item in value:
+        text = str(item).strip()
+        if text and text not in result:
+            result.append(text)
+    return sorted(result)
+
+
+def stable_endpoint_required_capabilities(
+    endpoints: list[Any], baseline_endpoint_identities: list[str]
+) -> dict[str, list[str]]:
+    baseline = set(baseline_endpoint_identities)
+    capability_sets: dict[str, list[str]] = {}
+    for entry in endpoints:
+        if not isinstance(entry, dict):
+            continue
+        identity = endpoint_identity(entry)
+        if not identity:
+            continue
+        if baseline:
+            if identity not in baseline:
+                continue
+        elif str(entry.get("stability", "unknown")).lower() != "stable":
+            continue
+        capability_sets[identity] = string_list(entry.get("requiredCapabilities"))
+    for identity in sorted(baseline):
+        capability_sets.setdefault(identity, [])
+    return {identity: capability_sets[identity] for identity in sorted(capability_sets)}
+
+
+def boolean_field(value: Any) -> bool:
+    return value if isinstance(value, bool) else False
+
+
+def stable_endpoint_app_access(
+    endpoints: list[Any], baseline_endpoint_identities: list[str]
+) -> dict[str, dict[str, bool]]:
+    baseline = set(baseline_endpoint_identities)
+    access_by_endpoint: dict[str, dict[str, bool]] = {}
+    for entry in endpoints:
+        if not isinstance(entry, dict):
+            continue
+        identity = endpoint_identity(entry)
+        if not identity:
+            continue
+        if baseline:
+            if identity not in baseline:
+                continue
+        elif str(entry.get("stability", "unknown")).lower() != "stable":
+            continue
+        access_by_endpoint[identity] = {
+            "appProcessPrincipalsAllowed": boolean_field(entry.get("appProcessPrincipalsAllowed")),
+            "appBrowserPrincipalsAllowed": boolean_field(entry.get("appBrowserPrincipalsAllowed")),
+        }
+    for identity in sorted(baseline):
+        access_by_endpoint.setdefault(
+            identity,
+            {
+                "appProcessPrincipalsAllowed": False,
+                "appBrowserPrincipalsAllowed": False,
+            },
+        )
+    return {identity: access_by_endpoint[identity] for identity in sorted(access_by_endpoint)}
+
+
 def capability_names(capabilities: list[Any]) -> list[str]:
     names: list[str] = []
     for entry in capabilities:
@@ -1831,8 +1933,33 @@ def collect_platform_api_contract_evidence(
     details["apiVersion"] = api_version
     details["capabilityCount"] = len(capabilities)
     details["endpointCount"] = len(endpoints)
-    details["stableCapabilities"] = stable_capability_names(capabilities)
-    details["stableEndpoints"] = stable_endpoint_identities(endpoints)
+    stable_baseline = contract.get("stableBaseline") if isinstance(contract, dict) else None
+    if isinstance(stable_baseline, dict):
+        baseline_capabilities = stable_baseline.get("capabilities", [])
+        baseline_endpoints = stable_baseline.get("endpoints", [])
+        details["stableBaseline"] = stable_baseline
+        details["stableCapabilities"] = (
+            sorted(str(value) for value in baseline_capabilities)
+            if isinstance(baseline_capabilities, list)
+            else []
+        )
+        details["stableEndpoints"] = (
+            sorted(str(value) for value in baseline_endpoints)
+            if isinstance(baseline_endpoints, list)
+            else []
+        )
+    else:
+        details["stableBaseline"] = None
+        details["stableCapabilities"] = stable_capability_names(capabilities)
+        details["stableEndpoints"] = stable_endpoint_identities(endpoints)
+    details["stableEndpointRequiredCapabilities"] = stable_endpoint_required_capabilities(
+        endpoints, details["stableEndpoints"]
+    )
+    details["stableEndpointAppAccess"] = stable_endpoint_app_access(
+        endpoints, details["stableEndpoints"]
+    )
+    details["stableCapabilityCount"] = len(details["stableCapabilities"])
+    details["stableEndpointCount"] = len(details["stableEndpoints"])
     details["stabilityCounts"] = stability_counts
     details["flaggedStability"] = flagged
     required_app_data_capabilities = {"app.data.read", "app.data.write"}
@@ -1939,6 +2066,23 @@ def collect_platform_api_contract_evidence(
                 "contractVersion must be "
                 f"{CURRENT_PLATFORM_API_CONTRACT_VERSION} for app-service dependency bundle support"
             )
+        if not isinstance(stable_baseline, dict):
+            errors.append("contract stableBaseline metadata is missing")
+        else:
+            if stable_baseline.get("name") != "1.0":
+                errors.append("stableBaseline.name must be 1.0")
+            if (
+                stable_baseline.get("contractVersion")
+                != CURRENT_PLATFORM_API_STABLE_BASELINE_CONTRACT_VERSION
+            ):
+                errors.append(
+                    "stableBaseline.contractVersion must match the Platform API 1.0 baseline"
+                    " contract version"
+                )
+            if stable_baseline.get("capabilityCount") != details["stableCapabilityCount"]:
+                errors.append("stableBaseline.capabilityCount does not match capabilities")
+            if stable_baseline.get("endpointCount") != details["stableEndpointCount"]:
+                errors.append("stableBaseline.endpointCount does not match endpoints")
     if not capabilities:
         errors.append("contract has no capability descriptors")
     if not endpoints:
@@ -2009,6 +2153,172 @@ def collect_platform_api_contract_evidence(
         source,
         details,
     )
+
+
+def collect_platform_api_stable_freeze_evidence(
+    settings: Settings, contract_item: EvidenceItem
+) -> list[EvidenceItem]:
+    source = summary_source(settings)
+    contract_details = contract_item.details
+    stable_baseline = contract_details.get("stableBaseline")
+    stable_errors: list[str] = []
+    if not isinstance(stable_baseline, dict):
+        stable_errors.append("stableBaseline metadata is missing")
+    else:
+        if stable_baseline.get("name") != "1.0":
+            stable_errors.append("stableBaseline.name must be 1.0")
+        if not stable_baseline.get("capabilities"):
+            stable_errors.append("stableBaseline.capabilities is empty")
+        if not stable_baseline.get("endpoints"):
+            stable_errors.append("stableBaseline.endpoints is empty")
+    stable_endpoint_capabilities = contract_details.get("stableEndpointRequiredCapabilities")
+    if not isinstance(stable_endpoint_capabilities, dict) or not stable_endpoint_capabilities:
+        stable_errors.append("stable endpoint required-capability metadata is missing")
+    stable_endpoint_access = contract_details.get("stableEndpointAppAccess")
+    if not isinstance(stable_endpoint_access, dict) or not stable_endpoint_access:
+        stable_errors.append("stable endpoint app-principal access metadata is missing")
+    stable_baseline_item = EvidenceItem(
+        "platform-api.stable-baseline",
+        root_consequence(settings, "fail") if stable_errors else "pass",
+        True,
+        (
+            "Platform API stable baseline metadata is incomplete."
+            if stable_errors
+            else "Platform API 1.0 stable baseline metadata is present."
+        ),
+        source,
+        {"errors": stable_errors, "stableBaseline": stable_baseline},
+    )
+
+    breaking_check_details = {
+        "currentContractVersion": contract_details.get("contractVersion"),
+        "stableCapabilityCount": contract_details.get("stableCapabilityCount"),
+        "stableEndpointCount": contract_details.get("stableEndpointCount"),
+        "stableEndpointRequiredCapabilities": stable_endpoint_capabilities,
+        "stableEndpointAppAccess": stable_endpoint_access,
+        "historyGate": "release_certification.py compares previous stable baseline summaries",
+        "productionMode": "requires previous release summary through release certification history",
+    }
+    stable_breaking_item = EvidenceItem(
+        "platform-api.stable-breaking-change-check",
+        "pass" if not stable_errors else root_consequence(settings, "fail"),
+        True,
+        (
+            "Stable Platform API breaking-change check is wired through release certification."
+            if not stable_errors
+            else "Stable Platform API breaking-change check is missing usable baseline input."
+        ),
+        source,
+        {"errors": stable_errors, **breaking_check_details},
+    )
+
+    manifest_sources = {
+        "metadataModel": settings.workspace_root
+        / "platform-appdist/src/main/java/network/crypta/platform/appdist/AppApiCompatibilityMetadata.java",
+        "manifestParser": settings.workspace_root
+        / "platform-appdist/src/main/java/network/crypta/platform/appdist/AppBundleManifestParser.java",
+        "catalogParser": settings.workspace_root
+        / "platform-appcatalog/src/main/java/network/crypta/platform/appcatalog/AppCatalogParser.java",
+        "catalogWriter": settings.workspace_root
+        / "platform-appcatalog/src/main/java/network/crypta/platform/appcatalog/AppCatalogWriter.java",
+        "cliGenerator": settings.workspace_root
+        / "platform-devtools/src/main/java/network/crypta/platform/devtools/CatalogEntryDescriptorGenerator.java",
+    }
+    manifest_checks = {
+        name: "api.targetStability" in read_source(path)
+        for name, path in manifest_sources.items()
+    }
+    manifest_errors = [name for name, passed in manifest_checks.items() if not passed]
+    manifest_item = EvidenceItem(
+        "platform-api.manifest-target-stability",
+        root_consequence(settings, "fail") if manifest_errors else "pass",
+        True,
+        (
+            "Manifest/catalog target-stability support is incomplete."
+            if manifest_errors
+            else "Manifest, catalog, and CLI metadata preserve api.targetStability."
+        ),
+        source,
+        {
+            "errors": manifest_errors,
+            "checks": manifest_checks,
+            "sources": {
+                name: display_path(path, settings.workspace_root)
+                for name, path in manifest_sources.items()
+            },
+        },
+    )
+
+    declaration_errors: list[str] = []
+    declarations: dict[str, Any] = {}
+    for spec in first_party_app_specs(settings):
+        template = spec["sourceDir"] / "cryptad-app.properties.template"
+        manifest = parse_properties(template) if template.is_file() else {}
+        declarations[spec["appId"]] = {
+            "apiTargetStability": manifest.get("api.targetStability"),
+            "experimentalCapabilitiesAccepted": manifest.get(
+                "api.experimentalCapabilitiesAccepted"
+            ),
+        }
+        if manifest.get("api.targetStability") != spec.get("apiTargetStability"):
+            declaration_errors.append(f"{spec['appId']}: api.targetStability mismatch")
+        expected_experimental = (
+            "true" if spec.get("experimentalCapabilitiesAccepted") else "false"
+        )
+        if manifest.get("api.experimentalCapabilitiesAccepted") != expected_experimental:
+            declaration_errors.append(
+                f"{spec['appId']}: api.experimentalCapabilitiesAccepted mismatch"
+            )
+    first_party_item = EvidenceItem(
+        "platform-api.first-party-stability-declarations",
+        root_consequence(settings, "fail") if declaration_errors else "pass",
+        True,
+        (
+            "First-party app stability declarations are incomplete."
+            if declaration_errors
+            else "First-party app manifests declare stable or experimental API targets."
+        ),
+        source,
+        {"errors": declaration_errors, "apps": declarations},
+    )
+
+    stable_reference = settings.workspace_root / "docs/platform-api-1.0-stable-reference.md"
+    contract_doc = settings.workspace_root / "docs/platform-api-contract.md"
+    stable_reference_text = read_source(stable_reference)
+    contract_doc_text = read_source(contract_doc)
+    docs_checks = {
+        "stableReferenceDocExists": stable_reference.is_file(),
+        "stableReferenceNamesBaseline": "Platform API 1.0 stable baseline" in stable_reference_text,
+        "contractDocMentionsTargetStability": "api.targetStability" in contract_doc_text,
+        "contractDocMentionsOperatorOnly": "operator-only" in contract_doc_text,
+    }
+    docs_errors = [name for name, passed in docs_checks.items() if not passed]
+    docs_item = EvidenceItem(
+        "platform-api.stable-reference-docs",
+        root_consequence(settings, "fail") if docs_errors else "pass",
+        True,
+        (
+            "Platform API stable reference docs are incomplete."
+            if docs_errors
+            else "Platform API 1.0 stable reference docs are present."
+        ),
+        source,
+        {
+            "errors": docs_errors,
+            "checks": docs_checks,
+            "sources": {
+                "stableReference": display_path(stable_reference, settings.workspace_root),
+                "contractDoc": display_path(contract_doc, settings.workspace_root),
+            },
+        },
+    )
+    return [
+        stable_baseline_item,
+        stable_breaking_item,
+        manifest_item,
+        first_party_item,
+        docs_item,
+    ]
 
 
 def collect_app_services_evidence(settings: Settings) -> list[EvidenceItem]:
@@ -4053,6 +4363,8 @@ def write_first_party_review_descriptor(
         lines.append(f"api.minimumVersion={manifest['api.minimumVersion']}")
     if manifest.get("api.maximumTestedVersion"):
         lines.append(f"api.maximumTestedVersion={manifest['api.maximumTestedVersion']}")
+    if manifest.get("api.targetStability"):
+        lines.append(f"api.targetStability={manifest['api.targetStability']}")
     if manifest.get("api.experimentalCapabilitiesAccepted"):
         lines.append(
             "api.experimentalCapabilitiesAccepted="
@@ -13282,11 +13594,15 @@ def run(settings: Settings) -> tuple[dict[str, Any], int]:
     cli = find_cli(settings)
     cli_item, sample_paths = collect_cli_evidence(settings, cli)
     cli = sample_paths.get("cli") if sample_paths.get("cli") else find_cli(settings)
+    platform_api_contract_item = collect_platform_api_contract_evidence(
+        settings, cli if isinstance(cli, Path) else None, sample_paths
+    )
     evidence = [
         collect_first_party_evidence(settings, cli if isinstance(cli, Path) else None),
         cli_item,
         collect_developer_beta_toolkit_evidence(settings),
-        collect_platform_api_contract_evidence(settings, cli if isinstance(cli, Path) else None, sample_paths),
+        platform_api_contract_item,
+        *collect_platform_api_stable_freeze_evidence(settings, platform_api_contract_item),
         *collect_app_services_evidence(settings),
         collect_app_vault_evidence(settings),
         collect_identity_profile_publish_evidence(settings),
@@ -14079,6 +14395,7 @@ def run_self_test(repo_root: Path) -> None:
         assert python_fake_manifest["api.maximumTestedVersion"] == str(
             CURRENT_PLATFORM_API_CONTRACT_VERSION
         )
+        assert python_fake_manifest["api.targetStability"] == "stable"
         fake_cli = make_fake_cli(workspace)
         settings = Settings(
             workspace_root=workspace.resolve(),
@@ -14115,6 +14432,11 @@ def run_self_test(repo_root: Path) -> None:
         ] == ["diagnostic"]
         contract_item = evidence_by_id["platform-api.contract"]
         assert contract_item["status"] == "pass", contract_item
+        assert evidence_by_id["platform-api.stable-baseline"]["status"] == "pass"
+        assert evidence_by_id["platform-api.stable-breaking-change-check"]["status"] == "pass"
+        assert evidence_by_id["platform-api.manifest-target-stability"]["status"] == "pass"
+        assert evidence_by_id["platform-api.first-party-stability-declarations"]["status"] == "pass"
+        assert evidence_by_id["platform-api.stable-reference-docs"]["status"] == "pass"
         vault_item = evidence_by_id["app-vault.capabilities"]
         assert vault_item["status"] == "pass", vault_item
         assert vault_item["requiredForReleaseCandidate"] is True, vault_item
@@ -14153,7 +14475,7 @@ def run_self_test(repo_root: Path) -> None:
         assert (
             contract_details["contractVersion"] == CURRENT_PLATFORM_API_CONTRACT_VERSION
         ), contract_item
-        assert contract_details["capabilityCount"] == 11, contract_item
+        assert contract_details["capabilityCount"] == 15, contract_item
         assert contract_details["endpointCount"] == 35, contract_item
         assert contract_details["appServicesContract"]["missingCapabilities"] == [], contract_item
         assert contract_details["appServicesContract"]["missingEndpoints"] == [], contract_item
@@ -14161,27 +14483,60 @@ def run_self_test(repo_root: Path) -> None:
             "app.data.read",
             "app.data.write",
             "content.fetch",
+            "content.insert",
+            "content.insert.app-document",
+            "content.subscribe",
             "platform.contract.read",
             "queue.read",
-            "trust.read",
-            "trust.write",
+            "queue.write",
         ], contract_item
         assert contract_details["stableEndpoints"] == [
             "DELETE /app-data/namespaces/{namespace}",
             "DELETE /app-data/records/{namespace}/{key}",
+            "DELETE /content/subscriptions/{subscriptionId}",
             "GET /app-data/export",
             "GET /app-data/namespaces",
             "GET /app-data/namespaces/{namespace}",
             "GET /app-data/records",
             "GET /app-data/records/{namespace}/{key}",
             "GET /app-data/status",
+            "GET /content/subscriptions",
+            "GET /content/subscriptions/{subscriptionId}",
+            "GET /platform/contract",
             "GET /queue",
-            "GET /trust-graph/audit",
+            "GET /queue/count",
+            "GET /queue/keys",
             "POST /app-data/import",
             "POST /app-data/namespaces/{namespace}/schema",
             "POST /app-data/records",
-            "POST /trust-graph/import-uri",
+            "POST /content/fetch",
+            "POST /content/subscriptions",
+            "POST /content/subscriptions/{subscriptionId}/pause",
+            "POST /content/subscriptions/{subscriptionId}/refresh",
+            "POST /content/subscriptions/{subscriptionId}/resume",
+            "POST /queue/cleanup/downloads",
+            "POST /queue/cleanup/uploads",
+            "POST /queue/downloads",
+            "POST /queue/inserts/app-document",
+            "POST /queue/inserts/directory",
+            "POST /queue/inserts/file",
+            "POST /queue/requests/priority",
+            "POST /queue/requests/remove",
+            "POST /queue/requests/restart",
         ], contract_item
+        assert set(contract_details["stableEndpointRequiredCapabilities"]) == set(
+            contract_details["stableEndpoints"]
+        ), contract_item
+        assert contract_details["stableEndpointRequiredCapabilities"]["GET /queue"] == [
+            "queue.read"
+        ], contract_item
+        assert set(contract_details["stableEndpointAppAccess"]) == set(
+            contract_details["stableEndpoints"]
+        ), contract_item
+        assert contract_details["stableEndpointAppAccess"]["GET /queue"] == {
+            "appBrowserPrincipalsAllowed": True,
+            "appProcessPrincipalsAllowed": True,
+        }, contract_item
         assert contract_details["snapshotCommand"]["exitCode"] == 0, contract_item
         assert contract_details["verifier"]["cert-smoke"]["exitCode"] == 0, contract_item
         assert evidence_by_id["catalog.smoke"]["status"] in {"warn", "pass"}
@@ -15254,17 +15609,13 @@ def make_self_test_workspace(workspace: Path) -> None:
         api_minimum = (
             "16"
             if is_social_inbox
-            else "10" if is_trust_graph else "9" if is_feed_reader or is_profile_publisher else "3"
+            else (
+                "10"
+                if is_trust_graph
+                else "9" if is_feed_reader or is_profile_publisher else "3" if app_id == "site-publisher" else "1"
+            )
         )
-        api_maximum = (
-            str(CURRENT_PLATFORM_API_CONTRACT_VERSION)
-            if is_trust_graph
-            or is_feed_reader
-            or is_profile_publisher
-            or is_social_inbox
-            or app_id == "site-publisher"
-            else "4"
-        )
+        api_maximum = str(CURRENT_PLATFORM_API_CONTRACT_VERSION)
         experimental_accepted = "true" if is_profile_publisher or is_social_inbox or is_trust_graph else "false"
         service_lines: list[str] = []
         migration_lines: list[str] = []
@@ -15341,6 +15692,7 @@ def make_self_test_workspace(workspace: Path) -> None:
                     "app.version=0.1.0",
                     f"api.minimumVersion={api_minimum}",
                     f"api.maximumTestedVersion={api_maximum}",
+                    f"api.targetStability={'experimental' if experimental_accepted == 'true' else 'stable'}",
                     f"api.experimentalCapabilitiesAccepted={experimental_accepted}",
                     f"app.exec=bin/{launcher}",
                     "app.ui.mode=static",
@@ -15574,7 +15926,7 @@ def make_self_test_workspace(workspace: Path) -> None:
         "maximumCryptaVersion securityAdvisory replacementAppId catalog.securityAdvisories "
         "catalog.securityAdvisory. catalog.securityDenylist parseCatalogSecurityPolicy "
         "parseSecurityPolicyIds version < AppCatalog.VERSION_SECURITY_POLICY Instant.parse "
-        "maintenance.owner maintenance.supportLevel maintenance.backupRestore\"; }\n",
+        "maintenance.owner maintenance.supportLevel maintenance.backupRestore api.targetStability\"; }\n",
         encoding="utf-8",
     )
     (appcatalog_dir / "AppCatalogWriter.java").write_text(
@@ -15582,7 +15934,7 @@ def make_self_test_workspace(workspace: Path) -> None:
         "VERSION_FIRST_PARTY_MAINTENANCE = 5 "
         "maximumCryptaVersion securityAdvisory replacementAppId appendSecurityPolicy "
         "catalog.securityAdvisories catalog.securityAdvisory. catalog.securityDenylist "
-        "maintenance.owner maintenance.supportLevel maintenance.backupRestore\"; }\n",
+        "maintenance.owner maintenance.supportLevel maintenance.backupRestore api.targetStability\"; }\n",
         encoding="utf-8",
     )
     (appcatalog_dir / "AppCatalogEntryDescriptor.java").write_text(
@@ -15743,7 +16095,11 @@ def make_self_test_workspace(workspace: Path) -> None:
         "final class AppBundleManifestParser { String fields = \"app.data.schema.current "
         "app.data.migration. dataSchemaContract unsupported app.data manifest property "
         "app.data.migrations requires app.data.schema.current or app.data.schema.namespaces "
-        "app.data migration target exceeds declared schema\"; }\n",
+        "app.data migration target exceeds declared schema api.targetStability\"; }\n",
+        encoding="utf-8",
+    )
+    (appdist_dir / "AppApiCompatibilityMetadata.java").write_text(
+        "final class AppApiCompatibilityMetadata { String fields = \"api.targetStability\"; }\n",
         encoding="utf-8",
     )
     (appdist_dir / "AppBundleStructureValidator.java").write_text(
@@ -16808,6 +17164,7 @@ def make_self_test_workspace(workspace: Path) -> None:
         "Review receipt revocation uses receiptFingerprintSha256 and revoked_receipt, while reviewer-key compromise uses status=revoked and revoked_reviewer. "
         "Release evidence includes catalog.security-advisories, catalog.version-denylist, app-review.receipt-revocation, app-review.reviewer-key-compromise-flow, app-update.security-denylist-gates, web-shell.security-advisory-trust-warnings, ecosystem-security.advisory-revocation-redaction, and gate ecosystem.security-advisory-revocation. "
         "Security response reports exclude raw signatures, raw public keys, private insert URIs, local filesystem paths, raw request bodies, raw fetched content, and app-data backup payloads. "
+        "Platform API 1.0 stable baseline documents api.targetStability and operator-only exclusions. "
         "The local transparency log is not a global public log. "
         "queue-manager publisher site-publisher profile-publisher social-inbox feed-reader trust-graph use permissions.rationale entries, "
         "Profile Publisher is the identity-profile reference app. "
@@ -16945,6 +17302,7 @@ def make_self_test_workspace(workspace: Path) -> None:
         "app-permissions-and-audit.md",
         "feed-reader-reference-app.md",
         "platform-api-contract.md",
+        "platform-api-1.0-stable-reference.md",
         "platform-api-surface.md",
         "platform-sdk-js.md",
         "production-first-party-catalog-channels.md",
@@ -17163,8 +17521,9 @@ def make_self_test_workspace(workspace: Path) -> None:
     app_vault_doc = workspace / APP_VAULT_DOC
     app_vault_doc.write_text(
         "The app secret and identity vault defines vault.secrets.read, vault.secrets.write, "
-        "vault.identities.read, vault.identities.create, vault.identities.use, and "
-        "vault.identities.manage. It distinguishes app-owned identities from shared identities. "
+        "vault.identities.read, vault.identities.create, and vault.identities.use for app-facing "
+        "routes. vault.identities.manage is host/operator-only identity management. It "
+        "distinguishes app-owned identities from shared identities. "
         "Process callers use CRYPTAD_APP_TOKEN, while browser callers use app browser sessions. "
         "At-rest local protection has limits and depends on the host account. Grant lifecycle "
         "checks cover update, rollback, uninstall, and reinstall. Audit and redaction omit secret "
@@ -17223,7 +17582,7 @@ def make_self_test_workspace(workspace: Path) -> None:
         "--channel --support-status --security-advisory maximumCryptaVersion "
         "--maintenance-owner --maintenance-support-level --maintenance-data-schema-policy "
         "--maintenance-migration-policy --maintenance-backup-restore --maintenance-security-policy "
-        "--maintenance-deprecation-policy --maintenance-support-uri\"; }\n",
+        "--maintenance-deprecation-policy --maintenance-support-uri api.targetStability\"; }\n",
         encoding="utf-8",
     )
     (devtools_dir / "PublicationPlanWriter.java").write_text(
@@ -18628,6 +18987,7 @@ def init_app(args):
                 "app.exec=bin/start.sh",
                 "api.minimumVersion=1",
                 f"api.maximumTestedVersion={CURRENT_PLATFORM_API_CONTRACT_VERSION}",
+                "api.targetStability=stable",
                 "api.experimentalCapabilitiesAccepted=false",
                 "app.ui.mode=static",
                 "app.ui.entry=static/index.html",
@@ -19049,7 +19409,7 @@ case "$cmd" in
       if [ "$1" = "--dir" ]; then dir="$2"; shift 2; else shift; fi
     done
     mkdir -p "$dir/bin" "$dir/static/crypta-ui"
-    printf '%s\n' 'manifest.version=1' 'app.id=cert-smoke' 'app.name=Certification Smoke' 'app.version=0.1.0' 'app.exec=bin/start.sh' 'api.minimumVersion=1' 'api.maximumTestedVersion=19' 'api.experimentalCapabilitiesAccepted=false' 'app.ui.mode=static' 'app.ui.entry=static/index.html' 'app.permissions=queue.read' > "$dir/cryptad-app.properties"
+    printf '%s\n' 'manifest.version=1' 'app.id=cert-smoke' 'app.name=Certification Smoke' 'app.version=0.1.0' 'app.exec=bin/start.sh' 'api.minimumVersion=1' 'api.maximumTestedVersion=19' 'api.targetStability=stable' 'api.experimentalCapabilitiesAccepted=false' 'app.ui.mode=static' 'app.ui.entry=static/index.html' 'app.permissions=queue.read' > "$dir/cryptad-app.properties"
     printf '%s\n' '#!/usr/bin/env sh' 'exit 0' > "$dir/bin/start.sh"
     printf '%s\n' '<!doctype html><html lang="en"><head><meta name="viewport" content="width=device-width, initial-scale=1"><title>Certification Smoke</title><link rel="stylesheet" href="./crypta-ui/crypta-ui-tokens.css"><link rel="stylesheet" href="./crypta-ui/crypta-ui.css"><link rel="stylesheet" href="./app.css"></head><body class="cr-app"><main class="cr-shell"><section class="cr-permission-summary" data-crypta-permission-summary><code>queue.read</code></section><h1>Certification Smoke</h1></main><script src="./crypta-platform.js"></script><script src="./app.js"></script></body></html>' > "$dir/static/index.html"
     printf '%s\n' 'CryptaPlatform.bootstrap.load({ appId: "cert-smoke" });' > "$dir/static/app.js"
@@ -19229,6 +19589,57 @@ PY
     "contractVersion": 19,
     "generatedBy": "cryptad",
     "stabilityPolicy": "self-test",
+    "stableBaseline": {
+      "name": "1.0",
+      "contractVersion": 19,
+      "capabilityCount": 9,
+      "endpointCount": 32,
+      "capabilities": [
+        "app.data.read",
+        "app.data.write",
+        "content.fetch",
+        "content.insert",
+        "content.insert.app-document",
+        "content.subscribe",
+        "platform.contract.read",
+        "queue.read",
+        "queue.write"
+      ],
+      "endpoints": [
+        "DELETE /app-data/namespaces/{namespace}",
+        "DELETE /app-data/records/{namespace}/{key}",
+        "DELETE /content/subscriptions/{subscriptionId}",
+        "GET /app-data/export",
+        "GET /app-data/namespaces",
+        "GET /app-data/namespaces/{namespace}",
+        "GET /app-data/records",
+        "GET /app-data/records/{namespace}/{key}",
+        "GET /app-data/status",
+        "GET /content/subscriptions",
+        "GET /content/subscriptions/{subscriptionId}",
+        "GET /platform/contract",
+        "GET /queue",
+        "GET /queue/count",
+        "GET /queue/keys",
+        "POST /app-data/import",
+        "POST /app-data/namespaces/{namespace}/schema",
+        "POST /app-data/records",
+        "POST /content/fetch",
+        "POST /content/subscriptions",
+        "POST /content/subscriptions/{subscriptionId}/pause",
+        "POST /content/subscriptions/{subscriptionId}/refresh",
+        "POST /content/subscriptions/{subscriptionId}/resume",
+        "POST /queue/cleanup/downloads",
+        "POST /queue/cleanup/uploads",
+        "POST /queue/downloads",
+        "POST /queue/inserts/app-document",
+        "POST /queue/inserts/directory",
+        "POST /queue/inserts/file",
+        "POST /queue/requests/priority",
+        "POST /queue/requests/remove",
+        "POST /queue/requests/restart"
+      ]
+    },
     "capabilities": [
       {
         "name": "queue.read",
@@ -19236,6 +19647,13 @@ PY
         "sinceContractVersion": 1,
         "deprecation": null,
         "description": "Read queue state."
+      },
+      {
+        "name": "queue.write",
+        "stability": "stable",
+        "sinceContractVersion": 1,
+        "deprecation": null,
+        "description": "Create and mutate queue requests."
       },
       {
         "name": "platform.contract.read",
@@ -19266,15 +19684,36 @@ PY
         "description": "Fetch bounded content."
       },
       {
-        "name": "trust.read",
+        "name": "content.insert",
         "stability": "stable",
+        "sinceContractVersion": 1,
+        "deprecation": null,
+        "description": "Create content insert requests."
+      },
+      {
+        "name": "content.insert.app-document",
+        "stability": "stable",
+        "sinceContractVersion": 5,
+        "deprecation": null,
+        "description": "Create app-generated document insert requests."
+      },
+      {
+        "name": "content.subscribe",
+        "stability": "stable",
+        "sinceContractVersion": 8,
+        "deprecation": null,
+        "description": "Manage bounded content subscriptions."
+      },
+      {
+        "name": "trust.read",
+        "stability": "experimental",
         "sinceContractVersion": 7,
         "deprecation": null,
         "description": "Read local Trust Graph RC state and lifecycle."
       },
       {
         "name": "trust.write",
-        "stability": "stable",
+        "stability": "experimental",
         "sinceContractVersion": 7,
         "deprecation": null,
         "description": "Mutate local Trust Graph RC anchors and lifecycle."

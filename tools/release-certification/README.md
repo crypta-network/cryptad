@@ -181,6 +181,11 @@ app-update.security-denylist-gates
 web-shell.security-advisory-trust-warnings
 ecosystem-security.advisory-revocation-redaction
 platform-api.contract
+platform-api.stable-baseline
+platform-api.stable-breaking-change-check
+platform-api.manifest-target-stability
+platform-api.first-party-stability-declarations
+platform-api.stable-reference-docs
 app-vault.capabilities
 app-platform.identity-profile-publish
 app-platform.generated-document-insert

@@ -475,12 +475,15 @@ public final class AppBundleManifestParser {
         parseOptionalPositiveInteger(properties, "api.maximumTestedVersion");
     List<String> optionalCapabilities =
         parseOptionalCapabilities(optional(properties, "api.optionalCapabilities"));
+    AppApiCompatibilityMetadata.TargetStability targetStability = parseTargetStability(properties);
     boolean experimentalCapabilitiesAccepted = parseExperimentalCapabilitiesAccepted(properties);
     try {
       return new AppApiCompatibilityMetadata(
           minimumVersion,
           maximumTestedVersion,
           optionalCapabilities,
+          targetStability,
+          targetStability != null,
           experimentalCapabilitiesAccepted);
     } catch (IllegalArgumentException exception) {
       throw new AppDistributionException(exception.getMessage(), exception);
@@ -701,6 +704,20 @@ public final class AppBundleManifestParser {
       return false;
     }
     throw new AppDistributionException("invalid " + key + ": " + value);
+  }
+
+  private static AppApiCompatibilityMetadata.TargetStability parseTargetStability(
+      Properties properties) throws AppDistributionException {
+    String key = "api.targetStability";
+    String value = optional(properties, key);
+    if (value == null) {
+      return null;
+    }
+    try {
+      return AppApiCompatibilityMetadata.TargetStability.parse(value);
+    } catch (IllegalArgumentException exception) {
+      throw new AppDistributionException(exception.getMessage(), exception);
+    }
   }
 
   private static int parseRestartMaxAttempts(Properties properties)

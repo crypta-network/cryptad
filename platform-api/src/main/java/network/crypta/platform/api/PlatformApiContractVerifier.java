@@ -8,6 +8,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.TreeSet;
+import network.crypta.platform.appdist.AppApiCompatibilityMetadata.TargetStability;
 import network.crypta.platform.appdist.AppApiCompatibilityMetadata;
 
 /**
@@ -33,6 +34,8 @@ public final class PlatformApiContractVerifier {
   private static final String STATUS_NEWER_THAN_TESTED = "newer_than_tested";
   private static final String STATUS_UNKNOWN = "unknown";
   private static final String STATUS_INCOMPATIBLE = "incompatible";
+  private static final String FINDINGS_FIELD = "findings";
+  private static final String STABLE_ENDPOINT_MESSAGE_PREFIX = "Stable endpoint ";
 
   private PlatformApiContractVerifier() {}
 
@@ -63,23 +66,19 @@ public final class PlatformApiContractVerifier {
     List<String> permissions = sorted(manifestPermissions);
     Map<String, PlatformApiCapabilityDescriptor> descriptors = checkedContract.capabilitiesByName();
     List<CompatibilityFinding> findings = new ArrayList<>();
+    checkTargetStability(metadata, strict, findings);
     checkContractRange(metadata, checkedContract.contractVersion(), strict, findings);
-    checkCapabilities(
-        permissions,
-        "manifest permission",
-        "unknown_manifest_permission",
-        descriptors,
-        metadata.experimentalCapabilitiesAccepted(),
-        strict,
-        findings);
-    checkCapabilities(
-        metadata.optionalCapabilities(),
-        "optional capability",
-        "unknown_optional_capability",
-        descriptors,
-        metadata.experimentalCapabilitiesAccepted(),
-        strict,
-        findings);
+    CapabilityCheckContext capabilityCheck =
+        new CapabilityCheckContext(
+            "manifest permission",
+            "unknown_manifest_permission",
+            descriptors,
+            metadata.targetStability(),
+            metadata.experimentalCapabilitiesAccepted(),
+            strict,
+            findings);
+    checkCapabilities(permissions, capabilityCheck);
+    checkCapabilities(metadata.optionalCapabilities(), capabilityCheck.forOptionalCapabilities());
     return new CompatibilityVerificationResult(List.copyOf(findings));
   }
 
@@ -106,16 +105,215 @@ public final class PlatformApiContractVerifier {
     PlatformApiContract checkedContract = Objects.requireNonNull(contract, "contract");
     CompatibilityVerificationResult result =
         verify(metadata, manifestPermissions, checkedContract, false);
-    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(8);
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(10);
     json.put("minimumVersion", metadata.minimumVersion());
     json.put("maximumTestedVersion", metadata.maximumTestedVersion());
     json.put("currentVersion", checkedContract.contractVersion());
     json.put("optionalCapabilities", metadata.optionalCapabilities());
+    json.put("targetStability", metadata.targetStability().manifestValue());
+    json.put("targetStabilityDeclared", metadata.targetStabilityDeclared());
     json.put("experimentalCapabilitiesAccepted", metadata.experimentalCapabilitiesAccepted());
     json.put("declared", metadata.declared());
     json.put("status", status(metadata, checkedContract.contractVersion(), result));
     json.put("warnings", result.messages());
     return json;
+  }
+
+  /**
+   * Compares two contract snapshots for stable Platform API 1.0 breaking changes.
+   *
+   * <p>The comparison uses the previous snapshot's stable baseline as the compatibility promise.
+   * Removing a stable capability or endpoint, moving it out of the stable app-facing baseline, or
+   * changing the required capability set or app-principal access flags for a stable endpoint is
+   * reported as a {@code stable_api_breaking_change} error. Missing baseline metadata is reported
+   * separately so release certification can fail closed for malformed current snapshots.
+   *
+   * @param previousContract previous production or certified contract snapshot
+   * @param currentContract current candidate contract snapshot
+   * @return deterministic stable-baseline comparison findings
+   */
+  public static CompatibilityVerificationResult compareStableBaseline(
+      PlatformApiContract previousContract, PlatformApiContract currentContract) {
+    PlatformApiContract previous = Objects.requireNonNull(previousContract, "previousContract");
+    PlatformApiContract current = Objects.requireNonNull(currentContract, "currentContract");
+    List<CompatibilityFinding> findings = new ArrayList<>();
+    if (current.stableBaseline().capabilityCount() == 0
+        || current.stableBaseline().endpointCount() == 0) {
+      findings.add(
+          finding(
+              "stable_baseline_missing",
+              CompatibilityFindingSeverity.ERROR,
+              "Current Platform API contract does not publish a usable stable baseline."));
+    }
+    compareStableCapabilities(previous, current, findings);
+    compareStableEndpoints(previous, current, findings);
+    return new CompatibilityVerificationResult(List.copyOf(findings));
+  }
+
+  private static void compareStableCapabilities(
+      PlatformApiContract previous,
+      PlatformApiContract current,
+      List<CompatibilityFinding> findings) {
+    Map<String, PlatformApiCapabilityDescriptor> currentCapabilities = current.capabilitiesByName();
+    for (String capability : previous.stableBaseline().capabilities()) {
+      PlatformApiCapabilityDescriptor descriptor = currentCapabilities.get(capability);
+      if (descriptor == null) {
+        stableBreakingFinding(findings, "Stable capability was removed: " + capability + ".");
+        continue;
+      }
+      if (!PlatformApiContract.isStableBaselineCapability(descriptor)) {
+        stableBreakingFinding(
+            findings,
+            "Stable capability "
+                + capability
+                + " changed to "
+                + descriptor.stability().jsonValue()
+                + ".");
+      }
+      if (descriptor.stability() == PlatformApiStabilityLevel.SCHEDULED_FOR_REMOVAL
+          && descriptor.deprecation() == null) {
+        stableBreakingFinding(
+            findings,
+            "Stable capability "
+                + capability
+                + " is scheduled for removal without deprecation metadata.");
+      }
+    }
+  }
+
+  private static void compareStableEndpoints(
+      PlatformApiContract previous,
+      PlatformApiContract current,
+      List<CompatibilityFinding> findings) {
+    Map<String, PlatformApiEndpointDescriptor> previousEndpoints =
+        previous.stableBaselineEndpointsByIdentity();
+    Map<String, PlatformApiEndpointDescriptor> currentEndpoints =
+        current.stableBaselineEndpointsByIdentity();
+    Map<String, PlatformApiEndpointDescriptor> allCurrentEndpoints = endpointsByIdentity(current);
+    for (Map.Entry<String, PlatformApiEndpointDescriptor> previousEntry :
+        previousEndpoints.entrySet()) {
+      compareStableEndpoint(previousEntry, currentEndpoints, allCurrentEndpoints, findings);
+    }
+  }
+
+  private static void compareStableEndpoint(
+      Map.Entry<String, PlatformApiEndpointDescriptor> previousEntry,
+      Map<String, PlatformApiEndpointDescriptor> currentEndpoints,
+      Map<String, PlatformApiEndpointDescriptor> allCurrentEndpoints,
+      List<CompatibilityFinding> findings) {
+    String identity = previousEntry.getKey();
+    PlatformApiEndpointDescriptor currentStable = currentEndpoints.get(identity);
+    if (currentStable == null) {
+      reportMissingStableEndpoint(identity, allCurrentEndpoints.get(identity), findings);
+      return;
+    }
+    PlatformApiEndpointDescriptor previousStable = previousEntry.getValue();
+    compareStableEndpointShape(identity, previousStable, currentStable, findings);
+    checkStableEndpointRemovalSchedule(identity, currentStable, findings);
+  }
+
+  private static void reportMissingStableEndpoint(
+      String identity,
+      PlatformApiEndpointDescriptor currentAny,
+      List<CompatibilityFinding> findings) {
+    if (currentAny == null) {
+      stableBreakingFinding(
+          findings, STABLE_ENDPOINT_MESSAGE_PREFIX + "was removed: " + identity + ".");
+      return;
+    }
+    stableBreakingFinding(
+        findings,
+        STABLE_ENDPOINT_MESSAGE_PREFIX
+            + identity
+            + " changed to "
+            + currentAny.stability().jsonValue()
+            + ".");
+  }
+
+  private static void compareStableEndpointShape(
+      String identity,
+      PlatformApiEndpointDescriptor previousStable,
+      PlatformApiEndpointDescriptor currentStable,
+      List<CompatibilityFinding> findings) {
+    if (!previousStable.actionLabel().equals(currentStable.actionLabel())) {
+      stableBreakingFinding(
+          findings,
+          STABLE_ENDPOINT_MESSAGE_PREFIX
+              + identity
+              + " changed action label from "
+              + previousStable.actionLabel()
+              + " to "
+              + currentStable.actionLabel()
+              + ".");
+    }
+    if (!previousStable.requiredCapabilities().equals(currentStable.requiredCapabilities())) {
+      stableBreakingFinding(
+          findings,
+          STABLE_ENDPOINT_MESSAGE_PREFIX
+              + identity
+              + " changed required capabilities from "
+              + previousStable.requiredCapabilities()
+              + " to "
+              + currentStable.requiredCapabilities()
+              + ".");
+    }
+    if (previousStable.appProcessAllowed() != currentStable.appProcessAllowed()
+        || previousStable.appBrowserAllowed() != currentStable.appBrowserAllowed()) {
+      stableBreakingFinding(
+          findings,
+          STABLE_ENDPOINT_MESSAGE_PREFIX
+              + identity
+              + " changed app-principal access from process="
+              + previousStable.appProcessAllowed()
+              + ", browser="
+              + previousStable.appBrowserAllowed()
+              + " to process="
+              + currentStable.appProcessAllowed()
+              + ", browser="
+              + currentStable.appBrowserAllowed()
+              + ".");
+    }
+  }
+
+  private static void checkStableEndpointRemovalSchedule(
+      String identity,
+      PlatformApiEndpointDescriptor currentStable,
+      List<CompatibilityFinding> findings) {
+    if (currentStable.stability() == PlatformApiStabilityLevel.SCHEDULED_FOR_REMOVAL
+        && currentStable.deprecation() == null) {
+      stableBreakingFinding(
+          findings,
+          STABLE_ENDPOINT_MESSAGE_PREFIX
+              + identity
+              + " is scheduled for removal without deprecation metadata.");
+    }
+  }
+
+  private static Map<String, PlatformApiEndpointDescriptor> endpointsByIdentity(
+      PlatformApiContract contract) {
+    LinkedHashMap<String, PlatformApiEndpointDescriptor> byIdentity = new LinkedHashMap<>();
+    for (PlatformApiEndpointDescriptor endpoint : contract.endpoints()) {
+      byIdentity.put(PlatformApiContract.endpointIdentity(endpoint), endpoint);
+    }
+    return java.util.Collections.unmodifiableMap(byIdentity);
+  }
+
+  private static void stableBreakingFinding(List<CompatibilityFinding> findings, String message) {
+    findings.add(
+        finding("stable_api_breaking_change", CompatibilityFindingSeverity.ERROR, message));
+  }
+
+  private static void checkTargetStability(
+      AppApiCompatibilityMetadata metadata, boolean strict, List<CompatibilityFinding> findings) {
+    if (!metadata.declared() || metadata.targetStabilityDeclared()) {
+      return;
+    }
+    findings.add(
+        finding(
+            "api_target_stability_missing",
+            releaseRiskSeverity(strict),
+            "api.targetStability is missing; legacy manifests default to experimental"
+                + " compatibility review."));
   }
 
   private static void checkContractRange(
@@ -149,64 +347,118 @@ public final class PlatformApiContractVerifier {
     }
   }
 
-  private static void checkCapabilities(
-      List<String> capabilities,
-      String label,
-      String unknownCode,
-      Map<String, PlatformApiCapabilityDescriptor> descriptors,
-      boolean experimentalAccepted,
-      boolean strict,
-      List<CompatibilityFinding> findings) {
+  private static void checkCapabilities(List<String> capabilities, CapabilityCheckContext context) {
     for (String capability : capabilities) {
-      PlatformApiCapabilityDescriptor descriptor = descriptors.get(capability);
+      PlatformApiCapabilityDescriptor descriptor = context.descriptors().get(capability);
       if (descriptor == null) {
-        findings.add(
-            finding(
-                unknownCode,
-                releaseRiskSeverity(strict),
-                "Unknown " + label + ": " + capability + "."));
+        context
+            .findings()
+            .add(
+                finding(
+                    context.unknownCode(),
+                    releaseRiskSeverity(context.strict()),
+                    "Unknown " + context.label() + ": " + capability + "."));
         continue;
       }
-      checkCapabilityStability(descriptor, experimentalAccepted, strict, findings);
+      checkCapabilityStability(descriptor, context);
     }
   }
 
   private static void checkCapabilityStability(
-      PlatformApiCapabilityDescriptor descriptor,
-      boolean experimentalAccepted,
-      boolean strict,
-      List<CompatibilityFinding> findings) {
+      PlatformApiCapabilityDescriptor descriptor, CapabilityCheckContext context) {
+    List<CompatibilityFinding> findings = context.findings();
+    TargetStability targetStability = context.targetStability();
     switch (descriptor.stability()) {
       case PlatformApiStabilityLevel stability
-          when stability == PlatformApiStabilityLevel.EXPERIMENTAL && !experimentalAccepted ->
+          when stability == PlatformApiStabilityLevel.EXPERIMENTAL
+              && targetStability == TargetStability.STABLE ->
           findings.add(
               finding(
-                  "experimental_capability",
-                  releaseRiskSeverity(strict),
+                  "stable_target_uses_experimental_capability",
+                  CompatibilityFindingSeverity.ERROR,
+                  "Stable Platform API target must not declare experimental capability: "
+                      + descriptor.name()
+                      + "."));
+      case PlatformApiStabilityLevel stability
+          when stability == PlatformApiStabilityLevel.EXPERIMENTAL
+              && !context.experimentalAccepted() ->
+          findings.add(
+              finding(
+                  "experimental_capability_without_acceptance",
+                  CompatibilityFindingSeverity.ERROR,
                   "Experimental capability requires api.experimentalCapabilitiesAccepted=true: "
                       + descriptor.name()
                       + "."));
+      case PlatformApiStabilityLevel stability
+          when stability == PlatformApiStabilityLevel.STABLE
+              && targetStability == TargetStability.STABLE
+              && !PlatformApiContract.isStableBaselineCapability(descriptor) ->
+          findings.add(
+              finding(
+                  "stable_target_uses_non_baseline_capability",
+                  CompatibilityFindingSeverity.ERROR,
+                  "Stable Platform API target must not declare non-baseline capability: "
+                      + descriptor.name()
+                      + "."));
       case STABLE, EXPERIMENTAL -> {
-        // Stable and explicitly accepted experimental capabilities require no verifier finding.
+        // Stable-baseline and accepted-experimental declarations require no additional finding.
       }
       case DEPRECATED ->
           findings.add(
               finding(
                   "deprecated_capability",
-                  releaseRiskSeverity(strict),
+                  releaseRiskSeverity(context.strict()),
                   "Deprecated capability is declared: " + descriptor.name() + "."));
       case SCHEDULED_FOR_REMOVAL ->
           findings.add(
               finding(
                   "scheduled_for_removal_capability",
-                  releaseRiskSeverity(strict),
+                  targetStability == TargetStability.STABLE
+                      ? CompatibilityFindingSeverity.ERROR
+                      : releaseRiskSeverity(context.strict()),
                   "Capability is scheduled for removal: " + descriptor.name() + "."));
+      case OPERATOR_ONLY ->
+          findings.add(
+              finding(
+                  "app_uses_operator_only_platform_api",
+                  CompatibilityFindingSeverity.ERROR,
+                  "Operator-only Platform API capability must not be declared by apps: "
+                      + descriptor.name()
+                      + "."));
       case INTERNAL ->
           findings.add(
               finding(
-                  "internal_capability",
+                  "app_uses_internal_platform_api",
                   CompatibilityFindingSeverity.ERROR,
                   "Internal capability must not be declared by apps: " + descriptor.name() + "."));
+    }
+  }
+
+  private record CapabilityCheckContext(
+      String label,
+      String unknownCode,
+      Map<String, PlatformApiCapabilityDescriptor> descriptors,
+      TargetStability targetStability,
+      boolean experimentalAccepted,
+      boolean strict,
+      List<CompatibilityFinding> findings) {
+    CapabilityCheckContext {
+      Objects.requireNonNull(label, "label");
+      Objects.requireNonNull(unknownCode, "unknownCode");
+      Objects.requireNonNull(descriptors, "descriptors");
+      Objects.requireNonNull(targetStability, "targetStability");
+      Objects.requireNonNull(findings, FINDINGS_FIELD);
+    }
+
+    CapabilityCheckContext forOptionalCapabilities() {
+      return new CapabilityCheckContext(
+          "optional capability",
+          "unknown_optional_capability",
+          descriptors,
+          targetStability,
+          experimentalAccepted,
+          strict,
+          findings);
     }
   }
 
@@ -356,7 +608,7 @@ public final class PlatformApiContractVerifier {
      * already-deterministic findings when stable JSON output matters.
      */
     public CompatibilityVerificationResult {
-      findings = List.copyOf(Objects.requireNonNull(findings, "findings"));
+      findings = List.copyOf(Objects.requireNonNull(findings, FINDINGS_FIELD));
     }
 
     /**
@@ -402,7 +654,7 @@ public final class PlatformApiContractVerifier {
           findings.stream()
               .filter(finding -> finding.severity() == CompatibilityFindingSeverity.ERROR)
               .count());
-      json.put("findings", findings.stream().map(CompatibilityFinding::toJsonValue).toList());
+      json.put(FINDINGS_FIELD, findings.stream().map(CompatibilityFinding::toJsonValue).toList());
       return json;
     }
   }

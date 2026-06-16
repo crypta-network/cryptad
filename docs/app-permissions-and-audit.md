@@ -154,7 +154,7 @@ The current capabilities are intentionally conservative:
 | `vault.identities.read` | read app-granted identity metadata and public identity material |
 | `vault.identities.create` | create app-owned identities, including `POST /api/v1/app-vault/identities` for browser-safe Profile Publisher setup |
 | `vault.identities.use` | use an app-granted identity without exporting private identity material; bounded profile-document, trust-statement, and social-message routes combine this with `vault.identities.read` |
-| `vault.identities.manage` | manage app-owned identities and app grants for shared identities |
+| `vault.identities.manage` | host/operator-only identity management; third-party app manifests must not request it |
 
 Capability descriptors, endpoint descriptors, and stability levels are described in
 [platform-api-contract.md](platform-api-contract.md). `app.permissions` remains the authoritative

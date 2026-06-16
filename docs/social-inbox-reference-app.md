@@ -31,6 +31,7 @@ app.id=social-inbox
 app.name=Social Inbox RC
 api.minimumVersion=16
 api.maximumTestedVersion=19
+api.targetStability=experimental
 api.experimentalCapabilitiesAccepted=true
 app.data.schema.current=1
 ```

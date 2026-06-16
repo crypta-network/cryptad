@@ -155,6 +155,13 @@ APP_SERVICE_DISCOVERY_AND_GRANT_EVIDENCE_IDS = (
     "app-services.web-shell",
     "app-services.redaction",
 )
+PLATFORM_API_STABLE_FREEZE_EVIDENCE_IDS = (
+    "platform-api.stable-baseline",
+    "platform-api.stable-breaking-change-check",
+    "platform-api.manifest-target-stability",
+    "platform-api.first-party-stability-declarations",
+    "platform-api.stable-reference-docs",
+)
 ECOSYSTEM_RC_REQUIRED_GATE_IDS = (
     "ecosystem.required-evidence-regressions",
     "ecosystem.platform-api-compatibility",
@@ -174,6 +181,7 @@ ECOSYSTEM_RC_REQUIRED_EVIDENCE_IDS = (
     "performance.smoke",
     "release-certification.ecosystem-matrix",
     "platform-api.contract",
+    *PLATFORM_API_STABLE_FREEZE_EVIDENCE_IDS,
     "app-platform.first-party",
     "app-platform.devtools-cli",
     "app-platform.developer-beta-toolkit",
@@ -1214,6 +1222,7 @@ def app_platform_evidence(
         "app-platform.devtools-cli",
         "app-platform.developer-beta-toolkit",
         "platform-api.contract",
+        *PLATFORM_API_STABLE_FREEZE_EVIDENCE_IDS,
         "app-vault.capabilities",
         "app-platform.identity-profile-publish",
         "app-platform.generated-document-insert",
@@ -2116,6 +2125,121 @@ def stable_named_set_reported(details: dict[str, Any], list_key: str, fallback_k
     return False
 
 
+def normalized_string_tuple(value: Any) -> tuple[str, ...]:
+    if not isinstance(value, list):
+        return ()
+    result: set[str] = set()
+    for item in value:
+        text = str(item).strip()
+        if text:
+            result.add(text)
+    return tuple(sorted(result))
+
+
+def endpoint_identity_from_detail(value: dict[str, Any]) -> str:
+    route_template = value.get("routeTemplate")
+    if route_template:
+        method = str(value.get("method", "")).strip().upper()
+        return f"{method} {route_template}" if method else str(route_template)
+    return str(value.get("id") or value.get("name") or value.get("path") or value.get("route") or "")
+
+
+def stable_endpoint_capability_map(details: dict[str, Any]) -> dict[str, tuple[str, ...]]:
+    direct = details.get("stableEndpointRequiredCapabilities")
+    if isinstance(direct, dict):
+        return {
+            str(endpoint): normalized_string_tuple(capabilities)
+            for endpoint, capabilities in direct.items()
+            if str(endpoint)
+        }
+    result: dict[str, tuple[str, ...]] = {}
+    endpoints = details.get("endpoints")
+    if not isinstance(endpoints, list):
+        return result
+    for value in endpoints:
+        if not isinstance(value, dict):
+            continue
+        stability = str(value.get("stability", value.get("lifecycle", ""))).lower()
+        if stability and stability != "stable":
+            continue
+        identity = endpoint_identity_from_detail(value)
+        if identity:
+            result[identity] = normalized_string_tuple(value.get("requiredCapabilities"))
+    return result
+
+
+def stable_endpoint_capability_map_reported(details: dict[str, Any]) -> bool:
+    if isinstance(details.get("stableEndpointRequiredCapabilities"), dict):
+        return True
+    endpoints = details.get("endpoints")
+    if not isinstance(endpoints, list):
+        return False
+    return any(isinstance(value, dict) and "requiredCapabilities" in value for value in endpoints)
+
+
+def endpoint_access_tuple(value: Any) -> tuple[bool, bool]:
+    if not isinstance(value, dict):
+        return (False, False)
+    return (
+        value.get("appProcessPrincipalsAllowed") is True,
+        value.get("appBrowserPrincipalsAllowed") is True,
+    )
+
+
+def endpoint_access_detail(value: tuple[bool, bool]) -> dict[str, bool]:
+    return {
+        "appProcessPrincipalsAllowed": value[0],
+        "appBrowserPrincipalsAllowed": value[1],
+    }
+
+
+def stable_endpoint_access_map(details: dict[str, Any]) -> dict[str, tuple[bool, bool]]:
+    direct = details.get("stableEndpointAppAccess")
+    if isinstance(direct, dict):
+        return {
+            str(endpoint): endpoint_access_tuple(access)
+            for endpoint, access in direct.items()
+            if str(endpoint)
+        }
+    result: dict[str, tuple[bool, bool]] = {}
+    endpoints = details.get("endpoints")
+    if not isinstance(endpoints, list):
+        return result
+    for value in endpoints:
+        if not isinstance(value, dict):
+            continue
+        stability = str(value.get("stability", value.get("lifecycle", ""))).lower()
+        if stability and stability != "stable":
+            continue
+        identity = endpoint_identity_from_detail(value)
+        if identity:
+            result[identity] = endpoint_access_tuple(value)
+    return result
+
+
+def stable_endpoint_access_map_reported(details: dict[str, Any]) -> bool:
+    direct = details.get("stableEndpointAppAccess")
+    if isinstance(direct, dict):
+        return bool(direct)
+    endpoints = details.get("endpoints")
+    if not isinstance(endpoints, list):
+        return False
+    stable_endpoints = []
+    for value in endpoints:
+        if not isinstance(value, dict):
+            continue
+        stability = str(value.get("stability", value.get("lifecycle", ""))).lower()
+        if stability and stability != "stable":
+            continue
+        stable_endpoints.append(value)
+    if not stable_endpoints:
+        return False
+    return all(
+        "appProcessPrincipalsAllowed" in value and "appBrowserPrincipalsAllowed" in value
+        for value in stable_endpoints
+    )
+
+
 MATRIX_CATEGORY_TITLES = {
     "release-operations": "Release operations",
     "network-compatibility": "Network compatibility",
@@ -2206,9 +2330,16 @@ def ecosystem_matrix_row_specs() -> list[MatrixRowSpec]:
             id="platform-api-contract",
             category="app-platform",
             title="Platform API contract compatibility",
-            required_evidence_ids=("platform-api.contract",),
+            required_evidence_ids=(
+                "platform-api.contract",
+                *PLATFORM_API_STABLE_FREEZE_EVIDENCE_IDS,
+            ),
             gate_ids=("ecosystem.platform-api-compatibility",),
-            docs=("docs/platform-api-contract.md", "docs/platform-api-surface.md"),
+            docs=(
+                "docs/platform-api-contract.md",
+                "docs/platform-api-1.0-stable-reference.md",
+                "docs/platform-api-surface.md",
+            ),
         ),
         MatrixRowSpec(
             id="developer-beta-toolkit",
@@ -3879,7 +4010,10 @@ def evaluate_required_evidence_regressions(diffs: list[dict[str, Any]]) -> GateR
 
 
 def evaluate_platform_api_gate(
-    current: dict[str, dict[str, Any]], previous: dict[str, dict[str, Any]]
+    current: dict[str, dict[str, Any]],
+    previous: dict[str, dict[str, Any]],
+    mode: str,
+    require_history: bool,
 ) -> GateResult:
     current_item = current.get("platform-api.contract")
     previous_item = previous.get("platform-api.contract")
@@ -3891,6 +4025,20 @@ def evaluate_platform_api_gate(
         failures.append("Platform API contract evidence is not passing")
     elif current_status == "warn":
         warnings.append("Platform API contract evidence is warning")
+    for evidence_id in PLATFORM_API_STABLE_FREEZE_EVIDENCE_IDS:
+        evidence = current.get(evidence_id)
+        status = evidence_status(evidence)
+        details.setdefault("stableFreezeEvidence", {})[evidence_id] = status
+        if status in {"fail", "missing", "skip"}:
+            failures.append(f"{evidence_id} evidence is not passing")
+            add_evidence_issue(details, "failureEvidenceIds", evidence_id)
+        elif status == "warn":
+            if mode == "release-candidate" and require_history:
+                failures.append(f"{evidence_id} evidence is warning in release-candidate mode")
+                add_evidence_issue(details, "failureEvidenceIds", evidence_id)
+            else:
+                warnings.append(f"{evidence_id} evidence is warning")
+                add_evidence_issue(details, "warningEvidenceIds", evidence_id)
     current_details = evidence_details(current_item)
     previous_details = evidence_details(previous_item)
     details["current"] = {
@@ -3898,6 +4046,8 @@ def evaluate_platform_api_gate(
         "endpointCount": current_details.get("endpointCount"),
         "capabilityCount": current_details.get("capabilityCount"),
         "stableDescriptorCount": stable_descriptor_count(current_details),
+        "stableEndpointCapabilitySetCount": len(stable_endpoint_capability_map(current_details)),
+        "stableEndpointAppAccessSetCount": len(stable_endpoint_access_map(current_details)),
         "flaggedStability": current_details.get("flaggedStability", []),
     }
     if previous_details:
@@ -3906,6 +4056,8 @@ def evaluate_platform_api_gate(
             "endpointCount": previous_details.get("endpointCount"),
             "capabilityCount": previous_details.get("capabilityCount"),
             "stableDescriptorCount": stable_descriptor_count(previous_details),
+            "stableEndpointCapabilitySetCount": len(stable_endpoint_capability_map(previous_details)),
+            "stableEndpointAppAccessSetCount": len(stable_endpoint_access_map(previous_details)),
         }
     previous_version = detail_int(previous_details, "contractVersion")
     current_version = detail_int(current_details, "contractVersion")
@@ -3942,6 +4094,77 @@ def evaluate_platform_api_gate(
     )
     if removed_endpoints:
         failures.append(f"Stable endpoints were removed: {', '.join(removed_endpoints)}")
+        add_evidence_issue(details, "failureEvidenceIds", "platform-api.stable-breaking-change-check")
+    previous_endpoint_capabilities = stable_endpoint_capability_map(previous_details)
+    current_endpoint_capabilities = stable_endpoint_capability_map(current_details)
+    previous_endpoint_capabilities_reported = stable_endpoint_capability_map_reported(previous_details)
+    current_endpoint_capabilities_reported = stable_endpoint_capability_map_reported(current_details)
+    if current_endpoints and not current_endpoint_capabilities_reported:
+        failures.append("Current stable endpoint required-capability metadata is unavailable")
+        add_evidence_issue(details, "failureEvidenceIds", "platform-api.stable-breaking-change-check")
+    elif previous_endpoints and not previous_endpoint_capabilities_reported:
+        message = "Previous stable endpoint required-capability metadata is unavailable"
+        if mode == "release-candidate" and require_history:
+            failures.append(message)
+            add_evidence_issue(details, "failureEvidenceIds", "platform-api.stable-breaking-change-check")
+        else:
+            warnings.append(message)
+            add_evidence_issue(details, "warningEvidenceIds", "platform-api.stable-breaking-change-check")
+    elif previous_endpoint_capabilities and current_endpoint_capabilities_reported:
+        changed_endpoint_capabilities = []
+        for endpoint in sorted(set(previous_endpoint_capabilities) & set(current_endpoint_capabilities)):
+            previous_caps = previous_endpoint_capabilities[endpoint]
+            current_caps = current_endpoint_capabilities[endpoint]
+            if previous_caps != current_caps:
+                changed_endpoint_capabilities.append(
+                    {
+                        "endpoint": endpoint,
+                        "previous": list(previous_caps),
+                        "current": list(current_caps),
+                    }
+                )
+        if changed_endpoint_capabilities:
+            failures.append(
+                "Stable endpoint required capabilities changed: "
+                + ", ".join(change["endpoint"] for change in changed_endpoint_capabilities)
+            )
+            add_evidence_issue(details, "failureEvidenceIds", "platform-api.stable-breaking-change-check")
+            details["stableEndpointCapabilityChanges"] = changed_endpoint_capabilities
+    previous_endpoint_access = stable_endpoint_access_map(previous_details)
+    current_endpoint_access = stable_endpoint_access_map(current_details)
+    previous_endpoint_access_reported = stable_endpoint_access_map_reported(previous_details)
+    current_endpoint_access_reported = stable_endpoint_access_map_reported(current_details)
+    if current_endpoints and not current_endpoint_access_reported:
+        failures.append("Current stable endpoint app-principal access metadata is unavailable")
+        add_evidence_issue(details, "failureEvidenceIds", "platform-api.stable-breaking-change-check")
+    elif previous_endpoints and not previous_endpoint_access_reported:
+        message = "Previous stable endpoint app-principal access metadata is unavailable"
+        if mode == "release-candidate" and require_history:
+            failures.append(message)
+            add_evidence_issue(details, "failureEvidenceIds", "platform-api.stable-breaking-change-check")
+        else:
+            warnings.append(message)
+            add_evidence_issue(details, "warningEvidenceIds", "platform-api.stable-breaking-change-check")
+    elif previous_endpoint_access and current_endpoint_access_reported:
+        changed_endpoint_access = []
+        for endpoint in sorted(set(previous_endpoint_access) & set(current_endpoint_access)):
+            previous_access = previous_endpoint_access[endpoint]
+            current_access = current_endpoint_access[endpoint]
+            if previous_access != current_access:
+                changed_endpoint_access.append(
+                    {
+                        "endpoint": endpoint,
+                        "previous": endpoint_access_detail(previous_access),
+                        "current": endpoint_access_detail(current_access),
+                    }
+                )
+        if changed_endpoint_access:
+            failures.append(
+                "Stable endpoint app-principal access changed: "
+                + ", ".join(change["endpoint"] for change in changed_endpoint_access)
+            )
+            add_evidence_issue(details, "failureEvidenceIds", "platform-api.stable-breaking-change-check")
+            details["stableEndpointAccessChanges"] = changed_endpoint_access
     previous_capabilities = stable_named_set(previous_details, "stableCapabilities", "capabilities")
     current_capabilities = stable_named_set(current_details, "stableCapabilities", "capabilities")
     current_capabilities_reported = stable_named_set_reported(
@@ -3954,10 +4177,16 @@ def evaluate_platform_api_gate(
     )
     if removed_capabilities:
         failures.append(f"Stable capabilities were removed: {', '.join(removed_capabilities)}")
+        add_evidence_issue(details, "failureEvidenceIds", "platform-api.stable-breaking-change-check")
     if current_details.get("flaggedStability"):
         warnings.append("Contract evidence contains stability warnings")
     if not previous_details:
-        warnings.append("Previous Platform API contract details were unavailable; comparison is status-limited")
+        if mode == "release-candidate" and require_history:
+            failures.append("Previous Platform API contract details were unavailable; stable baseline comparison is required")
+            add_evidence_issue(details, "failureEvidenceIds", "platform-api.stable-breaking-change-check")
+        else:
+            warnings.append("Previous Platform API contract details were unavailable; comparison is status-limited")
+            add_evidence_issue(details, "warningEvidenceIds", "platform-api.stable-breaking-change-check")
     if failures:
         add_evidence_issue(details, "failureEvidenceIds", "platform-api.contract")
     if warnings:
@@ -5918,7 +6147,7 @@ def evaluate_ecosystem_gates(
         diffs = []
     child_gates = [
         evaluate_required_evidence_regressions([diff for diff in diffs if isinstance(diff, dict)]),
-        evaluate_platform_api_gate(current, previous),
+        evaluate_platform_api_gate(current, previous, settings.mode, settings.require_history),
         evaluate_first_party_apps_gate(current, previous),
         evaluate_app_ui_quality_gate(current, previous),
         evaluate_app_review_trust_gate(current, previous, metadata, settings.mode),
@@ -8674,6 +8903,20 @@ def run_self_test(repo_root: Path) -> None:
                 entry["details"]["contractVersion"] = 3
                 entry["details"]["stableCapabilities"] = ["platform.compat.extra", "queue.read"]
                 entry["details"]["stableEndpoints"] = ["/api/v1/apps/old", "/api/v1/apps/current"]
+                entry["details"]["stableEndpointRequiredCapabilities"] = {
+                    "/api/v1/apps/current": ["queue.read"],
+                    "/api/v1/apps/old": ["queue.read"],
+                }
+                entry["details"]["stableEndpointAppAccess"] = {
+                    "/api/v1/apps/current": {
+                        "appProcessPrincipalsAllowed": True,
+                        "appBrowserPrincipalsAllowed": True,
+                    },
+                    "/api/v1/apps/old": {
+                        "appProcessPrincipalsAllowed": True,
+                        "appBrowserPrincipalsAllowed": True,
+                    },
+                }
         previous_contract_v3_path = workspace / "build/previous-contract-v3/summary.json"
         write_json(previous_contract_v3_path, previous_contract_v3)
         current_contract_sets_path = write_app_summary_variant(
@@ -8686,6 +8929,15 @@ def run_self_test(repo_root: Path) -> None:
                         "contractVersion": 2,
                         "stableCapabilities": ["queue.read"],
                         "stableEndpoints": ["/api/v1/apps/current"],
+                        "stableEndpointRequiredCapabilities": {
+                            "/api/v1/apps/current": ["queue.read"]
+                        },
+                        "stableEndpointAppAccess": {
+                            "/api/v1/apps/current": {
+                                "appProcessPrincipalsAllowed": True,
+                                "appBrowserPrincipalsAllowed": True,
+                            }
+                        },
                     }
                 ),
             ),
@@ -8706,6 +8958,15 @@ def run_self_test(repo_root: Path) -> None:
                 entry["details"]["contractVersion"] = 2
                 entry["details"]["stableCapabilities"] = ["queue.read"]
                 entry["details"]["stableEndpoints"] = ["/api/v1/apps/current"]
+                entry["details"]["stableEndpointRequiredCapabilities"] = {
+                    "/api/v1/apps/current": ["queue.read"]
+                }
+                entry["details"]["stableEndpointAppAccess"] = {
+                    "/api/v1/apps/current": {
+                        "appProcessPrincipalsAllowed": True,
+                        "appBrowserPrincipalsAllowed": True,
+                    }
+                }
         previous_contract_nonempty_sets_path = workspace / "build/previous-contract-nonempty-sets/summary.json"
         write_json(previous_contract_nonempty_sets_path, previous_contract_nonempty_sets)
         current_contract_empty_sets_path = write_app_summary_variant(
@@ -8718,6 +8979,8 @@ def run_self_test(repo_root: Path) -> None:
                         "contractVersion": 2,
                         "stableCapabilities": [],
                         "stableEndpoints": [],
+                        "stableEndpointRequiredCapabilities": {},
+                        "stableEndpointAppAccess": {},
                     }
                 ),
             ),
@@ -8745,6 +9008,10 @@ def run_self_test(repo_root: Path) -> None:
             contract_details = entry.setdefault("details", {})
             contract_details.pop("stableCapabilities", None)
             contract_details.pop("stableEndpoints", None)
+            contract_details.pop("stableEndpointRequiredCapabilities", None)
+            contract_details.pop("stableEndpointAppAccess", None)
+            contract_details.pop("stableCapabilityCount", None)
+            contract_details.pop("stableEndpointCount", None)
             contract_details.update(
                 {
                     "contractVersion": 2,
@@ -8804,18 +9071,142 @@ def run_self_test(repo_root: Path) -> None:
             == "fail"
         )
 
+        previous_contract_endpoint_caps = json.loads(json.dumps(previous_good))
+        for entry in previous_contract_endpoint_caps["evidence"]:
+            if entry["id"] == "platform-api.contract":
+                entry["details"]["contractVersion"] = 2
+                entry["details"]["stableEndpointRequiredCapabilities"] = {
+                    "GET /queue": ["queue.read"]
+                }
+                entry["details"]["stableEndpointAppAccess"] = {
+                    "GET /queue": {
+                        "appProcessPrincipalsAllowed": True,
+                        "appBrowserPrincipalsAllowed": True,
+                    }
+                }
+        previous_contract_endpoint_caps_path = workspace / "build/previous-contract-endpoint-caps/summary.json"
+        write_json(previous_contract_endpoint_caps_path, previous_contract_endpoint_caps)
+        current_contract_endpoint_caps_path = write_app_summary_variant(
+            "current-contract-endpoint-caps",
+            lambda value: update_evidence(
+                value,
+                "platform-api.contract",
+                lambda entry: entry.setdefault("details", {}).update(
+                    {
+                        "contractVersion": 2,
+                        "stableEndpointRequiredCapabilities": {
+                            "GET /queue": ["queue.write"]
+                        },
+                        "stableEndpointAppAccess": {
+                            "GET /queue": {
+                                "appProcessPrincipalsAllowed": True,
+                                "appBrowserPrincipalsAllowed": True,
+                            }
+                        },
+                    }
+                ),
+            ),
+        )
+        endpoint_capability_regression_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/contract-endpoint-capability-regression-cert").resolve(),
+            previous_summary=previous_contract_endpoint_caps_path,
+            app_platform_summary=current_contract_endpoint_caps_path,
+        )
+        endpoint_capability_regression_summary, endpoint_capability_regression_exit_code = run(
+            endpoint_capability_regression_settings
+        )
+        assert endpoint_capability_regression_exit_code == 1, endpoint_capability_regression_summary
+        endpoint_capability_regression_gate = gate_by_id(
+            endpoint_capability_regression_summary, "ecosystem.platform-api-compatibility"
+        )
+        assert endpoint_capability_regression_gate["status"] == "fail", endpoint_capability_regression_gate
+        assert (
+            "GET /queue"
+            in endpoint_capability_regression_gate["details"]["stableEndpointCapabilityChanges"][0]["endpoint"]
+        ), endpoint_capability_regression_gate
+
+        previous_contract_endpoint_access = json.loads(json.dumps(previous_good))
+        for entry in previous_contract_endpoint_access["evidence"]:
+            if entry["id"] == "platform-api.contract":
+                entry["details"]["contractVersion"] = 2
+                entry["details"]["stableEndpointRequiredCapabilities"] = {
+                    "GET /queue": ["queue.read"]
+                }
+                entry["details"]["stableEndpointAppAccess"] = {
+                    "GET /queue": {
+                        "appProcessPrincipalsAllowed": True,
+                        "appBrowserPrincipalsAllowed": True,
+                    }
+                }
+        previous_contract_endpoint_access_path = workspace / "build/previous-contract-endpoint-access/summary.json"
+        write_json(previous_contract_endpoint_access_path, previous_contract_endpoint_access)
+        current_contract_endpoint_access_path = write_app_summary_variant(
+            "current-contract-endpoint-access",
+            lambda value: update_evidence(
+                value,
+                "platform-api.contract",
+                lambda entry: entry.setdefault("details", {}).update(
+                    {
+                        "contractVersion": 2,
+                        "stableEndpointRequiredCapabilities": {
+                            "GET /queue": ["queue.read"]
+                        },
+                        "stableEndpointAppAccess": {
+                            "GET /queue": {
+                                "appProcessPrincipalsAllowed": False,
+                                "appBrowserPrincipalsAllowed": True,
+                            }
+                        },
+                    }
+                ),
+            ),
+        )
+        endpoint_access_regression_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/contract-endpoint-access-regression-cert").resolve(),
+            previous_summary=previous_contract_endpoint_access_path,
+            app_platform_summary=current_contract_endpoint_access_path,
+        )
+        endpoint_access_regression_summary, endpoint_access_regression_exit_code = run(
+            endpoint_access_regression_settings
+        )
+        assert endpoint_access_regression_exit_code == 1, endpoint_access_regression_summary
+        endpoint_access_regression_gate = gate_by_id(
+            endpoint_access_regression_summary, "ecosystem.platform-api-compatibility"
+        )
+        assert endpoint_access_regression_gate["status"] == "fail", endpoint_access_regression_gate
+        assert (
+            "GET /queue"
+            in endpoint_access_regression_gate["details"]["stableEndpointAccessChanges"][0]["endpoint"]
+        ), endpoint_access_regression_gate
+        assert (
+            endpoint_access_regression_gate["details"]["stableEndpointAccessChanges"][0]["current"][
+                "appProcessPrincipalsAllowed"
+            ]
+            is False
+        ), endpoint_access_regression_gate
+
         def set_contract_raw_endpoint_details(
             entry: dict[str, Any], routes: list[str], stable_count: int
         ) -> None:
             contract_details = entry.setdefault("details", {})
             contract_details.pop("stableEndpoints", None)
+            contract_details.pop("stableEndpointRequiredCapabilities", None)
+            contract_details.pop("stableEndpointAppAccess", None)
             contract_details.update(
                 {
                     "contractVersion": 2,
                     "endpointCount": len(routes),
                     "stabilityCounts": {"stable": stable_count},
                     "endpoints": [
-                        {"method": "GET", "routeTemplate": route, "stability": "stable"}
+                        {
+                            "method": "GET",
+                            "routeTemplate": route,
+                            "stability": "stable",
+                            "appProcessPrincipalsAllowed": True,
+                            "appBrowserPrincipalsAllowed": True,
+                        }
                         for route in routes
                     ],
                 }

@@ -53,20 +53,23 @@ class DeveloperBetaToolkitCliTest {
         "queue-dashboard",
         "queue-app",
         "app.permissions=queue.read,queue.write\n",
-        "api.experimentalCapabilitiesAccepted=false\n",
-        "platform.queue.snapshot");
+        "platform.queue.snapshot",
+        "api.targetStability=stable\n",
+        "api.experimentalCapabilitiesAccepted=false\n");
     assertTemplate(
         "publisher",
         "publisher-app",
         "app.permissions=content.insert,queue.read,queue.write\n",
-        "api.experimentalCapabilitiesAccepted=false\n",
-        "window.CryptaPlatform.content.insertFile");
+        "window.CryptaPlatform.content.insertFile",
+        "api.targetStability=stable\n",
+        "api.experimentalCapabilitiesAccepted=false\n");
     assertTemplate(
         "vault-profile",
         "vault-app",
         "app.permissions=vault.identities.read,vault.identities.create,vault.identities.use\n",
-        "api.experimentalCapabilitiesAccepted=true\n",
-        "window.CryptaPlatform.vault.identities.create");
+        "window.CryptaPlatform.vault.identities.create",
+        "api.targetStability=experimental\n",
+        "api.experimentalCapabilitiesAccepted=true\n");
   }
 
   @Test
@@ -851,8 +854,8 @@ class DeveloperBetaToolkitCliTest {
       String template,
       String appId,
       String expectedPermissionsLine,
-      String expectedExperimentalLine,
-      String expectedScript)
+      String expectedScript,
+      String... expectedApiLines)
       throws Exception {
     Path appDir = scaffold(template, appId);
     CliResult test = runCli("test", "--bundle-dir", appDir.toString(), "--strict");
@@ -865,7 +868,9 @@ class DeveloperBetaToolkitCliTest {
 
     assertEquals(CommandLine.ExitCode.OK, test.exitCode(), test.err());
     assertTrue(manifest.contains(expectedPermissionsLine));
-    assertTrue(manifest.contains(expectedExperimentalLine));
+    for (String expectedApiLine : expectedApiLines) {
+      assertTrue(manifest.contains(expectedApiLine));
+    }
     assertTrue(index.contains("data-crypta-permission-summary"));
     assertTrue(script.contains(expectedScript));
     if ("queue-dashboard".equals(template)) {

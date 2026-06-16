@@ -264,6 +264,12 @@ final class CatalogEntryDescriptorGenerator {
           "api.optionalCapabilities",
           String.join(",", manifest.apiCompatibility().optionalCapabilities()));
     }
+    if (manifest.apiCompatibility().targetStabilityDeclared()) {
+      append(
+          builder,
+          "api.targetStability",
+          manifest.apiCompatibility().targetStability().manifestValue());
+    }
     if (manifest.apiCompatibility().declared()) {
       append(
           builder,

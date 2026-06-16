@@ -6,6 +6,7 @@ import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermission;
 import java.util.List;
 import java.util.Set;
+import network.crypta.platform.appdist.AppApiCompatibilityMetadata.TargetStability;
 import network.crypta.platform.appdist.AppDataNamespaceSchema;
 import network.crypta.platform.appdist.AppRestartPolicy;
 import network.crypta.platform.appdist.AppSandboxMode;
@@ -101,6 +102,8 @@ class SocialInboxBundleStagingTest {
     assertEquals(
         Integer.valueOf(EXPECTED_PLATFORM_API_MAXIMUM_TESTED_VERSION),
         manifest.apiCompatibility().maximumTestedVersion());
+    assertEquals(TargetStability.EXPERIMENTAL, manifest.apiCompatibility().targetStability());
+    assertTrue(manifest.apiCompatibility().targetStabilityDeclared());
     assertTrue(manifest.apiCompatibility().experimentalCapabilitiesAccepted());
     assertEquals(AppSandboxMode.RESTRICTED_PROCESS, manifest.sandboxPolicy().mode());
     assertFalse(manifest.sandboxPolicy().required());
@@ -197,6 +200,7 @@ class SocialInboxBundleStagingTest {
         manifestText,
         "api.minimumVersion=" + EXPECTED_PLATFORM_API_MINIMUM_VERSION,
         "api.maximumTestedVersion=" + EXPECTED_PLATFORM_API_MAXIMUM_TESTED_VERSION,
+        "api.targetStability=experimental",
         "api.experimentalCapabilitiesAccepted=true",
         "app.permissions=" + EXPECTED_PERMISSIONS);
   }

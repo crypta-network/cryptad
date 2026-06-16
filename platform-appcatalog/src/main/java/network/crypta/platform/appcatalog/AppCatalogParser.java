@@ -323,6 +323,10 @@ public final class AppCatalogParser {
     List<String> optionalCapabilities =
         parseOptionalCapabilities(
             removeOptional(properties, prefix + "api.optionalCapabilities").orElse(null));
+    AppApiCompatibilityMetadata.TargetStability targetStability =
+        removeOptional(properties, prefix + "api.targetStability")
+            .map(AppCatalogParser::parseTargetStability)
+            .orElse(null);
     boolean experimentalCapabilitiesAccepted =
         parseExperimentalCapabilitiesAccepted(properties, prefix);
     try {
@@ -330,7 +334,18 @@ public final class AppCatalogParser {
           minimumVersion,
           maximumTestedVersion,
           optionalCapabilities,
+          targetStability,
+          targetStability != null,
           experimentalCapabilitiesAccepted);
+    } catch (IllegalArgumentException exception) {
+      throw new AppCatalogException(
+          AppCatalogSidecars.INVALID_CATALOG_ENTRY, exception.getMessage(), exception);
+    }
+  }
+
+  private static AppApiCompatibilityMetadata.TargetStability parseTargetStability(String value) {
+    try {
+      return AppApiCompatibilityMetadata.TargetStability.parse(value);
     } catch (IllegalArgumentException exception) {
       throw new AppCatalogException(
           AppCatalogSidecars.INVALID_CATALOG_ENTRY, exception.getMessage(), exception);

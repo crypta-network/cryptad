@@ -47,6 +47,7 @@ import network.crypta.platform.appcatalog.AppReviewReceiptSigner;
 import network.crypta.platform.appcatalog.AppReviewReceiptStatus;
 import network.crypta.platform.appcatalog.TrustedReviewerKey;
 import network.crypta.platform.appcatalog.TrustedReviewerKeys;
+import network.crypta.platform.appdist.AppApiCompatibilityMetadata.TargetStability;
 import network.crypta.platform.appdist.AppApiCompatibilityMetadata;
 import network.crypta.platform.appdist.AppUiMode;
 import network.crypta.platform.apphost.AppDiskUsageScanner;
@@ -1904,7 +1905,7 @@ class AppUpdateServiceTest {
             AppReviewPolicy.DEFAULT,
             () -> trustedReviewerKeys(reviewerKeyPair));
     AppApiCompatibilityMetadata newerThanTested =
-        new AppApiCompatibilityMetadata(1, 1, List.of(), false);
+        new AppApiCompatibilityMetadata(1, 1, List.of(), TargetStability.STABLE, false);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
     when(catalogManager.listApps(CATALOG_ID))
         .thenReturn(
@@ -3450,13 +3451,17 @@ class AppUpdateServiceTest {
 
   private static AppApiCompatibilityMetadata compatibleApiMetadata() {
     return new AppApiCompatibilityMetadata(
-        1, PlatformApiContract.current().contractVersion(), List.of(), false);
+        1,
+        PlatformApiContract.current().contractVersion(),
+        List.of(),
+        TargetStability.STABLE,
+        false);
   }
 
   private static AppApiCompatibilityMetadata futureApiMetadata() {
     int futureContractVersion = PlatformApiContract.current().contractVersion() + 1;
     return new AppApiCompatibilityMetadata(
-        futureContractVersion, futureContractVersion, List.of(), false);
+        futureContractVersion, futureContractVersion, List.of(), TargetStability.STABLE, false);
   }
 
   private static AppCatalogEntry entry(

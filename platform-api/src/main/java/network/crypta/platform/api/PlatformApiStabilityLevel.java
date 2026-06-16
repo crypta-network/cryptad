@@ -12,9 +12,9 @@ import java.util.Locale;
  *
  * <p>The verifier uses these levels to produce compatibility findings. Stable entries do not create
  * findings, experimental entries require explicit app opt-in, deprecated and scheduled entries are
- * release risks, and internal entries are never valid manifest capabilities for third-party apps.
- * JSON values are lowercase and stable so catalog metadata, CLI output, and release evidence can be
- * compared deterministically.
+ * release risks, and internal or operator-only entries are never valid manifest capabilities for
+ * third-party apps. JSON values are lowercase and stable so catalog metadata, CLI output, and
+ * release evidence can be compared deterministically.
  */
 public enum PlatformApiStabilityLevel {
   /**
@@ -50,6 +50,16 @@ public enum PlatformApiStabilityLevel {
   SCHEDULED_FOR_REMOVAL("scheduled-for-removal"),
 
   /**
+   * Host/operator local-management surface that is not third-party app-facing API.
+   *
+   * <p>Operator-only entries may be exposed over localhost routes for Web Shell or local management
+   * workflows, but they are outside the Platform API 1.0 stable app baseline. The verifier treats
+   * app declarations against these capabilities as errors even when the app targets experimental
+   * APIs.
+   */
+  OPERATOR_ONLY("operator-only"),
+
+  /**
    * Host/internal surface that is intentionally not part of the public app contract.
    *
    * <p>Internal entries must not be requested by app manifests. The verifier treats internal
@@ -73,6 +83,34 @@ public enum PlatformApiStabilityLevel {
    */
   public String jsonValue() {
     return jsonValue;
+  }
+
+  /**
+   * Returns whether this level describes app-facing stable API.
+   *
+   * @return {@code true} only for stable entries
+   */
+  public boolean isStableAppFacing() {
+    return this == STABLE;
+  }
+
+  /**
+   * Returns whether this level describes app-facing experimental API.
+   *
+   * @return {@code true} only for experimental entries
+   */
+  @SuppressWarnings("unused")
+  public boolean isExperimentalAppFacing() {
+    return this == EXPERIMENTAL;
+  }
+
+  /**
+   * Returns whether this level is outside third-party app compatibility declarations.
+   *
+   * @return {@code true} for internal and operator-only entries
+   */
+  public boolean isRestrictedAudience() {
+    return this == INTERNAL || this == OPERATOR_ONLY;
   }
 
   /**

@@ -226,6 +226,7 @@ permissions.rationale.queue.read=Reads local queue state.
 permissions.rationale.queue.write=Cancels or reprioritizes selected queue entries.
 api.minimumVersion=1
 api.maximumTestedVersion=1
+api.targetStability=stable
 api.experimentalCapabilitiesAccepted=false
 ```
 
@@ -420,12 +421,17 @@ Bundle manifests should declare Platform API compatibility metadata:
 ```properties
 api.minimumVersion=1
 api.maximumTestedVersion=1
+api.targetStability=stable
 api.experimentalCapabilitiesAccepted=false
 ```
 
-Stable-only templates such as `queue-dashboard` and `publisher` keep experimental capability
-acceptance disabled. The `vault-profile` template enables
-`api.experimentalCapabilitiesAccepted=true` because its default `vault.*` permissions exercise
+Stable-only permission sets keep experimental capability acceptance disabled and set
+`api.targetStability=stable`. The scaffolder derives the target from the final permissions after
+template defaults and repeatable `--permission` values are merged. If an added permission is
+app-facing experimental or outside the Platform API 1.0 stable baseline, the manifest uses
+`api.targetStability=experimental` and enables `api.experimentalCapabilitiesAccepted=true`.
+Operator-only and internal permissions are rejected during scaffolding. The `vault-profile`
+template uses the experimental target because its default `vault.*` permissions exercise
 experimental app-vault capabilities.
 
 Run compatibility checks before signing:
