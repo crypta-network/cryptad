@@ -155,7 +155,7 @@ RUN set -eux; \
     ./configure --prefix=/usr/local; \
     make -j"$(nproc)"; \
     make install; \
-    test "$(mosh -V | sed -n 's/^mosh \([^ ]*\).*/\1/p' | head -n 1)" = "${MOSH_VERSION}"; \
+    test "$(mosh --version | sed -n 's/^mosh \([^ ]*\).*/\1/p' | head -n 1)" = "${MOSH_VERSION}"; \
     strings /usr/local/bin/mosh-server | grep -F "mosh-server (mosh ${MOSH_VERSION})"; \
     cd /tmp; \
     rm -rf "mosh-${MOSH_VERSION}" mosh.tar.gz; \

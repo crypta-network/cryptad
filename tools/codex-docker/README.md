@@ -153,7 +153,7 @@ docker compose --env-file ../../.env exec codex tic -V
 docker compose --env-file ../../.env exec codex pkg-config --modversion ncursesw
 docker compose --env-file ../../.env exec codex sh -lc 'command -v tmux && tmux -V'
 docker compose --env-file ../../.env exec codex sh -lc 'command -v mosh && command -v mosh-server'
-docker compose --env-file ../../.env exec codex mosh -V
+docker compose --env-file ../../.env exec codex mosh --version
 docker compose --env-file ../../.env exec codex sh -lc 'strings "$(command -v mosh-server)" | grep -F "mosh-server (mosh" | head -n 1'
 docker compose --env-file ../../.env exec -w /root codex bash -lic pwd
 docker compose --env-file ../../.env exec codex playwright --version
