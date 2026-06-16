@@ -38,7 +38,7 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        GITHUB_MCP_VERSION: ${GITHUB_MCP_VERSION:-v1.2.0}
+        GITHUB_MCP_VERSION: ${GITHUB_MCP_VERSION:-v1.3.0}
         GITHUB_MCP_ARCH: ${GITHUB_MCP_ARCH:-arm64}
         ACTIONLINT_VERSION: ${ACTIONLINT_VERSION:-1.7.12}
         ACTIONLINT_ARCH: ${ACTIONLINT_ARCH:-arm64}
@@ -55,6 +55,10 @@ services:
       CODEX_HOME: /root/.codex
       PLAYWRIGHT_REMOTE_WS_ENDPOINT: ws://playwright:3000/
       PW_TEST_CONNECT_WS_ENDPOINT: ws://playwright:3000/
+      TERM: xterm-256color
+      COLORTERM: truecolor
+      FORCE_COLOR: "3"
+      CLICOLOR_FORCE: "1"
 
     volumes:
       - ${CRYPTAD_REPO_ROOT:-../..}:/work/cryptad
