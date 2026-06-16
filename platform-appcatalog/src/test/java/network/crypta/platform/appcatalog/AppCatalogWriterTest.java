@@ -76,6 +76,15 @@ class AppCatalogWriterTest {
             replacementAppId=queue-manager-stable
             securityAdvisories=CRYPTA-2026-0001
             securityAdvisory.CRYPTA-2026-0001.uri=https://example.invalid/advisories/CRYPTA-2026-0001
+            maintenance.owner=crypta-core
+            maintenance.ownerUri=https://example.invalid/crypta/owners/core
+            maintenance.supportLevel=core
+            maintenance.dataSchemaPolicy=stateless
+            maintenance.migrationPolicy=none
+            maintenance.backupRestore=not-applicable
+            maintenance.securityPolicy=catalog-advisories
+            maintenance.deprecationPolicy=none
+            maintenance.supportUri=https://example.invalid/crypta/apps/queue-manager/support
             api.minimumVersion=1
             api.maximumTestedVersion=1
             api.optionalCapabilities=alerts.read,diagnostics.read
@@ -96,7 +105,7 @@ class AppCatalogWriterTest {
 
     String expected =
         lines(
-            "catalog.version=3",
+            "catalog.version=5",
             "catalog.id=core",
             "catalog.name=Crypta Core Apps",
             "catalog.generatedAt=2026-04-21T18:22:40Z",
@@ -122,6 +131,15 @@ class AppCatalogWriterTest {
             "app.queue-manager.replacementAppId=queue-manager-stable",
             "app.queue-manager.securityAdvisories=CRYPTA-2026-0001",
             "app.queue-manager.securityAdvisory.CRYPTA-2026-0001.uri=https://example.invalid/advisories/CRYPTA-2026-0001",
+            "app.queue-manager.maintenance.owner=crypta-core",
+            "app.queue-manager.maintenance.ownerUri=https://example.invalid/crypta/owners/core",
+            "app.queue-manager.maintenance.supportLevel=core",
+            "app.queue-manager.maintenance.dataSchemaPolicy=stateless",
+            "app.queue-manager.maintenance.migrationPolicy=none",
+            "app.queue-manager.maintenance.backupRestore=not-applicable",
+            "app.queue-manager.maintenance.securityPolicy=catalog-advisories",
+            "app.queue-manager.maintenance.deprecationPolicy=none",
+            "app.queue-manager.maintenance.supportUri=https://example.invalid/crypta/apps/queue-manager/support",
             "app.queue-manager.review.status=reviewed",
             "app.queue-manager.review.note=Reviewed for local operator safety.",
             "app.queue-manager.permissions.rationale.queue.inspect=Inspects queue metadata.",
@@ -135,7 +153,7 @@ class AppCatalogWriterTest {
             "app.queue-manager.bundle.type=zip",
             "app.queue-manager.permissions=queue.inspect,queue.read");
 
-    assertEquals(AppCatalog.VERSION_PRODUCTION_CHANNELS, result.catalog().version());
+    assertEquals(AppCatalog.VERSION_FIRST_PARTY_MAINTENANCE, result.catalog().version());
     assertEquals(expected, new String(result.catalogBytes(), StandardCharsets.UTF_8));
     assertEquals(expected, Files.readString(outputFile));
     assertEquals(outputFile.toAbsolutePath().normalize(), result.catalogFile().orElseThrow());
@@ -198,6 +216,24 @@ class AppCatalogWriterTest {
     AppCatalogException exception = captureInvalidEntry(() -> AppCatalogWriter.serialize(catalog));
 
     assertTrue(exception.getMessage().contains("catalog.version 3 is required"));
+  }
+
+  @Test
+  void serialize_whenVersionFourCatalogHasMaintenanceMetadata_expectInvalidCatalogEntry() {
+    AppCatalogEntry entry = directEntryWithMaintenanceMetadata();
+
+    AppCatalogException exception =
+        captureInvalidEntry(
+            () ->
+                AppCatalogWriter.serialize(
+                    new AppCatalog(
+                        AppCatalog.VERSION_SECURITY_POLICY,
+                        CATALOG_ID,
+                        CATALOG_NAME,
+                        GENERATED_AT,
+                        List.of(entry))));
+
+    assertTrue(exception.getMessage().contains("catalog.version 5 is required"));
   }
 
   @Test
@@ -475,6 +511,52 @@ class AppCatalogWriterTest {
         AppCatalogEntry.ZIP_BUNDLE_TYPE,
         List.of(QUEUE_READ_PERMISSION),
         Map.of());
+  }
+
+  private static AppCatalogEntry directEntryWithMaintenanceMetadata() {
+    return new AppCatalogEntry(
+        QUEUE_APP_ID,
+        QUEUE_APP_NAME,
+        QUEUE_APP_VERSION,
+        LOCAL_QUEUE_SUMMARY,
+        null,
+        null,
+        null,
+        List.of(),
+        AppCatalogCompatibilityMetadata.EMPTY,
+        AppCatalogReviewMetadata.EMPTY,
+        AppCatalogChangelog.EMPTY,
+        List.of(),
+        new AppCatalogProductionMetadata(
+            AppCatalogChannel.STABLE,
+            AppCatalogSupportStatus.SUPPORTED,
+            AppCatalogDeprecationStatus.NONE,
+            java.util.Optional.empty(),
+            java.util.Optional.empty(),
+            List.of(),
+            true),
+        maintenanceMetadata(),
+        URI.create(QUEUE_BUNDLE_URI),
+        "0".repeat(64),
+        0L,
+        AppCatalogEntry.ZIP_BUNDLE_TYPE,
+        List.of(QUEUE_READ_PERMISSION),
+        Map.of());
+  }
+
+  private static AppCatalogMaintenanceMetadata maintenanceMetadata() {
+    return new AppCatalogMaintenanceMetadata(
+        java.util.Optional.of("crypta-core"),
+        java.util.Optional.of(URI.create("https://example.invalid/crypta/owners/core")),
+        java.util.Optional.of(AppCatalogMaintenanceMetadata.SupportLevel.CORE),
+        java.util.Optional.of(AppCatalogMaintenanceMetadata.DataSchemaPolicy.STATELESS),
+        java.util.Optional.of(AppCatalogMaintenanceMetadata.MigrationPolicy.NONE),
+        java.util.Optional.of(AppCatalogMaintenanceMetadata.BackupRestoreSupport.NOT_APPLICABLE),
+        java.util.Optional.of(AppCatalogMaintenanceMetadata.SecurityPolicy.CATALOG_ADVISORIES),
+        java.util.Optional.of(AppCatalogMaintenanceMetadata.DeprecationPolicy.NONE),
+        java.util.Optional.of(
+            URI.create("https://example.invalid/crypta/apps/queue-manager/support")),
+        true);
   }
 
   private static AppCatalogSecurityPolicy securityPolicy() {

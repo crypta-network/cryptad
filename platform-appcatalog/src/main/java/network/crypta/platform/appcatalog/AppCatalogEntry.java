@@ -44,6 +44,7 @@ import network.crypta.platform.appdist.AppBundleManifest;
  * @param changelog optional change metadata for this catalog version
  * @param screenshots optional screenshot URIs displayed as links
  * @param productionMetadata production channel, support, deprecation, and advisory metadata
+ * @param maintenanceMetadata first-party maintenance policy metadata
  * @param bundleUri absolute local or remote URI for the ZIP bundle artifact
  * @param bundleSha256 lowercase SHA-256 digest of the ZIP artifact bytes
  * @param bundleSizeBytes exact artifact size in bytes
@@ -66,6 +67,7 @@ public record AppCatalogEntry(
     AppCatalogChangelog changelog,
     List<URI> screenshots,
     AppCatalogProductionMetadata productionMetadata,
+    AppCatalogMaintenanceMetadata maintenanceMetadata,
     URI bundleUri,
     String bundleSha256,
     long bundleSizeBytes,
@@ -103,6 +105,7 @@ public record AppCatalogEntry(
    * @param changelog optional change metadata for this catalog version
    * @param screenshots optional screenshot URIs displayed as links
    * @param productionMetadata production channel, support, deprecation, and advisory metadata
+   * @param maintenanceMetadata first-party maintenance policy metadata
    * @param bundleUri absolute local or remote URI for the ZIP bundle artifact
    * @param bundleSha256 lowercase SHA-256 digest of the ZIP artifact bytes
    * @param bundleSizeBytes exact artifact size in bytes
@@ -136,6 +139,7 @@ public record AppCatalogEntry(
     Objects.requireNonNull(changelog, "changelog");
     screenshots = normalizeScreenshots(screenshots, appId);
     Objects.requireNonNull(productionMetadata, "productionMetadata");
+    Objects.requireNonNull(maintenanceMetadata, "maintenanceMetadata");
     bundleUri = AppCatalogSidecars.requireSafeArtifactUri(Objects.requireNonNull(bundleUri));
     bundleSha256 =
         AppCatalogSidecars.requireLowercaseSha256(bundleSha256, "app." + appId + ".bundle.sha256");
@@ -221,6 +225,81 @@ public record AppCatalogEntry(
         changelog,
         screenshots,
         AppCatalogProductionMetadata.DEFAULT,
+        AppCatalogMaintenanceMetadata.EMPTY,
+        bundleUri,
+        bundleSha256,
+        bundleSizeBytes,
+        bundleType,
+        permissions,
+        permissionRationales);
+  }
+
+  /**
+   * Creates a catalog entry with production and first-party maintenance metadata.
+   *
+   * <p>This overload is used by parser and writer code that needs to preserve v5 maintenance policy
+   * fields while still accepting nullable optional display values.
+   *
+   * @param appId normalized AppHost-compatible application identifier
+   * @param name human-readable application name shown in catalog listings
+   * @param version application version expected in the extracted bundle manifest
+   * @param summary short operator-facing description from the catalog
+   * @param homepage nullable operator-facing project homepage URI
+   * @param source nullable operator-facing source-code URI
+   * @param license nullable license identifier or short license name
+   * @param categories normalized catalog category tags
+   * @param compatibility advisory compatibility metadata
+   * @param review advisory human-review metadata
+   * @param reviewReceipt nullable independently signed review receipt
+   * @param changelog optional change metadata for this catalog version
+   * @param screenshots optional screenshot URIs displayed as links
+   * @param productionMetadata production channel, support, deprecation, and advisory metadata
+   * @param maintenanceMetadata first-party maintenance policy metadata
+   * @param bundleUri absolute local or remote URI for the ZIP bundle artifact
+   * @param bundleSha256 lowercase SHA-256 digest of the ZIP artifact bytes
+   * @param bundleSizeBytes exact artifact size in bytes
+   * @param bundleType artifact type, currently {@code zip}
+   * @param permissions normalized catalog permission hints
+   * @param permissionRationales permission-keyed rationale text for install/update review
+   */
+  public AppCatalogEntry(
+      String appId,
+      String name,
+      String version,
+      String summary,
+      URI homepage,
+      URI source,
+      String license,
+      List<String> categories,
+      AppCatalogCompatibilityMetadata compatibility,
+      AppCatalogReviewMetadata review,
+      AppReviewReceipt reviewReceipt,
+      AppCatalogChangelog changelog,
+      List<URI> screenshots,
+      AppCatalogProductionMetadata productionMetadata,
+      AppCatalogMaintenanceMetadata maintenanceMetadata,
+      URI bundleUri,
+      String bundleSha256,
+      long bundleSizeBytes,
+      String bundleType,
+      List<String> permissions,
+      Map<String, String> permissionRationales) {
+    this(
+        appId,
+        name,
+        version,
+        summary,
+        Optional.ofNullable(homepage),
+        Optional.ofNullable(source),
+        Optional.ofNullable(license),
+        categories,
+        compatibility,
+        review,
+        Optional.ofNullable(reviewReceipt),
+        changelog,
+        screenshots,
+        productionMetadata,
+        maintenanceMetadata,
         bundleUri,
         bundleSha256,
         bundleSizeBytes,
@@ -294,6 +373,77 @@ public record AppCatalogEntry(
         changelog,
         screenshots,
         productionMetadata,
+        AppCatalogMaintenanceMetadata.EMPTY,
+        bundleUri,
+        bundleSha256,
+        bundleSizeBytes,
+        bundleType,
+        permissions,
+        permissionRationales);
+  }
+
+  /**
+   * Creates a catalog entry with production and first-party maintenance metadata and no review
+   * receipt.
+   *
+   * @param appId normalized AppHost-compatible application identifier
+   * @param name human-readable application name shown in catalog listings
+   * @param version application version expected in the extracted bundle manifest
+   * @param summary short operator-facing description from the catalog
+   * @param homepage nullable operator-facing project homepage URI
+   * @param source nullable operator-facing source-code URI
+   * @param license nullable license identifier or short license name
+   * @param categories normalized catalog category tags
+   * @param compatibility advisory compatibility metadata
+   * @param review advisory human-review metadata
+   * @param changelog optional change metadata for this catalog version
+   * @param screenshots optional screenshot URIs displayed as links
+   * @param productionMetadata production channel, support, deprecation, and advisory metadata
+   * @param maintenanceMetadata first-party maintenance policy metadata
+   * @param bundleUri absolute local or remote URI for the ZIP bundle artifact
+   * @param bundleSha256 lowercase SHA-256 digest of the ZIP artifact bytes
+   * @param bundleSizeBytes exact artifact size in bytes
+   * @param bundleType artifact type, currently {@code zip}
+   * @param permissions normalized catalog permission hints
+   * @param permissionRationales permission-keyed rationale text for install/update review
+   */
+  public AppCatalogEntry(
+      String appId,
+      String name,
+      String version,
+      String summary,
+      URI homepage,
+      URI source,
+      String license,
+      List<String> categories,
+      AppCatalogCompatibilityMetadata compatibility,
+      AppCatalogReviewMetadata review,
+      AppCatalogChangelog changelog,
+      List<URI> screenshots,
+      AppCatalogProductionMetadata productionMetadata,
+      AppCatalogMaintenanceMetadata maintenanceMetadata,
+      URI bundleUri,
+      String bundleSha256,
+      long bundleSizeBytes,
+      String bundleType,
+      List<String> permissions,
+      Map<String, String> permissionRationales) {
+    this(
+        appId,
+        name,
+        version,
+        summary,
+        homepage,
+        source,
+        license,
+        categories,
+        compatibility,
+        review,
+        null,
+        changelog,
+        screenshots,
+        productionMetadata,
+        maintenanceMetadata,
         bundleUri,
         bundleSha256,
         bundleSizeBytes,
@@ -432,6 +582,7 @@ public record AppCatalogEntry(
         changelog,
         screenshots,
         AppCatalogProductionMetadata.DEFAULT,
+        AppCatalogMaintenanceMetadata.EMPTY,
         bundleUri,
         bundleSha256,
         bundleSizeBytes,
@@ -482,6 +633,7 @@ public record AppCatalogEntry(
         AppCatalogChangelog.EMPTY,
         List.of(),
         AppCatalogProductionMetadata.DEFAULT,
+        AppCatalogMaintenanceMetadata.EMPTY,
         bundleUri,
         bundleSha256,
         bundleSizeBytes,
@@ -506,6 +658,10 @@ public record AppCatalogEntry(
 
   boolean hasProductionMetadata() {
     return compatibility.maximumCryptaVersion() != null || productionMetadata.hasCatalogFields();
+  }
+
+  boolean hasMaintenanceMetadata() {
+    return maintenanceMetadata.hasCatalogFields();
   }
 
   /**

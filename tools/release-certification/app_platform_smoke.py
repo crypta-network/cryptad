@@ -47,6 +47,100 @@ APP_IDS = (
     "feed-reader",
     "trust-graph",
 )
+FIRST_PARTY_MAINTENANCE_POLICY_PATH = Path(
+    "tools/release-certification/first-party-app-maintenance-policy.json"
+)
+FIRST_PARTY_MAINTENANCE_REQUIRED_FIELDS = (
+    "owner",
+    "ownerUri",
+    "supportLevel",
+    "dataSchemaPolicy",
+    "migrationPolicy",
+    "backupRestore",
+    "securityPolicy",
+    "deprecationPolicy",
+    "supportUri",
+)
+FIRST_PARTY_MAINTENANCE_POLICY_METADATA_EXPECTATIONS = {
+    "channel": "stable",
+    "supportStatus": "supported",
+    "deprecationStatus": "none",
+}
+FIRST_PARTY_MAINTENANCE_OWNER = "crypta-core"
+FIRST_PARTY_MAINTENANCE_OWNER_URI = "https://example.invalid/crypta/owners/core"
+FIRST_PARTY_MAINTENANCE_EXPECTATIONS = {
+    "queue-manager": {
+        "supportLevel": "core",
+        "dataSchemaPolicy": "stateless",
+        "migrationPolicy": "none",
+        "backupRestore": "not-applicable",
+    },
+    "publisher": {
+        "supportLevel": "core",
+        "dataSchemaPolicy": "stateless",
+        "migrationPolicy": "none",
+        "backupRestore": "not-applicable",
+    },
+    "site-publisher": {
+        "supportLevel": "maintained",
+        "dataSchemaPolicy": "stateless",
+        "migrationPolicy": "none",
+        "backupRestore": "not-applicable",
+    },
+    "profile-publisher": {
+        "supportLevel": "maintained",
+        "dataSchemaPolicy": "declared",
+        "migrationPolicy": "declared",
+        "backupRestore": "operator-supported",
+    },
+    "feed-reader": {
+        "supportLevel": "maintained",
+        "dataSchemaPolicy": "migratable",
+        "migrationPolicy": "dry-run-required",
+        "backupRestore": "export-import",
+    },
+    "social-inbox": {
+        "supportLevel": "local-rc",
+        "dataSchemaPolicy": "declared",
+        "migrationPolicy": "operator-approved",
+        "backupRestore": "operator-supported",
+    },
+    "trust-graph": {
+        "supportLevel": "local-rc",
+        "dataSchemaPolicy": "migratable",
+        "migrationPolicy": "dry-run-required",
+        "backupRestore": "operator-supported",
+    },
+}
+FIRST_PARTY_MAINTENANCE_ENUMS = {
+    "supportLevel": {
+        "core",
+        "maintained",
+        "reference",
+        "local-rc",
+        "preview",
+        "maintenance",
+        "deprecated",
+        "unsupported",
+    },
+    "dataSchemaPolicy": {"stateless", "declared", "migratable", "external", "not-applicable"},
+    "migrationPolicy": {
+        "none",
+        "declared",
+        "dry-run-required",
+        "operator-approved",
+        "not-applicable",
+    },
+    "backupRestore": {
+        "not-applicable",
+        "export-only",
+        "export-import",
+        "operator-supported",
+        "unsupported",
+    },
+    "securityPolicy": {"catalog-advisories", "project-security-policy", "unsupported"},
+    "deprecationPolicy": {"none", "notice-only", "replacement-required", "security-only"},
+}
 CURRENT_PLATFORM_API_CONTRACT_VERSION = 18
 NETWORK_SCALE_EVIDENCE_IDS = (
     "network-scale.app-network-budget",
@@ -3226,6 +3320,291 @@ def collect_production_catalog_channels_evidence(settings: Settings) -> Evidence
         "pass",
         True,
         "Production catalog channel evidence passed deterministic checks.",
+        source,
+        details,
+    )
+
+
+def maintenance_policy_evidence_value(
+    app_id: str, field: str, value: Any, workspace: Path
+) -> Any:
+    if not isinstance(value, str):
+        return None
+    stripped = value.strip()
+    if "\n" in stripped or "\r" in stripped:
+        return "<redacted>"
+    if field == "owner":
+        return stripped if stripped == FIRST_PARTY_MAINTENANCE_OWNER else "<redacted>"
+    if field == "ownerUri":
+        expected = FIRST_PARTY_MAINTENANCE_OWNER_URI
+        return (
+            stripped
+            if stripped == expected and scrub_text(stripped, workspace) == stripped
+            else "<redacted>"
+        )
+    if field == "supportUri":
+        expected = f"https://example.invalid/crypta/apps/{app_id}/support"
+        return (
+            stripped
+            if stripped == expected and scrub_text(stripped, workspace) == stripped
+            else "<redacted>"
+        )
+    if field in FIRST_PARTY_MAINTENANCE_ENUMS:
+        return stripped if stripped in FIRST_PARTY_MAINTENANCE_ENUMS[field] else "<redacted>"
+    expected = FIRST_PARTY_MAINTENANCE_EXPECTATIONS.get(app_id, {})
+    return stripped if expected.get(field) == stripped else "<redacted>"
+
+
+def maintenance_policy_evidence_summary(
+    app_id: str, maintenance: Any, workspace: Path
+) -> dict[str, Any]:
+    if not isinstance(maintenance, dict):
+        return {}
+    return {
+        field: maintenance_policy_evidence_value(
+            app_id, field, maintenance.get(field), workspace
+        )
+        for field in FIRST_PARTY_MAINTENANCE_REQUIRED_FIELDS
+    }
+
+
+def maintenance_policy_metadata_evidence_value(field: str, value: Any) -> Any:
+    if not isinstance(value, str):
+        return None
+    stripped = value.strip()
+    if "\n" in stripped or "\r" in stripped:
+        return "<redacted>"
+    return (
+        stripped
+        if FIRST_PARTY_MAINTENANCE_POLICY_METADATA_EXPECTATIONS.get(field) == stripped
+        else "<redacted>"
+    )
+
+
+def collect_first_party_maintenance_policy_evidence(settings: Settings) -> EvidenceItem:
+    source = summary_source(settings)
+    workspace = settings.workspace_root
+    policy_path = workspace / FIRST_PARTY_MAINTENANCE_POLICY_PATH
+    policy = read_json_file(policy_path)
+    appcatalog_dir = workspace / "platform-appcatalog/src/main/java/network/crypta/platform/appcatalog"
+    appcatalog_tests = workspace / "platform-appcatalog/src/test/java/network/crypta/platform/appcatalog"
+    devtools_dir = workspace / "platform-devtools/src/main/java/network/crypta/platform/devtools"
+    api_handler = (
+        workspace
+        / "platform-api/src/main/java/network/crypta/platform/api/appcatalogs/AppCatalogsApiHandler.java"
+    )
+    web_shell = (
+        workspace
+        / "platform-web-shell/src/main/resources/network/crypta/platform/webshell/static/web-shell.js"
+    )
+    parser_writer_text = "\n".join(
+        read_source(path)
+        for path in (
+            appcatalog_dir / "AppCatalog.java",
+            appcatalog_dir / "AppCatalogMaintenanceMetadata.java",
+            appcatalog_dir / "AppCatalogParser.java",
+            appcatalog_dir / "AppCatalogWriter.java",
+            appcatalog_dir / "AppCatalogEntryDescriptor.java",
+        )
+    )
+    appcatalog_test_text = "\n".join(
+        read_source(path)
+        for path in (
+            appcatalog_tests / "AppCatalogParserTest.java",
+            appcatalog_tests / "AppCatalogWriterTest.java",
+            appcatalog_tests / "AppCatalogEntryDescriptorTest.java",
+            appcatalog_tests / "AppCatalogMetadataTest.java",
+        )
+    )
+    devtools_text = "\n".join(
+        read_source(path)
+        for path in (
+            devtools_dir / "CatalogEntryDescriptorGenerator.java",
+            devtools_dir / "CryptaAppCli.java",
+        )
+    )
+    api_text = read_source(api_handler)
+    shell_text = read_source(web_shell)
+    release_pipeline_text = read_source(
+        workspace / "tools/release-certification/production_beta_release.py"
+    )
+    docs_text = "\n".join(
+        read_source(workspace / path)
+        for path in (
+            "docs/first-party-app-maintenance-policy.md",
+            "docs/app-catalogs.md",
+            "docs/production-first-party-catalog-channels.md",
+            "docs/first-party-beta-catalog.md",
+            "docs/production-beta-release-pipeline.md",
+            "tools/release-certification/README.md",
+        )
+    )
+    checks: dict[str, Any] = {
+        "policyFilePresent": policy is not None,
+        "schemaVersion": isinstance(policy, dict) and policy.get("schemaVersion") == 1,
+        "catalogSchemaV5Present": (
+            "VERSION_FIRST_PARTY_MAINTENANCE = 5" in parser_writer_text
+            and "AppCatalogMaintenanceMetadata" in parser_writer_text
+            and "maintenance.owner" in parser_writer_text
+            and "maintenance.supportLevel" in parser_writer_text
+            and "maintenance.backupRestore" in parser_writer_text
+        ),
+        "parserWriterTestsPresent": (
+            "parse_whenCatalogHasMaintenanceMetadata_expectMetadataNormalized"
+            in appcatalog_test_text
+            and "parse_whenVersionFourCatalogDeclaresMaintenanceMetadata_expectInvalidCatalogEntry"
+            in appcatalog_test_text
+            and "serialize_whenVersionFourCatalogHasMaintenanceMetadata_expectInvalidCatalogEntry"
+            in appcatalog_test_text
+            and "parse_whenMaintenanceMetadataUsesMixedCase_expectNormalizedEnums"
+            in appcatalog_test_text
+        ),
+        "devtoolsDescriptorSupportPresent": all(
+            flag in devtools_text
+            for flag in (
+                "--maintenance-owner",
+                "--maintenance-support-level",
+                "--maintenance-data-schema-policy",
+                "--maintenance-migration-policy",
+                "--maintenance-backup-restore",
+                "--maintenance-security-policy",
+                "--maintenance-deprecation-policy",
+                "--maintenance-support-uri",
+            )
+        ),
+        "apiExposurePresent": '"maintenance"' in api_text and "summarizeMaintenance" in api_text,
+        "webShellDisplayPresent": (
+            "catalogMaintenancePolicyNode" in shell_text
+            and "Maintenance policy" in shell_text
+            and "catalogMaintenanceDeclared" in shell_text
+        ),
+        "releasePipelineConsumesPolicy": (
+            "FIRST_PARTY_MAINTENANCE_POLICY_FILE" in release_pipeline_text
+            and "maintenance_policy_args" in release_pipeline_text
+            and "app-catalog.first-party-maintenance-policy" in release_pipeline_text
+        ),
+        "docsPresent": (
+            "app-catalog.first-party-maintenance-policy" in docs_text
+            and "catalog.version=5" in docs_text
+            and "maintenance.supportLevel" in docs_text
+            and "Trust Graph Local RC is not global WoT" in docs_text
+            and "Social Inbox RC is not legacy Freemail/Freetalk/Sone protocol compatibility"
+            in docs_text
+        ),
+    }
+    policy_apps = policy.get("apps") if isinstance(policy, dict) else None
+    checks["policyAppsMapPresent"] = isinstance(policy_apps, dict)
+    app_details: dict[str, Any] = {}
+    errors: list[str] = [name for name, passed in checks.items() if passed is not True]
+    if isinstance(policy_apps, dict):
+        checks["requiredAppsPresent"] = sorted(policy_apps) == sorted(APP_IDS)
+        if checks["requiredAppsPresent"] is not True:
+            errors.append("requiredAppsPresent")
+        for app_id in APP_IDS:
+            app_policy = policy_apps.get(app_id)
+            app_result: dict[str, Any] = {"checks": {}}
+            if not isinstance(app_policy, dict):
+                app_result["checks"]["policyEntryPresent"] = False
+                errors.append(f"{app_id}: policyEntryPresent")
+                app_details[app_id] = app_result
+                continue
+            maintenance = app_policy.get("maintenance")
+            app_result["channel"] = maintenance_policy_metadata_evidence_value(
+                "channel", app_policy.get("channel")
+            )
+            app_result["supportStatus"] = maintenance_policy_metadata_evidence_value(
+                "supportStatus", app_policy.get("supportStatus")
+            )
+            app_result["deprecationStatus"] = maintenance_policy_metadata_evidence_value(
+                "deprecationStatus", app_policy.get("deprecationStatus")
+            )
+            app_result["maintenance"] = maintenance_policy_evidence_summary(
+                app_id, maintenance, workspace
+            )
+            app_checks = app_result["checks"]
+            app_checks["releaseMetadataConsistent"] = (
+                app_policy.get("channel") == "stable"
+                and app_policy.get("supportStatus") == "supported"
+                and app_policy.get("deprecationStatus") == "none"
+            )
+            app_checks["maintenanceBlockPresent"] = isinstance(maintenance, dict)
+            if not isinstance(maintenance, dict):
+                errors.append(f"{app_id}: maintenanceBlockPresent")
+                app_details[app_id] = app_result
+                continue
+            app_checks["requiredFieldsPresent"] = all(
+                isinstance(maintenance.get(field), str) and bool(maintenance.get(field, "").strip())
+                for field in FIRST_PARTY_MAINTENANCE_REQUIRED_FIELDS
+            )
+            app_checks["fieldsAreSingleLine"] = all(
+                "\n" not in str(maintenance.get(field, ""))
+                and "\r" not in str(maintenance.get(field, ""))
+                for field in FIRST_PARTY_MAINTENANCE_REQUIRED_FIELDS
+            )
+            app_checks["enumTokensKnown"] = all(
+                str(maintenance.get(field)) in allowed
+                for field, allowed in FIRST_PARTY_MAINTENANCE_ENUMS.items()
+            )
+            expected = FIRST_PARTY_MAINTENANCE_EXPECTATIONS[app_id]
+            app_checks["policyMatchesExpectedAppClass"] = all(
+                maintenance.get(field) == expected_value
+                for field, expected_value in expected.items()
+            )
+            app_checks["ownerIsCore"] = maintenance.get("owner") == FIRST_PARTY_MAINTENANCE_OWNER
+            app_checks["urisAreMetadataOnly"] = (
+                maintenance.get("ownerUri") == FIRST_PARTY_MAINTENANCE_OWNER_URI
+                and maintenance.get("supportUri")
+                == f"https://example.invalid/crypta/apps/{app_id}/support"
+            )
+            app_checks["maintenanceEvidenceValuesSafe"] = all(
+                value != "<redacted>" and value is not None
+                for value in app_result["maintenance"].values()
+            )
+            for check_name, passed in app_checks.items():
+                if passed is not True:
+                    errors.append(f"{app_id}: {check_name}")
+            app_details[app_id] = app_result
+    details = {
+        "policy": display_path(policy_path, workspace),
+        "requiredFirstPartyApps": list(APP_IDS),
+        "expectedPolicy": FIRST_PARTY_MAINTENANCE_EXPECTATIONS,
+        "checks": checks,
+        "apps": app_details,
+        "sources": {
+            "catalogMetadata": display_path(
+                appcatalog_dir / "AppCatalogMaintenanceMetadata.java", workspace
+            ),
+            "catalogParser": display_path(appcatalog_dir / "AppCatalogParser.java", workspace),
+            "catalogWriter": display_path(appcatalog_dir / "AppCatalogWriter.java", workspace),
+            "devtools": display_path(devtools_dir / "CryptaAppCli.java", workspace),
+            "apiHandler": display_path(api_handler, workspace),
+            "webShell": display_path(web_shell, workspace),
+            "docs": display_path(
+                workspace / "docs/first-party-app-maintenance-policy.md", workspace
+            ),
+        },
+        "redaction": {
+            "privateInsertUrisExcluded": True,
+            "privateKeysExcluded": True,
+            "tokensExcluded": True,
+            "rawAppDataExcluded": True,
+            "absolutePathsExcluded": True,
+        },
+    }
+    if errors:
+        return EvidenceItem(
+            "app-catalog.first-party-maintenance-policy",
+            root_consequence(settings, "fail"),
+            True,
+            "First-party maintenance policy evidence is incomplete.",
+            source,
+            {"errors": errors, **details},
+        )
+    return EvidenceItem(
+        "app-catalog.first-party-maintenance-policy",
+        "pass",
+        True,
+        "First-party maintenance policy evidence passed deterministic checks.",
         source,
         details,
     )
@@ -12918,6 +13297,7 @@ def run(settings: Settings) -> tuple[dict[str, Any], int]:
         collect_live_usk_catalog_publication_evidence(settings, sample_paths),
         collect_first_party_beta_catalog_evidence(settings),
         collect_production_catalog_channels_evidence(settings),
+        collect_first_party_maintenance_policy_evidence(settings),
         collect_live_usk_source_verification_evidence(settings),
         collect_app_review_receipt_evidence(settings),
         collect_app_review_policy_evidence(settings),
@@ -13019,7 +13399,88 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def assert_maintenance_policy_evidence_redacts_invalid_values() -> None:
+    with tempfile.TemporaryDirectory(prefix="cryptad-maintenance-policy-redaction-") as temp_name:
+        workspace = Path(temp_name) / "repo"
+        make_self_test_workspace(workspace)
+        policy_path = workspace / FIRST_PARTY_MAINTENANCE_POLICY_PATH
+        policy = json.loads(policy_path.read_text(encoding="utf-8"))
+        app_policy = policy["apps"]["queue-manager"]
+        app_policy["channel"] = str(workspace / "private-channel-token.txt")
+        app_policy["supportStatus"] = "token=status-secret"
+        app_policy["deprecationStatus"] = "USK@PRIVATE-DEPRECATION"
+        maintenance = app_policy["maintenance"]
+        maintenance["owner"] = "crypta-core token=owner-secret"
+        maintenance["ownerUri"] = (
+            "https://example.invalid/crypta/owners/core?token=owner-uri-secret"
+        )
+        maintenance["supportUri"] = str(workspace / "private-support-token.txt")
+        maintenance["securityPolicy"] = "token=security-secret"
+        write_json(policy_path, policy)
+        settings = Settings(
+            workspace_root=workspace.resolve(),
+            out_dir=(workspace / DEFAULT_OUT_DIR).resolve(),
+            mode="pr",
+            skip_gradle=True,
+            cli_path=None,
+            live=False,
+            live_base_url="",
+            live_form_password="",
+            timeout_seconds=60,
+        )
+
+        item = collect_first_party_maintenance_policy_evidence(settings)
+        encoded = json.dumps(item.to_json(), sort_keys=True)
+
+        assert item.status == "warn", item
+        assert "<redacted>" in encoded, encoded
+        for forbidden in (
+            "owner-secret",
+            "owner-uri-secret",
+            "private-support-token.txt",
+            "security-secret",
+            "private-channel-token.txt",
+            "status-secret",
+            "PRIVATE-DEPRECATION",
+            str(workspace),
+        ):
+            assert forbidden not in encoded, f"maintenance evidence leaked {forbidden}: {encoded}"
+
+
+def assert_maintenance_policy_evidence_rejects_redacted_uri_values() -> None:
+    with tempfile.TemporaryDirectory(prefix="cryptad-maintenance-policy-uri-") as temp_name:
+        workspace = Path(temp_name) / "repo"
+        make_self_test_workspace(workspace)
+        policy_path = workspace / FIRST_PARTY_MAINTENANCE_POLICY_PATH
+        policy = json.loads(policy_path.read_text(encoding="utf-8"))
+        policy["apps"]["queue-manager"]["maintenance"]["supportUri"] = (
+            "https://example.invalid/crypta/apps/queue-manager/support?token=support-uri-secret"
+        )
+        write_json(policy_path, policy)
+        settings = Settings(
+            workspace_root=workspace.resolve(),
+            out_dir=(workspace / DEFAULT_OUT_DIR).resolve(),
+            mode="pr",
+            skip_gradle=True,
+            cli_path=None,
+            live=False,
+            live_base_url="",
+            live_form_password="",
+            timeout_seconds=60,
+        )
+
+        item = collect_first_party_maintenance_policy_evidence(settings)
+        encoded = json.dumps(item.to_json(), sort_keys=True)
+
+        assert item.status == "warn", item
+        assert "queue-manager: urisAreMetadataOnly" in encoded, encoded
+        assert "queue-manager: maintenanceEvidenceValuesSafe" in encoded, encoded
+        assert "support-uri-secret" not in encoded, encoded
+
+
 def run_self_test(repo_root: Path) -> None:
+    assert_maintenance_policy_evidence_redacts_invalid_values()
+    assert_maintenance_policy_evidence_rejects_redacted_uri_values()
     fixture_dir = repo_root / "tools/release-certification/fixtures"
     catalog_fixture = fixture_dir / "self-test-catalog.properties"
     registry_fixture = fixture_dir / "self-test-legacy-registry.java-fragment"
@@ -13694,6 +14155,15 @@ def run_self_test(repo_root: Path) -> None:
             "nightly",
             "deprecated",
         ]
+        maintenance_item = evidence_by_id["app-catalog.first-party-maintenance-policy"]
+        assert maintenance_item["status"] == "pass", maintenance_item
+        assert maintenance_item["details"]["requiredFirstPartyApps"] == list(APP_IDS)
+        assert maintenance_item["details"]["apps"]["trust-graph"]["maintenance"][
+            "supportLevel"
+        ] == "local-rc", maintenance_item
+        assert maintenance_item["details"]["apps"]["feed-reader"]["maintenance"][
+            "dataSchemaPolicy"
+        ] == "migratable", maintenance_item
         assert evidence_by_id["catalog.live-usk-source-verification"]["status"] == "pass"
         assert evidence_by_id["app-ui.design-system"]["status"] == "pass"
         assert evidence_by_id["app-ui.lint"]["status"] == "pass"
@@ -15044,25 +15514,38 @@ def make_self_test_workspace(workspace: Path) -> None:
     (appcatalog_dir / "AppCatalog.java").write_text(
         "final class AppCatalog { static final int VERSION_PRODUCTION_CHANNELS = 3; "
         "static final int VERSION_SECURITY_POLICY = 4; "
+        "static final int VERSION_FIRST_PARTY_MAINTENANCE = 5; "
         "Object securityPolicy; if (securityPolicy.hasCatalogFields() && version < VERSION_SECURITY_POLICY) throw new IllegalArgumentException(); }\n",
+        encoding="utf-8",
+    )
+    (appcatalog_dir / "AppCatalogMaintenanceMetadata.java").write_text(
+        "record AppCatalogMaintenanceMetadata() { String fields = \"maintenance.owner "
+        "maintenance.ownerUri maintenance.supportLevel maintenance.dataSchemaPolicy "
+        "maintenance.migrationPolicy maintenance.backupRestore maintenance.securityPolicy "
+        "maintenance.deprecationPolicy maintenance.supportUri\"; }\n",
         encoding="utf-8",
     )
     (appcatalog_dir / "AppCatalogParser.java").write_text(
         "final class AppCatalogParser { String fields = \"VERSION_PRODUCTION_CHANNELS = 3 "
+        "VERSION_FIRST_PARTY_MAINTENANCE = 5 "
         "maximumCryptaVersion securityAdvisory replacementAppId catalog.securityAdvisories "
         "catalog.securityAdvisory. catalog.securityDenylist parseCatalogSecurityPolicy "
-        "parseSecurityPolicyIds version < AppCatalog.VERSION_SECURITY_POLICY Instant.parse\"; }\n",
+        "parseSecurityPolicyIds version < AppCatalog.VERSION_SECURITY_POLICY Instant.parse "
+        "maintenance.owner maintenance.supportLevel maintenance.backupRestore\"; }\n",
         encoding="utf-8",
     )
     (appcatalog_dir / "AppCatalogWriter.java").write_text(
         "final class AppCatalogWriter { String fields = \"VERSION_PRODUCTION_CHANNELS = 3 "
+        "VERSION_FIRST_PARTY_MAINTENANCE = 5 "
         "maximumCryptaVersion securityAdvisory replacementAppId appendSecurityPolicy "
-        "catalog.securityAdvisories catalog.securityAdvisory. catalog.securityDenylist\"; }\n",
+        "catalog.securityAdvisories catalog.securityAdvisory. catalog.securityDenylist "
+        "maintenance.owner maintenance.supportLevel maintenance.backupRestore\"; }\n",
         encoding="utf-8",
     )
     (appcatalog_dir / "AppCatalogEntryDescriptor.java").write_text(
         "record AppCatalogEntryDescriptor() { String fields = \"maximumCryptaVersion "
-        "securityAdvisory replacementAppId\"; }\n",
+        "securityAdvisory replacementAppId maintenance.owner maintenance.supportLevel "
+        "maintenance.backupRestore\"; }\n",
         encoding="utf-8",
     )
     (appcatalog_dir / "AppCatalogSecurityAdvisory.java").write_text(
@@ -15157,11 +15640,14 @@ def make_self_test_workspace(workspace: Path) -> None:
     )
     (appcatalog_tests / "AppCatalogParserTest.java").write_text(
         "void parse_whenCatalogHasProductionChannelMetadata_expectMetadataNormalized() {}\n"
-        "void parse_whenVersionTwoCatalogOmitsProductionMetadata_expectStableDefaults() {}\n",
+        "void parse_whenVersionTwoCatalogOmitsProductionMetadata_expectStableDefaults() {}\n"
+        "void parse_whenCatalogHasMaintenanceMetadata_expectMetadataNormalized() {}\n"
+        "void parse_whenVersionFourCatalogDeclaresMaintenanceMetadata_expectInvalidCatalogEntry() {}\n",
         encoding="utf-8",
     )
     (appcatalog_tests / "AppCatalogWriterTest.java").write_text(
-        "void serialize_whenVersionTwoCatalogHasProductionMetadata_expectInvalidCatalogEntry() {}\n",
+        "void serialize_whenVersionTwoCatalogHasProductionMetadata_expectInvalidCatalogEntry() {}\n"
+        "void serialize_whenVersionFourCatalogHasMaintenanceMetadata_expectInvalidCatalogEntry() {}\n",
         encoding="utf-8",
     )
     (appcatalog_tests / "AppCatalogSecurityPolicyTest.java").write_text(
@@ -15173,11 +15659,13 @@ def make_self_test_workspace(workspace: Path) -> None:
         encoding="utf-8",
     )
     (appcatalog_tests / "AppCatalogEntryDescriptorTest.java").write_text(
-        "void parse_whenCatalogHasProductionChannelMetadata_expectMetadataNormalized() {}\n",
+        "void parse_whenCatalogHasProductionChannelMetadata_expectMetadataNormalized() {}\n"
+        "void parse_whenDescriptorHasMaintenanceMetadata_expectMetadataNormalized() {}\n",
         encoding="utf-8",
     )
     (appcatalog_tests / "AppCatalogMetadataTest.java").write_text(
-        "void productionMetadata_whenParsed_expectStableBetaNightlyDeprecated() {}\n",
+        "void productionMetadata_whenParsed_expectStableBetaNightlyDeprecated() {}\n"
+        "void parse_whenMaintenanceMetadataUsesMixedCase_expectNormalizedEnums() {}\n",
         encoding="utf-8",
     )
     (appcatalog_tests / "RecommendedAppCatalogsTest.java").write_text(
@@ -15252,8 +15740,10 @@ def make_self_test_workspace(workspace: Path) -> None:
     (catalog_api_dir / "AppCatalogsApiHandler.java").write_text(
         "final class AppCatalogsApiHandler { void listRecommendedCatalogs() {} void addRecommended() {} "
         "void summarize() { json.put(\"channel\", channel); json.put(\"supportStatus\", supportStatus); "
+        "json.put(\"maintenance\", summarizeMaintenance(metadata)); "
         "json.put(\"securityAdvisories\", securityAdvisories); json.put(\"defaultEntryChannel\", \"stable\"); "
         "json.put(\"allowedChannels\", allowedChannels); } "
+        "void summarizeMaintenance(Object metadata) {} "
         "String e = \"recommended_catalog_trusted_key_missing\"; }\n",
         encoding="utf-8",
     )
@@ -16189,6 +16679,8 @@ def make_self_test_workspace(workspace: Path) -> None:
         "function renderRecommendedCatalogCard(){}\n"
         "function catalogAppChannel(){}\n"
         "function securityAdvisoryListNode(){}\n"
+        "function catalogMaintenancePolicyNode(){ return 'Maintenance policy'; }\n"
+        "function catalogMaintenanceDeclared(){}\n"
         "const catalogChannelSelect = 'catalog-channel-select'; const deprecatedCard = 'is-deprecated-channel';\n"
         "const path = 'app-catalogs/recommended';\n"
         "const action = 'addRecommended';\n"
@@ -16326,6 +16818,12 @@ def make_self_test_workspace(workspace: Path) -> None:
         "Stable is the default automatic update channel, beta and nightly require explicit policy, "
         "channel_policy_blocked records excluded automation candidates, and deprecated entries expose "
         "replacement metadata without bypassing signed catalog verification. "
+        "Contract v18 catalog.version=5 adds first-party app maintenance metadata with "
+        "maintenance.owner, maintenance.supportLevel, maintenance.dataSchemaPolicy, "
+        "maintenance.migrationPolicy, maintenance.backupRestore, maintenance.securityPolicy, "
+        "maintenance.deprecationPolicy, and app-catalog.first-party-maintenance-policy evidence. "
+        "Trust Graph Local RC is not global WoT. "
+        "Social Inbox RC is not legacy Freemail/Freetalk/Sone protocol compatibility. "
         "Contract v14 adds app-update.data-migration-contract for signed app-data schema migration declarations. "
         "Contract v15 adds app-platform.trust-graph-rc-scope-and-safety for Trust Graph Local RC scope, lifecycle, source metadata, and score safety. "
         "The app-data migration lifecycle runs a dry-run before bundle replacement, creates an internal rollback snapshot, "
@@ -16407,6 +16905,7 @@ def make_self_test_workspace(workspace: Path) -> None:
         "platform-api-surface.md",
         "platform-sdk-js.md",
         "production-first-party-catalog-channels.md",
+        "first-party-app-maintenance-policy.md",
         "ecosystem-security-advisories.md",
         "SECURITY.md",
         "social-inbox-reference-app.md",
@@ -16419,6 +16918,37 @@ def make_self_test_workspace(workspace: Path) -> None:
     cert_readme = workspace / "tools/release-certification/README.md"
     cert_readme.parent.mkdir(parents=True, exist_ok=True)
     cert_readme.write_text(first_party_docs, encoding="utf-8")
+    (workspace / "tools/release-certification/production_beta_release.py").write_text(
+        "FIRST_PARTY_MAINTENANCE_POLICY_FILE = 'first-party-app-maintenance-policy.json'\n"
+        "def maintenance_policy_args(policy):\n"
+        "    return ['--maintenance-owner', policy['maintenance']['owner']]\n"
+        "CRITICAL_PRODUCTION_BETA_EVIDENCE_IDS = ('app-catalog.first-party-maintenance-policy',)\n",
+        encoding="utf-8",
+    )
+    policy_apps = {}
+    for app_id, expected_policy in FIRST_PARTY_MAINTENANCE_EXPECTATIONS.items():
+        policy_apps[app_id] = {
+            "channel": "stable",
+            "supportStatus": "supported",
+            "deprecationStatus": "none",
+            "minimumCryptaVersion": None,
+            "maximumCryptaVersion": None,
+            "maintenance": {
+                "owner": "crypta-core",
+                "ownerUri": "https://example.invalid/crypta/owners/core",
+                "supportLevel": expected_policy["supportLevel"],
+                "dataSchemaPolicy": expected_policy["dataSchemaPolicy"],
+                "migrationPolicy": expected_policy["migrationPolicy"],
+                "backupRestore": expected_policy["backupRestore"],
+                "securityPolicy": "catalog-advisories",
+                "deprecationPolicy": "none",
+                "supportUri": f"https://example.invalid/crypta/apps/{app_id}/support",
+            },
+        }
+    write_json(
+        workspace / FIRST_PARTY_MAINTENANCE_POLICY_PATH,
+        {"schemaVersion": 1, "owner": "crypta-core", "apps": policy_apps},
+    )
     (docs / "legacy-plugin-freeze-policy.md").write_text(
         "This policy defines the production RC freeze boundary for the removed legacy plugin system. "
         "The old in-process plugin runtime is frozen and removed. Do not add new in-core plugin APIs "
@@ -16616,7 +17146,10 @@ def make_self_test_workspace(workspace: Path) -> None:
         '@Command(name = "review") class ReviewCommand { String s = "ReviewSignCommand '
         'ReviewVerifyCommand review fingerprint Receipt revocations: receiptRevocations="; }\n'
         '@Command(name = "entry") class CatalogEntryCommand { String options = '
-        '"--channel --support-status --security-advisory --maximum-crypta-version"; }\n'
+        '"--channel --support-status --security-advisory --maximum-crypta-version '
+        "--maintenance-owner --maintenance-support-level --maintenance-data-schema-policy "
+        "--maintenance-migration-policy --maintenance-backup-restore --maintenance-security-policy "
+        '--maintenance-deprecation-policy --maintenance-support-uri"; }\n'
         'class CatalogCreateCommand { String options = "--security-advisory-record '
         '--security-denylist-entry"; }\n'
         '@Command(name = "publish-usk") class PublishUskCommand { String dry = "--dry-run"; '
@@ -16644,7 +17177,10 @@ def make_self_test_workspace(workspace: Path) -> None:
     )
     (devtools_dir / "CatalogEntryDescriptorGenerator.java").write_text(
         "class CatalogEntryDescriptorGenerator { String s = \"artifact.path permissions.rationale. "
-        "--channel --support-status --security-advisory maximumCryptaVersion\"; }\n",
+        "--channel --support-status --security-advisory maximumCryptaVersion "
+        "--maintenance-owner --maintenance-support-level --maintenance-data-schema-policy "
+        "--maintenance-migration-policy --maintenance-backup-restore --maintenance-security-policy "
+        "--maintenance-deprecation-policy --maintenance-support-uri\"; }\n",
         encoding="utf-8",
     )
     (devtools_dir / "PublicationPlanWriter.java").write_text(
@@ -17383,6 +17919,8 @@ const recommendedCatalogAction = "addRecommended";
 const catalogChannelSelect = "catalog-channel-select";
 function catalogAppChannel(app){}
 function securityAdvisoryListNode(values){}
+function catalogMaintenancePolicyNode(app){ return "Maintenance policy"; }
+function catalogMaintenanceDeclared(maintenance){}
 const deprecatedCatalogClass = "is-deprecated-channel";
 function appServiceGrantPath(){}
 function setSecurityLegacyFallbackStatus(){ return "Open the legacy security page"; }
@@ -17949,6 +18487,7 @@ class AppCatalogsApiHandler {
   void summarize() {
     json.put("channel", channel);
     json.put("supportStatus", supportStatus);
+    json.put("maintenance", summarizeMaintenance(entry.maintenanceMetadata()));
     json.put("securityAdvisories", securityAdvisories);
     json.put("defaultEntryChannel", "stable");
     json.put("versionDifferent", versionDifferent(entry.version(), installedVersion, installed != null));
@@ -17970,6 +18509,7 @@ class AppCatalogsApiHandler {
   private boolean securityAcknowledgementStillApplies(Object initialDecision, Object preparedDecision, boolean securityAcknowledged) { return securityAcknowledged; }
   private static boolean versionDifferent(String catalogVersion, String installedVersion, boolean installed) { return false; }
   private static Optional<Boolean> updateAvailable(String catalogVersion, String installedVersion, boolean installed) { return Optional.empty(); }
+  private Object summarizeMaintenance(Object metadata) { return metadata; }
 }
 """,
         encoding="utf-8",

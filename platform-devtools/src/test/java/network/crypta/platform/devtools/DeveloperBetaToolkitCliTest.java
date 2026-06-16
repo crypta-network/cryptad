@@ -473,6 +473,24 @@ class DeveloperBetaToolkitCliTest {
             "0.9.99",
             "--security-advisory",
             "CRYPTA-2026-0001=https://example.invalid/advisories/CRYPTA-2026-0001",
+            "--maintenance-owner",
+            "crypta-core",
+            "--maintenance-owner-uri",
+            "https://example.invalid/crypta/owners/core",
+            "--maintenance-support-level",
+            "core",
+            "--maintenance-data-schema-policy",
+            "stateless",
+            "--maintenance-migration-policy",
+            "none",
+            "--maintenance-backup-restore",
+            "not-applicable",
+            "--maintenance-security-policy",
+            "catalog-advisories",
+            "--maintenance-deprecation-policy",
+            "none",
+            "--maintenance-support-uri",
+            "https://example.invalid/crypta/apps/catalog-app/support",
             "--permission-rationale",
             "queue.read=Reads mock transfer queue state.",
             "--permission-rationale",
@@ -618,6 +636,18 @@ class DeveloperBetaToolkitCliTest {
     assertTrue(descriptor.contains("channel=beta\n"));
     assertTrue(descriptor.contains("support.status=experimental\n"));
     assertTrue(descriptor.contains("maximumCryptaVersion=0.9.99\n"));
+    assertTrue(descriptor.contains("maintenance.owner=crypta-core\n"));
+    assertTrue(
+        descriptor.contains("maintenance.ownerUri=https://example.invalid/crypta/owners/core\n"));
+    assertTrue(descriptor.contains("maintenance.supportLevel=core\n"));
+    assertTrue(descriptor.contains("maintenance.dataSchemaPolicy=stateless\n"));
+    assertTrue(descriptor.contains("maintenance.migrationPolicy=none\n"));
+    assertTrue(descriptor.contains("maintenance.backupRestore=not-applicable\n"));
+    assertTrue(descriptor.contains("maintenance.securityPolicy=catalog-advisories\n"));
+    assertTrue(descriptor.contains("maintenance.deprecationPolicy=none\n"));
+    assertTrue(
+        descriptor.contains(
+            "maintenance.supportUri=https://example.invalid/crypta/apps/catalog-app/support\n"));
     assertTrue(
         descriptor.contains(
             "securityAdvisory.CRYPTA-2026-0001.uri=https://example.invalid/advisories/CRYPTA-2026-0001\n"));

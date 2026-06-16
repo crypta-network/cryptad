@@ -9,8 +9,8 @@ wire formats, application sandboxing, or AppHost process launching. A catalog te
 where to fetch a signed app bundle ZIP and which digest, size, app id, and version to expect. It
 can also carry optional app-store display metadata for review, compatibility, source, license,
 permissions, screenshots, changelog links, production catalog channels, support status,
-deprecation/replacement hints, security advisory references, and catalog-level security response
-policy.
+deprecation/replacement hints, first-party maintenance policy metadata, security advisory
+references, and catalog-level security response policy.
 
 The runtime verifies data in this order:
 
@@ -50,7 +50,7 @@ the sibling file `cryptad-app-catalog.signature`.
 Catalog properties use a deterministic `key=value` text sidecar:
 
 ```properties
-catalog.version=3
+catalog.version=5
 catalog.id=core
 catalog.name=Crypta Core Apps
 catalog.generatedAt=2026-04-21T18:22:40Z
@@ -76,6 +76,15 @@ app.queue-manager.support.status=supported
 app.queue-manager.deprecation.status=none
 app.queue-manager.securityAdvisories=CRYPTA-2026-0001
 app.queue-manager.securityAdvisory.CRYPTA-2026-0001.uri=https://example.invalid/advisories/CRYPTA-2026-0001
+app.queue-manager.maintenance.owner=crypta-core
+app.queue-manager.maintenance.ownerUri=https://example.invalid/crypta/owners/core
+app.queue-manager.maintenance.supportLevel=core
+app.queue-manager.maintenance.dataSchemaPolicy=stateless
+app.queue-manager.maintenance.migrationPolicy=none
+app.queue-manager.maintenance.backupRestore=not-applicable
+app.queue-manager.maintenance.securityPolicy=catalog-advisories
+app.queue-manager.maintenance.deprecationPolicy=none
+app.queue-manager.maintenance.supportUri=https://example.invalid/crypta/apps/queue-manager/support
 app.queue-manager.review.status=reviewed
 app.queue-manager.review.note=Reviewed for local operator safety.
 app.queue-manager.permissions.rationale.queue.read=Reads the local transfer queue.
@@ -267,8 +276,10 @@ unsafe artifact URIs, duplicate entries, and unknown properties.
 artifact, and permission fields. `catalog.version=2` adds the optional app-store and API
 compatibility metadata fields shown above. `catalog.version=3` adds production catalog channels,
 maximum Cryptad compatibility, support/deprecation metadata, replacement app hints, and security
-advisory references. Current Cryptad nodes parse all three versions. Older strict v1/v2 nodes
-reject newer catalogs rather than silently accepting unknown metadata fields.
+advisory references. `catalog.version=4` adds catalog-level security response policy.
+`catalog.version=5` adds first-party maintenance policy metadata. Current Cryptad nodes parse all
+five versions. Older strict v1-v4 nodes reject newer catalogs rather than silently accepting
+unknown metadata fields.
 
 Minimal v1 catalogs that only provide the required fields still parse and install unchanged. The
 app-store metadata fields remain optional within the v2 schema. V1 and v2 catalogs that omit
@@ -307,6 +318,40 @@ the same safe metadata URI policy as homepage, source, changelog, and screenshot
 `deprecated` channel and deprecation metadata are visible to API clients and the Web Shell; they
 are not a signature bypass or artifact-verification bypass.
 
+## First-party maintenance metadata
+
+First-party maintenance metadata is authenticated by `catalog.version=5` signed catalog bytes. It
+turns first-party app catalog entries into explicit maintenance commitments without replacing the
+existing production-channel, support-status, security-advisory, deprecation, replacement, review,
+or compatibility fields.
+
+The v5 property set is:
+
+```properties
+app.<id>.maintenance.owner=crypta-core
+app.<id>.maintenance.ownerUri=https://example.invalid/crypta/owners/core
+app.<id>.maintenance.supportLevel=core|maintained|reference|local-rc|preview|maintenance|deprecated|unsupported
+app.<id>.maintenance.dataSchemaPolicy=stateless|declared|migratable|external|not-applicable
+app.<id>.maintenance.migrationPolicy=none|declared|dry-run-required|operator-approved|not-applicable
+app.<id>.maintenance.backupRestore=not-applicable|export-only|export-import|operator-supported|unsupported
+app.<id>.maintenance.securityPolicy=catalog-advisories|project-security-policy|unsupported
+app.<id>.maintenance.deprecationPolicy=none|notice-only|replacement-required|security-only
+app.<id>.maintenance.supportUri=https://example.invalid/crypta/apps/<app-id>/support
+```
+
+Catalogs that declare any `maintenance.*` field must declare all required maintenance policy
+fields for that entry. Owner and URI text must be bounded and single-line. URI fields use the same
+safe metadata URI validation as homepage, source, changelog, screenshot, and advisory URI fields.
+
+The release channel remains `app.<id>.channel`. Supported daemon version bounds remain
+`app.<id>.minimumCryptaVersion` and `app.<id>.maximumCryptaVersion`. Deprecation lifecycle and
+replacement target remain `app.<id>.deprecation.*` and `app.<id>.replacementAppId`. Security
+advisory handling remains `app.<id>.securityAdvisories` plus catalog-level security policy.
+
+See [first-party-app-maintenance-policy.md](first-party-app-maintenance-policy.md) for the current
+first-party policy table and the `app-catalog.first-party-maintenance-policy` certification
+evidence.
+
 ## App-store metadata
 
 Catalog entries can include these optional fields:
@@ -325,6 +370,7 @@ Catalog entries can include these optional fields:
 | `app.<id>.deprecation.message` | Single-line deprecation note shown to operators. |
 | `app.<id>.replacementAppId` | Normalized replacement app id for deprecated or retired entries. |
 | `app.<id>.securityAdvisories` | Comma-separated advisory identifiers with matching `securityAdvisory.<id>.uri` metadata links. |
+| `app.<id>.maintenance.*` | First-party maintenance policy metadata. See [First-party maintenance metadata](#first-party-maintenance-metadata). |
 | `app.<id>.review.status` | Advisory human review state. Supported values are `unreviewed`, `reviewed`, `caution`, and `rejected`. |
 | `app.<id>.review.note` | Single-line advisory review note for operators. |
 | `app.<id>.permissions.rationale.<permission>` | Explanation for a declared permission, keyed by the normalized permission name. |

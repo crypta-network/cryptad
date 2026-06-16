@@ -48,6 +48,9 @@ public record AppCatalog(
   /** Signed-catalog schema that can carry enforceable catalog-level security policy. */
   public static final int VERSION_SECURITY_POLICY = 4;
 
+  /** Signed-catalog schema that can carry first-party app maintenance policy metadata. */
+  public static final int VERSION_FIRST_PARTY_MAINTENANCE = 5;
+
   /**
    * Creates a catalog without root security policy.
    *
@@ -100,6 +103,12 @@ public record AppCatalog(
           "catalog.version 4 is required when security policy metadata is present");
     }
     entries = List.copyOf(Objects.requireNonNull(entries, "entries"));
+    for (AppCatalogEntry entry : entries) {
+      if (entry.hasMaintenanceMetadata() && version < VERSION_FIRST_PARTY_MAINTENANCE) {
+        throw AppCatalogSidecars.invalidEntry(
+            "catalog.version 5 is required when maintenance metadata is present");
+      }
+    }
     rejectDuplicateEntries(entries);
   }
 
@@ -107,7 +116,8 @@ public record AppCatalog(
     return version != VERSION_MINIMAL
         && version != VERSION_STORE_METADATA
         && version != VERSION_PRODUCTION_CHANNELS
-        && version != VERSION_SECURITY_POLICY;
+        && version != VERSION_SECURITY_POLICY
+        && version != VERSION_FIRST_PARTY_MAINTENANCE;
   }
 
   /**

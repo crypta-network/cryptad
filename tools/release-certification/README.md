@@ -72,6 +72,12 @@ URI. Catalog bundle URLs are signed under the published layout root, for example
 mode semantics, required environment variables, artifact layout, failure classes, redaction rules,
 and rerun guidance.
 
+Production beta catalog descriptors also consume
+`tools/release-certification/first-party-app-maintenance-policy.json`. The pipeline copies that
+policy into `inputs/first-party-app-maintenance-policy.json`, writes redacted per-app maintenance
+summaries into `catalog/channel-metadata.json`, and relies on
+`app-catalog.first-party-maintenance-policy` evidence for release-candidate certification.
+
 The command cleans existing output directories only under `build/production-beta*` or when the
 directory already contains the `.cryptad-production-beta-release-output` sentinel. Output is
 refused for source-controlled workspace paths such as `docs`, `tools`, `apps`, `.git`, and
@@ -107,6 +113,7 @@ The production beta wrapper uses a separate public artifact layout under
 
 ```text
 inputs/release-config.json
+inputs/first-party-app-maintenance-policy.json
 build/staged-apps/
 build/app-bundles/
 build/crypta-app-launcher/
@@ -165,6 +172,7 @@ app-platform.signed-bundles
 catalog.smoke
 app-catalog.first-party-beta
 catalog.production-channels
+app-catalog.first-party-maintenance-policy
 catalog.security-advisories
 catalog.version-denylist
 app-review.receipt-revocation

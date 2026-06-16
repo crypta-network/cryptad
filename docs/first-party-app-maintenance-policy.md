@@ -1,0 +1,160 @@
+# First-party app maintenance policy
+
+Crypta first-party apps are long-term platform commitments, not demos. This policy defines the
+signed catalog metadata that tells operators who owns each app, what support level it receives, how
+its app-data state is handled, and how deprecation or replacement decisions are communicated.
+
+The canonical reviewable policy source is
+`tools/release-certification/first-party-app-maintenance-policy.json`. Production beta release
+tooling consumes that file when it generates first-party catalog entry descriptors. The generated
+catalog then carries the same policy under `app.<id>.maintenance.*` signed catalog fields.
+
+Release certification evidence id: `app-catalog.first-party-maintenance-policy`.
+
+## First-party policy table
+
+| App | Catalog channel | `support.status` | Maintenance support | Data schema | Migration | Backup/restore | Security | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `queue-manager` | `stable` | `supported` | `core` | `stateless` | `none` | `not-applicable` | `catalog-advisories` | `none` |
+| `publisher` | `stable` | `supported` | `core` | `stateless` | `none` | `not-applicable` | `catalog-advisories` | `none` |
+| `site-publisher` | `stable` | `supported` | `maintained` | `stateless` | `none` | `not-applicable` | `catalog-advisories` | `none` |
+| `profile-publisher` | `stable` | `supported` | `maintained` | `declared` | `declared` | `operator-supported` | `catalog-advisories` | `none` |
+| `feed-reader` | `stable` | `supported` | `maintained` | `migratable` | `dry-run-required` | `export-import` | `catalog-advisories` | `none` |
+| `social-inbox` | `stable` | `supported` | `local-rc` | `declared` | `operator-approved` | `operator-supported` | `catalog-advisories` | `none` |
+| `trust-graph` | `stable` | `supported` | `local-rc` | `migratable` | `dry-run-required` | `operator-supported` | `catalog-advisories` | `none` |
+
+`Trust Graph Local RC is not global WoT`. It is a local RC trust surface with local anchors,
+operator-approved grants, redacted audit state, and no global moderation, routing, crawling, or
+legacy WebOfTrust compatibility.
+
+`Social Inbox RC is not legacy Freemail/Freetalk/Sone protocol compatibility`. It is a bounded
+social/mail-like RC reference app using app-owned state, content subscriptions, AppVault identity
+routes, generated app documents, and optional Trust Graph Local RC annotations. It is not encrypted
+mail transport, old plugin ABI compatibility, a crawler, or a daemon-core social protocol.
+
+## Signed catalog fields
+
+Maintenance metadata starts at `catalog.version=5`. Existing v1-v4 catalogs remain valid when they
+do not declare maintenance fields. A v1-v4 catalog that declares `maintenance.*` fields is rejected
+instead of being partially accepted.
+
+The signed entry fields are:
+
+```properties
+app.<id>.maintenance.owner=crypta-core
+app.<id>.maintenance.ownerUri=https://example.invalid/crypta/owners/core
+app.<id>.maintenance.supportLevel=core|maintained|reference|local-rc|preview|maintenance|deprecated|unsupported
+app.<id>.maintenance.dataSchemaPolicy=stateless|declared|migratable|external|not-applicable
+app.<id>.maintenance.migrationPolicy=none|declared|dry-run-required|operator-approved|not-applicable
+app.<id>.maintenance.backupRestore=not-applicable|export-only|export-import|operator-supported|unsupported
+app.<id>.maintenance.securityPolicy=catalog-advisories|project-security-policy|unsupported
+app.<id>.maintenance.deprecationPolicy=none|notice-only|replacement-required|security-only
+app.<id>.maintenance.supportUri=https://example.invalid/crypta/apps/<app-id>/support
+```
+
+The catalog `channel`, `support.status`, `minimumCryptaVersion`, `maximumCryptaVersion`,
+`deprecation.status`, `deprecation.message`, `replacementAppId`, and `securityAdvisories` fields
+remain authoritative for their existing meanings. Do not duplicate them under `maintenance.*`.
+
+## Field meanings
+
+`maintenance.owner` is the accountable first-party maintenance group. For current first-party apps
+the value is `crypta-core`.
+
+`maintenance.ownerUri` and `maintenance.supportUri` are operator-facing metadata links. They must
+use the same safe metadata URI rules as homepage, source, changelog, screenshot, and advisory URI
+fields. They must not contain private insert URIs, tokens, credentials, or local file paths.
+
+`maintenance.supportLevel` describes the long-term maintenance commitment:
+
+| Value | Meaning |
+| --- | --- |
+| `core` | Core operator workflow maintained with daemon release quality expectations. |
+| `maintained` | First-party app with ongoing fixes, review, and release certification coverage. |
+| `reference` | Reference implementation with explicit scope limits. |
+| `local-rc` | Local release-candidate app whose scope is intentionally bounded to local platform behavior. |
+| `preview` | Preview feature with lower stability expectations. |
+| `maintenance` | Supported only for security or critical fixes. |
+| `deprecated` | Kept for deprecation guidance and migration/replacement notices. |
+| `unsupported` | Not maintained for production use. |
+
+`maintenance.dataSchemaPolicy` says whether the app is stateless, declares app-data schema, can
+migrate schema, uses external state, or has no applicable data schema.
+
+`maintenance.migrationPolicy` says whether migration is not needed, declared by manifest metadata,
+requires a dry-run, requires operator approval, or is not applicable. It must stay consistent with
+`app.data.schema.*` and `app.data.migration.*` manifest declarations.
+
+`maintenance.backupRestore` says whether the app has no backup scope, export-only support,
+export-import support, operator-supported backup/restore, or no supported backup path. Profile
+Publisher, Social Inbox RC, and Trust Graph Local RC backups must not include vault private identity
+material, app-service tokens, private insert URIs, raw fetched content, or raw app-data payloads in
+release evidence.
+
+`maintenance.securityPolicy` links the app to catalog advisory handling. Current first-party apps
+use `catalog-advisories`, so entry-level `securityAdvisories` and catalog-level security policy
+records remain the signed security response path.
+
+`maintenance.deprecationPolicy` explains the deprecation handling expectation. A replacement target
+uses the existing signed `replacementAppId` field.
+
+## API and Web Shell
+
+Catalog API summaries include a nested `maintenance` object with the signed fields:
+
+```json
+{
+  "maintenance": {
+    "owner": "crypta-core",
+    "ownerUri": "https://example.invalid/crypta/owners/core",
+    "supportLevel": "maintained",
+    "dataSchemaPolicy": "migratable",
+    "migrationPolicy": "dry-run-required",
+    "backupRestore": "export-import",
+    "securityPolicy": "catalog-advisories",
+    "deprecationPolicy": "none",
+    "supportUri": "https://example.invalid/crypta/apps/feed-reader/support"
+  }
+}
+```
+
+The existing top-level `channel`, `supportStatus`, `compatibility`, `deprecation`, and
+`securityAdvisories` fields stay unchanged. Web Shell displays the maintenance policy as compact
+metadata on catalog app cards and keeps existing channel, support, deprecation, review, and
+security-advisory logic authoritative. Deprecated or beta-only apps must not be presented as
+stable-supported apps just because they have maintenance metadata.
+
+## Release certification
+
+`app_platform_smoke.py` records `app-catalog.first-party-maintenance-policy` evidence. The
+deterministic check verifies:
+
+- the policy file exists and covers exactly the seven current first-party apps;
+- each app declares owner, owner URI, support level, data schema policy, migration policy,
+  backup/restore support, security policy, deprecation policy, and support URI;
+- enum tokens are known and single-line;
+- first-party app class expectations match the policy table above;
+- catalog v5 parser/writer/descriptor support, CLI flags, Platform API exposure, and Web Shell
+  rendering markers are present;
+- production beta tooling consumes the policy when generating signed first-party catalog entries;
+- docs explain the local-RC and legacy-protocol non-goals.
+
+`production_beta_release.py` copies the policy into `inputs/first-party-app-maintenance-policy.json`
+and includes a redacted per-app maintenance summary in `catalog/channel-metadata.json`. Strict
+release-candidate and production-beta modes fail when a required first-party app is absent from the
+policy or has an incomplete maintenance block. Developer dry-runs warn so maintainers see the
+problem without needing release credentials.
+
+## Updating the policy
+
+When adding or changing a first-party app:
+
+1. Update `tools/release-certification/first-party-app-maintenance-policy.json`.
+2. Reuse existing catalog fields for channel, support status, deprecation status, replacement app
+   id, security advisories, and Crypta version bounds.
+3. Choose the smallest accurate `maintenance.*` values from this document.
+4. Keep owner, support, and URI text single-line and free of secrets, local paths, private insert
+   URIs, tokens, raw fetched content, raw app-data payloads, and private key material.
+5. Update this document if the support table changes.
+6. Run `python3 -u tools/release-certification/app_platform_smoke.py --self-test` and
+   `python3 -u tools/release-certification/release_certification.py --self-test`.

@@ -19,6 +19,10 @@ range. Operators can browse beta entries in Web Shell by selecting the beta cata
 automatic update staging/apply remains stable-only unless local app-update policy explicitly
 allows beta. Deprecated entries should use the production-channel deprecation and replacement
 metadata documented in [production-first-party-catalog-channels.md](production-first-party-catalog-channels.md).
+First-party entries must also carry the signed maintenance metadata documented in
+[first-party-app-maintenance-policy.md](first-party-app-maintenance-policy.md). That metadata is
+additive: `channel`, `support.status`, deprecation, replacement, advisory, and version-bound fields
+remain authoritative for their existing meanings.
 
 The third-party developer beta toolkit extends the standalone CLI with scaffold templates, a mock
 dev server, offline app tests, catalog entry generation, a dry-run USK publication checklist, and
@@ -148,6 +152,15 @@ review.note=First-party feed reference app.
 api.minimumVersion=9
 api.maximumTestedVersion=18
 api.experimentalCapabilitiesAccepted=false
+maintenance.owner=crypta-core
+maintenance.ownerUri=https://example.invalid/crypta/owners/core
+maintenance.supportLevel=core
+maintenance.dataSchemaPolicy=stateless
+maintenance.migrationPolicy=none
+maintenance.backupRestore=not-applicable
+maintenance.securityPolicy=catalog-advisories
+maintenance.deprecationPolicy=none
+maintenance.supportUri=https://example.invalid/crypta/apps/queue-manager/support
 ```
 
 Social Inbox RC descriptors should include vault, content-fetch, content-subscription,

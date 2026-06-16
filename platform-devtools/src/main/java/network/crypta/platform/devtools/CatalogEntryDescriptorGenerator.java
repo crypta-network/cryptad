@@ -225,6 +225,26 @@ final class CatalogEntryDescriptorGenerator {
     appendOptional(builder, "deprecation.message", request.deprecationMessage().orElse(null));
     appendOptional(builder, "replacementAppId", request.replacementAppId().orElse(null));
     appendSecurityAdvisories(builder, request.securityAdvisories());
+    appendOptional(builder, "maintenance.owner", request.maintenanceOwner().orElse(null));
+    appendOptionalUri(builder, "maintenance.ownerUri", request.maintenanceOwnerUri().orElse(null));
+    appendOptional(
+        builder, "maintenance.supportLevel", request.maintenanceSupportLevel().orElse(null));
+    appendOptional(
+        builder,
+        "maintenance.dataSchemaPolicy",
+        request.maintenanceDataSchemaPolicy().orElse(null));
+    appendOptional(
+        builder, "maintenance.migrationPolicy", request.maintenanceMigrationPolicy().orElse(null));
+    appendOptional(
+        builder, "maintenance.backupRestore", request.maintenanceBackupRestore().orElse(null));
+    appendOptional(
+        builder, "maintenance.securityPolicy", request.maintenanceSecurityPolicy().orElse(null));
+    appendOptional(
+        builder,
+        "maintenance.deprecationPolicy",
+        request.maintenanceDeprecationPolicy().orElse(null));
+    appendOptionalUri(
+        builder, "maintenance.supportUri", request.maintenanceSupportUri().orElse(null));
     if (!manifest.permissions().isEmpty()) {
       append(builder, "permissions", String.join(",", manifest.permissions()));
     }
@@ -460,6 +480,15 @@ final class CatalogEntryDescriptorGenerator {
    * @param deprecationMessage optional deprecation message copied into the descriptor
    * @param replacementAppId optional replacement app id copied into the descriptor
    * @param securityAdvisories insertion-ordered advisory references keyed by advisory id
+   * @param maintenanceOwner optional first-party maintenance owner copied into the descriptor
+   * @param maintenanceOwnerUri optional owner information URI copied into the descriptor
+   * @param maintenanceSupportLevel optional first-party support level copied into the descriptor
+   * @param maintenanceDataSchemaPolicy optional app-data schema policy copied into the descriptor
+   * @param maintenanceMigrationPolicy optional app-data migration policy copied into the descriptor
+   * @param maintenanceBackupRestore optional backup/restore support copied into the descriptor
+   * @param maintenanceSecurityPolicy optional security handling policy copied into the descriptor
+   * @param maintenanceDeprecationPolicy optional deprecation policy copied into the descriptor
+   * @param maintenanceSupportUri optional app-specific support URI copied into the descriptor
    * @param reviewReceipt optional trusted review receipt whose status and note are copied
    * @param changelogSummary optional short changelog text for this app release
    * @param permissionRationales insertion-ordered rationales keyed by manifest permission id
@@ -485,6 +514,15 @@ final class CatalogEntryDescriptorGenerator {
       Optional<String> deprecationMessage,
       Optional<String> replacementAppId,
       Map<String, URI> securityAdvisories,
+      Optional<String> maintenanceOwner,
+      Optional<URI> maintenanceOwnerUri,
+      Optional<String> maintenanceSupportLevel,
+      Optional<String> maintenanceDataSchemaPolicy,
+      Optional<String> maintenanceMigrationPolicy,
+      Optional<String> maintenanceBackupRestore,
+      Optional<String> maintenanceSecurityPolicy,
+      Optional<String> maintenanceDeprecationPolicy,
+      Optional<URI> maintenanceSupportUri,
       Path reviewReceipt,
       Optional<String> changelogSummary,
       Map<String, String> permissionRationales,
@@ -517,6 +555,15 @@ final class CatalogEntryDescriptorGenerator {
       Objects.requireNonNull(replacementAppId, "replacementAppId");
       securityAdvisories =
           java.util.Collections.unmodifiableMap(new LinkedHashMap<>(securityAdvisories));
+      Objects.requireNonNull(maintenanceOwner, "maintenanceOwner");
+      Objects.requireNonNull(maintenanceOwnerUri, "maintenanceOwnerUri");
+      Objects.requireNonNull(maintenanceSupportLevel, "maintenanceSupportLevel");
+      Objects.requireNonNull(maintenanceDataSchemaPolicy, "maintenanceDataSchemaPolicy");
+      Objects.requireNonNull(maintenanceMigrationPolicy, "maintenanceMigrationPolicy");
+      Objects.requireNonNull(maintenanceBackupRestore, "maintenanceBackupRestore");
+      Objects.requireNonNull(maintenanceSecurityPolicy, "maintenanceSecurityPolicy");
+      Objects.requireNonNull(maintenanceDeprecationPolicy, "maintenanceDeprecationPolicy");
+      Objects.requireNonNull(maintenanceSupportUri, "maintenanceSupportUri");
       Objects.requireNonNull(changelogSummary, "changelogSummary");
       permissionRationales =
           java.util.Collections.unmodifiableMap(new LinkedHashMap<>(permissionRationales));
@@ -547,6 +594,15 @@ final class CatalogEntryDescriptorGenerator {
           deprecationMessage,
           replacementAppId,
           securityAdvisories,
+          maintenanceOwner,
+          maintenanceOwnerUri,
+          maintenanceSupportLevel,
+          maintenanceDataSchemaPolicy,
+          maintenanceMigrationPolicy,
+          maintenanceBackupRestore,
+          maintenanceSecurityPolicy,
+          maintenanceDeprecationPolicy,
+          maintenanceSupportUri,
           reviewReceipt == null ? null : reviewReceipt.toAbsolutePath().normalize(),
           changelogSummary,
           permissionRationales,

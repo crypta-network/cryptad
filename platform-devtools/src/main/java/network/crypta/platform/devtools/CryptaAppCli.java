@@ -1375,6 +1375,41 @@ public final class CryptaAppCli implements Runnable {
         description = "Security advisory reference in id=uri form; repeatable.")
     private List<String> securityAdvisories = new ArrayList<>();
 
+    @Option(names = "--maintenance-owner", description = "First-party maintenance owner.")
+    private String maintenanceOwner;
+
+    @Option(names = "--maintenance-owner-uri", description = "Maintenance owner URI.")
+    private URI maintenanceOwnerUri;
+
+    @Option(names = "--maintenance-support-level", description = "Maintenance support level.")
+    private String maintenanceSupportLevel;
+
+    @Option(
+        names = "--maintenance-data-schema-policy",
+        description = "App-data schema maintenance policy.")
+    private String maintenanceDataSchemaPolicy;
+
+    @Option(
+        names = "--maintenance-migration-policy",
+        description = "App-data migration maintenance policy.")
+    private String maintenanceMigrationPolicy;
+
+    @Option(names = "--maintenance-backup-restore", description = "Backup/restore support policy.")
+    private String maintenanceBackupRestore;
+
+    @Option(
+        names = "--maintenance-security-policy",
+        description = "Maintenance security handling policy.")
+    private String maintenanceSecurityPolicy;
+
+    @Option(
+        names = "--maintenance-deprecation-policy",
+        description = "Maintenance deprecation policy.")
+    private String maintenanceDeprecationPolicy;
+
+    @Option(names = "--maintenance-support-uri", description = "App-specific support URI.")
+    private URI maintenanceSupportUri;
+
     @Option(
         names = "--review-receipt",
         description = "Review receipt to copy advisory metadata from.")
@@ -1419,6 +1454,15 @@ public final class CryptaAppCli implements Runnable {
                   Optional.ofNullable(deprecationMessage),
                   Optional.ofNullable(replacementAppId),
                   CatalogEntryDescriptorGenerator.normalizeSecurityAdvisories(securityAdvisories),
+                  Optional.ofNullable(maintenanceOwner),
+                  Optional.ofNullable(maintenanceOwnerUri),
+                  Optional.ofNullable(maintenanceSupportLevel),
+                  Optional.ofNullable(maintenanceDataSchemaPolicy),
+                  Optional.ofNullable(maintenanceMigrationPolicy),
+                  Optional.ofNullable(maintenanceBackupRestore),
+                  Optional.ofNullable(maintenanceSecurityPolicy),
+                  Optional.ofNullable(maintenanceDeprecationPolicy),
+                  Optional.ofNullable(maintenanceSupportUri),
                   reviewReceipt,
                   Optional.ofNullable(changelogSummary),
                   CatalogEntryDescriptorGenerator.normalizeRationales(permissionRationales),

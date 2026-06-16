@@ -4516,6 +4516,36 @@
     return "is-info";
   }
 
+  function catalogMaintenancePolicy(app) {
+    return recordValue(app && app.maintenance);
+  }
+
+  function catalogMaintenanceDeclared(maintenance) {
+    return (
+      typeof maintenance.owner === "string" ||
+      typeof maintenance.supportLevel === "string" ||
+      typeof maintenance.dataSchemaPolicy === "string" ||
+      typeof maintenance.migrationPolicy === "string" ||
+      typeof maintenance.backupRestore === "string" ||
+      typeof maintenance.securityPolicy === "string" ||
+      typeof maintenance.deprecationPolicy === "string"
+    );
+  }
+
+  function maintenancePolicyTone(supportLevel) {
+    const normalized = typeof supportLevel === "string" ? supportLevel.toLowerCase() : "";
+    if (normalized === "core" || normalized === "maintained") {
+      return "is-success";
+    }
+    if (normalized === "local-rc" || normalized === "preview" || normalized === "reference") {
+      return "is-info";
+    }
+    if (normalized === "deprecated" || normalized === "unsupported") {
+      return "is-error";
+    }
+    return "is-warning";
+  }
+
   function catalogAppDeprecation(app) {
     return recordValue(app && app.deprecation);
   }
@@ -4944,6 +4974,29 @@
     return details;
   }
 
+  function catalogMaintenancePolicyNode(app) {
+    const maintenance = catalogMaintenancePolicy(app);
+    const details = document.createElement("details");
+    details.className = "json-details catalog-maintenance-details";
+    const summary = document.createElement("summary");
+    summary.textContent = "Maintenance policy";
+    details.append(summary);
+    details.append(
+      definitionList([
+        ["Maintenance owner", scalar(maintenance.owner)],
+        ["Owner link", metadataLinkNode(maintenance.ownerUri)],
+        ["Maintenance support level", normalizedStatus(maintenance.supportLevel, "Unavailable")],
+        ["Data schema policy", normalizedStatus(maintenance.dataSchemaPolicy, "Unavailable")],
+        ["Migration policy", normalizedStatus(maintenance.migrationPolicy, "Unavailable")],
+        ["Backup/restore support", normalizedStatus(maintenance.backupRestore, "Unavailable")],
+        ["Security policy", normalizedStatus(maintenance.securityPolicy, "Unavailable")],
+        ["Deprecation policy", normalizedStatus(maintenance.deprecationPolicy, "Unavailable")],
+        ["Support link", metadataLinkNode(maintenance.supportUri)],
+      ]),
+    );
+    return details;
+  }
+
   function catalogPermissionReviewDetailsNode(app) {
     const details = document.createElement("details");
     details.className = "json-details catalog-permission-details";
@@ -5018,6 +5071,8 @@
     }
     const channel = catalogAppChannel(app);
     const deprecation = catalogAppDeprecation(app);
+    const maintenance = catalogMaintenancePolicy(app);
+    const maintenanceDeclared = catalogMaintenanceDeclared(maintenance);
     const deprecated = catalogAppDeprecated(app);
     if (channel !== "stable") {
       card.className += " is-preview-channel";
@@ -5056,6 +5111,14 @@
     if (deprecated) {
       pills.append(createPill(normalizedStatus(deprecation.status, "Deprecated"), "is-error"));
     }
+    if (maintenanceDeclared) {
+      pills.append(
+        createPill(
+          `Maint: ${normalizedStatus(maintenance.supportLevel, "Policy")}`,
+          maintenancePolicyTone(maintenance.supportLevel),
+        ),
+      );
+    }
     pills.append(createPill(`Advisory: ${normalizedStatus(review.status, "Unreviewed")}`, reviewTone(review.status)));
     pills.append(createPill(reviewTrustLabel(reviewTrust), reviewTrustTone(reviewTrust)));
     if (securityDecisionStatus(securityDecision) !== "ok") {
@@ -5077,6 +5140,8 @@
         ["Version change", versionSummary(app)],
         ["Channel", catalogChannelLabel(channel)],
         ["Support status", normalizedStatus(app.supportStatus, "Supported")],
+        ["Maintenance owner", maintenanceDeclared ? scalar(maintenance.owner) : "Unavailable"],
+        ["Maintenance support", maintenanceDeclared ? normalizedStatus(maintenance.supportLevel, "Unavailable") : "Unavailable"],
         ["Deprecation status", normalizedStatus(deprecation.status, "None")],
         ["Replacement app", scalar(deprecation.replacementAppId)],
         ["Deprecation message", scalar(deprecation.message)],
@@ -5124,6 +5189,9 @@
     card.append(catalogSecurityDetailsNode(app));
     card.append(catalogCompatibilityDetailsNode(app));
     card.append(apiCompatibilityDetailsNode(app));
+    if (maintenanceDeclared) {
+      card.append(catalogMaintenancePolicyNode(app));
+    }
     card.append(catalogPermissionReviewDetailsNode(app));
     card.append(catalogReleaseDetailsNode(app));
     if (formPassword && !deprecated) {

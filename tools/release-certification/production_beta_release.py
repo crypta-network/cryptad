@@ -155,8 +155,60 @@ APP_PROJECT_DIRS = {
     "feed-reader": "apps/feed-reader",
     "trust-graph": "apps/trust-graph",
 }
+FIRST_PARTY_MAINTENANCE_POLICY_FILE = Path(
+    "tools/release-certification/first-party-app-maintenance-policy.json"
+)
+MAINTENANCE_REQUIRED_FIELDS = (
+    "owner",
+    "ownerUri",
+    "supportLevel",
+    "dataSchemaPolicy",
+    "migrationPolicy",
+    "backupRestore",
+    "securityPolicy",
+    "deprecationPolicy",
+    "supportUri",
+)
+FIRST_PARTY_MAINTENANCE_OWNER = "crypta-core"
+FIRST_PARTY_MAINTENANCE_OWNER_URI = "https://example.invalid/crypta/owners/core"
+MAINTENANCE_ALLOWED_VALUES = {
+    "supportLevel": {
+        "core",
+        "maintained",
+        "reference",
+        "local-rc",
+        "preview",
+        "maintenance",
+        "deprecated",
+        "unsupported",
+    },
+    "dataSchemaPolicy": {"stateless", "declared", "migratable", "external", "not-applicable"},
+    "migrationPolicy": {
+        "none",
+        "declared",
+        "dry-run-required",
+        "operator-approved",
+        "not-applicable",
+    },
+    "backupRestore": {
+        "not-applicable",
+        "export-only",
+        "export-import",
+        "operator-supported",
+        "unsupported",
+    },
+    "securityPolicy": {"catalog-advisories", "project-security-policy", "unsupported"},
+    "deprecationPolicy": {"none", "notice-only", "replacement-required", "security-only"},
+}
+FIRST_PARTY_POLICY_ALLOWED_VALUES = {
+    "channel": {"stable", "beta", "nightly", "deprecated"},
+    "supportStatus": {"supported", "maintenance", "experimental", "deprecated", "unsupported"},
+    "deprecationStatus": {"none", "deprecated", "retired"},
+}
+MAINTENANCE_VERSION_BOUND_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]{0,63}")
 CRITICAL_PRODUCTION_BETA_EVIDENCE_IDS = (
     "app-platform.signed-bundles",
+    "app-catalog.first-party-maintenance-policy",
     "catalog.smoke",
     "app-review.trusted-receipts",
     "app-review.first-party-catalog",
@@ -1087,6 +1139,265 @@ def permission_rationale_args(permissions: str) -> list[str]:
     return args
 
 
+def first_party_maintenance_policy_file(state: PipelineState) -> Path:
+    return state.settings.workspace_root / FIRST_PARTY_MAINTENANCE_POLICY_FILE
+
+
+def expected_first_party_maintenance_uri(app_id: str, field: str) -> str | None:
+    if field == "ownerUri":
+        return FIRST_PARTY_MAINTENANCE_OWNER_URI
+    if field == "supportUri":
+        return f"https://example.invalid/crypta/apps/{app_id}/support"
+    return None
+
+
+def safe_single_line(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    stripped = value.strip()
+    if not stripped or "\n" in stripped or "\r" in stripped:
+        return None
+    return stripped
+
+
+def invalid_maintenance_policy_fields(app_id: str, app_policy: dict[str, Any]) -> list[str]:
+    invalid: list[str] = []
+    for field, allowed in FIRST_PARTY_POLICY_ALLOWED_VALUES.items():
+        value = safe_single_line(app_policy.get(field))
+        if value not in allowed:
+            invalid.append(field)
+    for field in ("minimumCryptaVersion", "maximumCryptaVersion"):
+        value = app_policy.get(field)
+        if value is not None and (
+            not isinstance(value, str) or MAINTENANCE_VERSION_BOUND_RE.fullmatch(value) is None
+        ):
+            invalid.append(field)
+    maintenance = app_policy.get("maintenance")
+    if not isinstance(maintenance, dict):
+        invalid.append("maintenance")
+        return invalid
+    owner = safe_single_line(maintenance.get("owner"))
+    if owner != FIRST_PARTY_MAINTENANCE_OWNER:
+        invalid.append("maintenance.owner")
+    for field in ("ownerUri", "supportUri"):
+        value = safe_single_line(maintenance.get(field))
+        if value != expected_first_party_maintenance_uri(app_id, field):
+            invalid.append(f"maintenance.{field}")
+    for field, allowed in MAINTENANCE_ALLOWED_VALUES.items():
+        value = safe_single_line(maintenance.get(field))
+        if value not in allowed:
+            invalid.append(f"maintenance.{field}")
+    return invalid
+
+
+def load_first_party_maintenance_policy(state: PipelineState) -> dict[str, dict[str, Any]]:
+    policy_file = first_party_maintenance_policy_file(state)
+    try:
+        with policy_file.open("r", encoding="utf-8") as handle:
+            raw_policy = json.load(handle)
+    except OSError as exc:
+        record_maintenance_policy_problem(
+            state,
+            "first-party maintenance policy could not be loaded from "
+            f"{display_path(policy_file, state.settings)}: {exc.strerror or exc.__class__.__name__}",
+        )
+        return {}
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        record_maintenance_policy_problem(
+            state,
+            "first-party maintenance policy could not be parsed from "
+            f"{display_path(policy_file, state.settings)}: {exc.__class__.__name__}",
+        )
+        return {}
+    apps = raw_policy.get("apps") if isinstance(raw_policy, dict) else None
+    if not isinstance(apps, dict):
+        record_maintenance_policy_problem(state, "first-party maintenance policy has no apps map.")
+        return {}
+    normalized: dict[str, dict[str, Any]] = {}
+    for app_id in APP_IDS:
+        app_policy = apps.get(app_id)
+        if not isinstance(app_policy, dict):
+            record_maintenance_policy_problem(
+                state, f"first-party maintenance policy is missing {app_id}."
+            )
+            continue
+        maintenance = app_policy.get("maintenance")
+        if not isinstance(maintenance, dict):
+            record_maintenance_policy_problem(
+                state, f"first-party maintenance policy for {app_id} has no maintenance block."
+            )
+            continue
+        missing = [
+            field
+            for field in MAINTENANCE_REQUIRED_FIELDS
+            if not isinstance(maintenance.get(field), str) or not maintenance.get(field).strip()
+        ]
+        if missing:
+            record_maintenance_policy_problem(
+                state,
+                f"first-party maintenance policy for {app_id} is missing: {', '.join(missing)}.",
+            )
+            continue
+        invalid = invalid_maintenance_policy_fields(app_id, app_policy)
+        if invalid:
+            record_maintenance_policy_problem(
+                state,
+                "first-party maintenance policy for "
+                f"{app_id} has invalid or unsafe fields: {', '.join(invalid)}.",
+            )
+            continue
+        normalized[app_id] = app_policy
+    extra_apps = sorted(set(apps) - set(APP_IDS))
+    if extra_apps:
+        state.warnings.append(
+            f"First-party maintenance policy contains {len(extra_apps)} unknown app id(s)."
+        )
+    return normalized
+
+
+def record_maintenance_policy_problem(state: PipelineState, message: str) -> None:
+    if state.settings.mode == "developer-dry-run":
+        state.warnings.append(message)
+    else:
+        state.failures.append(message)
+
+
+def policy_value(policy: dict[str, Any] | None, key: str, fallback: str) -> str:
+    if not isinstance(policy, dict):
+        return fallback
+    value = policy.get(key)
+    return value.strip() if isinstance(value, str) and value.strip() else fallback
+
+
+def maintenance_policy_args(policy: dict[str, Any]) -> list[str]:
+    maintenance = policy.get("maintenance")
+    if not isinstance(maintenance, dict):
+        return []
+    args: list[str] = []
+    for field, flag in (
+        ("owner", "--maintenance-owner"),
+        ("ownerUri", "--maintenance-owner-uri"),
+        ("supportLevel", "--maintenance-support-level"),
+        ("dataSchemaPolicy", "--maintenance-data-schema-policy"),
+        ("migrationPolicy", "--maintenance-migration-policy"),
+        ("backupRestore", "--maintenance-backup-restore"),
+        ("securityPolicy", "--maintenance-security-policy"),
+        ("deprecationPolicy", "--maintenance-deprecation-policy"),
+        ("supportUri", "--maintenance-support-uri"),
+    ):
+        value = maintenance.get(field)
+        if isinstance(value, str) and value.strip():
+            args.extend([flag, value.strip()])
+    return args
+
+
+def maintenance_summary(policy: dict[str, Any]) -> dict[str, Any]:
+    maintenance = policy.get("maintenance") if isinstance(policy, dict) else {}
+    if not isinstance(maintenance, dict):
+        maintenance = {}
+    return {
+        "owner": maintenance.get("owner"),
+        "ownerUri": maintenance.get("ownerUri"),
+        "supportLevel": maintenance.get("supportLevel"),
+        "dataSchemaPolicy": maintenance.get("dataSchemaPolicy"),
+        "migrationPolicy": maintenance.get("migrationPolicy"),
+        "backupRestore": maintenance.get("backupRestore"),
+        "securityPolicy": maintenance.get("securityPolicy"),
+        "deprecationPolicy": maintenance.get("deprecationPolicy"),
+        "supportUri": maintenance.get("supportUri"),
+    }
+
+
+def sanitized_policy_token(field: str, value: Any) -> Any:
+    stripped = safe_single_line(value)
+    return stripped if stripped in FIRST_PARTY_POLICY_ALLOWED_VALUES[field] else "<redacted>"
+
+
+def sanitized_version_bound(value: Any) -> Any:
+    if value is None:
+        return None
+    return (
+        value
+        if isinstance(value, str) and MAINTENANCE_VERSION_BOUND_RE.fullmatch(value) is not None
+        else "<redacted>"
+    )
+
+
+def sanitized_maintenance_value(app_id: str, field: str, value: Any) -> Any:
+    stripped = safe_single_line(value)
+    if field == "owner":
+        return stripped if stripped == FIRST_PARTY_MAINTENANCE_OWNER else "<redacted>"
+    if field in ("ownerUri", "supportUri"):
+        expected = expected_first_party_maintenance_uri(app_id, field)
+        return stripped if stripped == expected else "<redacted>"
+    if field in MAINTENANCE_ALLOWED_VALUES:
+        return stripped if stripped in MAINTENANCE_ALLOWED_VALUES[field] else "<redacted>"
+    return "<redacted>"
+
+
+def sanitized_first_party_maintenance_policy_input(raw_policy: Any) -> dict[str, Any]:
+    raw_apps = raw_policy.get("apps") if isinstance(raw_policy, dict) else None
+    schema_version = (
+        1
+        if isinstance(raw_policy, dict) and raw_policy.get("schemaVersion") == 1
+        else "<redacted>"
+    )
+    owner = (
+        FIRST_PARTY_MAINTENANCE_OWNER
+        if isinstance(raw_policy, dict)
+        and raw_policy.get("owner") == FIRST_PARTY_MAINTENANCE_OWNER
+        else "<redacted>"
+    )
+    sanitized: dict[str, Any] = {
+        "schemaVersion": schema_version,
+        "owner": owner,
+        "apps": {},
+    }
+    if not isinstance(raw_apps, dict):
+        return sanitized
+    sanitized_apps = sanitized["apps"]
+    for app_id in APP_IDS:
+        app_policy = raw_apps.get(app_id)
+        if not isinstance(app_policy, dict):
+            continue
+        maintenance = app_policy.get("maintenance")
+        if not isinstance(maintenance, dict):
+            maintenance = {}
+        sanitized_apps[app_id] = {
+            "channel": sanitized_policy_token("channel", app_policy.get("channel")),
+            "supportStatus": sanitized_policy_token(
+                "supportStatus", app_policy.get("supportStatus")
+            ),
+            "deprecationStatus": sanitized_policy_token(
+                "deprecationStatus", app_policy.get("deprecationStatus")
+            ),
+            "minimumCryptaVersion": sanitized_version_bound(
+                app_policy.get("minimumCryptaVersion")
+            ),
+            "maximumCryptaVersion": sanitized_version_bound(
+                app_policy.get("maximumCryptaVersion")
+            ),
+            "maintenance": {
+                field: sanitized_maintenance_value(app_id, field, maintenance.get(field))
+                for field in MAINTENANCE_REQUIRED_FIELDS
+            },
+        }
+    return sanitized
+
+
+def copy_first_party_maintenance_policy_input(state: PipelineState) -> None:
+    policy_file = first_party_maintenance_policy_file(state)
+    if not policy_file.is_file():
+        return
+    try:
+        with policy_file.open("r", encoding="utf-8") as handle:
+            raw_policy = json.load(handle)
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        return
+    target = state.settings.out_dir / "inputs/first-party-app-maintenance-policy.json"
+    write_json(target, sanitized_first_party_maintenance_policy_input(raw_policy))
+
+
 def package_catalog_and_reviews(
     state: PipelineState,
     profile: SigningProfile,
@@ -1112,6 +1423,7 @@ def package_catalog_and_reviews(
     descriptors: list[Path] = []
     receipts: list[Path] = []
     app_summaries: list[dict[str, Any]] = []
+    maintenance_policies = load_first_party_maintenance_policy(state)
     for app_id, app_dir in copied_apps.items():
         manifest_path = app_dir / "cryptad-app.properties"
         if not manifest_path.is_file():
@@ -1131,6 +1443,9 @@ def package_catalog_and_reviews(
             timeout_seconds=300,
         )
         artifact_uri = release_artifact_uri(state.settings, zip_path)
+        app_policy = maintenance_policies.get(app_id, {})
+        support_status = policy_value(app_policy, "supportStatus", "supported")
+        deprecation_status = policy_value(app_policy, "deprecationStatus", "none")
         entry_args = [
             str(cli),
             "catalog",
@@ -1148,13 +1463,14 @@ def package_catalog_and_reviews(
             "--channel",
             state.settings.catalog_channel,
             "--support-status",
-            "supported",
+            support_status,
             "--deprecation-status",
-            "none",
+            deprecation_status,
             "--changelog-summary",
             f"Production beta candidate for {app_name}.",
             "--overwrite",
         ]
+        entry_args.extend(maintenance_policy_args(app_policy))
         permissions = manifest.get("app.permissions", "")
         entry_args.extend(permission_rationale_args(permissions))
         run_command(state, f"catalog-entry-{app_id}", entry_args, env=profile.env, timeout_seconds=300)
@@ -1217,6 +1533,9 @@ def package_catalog_and_reviews(
                     "sha256": sha256_file(zip_path),
                     "sizeBytes": zip_path.stat().st_size,
                     "channel": state.settings.catalog_channel,
+                    "supportStatus": support_status,
+                    "deprecationStatus": deprecation_status,
+                    "maintenance": maintenance_summary(app_policy),
                     "nonProduction": profile.kind != "production",
                 }
             )
@@ -1289,6 +1608,9 @@ def package_catalog_and_reviews(
             "nonProduction": profile.kind != "production",
             "signingProfile": profile.kind,
             "artifactBaseUri": state.settings.artifact_base_uri,
+            "firstPartyMaintenancePolicy": "inputs/first-party-app-maintenance-policy.json",
+            "requiredMaintenanceApps": list(APP_IDS),
+            "maintenancePolicyComplete": len(maintenance_policies) == len(APP_IDS),
             "apps": app_summaries,
         },
     )
@@ -1318,6 +1640,7 @@ def create_fixture_artifacts(state: PipelineState) -> None:
     review_root = state.settings.out_dir / "reviews/review-receipts"
     for directory in (staged_root, bundle_root, catalog_root, review_root):
         directory.mkdir(parents=True, exist_ok=True)
+    maintenance_policies = load_first_party_maintenance_policy(state)
     for app_id in APP_IDS:
         staged = staged_root / app_id
         write_text(
@@ -1346,12 +1669,16 @@ def create_fixture_artifacts(state: PipelineState) -> None:
             review_root / f"{app_id}-review-receipt.properties",
             f"review.receipt.app.id={app_id}\nreview.receipt.status=reviewed\n",
         )
-    write_text(
-        catalog_root / "first-party-catalog.properties",
-        "catalog.version=3\ncatalog.id=crypta-first-party-production-beta\ncatalog.entries="
-        + ",".join(APP_IDS)
-        + "\n",
-    )
+    catalog_lines = [
+        "catalog.version=5",
+        "catalog.id=crypta-first-party-production-beta",
+        "catalog.entries=" + ",".join(APP_IDS),
+    ]
+    for app_id in APP_IDS:
+        for key, value in maintenance_summary(maintenance_policies.get(app_id, {})).items():
+            if isinstance(value, str) and value:
+                catalog_lines.append(f"app.{app_id}.maintenance.{key}={value}")
+    write_text(catalog_root / "first-party-catalog.properties", "\n".join(catalog_lines) + "\n")
     write_text(catalog_root / CANONICAL_CATALOG_SIGNATURE, "signature.test-mode=true\n")
     write_text(catalog_root / RELEASE_CATALOG_SIGNATURE_ALIAS, "signature.test-mode=true\n")
     write_json(
@@ -1362,7 +1689,23 @@ def create_fixture_artifacts(state: PipelineState) -> None:
             "channel": state.settings.catalog_channel,
             "nonProduction": True,
             "signingProfile": "test-fixture",
-            "apps": [{"appId": app_id, "nonProduction": True} for app_id in APP_IDS],
+            "firstPartyMaintenancePolicy": "inputs/first-party-app-maintenance-policy.json",
+            "requiredMaintenanceApps": list(APP_IDS),
+            "maintenancePolicyComplete": len(maintenance_policies) == len(APP_IDS),
+            "apps": [
+                {
+                    "appId": app_id,
+                    "supportStatus": policy_value(
+                        maintenance_policies.get(app_id, {}), "supportStatus", "supported"
+                    ),
+                    "deprecationStatus": policy_value(
+                        maintenance_policies.get(app_id, {}), "deprecationStatus", "none"
+                    ),
+                    "maintenance": maintenance_summary(maintenance_policies.get(app_id, {})),
+                    "nonProduction": True,
+                }
+                for app_id in APP_IDS
+            ],
         },
     )
     write_json(
@@ -2270,6 +2613,7 @@ def build_final_summary(
     profile = state.signing_profile
     artifacts = {
         "releaseConfig": "inputs/release-config.json",
+        "firstPartyMaintenancePolicy": "inputs/first-party-app-maintenance-policy.json",
         "catalog": "catalog/first-party-catalog.properties",
         "catalogSignature": f"catalog/{CANONICAL_CATALOG_SIGNATURE}",
         "catalogSignatureAlias": f"catalog/{RELEASE_CATALOG_SIGNATURE_ALIAS}",
@@ -2346,10 +2690,12 @@ def run_pipeline(settings: Settings) -> tuple[dict[str, Any], int]:
 
         if settings.use_fixture_evidence:
             state.signing_profile = prepare_signing_profile(state, key_dir)
+            copy_first_party_maintenance_policy_input(state)
             create_fixture_artifacts(state)
         else:
             run_gradle(state, "gradle-install-crypta-app", [":platform-devtools:installDist"])
             state.signing_profile = prepare_signing_profile(state, key_dir)
+            copy_first_party_maintenance_policy_input(state)
             write_json(settings.out_dir / "inputs/release-config.json", release_config(state))
             if not settings.skip_full_build:
                 run_gradle(
@@ -2567,10 +2913,26 @@ def write_fake_crypta_app_cli(workspace: Path) -> Path:
                 if args[:1] == ["pack"]:
                     pathlib.Path(value(args, "--output")).write_bytes(b"fixture bundle\\n")
                 elif args[:2] == ["catalog", "entry"]:
-                    pathlib.Path(value(args, "--output")).write_text(
+                    entry_text = (
                         "entry=ok\\n"
                         + "bundle.uri=" + value(args, "--bundle-uri") + "\\n"
-                        + "artifact=" + value(args, "--artifact") + "\\n",
+                        + "artifact=" + value(args, "--artifact") + "\\n"
+                    )
+                    for flag, key in (
+                        ("--maintenance-owner", "maintenance.owner"),
+                        ("--maintenance-owner-uri", "maintenance.ownerUri"),
+                        ("--maintenance-support-level", "maintenance.supportLevel"),
+                        ("--maintenance-data-schema-policy", "maintenance.dataSchemaPolicy"),
+                        ("--maintenance-migration-policy", "maintenance.migrationPolicy"),
+                        ("--maintenance-backup-restore", "maintenance.backupRestore"),
+                        ("--maintenance-security-policy", "maintenance.securityPolicy"),
+                        ("--maintenance-deprecation-policy", "maintenance.deprecationPolicy"),
+                        ("--maintenance-support-uri", "maintenance.supportUri"),
+                    ):
+                        if flag in args:
+                            entry_text += key + "=" + value(args, flag) + "\\n"
+                    pathlib.Path(value(args, "--output")).write_text(
+                        entry_text,
                         encoding="utf-8",
                     )
                 elif args[:2] == ["review", "sign"]:
@@ -3679,7 +4041,16 @@ def assert_catalog_signature_and_timestamps_are_canonical() -> None:
             "bundle.uri=https://downloads.crypta.invalid/self-test/build/app-bundles/queue-manager-1.2.3.zip"
             in catalog_text
         ), catalog_text
+        assert "maintenance.owner=crypta-core" in catalog_text, catalog_text
+        assert "maintenance.supportLevel=core" in catalog_text, catalog_text
         assert "/apps/queue-manager-1.2.3.zip" not in catalog_text, catalog_text
+        channel_metadata = json.loads(
+            (out_dir / "catalog/channel-metadata.json").read_text(encoding="utf-8")
+        )
+        assert channel_metadata["maintenancePolicyComplete"] is True, channel_metadata
+        assert channel_metadata["apps"][0]["maintenance"]["owner"] == "crypta-core", (
+            channel_metadata
+        )
         assert f"reviewedAt={started_at}" in (
             out_dir / "reviews/review-receipts/queue-manager-review-receipt.properties"
         ).read_text(encoding="utf-8")
@@ -4013,6 +4384,162 @@ def assert_project_version_parser_accepts_release_build_numbers() -> None:
             raise AssertionError("read_project_version accepted an unsupported version assignment")
 
 
+def assert_maintenance_policy_resolves_from_workspace() -> None:
+    with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-maintenance-workspace-") as temp_name:
+        workspace = Path(temp_name) / "repo"
+        make_self_test_workspace(workspace)
+        settings = cleanup_test_settings(workspace, workspace / "build/policy-copy")
+        state = PipelineState(settings, "self-test", utc_now(), [], [], [])
+        policy_file = first_party_maintenance_policy_file(state)
+        policy = json.loads(policy_file.read_text(encoding="utf-8"))
+        for app_id in APP_IDS:
+            policy["apps"][app_id]["maximumCryptaVersion"] = "43"
+        write_json(policy_file, policy)
+
+        loaded = load_first_party_maintenance_policy(state)
+        copy_first_party_maintenance_policy_input(state)
+        copied_policy = json.loads(
+            (settings.out_dir / "inputs/first-party-app-maintenance-policy.json").read_text(
+                encoding="utf-8"
+            )
+        )
+
+        assert not state.failures, state.failures
+        assert loaded["queue-manager"]["maximumCryptaVersion"] == "43", loaded
+        assert copied_policy["apps"]["queue-manager"]["maximumCryptaVersion"] == "43", (
+            copied_policy
+        )
+
+
+def assert_missing_maintenance_policy_warns_in_dry_run_and_fails_strict_modes() -> None:
+    with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-maintenance-policy-") as temp_name:
+        workspace = Path(temp_name) / "repo"
+        workspace.mkdir(parents=True)
+        original_policy = globals()["FIRST_PARTY_MAINTENANCE_POLICY_FILE"]
+        try:
+            globals()["FIRST_PARTY_MAINTENANCE_POLICY_FILE"] = (
+                workspace / "tools/release-certification/missing-policy.json"
+            )
+            dry_run_settings = cleanup_test_settings(workspace, workspace / "build/dry-run")
+            dry_run_state = PipelineState(dry_run_settings, "self-test", utc_now(), [], [], [])
+            assert load_first_party_maintenance_policy(dry_run_state) == {}
+            assert dry_run_state.warnings, dry_run_state
+            assert str(workspace) not in json.dumps(dry_run_state.warnings), dry_run_state.warnings
+            assert "<repo>/tools/release-certification/missing-policy.json" in dry_run_state.warnings[0], (
+                dry_run_state.warnings
+            )
+            assert not dry_run_state.failures, dry_run_state
+
+            strict_settings = dataclasses.replace(
+                dry_run_settings,
+                mode="release-candidate",
+                allow_dirty_workspace=False,
+                emergency_skip_build=True,
+            )
+            strict_state = PipelineState(strict_settings, "self-test", utc_now(), [], [], [])
+            assert load_first_party_maintenance_policy(strict_state) == {}
+            assert strict_state.failures, strict_state
+            assert str(workspace) not in json.dumps(strict_state.failures), strict_state.failures
+            assert "<repo>/tools/release-certification/missing-policy.json" in strict_state.failures[0], (
+                strict_state.failures
+            )
+        finally:
+            globals()["FIRST_PARTY_MAINTENANCE_POLICY_FILE"] = original_policy
+
+
+def assert_incomplete_maintenance_policy_warns_in_dry_run_and_fails_strict_modes() -> None:
+    with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-incomplete-maintenance-") as temp_name:
+        workspace = Path(temp_name) / "repo"
+        make_self_test_workspace(workspace)
+        policy_file = workspace / FIRST_PARTY_MAINTENANCE_POLICY_FILE
+        policy = json.loads(policy_file.read_text(encoding="utf-8"))
+        maintenance = policy["apps"]["queue-manager"]["maintenance"]
+        maintenance.pop("ownerUri")
+        maintenance.pop("supportUri")
+        write_json(policy_file, policy)
+
+        dry_run_settings = cleanup_test_settings(workspace, workspace / "build/dry-run")
+        dry_run_state = PipelineState(dry_run_settings, "self-test", utc_now(), [], [], [])
+        dry_run_policy = load_first_party_maintenance_policy(dry_run_state)
+        assert "queue-manager" not in dry_run_policy, dry_run_policy
+        assert dry_run_state.warnings, dry_run_state
+        assert "ownerUri, supportUri" in dry_run_state.warnings[0], dry_run_state.warnings
+        assert not dry_run_state.failures, dry_run_state
+
+        strict_settings = dataclasses.replace(
+            dry_run_settings,
+            mode="release-candidate",
+            allow_dirty_workspace=False,
+            emergency_skip_build=True,
+        )
+        strict_state = PipelineState(strict_settings, "self-test", utc_now(), [], [], [])
+        strict_policy = load_first_party_maintenance_policy(strict_state)
+        assert "queue-manager" not in strict_policy, strict_policy
+        assert strict_state.failures, strict_state
+        assert "ownerUri, supportUri" in strict_state.failures[0], strict_state.failures
+
+
+def assert_maintenance_policy_input_copy_redacts_invalid_values() -> None:
+    with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-maintenance-redaction-") as temp_name:
+        workspace = Path(temp_name) / "repo"
+        make_self_test_workspace(workspace)
+        policy_file = workspace / FIRST_PARTY_MAINTENANCE_POLICY_FILE
+        policy = json.loads(policy_file.read_text(encoding="utf-8"))
+        unknown_app_id = str(workspace / "private-extra-app-token-secret")
+        policy["apps"][unknown_app_id] = {
+            "channel": "stable",
+            "supportStatus": "supported",
+            "deprecationStatus": "none",
+            "maintenance": {},
+        }
+        app_policy = policy["apps"]["queue-manager"]
+        app_policy["channel"] = str(workspace / "private-channel-token.txt")
+        app_policy["supportStatus"] = "token=status-secret"
+        app_policy["deprecationStatus"] = "USK@PRIVATE-DEPRECATION"
+        app_policy["minimumCryptaVersion"] = str(workspace / "private-min-version.txt")
+        app_policy["maximumCryptaVersion"] = "version-token=secret"
+        maintenance = app_policy["maintenance"]
+        maintenance["owner"] = "crypta-core token=owner-secret"
+        maintenance["ownerUri"] = (
+            "https://example.invalid/crypta/owners/core?token=owner-uri-secret"
+        )
+        maintenance["supportUri"] = (
+            "https://example.invalid/crypta/apps/queue-manager/support?token=support-uri-secret"
+        )
+        maintenance["securityPolicy"] = "token=security-secret"
+        write_json(policy_file, policy)
+
+        settings = cleanup_test_settings(workspace, workspace / "build/redacted-policy-copy")
+        state = PipelineState(settings, "self-test", utc_now(), [], [], [])
+        copy_first_party_maintenance_policy_input(state)
+        copied_text = (
+            settings.out_dir / "inputs/first-party-app-maintenance-policy.json"
+        ).read_text(encoding="utf-8")
+        loaded = load_first_party_maintenance_policy(state)
+        warning_text = json.dumps(state.warnings + state.failures, sort_keys=True)
+
+        assert "queue-manager" not in loaded, loaded
+        assert state.warnings, state
+        assert "invalid or unsafe fields" in warning_text, state.warnings
+        assert "contains 1 unknown app id(s)" in warning_text, state.warnings
+        assert "<redacted>" in copied_text, copied_text
+        for forbidden in (
+            "private-extra-app-token-secret",
+            "private-channel-token.txt",
+            "status-secret",
+            "PRIVATE-DEPRECATION",
+            "private-min-version.txt",
+            "version-token",
+            "owner-secret",
+            "owner-uri-secret",
+            "support-uri-secret",
+            "security-secret",
+            str(workspace),
+        ):
+            assert forbidden not in copied_text, f"maintenance input copy leaked {forbidden}"
+            assert forbidden not in warning_text, f"maintenance warning leaked {forbidden}"
+
+
 def run_self_test() -> None:
     assert_safe_copy_tree_rejects_symlink()
     assert_safe_copy_tree_rejects_symlinked_root()
@@ -4045,6 +4572,10 @@ def run_self_test() -> None:
     assert_post_artifact_workspace_recheck_detects_mutation()
     assert_dirty_workspace_state_is_sticky_across_checks()
     assert_project_version_parser_accepts_release_build_numbers()
+    assert_maintenance_policy_resolves_from_workspace()
+    assert_missing_maintenance_policy_warns_in_dry_run_and_fails_strict_modes()
+    assert_incomplete_maintenance_policy_warns_in_dry_run_and_fails_strict_modes()
+    assert_maintenance_policy_input_copy_redacts_invalid_values()
 
     with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-self-test-") as temp_name:
         workspace = Path(temp_name) / "repo"

@@ -51,6 +51,15 @@ import network.crypta.platform.appdist.AppApiCompatibilityMetadata;
  * replacementAppId=queue-manager
  * securityAdvisories=CRYPTA-2026-0001
  * securityAdvisory.CRYPTA-2026-0001.uri=https://example.invalid/advisories/CRYPTA-2026-0001
+ * maintenance.owner=crypta-core
+ * maintenance.ownerUri=https://example.invalid/crypta/owners/core
+ * maintenance.supportLevel=core
+ * maintenance.dataSchemaPolicy=stateless
+ * maintenance.migrationPolicy=none
+ * maintenance.backupRestore=not-applicable
+ * maintenance.securityPolicy=catalog-advisories
+ * maintenance.deprecationPolicy=none
+ * maintenance.supportUri=https://example.invalid/crypta/apps/queue-manager/support
  * api.minimumVersion=1
  * api.maximumTestedVersion=1
  * api.optionalCapabilities=alerts.read,diagnostics.read
@@ -86,6 +95,7 @@ import network.crypta.platform.appdist.AppApiCompatibilityMetadata;
  * @param changelog optional change metadata for this catalog version
  * @param screenshots optional screenshot URIs displayed as links
  * @param productionMetadata production channel, support, deprecation, and advisory metadata
+ * @param maintenanceMetadata first-party maintenance policy metadata
  * @param permissionsOverride optional permission list override; an empty list means no permissions
  * @param permissionRationales permission-keyed rationale text for install/update review
  * @see AppCatalogWriter
@@ -106,6 +116,7 @@ public record AppCatalogEntryDescriptor(
     AppCatalogChangelog changelog,
     List<URI> screenshots,
     AppCatalogProductionMetadata productionMetadata,
+    AppCatalogMaintenanceMetadata maintenanceMetadata,
     Optional<List<String>> permissionsOverride,
     Map<String, String> permissionRationales) {
   private static final String ARTIFACT_PATH = "artifact.path";
@@ -128,6 +139,15 @@ public record AppCatalogEntryDescriptor(
   private static final String SECURITY_ADVISORIES = "securityAdvisories";
   private static final String SECURITY_ADVISORY_PREFIX = "securityAdvisory.";
   private static final String SECURITY_ADVISORY_URI_SUFFIX = ".uri";
+  private static final String MAINTENANCE_OWNER = "maintenance.owner";
+  private static final String MAINTENANCE_OWNER_URI = "maintenance.ownerUri";
+  private static final String MAINTENANCE_SUPPORT_LEVEL = "maintenance.supportLevel";
+  private static final String MAINTENANCE_DATA_SCHEMA_POLICY = "maintenance.dataSchemaPolicy";
+  private static final String MAINTENANCE_MIGRATION_POLICY = "maintenance.migrationPolicy";
+  private static final String MAINTENANCE_BACKUP_RESTORE = "maintenance.backupRestore";
+  private static final String MAINTENANCE_SECURITY_POLICY = "maintenance.securityPolicy";
+  private static final String MAINTENANCE_DEPRECATION_POLICY = "maintenance.deprecationPolicy";
+  private static final String MAINTENANCE_SUPPORT_URI = "maintenance.supportUri";
   private static final String API_MINIMUM_VERSION = "api.minimumVersion";
   private static final String API_MAXIMUM_TESTED_VERSION = "api.maximumTestedVersion";
   private static final String API_OPTIONAL_CAPABILITIES = "api.optionalCapabilities";
@@ -168,6 +188,7 @@ public record AppCatalogEntryDescriptor(
    * @param changelog optional change metadata for this catalog version
    * @param screenshots optional screenshot URIs displayed as links
    * @param productionMetadata production channel, support, deprecation, and advisory metadata
+   * @param maintenanceMetadata first-party maintenance policy metadata
    * @param permissionsOverride optional permission override list copied into immutable state
    * @param permissionRationales permission-keyed rationale text for install/update review
    * @throws AppCatalogException if descriptor metadata is malformed
@@ -196,6 +217,7 @@ public record AppCatalogEntryDescriptor(
     Objects.requireNonNull(changelog, "changelog");
     screenshots = normalizeScreenshots(screenshots);
     Objects.requireNonNull(productionMetadata, "productionMetadata");
+    Objects.requireNonNull(maintenanceMetadata, "maintenanceMetadata");
     Objects.requireNonNull(permissionsOverride, PERMISSIONS);
     permissionsOverride = permissionsOverride.map(List::copyOf);
     permissionRationales = normalizePermissionRationales(permissionRationales);
@@ -252,6 +274,7 @@ public record AppCatalogEntryDescriptor(
                     .map(value -> parseUri(value, CHANGELOG_URI))),
             parseScreenshots(properties),
             parseProductionMetadata(properties),
+            parseMaintenanceMetadata(properties),
             removeOptionalPermissions(properties),
             parsePermissionRationales(properties));
     if (!properties.isEmpty()) {
@@ -469,6 +492,63 @@ public record AppCatalogEntryDescriptor(
         deprecationMessage,
         replacementAppId,
         advisories,
+        declared);
+  }
+
+  private static AppCatalogMaintenanceMetadata parseMaintenanceMetadata(
+      Map<String, String> properties) {
+    Optional<String> owner = removeOptional(properties, MAINTENANCE_OWNER);
+    Optional<URI> ownerUri =
+        removeOptional(properties, MAINTENANCE_OWNER_URI)
+            .map(value -> parseUri(value, MAINTENANCE_OWNER_URI));
+    Optional<String> supportLevelText = removeOptional(properties, MAINTENANCE_SUPPORT_LEVEL);
+    Optional<String> dataSchemaPolicyText =
+        removeOptional(properties, MAINTENANCE_DATA_SCHEMA_POLICY);
+    Optional<String> migrationPolicyText = removeOptional(properties, MAINTENANCE_MIGRATION_POLICY);
+    Optional<String> backupRestoreText = removeOptional(properties, MAINTENANCE_BACKUP_RESTORE);
+    Optional<String> securityPolicyText = removeOptional(properties, MAINTENANCE_SECURITY_POLICY);
+    Optional<String> deprecationPolicyText =
+        removeOptional(properties, MAINTENANCE_DEPRECATION_POLICY);
+    Optional<URI> supportUri =
+        removeOptional(properties, MAINTENANCE_SUPPORT_URI)
+            .map(value -> parseUri(value, MAINTENANCE_SUPPORT_URI));
+    boolean declared =
+        owner.isPresent()
+            || ownerUri.isPresent()
+            || supportLevelText.isPresent()
+            || dataSchemaPolicyText.isPresent()
+            || migrationPolicyText.isPresent()
+            || backupRestoreText.isPresent()
+            || securityPolicyText.isPresent()
+            || deprecationPolicyText.isPresent()
+            || supportUri.isPresent();
+    return new AppCatalogMaintenanceMetadata(
+        owner,
+        ownerUri,
+        supportLevelText.map(
+            value ->
+                AppCatalogMaintenanceMetadata.SupportLevel.parse(value, MAINTENANCE_SUPPORT_LEVEL)),
+        dataSchemaPolicyText.map(
+            value ->
+                AppCatalogMaintenanceMetadata.DataSchemaPolicy.parse(
+                    value, MAINTENANCE_DATA_SCHEMA_POLICY)),
+        migrationPolicyText.map(
+            value ->
+                AppCatalogMaintenanceMetadata.MigrationPolicy.parse(
+                    value, MAINTENANCE_MIGRATION_POLICY)),
+        backupRestoreText.map(
+            value ->
+                AppCatalogMaintenanceMetadata.BackupRestoreSupport.parse(
+                    value, MAINTENANCE_BACKUP_RESTORE)),
+        securityPolicyText.map(
+            value ->
+                AppCatalogMaintenanceMetadata.SecurityPolicy.parse(
+                    value, MAINTENANCE_SECURITY_POLICY)),
+        deprecationPolicyText.map(
+            value ->
+                AppCatalogMaintenanceMetadata.DeprecationPolicy.parse(
+                    value, MAINTENANCE_DEPRECATION_POLICY)),
+        supportUri,
         declared);
   }
 

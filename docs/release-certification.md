@@ -146,6 +146,7 @@ Release-candidate mode requires these evidence ids:
 | `catalog.live-usk-source-verification` | App-platform smoke summary. | `crypta:USK@.../cryptad-app-catalog.properties` refresh resolves matching editions, fetches `cryptad-app-catalog.signature` from the same USK edition, and stores replacements only after signed catalog verification. |
 | `app-catalog.first-party-beta` | App-platform smoke summary. | Recommended first-party beta catalog descriptor, Platform API/Web Shell onboarding, CHK artifact transport tests, first-party metadata docs, and configuration readiness reporting are present without a live public-network fetch. |
 | `catalog.production-channels` | App-platform smoke summary. | Catalog schema v3, stable/beta/nightly/deprecated metadata, stable-only default automation, deprecated replacement metadata, API/Web Shell exposure, signed catalog/review verification, and redaction guarantees are present. |
+| `app-catalog.first-party-maintenance-policy` | App-platform smoke summary. | The first-party maintenance policy source covers every first-party app, catalog v5 parser/writer/descriptor support exists, CLI/API/Web Shell surfaces expose maintenance metadata, production beta descriptors consume it, and docs state local-RC and legacy-protocol non-goals. |
 | `catalog.security-advisories` | App-platform smoke summary. | Catalog schema v4 parser/writer support for strict signed catalog-level security advisory records is present. |
 | `catalog.version-denylist` | App-platform smoke summary. | Exact app-version denylist records reference known advisory IDs, expose redacted security decisions, and surface installed vulnerable versions with safe uninstall guidance. |
 | `app-review.receipt-revocation` | App-platform smoke summary. | Receipt fingerprints, registry v3 receipt revocations, `revoked_receipt` trust status, and fail-closed review policy behavior are present. |
@@ -330,6 +331,13 @@ default channel policy, `channel_policy_blocked` handling, deprecated-entry repl
 API and Web Shell exposure, and redaction of private insert URIs, tokens, private keys, raw fetched
 content, raw app data, catalog scratch paths, staged bundle paths, and absolute local paths. See
 [production-first-party-catalog-channels.md](production-first-party-catalog-channels.md).
+
+`app-catalog.first-party-maintenance-policy` is the Phase 10 first-party maintenance policy gate.
+It is offline and deterministic: it checks the
+`tools/release-certification/first-party-app-maintenance-policy.json` source, catalog v5
+`maintenance.*` parser/writer/descriptor support, CLI descriptor flags, Platform API summaries,
+Web Shell catalog cards, production beta release integration, and docs. See
+[first-party-app-maintenance-policy.md](first-party-app-maintenance-policy.md).
 
 `ecosystem-security-advisory-and-revocation` is the Phase 9 security response matrix row. The
 `ecosystem.security-advisory-revocation` gate checks catalog v4 advisory records, exact
