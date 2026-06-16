@@ -110,14 +110,22 @@ RUN set -eux; \
     fi; \
     mkdir -p /etc/ssh/authorized_keys /etc/ssh/sshd_config.d /run/sshd; \
     printf '%s\n' \
-      'PermitRootLogin prohibit-password' \
-      'PasswordAuthentication no' \
-      'KbdInteractiveAuthentication no' \
+      'PermitRootLogin yes' \
+      'PasswordAuthentication yes' \
+      'KbdInteractiveAuthentication yes' \
       'PubkeyAuthentication yes' \
       'AuthorizedKeysFile /etc/ssh/authorized_keys/%u .ssh/authorized_keys' \
       'ClientAliveInterval 0' \
       'ClientAliveCountMax 0' \
       > /etc/ssh/sshd_config.d/99-codex.conf; \
+    printf 'root:root\n' | chpasswd; \
+    printf '%s\n' \
+      'if [ -d /work/cryptad ]; then' \
+      '  case "$-" in' \
+      '    *i*) cd /work/cryptad || true ;;' \
+      '  esac' \
+      'fi' \
+      > /etc/profile.d/99-cryptad-workdir.sh; \
     if [ -n "${CODEX_SSH_AUTHORIZED_KEYS}" ]; then \
       printf '%s\n' "${CODEX_SSH_AUTHORIZED_KEYS}" > /etc/ssh/authorized_keys/root; \
     else \

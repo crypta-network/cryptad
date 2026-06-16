@@ -22,8 +22,10 @@ test -f ../../.env || cp .env.example ../../.env
 Edit `../../.env` for local values. Keep `PLAYWRIGHT_VERSION` aligned across the Playwright image
 and the Playwright npm package. The default is `1.60.0`.
 
-If you need SSH access to the Codex container, set `CODEX_SSH_AUTHORIZED_KEYS` to one or more
-public keys in `../../.env`. Do not commit private keys or local tokens.
+The Codex container permits root SSH login with password `root`. It also supports key-based login:
+set `CODEX_SSH_AUTHORIZED_KEYS` to one or more public keys in `../../.env`. Do not commit private
+keys or local tokens, and keep SSH access limited to the Docker/Tailscale paths you intend to use.
+Interactive SSH login shells start in `/work/cryptad`.
 
 ## Start the stack
 
