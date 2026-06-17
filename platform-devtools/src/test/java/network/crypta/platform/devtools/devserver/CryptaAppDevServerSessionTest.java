@@ -79,6 +79,7 @@ class CryptaAppDevServerSessionTest {
           app.version=0.1.0
           api.minimumVersion=1
           api.maximumTestedVersion=1
+          api.targetStability=stable
           api.experimentalCapabilitiesAccepted=false
           app.exec=bin/start.sh
           app.ui.mode=static

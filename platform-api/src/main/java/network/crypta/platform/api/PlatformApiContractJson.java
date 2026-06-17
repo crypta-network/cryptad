@@ -5,6 +5,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import network.crypta.platform.api.json.PlatformApiJsonWriter;
 
 /**
@@ -29,9 +30,11 @@ import network.crypta.platform.api.json.PlatformApiJsonWriter;
 public final class PlatformApiContractJson {
   private static final String FIELD_ACTION_LABEL = "actionLabel";
   private static final String FIELD_API_VERSION = "apiVersion";
+  private static final String FIELD_AUDIENCE = "audience";
   private static final String FIELD_APP_BROWSER_PRINCIPALS_ALLOWED = "appBrowserPrincipalsAllowed";
   private static final String FIELD_APP_PROCESS_PRINCIPALS_ALLOWED = "appProcessPrincipalsAllowed";
   private static final String FIELD_CAPABILITIES = "capabilities";
+  private static final String FIELD_CAPABILITY_COUNT = "capabilityCount";
   private static final String FIELD_CONTRACT = "contract";
   private static final String FIELD_CONTRACT_VERSION = "contractVersion";
   private static final String FIELD_DEPRECATED_SINCE_CONTRACT_VERSION =
@@ -49,8 +52,11 @@ public final class PlatformApiContractJson {
   private static final String FIELD_ROUTE_FAMILY = "routeFamily";
   private static final String FIELD_ROUTE_TEMPLATE = "routeTemplate";
   private static final String FIELD_SINCE_CONTRACT_VERSION = "sinceContractVersion";
+  private static final String FIELD_STABLE_BASELINE = "stableBaseline";
+  private static final String FIELD_STABLE_BASELINE_MEMBER = "stableBaselineMember";
   private static final String FIELD_STABILITY = "stability";
   private static final String FIELD_STABILITY_POLICY = "stabilityPolicy";
+  private static final String FIELD_ENDPOINT_COUNT = "endpointCount";
 
   private PlatformApiContractJson() {}
 
@@ -96,15 +102,18 @@ public final class PlatformApiContractJson {
    */
   public static Map<String, Object> toJsonValue(PlatformApiContract contract) {
     PlatformApiContract checkedContract = Objects.requireNonNull(contract, FIELD_CONTRACT);
-    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(6);
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(7);
     json.put(FIELD_API_VERSION, checkedContract.apiVersion());
     json.put(FIELD_CONTRACT_VERSION, checkedContract.contractVersion());
     json.put(FIELD_GENERATED_BY, checkedContract.generatedBy());
     json.put(FIELD_STABILITY_POLICY, checkedContract.stabilityPolicy());
+    json.put(FIELD_STABLE_BASELINE, stableBaselineJson(checkedContract.stableBaseline()));
+    Set<String> stableBaselineCapabilities =
+        Set.copyOf(checkedContract.stableBaseline().capabilities());
     json.put(
         FIELD_CAPABILITIES,
         checkedContract.capabilities().stream()
-            .map(PlatformApiContractJson::capabilityJson)
+            .map(descriptor -> capabilityJson(descriptor, stableBaselineCapabilities))
             .toList());
     json.put(
         FIELD_ENDPOINTS,
@@ -135,19 +144,28 @@ public final class PlatformApiContractJson {
     Object contractObject =
         rootObject.containsKey(FIELD_CONTRACT) ? rootObject.get(FIELD_CONTRACT) : rootObject;
     Map<String, Object> contract = asObject(contractObject, FIELD_CONTRACT);
+    int contractVersion = integer(contract, FIELD_CONTRACT_VERSION);
     return new PlatformApiContract(
         string(contract, FIELD_API_VERSION),
-        integer(contract, FIELD_CONTRACT_VERSION),
+        contractVersion,
         string(contract, FIELD_GENERATED_BY),
         string(contract, FIELD_STABILITY_POLICY),
+        parseStableBaseline(contract, contractVersion),
         parseCapabilities(contract.get(FIELD_CAPABILITIES)),
         parseEndpoints(contract.get(FIELD_ENDPOINTS)));
   }
 
-  private static Map<String, Object> capabilityJson(PlatformApiCapabilityDescriptor descriptor) {
-    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(5);
+  private static Map<String, Object> capabilityJson(
+      PlatformApiCapabilityDescriptor descriptor, Set<String> stableBaselineCapabilities) {
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(8);
+    boolean stableBaselineMember = stableBaselineCapabilities.contains(descriptor.name());
     json.put(FIELD_NAME, descriptor.name());
     json.put(FIELD_STABILITY, descriptor.stability().jsonValue());
+    json.put(FIELD_AUDIENCE, audience(descriptor.stability()));
+    json.put(FIELD_STABLE_BASELINE_MEMBER, stableBaselineMember);
+    json.put(
+        FIELD_STABLE_BASELINE,
+        stableBaselineMember ? PlatformApiContract.PLATFORM_API_STABLE_BASELINE_NAME : null);
     json.put(FIELD_SINCE_CONTRACT_VERSION, descriptor.sinceContractVersion());
     json.put(FIELD_DEPRECATION, deprecationJson(descriptor.deprecation()));
     json.put(FIELD_DESCRIPTION, descriptor.description());
@@ -155,7 +173,7 @@ public final class PlatformApiContractJson {
   }
 
   private static Map<String, Object> endpointJson(PlatformApiEndpointDescriptor descriptor) {
-    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(12);
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(15);
     json.put(FIELD_ROUTE_FAMILY, descriptor.routeFamily());
     json.put(FIELD_METHOD, descriptor.method());
     json.put(FIELD_ROUTE_TEMPLATE, descriptor.routeTemplate());
@@ -165,10 +183,51 @@ public final class PlatformApiContractJson {
     json.put(FIELD_APP_PROCESS_PRINCIPALS_ALLOWED, descriptor.appProcessAllowed());
     json.put(FIELD_APP_BROWSER_PRINCIPALS_ALLOWED, descriptor.appBrowserAllowed());
     json.put(FIELD_STABILITY, descriptor.stability().jsonValue());
+    json.put(FIELD_AUDIENCE, endpointAudience(descriptor));
+    json.put(
+        FIELD_STABLE_BASELINE_MEMBER, PlatformApiContract.isStableBaselineEndpoint(descriptor));
+    json.put(
+        FIELD_STABLE_BASELINE,
+        PlatformApiContract.isStableBaselineEndpoint(descriptor)
+            ? PlatformApiContract.PLATFORM_API_STABLE_BASELINE_NAME
+            : null);
     json.put(FIELD_SINCE_CONTRACT_VERSION, descriptor.sinceContractVersion());
     json.put(FIELD_DEPRECATION, deprecationJson(descriptor.deprecation()));
     json.put(FIELD_DESCRIPTION, descriptor.description());
     return json;
+  }
+
+  private static Map<String, Object> stableBaselineJson(
+      PlatformApiContract.StableBaseline stableBaseline) {
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(6);
+    json.put(FIELD_NAME, stableBaseline.name());
+    json.put(FIELD_CONTRACT_VERSION, stableBaseline.contractVersion());
+    json.put(FIELD_CAPABILITY_COUNT, stableBaseline.capabilityCount());
+    json.put(FIELD_ENDPOINT_COUNT, stableBaseline.endpointCount());
+    json.put(FIELD_CAPABILITIES, stableBaseline.capabilities());
+    json.put(FIELD_ENDPOINTS, stableBaseline.endpoints());
+    return json;
+  }
+
+  private static String audience(PlatformApiStabilityLevel stability) {
+    if (stability == PlatformApiStabilityLevel.INTERNAL) {
+      return "internal";
+    }
+    if (stability == PlatformApiStabilityLevel.OPERATOR_ONLY) {
+      return "operator-only";
+    }
+    return "app";
+  }
+
+  private static String endpointAudience(PlatformApiEndpointDescriptor descriptor) {
+    if (descriptor.stability() == PlatformApiStabilityLevel.INTERNAL) {
+      return "internal";
+    }
+    if (descriptor.stability() == PlatformApiStabilityLevel.OPERATOR_ONLY
+        || (!descriptor.appProcessAllowed() && !descriptor.appBrowserAllowed())) {
+      return "operator-only";
+    }
+    return "app";
   }
 
   private static Object deprecationJson(PlatformApiDeprecation deprecation) {
@@ -219,6 +278,25 @@ public final class PlatformApiContractJson {
               string(json, FIELD_DESCRIPTION)));
     }
     return List.copyOf(descriptors);
+  }
+
+  private static PlatformApiContract.StableBaseline parseStableBaseline(
+      Map<String, Object> contract, int contractVersion) {
+    Object value = contract.get(FIELD_STABLE_BASELINE);
+    if (value == null) {
+      if (contractVersion > PlatformApiContract.PLATFORM_API_STABLE_BASELINE_CONTRACT_VERSION) {
+        throw new IllegalArgumentException(FIELD_STABLE_BASELINE + " must be a JSON object");
+      }
+      return null;
+    }
+    Map<String, Object> json = asObject(value, FIELD_STABLE_BASELINE);
+    return new PlatformApiContract.StableBaseline(
+        string(json, FIELD_NAME),
+        integer(json, FIELD_CONTRACT_VERSION),
+        integer(json, FIELD_CAPABILITY_COUNT),
+        integer(json, FIELD_ENDPOINT_COUNT),
+        stringArray(json.get(FIELD_CAPABILITIES), FIELD_STABLE_BASELINE + "." + FIELD_CAPABILITIES),
+        stringArray(json.get(FIELD_ENDPOINTS), FIELD_STABLE_BASELINE + "." + FIELD_ENDPOINTS));
   }
 
   private static PlatformApiDeprecation parseDeprecation(Object value) {
@@ -295,14 +373,17 @@ public final class PlatformApiContractJson {
   }
 
   private static List<String> requiredCapabilities(Object value) {
-    List<Object> items = asArray(value, FIELD_REQUIRED_CAPABILITIES);
+    return stringArray(value, FIELD_REQUIRED_CAPABILITIES);
+  }
+
+  private static List<String> stringArray(Object value, String fieldName) {
+    List<Object> items = asArray(value, fieldName);
     List<String> strings = new ArrayList<>(items.size());
     for (Object item : items) {
       if (item instanceof String text) {
         strings.add(text);
       } else {
-        throw new IllegalArgumentException(
-            FIELD_REQUIRED_CAPABILITIES + " must contain only strings");
+        throw new IllegalArgumentException(fieldName + " must contain only strings");
       }
     }
     return List.copyOf(strings);

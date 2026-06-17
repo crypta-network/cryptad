@@ -306,6 +306,7 @@ class AppBundleManifestParserTest {
                 api.minimumVersion=1
                 api.maximumTestedVersion=2
                 api.optionalCapabilities=ALERTS.READ, diagnostics.read,alerts.read
+                api.targetStability=stable
                 api.experimentalCapabilitiesAccepted=true
                 """));
 
@@ -313,7 +314,49 @@ class AppBundleManifestParserTest {
     assertEquals(Integer.valueOf(1), compatibility.minimumVersion());
     assertEquals(Integer.valueOf(2), compatibility.maximumTestedVersion());
     assertEquals(List.of("alerts.read", "diagnostics.read"), compatibility.optionalCapabilities());
+    assertEquals(
+        AppApiCompatibilityMetadata.TargetStability.STABLE, compatibility.targetStability());
+    assertTrue(compatibility.targetStabilityDeclared());
     assertTrue(compatibility.experimentalCapabilitiesAccepted());
+  }
+
+  @Test
+  void parseContent_whenApiTargetStabilityMissing_expectLegacyExperimentalDefault()
+      throws Exception {
+    AppBundleManifest manifest =
+        AppBundleManifestParser.parseContent(minimalManifest("api.minimumVersion=1\n"));
+
+    AppApiCompatibilityMetadata compatibility = manifest.apiCompatibility();
+
+    assertEquals(
+        AppApiCompatibilityMetadata.TargetStability.EXPERIMENTAL, compatibility.targetStability());
+    assertFalse(compatibility.targetStabilityDeclared());
+  }
+
+  @Test
+  void parseContent_whenExperimentalAcceptanceFalseDeclared_expectDeclarationPreserved()
+      throws Exception {
+    AppBundleManifest manifest =
+        AppBundleManifestParser.parseContent(
+            minimalManifest("api.experimentalCapabilitiesAccepted=false\n"));
+
+    AppApiCompatibilityMetadata compatibility = manifest.apiCompatibility();
+
+    assertFalse(compatibility.experimentalCapabilitiesAccepted());
+    assertTrue(compatibility.experimentalCapabilitiesAcceptedDeclared());
+    assertTrue(compatibility.declared());
+  }
+
+  @Test
+  void parseContent_whenApiTargetStabilityIsMalformed_expectFailure() {
+    AppDistributionException exception =
+        assertThrows(
+            AppDistributionException.class,
+            () ->
+                AppBundleManifestParser.parseContent(
+                    minimalManifest("api.targetStability=operator-only\n")));
+
+    assertEquals("unsupported api.targetStability: operator-only", exception.getMessage());
   }
 
   @Test

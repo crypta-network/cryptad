@@ -4,6 +4,7 @@ app.name=Trust Graph Local RC
 app.version=${appVersion}
 api.minimumVersion=10
 api.maximumTestedVersion=19
+api.targetStability=experimental
 api.experimentalCapabilitiesAccepted=true
 app.exec=bin/trust-graph.sh
 app.ui.mode=static

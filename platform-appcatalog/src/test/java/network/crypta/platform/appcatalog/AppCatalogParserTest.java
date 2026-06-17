@@ -106,6 +106,7 @@ class AppCatalogParserTest {
                 app.queue-manager.api.minimumVersion=1
                 app.queue-manager.api.maximumTestedVersion=1
                 app.queue-manager.api.optionalCapabilities=alerts.read,diagnostics.read
+                app.queue-manager.api.targetStability=experimental
                 app.queue-manager.api.experimentalCapabilitiesAccepted=true
                 app.queue-manager.review.status=reviewed
                 app.queue-manager.review.note=Reviewed for local operator safety.
@@ -137,7 +138,12 @@ class AppCatalogParserTest {
     assertEquals(
         List.of("alerts.read", "diagnostics.read"),
         entry.compatibility().apiCompatibility().optionalCapabilities());
+    assertEquals(
+        network.crypta.platform.appdist.AppApiCompatibilityMetadata.TargetStability.EXPERIMENTAL,
+        entry.compatibility().apiCompatibility().targetStability());
+    assertTrue(entry.compatibility().apiCompatibility().targetStabilityDeclared());
     assertTrue(entry.compatibility().apiCompatibility().experimentalCapabilitiesAccepted());
+    assertTrue(entry.compatibility().apiCompatibility().experimentalCapabilitiesAcceptedDeclared());
     assertEquals(AppCatalogReviewStatus.REVIEWED, entry.review().status());
     assertEquals("Reviewed for local operator safety.", entry.review().note().orElseThrow());
     assertEquals("Reads the local transfer queue.", entry.permissionRationales().get("queue.read"));

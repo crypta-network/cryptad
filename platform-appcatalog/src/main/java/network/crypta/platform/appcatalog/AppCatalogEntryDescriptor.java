@@ -62,7 +62,7 @@ import network.crypta.platform.appdist.AppApiCompatibilityMetadata;
  * maintenance.supportUri=https://example.invalid/crypta/apps/queue-manager/support
  * api.minimumVersion=1
  * api.maximumTestedVersion=1
- * api.optionalCapabilities=alerts.read,diagnostics.read
+ * api.targetStability=stable
  * api.experimentalCapabilitiesAccepted=false
  * review.status=reviewed
  * review.note=Reviewed for local operator safety.
@@ -151,6 +151,7 @@ public record AppCatalogEntryDescriptor(
   private static final String API_MINIMUM_VERSION = "api.minimumVersion";
   private static final String API_MAXIMUM_TESTED_VERSION = "api.maximumTestedVersion";
   private static final String API_OPTIONAL_CAPABILITIES = "api.optionalCapabilities";
+  private static final String API_TARGET_STABILITY = "api.targetStability";
   private static final String API_EXPERIMENTAL_CAPABILITIES_ACCEPTED =
       "api.experimentalCapabilitiesAccepted";
   private static final String REVIEW_STATUS = "review.status";
@@ -398,13 +399,32 @@ public record AppCatalogEntryDescriptor(
     List<String> optionalCapabilities =
         parseOptionalCapabilities(
             removeOptional(properties, API_OPTIONAL_CAPABILITIES).orElse(null));
-    boolean experimentalCapabilitiesAccepted = parseExperimentalCapabilitiesAccepted(properties);
+    AppApiCompatibilityMetadata.TargetStability targetStability =
+        removeOptional(properties, API_TARGET_STABILITY)
+            .map(AppCatalogEntryDescriptor::parseTargetStability)
+            .orElse(null);
+    Optional<String> experimentalCapabilitiesAcceptedValue =
+        removeOptional(properties, API_EXPERIMENTAL_CAPABILITIES_ACCEPTED);
+    boolean experimentalCapabilitiesAccepted =
+        parseExperimentalCapabilitiesAccepted(experimentalCapabilitiesAcceptedValue);
     try {
       return new AppApiCompatibilityMetadata(
           minimumVersion,
           maximumTestedVersion,
           optionalCapabilities,
-          experimentalCapabilitiesAccepted);
+          targetStability,
+          targetStability != null,
+          experimentalCapabilitiesAccepted,
+          experimentalCapabilitiesAcceptedValue.isPresent());
+    } catch (IllegalArgumentException exception) {
+      throw new AppCatalogException(
+          AppCatalogSidecars.INVALID_CATALOG_ENTRY, exception.getMessage(), exception);
+    }
+  }
+
+  private static AppApiCompatibilityMetadata.TargetStability parseTargetStability(String value) {
+    try {
+      return AppApiCompatibilityMetadata.TargetStability.parse(value);
     } catch (IllegalArgumentException exception) {
       throw new AppCatalogException(
           AppCatalogSidecars.INVALID_CATALOG_ENTRY, exception.getMessage(), exception);
@@ -430,8 +450,7 @@ public record AppCatalogEntryDescriptor(
     }
   }
 
-  private static boolean parseExperimentalCapabilitiesAccepted(Map<String, String> properties) {
-    Optional<String> value = removeOptional(properties, API_EXPERIMENTAL_CAPABILITIES_ACCEPTED);
+  private static boolean parseExperimentalCapabilitiesAccepted(Optional<String> value) {
     if (value.isEmpty()) {
       return false;
     }

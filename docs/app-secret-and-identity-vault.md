@@ -22,7 +22,11 @@ The vault capability names are:
 | `vault.identities.read` | Read app-granted identity metadata and public identity material. |
 | `vault.identities.create` | Create app-owned identities. |
 | `vault.identities.use` | Use an app-granted identity for signing or identity-scoped work without exporting private material. |
-| `vault.identities.manage` | Rename, rotate, disable, delete, or change grants for identities within the app's allowed scope. |
+| `vault.identities.manage` | Host/operator-only identity management, including renaming, rotating, disabling, deleting, or changing grants. |
+
+Third-party app manifests may request the app-facing vault capabilities in the table above except
+`vault.identities.manage`. Developer tooling rejects `vault.identities.manage` in app manifests
+because it is host/operator-only Platform API surface, not app-facing compatibility surface.
 
 `app.permissions` remains the app's grant request. The Platform API authorization path remains
 server-side and default-deny: a valid process token or browser session is not enough unless the

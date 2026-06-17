@@ -475,13 +475,20 @@ public final class AppBundleManifestParser {
         parseOptionalPositiveInteger(properties, "api.maximumTestedVersion");
     List<String> optionalCapabilities =
         parseOptionalCapabilities(optional(properties, "api.optionalCapabilities"));
-    boolean experimentalCapabilitiesAccepted = parseExperimentalCapabilitiesAccepted(properties);
+    AppApiCompatibilityMetadata.TargetStability targetStability = parseTargetStability(properties);
+    String experimentalCapabilitiesAcceptedValue =
+        optional(properties, "api.experimentalCapabilitiesAccepted");
+    boolean experimentalCapabilitiesAccepted =
+        parseExperimentalCapabilitiesAccepted(experimentalCapabilitiesAcceptedValue);
     try {
       return new AppApiCompatibilityMetadata(
           minimumVersion,
           maximumTestedVersion,
           optionalCapabilities,
-          experimentalCapabilitiesAccepted);
+          targetStability,
+          targetStability != null,
+          experimentalCapabilitiesAccepted,
+          experimentalCapabilitiesAcceptedValue != null);
     } catch (IllegalArgumentException exception) {
       throw new AppDistributionException(exception.getMessage(), exception);
     }
@@ -686,10 +693,9 @@ public final class AppBundleManifestParser {
     }
   }
 
-  private static boolean parseExperimentalCapabilitiesAccepted(Properties properties)
+  private static boolean parseExperimentalCapabilitiesAccepted(String value)
       throws AppDistributionException {
     String key = "api.experimentalCapabilitiesAccepted";
-    String value = optional(properties, key);
     if (value == null) {
       return false;
     }
@@ -701,6 +707,20 @@ public final class AppBundleManifestParser {
       return false;
     }
     throw new AppDistributionException("invalid " + key + ": " + value);
+  }
+
+  private static AppApiCompatibilityMetadata.TargetStability parseTargetStability(
+      Properties properties) throws AppDistributionException {
+    String key = "api.targetStability";
+    String value = optional(properties, key);
+    if (value == null) {
+      return null;
+    }
+    try {
+      return AppApiCompatibilityMetadata.TargetStability.parse(value);
+    } catch (IllegalArgumentException exception) {
+      throw new AppDistributionException(exception.getMessage(), exception);
+    }
   }
 
   private static int parseRestartMaxAttempts(Properties properties)

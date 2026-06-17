@@ -160,6 +160,11 @@ Release-candidate mode requires these evidence ids:
 | `app-review.review-history-api` | App-platform smoke summary. | Review governance, reviewer-key, transparency-log, verification, and catalog-app review-history Platform API routes are present and Web Shell consumes review-history data. |
 | `app-review.first-party-review-chain` | App-platform smoke summary. | First-party review receipt evidence, review-history/governance readiness, and transparency-log evidence are tied together for release promotion. |
 | `platform-api.contract` | App-platform smoke summary. | The deterministic Platform API compatibility contract snapshot was generated, parsed, and used for offline compatibility verification of first-party/sample apps. |
+| `platform-api.stable-baseline` | App-platform smoke summary. | The Platform API 1.0 stable baseline metadata is present with deterministic capability and endpoint counts. |
+| `platform-api.stable-breaking-change-check` | App-platform smoke summary and release history. | Release certification compares the current stable baseline against previous production release evidence and blocks stable API breaking changes. |
+| `platform-api.manifest-target-stability` | App-platform smoke summary. | Manifest, catalog, and CLI metadata preserve `api.targetStability`. |
+| `platform-api.first-party-stability-declarations` | App-platform smoke summary. | First-party staged manifests declare stable or experimental API targets and matching experimental acceptance flags. |
+| `platform-api.stable-reference-docs` | App-platform smoke summary. | The stable API 1.0 reference and contract docs describe baseline membership and operator-only exclusions. |
 | `app-vault.capabilities` | App-platform smoke summary. | App secret and identity vault capability docs, devtools vocabulary, grant lifecycle notes, and redaction checks are present. |
 | `app-platform.identity-profile-publish` | App-platform smoke summary. | The profile-document signing route `POST /api/v1/app-vault/identities/{identityId}/profile-document` is present, documented, capability-gated by `vault.identities.read` plus `vault.identities.use`, and covered by redaction evidence. |
 | `app-platform.generated-document-insert` | App-platform smoke summary. | The app-generated document insert route `POST /api/v1/queue/inserts/app-document` is present, documented, capability-gated by `content.insert.app-document` plus `queue.write`, and avoids local file-path request authority. |
@@ -361,10 +366,18 @@ relative Markdown links, and obvious secret/redaction rules are present without 
 URLs. Missing docs or redaction failures block release-candidate mode unless a release manager
 records an explicit waiver for a docs-only gap; redaction failures should not be waived.
 
-`platform-api.contract` is generated offline with `crypta-app api snapshot`. In
-release-candidate mode, snapshot generation failure, contract parse failure, missing contract
-evidence, or strict compatibility verifier failure is a blocker unless a release-manager waiver is
-recorded.
+`platform-api.contract` is generated offline with `crypta-app api snapshot`. The companion
+`platform-api.stable-baseline` evidence records the Platform API 1.0 baseline name, capability
+count/list, endpoint count/list, stable endpoint required-capability sets, and stable endpoint
+app-principal access flags. `platform-api.stable-breaking-change-check` is required evidence and
+the ecosystem gate compares current stable capabilities, endpoint identities, endpoint
+required-capability sets, and app-process/app-browser access flags against the previous production
+release summary. In `--require-history` release-candidate runs, missing previous stable-baseline or
+stable endpoint metadata is a blocker. Stable baseline removals, stability demotions,
+required-permission breaks, app-principal access regressions, snapshot generation failure, contract
+parse failure, missing contract evidence, or strict compatibility verifier failure are blockers
+unless a release-manager waiver is recorded. Developer dry runs without previous history warn
+instead of claiming production comparison coverage.
 
 `app-vault.capabilities` is deterministic offline evidence. The app-platform smoke runner checks
 that [app-secret-and-identity-vault.md](app-secret-and-identity-vault.md) documents the six vault

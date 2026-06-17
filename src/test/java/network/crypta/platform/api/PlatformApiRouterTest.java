@@ -4118,11 +4118,13 @@ class PlatformApiRouterTest {
   }
 
   private static Map<String, Object> undeclaredApiCompatibility(List<String> warnings) {
-    LinkedHashMap<String, Object> compatibility = LinkedHashMap.newLinkedHashMap(8);
+    LinkedHashMap<String, Object> compatibility = LinkedHashMap.newLinkedHashMap(10);
     compatibility.put("minimumVersion", null);
     compatibility.put("maximumTestedVersion", null);
     compatibility.put("currentVersion", PlatformApiContract.current().contractVersion());
     compatibility.put("optionalCapabilities", List.of());
+    compatibility.put("targetStability", "experimental");
+    compatibility.put("targetStabilityDeclared", false);
     compatibility.put("experimentalCapabilitiesAccepted", false);
     compatibility.put("declared", false);
     compatibility.put("status", "unknown");

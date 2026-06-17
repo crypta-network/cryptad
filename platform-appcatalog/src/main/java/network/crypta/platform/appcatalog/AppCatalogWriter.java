@@ -289,14 +289,50 @@ public final class AppCatalogWriter {
   private static AppCatalogCompatibilityMetadata compatibilityForCatalog(
       AppCatalogEntryDescriptor descriptor, AppBundleManifest manifest) {
     AppCatalogCompatibilityMetadata descriptorCompatibility = descriptor.compatibility();
-    AppApiCompatibilityMetadata apiCompatibility =
-        descriptorCompatibility.apiCompatibility().declared()
-            ? descriptorCompatibility.apiCompatibility()
-            : manifest.apiCompatibility();
     return new AppCatalogCompatibilityMetadata(
         descriptorCompatibility.minimumCryptaVersion(),
         descriptorCompatibility.maximumCryptaVersion(),
-        apiCompatibility);
+        apiCompatibilityForCatalog(
+            descriptorCompatibility.apiCompatibility(), manifest.apiCompatibility()));
+  }
+
+  private static AppApiCompatibilityMetadata apiCompatibilityForCatalog(
+      AppApiCompatibilityMetadata descriptorApi, AppApiCompatibilityMetadata manifestApi) {
+    if (!descriptorApi.declared()) {
+      return manifestApi;
+    }
+    if (!manifestApi.declared()) {
+      return descriptorApi;
+    }
+    boolean targetStabilityDeclared =
+        descriptorApi.targetStabilityDeclared() || manifestApi.targetStabilityDeclared();
+    AppApiCompatibilityMetadata.TargetStability targetStability = null;
+    if (descriptorApi.targetStabilityDeclared()) {
+      targetStability = descriptorApi.targetStability();
+    } else if (manifestApi.targetStabilityDeclared()) {
+      targetStability = manifestApi.targetStability();
+    }
+    boolean experimentalCapabilitiesAccepted =
+        descriptorApi.experimentalCapabilitiesAcceptedDeclared()
+            ? descriptorApi.experimentalCapabilitiesAccepted()
+            : manifestApi.experimentalCapabilitiesAccepted();
+    boolean experimentalCapabilitiesAcceptedDeclared =
+        descriptorApi.experimentalCapabilitiesAcceptedDeclared()
+            || manifestApi.experimentalCapabilitiesAcceptedDeclared();
+    return new AppApiCompatibilityMetadata(
+        descriptorApi.minimumVersion() != null
+            ? descriptorApi.minimumVersion()
+            : manifestApi.minimumVersion(),
+        descriptorApi.maximumTestedVersion() != null
+            ? descriptorApi.maximumTestedVersion()
+            : manifestApi.maximumTestedVersion(),
+        descriptorApi.optionalCapabilities().isEmpty()
+            ? manifestApi.optionalCapabilities()
+            : descriptorApi.optionalCapabilities(),
+        targetStability,
+        targetStabilityDeclared,
+        experimentalCapabilitiesAccepted,
+        experimentalCapabilitiesAcceptedDeclared);
   }
 
   private static void requireManifestAppIdMatch(
@@ -628,6 +664,10 @@ public final class AppCatalogWriter {
     if (!api.optionalCapabilities().isEmpty()) {
       appendProperty(
           builder, prefix + "api.optionalCapabilities", joinValues(api.optionalCapabilities()));
+    }
+    if (api.targetStabilityDeclared()) {
+      appendProperty(
+          builder, prefix + "api.targetStability", api.targetStability().manifestValue());
     }
     if (api.declared()) {
       appendProperty(

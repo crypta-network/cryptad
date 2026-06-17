@@ -33,6 +33,7 @@ import network.crypta.platform.appcatalog.AppReviewReceiptSigner;
 import network.crypta.platform.appcatalog.AppReviewReceiptStatus;
 import network.crypta.platform.appcatalog.TrustedReviewerKey;
 import network.crypta.platform.appcatalog.TrustedReviewerKeys;
+import network.crypta.platform.appdist.AppApiCompatibilityMetadata.TargetStability;
 import network.crypta.platform.appdist.AppApiCompatibilityMetadata;
 import network.crypta.platform.appdist.AppUiMode;
 import network.crypta.platform.apphost.AppHost;
@@ -650,7 +651,11 @@ class AppUpdateSchedulerTest {
 
   private static AppApiCompatibilityMetadata compatibleApiMetadata() {
     return new AppApiCompatibilityMetadata(
-        1, PlatformApiContract.current().contractVersion(), List.of(), false);
+        1,
+        PlatformApiContract.current().contractVersion(),
+        List.of(),
+        TargetStability.STABLE,
+        false);
   }
 
   private AppCatalogInstallPlan plan(AppCatalogEntry entry) throws IOException {

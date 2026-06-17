@@ -9,6 +9,7 @@ import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermission;
 import java.util.List;
 import java.util.Set;
+import network.crypta.platform.appdist.AppApiCompatibilityMetadata.TargetStability;
 import network.crypta.platform.appdist.AppRestartPolicy;
 import network.crypta.platform.appdist.AppSandboxMode;
 import network.crypta.platform.appdist.AppUiMode;
@@ -87,6 +88,8 @@ class ProfilePublisherBundleStagingTest {
     assertEquals(
         Integer.valueOf(EXPECTED_PLATFORM_API_MAXIMUM_TESTED_VERSION),
         manifest.apiCompatibility().maximumTestedVersion());
+    assertEquals(TargetStability.EXPERIMENTAL, manifest.apiCompatibility().targetStability());
+    assertTrue(manifest.apiCompatibility().targetStabilityDeclared());
     assertTrue(manifest.apiCompatibility().experimentalCapabilitiesAccepted());
     assertEquals(AppSandboxMode.RESTRICTED_PROCESS, manifest.sandboxPolicy().mode());
     assertFalse(manifest.sandboxPolicy().required());
@@ -109,6 +112,7 @@ class ProfilePublisherBundleStagingTest {
     assertTrue(
         manifestText.contains(
             "api.maximumTestedVersion=" + EXPECTED_PLATFORM_API_MAXIMUM_TESTED_VERSION));
+    assertTrue(manifestText.contains("api.targetStability=experimental"));
     assertTrue(manifestText.contains("api.experimentalCapabilitiesAccepted=true"));
     assertTrue(manifestText.contains("app.exec=" + EXPECTED_LAUNCHER_PATH));
     assertTrue(manifestText.contains("app.ui.mode=static"));

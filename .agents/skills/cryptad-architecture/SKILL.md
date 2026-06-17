@@ -64,8 +64,9 @@ Use this skill when you need to:
     `SendableRequestItem*`
   - `:runtime-spi` → `network.crypta.runtime.spi` (JDK-only runtime/config boundary)
   - `:platform-api` → `network.crypta.platform.api` (transport-neutral Platform API v1,
-    compatibility contract, app capabilities/audit, app-vault routes, app-generated document
-    inserts, bounded content fetch, shared app-network budget service/store, durable content
+    compatibility contract, Platform API 1.0 stable-baseline metadata, app capabilities/audit,
+    app-vault routes, app-generated document inserts, bounded content fetch, shared app-network
+    budget service/store, durable content
     subscriptions, durable app data and internal update snapshots, app-data backup/restore routes,
     local app-service discovery/dependency graph/grant-bundle routes, app-update
     lifecycle/scheduler, and host/operator-only beta dashboard/support-bundle, typed operator RC
@@ -82,12 +83,14 @@ Use this skill when you need to:
     transport helpers, mutation form handling, queue/content/vault/feed/app-data/app-service
     helpers, error parsing, and conservative fragment sanitization
   - `:platform-appdist` → `network.crypta.platform.appdist` (signed local app bundle digest,
-    signature, manifest, app-data schema/migration metadata, verifier, trusted-key,
+    signature, manifest API target-stability and app-data schema/migration metadata, verifier,
+    trusted-key,
     deterministic packager, and distribution tooling)
   - `:platform-appcatalog` → `network.crypta.platform.appcatalog` (signed catalog sources,
     catalog writer/descriptors, Crypta catalog source handling, app-store/API compatibility
-    metadata, independent app-review receipts, catalog security advisory/denylist policy, artifact
-    verification, safe ZIP extraction, and verified staging)
+    target-stability metadata, first-party maintenance metadata, independent app-review receipts,
+    catalog security advisory/denylist policy, artifact verification, safe ZIP extraction, and
+    verified staging)
   - `:platform-trustgraph` → `network.crypta.platform.trustgraph` (Trust Graph Local RC statement
     parsing, canonicalization, verification, process-local store/anchor behavior, lifecycle/status
     records, and deterministic direct-anchor scoring)
@@ -386,7 +389,7 @@ Use this skill when you need to:
   content subscriptions, durable app data and update migration snapshots, app-data backup/restore
   routes, local app-service
   discovery/dependency graph/grant-bundle routes, and the deterministic Platform API compatibility
-  contract,
+  contract plus the frozen Platform API 1.0 stable-baseline metadata,
   and is currently mounted at `/api/v1/` by the legacy HTTP adapter. It also owns app-token and
   browser-session authorization decisions, bounded process-local app audit logs, and local
   app-update lifecycle/scheduler coordination above AppHost, signed catalog, vault, app-data,

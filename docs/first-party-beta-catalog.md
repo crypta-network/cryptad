@@ -131,6 +131,7 @@ permissions.rationale.app.data.read=Restores bounded profile drafts and publish 
 permissions.rationale.app.data.write=Saves bounded profile drafts and publish summaries.
 api.minimumVersion=9
 api.maximumTestedVersion=19
+api.targetStability=experimental
 api.experimentalCapabilitiesAccepted=true
 ```
 
@@ -151,6 +152,7 @@ review.status=reviewed
 review.note=First-party feed reference app.
 api.minimumVersion=9
 api.maximumTestedVersion=19
+api.targetStability=stable
 api.experimentalCapabilitiesAccepted=false
 maintenance.owner=crypta-core
 maintenance.ownerUri=https://example.invalid/crypta/owners/core
@@ -193,6 +195,7 @@ review.status=reviewed
 review.note=First-party Social Inbox RC reference app; local threading and Trust Graph annotations only, not full WoT, plugin compatibility, Freetalk/Sone/Freemail, encrypted mail, crawler, or daemon-core protocol.
 api.minimumVersion=16
 api.maximumTestedVersion=19
+api.targetStability=experimental
 api.experimentalCapabilitiesAccepted=true
 ```
 
@@ -230,6 +233,7 @@ review.status=reviewed
 review.note=First-party local trust graph preview; not full WoT or moderation.
 api.minimumVersion=10
 api.maximumTestedVersion=19
+api.targetStability=experimental
 api.experimentalCapabilitiesAccepted=true
 ```
 

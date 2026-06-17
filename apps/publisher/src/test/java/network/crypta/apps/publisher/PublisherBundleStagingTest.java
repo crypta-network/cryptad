@@ -4,6 +4,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermission;
 import java.util.Set;
+import network.crypta.platform.appdist.AppApiCompatibilityMetadata.TargetStability;
 import network.crypta.platform.appdist.AppUiMode;
 import network.crypta.platform.apphost.manifest.AppManifest;
 import network.crypta.platform.apphost.manifest.AppManifestParser;
@@ -59,6 +60,9 @@ class PublisherBundleStagingTest {
     assertEquals(EXPECTED_UI_ENTRY, manifest.uiEntry());
     assertEquals(
         java.util.List.of("queue.read", "queue.write", "content.insert"), manifest.permissions());
+    assertEquals(TargetStability.STABLE, manifest.apiCompatibility().targetStability());
+    assertTrue(manifest.apiCompatibility().targetStabilityDeclared());
+    assertFalse(manifest.apiCompatibility().experimentalCapabilitiesAccepted());
     assertEquals(Long.valueOf(0L), manifest.dataQuotaBytes());
     assertEquals(Long.valueOf(0L), manifest.cacheQuotaBytes());
   }
@@ -72,6 +76,8 @@ class PublisherBundleStagingTest {
     assertTrue(manifestText.contains("app.id=" + EXPECTED_APP_ID));
     assertTrue(manifestText.contains("app.name=" + EXPECTED_APP_NAME));
     assertTrue(manifestText.contains("app.version=" + System.getProperty(APP_VERSION_PROPERTY)));
+    assertTrue(manifestText.contains("api.targetStability=stable"));
+    assertTrue(manifestText.contains("api.experimentalCapabilitiesAccepted=false"));
     assertTrue(manifestText.contains("app.exec=" + EXPECTED_LAUNCHER_PATH));
     assertTrue(manifestText.contains("app.ui.mode=static"));
     assertTrue(manifestText.contains("app.ui.entry=" + EXPECTED_UI_ENTRY));

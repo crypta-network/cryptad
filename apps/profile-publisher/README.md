@@ -66,9 +66,9 @@ Profile Publisher declares:
 
 The manifest requires Platform API contract v9 because Profile Publisher combines the
 profile-document and app-document insert routes with durable app-data records, and it is tested
-through the current v10 contract. It also sets `api.experimentalCapabilitiesAccepted=true`; the
-current app-vault identity capabilities remain experimental even though the app keeps the operation
-narrow and first-party reviewed.
+through the current v10 contract. It also sets `api.targetStability=experimental` and
+`api.experimentalCapabilitiesAccepted=true`; the current app-vault identity capabilities remain
+experimental even though the app keeps the operation narrow and first-party reviewed.
 
 The browser UI does not use persistent browser storage, cookies, external resources, browser file
 inputs, or direct local file reads. Profile documents are built from bounded app-owned form state,

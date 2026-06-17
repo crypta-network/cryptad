@@ -214,6 +214,11 @@ CRITICAL_PRODUCTION_BETA_EVIDENCE_IDS = (
     "app-review.first-party-catalog",
     "app-review.first-party-review-chain",
     "platform-api.contract",
+    "platform-api.stable-baseline",
+    "platform-api.stable-breaking-change-check",
+    "platform-api.manifest-target-stability",
+    "platform-api.first-party-stability-declarations",
+    "platform-api.stable-reference-docs",
     "app-ui.lint",
     "apphost.sandbox-provider",
     "app-update.data-migration-contract",
@@ -1827,6 +1832,8 @@ def run_release_certification(state: PipelineState, env: dict[str, str], cert_ou
         args.append("--skip-gradle")
     if state.settings.require_live_network:
         args.append("--require-live-network-beta")
+    if state.settings.mode != "developer-dry-run":
+        args.append("--require-history")
     if state.settings.previous_summary:
         args.extend(["--previous-summary", str(state.settings.previous_summary)])
     if state.settings.waiver_file:

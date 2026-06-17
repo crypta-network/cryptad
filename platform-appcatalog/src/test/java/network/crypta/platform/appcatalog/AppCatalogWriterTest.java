@@ -16,6 +16,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
+import network.crypta.platform.appdist.AppApiCompatibilityMetadata;
 import network.crypta.platform.appdist.AppBundleManifestParser;
 import network.crypta.platform.appdist.AppBundlePackager;
 import network.crypta.platform.appdist.TrustedAppKey;
@@ -26,6 +27,7 @@ import org.junit.jupiter.api.function.Executable;
 import org.junit.jupiter.api.io.TempDir;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -88,6 +90,7 @@ class AppCatalogWriterTest {
             api.minimumVersion=1
             api.maximumTestedVersion=1
             api.optionalCapabilities=alerts.read,diagnostics.read
+            api.targetStability=experimental
             api.experimentalCapabilitiesAccepted=true
             review.status=reviewed
             review.note=Reviewed for local operator safety.
@@ -123,6 +126,7 @@ class AppCatalogWriterTest {
             "app.queue-manager.api.minimumVersion=1",
             "app.queue-manager.api.maximumTestedVersion=1",
             "app.queue-manager.api.optionalCapabilities=alerts.read,diagnostics.read",
+            "app.queue-manager.api.targetStability=experimental",
             "app.queue-manager.api.experimentalCapabilitiesAccepted=true",
             "app.queue-manager.channel=beta",
             "app.queue-manager.support.status=experimental",
@@ -330,6 +334,116 @@ class AppCatalogWriterTest {
     assertEquals(Files.size(artifact), entry.bundleSizeBytes());
     assertEquals(sha256(artifact), entry.bundleSha256());
     assertTrue(entry.bundleSha256().matches("[0-9a-f]{64}"));
+  }
+
+  @Test
+  void write_whenDescriptorApiRangeOmitsTargetStability_expectManifestTargetIsPreserved()
+      throws Exception {
+    Path artifact =
+        appZip(
+            QUEUE_APP_ID,
+            QUEUE_APP_NAME,
+            QUEUE_APP_VERSION,
+            QUEUE_READ_PERMISSION,
+            lines(
+                "api.minimumVersion=1",
+                "api.maximumTestedVersion=19",
+                "api.targetStability=stable",
+                "api.experimentalCapabilitiesAccepted=false"));
+    Path descriptor =
+        descriptor(
+            QUEUE_DESCRIPTOR_FILE,
+            artifact,
+            QUEUE_BUNDLE_URI,
+            LOCAL_QUEUE_SUMMARY,
+            lines("api.minimumVersion=1", "api.maximumTestedVersion=19"));
+
+    AppCatalogWriter.WriteResult result = AppCatalogWriter.write(request(List.of(descriptor)));
+
+    AppApiCompatibilityMetadata api =
+        result.catalog().entries().getFirst().compatibility().apiCompatibility();
+    String catalog = new String(result.catalogBytes(), StandardCharsets.UTF_8);
+    assertEquals(AppApiCompatibilityMetadata.TargetStability.STABLE, api.targetStability());
+    assertTrue(api.targetStabilityDeclared());
+    assertEquals(1, api.minimumVersion());
+    assertEquals(19, api.maximumTestedVersion());
+    assertTrue(catalog.contains("app.queue-manager.api.targetStability=stable\n"));
+    assertTrue(catalog.contains("app.queue-manager.api.experimentalCapabilitiesAccepted=false\n"));
+  }
+
+  @Test
+  void write_whenDescriptorExperimentalTargetOmitsAcceptance_expectManifestAcceptanceIsPreserved()
+      throws Exception {
+    Path artifact =
+        appZip(
+            QUEUE_APP_ID,
+            QUEUE_APP_NAME,
+            QUEUE_APP_VERSION,
+            "vault.identities.read",
+            lines(
+                "api.minimumVersion=1",
+                "api.maximumTestedVersion=19",
+                "api.targetStability=experimental",
+                "api.experimentalCapabilitiesAccepted=true"));
+    Path descriptor =
+        descriptor(
+            QUEUE_DESCRIPTOR_FILE,
+            artifact,
+            QUEUE_BUNDLE_URI,
+            LOCAL_QUEUE_SUMMARY,
+            "api.targetStability=experimental");
+
+    AppCatalogWriter.WriteResult result = AppCatalogWriter.write(request(List.of(descriptor)));
+
+    AppApiCompatibilityMetadata api =
+        result.catalog().entries().getFirst().compatibility().apiCompatibility();
+    String catalog = new String(result.catalogBytes(), StandardCharsets.UTF_8);
+    assertEquals(AppApiCompatibilityMetadata.TargetStability.EXPERIMENTAL, api.targetStability());
+    assertTrue(api.targetStabilityDeclared());
+    assertTrue(api.experimentalCapabilitiesAccepted());
+    assertTrue(api.experimentalCapabilitiesAcceptedDeclared());
+    assertEquals(1, api.minimumVersion());
+    assertEquals(19, api.maximumTestedVersion());
+    assertTrue(catalog.contains("app.queue-manager.api.targetStability=experimental\n"));
+    assertTrue(catalog.contains("app.queue-manager.api.experimentalCapabilitiesAccepted=true\n"));
+  }
+
+  @Test
+  void write_whenDescriptorExplicitlyRejectsManifestAcceptance_expectDescriptorOptOutIsPreserved()
+      throws Exception {
+    Path artifact =
+        appZip(
+            QUEUE_APP_ID,
+            QUEUE_APP_NAME,
+            QUEUE_APP_VERSION,
+            "vault.identities.read",
+            lines(
+                "api.minimumVersion=1",
+                "api.maximumTestedVersion=19",
+                "api.targetStability=experimental",
+                "api.experimentalCapabilitiesAccepted=true"));
+    Path descriptor =
+        descriptor(
+            QUEUE_DESCRIPTOR_FILE,
+            artifact,
+            QUEUE_BUNDLE_URI,
+            LOCAL_QUEUE_SUMMARY,
+            lines(
+                "api.targetStability=experimental", "api.experimentalCapabilitiesAccepted=false"));
+
+    AppCatalogWriter.WriteResult result = AppCatalogWriter.write(request(List.of(descriptor)));
+
+    AppApiCompatibilityMetadata api =
+        result.catalog().entries().getFirst().compatibility().apiCompatibility();
+    String catalog = new String(result.catalogBytes(), StandardCharsets.UTF_8);
+    assertEquals(AppApiCompatibilityMetadata.TargetStability.EXPERIMENTAL, api.targetStability());
+    assertTrue(api.targetStabilityDeclared());
+    assertFalse(api.experimentalCapabilitiesAccepted());
+    assertTrue(api.experimentalCapabilitiesAcceptedDeclared());
+    assertEquals(1, api.minimumVersion());
+    assertEquals(19, api.maximumTestedVersion());
+    assertTrue(catalog.contains("app.queue-manager.api.targetStability=experimental\n"));
+    assertTrue(catalog.contains("app.queue-manager.api.experimentalCapabilitiesAccepted=false\n"));
   }
 
   @Test
@@ -600,18 +714,30 @@ class AppCatalogWriterTest {
 
   private Path appZip(String appId, String appName, String appVersion, String permissions)
       throws IOException {
+    return appZip(appId, appName, appVersion, permissions, "");
+  }
+
+  private Path appZip(
+      String appId,
+      String appName,
+      String appVersion,
+      String permissions,
+      String extraManifestProperties)
+      throws IOException {
     Path artifact = tempDir.resolve(appId + ".zip");
     try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(artifact))) {
-      writeZipEntry(
-          zip,
-          AppBundleManifestParser.MANIFEST_FILE_NAME,
+      String manifest =
           lines(
               "manifest.version=1",
               "app.id=" + appId,
               "app.name=" + appName,
               "app.version=" + appVersion,
               "app.exec=bin/launch.sh",
-              "app.permissions=" + permissions));
+              "app.permissions=" + permissions);
+      if (!extraManifestProperties.isBlank()) {
+        manifest += extraManifestProperties;
+      }
+      writeZipEntry(zip, AppBundleManifestParser.MANIFEST_FILE_NAME, manifest);
       writeZipEntry(zip, "bin/launch.sh", "#!/bin/sh\nexit 0\n");
     }
     return artifact;

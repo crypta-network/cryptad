@@ -4,6 +4,7 @@ app.name=Profile Publisher
 app.version=${appVersion}
 api.minimumVersion=9
 api.maximumTestedVersion=19
+api.targetStability=experimental
 api.experimentalCapabilitiesAccepted=true
 app.exec=bin/profile-publisher.sh
 app.ui.mode=static

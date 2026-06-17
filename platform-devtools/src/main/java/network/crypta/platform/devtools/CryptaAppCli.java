@@ -57,6 +57,7 @@ import network.crypta.platform.appcatalog.AppReviewTrustDecision;
 import network.crypta.platform.appcatalog.FileAppReviewTransparencyStore;
 import network.crypta.platform.appcatalog.TrustedReviewerKey;
 import network.crypta.platform.appcatalog.TrustedReviewerKeys;
+import network.crypta.platform.appdist.AppApiCompatibilityMetadata;
 import network.crypta.platform.appdist.AppBundlePackager;
 import network.crypta.platform.appdist.AppDistributionException;
 import network.crypta.platform.appdist.AppDistributionTool;
@@ -682,13 +683,20 @@ public final class CryptaAppCli implements Runnable {
               });
       AppCatalogCompatibilityMetadata descriptorCompatibility =
           inspection.descriptor().compatibility();
+      AppApiCompatibilityMetadata effectiveApi =
+          inspection.entry().compatibility().apiCompatibility();
+      AppApiCompatibilityMetadata manifestApi = inspection.manifest().apiCompatibility();
       if (descriptorCompatibility.apiCompatibility().declared()
-          && !descriptorCompatibility
-              .apiCompatibility()
-              .equals(inspection.manifest().apiCompatibility())) {
+          && !effectiveApi.equals(manifestApi)) {
+        String code =
+            effectiveApi.targetStability() != manifestApi.targetStability()
+                    || effectiveApi.targetStabilityDeclared()
+                        != manifestApi.targetStabilityDeclared()
+                ? "catalog_api_target_stability_mismatch"
+                : "catalog_api_compatibility_mismatch";
         findings.add(
             compatibilityFinding(
-                "catalog_api_compatibility_mismatch",
+                code,
                 strict,
                 "Catalog descriptor API compatibility metadata differs from bundle manifest"
                     + " metadata."));

@@ -8,6 +8,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermission;
 import java.util.Set;
+import network.crypta.platform.appdist.AppApiCompatibilityMetadata.TargetStability;
 import network.crypta.platform.appdist.AppUiMode;
 import network.crypta.platform.apphost.manifest.AppManifest;
 import network.crypta.platform.apphost.manifest.AppManifestParser;
@@ -72,6 +73,8 @@ class SitePublisherBundleStagingTest {
     assertEquals(
         Integer.valueOf(EXPECTED_PLATFORM_API_MAXIMUM_TESTED_VERSION),
         manifest.apiCompatibility().maximumTestedVersion());
+    assertEquals(TargetStability.STABLE, manifest.apiCompatibility().targetStability());
+    assertTrue(manifest.apiCompatibility().targetStabilityDeclared());
     assertFalse(manifest.apiCompatibility().experimentalCapabilitiesAccepted());
     assertEquals(Long.valueOf(0L), manifest.dataQuotaBytes());
     assertEquals(Long.valueOf(0L), manifest.cacheQuotaBytes());
@@ -91,6 +94,7 @@ class SitePublisherBundleStagingTest {
     assertTrue(
         manifestText.contains(
             "api.maximumTestedVersion=" + EXPECTED_PLATFORM_API_MAXIMUM_TESTED_VERSION));
+    assertTrue(manifestText.contains("api.targetStability=stable"));
     assertTrue(manifestText.contains("api.experimentalCapabilitiesAccepted=false"));
     assertTrue(manifestText.contains("app.exec=" + EXPECTED_LAUNCHER_PATH));
     assertTrue(manifestText.contains("app.ui.mode=static"));
