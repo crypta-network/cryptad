@@ -284,7 +284,7 @@ public final class PlatformApiContractJson {
       Map<String, Object> contract, int contractVersion) {
     Object value = contract.get(FIELD_STABLE_BASELINE);
     if (value == null) {
-      if (contractVersion >= PlatformApiContract.PLATFORM_API_STABLE_BASELINE_CONTRACT_VERSION) {
+      if (contractVersion > PlatformApiContract.PLATFORM_API_STABLE_BASELINE_CONTRACT_VERSION) {
         throw new IllegalArgumentException(FIELD_STABLE_BASELINE + " must be a JSON object");
       }
       return null;

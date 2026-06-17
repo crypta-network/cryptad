@@ -63,13 +63,28 @@ class PlatformApiContractTest {
   }
 
   @Test
-  void parse_whenStableBaselineMissingFromCurrentSnapshot_expectSnapshotRejected() {
-    String json = contractJsonWithoutStableBaseline(PlatformApiContract.CURRENT_CONTRACT_VERSION);
+  void parse_whenStableBaselineMissingFromFutureSnapshot_expectSnapshotRejected() {
+    String json =
+        contractJsonWithoutStableBaseline(
+            PlatformApiContract.PLATFORM_API_STABLE_BASELINE_CONTRACT_VERSION + 1);
 
     IllegalArgumentException thrown =
         assertThrows(IllegalArgumentException.class, () -> PlatformApiContractJson.parse(json));
 
     assertTrue(thrown.getMessage().contains("stableBaseline"), thrown.getMessage());
+  }
+
+  @Test
+  void parse_whenStableBaselineMissingFromBaselineVersionSnapshot_expectSnapshotRemainsReadable() {
+    int baselineContractVersion = PlatformApiContract.PLATFORM_API_STABLE_BASELINE_CONTRACT_VERSION;
+    String json = contractJsonWithoutStableBaseline(baselineContractVersion);
+
+    PlatformApiContract parsed = PlatformApiContractJson.parse(json);
+
+    assertEquals(baselineContractVersion, parsed.contractVersion());
+    assertEquals(
+        PlatformApiContract.PLATFORM_API_STABLE_BASELINE_CONTRACT_VERSION,
+        parsed.stableBaseline().contractVersion());
   }
 
   @Test
