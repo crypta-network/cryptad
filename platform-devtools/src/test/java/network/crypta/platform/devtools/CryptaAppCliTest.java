@@ -1287,6 +1287,43 @@ class CryptaAppCliTest {
   }
 
   @Test
+  void compatVerify_whenCatalogEntryApiRangeOmitsTargetStability_expectManifestTargetIsUsed()
+      throws Exception {
+    Path appDir = tempDir.resolve("sample-app");
+    Path outputZip = tempDir.resolve("sample-app.zip");
+    Path descriptor = tempDir.resolve("entry.properties");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "sample-app",
+        "--name",
+        "Sample App",
+        "--version",
+        "0.1.0",
+        "--permission",
+        "queue.read");
+    runCli("pack", "--bundle-dir", appDir.toString(), "--output", outputZip.toString());
+    Files.writeString(
+        descriptor,
+        lines(
+            "artifact.path=" + outputZip.toAbsolutePath().normalize(),
+            "bundle.uri=" + outputZip.toUri(),
+            "summary=Sample catalog entry.",
+            "api.minimumVersion=" + currentContractVersion(),
+            "api.maximumTestedVersion=" + currentContractVersion()),
+        StandardCharsets.UTF_8);
+
+    CliResult result =
+        runCli("compat", "verify", "--catalog-entry", descriptor.toString(), "--strict");
+
+    assertEquals(CommandLine.ExitCode.OK, result.exitCode());
+    assertTrue(result.out().contains("Compatibility verified."));
+    assertEquals("", result.err());
+  }
+
+  @Test
   void compatVerify_whenStrictBundleMinimumExceedsContract_expectFailure() throws Exception {
     Path appDir = tempDir.resolve("sample-app");
     runCli(

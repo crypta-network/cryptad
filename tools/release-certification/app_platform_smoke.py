@@ -14523,7 +14523,7 @@ def run_self_test(repo_root: Path) -> None:
             contract_details["contractVersion"] == CURRENT_PLATFORM_API_CONTRACT_VERSION
         ), contract_item
         assert contract_details["capabilityCount"] == 15, contract_item
-        assert contract_details["endpointCount"] == 35, contract_item
+        assert contract_details["endpointCount"] == 55, contract_item
         assert contract_details["appServicesContract"]["missingCapabilities"] == [], contract_item
         assert contract_details["appServicesContract"]["missingEndpoints"] == [], contract_item
         assert contract_details["stableBaselineCapabilities"] == [
@@ -19371,9 +19371,9 @@ def make_fake_cli(workspace: Path) -> Path:
     bin_dir = workspace / "platform-devtools/build/install/crypta-app/bin"
     bin_dir.mkdir(parents=True, exist_ok=True)
     cli = bin_dir / ("crypta-app.bat" if platform.system() == "Windows" else "crypta-app")
+    helper = bin_dir / "crypta-app-fake.py"
+    helper.write_text(fake_cli_python_source(), encoding="utf-8")
     if platform.system() == "Windows":
-        helper = bin_dir / "crypta-app-fake.py"
-        helper.write_text(fake_cli_python_source(), encoding="utf-8")
         cli.write_text(
             """@echo off
 py -3 "%~dp0crypta-app-fake.py" %*
@@ -19387,6 +19387,7 @@ exit /b %ERRORLEVEL%
         cli.write_text(
             """#!/usr/bin/env sh
 set -eu
+script_dir="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 cmd="${1:-}"
 if [ "$#" -gt 0 ]; then shift; fi
 case "$cmd" in
@@ -19561,6 +19562,10 @@ PY
     if [ "$#" -gt 0 ]; then shift; fi
     case "$sub" in
       snapshot)
+        if command -v python3 >/dev/null 2>&1; then
+          python3 "$script_dir/crypta-app-fake.py" api snapshot "$@"
+          exit $?
+        fi
         output=""
         while [ "$#" -gt 0 ]; do
           if [ "$1" = "--output" ]; then output="$2"; shift 2; else shift; fi

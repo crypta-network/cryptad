@@ -683,13 +683,14 @@ public final class CryptaAppCli implements Runnable {
               });
       AppCatalogCompatibilityMetadata descriptorCompatibility =
           inspection.descriptor().compatibility();
-      AppApiCompatibilityMetadata descriptorApi = descriptorCompatibility.apiCompatibility();
+      AppApiCompatibilityMetadata effectiveApi =
+          inspection.entry().compatibility().apiCompatibility();
       AppApiCompatibilityMetadata manifestApi = inspection.manifest().apiCompatibility();
       if (descriptorCompatibility.apiCompatibility().declared()
-          && !descriptorApi.equals(manifestApi)) {
+          && !effectiveApi.equals(manifestApi)) {
         String code =
-            descriptorApi.targetStability() != manifestApi.targetStability()
-                    || descriptorApi.targetStabilityDeclared()
+            effectiveApi.targetStability() != manifestApi.targetStability()
+                    || effectiveApi.targetStabilityDeclared()
                         != manifestApi.targetStabilityDeclared()
                 ? "catalog_api_target_stability_mismatch"
                 : "catalog_api_compatibility_mismatch";
