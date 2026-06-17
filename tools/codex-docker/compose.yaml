@@ -21,13 +21,15 @@ services:
       TS_STATE_DIR: /var/lib/tailscale
       TS_ROUTES: ${CRYPTAD_DOCKER_SUBNET:-172.30.70.0/24}
       TS_USERSPACE: "false"
+      CRYPTAD_TAILSCALE_AUTHKEY: ${CRYPTAD_TAILSCALE_AUTHKEY:-}
+      CRYPTAD_TAILSCALE_HOSTNAME: ${CRYPTAD_TAILSCALE_HOSTNAME:-cryptad-codex-docker}
+      CRYPTAD_TAILSCALE_EXTRA_ARGS: ${CRYPTAD_TAILSCALE_EXTRA_ARGS:---ssh}
       CRYPTAD_DOCKER_PROJECT: codex-crypta
       CRYPTAD_DOCKER_NETWORK: codex-crypta_default
       CRYPTAD_CODEX_SERVICE: codex
       CRYPTAD_CODEX_WORKDIR: /work/cryptad
     volumes:
       - tailscale-state:/var/lib/tailscale
-      - ../../.env:/run/cryptad/root.env:ro
       - /var/run/docker.sock:/var/run/docker.sock
     cap_add:
       - NET_ADMIN

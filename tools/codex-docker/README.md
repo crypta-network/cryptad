@@ -7,8 +7,8 @@ tracked repository configuration.
 
 - Docker with Compose v2 and BuildKit support.
 - Network access to pull base images and download upstream release assets.
-- Optional Tailscale auth state in repo-root `.env`. The root `.env` file is ignored and must not
-  be committed.
+- Optional Tailscale settings in repo-root `.env`. The root `.env` file is ignored and must not be
+  committed.
 
 ## Configure
 
@@ -27,8 +27,10 @@ Codex CLI version used as the current baseline. Set `CODEX_IMAGE_TAG` in `../../
 need a different local image tag.
 
 The Codex container permits root SSH login with password `root`. It also supports key-based login:
-set `CODEX_SSH_AUTHORIZED_KEYS` to one or more public keys in `../../.env`. Do not commit private
-keys or local tokens, and keep SSH access limited to the Docker/Tailscale paths you intend to use.
+set `CODEX_SSH_AUTHORIZED_KEYS` to one or more public keys in `../../.env`. Public key values may
+contain spaces because Compose reads this file directly; do not source `../../.env` as a shell
+script. Do not commit private keys or local tokens, and keep SSH access limited to the
+Docker/Tailscale paths you intend to use.
 Interactive SSH login shells start in `/work/cryptad`.
 
 ## Version resolution
@@ -59,6 +61,10 @@ Start Tailscale only when you need the remote shell helper:
 ```bash
 docker compose --env-file ../../.env up -d tailscale-shell
 ```
+
+The Tailscale shell service receives only the Tailscale-related settings from `../../.env`. It does
+not mount or source the whole file, so unrelated values such as `CODEX_SSH_AUTHORIZED_KEYS` cannot
+break Tailscale startup.
 
 List services:
 

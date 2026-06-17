@@ -1,19 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-root_env="/run/cryptad/root.env"
-if [ -f "${root_env}" ]; then
-  set -a
-  # shellcheck source=/dev/null
-  . "${root_env}"
-  set +a
-fi
-
 export TS_HOSTNAME="${TS_HOSTNAME:-${CRYPTAD_TAILSCALE_HOSTNAME:-cryptad-codex-docker}}"
 export TS_EXTRA_ARGS="${TS_EXTRA_ARGS:-${CRYPTAD_TAILSCALE_EXTRA_ARGS:---ssh}}"
 
 if [ -z "${TS_AUTHKEY:-}" ] && [ -n "${CRYPTAD_TAILSCALE_AUTHKEY:-}" ]; then
   export TS_AUTHKEY="${CRYPTAD_TAILSCALE_AUTHKEY}"
 fi
+unset CRYPTAD_TAILSCALE_AUTHKEY
 
 exec /usr/local/bin/containerboot "$@"
