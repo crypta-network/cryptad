@@ -157,6 +157,8 @@ class AppCatalogEntryDescriptorTest {
         parsed.compatibility().apiCompatibility().targetStability());
     assertTrue(parsed.compatibility().apiCompatibility().targetStabilityDeclared());
     assertTrue(parsed.compatibility().apiCompatibility().experimentalCapabilitiesAccepted());
+    assertTrue(
+        parsed.compatibility().apiCompatibility().experimentalCapabilitiesAcceptedDeclared());
   }
 
   private static void assertReviewMetadata(AppCatalogEntryDescriptor parsed) {

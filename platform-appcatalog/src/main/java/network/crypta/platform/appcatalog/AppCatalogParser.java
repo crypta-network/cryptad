@@ -327,8 +327,12 @@ public final class AppCatalogParser {
         removeOptional(properties, prefix + "api.targetStability")
             .map(AppCatalogParser::parseTargetStability)
             .orElse(null);
+    String experimentalCapabilitiesAcceptedKey = prefix + "api.experimentalCapabilitiesAccepted";
+    Optional<String> experimentalCapabilitiesAcceptedValue =
+        removeOptional(properties, experimentalCapabilitiesAcceptedKey);
     boolean experimentalCapabilitiesAccepted =
-        parseExperimentalCapabilitiesAccepted(properties, prefix);
+        parseExperimentalCapabilitiesAccepted(
+            experimentalCapabilitiesAcceptedValue, experimentalCapabilitiesAcceptedKey);
     try {
       return new AppApiCompatibilityMetadata(
           minimumVersion,
@@ -336,7 +340,8 @@ public final class AppCatalogParser {
           optionalCapabilities,
           targetStability,
           targetStability != null,
-          experimentalCapabilitiesAccepted);
+          experimentalCapabilitiesAccepted,
+          experimentalCapabilitiesAcceptedValue.isPresent());
     } catch (IllegalArgumentException exception) {
       throw new AppCatalogException(
           AppCatalogSidecars.INVALID_CATALOG_ENTRY, exception.getMessage(), exception);
@@ -371,10 +376,7 @@ public final class AppCatalogParser {
     }
   }
 
-  private static boolean parseExperimentalCapabilitiesAccepted(
-      Map<String, String> properties, String prefix) {
-    String key = prefix + "api.experimentalCapabilitiesAccepted";
-    Optional<String> value = removeOptional(properties, key);
+  private static boolean parseExperimentalCapabilitiesAccepted(Optional<String> value, String key) {
     if (value.isEmpty()) {
       return false;
     }

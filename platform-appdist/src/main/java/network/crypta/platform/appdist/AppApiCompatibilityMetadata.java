@@ -36,6 +36,8 @@ import java.util.regex.Pattern;
  * @param targetStabilityDeclared whether {@code api.targetStability} was explicitly present
  * @param experimentalCapabilitiesAccepted whether the author explicitly accepts experimental
  *     Platform API capabilities
+ * @param experimentalCapabilitiesAcceptedDeclared whether {@code
+ *     api.experimentalCapabilitiesAccepted} was explicitly present
  */
 public record AppApiCompatibilityMetadata(
     Integer minimumVersion,
@@ -43,7 +45,8 @@ public record AppApiCompatibilityMetadata(
     List<String> optionalCapabilities,
     TargetStability targetStability,
     boolean targetStabilityDeclared,
-    boolean experimentalCapabilitiesAccepted) {
+    boolean experimentalCapabilitiesAccepted,
+    boolean experimentalCapabilitiesAcceptedDeclared) {
   private static final Pattern CAPABILITY_PATTERN =
       Pattern.compile("[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?");
 
@@ -55,7 +58,7 @@ public record AppApiCompatibilityMetadata(
    * opt-in.
    */
   public static final AppApiCompatibilityMetadata EMPTY =
-      new AppApiCompatibilityMetadata(null, null, List.of(), null, false, false);
+      new AppApiCompatibilityMetadata(null, null, List.of(), null, false, false, false);
 
   /**
    * Creates normalized advisory API compatibility metadata.
@@ -88,6 +91,9 @@ public record AppApiCompatibilityMetadata(
       targetStability = TargetStability.EXPERIMENTAL;
       targetStabilityDeclared = false;
     }
+    if (experimentalCapabilitiesAccepted) {
+      experimentalCapabilitiesAcceptedDeclared = true;
+    }
   }
 
   /**
@@ -116,6 +122,7 @@ public record AppApiCompatibilityMetadata(
         optionalCapabilities,
         null,
         false,
+        experimentalCapabilitiesAccepted,
         experimentalCapabilitiesAccepted);
   }
 
@@ -143,6 +150,43 @@ public record AppApiCompatibilityMetadata(
         optionalCapabilities,
         targetStability,
         true,
+        experimentalCapabilitiesAccepted,
+        true);
+  }
+
+  /**
+   * Creates metadata with caller-supplied target-stability declaration state.
+   *
+   * <p>This constructor preserves the shape used by the first Platform API 1.0 freeze work before
+   * catalog tooling needed to distinguish an omitted experimental opt-in from an explicit {@code
+   * false}. A {@code true} experimental acceptance value is necessarily treated as declared; an
+   * explicit {@code false} should use the canonical constructor when the declaration state matters.
+   *
+   * @param minimumVersion minimum Platform API contract version required by the app, or {@code
+   *     null}
+   * @param maximumTestedVersion highest Platform API contract version tested by the app, or {@code
+   *     null}
+   * @param optionalCapabilities normalized advisory capability names the app can use when present
+   * @param targetStability effective target stability for the app; {@code null} uses the legacy
+   *     experimental default
+   * @param targetStabilityDeclared whether {@code api.targetStability} was explicitly present
+   * @param experimentalCapabilitiesAccepted whether the author explicitly accepts experimental
+   *     Platform API capabilities
+   */
+  public AppApiCompatibilityMetadata(
+      Integer minimumVersion,
+      Integer maximumTestedVersion,
+      List<String> optionalCapabilities,
+      TargetStability targetStability,
+      boolean targetStabilityDeclared,
+      boolean experimentalCapabilitiesAccepted) {
+    this(
+        minimumVersion,
+        maximumTestedVersion,
+        optionalCapabilities,
+        targetStability,
+        targetStabilityDeclared,
+        experimentalCapabilitiesAccepted,
         experimentalCapabilitiesAccepted);
   }
 
@@ -161,7 +205,7 @@ public record AppApiCompatibilityMetadata(
         || maximumTestedVersion != null
         || !optionalCapabilities.isEmpty()
         || targetStabilityDeclared
-        || experimentalCapabilitiesAccepted;
+        || experimentalCapabilitiesAcceptedDeclared;
   }
 
   /**

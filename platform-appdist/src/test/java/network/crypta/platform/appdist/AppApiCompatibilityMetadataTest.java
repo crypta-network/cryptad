@@ -42,6 +42,16 @@ class AppApiCompatibilityMetadataTest {
   }
 
   @Test
+  void constructor_whenExperimentalAcceptanceFalseDeclared_expectDeclaredMetadata() {
+    AppApiCompatibilityMetadata metadata =
+        new AppApiCompatibilityMetadata(null, null, List.of(), null, false, false, true);
+
+    assertFalse(metadata.experimentalCapabilitiesAccepted());
+    assertTrue(metadata.experimentalCapabilitiesAcceptedDeclared());
+    assertTrue(metadata.declared());
+  }
+
+  @Test
   void parse_whenTargetStabilityUsesWhitespaceAndCase_expectNormalizedTarget() {
     assertEquals(
         AppApiCompatibilityMetadata.TargetStability.STABLE,

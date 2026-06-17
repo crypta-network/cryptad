@@ -313,8 +313,12 @@ public final class AppCatalogWriter {
       targetStability = manifestApi.targetStability();
     }
     boolean experimentalCapabilitiesAccepted =
-        descriptorApi.experimentalCapabilitiesAccepted()
-            || manifestApi.experimentalCapabilitiesAccepted();
+        descriptorApi.experimentalCapabilitiesAcceptedDeclared()
+            ? descriptorApi.experimentalCapabilitiesAccepted()
+            : manifestApi.experimentalCapabilitiesAccepted();
+    boolean experimentalCapabilitiesAcceptedDeclared =
+        descriptorApi.experimentalCapabilitiesAcceptedDeclared()
+            || manifestApi.experimentalCapabilitiesAcceptedDeclared();
     return new AppApiCompatibilityMetadata(
         descriptorApi.minimumVersion() != null
             ? descriptorApi.minimumVersion()
@@ -327,7 +331,8 @@ public final class AppCatalogWriter {
             : descriptorApi.optionalCapabilities(),
         targetStability,
         targetStabilityDeclared,
-        experimentalCapabilitiesAccepted);
+        experimentalCapabilitiesAccepted,
+        experimentalCapabilitiesAcceptedDeclared);
   }
 
   private static void requireManifestAppIdMatch(

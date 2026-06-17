@@ -403,7 +403,10 @@ public record AppCatalogEntryDescriptor(
         removeOptional(properties, API_TARGET_STABILITY)
             .map(AppCatalogEntryDescriptor::parseTargetStability)
             .orElse(null);
-    boolean experimentalCapabilitiesAccepted = parseExperimentalCapabilitiesAccepted(properties);
+    Optional<String> experimentalCapabilitiesAcceptedValue =
+        removeOptional(properties, API_EXPERIMENTAL_CAPABILITIES_ACCEPTED);
+    boolean experimentalCapabilitiesAccepted =
+        parseExperimentalCapabilitiesAccepted(experimentalCapabilitiesAcceptedValue);
     try {
       return new AppApiCompatibilityMetadata(
           minimumVersion,
@@ -411,7 +414,8 @@ public record AppCatalogEntryDescriptor(
           optionalCapabilities,
           targetStability,
           targetStability != null,
-          experimentalCapabilitiesAccepted);
+          experimentalCapabilitiesAccepted,
+          experimentalCapabilitiesAcceptedValue.isPresent());
     } catch (IllegalArgumentException exception) {
       throw new AppCatalogException(
           AppCatalogSidecars.INVALID_CATALOG_ENTRY, exception.getMessage(), exception);
@@ -446,8 +450,7 @@ public record AppCatalogEntryDescriptor(
     }
   }
 
-  private static boolean parseExperimentalCapabilitiesAccepted(Map<String, String> properties) {
-    Optional<String> value = removeOptional(properties, API_EXPERIMENTAL_CAPABILITIES_ACCEPTED);
+  private static boolean parseExperimentalCapabilitiesAccepted(Optional<String> value) {
     if (value.isEmpty()) {
       return false;
     }

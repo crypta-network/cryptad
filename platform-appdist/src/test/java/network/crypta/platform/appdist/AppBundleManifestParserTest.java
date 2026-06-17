@@ -334,6 +334,20 @@ class AppBundleManifestParserTest {
   }
 
   @Test
+  void parseContent_whenExperimentalAcceptanceFalseDeclared_expectDeclarationPreserved()
+      throws Exception {
+    AppBundleManifest manifest =
+        AppBundleManifestParser.parseContent(
+            minimalManifest("api.experimentalCapabilitiesAccepted=false\n"));
+
+    AppApiCompatibilityMetadata compatibility = manifest.apiCompatibility();
+
+    assertFalse(compatibility.experimentalCapabilitiesAccepted());
+    assertTrue(compatibility.experimentalCapabilitiesAcceptedDeclared());
+    assertTrue(compatibility.declared());
+  }
+
+  @Test
   void parseContent_whenApiTargetStabilityIsMalformed_expectFailure() {
     AppDistributionException exception =
         assertThrows(

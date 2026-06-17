@@ -476,7 +476,10 @@ public final class AppBundleManifestParser {
     List<String> optionalCapabilities =
         parseOptionalCapabilities(optional(properties, "api.optionalCapabilities"));
     AppApiCompatibilityMetadata.TargetStability targetStability = parseTargetStability(properties);
-    boolean experimentalCapabilitiesAccepted = parseExperimentalCapabilitiesAccepted(properties);
+    String experimentalCapabilitiesAcceptedValue =
+        optional(properties, "api.experimentalCapabilitiesAccepted");
+    boolean experimentalCapabilitiesAccepted =
+        parseExperimentalCapabilitiesAccepted(experimentalCapabilitiesAcceptedValue);
     try {
       return new AppApiCompatibilityMetadata(
           minimumVersion,
@@ -484,7 +487,8 @@ public final class AppBundleManifestParser {
           optionalCapabilities,
           targetStability,
           targetStability != null,
-          experimentalCapabilitiesAccepted);
+          experimentalCapabilitiesAccepted,
+          experimentalCapabilitiesAcceptedValue != null);
     } catch (IllegalArgumentException exception) {
       throw new AppDistributionException(exception.getMessage(), exception);
     }
@@ -689,10 +693,9 @@ public final class AppBundleManifestParser {
     }
   }
 
-  private static boolean parseExperimentalCapabilitiesAccepted(Properties properties)
+  private static boolean parseExperimentalCapabilitiesAccepted(String value)
       throws AppDistributionException {
     String key = "api.experimentalCapabilitiesAccepted";
-    String value = optional(properties, key);
     if (value == null) {
       return false;
     }

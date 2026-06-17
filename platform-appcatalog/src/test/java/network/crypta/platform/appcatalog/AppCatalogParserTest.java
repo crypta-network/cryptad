@@ -143,6 +143,7 @@ class AppCatalogParserTest {
         entry.compatibility().apiCompatibility().targetStability());
     assertTrue(entry.compatibility().apiCompatibility().targetStabilityDeclared());
     assertTrue(entry.compatibility().apiCompatibility().experimentalCapabilitiesAccepted());
+    assertTrue(entry.compatibility().apiCompatibility().experimentalCapabilitiesAcceptedDeclared());
     assertEquals(AppCatalogReviewStatus.REVIEWED, entry.review().status());
     assertEquals("Reviewed for local operator safety.", entry.review().note().orElseThrow());
     assertEquals("Reads the local transfer queue.", entry.permissionRationales().get("queue.read"));
