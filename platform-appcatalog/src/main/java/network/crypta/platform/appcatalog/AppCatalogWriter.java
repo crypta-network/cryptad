@@ -314,8 +314,7 @@ public final class AppCatalogWriter {
     }
     boolean experimentalCapabilitiesAccepted =
         descriptorApi.experimentalCapabilitiesAccepted()
-            || (!descriptorApi.targetStabilityDeclared()
-                && manifestApi.experimentalCapabilitiesAccepted());
+            || manifestApi.experimentalCapabilitiesAccepted();
     return new AppApiCompatibilityMetadata(
         descriptorApi.minimumVersion() != null
             ? descriptorApi.minimumVersion()
