@@ -14396,6 +14396,40 @@ def run_self_test(repo_root: Path) -> None:
             CURRENT_PLATFORM_API_CONTRACT_VERSION
         )
         assert python_fake_manifest["api.targetStability"] == "stable"
+        python_fake_contract = workspace / "python-fake-platform-api-contract.json"
+        python_fake_snapshot_result = subprocess.run(
+            [
+                sys.executable,
+                str(python_fake_cli),
+                "api",
+                "snapshot",
+                "--output",
+                str(python_fake_contract),
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert python_fake_snapshot_result.returncode == 0, python_fake_snapshot_result.stderr
+        python_fake_snapshot = json.loads(python_fake_contract.read_text(encoding="utf-8"))
+        python_fake_baseline = python_fake_snapshot["contract"]["stableBaseline"]
+        assert python_fake_baseline["name"] == "1.0", python_fake_baseline
+        assert python_fake_baseline["contractVersion"] == (
+            CURRENT_PLATFORM_API_STABLE_BASELINE_CONTRACT_VERSION
+        ), python_fake_baseline
+        assert python_fake_baseline["capabilityCount"] == 9, python_fake_baseline
+        assert python_fake_baseline["endpointCount"] == 32, python_fake_baseline
+        assert python_fake_baseline["capabilities"] == [
+            "app.data.read",
+            "app.data.write",
+            "content.fetch",
+            "content.insert",
+            "content.insert.app-document",
+            "content.subscribe",
+            "platform.contract.read",
+            "queue.read",
+            "queue.write",
+        ], python_fake_baseline
         fake_cli = make_fake_cli(workspace)
         settings = Settings(
             workspace_root=workspace.resolve(),
@@ -18944,6 +18978,7 @@ import sys
 from pathlib import Path
 
 CURRENT_PLATFORM_API_CONTRACT_VERSION = 19
+STABLE_BASELINE_CONTRACT_VERSION = 19
 
 
 def option_value(args, name):
@@ -19130,215 +19165,154 @@ def api_snapshot(args):
     if not output_text:
         return 2
     output = Path(output_text)
-    write_text(
-        output,
-        json.dumps(
-            {
-                "contract": {
-                    "apiVersion": "v1",
-                    "contractVersion": 19,
-                    "generatedBy": "cryptad",
-                    "stabilityPolicy": "self-test",
-                    "capabilities": [
-                        {
-                            "name": "queue.read",
-                            "stability": "stable",
-                            "sinceContractVersion": 1,
-                            "deprecation": None,
-                            "description": "Read queue state.",
-                        },
-                        {
-                            "name": "platform.contract.read",
-                            "stability": "stable",
-                            "sinceContractVersion": 1,
-                            "deprecation": None,
-                            "description": "Read contract snapshots.",
-                        },
-                        {
-                            "name": "app.data.read",
-                            "stability": "stable",
-                            "sinceContractVersion": 9,
-                            "deprecation": None,
-                            "description": "Read app-owned durable state.",
-                        },
-                        {
-                            "name": "app.data.write",
-                            "stability": "stable",
-                            "sinceContractVersion": 9,
-                            "deprecation": None,
-                            "description": "Write app-owned durable state.",
-                        },
-                        {
-                            "name": "content.fetch",
-                            "stability": "stable",
-                            "sinceContractVersion": 6,
-                            "deprecation": None,
-                            "description": "Fetch bounded content.",
-                        },
-                        {
-                            "name": "trust.read",
-                            "stability": "stable",
-                            "sinceContractVersion": 7,
-                            "deprecation": None,
-                            "description": "Read local trust graph preview state.",
-                        },
-                        {
-                            "name": "trust.write",
-                            "stability": "stable",
-                            "sinceContractVersion": 7,
-                            "deprecation": None,
-                            "description": "Mutate local trust graph preview state.",
-                        },
-                        {
-                            "name": "vault.identities.read",
-                            "stability": "experimental",
-                            "sinceContractVersion": 11,
-                            "deprecation": None,
-                            "description": "Read app-visible identity metadata.",
-                        },
-                        {
-                            "name": "vault.identities.use",
-                            "stability": "experimental",
-                            "sinceContractVersion": 11,
-                            "deprecation": None,
-                            "description": "Use bounded AppVault signing routes.",
-                        },
-                        {
-                            "name": "app.services.read",
-                            "stability": "experimental",
-                            "sinceContractVersion": 12,
-                            "deprecation": None,
-                            "description": "Discover local app services and grants.",
-                        },
-                        {
-                            "name": "app.services.call",
-                            "stability": "experimental",
-                            "sinceContractVersion": 12,
-                            "deprecation": None,
-                            "description": "Request grants and invoke approved services.",
-                        },
-                    ],
-                    "endpoints": [
-                        {
-                            "routeFamily": "queue",
-                            "method": "GET",
-                            "routeTemplate": "/queue",
-                            "actionLabel": "queue.read",
-                            "requiredCapabilities": ["queue.read"],
-                            "hostOperatorBypassAllowed": True,
-                            "appProcessPrincipalsAllowed": True,
-                            "appBrowserPrincipalsAllowed": True,
-                            "stability": "stable",
-                            "sinceContractVersion": 1,
-                            "deprecation": None,
-                            "description": "Read queue state.",
-                        },
-                        {"method": "GET", "routeTemplate": "/app-data/status", "stability": "stable"},
-                        {"method": "GET", "routeTemplate": "/app-data/namespaces", "stability": "stable"},
-                        {"method": "GET", "routeTemplate": "/app-data/namespaces/{namespace}", "stability": "stable"},
-                        {"method": "POST", "routeTemplate": "/app-data/namespaces/{namespace}/schema", "stability": "stable"},
-                        {"method": "DELETE", "routeTemplate": "/app-data/namespaces/{namespace}", "stability": "stable"},
-                        {"method": "GET", "routeTemplate": "/app-data/records", "stability": "stable"},
-                        {"method": "GET", "routeTemplate": "/app-data/records/{namespace}/{key}", "stability": "stable"},
-                        {"method": "POST", "routeTemplate": "/app-data/records", "stability": "stable"},
-                        {"method": "DELETE", "routeTemplate": "/app-data/records/{namespace}/{key}", "stability": "stable"},
-                        {"method": "GET", "routeTemplate": "/app-data/export", "stability": "stable"},
-                        {"method": "POST", "routeTemplate": "/app-data/import", "stability": "stable"},
-                        {"method": "GET", "routeTemplate": "/trust-graph/audit", "stability": "stable"},
-                        {"method": "POST", "routeTemplate": "/trust-graph/import-uri", "stability": "stable"},
-                        {
-                            "method": "GET",
-                            "routeTemplate": "/trust-graph/statements/{fingerprint}",
-                            "requiredCapabilities": ["trust.read"],
-                            "stability": "experimental",
-                            "sinceContractVersion": 15,
-                        },
-                        {
-                            "method": "POST",
-                            "routeTemplate": "/trust-graph/statements/{fingerprint}/deprecate",
-                            "requiredCapabilities": ["trust.write"],
-                            "stability": "experimental",
-                            "sinceContractVersion": 15,
-                        },
-                        {
-                            "method": "POST",
-                            "routeTemplate": "/trust-graph/statements/{fingerprint}/revoke",
-                            "requiredCapabilities": ["trust.write"],
-                            "stability": "experimental",
-                            "sinceContractVersion": 15,
-                        },
-                        {
-                            "method": "POST",
-                            "routeTemplate": "/trust-graph/statements/{fingerprint}/reactivate",
-                            "requiredCapabilities": ["trust.write"],
-                            "stability": "experimental",
-                            "sinceContractVersion": 15,
-                        },
-                        {
-                            "method": "POST",
-                            "routeTemplate": "/app-vault/identities/{identityId}/social-message",
-                            "requiredCapabilities": ["vault.identities.read", "vault.identities.use"],
-                            "stability": "experimental",
-                        },
-                        {"method": "GET", "routeTemplate": "/app-services", "stability": "experimental"},
-                        {"method": "GET", "routeTemplate": "/app-services/audit", "stability": "experimental"},
-                        {"method": "GET", "routeTemplate": "/app-services/dependencies", "stability": "experimental"},
-                        {
-                            "method": "GET",
-                            "routeTemplate": "/app-services/dependencies/consumers/{consumerAppId}",
-                            "stability": "experimental",
-                        },
-                        {"method": "GET", "routeTemplate": "/app-services/grant-bundles", "stability": "experimental"},
-                        {"method": "POST", "routeTemplate": "/app-services/grant-bundles", "stability": "experimental"},
-                        {
-                            "method": "POST",
-                            "routeTemplate": "/app-services/grant-bundles/{bundleId}/approve",
-                            "stability": "experimental",
-                        },
-                        {
-                            "method": "POST",
-                            "routeTemplate": "/app-services/grant-bundles/{bundleId}/reject",
-                            "stability": "experimental",
-                        },
-                        {
-                            "method": "POST",
-                            "routeTemplate": "/app-services/grant-bundles/{bundleId}/renew",
-                            "stability": "experimental",
-                        },
-                        {"method": "GET", "routeTemplate": "/app-services/grants", "stability": "experimental"},
-                        {"method": "POST", "routeTemplate": "/app-services/grants", "stability": "experimental"},
-                        {
-                            "method": "POST",
-                            "routeTemplate": "/app-services/grants/{grantId}/approve",
-                            "stability": "experimental",
-                        },
-                        {
-                            "method": "POST",
-                            "routeTemplate": "/app-services/grants/{grantId}/revoke",
-                            "stability": "experimental",
-                        },
-                        {
-                            "method": "GET",
-                            "routeTemplate": "/app-services/{providerAppId}/services",
-                            "stability": "experimental",
-                        },
-                        {
-                            "method": "GET",
-                            "routeTemplate": "/app-services/{providerAppId}/services/{serviceId}",
-                            "stability": "experimental",
-                        },
-                        {
-                            "method": "POST",
-                            "routeTemplate": "/app-services/{providerAppId}/services/{serviceId}/invoke",
-                            "stability": "experimental",
-                        },
-                    ],
-                }
-            },
-            sort_keys=True,
-        )
-        + "\n",
-    )
+    stable_capabilities = [
+        "app.data.read",
+        "app.data.write",
+        "content.fetch",
+        "content.insert",
+        "content.insert.app-document",
+        "content.subscribe",
+        "platform.contract.read",
+        "queue.read",
+        "queue.write",
+    ]
+    stable_endpoint_specs = [
+        ("DELETE", "/app-data/namespaces/{namespace}", ["app.data.write"], 9, "Delete one app-owned durable data namespace."),
+        ("DELETE", "/app-data/records/{namespace}/{key}", ["app.data.write"], 9, "Delete one bounded durable app-data record."),
+        ("DELETE", "/content/subscriptions/{subscriptionId}", ["content.subscribe"], 8, "Delete one app-owned USK content subscription."),
+        ("GET", "/app-data/export", ["app.data.read"], 9, "Export bounded app-owned durable data."),
+        ("GET", "/app-data/namespaces", ["app.data.read"], 9, "List durable app-data namespace metadata."),
+        ("GET", "/app-data/namespaces/{namespace}", ["app.data.read"], 9, "Read one durable app-data namespace metadata record."),
+        ("GET", "/app-data/records", ["app.data.read"], 9, "List bounded durable app-data record summaries."),
+        ("GET", "/app-data/records/{namespace}/{key}", ["app.data.read"], 9, "Read one bounded durable app-data record."),
+        ("GET", "/app-data/status", ["app.data.read"], 9, "Read durable app-data status."),
+        ("GET", "/content/subscriptions", ["content.subscribe"], 8, "List app-owned USK content subscriptions."),
+        ("GET", "/content/subscriptions/{subscriptionId}", ["content.subscribe"], 8, "Read one app-owned USK content subscription."),
+        ("GET", "/platform/contract", ["platform.contract.read"], 1, "Read the deterministic Platform API compatibility contract."),
+        ("GET", "/queue", ["queue.read"], 1, "Read the queue snapshot."),
+        ("GET", "/queue/count", ["queue.read"], 1, "Read queue counts."),
+        ("GET", "/queue/keys", ["queue.read"], 1, "Read queue key exports."),
+        ("POST", "/app-data/import", ["app.data.write"], 9, "Import bounded app-owned durable data."),
+        ("POST", "/app-data/namespaces/{namespace}/schema", ["app.data.write"], 9, "Record durable app-data schema metadata."),
+        ("POST", "/app-data/records", ["app.data.write"], 9, "Create or replace one bounded durable app-data record."),
+        ("POST", "/content/fetch", ["content.fetch"], 6, "Fetch one bounded Crypta content document."),
+        ("POST", "/content/subscriptions", ["content.fetch", "content.subscribe"], 8, "Create one app-owned bounded USK content subscription."),
+        ("POST", "/content/subscriptions/{subscriptionId}/pause", ["content.subscribe"], 8, "Pause one app-owned USK content subscription."),
+        ("POST", "/content/subscriptions/{subscriptionId}/refresh", ["content.fetch", "content.subscribe"], 8, "Refresh one app-owned USK content subscription."),
+        ("POST", "/content/subscriptions/{subscriptionId}/resume", ["content.subscribe"], 8, "Resume one app-owned USK content subscription."),
+        ("POST", "/queue/cleanup/downloads", ["queue.write"], 1, "Clean completed download requests."),
+        ("POST", "/queue/cleanup/uploads", ["queue.write"], 1, "Clean completed upload requests."),
+        ("POST", "/queue/downloads", ["queue.write"], 1, "Create a direct download request."),
+        ("POST", "/queue/inserts/app-document", ["content.insert.app-document", "queue.write"], 5, "Create a bounded app-generated document insert request."),
+        ("POST", "/queue/inserts/directory", ["content.insert", "queue.write"], 1, "Create a local directory insert request."),
+        ("POST", "/queue/inserts/file", ["content.insert", "queue.write"], 1, "Create a local file insert request."),
+        ("POST", "/queue/requests/priority", ["queue.write"], 1, "Change queue request priority."),
+        ("POST", "/queue/requests/remove", ["queue.write"], 1, "Remove queue requests."),
+        ("POST", "/queue/requests/restart", ["queue.write"], 1, "Restart queue requests."),
+    ]
+
+    def capability(name, stability, since, description):
+        return {
+            "name": name,
+            "stability": stability,
+            "sinceContractVersion": since,
+            "deprecation": None,
+            "description": description,
+        }
+
+    def route_family(route):
+        trimmed = route.strip("/")
+        return trimmed.split("/", 1)[0] if trimmed else "platform"
+
+    def endpoint(
+        method,
+        route,
+        capabilities,
+        since,
+        description,
+        stability="stable",
+        host_operator=True,
+        app_process=True,
+        app_browser=True,
+    ):
+        action = route.strip("/").replace("/", ".").replace("{", "").replace("}", "")
+        return {
+            "routeFamily": route_family(route),
+            "method": method,
+            "routeTemplate": route,
+            "actionLabel": action or route,
+            "requiredCapabilities": capabilities,
+            "hostOperatorBypassAllowed": host_operator,
+            "appProcessPrincipalsAllowed": app_process,
+            "appBrowserPrincipalsAllowed": app_browser,
+            "stability": stability,
+            "sinceContractVersion": since,
+            "deprecation": None,
+            "description": description,
+        }
+
+    stable_endpoints = [
+        endpoint(method, route, capabilities, since, description)
+        for method, route, capabilities, since, description in stable_endpoint_specs
+    ]
+    experimental_endpoints = [
+        endpoint("GET", "/trust-graph/audit", ["trust.read"], 10, "List recent redacted Trust Graph Preview audit events.", "experimental"),
+        endpoint("POST", "/trust-graph/import-uri", ["content.fetch", "trust.write"], 10, "Fetch and import one bounded trust statement from a Crypta content URI.", "experimental"),
+        endpoint("GET", "/trust-graph/statements/{fingerprint}", ["trust.read"], 15, "Read one redacted local Trust Graph RC statement summary.", "experimental"),
+        endpoint("POST", "/trust-graph/statements/{fingerprint}/deprecate", ["trust.write"], 15, "Mark one imported statement deprecated in local lifecycle policy.", "experimental"),
+        endpoint("POST", "/trust-graph/statements/{fingerprint}/revoke", ["trust.write"], 15, "Mark one imported statement revoked in local lifecycle policy.", "experimental"),
+        endpoint("POST", "/trust-graph/statements/{fingerprint}/reactivate", ["trust.write"], 15, "Reactivate one imported statement in local lifecycle policy.", "experimental"),
+        endpoint("POST", "/app-vault/identities/{identityId}/social-message", ["vault.identities.read", "vault.identities.use"], 11, "Create a signed bounded social message.", "experimental"),
+        endpoint("GET", "/app-services", ["app.services.read"], 12, "List advertised local app services.", "experimental"),
+        endpoint("GET", "/app-services/audit", [], 12, "List recent redacted app-service audit events.", "operator-only", True, False, False),
+        endpoint("GET", "/app-services/dependencies", ["app.services.read"], 16, "List caller-visible app-service dependency graph.", "experimental"),
+        endpoint("GET", "/app-services/dependencies/consumers/{consumerAppId}", ["app.services.read"], 16, "Read dependency graph metadata for one consumer app.", "experimental"),
+        endpoint("GET", "/app-services/grant-bundles", ["app.services.read"], 16, "List grant-bundle proposals visible to the caller.", "experimental"),
+        endpoint("POST", "/app-services/grant-bundles", ["app.services.call"], 16, "Request an operator-reviewed grant bundle.", "experimental"),
+        endpoint("POST", "/app-services/grant-bundles/{bundleId}/approve", [], 16, "Approve one pending app-service grant bundle.", "operator-only", True, False, False),
+        endpoint("POST", "/app-services/grant-bundles/{bundleId}/reject", [], 16, "Reject one pending app-service grant bundle.", "operator-only", True, False, False),
+        endpoint("POST", "/app-services/grant-bundles/{bundleId}/renew", [], 16, "Renew one approved app-service grant bundle.", "operator-only", True, False, False),
+        endpoint("GET", "/app-services/grants", ["app.services.read"], 12, "List app-service grants visible to the caller.", "experimental"),
+        endpoint("POST", "/app-services/grants", ["app.services.call"], 12, "Request an operator-approved local app-service grant.", "experimental"),
+        endpoint("POST", "/app-services/grants/{grantId}/approve", [], 12, "Approve one pending app-service grant.", "operator-only", True, False, False),
+        endpoint("POST", "/app-services/grants/{grantId}/revoke", ["app.services.call"], 12, "Revoke one app-service grant.", "experimental"),
+        endpoint("GET", "/app-services/{providerAppId}/services", ["app.services.read"], 12, "List services advertised by one provider app.", "experimental"),
+        endpoint("GET", "/app-services/{providerAppId}/services/{serviceId}", ["app.services.read"], 12, "Read one advertised local app-service descriptor.", "experimental"),
+        endpoint("POST", "/app-services/{providerAppId}/services/{serviceId}/invoke", ["app.services.call"], 12, "Invoke one bounded local app service.", "experimental"),
+    ]
+    contract = {
+        "apiVersion": "v1",
+        "contractVersion": CURRENT_PLATFORM_API_CONTRACT_VERSION,
+        "generatedBy": "cryptad",
+        "stabilityPolicy": "self-test",
+        "stableBaseline": {
+            "name": "1.0",
+            "contractVersion": STABLE_BASELINE_CONTRACT_VERSION,
+            "capabilityCount": len(stable_capabilities),
+            "endpointCount": len(stable_endpoint_specs),
+            "capabilities": stable_capabilities,
+            "endpoints": [f"{method} {route}" for method, route, _capabilities, _since, _description in stable_endpoint_specs],
+        },
+        "capabilities": [
+            capability("queue.read", "stable", 1, "Read queue state."),
+            capability("queue.write", "stable", 1, "Create and mutate queue requests."),
+            capability("platform.contract.read", "stable", 1, "Read contract snapshots."),
+            capability("app.data.read", "stable", 9, "Read app-owned durable state."),
+            capability("app.data.write", "stable", 9, "Write app-owned durable state."),
+            capability("content.fetch", "stable", 6, "Fetch bounded content."),
+            capability("content.insert", "stable", 1, "Create content insert requests."),
+            capability("content.insert.app-document", "stable", 5, "Create app-generated document insert requests."),
+            capability("content.subscribe", "stable", 8, "Manage bounded content subscriptions."),
+            capability("trust.read", "experimental", 7, "Read local Trust Graph RC state and lifecycle."),
+            capability("trust.write", "experimental", 7, "Mutate local Trust Graph RC anchors and lifecycle."),
+            capability("vault.identities.read", "experimental", 11, "Read app-visible identity metadata."),
+            capability("vault.identities.use", "experimental", 11, "Use bounded AppVault signing routes."),
+            capability("app.services.read", "experimental", 12, "Discover local app services and grants."),
+            capability("app.services.call", "experimental", 12, "Request grants and invoke approved services."),
+        ],
+        "endpoints": stable_endpoints + experimental_endpoints,
+    }
+    write_text(output, json.dumps({"contract": contract}, sort_keys=True) + "\n")
     return 0
 
 
