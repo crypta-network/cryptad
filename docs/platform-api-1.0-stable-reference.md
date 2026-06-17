@@ -8,6 +8,9 @@ contract snapshot remains available through `crypta-app api snapshot` and
 The stable baseline is separate from the integer compatibility contract version. The current
 contract version records when descriptors were added or changed. The stable baseline name records
 which descriptors are part of the Platform API 1.0 app-facing compatibility promise.
+Platform API 1.0 membership is frozen at contract version 19. Later contract versions may add
+experimental or future baseline surface, but they must not change `stableBaseline.name=1.0`
+membership unless the project intentionally defines a new stable baseline.
 
 ## Stability Terms
 

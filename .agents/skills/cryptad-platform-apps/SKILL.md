@@ -17,6 +17,7 @@ Load only the docs needed for the change:
 - Beta program, submission, feedback, and closeout runbook: `docs/app-platform-beta-program.md`
 - Platform API and shell surface: `docs/platform-api-surface.md`
 - Platform API compatibility contract: `docs/platform-api-contract.md`
+- Platform API 1.0 stable baseline reference: `docs/platform-api-1.0-stable-reference.md`
 - Signed bundles and first-party app tasks: `docs/app-distribution.md`
 - Standalone app developer CLI: `docs/app-dev-cli.md`
 - Signed catalogs: `docs/app-catalogs.md`
@@ -45,7 +46,8 @@ Load only the docs needed for the change:
 ## Ownership map
 
 - `:platform-api` owns the transport-neutral Platform API v1 router, route families,
-  deterministic compatibility contract, app-token authorization decisions, browser-session
+  deterministic compatibility contract, Platform API 1.0 stable baseline metadata, app-token
+  authorization decisions, browser-session
   authorization decisions, capabilities, app-vault route handlers, generated app-document queue
   staging, bounded content fetch routing, shared app-network budget service/store, durable content
   subscriptions, durable app data, app-data backup/restore planning and commit routes, internal
@@ -71,14 +73,15 @@ Load only the docs needed for the change:
   types, local wrapping-key provider, bounded profile/trust statement signing helpers,
   audit/redaction helpers, and deterministic vault tests.
 - `:platform-appdist` owns local signed bundle digests, signatures, trusted-key verification,
-  deterministic bundle packaging, manifest sandbox/quota/app-data schema migration fields, and
-  first-party signing/verification tooling.
+  deterministic bundle packaging, manifest sandbox/quota/app-data schema migration fields, API
+  target-stability metadata, and first-party signing/verification tooling.
 - `:platform-appcatalog` owns signed catalog parsing, catalog writing, catalog source/artifact
   verification, `crypta:` catalog-source URI handling, safe ZIP extraction, and verified staging
-  into AppHost install/update flows, plus optional review/API compatibility metadata, independent
-  app-review receipts, trusted reviewer-key loading, review policy modes, and review trust
-  decisions used by app update review, reviewer-key lifecycle parsing, local review transparency
-  logging, governance snapshots, and review-history API support.
+  into AppHost install/update flows, plus optional review/API compatibility target-stability
+  metadata, first-party maintenance metadata, catalog security advisories/version denylists,
+  independent app-review receipts, trusted reviewer-key loading, review policy modes, and review
+  trust decisions used by app update review, reviewer-key lifecycle parsing, local review
+  transparency logging, governance snapshots, and review-history API support.
 - `:platform-trustgraph` owns the Trust Graph Local RC statement model, strict JSON parser,
   canonical payload and signature helpers, process-local anchor/store abstractions, lifecycle
   status records, and deterministic direct-anchor scoring. It is a local preview library, not a
@@ -117,6 +120,22 @@ Load only the docs needed for the change:
   persistent browser storage.
 - App-originated Platform API requests must authenticate with a live app process token or app
   browser session and pass the central capability matrix. Deny app principals by default.
+- Platform API 1.0 is the stable app-facing baseline named `stableBaseline.name=1.0`, frozen at
+  contract version 19 and distinct from the current integer contract version. Later contract bumps
+  must not expand or shrink that baseline unless the change deliberately defines a new baseline.
+- Stable baseline membership is bounded to app-facing stable descriptors introduced no later than
+  contract version 19 and backed by the baseline capability set. Do not silently promote app-vault,
+  app-service, Trust Graph Local RC, internal, or operator-only routes into the 1.0 stable surface.
+- App manifests and catalog descriptors use `api.targetStability=stable|experimental`. Stable
+  targets may use only Platform API 1.0 baseline capabilities; experimental app-facing use still
+  requires `api.experimentalCapabilitiesAccepted=true`; internal and operator-only capabilities
+  are rejected for third-party app compatibility even with experimental acceptance.
+- `vault.identities.manage` is host/operator-only identity management. Keep it out of
+  requestable third-party app capability guidance, scaffolds, manifests, and stable baseline
+  examples.
+- Contract JSON parsing must remain backward compatible for pre-freeze version 19 snapshots that
+  omit `stableBaseline`. Contract versions after 19 must include stable-baseline metadata, and the
+  parsed metadata must match descriptor membership instead of being silently recomputed.
 - App-facing `POST /api/v1/content/fetch` is bounded foreground content retrieval only. It must
   require `content.fetch`, cap bytes and timeouts, allow only Crypta/Freenet content-key forms, and
   reject `file:`, arbitrary HTTP(S), loopback/LAN URLs, and absolute local paths before calling the
@@ -236,7 +255,8 @@ Load only the docs needed for the change:
 - `tools/release-certification/app_platform_smoke.py` is the app-platform evidence collector for
   release certification. It validates first-party staged bundles, static UI/SDK coherence,
   design-system adoption, strict UI lint JSON evidence, `crypta-app init/validate/pack/dev/test`,
-  Platform API contract snapshots, app-vault capability evidence, generated document insert
+  Platform API contract snapshots, Platform API 1.0 stable-baseline and target-stability evidence,
+  app-vault capability evidence, generated document insert
   evidence, bounded content-fetch/subscription evidence, durable app-data and app-data
   backup/restore evidence, app-network budget and network-scale soak evidence, signed bundle
   evidence, signed catalog/live USK publication evidence,
@@ -260,6 +280,11 @@ Load only the docs needed for the change:
   downloads, or production credentials.
 - `release-candidate` mode treats missing required signed bundle/catalog/app-platform evidence as
   failing unless a release-manager waiver is recorded by the aggregator.
+- Stable API release evidence must include stable capability names, stable endpoint identities,
+  stable endpoint required-capability sets, and stable endpoint app-process/app-browser access
+  flags. Production history checks fail closed on stable removals, required-capability changes,
+  access regressions, missing current metadata, or missing previous metadata when history is
+  required.
 - Keep app smoke self-tests Python-only and deterministic. Use fixtures or fake CLI helpers instead
   of network or Java dependencies for regression coverage where possible.
 
@@ -302,9 +327,10 @@ When changing `crypta-app` command wiring or distribution behavior, also run
 `platform-devtools/build/install/crypta-app/bin/crypta-app --help` launcher.
 
 When changing signed bundle/catalog, live USK publication, app-review receipts, static UI,
-design-system assets, UI lint, SDK, Platform API contract, AppHost lifecycle, app-vault
-capabilities, generated document inserts, content fetch/subscriptions, shared app-network budgets,
-network-scale soak evidence, durable app data, app-data backup/restore, app-service
+design-system assets, UI lint, SDK, Platform API contract, stable-baseline metadata, manifest or
+catalog target-stability behavior, AppHost lifecycle, app-vault capabilities, generated document
+inserts, content fetch/subscriptions, shared app-network budgets, network-scale soak evidence,
+durable app data, app-data backup/restore, app-service
 dependencies/grant bundles, Trust Graph Local RC, Social Inbox RC, app-update
 lifecycle/scheduler/rollback, sandbox-provider evidence, operator beta dashboard/support-bundle
 behavior, live-network beta certification behavior, reference content/profile/social/feed/trust

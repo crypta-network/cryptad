@@ -92,12 +92,12 @@ Use this skill when you need to:
 - `:runtime-spi` is the JDK-only runtime/config API leaf. Its focused unit tests still live in the
   root test tree and run through the root build.
 - `:platform-api` owns the transport-neutral Platform API v1, deterministic compatibility contract,
-  app capability/audit decisions, app-vault route handlers, content/app-data/subscription/service
-  routes, app-data backup/restore planning and commit routes, app-service dependency graph and
-  grant-bundle routes, shared app-network budget service/store, app-update lifecycle service,
-  app-data migration planning/execution and internal update snapshots, and host/operator-only beta
-  dashboard/support-bundle, typed operator RC recovery, and network-budget snapshot routes. Its
-  focused leaf tests now live under
+  Platform API 1.0 stable-baseline metadata, app capability/audit decisions, app-vault route
+  handlers, content/app-data/subscription/service routes, app-data backup/restore planning and
+  commit routes, app-service dependency graph and grant-bundle routes, shared app-network budget
+  service/store, app-update lifecycle service, app-data migration planning/execution and internal
+  update snapshots, and host/operator-only beta dashboard/support-bundle, typed operator RC
+  recovery, and network-budget snapshot routes. Its focused leaf tests now live under
   `platform-api/src/test/java`.
 - `:platform-apphost` owns the transport-neutral out-of-process AppHost core, sandbox
   policy/status reporting, Linux bubblewrap provider selection, durable rollback records,

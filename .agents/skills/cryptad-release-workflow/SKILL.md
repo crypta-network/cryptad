@@ -32,7 +32,8 @@ Build: 2
   truth. Current release gates include the release certification report, first-party app
   staging/signing/verification, first-party beta catalog and trusted app-review receipt smoke,
   app-review governance/reviewer-key/transparency-log evidence, app-owned UI design-system/lint
-  smoke, app-vault capability evidence, generated-document insert evidence, content-fetch evidence,
+  smoke, Platform API 1.0 stable baseline, target-stability, and stable breaking-change evidence,
+  app-vault capability evidence, generated-document insert evidence, content-fetch evidence,
   durable content-subscription evidence, shared app-network budget and network-scale soak evidence,
   durable app-data and app-data backup/restore evidence, app-service
   registry/grant/dependency/grant-bundle evidence, Trust Graph Local RC evidence, Site
@@ -127,8 +128,10 @@ git push origin v<build-number>
       redaction `pass` are all present before publication.
 - [ ] First-party AppHost bundles staged, signed, and verified when shipping app-platform artifacts.
 - [ ] `crypta-app` CLI smoke completed when `:platform-devtools` changed.
-- [ ] Signed catalog, first-party beta catalog, trusted app-review receipt, Platform API contract,
-      app-vault capability, generated-document insert, content-fetch/subscription, shared
+- [ ] Signed catalog, first-party beta catalog, first-party maintenance policy, catalog security
+      advisory/denylist gates, trusted app-review receipt, Platform API contract, Platform API 1.0
+      stable baseline, target-stability, and stable breaking-change evidence, app-vault capability,
+      generated-document insert, content-fetch/subscription, shared
       app-network budget, network-scale soak, durable app-data, app-data backup/restore, app-service
       registry/grant/dependency/grant-bundle/redaction, app UI design-system/lint, app-owned UI
       smoke, Site Publisher reference-content, Profile

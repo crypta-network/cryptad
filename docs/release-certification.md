@@ -368,14 +368,16 @@ records an explicit waiver for a docs-only gap; redaction failures should not be
 
 `platform-api.contract` is generated offline with `crypta-app api snapshot`. The companion
 `platform-api.stable-baseline` evidence records the Platform API 1.0 baseline name, capability
-count, and endpoint count. `platform-api.stable-breaking-change-check` is required evidence and the
-ecosystem gate compares current stable capability and endpoint lists against the previous
-production release summary. In `--require-history` release-candidate runs, missing previous
-stable-baseline evidence is a blocker. Stable baseline removals, stability demotions,
-required-permission breaks, snapshot generation failure, contract parse failure, missing contract
-evidence, or strict compatibility verifier failure are blockers unless a release-manager waiver is
-recorded. Developer dry runs without previous history warn instead of claiming production
-comparison coverage.
+count/list, endpoint count/list, stable endpoint required-capability sets, and stable endpoint
+app-principal access flags. `platform-api.stable-breaking-change-check` is required evidence and
+the ecosystem gate compares current stable capabilities, endpoint identities, endpoint
+required-capability sets, and app-process/app-browser access flags against the previous production
+release summary. In `--require-history` release-candidate runs, missing previous stable-baseline or
+stable endpoint metadata is a blocker. Stable baseline removals, stability demotions,
+required-permission breaks, app-principal access regressions, snapshot generation failure, contract
+parse failure, missing contract evidence, or strict compatibility verifier failure are blockers
+unless a release-manager waiver is recorded. Developer dry runs without previous history warn
+instead of claiming production comparison coverage.
 
 `app-vault.capabilities` is deterministic offline evidence. The app-platform smoke runner checks
 that [app-secret-and-identity-vault.md](app-secret-and-identity-vault.md) documents the six vault

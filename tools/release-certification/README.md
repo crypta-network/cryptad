@@ -284,6 +284,12 @@ URIs, private keys, live fetched bodies, raw trust statements, or app/session to
 `app-platform.beta-program`, `app-platform.beta-tutorials`, and
 `app-platform.docs-redaction` run a deterministic local docs check for required docs, concept
 coverage, issue templates, internal Markdown links, README/portal links, and obvious secret leaks.
+The `platform-api.stable-baseline` and `platform-api.stable-breaking-change-check` rows prove the
+Platform API 1.0 baseline is present and compare stable capability names, stable endpoint
+identities, stable endpoint required-capability sets, and stable endpoint app-process/app-browser
+access flags against release history. Production history mode fails closed when previous baseline
+or endpoint metadata is missing; developer dry runs warn instead of claiming production comparison
+coverage.
 `app-catalog.first-party-beta` reports source/key configuration readiness but does not fetch the
 public Crypta catalog. `catalog.production-channels` verifies schema v3 stable/beta/nightly/
 deprecated metadata, stable-only default update automation, deprecated replacement metadata, API
@@ -440,11 +446,12 @@ browse/filter/diagnostic/wizard surfaces, and redacted diagnostics counters with
 Wave 4 verifies only the `diagnostic` route, Web Shell diagnostics at `/app/node/#diagnostics` as
 the primary destination, the exact safe-read plaintext export fallback, retained
 FProxy/content-filter/startup/security fallback scope, and evidence redaction without a live node.
-Platform API contract version rollback, stable endpoint/capability removal, first-party app
-disappearance, missing Site Publisher evidence, strict first-party UI lint failure, review receipt
-regression, update rollback regression, vault capability/redaction regression, required enforced
-sandbox evidence loss, and missing legacy removal-wave evidence are reported as ecosystem gate
-blockers.
+Platform API contract version rollback, missing stable baseline metadata, stable
+endpoint/capability removal, stable endpoint required-capability changes, stable endpoint
+app-principal access regressions, first-party app disappearance, missing Site Publisher evidence,
+strict first-party UI lint failure, review receipt regression, update rollback regression, vault
+capability/redaction regression, required enforced sandbox evidence loss, and missing legacy
+removal-wave evidence are reported as ecosystem gate blockers.
 
 Local history artifacts are supported for release-manager workflows:
 

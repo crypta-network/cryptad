@@ -92,10 +92,13 @@ build/release-certification/live-network-beta-smoke/live-network-beta-smoke-repo
   promotion gate.
 - `tools/release-certification/app_platform_smoke.py` produces the app-platform summary consumed by
   the aggregator. It keeps `--self-test` offline and Python-only, including source/test evidence
-  for the Platform API contract, app-vault capability docs, signed catalogs, trusted app-review
-  receipts, app-owned UI origin behavior, app UI design-system/lint evidence, live USK catalog
-  publication, Site Publisher reference-content coverage, Profile Publisher identity-profile
-  coverage, Feed Reader content-fetch/subscription/app-data and app-data migration coverage,
+  for the Platform API contract, Platform API 1.0 stable baseline, manifest/catalog target
+  stability, first-party stability declarations, stable reference docs, app-vault capability docs,
+  signed catalogs, first-party maintenance metadata, catalog security advisory/denylist evidence,
+  trusted app-review receipt/revocation evidence, app-owned UI origin behavior, app UI
+  design-system/lint evidence, live USK catalog publication, Site Publisher reference-content
+  coverage, Profile Publisher identity-profile coverage, Feed Reader content-fetch,
+  subscription, app-data, and app-data migration coverage,
   Social Inbox RC threading/trust/dependency coverage, Trust Graph Local RC durable exchange,
   lifecycle, and app-data migration coverage, app-data backup/restore portability evidence,
   app-service registry/grant/dependency/grant-bundle/redaction coverage, generated document
@@ -141,7 +144,16 @@ tools/release-certification/run-production-beta-release.sh --mode developer-dry-
   `app-platform.developer-beta-toolkit`, `app-platform.docs-portal`,
   `app-platform.beta-program`, `app-platform.beta-tutorials`,
   `app-platform.docs-redaction`, `app-platform.signed-bundles`, `catalog.smoke`,
-  `app-catalog.first-party-beta`, `platform-api.contract`, `app-vault.capabilities`,
+  `app-catalog.first-party-beta`, `catalog.production-channels`,
+  `app-catalog.first-party-maintenance-policy`, `catalog.security-advisories`,
+  `catalog.version-denylist`, `app-review.receipt-revocation`,
+  `app-review.reviewer-key-compromise-flow`, `app-update.security-denylist-gates`,
+  `web-shell.security-advisory-trust-warnings`,
+  `ecosystem-security.advisory-revocation-redaction`, `platform-api.contract`,
+  `platform-api.stable-baseline`, `platform-api.stable-breaking-change-check`,
+  `platform-api.manifest-target-stability`,
+  `platform-api.first-party-stability-declarations`, `platform-api.stable-reference-docs`,
+  `app-vault.capabilities`,
   `app-platform.identity-profile-publish`, `app-platform.generated-document-insert`,
   `app-platform.content-fetch`, `app-platform.content-subscriptions`,
   `network-content.subscription-scheduler`, `app-platform.durable-app-data-store`,
@@ -178,6 +190,10 @@ tools/release-certification/run-production-beta-release.sh --mode developer-dry-
   `network-scale.trust-graph-import-budget`, `network-scale.social-inbox-multi-source-soak`,
   `network-scale.redaction`, `network-scale.rc-soak-summary`, and
   `release-certification.ecosystem-matrix`.
+- Platform API stable-history checks compare the stable baseline name/counts/lists, stable endpoint
+  required-capability sets, and stable endpoint app-process/app-browser access flags. In production
+  history mode, missing previous baseline or endpoint metadata is a blocker; developer dry runs may
+  warn when no production history is available.
 - Network-scale release-candidate evidence must be generated fresh by the wrapper or attached
   explicitly. Do not let the aggregator reuse stale default `network-scale-soak/summary.json`
   files across release workspaces.
