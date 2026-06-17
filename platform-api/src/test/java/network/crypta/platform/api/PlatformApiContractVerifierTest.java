@@ -27,6 +27,24 @@ class PlatformApiContractVerifierTest {
   }
 
   @Test
+  void summarize_whenLegacyMetadataUsesExperimentalCapability_expectUnknownStatusWithWarning() {
+    Map<String, Object> summary =
+        PlatformApiContractVerifier.summarize(
+            null,
+            List.of(PlatformApiCapabilities.VAULT_IDENTITIES_READ),
+            PlatformApiContract.current());
+
+    assertEquals("unknown", summary.get("status"));
+    assertEquals(false, summary.get("declared"));
+    assertEquals(
+        List.of(
+            "Experimental capability requires api.experimentalCapabilitiesAccepted=true: "
+                + PlatformApiCapabilities.VAULT_IDENTITIES_READ
+                + "."),
+        summary.get("warnings"));
+  }
+
+  @Test
   void summarize_whenTargetIsNewerThanMaximumTested_expectNewerThanTestedStatus() {
     AppApiCompatibilityMetadata metadata =
         new AppApiCompatibilityMetadata(1, 1, List.of(), TargetStability.STABLE, false);
@@ -97,6 +115,28 @@ class PlatformApiContractVerifierTest {
             .map(PlatformApiContractVerifier.CompatibilityFinding::code)
             .toList());
     assertEquals(3L, result.toJsonValue().get("errors"));
+  }
+
+  @Test
+  void verify_whenLegacyMetadataUsesExperimentalCapabilityInStrictMode_expectErrorFinding() {
+    CompatibilityVerificationResult result =
+        PlatformApiContractVerifier.verify(
+            null,
+            List.of(PlatformApiCapabilities.VAULT_IDENTITIES_READ),
+            PlatformApiContract.current(),
+            true);
+
+    assertTrue(result.hasErrors());
+    assertEquals(
+        List.of("experimental_capability_without_acceptance"),
+        result.findings().stream()
+            .map(PlatformApiContractVerifier.CompatibilityFinding::code)
+            .toList());
+    assertEquals(
+        List.of(CompatibilityFindingSeverity.ERROR),
+        result.findings().stream()
+            .map(PlatformApiContractVerifier.CompatibilityFinding::severity)
+            .toList());
   }
 
   @Test

@@ -73,8 +73,7 @@ public final class PlatformApiContractVerifier {
             "manifest permission",
             "unknown_manifest_permission",
             descriptors,
-            metadata.targetStability(),
-            metadata.experimentalCapabilitiesAccepted(),
+            metadata,
             strict,
             findings);
     checkCapabilities(permissions, capabilityCheck);
@@ -367,7 +366,7 @@ public final class PlatformApiContractVerifier {
   private static void checkCapabilityStability(
       PlatformApiCapabilityDescriptor descriptor, CapabilityCheckContext context) {
     List<CompatibilityFinding> findings = context.findings();
-    TargetStability targetStability = context.targetStability();
+    TargetStability targetStability = context.metadata().targetStability();
     switch (descriptor.stability()) {
       case PlatformApiStabilityLevel stability
           when stability == PlatformApiStabilityLevel.EXPERIMENTAL
@@ -381,11 +380,11 @@ public final class PlatformApiContractVerifier {
                       + "."));
       case PlatformApiStabilityLevel stability
           when stability == PlatformApiStabilityLevel.EXPERIMENTAL
-              && !context.experimentalAccepted() ->
+              && !context.metadata().experimentalCapabilitiesAccepted() ->
           findings.add(
               finding(
                   "experimental_capability_without_acceptance",
-                  CompatibilityFindingSeverity.ERROR,
+                  context.experimentalAcceptanceSeverity(),
                   "Experimental capability requires api.experimentalCapabilitiesAccepted=true: "
                       + descriptor.name()
                       + "."));
@@ -438,15 +437,14 @@ public final class PlatformApiContractVerifier {
       String label,
       String unknownCode,
       Map<String, PlatformApiCapabilityDescriptor> descriptors,
-      TargetStability targetStability,
-      boolean experimentalAccepted,
+      AppApiCompatibilityMetadata metadata,
       boolean strict,
       List<CompatibilityFinding> findings) {
     CapabilityCheckContext {
       Objects.requireNonNull(label, "label");
       Objects.requireNonNull(unknownCode, "unknownCode");
       Objects.requireNonNull(descriptors, "descriptors");
-      Objects.requireNonNull(targetStability, "targetStability");
+      Objects.requireNonNull(metadata, "metadata");
       Objects.requireNonNull(findings, FINDINGS_FIELD);
     }
 
@@ -455,10 +453,15 @@ public final class PlatformApiContractVerifier {
           "optional capability",
           "unknown_optional_capability",
           descriptors,
-          targetStability,
-          experimentalAccepted,
+          metadata,
           strict,
           findings);
+    }
+
+    CompatibilityFindingSeverity experimentalAcceptanceSeverity() {
+      return !strict && !metadata.declared()
+          ? CompatibilityFindingSeverity.WARNING
+          : CompatibilityFindingSeverity.ERROR;
     }
   }
 
