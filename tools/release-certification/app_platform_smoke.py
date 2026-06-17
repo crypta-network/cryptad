@@ -1933,33 +1933,39 @@ def collect_platform_api_contract_evidence(
     details["apiVersion"] = api_version
     details["capabilityCount"] = len(capabilities)
     details["endpointCount"] = len(endpoints)
+    stable_capabilities = stable_capability_names(capabilities)
+    stable_endpoints = stable_endpoint_identities(endpoints)
     stable_baseline = contract.get("stableBaseline") if isinstance(contract, dict) else None
     if isinstance(stable_baseline, dict):
         baseline_capabilities = stable_baseline.get("capabilities", [])
         baseline_endpoints = stable_baseline.get("endpoints", [])
         details["stableBaseline"] = stable_baseline
-        details["stableCapabilities"] = (
+        details["stableBaselineCapabilities"] = (
             sorted(str(value) for value in baseline_capabilities)
             if isinstance(baseline_capabilities, list)
             else []
         )
-        details["stableEndpoints"] = (
+        details["stableBaselineEndpoints"] = (
             sorted(str(value) for value in baseline_endpoints)
             if isinstance(baseline_endpoints, list)
             else []
         )
     else:
         details["stableBaseline"] = None
-        details["stableCapabilities"] = stable_capability_names(capabilities)
-        details["stableEndpoints"] = stable_endpoint_identities(endpoints)
+        details["stableBaselineCapabilities"] = stable_capabilities
+        details["stableBaselineEndpoints"] = stable_endpoints
+    details["stableCapabilities"] = stable_capabilities
+    details["stableEndpoints"] = stable_endpoints
     details["stableEndpointRequiredCapabilities"] = stable_endpoint_required_capabilities(
-        endpoints, details["stableEndpoints"]
+        endpoints, details["stableBaselineEndpoints"]
     )
     details["stableEndpointAppAccess"] = stable_endpoint_app_access(
-        endpoints, details["stableEndpoints"]
+        endpoints, details["stableBaselineEndpoints"]
     )
     details["stableCapabilityCount"] = len(details["stableCapabilities"])
     details["stableEndpointCount"] = len(details["stableEndpoints"])
+    details["stableBaselineCapabilityCount"] = len(details["stableBaselineCapabilities"])
+    details["stableBaselineEndpointCount"] = len(details["stableBaselineEndpoints"])
     details["stabilityCounts"] = stability_counts
     details["flaggedStability"] = flagged
     required_app_data_capabilities = {"app.data.read", "app.data.write"}
@@ -2010,12 +2016,14 @@ def collect_platform_api_contract_evidence(
         "GET /app-services/{providerAppId}/services/{serviceId}",
         "POST /app-services/{providerAppId}/services/{serviceId}/invoke",
     }
-    stable_capabilities = set(details["stableCapabilities"])
-    stable_endpoints = set(details["stableEndpoints"])
+    stable_baseline_capabilities = set(details["stableBaselineCapabilities"])
+    stable_baseline_endpoints = set(details["stableBaselineEndpoints"])
     contract_capabilities = set(capability_names(capabilities))
     contract_endpoints = set(endpoint_identities(endpoints))
-    missing_app_data_capabilities = sorted(required_app_data_capabilities - stable_capabilities)
-    missing_app_data_endpoints = sorted(required_app_data_endpoints - stable_endpoints)
+    missing_app_data_capabilities = sorted(
+        required_app_data_capabilities - stable_baseline_capabilities
+    )
+    missing_app_data_endpoints = sorted(required_app_data_endpoints - stable_baseline_endpoints)
     missing_trust_exchange_capabilities = sorted(
         required_trust_exchange_capabilities - contract_capabilities
     )
@@ -2079,9 +2087,12 @@ def collect_platform_api_contract_evidence(
                     "stableBaseline.contractVersion must match the Platform API 1.0 baseline"
                     " contract version"
                 )
-            if stable_baseline.get("capabilityCount") != details["stableCapabilityCount"]:
+            if (
+                stable_baseline.get("capabilityCount")
+                != details["stableBaselineCapabilityCount"]
+            ):
                 errors.append("stableBaseline.capabilityCount does not match capabilities")
-            if stable_baseline.get("endpointCount") != details["stableEndpointCount"]:
+            if stable_baseline.get("endpointCount") != details["stableBaselineEndpointCount"]:
                 errors.append("stableBaseline.endpointCount does not match endpoints")
     if not capabilities:
         errors.append("contract has no capability descriptors")
@@ -2192,8 +2203,10 @@ def collect_platform_api_stable_freeze_evidence(
 
     breaking_check_details = {
         "currentContractVersion": contract_details.get("contractVersion"),
-        "stableCapabilityCount": contract_details.get("stableCapabilityCount"),
-        "stableEndpointCount": contract_details.get("stableEndpointCount"),
+        "stableCapabilityCount": contract_details.get("stableBaselineCapabilityCount"),
+        "stableEndpointCount": contract_details.get("stableBaselineEndpointCount"),
+        "stableBaselineCapabilityCount": contract_details.get("stableBaselineCapabilityCount"),
+        "stableBaselineEndpointCount": contract_details.get("stableBaselineEndpointCount"),
         "stableEndpointRequiredCapabilities": stable_endpoint_capabilities,
         "stableEndpointAppAccess": stable_endpoint_access,
         "historyGate": "release_certification.py compares previous stable baseline summaries",
@@ -14513,7 +14526,7 @@ def run_self_test(repo_root: Path) -> None:
         assert contract_details["endpointCount"] == 35, contract_item
         assert contract_details["appServicesContract"]["missingCapabilities"] == [], contract_item
         assert contract_details["appServicesContract"]["missingEndpoints"] == [], contract_item
-        assert contract_details["stableCapabilities"] == [
+        assert contract_details["stableBaselineCapabilities"] == [
             "app.data.read",
             "app.data.write",
             "content.fetch",
@@ -14524,7 +14537,7 @@ def run_self_test(repo_root: Path) -> None:
             "queue.read",
             "queue.write",
         ], contract_item
-        assert contract_details["stableEndpoints"] == [
+        assert contract_details["stableBaselineEndpoints"] == [
             "DELETE /app-data/namespaces/{namespace}",
             "DELETE /app-data/records/{namespace}/{key}",
             "DELETE /content/subscriptions/{subscriptionId}",
@@ -14559,13 +14572,13 @@ def run_self_test(repo_root: Path) -> None:
             "POST /queue/requests/restart",
         ], contract_item
         assert set(contract_details["stableEndpointRequiredCapabilities"]) == set(
-            contract_details["stableEndpoints"]
+            contract_details["stableBaselineEndpoints"]
         ), contract_item
         assert contract_details["stableEndpointRequiredCapabilities"]["GET /queue"] == [
             "queue.read"
         ], contract_item
         assert set(contract_details["stableEndpointAppAccess"]) == set(
-            contract_details["stableEndpoints"]
+            contract_details["stableBaselineEndpoints"]
         ), contract_item
         assert contract_details["stableEndpointAppAccess"]["GET /queue"] == {
             "appBrowserPrincipalsAllowed": True,

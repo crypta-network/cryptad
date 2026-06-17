@@ -2085,6 +2085,15 @@ def set_from_detail(details: dict[str, Any], *keys: str) -> set[str]:
     return set()
 
 
+def reported_set_from_detail(details: dict[str, Any], key: str) -> tuple[bool, set[str]]:
+    value = details.get(key)
+    if isinstance(value, list):
+        return True, {str(item) for item in value}
+    if isinstance(value, dict):
+        return True, {str(item) for item in value.keys()}
+    return False, set()
+
+
 def stable_named_set(details: dict[str, Any], list_key: str, fallback_key: str) -> set[str]:
     direct = set_from_detail(details, list_key)
     if direct:
@@ -2123,6 +2132,78 @@ def stable_named_set_reported(details: dict[str, Any], list_key: str, fallback_k
         if isinstance(value, (dict, list)):
             return True
     return False
+
+
+def stable_baseline_details(details: dict[str, Any]) -> dict[str, Any]:
+    value = details.get("stableBaseline")
+    return value if isinstance(value, dict) else {}
+
+
+def stable_baseline_reported(details: dict[str, Any]) -> bool:
+    if isinstance(details.get("stableBaseline"), dict):
+        return True
+    for key in (
+        "stableBaselineCapabilities",
+        "stableBaselineEndpoints",
+        "stableBaselineCapabilityCount",
+        "stableBaselineEndpointCount",
+    ):
+        value = details.get(key)
+        if isinstance(value, (dict, list)):
+            return True
+        if int_value(value) is not None:
+            return True
+    return False
+
+
+def stable_baseline_named_set(
+    details: dict[str, Any],
+    baseline_list_key: str,
+    explicit_key: str,
+    legacy_key: str,
+    legacy_fallback_key: str,
+) -> set[str]:
+    reported, direct = reported_set_from_detail(details, explicit_key)
+    if reported:
+        return direct
+    baseline = stable_baseline_details(details)
+    reported, direct = reported_set_from_detail(baseline, baseline_list_key)
+    if reported:
+        return direct
+    return stable_named_set(details, legacy_key, legacy_fallback_key)
+
+
+def stable_baseline_named_set_reported(
+    details: dict[str, Any], baseline_list_key: str, explicit_key: str
+) -> bool:
+    if isinstance(details.get(explicit_key), (dict, list)):
+        return True
+    baseline = stable_baseline_details(details)
+    return isinstance(baseline.get(baseline_list_key), (dict, list))
+
+
+def stable_baseline_count(
+    details: dict[str, Any],
+    baseline_count_key: str,
+    explicit_count_key: str,
+    baseline_list_key: str,
+    explicit_list_key: str,
+) -> int | None:
+    direct = detail_int(details, explicit_count_key)
+    if direct is not None:
+        return direct
+    baseline = stable_baseline_details(details)
+    direct = detail_int(baseline, baseline_count_key)
+    if direct is not None:
+        return direct
+    values = stable_baseline_named_set(
+        details,
+        baseline_list_key,
+        explicit_list_key,
+        "stableCapabilities" if baseline_list_key == "capabilities" else "stableEndpoints",
+        "capabilities" if baseline_list_key == "capabilities" else "endpoints",
+    )
+    return len(values) if values else None
 
 
 def normalized_string_tuple(value: Any) -> tuple[str, ...]:
@@ -4041,11 +4122,27 @@ def evaluate_platform_api_gate(
                 add_evidence_issue(details, "warningEvidenceIds", evidence_id)
     current_details = evidence_details(current_item)
     previous_details = evidence_details(previous_item)
+    current_baseline_reported = stable_baseline_reported(current_details)
+    previous_baseline_reported = stable_baseline_reported(previous_details)
     details["current"] = {
         "contractVersion": current_details.get("contractVersion"),
         "endpointCount": current_details.get("endpointCount"),
         "capabilityCount": current_details.get("capabilityCount"),
         "stableDescriptorCount": stable_descriptor_count(current_details),
+        "stableBaselineCapabilityCount": stable_baseline_count(
+            current_details,
+            "capabilityCount",
+            "stableBaselineCapabilityCount",
+            "capabilities",
+            "stableBaselineCapabilities",
+        ),
+        "stableBaselineEndpointCount": stable_baseline_count(
+            current_details,
+            "endpointCount",
+            "stableBaselineEndpointCount",
+            "endpoints",
+            "stableBaselineEndpoints",
+        ),
         "stableEndpointCapabilitySetCount": len(stable_endpoint_capability_map(current_details)),
         "stableEndpointAppAccessSetCount": len(stable_endpoint_access_map(current_details)),
         "flaggedStability": current_details.get("flaggedStability", []),
@@ -4056,6 +4153,20 @@ def evaluate_platform_api_gate(
             "endpointCount": previous_details.get("endpointCount"),
             "capabilityCount": previous_details.get("capabilityCount"),
             "stableDescriptorCount": stable_descriptor_count(previous_details),
+            "stableBaselineCapabilityCount": stable_baseline_count(
+                previous_details,
+                "capabilityCount",
+                "stableBaselineCapabilityCount",
+                "capabilities",
+                "stableBaselineCapabilities",
+            ),
+            "stableBaselineEndpointCount": stable_baseline_count(
+                previous_details,
+                "endpointCount",
+                "stableBaselineEndpointCount",
+                "endpoints",
+                "stableBaselineEndpoints",
+            ),
             "stableEndpointCapabilitySetCount": len(stable_endpoint_capability_map(previous_details)),
             "stableEndpointAppAccessSetCount": len(stable_endpoint_access_map(previous_details)),
         }
@@ -4063,16 +4174,44 @@ def evaluate_platform_api_gate(
     current_version = detail_int(current_details, "contractVersion")
     if previous_version is not None and current_version is not None and current_version < previous_version:
         failures.append(f"Contract version moved backward from {previous_version} to {current_version}")
-    compared_typed_stable_counts = False
-    for count_key, label in (("stableEndpointCount", "endpoint"), ("stableCapabilityCount", "capability")):
-        previous_count = detail_int(previous_details, count_key)
-        current_count = detail_int(current_details, count_key)
-        if previous_count is None or current_count is None:
-            continue
-        compared_typed_stable_counts = True
-        if current_count < previous_count:
-            failures.append(f"Stable {label} count decreased from {previous_count} to {current_count}")
-    if not compared_typed_stable_counts:
+    if current_baseline_reported and previous_details and not previous_baseline_reported:
+        warnings.append(
+            "Previous Platform API stable baseline metadata is unavailable; "
+            "stable baseline comparison is status-limited"
+        )
+        add_evidence_issue(details, "warningEvidenceIds", "platform-api.stable-breaking-change-check")
+    compared_stable_baseline_counts = False
+    if current_baseline_reported and previous_baseline_reported:
+        for baseline_count_key, explicit_count_key, label in (
+            ("endpointCount", "stableBaselineEndpointCount", "endpoint"),
+            ("capabilityCount", "stableBaselineCapabilityCount", "capability"),
+        ):
+            previous_count = stable_baseline_count(
+                previous_details,
+                baseline_count_key,
+                explicit_count_key,
+                "endpoints" if label == "endpoint" else "capabilities",
+                "stableBaselineEndpoints" if label == "endpoint" else "stableBaselineCapabilities",
+            )
+            current_count = stable_baseline_count(
+                current_details,
+                baseline_count_key,
+                explicit_count_key,
+                "endpoints" if label == "endpoint" else "capabilities",
+                "stableBaselineEndpoints" if label == "endpoint" else "stableBaselineCapabilities",
+            )
+            if previous_count is None or current_count is None:
+                continue
+            compared_stable_baseline_counts = True
+            if current_count < previous_count:
+                failures.append(
+                    f"Stable baseline {label} count decreased from {previous_count} to {current_count}"
+                )
+    if (
+        not compared_stable_baseline_counts
+        and not current_baseline_reported
+        and not previous_baseline_reported
+    ):
         previous_stable_count = stable_descriptor_count(previous_details)
         current_stable_count = stable_descriptor_count(current_details)
         if (
@@ -4084,12 +4223,35 @@ def evaluate_platform_api_gate(
                 "Stable Platform API descriptor count decreased from "
                 f"{previous_stable_count} to {current_stable_count}"
             )
-    previous_endpoints = stable_named_set(previous_details, "stableEndpoints", "endpoints")
-    current_endpoints = stable_named_set(current_details, "stableEndpoints", "endpoints")
-    current_endpoints_reported = stable_named_set_reported(current_details, "stableEndpoints", "endpoints")
+    if current_baseline_reported or previous_baseline_reported:
+        previous_endpoints = stable_baseline_named_set(
+            previous_details,
+            "endpoints",
+            "stableBaselineEndpoints",
+            "stableEndpoints",
+            "endpoints",
+        )
+        current_endpoints = stable_baseline_named_set(
+            current_details,
+            "endpoints",
+            "stableBaselineEndpoints",
+            "stableEndpoints",
+            "endpoints",
+        )
+        current_endpoints_reported = stable_baseline_named_set_reported(
+            current_details, "endpoints", "stableBaselineEndpoints"
+        )
+    else:
+        previous_endpoints = stable_named_set(previous_details, "stableEndpoints", "endpoints")
+        current_endpoints = stable_named_set(current_details, "stableEndpoints", "endpoints")
+        current_endpoints_reported = stable_named_set_reported(
+            current_details, "stableEndpoints", "endpoints"
+        )
     removed_endpoints = (
         sorted(previous_endpoints - current_endpoints)
-        if previous_endpoints and current_endpoints_reported
+        if previous_endpoints
+        and current_endpoints_reported
+        and (previous_baseline_reported or not current_baseline_reported)
         else []
     )
     if removed_endpoints:
@@ -4102,7 +4264,11 @@ def evaluate_platform_api_gate(
     if current_endpoints and not current_endpoint_capabilities_reported:
         failures.append("Current stable endpoint required-capability metadata is unavailable")
         add_evidence_issue(details, "failureEvidenceIds", "platform-api.stable-breaking-change-check")
-    elif previous_endpoints and not previous_endpoint_capabilities_reported:
+    elif (
+        previous_endpoints
+        and previous_baseline_reported
+        and not previous_endpoint_capabilities_reported
+    ):
         message = "Previous stable endpoint required-capability metadata is unavailable"
         if mode == "release-candidate" and require_history:
             failures.append(message)
@@ -4110,7 +4276,11 @@ def evaluate_platform_api_gate(
         else:
             warnings.append(message)
             add_evidence_issue(details, "warningEvidenceIds", "platform-api.stable-breaking-change-check")
-    elif previous_endpoint_capabilities and current_endpoint_capabilities_reported:
+    elif (
+        previous_endpoint_capabilities
+        and current_endpoint_capabilities_reported
+        and (previous_baseline_reported or not current_baseline_reported)
+    ):
         changed_endpoint_capabilities = []
         for endpoint in sorted(set(previous_endpoint_capabilities) & set(current_endpoint_capabilities)):
             previous_caps = previous_endpoint_capabilities[endpoint]
@@ -4137,7 +4307,7 @@ def evaluate_platform_api_gate(
     if current_endpoints and not current_endpoint_access_reported:
         failures.append("Current stable endpoint app-principal access metadata is unavailable")
         add_evidence_issue(details, "failureEvidenceIds", "platform-api.stable-breaking-change-check")
-    elif previous_endpoints and not previous_endpoint_access_reported:
+    elif previous_endpoints and previous_baseline_reported and not previous_endpoint_access_reported:
         message = "Previous stable endpoint app-principal access metadata is unavailable"
         if mode == "release-candidate" and require_history:
             failures.append(message)
@@ -4145,7 +4315,11 @@ def evaluate_platform_api_gate(
         else:
             warnings.append(message)
             add_evidence_issue(details, "warningEvidenceIds", "platform-api.stable-breaking-change-check")
-    elif previous_endpoint_access and current_endpoint_access_reported:
+    elif (
+        previous_endpoint_access
+        and current_endpoint_access_reported
+        and (previous_baseline_reported or not current_baseline_reported)
+    ):
         changed_endpoint_access = []
         for endpoint in sorted(set(previous_endpoint_access) & set(current_endpoint_access)):
             previous_access = previous_endpoint_access[endpoint]
@@ -4165,14 +4339,35 @@ def evaluate_platform_api_gate(
             )
             add_evidence_issue(details, "failureEvidenceIds", "platform-api.stable-breaking-change-check")
             details["stableEndpointAccessChanges"] = changed_endpoint_access
-    previous_capabilities = stable_named_set(previous_details, "stableCapabilities", "capabilities")
-    current_capabilities = stable_named_set(current_details, "stableCapabilities", "capabilities")
-    current_capabilities_reported = stable_named_set_reported(
-        current_details, "stableCapabilities", "capabilities"
-    )
+    if current_baseline_reported or previous_baseline_reported:
+        previous_capabilities = stable_baseline_named_set(
+            previous_details,
+            "capabilities",
+            "stableBaselineCapabilities",
+            "stableCapabilities",
+            "capabilities",
+        )
+        current_capabilities = stable_baseline_named_set(
+            current_details,
+            "capabilities",
+            "stableBaselineCapabilities",
+            "stableCapabilities",
+            "capabilities",
+        )
+        current_capabilities_reported = stable_baseline_named_set_reported(
+            current_details, "capabilities", "stableBaselineCapabilities"
+        )
+    else:
+        previous_capabilities = stable_named_set(previous_details, "stableCapabilities", "capabilities")
+        current_capabilities = stable_named_set(current_details, "stableCapabilities", "capabilities")
+        current_capabilities_reported = stable_named_set_reported(
+            current_details, "stableCapabilities", "capabilities"
+        )
     removed_capabilities = (
         sorted(previous_capabilities - current_capabilities)
-        if previous_capabilities and current_capabilities_reported
+        if previous_capabilities
+        and current_capabilities_reported
+        and (previous_baseline_reported or not current_baseline_reported)
         else []
     )
     if removed_capabilities:
@@ -8897,17 +9092,92 @@ def run_self_test(repo_root: Path) -> None:
             == "warn"
         )
 
+        def set_stable_baseline_details(
+            entry: dict[str, Any],
+            capabilities: list[str],
+            endpoints: list[str],
+            endpoint_capabilities: dict[str, list[str]] | None = None,
+            endpoint_access: dict[str, dict[str, bool]] | None = None,
+        ) -> None:
+            contract_details = entry.setdefault("details", {})
+            contract_details["stableBaseline"] = {
+                "name": "1.0",
+                "contractVersion": 19,
+                "capabilityCount": len(capabilities),
+                "endpointCount": len(endpoints),
+                "capabilities": capabilities,
+                "endpoints": endpoints,
+            }
+            contract_details["stableBaselineCapabilities"] = capabilities
+            contract_details["stableBaselineEndpoints"] = endpoints
+            contract_details["stableBaselineCapabilityCount"] = len(capabilities)
+            contract_details["stableBaselineEndpointCount"] = len(endpoints)
+            contract_details["stableCapabilities"] = capabilities
+            contract_details["stableEndpoints"] = endpoints
+            if endpoint_capabilities is not None:
+                contract_details["stableEndpointRequiredCapabilities"] = endpoint_capabilities
+            if endpoint_access is not None:
+                contract_details["stableEndpointAppAccess"] = endpoint_access
+
+        previous_pre_freeze_summary = json.loads(json.dumps(previous_good))
+        for entry in previous_pre_freeze_summary["evidence"]:
+            if entry["id"] == "platform-api.contract":
+                contract_details = entry.setdefault("details", {})
+                for key in (
+                    "stableBaseline",
+                    "stableBaselineCapabilities",
+                    "stableBaselineEndpoints",
+                    "stableBaselineCapabilityCount",
+                    "stableBaselineEndpointCount",
+                    "stableEndpointRequiredCapabilities",
+                    "stableEndpointAppAccess",
+                ):
+                    contract_details.pop(key, None)
+                contract_details["stableCapabilities"] = [
+                    "queue.read",
+                    "trust.read",
+                    "trust.write",
+                ]
+                contract_details["stableEndpoints"] = [
+                    "GET /queue",
+                    "GET /trust-graph/audit",
+                    "POST /trust-graph/import-uri",
+                ]
+                contract_details["stableCapabilityCount"] = 3
+                contract_details["stableEndpointCount"] = 3
+        previous_pre_freeze_path = workspace / "build/previous-pre-freeze/summary.json"
+        write_json(previous_pre_freeze_path, previous_pre_freeze_summary)
+        pre_freeze_history_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/pre-freeze-history-cert").resolve(),
+            previous_summary=previous_pre_freeze_path,
+            require_history=True,
+        )
+        pre_freeze_history_summary, pre_freeze_history_exit_code = run(
+            pre_freeze_history_settings
+        )
+        assert pre_freeze_history_exit_code == 0, pre_freeze_history_summary
+        pre_freeze_platform_gate = gate_by_id(
+            pre_freeze_history_summary, "ecosystem.platform-api-compatibility"
+        )
+        assert pre_freeze_platform_gate["status"] == "warn", pre_freeze_platform_gate
+        assert "failureEvidenceIds" not in pre_freeze_platform_gate["details"], (
+            pre_freeze_platform_gate
+        )
+        assert any(
+            "stable baseline comparison is status-limited" in warning
+            for warning in pre_freeze_platform_gate["details"].get("warnings", [])
+        ), pre_freeze_platform_gate
+
         previous_contract_v3 = json.loads(json.dumps(previous_good))
         for entry in previous_contract_v3["evidence"]:
             if entry["id"] == "platform-api.contract":
                 entry["details"]["contractVersion"] = 3
-                entry["details"]["stableCapabilities"] = ["platform.compat.extra", "queue.read"]
-                entry["details"]["stableEndpoints"] = ["/api/v1/apps/old", "/api/v1/apps/current"]
-                entry["details"]["stableEndpointRequiredCapabilities"] = {
+                endpoint_capabilities = {
                     "/api/v1/apps/current": ["queue.read"],
                     "/api/v1/apps/old": ["queue.read"],
                 }
-                entry["details"]["stableEndpointAppAccess"] = {
+                endpoint_access = {
                     "/api/v1/apps/current": {
                         "appProcessPrincipalsAllowed": True,
                         "appBrowserPrincipalsAllowed": True,
@@ -8917,6 +9187,13 @@ def run_self_test(repo_root: Path) -> None:
                         "appBrowserPrincipalsAllowed": True,
                     },
                 }
+                set_stable_baseline_details(
+                    entry,
+                    ["platform.compat.extra", "queue.read"],
+                    ["/api/v1/apps/old", "/api/v1/apps/current"],
+                    endpoint_capabilities,
+                    endpoint_access,
+                )
         previous_contract_v3_path = workspace / "build/previous-contract-v3/summary.json"
         write_json(previous_contract_v3_path, previous_contract_v3)
         current_contract_sets_path = write_app_summary_variant(
@@ -8927,8 +9204,18 @@ def run_self_test(repo_root: Path) -> None:
                 lambda entry: entry.setdefault("details", {}).update(
                     {
                         "contractVersion": 2,
-                        "stableCapabilities": ["queue.read"],
-                        "stableEndpoints": ["/api/v1/apps/current"],
+                        "stableBaseline": {
+                            "name": "1.0",
+                            "contractVersion": 19,
+                            "capabilityCount": 1,
+                            "endpointCount": 1,
+                            "capabilities": ["queue.read"],
+                            "endpoints": ["/api/v1/apps/current"],
+                        },
+                        "stableBaselineCapabilities": ["queue.read"],
+                        "stableBaselineEndpoints": ["/api/v1/apps/current"],
+                        "stableBaselineCapabilityCount": 1,
+                        "stableBaselineEndpointCount": 1,
                         "stableEndpointRequiredCapabilities": {
                             "/api/v1/apps/current": ["queue.read"]
                         },
@@ -8956,17 +9243,20 @@ def run_self_test(repo_root: Path) -> None:
         for entry in previous_contract_nonempty_sets["evidence"]:
             if entry["id"] == "platform-api.contract":
                 entry["details"]["contractVersion"] = 2
-                entry["details"]["stableCapabilities"] = ["queue.read"]
-                entry["details"]["stableEndpoints"] = ["/api/v1/apps/current"]
-                entry["details"]["stableEndpointRequiredCapabilities"] = {
+                set_stable_baseline_details(
+                    entry,
+                    ["queue.read"],
+                    ["/api/v1/apps/current"],
+                    {
                     "/api/v1/apps/current": ["queue.read"]
-                }
-                entry["details"]["stableEndpointAppAccess"] = {
+                    },
+                    {
                     "/api/v1/apps/current": {
                         "appProcessPrincipalsAllowed": True,
                         "appBrowserPrincipalsAllowed": True,
                     }
-                }
+                    },
+                )
         previous_contract_nonempty_sets_path = workspace / "build/previous-contract-nonempty-sets/summary.json"
         write_json(previous_contract_nonempty_sets_path, previous_contract_nonempty_sets)
         current_contract_empty_sets_path = write_app_summary_variant(
@@ -8977,8 +9267,18 @@ def run_self_test(repo_root: Path) -> None:
                 lambda entry: entry.setdefault("details", {}).update(
                     {
                         "contractVersion": 2,
-                        "stableCapabilities": [],
-                        "stableEndpoints": [],
+                        "stableBaseline": {
+                            "name": "1.0",
+                            "contractVersion": 19,
+                            "capabilityCount": 0,
+                            "endpointCount": 0,
+                            "capabilities": [],
+                            "endpoints": [],
+                        },
+                        "stableBaselineCapabilities": [],
+                        "stableBaselineEndpoints": [],
+                        "stableBaselineCapabilityCount": 0,
+                        "stableBaselineEndpointCount": 0,
                         "stableEndpointRequiredCapabilities": {},
                         "stableEndpointAppAccess": {},
                     }
@@ -9006,6 +9306,11 @@ def run_self_test(repo_root: Path) -> None:
             entry: dict[str, Any], capability_count: int, endpoint_count: int, stable_count: int
         ) -> None:
             contract_details = entry.setdefault("details", {})
+            contract_details.pop("stableBaseline", None)
+            contract_details.pop("stableBaselineCapabilities", None)
+            contract_details.pop("stableBaselineEndpoints", None)
+            contract_details.pop("stableBaselineCapabilityCount", None)
+            contract_details.pop("stableBaselineEndpointCount", None)
             contract_details.pop("stableCapabilities", None)
             contract_details.pop("stableEndpoints", None)
             contract_details.pop("stableEndpointRequiredCapabilities", None)
@@ -9191,6 +9496,11 @@ def run_self_test(repo_root: Path) -> None:
             entry: dict[str, Any], routes: list[str], stable_count: int
         ) -> None:
             contract_details = entry.setdefault("details", {})
+            contract_details.pop("stableBaseline", None)
+            contract_details.pop("stableBaselineCapabilities", None)
+            contract_details.pop("stableBaselineEndpoints", None)
+            contract_details.pop("stableBaselineCapabilityCount", None)
+            contract_details.pop("stableBaselineEndpointCount", None)
             contract_details.pop("stableEndpoints", None)
             contract_details.pop("stableEndpointRequiredCapabilities", None)
             contract_details.pop("stableEndpointAppAccess", None)
