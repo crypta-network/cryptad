@@ -152,8 +152,33 @@ public final class AppSubmissionPackageVerifier {
   private static final byte[] FIXED_TIMESTAMP_EXTRA = {0x55, 0x54, 0x05, 0x00, 0x01, 0, 0, 0, 0};
   private static final byte[] EMPTY_BYTES = new byte[0];
   private static final String PACKAGE_ENTRY_SIZE_LIMIT_ID = "package.entry-size-limit";
+  private static final String REQUIRED_REVIEW_EVIDENCE_EMPTY_ID = "review.required-evidence-empty";
   private static final String SUBMISSION_ENTRY_SIZE_CAP_SUMMARY =
       "Submission entry exceeds the size cap";
+  private static final RequiredReviewEvidence PERMISSION_RATIONALE_EVIDENCE =
+      new RequiredReviewEvidence(
+          PERMISSION_RATIONALE_ENTRY,
+          "review.permission-rationale-missing",
+          "Permission rationale is required when permissions are requested",
+          "Permission rationale must explain requested permissions");
+  private static final RequiredReviewEvidence SANDBOX_RATIONALE_EVIDENCE =
+      new RequiredReviewEvidence(
+          SANDBOX_RATIONALE_ENTRY,
+          "review.sandbox-rationale-missing",
+          "Sandbox rationale is required for non-default sandbox requirements",
+          "Sandbox rationale must explain non-default sandbox requirements");
+  private static final RequiredReviewEvidence DATA_SCHEMA_EVIDENCE =
+      new RequiredReviewEvidence(
+          DATA_SCHEMA_ENTRY,
+          "review.data-schema-missing",
+          "Data schema declaration is required when app-data schema metadata is present",
+          "Data schema declaration must explain durable app-data schema policy");
+  private static final RequiredReviewEvidence BACKUP_RESTORE_EVIDENCE =
+      new RequiredReviewEvidence(
+          BACKUP_RESTORE_ENTRY,
+          "review.backup-restore-missing",
+          "Backup/restore declaration is required for durable app data",
+          "Backup/restore declaration must explain durable app-data handling");
   private static final Set<PosixFilePermission> OWNER_ONLY_DIRECTORY_PERMISSIONS =
       Set.of(
           PosixFilePermission.OWNER_READ,
@@ -745,37 +770,61 @@ public final class AppSubmissionPackageVerifier {
         "Submission backup/restore declaration does not match review evidence");
     validateRedactionScanDigestBinding(metadata, entries, findings);
     validatePermissionRationaleDigestBinding(metadata, entries, zip, findings);
-    if (!manifest.permissions().isEmpty()) {
-      addIf(
-          findings,
-          !entries.containsKey(PERMISSION_RATIONALE_ENTRY),
-          "review.permission-rationale-missing",
-          "Permission rationale is required when permissions are requested");
-    }
-    if (!manifest.sandboxMode().manifestValue().equals("none") || manifest.sandboxRequired()) {
-      addIf(
-          findings,
-          !entries.containsKey(SANDBOX_RATIONALE_ENTRY),
-          "review.sandbox-rationale-missing",
-          "Sandbox rationale is required for non-default sandbox requirements");
-    }
+    boolean permissionRationaleRequired = !manifest.permissions().isEmpty();
+    validateRequiredReviewEvidence(
+        entries, zip, findings, permissionRationaleRequired, PERMISSION_RATIONALE_EVIDENCE);
+    boolean sandboxRationaleRequired =
+        !manifest.sandboxMode().manifestValue().equals("none") || manifest.sandboxRequired();
+    validateRequiredReviewEvidence(
+        entries, zip, findings, sandboxRationaleRequired, SANDBOX_RATIONALE_EVIDENCE);
     boolean ownsDurableData =
         manifest.permissions().stream().anyMatch(permission -> permission.startsWith("app.data."))
             || manifest.dataSchemaContract().declared();
-    if (manifest.dataSchemaContract().declared()) {
-      addIf(
-          findings,
-          !entries.containsKey(DATA_SCHEMA_ENTRY),
-          "review.data-schema-missing",
-          "Data schema declaration is required when app-data schema metadata is present");
+    validateRequiredReviewEvidence(
+        entries, zip, findings, manifest.dataSchemaContract().declared(), DATA_SCHEMA_EVIDENCE);
+    validateRequiredReviewEvidence(
+        entries, zip, findings, ownsDurableData, BACKUP_RESTORE_EVIDENCE);
+  }
+
+  private static void validateRequiredReviewEvidence(
+      Map<String, ZipEntry> entries,
+      ZipFile zip,
+      List<AppSubmissionFinding> findings,
+      boolean required,
+      RequiredReviewEvidence evidence)
+      throws IOException {
+    if (!required) {
+      return;
     }
-    if (ownsDurableData) {
-      addIf(
-          findings,
-          !entries.containsKey(BACKUP_RESTORE_ENTRY),
-          "review.backup-restore-missing",
-          "Backup/restore declaration is required for durable app data");
+    ZipEntry entry = entries.get(evidence.entryName());
+    if (entry == null || entry.isDirectory()) {
+      findings.add(blocker(evidence.missingId(), evidence.missingSummary()));
+      return;
     }
+    byte[] bytes;
+    try {
+      bytes = read(zip, entry, MAX_SUBMISSION_TEXT_ENTRY_BYTES);
+    } catch (AppCatalogException _) {
+      findings.add(
+          blocker(
+              PACKAGE_ENTRY_SIZE_LIMIT_ID,
+              evidence.entryName(),
+              SUBMISSION_ENTRY_SIZE_CAP_SUMMARY));
+      return;
+    }
+    if (isBlankReviewEvidence(bytes)) {
+      findings.add(
+          blocker(
+              REQUIRED_REVIEW_EVIDENCE_EMPTY_ID, evidence.entryName(), evidence.emptySummary()));
+    }
+  }
+
+  private static boolean isBlankReviewEvidence(byte[] bytes) {
+    String text = new String(bytes, StandardCharsets.UTF_8);
+    if (!text.isEmpty() && text.charAt(0) == UTF_8_BOM) {
+      text = text.substring(1);
+    }
+    return text.trim().isEmpty();
   }
 
   private static void validatePermissionRationaleDigestBinding(
@@ -1574,6 +1623,9 @@ public final class AppSubmissionPackageVerifier {
   private static boolean hasBlockers(List<AppSubmissionFinding> findings) {
     return findings.stream().anyMatch(AppSubmissionFinding::blocksPromotion);
   }
+
+  private record RequiredReviewEvidence(
+      String entryName, String missingId, String missingSummary, String emptySummary) {}
 
   private static AppSubmissionFinding blocker(String id, String summary) {
     return new AppSubmissionFinding(id, AppSubmissionFindingSeverity.BLOCKER, summary, Map.of());

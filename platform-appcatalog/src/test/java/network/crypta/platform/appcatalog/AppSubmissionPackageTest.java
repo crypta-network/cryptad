@@ -457,6 +457,45 @@ class AppSubmissionPackageTest {
     assertTrue(exception.getMessage().contains("review.permission-rationale-digest-mismatch"));
   }
 
+  @ParameterizedTest
+  @ValueSource(
+      strings = {
+        AppSubmissionPackageVerifier.PERMISSION_RATIONALE_ENTRY,
+        AppSubmissionPackageVerifier.SANDBOX_RATIONALE_ENTRY,
+        AppSubmissionPackageVerifier.DATA_SCHEMA_ENTRY,
+        AppSubmissionPackageVerifier.BACKUP_RESTORE_ENTRY
+      })
+  void verify_whenRequiredReviewEvidenceIsBlank_expectBlocker(String entryName) throws Exception {
+    Path bundle =
+        createBundle(
+            "bin/start.sh",
+            "#!/bin/sh\necho sample\n",
+            false,
+            "queue.read,app.data.write",
+            """
+            sandbox.mode=restricted-process
+            app.data.schema.current=1
+            """);
+    Path permissionRationale = writeReviewDoc("permission-rationale.md", "queue.read: lists.\n");
+    Path sandboxRationale = writeReviewDoc("sandbox-rationale.md", "Uses process sandbox.\n");
+    Path dataSchema = writeReviewDoc("data-schema.md", "Schema version 1.\n");
+    Path backupRestore = writeReviewDoc("backup-restore.md", "Backup supported.\n");
+    Path submission = tempDir.resolve("required-review-evidence.zip");
+    AppSubmissionPackageWriter.create(
+        createRequestWithReviewDocs(
+            bundle, submission, permissionRationale, sandboxRationale, dataSchema, backupRestore));
+    Path tampered = tempDir.resolve("blank-required-review-evidence.zip");
+    writeSubmissionWithReplacements(
+        submission, tampered, Map.of(entryName, "\n\t  \n".getBytes(StandardCharsets.UTF_8)));
+
+    AppSubmissionVerification verification = AppSubmissionPackageVerifier.inspect(tampered);
+
+    assertTrue(verification.hasBlockers());
+    assertTrue(
+        verification.findings().stream()
+            .anyMatch(finding -> finding.id().equals("review.required-evidence-empty")));
+  }
+
   @Test
   void verify_whenArtifactZipMetadataChangesWithoutPayloadChange_expectBlocker() throws Exception {
     Path bundle = createBundle();
@@ -1155,6 +1194,34 @@ class AppSubmissionPackageTest {
         false);
   }
 
+  private AppSubmissionPackageWriter.CreateRequest createRequestWithReviewDocs(
+      Path bundle,
+      Path output,
+      Path permissionRationale,
+      Path sandboxRationale,
+      Path dataSchema,
+      Path backupRestore) {
+    return new AppSubmissionPackageWriter.CreateRequest(
+        bundle,
+        output,
+        AppSubmissionType.NEW_APP,
+        Optional.empty(),
+        Optional.empty(),
+        Optional.empty(),
+        Optional.of(permissionRationale),
+        Optional.of(sandboxRationale),
+        Optional.of(dataSchema),
+        Optional.of(backupRestore),
+        Optional.empty(),
+        Optional.empty(),
+        Optional.empty(),
+        new AppSubmissionMaintainer("Example Maintainer", "mailto:maintainer@example.invalid"),
+        new AppSubmissionSourceReference(
+            URI.create("https://example.invalid/repo"), Optional.empty()),
+        true,
+        false);
+  }
+
   @SuppressWarnings("UnusedReturnValue")
   private AppSubmissionPackage createSubmissionWithSourceReference(
       Path bundle, Path permissionRationale, Path output, URI sourceUri) throws IOException {
@@ -1182,6 +1249,16 @@ class AppSubmissionPackageTest {
   private Path createBundle(
       String execPath, String executableContent, boolean executable, String permissions)
       throws Exception {
+    return createBundle(execPath, executableContent, executable, permissions, "");
+  }
+
+  private Path createBundle(
+      String execPath,
+      String executableContent,
+      boolean executable,
+      String permissions,
+      String additionalManifestLines)
+      throws Exception {
     Path bundleRoot = Files.createDirectory(tempDir.resolve("bundle-" + System.nanoTime()));
     Path executablePath = bundleRoot.resolve(execPath);
     Files.createDirectories(executablePath.getParent());
@@ -1197,12 +1274,13 @@ class AppSubmissionPackageTest {
         app.version=1.0.0
         app.exec=%s
         %s\
+        %s\
         api.minimumVersion=1
         api.maximumTestedVersion=1
         api.targetStability=stable
         api.experimentalCapabilitiesAccepted=false
         """
-            .formatted(execPath, permissionsLine),
+            .formatted(execPath, permissionsLine, additionalManifestLines),
         StandardCharsets.UTF_8);
     Files.writeString(executablePath, executableContent, StandardCharsets.UTF_8);
     if (executable) {
@@ -1487,7 +1565,11 @@ class AppSubmissionPackageTest {
   }
 
   private Path writePermissionRationale(String content) throws Exception {
-    Path file = tempDir.resolve(PERMISSION_RATIONALE_FILE);
+    return writeReviewDoc(PERMISSION_RATIONALE_FILE, content);
+  }
+
+  private Path writeReviewDoc(String name, String content) throws Exception {
+    Path file = tempDir.resolve(name);
     Files.writeString(file, content, StandardCharsets.UTF_8);
     return file;
   }
