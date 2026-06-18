@@ -815,6 +815,23 @@ class AppSubmissionPackageTest {
     assertFalse(findings.toString().contains("/home/alice"));
   }
 
+  @ParameterizedTest
+  @ValueSource(
+      strings = {
+        "See (/home/alice/secret.txt) before review.",
+        "Markdown link: [local](file:///home/alice/key)",
+        "Windows note: (C:\\Users\\Alice\\secret.txt)",
+        "Windows metadata: path:C:\\Users\\Alice\\secret.txt"
+      })
+  void scanEntry_whenLocalPathIsDelimitedByPunctuation_expectLocalPathFinding(String evidenceText) {
+    var findings =
+        AppSubmissionRedactionScanner.scanEntry(
+            "review/security-notes.md", evidenceText.getBytes(StandardCharsets.UTF_8));
+
+    assertTrue(findings.stream().anyMatch(finding -> finding.id().equals("redaction.local-path")));
+    assertFalse(findings.toString().contains("alice"));
+  }
+
   @Test
   void scanEntry_whenNestedZipEntryExceedsScanCap_expectSizeFinding() throws Exception {
     var findings =

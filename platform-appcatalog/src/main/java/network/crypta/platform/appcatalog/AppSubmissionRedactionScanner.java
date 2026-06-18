@@ -82,7 +82,7 @@ public final class AppSubmissionRedactionScanner {
   private static final Pattern CRYPTA_SIGNED_SUBSPACE_URI_PATTERN =
       Pattern.compile("(?i)\\b(?:crypta:|freenet:)?(?:SSK|USK)@[^\\s'\"<>]+");
   private static final Pattern LOCAL_WINDOWS_PATH_PATTERN =
-      Pattern.compile("(?i)(?:^|[\\s='\"])[a-z]:\\\\[^\\s'\"]+");
+      Pattern.compile("(?i)(?:^|[\\s='\"`(\\[{<,;:|])[a-z]:\\\\[^\\s'\"]+");
   private static final Pattern RAW_CONTENT_PATTERN =
       Pattern.compile(
           "(?i)\\b(raw fetched content|raw app data|raw request body|raw feed body)\\b");
@@ -705,11 +705,7 @@ public final class AppSubmissionRedactionScanner {
     if (index == 0) {
       return true;
     }
-    char previous = lower.charAt(index - 1);
-    return Character.isWhitespace(previous)
-        || previous == '='
-        || previous == '\''
-        || previous == '"';
+    return isLocalPathBoundary(lower.charAt(index - 1));
   }
 
   private static boolean hasUriSchemeBeforeSlashRun(String lower, int index) {
@@ -760,11 +756,23 @@ public final class AppSubmissionRedactionScanner {
     if (schemeStart == 0) {
       return true;
     }
-    char previous = lower.charAt(schemeStart - 1);
-    return Character.isWhitespace(previous)
-        || previous == '='
-        || previous == '\''
-        || previous == '"';
+    return isLocalPathBoundary(lower.charAt(schemeStart - 1));
+  }
+
+  private static boolean isLocalPathBoundary(char character) {
+    return Character.isWhitespace(character)
+        || character == '='
+        || character == '\''
+        || character == '"'
+        || character == '`'
+        || character == '('
+        || character == '['
+        || character == '{'
+        || character == '<'
+        || character == ','
+        || character == ';'
+        || character == ':'
+        || character == '|';
   }
 
   private static String normalizeIdentifier(String value) {
