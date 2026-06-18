@@ -87,6 +87,19 @@ ECOSYSTEM_SECURITY_EVIDENCE_IDS = (
     "web-shell.security-advisory-trust-warnings",
     "ecosystem-security.advisory-revocation-redaction",
 )
+APP_STORE_SUBMISSION_EVIDENCE_IDS = (
+    "app-store.submission-package-schema",
+    "app-store.submission-cli",
+    "app-store.pre-review",
+    "app-store.review-decision-states",
+    "app-store.review-receipt-issued",
+    "app-store.rejection-record",
+    "app-store.resubmission-link",
+    "app-store.transparency-log",
+    "app-store.catalog-candidate",
+    "app-store.third-party-sample-flow",
+    "app-store.redaction-clean",
+)
 LIVE_NETWORK_BETA_EVIDENCE_IDS = (
     "live-network-beta.preflight",
     "live-network-beta.catalog-usk-fetch",
@@ -202,6 +215,7 @@ ECOSYSTEM_RC_REQUIRED_EVIDENCE_IDS = (
     "app-review.review-history-api",
     "app-review.first-party-catalog",
     "app-review.first-party-review-chain",
+    *APP_STORE_SUBMISSION_EVIDENCE_IDS,
     "app-update.lifecycle",
     "app-update.scheduler",
     "app-update.live-catalog-refresh",
@@ -1254,6 +1268,7 @@ def app_platform_evidence(
         "app-review.review-history-api",
         "app-review.first-party-catalog",
         "app-review.first-party-review-chain",
+        *APP_STORE_SUBMISSION_EVIDENCE_IDS,
         "app-ui.design-system",
         "app-ui.lint",
         "app-ui.first-party-adoption",
@@ -2717,6 +2732,20 @@ def ecosystem_matrix_row_specs() -> list[MatrixRowSpec]:
             ),
             gate_ids=("ecosystem.app-review-trust",),
             docs=("docs/app-review-governance.md",),
+        ),
+        MatrixRowSpec(
+            id="app-store-submission-and-review",
+            category="review-governance",
+            title="Third-party app submission and review workflow",
+            required_evidence_ids=APP_STORE_SUBMISSION_EVIDENCE_IDS,
+            gate_ids=("ecosystem.app-review-trust",),
+            docs=(
+                "docs/app-store-submission-and-review-workflow.md",
+                "docs/app-dev-cli.md",
+                "docs/app-review-governance.md",
+                "docs/app-catalogs.md",
+                "docs/production-beta-release-pipeline.md",
+            ),
         ),
         MatrixRowSpec(
             id="ui-design-system",

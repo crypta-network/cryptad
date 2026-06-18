@@ -70,6 +70,10 @@ import network.crypta.platform.appdist.AppApiCompatibilityMetadata;
  * screenshot.1=https://example.invalid/assets/shot-1.png
  * changelog.summary=Adds queue retry controls.
  * changelog.uri=https://example.invalid/apps/app-1.2.0-changelog.txt
+ * review.receipt.version=1
+ * review.receipt.app.id=sample-app
+ * review.receipt.signature.algorithm=Ed25519
+ * review.receipt.signature.value.base64=<base64-signature-over-canonical-payload>
  * }</pre>
  *
  * <p>{@code artifact.path}, {@code bundle.uri}, and {@code summary} are required. The local
@@ -92,6 +96,8 @@ import network.crypta.platform.appdist.AppApiCompatibilityMetadata;
  * @param categories normalized catalog category tags
  * @param compatibility advisory compatibility metadata
  * @param review advisory human-review metadata
+ * @param reviewReceipt optional independently signed review receipt copied into the generated
+ *     catalog entry
  * @param changelog optional change metadata for this catalog version
  * @param screenshots optional screenshot URIs displayed as links
  * @param productionMetadata production channel, support, deprecation, and advisory metadata
@@ -113,6 +119,7 @@ public record AppCatalogEntryDescriptor(
     List<String> categories,
     AppCatalogCompatibilityMetadata compatibility,
     AppCatalogReviewMetadata review,
+    Optional<AppReviewReceipt> reviewReceipt,
     AppCatalogChangelog changelog,
     List<URI> screenshots,
     AppCatalogProductionMetadata productionMetadata,
@@ -156,6 +163,17 @@ public record AppCatalogEntryDescriptor(
       "api.experimentalCapabilitiesAccepted";
   private static final String REVIEW_STATUS = "review.status";
   private static final String REVIEW_NOTE = "review.note";
+  private static final String REVIEW_SUBMISSION_ID = "review.submission.id";
+  private static final String REVIEW_SUBMISSION_SHA256 = "review.submission.sha256";
+  private static final String REVIEW_PRE_REVIEW_STATUS = "review.preReview.status";
+  private static final String REVIEW_PRE_REVIEW_SHA256 = "review.preReview.sha256";
+  private static final String REVIEW_REVIEWER_KEY_ID = "review.reviewer.keyId";
+  private static final String REVIEW_REVIEWER_POLICY = "review.reviewer.policy";
+  private static final String REVIEW_RECEIPT_FINGERPRINT_SHA256 =
+      "review.receipt.fingerprint.sha256";
+  private static final String REVIEW_DECISION_REASON_SHA256 = "review.decision.reason.sha256";
+  private static final String REVIEW_RESUBMISSION_OF = "review.resubmissionOf";
+  private static final String REVIEW_NON_PRODUCTION = "review.nonProduction";
   private static final String CHANGELOG_SUMMARY = "changelog.summary";
   private static final String CHANGELOG_URI = "changelog.uri";
   private static final String SCREENSHOT_PREFIX = "screenshot.";
@@ -215,6 +233,7 @@ public record AppCatalogEntryDescriptor(
     categories = normalizeCategories(categories);
     Objects.requireNonNull(compatibility, "compatibility");
     Objects.requireNonNull(review, "review");
+    Objects.requireNonNull(reviewReceipt, "reviewReceipt");
     Objects.requireNonNull(changelog, "changelog");
     screenshots = normalizeScreenshots(screenshots);
     Objects.requireNonNull(productionMetadata, "productionMetadata");
@@ -269,6 +288,7 @@ public record AppCatalogEntryDescriptor(
                 removeOptional(properties, MAXIMUM_CRYPTA_VERSION).orElse(null),
                 parseApiCompatibility(properties)),
             parseReview(properties),
+            parseReviewReceipt(properties),
             new AppCatalogChangelog(
                 removeOptional(properties, CHANGELOG_SUMMARY),
                 removeOptional(properties, CHANGELOG_URI)
@@ -403,10 +423,12 @@ public record AppCatalogEntryDescriptor(
         removeOptional(properties, API_TARGET_STABILITY)
             .map(AppCatalogEntryDescriptor::parseTargetStability)
             .orElse(null);
-    Optional<String> experimentalCapabilitiesAcceptedValue =
+    Optional<String> experimentalCapabilitiesAcceptedText =
         removeOptional(properties, API_EXPERIMENTAL_CAPABILITIES_ACCEPTED);
     boolean experimentalCapabilitiesAccepted =
-        parseExperimentalCapabilitiesAccepted(experimentalCapabilitiesAcceptedValue);
+        experimentalCapabilitiesAcceptedText
+            .map(AppCatalogEntryDescriptor::parseExperimentalCapabilitiesAccepted)
+            .orElse(false);
     try {
       return new AppApiCompatibilityMetadata(
           minimumVersion,
@@ -415,7 +437,7 @@ public record AppCatalogEntryDescriptor(
           targetStability,
           targetStability != null,
           experimentalCapabilitiesAccepted,
-          experimentalCapabilitiesAcceptedValue.isPresent());
+          experimentalCapabilitiesAcceptedText.isPresent());
     } catch (IllegalArgumentException exception) {
       throw new AppCatalogException(
           AppCatalogSidecars.INVALID_CATALOG_ENTRY, exception.getMessage(), exception);
@@ -450,11 +472,8 @@ public record AppCatalogEntryDescriptor(
     }
   }
 
-  private static boolean parseExperimentalCapabilitiesAccepted(Optional<String> value) {
-    if (value.isEmpty()) {
-      return false;
-    }
-    String normalized = value.get().toLowerCase(java.util.Locale.ROOT);
+  private static boolean parseExperimentalCapabilitiesAccepted(String value) {
+    String normalized = value.toLowerCase(java.util.Locale.ROOT);
     if (normalized.equals("true")) {
       return true;
     }
@@ -462,7 +481,7 @@ public record AppCatalogEntryDescriptor(
       return false;
     }
     throw AppCatalogSidecars.invalidEntry(
-        "invalid " + API_EXPERIMENTAL_CAPABILITIES_ACCEPTED + ": " + value.get());
+        "invalid " + API_EXPERIMENTAL_CAPABILITIES_ACCEPTED + ": " + value);
   }
 
   private static List<String> parseOptionalCapabilities(String rawCapabilities) {
@@ -482,7 +501,44 @@ public record AppCatalogEntryDescriptor(
         statusText
             .map(value -> AppCatalogReviewStatus.parse(value, REVIEW_STATUS))
             .orElse(AppCatalogReviewStatus.UNREVIEWED);
-    return new AppCatalogReviewMetadata(status, removeOptional(properties, REVIEW_NOTE));
+    return new AppCatalogReviewMetadata(
+        status,
+        removeOptional(properties, REVIEW_NOTE),
+        removeOptional(properties, REVIEW_SUBMISSION_ID),
+        removeOptional(properties, REVIEW_SUBMISSION_SHA256),
+        removeOptional(properties, REVIEW_PRE_REVIEW_STATUS),
+        removeOptional(properties, REVIEW_PRE_REVIEW_SHA256),
+        removeOptional(properties, REVIEW_REVIEWER_KEY_ID),
+        removeOptional(properties, REVIEW_REVIEWER_POLICY),
+        removeOptional(properties, REVIEW_RECEIPT_FINGERPRINT_SHA256),
+        removeOptional(properties, REVIEW_DECISION_REASON_SHA256),
+        removeOptional(properties, REVIEW_RESUBMISSION_OF),
+        removeOptional(properties, REVIEW_NON_PRODUCTION)
+            .map(AppCatalogEntryDescriptor::parseReviewNonProduction)
+            .orElse(false));
+  }
+
+  private static Optional<AppReviewReceipt> parseReviewReceipt(Map<String, String> properties) {
+    boolean present =
+        properties.keySet().stream().anyMatch(key -> key.startsWith("review.receipt."));
+    if (!present) {
+      return Optional.empty();
+    }
+    return Optional.of(AppReviewReceiptIO.parseProperties(properties, ""));
+  }
+
+  private static boolean parseReviewNonProduction(String value) {
+    String normalized =
+        AppCatalogSidecars.requireBoundedSingleLine(
+                value, REVIEW_NON_PRODUCTION, AppCatalogSidecars.INVALID_CATALOG_ENTRY, 8)
+            .toLowerCase(java.util.Locale.ROOT);
+    if (normalized.equals("true")) {
+      return true;
+    }
+    if (normalized.equals("false")) {
+      return false;
+    }
+    throw AppCatalogSidecars.invalidEntry(REVIEW_NON_PRODUCTION + " must be true or false");
   }
 
   private static AppCatalogProductionMetadata parseProductionMetadata(

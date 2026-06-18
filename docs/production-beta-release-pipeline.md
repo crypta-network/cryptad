@@ -142,6 +142,29 @@ directories are kept outside the public artifact tree.
 `reports/production-beta-summary.md` is the human-readable companion. It lists failed gates, artifact
 paths, known limitations, and the production beta readiness decision.
 
+## Third-party submission evidence
+
+Production beta and release-candidate aggregation require deterministic third-party app-store
+submission evidence from `app_platform_smoke.py`. These evidence ids prove the offline submission
+package schema, CLI workflow, automated pre-review, decision states, reviewed/caution receipt
+issuance, rejection metadata, resubmission linkage, transparency log events, catalog candidate
+metadata, fixture sample flow, and redaction checks:
+
+- `app-store.submission-package-schema`
+- `app-store.submission-cli`
+- `app-store.pre-review`
+- `app-store.review-decision-states`
+- `app-store.review-receipt-issued`
+- `app-store.rejection-record`
+- `app-store.resubmission-link`
+- `app-store.transparency-log`
+- `app-store.catalog-candidate`
+- `app-store.third-party-sample-flow`
+- `app-store.redaction-clean`
+
+The evidence uses fixture/test inputs and must remain marked non-production. It does not require
+production reviewer private keys, a hosted submission portal, or live network access.
+
 ## Failure classes
 
 The pipeline classifies failures into these groups:

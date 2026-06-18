@@ -440,6 +440,24 @@ class AppCatalogsApiHandlerTest {
   }
 
   @Test
+  void listApps_whenEntryHasStatusOnlySubmissionReview_expectSubmissionMetadataFlag()
+      throws Exception {
+    AppCatalogsApiHandler handler =
+        new AppCatalogsApiHandler(catalogManager, appHost, () -> "0.2.0");
+    when(catalogManager.listApps("core")).thenReturn(List.of(statusOnlySubmissionCatalogEntry()));
+    when(appHost.describe(APP_ID)).thenReturn(Optional.empty());
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+
+    Map<String, Object> app = handler.listApps("core").getFirst();
+
+    Map<String, Object> thirdPartyReview = (Map<String, Object>) app.get("thirdPartyReview");
+    assertEquals("submitted", thirdPartyReview.get("status"));
+    assertEquals(true, thirdPartyReview.get("hasSubmissionMetadata"));
+    assertNull(thirdPartyReview.get("submissionId"));
+    assertNull(thirdPartyReview.get("submissionSha256"));
+  }
+
+  @Test
   void listApps_whenEntryHasStoreMetadataAndInstalledAppDiffers_expectCompatibilityAndChangelog()
       throws Exception {
     Map<String, Object> app = listRichInstalledCatalogApp();
@@ -1217,7 +1235,7 @@ class AppCatalogsApiHandlerTest {
         List.of("productivity", "network"),
         new AppCatalogCompatibilityMetadata("0.1.0", "0.9.99"),
         new AppCatalogReviewMetadata(
-            AppCatalogReviewStatus.REVIEWED, Optional.of("Reviewed for local operator safety.")),
+            AppCatalogReviewStatus.REVIEWED, "Reviewed for local operator safety."),
         new AppCatalogChangelog(
             Optional.of("Adds queue retry controls."),
             Optional.of(URI.create("https://example.invalid/changelog.txt"))),
@@ -1238,6 +1256,31 @@ class AppCatalogsApiHandlerTest {
 
   private AppCatalogEntry richCatalogEntryWithTrustedReceipt(KeyPair reviewerKeyPair) {
     return richCatalogEntryWithTrustedReceipt(reviewerKeyPair, AppReviewReceiptStatus.REVIEWED);
+  }
+
+  private AppCatalogEntry statusOnlySubmissionCatalogEntry() {
+    AppCatalogEntry entry = richCatalogEntry();
+    return new AppCatalogEntry(
+        entry.appId(),
+        entry.name(),
+        entry.version(),
+        entry.summary(),
+        entry.homepage().orElse(null),
+        entry.source().orElse(null),
+        entry.license().orElse(null),
+        entry.categories(),
+        entry.compatibility(),
+        new AppCatalogReviewMetadata(AppCatalogReviewStatus.SUBMITTED, null),
+        entry.changelog(),
+        entry.screenshots(),
+        entry.productionMetadata(),
+        entry.maintenanceMetadata(),
+        entry.bundleUri(),
+        entry.bundleSha256(),
+        entry.bundleSizeBytes(),
+        entry.bundleType(),
+        entry.permissions(),
+        entry.permissionRationales());
   }
 
   private AppCatalogEntry richCatalogEntryWithTrustedReceipt(
@@ -1311,6 +1354,7 @@ class AppCatalogsApiHandlerTest {
         status,
         REVIEWER_KEY_ID,
         REVIEWED_AT,
+        Optional.empty(),
         Optional.empty(),
         Optional.empty(),
         Optional.empty(),

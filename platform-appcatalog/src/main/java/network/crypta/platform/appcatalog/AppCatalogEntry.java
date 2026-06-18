@@ -664,6 +664,10 @@ public record AppCatalogEntry(
     return maintenanceMetadata.hasCatalogFields();
   }
 
+  boolean hasSubmissionReviewMetadata() {
+    return review.hasSubmissionReviewFields();
+  }
+
   /**
    * Normalizes an app id using the signed-bundle manifest rules.
    *

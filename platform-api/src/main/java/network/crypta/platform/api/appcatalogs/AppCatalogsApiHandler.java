@@ -114,7 +114,9 @@ public final class AppCatalogsApiHandler {
   private static final String PARAM_SECURITY_ACKNOWLEDGED = "securityAcknowledged";
   private static final String REVIEW_TRUST_FIELD = "reviewTrust";
   private static final String SECURITY_DECISION_FIELD = "securityDecision";
+  private static final String REVIEWER_KEY_ID_FIELD = "reviewerKeyId";
   private static final String STATUS_FIELD = "status";
+  private static final String ADVISORY_FIELD = "advisory";
   private static final String ERROR_APP_REVIEW_MISSING = "app_review_missing";
   private static final String ERROR_APP_REVIEW_UNTRUSTED = "app_review_untrusted";
   private static final String ERROR_APP_REVIEW_REJECTED = "app_review_rejected";
@@ -1029,7 +1031,7 @@ public final class AppCatalogsApiHandler {
     json.put("catalogVersion", entry.version());
     json.put(
         "versionChanged", installedVersion != null && !installedVersion.equals(entry.version()));
-    json.put("reviewerKeyId", decision.reviewerKeyId());
+    json.put(REVIEWER_KEY_ID_FIELD, decision.reviewerKeyId());
     json.put("reviewerKeyStatus", decision.reviewerKeyStatus());
     json.put("trustStatus", decision.status().jsonValue());
     json.put("policyId", decision.policyId());
@@ -1044,7 +1046,7 @@ public final class AppCatalogsApiHandler {
     String appId = PlatformApiParameters.readOptionalString(queryParameters, APP_ID_FIELD);
     String catalogId = PlatformApiParameters.readOptionalString(queryParameters, CATALOG_ID_FIELD);
     String reviewerKeyId =
-        PlatformApiParameters.readOptionalString(queryParameters, "reviewerKeyId");
+        PlatformApiParameters.readOptionalString(queryParameters, REVIEWER_KEY_ID_FIELD);
     String kindText = PlatformApiParameters.readOptionalString(queryParameters, "kind");
     AppReviewTransparencyEventKind kind = null;
     if (kindText != null && !kindText.isBlank()) {
@@ -1253,6 +1255,7 @@ public final class AppCatalogsApiHandler {
             ? AppCatalogSecurityDecision.OK.toJsonValue()
             : installedSecurityDecision(entry.appId(), installedVersion).toJsonValue());
     json.put("review", summarizeReview(entry.review()));
+    json.put("thirdPartyReview", summarizeThirdPartyReview(entry.review()));
     json.put(REVIEW_TRUST_FIELD, reviewTrust(entry).toJsonValue());
     json.put("permissions", entry.permissions());
     json.put("permissionRationales", entry.permissionRationales());
@@ -1299,7 +1302,25 @@ public final class AppCatalogsApiHandler {
     LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(3);
     json.put(STATUS_FIELD, review.status().catalogValue());
     json.put("note", review.note().orElse(null));
-    json.put("advisory", true);
+    json.put(ADVISORY_FIELD, true);
+    return json;
+  }
+
+  private static Map<String, Object> summarizeThirdPartyReview(AppCatalogReviewMetadata review) {
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(13);
+    json.put(STATUS_FIELD, review.status().catalogValue());
+    json.put("submissionId", review.submissionId().orElse(null));
+    json.put("submissionSha256", review.submissionSha256().orElse(null));
+    json.put("preReviewStatus", review.preReviewStatus().orElse(null));
+    json.put("preReviewSha256", review.preReviewSha256().orElse(null));
+    json.put(REVIEWER_KEY_ID_FIELD, review.reviewerKeyId().orElse(null));
+    json.put("reviewerPolicy", review.reviewerPolicy().orElse(null));
+    json.put("receiptFingerprintSha256", review.receiptFingerprintSha256().orElse(null));
+    json.put("decisionReasonSha256", review.decisionReasonSha256().orElse(null));
+    json.put("resubmissionOf", review.resubmissionOf().orElse(null));
+    json.put("nonProduction", review.nonProduction());
+    json.put("hasSubmissionMetadata", review.hasSubmissionReviewFields());
+    json.put(ADVISORY_FIELD, true);
     return json;
   }
 
@@ -1315,7 +1336,7 @@ public final class AppCatalogsApiHandler {
     json.put("maximumCryptaVersion", maximumVersion);
     json.put("currentCryptaVersion", currentVersion);
     json.put(COMPATIBILITY_SATISFIED, result.satisfied());
-    json.put("advisory", true);
+    json.put(ADVISORY_FIELD, true);
     json.put(STATUS_FIELD, result.status());
     return json;
   }

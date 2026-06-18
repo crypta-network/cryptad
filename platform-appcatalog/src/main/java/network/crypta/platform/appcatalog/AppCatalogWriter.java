@@ -156,6 +156,8 @@ public final class AppCatalogWriter {
     if (receipt == null) {
       return entry;
     }
+    requireReceiptFingerprintMetadataMatches(entry.review(), receipt, "attached receipt");
+    requireReviewDigestMetadataMatches(entry.review(), receipt, "attached receipt");
     return new AppCatalogEntry(
         entry.appId(),
         entry.name(),
@@ -203,6 +205,11 @@ public final class AppCatalogWriter {
   private static int catalogVersion(
       List<AppCatalogEntry> entries, AppCatalogSecurityPolicy securityPolicy) {
     for (AppCatalogEntry entry : entries) {
+      if (entry.hasSubmissionReviewMetadata()) {
+        return AppCatalog.VERSION_THIRD_PARTY_SUBMISSION_REVIEW;
+      }
+    }
+    for (AppCatalogEntry entry : entries) {
       if (entry.hasMaintenanceMetadata()) {
         return AppCatalog.VERSION_FIRST_PARTY_MAINTENANCE;
       }
@@ -224,18 +231,36 @@ public final class AppCatalogWriter {
   }
 
   private static void requireCatalogVersionMatchesEntries(AppCatalog catalog) {
+    requireSecurityPolicyVersion(catalog);
+    requireSubmissionAndMaintenanceMetadataVersions(catalog);
+    requireProductionMetadataVersion(catalog);
+    requireStoreMetadataVersion(catalog);
+  }
+
+  private static void requireSecurityPolicyVersion(AppCatalog catalog) {
     if (catalog.securityPolicy().hasCatalogFields()
         && catalog.version() < AppCatalog.VERSION_SECURITY_POLICY) {
       throw AppCatalogSidecars.invalidEntry(
           "catalog.version 4 is required when security policy metadata is present");
     }
+  }
+
+  private static void requireSubmissionAndMaintenanceMetadataVersions(AppCatalog catalog) {
     for (AppCatalogEntry entry : catalog.entries()) {
+      if (entry.hasSubmissionReviewMetadata()
+          && catalog.version() < AppCatalog.VERSION_THIRD_PARTY_SUBMISSION_REVIEW) {
+        throw AppCatalogSidecars.invalidEntry(
+            "catalog.version 6 is required when submission review metadata is present");
+      }
       if (entry.hasMaintenanceMetadata()
           && catalog.version() < AppCatalog.VERSION_FIRST_PARTY_MAINTENANCE) {
         throw AppCatalogSidecars.invalidEntry(
             "catalog.version 5 is required when maintenance metadata is present");
       }
     }
+  }
+
+  private static void requireProductionMetadataVersion(AppCatalog catalog) {
     if (catalog.version() >= AppCatalog.VERSION_PRODUCTION_CHANNELS) {
       return;
     }
@@ -245,7 +270,10 @@ public final class AppCatalogWriter {
             "catalog.version 3 is required when production channel metadata is present");
       }
     }
-    if (catalog.version() == AppCatalog.VERSION_STORE_METADATA) {
+  }
+
+  private static void requireStoreMetadataVersion(AppCatalog catalog) {
+    if (catalog.version() >= AppCatalog.VERSION_STORE_METADATA) {
       return;
     }
     for (AppCatalogEntry entry : catalog.entries()) {
@@ -274,6 +302,7 @@ public final class AppCatalogWriter {
         descriptor.categories(),
         compatibilityForCatalog(descriptor, manifest),
         descriptor.review(),
+        verifiedInlineReviewReceipt(descriptor, appId, version, artifact),
         descriptor.changelog(),
         descriptor.screenshots(),
         descriptor.productionMetadata(),
@@ -284,6 +313,68 @@ public final class AppCatalogWriter {
         AppCatalogEntry.ZIP_BUNDLE_TYPE,
         descriptor.permissionsOverride().orElse(manifest.permissions()),
         descriptor.permissionRationales());
+  }
+
+  private static AppReviewReceipt verifiedInlineReviewReceipt(
+      AppCatalogEntryDescriptor descriptor,
+      String appId,
+      String version,
+      ArtifactMetadata artifact) {
+    Optional<AppReviewReceipt> receipt = descriptor.reviewReceipt();
+    if (receipt.isEmpty()) {
+      return null;
+    }
+    AppReviewReceipt inlineReceipt = receipt.orElseThrow();
+    AppReviewReceiptPayload payload = inlineReceipt.payload();
+    if (!payload.appId().equals(appId)
+        || !payload.appVersion().equals(version)
+        || !payload.artifactSha256().equals(artifact.sha256())
+        || payload.artifactSizeBytes() != artifact.sizeBytes()) {
+      throw AppCatalogSidecars.invalidEntry("review receipt does not match catalog entry artifact");
+    }
+    requireReceiptFingerprintMetadataMatches(
+        descriptor.review(), inlineReceipt, "embedded receipt");
+    requireReviewDigestMetadataMatches(descriptor.review(), inlineReceipt, "embedded receipt");
+    return inlineReceipt;
+  }
+
+  private static void requireReceiptFingerprintMetadataMatches(
+      AppCatalogReviewMetadata review, AppReviewReceipt receipt, String receiptSource) {
+    review
+        .receiptFingerprintSha256()
+        .ifPresent(
+            declaredFingerprint -> {
+              if (!declaredFingerprint.equals(receipt.fingerprintSha256())) {
+                throw AppCatalogSidecars.invalidEntry(
+                    "review receipt fingerprint metadata does not match " + receiptSource);
+              }
+            });
+  }
+
+  private static void requireReviewDigestMetadataMatches(
+      AppCatalogReviewMetadata review, AppReviewReceipt receipt, String receiptSource) {
+    review
+        .preReviewSha256()
+        .ifPresent(
+            declaredDigest -> {
+              if (receipt.payload().evidenceSha256().filter(declaredDigest::equals).isEmpty()) {
+                throw AppCatalogSidecars.invalidEntry(
+                    "review pre-review digest metadata does not match " + receiptSource);
+              }
+            });
+    review
+        .decisionReasonSha256()
+        .ifPresent(
+            declaredDigest -> {
+              if (receipt
+                  .payload()
+                  .decisionReasonSha256()
+                  .filter(declaredDigest::equals)
+                  .isEmpty()) {
+                throw AppCatalogSidecars.invalidEntry(
+                    "review decision reason digest metadata does not match " + receiptSource);
+              }
+            });
   }
 
   private static AppCatalogCompatibilityMetadata compatibilityForCatalog(
@@ -612,6 +703,48 @@ public final class AppCatalogWriter {
           .review()
           .note()
           .ifPresent(value -> appendProperty(builder, prefix + "review.note", value));
+      entry
+          .review()
+          .submissionId()
+          .ifPresent(value -> appendProperty(builder, prefix + "review.submission.id", value));
+      entry
+          .review()
+          .submissionSha256()
+          .ifPresent(value -> appendProperty(builder, prefix + "review.submission.sha256", value));
+      entry
+          .review()
+          .preReviewStatus()
+          .ifPresent(value -> appendProperty(builder, prefix + "review.preReview.status", value));
+      entry
+          .review()
+          .preReviewSha256()
+          .ifPresent(value -> appendProperty(builder, prefix + "review.preReview.sha256", value));
+      entry
+          .review()
+          .reviewerKeyId()
+          .ifPresent(value -> appendProperty(builder, prefix + "review.reviewer.keyId", value));
+      entry
+          .review()
+          .reviewerPolicy()
+          .ifPresent(value -> appendProperty(builder, prefix + "review.reviewer.policy", value));
+      entry
+          .review()
+          .receiptFingerprintSha256()
+          .ifPresent(
+              value ->
+                  appendProperty(builder, prefix + "review.receipt.fingerprint.sha256", value));
+      entry
+          .review()
+          .decisionReasonSha256()
+          .ifPresent(
+              value -> appendProperty(builder, prefix + "review.decision.reason.sha256", value));
+      entry
+          .review()
+          .resubmissionOf()
+          .ifPresent(value -> appendProperty(builder, prefix + "review.resubmissionOf", value));
+      if (entry.review().nonProduction()) {
+        appendProperty(builder, prefix + "review.nonProduction", "true");
+      }
     }
     entry
         .reviewReceipt()

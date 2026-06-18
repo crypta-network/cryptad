@@ -37,8 +37,7 @@ class AppCatalogMetadataTest {
   @Test
   void hasCatalogFields_whenReviewHasNote_expectTrue() {
     AppCatalogReviewMetadata review =
-        new AppCatalogReviewMetadata(
-            AppCatalogReviewStatus.UNREVIEWED, Optional.of("Review pending."));
+        new AppCatalogReviewMetadata(AppCatalogReviewStatus.UNREVIEWED, "Review pending.");
 
     assertTrue(review.hasCatalogFields());
     assertEquals("Review pending.", review.note().orElseThrow());
@@ -46,7 +45,7 @@ class AppCatalogMetadataTest {
 
   @Test
   void reviewMetadata_whenNoteIsBlank_expectInvalidCatalogEntry() {
-    Optional<String> blankNote = Optional.of("   ");
+    String blankNote = "   ";
 
     AppCatalogException exception =
         assertThrows(

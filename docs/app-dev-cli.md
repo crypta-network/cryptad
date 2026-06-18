@@ -384,7 +384,7 @@ permissions.rationale.queue.write=Creates insert requests for the publish operat
 permissions.rationale.queue.read=Displays publish progress from the local transfer queue.
 changelog.summary=Adds the first content reference app.
 api.minimumVersion=3
-api.maximumTestedVersion=19
+api.maximumTestedVersion=20
 api.targetStability=stable
 api.experimentalCapabilitiesAccepted=false
 ```
@@ -416,7 +416,7 @@ permissions.rationale.app.data.read=Restores bounded profile drafts and publish 
 permissions.rationale.app.data.write=Saves bounded profile drafts and publish summaries.
 changelog.summary=Adds the first identity-profile reference app.
 api.minimumVersion=9
-api.maximumTestedVersion=19
+api.maximumTestedVersion=20
 api.targetStability=experimental
 api.experimentalCapabilitiesAccepted=true
 ```
@@ -452,7 +452,7 @@ permissions.rationale.app.data.read=Restores the app-owned feed list, selected s
 permissions.rationale.app.data.write=Saves bounded app-owned reader state through the durable app-data API.
 changelog.summary=Adds the first feed reader and publisher reference app.
 api.minimumVersion=9
-api.maximumTestedVersion=19
+api.maximumTestedVersion=20
 api.targetStability=stable
 api.experimentalCapabilitiesAccepted=false
 ```
@@ -498,7 +498,7 @@ service-request.trust-score.contexts=message-author
 service-request.trust-score.purpose=Annotate Social Inbox message authors using the local Trust Graph Local RC score service.
 changelog.summary=Adds the Social Inbox RC threaded reference app.
 api.minimumVersion=16
-api.maximumTestedVersion=19
+api.maximumTestedVersion=20
 api.targetStability=experimental
 api.experimentalCapabilitiesAccepted=true
 ```
@@ -555,6 +555,8 @@ accepting unknown fields. Descriptors that declare production channel metadata, 
 compatibility, support status, deprecation metadata, replacement app ids, or security advisory
 references generate `catalog.version=3`.
 Descriptors that declare first-party maintenance policy metadata generate `catalog.version=5`.
+Descriptors produced by `crypta-app submission catalog-candidate` that include third-party
+submission review metadata generate `catalog.version=6`.
 `homepage`, `source`, `screenshot.N`, and `changelog.uri` are URI metadata for operator display.
 `review.status` and `review.note` are advisory and do not replace signed catalog or signed bundle
 verification. `minimumCryptaVersion` is advisory and does not block install/update by itself;
@@ -828,6 +830,42 @@ operator flow. See [production-first-party-catalog-channels.md](production-first
 for the stable, beta, nightly, and deprecated channel policy used by production catalog selectors
 and automatic update scheduling.
 
+## Third-party submission workflow
+
+Third-party app authors can create a deterministic offline review package without learning daemon
+internals:
+
+```bash
+crypta-app submission create \
+  --bundle-dir apps/example/build/cryptad-app/example \
+  --output build/submissions/example-submission.zip \
+  --submission-type new_app \
+  --permission-rationale review/permission-rationale.md \
+  --maintainer-name "Example Maintainer" \
+  --maintainer-contact "mailto:maintainer@example.invalid" \
+  --source-url "https://example.invalid/repo" \
+  --non-production
+
+crypta-app submission verify \
+  --submission build/submissions/example-submission.zip
+
+crypta-app submission pre-review \
+  --submission build/submissions/example-submission.zip \
+  --output build/submissions/example-pre-review.json
+```
+
+Reviewers then use `crypta-app submission decide` to record `reviewed`, `caution`, or `rejected`
+decisions. Reviewed and caution decisions can issue independent review receipts; rejected decisions
+write rejection metadata and cannot create installable catalog candidates. Reviewed or caution
+submissions can be converted to catalog descriptors with `crypta-app submission catalog-candidate`
+when the receipt verifies against a local trusted reviewer registry supplied with
+`--trusted-reviewer-keys`.
+
+See [app-store-submission-and-review-workflow.md](app-store-submission-and-review-workflow.md) for
+the package layout, required rationale files, Platform API 1.0 stability rules, pre-review JSON
+format, caution/rejection behavior, resubmission links, transparency-log events, and redaction
+rules.
+
 ## Related docs
 
 - [app-platform-developer-portal.md](app-platform-developer-portal.md) is the app ecosystem beta
@@ -850,6 +888,9 @@ and automatic update scheduling.
   `crypta-app ui lint`.
 - [app-catalogs.md](app-catalogs.md) describes the runtime catalog format, verification order, and
   Platform API install/update flow.
+- [app-store-submission-and-review-workflow.md](app-store-submission-and-review-workflow.md)
+  describes third-party submission packages, pre-review, reviewer decisions, transparency events,
+  and catalog candidate descriptors.
 - [platform-sdk-js.md](platform-sdk-js.md) describes the browser SDK used by app-owned static UI.
 - [app-permissions-and-audit.md](app-permissions-and-audit.md) lists the current Platform API
   capability names.

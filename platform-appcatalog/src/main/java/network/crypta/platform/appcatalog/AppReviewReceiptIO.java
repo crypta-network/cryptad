@@ -35,6 +35,8 @@ public final class AppReviewReceiptIO {
   private static final String RECEIPT_STATUS_FIELD = "review.receipt.status";
   private static final String RECEIPT_REVIEWED_AT_FIELD = "review.receipt.reviewed.at";
   private static final String RECEIPT_EXPIRES_AT_FIELD = "review.receipt.expires.at";
+  private static final String RECEIPT_DECISION_REASON_SHA256_FIELD =
+      "review.receipt.decision.reason.sha256";
   private static final String RECEIPT_EVIDENCE_URI_FIELD = "review.receipt.evidence.uri";
 
   private AppReviewReceiptIO() {}
@@ -165,6 +167,7 @@ public final class AppReviewReceiptIO {
             removeOptional(properties, prefix + RECEIPT_EXPIRES_AT_FIELD)
                 .map(value -> parseInstant(value, prefix + RECEIPT_EXPIRES_AT_FIELD)),
             removeOptional(properties, prefix + "review.receipt.evidence.sha256"),
+            removeOptional(properties, prefix + RECEIPT_DECISION_REASON_SHA256_FIELD),
             removeOptional(properties, prefix + RECEIPT_EVIDENCE_URI_FIELD)
                 .map(value -> parseUri(value, prefix + RECEIPT_EVIDENCE_URI_FIELD)),
             removeOptional(properties, prefix + "review.receipt.note"));
@@ -200,6 +203,9 @@ public final class AppReviewReceiptIO {
     payload
         .evidenceSha256()
         .ifPresent(value -> append(builder, prefix + "review.receipt.evidence.sha256", value));
+    payload
+        .decisionReasonSha256()
+        .ifPresent(value -> append(builder, prefix + RECEIPT_DECISION_REASON_SHA256_FIELD, value));
     payload
         .evidenceUri()
         .ifPresent(value -> append(builder, prefix + RECEIPT_EVIDENCE_URI_FIELD, value.toString()));

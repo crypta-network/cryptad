@@ -60,7 +60,7 @@ public record PlatformApiContract(
    * way that tooling should be able to compare. It is not the Cryptad build number, and it is not
    * the URL API version.
    */
-  public static final int CURRENT_CONTRACT_VERSION = 19;
+  public static final int CURRENT_CONTRACT_VERSION = 20;
 
   /** Stable app-facing Platform API baseline name published in contract snapshots. */
   public static final String PLATFORM_API_STABLE_BASELINE_NAME = "1.0";
@@ -97,6 +97,7 @@ public record PlatformApiContract(
   private static final int ECOSYSTEM_SECURITY_ADVISORY_CONTRACT_VERSION = 17;
   private static final int NETWORK_SCALE_BUDGET_CONTRACT_VERSION = 18;
   private static final int FIRST_PARTY_MAINTENANCE_CONTRACT_VERSION = 19;
+  private static final int THIRD_PARTY_REVIEW_METADATA_CONTRACT_VERSION = 20;
 
   /**
    * Stable producer label written into generated contract snapshots.
@@ -127,6 +128,9 @@ public record PlatformApiContract(
           + ". Contract version "
           + FIRST_PARTY_MAINTENANCE_CONTRACT_VERSION
           + " adds signed first-party maintenance policy metadata to catalog app summaries"
+          + ". Contract version "
+          + THIRD_PARTY_REVIEW_METADATA_CONTRACT_VERSION
+          + " adds third-party submission review metadata to catalog app summaries"
           + ". Endpoint descriptors retain the contract version where each route first appeared. "
           + "Experimental, deprecated, scheduled-for-removal, and internal entries are flagged for "
           + "developer tooling and release review before behavior changes.";
@@ -182,12 +186,7 @@ public record PlatformApiContract(
     capabilities = List.copyOf(Objects.requireNonNull(capabilities, "capabilities"));
     endpoints = List.copyOf(Objects.requireNonNull(endpoints, "endpoints"));
     requireEndpointCapabilitiesKnown(capabilities, endpoints);
-    StableBaseline derivedBaseline =
-        StableBaseline.fromDescriptors(
-            PLATFORM_API_STABLE_BASELINE_NAME,
-            PLATFORM_API_STABLE_BASELINE_CONTRACT_VERSION,
-            capabilities,
-            endpoints);
+    StableBaseline derivedBaseline = StableBaseline.fromDescriptors(capabilities, endpoints);
     stableBaseline = stableBaseline == null ? derivedBaseline : stableBaseline;
     stableBaseline.requireMatches(derivedBaseline);
   }
@@ -972,8 +971,6 @@ public record PlatformApiContract(
     }
 
     private static StableBaseline fromDescriptors(
-        String name,
-        int contractVersion,
         List<PlatformApiCapabilityDescriptor> capabilities,
         List<PlatformApiEndpointDescriptor> endpoints) {
       List<String> stableCapabilities =
@@ -985,8 +982,8 @@ public record PlatformApiContract(
               .sorted()
               .toList();
       return new StableBaseline(
-          name,
-          contractVersion,
+          PLATFORM_API_STABLE_BASELINE_NAME,
+          PLATFORM_API_STABLE_BASELINE_CONTRACT_VERSION,
           stableCapabilities.size(),
           stableEndpoints.size(),
           stableCapabilities,

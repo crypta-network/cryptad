@@ -114,3 +114,14 @@ own stability labels, but third-party apps must not treat them as Platform API 1
 Host-only and operator-only routes may still be visible in localhost contract snapshots for audit
 or Web Shell wiring, but they are not part of the third-party stable baseline and compatibility
 verification rejects app declarations that rely on them.
+
+## Submission Review Enforcement
+
+Third-party app-store pre-review uses this same baseline. A submission whose manifest declares
+`api.targetStability=stable` must use only the stable capabilities and endpoints listed above.
+Experimental app-facing capabilities require `api.targetStability=experimental` and
+`api.experimentalCapabilitiesAccepted=true`. Internal, host-only, and operator-only capabilities
+fail pre-review for third-party submissions.
+
+See [app-store-submission-and-review-workflow.md](app-store-submission-and-review-workflow.md) for
+the submission package format, automated pre-review report, and reviewer decision workflow.

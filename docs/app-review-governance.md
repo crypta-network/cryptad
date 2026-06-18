@@ -123,6 +123,38 @@ The transparency log must not contain secrets, local filesystem paths, app brows
 process tokens, private keys, raw public key bytes, raw receipt signatures, form passwords, request
 bodies, or raw exception traces.
 
+Third-party submission review adds these local event kinds:
+
+- `submission_created`
+- `pre_review_completed`
+- `review_decision_recorded`
+- `review_receipt_issued`
+- `submission_rejected`
+- `submission_resubmitted`
+- `catalog_candidate_created`
+
+The events carry submission ids, app ids, versions, bundle digests, reviewer key ids, policy ids,
+receipt status values, evidence digests, and short warnings only. They do not carry raw submission
+packages, rationale bodies, private insert URIs, local paths, or receipt signatures.
+
+## Third-party Submission Decisions
+
+The app-store submission workflow supports `submitted`, `pre_review_passed`, `reviewed`, `caution`,
+`rejected`, and `resubmitted` states. These states are catalog/display metadata until an independent
+review receipt verifies against local trusted reviewer keys.
+
+Use `crypta-app submission pre-review` before recording a decision. Reviewed and caution decisions
+can issue a signed review receipt. Rejected decisions produce rejection metadata and transparency
+events but must not produce an installable reviewed catalog candidate. Caution candidates require
+explicit catalog policy and must preserve warning metadata.
+
+Resubmissions use `submissionType=resubmission` and `resubmissionOf=<submission-id>` in
+`crypta-app-submission.json` so reviewers and operators can follow the audit chain.
+
+See [app-store-submission-and-review-workflow.md](app-store-submission-and-review-workflow.md) for
+the full package layout, required rationale files, pre-review report format, CLI commands, and
+redaction rules.
+
 ## Platform API And Web Shell
 
 Operator-readable review governance routes include:
@@ -136,6 +168,9 @@ Operator-readable review governance routes include:
 Responses are redacted. They expose reviewer key ids and lifecycle summaries, but not public key
 bytes, private keys, registry paths, transparency-log paths, local evidence paths, tokens, or raw
 receipt signatures.
+
+Catalog app summaries expose third-party submission status as `thirdPartyReview`, separate from
+publisher advisory `review` metadata and independent trusted receipt `reviewTrust` evaluation.
 
 Web Shell displays review governance in the Apps/Catalogs area. Its review status is a local trust
 decision. It can change when local reviewer keys, reviewer lifecycle metadata, policy constraints,

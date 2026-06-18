@@ -152,7 +152,7 @@ FIRST_PARTY_MAINTENANCE_ENUMS = {
     "securityPolicy": {"catalog-advisories", "project-security-policy", "unsupported"},
     "deprecationPolicy": {"none", "notice-only", "replacement-required", "security-only"},
 }
-CURRENT_PLATFORM_API_CONTRACT_VERSION = 19
+CURRENT_PLATFORM_API_CONTRACT_VERSION = 20
 CURRENT_PLATFORM_API_STABLE_BASELINE_CONTRACT_VERSION = 19
 NETWORK_SCALE_EVIDENCE_IDS = (
     "network-scale.app-network-budget",
@@ -2456,7 +2456,7 @@ def collect_app_services_evidence(settings: Settings) -> list[EvidenceItem]:
 
     registry_checks = {
         "contractV12AndCapabilitiesPresent": (
-            "CURRENT_CONTRACT_VERSION = 19" in contract_text
+            "CURRENT_CONTRACT_VERSION = 20" in contract_text
             and "APP_SERVICES_CONTRACT_VERSION = 12" in contract_text
             and "APP_SERVICE_DEPENDENCY_BUNDLES_CONTRACT_VERSION = 16" in contract_text
             and "APP_SERVICES_READ" in capabilities_text
@@ -4023,6 +4023,182 @@ def collect_app_review_receipt_evidence(settings: Settings) -> EvidenceItem:
     )
 
 
+APP_STORE_SUBMISSION_EVIDENCE_IDS = (
+    "app-store.submission-package-schema",
+    "app-store.submission-cli",
+    "app-store.pre-review",
+    "app-store.review-decision-states",
+    "app-store.review-receipt-issued",
+    "app-store.rejection-record",
+    "app-store.resubmission-link",
+    "app-store.transparency-log",
+    "app-store.catalog-candidate",
+    "app-store.third-party-sample-flow",
+    "app-store.redaction-clean",
+)
+
+
+def collect_app_store_submission_workflow_evidence(settings: Settings) -> list[EvidenceItem]:
+    source = summary_source(settings)
+    appcatalog_dir = settings.workspace_root / "platform-appcatalog/src/main/java/network/crypta/platform/appcatalog"
+    devtools_cli = settings.workspace_root / "platform-devtools/src/main/java/network/crypta/platform/devtools/CryptaAppCli.java"
+    api_handler = settings.workspace_root / "platform-api/src/main/java/network/crypta/platform/api/appcatalogs/AppCatalogsApiHandler.java"
+    web_shell = settings.workspace_root / "platform-web-shell/src/main/resources/network/crypta/platform/webshell/static/web-shell.js"
+    docs_workflow = settings.workspace_root / "docs/app-store-submission-and-review-workflow.md"
+    metadata_text = read_source(appcatalog_dir / "AppSubmissionMetadata.java")
+    writer_text = read_source(appcatalog_dir / "AppSubmissionPackageWriter.java")
+    verifier_text = read_source(appcatalog_dir / "AppSubmissionPackageVerifier.java")
+    report_text = read_source(appcatalog_dir / "AppSubmissionPreReviewReport.java")
+    redaction_text = read_source(appcatalog_dir / "AppSubmissionRedactionScanner.java")
+    catalog_text = read_source(appcatalog_dir / "AppCatalog.java")
+    catalog_writer_text = read_source(appcatalog_dir / "AppCatalogWriter.java")
+    receipt_payload_text = read_source(appcatalog_dir / "AppReviewReceiptPayload.java")
+    status_text = read_source(appcatalog_dir / "AppCatalogReviewStatus.java")
+    transparency_text = read_source(appcatalog_dir / "AppReviewTransparencyEventKind.java")
+    cli_text = read_source(devtools_cli)
+    api_text = read_source(api_handler)
+    web_text = read_source(web_shell)
+    docs_text = read_source(docs_workflow)
+    checks = {
+        "schemaFields": all(
+            token in metadata_text
+            for token in (
+                "schemaVersion",
+                "submissionId",
+                "submissionCreatedAt",
+                "submissionType",
+                "bundleDigest",
+                "apiTargetStability",
+                "experimentalCapabilitiesAccepted",
+                "requestedPermissions",
+                "permissionRationaleDigest",
+                "redactionScanDigest",
+                "nonProduction",
+            )
+        ),
+        "deterministicZipWriter": "ZipEntry.STORED" in writer_text and "FIXED_ZIP_TIME_MILLIS" in writer_text,
+        "packageVerifier": (
+            "SUBMISSION_METADATA_ENTRY" in verifier_text
+            and "BUNDLE_ARTIFACT_ENTRY" in verifier_text
+            and "validateMetadataBinding" in verifier_text
+        ),
+        "preReviewReport": (
+            "promotionReady" in report_text
+            and "AppSubmissionFindingSeverity.BLOCKER" in report_text
+        ),
+        "decisionStates": all(
+            token in status_text
+            for token in ("SUBMITTED", "PRE_REVIEW_PASSED", "REVIEWED", "CAUTION", "REJECTED", "RESUBMITTED")
+        ),
+        "cliCommands": all(
+            token in cli_text
+            for token in (
+                "SubmissionCreateCommand",
+                "SubmissionVerifyCommand",
+                "SubmissionPreReviewCommand",
+                "SubmissionDecideCommand",
+                "SubmissionCatalogCandidateCommand",
+            )
+        ),
+        "receiptIssued": "REVIEW_RECEIPT_ISSUED" in cli_text and "AppReviewReceiptSigner.sign" in cli_text,
+        "rejectionRecord": "submission.decision.version=1" in cli_text and "SUBMISSION_REJECTED" in cli_text,
+        "resubmissionLink": "resubmissionOf" in metadata_text and "RESUBMITTED" in status_text,
+        "transparencyEvents": all(
+            token in transparency_text
+            for token in (
+                "submission_created",
+                "pre_review_completed",
+                "review_decision_recorded",
+                "review_receipt_issued",
+                "submission_rejected",
+                "submission_resubmitted",
+                "catalog_candidate_created",
+            )
+        ),
+        "catalogCandidate": "review.receipt.fingerprint.sha256" in cli_text and "catalog-candidate" in cli_text,
+        "catalogSchemaV6": (
+            "VERSION_THIRD_PARTY_SUBMISSION_REVIEW = 6" in catalog_text
+            and "catalog.version 6 is required when submission review metadata is present"
+            in catalog_writer_text
+            and "review.submission.id" in catalog_writer_text
+        ),
+        "decisionReasonBound": (
+            "review.receipt.decision.reason.sha256" in receipt_payload_text
+            and "RECEIPT_VERSION_WITH_DECISION_REASON = 2" in receipt_payload_text
+            and "decisionReasonSha256" in cli_text
+            and "review.decision.reason.sha256" in cli_text
+        ),
+        "apiAndWebShellDisplay": "thirdPartyReview" in api_text and "Third-party submission" in web_text,
+        "redactionClean": all(
+            token in redaction_text
+            for token in (
+                "PRIVATE_KEY_PATTERN",
+                "AUTHORIZATION_HEADER_PATTERN",
+                "BEARER_TOKEN_PATTERN",
+                "CRYPTA_SIGNED_SUBSPACE_URI_PATTERN",
+                "LOCAL_UNIX_PATH_PREFIXES",
+                "RAW_CONTENT_PATTERN",
+            )
+        ),
+        "docs": (
+            "crypta-app submission create" in docs_text
+            and "caution" in docs_text
+            and "resubmission" in docs_text
+            and "transparency" in docs_text
+        ),
+    }
+    errors = [key for key, passed in checks.items() if not passed]
+    details = {
+        "checks": checks,
+        "submissionStatuses": [
+            "submitted",
+            "pre_review_passed",
+            "reviewed",
+            "caution",
+            "rejected",
+            "resubmitted",
+        ],
+        "sampleFlow": [
+            "submission create",
+            "submission verify",
+            "submission pre-review",
+            "submission decide reviewed",
+            "review transparency verify",
+            "submission catalog-candidate",
+            "submission decide rejected",
+            "resubmission link",
+        ],
+        "redaction": {
+            "privateKeysExcluded": True,
+            "tokensExcluded": True,
+            "privateInsertUrisExcluded": True,
+            "rawContentExcluded": True,
+            "absolutePathsExcluded": True,
+        },
+        "sources": {
+            "metadata": display_path(appcatalog_dir / "AppSubmissionMetadata.java", settings.workspace_root),
+            "verifier": display_path(appcatalog_dir / "AppSubmissionPackageVerifier.java", settings.workspace_root),
+            "catalog": display_path(appcatalog_dir / "AppCatalog.java", settings.workspace_root),
+            "catalogWriter": display_path(appcatalog_dir / "AppCatalogWriter.java", settings.workspace_root),
+            "receiptPayload": display_path(appcatalog_dir / "AppReviewReceiptPayload.java", settings.workspace_root),
+            "devtools": display_path(devtools_cli, settings.workspace_root),
+            "api": display_path(api_handler, settings.workspace_root),
+            "webShell": display_path(web_shell, settings.workspace_root),
+            "docs": display_path(docs_workflow, settings.workspace_root),
+        },
+    }
+    status = "pass" if not errors else root_consequence(settings, "fail")
+    summary = (
+        "Third-party app submission workflow evidence passed deterministic checks."
+        if not errors
+        else "Third-party app submission workflow evidence is incomplete."
+    )
+    return [
+        EvidenceItem(evidence_id, status, True, summary, source, {"errors": errors, **details})
+        for evidence_id in APP_STORE_SUBMISSION_EVIDENCE_IDS
+    ]
+
+
 def collect_app_review_policy_evidence(settings: Settings) -> EvidenceItem:
     source = summary_source(settings)
     appcatalog_dir = settings.workspace_root / "platform-appcatalog/src/main/java/network/crypta/platform/appcatalog"
@@ -5348,7 +5524,7 @@ def collect_content_subscription_evidence(settings: Settings) -> EvidenceItem:
             or "CURRENT_CONTRACT_VERSION = 13" in contract_text
             or "CURRENT_CONTRACT_VERSION = 14" in contract_text
             or "CURRENT_CONTRACT_VERSION = 15" in contract_text
-            or "CURRENT_CONTRACT_VERSION = 19" in contract_text
+            or "CURRENT_CONTRACT_VERSION = 20" in contract_text
         ),
         "capabilityDescriptorPresent": (
             "CONTENT_SUBSCRIBE" in contract_text
@@ -6073,7 +6249,7 @@ def collect_app_data_store_evidence(settings: Settings) -> EvidenceItem:
                 or "CURRENT_CONTRACT_VERSION = 13" in text["contract"]
                 or "CURRENT_CONTRACT_VERSION = 14" in text["contract"]
                 or "CURRENT_CONTRACT_VERSION = 15" in text["contract"]
-                or "CURRENT_CONTRACT_VERSION = 19" in text["contract"]
+                or "CURRENT_CONTRACT_VERSION = 20" in text["contract"]
             )
             and "APP_DATA_STORE_CONTRACT_VERSION = 9" in text["contract"]
             and "app.data.read" in text["capabilities"]
@@ -7728,7 +7904,7 @@ def collect_trust_graph_rc_scope_and_safety_evidence(settings: Settings) -> Evid
     docs_lower = normalized_source_text(docs_text)
     checks = {
         "contractV15AndRoutesPresent": (
-            "CURRENT_CONTRACT_VERSION = 19" in contract_text
+            "CURRENT_CONTRACT_VERSION = 20" in contract_text
             and "TRUST_GRAPH_RC_SCOPE_CONTRACT_VERSION = 15" in contract_text
             and "/trust-graph/statements/{fingerprint}" in contract_text
             and "/trust-graph/statements/{fingerprint}/deprecate" in contract_text
@@ -8068,7 +8244,7 @@ def collect_trust_graph_exchange_evidence(settings: Settings) -> EvidenceItem:
     route_source_text = router_text + "\n" + route_text
     checks = {
         "contractVersionV10": (
-            "CURRENT_CONTRACT_VERSION = 19" in contract_text
+            "CURRENT_CONTRACT_VERSION = 20" in contract_text
             and "TRUST_GRAPH_EXCHANGE_CONTRACT_VERSION = 10" in contract_text
         ),
         "contractDescriptorsPresent": (
@@ -8416,7 +8592,7 @@ def collect_social_message_signing_evidence(settings: Settings) -> EvidenceItem:
     )
     checks = {
         "routeInContract": "/app-vault/identities/{identityId}/social-message" in contract_text,
-        "contractVersionV11": "CURRENT_CONTRACT_VERSION = 19" in contract_text
+        "contractVersionV11": "CURRENT_CONTRACT_VERSION = 20" in contract_text
         and "SOCIAL_MESSAGE_CONTRACT_VERSION = 11" in contract_text,
         "capabilitiesInContract": all(
             fragment in contract_text
@@ -13640,6 +13816,7 @@ def run(settings: Settings) -> tuple[dict[str, Any], int]:
         collect_first_party_maintenance_policy_evidence(settings),
         collect_live_usk_source_verification_evidence(settings),
         collect_app_review_receipt_evidence(settings),
+        *collect_app_store_submission_workflow_evidence(settings),
         collect_app_review_policy_evidence(settings),
         collect_app_review_governance_evidence(settings),
         collect_app_review_reviewer_key_lifecycle_evidence(settings),
@@ -15854,7 +16031,9 @@ def make_self_test_workspace(workspace: Path) -> None:
     )
     (appcatalog_dir / "AppReviewReceiptPayload.java").write_text(
         "record AppReviewReceiptPayload() { byte[] canonicalPayloadBytes() { return new byte[0]; } "
-        "String s = \"binding.appId() binding.version() binding.artifactSha256() binding.artifactSizeBytes()\"; }\n",
+        "String s = \"binding.appId() binding.version() binding.artifactSha256() "
+        "binding.artifactSizeBytes() review.receipt.decision.reason.sha256 "
+        "decisionReasonSha256 RECEIPT_VERSION_WITH_DECISION_REASON = 2\"; }\n",
         encoding="utf-8",
     )
     (appcatalog_dir / "AppReviewReceiptIO.java").write_text(
@@ -15957,6 +16136,7 @@ def make_self_test_workspace(workspace: Path) -> None:
         "final class AppCatalog { static final int VERSION_PRODUCTION_CHANNELS = 3; "
         "static final int VERSION_SECURITY_POLICY = 4; "
         "static final int VERSION_FIRST_PARTY_MAINTENANCE = 5; "
+        "static final int VERSION_THIRD_PARTY_SUBMISSION_REVIEW = 6; "
         "Object securityPolicy; if (securityPolicy.hasCatalogFields() && version < VERSION_SECURITY_POLICY) throw new IllegalArgumentException(); }\n",
         encoding="utf-8",
     )
@@ -15979,9 +16159,12 @@ def make_self_test_workspace(workspace: Path) -> None:
     (appcatalog_dir / "AppCatalogWriter.java").write_text(
         "final class AppCatalogWriter { String fields = \"VERSION_PRODUCTION_CHANNELS = 3 "
         "VERSION_FIRST_PARTY_MAINTENANCE = 5 "
+        "VERSION_THIRD_PARTY_SUBMISSION_REVIEW = 6 "
         "maximumCryptaVersion securityAdvisory replacementAppId appendSecurityPolicy "
         "catalog.securityAdvisories catalog.securityAdvisory. catalog.securityDenylist "
-        "maintenance.owner maintenance.supportLevel maintenance.backupRestore api.targetStability\"; }\n",
+        "maintenance.owner maintenance.supportLevel maintenance.backupRestore api.targetStability "
+        "catalog.version 6 is required when submission review metadata is present "
+        "review.submission.id review.decision.reason.sha256\"; }\n",
         encoding="utf-8",
     )
     (appcatalog_dir / "AppCatalogEntryDescriptor.java").write_text(
@@ -16199,7 +16382,7 @@ def make_self_test_workspace(workspace: Path) -> None:
         encoding="utf-8",
     )
     (api_dir / "PlatformApiContract.java").write_text(
-        "final class PlatformApiContract { static final int CURRENT_CONTRACT_VERSION = 19; "
+        "final class PlatformApiContract { static final int CURRENT_CONTRACT_VERSION = 20; "
         "static final int TRUST_GRAPH_PREVIEW_CONTRACT_VERSION = 7; "
         "static final int TRUST_GRAPH_EXCHANGE_CONTRACT_VERSION = 10; "
         "static final int TRUST_GRAPH_RC_SCOPE_CONTRACT_VERSION = 15; "
@@ -18990,7 +19173,7 @@ import os
 import sys
 from pathlib import Path
 
-CURRENT_PLATFORM_API_CONTRACT_VERSION = 19
+CURRENT_PLATFORM_API_CONTRACT_VERSION = 20
 STABLE_BASELINE_CONTRACT_VERSION = 19
 
 
@@ -19397,7 +19580,7 @@ case "$cmd" in
       if [ "$1" = "--dir" ]; then dir="$2"; shift 2; else shift; fi
     done
     mkdir -p "$dir/bin" "$dir/static/crypta-ui"
-    printf '%s\n' 'manifest.version=1' 'app.id=cert-smoke' 'app.name=Certification Smoke' 'app.version=0.1.0' 'app.exec=bin/start.sh' 'api.minimumVersion=1' 'api.maximumTestedVersion=19' 'api.targetStability=stable' 'api.experimentalCapabilitiesAccepted=false' 'app.ui.mode=static' 'app.ui.entry=static/index.html' 'app.permissions=queue.read' > "$dir/cryptad-app.properties"
+    printf '%s\n' 'manifest.version=1' 'app.id=cert-smoke' 'app.name=Certification Smoke' 'app.version=0.1.0' 'app.exec=bin/start.sh' 'api.minimumVersion=1' 'api.maximumTestedVersion=20' 'api.targetStability=stable' 'api.experimentalCapabilitiesAccepted=false' 'app.ui.mode=static' 'app.ui.entry=static/index.html' 'app.permissions=queue.read' > "$dir/cryptad-app.properties"
     printf '%s\n' '#!/usr/bin/env sh' 'exit 0' > "$dir/bin/start.sh"
     printf '%s\n' '<!doctype html><html lang="en"><head><meta name="viewport" content="width=device-width, initial-scale=1"><title>Certification Smoke</title><link rel="stylesheet" href="./crypta-ui/crypta-ui-tokens.css"><link rel="stylesheet" href="./crypta-ui/crypta-ui.css"><link rel="stylesheet" href="./app.css"></head><body class="cr-app"><main class="cr-shell"><section class="cr-permission-summary" data-crypta-permission-summary><code>queue.read</code></section><h1>Certification Smoke</h1></main><script src="./crypta-platform.js"></script><script src="./app.js"></script></body></html>' > "$dir/static/index.html"
     printf '%s\n' 'CryptaPlatform.bootstrap.load({ appId: "cert-smoke" });' > "$dir/static/app.js"
@@ -19578,7 +19761,7 @@ PY
 {
   "contract": {
     "apiVersion": "v1",
-    "contractVersion": 19,
+    "contractVersion": 20,
     "generatedBy": "cryptad",
     "stabilityPolicy": "self-test",
     "stableBaseline": {

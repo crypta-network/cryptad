@@ -51,6 +51,9 @@ public record AppCatalog(
   /** Signed-catalog schema that can carry first-party app maintenance policy metadata. */
   public static final int VERSION_FIRST_PARTY_MAINTENANCE = 5;
 
+  /** Signed-catalog schema that can carry third-party submission review workflow metadata. */
+  public static final int VERSION_THIRD_PARTY_SUBMISSION_REVIEW = 6;
+
   /**
    * Creates a catalog without root security policy.
    *
@@ -108,6 +111,10 @@ public record AppCatalog(
         throw AppCatalogSidecars.invalidEntry(
             "catalog.version 5 is required when maintenance metadata is present");
       }
+      if (entry.hasSubmissionReviewMetadata() && version < VERSION_THIRD_PARTY_SUBMISSION_REVIEW) {
+        throw AppCatalogSidecars.invalidEntry(
+            "catalog.version 6 is required when submission review metadata is present");
+      }
     }
     rejectDuplicateEntries(entries);
   }
@@ -117,7 +124,8 @@ public record AppCatalog(
         && version != VERSION_STORE_METADATA
         && version != VERSION_PRODUCTION_CHANNELS
         && version != VERSION_SECURITY_POLICY
-        && version != VERSION_FIRST_PARTY_MAINTENANCE;
+        && version != VERSION_FIRST_PARTY_MAINTENANCE
+        && version != VERSION_THIRD_PARTY_SUBMISSION_REVIEW;
   }
 
   /**

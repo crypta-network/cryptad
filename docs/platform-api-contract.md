@@ -9,7 +9,7 @@ The current app-facing values are:
 
 ```text
 apiVersion=v1
-contractVersion=19
+contractVersion=20
 ```
 
 The contract does not change Platform API behavior. It publishes metadata that answers which
@@ -37,7 +37,7 @@ The response shape is:
 {
   "contract": {
     "apiVersion": "v1",
-    "contractVersion": 19,
+    "contractVersion": 20,
     "generatedBy": "cryptad",
     "stabilityPolicy": "...",
     "capabilities": [],
@@ -414,6 +414,13 @@ Contract version 19 extends catalog app listing/detail responses with a nested `
 object. The object is present for old catalogs with `null` values and populated from signed catalog
 v5 metadata when declared. It is metadata-only and must not expose local paths, tokens, private
 insert URIs, raw app data, raw fetched content, or signing material.
+
+Contract version 20 extends catalog app listing/detail responses with a nested `thirdPartyReview`
+object for third-party app submission metadata. The object summarizes submitted, reviewed, caution,
+rejected, and resubmitted state, pre-review outcome, reviewer key status, receipt fingerprint, and
+redacted transparency-log status when present. It remains metadata-only and must not expose
+submission package bodies, rationale text, local paths, tokens, private keys, private insert URIs,
+raw app data, or raw fetched content.
 
 App-update summaries also include scheduler metadata for background catalog refresh and app update
 checks. The scheduler fields are path-free and token-free: they expose enabled/status, last and

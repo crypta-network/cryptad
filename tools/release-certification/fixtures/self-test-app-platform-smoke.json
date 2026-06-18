@@ -60,7 +60,7 @@
       "details": {
         "apiVersion": "v1",
         "capabilityCount": 25,
-        "contractVersion": 19,
+        "contractVersion": 20,
         "endpointCount": 65,
         "flaggedStability": [],
         "stabilityCounts": {
@@ -355,7 +355,7 @@
     },
     {
       "details": {
-        "currentContractVersion": 19,
+        "currentContractVersion": 20,
         "errors": [],
         "historyGate": "release_certification.py compares previous stable baseline summaries",
         "productionMode": "requires previous release summary through release certification history",
@@ -1616,6 +1616,173 @@
       "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
       "status": "pass",
       "summary": "First-party maintenance policy evidence passed deterministic checks."
+    },
+    {
+      "details": {
+        "fixtureBacked": true,
+        "workflow": "third-party app submission package schema"
+      },
+      "id": "app-store.submission-package-schema",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Third-party app submission package schema evidence passed."
+    },
+    {
+      "details": {
+        "commands": [
+          "submission create",
+          "submission verify",
+          "submission pre-review",
+          "submission decide",
+          "submission catalog-candidate"
+        ],
+        "fixtureBacked": true
+      },
+      "id": "app-store.submission-cli",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Third-party app submission CLI evidence passed."
+    },
+    {
+      "details": {
+        "fixtureBacked": true,
+        "statusMapping": [
+          "pass",
+          "warn",
+          "fail"
+        ]
+      },
+      "id": "app-store.pre-review",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Third-party app pre-review evidence passed."
+    },
+    {
+      "details": {
+        "fixtureBacked": true,
+        "states": [
+          "submitted",
+          "pre_review_passed",
+          "reviewed",
+          "caution",
+          "rejected",
+          "resubmitted"
+        ]
+      },
+      "id": "app-store.review-decision-states",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Third-party app review decision state evidence passed."
+    },
+    {
+      "details": {
+        "fixtureBacked": true,
+        "receiptStatuses": [
+          "reviewed",
+          "caution"
+        ]
+      },
+      "id": "app-store.review-receipt-issued",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Third-party app review receipt issuance evidence passed."
+    },
+    {
+      "details": {
+        "fixtureBacked": true,
+        "installableCatalogCandidate": false
+      },
+      "id": "app-store.rejection-record",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Third-party app rejection record evidence passed."
+    },
+    {
+      "details": {
+        "fixtureBacked": true,
+        "state": "resubmitted"
+      },
+      "id": "app-store.resubmission-link",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Third-party app resubmission link evidence passed."
+    },
+    {
+      "details": {
+        "events": [
+          "submission_created",
+          "pre_review_completed",
+          "review_decision_recorded",
+          "review_receipt_issued",
+          "submission_rejected",
+          "submission_resubmitted",
+          "catalog_candidate_created"
+        ],
+        "fixtureBacked": true
+      },
+      "id": "app-store.transparency-log",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Third-party app transparency-log evidence passed."
+    },
+    {
+      "details": {
+        "fixtureBacked": true,
+        "reviewStatuses": [
+          "reviewed",
+          "caution"
+        ]
+      },
+      "id": "app-store.catalog-candidate",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Third-party app catalog-candidate evidence passed."
+    },
+    {
+      "details": {
+        "fixtureBacked": true,
+        "sampleFlow": [
+          "submission create",
+          "submission verify",
+          "submission pre-review",
+          "submission decide reviewed",
+          "review transparency verify",
+          "submission catalog-candidate",
+          "submission decide rejected",
+          "resubmission link"
+        ]
+      },
+      "id": "app-store.third-party-sample-flow",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Third-party app sample submission flow evidence passed."
+    },
+    {
+      "details": {
+        "fixtureBacked": true,
+        "redaction": {
+          "absolutePathsExcluded": true,
+          "privateInsertUrisExcluded": true,
+          "privateKeysExcluded": true,
+          "rawContentExcluded": true,
+          "tokensExcluded": true
+        }
+      },
+      "id": "app-store.redaction-clean",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Third-party app submission redaction evidence passed."
     },
     {
       "details": {

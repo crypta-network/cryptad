@@ -25,7 +25,7 @@ import java.util.Optional;
  * canonical bytes stable across operating systems and makes tampering visible: changing any payload
  * field changes {@link #canonicalPayloadBytes()} and invalidates the detached signature.
  *
- * @param version receipt payload schema version, currently {@link #RECEIPT_VERSION}
+ * @param version receipt payload schema version
  * @param appId reviewed app id, normalized with catalog app-id rules
  * @param appVersion reviewed app version as a bounded single-line value
  * @param artifactSha256 catalog artifact SHA-256 digest the review covers
@@ -38,6 +38,7 @@ import java.util.Optional;
  * @param reviewedAt instant when the reviewer produced the receipt
  * @param expiresAt optional instant after which the receipt is not trusted
  * @param evidenceSha256 optional SHA-256 digest of public review evidence
+ * @param decisionReasonSha256 optional SHA-256 digest of the reviewer decision rationale
  * @param evidenceUri optional HTTPS or crypta URI for review evidence
  * @param note optional bounded single-line reviewer note for display
  */
@@ -55,16 +56,24 @@ public record AppReviewReceiptPayload(
     Instant reviewedAt,
     Optional<Instant> expiresAt,
     Optional<String> evidenceSha256,
+    Optional<String> decisionReasonSha256,
     Optional<URI> evidenceUri,
     Optional<String> note) {
   /**
-   * Supported receipt payload schema version.
+   * Original receipt payload schema version.
    *
-   * <p>The value is serialized into every receipt as {@code review.receipt.version}. A future
-   * incompatible receipt format must use a different version so old nodes fail closed instead of
-   * interpreting unknown fields.
+   * <p>Version 1 receipts do not carry the reviewer decision-rationale digest. They remain accepted
+   * for existing receipt files and catalog metadata.
    */
   public static final int RECEIPT_VERSION = 1;
+
+  /**
+   * Receipt payload schema version that adds {@code review.receipt.decision.reason.sha256}.
+   *
+   * <p>Receipts carrying the decision-rationale digest must use this schema so older strict v1
+   * parsers reject the receipt at the version field instead of seeing an unknown v1 property.
+   */
+  public static final int RECEIPT_VERSION_WITH_DECISION_REASON = 2;
 
   private static final int MAX_APP_VERSION_CHARS = 128;
   private static final int MAX_BUNDLE_KEY_ID_CHARS = 128;
@@ -81,7 +90,7 @@ public record AppReviewReceiptPayload(
    * normalized before assignment. The constructor does not sign the payload and does not evaluate
    * trust; it only creates the exact value that a signer or verifier will hash through Ed25519.
    *
-   * @param version receipt payload schema version expected to equal {@link #RECEIPT_VERSION}
+   * @param version receipt payload schema version
    * @param appId reviewed app id before catalog normalization
    * @param appVersion reviewed app version that must be bounded and single-line
    * @param artifactSha256 lowercase SHA-256 digest of the reviewed artifact
@@ -94,11 +103,12 @@ public record AppReviewReceiptPayload(
    * @param reviewedAt instant when the receipt was produced
    * @param expiresAt optional expiry instant for trust evaluation
    * @param evidenceSha256 optional lowercase SHA-256 digest for evidence metadata
+   * @param decisionReasonSha256 optional lowercase SHA-256 digest of the reviewer rationale
    * @param evidenceUri optional HTTPS or crypta evidence URI
    * @param note optional bounded single-line reviewer note
    */
   public AppReviewReceiptPayload {
-    if (version != RECEIPT_VERSION) {
+    if (version != RECEIPT_VERSION && version != RECEIPT_VERSION_WITH_DECISION_REASON) {
       throw AppCatalogSidecars.invalidEntry("unsupported review.receipt.version: " + version);
     }
     appId = AppCatalogEntry.normalizeAppId(appId);
@@ -148,6 +158,16 @@ public record AppReviewReceiptPayload(
         evidenceSha256.map(
             value ->
                 AppCatalogSidecars.requireLowercaseSha256(value, "review.receipt.evidence.sha256"));
+    Objects.requireNonNull(decisionReasonSha256, "decisionReasonSha256");
+    decisionReasonSha256 =
+        decisionReasonSha256.map(
+            value ->
+                AppCatalogSidecars.requireLowercaseSha256(
+                    value, "review.receipt.decision.reason.sha256"));
+    if (version == RECEIPT_VERSION && decisionReasonSha256.isPresent()) {
+      throw AppCatalogSidecars.invalidEntry(
+          "review.receipt.decision.reason.sha256 requires review.receipt.version 2");
+    }
     Objects.requireNonNull(evidenceUri, "evidenceUri");
     evidenceUri = evidenceUri.map(AppReviewReceiptPayload::requireEvidenceUri);
     Objects.requireNonNull(note, "note");
@@ -179,7 +199,7 @@ public record AppReviewReceiptPayload(
    *
    * <p>Fields are emitted in the receipt schema order, with optional fields omitted when absent.
    * Every line uses {@code key=value} and ends with {@code \n}. The order is part of the signature
-   * contract and must remain stable for version {@link #RECEIPT_VERSION}.
+   * contract and must remain stable for each receipt schema version.
    *
    * @return canonical payload text used as the human-readable signing input
    */
@@ -198,6 +218,8 @@ public record AppReviewReceiptPayload(
     append(builder, "review.receipt.reviewed.at", reviewedAt.toString());
     expiresAt.ifPresent(value -> append(builder, "review.receipt.expires.at", value.toString()));
     evidenceSha256.ifPresent(value -> append(builder, "review.receipt.evidence.sha256", value));
+    decisionReasonSha256.ifPresent(
+        value -> append(builder, "review.receipt.decision.reason.sha256", value));
     evidenceUri.ifPresent(
         value -> append(builder, "review.receipt.evidence.uri", value.toString()));
     note.ifPresent(value -> append(builder, "review.receipt.note", value));

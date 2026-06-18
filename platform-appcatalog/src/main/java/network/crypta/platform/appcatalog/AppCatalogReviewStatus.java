@@ -31,6 +31,21 @@ public enum AppCatalogReviewStatus {
   UNREVIEWED("unreviewed"),
 
   /**
+   * A third-party submission package has been created or received but not fully reviewed.
+   *
+   * <p>This is intake workflow metadata. It is not a positive review and must not be treated as a
+   * trusted receipt.
+   */
+  SUBMITTED("submitted"),
+
+  /**
+   * Automated pre-review completed without blocker findings.
+   *
+   * <p>Human review and independent receipt issuance are still separate steps.
+   */
+  PRE_REVIEW_PASSED("pre_review_passed"),
+
+  /**
    * The catalog publisher says the app was reviewed for local operator use.
    *
    * <p>The exact review process is defined by the publisher's catalog policy, not by the catalog
@@ -52,7 +67,15 @@ public enum AppCatalogReviewStatus {
    * <p>The value is advisory metadata rather than an endpoint-level block. UI clients should make
    * the warning visible while preserving the signed-catalog trust boundary.
    */
-  REJECTED("rejected");
+  REJECTED("rejected"),
+
+  /**
+   * A third-party submission supersedes an earlier submission id.
+   *
+   * <p>Catalog entries with this status should carry {@code review.resubmissionOf} metadata when
+   * available so operators can follow the audit chain.
+   */
+  RESUBMITTED("resubmitted");
 
   /**
    * Stable lower-case value used in catalog sidecars and Platform API JSON.
@@ -108,5 +131,18 @@ public enum AppCatalogReviewStatus {
    */
   public String catalogValue() {
     return catalogValue;
+  }
+
+  /**
+   * Returns whether this status belongs to the third-party submission review workflow.
+   *
+   * <p>These states were introduced with the submission workflow catalog schema. Catalogs carrying
+   * them must use the schema version that older strict readers reject at the version field rather
+   * than exposing an unknown enum value inside an otherwise familiar catalog schema.
+   *
+   * @return {@code true} when the status requires submission review catalog metadata support
+   */
+  public boolean requiresSubmissionReviewCatalogVersion() {
+    return this == SUBMITTED || this == PRE_REVIEW_PASSED || this == RESUBMITTED;
   }
 }
