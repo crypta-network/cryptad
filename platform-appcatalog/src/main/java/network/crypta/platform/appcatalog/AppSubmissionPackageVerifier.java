@@ -170,7 +170,7 @@ public final class AppSubmissionPackageVerifier {
    * do not reopen the user-supplied path after verification, and the byte array is defensively
    * copied to keep the verified artifact binding immutable.
    */
-  @SuppressWarnings("java:S6206")
+  @SuppressWarnings({"java:S6206", "ClassCanBeRecord"})
   public static final class VerifiedBundleArtifact {
     private final AppSubmissionPackage submission;
     private final byte[] bytes;
@@ -646,11 +646,8 @@ public final class AppSubmissionPackageVerifier {
     for (int index = 0; index < bundleFiles.size(); index++) {
       String parent = bundleFiles.get(index);
       String childPrefix = parent + "/";
-      for (int childIndex = index + 1; childIndex < bundleFiles.size(); childIndex++) {
-        String child = bundleFiles.get(childIndex);
-        if (!child.startsWith(childPrefix)) {
-          break;
-        }
+      int childIndex = index + 1;
+      if (childIndex < bundleFiles.size() && bundleFiles.get(childIndex).startsWith(childPrefix)) {
         findings.add(
             blocker(
                 "package.bundle-path-prefix-conflict",
@@ -1483,6 +1480,10 @@ public final class AppSubmissionPackageVerifier {
     }
   }
 
+  // The directory name is generated atomically by the JDK, and POSIX hosts receive owner-only
+  // permissions at creation time. The fallback immediately tightens permissions before the
+  // verifier writes the immutable submission snapshot into the directory.
+  @SuppressWarnings("java:S5443")
   private static Path createPrivateSnapshotDirectory() throws IOException {
     try {
       return Files.createTempDirectory(

@@ -23,6 +23,7 @@ import picocli.CommandLine;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SuppressWarnings("java:S100")
@@ -2966,7 +2967,7 @@ class CryptaAppCliTest {
   private static void writeSubmissionBundleArtifact(Path source, Path output) throws Exception {
     try (ZipFile zip = new ZipFile(source.toFile())) {
       ZipEntry entry = zip.getEntry(SUBMISSION_BUNDLE_ARTIFACT_ENTRY);
-      assertTrue(entry != null);
+      assertNotNull(entry);
       try (var input = zip.getInputStream(entry)) {
         Files.write(output, input.readAllBytes());
       }
