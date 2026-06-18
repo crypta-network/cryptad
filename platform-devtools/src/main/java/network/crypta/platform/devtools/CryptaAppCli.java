@@ -149,7 +149,7 @@ public final class CryptaAppCli implements Runnable {
           PosixFilePermission.OWNER_EXECUTE);
   private static final Pattern LOCAL_UNIX_PATH_PATTERN =
       Pattern.compile(
-          "(?i)(^|[\\s='\"(])/(?:home|users|work|tmp|var|etc|root|opt|mnt|private/var|volumes)/[^\\s'\"),;]+");
+          "(?i)(^|[\\s='\"(])/(?:home|users|work|workspace|tmp|var|etc|root|opt|mnt|private/var|volumes)/[^\\s'\"),;]+");
   private static final Pattern LOCAL_WINDOWS_PATH_PATTERN =
       Pattern.compile("(?i)(^|[\\s='\"(])[a-z]:\\\\[^\\s'\"),;]+");
 
@@ -2043,6 +2043,12 @@ public final class CryptaAppCli implements Runnable {
     @Option(names = "--review-receipt", required = true, description = "Review receipt properties.")
     private Path reviewReceipt;
 
+    @Option(
+        names = "--trusted-reviewer-keys",
+        required = true,
+        description = "Trusted reviewer keys registry.")
+    private Path trustedReviewerKeys;
+
     @Option(names = "--output", required = true, description = "Catalog descriptor output.")
     private Path output;
 
@@ -2070,6 +2076,7 @@ public final class CryptaAppCli implements Runnable {
           AppSubmissionPackageVerifier.readVerifiedBundleArtifact(submission);
       AppSubmissionPackage verified = verifiedArtifact.submission();
       AppReviewReceipt receipt = AppReviewReceiptIO.read(reviewReceipt);
+      TrustedReviewerKeys trustedRegistry = TrustedReviewerKeys.load(trustedReviewerKeys);
       AppReviewReceiptStatus status = receipt.payload().status();
       if (status == AppReviewReceiptStatus.REJECTED) {
         throw new AppDistributionException("rejected submissions cannot create catalog candidates");
@@ -2078,6 +2085,7 @@ public final class CryptaAppCli implements Runnable {
         throw new AppDistributionException("caution catalog candidates require --allow-caution");
       }
       requireReceiptMatchesSubmission(verified, receipt);
+      requireTrustedReceipt(verified, receipt, trustedRegistry);
       Path artifact = artifactOutput == null ? defaultArtifactOutput(verified) : artifactOutput;
       writeBytes(artifact, verifiedArtifact.bytes(), overwrite);
       String descriptor = catalogCandidateDescriptor(verified, receipt, artifact);
@@ -2104,6 +2112,48 @@ public final class CryptaAppCli implements Runnable {
                   + " submissionId="
                   + verified.metadata().submissionId());
       return CommandLine.ExitCode.OK;
+    }
+
+    private void requireTrustedReceipt(
+        AppSubmissionPackage submissionPackage,
+        AppReviewReceipt receipt,
+        TrustedReviewerKeys trustedRegistry)
+        throws AppDistributionException {
+      AppReviewTrustDecision decision =
+          AppReviewReceiptVerifier.evaluate(
+              catalogCandidateReviewEntry(submissionPackage),
+              receipt,
+              trustedRegistry,
+              AppReviewPolicy.DEFAULT,
+              Instant.now());
+      if (!decision.trusted()) {
+        throw new AppDistributionException(
+            "review receipt did not verify against trusted reviewer registry: "
+                + decision.status().jsonValue());
+      }
+    }
+
+    private AppCatalogEntry catalogCandidateReviewEntry(AppSubmissionPackage submissionPackage) {
+      return new AppCatalogEntry(
+          submissionPackage.metadata().appId(),
+          submissionPackage.manifest().appName(),
+          submissionPackage.metadata().appVersion(),
+          "Submission catalog candidate.",
+          null,
+          null,
+          null,
+          List.of(),
+          AppCatalogCompatibilityMetadata.EMPTY,
+          AppCatalogReviewMetadata.EMPTY,
+          null,
+          AppCatalogChangelog.EMPTY,
+          List.of(),
+          URI.create("https://example.invalid/crypta-apps/submission-catalog-candidate.zip"),
+          submissionPackage.metadata().bundleDigest(),
+          submissionPackage.bundleArtifactSizeBytes(),
+          AppCatalogEntry.ZIP_BUNDLE_TYPE,
+          submissionPackage.metadata().requestedPermissions(),
+          Map.of());
     }
 
     private void requireReceiptMatchesSubmission(

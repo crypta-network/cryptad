@@ -857,7 +857,9 @@ crypta-app submission pre-review \
 Reviewers then use `crypta-app submission decide` to record `reviewed`, `caution`, or `rejected`
 decisions. Reviewed and caution decisions can issue independent review receipts; rejected decisions
 write rejection metadata and cannot create installable catalog candidates. Reviewed or caution
-submissions can be converted to catalog descriptors with `crypta-app submission catalog-candidate`.
+submissions can be converted to catalog descriptors with `crypta-app submission catalog-candidate`
+when the receipt verifies against a local trusted reviewer registry supplied with
+`--trusted-reviewer-keys`.
 
 See [app-store-submission-and-review-workflow.md](app-store-submission-and-review-workflow.md) for
 the package layout, required rationale files, Platform API 1.0 stability rules, pre-review JSON

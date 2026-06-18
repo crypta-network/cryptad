@@ -863,6 +863,17 @@ class AppSubmissionPackageTest {
   }
 
   @Test
+  void scanEntry_whenWorkspaceAbsolutePathIsPresent_expectLocalPathFinding() {
+    byte[] payload =
+        "ci checkout: /workspace/cryptad/platform-appcatalog/build.log\n"
+            .getBytes(StandardCharsets.UTF_8);
+
+    var findings = AppSubmissionRedactionScanner.scanEntry("review/security-notes.md", payload);
+
+    assertTrue(findings.stream().anyMatch(finding -> finding.id().equals("redaction.local-path")));
+  }
+
+  @Test
   void scanEntry_whenUriFormLocalPathsArePresent_expectLocalPathFinding() {
     byte[] payload =
         """

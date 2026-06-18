@@ -502,7 +502,9 @@ review policy, review receipt fingerprint, and non-production marker.
 
 Rejected submissions cannot create installable catalog candidates. Caution candidates require an
 explicit catalog policy choice and must preserve warning metadata in the descriptor. Reviewed
-third-party candidates are not promoted into first-party stable channels automatically.
+third-party candidates are not promoted into first-party stable channels automatically. Candidate
+generation verifies the supplied receipt against a local `--trusted-reviewer-keys` registry before
+writing the descriptor or copied bundle artifact, so hand-edited or untrusted receipts fail closed.
 
 Catalog APIs expose third-party submission metadata as `thirdPartyReview`, separate from publisher
 advisory `review` metadata and local trusted receipt evaluation in `reviewTrust`. See

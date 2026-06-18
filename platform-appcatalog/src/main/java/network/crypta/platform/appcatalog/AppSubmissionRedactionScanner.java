@@ -55,6 +55,7 @@ public final class AppSubmissionRedactionScanner {
           "/home/",
           "/users/",
           "/work/",
+          "/workspace/",
           "/tmp/",
           "/var/",
           "/etc/",

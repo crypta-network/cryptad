@@ -2295,11 +2295,13 @@ class CryptaAppCliTest {
         CryptaAppCli.redactedMessage(
             new IllegalArgumentException(
                 "failed /var/folders/aa/app/index.html and /opt/crypta/bin/tool and"
+                    + " /workspace/cryptad/platform-devtools/build.log and"
                     + " C:\\Users\\Alice\\secret.txt"));
 
     assertTrue(redacted.contains("[redacted-path]"));
     assertFalse(redacted.contains("/var/folders"));
     assertFalse(redacted.contains("/opt/crypta"));
+    assertFalse(redacted.contains("/workspace/cryptad"));
     assertFalse(redacted.contains("C:\\Users\\Alice"));
   }
 
@@ -2341,6 +2343,8 @@ class CryptaAppCliTest {
     KeyPair keyPair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
     Path privateKey = tempDir.resolve("review-private.der");
     Files.write(privateKey, keyPair.getPrivate().getEncoded());
+    Path trustedReviewers = tempDir.resolve("review-trusted-reviewers.properties");
+    writeTrustedReviewers(trustedReviewers, "reviewer-dev", keyPair);
     Path reason = tempDir.resolve("review-reason.md");
     Files.writeString(reason, "Reviewed resubmission.\n", StandardCharsets.UTF_8);
     Path receipt = tempDir.resolve("review-receipt.properties");
@@ -2374,6 +2378,8 @@ class CryptaAppCliTest {
             submission.toString(),
             "--review-receipt",
             receipt.toString(),
+            "--trusted-reviewer-keys",
+            trustedReviewers.toString(),
             "--output",
             descriptor.toString());
 
@@ -2453,6 +2459,8 @@ class CryptaAppCliTest {
     KeyPair keyPair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
     Path privateKey = tempDir.resolve("reserved-version-review-private.der");
     Files.write(privateKey, keyPair.getPrivate().getEncoded());
+    Path trustedReviewers = tempDir.resolve("reserved-version-trusted-reviewers.properties");
+    writeTrustedReviewers(trustedReviewers, "reviewer-dev", keyPair);
     Path reason = tempDir.resolve("reserved-version-review-reason.md");
     Files.writeString(reason, "Reviewed reserved version.\n", StandardCharsets.UTF_8);
     Path receipt = tempDir.resolve("reserved-version-review-receipt.properties");
@@ -2486,6 +2494,8 @@ class CryptaAppCliTest {
             submission.toString(),
             "--review-receipt",
             receipt.toString(),
+            "--trusted-reviewer-keys",
+            trustedReviewers.toString(),
             "--output",
             descriptor.toString());
 
@@ -2534,6 +2544,8 @@ class CryptaAppCliTest {
     KeyPair keyPair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
     Path privateKey = tempDir.resolve("legacy-receipt-review-private.der");
     Files.write(privateKey, keyPair.getPrivate().getEncoded());
+    Path trustedReviewers = tempDir.resolve("legacy-receipt-trusted-reviewers.properties");
+    writeTrustedReviewers(trustedReviewers, "reviewer-dev", keyPair);
     Path legacyReceipt = tempDir.resolve("legacy-review-receipt.properties");
     CliResult signLegacyReceipt =
         runCli(
@@ -2565,6 +2577,8 @@ class CryptaAppCliTest {
             submission.toString(),
             "--review-receipt",
             legacyReceipt.toString(),
+            "--trusted-reviewer-keys",
+            trustedReviewers.toString(),
             "--output",
             candidateDescriptor.toString());
 
@@ -2573,6 +2587,99 @@ class CryptaAppCliTest {
     assertEquals(CommandLine.ExitCode.SOFTWARE, candidate.exitCode());
     assertTrue(candidate.err().contains("require v2 review receipt evidence"));
     assertFalse(Files.exists(candidateDescriptor));
+  }
+
+  @Test
+  void submissionCatalogCandidate_whenReceiptIsNotTrusted_expectNoCandidateArtifacts()
+      throws Exception {
+    Path appDir = createSubmissionBundle("untrusted-receipt-app", "Untrusted Receipt App", "1.0.0");
+    Path submission = tempDir.resolve("untrusted-receipt-submission.zip");
+    CliResult create =
+        runCli(
+            "submission",
+            "create",
+            "--bundle-dir",
+            appDir.toString(),
+            "--output",
+            submission.toString(),
+            "--submission-type",
+            "new_app",
+            "--maintainer-name",
+            "Example Maintainer",
+            "--maintainer-contact",
+            "mailto:maintainer@example.invalid",
+            "--source-url",
+            "https://example.invalid/untrusted-receipt-app",
+            "--non-production");
+    Path preReview = tempDir.resolve("untrusted-receipt-pre-review.json");
+    CliResult preReviewResult =
+        runCli(
+            "submission",
+            "pre-review",
+            "--submission",
+            submission.toString(),
+            "--output",
+            preReview.toString());
+    KeyPair signingKeyPair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
+    KeyPair registryKeyPair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
+    Path privateKey = tempDir.resolve("untrusted-receipt-review-private.der");
+    Files.write(privateKey, signingKeyPair.getPrivate().getEncoded());
+    Path trustedReviewers = tempDir.resolve("untrusted-receipt-trusted-reviewers.properties");
+    writeTrustedReviewers(trustedReviewers, "reviewer-dev", registryKeyPair);
+    Path reason = tempDir.resolve("untrusted-receipt-reason.md");
+    Files.writeString(
+        reason, "Reviewed with untrusted registry fixture.\n", StandardCharsets.UTF_8);
+    Path receipt = tempDir.resolve("untrusted-receipt.properties");
+    CliResult decide =
+        runCli(
+            "submission",
+            "decide",
+            "--submission",
+            submission.toString(),
+            "--pre-review",
+            preReview.toString(),
+            "--decision",
+            "reviewed",
+            "--reviewer-key-id",
+            "reviewer-dev",
+            "--reviewer-private-key",
+            privateKey.toString(),
+            "--reason",
+            reason.toString(),
+            "--receipt-output",
+            receipt.toString(),
+            "--reviewed-at",
+            "2026-06-18T00:00:00Z",
+            "--allow-non-production");
+    Path candidateDescriptor = tempDir.resolve("untrusted-receipt-candidate.properties");
+    Path artifactOutput = tempDir.resolve("untrusted-receipt-app-bundle.zip");
+
+    CliResult candidate =
+        runCli(
+            "submission",
+            "catalog-candidate",
+            "--submission",
+            submission.toString(),
+            "--review-receipt",
+            receipt.toString(),
+            "--trusted-reviewer-keys",
+            trustedReviewers.toString(),
+            "--output",
+            candidateDescriptor.toString(),
+            "--artifact-output",
+            artifactOutput.toString());
+
+    assertEquals(CommandLine.ExitCode.OK, create.exitCode(), create.err());
+    assertEquals(CommandLine.ExitCode.OK, preReviewResult.exitCode(), preReviewResult.err());
+    assertEquals(CommandLine.ExitCode.OK, decide.exitCode(), decide.err());
+    assertEquals(CommandLine.ExitCode.SOFTWARE, candidate.exitCode());
+    assertTrue(
+        candidate
+            .err()
+            .contains("review receipt did not verify against trusted reviewer registry"));
+    assertTrue(candidate.err().contains("invalid_signature"));
+    assertFalse(Files.exists(candidateDescriptor));
+    assertFalse(Files.exists(artifactOutput));
   }
 
   @Test
@@ -3009,6 +3116,21 @@ class CryptaAppCliTest {
 
   private static String lines(String... values) {
     return String.join("\n", values) + "\n";
+  }
+
+  private static void writeTrustedReviewers(Path output, String reviewerId, KeyPair keyPair)
+      throws Exception {
+    Files.writeString(
+        output,
+        lines(
+            "trusted.reviewers.version=1",
+            "reviewer.1.id=" + reviewerId,
+            "reviewer.1.algorithm=Ed25519",
+            "reviewer.1.public.key.base64="
+                + Base64.getEncoder().encodeToString(keyPair.getPublic().getEncoded()),
+            "reviewer.1.display.name=Development Review",
+            "reviewer.1.policy.id=crypta-app-review-v1"),
+        StandardCharsets.UTF_8);
   }
 
   private static boolean canCreateSymlink(Path symlink) {

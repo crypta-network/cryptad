@@ -228,6 +228,7 @@ Create a candidate descriptor after a reviewed or caution receipt exists:
 crypta-app submission catalog-candidate \
   --submission build/submissions/example-submission.zip \
   --review-receipt build/submissions/example-review-receipt.properties \
+  --trusted-reviewer-keys trusted-reviewers.properties \
   --output build/submissions/example-catalog-entry.properties \
   --allow-caution
 ```
@@ -237,7 +238,9 @@ submission digest, pre-review digest, reviewer key id, reviewer policy, review r
 fingerprint, reviewer decision-rationale digest, resubmission link, and the non-production marker
 when applicable. Rejected receipts are refused. Third-party candidate descriptors emit
 `catalog.version=6` metadata when converted into signed catalogs, and they are not promoted into
-first-party stable channels automatically.
+first-party stable channels automatically. The command verifies the receipt signature and reviewer
+key against the local trusted reviewer registry before writing any candidate descriptor or copied
+artifact.
 
 The Web Shell and local catalog API expose this workflow metadata as `thirdPartyReview`, separate
 from publisher advisory `review` metadata and independent trusted receipt `reviewTrust` evaluation.
