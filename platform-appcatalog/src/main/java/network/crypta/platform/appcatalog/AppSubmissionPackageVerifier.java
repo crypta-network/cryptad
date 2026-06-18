@@ -170,6 +170,7 @@ public final class AppSubmissionPackageVerifier {
    * do not reopen the user-supplied path after verification, and the byte array is defensively
    * copied to keep the verified artifact binding immutable.
    */
+  @SuppressWarnings("java:S6206")
   public static final class VerifiedBundleArtifact {
     private final AppSubmissionPackage submission;
     private final byte[] bytes;
