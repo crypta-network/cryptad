@@ -28,6 +28,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @SuppressWarnings("java:S100")
 class CryptaAppCliTest {
   private static final String SUBMISSION_METADATA_ENTRY = "crypta-app-submission.json";
+  private static final String SUBMISSION_BUNDLE_ARTIFACT_ENTRY = "artifacts/app-bundle.zip";
 
   @TempDir private Path tempDir;
 
@@ -2498,6 +2499,82 @@ class CryptaAppCliTest {
   }
 
   @Test
+  void submissionCatalogCandidate_whenReceiptLacksSubmissionEvidence_expectFailure()
+      throws Exception {
+    Path appDir = createSubmissionBundle("legacy-receipt-app", "Legacy Receipt App", "1.0.0");
+    Path submission = tempDir.resolve("legacy-receipt-submission.zip");
+    CliResult create =
+        runCli(
+            "submission",
+            "create",
+            "--bundle-dir",
+            appDir.toString(),
+            "--output",
+            submission.toString(),
+            "--submission-type",
+            "new_app",
+            "--maintainer-name",
+            "Example Maintainer",
+            "--maintainer-contact",
+            "mailto:maintainer@example.invalid",
+            "--source-url",
+            "https://example.invalid/legacy-receipt-app",
+            "--non-production");
+    Path artifact = tempDir.resolve("legacy-receipt-app-bundle.zip");
+    writeSubmissionBundleArtifact(submission, artifact);
+    Path legacyDescriptor = tempDir.resolve("legacy-receipt-entry.properties");
+    Files.writeString(
+        legacyDescriptor,
+        lines(
+            "artifact.path=" + artifact.toAbsolutePath().normalize(),
+            "bundle.uri=" + artifact.toUri(),
+            "summary=Legacy receipt catalog entry."),
+        StandardCharsets.UTF_8);
+    KeyPair keyPair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
+    Path privateKey = tempDir.resolve("legacy-receipt-review-private.der");
+    Files.write(privateKey, keyPair.getPrivate().getEncoded());
+    Path legacyReceipt = tempDir.resolve("legacy-review-receipt.properties");
+    CliResult signLegacyReceipt =
+        runCli(
+            "review",
+            "sign",
+            "--catalog-entry",
+            legacyDescriptor.toString(),
+            "--receipt-file",
+            legacyReceipt.toString(),
+            "--reviewer-key-id",
+            "reviewer-dev",
+            "--reviewer-private-key-file",
+            privateKey.toString(),
+            "--policy-id",
+            "dev-review",
+            "--policy-version",
+            "1",
+            "--status",
+            "reviewed",
+            "--reviewed-at",
+            "2026-06-18T00:00:00Z");
+    Path candidateDescriptor = tempDir.resolve("legacy-receipt-candidate.properties");
+
+    CliResult candidate =
+        runCli(
+            "submission",
+            "catalog-candidate",
+            "--submission",
+            submission.toString(),
+            "--review-receipt",
+            legacyReceipt.toString(),
+            "--output",
+            candidateDescriptor.toString());
+
+    assertEquals(CommandLine.ExitCode.OK, create.exitCode(), create.err());
+    assertEquals(CommandLine.ExitCode.OK, signLegacyReceipt.exitCode(), signLegacyReceipt.err());
+    assertEquals(CommandLine.ExitCode.SOFTWARE, candidate.exitCode());
+    assertTrue(candidate.err().contains("require v2 review receipt evidence"));
+    assertFalse(Files.exists(candidateDescriptor));
+  }
+
+  @Test
   void submissionDecide_whenRejectedReviewerFieldIsMultiline_expectFailure() throws Exception {
     Path appDir = createSubmissionBundle("rejected-app", "Rejected App", "1.0.0");
     Path submission = tempDir.resolve("rejected-submission.zip");
@@ -2882,6 +2959,16 @@ class CryptaAppCliTest {
       ZipEntry entry = zip.getEntry(SUBMISSION_METADATA_ENTRY);
       try (var input = zip.getInputStream(entry)) {
         return new String(input.readAllBytes(), StandardCharsets.UTF_8);
+      }
+    }
+  }
+
+  private static void writeSubmissionBundleArtifact(Path source, Path output) throws Exception {
+    try (ZipFile zip = new ZipFile(source.toFile())) {
+      ZipEntry entry = zip.getEntry(SUBMISSION_BUNDLE_ARTIFACT_ENTRY);
+      assertTrue(entry != null);
+      try (var input = zip.getInputStream(entry)) {
+        Files.write(output, input.readAllBytes());
       }
     }
   }

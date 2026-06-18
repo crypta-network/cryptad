@@ -4135,8 +4135,8 @@ def collect_app_store_submission_workflow_evidence(settings: Settings) -> list[E
                 "PRIVATE_KEY_PATTERN",
                 "AUTHORIZATION_HEADER_PATTERN",
                 "BEARER_TOKEN_PATTERN",
-                "PRIVATE_INSERT_URI_PATTERN",
-                "LOCAL_UNIX_PATH_PATTERN",
+                "CRYPTA_SIGNED_SUBSPACE_URI_PATTERN",
+                "LOCAL_UNIX_PATH_PREFIXES",
                 "RAW_CONTENT_PATTERN",
             )
         ),

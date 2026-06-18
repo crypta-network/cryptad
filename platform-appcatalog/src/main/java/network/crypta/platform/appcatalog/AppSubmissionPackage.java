@@ -19,6 +19,7 @@ import network.crypta.platform.appdist.AppBundleManifest;
  * @param metadata parsed and validated top-level submission metadata
  * @param manifest parsed staged bundle manifest from {@code bundle/cryptad-app.properties}
  * @param submissionDigest lowercase SHA-256 digest of the entire submission ZIP
+ * @param manifestDigest lowercase SHA-256 digest of {@code bundle/cryptad-app.properties}
  * @param bundleArtifactSizeBytes byte size of {@code artifacts/app-bundle.zip}
  * @param entryNames normalized ZIP entry names observed during package inspection
  */
@@ -26,6 +27,7 @@ public record AppSubmissionPackage(
     AppSubmissionMetadata metadata,
     AppBundleManifest manifest,
     String submissionDigest,
+    String manifestDigest,
     long bundleArtifactSizeBytes,
     List<String> entryNames) {
   /**
@@ -40,6 +42,7 @@ public record AppSubmissionPackage(
     java.util.Objects.requireNonNull(manifest, "manifest");
     submissionDigest =
         AppCatalogSidecars.requireLowercaseSha256(submissionDigest, "submissionDigest");
+    manifestDigest = AppCatalogSidecars.requireLowercaseSha256(manifestDigest, "manifestDigest");
     if (bundleArtifactSizeBytes < 0L) {
       throw AppCatalogSidecars.invalidEntry("bundle artifact size must be non-negative");
     }

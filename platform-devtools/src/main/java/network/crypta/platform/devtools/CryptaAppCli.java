@@ -32,8 +32,6 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipFile;
 import network.crypta.platform.api.PlatformApiContract;
 import network.crypta.platform.api.PlatformApiContractJson;
 import network.crypta.platform.api.PlatformApiContractVerifier.CompatibilityFinding;
@@ -71,6 +69,7 @@ import network.crypta.platform.appcatalog.AppSubmissionFinding;
 import network.crypta.platform.appcatalog.AppSubmissionFindingSeverity;
 import network.crypta.platform.appcatalog.AppSubmissionMaintainer;
 import network.crypta.platform.appcatalog.AppSubmissionPackage;
+import network.crypta.platform.appcatalog.AppSubmissionPackageVerifier.VerifiedBundleArtifact;
 import network.crypta.platform.appcatalog.AppSubmissionPackageVerifier;
 import network.crypta.platform.appcatalog.AppSubmissionPackageWriter;
 import network.crypta.platform.appcatalog.AppSubmissionPreReviewReport;
@@ -1496,8 +1495,20 @@ public final class CryptaAppCli implements Runnable {
 
     @Override
     public Integer call() throws Exception {
-      AppSubmissionVerification verification = AppSubmissionPackageVerifier.inspect(submission);
-      List<AppSubmissionFinding> findings = new ArrayList<>(verification.findings());
+      Path tempBundle = createPrivateScratchDirectory();
+      AppSubmissionVerification verification;
+      List<AppSubmissionFinding> findings;
+      try {
+        verification = AppSubmissionPackageVerifier.inspectAndExtractBundle(submission, tempBundle);
+        findings = new ArrayList<>(verification.findings());
+        if (verification.hasParsedSubmission() && !verification.hasBlockers()) {
+          addBundleValidationFindings(tempBundle, findings);
+          addCompatibilityFindings(tempBundle, findings);
+          addUiLintFindings(tempBundle, findings);
+        }
+      } finally {
+        deleteRecursively(tempBundle);
+      }
       if (!verification.hasParsedSubmission()) {
         AppSubmissionPreReviewReport report =
             AppSubmissionPreReviewReport.create(
@@ -1515,28 +1526,10 @@ public final class CryptaAppCli implements Runnable {
                     + report.promotionReady());
         return CommandLine.ExitCode.SOFTWARE;
       }
-      Path tempBundle = createPrivateScratchDirectory();
-      try {
-        if (!verification.hasBlockers()) {
-          AppSubmissionPackageVerifier.extractBundle(submission, tempBundle);
-          addBundleValidationFindings(tempBundle, findings);
-          addCompatibilityFindings(tempBundle, findings);
-          addUiLintFindings(tempBundle, findings);
-        }
-      } finally {
-        deleteRecursively(tempBundle);
-      }
       Map<String, String> artifacts = new LinkedHashMap<>();
       artifacts.put("submissionDigest", verification.submission().submissionDigest());
       artifacts.put("bundleDigest", verification.submission().metadata().bundleDigest());
-      artifacts.put(
-          "manifestDigest",
-          sha256Hex(
-              readSubmissionEntry(
-                  submission,
-                  AppSubmissionPackageVerifier.BUNDLE_PREFIX
-                      + network.crypta.platform.appdist.AppBundleManifestParser
-                          .MANIFEST_FILE_NAME)));
+      artifacts.put("manifestDigest", verification.submission().manifestDigest());
       AppSubmissionPreReviewReport report =
           AppSubmissionPreReviewReport.create(
               verification.submission().metadata().submissionId(),
@@ -1774,14 +1767,7 @@ public final class CryptaAppCli implements Runnable {
       AppSubmissionPreReviewReport report =
           AppSubmissionPreReviewReport.parse(Files.readString(preReview, StandardCharsets.UTF_8));
       AppReviewReceiptStatus receiptStatus = AppReviewReceiptStatus.parse(decision, "--decision");
-      String manifestDigest =
-          sha256Hex(
-              readSubmissionEntry(
-                  submission,
-                  AppSubmissionPackageVerifier.BUNDLE_PREFIX
-                      + network.crypta.platform.appdist.AppBundleManifestParser
-                          .MANIFEST_FILE_NAME));
-      requireDecisionAllowed(verified, report, receiptStatus, manifestDigest);
+      requireDecisionAllowed(verified, report, receiptStatus, verified.manifestDigest());
       String preReviewDigest = sha256Hex(Files.readAllBytes(preReview));
       String reasonDigest = sha256Hex(Files.readAllBytes(reason));
       AppReviewReceiptPayload payload =
@@ -2080,7 +2066,9 @@ public final class CryptaAppCli implements Runnable {
 
     @Override
     public Integer call() throws Exception {
-      AppSubmissionPackage verified = AppSubmissionPackageVerifier.verify(submission);
+      VerifiedBundleArtifact verifiedArtifact =
+          AppSubmissionPackageVerifier.readVerifiedBundleArtifact(submission);
+      AppSubmissionPackage verified = verifiedArtifact.submission();
       AppReviewReceipt receipt = AppReviewReceiptIO.read(reviewReceipt);
       AppReviewReceiptStatus status = receipt.payload().status();
       if (status == AppReviewReceiptStatus.REJECTED) {
@@ -2091,10 +2079,7 @@ public final class CryptaAppCli implements Runnable {
       }
       requireReceiptMatchesSubmission(verified, receipt);
       Path artifact = artifactOutput == null ? defaultArtifactOutput(verified) : artifactOutput;
-      writeBytes(
-          artifact,
-          readSubmissionEntry(submission, AppSubmissionPackageVerifier.BUNDLE_ARTIFACT_ENTRY),
-          overwrite);
+      writeBytes(artifact, verifiedArtifact.bytes(), overwrite);
       String descriptor = catalogCandidateDescriptor(verified, receipt, artifact);
       writeText(output, descriptor, overwrite);
       AppCatalogWriter.inspectEntryDescriptor(output);
@@ -2130,6 +2115,12 @@ public final class CryptaAppCli implements Runnable {
           || !payload.artifactSha256().equals(submissionPackage.metadata().bundleDigest())
           || payload.artifactSizeBytes() != submissionPackage.bundleArtifactSizeBytes()) {
         throw new AppDistributionException("review receipt does not match submission artifact");
+      }
+      if (payload.version() < AppReviewReceiptPayload.RECEIPT_VERSION_WITH_DECISION_REASON
+          || payload.evidenceSha256().isEmpty()
+          || payload.decisionReasonSha256().isEmpty()) {
+        throw new AppDistributionException(
+            "submission catalog candidates require v2 review receipt evidence");
       }
     }
 
@@ -3158,19 +3149,6 @@ public final class CryptaAppCli implements Runnable {
       return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
     } catch (NoSuchAlgorithmException exception) {
       throw new IllegalStateException("SHA-256 is not available", exception);
-    }
-  }
-
-  private static byte[] readSubmissionEntry(Path submissionZip, String entryName)
-      throws IOException {
-    try (ZipFile zip = new ZipFile(submissionZip.toFile())) {
-      ZipEntry entry = zip.getEntry(entryName);
-      if (entry == null || entry.isDirectory()) {
-        throw new AppDistributionException("missing submission entry: " + entryName);
-      }
-      try (var input = zip.getInputStream(entry)) {
-        return input.readAllBytes();
-      }
     }
   }
 

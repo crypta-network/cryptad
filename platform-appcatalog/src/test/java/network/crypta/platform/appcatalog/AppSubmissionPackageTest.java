@@ -7,6 +7,7 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.security.MessageDigest;
 import java.util.Arrays;
@@ -28,6 +29,7 @@ import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -59,8 +61,43 @@ class AppSubmissionPackageTest {
     assertEquals(
         first.metadata().submissionId(),
         AppSubmissionPackageVerifier.verify(firstOutput).metadata().submissionId());
+    assertEquals(
+        sha256(
+            readZipBytes(
+                firstOutput,
+                AppSubmissionPackageVerifier.BUNDLE_PREFIX + AppBundleDigest.MANIFEST_FILE_NAME)),
+        first.manifestDigest());
     assertTrue(first.entryNames().contains(AppSubmissionPackageVerifier.SUBMISSION_METADATA_ENTRY));
     assertTrue(first.entryNames().contains(AppSubmissionPackageVerifier.BUNDLE_ARTIFACT_ENTRY));
+    AppSubmissionPackageVerifier.VerifiedBundleArtifact artifact =
+        AppSubmissionPackageVerifier.readVerifiedBundleArtifact(firstOutput);
+    assertEquals(first.submissionDigest(), artifact.submission().submissionDigest());
+    assertArrayEquals(
+        readZipBytes(firstOutput, AppSubmissionPackageVerifier.BUNDLE_ARTIFACT_ENTRY),
+        artifact.bytes());
+  }
+
+  @Test
+  void verify_whenSubmissionParentDisallowsWrites_expectAccepted() throws Exception {
+    Path submissionParent = tempDir.resolve("read-only-submissions");
+    Files.createDirectory(submissionParent);
+    Path bundle = createBundle();
+    Path permissionRationale = writePermissionRationale("queue.read: lists queues.\n");
+    Path output = submissionParent.resolve("submission.zip");
+    AppSubmissionPackage created =
+        AppSubmissionPackageWriter.create(createRequest(bundle, permissionRationale, output));
+    Set<PosixFilePermission> originalPermissions = originalPosixPermissions(submissionParent);
+
+    try {
+      Files.setPosixFilePermissions(submissionParent, PosixFilePermissions.fromString("r-x------"));
+      assumeTrue(!canCreateFile(submissionParent.resolve("verifier-probe.tmp")));
+
+      AppSubmissionPackage verified = AppSubmissionPackageVerifier.verify(output);
+
+      assertEquals(created.metadata().submissionId(), verified.metadata().submissionId());
+    } finally {
+      Files.setPosixFilePermissions(submissionParent, originalPermissions);
+    }
   }
 
   @Test
@@ -225,7 +262,8 @@ class AppSubmissionPackageTest {
   }
 
   @Test
-  void extractBundle_whenExecReliesOnArtifactMode_expectExecutableBitRestored() throws Exception {
+  void inspectAndExtractBundle_whenExecReliesOnArtifactMode_expectExecutableBitRestored()
+      throws Exception {
     assumeTrue(Files.getFileStore(tempDir).supportsFileAttributeView("posix"));
     Path bundle = createBundle("bin/server", "native launcher payload\n", true);
     Path permissionRationale = writePermissionRationale("queue.read: lists queues.\n");
@@ -233,10 +271,42 @@ class AppSubmissionPackageTest {
     AppSubmissionPackageWriter.create(createRequest(bundle, permissionRationale, submission));
     Path extracted = tempDir.resolve("extracted");
 
-    AppSubmissionPackageVerifier.extractBundle(submission, extracted);
+    AppSubmissionVerification verification =
+        AppSubmissionPackageVerifier.inspectAndExtractBundle(submission, extracted);
 
+    assertFalse(verification.hasBlockers());
+    assertEquals("sample-app", verification.submission().metadata().appId());
     assertTrue(Files.isExecutable(extracted.resolve("bin/server")));
     assertEquals("sample-app", AppBundleStructureValidator.validate(extracted).manifest().appId());
+  }
+
+  @Test
+  void inspectAndExtractBundle_whenBundleFileHasChildPath_expectBlockerWithoutExtraction()
+      throws Exception {
+    Path bundle = createBundle();
+    Path permissionRationale = writePermissionRationale("queue.read: lists queues.\n");
+    Path submission = tempDir.resolve("submission.zip");
+    AppSubmissionPackageWriter.create(createRequest(bundle, permissionRationale, submission));
+    Path tampered = tempDir.resolve("bundle-prefix-conflict.zip");
+    writeSubmissionWithReplacements(
+        submission,
+        tampered,
+        Map.of(
+            AppSubmissionPackageVerifier.BUNDLE_PREFIX + "conflict",
+            "parent\n".getBytes(StandardCharsets.UTF_8),
+            AppSubmissionPackageVerifier.BUNDLE_PREFIX + "conflict/child.txt",
+            "child\n".getBytes(StandardCharsets.UTF_8)));
+    Path extracted = tempDir.resolve("prefix-conflict-extracted");
+
+    AppSubmissionVerification verification =
+        AppSubmissionPackageVerifier.inspectAndExtractBundle(tampered, extracted);
+
+    assertTrue(verification.hasBlockers());
+    assertFalse(verification.hasParsedSubmission());
+    assertTrue(
+        verification.findings().stream()
+            .anyMatch(finding -> finding.id().equals("package.bundle-path-prefix-conflict")));
+    assertFalse(Files.exists(extracted));
   }
 
   @Test
@@ -669,7 +739,8 @@ class AppSubmissionPackageTest {
   }
 
   @Test
-  void inspect_whenBundleSignatureSidecarIsMalformed_expectSignatureFinding() throws Exception {
+  void inspect_whenBundleSignatureSidecarOnlyDeclaresKeyId_expectSignatureFinding()
+      throws Exception {
     Path bundle = createBundle();
     Path permissionRationale = writePermissionRationale("queue.read: lists queues.\n");
     Path submission = tempDir.resolve("submission.zip");
@@ -680,7 +751,7 @@ class AppSubmissionPackageTest {
         tampered,
         Map.of(
             AppSubmissionPackageVerifier.BUNDLE_PREFIX + AppBundleSignature.SIGNATURE_FILE_NAME,
-            "signature.version=1\n".getBytes(StandardCharsets.UTF_8)));
+            "signature.key.id=reviewer-dev\n".getBytes(StandardCharsets.UTF_8)));
 
     AppSubmissionVerification verification = AppSubmissionPackageVerifier.inspect(tampered);
 
@@ -1341,6 +1412,35 @@ class AppSubmissionPackageTest {
       return true;
     } catch (UnsupportedOperationException | IOException | SecurityException _) {
       return false;
+    }
+  }
+
+  private static Set<PosixFilePermission> originalPosixPermissions(Path directory)
+      throws IOException {
+    try {
+      return Files.getPosixFilePermissions(directory);
+    } catch (UnsupportedOperationException _) {
+      assumeTrue(false);
+      return Set.of();
+    }
+  }
+
+  private static boolean canCreateFile(Path file) {
+    boolean created = false;
+    try {
+      Files.createFile(file);
+      created = true;
+      return true;
+    } catch (IOException | SecurityException _) {
+      return false;
+    } finally {
+      if (created) {
+        try {
+          Files.deleteIfExists(file);
+        } catch (IOException _) {
+          // Best-effort cleanup for a permission probe in a temporary directory.
+        }
+      }
     }
   }
 

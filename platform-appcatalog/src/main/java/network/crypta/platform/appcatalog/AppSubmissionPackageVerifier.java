@@ -28,14 +28,15 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
-import java.util.Properties;
 import java.util.Set;
 import java.util.zip.CRC32;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 import java.util.zip.ZipInputStream;
 import network.crypta.platform.appdist.AppApiCompatibilityMetadata;
+import network.crypta.platform.appdist.AppBundleDigest;
 import network.crypta.platform.appdist.AppBundleManifest;
 import network.crypta.platform.appdist.AppBundleManifestParser;
 import network.crypta.platform.appdist.AppBundleSignature;
@@ -147,6 +148,7 @@ public final class AppSubmissionPackageVerifier {
       UNIX_OWNER_EXECUTE_BIT | UNIX_GROUP_EXECUTE_BIT | UNIX_OTHERS_EXECUTE_BIT;
   private static final int FIXED_DOS_TIME = 0;
   private static final int FIXED_DOS_DATE = 0x21;
+  private static final char UTF_8_BOM = '\uFEFF';
   private static final byte[] FIXED_TIMESTAMP_EXTRA = {0x55, 0x54, 0x05, 0x00, 0x01, 0, 0, 0, 0};
   private static final byte[] EMPTY_BYTES = new byte[0];
   private static final String PACKAGE_ENTRY_SIZE_LIMIT_ID = "package.entry-size-limit";
@@ -159,6 +161,49 @@ public final class AppSubmissionPackageVerifier {
           PosixFilePermission.OWNER_EXECUTE);
 
   private AppSubmissionPackageVerifier() {}
+
+  /**
+   * Bounded artifact bytes read from the same submission snapshot that produced a verified package.
+   *
+   * <p>Catalog-candidate tooling uses this value when it needs to copy {@code
+   * artifacts/app-bundle.zip} out of an untrusted submission. The verifier owns the read so callers
+   * do not reopen the user-supplied path after verification, and the byte array is defensively
+   * copied to keep the verified artifact binding immutable.
+   */
+  public static final class VerifiedBundleArtifact {
+    private final AppSubmissionPackage submission;
+    private final byte[] bytes;
+
+    /**
+     * Creates a verified artifact result with defensive copies for mutable byte content.
+     *
+     * @param submission verified package metadata for the exact snapshot that contained the
+     *     artifact
+     * @param bytes bounded artifact bytes from {@link #BUNDLE_ARTIFACT_ENTRY}
+     */
+    public VerifiedBundleArtifact(AppSubmissionPackage submission, byte[] bytes) {
+      this.submission = Objects.requireNonNull(submission, "submission");
+      this.bytes = Objects.requireNonNull(bytes, "bytes").clone();
+    }
+
+    /**
+     * Returns the verified package metadata bound to these artifact bytes.
+     *
+     * @return verified submission snapshot
+     */
+    public AppSubmissionPackage submission() {
+      return submission;
+    }
+
+    /**
+     * Returns a defensive copy of the bounded artifact bytes.
+     *
+     * @return bytes from {@link #BUNDLE_ARTIFACT_ENTRY}
+     */
+    public byte[] bytes() {
+      return bytes.clone();
+    }
+  }
 
   /**
    * Verifies a submission package and fails closed on blocker findings.
@@ -176,6 +221,38 @@ public final class AppSubmissionPackageVerifier {
   public static AppSubmissionPackage verify(Path submissionZip) throws IOException {
     AppSubmissionVerification verification = inspect(submissionZip);
     return requireVerifiedSubmission(verification);
+  }
+
+  /**
+   * Verifies a submission package and returns its canonical bundle artifact from the same snapshot.
+   *
+   * <p>The method reads the submission path once into the verifier's bounded package snapshot,
+   * performs the normal structural and redaction verification, then reads {@link
+   * #BUNDLE_ARTIFACT_ENTRY} from that verified snapshot with the artifact size cap enforced while
+   * streaming. It is intended for CLI workflows that need to copy the reviewed artifact to a
+   * catalog-candidate location without reopening a mutable submission path.
+   *
+   * @param submissionZip submission package ZIP to verify and read
+   * @return verified package metadata plus bounded artifact bytes
+   * @throws IOException if the package file cannot be read or a temporary snapshot cannot be used
+   * @throws AppCatalogException if verification fails or the artifact entry is missing/oversized
+   */
+  public static VerifiedBundleArtifact readVerifiedBundleArtifact(Path submissionZip)
+      throws IOException {
+    Path normalized = requireSubmissionZip(submissionZip);
+    byte[] submissionBytes = readSubmissionBytes(normalized);
+    AppSubmissionPackage submission =
+        requireVerifiedSubmission(
+            inspectSubmissionBytes(normalized.getFileName().toString(), submissionBytes));
+    try (SubmissionSnapshot parsedZip = writeSubmissionSnapshot(submissionBytes);
+        ZipFile zip = new ZipFile(parsedZip.path().toFile())) {
+      ZipEntry artifactEntry = zip.getEntry(BUNDLE_ARTIFACT_ENTRY);
+      if (artifactEntry == null || artifactEntry.isDirectory()) {
+        throw AppCatalogSidecars.invalidEntry("missing submission entry: " + BUNDLE_ARTIFACT_ENTRY);
+      }
+      return new VerifiedBundleArtifact(
+          submission, read(zip, artifactEntry, AppCatalogSidecars.MAX_ARTIFACT_BYTES));
+    }
   }
 
   private static AppSubmissionPackage requireVerifiedSubmission(
@@ -207,13 +284,40 @@ public final class AppSubmissionPackageVerifier {
   public static AppSubmissionVerification inspect(Path submissionZip) throws IOException {
     Path normalized = requireSubmissionZip(submissionZip);
     return inspectSubmissionBytes(
-        normalized.getFileName().toString(),
-        normalized.getParent(),
-        readSubmissionBytes(normalized));
+        normalized.getFileName().toString(), readSubmissionBytes(normalized));
+  }
+
+  /**
+   * Inspects a submission package and extracts the bundle from that same byte snapshot when clean.
+   *
+   * <p>This combines the non-throwing reporting behavior of {@link #inspect(Path)} with the
+   * snapshot consistency guarantee of {@link #extractBundle(Path, Path)}. Malformed or blocked
+   * packages return their redacted verification findings without touching the target directory.
+   * Packages without blockers are extracted from the exact bytes whose digest and manifest metadata
+   * are returned in the verification result.
+   *
+   * @param submissionZip submission package ZIP to read as one bounded byte snapshot
+   * @param targetDirectory existing empty or creatable target directory owned by the caller
+   * @return parsed package plus redacted structural and redaction findings
+   * @throws IOException if the package file cannot be read or extraction fails
+   * @throws AppCatalogException if the target directory is unsafe
+   */
+  public static AppSubmissionVerification inspectAndExtractBundle(
+      Path submissionZip, Path targetDirectory) throws IOException {
+    Path normalized = requireSubmissionZip(submissionZip);
+    byte[] submissionBytes = readSubmissionBytes(normalized);
+    AppSubmissionVerification verification =
+        inspectSubmissionBytes(normalized.getFileName().toString(), submissionBytes);
+    if (verification.hasBlockers()) {
+      return verification;
+    }
+    Path target = prepareExtractionTarget(targetDirectory);
+    extractBundleFromSnapshot(submissionBytes, target, verification.submission());
+    return verification;
   }
 
   private static AppSubmissionVerification inspectSubmissionBytes(
-      String submissionName, Path snapshotParent, byte[] submissionBytes) throws IOException {
+      String submissionName, byte[] submissionBytes) throws IOException {
     String submissionDigest = sha256Hex(submissionBytes);
     List<AppSubmissionFinding> findings =
         new ArrayList<>(
@@ -221,9 +325,10 @@ public final class AppSubmissionPackageVerifier {
     if (hasBlockers(findings)) {
       return new AppSubmissionVerification(null, findings);
     }
-    try (SubmissionSnapshot parsedZip = writeSubmissionSnapshot(snapshotParent, submissionBytes);
+    try (SubmissionSnapshot parsedZip = writeSubmissionSnapshot(submissionBytes);
         ZipFile zip = new ZipFile(parsedZip.path().toFile())) {
       Map<String, ZipEntry> entries = readEntries(zip, findings);
+      validateNoBundlePathPrefixConflicts(entries, findings);
       if (hasBlockers(findings)) {
         return new AppSubmissionVerification(null, findings);
       }
@@ -274,6 +379,7 @@ public final class AppSubmissionPackageVerifier {
               metadata,
               manifest,
               submissionDigest,
+              sha256Hex(manifestBytes),
               artifactBytes.length,
               entries.keySet().stream().sorted().toList());
       return new AppSubmissionVerification(submission, findings);
@@ -300,11 +406,15 @@ public final class AppSubmissionPackageVerifier {
     byte[] submissionBytes = readSubmissionBytes(normalized);
     AppSubmissionPackage submission =
         requireVerifiedSubmission(
-            inspectSubmissionBytes(
-                normalized.getFileName().toString(), normalized.getParent(), submissionBytes));
+            inspectSubmissionBytes(normalized.getFileName().toString(), submissionBytes));
     Path target = prepareExtractionTarget(targetDirectory);
-    try (SubmissionSnapshot parsedZip =
-            writeSubmissionSnapshot(normalized.getParent(), submissionBytes);
+    extractBundleFromSnapshot(submissionBytes, target, submission);
+  }
+
+  @SuppressWarnings("java:S5042")
+  private static void extractBundleFromSnapshot(
+      byte[] submissionBytes, Path target, AppSubmissionPackage submission) throws IOException {
+    try (SubmissionSnapshot parsedZip = writeSubmissionSnapshot(submissionBytes);
         ZipFile zip = new ZipFile(parsedZip.path().toFile())) {
       ZipEntry artifactEntry = zip.getEntry(BUNDLE_ARTIFACT_ENTRY);
       if (artifactEntry == null || artifactEntry.isDirectory()) {
@@ -521,6 +631,35 @@ public final class AppSubmissionPackageVerifier {
             LinkedHashMap::putAll);
   }
 
+  private static void validateNoBundlePathPrefixConflicts(
+      Map<String, ZipEntry> entries, List<AppSubmissionFinding> findings) {
+    List<String> bundleFiles =
+        entries.entrySet().stream()
+            .filter(
+                entry ->
+                    entry.getKey().startsWith(BUNDLE_PREFIX) && !entry.getValue().isDirectory())
+            .map(entry -> entry.getKey().substring(BUNDLE_PREFIX.length()))
+            .filter(name -> !name.isBlank())
+            .sorted()
+            .toList();
+    for (int index = 0; index < bundleFiles.size(); index++) {
+      String parent = bundleFiles.get(index);
+      String childPrefix = parent + "/";
+      for (int childIndex = index + 1; childIndex < bundleFiles.size(); childIndex++) {
+        String child = bundleFiles.get(childIndex);
+        if (!child.startsWith(childPrefix)) {
+          break;
+        }
+        findings.add(
+            blocker(
+                "package.bundle-path-prefix-conflict",
+                BUNDLE_PREFIX + parent,
+                "Bundle entry conflicts with a child path"));
+        return;
+      }
+    }
+  }
+
   private static AppSubmissionMetadata parseMetadata(
       byte[] metadataBytes, List<AppSubmissionFinding> findings) {
     try {
@@ -727,18 +866,71 @@ public final class AppSubmissionPackageVerifier {
   }
 
   private static String parseSignatureKeyId(byte[] signatureBytes) {
-    Properties properties = new Properties();
-    try {
-      properties.load(new java.io.StringReader(new String(signatureBytes, StandardCharsets.UTF_8)));
-    } catch (IOException _) {
+    Map<String, String> properties =
+        parseSignatureSidecar(new String(signatureBytes, StandardCharsets.UTF_8));
+    String versionText = removeRequiredSignatureProperty(properties, "signature.version");
+    String algorithm = removeRequiredSignatureProperty(properties, "signature.algorithm");
+    String keyId = removeRequiredSignatureProperty(properties, "signature.key.id");
+    String payload = removeRequiredSignatureProperty(properties, "signature.payload");
+    String signatureValue = removeRequiredSignatureProperty(properties, "signature.value.base64");
+    if (!properties.isEmpty()) {
       throw AppCatalogSidecars.invalidEntry(
-          "bundle signature sidecar is unreadable: " + BUNDLE_SIGNATURE_ENTRY);
+          "unsupported bundle signature sidecar property: "
+              + properties.keySet().iterator().next());
     }
-    String keyId = properties.getProperty("signature.key.id");
-    if (keyId == null || keyId.isBlank() || keyId.indexOf('\n') >= 0 || keyId.indexOf('\r') >= 0) {
-      throw AppCatalogSidecars.invalidEntry("bundle signature sidecar is missing key id");
+    if (!AppBundleSignature.SIGNATURE_ALGORITHM.equals(algorithm)) {
+      throw AppCatalogSidecars.invalidEntry("unsupported bundle signature algorithm");
     }
-    return keyId.trim();
+    if (!AppBundleDigest.DIGEST_FILE_NAME.equals(payload)) {
+      throw AppCatalogSidecars.invalidEntry("unsupported bundle signature payload");
+    }
+    try {
+      return new AppBundleSignature(
+              Integer.parseInt(versionText), algorithm, keyId, payload, signatureValue)
+          .keyId();
+    } catch (RuntimeException _) {
+      throw AppCatalogSidecars.invalidEntry("bundle signature sidecar is invalid");
+    }
+  }
+
+  private static Map<String, String> parseSignatureSidecar(String content) {
+    LinkedHashMap<String, String> properties = new LinkedHashMap<>();
+    String[] lines = stripLeadingBom(content).split("\\R", -1);
+    for (String line : lines) {
+      if (line.isEmpty() || line.startsWith("#") || line.startsWith("!")) {
+        continue;
+      }
+      int separatorIndex = line.indexOf('=');
+      if (separatorIndex < 0) {
+        throw AppCatalogSidecars.invalidEntry("invalid bundle signature sidecar line");
+      }
+      String key = line.substring(0, separatorIndex).trim();
+      if (key.isEmpty()) {
+        throw AppCatalogSidecars.invalidEntry("invalid bundle signature sidecar key");
+      }
+      String value = line.substring(separatorIndex + 1);
+      if (properties.putIfAbsent(key, value) != null) {
+        throw AppCatalogSidecars.invalidEntry(
+            "duplicate bundle signature sidecar property: " + key);
+      }
+    }
+    return properties;
+  }
+
+  private static String stripLeadingBom(String content) {
+    if (!content.isEmpty() && content.charAt(0) == UTF_8_BOM) {
+      return content.substring(1);
+    }
+    return content;
+  }
+
+  private static String removeRequiredSignatureProperty(
+      Map<String, String> properties, String fieldName) {
+    String value = properties.remove(fieldName);
+    if (value == null) {
+      throw AppCatalogSidecars.invalidEntry("missing bundle signature sidecar field: " + fieldName);
+    }
+    return value;
   }
 
   private static String redactionScanDigest(Set<String> entryNames) {
@@ -1272,9 +1464,9 @@ public final class AppSubmissionPackageVerifier {
     }
   }
 
-  private static SubmissionSnapshot writeSubmissionSnapshot(Path parent, byte[] submissionBytes)
+  private static SubmissionSnapshot writeSubmissionSnapshot(byte[] submissionBytes)
       throws IOException {
-    Path snapshotDirectory = createPrivateSnapshotDirectory(parent);
+    Path snapshotDirectory = createPrivateSnapshotDirectory();
     Path snapshot = snapshotDirectory.resolve("submission.zip");
     try {
       Files.write(
@@ -1290,12 +1482,12 @@ public final class AppSubmissionPackageVerifier {
     }
   }
 
-  private static Path createPrivateSnapshotDirectory(Path parent) throws IOException {
+  private static Path createPrivateSnapshotDirectory() throws IOException {
     try {
       return Files.createTempDirectory(
-          parent, "crypta-app-submission-inspect-", ownerOnlyDirectoryAttribute());
+          "crypta-app-submission-inspect-", ownerOnlyDirectoryAttribute());
     } catch (UnsupportedOperationException _) {
-      Path directory = Files.createTempDirectory(parent, "crypta-app-submission-inspect-");
+      Path directory = Files.createTempDirectory("crypta-app-submission-inspect-");
       trySetOwnerOnlyDirectoryPermissions(directory);
       return directory;
     }
