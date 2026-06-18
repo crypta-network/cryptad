@@ -94,6 +94,85 @@ class AppReviewReceiptTest {
   }
 
   @Test
+  void serialize_whenDecisionReasonDigestIsPresent_expectSignedRoundTrip() throws Exception {
+    KeyPair keyPair = reviewerKeyPair();
+    String preReviewDigest = "b".repeat(64);
+    String reasonDigest = "c".repeat(64);
+    AppReviewReceiptPayload payload =
+        new AppReviewReceiptPayload(
+            AppReviewReceiptPayload.RECEIPT_VERSION_WITH_DECISION_REASON,
+            APP_ID,
+            APP_VERSION,
+            ARTIFACT_SHA256,
+            ARTIFACT_SIZE,
+            Optional.empty(),
+            POLICY_ID,
+            POLICY_VERSION,
+            AppReviewReceiptStatus.REVIEWED,
+            REVIEWER_KEY_ID,
+            REVIEWED_AT,
+            Optional.empty(),
+            Optional.of(preReviewDigest),
+            Optional.of(reasonDigest),
+            Optional.empty(),
+            Optional.empty());
+    AppReviewReceipt receipt = AppReviewReceiptSigner.sign(payload, keyPair.getPrivate());
+
+    AppReviewReceipt parsed = AppReviewReceiptIO.parse(AppReviewReceiptIO.serialize(receipt));
+
+    assertEquals(reasonDigest, parsed.payload().decisionReasonSha256().orElseThrow());
+    assertEquals(preReviewDigest, parsed.payload().evidenceSha256().orElseThrow());
+    assertTrue(parsed.payload().canonicalPayloadText().contains("review.receipt.version=2\n"));
+    assertTrue(
+        parsed
+            .payload()
+            .canonicalPayloadText()
+            .contains("review.receipt.decision.reason.sha256=" + reasonDigest + "\n"));
+    assertEquals(
+        AppReviewTrustStatus.TRUSTED_REVIEWED,
+        AppReviewReceiptVerifier.evaluate(
+                entry(parsed, AppCatalogReviewMetadata.EMPTY),
+                trustedKeys(keyPair),
+                AppReviewPolicy.DEFAULT,
+                REVIEWED_AT)
+            .status());
+  }
+
+  @Test
+  void payload_whenVersionOneCarriesDecisionReasonDigest_expectInvalidCatalogEntry() {
+    Optional<String> noBundleKeyId = Optional.empty();
+    Optional<Instant> noExpiration = Optional.empty();
+    Optional<String> noEvidenceDigest = Optional.empty();
+    Optional<String> decisionReasonDigest = Optional.of("c".repeat(64));
+    Optional<URI> noEvidenceUri = Optional.empty();
+    Optional<String> noNote = Optional.empty();
+
+    AppCatalogException exception =
+        assertThrows(
+            AppCatalogException.class,
+            () ->
+                new AppReviewReceiptPayload(
+                    AppReviewReceiptPayload.RECEIPT_VERSION,
+                    APP_ID,
+                    APP_VERSION,
+                    ARTIFACT_SHA256,
+                    ARTIFACT_SIZE,
+                    noBundleKeyId,
+                    POLICY_ID,
+                    POLICY_VERSION,
+                    AppReviewReceiptStatus.REVIEWED,
+                    REVIEWER_KEY_ID,
+                    REVIEWED_AT,
+                    noExpiration,
+                    noEvidenceDigest,
+                    decisionReasonDigest,
+                    noEvidenceUri,
+                    noNote));
+
+    assertTrue(exception.getMessage().contains("requires review.receipt.version 2"));
+  }
+
+  @Test
   void evaluate_whenSignedPayloadIsTampered_expectInvalidSignature() throws Exception {
     KeyPair keyPair = reviewerKeyPair();
     AppReviewReceipt signed =
@@ -281,8 +360,7 @@ class AppReviewReceiptTest {
     AppReviewReceipt receipt =
         AppReviewReceiptSigner.sign(payload(AppReviewReceiptStatus.REJECTED), keyPair.getPrivate());
     AppCatalogReviewMetadata matchingPublisherReview =
-        new AppCatalogReviewMetadata(
-            AppCatalogReviewStatus.REJECTED, Optional.of("Publisher says rejected."));
+        new AppCatalogReviewMetadata(AppCatalogReviewStatus.REJECTED, "Publisher says rejected.");
 
     AppReviewTrustDecision decision =
         AppReviewReceiptVerifier.evaluate(
@@ -300,8 +378,7 @@ class AppReviewReceiptTest {
   @Test
   void evaluate_whenPublisherClaimsReviewedWithoutReceipt_expectPublisherClaimOnly() {
     AppCatalogReviewMetadata advisoryReview =
-        new AppCatalogReviewMetadata(
-            AppCatalogReviewStatus.REVIEWED, Optional.of("Publisher says reviewed."));
+        new AppCatalogReviewMetadata(AppCatalogReviewStatus.REVIEWED, "Publisher says reviewed.");
 
     AppReviewTrustDecision decision =
         AppReviewReceiptVerifier.evaluate(
@@ -392,6 +469,27 @@ class AppReviewReceiptTest {
 
     assertEquals(receipt, parsed);
     assertEquals(AppReviewReceiptStatus.CAUTION, parsed.payload().status());
+  }
+
+  @Test
+  void entryDescriptor_whenInlineReceiptIsPresent_expectReceiptParsed() throws Exception {
+    KeyPair keyPair = reviewerKeyPair();
+    AppReviewReceipt receipt =
+        AppReviewReceiptSigner.sign(payload(AppReviewReceiptStatus.REVIEWED), keyPair.getPrivate());
+    Path descriptor =
+        Files.writeString(
+            tempDir.resolve("entry.properties"),
+            lines(
+                    "artifact.path=" + tempDir.resolve("sample-app.zip").toAbsolutePath(),
+                    "bundle.uri=https://example.invalid/apps/sample-app.zip",
+                    "summary=Sample catalog entry")
+                + AppReviewReceiptIO.serializeText(receipt),
+            StandardCharsets.UTF_8);
+
+    AppCatalogEntryDescriptor parsed = AppCatalogEntryDescriptor.parse(descriptor);
+
+    assertTrue(parsed.reviewReceipt().isPresent());
+    assertEquals(receipt, parsed.reviewReceipt().orElseThrow());
   }
 
   @Test
@@ -717,8 +815,7 @@ class AppReviewReceiptTest {
     AppReviewReceipt receipt =
         AppReviewReceiptSigner.sign(payload(AppReviewReceiptStatus.REJECTED), keyPair.getPrivate());
     AppCatalogReviewMetadata publisherReview =
-        new AppCatalogReviewMetadata(
-            AppCatalogReviewStatus.REVIEWED, Optional.of("Publisher says reviewed."));
+        new AppCatalogReviewMetadata(AppCatalogReviewStatus.REVIEWED, "Publisher says reviewed.");
     AppCatalogEntry entry = entry(receipt, publisherReview);
     AppReviewTrustDecision decision =
         AppReviewReceiptVerifier.evaluate(
@@ -739,8 +836,7 @@ class AppReviewReceiptTest {
   @Test
   void transparencyRecordFromCatalogDecision_whenOnlyPublisherReviewExists_expectNoReceiptStatus() {
     AppCatalogReviewMetadata publisherReview =
-        new AppCatalogReviewMetadata(
-            AppCatalogReviewStatus.REVIEWED, Optional.of("Publisher says reviewed."));
+        new AppCatalogReviewMetadata(AppCatalogReviewStatus.REVIEWED, "Publisher says reviewed.");
     AppCatalogEntry entry = entryWithoutReceipt(publisherReview);
     AppReviewTrustDecision decision =
         AppReviewReceiptVerifier.evaluate(
@@ -1044,6 +1140,7 @@ class AppReviewReceiptTest {
         Optional.empty(),
         Optional.empty(),
         Optional.empty(),
+        Optional.empty(),
         Optional.empty());
   }
 
@@ -1061,6 +1158,7 @@ class AppReviewReceiptTest {
         REVIEWER_KEY_ID,
         REVIEWED_AT,
         Optional.of(REVIEWED_AT),
+        Optional.empty(),
         Optional.empty(),
         Optional.empty(),
         Optional.empty());
@@ -1084,6 +1182,7 @@ class AppReviewReceiptTest {
         AppReviewReceiptStatus.REVIEWED,
         REVIEWER_KEY_ID,
         REVIEWED_AT,
+        Optional.empty(),
         Optional.empty(),
         Optional.empty(),
         Optional.empty(),

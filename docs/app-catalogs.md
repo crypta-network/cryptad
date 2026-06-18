@@ -9,8 +9,8 @@ wire formats, application sandboxing, or AppHost process launching. A catalog te
 where to fetch a signed app bundle ZIP and which digest, size, app id, and version to expect. It
 can also carry optional app-store display metadata for review, compatibility, source, license,
 permissions, screenshots, changelog links, production catalog channels, support status,
-deprecation/replacement hints, first-party maintenance policy metadata, security advisory
-references, and catalog-level security response policy.
+deprecation/replacement hints, first-party maintenance policy metadata, third-party submission
+review metadata, security advisory references, and catalog-level security response policy.
 
 The runtime verifies data in this order:
 
@@ -117,7 +117,7 @@ app.site-publisher.permissions.rationale.queue.write=Creates insert requests for
 app.site-publisher.permissions.rationale.queue.read=Displays publish progress from the local transfer queue.
 app.site-publisher.changelog.summary=Adds the first content reference app.
 app.site-publisher.api.minimumVersion=3
-app.site-publisher.api.maximumTestedVersion=19
+app.site-publisher.api.maximumTestedVersion=20
 app.site-publisher.api.targetStability=stable
 app.site-publisher.api.experimentalCapabilitiesAccepted=false
 
@@ -145,7 +145,7 @@ app.profile-publisher.permissions.rationale.app.data.read=Restores bounded profi
 app.profile-publisher.permissions.rationale.app.data.write=Saves bounded profile drafts and publish summaries.
 app.profile-publisher.changelog.summary=Adds the first identity-profile reference app.
 app.profile-publisher.api.minimumVersion=9
-app.profile-publisher.api.maximumTestedVersion=19
+app.profile-publisher.api.maximumTestedVersion=20
 app.profile-publisher.api.targetStability=experimental
 app.profile-publisher.api.experimentalCapabilitiesAccepted=true
 
@@ -184,7 +184,7 @@ app.social-inbox.service-request.trust-score.contexts=message-author
 app.social-inbox.service-request.trust-score.purpose=Annotate Social Inbox message authors using the local Trust Graph Local RC score service.
 app.social-inbox.changelog.summary=Adds the Social Inbox RC threaded reference app.
 app.social-inbox.api.minimumVersion=16
-app.social-inbox.api.maximumTestedVersion=19
+app.social-inbox.api.maximumTestedVersion=20
 app.social-inbox.api.targetStability=experimental
 app.social-inbox.api.experimentalCapabilitiesAccepted=true
 
@@ -212,7 +212,7 @@ app.feed-reader.permissions.rationale.app.data.read=Restores the app-owned feed 
 app.feed-reader.permissions.rationale.app.data.write=Saves bounded app-owned reader state through the durable app-data API.
 app.feed-reader.changelog.summary=Adds the first feed reader and publisher reference app.
 app.feed-reader.api.minimumVersion=9
-app.feed-reader.api.maximumTestedVersion=19
+app.feed-reader.api.maximumTestedVersion=20
 app.feed-reader.api.targetStability=stable
 app.feed-reader.api.experimentalCapabilitiesAccepted=false
 
@@ -253,7 +253,7 @@ app.trust-graph.service.trust-score.contexts=message-author,profile
 app.trust-graph.service.trust-score.description=Returns a bounded local RC Trust Graph score summary for an app-provided public subject.
 app.trust-graph.changelog.summary=Adds the local Trust Graph Local RC reference app.
 app.trust-graph.api.minimumVersion=10
-app.trust-graph.api.maximumTestedVersion=19
+app.trust-graph.api.maximumTestedVersion=20
 app.trust-graph.api.targetStability=experimental
 app.trust-graph.api.experimentalCapabilitiesAccepted=true
 app.queue-manager.review.receipt.version=1
@@ -282,9 +282,11 @@ artifact, and permission fields. `catalog.version=2` adds the optional app-store
 compatibility metadata fields shown above. `catalog.version=3` adds production catalog channels,
 maximum Cryptad compatibility, support/deprecation metadata, replacement app hints, and security
 advisory references. `catalog.version=4` adds catalog-level security response policy.
-`catalog.version=5` adds first-party maintenance policy metadata. Current Cryptad nodes parse all
-five versions. Older strict v1-v4 nodes reject newer catalogs rather than silently accepting
-unknown metadata fields.
+`catalog.version=5` adds first-party maintenance policy metadata. `catalog.version=6` adds
+third-party submission review workflow metadata such as submission ids, pre-review digests,
+reviewer policy fingerprints, receipt fingerprints, decision-rationale digests, resubmission
+links, and non-production markers. Current Cryptad nodes parse all six versions. Older strict
+v1-v5 nodes reject newer catalogs rather than silently accepting unknown metadata fields.
 
 Minimal v1 catalogs that only provide the required fields still parse and install unchanged. The
 app-store metadata fields remain optional within the v2 schema. V1 and v2 catalogs that omit
@@ -357,6 +359,19 @@ See [first-party-app-maintenance-policy.md](first-party-app-maintenance-policy.m
 first-party policy table and the `app-catalog.first-party-maintenance-policy` certification
 evidence.
 
+## Third-party submission review metadata
+
+Third-party submission review workflow metadata is authenticated by `catalog.version=6` signed
+catalog bytes. Catalog candidate descriptors generated by `crypta-app submission catalog-candidate`
+use v6 when they include `review.submission.*`, `review.preReview.*`,
+`review.reviewer.*`, `review.receipt.fingerprint.sha256`,
+`review.decision.reason.sha256`, `review.resubmissionOf`, or `review.nonProduction`.
+
+The v6 fields are audit metadata only. They do not replace the independent embedded
+`review.receipt.*` signature, artifact digest checks, or trusted reviewer-key evaluation. Older
+catalog schemas must fail closed when these fields are present so strict older nodes reject the
+catalog as unsupported instead of accepting unknown review metadata.
+
 ## App-store metadata
 
 Catalog entries can include these optional fields:
@@ -376,8 +391,18 @@ Catalog entries can include these optional fields:
 | `app.<id>.replacementAppId` | Normalized replacement app id for deprecated or retired entries. |
 | `app.<id>.securityAdvisories` | Comma-separated advisory identifiers with matching `securityAdvisory.<id>.uri` metadata links. |
 | `app.<id>.maintenance.*` | First-party maintenance policy metadata. See [First-party maintenance metadata](#first-party-maintenance-metadata). |
-| `app.<id>.review.status` | Advisory human review state. Supported values are `unreviewed`, `reviewed`, `caution`, and `rejected`. |
+| `app.<id>.review.status` | Advisory human review or submission workflow state. Supported values are `unreviewed`, `submitted`, `pre_review_passed`, `reviewed`, `caution`, `rejected`, and `resubmitted`. |
 | `app.<id>.review.note` | Single-line advisory review note for operators. |
+| `app.<id>.review.submission.id` | Third-party submission id that produced this candidate descriptor. |
+| `app.<id>.review.submission.sha256` | SHA-256 digest of the submission ZIP. |
+| `app.<id>.review.preReview.status` | Automated pre-review status: `pass`, `warn`, or `fail`. |
+| `app.<id>.review.preReview.sha256` | SHA-256 digest of the pre-review JSON report. |
+| `app.<id>.review.reviewer.keyId` | Reviewer key id that recorded the submission decision. |
+| `app.<id>.review.reviewer.policy` | Reviewer policy id/version summary. |
+| `app.<id>.review.receipt.fingerprint.sha256` | SHA-256 fingerprint of the independent review receipt. |
+| `app.<id>.review.decision.reason.sha256` | SHA-256 digest of reviewer decision or rejection rationale. |
+| `app.<id>.review.resubmissionOf` | Previous submission id linked by a resubmission. |
+| `app.<id>.review.nonProduction` | `true` when the candidate was produced with fixture/test submission evidence. |
 | `app.<id>.permissions.rationale.<permission>` | Explanation for a declared permission, keyed by the normalized permission name. |
 | `app.<id>.screenshot.N` | Screenshot URI metadata, where `N` is a positive deterministic index. |
 | `app.<id>.changelog.summary` | Single-line summary of changes for the catalog version. |
@@ -442,7 +467,7 @@ The signed receipt payload contains:
 
 | Receipt property | Meaning |
 | --- | --- |
-| `review.receipt.version` | Receipt schema version. Current value is `1`. |
+| `review.receipt.version` | Receipt schema version. Version `1` is the original receipt schema; version `2` adds the decision-rationale digest. |
 | `review.receipt.app.id` | App id that must match the catalog entry. |
 | `review.receipt.app.version` | App version that must match the catalog entry. |
 | `review.receipt.artifact.sha256` | Lowercase SHA-256 that must match `app.<id>.bundle.sha256`. |
@@ -455,6 +480,7 @@ The signed receipt payload contains:
 | `review.receipt.reviewed.at` | Strict ISO-8601 review instant. |
 | `review.receipt.expires.at` | Optional strict ISO-8601 expiry instant. Expired receipts are untrusted. |
 | `review.receipt.evidence.sha256` | Optional evidence digest. |
+| `review.receipt.decision.reason.sha256` | Optional reviewer decision-rationale digest. Requires `review.receipt.version=2`. |
 | `review.receipt.evidence.uri` | Optional `https:` or `crypta:` evidence URI. |
 | `review.receipt.note` | Optional bounded single-line reviewer note. |
 | `review.receipt.signature.algorithm` | Current value is `Ed25519`. |
@@ -466,6 +492,23 @@ being signed. Tampering with the app id, version, artifact digest, size, reviewe
 fields, policy fields, timestamps, or reviewer key id invalidates the receipt. A `rejected`
 receipt can be trusted evidence, but it is not a positive review and must not be rendered as
 "safe" or "reviewed".
+
+## Third-party catalog candidates
+
+`crypta-app submission catalog-candidate` converts a reviewed or caution submission package into a
+developer-authored catalog descriptor. The descriptor records app identity, artifact digest, API
+target stability, experimental opt-in state, submission id, submission digest, reviewer key id,
+review policy, review receipt fingerprint, and non-production marker.
+
+Rejected submissions cannot create installable catalog candidates. Caution candidates require an
+explicit catalog policy choice and must preserve warning metadata in the descriptor. Reviewed
+third-party candidates are not promoted into first-party stable channels automatically.
+
+Catalog APIs expose third-party submission metadata as `thirdPartyReview`, separate from publisher
+advisory `review` metadata and local trusted receipt evaluation in `reviewTrust`. See
+[app-store-submission-and-review-workflow.md](app-store-submission-and-review-workflow.md) for the
+submission package format, pre-review report, decision states, resubmission links, and transparency
+events.
 
 Trusted reviewer keys are configured separately from app and catalog signing keys:
 

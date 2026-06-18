@@ -27,8 +27,21 @@ import java.util.Optional;
  * @see AppCatalogReviewStatus
  * @see AppCatalogEntry#review()
  */
-public record AppCatalogReviewMetadata(AppCatalogReviewStatus status, Optional<String> note) {
+public record AppCatalogReviewMetadata(
+    AppCatalogReviewStatus status,
+    Optional<String> note,
+    Optional<String> submissionId,
+    Optional<String> submissionSha256,
+    Optional<String> preReviewStatus,
+    Optional<String> preReviewSha256,
+    Optional<String> reviewerKeyId,
+    Optional<String> reviewerPolicy,
+    Optional<String> receiptFingerprintSha256,
+    Optional<String> decisionReasonSha256,
+    Optional<String> resubmissionOf,
+    boolean nonProduction) {
   private static final int MAX_REVIEW_NOTE_CHARS = 512;
+  private static final int MAX_REVIEW_FIELD_CHARS = 128;
 
   /**
    * Empty advisory review metadata used by catalogs without explicit review fields.
@@ -37,7 +50,33 @@ public record AppCatalogReviewMetadata(AppCatalogReviewStatus status, Optional<S
    * review properties for it, while API responses can still expose a stable review object.
    */
   public static final AppCatalogReviewMetadata EMPTY =
-      new AppCatalogReviewMetadata(AppCatalogReviewStatus.UNREVIEWED, Optional.empty());
+      new AppCatalogReviewMetadata(AppCatalogReviewStatus.UNREVIEWED, null);
+
+  /**
+   * Creates backward-compatible advisory metadata with no submission workflow fields.
+   *
+   * <p>Pass {@code null} when no note should be stored. A non-null note is normalized in the same
+   * way as the full record constructor: it must be a bounded single line suitable for signed
+   * catalog sidecars and Platform API summaries.
+   *
+   * @param status advisory review status declared by the catalog publisher
+   * @param note optional single-line note explaining the status for operators, or {@code null}
+   */
+  public AppCatalogReviewMetadata(AppCatalogReviewStatus status, String note) {
+    this(
+        status,
+        Optional.ofNullable(note),
+        Optional.empty(),
+        Optional.empty(),
+        Optional.empty(),
+        Optional.empty(),
+        Optional.empty(),
+        Optional.empty(),
+        Optional.empty(),
+        Optional.empty(),
+        Optional.empty(),
+        false);
+  }
 
   /**
    * Creates validated review metadata.
@@ -54,14 +93,36 @@ public record AppCatalogReviewMetadata(AppCatalogReviewStatus status, Optional<S
   public AppCatalogReviewMetadata {
     Objects.requireNonNull(status, "status");
     Objects.requireNonNull(note, "note");
-    note =
-        note.map(
-            rawNote ->
-                AppCatalogSidecars.requireBoundedSingleLine(
-                    rawNote,
-                    "review.note",
-                    AppCatalogSidecars.INVALID_CATALOG_ENTRY,
-                    MAX_REVIEW_NOTE_CHARS));
+    Objects.requireNonNull(submissionId, "submissionId");
+    Objects.requireNonNull(submissionSha256, "submissionSha256");
+    Objects.requireNonNull(preReviewStatus, "preReviewStatus");
+    Objects.requireNonNull(preReviewSha256, "preReviewSha256");
+    Objects.requireNonNull(reviewerKeyId, "reviewerKeyId");
+    Objects.requireNonNull(reviewerPolicy, "reviewerPolicy");
+    Objects.requireNonNull(receiptFingerprintSha256, "receiptFingerprintSha256");
+    Objects.requireNonNull(decisionReasonSha256, "decisionReasonSha256");
+    Objects.requireNonNull(resubmissionOf, "resubmissionOf");
+    note = note.map(rawNote -> normalizeSingleLine(rawNote, "review.note", MAX_REVIEW_NOTE_CHARS));
+    submissionId = submissionId.map(value -> normalizeSingleLine(value, "review.submissionId"));
+    submissionSha256 =
+        submissionSha256.map(value -> normalizeSha256(value, "review.submission.sha256"));
+    preReviewStatus =
+        preReviewStatus
+            .map(value -> normalizeSingleLine(value, "review.preReview.status", 32))
+            .map(value -> AppSubmissionPreReviewStatus.parse(value).jsonValue());
+    preReviewSha256 =
+        preReviewSha256.map(value -> normalizeSha256(value, "review.preReview.sha256"));
+    reviewerKeyId =
+        reviewerKeyId.map(value -> normalizeSingleLine(value, "review.reviewer.key.id"));
+    reviewerPolicy =
+        reviewerPolicy.map(value -> normalizeSingleLine(value, "review.reviewer.policy"));
+    receiptFingerprintSha256 =
+        receiptFingerprintSha256.map(
+            value -> normalizeSha256(value, "review.receipt.fingerprint.sha256"));
+    decisionReasonSha256 =
+        decisionReasonSha256.map(value -> normalizeSha256(value, "review.decision.reason.sha256"));
+    resubmissionOf =
+        resubmissionOf.map(value -> normalizeSingleLine(value, "review.resubmissionOf"));
   }
 
   /**
@@ -74,6 +135,45 @@ public record AppCatalogReviewMetadata(AppCatalogReviewStatus status, Optional<S
    * @return {@code true} when a non-default status or a note is present
    */
   public boolean hasCatalogFields() {
-    return status != AppCatalogReviewStatus.UNREVIEWED || note.isPresent();
+    return status != AppCatalogReviewStatus.UNREVIEWED
+        || note.isPresent()
+        || hasSubmissionReviewFields();
+  }
+
+  /**
+   * Returns whether this metadata carries third-party submission review workflow fields.
+   *
+   * <p>The predicate intentionally includes status-only workflow states such as {@code submitted},
+   * {@code pre_review_passed}, and {@code resubmitted}. API and catalog-version callers should use
+   * this method rather than rechecking individual optional fields so status-only workflow metadata
+   * is not dropped.
+   *
+   * @return {@code true} when this metadata belongs to the submission review workflow
+   */
+  public boolean hasSubmissionReviewFields() {
+    return status.requiresSubmissionReviewCatalogVersion()
+        || submissionId.isPresent()
+        || submissionSha256.isPresent()
+        || preReviewStatus.isPresent()
+        || preReviewSha256.isPresent()
+        || reviewerKeyId.isPresent()
+        || reviewerPolicy.isPresent()
+        || receiptFingerprintSha256.isPresent()
+        || decisionReasonSha256.isPresent()
+        || resubmissionOf.isPresent()
+        || nonProduction;
+  }
+
+  private static String normalizeSingleLine(String value, String fieldName) {
+    return normalizeSingleLine(value, fieldName, MAX_REVIEW_FIELD_CHARS);
+  }
+
+  private static String normalizeSingleLine(String value, String fieldName, int maxChars) {
+    return AppCatalogSidecars.requireBoundedSingleLine(
+        value, fieldName, AppCatalogSidecars.INVALID_CATALOG_ENTRY, maxChars);
+  }
+
+  private static String normalizeSha256(String value, String fieldName) {
+    return AppCatalogSidecars.requireLowercaseSha256(value, fieldName);
   }
 }

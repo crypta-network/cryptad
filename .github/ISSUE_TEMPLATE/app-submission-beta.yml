@@ -17,6 +17,35 @@ body:
     validations:
       required: true
   - type: input
+    id: submission-id
+    attributes:
+      label: Submission package id
+      placeholder: "Example: sub-0123456789abcdef01234567"
+    validations:
+      required: true
+  - type: dropdown
+    id: submission-type
+    attributes:
+      label: Submission type
+      options:
+        - new_app
+        - update
+        - resubmission
+    validations:
+      required: true
+  - type: input
+    id: resubmission-of
+    attributes:
+      label: Resubmission of
+      placeholder: "Previous submission id when this is a resubmission"
+  - type: input
+    id: submission-digest
+    attributes:
+      label: Submission package digest
+      placeholder: "Lowercase SHA-256 digest of submission.zip"
+    validations:
+      required: true
+  - type: input
     id: lineage
     attributes:
       label: Template or reference app lineage
@@ -40,7 +69,24 @@ body:
     id: api-range
     attributes:
       label: API min/max tested version
-      placeholder: "Example: minimum 1, maximum tested 7"
+      placeholder: "Example: minimum 1, maximum tested 7, target stable, experimental accepted false"
+    validations:
+      required: true
+  - type: dropdown
+    id: pre-review-status
+    attributes:
+      label: Automated pre-review status
+      options:
+        - pass
+        - warn
+        - fail
+    validations:
+      required: true
+  - type: input
+    id: pre-review-digest
+    attributes:
+      label: Pre-review report digest
+      placeholder: "Lowercase SHA-256 digest of example-pre-review.json"
     validations:
       required: true
   - type: input
@@ -60,12 +106,14 @@ body:
   - type: dropdown
     id: review-receipt
     attributes:
-      label: Review receipt status
+      label: Reviewer decision / receipt status
       options:
-        - Not included
-        - Included and pending reviewer trust configuration
-        - Included and verified by local trusted reviewer key
-        - Rejected or requires changes
+        - submitted
+        - pre_review_passed
+        - reviewed receipt issued
+        - caution receipt issued
+        - rejected metadata recorded
+        - resubmitted
     validations:
       required: true
   - type: input
@@ -101,6 +149,11 @@ body:
       description: Describe data handling, capability boundaries, and redaction-sensitive areas.
     validations:
       required: true
+  - type: input
+    id: transparency-log
+    attributes:
+      label: Transparency log fingerprint/status
+      placeholder: "Example: hash-chain verified, latest hash abc..."
   - type: checkboxes
     id: redaction-confirmation
     attributes:

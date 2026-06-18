@@ -894,6 +894,9 @@ class WebShellResourcesTest {
     assertTrue(script.contains("function catalogMaintenancePolicyNode(app)"));
     assertTrue(script.contains("Review and trust"));
     assertTrue(script.contains("Publisher advisory review"));
+    assertTrue(script.contains("Third-party submission"));
+    assertTrue(script.contains("Submission id"));
+    assertTrue(script.contains("Pre-review status"));
     assertTrue(script.contains("Trusted review receipt"));
     assertTrue(script.contains("function reviewTrustLabel(reviewTrust)"));
     assertTrue(script.contains("function appendReviewAcknowledgement(form, reviewTrust, action)"));

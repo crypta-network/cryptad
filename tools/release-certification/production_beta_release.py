@@ -206,6 +206,19 @@ FIRST_PARTY_POLICY_ALLOWED_VALUES = {
     "deprecationStatus": {"none", "deprecated", "retired"},
 }
 MAINTENANCE_VERSION_BOUND_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]{0,63}")
+APP_STORE_SUBMISSION_EVIDENCE_IDS = (
+    "app-store.submission-package-schema",
+    "app-store.submission-cli",
+    "app-store.pre-review",
+    "app-store.review-decision-states",
+    "app-store.review-receipt-issued",
+    "app-store.rejection-record",
+    "app-store.resubmission-link",
+    "app-store.transparency-log",
+    "app-store.catalog-candidate",
+    "app-store.third-party-sample-flow",
+    "app-store.redaction-clean",
+)
 CRITICAL_PRODUCTION_BETA_EVIDENCE_IDS = (
     "app-platform.signed-bundles",
     "app-catalog.first-party-maintenance-policy",
@@ -213,6 +226,7 @@ CRITICAL_PRODUCTION_BETA_EVIDENCE_IDS = (
     "app-review.trusted-receipts",
     "app-review.first-party-catalog",
     "app-review.first-party-review-chain",
+    *APP_STORE_SUBMISSION_EVIDENCE_IDS,
     "platform-api.contract",
     "platform-api.stable-baseline",
     "platform-api.stable-breaking-change-check",

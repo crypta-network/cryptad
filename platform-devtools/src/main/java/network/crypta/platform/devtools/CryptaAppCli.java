@@ -10,6 +10,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileAttribute;
+import java.nio.file.attribute.PosixFilePermission;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.PrivateKey;
@@ -17,6 +20,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Comparator;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -26,6 +30,10 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
 import network.crypta.platform.api.PlatformApiContract;
 import network.crypta.platform.api.PlatformApiContractJson;
 import network.crypta.platform.api.PlatformApiContractVerifier.CompatibilityFinding;
@@ -34,7 +42,10 @@ import network.crypta.platform.api.PlatformApiContractVerifier.CompatibilityVeri
 import network.crypta.platform.api.PlatformApiContractVerifier;
 import network.crypta.platform.appcatalog.AppCatalog;
 import network.crypta.platform.appcatalog.AppCatalogBuildRequest;
+import network.crypta.platform.appcatalog.AppCatalogChangelog;
 import network.crypta.platform.appcatalog.AppCatalogCompatibilityMetadata;
+import network.crypta.platform.appcatalog.AppCatalogEntry;
+import network.crypta.platform.appcatalog.AppCatalogReviewMetadata;
 import network.crypta.platform.appcatalog.AppCatalogSecurityAction;
 import network.crypta.platform.appcatalog.AppCatalogSecurityAdvisoryRecord;
 import network.crypta.platform.appcatalog.AppCatalogSecurityPolicy;
@@ -52,8 +63,20 @@ import network.crypta.platform.appcatalog.AppReviewReceiptPayload;
 import network.crypta.platform.appcatalog.AppReviewReceiptSigner;
 import network.crypta.platform.appcatalog.AppReviewReceiptStatus;
 import network.crypta.platform.appcatalog.AppReviewReceiptVerifier;
+import network.crypta.platform.appcatalog.AppReviewTransparencyEventKind;
+import network.crypta.platform.appcatalog.AppReviewTransparencyRecord;
 import network.crypta.platform.appcatalog.AppReviewTransparencyVerificationResult;
 import network.crypta.platform.appcatalog.AppReviewTrustDecision;
+import network.crypta.platform.appcatalog.AppSubmissionFinding;
+import network.crypta.platform.appcatalog.AppSubmissionFindingSeverity;
+import network.crypta.platform.appcatalog.AppSubmissionMaintainer;
+import network.crypta.platform.appcatalog.AppSubmissionPackage;
+import network.crypta.platform.appcatalog.AppSubmissionPackageVerifier;
+import network.crypta.platform.appcatalog.AppSubmissionPackageWriter;
+import network.crypta.platform.appcatalog.AppSubmissionPreReviewReport;
+import network.crypta.platform.appcatalog.AppSubmissionSourceReference;
+import network.crypta.platform.appcatalog.AppSubmissionType;
+import network.crypta.platform.appcatalog.AppSubmissionVerification;
 import network.crypta.platform.appcatalog.FileAppReviewTransparencyStore;
 import network.crypta.platform.appcatalog.TrustedReviewerKey;
 import network.crypta.platform.appcatalog.TrustedReviewerKeys;
@@ -103,6 +126,7 @@ import picocli.CommandLine;
       CryptaAppCli.CompatCommand.class,
       CryptaAppCli.UiCommand.class,
       CryptaAppCli.ReviewCommand.class,
+      CryptaAppCli.SubmissionCommand.class,
       CryptaAppCli.CatalogCommand.class,
       CryptaAppCli.PublishUskCommand.class
     })
@@ -111,10 +135,24 @@ public final class CryptaAppCli implements Runnable {
   private static final String FIELD_ACTION = "action";
   private static final String FIELD_REPLACEMENT_APP_ID = "replacementAppId";
   private static final String FIELD_SAFE_UNINSTALL_GUIDANCE = "safeUninstallGuidance";
+  private static final String FIELD_MESSAGE = "message";
   private static final String FIELD_SEVERITY = "severity";
   private static final String FIELD_STATUS = "status";
+  private static final String FIELD_SUMMARY = "summary";
+  private static final String FIELD_VERSION = "version";
   private static final String OPTION_SECURITY_ADVISORY_RECORD = "--security-advisory-record";
   private static final String OPTION_SECURITY_DENYLIST_ENTRY = "--security-denylist-entry";
+  private static final String REDACTED_PATH = "[redacted-path]";
+  private static final Set<PosixFilePermission> OWNER_ONLY_DIRECTORY =
+      Set.of(
+          PosixFilePermission.OWNER_READ,
+          PosixFilePermission.OWNER_WRITE,
+          PosixFilePermission.OWNER_EXECUTE);
+  private static final Pattern LOCAL_UNIX_PATH_PATTERN =
+      Pattern.compile(
+          "(?i)(^|[\\s='\"(])/(?:home|users|work|tmp|var|etc|root|opt|mnt|private/var|volumes)/[^\\s'\"),;]+");
+  private static final Pattern LOCAL_WINDOWS_PATH_PATTERN =
+      Pattern.compile("(?i)(^|[\\s='\"(])[a-z]:\\\\[^\\s'\"),;]+");
 
   private static final AtomicReference<LiveUskPublisher> LIVE_USK_PUBLISHER_OVERRIDE =
       new AtomicReference<>();
@@ -818,6 +856,7 @@ public final class CryptaAppCli implements Runnable {
               reviewedAt == null ? Instant.now() : reviewedAt,
               Optional.ofNullable(expiresAt),
               evidenceSha256(),
+              Optional.empty(),
               Optional.ofNullable(evidenceUri),
               Optional.ofNullable(note));
       AppReviewReceipt receipt = AppReviewReceiptSigner.sign(payload, privateKey);
@@ -1150,6 +1189,1074 @@ public final class CryptaAppCli implements Runnable {
                   + " latestHash="
                   + nullToDash(result.latestRecordHash()));
       return CommandLine.ExitCode.OK;
+    }
+  }
+
+  /** Parent command for third-party app submission and review workflow tooling. */
+  @Command(
+      name = "submission",
+      description = "Create, verify, pre-review, decide, and promote app submissions.",
+      subcommands = {
+        SubmissionCreateCommand.class,
+        SubmissionVerifyCommand.class,
+        SubmissionPreReviewCommand.class,
+        SubmissionDecideCommand.class,
+        SubmissionCatalogCandidateCommand.class
+      })
+  static final class SubmissionCommand extends SpecAwareCommand implements Runnable {
+    @Override
+    public void run() {
+      super.commandLine().usage(super.commandLine().getOut());
+    }
+  }
+
+  /** Implements {@code crypta-app submission create}. */
+  @Command(name = "create", description = "Create a deterministic third-party submission package.")
+  static final class SubmissionCreateCommand extends SpecAwareCommand implements Callable<Integer> {
+    @Option(names = "--bundle-dir", required = true, description = "Staged app bundle directory.")
+    private Path bundleDirectory;
+
+    @Option(names = "--output", required = true, description = "Submission ZIP output.")
+    private Path output;
+
+    @Option(
+        names = "--submission-type",
+        required = true,
+        description = "new_app, update, or resubmission.")
+    private String submissionType;
+
+    @Option(names = "--resubmission-of", description = "Previous submission id.")
+    private String resubmissionOf;
+
+    @Option(names = "--submission-id", description = "Explicit submission id.")
+    private String submissionId;
+
+    @Option(names = "--submission-created-at", description = "Deterministic creation instant.")
+    private Instant submissionCreatedAt;
+
+    @Option(names = "--permission-rationale", description = "Permission rationale Markdown.")
+    private Path permissionRationale;
+
+    @Option(names = "--sandbox-rationale", description = "Sandbox rationale Markdown.")
+    private Path sandboxRationale;
+
+    @Option(names = "--data-schema", description = "App-data schema Markdown.")
+    private Path dataSchema;
+
+    @Option(names = "--backup-restore", description = "Backup/restore Markdown.")
+    private Path backupRestore;
+
+    @Option(names = "--security-notes", description = "Security notes Markdown.")
+    private Path securityNotes;
+
+    @Option(names = "--changelog", description = "Changelog Markdown.")
+    private Path changelog;
+
+    @Option(names = "--catalog-entry", description = "Optional catalog-entry descriptor.")
+    private Path catalogEntry;
+
+    @Option(names = "--maintainer-name", required = true, description = "Public maintainer name.")
+    private String maintainerName;
+
+    @Option(
+        names = "--maintainer-contact",
+        required = true,
+        description = "Public maintainer contact.")
+    private String maintainerContact;
+
+    @Option(names = "--source-url", required = true, description = "Public source URL.")
+    private URI sourceUrl;
+
+    @Option(names = "--source-revision", description = "Optional source revision.")
+    private String sourceRevision;
+
+    @Option(names = "--non-production", description = "Mark package as local/test evidence.")
+    private boolean nonProduction;
+
+    @Option(names = "--transparency-log", description = "Review transparency JSONL log.")
+    private Path transparencyLog;
+
+    @Option(names = "--overwrite", description = "Replace an existing output ZIP.")
+    private boolean overwrite;
+
+    @Override
+    public Integer call() throws Exception {
+      AppSubmissionPackage submission =
+          AppSubmissionPackageWriter.create(
+              new AppSubmissionPackageWriter.CreateRequest(
+                  bundleDirectory,
+                  output,
+                  AppSubmissionType.parse(submissionType),
+                  Optional.ofNullable(resubmissionOf),
+                  Optional.ofNullable(submissionId),
+                  Optional.ofNullable(submissionCreatedAt),
+                  Optional.ofNullable(permissionRationale),
+                  Optional.ofNullable(sandboxRationale),
+                  Optional.ofNullable(dataSchema),
+                  Optional.ofNullable(backupRestore),
+                  Optional.ofNullable(securityNotes),
+                  Optional.ofNullable(changelog),
+                  Optional.ofNullable(catalogEntry),
+                  new AppSubmissionMaintainer(maintainerName, maintainerContact),
+                  new AppSubmissionSourceReference(sourceUrl, Optional.ofNullable(sourceRevision)),
+                  nonProduction,
+                  overwrite));
+      appendSubmissionTransparency(
+          transparencyLog,
+          submission,
+          new SubmissionTransparencyUpdate(
+              AppReviewTransparencyEventKind.SUBMISSION_CREATED,
+              null,
+              null,
+              null,
+              null,
+              submission.submissionDigest(),
+              List.of("submissionType=" + submission.metadata().submissionType().jsonValue())));
+      if (submission.metadata().submissionType() == AppSubmissionType.RESUBMISSION) {
+        appendSubmissionTransparency(
+            transparencyLog,
+            submission,
+            new SubmissionTransparencyUpdate(
+                AppReviewTransparencyEventKind.SUBMISSION_RESUBMITTED,
+                null,
+                null,
+                null,
+                null,
+                submission.submissionDigest(),
+                List.of("resubmissionOf=" + submission.metadata().resubmissionOf().orElse(""))));
+      }
+      PrintWriter out = super.commandLine().getOut();
+      out.println(
+          "Created submission package: submissionId="
+              + submission.metadata().submissionId()
+              + " appId="
+              + submission.metadata().appId()
+              + " version="
+              + submission.metadata().appVersion()
+              + " nonProduction="
+              + submission.metadata().nonProduction());
+      return CommandLine.ExitCode.OK;
+    }
+  }
+
+  /** Implements {@code crypta-app submission verify}. */
+  @Command(name = "verify", description = "Verify a submission package offline.")
+  static final class SubmissionVerifyCommand extends SpecAwareCommand implements Callable<Integer> {
+    @Option(names = "--submission", required = true, description = "Submission ZIP.")
+    private Path submission;
+
+    @Option(names = "--json", description = "Print safe metadata JSON.")
+    private boolean json;
+
+    @Override
+    public Integer call() throws Exception {
+      AppSubmissionVerification verification = AppSubmissionPackageVerifier.inspect(submission);
+      if (json) {
+        if (verification.hasBlockers()) {
+          super.commandLine().getOut().print(redactedVerificationJson(verification));
+        } else {
+          super.commandLine().getOut().print(verification.submission().metadata().toJson());
+        }
+      } else {
+        PrintWriter out = super.commandLine().getOut();
+        if (verification.hasParsedSubmission()) {
+          out.println(
+              "Submission package: submissionId="
+                  + verification.submission().metadata().submissionId()
+                  + " appId="
+                  + verification.submission().metadata().appId()
+                  + " version="
+                  + verification.submission().metadata().appVersion()
+                  + " findings="
+                  + verification.findings().size());
+        } else {
+          out.println(
+              "Submission package: parsed=false findings=" + verification.findings().size());
+        }
+      }
+      printSubmissionFindings(super.commandLine(), verification.findings());
+      return verification.hasBlockers() ? CommandLine.ExitCode.SOFTWARE : CommandLine.ExitCode.OK;
+    }
+
+    private static String redactedVerificationJson(AppSubmissionVerification verification) {
+      Map<String, Object> value = new LinkedHashMap<>();
+      value.put("schemaVersion", 1);
+      value.put("redacted", true);
+      value.put(FIELD_STATUS, verification.hasBlockers() ? "fail" : "pass");
+      value.put("findingCount", verification.findings().size());
+      value.put(
+          "findings",
+          verification.findings().stream()
+              .map(SubmissionVerifyCommand::redactedFindingJsonValue)
+              .toList());
+      return writeJson(value);
+    }
+
+    private static Map<String, Object> redactedFindingJsonValue(AppSubmissionFinding finding) {
+      Map<String, Object> value = new LinkedHashMap<>();
+      value.put("id", finding.id());
+      value.put(FIELD_SEVERITY, finding.severity().jsonValue());
+      value.put(FIELD_SUMMARY, finding.summary());
+      value.put("details", finding.details());
+      return value;
+    }
+
+    private static String writeJson(Object value) {
+      StringBuilder builder = new StringBuilder();
+      appendJsonValue(builder, value);
+      builder.append('\n');
+      return builder.toString();
+    }
+
+    private static void appendJsonValue(StringBuilder builder, Object value) {
+      switch (value) {
+        case null -> builder.append("null");
+        case String text -> appendJsonString(builder, text);
+        case Boolean bool -> builder.append(bool.booleanValue());
+        case Integer number -> builder.append(number.intValue());
+        case Long number -> builder.append(number.longValue());
+        case Map<?, ?> map -> appendJsonObject(builder, map);
+        case Iterable<?> iterable -> appendJsonArray(builder, iterable);
+        default ->
+            throw new IllegalArgumentException("unsupported JSON value: " + value.getClass());
+      }
+    }
+
+    private static void appendJsonObject(StringBuilder builder, Map<?, ?> map) {
+      builder.append('{');
+      boolean first = true;
+      for (Map.Entry<?, ?> entry : map.entrySet()) {
+        if (!first) {
+          builder.append(',');
+        }
+        first = false;
+        appendJsonString(builder, String.valueOf(entry.getKey()));
+        builder.append(':');
+        appendJsonValue(builder, entry.getValue());
+      }
+      builder.append('}');
+    }
+
+    private static void appendJsonArray(StringBuilder builder, Iterable<?> iterable) {
+      builder.append('[');
+      boolean first = true;
+      for (Object value : iterable) {
+        if (!first) {
+          builder.append(',');
+        }
+        first = false;
+        appendJsonValue(builder, value);
+      }
+      builder.append(']');
+    }
+
+    private static void appendJsonString(StringBuilder builder, String value) {
+      builder.append('"');
+      for (int index = 0; index < value.length(); index++) {
+        char ch = value.charAt(index);
+        switch (ch) {
+          case '"' -> builder.append("\\\"");
+          case '\\' -> builder.append("\\\\");
+          case '\b' -> builder.append("\\b");
+          case '\f' -> builder.append("\\f");
+          case '\n' -> builder.append("\\n");
+          case '\r' -> builder.append("\\r");
+          case '\t' -> builder.append("\\t");
+          default -> {
+            if (ch < 0x20) {
+              builder.append(String.format("\\u%04x", (int) ch));
+            } else {
+              builder.append(ch);
+            }
+          }
+        }
+      }
+      builder.append('"');
+    }
+  }
+
+  /** Implements {@code crypta-app submission pre-review}. */
+  @Command(name = "pre-review", description = "Run deterministic automated pre-review checks.")
+  static final class SubmissionPreReviewCommand extends SpecAwareCommand
+      implements Callable<Integer> {
+    @Option(names = "--submission", required = true, description = "Submission ZIP.")
+    private Path submission;
+
+    @Option(names = "--contract", description = "Platform API contract JSON.")
+    private Path contractFile;
+
+    @Option(names = "--output", required = true, description = "Pre-review JSON output.")
+    private Path output;
+
+    @Option(names = "--transparency-log", description = "Review transparency JSONL log.")
+    private Path transparencyLog;
+
+    @Option(names = "--overwrite", description = "Replace an existing report.")
+    private boolean overwrite;
+
+    @Override
+    public Integer call() throws Exception {
+      AppSubmissionVerification verification = AppSubmissionPackageVerifier.inspect(submission);
+      List<AppSubmissionFinding> findings = new ArrayList<>(verification.findings());
+      if (!verification.hasParsedSubmission()) {
+        AppSubmissionPreReviewReport report =
+            AppSubmissionPreReviewReport.create(
+                "unparsed-submission", "invalid-submission", "unknown", findings, Map.of());
+        writeText(output, report.toJson(), overwrite);
+        printSubmissionFindings(super.commandLine(), findings);
+        super.commandLine()
+            .getOut()
+            .println(
+                "Pre-review "
+                    + report.status().jsonValue()
+                    + ": submissionId="
+                    + report.submissionId()
+                    + " promotionReady="
+                    + report.promotionReady());
+        return CommandLine.ExitCode.SOFTWARE;
+      }
+      Path tempBundle = createPrivateScratchDirectory();
+      try {
+        if (!verification.hasBlockers()) {
+          AppSubmissionPackageVerifier.extractBundle(submission, tempBundle);
+          addBundleValidationFindings(tempBundle, findings);
+          addCompatibilityFindings(tempBundle, findings);
+          addUiLintFindings(tempBundle, findings);
+        }
+      } finally {
+        deleteRecursively(tempBundle);
+      }
+      Map<String, String> artifacts = new LinkedHashMap<>();
+      artifacts.put("submissionDigest", verification.submission().submissionDigest());
+      artifacts.put("bundleDigest", verification.submission().metadata().bundleDigest());
+      artifacts.put(
+          "manifestDigest",
+          sha256Hex(
+              readSubmissionEntry(
+                  submission,
+                  AppSubmissionPackageVerifier.BUNDLE_PREFIX
+                      + network.crypta.platform.appdist.AppBundleManifestParser
+                          .MANIFEST_FILE_NAME)));
+      AppSubmissionPreReviewReport report =
+          AppSubmissionPreReviewReport.create(
+              verification.submission().metadata().submissionId(),
+              verification.submission().metadata().appId(),
+              verification.submission().metadata().appVersion(),
+              findings,
+              artifacts);
+      writeText(output, report.toJson(), overwrite);
+      appendSubmissionTransparency(
+          transparencyLog,
+          verification.submission(),
+          new SubmissionTransparencyUpdate(
+              AppReviewTransparencyEventKind.PRE_REVIEW_COMPLETED,
+              null,
+              null,
+              null,
+              null,
+              sha256Hex(report.toJson().getBytes(StandardCharsets.UTF_8)),
+              List.of("preReviewStatus=" + report.status().jsonValue())));
+      printSubmissionFindings(super.commandLine(), findings);
+      super.commandLine()
+          .getOut()
+          .println(
+              "Pre-review "
+                  + report.status().jsonValue()
+                  + ": submissionId="
+                  + report.submissionId()
+                  + " promotionReady="
+                  + report.promotionReady());
+      return report.status() == network.crypta.platform.appcatalog.AppSubmissionPreReviewStatus.FAIL
+          ? CommandLine.ExitCode.SOFTWARE
+          : CommandLine.ExitCode.OK;
+    }
+
+    private Path createPrivateScratchDirectory() throws IOException {
+      Path parent = output.toAbsolutePath().normalize().getParent();
+      Path scratchParent = parent == null ? Path.of("").toAbsolutePath().normalize() : parent;
+      Files.createDirectories(scratchParent);
+      try {
+        return Files.createTempDirectory(
+            scratchParent, ".crypta-submission-review-", ownerOnlyDirectoryAttribute());
+      } catch (UnsupportedOperationException _) {
+        Path directory = Files.createTempDirectory(scratchParent, ".crypta-submission-review-");
+        trySetOwnerOnlyDirectory(directory);
+        return directory;
+      }
+    }
+
+    private static FileAttribute<Set<PosixFilePermission>> ownerOnlyDirectoryAttribute() {
+      return PosixFilePermissions.asFileAttribute(OWNER_ONLY_DIRECTORY);
+    }
+
+    private static void trySetOwnerOnlyDirectory(Path directory) throws IOException {
+      try {
+        Files.setPosixFilePermissions(directory, OWNER_ONLY_DIRECTORY);
+      } catch (UnsupportedOperationException _) {
+        // Non-POSIX filesystems rely on the platform directory ACLs.
+      }
+    }
+
+    private void addBundleValidationFindings(Path bundleDir, List<AppSubmissionFinding> findings) {
+      try {
+        BundleValidation validation = BundleValidator.validate(bundleDir, true);
+        if (validation.permissionLint().hasUnknownPermissions()) {
+          findings.add(
+              finding(
+                  "manifest.permissions.unknown",
+                  AppSubmissionFindingSeverity.BLOCKER,
+                  "Manifest declares unknown Platform API permissions",
+                  Map.of("permissions", validation.permissionLint().unknownPermissions())));
+        }
+      } catch (Exception exception) {
+        findings.add(
+            finding(
+                "package.bundle-validation",
+                AppSubmissionFindingSeverity.BLOCKER,
+                "Staged bundle validation failed",
+                Map.of(FIELD_MESSAGE, redactedMessage(exception))));
+      }
+    }
+
+    private void addCompatibilityFindings(Path bundleDir, List<AppSubmissionFinding> findings) {
+      CompatibilityVerificationResult result;
+      try {
+        BundleValidation validation = BundleValidator.validate(bundleDir, true);
+        PlatformApiContract contract = loadContract(contractFile);
+        result =
+            PlatformApiContractVerifier.verify(
+                validation.manifest().apiCompatibility(),
+                validation.manifest().permissions(),
+                contract,
+                true);
+      } catch (Exception exception) {
+        findings.add(
+            finding(
+                "api.compatibility-verification",
+                AppSubmissionFindingSeverity.BLOCKER,
+                "Platform API compatibility verification failed",
+                Map.of(FIELD_MESSAGE, redactedMessage(exception))));
+        return;
+      }
+      for (CompatibilityFinding compatibilityFinding : result.findings()) {
+        findings.add(
+            finding(
+                "api." + compatibilityFinding.code(),
+                compatibilityFinding.severity() == CompatibilityFindingSeverity.ERROR
+                    ? AppSubmissionFindingSeverity.BLOCKER
+                    : AppSubmissionFindingSeverity.WARNING,
+                compatibilityFinding.message(),
+                Map.of("code", compatibilityFinding.code())));
+      }
+    }
+
+    private void addUiLintFindings(Path bundleDir, List<AppSubmissionFinding> findings) {
+      AppUiLintResult result;
+      try {
+        result = AppUiLinter.lint(bundleDir, true);
+      } catch (Exception exception) {
+        findings.add(
+            finding(
+                "ui.lint",
+                AppSubmissionFindingSeverity.BLOCKER,
+                "UI lint failed",
+                Map.of(FIELD_MESSAGE, redactedMessage(exception))));
+        return;
+      }
+      for (AppUiLintFinding uiFinding : result.findings()) {
+        AppSubmissionFindingSeverity severity = uiLintSubmissionSeverity(uiFinding.severity());
+        findings.add(
+            finding(
+                "ui." + uiFinding.id(),
+                severity,
+                uiFinding.message(),
+                Map.of("path", uiFinding.path(), "category", uiFinding.category())));
+      }
+    }
+
+    private static AppSubmissionFindingSeverity uiLintSubmissionSeverity(
+        AppUiLintSeverity severity) {
+      if (severity == AppUiLintSeverity.ERROR) {
+        return AppSubmissionFindingSeverity.BLOCKER;
+      }
+      return severity == AppUiLintSeverity.WARNING
+          ? AppSubmissionFindingSeverity.WARNING
+          : AppSubmissionFindingSeverity.INFO;
+    }
+
+    private PlatformApiContract loadContract(Path configuredContract) throws IOException {
+      if (configuredContract == null) {
+        return DevtoolsCapabilityVocabulary.currentValidationContract();
+      }
+      return PlatformApiContractJson.parse(
+          Files.readString(configuredContract, StandardCharsets.UTF_8));
+    }
+
+    private static AppSubmissionFinding finding(
+        String id,
+        AppSubmissionFindingSeverity severity,
+        String summary,
+        Map<String, Object> details) {
+      return new AppSubmissionFinding(id, severity, summary, details);
+    }
+
+    private static void deleteRecursively(Path directory) throws IOException {
+      if (!Files.exists(directory, LinkOption.NOFOLLOW_LINKS)) {
+        return;
+      }
+      try (var stream = Files.walk(directory)) {
+        for (Path path : stream.sorted(Comparator.reverseOrder()).toList()) {
+          Files.deleteIfExists(path);
+        }
+      }
+    }
+  }
+
+  /** Implements {@code crypta-app submission decide}. */
+  @Command(name = "decide", description = "Record reviewer decision and optional receipt evidence.")
+  static final class SubmissionDecideCommand extends SpecAwareCommand implements Callable<Integer> {
+    @Option(names = "--submission", required = true, description = "Submission ZIP.")
+    private Path submission;
+
+    @Option(names = "--pre-review", required = true, description = "Pre-review JSON report.")
+    private Path preReview;
+
+    @Option(names = "--decision", required = true, description = "reviewed, caution, or rejected.")
+    private String decision;
+
+    @Option(names = "--reviewer-key-id", required = true, description = "Reviewer key id.")
+    private String reviewerKeyId;
+
+    @Option(names = "--reviewer-private-key", description = "Reviewer private key file.")
+    private Path reviewerPrivateKey;
+
+    @Option(names = "--reviewer-private-key-base64", description = "Reviewer private key text.")
+    private String reviewerPrivateKeyBase64;
+
+    @Option(names = "--reviewer-private-key-env", description = "Reviewer private key env var.")
+    private String reviewerPrivateKeyEnv;
+
+    @Option(names = "--trusted-reviewer-keys", description = "Trusted reviewer keys registry.")
+    private Path trustedReviewerKeys;
+
+    @Option(names = "--reason", required = true, description = "Decision reason Markdown.")
+    private Path reason;
+
+    @Option(names = "--receipt-output", description = "Receipt output for reviewed/caution.")
+    private Path receiptOutput;
+
+    @Option(names = "--rejection-output", description = "Rejection metadata output.")
+    private Path rejectionOutput;
+
+    @Option(names = "--transparency-log", description = "Review transparency JSONL log.")
+    private Path transparencyLog;
+
+    @SuppressWarnings("FieldCanBeLocal")
+    @Option(names = "--policy-id", description = "Reviewer policy id.")
+    private String policyId = "crypta-app-review-v1";
+
+    @SuppressWarnings("FieldCanBeLocal")
+    @Option(names = "--policy-version", description = "Reviewer policy version.")
+    private String policyVersion = "1";
+
+    @Option(names = "--reviewed-at", description = "Decision instant.")
+    private Instant reviewedAt;
+
+    @Option(names = "--allow-non-production", description = "Allow test submissions or keys.")
+    private boolean allowNonProduction;
+
+    @Option(names = "--overwrite", description = "Replace existing outputs.")
+    private boolean overwrite;
+
+    @Override
+    public Integer call() throws Exception {
+      AppSubmissionPackage verified = AppSubmissionPackageVerifier.verify(submission);
+      AppSubmissionPreReviewReport report =
+          AppSubmissionPreReviewReport.parse(Files.readString(preReview, StandardCharsets.UTF_8));
+      AppReviewReceiptStatus receiptStatus = AppReviewReceiptStatus.parse(decision, "--decision");
+      String manifestDigest =
+          sha256Hex(
+              readSubmissionEntry(
+                  submission,
+                  AppSubmissionPackageVerifier.BUNDLE_PREFIX
+                      + network.crypta.platform.appdist.AppBundleManifestParser
+                          .MANIFEST_FILE_NAME));
+      requireDecisionAllowed(verified, report, receiptStatus, manifestDigest);
+      String preReviewDigest = sha256Hex(Files.readAllBytes(preReview));
+      String reasonDigest = sha256Hex(Files.readAllBytes(reason));
+      AppReviewReceiptPayload payload =
+          reviewDecisionPayload(verified, receiptStatus, preReviewDigest, reasonDigest);
+      TrustedReviewerKeys trustedRegistry = loadTrustedReviewerRegistry();
+      if (receiptStatus == AppReviewReceiptStatus.REJECTED) {
+        writeRejectionRecord(verified, report, payload, preReviewDigest, reasonDigest);
+        appendTransparency(
+            verified,
+            AppReviewTransparencyEventKind.REVIEW_DECISION_RECORDED,
+            payload,
+            receiptStatus,
+            preReviewDigest,
+            List.of("decision=rejected"));
+        appendTransparency(
+            verified,
+            AppReviewTransparencyEventKind.SUBMISSION_REJECTED,
+            payload,
+            receiptStatus,
+            reasonDigest,
+            List.of("decision=rejected"));
+        super.commandLine()
+            .getOut()
+            .println("Recorded rejected submission: " + verified.metadata().submissionId());
+        return CommandLine.ExitCode.OK;
+      }
+      if (receiptOutput == null) {
+        throw new AppDistributionException(
+            "--receipt-output is required for reviewed/caution decisions");
+      }
+      PrivateKey privateKey =
+          KeyMaterialLoader.loadPrivateKey(
+              reviewerPrivateKeyBase64, reviewerPrivateKey, reviewerPrivateKeyEnv);
+      AppReviewReceipt receipt = AppReviewReceiptSigner.sign(payload, privateKey);
+      requireTrustedReviewerRegistryMatch(verified, receipt, trustedRegistry);
+      writeReceipt(receiptOutput, receipt, overwrite);
+      appendTransparency(
+          verified,
+          AppReviewTransparencyEventKind.REVIEW_DECISION_RECORDED,
+          payload,
+          receiptStatus,
+          reasonDigest,
+          List.of(
+              "decision=" + receiptStatus.catalogValue(), "preReviewSha256=" + preReviewDigest));
+      appendTransparency(
+          verified,
+          AppReviewTransparencyEventKind.REVIEW_RECEIPT_ISSUED,
+          payload,
+          receiptStatus,
+          receipt.fingerprintSha256(),
+          List.of("receiptFingerprint=" + receipt.fingerprintSha256()));
+      super.commandLine()
+          .getOut()
+          .println(
+              "Issued review receipt: submissionId="
+                  + verified.metadata().submissionId()
+                  + " status="
+                  + receiptStatus.catalogValue()
+                  + " fingerprintSha256="
+                  + receipt.fingerprintSha256());
+      return CommandLine.ExitCode.OK;
+    }
+
+    private void requireDecisionAllowed(
+        AppSubmissionPackage submissionPackage,
+        AppSubmissionPreReviewReport report,
+        AppReviewReceiptStatus receiptStatus,
+        String manifestDigest)
+        throws AppDistributionException {
+      if (!allowNonProduction
+          && (submissionPackage.metadata().nonProduction()
+              || reviewerKeyId.toLowerCase(Locale.ROOT).contains("test")
+              || reviewerKeyId.toLowerCase(Locale.ROOT).contains("dev"))) {
+        throw new AppDistributionException(
+            "non-production submissions or test reviewer keys require --allow-non-production");
+      }
+      if (!report.submissionId().equals(submissionPackage.metadata().submissionId())) {
+        throw new AppDistributionException("pre-review report does not match submission id");
+      }
+      if (!report.appId().equals(submissionPackage.metadata().appId())
+          || !report.appVersion().equals(submissionPackage.metadata().appVersion())) {
+        throw new AppDistributionException("pre-review report does not match submission app");
+      }
+      requirePreReviewArtifact(report, "submissionDigest", submissionPackage.submissionDigest());
+      requirePreReviewArtifact(report, "bundleDigest", submissionPackage.metadata().bundleDigest());
+      requirePreReviewArtifact(report, "manifestDigest", manifestDigest);
+      if (!report.promotionReady() && receiptStatus != AppReviewReceiptStatus.REJECTED) {
+        throw new AppDistributionException(
+            "reviewed/caution decisions require pre-review without blockers");
+      }
+    }
+
+    private TrustedReviewerKeys loadTrustedReviewerRegistry() throws IOException {
+      return trustedReviewerKeys == null ? null : TrustedReviewerKeys.load(trustedReviewerKeys);
+    }
+
+    private void requireTrustedReviewerRegistryMatch(
+        AppSubmissionPackage submissionPackage,
+        AppReviewReceipt receipt,
+        TrustedReviewerKeys loadedTrustedReviewerKeys)
+        throws AppDistributionException {
+      if (loadedTrustedReviewerKeys == null) {
+        return;
+      }
+      AppReviewTrustDecision trustDecision =
+          AppReviewReceiptVerifier.evaluate(
+              reviewDecisionCatalogEntry(submissionPackage),
+              receipt,
+              loadedTrustedReviewerKeys,
+              AppReviewPolicy.DEFAULT,
+              Instant.now());
+      if (!trustDecision.trusted()) {
+        throw new AppDistributionException(
+            "review receipt did not verify against trusted reviewer registry: "
+                + trustDecision.status().jsonValue());
+      }
+    }
+
+    private AppCatalogEntry reviewDecisionCatalogEntry(AppSubmissionPackage submissionPackage) {
+      return new AppCatalogEntry(
+          submissionPackage.metadata().appId(),
+          submissionPackage.manifest().appName(),
+          submissionPackage.metadata().appVersion(),
+          "Submission review candidate.",
+          null,
+          null,
+          null,
+          List.of(),
+          AppCatalogCompatibilityMetadata.EMPTY,
+          AppCatalogReviewMetadata.EMPTY,
+          null,
+          AppCatalogChangelog.EMPTY,
+          List.of(),
+          URI.create("https://example.invalid/crypta-apps/submission-review-artifact.zip"),
+          submissionPackage.metadata().bundleDigest(),
+          submissionPackage.bundleArtifactSizeBytes(),
+          AppCatalogEntry.ZIP_BUNDLE_TYPE,
+          submissionPackage.metadata().requestedPermissions(),
+          Map.of());
+    }
+
+    private void requirePreReviewArtifact(
+        AppSubmissionPreReviewReport report, String key, String expected)
+        throws AppDistributionException {
+      String actual = report.artifacts().get(key);
+      if (!expected.equals(actual)) {
+        throw new AppDistributionException(
+            "pre-review report " + key + " does not match submission");
+      }
+    }
+
+    private void writeRejectionRecord(
+        AppSubmissionPackage submissionPackage,
+        AppSubmissionPreReviewReport report,
+        AppReviewReceiptPayload payload,
+        String preReviewDigest,
+        String reasonDigest)
+        throws IOException {
+      if (rejectionOutput == null) {
+        return;
+      }
+      String text =
+          "submission.decision.version=1\n"
+              + "submission.id="
+              + submissionPackage.metadata().submissionId()
+              + "\napp.id="
+              + submissionPackage.metadata().appId()
+              + "\napp.version="
+              + submissionPackage.metadata().appVersion()
+              + "\ndecision=rejected\nreviewer.key.id="
+              + payload.reviewerKeyId()
+              + "\npolicy.id="
+              + payload.policyId()
+              + "\npolicy.version="
+              + payload.policyVersion()
+              + "\npreReview.status="
+              + report.status().jsonValue()
+              + "\npreReview.sha256="
+              + preReviewDigest
+              + "\nreason.sha256="
+              + reasonDigest
+              + "\nnonProduction="
+              + submissionPackage.metadata().nonProduction()
+              + "\n";
+      writeText(rejectionOutput, text, overwrite);
+    }
+
+    private void appendTransparency(
+        AppSubmissionPackage submissionPackage,
+        AppReviewTransparencyEventKind kind,
+        AppReviewReceiptPayload payload,
+        AppReviewReceiptStatus status,
+        String evidenceSha256,
+        List<String> warnings)
+        throws IOException {
+      if (transparencyLog == null) {
+        return;
+      }
+      new FileAppReviewTransparencyStore(transparencyLog)
+          .append(
+              new AppReviewTransparencyRecord(
+                  AppReviewTransparencyRecord.SCHEMA_VERSION,
+                  0L,
+                  submissionPackage.metadata().submissionId() + ":" + kind.jsonValue(),
+                  Instant.EPOCH,
+                  kind,
+                  "submission",
+                  submissionPackage.metadata().appId(),
+                  submissionPackage.metadata().appVersion(),
+                  submissionPackage.metadata().submissionId(),
+                  submissionPackage.metadata().bundleDigest(),
+                  submissionPackage.bundleArtifactSizeBytes(),
+                  payload.reviewerKeyId(),
+                  null,
+                  payload.policyId(),
+                  payload.policyVersion(),
+                  status.catalogValue(),
+                  null,
+                  null,
+                  status == AppReviewReceiptStatus.REVIEWED,
+                  null,
+                  null,
+                  null,
+                  null,
+                  evidenceSha256,
+                  null,
+                  null,
+                  null,
+                  warnings));
+    }
+
+    private AppReviewReceiptPayload reviewDecisionPayload(
+        AppSubmissionPackage verified,
+        AppReviewReceiptStatus receiptStatus,
+        String preReviewDigest,
+        String reasonDigest) {
+      return new AppReviewReceiptPayload(
+          AppReviewReceiptPayload.RECEIPT_VERSION_WITH_DECISION_REASON,
+          verified.metadata().appId(),
+          verified.metadata().appVersion(),
+          verified.metadata().bundleDigest(),
+          verified.bundleArtifactSizeBytes(),
+          verified.metadata().bundleSignatureKeyId(),
+          policyId,
+          policyVersion,
+          receiptStatus,
+          reviewerKeyId,
+          reviewedAt == null ? Instant.now() : reviewedAt,
+          Optional.empty(),
+          Optional.of(preReviewDigest),
+          Optional.of(reasonDigest),
+          Optional.empty(),
+          Optional.of("Submission " + receiptStatus.catalogValue()));
+    }
+
+    private static void writeReceipt(Path output, AppReviewReceipt receipt, boolean overwrite)
+        throws IOException {
+      Path normalized = output.toAbsolutePath().normalize();
+      requireWritableOutput(normalized, overwrite);
+      AppReviewReceiptIO.write(normalized, receipt);
+    }
+  }
+
+  /** Implements {@code crypta-app submission catalog-candidate}. */
+  @Command(
+      name = "catalog-candidate",
+      description = "Create a catalog candidate descriptor from a reviewed submission.")
+  static final class SubmissionCatalogCandidateCommand extends SpecAwareCommand
+      implements Callable<Integer> {
+    @Option(names = "--submission", required = true, description = "Submission ZIP.")
+    private Path submission;
+
+    @Option(names = "--review-receipt", required = true, description = "Review receipt properties.")
+    private Path reviewReceipt;
+
+    @Option(names = "--output", required = true, description = "Catalog descriptor output.")
+    private Path output;
+
+    @Option(names = "--bundle-uri", description = "Public artifact URI for catalog candidate.")
+    private URI bundleUri;
+
+    @Option(names = "--artifact-output", description = "Extracted app-bundle ZIP output.")
+    private Path artifactOutput;
+
+    @Option(names = "--summary", description = "Catalog summary.")
+    private String summary;
+
+    @Option(names = "--allow-caution", description = "Allow caution candidates.")
+    private boolean allowCaution;
+
+    @Option(names = "--transparency-log", description = "Review transparency JSONL log.")
+    private Path transparencyLog;
+
+    @Option(names = "--overwrite", description = "Replace existing outputs.")
+    private boolean overwrite;
+
+    @Override
+    public Integer call() throws Exception {
+      AppSubmissionPackage verified = AppSubmissionPackageVerifier.verify(submission);
+      AppReviewReceipt receipt = AppReviewReceiptIO.read(reviewReceipt);
+      AppReviewReceiptStatus status = receipt.payload().status();
+      if (status == AppReviewReceiptStatus.REJECTED) {
+        throw new AppDistributionException("rejected submissions cannot create catalog candidates");
+      }
+      if (status == AppReviewReceiptStatus.CAUTION && !allowCaution) {
+        throw new AppDistributionException("caution catalog candidates require --allow-caution");
+      }
+      requireReceiptMatchesSubmission(verified, receipt);
+      Path artifact = artifactOutput == null ? defaultArtifactOutput(verified) : artifactOutput;
+      writeBytes(
+          artifact,
+          readSubmissionEntry(submission, AppSubmissionPackageVerifier.BUNDLE_ARTIFACT_ENTRY),
+          overwrite);
+      String descriptor = catalogCandidateDescriptor(verified, receipt, artifact);
+      writeText(output, descriptor, overwrite);
+      AppCatalogWriter.inspectEntryDescriptor(output);
+      appendSubmissionTransparency(
+          transparencyLog,
+          verified,
+          new SubmissionTransparencyUpdate(
+              AppReviewTransparencyEventKind.CATALOG_CANDIDATE_CREATED,
+              receipt.payload().status(),
+              receipt.payload().reviewerKeyId(),
+              receipt.payload().policyId(),
+              receipt.payload().policyVersion(),
+              receipt.fingerprintSha256(),
+              List.of("candidateReview=" + receipt.payload().status().catalogValue())));
+      super.commandLine()
+          .getOut()
+          .println(
+              "Created catalog candidate: appId="
+                  + verified.metadata().appId()
+                  + " review="
+                  + status.catalogValue()
+                  + " submissionId="
+                  + verified.metadata().submissionId());
+      return CommandLine.ExitCode.OK;
+    }
+
+    private void requireReceiptMatchesSubmission(
+        AppSubmissionPackage submissionPackage, AppReviewReceipt receipt)
+        throws AppDistributionException {
+      AppReviewReceiptPayload payload = receipt.payload();
+      if (!payload.appId().equals(submissionPackage.metadata().appId())
+          || !payload.appVersion().equals(submissionPackage.metadata().appVersion())
+          || !payload.artifactSha256().equals(submissionPackage.metadata().bundleDigest())
+          || payload.artifactSizeBytes() != submissionPackage.bundleArtifactSizeBytes()) {
+        throw new AppDistributionException("review receipt does not match submission artifact");
+      }
+    }
+
+    private Path defaultArtifactOutput(AppSubmissionPackage submissionPackage)
+        throws AppDistributionException {
+      Path parent = output.toAbsolutePath().normalize().getParent();
+      Path directory =
+          parent == null
+              ? Path.of(".").toAbsolutePath().normalize()
+              : parent.toAbsolutePath().normalize();
+      String fileName =
+          safeFileNameComponent(submissionPackage.metadata().appId(), "app")
+              + "-"
+              + safeFileNameComponent(submissionPackage.metadata().appVersion(), FIELD_VERSION)
+              + "-app-bundle.zip";
+      Path artifact = directory.resolve(fileName).normalize();
+      if (!artifact.startsWith(directory)) {
+        throw new AppDistributionException(
+            "default artifact output escaped the descriptor directory");
+      }
+      return artifact;
+    }
+
+    private String catalogCandidateDescriptor(
+        AppSubmissionPackage submissionPackage, AppReviewReceipt receipt, Path artifact) {
+      URI effectiveBundleUri =
+          bundleUri == null
+              ? URI.create(
+                  "https://example.invalid/crypta-apps/"
+                      + safeFileNameComponent(submissionPackage.metadata().appId(), "app")
+                      + "-"
+                      + safeFileNameComponent(
+                          submissionPackage.metadata().appVersion(), FIELD_VERSION)
+                      + ".zip")
+              : bundleUri;
+      String effectiveSummary =
+          summary == null
+              ? submissionPackage.manifest().appName() + " third-party submission candidate."
+              : summary;
+      StringBuilder builder = new StringBuilder();
+      appendDescriptor(builder, "artifact.path", artifact.toAbsolutePath().normalize().toString());
+      appendDescriptor(builder, "bundle.uri", effectiveBundleUri.toString());
+      appendDescriptor(builder, FIELD_SUMMARY, effectiveSummary);
+      appendDescriptor(builder, "app.id", submissionPackage.metadata().appId());
+      appendDescriptor(builder, FIELD_VERSION, submissionPackage.metadata().appVersion());
+      appendDescriptor(builder, "review.status", receipt.payload().status().catalogValue());
+      appendDescriptor(builder, "review.note", "Third-party submission reviewed.");
+      appendDescriptor(
+          builder, "review.submission.id", submissionPackage.metadata().submissionId());
+      appendDescriptor(builder, "review.submission.sha256", submissionPackage.submissionDigest());
+      submissionPackage
+          .metadata()
+          .resubmissionOf()
+          .ifPresent(value -> appendDescriptor(builder, "review.resubmissionOf", value));
+      receipt
+          .payload()
+          .evidenceSha256()
+          .ifPresent(value -> appendDescriptor(builder, "review.preReview.sha256", value));
+      appendDescriptor(builder, "review.reviewer.keyId", receipt.payload().reviewerKeyId());
+      appendDescriptor(
+          builder,
+          "review.reviewer.policy",
+          receipt.payload().policyId() + "/" + receipt.payload().policyVersion());
+      appendDescriptor(builder, "review.receipt.fingerprint.sha256", receipt.fingerprintSha256());
+      receipt
+          .payload()
+          .decisionReasonSha256()
+          .ifPresent(value -> appendDescriptor(builder, "review.decision.reason.sha256", value));
+      builder.append(AppReviewReceiptIO.serializeText(receipt));
+      appendDescriptor(
+          builder, "api.targetStability", submissionPackage.metadata().apiTargetStability());
+      appendDescriptor(
+          builder,
+          "api.experimentalCapabilitiesAccepted",
+          Boolean.toString(submissionPackage.metadata().experimentalCapabilitiesAccepted()));
+      if (submissionPackage.metadata().nonProduction()) {
+        appendDescriptor(builder, "review.nonProduction", "true");
+      }
+      if (!submissionPackage.metadata().requestedPermissions().isEmpty()) {
+        appendDescriptor(
+            builder,
+            "permissions",
+            String.join(",", submissionPackage.metadata().requestedPermissions()));
+      }
+      return builder.toString();
+    }
+
+    private static void writeBytes(Path output, byte[] bytes, boolean overwrite)
+        throws IOException {
+      Path normalized = output.toAbsolutePath().normalize();
+      requireWritableOutput(normalized, overwrite);
+      Files.write(normalized, bytes);
+    }
+
+    private static void appendDescriptor(StringBuilder builder, String key, String value) {
+      builder.append(key).append('=').append(descriptorValue(value)).append('\n');
+    }
+
+    private static String safeFileNameComponent(String value, String fallback) {
+      StringBuilder builder = new StringBuilder();
+      for (int index = 0; index < value.length() && builder.length() < 80; index++) {
+        char ch = value.charAt(index);
+        if ((ch >= 'a' && ch <= 'z')
+            || (ch >= 'A' && ch <= 'Z')
+            || (ch >= '0' && ch <= '9')
+            || ch == '-'
+            || ch == '_') {
+          builder.append(ch);
+        } else {
+          builder.append('_');
+        }
+      }
+      String component = builder.toString();
+      return component.isBlank() ? fallback : component;
+    }
+
+    private static String descriptorValue(String value) {
+      StringBuilder builder = new StringBuilder();
+      for (int index = 0; index < value.length(); index++) {
+        char ch = value.charAt(index);
+        if (ch == '\n' || ch == '\r' || ch == '\t' || Character.isISOControl(ch)) {
+          builder.append(' ');
+        } else {
+          builder.append(ch);
+        }
+      }
+      return builder.toString().strip();
     }
   }
 
@@ -1594,7 +2701,7 @@ public final class CryptaAppCli implements Runnable {
               FIELD_SEVERITY,
               FIELD_STATUS,
               FIELD_ACTION,
-              "summary",
+              FIELD_SUMMARY,
               "publishedAt",
               "updatedAt",
               FIELD_REPLACEMENT_APP_ID,
@@ -1610,7 +2717,7 @@ public final class CryptaAppCli implements Runnable {
               requiredField(fields, FIELD_STATUS, OPTION_SECURITY_ADVISORY_RECORD), FIELD_STATUS),
           AppCatalogSecurityAction.parse(
               requiredField(fields, FIELD_ACTION, OPTION_SECURITY_ADVISORY_RECORD), FIELD_ACTION),
-          requiredField(fields, "summary", OPTION_SECURITY_ADVISORY_RECORD),
+          requiredField(fields, FIELD_SUMMARY, OPTION_SECURITY_ADVISORY_RECORD),
           Instant.parse(requiredField(fields, "publishedAt", OPTION_SECURITY_ADVISORY_RECORD)),
           Instant.parse(requiredField(fields, "updatedAt", OPTION_SECURITY_ADVISORY_RECORD)),
           Optional.ofNullable(optionalField(fields, FIELD_REPLACEMENT_APP_ID)),
@@ -1625,7 +2732,7 @@ public final class CryptaAppCli implements Runnable {
           Set.of(
               "id",
               "appId",
-              "version",
+              FIELD_VERSION,
               "advisoryId",
               "reason",
               FIELD_REPLACEMENT_APP_ID,
@@ -1633,7 +2740,7 @@ public final class CryptaAppCli implements Runnable {
       return new AppCatalogVersionDenylistEntry(
           requiredField(fields, "id", OPTION_SECURITY_DENYLIST_ENTRY),
           requiredField(fields, "appId", OPTION_SECURITY_DENYLIST_ENTRY),
-          requiredField(fields, "version", OPTION_SECURITY_DENYLIST_ENTRY),
+          requiredField(fields, FIELD_VERSION, OPTION_SECURITY_DENYLIST_ENTRY),
           requiredField(fields, "advisoryId", OPTION_SECURITY_DENYLIST_ENTRY),
           requiredField(fields, "reason", OPTION_SECURITY_DENYLIST_ENTRY),
           Optional.ofNullable(optionalField(fields, FIELD_REPLACEMENT_APP_ID)),
@@ -1961,6 +3068,131 @@ public final class CryptaAppCli implements Runnable {
               + finding.id()
               + ": "
               + finding.message());
+    }
+  }
+
+  private static void printSubmissionFindings(
+      CommandLine commandLine, List<AppSubmissionFinding> findings) {
+    for (AppSubmissionFinding finding : findings) {
+      PrintWriter writer =
+          finding.severity() == AppSubmissionFindingSeverity.BLOCKER
+              ? commandLine.getErr()
+              : commandLine.getOut();
+      writer.println(
+          finding.severity().jsonValue() + ": " + finding.id() + ": " + finding.summary());
+    }
+  }
+
+  private record SubmissionTransparencyUpdate(
+      AppReviewTransparencyEventKind kind,
+      AppReviewReceiptStatus status,
+      String reviewerKeyId,
+      String policyId,
+      String policyVersion,
+      String evidenceSha256,
+      List<String> warnings) {}
+
+  private static void appendSubmissionTransparency(
+      Path transparencyLog,
+      AppSubmissionPackage submissionPackage,
+      SubmissionTransparencyUpdate update)
+      throws IOException {
+    if (transparencyLog == null) {
+      return;
+    }
+    AppReviewReceiptStatus status = update.status();
+    new FileAppReviewTransparencyStore(transparencyLog)
+        .append(
+            new AppReviewTransparencyRecord(
+                AppReviewTransparencyRecord.SCHEMA_VERSION,
+                0L,
+                submissionPackage.metadata().submissionId() + ":" + update.kind().jsonValue(),
+                null,
+                update.kind(),
+                "submission",
+                submissionPackage.metadata().appId(),
+                submissionPackage.metadata().appVersion(),
+                submissionPackage.metadata().submissionId(),
+                submissionPackage.metadata().bundleDigest(),
+                submissionPackage.bundleArtifactSizeBytes(),
+                update.reviewerKeyId(),
+                null,
+                update.policyId(),
+                update.policyVersion(),
+                status == null ? null : status.catalogValue(),
+                null,
+                null,
+                status == null ? null : status == AppReviewReceiptStatus.REVIEWED,
+                null,
+                null,
+                null,
+                null,
+                update.evidenceSha256(),
+                null,
+                null,
+                null,
+                update.warnings()));
+  }
+
+  static String redactedMessage(Exception exception) {
+    String message = exception.getMessage();
+    if (message == null || message.isBlank()) {
+      return exception.getClass().getSimpleName();
+    }
+    return redactPathPattern(
+        LOCAL_WINDOWS_PATH_PATTERN, redactPathPattern(LOCAL_UNIX_PATH_PATTERN, message));
+  }
+
+  private static String redactPathPattern(Pattern pattern, String text) {
+    Matcher matcher = pattern.matcher(text);
+    StringBuilder buffer = new StringBuilder();
+    while (matcher.find()) {
+      matcher.appendReplacement(buffer, Matcher.quoteReplacement(matcher.group(1) + REDACTED_PATH));
+    }
+    matcher.appendTail(buffer);
+    return buffer.toString();
+  }
+
+  private static String sha256Hex(byte[] bytes) {
+    try {
+      return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
+    } catch (NoSuchAlgorithmException exception) {
+      throw new IllegalStateException("SHA-256 is not available", exception);
+    }
+  }
+
+  private static byte[] readSubmissionEntry(Path submissionZip, String entryName)
+      throws IOException {
+    try (ZipFile zip = new ZipFile(submissionZip.toFile())) {
+      ZipEntry entry = zip.getEntry(entryName);
+      if (entry == null || entry.isDirectory()) {
+        throw new AppDistributionException("missing submission entry: " + entryName);
+      }
+      try (var input = zip.getInputStream(entry)) {
+        return input.readAllBytes();
+      }
+    }
+  }
+
+  private static void writeText(Path output, String text, boolean overwrite) throws IOException {
+    Path normalized = output.toAbsolutePath().normalize();
+    requireWritableOutput(normalized, overwrite);
+    Files.writeString(normalized, text, StandardCharsets.UTF_8);
+  }
+
+  private static void requireWritableOutput(Path output, boolean overwrite) throws IOException {
+    if (Files.exists(output, LinkOption.NOFOLLOW_LINKS)) {
+      if (!overwrite) {
+        throw new AppDistributionException("output already exists: " + output.getFileName());
+      }
+      if (Files.isSymbolicLink(output) || !Files.isRegularFile(output, LinkOption.NOFOLLOW_LINKS)) {
+        throw new AppDistributionException(
+            "output must be a regular file: " + output.getFileName());
+      }
+    }
+    Path parent = output.getParent();
+    if (parent != null) {
+      Files.createDirectories(parent);
     }
   }
 

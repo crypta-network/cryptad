@@ -38,6 +38,7 @@ Use this portal first, then follow the detailed source-of-truth pages for the ar
 | App upgrade data migrations | [app-upgrade-data-migrations.md](app-upgrade-data-migrations.md) |
 | App-data backup, restore, and portability | [app-data-backup-restore-portability.md](app-data-backup-restore-portability.md) |
 | App review governance | [app-review-governance.md](app-review-governance.md) |
+| Third-party app submission workflow | [app-store-submission-and-review-workflow.md](app-store-submission-and-review-workflow.md) |
 | Social Inbox RC | [social-inbox-reference-app.md](social-inbox-reference-app.md) |
 | Feed Reader reference app | [feed-reader-reference-app.md](feed-reader-reference-app.md) |
 | Trust Graph Local RC | [trust-graph-preview.md](trust-graph-preview.md) |
@@ -59,13 +60,13 @@ The current source declares:
 
 ```text
 PlatformApiContract.CURRENT_API_VERSION = "v1"
-PlatformApiContract.CURRENT_CONTRACT_VERSION = 19
+PlatformApiContract.CURRENT_CONTRACT_VERSION = 20
 ```
 
 In docs, manifests, and catalog descriptors:
 
 - `/api/v1` identifies the transport route family.
-- `contractVersion=19` identifies the Platform API compatibility contract snapshot.
+- `contractVersion=20` identifies the current Platform API compatibility contract snapshot.
 - `api.minimumVersion` and `api.maximumTestedVersion` compare against the integer contract
   version, not against the URL route prefix or the Cryptad build number.
 - `api.targetStability=stable` selects the Platform API 1.0 stable baseline for third-party app

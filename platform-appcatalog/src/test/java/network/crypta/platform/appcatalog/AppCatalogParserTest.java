@@ -239,6 +239,42 @@ class AppCatalogParserTest {
   }
 
   @Test
+  void parse_whenCatalogHasSubmissionReviewMetadata_expectMetadataNormalized() {
+    AppCatalog catalog = AppCatalogParser.parse(bytes(validSubmissionReviewCatalog()));
+
+    AppCatalogEntry entry = catalog.entries().getFirst();
+    AppCatalogReviewMetadata review = entry.review();
+
+    assertEquals(AppCatalog.VERSION_THIRD_PARTY_SUBMISSION_REVIEW, catalog.version());
+    assertEquals(AppCatalogReviewStatus.REVIEWED, review.status());
+    assertEquals("submission-1", review.submissionId().orElseThrow());
+    assertEquals("1".repeat(64), review.submissionSha256().orElseThrow());
+    assertEquals("pass", review.preReviewStatus().orElseThrow());
+    assertEquals("2".repeat(64), review.preReviewSha256().orElseThrow());
+    assertEquals("reviewer-dev", review.reviewerKeyId().orElseThrow());
+    assertEquals("crypta-app-review-v1/1", review.reviewerPolicy().orElseThrow());
+    assertEquals("3".repeat(64), review.receiptFingerprintSha256().orElseThrow());
+    assertEquals("4".repeat(64), review.decisionReasonSha256().orElseThrow());
+    assertEquals("previous-submission", review.resubmissionOf().orElseThrow());
+    assertTrue(review.nonProduction());
+  }
+
+  @Test
+  void parse_whenVersionFiveCatalogDeclaresSubmissionReviewMetadata_expectInvalidCatalogEntry() {
+    assertInvalidEntry(
+        validSubmissionReviewCatalog().replace("catalog.version=6", "catalog.version=5"));
+  }
+
+  @Test
+  void parse_whenVersionFiveCatalogDeclaresSubmissionWorkflowStatus_expectInvalidCatalogEntry() {
+    assertInvalidEntry(
+        validMaintenanceCatalog()
+            .replace(
+                "app.queue-manager.bundle.uri=",
+                "app.queue-manager.review.status=submitted\napp.queue-manager.bundle.uri="));
+  }
+
+  @Test
   void parse_whenCatalogHasSecurityPolicy_expectDecisionDenylisted() {
     AppCatalog catalog = AppCatalogParser.parse(bytes(validSecurityPolicyCatalog()));
 
@@ -735,6 +771,28 @@ class AppCatalogParserTest {
     app.queue-manager.permissions=queue.read
     """
         .formatted(GENERATED_AT, SHA256);
+  }
+
+  private static String validSubmissionReviewCatalog() {
+    return validMaintenanceCatalog()
+        .replace("catalog.version=5", "catalog.version=6")
+        .replace(
+            "app.queue-manager.bundle.uri=",
+            """
+            app.queue-manager.review.status=reviewed
+            app.queue-manager.review.submission.id=submission-1
+            app.queue-manager.review.submission.sha256=%s
+            app.queue-manager.review.preReview.status=pass
+            app.queue-manager.review.preReview.sha256=%s
+            app.queue-manager.review.reviewer.keyId=reviewer-dev
+            app.queue-manager.review.reviewer.policy=crypta-app-review-v1/1
+            app.queue-manager.review.receipt.fingerprint.sha256=%s
+            app.queue-manager.review.decision.reason.sha256=%s
+            app.queue-manager.review.resubmissionOf=previous-submission
+            app.queue-manager.review.nonProduction=true
+            app.queue-manager.bundle.uri=\
+            """
+                .formatted("1".repeat(64), "2".repeat(64), "3".repeat(64), "4".repeat(64)));
   }
 
   private static String multiActionSecurityPolicyCatalog() {

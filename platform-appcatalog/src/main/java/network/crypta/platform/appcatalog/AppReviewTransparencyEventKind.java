@@ -26,6 +26,40 @@ public enum AppReviewTransparencyEventKind {
   REVIEW_RECEIPT_OBSERVED("review_receipt_observed"),
 
   /**
+   * A deterministic third-party submission package was created or received locally.
+   *
+   * <p>The record should reference submission and bundle digests only, never raw package contents.
+   */
+  SUBMISSION_CREATED("submission_created"),
+
+  /**
+   * Automated pre-review completed for a submission package.
+   *
+   * <p>The record may reference the pre-review report digest and status in redacted warning fields.
+   */
+  PRE_REVIEW_COMPLETED("pre_review_completed"),
+
+  /**
+   * A reviewer recorded a final decision for a submission package.
+   *
+   * <p>Reviewed and caution decisions may be followed by receipt issuance; rejected decisions must
+   * not create installable catalog candidates.
+   */
+  REVIEW_DECISION_RECORDED("review_decision_recorded"),
+
+  /** A review receipt was issued for an accepted or caution submission decision. */
+  REVIEW_RECEIPT_ISSUED("review_receipt_issued"),
+
+  /** A reviewer rejected a submission package. */
+  SUBMISSION_REJECTED("submission_rejected"),
+
+  /** A resubmission package linked to an earlier submission id. */
+  SUBMISSION_RESUBMITTED("submission_resubmitted"),
+
+  /** A reviewed or caution submission was converted into a catalog candidate descriptor. */
+  CATALOG_CANDIDATE_CREATED("catalog_candidate_created"),
+
+  /**
    * A catalog app review receipt or publisher advisory state was evaluated against local policy.
    *
    * <p>This event captures the computed trust status, reviewer lifecycle status, policy id/version,

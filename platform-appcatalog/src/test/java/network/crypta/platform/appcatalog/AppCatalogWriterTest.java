@@ -193,6 +193,57 @@ class AppCatalogWriterTest {
   }
 
   @Test
+  void write_whenDescriptorHasSubmissionReviewMetadata_expectCatalogVersionSix() throws Exception {
+    Path artifact = appZip(QUEUE_APP_ID, QUEUE_APP_NAME, QUEUE_APP_VERSION, QUEUE_READ_PERMISSION);
+    Path descriptor =
+        descriptor(
+            QUEUE_DESCRIPTOR_FILE,
+            artifact,
+            QUEUE_BUNDLE_URI,
+            LOCAL_QUEUE_SUMMARY,
+            """
+            review.status=reviewed
+            review.submission.id=submission-1
+            review.submission.sha256=%s
+            review.preReview.status=pass
+            review.preReview.sha256=%s
+            review.reviewer.keyId=reviewer-dev
+            review.reviewer.policy=crypta-app-review-v1/1
+            review.receipt.fingerprint.sha256=%s
+            review.decision.reason.sha256=%s
+            review.nonProduction=true
+            """
+                .formatted("1".repeat(64), "2".repeat(64), "3".repeat(64), "4".repeat(64)));
+
+    AppCatalogWriter.WriteResult result = AppCatalogWriter.write(request(List.of(descriptor)));
+    String catalog = new String(result.catalogBytes(), StandardCharsets.UTF_8);
+
+    assertEquals(AppCatalog.VERSION_THIRD_PARTY_SUBMISSION_REVIEW, result.catalog().version());
+    assertTrue(catalog.contains("catalog.version=6\n"));
+    assertTrue(catalog.contains("app.queue-manager.review.submission.id=submission-1\n"));
+    assertTrue(catalog.contains("app.queue-manager.review.decision.reason.sha256="));
+  }
+
+  @Test
+  void write_whenDescriptorHasSubmissionWorkflowStatus_expectCatalogVersionSix() throws Exception {
+    Path artifact = appZip(QUEUE_APP_ID, QUEUE_APP_NAME, QUEUE_APP_VERSION, QUEUE_READ_PERMISSION);
+    Path descriptor =
+        descriptor(
+            QUEUE_DESCRIPTOR_FILE,
+            artifact,
+            QUEUE_BUNDLE_URI,
+            LOCAL_QUEUE_SUMMARY,
+            "review.status=submitted\n");
+
+    AppCatalogWriter.WriteResult result = AppCatalogWriter.write(request(List.of(descriptor)));
+    String catalog = new String(result.catalogBytes(), StandardCharsets.UTF_8);
+
+    assertEquals(AppCatalog.VERSION_THIRD_PARTY_SUBMISSION_REVIEW, result.catalog().version());
+    assertTrue(catalog.contains("catalog.version=6\n"));
+    assertTrue(catalog.contains("app.queue-manager.review.status=submitted\n"));
+  }
+
+  @Test
   void serialize_whenVersionOneCatalogHasStoreMetadata_expectInvalidCatalogEntry() {
     AppCatalogEntry entry =
         directEntryWithStoreMetadata(
@@ -483,6 +534,165 @@ class AppCatalogWriterTest {
   }
 
   @Test
+  void write_whenInlineReceiptFingerprintMetadataDiffers_expectInvalidCatalogEntry()
+      throws Exception {
+    Path artifact = appZip(QUEUE_APP_ID, QUEUE_APP_NAME, QUEUE_APP_VERSION, QUEUE_READ_PERMISSION);
+    KeyPair keyPair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
+    AppReviewReceipt receipt =
+        AppReviewReceiptSigner.sign(
+            new AppReviewReceiptPayload(
+                AppReviewReceiptPayload.RECEIPT_VERSION,
+                QUEUE_APP_ID,
+                QUEUE_APP_VERSION,
+                sha256(artifact),
+                Files.size(artifact),
+                java.util.Optional.empty(),
+                "crypta-app-review-v1",
+                "1",
+                AppReviewReceiptStatus.REVIEWED,
+                "reviewer-dev",
+                GENERATED_AT,
+                java.util.Optional.empty(),
+                java.util.Optional.empty(),
+                java.util.Optional.empty(),
+                java.util.Optional.empty(),
+                java.util.Optional.empty()),
+            keyPair.getPrivate());
+    Path descriptor =
+        descriptor(
+            QUEUE_DESCRIPTOR_FILE,
+            artifact,
+            QUEUE_BUNDLE_URI,
+            LOCAL_QUEUE_SUMMARY,
+            "review.status=reviewed\n"
+                + "review.receipt.fingerprint.sha256="
+                + "f".repeat(64)
+                + "\n"
+                + AppReviewReceiptIO.serializeText(receipt));
+
+    AppCatalogException exception =
+        captureInvalidEntry(() -> AppCatalogWriter.write(request(List.of(descriptor))));
+
+    assertTrue(
+        exception
+            .getMessage()
+            .contains("review receipt fingerprint metadata does not match embedded receipt"));
+  }
+
+  @Test
+  void write_whenAttachedReceiptFingerprintMetadataDiffers_expectInvalidCatalogEntry()
+      throws Exception {
+    Path artifact = appZip(QUEUE_APP_ID, QUEUE_APP_NAME, QUEUE_APP_VERSION, QUEUE_READ_PERMISSION);
+    KeyPair keyPair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
+    AppReviewReceipt receipt =
+        AppReviewReceiptSigner.sign(
+            new AppReviewReceiptPayload(
+                AppReviewReceiptPayload.RECEIPT_VERSION,
+                QUEUE_APP_ID,
+                QUEUE_APP_VERSION,
+                sha256(artifact),
+                Files.size(artifact),
+                java.util.Optional.empty(),
+                "crypta-app-review-v1",
+                "1",
+                AppReviewReceiptStatus.REVIEWED,
+                "reviewer-dev",
+                GENERATED_AT,
+                java.util.Optional.empty(),
+                java.util.Optional.empty(),
+                java.util.Optional.empty(),
+                java.util.Optional.empty(),
+                java.util.Optional.empty()),
+            keyPair.getPrivate());
+    Path receiptFile = tempDir.resolve("review-receipt.properties");
+    AppReviewReceiptIO.write(receiptFile, receipt);
+    Path descriptor =
+        descriptor(
+            QUEUE_DESCRIPTOR_FILE,
+            artifact,
+            QUEUE_BUNDLE_URI,
+            LOCAL_QUEUE_SUMMARY,
+            "review.status=reviewed\n"
+                + "review.receipt.fingerprint.sha256="
+                + "f".repeat(64)
+                + "\n");
+
+    AppCatalogException exception =
+        captureInvalidEntry(
+            () ->
+                AppCatalogWriter.write(
+                    new AppCatalogBuildRequest(
+                        CATALOG_ID,
+                        CATALOG_NAME,
+                        GENERATED_AT,
+                        List.of(descriptor),
+                        List.of(receiptFile))));
+
+    assertTrue(
+        exception
+            .getMessage()
+            .contains("review receipt fingerprint metadata does not match attached receipt"));
+  }
+
+  @Test
+  void write_whenInlineReceiptPreReviewDigestMetadataDiffers_expectInvalidCatalogEntry()
+      throws Exception {
+    Path artifact = appZip(QUEUE_APP_ID, QUEUE_APP_NAME, QUEUE_APP_VERSION, QUEUE_READ_PERMISSION);
+    AppReviewReceipt receipt = signedReviewReceipt(artifact, "a".repeat(64), "b".repeat(64));
+    Path descriptor =
+        descriptor(
+            QUEUE_DESCRIPTOR_FILE,
+            artifact,
+            QUEUE_BUNDLE_URI,
+            LOCAL_QUEUE_SUMMARY,
+            "review.status=reviewed\n"
+                + "review.preReview.sha256="
+                + "c".repeat(64)
+                + "\n"
+                + AppReviewReceiptIO.serializeText(receipt));
+
+    AppCatalogException exception =
+        captureInvalidEntry(() -> AppCatalogWriter.write(request(List.of(descriptor))));
+
+    assertTrue(
+        exception
+            .getMessage()
+            .contains("review pre-review digest metadata does not match embedded receipt"));
+  }
+
+  @Test
+  void write_whenAttachedReceiptDecisionReasonDigestMetadataDiffers_expectInvalidCatalogEntry()
+      throws Exception {
+    Path artifact = appZip(QUEUE_APP_ID, QUEUE_APP_NAME, QUEUE_APP_VERSION, QUEUE_READ_PERMISSION);
+    AppReviewReceipt receipt = signedReviewReceipt(artifact, "a".repeat(64), "b".repeat(64));
+    Path receiptFile = tempDir.resolve("review-receipt-with-reason.properties");
+    AppReviewReceiptIO.write(receiptFile, receipt);
+    Path descriptor =
+        descriptor(
+            QUEUE_DESCRIPTOR_FILE,
+            artifact,
+            QUEUE_BUNDLE_URI,
+            LOCAL_QUEUE_SUMMARY,
+            "review.status=reviewed\n" + "review.decision.reason.sha256=" + "d".repeat(64) + "\n");
+
+    AppCatalogException exception =
+        captureInvalidEntry(
+            () ->
+                AppCatalogWriter.write(
+                    new AppCatalogBuildRequest(
+                        CATALOG_ID,
+                        CATALOG_NAME,
+                        GENERATED_AT,
+                        List.of(descriptor),
+                        List.of(receiptFile))));
+
+    assertTrue(
+        exception
+            .getMessage()
+            .contains("review decision reason digest metadata does not match attached receipt"));
+  }
+
+  @Test
   void write_whenDescriptorIsMalformed_expectInvalidCatalogEntry() throws IOException {
     Path descriptor =
         Files.writeString(
@@ -573,6 +783,30 @@ class AppCatalogWriterTest {
 
   private AppCatalogBuildRequest request(List<Path> descriptors) {
     return new AppCatalogBuildRequest(CATALOG_ID, CATALOG_NAME, GENERATED_AT, descriptors);
+  }
+
+  private static AppReviewReceipt signedReviewReceipt(
+      Path artifact, String evidenceSha256, String decisionReasonSha256) throws Exception {
+    KeyPair keyPair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
+    return AppReviewReceiptSigner.sign(
+        new AppReviewReceiptPayload(
+            AppReviewReceiptPayload.RECEIPT_VERSION_WITH_DECISION_REASON,
+            QUEUE_APP_ID,
+            QUEUE_APP_VERSION,
+            sha256(artifact),
+            Files.size(artifact),
+            java.util.Optional.empty(),
+            "crypta-app-review-v1",
+            "1",
+            AppReviewReceiptStatus.REVIEWED,
+            "reviewer-dev",
+            GENERATED_AT,
+            java.util.Optional.empty(),
+            java.util.Optional.ofNullable(evidenceSha256),
+            java.util.Optional.ofNullable(decisionReasonSha256),
+            java.util.Optional.empty(),
+            java.util.Optional.empty()),
+        keyPair.getPrivate());
   }
 
   private static AppCatalogEntry directEntryWithStoreMetadata(Map<String, String> rationales) {

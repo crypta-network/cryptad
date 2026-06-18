@@ -37,6 +37,30 @@ public final class AppCatalogParser {
   private static final String DEPRECATION_STATUS = "deprecation.status";
   private static final String DEPRECATION_MESSAGE = "deprecation.message";
   private static final String REPLACEMENT_APP_ID = "replacementAppId";
+  private static final String REVIEW_STATUS = "review.status";
+  private static final String REVIEW_SUBMISSION_ID = "review.submission.id";
+  private static final String REVIEW_SUBMISSION_SHA256 = "review.submission.sha256";
+  private static final String REVIEW_PRE_REVIEW_STATUS = "review.preReview.status";
+  private static final String REVIEW_PRE_REVIEW_SHA256 = "review.preReview.sha256";
+  private static final String REVIEW_REVIEWER_KEY_ID = "review.reviewer.keyId";
+  private static final String REVIEW_REVIEWER_POLICY = "review.reviewer.policy";
+  private static final String REVIEW_RECEIPT_FINGERPRINT_SHA256 =
+      "review.receipt.fingerprint.sha256";
+  private static final String REVIEW_DECISION_REASON_SHA256 = "review.decision.reason.sha256";
+  private static final String REVIEW_RESUBMISSION_OF = "review.resubmissionOf";
+  private static final String REVIEW_NON_PRODUCTION = "review.nonProduction";
+  private static final Set<String> SUBMISSION_REVIEW_FIELDS =
+      Set.of(
+          REVIEW_SUBMISSION_ID,
+          REVIEW_SUBMISSION_SHA256,
+          REVIEW_PRE_REVIEW_STATUS,
+          REVIEW_PRE_REVIEW_SHA256,
+          REVIEW_REVIEWER_KEY_ID,
+          REVIEW_REVIEWER_POLICY,
+          REVIEW_RECEIPT_FINGERPRINT_SHA256,
+          REVIEW_DECISION_REASON_SHA256,
+          REVIEW_RESUBMISSION_OF,
+          REVIEW_NON_PRODUCTION);
   private static final String SECURITY_ADVISORIES = "securityAdvisories";
   private static final String SECURITY_ADVISORY_PREFIX = "securityAdvisory.";
   private static final String SECURITY_ADVISORY_URI_SUFFIX = ".uri";
@@ -230,10 +254,7 @@ public final class AppCatalogParser {
     boolean storeMetadataAllowed = version >= AppCatalog.VERSION_STORE_METADATA;
     boolean productionMetadataAllowed = version >= AppCatalog.VERSION_PRODUCTION_CHANNELS;
     boolean maintenanceMetadataAllowed = version >= AppCatalog.VERSION_FIRST_PARTY_MAINTENANCE;
-    if (!maintenanceMetadataAllowed && hasMaintenanceMetadata(properties, prefix)) {
-      throw AppCatalogSidecars.invalidEntry(
-          "catalog.version 5 is required when maintenance metadata is present");
-    }
+    requireEntryMetadataVersion(properties, prefix, version);
     String maximumCryptaVersion =
         productionMetadataAllowed
             ? removeOptional(properties, prefix + MAXIMUM_CRYPTA_VERSION).orElse(null)
@@ -271,6 +292,20 @@ public final class AppCatalogParser {
         removeRequired(properties, prefix + "bundle.type"),
         permissions,
         storeMetadataAllowed ? parsePermissionRationales(properties, prefix) : Map.of());
+  }
+
+  private static void requireEntryMetadataVersion(
+      Map<String, String> properties, String prefix, int version) {
+    if (version < AppCatalog.VERSION_THIRD_PARTY_SUBMISSION_REVIEW
+        && hasSubmissionReviewMetadata(properties, prefix)) {
+      throw AppCatalogSidecars.invalidEntry(
+          "catalog.version 6 is required when submission review metadata is present");
+    }
+    if (version < AppCatalog.VERSION_FIRST_PARTY_MAINTENANCE
+        && hasMaintenanceMetadata(properties, prefix)) {
+      throw AppCatalogSidecars.invalidEntry(
+          "catalog.version 5 is required when maintenance metadata is present");
+    }
   }
 
   private static Optional<URI> parseStoreMetadataUri(
@@ -331,8 +366,12 @@ public final class AppCatalogParser {
     Optional<String> experimentalCapabilitiesAcceptedValue =
         removeOptional(properties, experimentalCapabilitiesAcceptedKey);
     boolean experimentalCapabilitiesAccepted =
-        parseExperimentalCapabilitiesAccepted(
-            experimentalCapabilitiesAcceptedValue, experimentalCapabilitiesAcceptedKey);
+        experimentalCapabilitiesAcceptedValue
+            .map(
+                value ->
+                    parseExperimentalCapabilitiesAccepted(
+                        value, experimentalCapabilitiesAcceptedKey))
+            .orElse(false);
     try {
       return new AppApiCompatibilityMetadata(
           minimumVersion,
@@ -376,18 +415,15 @@ public final class AppCatalogParser {
     }
   }
 
-  private static boolean parseExperimentalCapabilitiesAccepted(Optional<String> value, String key) {
-    if (value.isEmpty()) {
-      return false;
-    }
-    String normalized = value.get().toLowerCase(java.util.Locale.ROOT);
+  private static boolean parseExperimentalCapabilitiesAccepted(String value, String key) {
+    String normalized = value.toLowerCase(java.util.Locale.ROOT);
     if (normalized.equals("true")) {
       return true;
     }
     if (normalized.equals("false")) {
       return false;
     }
-    throw AppCatalogSidecars.invalidEntry("invalid " + key + ": " + value.get());
+    throw AppCatalogSidecars.invalidEntry("invalid " + key + ": " + value);
   }
 
   private static List<String> parseOptionalCapabilities(String rawCapabilities) {
@@ -415,12 +451,40 @@ public final class AppCatalogParser {
 
   private static AppCatalogReviewMetadata parseReview(
       Map<String, String> properties, String prefix) {
-    Optional<String> statusText = removeOptional(properties, prefix + "review.status");
+    Optional<String> statusText = removeOptional(properties, prefix + REVIEW_STATUS);
     AppCatalogReviewStatus status =
         statusText
-            .map(value -> AppCatalogReviewStatus.parse(value, prefix + "review.status"))
+            .map(value -> AppCatalogReviewStatus.parse(value, prefix + REVIEW_STATUS))
             .orElse(AppCatalogReviewStatus.UNREVIEWED);
-    return new AppCatalogReviewMetadata(status, removeOptional(properties, prefix + "review.note"));
+    return new AppCatalogReviewMetadata(
+        status,
+        removeOptional(properties, prefix + "review.note"),
+        removeOptional(properties, prefix + REVIEW_SUBMISSION_ID),
+        removeOptional(properties, prefix + REVIEW_SUBMISSION_SHA256),
+        removeOptional(properties, prefix + REVIEW_PRE_REVIEW_STATUS),
+        removeOptional(properties, prefix + REVIEW_PRE_REVIEW_SHA256),
+        removeOptional(properties, prefix + REVIEW_REVIEWER_KEY_ID),
+        removeOptional(properties, prefix + REVIEW_REVIEWER_POLICY),
+        removeOptional(properties, prefix + REVIEW_RECEIPT_FINGERPRINT_SHA256),
+        removeOptional(properties, prefix + REVIEW_DECISION_REASON_SHA256),
+        removeOptional(properties, prefix + REVIEW_RESUBMISSION_OF),
+        removeOptional(properties, prefix + REVIEW_NON_PRODUCTION)
+            .map(value -> parseBoolean(value, prefix + REVIEW_NON_PRODUCTION))
+            .orElse(false));
+  }
+
+  private static boolean parseBoolean(String value, String fieldName) {
+    String normalized =
+        AppCatalogSidecars.requireBoundedSingleLine(
+                value, fieldName, AppCatalogSidecars.INVALID_CATALOG_ENTRY, 8)
+            .toLowerCase(java.util.Locale.ROOT);
+    if (normalized.equals("true")) {
+      return true;
+    }
+    if (normalized.equals("false")) {
+      return false;
+    }
+    throw AppCatalogSidecars.invalidEntry(fieldName + " must be true or false");
   }
 
   private static AppCatalogProductionMetadata parseProductionMetadata(
@@ -457,6 +521,18 @@ public final class AppCatalogParser {
 
   private static boolean hasMaintenanceMetadata(Map<String, String> properties, String prefix) {
     return MAINTENANCE_FIELDS.stream().anyMatch(field -> properties.containsKey(prefix + field));
+  }
+
+  private static boolean hasSubmissionReviewMetadata(
+      Map<String, String> properties, String prefix) {
+    if (SUBMISSION_REVIEW_FIELDS.stream()
+        .anyMatch(field -> properties.containsKey(prefix + field))) {
+      return true;
+    }
+    String status = properties.get(prefix + REVIEW_STATUS);
+    return status != null
+        && AppCatalogReviewStatus.parse(status, prefix + REVIEW_STATUS)
+            .requiresSubmissionReviewCatalogVersion();
   }
 
   private static AppCatalogMaintenanceMetadata parseMaintenanceMetadata(

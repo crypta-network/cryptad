@@ -189,6 +189,31 @@ Create, sign, and verify the catalog:
   --trusted-public-key-file "$HOME/.crypta-dev/keys/dev-local-catalog-public.der"
 ```
 
+Create a third-party submission package when the app should enter the review workflow before
+catalog promotion:
+
+```bash
+mkdir -p review dist/submissions
+
+"$CRYPTA_APP" submission create \
+  --bundle-dir build/dev-apps/queue-dashboard \
+  --output dist/submissions/queue-dashboard-submission.zip \
+  --submission-type new_app \
+  --permission-rationale review/permission-rationale.md \
+  --security-notes review/security-notes.md \
+  --changelog review/changelog.md \
+  --maintainer-name "Development Maintainer" \
+  --maintainer-contact "mailto:maintainer@example.invalid" \
+  --source-url "https://example.invalid/src/queue-dashboard" \
+  --non-production \
+  --overwrite
+```
+
+The submission workflow packages the staged bundle, rationale files, safe maintainer/source
+metadata, and deterministic digests for offline pre-review. See
+[app-store-submission-and-review-workflow.md](app-store-submission-and-review-workflow.md) for
+reviewer decisions, caution/rejection handling, and catalog-candidate promotion rules.
+
 Write an offline Crypta USK publication plan:
 
 ```bash

@@ -4892,6 +4892,7 @@
 
   function catalogReviewDetailsNode(app) {
     const review = recordValue(app.review);
+    const thirdPartyReview = recordValue(app.thirdPartyReview);
     const reviewTrust = recordValue(app.reviewTrust);
     const reviewHistory = recordValue(app.reviewHistory);
     const historyLog = recordValue(reviewHistory.transparencyLog);
@@ -4899,36 +4900,54 @@
     const reviewer =
       reviewTrust.reviewerDisplayName || reviewTrust.reviewerKeyId || "Unavailable";
     const policy = [reviewTrust.policyId, reviewTrust.policyVersion].filter((entry) => entry).join(" ");
+    const hasSubmissionMetadata = thirdPartyReview.hasSubmissionMetadata === true;
     const details = document.createElement("details");
     details.className = "json-details catalog-review-details";
     const summary = document.createElement("summary");
     summary.textContent = "Review and trust";
     details.append(summary);
+    const rows = [
+      ["Catalog signature", "Signed catalog publisher metadata"],
+      ["Bundle artifact", "Digest checked before bundle signature verification"],
+      ["Publisher advisory review", normalizedStatus(review.status, "Unreviewed")],
+      ["Publisher advisory note", scalar(review.note)],
+    ];
+    if (hasSubmissionMetadata) {
+      rows.push(
+        ["Third-party submission", normalizedStatus(thirdPartyReview.status, "Unavailable")],
+        ["Submission id", scalar(thirdPartyReview.submissionId)],
+        ["Submission SHA-256", scalar(thirdPartyReview.submissionSha256)],
+        ["Pre-review status", normalizedStatus(thirdPartyReview.preReviewStatus, "Unavailable")],
+        ["Pre-review SHA-256", scalar(thirdPartyReview.preReviewSha256)],
+        ["Submission reviewer", scalar(thirdPartyReview.reviewerKeyId)],
+        ["Submission policy", scalar(thirdPartyReview.reviewerPolicy)],
+        ["Review receipt fingerprint", scalar(thirdPartyReview.receiptFingerprintSha256)],
+        ["Resubmission of", scalar(thirdPartyReview.resubmissionOf)],
+        ["Submission evidence", thirdPartyReview.nonProduction ? "Non-production" : "Production"],
+      );
+    }
+    rows.push(
+      ["Trusted review receipt", reviewTrustLabel(reviewTrust)],
+      ["Trusted reviewer", scalar(reviewer)],
+      ["Reviewer key id", scalar(reviewTrust.reviewerKeyId)],
+      ["Reviewer key status", normalizedStatus(reviewTrust.reviewerKeyStatus, "Unavailable")],
+      ["Review policy", scalar(policy)],
+      ["Policy version status", normalizedStatus(reviewTrust.policyVersionStatus, "Unavailable")],
+      ["Policy mode", normalizedStatus(reviewTrust.policyMode, "Advisory")],
+      ["Reviewed at", formatIsoTimestamp(reviewTrust.reviewedAt)],
+      ["Expires at", formatIsoTimestamp(reviewTrust.expiresAt)],
+      ["Evidence SHA-256", scalar(reviewTrust.evidenceSha256)],
+      ["Evidence URI", metadataLinkNode(reviewTrust.evidenceUri)],
+      ["Install handling", reviewTrust.blocksInstall ? "Blocked" : reviewTrust.requiresAcknowledgement ? "Acknowledgement required" : "Allowed"],
+      ["Update handling", reviewTrust.blocksUpdate ? "Blocked" : reviewTrust.requiresAcknowledgement ? "Acknowledgement required" : "Allowed"],
+      ["Installed version", scalar(reviewHistory.installedVersion || app.installedVersion)],
+      ["Catalog version", scalar(reviewHistory.catalogVersion || app.version)],
+      ["Transparency entries", scalar(historyRecords.length)],
+      ["Latest transparency hash", scalar(historyRecords.length ? historyRecords[historyRecords.length - 1].recordHash : null)],
+      ["Warnings", reviewTrustWarnings(reviewTrust)],
+    );
     details.append(
-      definitionList([
-        ["Catalog signature", "Signed catalog publisher metadata"],
-        ["Bundle artifact", "Digest checked before bundle signature verification"],
-        ["Publisher advisory review", normalizedStatus(review.status, "Unreviewed")],
-        ["Publisher advisory note", scalar(review.note)],
-        ["Trusted review receipt", reviewTrustLabel(reviewTrust)],
-        ["Trusted reviewer", scalar(reviewer)],
-        ["Reviewer key id", scalar(reviewTrust.reviewerKeyId)],
-        ["Reviewer key status", normalizedStatus(reviewTrust.reviewerKeyStatus, "Unavailable")],
-        ["Review policy", scalar(policy)],
-        ["Policy version status", normalizedStatus(reviewTrust.policyVersionStatus, "Unavailable")],
-        ["Policy mode", normalizedStatus(reviewTrust.policyMode, "Advisory")],
-        ["Reviewed at", formatIsoTimestamp(reviewTrust.reviewedAt)],
-        ["Expires at", formatIsoTimestamp(reviewTrust.expiresAt)],
-        ["Evidence SHA-256", scalar(reviewTrust.evidenceSha256)],
-        ["Evidence URI", metadataLinkNode(reviewTrust.evidenceUri)],
-        ["Install handling", reviewTrust.blocksInstall ? "Blocked" : reviewTrust.requiresAcknowledgement ? "Acknowledgement required" : "Allowed"],
-        ["Update handling", reviewTrust.blocksUpdate ? "Blocked" : reviewTrust.requiresAcknowledgement ? "Acknowledgement required" : "Allowed"],
-        ["Installed version", scalar(reviewHistory.installedVersion || app.installedVersion)],
-        ["Catalog version", scalar(reviewHistory.catalogVersion || app.version)],
-        ["Transparency entries", scalar(historyRecords.length)],
-        ["Latest transparency hash", scalar(historyRecords.length ? historyRecords[historyRecords.length - 1].recordHash : null)],
-        ["Warnings", reviewTrustWarnings(reviewTrust)],
-      ]),
+      definitionList(rows),
     );
     return details;
   }
