@@ -1412,7 +1412,13 @@ public final class AppSubmissionPackageVerifier {
       return EMPTY_BYTES;
     }
     try {
-      return read(zip, entry, maxBytes);
+      byte[] bytes = read(zip, entry, maxBytes);
+      if (bytes.length == 0) {
+        findings.add(
+            blocker(
+                "package.required-entry-empty", entryName, "Required submission entry is empty"));
+      }
+      return bytes;
     } catch (AppCatalogException _) {
       findings.add(
           blocker(PACKAGE_ENTRY_SIZE_LIMIT_ID, entryName, SUBMISSION_ENTRY_SIZE_CAP_SUMMARY));

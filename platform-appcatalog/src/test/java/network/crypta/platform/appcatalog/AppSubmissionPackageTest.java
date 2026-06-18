@@ -673,6 +673,31 @@ class AppSubmissionPackageTest {
             .anyMatch(finding -> finding.id().equals("package.required-entry-missing")));
   }
 
+  @ParameterizedTest
+  @ValueSource(
+      strings = {
+        AppSubmissionPackageVerifier.SUBMISSION_METADATA_ENTRY,
+        AppSubmissionPackageVerifier.BUNDLE_PREFIX + AppBundleDigest.MANIFEST_FILE_NAME,
+        AppSubmissionPackageVerifier.BUNDLE_ARTIFACT_ENTRY
+      })
+  void inspect_whenRequiredEntryIsEmpty_expectRequiredEntryEmptyFinding(String entryName)
+      throws Exception {
+    Path bundle = createBundle();
+    Path permissionRationale = writePermissionRationale("queue.read: lists queues.\n");
+    Path submission = tempDir.resolve("submission.zip");
+    AppSubmissionPackageWriter.create(createRequest(bundle, permissionRationale, submission));
+    Path tampered = tempDir.resolve("empty-required-entry.zip");
+    writeSubmissionWithReplacements(submission, tampered, Map.of(entryName, new byte[0]));
+
+    AppSubmissionVerification verification = AppSubmissionPackageVerifier.inspect(tampered);
+
+    assertTrue(verification.hasBlockers());
+    assertFalse(verification.hasParsedSubmission());
+    assertTrue(
+        verification.findings().stream()
+            .anyMatch(finding -> finding.id().equals("package.required-entry-empty")));
+  }
+
   @Test
   void inspect_whenRequiredMetadataEntryExceedsSizeCap_expectEntrySizeFinding() throws Exception {
     Path bundle = createBundle();
