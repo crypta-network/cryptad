@@ -115,6 +115,7 @@ class WebShellResourcesTest {
     assertAppDataBackupRestoreMarkersPresent(script);
     assertBetaDashboardLoadSequencing(script);
     assertAppsMarkersPresent(script);
+    assertConsentUxMarkersPresent(script);
     assertAppUpdateLifecycleMarkersPresent(script);
     assertAppStoreMetadataMarkersPresent(script);
     assertCompatibilityUndeclaredPrecedesSuccess(script);
@@ -138,6 +139,10 @@ class WebShellResourcesTest {
     assertTrue(stylesheet.contains(".app-card-actions {"));
     assertTrue(stylesheet.contains(".app-log-tail {"));
     assertTrue(stylesheet.contains(".permission-list {"));
+    assertTrue(stylesheet.contains(".consent-preview {"));
+    assertTrue(stylesheet.contains(".consent-section-list {"));
+    assertTrue(stylesheet.contains(".consent-finding-list {"));
+    assertTrue(stylesheet.contains(".consent-actions {"));
     assertTrue(stylesheet.contains(".vault-grant-form {"));
     assertTrue(stylesheet.contains(".app-audit-event.is-denied {"));
     assertTrue(stylesheet.contains(".catalog-app-card {"));
@@ -817,6 +822,44 @@ class WebShellResourcesTest {
     assertTrue(script.contains("Identity vault actions unavailable in read-only mode."));
     assertTrue(script.contains("Identity grant created."));
     assertTrue(script.contains("Identity grant revoked."));
+  }
+
+  private static void assertConsentUxMarkersPresent(String script) {
+    assertTrue(script.contains("function consentInstallPreviewPath(catalogId, appId)"));
+    assertTrue(script.contains("function consentCatalogUpdatePreviewPath(catalogId, appId)"));
+    assertTrue(script.contains("function consentUpdatePreviewPath(appId)"));
+    assertTrue(script.contains("function consentServiceGrantPreviewPath(bundleId)"));
+    assertTrue(script.contains("function consentPreviewPathForForm(form, action)"));
+    assertTrue(script.contains("function loadConsentPreviewForForm(form, action)"));
+    assertTrue(script.contains("function ensureConsentApprovedForForm(form, action)"));
+    assertTrue(script.contains("function renderConsentPreview(preview, form)"));
+    assertTrue(script.contains("function renderConsentSection(section)"));
+    assertTrue(script.contains("function renderConsentFinding(finding)"));
+    assertTrue(script.contains("function submitConsentDecision(preview, decision)"));
+    assertTrue(script.contains("function appendConsentSnapshotFields(form, preview)"));
+    assertTrue(script.contains("function consentStaleErrorMessage(error)"));
+    assertTrue(script.contains("consent/install-preview?catalogId="));
+    assertTrue(script.contains("consent/catalog-update-preview?catalogId="));
+    assertTrue(script.contains("\"consent/update-preview\""));
+    assertTrue(script.contains("consent/service-grant-preview?bundleId="));
+    assertTrue(script.contains("Consent previews unavailable in read-only mode."));
+    assertTrue(script.contains("await postForm(`consent/${decision}`"));
+    assertTrue(script.contains("formData.set(\"consentRequestId\""));
+    assertTrue(script.contains("formData.set(\"snapshotDigest\""));
+    assertTrue(script.contains("appendHiddenField(form, \"consentRequestId\""));
+    assertTrue(script.contains("appendHiddenField(form, \"snapshotDigest\""));
+    assertTrue(script.contains("preview.requiresApproval !== true"));
+    assertTrue(script.contains("preview.blocksAutoUpdate === true ? \"Yes\" : \"No\""));
+    assertTrue(script.contains("arrayValue(preview.sections).forEach((section)"));
+    assertTrue(script.contains("arrayValue(item.items).forEach((finding)"));
+    assertTrue(script.contains("Consent preview"));
+    assertTrue(script.contains("Risk level"));
+    assertTrue(script.contains("Blocks auto-update"));
+    assertTrue(script.contains("Snapshot digest"));
+    assertTrue(script.contains("Consent approved. Continuing action."));
+    assertTrue(script.contains("Consent rejected. No app-platform mutation was applied."));
+    assertTrue(script.contains("This approval is stale. Refresh the consent preview."));
+    assertTrue(script.contains("await ensureConsentApprovedForForm(form, action)"));
   }
 
   private static void assertAppUpdateLifecycleMarkersPresent(String script) {

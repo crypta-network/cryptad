@@ -77,6 +77,7 @@ import network.crypta.platform.appvault.AppVaultService;
  */
 public final class AppCatalogsApiHandler {
   private static final System.Logger LOG = System.getLogger(AppCatalogsApiHandler.class.getName());
+  private static final PreparedPlanConsentVerifier NO_PREPARED_PLAN_CONSENT_VERIFIER = (_, _) -> {};
 
   private static final String APP_ALREADY_INSTALLED_PREFIX = "app already installed: ";
   private static final String APP_NOT_INSTALLED_PREFIX = "app is not installed: ";
@@ -87,6 +88,7 @@ public final class AppCatalogsApiHandler {
   private static final String APPHOST_BUNDLE_VALIDATION_MESSAGE =
       "Catalog app bundle failed AppHost validation.";
   private static final String VERSION_STATUS_NOT_INSTALLED = "not_installed";
+  private static final String VERSION_STATUS_INSTALLED = "installed";
   private static final String VERSION_STATUS_CURRENT = "current";
   private static final String VERSION_STATUS_DIFFERENT = "different";
   private static final String VERSION_STATUS_UNKNOWN = "unknown";
@@ -99,6 +101,7 @@ public final class AppCatalogsApiHandler {
   private static final String SOURCE_KIND_FIELD = "sourceKind";
   private static final String CATALOG_ID_FIELD = "catalogId";
   private static final String APP_ID_FIELD = "appId";
+  private static final String INSTALLED_FIELD = VERSION_STATUS_INSTALLED;
   private static final String INSTALLED_VERSION_FIELD = "installedVersion";
   private static final String LAST_ATTEMPT_AT_FIELD = "lastAttemptAt";
   private static final String LAST_SUCCESSFUL_REFRESH_AT_FIELD = "lastSuccessfulRefreshAt";
@@ -305,6 +308,18 @@ public final class AppCatalogsApiHandler {
      * @throws IOException if configured key material cannot be read
      */
     TrustedReviewerKeys trustedReviewerKeys() throws IOException;
+  }
+
+  /** Verifies consent against a prepared catalog plan entry before install or update commits. */
+  @FunctionalInterface
+  public interface PreparedPlanConsentVerifier {
+    /**
+     * Verifies that the prepared plan entry still matches the approved operator consent snapshot.
+     *
+     * @param catalogId catalog identifier attached to the prepared plan
+     * @param entry prepared catalog entry
+     */
+    void verify(String catalogId, AppCatalogEntry entry);
   }
 
   /**
@@ -634,6 +649,48 @@ public final class AppCatalogsApiHandler {
   }
 
   /**
+   * Returns catalog app metadata for update consent without blocking corrupt-install repair.
+   *
+   * <p>The catalog update mutation intentionally allows AppHost to repair an installed app whose
+   * manifest is unreadable by applying a valid signed catalog bundle. Consent preview and
+   * validation must preserve that repair path, so this summary is conservative when the installed
+   * manifest cannot be read: it avoids exposing the raw failure, treats the app as locally present
+   * with an unknown version, and reports catalog permissions as added.
+   *
+   * @param catalogId catalog identifier from the request path
+   * @param appId catalog app identifier from the request path
+   * @return JSON-compatible app entry suitable for catalog update consent
+   */
+  public Map<String, Object> getAppForCatalogUpdateConsent(String catalogId, String appId) {
+    try {
+      return summarizeEntry(catalogId, catalogManager.getApp(catalogId, appId), true);
+    } catch (AppCatalogException exception) {
+      throw catalogFailure(exception);
+    } catch (IOException _) {
+      throw internalError("Failed to read catalog app.");
+    }
+  }
+
+  /**
+   * Summarizes a prepared catalog plan entry for a final consent digest check.
+   *
+   * <p>The installation/update routes call this after the catalog manager has downloaded and
+   * verified the candidate bundle. The resulting summary uses the same redacted, path-free shape as
+   * catalog preview responses so the consent layer can reject stale approvals when prepared
+   * metadata no longer matches the operator-reviewed snapshot.
+   *
+   * @param catalogId catalog identifier attached to the prepared plan
+   * @param entry prepared catalog entry
+   * @param tolerateInstalledReadFailure whether corrupt installed manifests should remain
+   *     repairable through update
+   * @return path-free catalog entry summary suitable for consent digesting
+   */
+  public Map<String, Object> summarizePreparedPlanForConsent(
+      String catalogId, AppCatalogEntry entry, boolean tolerateInstalledReadFailure) {
+    return summarizeEntry(catalogId, entry, tolerateInstalledReadFailure);
+  }
+
+  /**
    * Returns redacted app-review governance state.
    *
    * @return review policy, reviewer registry, and transparency-log status
@@ -746,6 +803,49 @@ public final class AppCatalogsApiHandler {
    */
   public Map<String, Object> install(
       String catalogId, String appId, Map<String, List<String>> queryParameters) {
+    return install(catalogId, appId, queryParameters, NO_PREPARED_PLAN_CONSENT_VERIFIER);
+  }
+
+  /**
+   * Validates the fast catalog-install state preconditions without preparing or installing a
+   * bundle.
+   *
+   * <p>Consent-gated transport routes call this before asking for approval so impossible
+   * installations retain the same conflict and catalog lookup errors as the mutation path. The full
+   * {@link #install(String, String, Map, PreparedPlanConsentVerifier)} method rechecks these
+   * conditions before it mutates state.
+   *
+   * @param catalogId catalog identifier from the request path
+   * @param appId catalog app identifier from the request path
+   */
+  public void requireInstallPreconditions(String catalogId, String appId) {
+    try {
+      AppCatalogEntry entry = catalogManager.getApp(catalogId, appId);
+      if (appHost.describe(entry.appId()).isPresent()) {
+        throw conflict(APP_ALREADY_INSTALLED_PREFIX + entry.appId());
+      }
+    } catch (AppCatalogException exception) {
+      throw catalogFailure(exception);
+    } catch (IOException _) {
+      throw internalError(INSTALL_FAILED_MESSAGE);
+    }
+  }
+
+  /**
+   * Installs one catalog app with optional acknowledgement and prepared-plan consent verification.
+   *
+   * @param catalogId catalog identifier from the request path
+   * @param appId catalog app identifier from the request path
+   * @param queryParameters decoded request query parameters
+   * @param preparedPlanConsentVerifier verifier invoked after bundle preparation and before install
+   * @return installed app summary without launch tokens or staging paths
+   */
+  public Map<String, Object> install(
+      String catalogId,
+      String appId,
+      Map<String, List<String>> queryParameters,
+      PreparedPlanConsentVerifier preparedPlanConsentVerifier) {
+    Objects.requireNonNull(preparedPlanConsentVerifier, "preparedPlanConsentVerifier");
     String normalizedAppId;
     AppReviewTrustDecision initialReviewTrust;
     AppCatalogSecurityDecision initialSecurityDecision;
@@ -776,6 +876,7 @@ public final class AppCatalogsApiHandler {
     AppCatalogInstallPlan plan = null;
     try {
       plan = catalogManager.prepareInstallPlan(catalogId, normalizedAppId);
+      preparedPlanConsentVerifier.verify(plan.catalogId(), plan.entry());
       AppCatalogSecurityDecision preparedSecurityDecision =
           targetSecurityDecision(plan.catalogId(), plan.entry());
       requireSecurityGate(
@@ -836,6 +937,57 @@ public final class AppCatalogsApiHandler {
    */
   public Map<String, Object> update(
       String catalogId, String appId, Map<String, List<String>> queryParameters) {
+    return update(catalogId, appId, queryParameters, NO_PREPARED_PLAN_CONSENT_VERIFIER);
+  }
+
+  /**
+   * Validates the fast catalog-update state preconditions without preparing or updating a bundle.
+   *
+   * <p>Consent-gated transport routes call this before asking for approval so impossible updates
+   * retain the same running-app, missing-app, and catalog lookup errors as the mutation path. The
+   * full {@link #update(String, String, Map, PreparedPlanConsentVerifier)} method rechecks these
+   * conditions before it mutates state.
+   *
+   * @param catalogId catalog identifier from the request path
+   * @param appId catalog app identifier from the request path
+   */
+  public void requireUpdatePreconditions(String catalogId, String appId) {
+    String normalizedAppId;
+    try {
+      AppCatalogEntry entry = catalogManager.getApp(catalogId, appId);
+      normalizedAppId = entry.appId();
+    } catch (AppCatalogException exception) {
+      throw catalogFailure(exception);
+    } catch (IOException _) {
+      throw internalError(UPDATE_FAILED_MESSAGE);
+    }
+    if (appHost.status(normalizedAppId).isPresent()) {
+      throw conflict(CANNOT_UPDATE_RUNNING_APP_PREFIX + normalizedAppId);
+    }
+    try {
+      if (appHost.describe(normalizedAppId).isEmpty()) {
+        throw new PlatformApiException(404, "app_not_found", "App not found.");
+      }
+    } catch (IOException _) {
+      // Allow AppHost to repair installs whose manifest is unreadable.
+    }
+  }
+
+  /**
+   * Updates one installed app with optional acknowledgement and prepared-plan consent verification.
+   *
+   * @param catalogId catalog identifier from the request path
+   * @param appId catalog app identifier from the request path
+   * @param queryParameters decoded request query parameters
+   * @param preparedPlanConsentVerifier verifier invoked after bundle preparation and before update
+   * @return updated installed app summary without launch tokens or staging paths
+   */
+  public Map<String, Object> update(
+      String catalogId,
+      String appId,
+      Map<String, List<String>> queryParameters,
+      PreparedPlanConsentVerifier preparedPlanConsentVerifier) {
+    Objects.requireNonNull(preparedPlanConsentVerifier, "preparedPlanConsentVerifier");
     String normalizedAppId;
     AppCatalogEntry entry;
     try {
@@ -872,6 +1024,7 @@ public final class AppCatalogsApiHandler {
     AppCatalogInstallPlan plan = null;
     try {
       plan = catalogManager.prepareInstallPlan(catalogId, normalizedAppId);
+      preparedPlanConsentVerifier.verify(plan.catalogId(), plan.entry());
       AppCatalogSecurityDecision preparedSecurityDecision =
           targetSecurityDecision(plan.catalogId(), plan.entry());
       requireSecurityGate(
@@ -1231,10 +1384,18 @@ public final class AppCatalogsApiHandler {
   }
 
   private Map<String, Object> summarizeEntry(String catalogId, AppCatalogEntry entry) {
-    InstalledAppSnapshot installed = installed(entry.appId());
+    return summarizeEntry(catalogId, entry, false);
+  }
+
+  private Map<String, Object> summarizeEntry(
+      String catalogId, AppCatalogEntry entry, boolean tolerateInstalledReadFailure) {
+    InstalledSummary installedSummary =
+        installedForSummary(entry.appId(), tolerateInstalledReadFailure);
+    InstalledAppSnapshot installed = installedSummary.snapshot();
     RunningAppSnapshot running = appHost.status(entry.appId()).orElse(null);
     String installedVersion = installed == null ? null : installed.manifest().appVersion();
-    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(28);
+    boolean installedPresent = installed != null || installedSummary.readFailed();
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(29);
     json.put(APP_ID_FIELD, entry.appId());
     json.put("name", entry.name());
     json.put("version", entry.version());
@@ -1266,14 +1427,15 @@ public final class AppCatalogsApiHandler {
     json.put("changelog", summarizeChangelog(entry.changelog()));
     json.put("screenshots", entry.screenshots().stream().map(URI::toString).toList());
     json.put("bundle", summarizeBundle(entry));
-    json.put("installed", installed != null);
+    json.put(INSTALLED_FIELD, installedPresent);
+    json.put("installedState", installedState(installedSummary, installed));
     json.put(INSTALLED_VERSION_FIELD, installedVersion);
     json.put(
-        "versionDifferent", versionDifferent(entry.version(), installedVersion, installed != null));
+        "versionDifferent", versionDifferent(entry.version(), installedVersion, installedPresent));
     json.put(
         "updateAvailable",
-        updateAvailable(entry.version(), installedVersion, installed != null).orElse(null));
-    json.put("versionStatus", versionStatus(entry.version(), installedVersion, installed != null));
+        updateAvailable(entry.version(), installedVersion, installedPresent).orElse(null));
+    json.put("versionStatus", versionStatus(entry.version(), installedVersion, installedPresent));
     json.put("permissionDelta", summarizePermissionDelta(entry.permissions(), installed));
     json.put("running", running != null);
     json.put("pid", running == null ? null : running.pid());
@@ -1282,12 +1444,29 @@ public final class AppCatalogsApiHandler {
   }
 
   private InstalledAppSnapshot installed(String appId) {
+    return installedForSummary(appId, false).snapshot();
+  }
+
+  private static String installedState(
+      InstalledSummary installedSummary, InstalledAppSnapshot installed) {
+    if (installedSummary.readFailed()) {
+      return "unreadable_manifest";
+    }
+    return installed == null ? VERSION_STATUS_NOT_INSTALLED : VERSION_STATUS_INSTALLED;
+  }
+
+  private InstalledSummary installedForSummary(String appId, boolean tolerateReadFailure) {
     try {
-      return appHost.describe(appId).orElse(null);
+      return new InstalledSummary(appHost.describe(appId).orElse(null), false);
     } catch (IOException _) {
+      if (tolerateReadFailure) {
+        return new InstalledSummary(null, true);
+      }
       throw internalError("Failed to read installed apps.");
     }
   }
+
+  private record InstalledSummary(InstalledAppSnapshot snapshot, boolean readFailed) {}
 
   private static Map<String, Object> summarizeBundle(AppCatalogEntry entry) {
     LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(4);
@@ -1580,7 +1759,7 @@ public final class AppCatalogsApiHandler {
     json.put("permissions", manifest.permissions());
     json.put(
         "apiCompatibility", apiCompatibility(manifest.apiCompatibility(), manifest.permissions()));
-    json.put("installed", true);
+    json.put(INSTALLED_FIELD, true);
     json.put("running", false);
     json.put("pid", null);
     json.put("startedAt", null);

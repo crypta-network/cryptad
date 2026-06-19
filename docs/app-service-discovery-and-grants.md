@@ -147,18 +147,18 @@ include local paths, raw provider data, raw request bodies, launch tokens, beare
 insert URIs, private keys, app-data backup payloads, raw Trust Graph statements, raw subject URIs,
 or raw signatures.
 
-## Install and update review
+## Consent, install, and update review
 
 PR-253 exposes deterministic dependency graph and grant-bundle APIs for install, update, and app
 review surfaces. Web Shell uses the same path-free graph and bundle records that app principals see
-under their own scope. Required missing dependencies are marked with blocking metadata; optional
-missing dependencies are marked as degraded.
+under their own scope. The unified consent layer now includes those graph and bundle records in
+install, update, and service-grant previews. Required missing dependencies are marked with blocking
+metadata; optional missing dependencies are marked as degraded.
 
-The update scheduler does not yet auto-apply dependency policy decisions from this graph. Until
-that wiring is added, operator review must use the dependency graph and bundle status before
-installing or updating an app that introduces new required services, missing providers, version
-mismatches, grant-required state, or `revalidation-required` state. This preserves the default-deny
-service boundary and keeps PR-248 channel policy and PR-249 migration gates unchanged.
+Automatic update policy must not stage or apply a candidate that introduces a required service
+dependency, a new grant bundle, provider descriptor drift, or `revalidation-required` state without
+operator consent. Bundle approve, renew, reject, and defer decisions write redacted consent audit
+events. See [user-consent-and-permission-upgrade-ux.md](user-consent-and-permission-upgrade-ux.md).
 
 ## Grant bundles
 

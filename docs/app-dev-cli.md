@@ -562,6 +562,10 @@ submission review metadata generate `catalog.version=6`.
 verification. `minimumCryptaVersion` is advisory and does not block install/update by itself;
 integer Cryptad build labels are the comparable form used by Platform API responses. Permission
 rationales explain declared permissions; they do not grant capabilities.
+Install and update consent previews display permission rationales, review metadata, channel and
+support metadata, security advisory status, service dependencies, and app-data migration metadata
+before a material operation proceeds. See
+[user-consent-and-permission-upgrade-ux.md](user-consent-and-permission-upgrade-ux.md).
 
 Production channel metadata is strict and deterministic. `channel` must be one of `stable`,
 `beta`, `nightly`, or `deprecated`; omitted descriptors default to stable when read by the runtime.

@@ -9,8 +9,8 @@ The production beta pipeline is a release-manager workflow for first-party app e
 It does not rewrite the app platform, change peer protocols, or publish a public app store by
 itself. It combines the existing Gradle build, first-party app staging tasks, `crypta-app` signing
 and catalog tools, app-platform smoke checks, live-network beta evidence, network-scale soak
-evidence, first-party app maintenance policy metadata, ecosystem RC certification, and final
-artifact redaction.
+evidence, first-party app maintenance policy metadata, user-consent flow evidence, ecosystem RC
+certification, and final artifact redaction.
 
 The entrypoint is:
 
@@ -138,6 +138,12 @@ directories are kept outside the public artifact tree.
 | `artifacts.firstPartyMaintenancePolicy` | Redacted copy of the checked-in first-party maintenance policy source used to generate signed catalog descriptors. |
 | `redaction` | Final artifact scanner result and findings. |
 | `commands` | Redacted command metadata, exit codes, durations, and scrubbed output tails. |
+
+Production beta promotion includes `app-platform.user-consent-flow` evidence. That evidence proves
+that install/update previews, service-grant consent, migration and backup consent, automatic update
+gating, stale snapshot protection, audit redaction, Web Shell UI, tests, and docs are present
+without requiring a live node. Consent evidence must not include private insert URI values, secret
+inputs, raw fetched content, raw app data, backup payloads, or host-local paths.
 
 `reports/production-beta-summary.md` is the human-readable companion. It lists failed gates, artifact
 paths, known limitations, and the production beta readiness decision.

@@ -11818,6 +11818,289 @@ def collect_ecosystem_security_advisory_revocation_evidence(
     ]
 
 
+def collect_user_consent_flow_evidence(settings: Settings) -> EvidenceItem:
+    source = summary_source(settings)
+    workspace = settings.workspace_root
+    consent_dir = workspace / "platform-api/src/main/java/network/crypta/platform/api/consent"
+    consent_text = "\n".join(read_source(path) for path in sorted(consent_dir.glob("*.java")))
+    router_text = read_source(
+        workspace / "platform-api/src/main/java/network/crypta/platform/api/PlatformApiRouter.java"
+    )
+    app_routes_text = read_source(
+        workspace / "platform-api/src/main/java/network/crypta/platform/api/PlatformApiAppRoutes.java"
+    )
+    toadlet_text = read_source(
+        workspace / "adapter-http-legacy-admin/src/main/java/network/crypta/clients/http/PlatformApiToadlet.java"
+    )
+    service_routes_text = read_source(
+        workspace
+        / "platform-api/src/main/java/network/crypta/platform/api/PlatformApiAppServiceRoutes.java"
+    )
+    update_candidate_text = read_source(
+        workspace
+        / "platform-api/src/main/java/network/crypta/platform/api/appupdates/AppUpdateCandidate.java"
+    )
+    update_service_text = read_source(
+        workspace / "platform-api/src/main/java/network/crypta/platform/api/appupdates/AppUpdateService.java"
+    )
+    web_shell_text = read_source(
+        workspace
+        / "platform-web-shell/src/main/resources/network/crypta/platform/webshell/static/web-shell.js"
+    )
+    web_shell_test_text = read_source(
+        workspace
+        / "platform-web-shell/src/test/java/network/crypta/platform/webshell/WebShellResourcesTest.java"
+    )
+    consent_test_text = read_source(
+        workspace
+        / "platform-api/src/test/java/network/crypta/platform/api/consent/ConsentServiceTest.java"
+    )
+    candidate_test_text = read_source(
+        workspace
+        / "platform-api/src/test/java/network/crypta/platform/api/appupdates/AppUpdateCandidateTest.java"
+    )
+    update_service_test_text = read_source(
+        workspace
+        / "platform-api/src/test/java/network/crypta/platform/api/appupdates/AppUpdateServiceTest.java"
+    )
+    app_services_router_test_text = read_source(
+        workspace / "platform-api/src/test/java/network/crypta/platform/api/PlatformApiAppServicesRouterTest.java"
+    )
+    docs_text = "\n".join(
+        read_source(workspace / path)
+        for path in (
+            "docs/user-consent-and-permission-upgrade-ux.md",
+            "docs/app-platform-developer-portal.md",
+            "docs/app-dev-cli.md",
+            "docs/app-catalogs.md",
+            "docs/app-service-discovery-and-grants.md",
+            "docs/app-data-store.md",
+            "docs/production-beta-release-pipeline.md",
+            "docs/release-certification.md",
+            "tools/release-certification/README.md",
+        )
+    )
+    checks = {
+        "consentModelsPresent": all(
+            marker in consent_text
+            for marker in (
+                "enum ConsentActionType",
+                "enum ConsentRiskLevel",
+                "enum ConsentDecisionStatus",
+                "record ConsentSnapshot",
+                "final class ConsentSnapshotDigest",
+                "record ConsentRequest",
+                "record ConsentDecision",
+                "record ConsentAuditEvent",
+                "interface ConsentAuditStore",
+                "final class FileConsentAuditStore",
+                "final class ConsentPolicy",
+                "final class ConsentService",
+            )
+        ),
+        "previewRoutesPresent": all(
+            marker in consent_text + router_text
+            for marker in (
+                'case "consent" -> appRoutes.routeConsentRequest',
+                'case "install-preview"',
+                'case "catalog-update-preview"',
+                'case "update-preview"',
+                'case "service-grant-preview"',
+                'case "approve"',
+                'case "reject"',
+                'case "audit"',
+            )
+        ),
+        "installPreviewCoversMaterialTrustAndPermissions": all(
+            marker in consent_text
+            for marker in (
+                "buildInstallSnapshot",
+                "installIdentitySection",
+                "catalogTrustSection",
+                "reviewSection",
+                "securitySection",
+                "permissionsSection",
+                "apiStabilitySection",
+                "appDataAndBackupSection",
+                "serviceGrantPlaceholderSection",
+            )
+        ),
+        "updatePreviewCoversMaterialDeltas": all(
+            marker in consent_text
+            for marker in (
+                "buildUpdateSnapshot",
+                "permissionDeltaSection",
+                "updateApiStabilitySection",
+                "updateReviewSection",
+                "updateCatalogSection",
+                "updateSecuritySection",
+                "updateMigrationSection",
+                "updateBackupSection",
+                "updateServiceGrantDeltaSection",
+            )
+        ),
+        "serviceGrantConsentIntegrated": (
+            "buildServiceGrantSnapshot" in consent_text
+            and "serviceGrantDependenciesSection" in consent_text
+            and "requireApprovedServiceGrantIfRequired" in service_routes_text
+            and "recordServiceGrantRejection" in service_routes_text
+        ),
+        "migrationAndBackupConsentIntegrated": (
+            "app-data migration" in consent_text.lower()
+            and "backup_before_update" in consent_text
+            and "migrationRisk" in consent_text
+            and "operatorReviewRequired" in update_candidate_text
+            and "previewForConsent(String appId, boolean refreshCatalogs)" in update_service_text
+            and "candidateWithConsentMigrationPlan" in update_service_text
+        ),
+        "automaticUpdateGatingPresent": (
+            "materialConsentAllowsAutomaticStage" in update_candidate_text
+            and "materialConsentBlocksAutomaticStage" in update_candidate_text
+            and "permissionDeltaAllowsAutomaticStage" in update_candidate_text
+            and "apiStabilityAllowsAutomaticStage" in update_candidate_text
+            and "securityAdvisoriesAllowAutomaticStage" in update_candidate_text
+            and "security_advisory" in update_candidate_text
+            and "dataMigrationAllowsAutomaticStage" in update_candidate_text
+            and "app_data_migration" in update_candidate_text
+            and "statusValue instanceof String status" in update_candidate_text
+            and "blocksAutoUpdate" in update_candidate_text
+            and "preview(String appId, boolean refreshCatalogs)" in update_service_text
+            and "ERROR_CONSENT_REQUIRED" in update_service_text
+            and "appendMaterialConsentHistory" in update_service_text
+            and "consent_required" in update_service_text
+        ),
+        "guardedUpdatePreviewRefresh": (
+            "updatePreviewReadOnly" in consent_text
+            and "consentService.updatePreview(appId, refreshCatalogs)" in consent_text
+            and "requiresConsentFormPassword" in toadlet_text
+            and '"update-preview".equals(pathSegments.get(1))' in toadlet_text
+        ),
+        "snapshotDigestAndStaleApprovalProtection": (
+            "ConsentSnapshotDigest.digest(this)" in consent_text
+            and "toDigestJson" in consent_text
+            and "stale_consent_snapshot" in consent_text
+            and "current.snapshotDigest()" in consent_text
+            and "consumeConsentRequest" in consent_text
+            and "STORED_CONSENT_TTL" in consent_text
+            and "MAX_STORED_REQUESTS" in consent_text
+            and ("consentRequestId" in app_routes_text or "PARAM_CONSENT_REQUEST_ID" in consent_text)
+        ),
+        "auditDecisionStoreRedacted": (
+            "ConsentRedactor.redact" in consent_text
+            and "materialRiskSummary" in consent_text
+            and "FileConsentAuditStore" in consent_text
+            and "raw app data" not in consent_text.lower()
+        ),
+        "webShellConsentUiPresent": all(
+            marker in web_shell_text
+            for marker in (
+                "function renderConsentPreview",
+                "function renderConsentSection",
+                "function submitConsentDecision",
+                "consent/install-preview",
+                "consent/update-preview",
+                "consent/service-grant-preview",
+                "This approval is stale. Refresh the consent preview.",
+                "consentRequestId",
+                "snapshotDigest",
+                "blocksAutoUpdate",
+            )
+        ),
+        "testsCoverConsentFlow": all(
+            marker
+            in consent_test_text
+            + candidate_test_text
+            + update_service_test_text
+            + web_shell_test_text
+            + app_services_router_test_text
+            for marker in (
+                "installPreview_whenCatalogEntryHasMaterialMetadata_expectGroupedConsentSections",
+                "installPreview_whenSecurityDecisionBlocksInstallOnly_expectBlockingRisk",
+                "installPreview_whenReviewTrustBlocksInstallOnly_expectBlockingRisk",
+                "requireApprovedUpdate_whenDigestMatches_expectMutationAcknowledgements",
+                "requireApprovedUpdate_whenApprovalReused_expectConsentNotApproved",
+                "requireApprovedUpdate_whenApprovalExpires_expectConsentNotApprovedAndExpiredAudit",
+                "requireApprovedUpdate_whenCandidateDigestChanges_expectStaleApprovalRejected",
+                "serviceGrantPreview_whenBundleHasDependencies_expectGrantConsentSections",
+                "auditEvent_whenRiskSummaryContainsSensitiveValues_expectRedactedJson",
+                "toJsonValue_whenPermissionIsAdded_expectAutomaticUpdateBlockedByConsent",
+                "toJsonValue_whenApiCompatibilityStatusUnknown_expectAutomaticUpdateBlockedByConsent",
+                "toJsonValue_whenSecurityAdvisoryPresent_expectAutomaticUpdateBlockedByConsent",
+                "toJsonValue_whenMigrationRequiresOperatorReview_expectAutomaticUpdateBlockedByConsent",
+                "check_whenStagePolicyCandidateAddsPermission_expectConsentRequiredHistory",
+                "check_whenStagePolicyCandidateHasSecurityAdvisory_expectConsentRequiredHistory",
+                "check_whenStagePolicyMigrationRollbackIncompatible_expectCandidateRequiresOperatorReview",
+                "previewForConsent_whenMigrationRollbackIncompatible_expectCandidateRequiresOperatorReview",
+                "requireApprovedUpdate_whenMigrationRequiresReview_expectMutationAcknowledgement",
+                "updatePreview_whenGetIncludesRefreshCatalogs_expectReadOnlyPreviewWithoutRefresh",
+                "updatePreview_whenPostIncludesRefreshCatalogs_expectConsentPreviewRefresh",
+                "route_whenBundleRejectFails_expectConsentRejectionAuditNotRecorded",
+                "assertConsentUxMarkersPresent",
+            )
+        ),
+        "docsPresent": all(
+            marker.casefold() in docs_text.casefold()
+            for marker in (
+                "app-platform.user-consent-flow",
+                "install consent",
+                "update consent",
+                "permission delta",
+                "API stability",
+                "review/trust",
+                "service grants",
+                "app-data migration",
+                "backup",
+                "security advisory",
+                "auto-update",
+                "audit",
+                "stale consent",
+                "non-goals",
+            )
+        ),
+    }
+    errors = [name for name, passed in checks.items() if passed is not True]
+    details = {
+        "checks": checks,
+        "redaction": {
+            "privateInsertUrisExcluded": True,
+            "tokensExcluded": True,
+            "rawFetchedContentExcluded": True,
+            "rawAppDataExcluded": True,
+            "absolutePathsExcluded": True,
+        },
+        "sources": {
+            "consent": display_path(consent_dir, workspace),
+            "router": "platform-api/src/main/java/network/crypta/platform/api/PlatformApiRouter.java",
+            "updateCandidate": (
+                "platform-api/src/main/java/network/crypta/platform/api/appupdates/"
+                "AppUpdateCandidate.java"
+            ),
+            "webShell": (
+                "platform-web-shell/src/main/resources/network/crypta/platform/webshell/static/"
+                "web-shell.js"
+            ),
+            "docs": "docs/user-consent-and-permission-upgrade-ux.md",
+        },
+    }
+    if errors:
+        return EvidenceItem(
+            "app-platform.user-consent-flow",
+            "fail" if settings.mode == "release-candidate" else "warn",
+            True,
+            "User consent and permission-upgrade flow evidence is incomplete.",
+            source,
+            {"errors": errors, **details},
+        )
+    return EvidenceItem(
+        "app-platform.user-consent-flow",
+        "pass",
+        True,
+        "User consent and permission-upgrade flow evidence passed deterministic checks.",
+        source,
+        details,
+    )
+
+
 def collect_app_update_lifecycle_evidence(settings: Settings) -> EvidenceItem:
     source = summary_source(settings)
     apphost_source = (
@@ -13855,6 +14138,7 @@ def run(settings: Settings) -> tuple[dict[str, Any], int]:
         collect_sandbox_provider_evidence(settings),
         *collect_public_beta_security_evidence(settings),
         *collect_ecosystem_security_advisory_revocation_evidence(settings),
+        collect_user_consent_flow_evidence(settings),
         collect_app_update_lifecycle_evidence(settings),
         collect_app_update_scheduler_evidence(settings),
         collect_app_update_live_catalog_refresh_evidence(settings),
@@ -15147,6 +15431,16 @@ def run_self_test(repo_root: Path) -> None:
         assert "noTokenSetenvCommand" not in sandbox_checks, sandbox_checks
         for evidence_id in PUBLIC_BETA_SECURITY_EVIDENCE_IDS:
             assert evidence_by_id[evidence_id]["status"] == "pass", evidence_by_id[evidence_id]
+        consent_item = evidence_by_id["app-platform.user-consent-flow"]
+        assert consent_item["status"] == "pass", consent_item
+        assert consent_item["requiredForReleaseCandidate"] is True
+        consent_checks = consent_item["details"]["checks"]
+        assert consent_checks["consentModelsPresent"] is True, consent_checks
+        assert consent_checks["previewRoutesPresent"] is True, consent_checks
+        assert consent_checks["automaticUpdateGatingPresent"] is True, consent_checks
+        assert consent_checks["snapshotDigestAndStaleApprovalProtection"] is True, consent_checks
+        assert consent_checks["webShellConsentUiPresent"] is True, consent_checks
+        assert consent_checks["docsPresent"] is True, consent_checks
         assert evidence_by_id["app-update.lifecycle"]["status"] == "pass"
         assert evidence_by_id["app-update.lifecycle"]["requiredForReleaseCandidate"] is True
         lifecycle_checks = evidence_by_id["app-update.lifecycle"]["details"]["checks"]
@@ -16756,7 +17050,8 @@ def make_self_test_workspace(workspace: Path) -> None:
     (api_test_dir / "PlatformApiAppServicesRouterTest.java").write_text(
         "class PlatformApiAppServicesRouterTest { "
         "void route_whenAppUsesDiscoveryGrantAndInvocation_expectGrantBoundary() {} "
-        "void route_whenAppUsesDependencyAndBundleRoutes_expectScopedReviewFlow() {} }\n",
+        "void route_whenAppUsesDependencyAndBundleRoutes_expectScopedReviewFlow() {} "
+        "void route_whenBundleRejectFails_expectConsentRejectionAuditNotRecorded() {} }\n",
         encoding="utf-8",
     )
     (api_test_dir / "TrustGraphApiRouterTest.java").write_text(
@@ -18110,11 +18405,21 @@ record AppUpdateCandidate() {
     json.put("permissionDelta", permissionDelta(candidatePermissions, installedPermissions));
     json.put("dataMigration", dataMigration);
     json.put("securityDecision", securityDecision);
+    json.put("blocksAutoUpdate", !eligibleForAutomaticStage());
     return json;
   }
   Map<String, Object> securityDecision() { return securityDecision; }
+  boolean eligibleForAutomaticStage() { return materialConsentAllowsAutomaticStage(); }
   boolean eligibleForAutomaticApply() { return !Boolean.TRUE.equals(securityDecision.get("blocksAutomaticApply")); }
   boolean dataMigrationAllowsAutomaticStage() { return dataMigration.get("blockReason") == null; }
+  boolean materialConsentAllowsAutomaticStage() { return permissionDeltaAllowsAutomaticStage() && apiStabilityAllowsAutomaticStage() && securityAdvisoriesAllowAutomaticStage(); }
+  boolean materialConsentBlocksAutomaticStage() { return !materialConsentAllowsAutomaticStage(); }
+  boolean permissionDeltaAllowsAutomaticStage() { return true; }
+  boolean apiStabilityAllowsAutomaticStage() {
+    Object statusValue = apiCompatibility.get("status");
+    return statusValue instanceof String status && ("compatible".equals(status) || "satisfied".equals(status));
+  }
+  boolean securityAdvisoriesAllowAutomaticStage() { String reason = "security_advisory"; return securityAdvisories.isEmpty(); }
   static Map<String, Object> reviewSummary(String status, String note) { return Map.of(); }
   static Map<String, Object> permissionDelta(List<String> candidatePermissions, List<String> local) { return Map.of(); }
 }
@@ -18177,6 +18482,7 @@ class AppUpdatePolicy {
         """
 class AppUpdateService {
   static final String ERROR_CHANNEL_POLICY_BLOCKED = "channel_policy_blocked";
+  static final String ERROR_CONSENT_REQUIRED = "consent_required";
   static final String ERROR_APP_SECURITY_ACKNOWLEDGEMENT_REQUIRED = "app_security_acknowledgement_required";
   static final String ERROR_APP_SECURITY_BLOCKED = "app_security_blocked";
   static final String ERROR_APP_SECURITY_DENYLISTED = "app_security_denylisted";
@@ -18302,6 +18608,9 @@ class AppUpdateService {
   String securityGateFailureCode(Map<String, Object> securityDecision) { return ERROR_APP_SECURITY_DENYLISTED; }
   void appendSecurityGateHistory(String appId, String action, AppUpdateCandidate candidate) {
     automaticSecurityGateFailureCode(candidate.securityDecision());
+  }
+  void appendMaterialConsentHistory(String appId, String action, AppUpdateCandidate candidate) {
+    appendHistory(appId, action, "failed", candidate.catalogId(), candidate.targetVersion(), ERROR_CONSENT_REQUIRED, "Policy skipped update because material consent is required.");
   }
 
   void closeMigrationScratch() {
@@ -18437,6 +18746,10 @@ class AppUpdateServiceTest {
 			  void check_whenApplyWhenStoppedPolicyMigrationDryRunFails_expectCandidateSummaryWithoutApply() {}
 			  void stage_whenMigrationBundleRequestsOptionalSandbox_expectDryRunAndStage() {}
 		  void check_whenApplyWhenStoppedPolicySandboxMigration_expectCandidateSummaryWithoutApply() {}
+		  void check_whenStagePolicyCandidateAddsPermission_expectConsentRequiredHistory() {}
+		  void check_whenStagePolicyCandidateHasSecurityAdvisory_expectConsentRequiredHistory() {}
+		  void check_whenStagePolicyMigrationRollbackIncompatible_expectCandidateRequiresOperatorReview() {}
+		  void previewForConsent_whenMigrationRollbackIncompatible_expectCandidateRequiresOperatorReview() {}
 		  void check_whenCatalogSecurityDecisionWarns_expectCandidateIncludesSecurityDecision() {}
 		  void stage_whenSecurityWarningIsNotAcknowledged_expectStableSecurityAckError() {}
 		  void stage_whenSecurityDecisionIsDenylisted_expectStableSecurityError() {}
@@ -19045,7 +19358,7 @@ class OperatorSupportRedactorTest {
     legacy_http_dir = workspace / "adapter-http-legacy-admin/src/main/java/network/crypta/clients/http"
     legacy_http_dir.mkdir(parents=True, exist_ok=True)
     (legacy_http_dir / "PlatformApiToadlet.java").write_text(
-        'final class PlatformApiToadlet { boolean requiresOperatorFormPassword() { return "backups".equals(pathSegments.get(2)) || "recovery".equals(pathSegments.get(1)); } String route = "operator/app-data/backups"; String method = "POST"; }\n',
+        'final class PlatformApiToadlet { boolean requiresOperatorFormPassword() { return "backups".equals(pathSegments.get(2)) || "recovery".equals(pathSegments.get(1)); } boolean requiresConsentFormPassword() { return "update-preview".equals(pathSegments.get(1)); } String route = "operator/app-data/backups"; String method = "POST"; }\n',
         encoding="utf-8",
     )
     legacy_http_test_dir = workspace / "src/test/java/network/crypta/clients/http"
@@ -19164,6 +19477,172 @@ Rollback does not roll back app data directories or app cache directories.
 """,
         encoding="utf-8",
     )
+    append_user_consent_self_test_workspace_markers(workspace)
+
+
+def append_user_consent_self_test_workspace_markers(workspace: Path) -> None:
+    consent_dir = workspace / "platform-api/src/main/java/network/crypta/platform/api/consent"
+    consent_dir.mkdir(parents=True, exist_ok=True)
+    (consent_dir / "ConsentModels.java").write_text(
+        """
+enum ConsentActionType { INSTALL_APP, UPDATE_APP, APP_SERVICE_GRANT, APP_DATA_MIGRATION }
+enum ConsentRiskLevel { NONE, LOW, MATERIAL, BLOCKING }
+enum ConsentDecisionStatus { APPROVED, REJECTED, DEFERRED, EXPIRED }
+record ConsentSnapshot() { String snapshotDigest() { return ConsentSnapshotDigest.digest(this); } Object toDigestJson; }
+final class ConsentSnapshotDigest { static String digest(Object snapshot) { return "sha256:preview"; } }
+record ConsentRequest() {}
+record ConsentDecision() {}
+record ConsentAuditEvent() { String materialRiskSummary = "redacted"; }
+interface ConsentAuditStore {}
+final class FileConsentAuditStore implements ConsentAuditStore {}
+final class ConsentPolicy {}
+final class ConsentService {
+  void buildInstallSnapshot() { installIdentitySection(); catalogTrustSection(); reviewSection();
+    securitySection(); permissionsSection(); apiStabilitySection(); appDataAndBackupSection();
+    serviceGrantPlaceholderSection(); }
+  void buildUpdateSnapshot() { permissionDeltaSection(); updateApiStabilitySection();
+    updateReviewSection(); updateCatalogSection(); updateSecuritySection(); updateMigrationSection();
+    updateBackupSection(); updateServiceGrantDeltaSection(); }
+  void buildServiceGrantSnapshot() { serviceGrantDependenciesSection(); }
+  void requireApprovedServiceGrantIfRequired() {}
+  void recordServiceGrantRejection() {}
+  void updatePreviewReadOnly(String appId) {}
+  void currentDigestCheck() { String stale = "stale_consent_snapshot"; current.snapshotDigest(); }
+  void consumeConsentRequest(String requestId) {}
+  String backup = "backup_before_update";
+  String migration = "app-data migration operatorReviewRequired migrationRisk";
+  String lifetime = "STORED_CONSENT_TTL MAX_STORED_REQUESTS MAX_STORED_DECISIONS";
+  String redaction = "ConsentRedactor.redact materialRiskSummary FileConsentAuditStore";
+}
+final class ConsentApiHandler {
+  // case "install-preview" case "catalog-update-preview" case "update-preview"
+  // case "service-grant-preview" case "approve" case "reject" case "audit"
+  void updatePreview() { consentService.updatePreview(appId, refreshCatalogs); }
+  String routes = "case \\"install-preview\\" case \\"catalog-update-preview\\" case \\"update-preview\\" "
+      + "case \\"service-grant-preview\\" case \\"approve\\" case \\"reject\\" case \\"audit\\"";
+}
+""",
+        encoding="utf-8",
+    )
+    router = workspace / "platform-api/src/main/java/network/crypta/platform/api/PlatformApiRouter.java"
+    router.write_text(
+        read_source(router) + '\ncase "consent" -> appRoutes.routeConsentRequest(segments, request);\n',
+        encoding="utf-8",
+    )
+    app_routes = workspace / "platform-api/src/main/java/network/crypta/platform/api/PlatformApiAppRoutes.java"
+    app_routes.parent.mkdir(parents=True, exist_ok=True)
+    app_routes.write_text(
+        read_source(app_routes) + "\nString consentRequestId = \"consentRequestId\";\n",
+        encoding="utf-8",
+    )
+    service_routes = (
+        workspace / "platform-api/src/main/java/network/crypta/platform/api/PlatformApiAppServiceRoutes.java"
+    )
+    service_routes.write_text(
+        read_source(service_routes)
+        + "\nconsentService.requireApprovedServiceGrantIfRequired(bundleId, params, principal); "
+        "consentService.recordServiceGrantRejection(bundleId, principal);\n",
+        encoding="utf-8",
+    )
+    candidate = (
+        workspace / "platform-api/src/main/java/network/crypta/platform/api/appupdates/AppUpdateCandidate.java"
+    )
+    candidate.write_text(
+        read_source(candidate)
+        + "\nboolean materialConsentAllowsAutomaticStage() { return permissionDeltaAllowsAutomaticStage() "
+        "&& apiStabilityAllowsAutomaticStage() && securityAdvisoriesAllowAutomaticStage() "
+        "&& dataMigrationAllowsAutomaticStage(); } "
+        "boolean permissionDeltaAllowsAutomaticStage(){return true;} "
+        "boolean apiStabilityAllowsAutomaticStage(){ Object statusValue = apiCompatibility.get(\"status\"); "
+        "return statusValue instanceof String status && (\"compatible\".equals(status) || \"satisfied\".equals(status)); } "
+        "boolean securityAdvisoriesAllowAutomaticStage(){ String reason = \"security_advisory\"; return securityAdvisories.isEmpty(); } "
+        "boolean dataMigrationAllowsAutomaticStage(){ String reason = \"app_data_migration\"; return true; } "
+        "String blocksAutoUpdate = \"blocksAutoUpdate\"; "
+        "String operatorReviewRequired = \"operatorReviewRequired\";\n",
+        encoding="utf-8",
+    )
+    update_service = (
+        workspace / "platform-api/src/main/java/network/crypta/platform/api/appupdates/AppUpdateService.java"
+    )
+    update_service.write_text(
+        read_source(update_service)
+        + "\npublic synchronized Map<String, Object> preview(String appId, boolean refreshCatalogs) { return summary(appId, installed); }\n"
+        "public synchronized Map<String, Object> previewForConsent(String appId, boolean refreshCatalogs) { return summary(appId, installed); }\n"
+        "AppUpdateCandidate candidateWithConsentMigrationPlan(String appId, Object installed, AppUpdateCandidate candidate) { return candidate; }\n",
+        encoding="utf-8",
+    )
+    shell = workspace / "platform-web-shell/src/main/resources/network/crypta/platform/webshell/static/web-shell.js"
+    shell.write_text(
+        read_source(shell)
+        + """
+function renderConsentPreview(preview, form) {}
+function renderConsentSection(section) {}
+function submitConsentDecision(preview, decision) {}
+const consentMarkers = "consent/install-preview consent/update-preview consent/service-grant-preview "
+  + "This approval is stale. Refresh the consent preview. consentRequestId snapshotDigest blocksAutoUpdate "
+  + "Consent previews unavailable in read-only mode.";
+""",
+        encoding="utf-8",
+    )
+    web_shell_test = (
+        workspace / "platform-web-shell/src/test/java/network/crypta/platform/webshell/WebShellResourcesTest.java"
+    )
+    web_shell_test.write_text(
+        read_source(web_shell_test) + "\nvoid assertConsentUxMarkersPresent() {}\n",
+        encoding="utf-8",
+    )
+    consent_test_dir = workspace / "platform-api/src/test/java/network/crypta/platform/api/consent"
+    consent_test_dir.mkdir(parents=True, exist_ok=True)
+    (consent_test_dir / "ConsentServiceTest.java").write_text(
+        """
+void installPreview_whenCatalogEntryHasMaterialMetadata_expectGroupedConsentSections() {}
+void installPreview_whenSecurityDecisionBlocksInstallOnly_expectBlockingRisk() {}
+void installPreview_whenReviewTrustBlocksInstallOnly_expectBlockingRisk() {}
+void requireApprovedUpdate_whenDigestMatches_expectMutationAcknowledgements() {}
+void requireApprovedUpdate_whenApprovalReused_expectConsentNotApproved() {}
+void requireApprovedUpdate_whenApprovalExpires_expectConsentNotApprovedAndExpiredAudit() {}
+void requireApprovedUpdate_whenCandidateDigestChanges_expectStaleApprovalRejected() {}
+void requireApprovedUpdate_whenMigrationRequiresReview_expectMutationAcknowledgement() {}
+void updatePreview_whenGetIncludesRefreshCatalogs_expectReadOnlyPreviewWithoutRefresh() {}
+void updatePreview_whenPostIncludesRefreshCatalogs_expectConsentPreviewRefresh() {}
+void serviceGrantPreview_whenBundleHasDependencies_expectGrantConsentSections() {}
+void auditEvent_whenRiskSummaryContainsSensitiveValues_expectRedactedJson() {}
+""",
+        encoding="utf-8",
+    )
+    candidate_test = (
+        workspace
+        / "platform-api/src/test/java/network/crypta/platform/api/appupdates/AppUpdateCandidateTest.java"
+    )
+    candidate_test.write_text(
+        "void toJsonValue_whenPermissionIsAdded_expectAutomaticUpdateBlockedByConsent() {}\n"
+        "void toJsonValue_whenApiCompatibilityStatusUnknown_expectAutomaticUpdateBlockedByConsent() {}\n"
+        "void toJsonValue_whenMigrationRequiresOperatorReview_expectAutomaticUpdateBlockedByConsent() {}\n"
+        "void toJsonValue_whenSecurityAdvisoryPresent_expectAutomaticUpdateBlockedByConsent() {}\n",
+        encoding="utf-8",
+    )
+    docs = workspace / "docs"
+    docs.mkdir(parents=True, exist_ok=True)
+    consent_doc_text = (
+        "app-platform.user-consent-flow install consent update consent permission delta API stability "
+        "review/trust service grants app-data migration backup security advisory auto-update audit "
+        "stale consent non-goals"
+    )
+    (docs / "user-consent-and-permission-upgrade-ux.md").write_text(consent_doc_text, encoding="utf-8")
+    for path in (
+        "app-platform-developer-portal.md",
+        "app-dev-cli.md",
+        "app-catalogs.md",
+        "app-service-discovery-and-grants.md",
+        "app-data-store.md",
+        "production-beta-release-pipeline.md",
+        "release-certification.md",
+    ):
+        target = docs / path
+        target.write_text(read_source(target) + "\n" + consent_doc_text + "\n", encoding="utf-8")
+    readme = workspace / "tools/release-certification/README.md"
+    readme.parent.mkdir(parents=True, exist_ok=True)
+    readme.write_text(read_source(readme) + "\napp-platform.user-consent-flow\n", encoding="utf-8")
 
 
 def fake_cli_python_source() -> str:

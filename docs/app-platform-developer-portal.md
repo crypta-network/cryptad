@@ -35,6 +35,7 @@ Use this portal first, then follow the detailed source-of-truth pages for the ar
 | AppVault secret and identity material | [app-secret-and-identity-vault.md](app-secret-and-identity-vault.md) |
 | AppHost runtime hardening | [apphost-runtime-hardening.md](apphost-runtime-hardening.md) |
 | App update lifecycle and rollback | [app-update-lifecycle.md](app-update-lifecycle.md) |
+| User consent and permission upgrade UX | [user-consent-and-permission-upgrade-ux.md](user-consent-and-permission-upgrade-ux.md) |
 | App upgrade data migrations | [app-upgrade-data-migrations.md](app-upgrade-data-migrations.md) |
 | App-data backup, restore, and portability | [app-data-backup-restore-portability.md](app-data-backup-restore-portability.md) |
 | App review governance | [app-review-governance.md](app-review-governance.md) |
@@ -151,6 +152,7 @@ Public beta readiness treats these workstreams as one ecosystem beta release sto
 | Network-scale budgets and soak | [network-scale-soak-and-subscription-budget.md](network-scale-soak-and-subscription-budget.md), [release-certification.md](release-certification.md), `network-scale.*` evidence, `network-scale-soak-and-subscription-budget` matrix row |
 | Review governance | [app-review-governance.md](app-review-governance.md), `review receipt`, `reviewer key lifecycle`, `transparency log` evidence |
 | Updates, migrations, and rollback | [app-update-lifecycle.md](app-update-lifecycle.md), [app-upgrade-data-migrations.md](app-upgrade-data-migrations.md), `app-update.scheduler`, `app-update.rollback`, `app-update.data-migration-contract` evidence |
+| User consent | [user-consent-and-permission-upgrade-ux.md](user-consent-and-permission-upgrade-ux.md), `app-platform.user-consent-flow` evidence |
 | Public beta hardening | [app-platform-beta-known-limitations.md](app-platform-beta-known-limitations.md), `public-beta-security.*` evidence |
 | Legacy plugin freeze and migration | [legacy-plugin-freeze-policy.md](legacy-plugin-freeze-policy.md), [legacy-plugin-migration-guide.md](legacy-plugin-migration-guide.md), `legacy-plugin.freeze-policy`, `legacy-plugin.migration-guide`, `legacy-plugin.social-inbox-spike` |
 | Legacy admin status | [legacy-retirement-plan.md](legacy-retirement-plan.md), `legacy-admin.removal-wave-1`, `legacy-admin.removal-wave-2`, `legacy-admin.removal-wave-3`, `legacy-admin.removal-wave-4`; FProxy browse/content rendering, content filter, startup wizard, and security recovery remain retained or pending |

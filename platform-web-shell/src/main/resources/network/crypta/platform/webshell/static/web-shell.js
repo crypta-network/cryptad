@@ -1834,6 +1834,36 @@
       : null;
   }
 
+  function consentInstallPreviewPath(catalogId, appId) {
+    return typeof catalogId === "string" &&
+      catalogId.length > 0 &&
+      typeof appId === "string" &&
+      appId.length > 0
+      ? `consent/install-preview?catalogId=${encodeURIComponent(catalogId)}&appId=${encodeURIComponent(appId)}`
+      : null;
+  }
+
+  function consentCatalogUpdatePreviewPath(catalogId, appId) {
+    return typeof catalogId === "string" &&
+      catalogId.length > 0 &&
+      typeof appId === "string" &&
+      appId.length > 0
+      ? `consent/catalog-update-preview?catalogId=${encodeURIComponent(catalogId)}&appId=${encodeURIComponent(appId)}`
+      : null;
+  }
+
+  function consentUpdatePreviewPath(appId) {
+    return typeof appId === "string" && appId.length > 0
+      ? "consent/update-preview"
+      : null;
+  }
+
+  function consentServiceGrantPreviewPath(bundleId) {
+    return typeof bundleId === "string" && bundleId.length > 0
+      ? `consent/service-grant-preview?bundleId=${encodeURIComponent(bundleId)}`
+      : null;
+  }
+
   function appUiHref(app) {
     const isolatedFallbackHref = isolatedAppUiFallbackHref(app);
     if (isolatedFallbackHref || isolatedAppUiActive(app)) {
@@ -2314,19 +2344,6 @@
       submit.disabled = true;
       submit.title = disabledReason;
     }
-    if (action === "stage") {
-      appendReviewAcknowledgement(form, updateReviewTrustForAction(appUpdateState(app), action), action);
-      appendSecurityAcknowledgement(
-        form,
-        securityDecisionForUpdateAction(appUpdateState(app), action),
-        action,
-      );
-      appendMigrationAcknowledgement(
-        form,
-        updateDataMigrationForAction(appUpdateState(app), action),
-        action,
-      );
-    }
     form.append(submit);
     return form;
   }
@@ -2360,8 +2377,6 @@
       submit.title = disabledReason;
       form.dataset.disabledReason = disabledReason;
     }
-    appendReviewAcknowledgement(form, reviewTrust, action);
-    appendSecurityAcknowledgement(form, securityDecision, action);
     form.append(submit);
     return form;
   }
@@ -2414,6 +2429,197 @@
     submit.textContent = "Grant";
     form.append(submit);
     return form;
+  }
+
+  function consentPreviewPathForForm(form, action) {
+    if (form.dataset.catalogAction === "install") {
+      return consentInstallPreviewPath(form.dataset.catalogId || "", form.dataset.catalogAppId || "");
+    }
+    if (form.dataset.catalogAction === "update") {
+      return consentCatalogUpdatePreviewPath(form.dataset.catalogId || "", form.dataset.catalogAppId || "");
+    }
+    if (form.dataset.appUpdateAction === "stage") {
+      return consentUpdatePreviewPath(form.dataset.appId || "");
+    }
+    if (
+      form.dataset.appServiceBundleAction === "approve" ||
+      form.dataset.appServiceBundleAction === "renew"
+    ) {
+      return consentServiceGrantPreviewPath(form.dataset.bundleId || "");
+    }
+    return null;
+  }
+
+  async function loadConsentPreviewForForm(form, action) {
+    const path = consentPreviewPathForForm(form, action);
+    if (!path) {
+      return null;
+    }
+    if (form.dataset.appUpdateAction === "stage") {
+      const formData = new FormData();
+      formData.set("appId", form.dataset.appId || "");
+      const response = await postForm(
+        path,
+        formData,
+        "Consent previews unavailable in read-only mode.",
+      );
+      return recordValue(response.consent || response);
+    }
+    const response = await loadJson(apiUrl(path));
+    return recordValue(response.consent || response);
+  }
+
+  async function ensureConsentApprovedForForm(form, action) {
+    if (form.dataset.consentApproved === "true") {
+      return true;
+    }
+    const preview = await loadConsentPreviewForForm(form, action);
+    if (!preview || preview.requiresApproval !== true) {
+      return true;
+    }
+    renderConsentPreview(preview, form);
+    setAppsStatus("Review the consent preview before continuing.", "is-warning");
+    return false;
+  }
+
+  function renderConsentPreview(preview, form) {
+    clearConsentPreview(form);
+    const card = document.createElement("div");
+    card.className = "consent-preview";
+    card.setAttribute("role", "group");
+    card.setAttribute("aria-label", "Consent preview");
+    card.append(
+      text("h4", "", "Consent preview"),
+      definitionList([
+        ["Action", normalizedStatus(preview.action)],
+        ["Risk level", normalizedStatus(preview.riskLevel)],
+        ["Blocks auto-update", preview.blocksAutoUpdate === true ? "Yes" : "No"],
+        ["Snapshot digest", scalar(preview.snapshotDigest)],
+      ]),
+    );
+    const reasons = stringList(preview.blockingReasons);
+    if (reasons.length) {
+      card.append(text("p", "consent-risk-summary", reasons.map(normalizedStatus).join(", ")));
+    }
+    const sectionList = document.createElement("div");
+    sectionList.className = "consent-section-list";
+    arrayValue(preview.sections).forEach((section) => {
+      sectionList.append(renderConsentSection(section));
+    });
+    card.append(sectionList, consentPreviewActions(preview, form));
+    form.after(card);
+  }
+
+  function renderConsentSection(section) {
+    const item = recordValue(section);
+    const node = document.createElement("section");
+    node.className = "consent-section";
+    const heading = document.createElement("div");
+    heading.className = "consent-section-heading";
+    heading.append(
+      text("h5", "", item.title || normalizedStatus(item.id)),
+      createPill(normalizedStatus(item.riskLevel), consentRiskTone(item.riskLevel)),
+    );
+    const list = document.createElement("ul");
+    list.className = "consent-finding-list";
+    arrayValue(item.items).forEach((finding) => {
+      list.append(renderConsentFinding(finding));
+    });
+    node.append(heading, list);
+    return node;
+  }
+
+  function renderConsentFinding(finding) {
+    const item = recordValue(finding);
+    const row = document.createElement("li");
+    row.className = "consent-finding";
+    row.append(
+      text("span", "consent-finding-label", scalar(item.label)),
+      text("span", "consent-finding-summary", scalar(item.summary)),
+      createPill(normalizedStatus(item.change || item.riskLevel), consentRiskTone(item.riskLevel)),
+    );
+    return row;
+  }
+
+  function consentPreviewActions(preview, form) {
+    const actions = document.createElement("div");
+    actions.className = "consent-actions";
+    const approve = document.createElement("button");
+    approve.className = "button button-primary";
+    approve.type = "button";
+    approve.textContent = "Approve";
+    approve.addEventListener("click", async () => {
+      try {
+        await submitConsentDecision(preview, "approve");
+        appendConsentSnapshotFields(form, preview);
+        form.dataset.consentApproved = "true";
+        clearConsentPreview(form);
+        setAppsStatus("Consent approved. Continuing action.", "is-success");
+        form.requestSubmit();
+      } catch (error) {
+        setAppsStatus(consentStaleErrorMessage(error), "is-error");
+      }
+    });
+    const reject = document.createElement("button");
+    reject.className = "button button-secondary";
+    reject.type = "button";
+    reject.textContent = "Reject";
+    reject.addEventListener("click", async () => {
+      try {
+        await submitConsentDecision(preview, "reject");
+        clearConsentPreview(form);
+        setAppsStatus("Consent rejected. No app-platform mutation was applied.", "is-warning");
+        await loadAppsSection();
+      } catch (error) {
+        setAppsStatus(consentStaleErrorMessage(error), "is-error");
+      }
+    });
+    actions.append(approve, reject);
+    return actions;
+  }
+
+  async function submitConsentDecision(preview, decision) {
+    const formData = new FormData();
+    formData.set("consentRequestId", scalar(preview.consentRequestId));
+    formData.set("snapshotDigest", scalar(preview.snapshotDigest));
+    await postForm(`consent/${decision}`, formData, "Consent decisions unavailable in read-only mode.");
+  }
+
+  function appendConsentSnapshotFields(form, preview) {
+    removeNamedFields(form, "consentRequestId");
+    removeNamedFields(form, "snapshotDigest");
+    appendHiddenField(form, "consentRequestId", scalar(preview.consentRequestId));
+    appendHiddenField(form, "snapshotDigest", scalar(preview.snapshotDigest));
+  }
+
+  function clearConsentPreview(form) {
+    const existing = form.nextElementSibling;
+    if (existing && existing.classList.contains("consent-preview")) {
+      existing.remove();
+    }
+  }
+
+  function removeNamedFields(form, name) {
+    form.querySelectorAll(`input[name="${name}"]`).forEach((node) => node.remove());
+  }
+
+  function consentRiskTone(riskLevel) {
+    const risk = typeof riskLevel === "string" ? riskLevel : "";
+    if (risk === "blocking") {
+      return "is-error";
+    }
+    if (risk === "material") {
+      return "is-warning";
+    }
+    return "is-success";
+  }
+
+  function consentStaleErrorMessage(error) {
+    return error && error.apiErrorCode === "stale_consent_snapshot"
+      ? "This approval is stale. Refresh the consent preview."
+      : error instanceof Error
+        ? error.message
+        : String(error);
   }
 
   function buildIdentityVaultRevokeForm(grant) {
@@ -6573,12 +6779,16 @@
     }
 
     try {
+      if (action === "stage" && !(await ensureConsentApprovedForForm(form, action))) {
+        return;
+      }
       const data = await postForm(path, new FormData(form), "App update actions unavailable in read-only mode.");
       const operation = data.operation || `update_${action}`;
       setAppsStatus(`${appName} update action completed: ${operation.replaceAll("_", " ")}.`, "is-success");
       await loadAppsSection();
     } catch (error) {
-      setAppsStatus(error instanceof Error ? error.message : String(error), "is-error");
+      form.dataset.consentApproved = "false";
+      setAppsStatus(consentStaleErrorMessage(error), "is-error");
       await loadAppsSection();
     }
   }
@@ -6623,12 +6833,16 @@
       if (action === "remove") {
         await deleteForm(path, new FormData(form), "Catalog actions unavailable in read-only mode.");
       } else {
+        if ((action === "install" || action === "update") && !(await ensureConsentApprovedForForm(form, action))) {
+          return;
+        }
         await postForm(path, new FormData(form), "Catalog actions unavailable in read-only mode.");
       }
       setAppsStatus(`Catalog action completed: ${action}.`, "is-success");
       await loadAppsSection();
     } catch (error) {
-      setAppsStatus(error instanceof Error ? error.message : String(error), "is-error");
+      form.dataset.consentApproved = "false";
+      setAppsStatus(consentStaleErrorMessage(error), "is-error");
     }
   }
 
@@ -6682,11 +6896,18 @@
       return;
     }
     try {
+      if (
+        (action === "approve" || action === "renew") &&
+        !(await ensureConsentApprovedForForm(form, action))
+      ) {
+        return;
+      }
       await postForm(path, new FormData(form), "App-service grant-bundle actions unavailable in read-only mode.");
       setAppsStatus(`App-service grant bundle ${action} completed.`, "is-success");
       await loadAppsSection();
     } catch (error) {
-      setAppsStatus(error instanceof Error ? error.message : String(error), "is-error");
+      form.dataset.consentApproved = "false";
+      setAppsStatus(consentStaleErrorMessage(error), "is-error");
     }
   }
 

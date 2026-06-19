@@ -128,6 +128,7 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -2400,23 +2401,51 @@ class PlatformApiRouterTest {
     AppCatalogManager catalogManager = mock(AppCatalogManager.class);
     PlatformApiRouter updateRouter = new PlatformApiRouter(runtimePorts, appHost, catalogManager);
     AppCatalogEntry entry = catalogEntry("9.9.9");
+    Path previewScratchDir = tempDir.resolve("app-update-stage-preview-scratch");
+    Path verificationScratchDir = tempDir.resolve("app-update-stage-verification-scratch");
     Path scratchDir = tempDir.resolve("app-update-stage-scratch");
+    AppCatalogInstallPlan previewPlan = catalogInstallPlan(entry, previewScratchDir);
+    AppCatalogInstallPlan verificationPlan = catalogInstallPlan(entry, verificationScratchDir);
     AppCatalogInstallPlan plan = catalogInstallPlan(entry, scratchDir);
     when(appHost.describe(APP_ID)).thenReturn(Optional.of(installedSnapshot()));
     when(appHost.status(APP_ID)).thenReturn(Optional.empty());
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalogSourceSnapshot()));
     when(catalogManager.listApps("core")).thenReturn(List.of(entry));
-    when(catalogManager.prepareInstallPlan("core", APP_ID)).thenReturn(plan);
+    when(catalogManager.prepareInstallPlan("core", APP_ID))
+        .thenReturn(previewPlan, verificationPlan, plan);
+    Map<String, List<String>> approvalParams = approveUpdateConsent(updateRouter);
 
     PlatformApiResponse response =
-        updateRouter.route(request("POST", List.of("apps", APP_ID, "updates", "stage"), Map.of()));
+        updateRouter.route(
+            request("POST", List.of("apps", APP_ID, "updates", "stage"), approvalParams));
 
     assertEquals(200, response.statusCode());
     assertTrue(response.body().contains("\"status\":\"staged\""));
     assertTrue(response.body().contains("\"targetVersion\":\"9.9.9\""));
     assertFalse(response.body().contains(tempDir.toString()));
     //noinspection resource
-    verify(catalogManager).prepareInstallPlan("core", APP_ID);
+    verify(catalogManager, times(3)).prepareInstallPlan("core", APP_ID);
+  }
+
+  @Test
+  void route_whenAppUpdateStageRequestedWithoutUpdate_expectUpdateNotAvailableNotConsentRequired()
+      throws Exception {
+    AppCatalogManager catalogManager = mock(AppCatalogManager.class);
+    PlatformApiRouter updateRouter = new PlatformApiRouter(runtimePorts, appHost, catalogManager);
+    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installedSnapshot()));
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalogSourceSnapshot()));
+    when(catalogManager.listApps("core")).thenReturn(List.of());
+
+    PlatformApiResponse response =
+        updateRouter.route(request("POST", List.of("apps", APP_ID, "updates", "stage"), Map.of()));
+
+    assertEquals(409, response.statusCode());
+    assertEquals("Conflict", response.reasonPhrase());
+    assertTrue(response.body().contains("\"code\":\"update_not_available\""));
+    assertFalse(response.body().contains("consent_required"));
+    //noinspection resource
+    verify(catalogManager, never()).prepareInstallPlan(any(), any());
   }
 
   @Test
@@ -2435,20 +2464,30 @@ class PlatformApiRouterTest {
             AppUiOriginRegistry.sameOriginOnly(),
             PlatformApiSharedAppServices.of(null, updateService, null, appDataService));
     AppCatalogEntry entry = catalogEntry("9.9.9");
-    Path scratchDir = tempDir.resolve("app-update-stage-migration-scratch");
-    AppCatalogInstallPlan plan = catalogInstallPlanWithUiStateMigration(entry, scratchDir);
+    AppCatalogInstallPlan previewPlan =
+        catalogInstallPlanWithUiStateMigration(
+            entry, tempDir.resolve("app-update-stage-migration-preview-scratch"));
+    AppCatalogInstallPlan verificationPlan =
+        catalogInstallPlanWithUiStateMigration(
+            entry, tempDir.resolve("app-update-stage-migration-verify-scratch"));
+    AppCatalogInstallPlan stagePlan =
+        catalogInstallPlanWithUiStateMigration(
+            entry, tempDir.resolve("app-update-stage-migration-scratch"));
     when(appHost.describe(APP_ID)).thenReturn(Optional.of(installedSnapshot()));
     when(appHost.status(APP_ID)).thenReturn(Optional.empty());
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalogSourceSnapshot()));
     when(catalogManager.listApps("core")).thenReturn(List.of(entry));
-    when(catalogManager.prepareInstallPlan("core", APP_ID)).thenReturn(plan);
+    when(catalogManager.prepareInstallPlan("core", APP_ID))
+        .thenReturn(previewPlan, verificationPlan, stagePlan);
+    PlatformApiResponse preview =
+        updateRouter.route(
+            request(
+                "POST", List.of("consent", "update-preview"), Map.of("appId", List.of(APP_ID))));
+    Map<String, List<String>> approvalParams = approveConsent(updateRouter, preview);
 
     PlatformApiResponse response =
         updateRouter.route(
-            request(
-                "POST",
-                List.of("apps", APP_ID, "updates", "stage"),
-                Map.of("migrationAcknowledged", List.of("true"))));
+            request("POST", List.of("apps", APP_ID, "updates", "stage"), approvalParams));
 
     assertEquals(200, response.statusCode());
     assertTrue(response.body().contains("\"status\":\"staged\""));
@@ -2464,17 +2503,23 @@ class PlatformApiRouterTest {
     AppCatalogManager catalogManager = mock(AppCatalogManager.class);
     PlatformApiRouter updateRouter = routerWithVault(catalogManager);
     AppCatalogEntry entry = catalogEntry("9.9.9");
+    AppCatalogInstallPlan previewPlan =
+        catalogInstallPlan(entry, tempDir.resolve("app-update-uninstall-preview-scratch"));
+    AppCatalogInstallPlan verificationPlan =
+        catalogInstallPlan(entry, tempDir.resolve("app-update-uninstall-verification-scratch"));
     Path scratchDir = tempDir.resolve("app-update-uninstall-stage-scratch");
     try (AppCatalogInstallPlan plan = catalogInstallPlan(entry, scratchDir)) {
       when(appHost.describe(APP_ID)).thenReturn(Optional.of(installedSnapshot()));
       when(appHost.status(APP_ID)).thenReturn(Optional.empty());
       when(catalogManager.listCatalogs()).thenReturn(List.of(catalogSourceSnapshot()));
       when(catalogManager.listApps("core")).thenReturn(List.of(entry));
-      when(catalogManager.prepareInstallPlan("core", APP_ID)).thenReturn(plan);
+      when(catalogManager.prepareInstallPlan("core", APP_ID))
+          .thenReturn(previewPlan, verificationPlan, plan);
+      Map<String, List<String>> approvalParams = approveUpdateConsent(updateRouter);
 
       PlatformApiResponse stageResponse =
           updateRouter.route(
-              request("POST", List.of("apps", APP_ID, "updates", "stage"), Map.of()));
+              request("POST", List.of("apps", APP_ID, "updates", "stage"), approvalParams));
       PlatformApiResponse uninstallResponse =
           updateRouter.route(request("DELETE", List.of("apps", APP_ID), Map.of()));
       PlatformApiResponse summaryResponse =
@@ -2542,9 +2587,17 @@ class PlatformApiRouterTest {
             AppUiOriginRegistry.sameOriginOnly(),
             vaultService);
     AppCatalogEntry entry = catalogEntry("9.9.9");
+    AppCatalogInstallPlan previewPlan =
+        catalogInstallPlan(entry, tempDir.resolve("app-update-uninstall-vault-cleanup-preview"));
+    AppCatalogInstallPlan verificationPlan =
+        catalogInstallPlan(
+            entry, tempDir.resolve("app-update-uninstall-vault-cleanup-verification"));
     Path scratchDir = tempDir.resolve("app-update-uninstall-vault-cleanup-stage-scratch");
     try (AppCatalogInstallPlan plan = catalogInstallPlan(entry, scratchDir)) {
       when(appHost.describe(APP_ID))
+          .thenReturn(Optional.of(installedSnapshot()))
+          .thenReturn(Optional.of(installedSnapshot()))
+          .thenReturn(Optional.of(installedSnapshot()))
           .thenReturn(Optional.of(installedSnapshot()))
           .thenReturn(Optional.of(installedSnapshot()))
           .thenReturn(Optional.empty())
@@ -2552,11 +2605,13 @@ class PlatformApiRouterTest {
       when(appHost.status(APP_ID)).thenReturn(Optional.empty());
       when(catalogManager.listCatalogs()).thenReturn(List.of(catalogSourceSnapshot()));
       when(catalogManager.listApps("core")).thenReturn(List.of(entry));
-      when(catalogManager.prepareInstallPlan("core", APP_ID)).thenReturn(plan);
+      when(catalogManager.prepareInstallPlan("core", APP_ID))
+          .thenReturn(previewPlan, verificationPlan, plan);
+      Map<String, List<String>> approvalParams = approveUpdateConsent(updateRouter);
 
       PlatformApiResponse stageResponse =
           updateRouter.route(
-              request("POST", List.of("apps", APP_ID, "updates", "stage"), Map.of()));
+              request("POST", List.of("apps", APP_ID, "updates", "stage"), approvalParams));
       PlatformApiResponse uninstallResponse =
           updateRouter.route(request("DELETE", List.of("apps", APP_ID), Map.of()));
       PlatformApiResponse summaryResponse =
@@ -2597,17 +2652,24 @@ class PlatformApiRouterTest {
             AppUiOriginRegistry.sameOriginOnly(),
             vaultService);
     AppCatalogEntry entry = catalogEntry("9.9.9");
+    AppCatalogInstallPlan previewPlan =
+        catalogInstallPlan(entry, tempDir.resolve("app-update-uninstall-vault-preblock-preview"));
+    AppCatalogInstallPlan verificationPlan =
+        catalogInstallPlan(
+            entry, tempDir.resolve("app-update-uninstall-vault-preblock-verification"));
     Path scratchDir = tempDir.resolve("app-update-uninstall-vault-preblock-stage-scratch");
     try (AppCatalogInstallPlan plan = catalogInstallPlan(entry, scratchDir)) {
       when(appHost.describe(APP_ID)).thenReturn(Optional.of(installedSnapshot()));
       when(appHost.status(APP_ID)).thenReturn(Optional.empty());
       when(catalogManager.listCatalogs()).thenReturn(List.of(catalogSourceSnapshot()));
       when(catalogManager.listApps("core")).thenReturn(List.of(entry));
-      when(catalogManager.prepareInstallPlan("core", APP_ID)).thenReturn(plan);
+      when(catalogManager.prepareInstallPlan("core", APP_ID))
+          .thenReturn(previewPlan, verificationPlan, plan);
+      Map<String, List<String>> approvalParams = approveUpdateConsent(updateRouter);
 
       PlatformApiResponse stageResponse =
           updateRouter.route(
-              request("POST", List.of("apps", APP_ID, "updates", "stage"), Map.of()));
+              request("POST", List.of("apps", APP_ID, "updates", "stage"), approvalParams));
       Path accessBlocksRoot = vaultRoot.resolve("app-access-blocks");
       Files.delete(accessBlocksRoot);
       Files.writeString(accessBlocksRoot, "not-a-directory");
@@ -2631,19 +2693,27 @@ class PlatformApiRouterTest {
     AppCatalogManager catalogManager = mock(AppCatalogManager.class);
     PlatformApiRouter updateRouter = new PlatformApiRouter(runtimePorts, appHost, catalogManager);
     AppCatalogEntry entry = catalogEntry("9.9.9");
+    Path previewScratchDir = tempDir.resolve("app-update-apply-preview-scratch");
+    Path verificationScratchDir = tempDir.resolve("app-update-apply-verification-scratch");
     Path scratchDir = tempDir.resolve("app-update-apply-scratch");
+    AppCatalogInstallPlan previewPlan = catalogInstallPlan(entry, previewScratchDir);
+    AppCatalogInstallPlan verificationPlan = catalogInstallPlan(entry, verificationScratchDir);
     AppCatalogInstallPlan plan = catalogInstallPlan(entry, scratchDir);
     Path stagedDir = plan.stagedBundleDirectory();
     when(appHost.describe(APP_ID)).thenReturn(Optional.of(installedSnapshot()));
     when(appHost.status(APP_ID))
         .thenReturn(Optional.empty())
         .thenReturn(Optional.empty())
+        .thenReturn(Optional.empty())
         .thenReturn(Optional.of(runningSnapshot()));
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalogSourceSnapshot()));
     when(catalogManager.listApps("core")).thenReturn(List.of(entry));
-    when(catalogManager.prepareInstallPlan("core", APP_ID)).thenReturn(plan);
+    when(catalogManager.prepareInstallPlan("core", APP_ID))
+        .thenReturn(previewPlan, verificationPlan, plan);
+    Map<String, List<String>> approvalParams = approveUpdateConsent(updateRouter);
     PlatformApiResponse stageResponse =
-        updateRouter.route(request("POST", List.of("apps", APP_ID, "updates", "stage"), Map.of()));
+        updateRouter.route(
+            request("POST", List.of("apps", APP_ID, "updates", "stage"), approvalParams));
 
     PlatformApiResponse response =
         updateRouter.route(request("POST", List.of("apps", APP_ID, "updates", "apply"), Map.of()));
@@ -3577,18 +3647,78 @@ class PlatformApiRouterTest {
     when(catalogManager.getApp("core", APP_ID)).thenReturn(catalogEntry(APP_VERSION));
     when(appHost.describe(APP_ID)).thenReturn(Optional.empty());
     when(catalogManager.prepareInstallPlan("core", APP_ID)).thenReturn(plan);
+    when(plan.catalogId()).thenReturn("core");
     when(plan.entry()).thenReturn(catalogEntry(APP_VERSION));
     when(plan.stagedBundleDirectory()).thenReturn(stagedDir);
     when(appHost.installFromDirectory(stagedDir)).thenReturn(installed);
     doThrow(new IOException("cleanup failed")).when(plan).close();
 
+    Map<String, List<String>> approvalParams = approveCatalogInstallConsent(catalogRouter);
+
     PlatformApiResponse response =
         catalogRouter.route(
-            request("POST", List.of("app-catalogs", "core", "apps", APP_ID, "install"), Map.of()));
+            request(
+                "POST",
+                List.of("app-catalogs", "core", "apps", APP_ID, "install"),
+                approvalParams));
 
     assertEquals(201, response.statusCode());
     assertEquals(
         PlatformApiJsonWriter.write(Map.of("app", catalogSummary(APP_VERSION))), response.body());
+  }
+
+  @Test
+  void route_whenCatalogInstallConsentApproved_expectInstallUsesInstallSnapshot() throws Exception {
+    AppCatalogManager catalogManager = mock(AppCatalogManager.class);
+    PlatformApiRouter catalogRouter = new PlatformApiRouter(runtimePorts, appHost, catalogManager);
+    AppCatalogEntry entry = catalogEntry(APP_VERSION);
+    AppCatalogInstallPlan plan =
+        catalogInstallPlan(entry, tempDir.resolve("catalog-consent-install-stage"));
+    when(catalogManager.getApp("core", APP_ID)).thenReturn(entry);
+    when(appHost.describe(APP_ID)).thenReturn(Optional.empty());
+    when(catalogManager.prepareInstallPlan("core", APP_ID)).thenReturn(plan);
+    when(appHost.installFromDirectory(plan.stagedBundleDirectory()))
+        .thenReturn(installedSnapshot());
+    PlatformApiResponse preview =
+        catalogRouter.route(
+            request(
+                "GET",
+                List.of("consent", "install-preview"),
+                Map.of("catalogId", List.of("core"), "appId", List.of(APP_ID))));
+    Map<String, List<String>> approvalParams = approveConsent(catalogRouter, preview);
+
+    PlatformApiResponse response =
+        catalogRouter.route(
+            request(
+                "POST",
+                List.of("app-catalogs", "core", "apps", APP_ID, "install"),
+                approvalParams));
+
+    assertEquals(201, response.statusCode());
+    assertEquals(
+        PlatformApiJsonWriter.write(Map.of("app", catalogSummary(APP_VERSION))), response.body());
+  }
+
+  @Test
+  void route_whenCatalogInstallRepeatedWithoutConsent_expectConflictBeforeConsent()
+      throws Exception {
+    AppCatalogManager catalogManager = mock(AppCatalogManager.class);
+    PlatformApiRouter catalogRouter = new PlatformApiRouter(runtimePorts, appHost, catalogManager);
+    when(catalogManager.getApp("core", APP_ID)).thenReturn(catalogEntry(APP_VERSION));
+    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installedSnapshot()));
+
+    PlatformApiResponse response =
+        catalogRouter.route(
+            request("POST", List.of("app-catalogs", "core", "apps", APP_ID, "install"), Map.of()));
+
+    assertEquals(409, response.statusCode());
+    assertEquals(
+        "{\"error\":{\"code\":\"app_conflict\",\"message\":\"app already installed: alpha\"}}",
+        response.body());
+    assertFalse(response.body().contains("consent_required"));
+    //noinspection resource
+    verify(catalogManager, never()).prepareInstallPlan(any(), any());
+    verify(appHost, never()).installFromDirectory(any());
   }
 
   @Test
@@ -3598,9 +3728,14 @@ class PlatformApiRouterTest {
     when(catalogManager.getApp("core", APP_ID)).thenReturn(catalogEntry(APP_VERSION));
     when(appHost.describe(APP_ID)).thenReturn(Optional.of(installedSnapshot()));
 
+    Map<String, List<String>> approvalParams = approveCatalogInstallConsent(catalogRouter);
+
     PlatformApiResponse response =
         catalogRouter.route(
-            request("POST", List.of("app-catalogs", "core", "apps", APP_ID, "install"), Map.of()));
+            request(
+                "POST",
+                List.of("app-catalogs", "core", "apps", APP_ID, "install"),
+                approvalParams));
 
     assertEquals(409, response.statusCode());
     assertEquals(
@@ -3620,6 +3755,7 @@ class PlatformApiRouterTest {
     when(catalogManager.getApp("core", APP_ID)).thenReturn(catalogEntry(APP_VERSION));
     when(appHost.describe(APP_ID)).thenReturn(Optional.empty());
     when(catalogManager.prepareInstallPlan("core", APP_ID)).thenReturn(plan);
+    when(plan.catalogId()).thenReturn("core");
     when(plan.entry()).thenReturn(catalogEntry(APP_VERSION));
     when(plan.stagedBundleDirectory()).thenReturn(stagedDir);
     when(appHost.installFromDirectory(stagedDir))
@@ -3627,9 +3763,14 @@ class PlatformApiRouterTest {
             new AppHostException(
                 "app.ui.entry does not resolve to a file in copied bundle: static/index.html"));
 
+    Map<String, List<String>> approvalParams = approveCatalogInstallConsent(catalogRouter);
+
     PlatformApiResponse response =
         catalogRouter.route(
-            request("POST", List.of("app-catalogs", "core", "apps", APP_ID, "install"), Map.of()));
+            request(
+                "POST",
+                List.of("app-catalogs", "core", "apps", APP_ID, "install"),
+                approvalParams));
 
     assertEquals(400, response.statusCode());
     assertEquals(
@@ -3650,14 +3791,18 @@ class PlatformApiRouterTest {
     when(appHost.status(APP_ID)).thenReturn(Optional.empty());
     when(appHost.describe(APP_ID)).thenReturn(Optional.of(installedSnapshot()));
     when(catalogManager.prepareInstallPlan("core", APP_ID)).thenReturn(plan);
+    when(plan.catalogId()).thenReturn("core");
     when(plan.entry()).thenReturn(catalogEntry("9.9.9"));
     when(plan.stagedBundleDirectory()).thenReturn(stagedDir);
     when(appHost.updateFromDirectory(APP_ID, stagedDir)).thenReturn(updated);
     doThrow(new IOException("cleanup failed")).when(plan).close();
 
+    Map<String, List<String>> approvalParams = approveCatalogUpdateConsent(catalogRouter);
+
     PlatformApiResponse response =
         catalogRouter.route(
-            request("POST", List.of("app-catalogs", "core", "apps", APP_ID, "update"), Map.of()));
+            request(
+                "POST", List.of("app-catalogs", "core", "apps", APP_ID, "update"), approvalParams));
 
     assertEquals(200, response.statusCode());
     assertEquals(
@@ -3665,7 +3810,74 @@ class PlatformApiRouterTest {
   }
 
   @Test
-  void route_whenCatalogUpdateTargetMissing_expectNotFoundWithoutPreparingPlan() throws Exception {
+  void route_whenCatalogUpdateConsentApproved_expectUpdateUsesCatalogUpdateSnapshot()
+      throws Exception {
+    AppCatalogManager catalogManager = mock(AppCatalogManager.class);
+    PlatformApiRouter catalogRouter = new PlatformApiRouter(runtimePorts, appHost, catalogManager);
+    AppCatalogEntry entry = catalogEntry("9.9.9");
+    AppCatalogInstallPlan plan =
+        catalogInstallPlan(entry, tempDir.resolve("catalog-consent-update-stage"));
+    InstalledAppSnapshot updated = installedSnapshot(APP_ID, APP_NAME, "9.9.9", APP_UI_ENTRY);
+    when(catalogManager.getApp("core", APP_ID)).thenReturn(entry);
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installedSnapshot()));
+    when(catalogManager.prepareInstallPlan("core", APP_ID)).thenReturn(plan);
+    when(appHost.updateFromDirectory(APP_ID, plan.stagedBundleDirectory())).thenReturn(updated);
+    PlatformApiResponse preview =
+        catalogRouter.route(
+            request(
+                "GET",
+                List.of("consent", "catalog-update-preview"),
+                Map.of("catalogId", List.of("core"), "appId", List.of(APP_ID))));
+    Map<String, List<String>> approvalParams = approveConsent(catalogRouter, preview);
+
+    PlatformApiResponse response =
+        catalogRouter.route(
+            request(
+                "POST", List.of("app-catalogs", "core", "apps", APP_ID, "update"), approvalParams));
+
+    assertEquals(200, response.statusCode());
+    assertEquals(
+        PlatformApiJsonWriter.write(Map.of("app", catalogSummary("9.9.9"))), response.body());
+  }
+
+  @Test
+  void
+      route_whenCatalogUpdateConsentApprovedAndInstalledManifestUnreadable_expectRepairUpdatedJson()
+          throws Exception {
+    AppCatalogManager catalogManager = mock(AppCatalogManager.class);
+    PlatformApiRouter catalogRouter = new PlatformApiRouter(runtimePorts, appHost, catalogManager);
+    AppCatalogEntry entry = catalogEntry("9.9.9");
+    AppCatalogInstallPlan plan =
+        catalogInstallPlan(entry, tempDir.resolve("catalog-consent-repair-stage"));
+    InstalledAppSnapshot updated = installedSnapshot(APP_ID, APP_NAME, "9.9.9", APP_UI_ENTRY);
+    when(catalogManager.getApp("core", APP_ID)).thenReturn(entry);
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    when(appHost.describe(APP_ID)).thenThrow(new IOException("corrupt manifest"));
+    when(catalogManager.prepareInstallPlan("core", APP_ID)).thenReturn(plan);
+    when(appHost.updateFromDirectory(APP_ID, plan.stagedBundleDirectory())).thenReturn(updated);
+    PlatformApiResponse preview =
+        catalogRouter.route(
+            request(
+                "GET",
+                List.of("consent", "catalog-update-preview"),
+                Map.of("catalogId", List.of("core"), "appId", List.of(APP_ID))));
+    Map<String, List<String>> approvalParams = approveConsent(catalogRouter, preview);
+
+    PlatformApiResponse response =
+        catalogRouter.route(
+            request(
+                "POST", List.of("app-catalogs", "core", "apps", APP_ID, "update"), approvalParams));
+
+    assertEquals(200, response.statusCode());
+    assertEquals(
+        PlatformApiJsonWriter.write(Map.of("app", catalogSummary("9.9.9"))), response.body());
+    verify(appHost).updateFromDirectory(APP_ID, plan.stagedBundleDirectory());
+  }
+
+  @Test
+  void route_whenCatalogUpdateTargetMissingWithoutConsent_expectNotFoundBeforeConsent()
+      throws Exception {
     AppCatalogManager catalogManager = mock(AppCatalogManager.class);
     PlatformApiRouter catalogRouter = new PlatformApiRouter(runtimePorts, appHost, catalogManager);
     when(catalogManager.getApp("core", APP_ID)).thenReturn(catalogEntry("9.9.9"));
@@ -3679,6 +3891,54 @@ class PlatformApiRouterTest {
     assertEquals(404, response.statusCode());
     assertEquals(
         "{\"error\":{\"code\":\"app_not_found\",\"message\":\"App not found.\"}}", response.body());
+    assertFalse(response.body().contains("consent_required"));
+    //noinspection resource
+    verify(catalogManager, never()).prepareInstallPlan(any(), any());
+    verify(appHost, never()).updateFromDirectory(any(), any());
+  }
+
+  @Test
+  void route_whenCatalogUpdateTargetMissing_expectNotFoundWithoutPreparingPlan() throws Exception {
+    AppCatalogManager catalogManager = mock(AppCatalogManager.class);
+    PlatformApiRouter catalogRouter = new PlatformApiRouter(runtimePorts, appHost, catalogManager);
+    when(catalogManager.getApp("core", APP_ID)).thenReturn(catalogEntry("9.9.9"));
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    when(appHost.describe(APP_ID)).thenReturn(Optional.empty());
+
+    Map<String, List<String>> approvalParams = approveCatalogUpdateConsent(catalogRouter);
+
+    PlatformApiResponse response =
+        catalogRouter.route(
+            request(
+                "POST", List.of("app-catalogs", "core", "apps", APP_ID, "update"), approvalParams));
+
+    assertEquals(404, response.statusCode());
+    assertEquals(
+        "{\"error\":{\"code\":\"app_not_found\",\"message\":\"App not found.\"}}", response.body());
+    //noinspection resource
+    verify(catalogManager, never()).prepareInstallPlan(any(), any());
+    verify(appHost, never()).updateFromDirectory(any(), any());
+  }
+
+  @Test
+  void route_whenCatalogUpdateTargetRunningWithoutConsent_expectConflictBeforeConsent()
+      throws Exception {
+    AppCatalogManager catalogManager = mock(AppCatalogManager.class);
+    PlatformApiRouter catalogRouter = new PlatformApiRouter(runtimePorts, appHost, catalogManager);
+    when(catalogManager.getApp("core", APP_ID)).thenReturn(catalogEntry("9.9.9"));
+    when(appHost.status(APP_ID)).thenReturn(Optional.of(runningSnapshot()));
+
+    PlatformApiResponse response =
+        catalogRouter.route(
+            request("POST", List.of("app-catalogs", "core", "apps", APP_ID, "update"), Map.of()));
+
+    assertEquals(409, response.statusCode());
+    assertEquals(
+        "{\"error\":{\"code\":\"app_conflict\",\"message\":\"cannot update a running app:"
+            + " alpha\"}}",
+        response.body());
+    assertFalse(response.body().contains("consent_required"));
+    verify(appHost, never()).describe(APP_ID);
     //noinspection resource
     verify(catalogManager, never()).prepareInstallPlan(any(), any());
     verify(appHost, never()).updateFromDirectory(any(), any());
@@ -3694,14 +3954,18 @@ class PlatformApiRouterTest {
     when(appHost.status(APP_ID)).thenReturn(Optional.empty());
     when(appHost.describe(APP_ID)).thenReturn(Optional.of(installedSnapshot()));
     when(catalogManager.prepareInstallPlan("core", APP_ID)).thenReturn(plan);
+    when(plan.catalogId()).thenReturn("core");
     when(plan.entry()).thenReturn(catalogEntry("9.9.9"));
     when(plan.stagedBundleDirectory()).thenReturn(stagedDir);
     when(appHost.updateFromDirectory(APP_ID, stagedDir))
         .thenThrow(new AppHostException("app.ui.entry must not traverse links in copied bundle"));
 
+    Map<String, List<String>> approvalParams = approveCatalogUpdateConsent(catalogRouter);
+
     PlatformApiResponse response =
         catalogRouter.route(
-            request("POST", List.of("app-catalogs", "core", "apps", APP_ID, "update"), Map.of()));
+            request(
+                "POST", List.of("app-catalogs", "core", "apps", APP_ID, "update"), approvalParams));
 
     assertEquals(400, response.statusCode());
     assertEquals(
@@ -3722,13 +3986,17 @@ class PlatformApiRouterTest {
     when(appHost.status(APP_ID)).thenReturn(Optional.empty());
     when(appHost.describe(APP_ID)).thenThrow(new IOException("corrupt manifest"));
     when(catalogManager.prepareInstallPlan("core", APP_ID)).thenReturn(plan);
+    when(plan.catalogId()).thenReturn("core");
     when(plan.entry()).thenReturn(catalogEntry("9.9.9"));
     when(plan.stagedBundleDirectory()).thenReturn(stagedDir);
     when(appHost.updateFromDirectory(APP_ID, stagedDir)).thenReturn(updated);
 
+    Map<String, List<String>> approvalParams = approveCatalogUpdateConsent(catalogRouter);
+
     PlatformApiResponse response =
         catalogRouter.route(
-            request("POST", List.of("app-catalogs", "core", "apps", APP_ID, "update"), Map.of()));
+            request(
+                "POST", List.of("app-catalogs", "core", "apps", APP_ID, "update"), approvalParams));
 
     assertEquals(200, response.statusCode());
     assertEquals(
@@ -3741,6 +4009,49 @@ class PlatformApiRouterTest {
   private static PlatformApiRequest request(
       String method, List<String> pathSegments, Map<String, List<String>> queryParameters) {
     return new PlatformApiRequest(method, pathSegments, queryParameters);
+  }
+
+  private Map<String, List<String>> approveConsent(
+      PlatformApiRouter router, PlatformApiResponse preview) {
+    assertEquals(200, preview.statusCode());
+    Map<String, List<String>> approvalParams =
+        Map.of(
+            "consentRequestId",
+            List.of(jsonString(preview.body(), "consentRequestId")),
+            "snapshotDigest",
+            List.of(jsonString(preview.body(), "snapshotDigest")));
+    PlatformApiResponse approval =
+        router.route(request("POST", List.of("consent", "approve"), approvalParams));
+    assertEquals(200, approval.statusCode());
+    return approvalParams;
+  }
+
+  private Map<String, List<String>> approveUpdateConsent(PlatformApiRouter router) {
+    PlatformApiResponse preview =
+        router.route(
+            request(
+                "POST", List.of("consent", "update-preview"), Map.of("appId", List.of(APP_ID))));
+    return approveConsent(router, preview);
+  }
+
+  private Map<String, List<String>> approveCatalogInstallConsent(PlatformApiRouter router) {
+    PlatformApiResponse preview =
+        router.route(
+            request(
+                "GET",
+                List.of("consent", "install-preview"),
+                Map.of("catalogId", List.of("core"), "appId", List.of(APP_ID))));
+    return approveConsent(router, preview);
+  }
+
+  private Map<String, List<String>> approveCatalogUpdateConsent(PlatformApiRouter router) {
+    PlatformApiResponse preview =
+        router.route(
+            request(
+                "GET",
+                List.of("consent", "catalog-update-preview"),
+                Map.of("catalogId", List.of("core"), "appId", List.of(APP_ID))));
+    return approveConsent(router, preview);
   }
 
   private static PlatformApiRequest appRequest(
@@ -4031,6 +4342,16 @@ class PlatformApiRouterTest {
     summary.put("pid", null);
     summary.put("startedAt", null);
     return summary;
+  }
+
+  private static String jsonString(String json, String field) {
+    String marker = "\"" + field + "\":\"";
+    int index = json.indexOf(marker);
+    assertTrue(index >= 0, "missing JSON field " + field + " in " + json);
+    int start = index + marker.length();
+    int end = json.indexOf('"', start);
+    assertTrue(end > start, "unterminated JSON field " + field + " in " + json);
+    return json.substring(start, end);
   }
 
   private static Map<String, Object> installRouteSummary() {

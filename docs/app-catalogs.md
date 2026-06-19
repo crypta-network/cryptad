@@ -35,6 +35,14 @@ be installed, updated, staged, applied, or applied by automatic policy, and warn
 advisories require the independent `securityAcknowledged=true` acknowledgement for manual
 install/update. See [ecosystem-security-advisories.md](ecosystem-security-advisories.md).
 
+The host/operator consent layer groups catalog trust metadata into one install or update preview
+before a material mutation. Permission rationales, review receipt state, reviewer-key lifecycle,
+channel/support changes, deprecation and replacement notices, security advisories, app-service
+dependencies, and app-data migration declarations are summarized with a snapshot digest. Manual
+install/update mutations that require consent must carry an approval for that exact digest; stale
+approvals are rejected. See
+[user-consent-and-permission-upgrade-ux.md](user-consent-and-permission-upgrade-ux.md).
+
 For third-party app authors, `crypta-app catalog entry` can generate the descriptor input for
 `catalog create`, `crypta-app publish-usk --dry-run` can produce an offline publication checklist,
 and `crypta-app publish-usk --live` can publish a verified signed catalog through a configured

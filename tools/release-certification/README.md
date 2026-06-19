@@ -272,6 +272,7 @@ app-review.transparency-log
 app-review.review-history-api
 app-review.first-party-catalog
 app-review.first-party-review-chain
+app-platform.user-consent-flow
 release-certification.ecosystem-matrix
 ```
 
@@ -303,6 +304,9 @@ The `catalog.security-advisories`, `catalog.version-denylist`,
 app-version denylist records, warning acknowledgement, install/update/stage/apply/scheduler
 security gates, review receipt revocation, reviewer-key compromise handling, Web Shell warnings,
 safe uninstall guidance, and redaction.
+`app-platform.user-consent-flow` proves unified operator consent previews, digest-bound approval,
+stale approval rejection, service-grant consent, app-data migration and backup consent,
+automatic-update gating, redacted audit events, Web Shell UI, docs, and focused tests.
 `app-update.data-migration-contract` verifies signed app-data schema migration metadata, dry-run
 before bundle replacement, internal app-scoped snapshot/restore, missing-path and
 rollback-incompatible blockers, Feed Reader and Trust Graph Local RC UI-state examples, and path-free

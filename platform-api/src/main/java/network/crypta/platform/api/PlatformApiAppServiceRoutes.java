@@ -4,6 +4,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import network.crypta.platform.api.appservices.AppServiceCoordinator;
+import network.crypta.platform.api.consent.ConsentService;
 
 /**
  * Routes local app-service discovery, grant lifecycle, audit, and invocation endpoints.
@@ -43,8 +44,10 @@ import network.crypta.platform.api.appservices.AppServiceCoordinator;
  * release-certification fixtures.
  *
  * @param coordinator shared coordinator, or {@code null} when app services are unavailable
+ * @param consentService shared consent coordinator, or {@code null} when unavailable
  */
-record PlatformApiAppServiceRoutes(AppServiceCoordinator coordinator) {
+record PlatformApiAppServiceRoutes(
+    AppServiceCoordinator coordinator, ConsentService consentService) {
   /** HTTP method token for discovery, list, and audit routes. */
   private static final String METHOD_GET = "GET";
 
@@ -329,15 +332,31 @@ record PlatformApiAppServiceRoutes(AppServiceCoordinator coordinator) {
       return methodNotAllowed(METHOD_POST, POST_ONLY_MESSAGE);
     }
     return switch (action) {
-      case "approve" ->
-          PlatformApiResponse.ok(
-              envelope(RESOURCE_BUNDLE, service.approveBundle(request.principal(), bundleId)));
-      case "reject" ->
-          PlatformApiResponse.ok(
-              envelope(RESOURCE_BUNDLE, service.rejectBundle(request.principal(), bundleId)));
-      case "renew" ->
-          PlatformApiResponse.ok(
-              envelope(RESOURCE_BUNDLE, service.renewBundle(request.principal(), bundleId)));
+      case "approve" -> {
+        if (consentService != null) {
+          service.requireBundleApprovalPreconditions(request.principal(), bundleId);
+          consentService.requireApprovedServiceGrantIfRequired(
+              bundleId, request.queryParameters(), request.principal());
+        }
+        yield PlatformApiResponse.ok(
+            envelope(RESOURCE_BUNDLE, service.approveBundle(request.principal(), bundleId)));
+      }
+      case "reject" -> {
+        Map<String, Object> rejected = service.rejectBundle(request.principal(), bundleId);
+        if (consentService != null) {
+          consentService.recordServiceGrantRejection(bundleId, request.principal());
+        }
+        yield PlatformApiResponse.ok(envelope(RESOURCE_BUNDLE, rejected));
+      }
+      case "renew" -> {
+        if (consentService != null) {
+          service.requireBundleRenewalPreconditions(request.principal(), bundleId);
+          consentService.requireApprovedServiceGrantIfRequired(
+              bundleId, request.queryParameters(), request.principal());
+        }
+        yield PlatformApiResponse.ok(
+            envelope(RESOURCE_BUNDLE, service.renewBundle(request.principal(), bundleId)));
+      }
       default -> throw notFound();
     };
   }

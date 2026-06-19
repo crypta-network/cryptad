@@ -171,6 +171,32 @@ public record AppDataMigrationPlan(
   }
 
   /**
+   * Returns a copy that keeps the discovered migration path but clears lifecycle dry-run state.
+   *
+   * <p>Consent previews can inspect a prepared candidate manifest before the staging lifecycle has
+   * executed dry-run commands. This copy lets the preview explain the required path and review risk
+   * without reporting a dry-run result that has not actually occurred.
+   *
+   * @return migration plan with dry-run status cleared
+   */
+  AppDataMigrationPlan withoutDryRunResult() {
+    if (dryRunStatus == null) {
+      return this;
+    }
+    return new AppDataMigrationPlan(
+        required,
+        status,
+        currentSchemaVersion,
+        targetSchemaVersion,
+        namespaces,
+        operatorReviewRequired,
+        blockReason,
+        null,
+        snapshotStatus,
+        applyStatus);
+  }
+
+  /**
    * Returns a required migration plan that cannot proceed without operator or system action.
    *
    * <p>Blocked plans keep the discovered namespace steps when they are safe to reveal. The blocker

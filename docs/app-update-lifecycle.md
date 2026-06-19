@@ -15,6 +15,7 @@ The v1 policy is:
 | Detect | Catalog detail and listing responses compare the installed app version with the verified catalog entry. | `app-update.lifecycle` |
 | Schedule | The background scheduler refreshes configured signed catalogs and checks installed apps. It delegates app checks to the same lifecycle service used by manual requests. | `app-update.scheduler` |
 | Review | Web Shell and API callers can review signed catalog metadata, compatibility hints, publisher-advisory review notes, trusted review receipt decisions, changelog text, and permission deltas before acting. | `app-update.lifecycle` |
+| Consent | Material permission, trust, API stability, service-grant, migration, backup, channel, deprecation, replacement, and security changes require a consent snapshot approval tied to a digest. | `app-platform.user-consent-flow` |
 | Security policy | Catalog-level security decisions can inform, warn, block install, block update, or denylist an exact app version before any install/update mutation. | `app-update.security-denylist-gates` |
 | Stage | Local and catalog-backed updates prepare a copied, verified staged bundle before AppHost mutates the installed bundle. | `app-update.lifecycle` |
 | App-data migration | A candidate that changes durable app-data schema must declare a signed migration contract, pass dry-run before bundle replacement, and create an internal app-data snapshot before apply. | `app-update.data-migration-contract` |
@@ -28,6 +29,13 @@ preserves the last verified catalog when a later refresh fails. Scheduler-trigge
 delegate to `AppUpdateService.check(...)`. Applying an update requires an operator or explicit API
 caller unless the operator selected a policy mode that allows automatic staging or apply. Manual
 remains the default policy for every app.
+
+Automatic policy is additionally gated by consent. The scheduler must surface a pending-consent
+state instead of staging or applying a candidate when the preview contains material permission
+deltas, app-service grant changes, app-data migration review, backup-before-update requirements,
+stable-to-experimental API changes, review/trust degradation, channel/support degradation,
+deprecation/replacement metadata, new advisories, or a denylist decision. See
+[user-consent-and-permission-upgrade-ux.md](user-consent-and-permission-upgrade-ux.md).
 
 For release evidence, manual remains the default.
 Applying an update requires an operator or explicit API caller.
@@ -43,6 +51,9 @@ form-password guard. App principals remain default-deny and must carry the route
 published by the Platform API contract. Catalog-backed update lifecycle mutations require both
 `apps.manage` and `catalogs.manage` for app principals because `check`, `stage`, and `apply` can
 refresh signed catalogs, prepare catalog install plans, or apply catalog-staged bundles.
+When material consent is required, the host/operator mutation must include the consent request id
+and snapshot digest from an approved preview. A changed candidate, catalog entry, review receipt,
+permission set, service dependency, or migration plan rejects the stale approval.
 
 Policy modes are explicit:
 

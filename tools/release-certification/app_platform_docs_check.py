@@ -37,6 +37,7 @@ REQUIRED_DOCS = (
     "docs/app-secret-and-identity-vault.md",
     "docs/app-review-governance.md",
     "docs/app-store-submission-and-review-workflow.md",
+    "docs/user-consent-and-permission-upgrade-ux.md",
     "docs/app-update-lifecycle.md",
     "docs/app-data-backup-restore-portability.md",
     "docs/first-party-beta-catalog.md",

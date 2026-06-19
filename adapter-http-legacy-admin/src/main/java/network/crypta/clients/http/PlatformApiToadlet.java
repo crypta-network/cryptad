@@ -86,6 +86,7 @@ public final class PlatformApiToadlet extends Toadlet {
   private static final String ALERTS_SEGMENT = "alerts";
   private static final String APP_CATALOGS_SEGMENT = "app-catalogs";
   private static final String APP_SERVICES_SEGMENT = "app-services";
+  private static final String CONSENT_SEGMENT = "consent";
   private static final String FORM_PASSWORD_PARAMETER = "formPassword";
   private static final String GRANT_BUNDLES_SEGMENT = "grant-bundles";
   private static final String GRANTS_SEGMENT = "grants";
@@ -100,6 +101,7 @@ public final class PlatformApiToadlet extends Toadlet {
   private static final String TRUST_GRAPH_SEGMENT = "trust-graph";
   private static final String UPDATES_SEGMENT = "updates";
   private static final String WIZARD_SEGMENT = "wizard";
+  private static final String APPROVE_ACTION = "approve";
 
   /**
    * Transport-neutral router that owns endpoint selection, validation, and JSON payload creation.
@@ -637,6 +639,7 @@ public final class PlatformApiToadlet extends Toadlet {
         || requiresSecurityLevelsFormPassword(method, pathSegments)
         || requiresUpdatesFormPassword(method, pathSegments)
         || requiresAppServicesFormPassword(method, pathSegments)
+        || requiresConsentFormPassword(method, pathSegments)
         || requiresOperatorFormPassword(method, pathSegments)
         || requiresIdentityVaultFormPassword(method, pathSegments)
         || requiresTrustGraphFormPassword(method, pathSegments)
@@ -682,12 +685,22 @@ public final class PlatformApiToadlet extends Toadlet {
       return false;
     }
     if (GRANTS_SEGMENT.equals(pathSegments.get(1))) {
-      return "approve".equals(pathSegments.get(3)) || "revoke".equals(pathSegments.get(3));
+      return APPROVE_ACTION.equals(pathSegments.get(3)) || "revoke".equals(pathSegments.get(3));
     }
     return GRANT_BUNDLES_SEGMENT.equals(pathSegments.get(1))
-        && ("approve".equals(pathSegments.get(3))
+        && (APPROVE_ACTION.equals(pathSegments.get(3))
             || "reject".equals(pathSegments.get(3))
             || "renew".equals(pathSegments.get(3)));
+  }
+
+  private static boolean requiresConsentFormPassword(String method, List<String> pathSegments) {
+    return "POST".equals(method)
+        && pathSegments.size() == 2
+        && CONSENT_SEGMENT.equals(pathSegments.getFirst())
+        && (APPROVE_ACTION.equals(pathSegments.get(1))
+            || "reject".equals(pathSegments.get(1))
+            || "defer".equals(pathSegments.get(1))
+            || "update-preview".equals(pathSegments.get(1)));
   }
 
   private static boolean requiresOperatorFormPassword(String method, List<String> pathSegments) {

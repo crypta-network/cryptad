@@ -49,6 +49,21 @@ class PlatformApiToadletTest {
         requiresFormPassword("POST", "/api/v1/app-services/grant-bundles/" + BUNDLE_ID + "/renew"));
   }
 
+  @Test
+  void requiresFormPassword_whenPostingConsentDecisionActions_expectProtected() throws Exception {
+    assertTrue(requiresFormPassword("POST", "/api/v1/consent/approve"));
+    assertTrue(requiresFormPassword("POST", "/api/v1/consent/reject"));
+    assertTrue(requiresFormPassword("POST", "/api/v1/consent/defer"));
+    assertTrue(requiresFormPassword("POST", "/api/v1/consent/update-preview"));
+  }
+
+  @Test
+  void requiresFormPassword_whenReadingConsentPreviews_expectNotProtected() throws Exception {
+    assertFalse(requiresFormPassword("GET", "/api/v1/consent/install-preview"));
+    assertFalse(requiresFormPassword("GET", "/api/v1/consent/update-preview"));
+    assertFalse(requiresFormPassword("GET", "/api/v1/consent/audit"));
+  }
+
   private static boolean requiresFormPassword(String method, String path) throws Exception {
     Method guard =
         PlatformApiToadlet.class.getDeclaredMethod("requiresFormPassword", String.class, URI.class);
