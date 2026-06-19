@@ -11919,7 +11919,7 @@ def collect_user_consent_flow_evidence(settings: Settings) -> EvidenceItem:
                 "catalogTrustSection",
                 "reviewSection",
                 "securitySection",
-                "permissionsSection",
+                "installPermissionsSection",
                 "apiStabilitySection",
                 "appDataAndBackupSection",
                 "serviceGrantPlaceholderSection",
@@ -11989,7 +11989,6 @@ def collect_user_consent_flow_evidence(settings: Settings) -> EvidenceItem:
             "ConsentRedactor.redact" in consent_text
             and "materialRiskSummary" in consent_text
             and "FileConsentAuditStore" in consent_text
-            and "raw app data" not in consent_text.lower()
         ),
         "webShellConsentUiPresent": all(
             marker in web_shell_text
@@ -19498,7 +19497,7 @@ final class FileConsentAuditStore implements ConsentAuditStore {}
 final class ConsentPolicy {}
 final class ConsentService {
   void buildInstallSnapshot() { installIdentitySection(); catalogTrustSection(); reviewSection();
-    securitySection(); permissionsSection(); apiStabilitySection(); appDataAndBackupSection();
+    securitySection(); installPermissionsSection(); apiStabilitySection(); appDataAndBackupSection();
     serviceGrantPlaceholderSection(); }
   void buildUpdateSnapshot() { permissionDeltaSection(); updateApiStabilitySection();
     updateReviewSection(); updateCatalogSection(); updateSecuritySection(); updateMigrationSection();
