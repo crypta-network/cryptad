@@ -38,6 +38,7 @@ class ConsentServiceTest {
   private static final String DIGEST =
       "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
   private static final String DIGEST_PREFIX = "sha256:";
+  private static final String ERROR_CONSENT_REQUIRED = "consent_required";
   private static final String ERROR_STALE_CONSENT_SNAPSHOT = "stale_consent_snapshot";
   private static final String KEY_ADDED = "added";
   private static final String KEY_API_COMPATIBILITY = "apiCompatibility";
@@ -263,7 +264,7 @@ class ConsentServiceTest {
             PlatformApiException.class,
             () -> service.requireApprovedUpdateIfRequired(APP_ID, mutationParams, APP_PRINCIPAL));
 
-    assertEquals("consent_required", exception.errorCode());
+    assertEquals(ERROR_CONSENT_REQUIRED, exception.errorCode());
     verify(updateService).previewReadOnly(APP_ID);
     verify(updateService, never()).previewForConsent(APP_ID, false);
   }
@@ -401,6 +402,56 @@ class ConsentServiceTest {
 
     assertEquals(VALUE_MATERIAL, preview.get(KEY_RISK_LEVEL));
     assertEquals(List.of("true"), mutation.get(KEY_MIGRATION_ACKNOWLEDGED));
+  }
+
+  @Test
+  void requireApprovedUpdate_whenPreparedOnlyMigrationRequiresConsent_expectConsentRequired() {
+    Map<String, Object> readOnly =
+        updateSummary(DIGEST, noPermissionDelta(), migrationNotChecked());
+    Map<String, Object> prepared =
+        updateSummary(DIGEST, noPermissionDelta(), migrationRequiredWithoutOperatorBlock());
+    when(updateService.previewReadOnly(APP_ID)).thenReturn(readOnly);
+    when(updateService.previewForConsent(APP_ID, false)).thenReturn(prepared);
+    ConsentService service = new ConsentService(null, updateService, null);
+
+    PlatformApiException exception =
+        assertThrows(
+            PlatformApiException.class,
+            () -> service.requireApprovedUpdateIfRequired(APP_ID, Map.of(), HOST_OPERATOR));
+
+    assertEquals(ERROR_CONSENT_REQUIRED, exception.errorCode());
+    verify(updateService).previewForConsent(APP_ID, false);
+  }
+
+  @Test
+  void requireApprovedUpdate_whenPreparedOnlyMigrationNotRequired_expectMutationAllowed() {
+    Map<String, Object> readOnly =
+        updateSummary(DIGEST, noPermissionDelta(), migrationNotChecked());
+    Map<String, Object> prepared = updateSummary(DIGEST, noPermissionDelta(), noMigration());
+    when(updateService.previewReadOnly(APP_ID)).thenReturn(readOnly);
+    when(updateService.previewForConsent(APP_ID, false)).thenReturn(prepared);
+    ConsentService service = new ConsentService(null, updateService, null);
+
+    Map<String, List<String>> mutation =
+        service.requireApprovedUpdateIfRequired(APP_ID, Map.of(), HOST_OPERATOR);
+
+    assertEquals(Map.of(), mutation);
+    verify(updateService).previewForConsent(APP_ID, false);
+  }
+
+  @Test
+  void requireApprovedUpdate_whenAppPrincipalHasUncheckedMigration_expectDoesNotPrepare() {
+    when(updateService.previewReadOnly(APP_ID))
+        .thenReturn(updateSummary(DIGEST, noPermissionDelta(), migrationNotChecked()));
+    ConsentService service = new ConsentService(null, updateService, null);
+
+    PlatformApiException exception =
+        assertThrows(
+            PlatformApiException.class,
+            () -> service.requireApprovedUpdateIfRequired(APP_ID, Map.of(), APP_PRINCIPAL));
+
+    assertEquals(ERROR_CONSENT_REQUIRED, exception.errorCode());
+    verify(updateService, never()).previewForConsent(APP_ID, false);
   }
 
   @Test
@@ -917,6 +968,36 @@ class ConsentServiceTest {
 
   private static Map<String, Object> noMigration() {
     return Map.of(REQUIRED, false);
+  }
+
+  private static Map<String, Object> migrationNotChecked() {
+    return Map.of(REQUIRED, false, KEY_STATUS, "not_checked");
+  }
+
+  private static Map<String, Object> migrationRequiredWithoutOperatorBlock() {
+    return Map.ofEntries(
+        Map.entry(REQUIRED, true),
+        Map.entry(KEY_STATUS, "ready"),
+        Map.entry("currentSchemaVersion", 1),
+        Map.entry("targetSchemaVersion", 2),
+        Map.entry(
+            "namespaces",
+            List.of(
+                Map.of(
+                    "namespace",
+                    "feeds",
+                    "fromSchemaVersion",
+                    1,
+                    "toSchemaVersion",
+                    2,
+                    "stepId",
+                    "feeds-v1-v2",
+                    "rollbackCompatible",
+                    true,
+                    "requiresStopped",
+                    false))),
+        Map.entry("operatorReviewRequired", false),
+        Map.entry("dryRunStatus", "passed"));
   }
 
   private static Map<String, Object> migrationRequiresReview() {

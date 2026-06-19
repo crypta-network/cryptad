@@ -14,6 +14,7 @@ import network.crypta.platform.api.PlatformApiParameters;
 import network.crypta.platform.api.PlatformApiPrincipal;
 import network.crypta.platform.api.appcatalogs.AppCatalogsApiHandler;
 import network.crypta.platform.api.appservices.AppServiceCoordinator;
+import network.crypta.platform.api.appupdates.AppDataMigrationPlan;
 import network.crypta.platform.api.appupdates.AppUpdateService;
 import network.crypta.platform.appcatalog.AppCatalogEntry;
 
@@ -51,6 +52,7 @@ public final class ConsentService {
   private static final String FIELD_CATALOG_SOURCE_ID = "catalogSourceId";
   private static final String FIELD_CHANNEL = "channel";
   private static final String FIELD_CONSUMER_APP_ID = "consumerAppId";
+  private static final String FIELD_DATA_MIGRATION = "dataMigration";
   private static final String FIELD_DEPRECATION = "deprecation";
   private static final String FIELD_EXPERIMENTAL_CAPABILITIES_ACCEPTED =
       "experimentalCapabilitiesAccepted";
@@ -80,6 +82,7 @@ public final class ConsentService {
   private static final String SUMMARY_NO_BUNDLE_DIGEST = "No bundle digest declared.";
   private static final String TITLE_UPDATE_CANDIDATE = "Update candidate";
   private static final String VALUE_ADDED = "added";
+  private static final String VALUE_AVAILABLE = "available";
   private static final String VALUE_CANDIDATE = "candidate";
   private static final String VALUE_CHANGED = "changed";
   private static final String VALUE_NONE = "none";
@@ -349,10 +352,20 @@ public final class ConsentService {
    */
   public synchronized Map<String, List<String>> requireApprovedUpdateIfRequired(
       String appId, Map<String, List<String>> queryParameters, PlatformApiPrincipal principal) {
-    ConsentSnapshot readOnly = buildUpdateSnapshot(appId, false, false);
-    if (!readOnly.requiresApproval() && !hasConsentApprovalParameters(queryParameters)) {
+    UpdateConsentSnapshot readOnlyResult = buildUpdateSnapshotWithCandidate(appId, false, false);
+    ConsentSnapshot readOnly = readOnlyResult.snapshot();
+    boolean approvalSupplied = hasConsentApprovalParameters(queryParameters);
+    boolean preparedConsentRequired = preparedUpdateConsentRequired(readOnlyResult.candidate());
+    if (!readOnly.requiresApproval() && !approvalSupplied && !preparedConsentRequired) {
       requireApprovedIfNeeded(readOnly, queryParameters, principal);
       return withoutAcknowledgements(queryParameters);
+    }
+    if (!readOnly.requiresApproval() && !approvalSupplied && !principal.isApp()) {
+      ConsentSnapshot current = buildUpdateSnapshot(appId, false, true);
+      requireApprovedIfNeeded(current, queryParameters, principal);
+      return current.requiresApproval()
+          ? acknowledged(queryParameters)
+          : withoutAcknowledgements(queryParameters);
     }
     requireApprovedBeforePreparingUpdatePreview(readOnly, queryParameters, principal);
     ConsentSnapshot current = buildUpdateSnapshot(appId, false, true);
@@ -718,6 +731,12 @@ public final class ConsentService {
 
   private ConsentSnapshot buildUpdateSnapshot(
       String appId, boolean refreshCatalogs, boolean includePreparedMigrationPlan) {
+    return buildUpdateSnapshotWithCandidate(appId, refreshCatalogs, includePreparedMigrationPlan)
+        .snapshot();
+  }
+
+  private UpdateConsentSnapshot buildUpdateSnapshotWithCandidate(
+      String appId, boolean refreshCatalogs, boolean includePreparedMigrationPlan) {
     requireUpdateService();
     Map<String, Object> summary =
         includePreparedMigrationPlan
@@ -726,7 +745,7 @@ public final class ConsentService {
     Map<String, Object> candidate = ConsentJson.object(summary, VALUE_CANDIDATE);
     String requestId = nextRequestId();
     if (!isDetectedUpdateCandidate(candidate)) {
-      return noUpdateSnapshot(requestId, appId);
+      return new UpdateConsentSnapshot(noUpdateSnapshot(requestId, appId), candidate);
     }
     List<ConsentSection> sections = new ArrayList<>();
     sections.add(updateIdentitySection(candidate));
@@ -740,24 +759,35 @@ public final class ConsentService {
     sections.add(updateServiceGrantDeltaSection(candidate));
     ConsentRiskLevel risk = ConsentPolicy.riskLevel(sections);
     boolean requiresApproval = risk.requiresApproval();
-    return new ConsentSnapshot(
-        requestId,
-        ConsentActionType.UPDATE_APP,
-        ConsentJson.string(candidate, FIELD_APP_ID),
-        null,
-        ConsentJson.string(candidate, FIELD_INSTALLED_VERSION),
-        ConsentJson.string(candidate, FIELD_TARGET_VERSION),
-        null,
-        bundleDigest(candidate),
-        ConsentJson.string(candidate, FIELD_CATALOG_ID),
-        ConsentJson.string(candidate, FIELD_CATALOG_SOURCE_ID),
-        risk,
-        requiresApproval,
-        requiresApproval,
-        ConsentPolicy.blockingReasons(sections),
-        recommendedAction(risk, ConsentActionType.UPDATE_APP),
-        sections,
-        Instant.now(clock));
+    return new UpdateConsentSnapshot(
+        new ConsentSnapshot(
+            requestId,
+            ConsentActionType.UPDATE_APP,
+            ConsentJson.string(candidate, FIELD_APP_ID),
+            null,
+            ConsentJson.string(candidate, FIELD_INSTALLED_VERSION),
+            ConsentJson.string(candidate, FIELD_TARGET_VERSION),
+            null,
+            bundleDigest(candidate),
+            ConsentJson.string(candidate, FIELD_CATALOG_ID),
+            ConsentJson.string(candidate, FIELD_CATALOG_SOURCE_ID),
+            risk,
+            requiresApproval,
+            requiresApproval,
+            ConsentPolicy.blockingReasons(sections),
+            recommendedAction(risk, ConsentActionType.UPDATE_APP),
+            sections,
+            Instant.now(clock)),
+        candidate);
+  }
+
+  private static boolean preparedUpdateConsentRequired(Map<String, Object> candidate) {
+    if (!VALUE_AVAILABLE.equals(ConsentJson.string(candidate, FIELD_STATUS))) {
+      return false;
+    }
+    Map<String, Object> migration = ConsentJson.object(candidate, FIELD_DATA_MIGRATION);
+    return AppDataMigrationPlan.STATUS_NOT_CHECKED.equals(
+        ConsentJson.string(migration, FIELD_STATUS));
   }
 
   private ConsentSnapshot noUpdateSnapshot(String requestId, String appId) {
@@ -1208,7 +1238,7 @@ public final class ConsentService {
   }
 
   private ConsentSection updateMigrationSection(Map<String, Object> candidate) {
-    Map<String, Object> migration = ConsentJson.object(candidate, "dataMigration");
+    Map<String, Object> migration = ConsentJson.object(candidate, FIELD_DATA_MIGRATION);
     return section(
         "app-data-migration",
         "App-data migration",
@@ -1221,7 +1251,7 @@ public final class ConsentService {
   }
 
   private ConsentSection updateBackupSection(Map<String, Object> candidate) {
-    Map<String, Object> migration = ConsentJson.object(candidate, "dataMigration");
+    Map<String, Object> migration = ConsentJson.object(candidate, FIELD_DATA_MIGRATION);
     ConsentRiskLevel risk =
         migrationRisk(migration).requiresApproval()
             ? ConsentRiskLevel.MATERIAL
@@ -1722,4 +1752,6 @@ public final class ConsentService {
           503, "app_services_unavailable", "App-service coordinator is unavailable.");
     }
   }
+
+  private record UpdateConsentSnapshot(ConsentSnapshot snapshot, Map<String, Object> candidate) {}
 }
