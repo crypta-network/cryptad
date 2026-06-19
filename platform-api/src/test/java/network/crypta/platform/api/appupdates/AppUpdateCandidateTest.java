@@ -37,6 +37,32 @@ class AppUpdateCandidateTest {
   }
 
   @Test
+  void toJsonValue_whenNoUpdateCandidate_expectNoAutoUpdateBlock() {
+    AppUpdateCandidate candidate = candidateWithStatus(AppUpdateCandidateStatus.NONE);
+
+    Map<String, Object> json = candidate.toJsonValue();
+
+    assertEquals(false, json.get("autoStageAllowed"));
+    assertEquals(false, json.get("autoApplyAllowed"));
+    assertEquals(false, json.get("blocksAutoUpdate"));
+    assertEquals(false, json.get("operatorActionRequired"));
+    assertEquals(List.of(), json.get("materialConsentReasons"));
+  }
+
+  @Test
+  void toJsonValue_whenNotNewerCandidate_expectNoAutoUpdateBlock() {
+    AppUpdateCandidate candidate = candidateWithStatus(AppUpdateCandidateStatus.NOT_NEWER);
+
+    Map<String, Object> json = candidate.toJsonValue();
+
+    assertEquals(false, json.get("autoStageAllowed"));
+    assertEquals(false, json.get("autoApplyAllowed"));
+    assertEquals(false, json.get("blocksAutoUpdate"));
+    assertEquals(false, json.get("operatorActionRequired"));
+    assertEquals(List.of(), json.get("materialConsentReasons"));
+  }
+
+  @Test
   void toJsonValue_whenBetaChannelPolicyAllowed_expectAutomaticUpdateBlockedByConsent() {
     AppUpdateCandidate candidate = candidateWithCatalogMetadata("beta", "supported");
 
@@ -322,6 +348,25 @@ class AppUpdateCandidateTest {
         apiCompatibility);
   }
 
+  private static AppUpdateCandidate candidateWithStatus(AppUpdateCandidateStatus status) {
+    String versionComparison =
+        switch (status) {
+          case NOT_NEWER -> "lower";
+          case NONE -> "equal";
+          default -> "newer";
+        };
+    return candidate(
+        Map.of("added", List.of(), "removed", List.of(), "unchanged", List.of()),
+        List.of(),
+        Map.of("required", false),
+        Map.of("status", "trusted", "positive", true),
+        "stable",
+        "supported",
+        apiCompatibility("compatible"),
+        status,
+        versionComparison);
+  }
+
   private static AppUpdateCandidate candidate(
       Map<String, Object> permissionDelta,
       String apiCompatibilityStatus,
@@ -348,14 +393,36 @@ class AppUpdateCandidateTest {
       String channel,
       String supportStatus,
       Map<String, Object> apiCompatibility) {
+    return candidate(
+        permissionDelta,
+        securityAdvisories,
+        dataMigration,
+        reviewTrust,
+        channel,
+        supportStatus,
+        apiCompatibility,
+        AppUpdateCandidateStatus.AVAILABLE,
+        "newer");
+  }
+
+  private static AppUpdateCandidate candidate(
+      Map<String, Object> permissionDelta,
+      List<Map<String, Object>> securityAdvisories,
+      Map<String, Object> dataMigration,
+      Map<String, Object> reviewTrust,
+      String channel,
+      String supportStatus,
+      Map<String, Object> apiCompatibility,
+      AppUpdateCandidateStatus status,
+      String versionComparison) {
     return new AppUpdateCandidate(
         "example.app",
         "first-party",
         "first-party",
         "1.0.0",
         "1.1.0",
-        AppUpdateCandidateStatus.AVAILABLE,
-        "newer",
+        status,
+        versionComparison,
         channel,
         supportStatus,
         Map.of("status", "none"),

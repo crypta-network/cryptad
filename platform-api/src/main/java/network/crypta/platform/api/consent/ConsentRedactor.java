@@ -177,7 +177,9 @@ final class ConsentRedactor {
   }
 
   private static int unixPathEnd(String value, int start) {
-    if (value.charAt(start) != '/' || (start > 0 && isAsciiAlphanumeric(value.charAt(start - 1)))) {
+    if (value.charAt(start) != '/'
+        || isUriAuthoritySlash(value, start)
+        || (start > 0 && isAsciiAlphanumeric(value.charAt(start - 1)))) {
       return -1;
     }
     int index = start + 1;
@@ -194,6 +196,29 @@ final class ConsentRedactor {
       index += readingSegments ? 1 : 0;
     }
     return segments >= 3 ? index : -1;
+  }
+
+  private static boolean isUriAuthoritySlash(String value, int start) {
+    return start >= 2
+        && value.charAt(start - 1) == '/'
+        && value.charAt(start - 2) == ':'
+        && hasUriSchemeBefore(value, start - 2);
+  }
+
+  private static boolean hasUriSchemeBefore(String value, int colonIndex) {
+    int schemeStart = colonIndex - 1;
+    while (schemeStart >= 0 && isUriSchemeCharacter(value.charAt(schemeStart))) {
+      schemeStart--;
+    }
+    schemeStart++;
+    if (schemeStart == colonIndex || !isAsciiLetter(value.charAt(schemeStart))) {
+      return false;
+    }
+    return schemeStart == 0 || isAsciiWordBoundary(value.charAt(schemeStart - 1));
+  }
+
+  private static boolean isUriSchemeCharacter(char value) {
+    return isAsciiAlphanumeric(value) || value == '+' || value == '-' || value == '.';
   }
 
   private static int unixSegmentEnd(String value, int start) {

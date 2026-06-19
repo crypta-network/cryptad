@@ -62,14 +62,51 @@ class ConsentSnapshotDigestTest {
     assertFalse(canonical.toString().contains("/tmp/local/secret/path"));
   }
 
+  @Test
+  void canonicalize_whenHttpsEvidenceUriPresent_expectUriPreservedAndLocalPathRedacted() {
+    Map<String, Object> canonical =
+        (Map<String, Object>)
+            ConsentJson.canonicalize(
+                Map.of(
+                    "evidenceUri",
+                    "https://example.invalid/review/1",
+                    "localPath",
+                    "/tmp/local/secret/path"));
+
+    assertEquals("https://example.invalid/review/1", canonical.get("evidenceUri"));
+    assertEquals("[redacted-local-path]", canonical.get("localPath"));
+  }
+
+  @Test
+  void digest_whenEvidenceUriChanges_expectDifferentDigest() {
+    ConsentSnapshot first =
+        snapshot(
+            "request-1",
+            CREATED_AT,
+            "review_evidence_uri",
+            "Evidence URI https://example.invalid/review/1");
+    ConsentSnapshot second =
+        snapshot(
+            "request-1",
+            CREATED_AT,
+            "review_evidence_uri",
+            "Evidence URI https://example.invalid/review/2");
+
+    String firstDigest = first.snapshotDigest();
+    String secondDigest = second.snapshotDigest();
+
+    assertNotEquals(firstDigest, secondDigest);
+  }
+
   private static ConsentSnapshot snapshot(String requestId, Instant createdAt, String findingCode) {
+    return snapshot(requestId, createdAt, findingCode, "Candidate permission changed");
+  }
+
+  private static ConsentSnapshot snapshot(
+      String requestId, Instant createdAt, String findingCode, String findingSummary) {
     ConsentFinding finding =
         new ConsentFinding(
-            findingCode,
-            "Permission",
-            "Candidate permission changed",
-            "candidate",
-            ConsentRiskLevel.MATERIAL);
+            findingCode, "Permission", findingSummary, "candidate", ConsentRiskLevel.MATERIAL);
     ConsentSection section =
         new ConsentSection(
             "permissions", "Permissions", ConsentRiskLevel.MATERIAL, List.of(finding));

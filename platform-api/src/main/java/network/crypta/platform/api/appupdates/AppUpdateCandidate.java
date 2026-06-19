@@ -271,11 +271,14 @@ public record AppUpdateCandidate(
     json.put("dataMigration", dataMigration);
     json.put("running", running);
     json.put("detectedAt", detectedAt.toString());
-    json.put("autoStageAllowed", eligibleForAutomaticStage());
-    json.put("autoApplyAllowed", eligibleForAutomaticApply());
-    json.put("blocksAutoUpdate", !eligibleForAutomaticStage());
+    boolean autoStageAllowed = eligibleForAutomaticStage();
+    boolean autoApplyAllowed = eligibleForAutomaticApply();
+    boolean operatorActionRequired = operatorActionRequired();
+    json.put("autoStageAllowed", autoStageAllowed);
+    json.put("autoApplyAllowed", autoApplyAllowed);
+    json.put("blocksAutoUpdate", operatorActionRequired);
     json.put("materialConsentReasons", materialConsentReasons());
-    json.put("operatorActionRequired", operatorActionRequired());
+    json.put("operatorActionRequired", operatorActionRequired);
     return json;
   }
 
