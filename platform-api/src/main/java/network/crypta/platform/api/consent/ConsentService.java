@@ -353,6 +353,9 @@ public final class ConsentService {
   public synchronized Map<String, List<String>> requireApprovedUpdateIfRequired(
       String appId, Map<String, List<String>> queryParameters, PlatformApiPrincipal principal) {
     UpdateConsentSnapshot readOnlyResult = buildUpdateSnapshotWithCandidate(appId, false, false);
+    if (!isStageableUpdateCandidate(readOnlyResult.candidate())) {
+      return withoutAcknowledgements(queryParameters);
+    }
     ConsentSnapshot readOnly = readOnlyResult.snapshot();
     boolean approvalSupplied = hasConsentApprovalParameters(queryParameters);
     boolean preparedConsentRequired = preparedUpdateConsentRequired(readOnlyResult.candidate());
@@ -782,7 +785,7 @@ public final class ConsentService {
   }
 
   private static boolean preparedUpdateConsentRequired(Map<String, Object> candidate) {
-    if (!VALUE_AVAILABLE.equals(ConsentJson.string(candidate, FIELD_STATUS))) {
+    if (!isStageableUpdateCandidate(candidate)) {
       return false;
     }
     Map<String, Object> migration = ConsentJson.object(candidate, FIELD_DATA_MIGRATION);
@@ -825,6 +828,10 @@ public final class ConsentService {
   private static boolean isDetectedUpdateCandidate(Map<String, Object> candidate) {
     String status = ConsentJson.string(candidate, FIELD_STATUS);
     return status != null && !VALUE_NONE.equals(status);
+  }
+
+  private static boolean isStageableUpdateCandidate(Map<String, Object> candidate) {
+    return VALUE_AVAILABLE.equals(ConsentJson.string(candidate, FIELD_STATUS));
   }
 
   private ConsentSnapshot buildCatalogUpdateSnapshot(String catalogId, String appId) {

@@ -74,6 +74,9 @@ class ConsentServiceTest {
   private static final String REQUIRED = "required";
   private static final String ROUTE_CONSENT = "consent";
   private static final String ROUTE_UPDATE_PREVIEW = "update-preview";
+  private static final String STATUS_AMBIGUOUS = "ambiguous";
+  private static final String STATUS_INCOMPATIBLE = "incompatible";
+  private static final String STATUS_NOT_NEWER = "not_newer";
   private static final String TEST_INSTANT = "2026-05-01T00:00:00Z";
   private static final String TRUSTED = "trusted";
   private static final String VALUE_BLOCKING = "blocking";
@@ -250,6 +253,25 @@ class ConsentServiceTest {
         service.requireApprovedUpdateIfRequired(APP_ID, Map.of(), HOST_OPERATOR);
 
     assertEquals(Map.of(), mutation);
+    verify(updateService, never()).previewForConsent(APP_ID, false);
+  }
+
+  @Test
+  void requireApprovedUpdate_whenCandidateIsNonStageable_expectConsentBypassed() {
+    when(updateService.previewReadOnly(APP_ID))
+        .thenReturn(nonStageableUpdateSummary(STATUS_NOT_NEWER))
+        .thenReturn(nonStageableUpdateSummary(STATUS_AMBIGUOUS))
+        .thenReturn(nonStageableUpdateSummary(STATUS_INCOMPATIBLE));
+    ConsentService service = new ConsentService(null, updateService, null);
+    Map<String, List<String>> staleAcknowledgement =
+        Map.of(KEY_MIGRATION_ACKNOWLEDGED, List.of("true"));
+
+    for (String status : List.of(STATUS_NOT_NEWER, STATUS_AMBIGUOUS, STATUS_INCOMPATIBLE)) {
+      Map<String, List<String>> mutation =
+          service.requireApprovedUpdateIfRequired(APP_ID, staleAcknowledgement, HOST_OPERATOR);
+
+      assertEquals(Map.of(), mutation, status);
+    }
     verify(updateService, never()).previewForConsent(APP_ID, false);
   }
 
@@ -875,7 +897,7 @@ class ConsentServiceTest {
         noMigration(),
         List.of(),
         Map.of(KEY_STATUS, TRUSTED, KEY_POSITIVE, true),
-        "incompatible",
+        STATUS_INCOMPATIBLE,
         Map.of(
             KEY_STATUS,
             "below_minimum",
@@ -883,6 +905,19 @@ class ConsentServiceTest {
             VALUE_STABLE,
             KEY_EXPERIMENTAL_CAPABILITIES_ACCEPTED,
             false));
+  }
+
+  private static Map<String, Object> nonStageableUpdateSummary(String candidateStatus) {
+    return updateSummary(
+        DIGEST,
+        materialPermissionDelta(),
+        noMigration(),
+        List.of(securityAdvisory("CRYPTA-2026-0001", "https://example.invalid/a/1")),
+        Map.of(KEY_STATUS, "missing", KEY_POSITIVE, false, KEY_REQUIRES_ACKNOWLEDGEMENT, true),
+        candidateStatus,
+        STATUS_INCOMPATIBLE.equals(candidateStatus)
+            ? apiCompatibility("below_minimum")
+            : apiCompatibility(VALUE_COMPATIBLE));
   }
 
   private static Map<String, Object> securityAdvisory(String id, String uri) {
