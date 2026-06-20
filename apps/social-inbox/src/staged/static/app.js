@@ -593,6 +593,13 @@
       blocked.delete(key);
       setStatus("Source unblocked locally.");
     } else {
+      if (blocked.size >= maxBlockedSources) {
+        setStatus(
+          "Source block list is full; unblock another source before blocking this one.",
+          "warning"
+        );
+        return;
+      }
       blocked.add(key);
       setStatus("Source blocked locally; this does not publish moderation metadata.");
     }
@@ -1862,6 +1869,13 @@
       muted.delete(key);
       setStatus("Author unmuted locally.");
     } else {
+      if (muted.size >= maxMutedAuthors) {
+        setStatus(
+          "Author mute list is full; unmute another author before muting this one.",
+          "warning"
+        );
+        return;
+      }
       muted.add(key);
       setStatus("Author muted locally; this does not publish moderation metadata.");
     }
