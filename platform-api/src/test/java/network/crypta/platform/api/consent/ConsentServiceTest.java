@@ -39,6 +39,7 @@ class ConsentServiceTest {
       "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
   private static final String DIGEST_PREFIX = "sha256:";
   private static final String ERROR_CONSENT_REQUIRED = "consent_required";
+  private static final String ERROR_CONSENT_REQUEST_NOT_FOUND = "consent_request_not_found";
   private static final String ERROR_STALE_CONSENT_SNAPSHOT = "stale_consent_snapshot";
   private static final String KEY_ADDED = "added";
   private static final String KEY_API_COMPATIBILITY = "apiCompatibility";
@@ -50,6 +51,7 @@ class ConsentServiceTest {
   private static final String KEY_CHANNEL = "channel";
   private static final String KEY_CONSENT_REQUEST_ID = "consentRequestId";
   private static final String KEY_DEPRECATION = "deprecation";
+  private static final String KEY_DECISION = "decision";
   private static final String KEY_EXPERIMENTAL_CAPABILITIES_ACCEPTED =
       "experimentalCapabilitiesAccepted";
   private static final String KEY_MIGRATION_ACKNOWLEDGED = "migrationAcknowledged";
@@ -196,6 +198,16 @@ class ConsentServiceTest {
   }
 
   @Test
+  void approve_whenRequestWasRejected_expectFreshPreviewRequired() {
+    assertNonApprovalInvalidatesRequest(ConsentDecisionStatus.REJECTED);
+  }
+
+  @Test
+  void approve_whenRequestWasDeferred_expectFreshPreviewRequired() {
+    assertNonApprovalInvalidatesRequest(ConsentDecisionStatus.DEFERRED);
+  }
+
+  @Test
   void requireApprovedUpdate_whenDigestMatches_expectMutationAcknowledgements() {
     when(updateService.previewForConsent(APP_ID, false)).thenReturn(updateSummary(DIGEST));
     when(updateService.previewReadOnly(APP_ID)).thenReturn(updateSummary(DIGEST));
@@ -332,7 +344,8 @@ class ConsentServiceTest {
 
     assertEquals("consent_not_approved", exception.errorCode());
     assertTrue(
-        service.audit(APP_ID).stream().anyMatch(event -> "expired".equals(event.get("decision"))));
+        service.audit(APP_ID).stream()
+            .anyMatch(event -> "expired".equals(event.get(KEY_DECISION))));
   }
 
   @Test
@@ -354,7 +367,8 @@ class ConsentServiceTest {
 
     assertEquals(List.of("true"), mutation.get(KEY_REVIEW_ACKNOWLEDGED));
     assertFalse(
-        service.audit(APP_ID).stream().anyMatch(event -> "expired".equals(event.get("decision"))));
+        service.audit(APP_ID).stream()
+            .anyMatch(event -> "expired".equals(event.get(KEY_DECISION))));
   }
 
   @Test
@@ -596,6 +610,31 @@ class ConsentServiceTest {
   @Test
   void requireApprovedInstall_whenApiCompatibilityNewerThanTested_expectApprovalPermitsMutation() {
     assertApiCompatibilityStatusAllowsApprovedInstall("newer_than_tested");
+  }
+
+  private void assertNonApprovalInvalidatesRequest(ConsentDecisionStatus status) {
+    when(catalogHandler.getApp(CATALOG_ID, APP_ID)).thenReturn(catalogApp());
+    ConsentService service = new ConsentService(catalogHandler, null, null);
+    Map<String, Object> preview = service.installPreview(CATALOG_ID, APP_ID);
+    String requestId = (String) preview.get(KEY_CONSENT_REQUEST_ID);
+    String digest = (String) preview.get(KEY_SNAPSHOT_DIGEST);
+    Map<String, List<String>> decisionParams = params(requestId, digest);
+
+    Map<String, Object> decision =
+        switch (status) {
+          case REJECTED -> service.reject(decisionParams, HOST_OPERATOR);
+          case DEFERRED -> service.defer(decisionParams, HOST_OPERATOR);
+          default ->
+              throw new IllegalArgumentException("Unsupported non-approval status " + status);
+        };
+    PlatformApiException exception =
+        assertThrows(
+            PlatformApiException.class, () -> service.approve(decisionParams, HOST_OPERATOR));
+
+    assertEquals(status.jsonValue(), decision.get(KEY_DECISION));
+    assertEquals(404, exception.statusCode());
+    assertEquals(ERROR_CONSENT_REQUEST_NOT_FOUND, exception.errorCode());
+    assertEquals(status.jsonValue(), service.audit(APP_ID).getFirst().get(KEY_DECISION));
   }
 
   private void assertApiCompatibilityStatusAllowsApprovedInstall(String status) {

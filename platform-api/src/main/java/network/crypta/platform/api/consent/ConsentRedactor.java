@@ -17,9 +17,13 @@ import java.util.regex.Pattern;
  */
 final class ConsentRedactor {
   /** Matches common one-token secret assignment forms in catalog or migration summary text. */
-  private static final Pattern TOKEN_ASSIGNMENT =
+  private static final Pattern AUTHORIZATION_ASSIGNMENT =
       Pattern.compile(
-          "(?i)\\b(?:bearer|token|secret|authorization|password|key)\\b\\s*[:=]\\s*\\S+");
+          "(?i)\\b(?:authorization|proxy-authorization)\\b\\s*[:=]\\s*(?:\\S+\\s+)?\\S+");
+
+  /** Matches non-authorization one-token secret assignment forms in summary text. */
+  private static final Pattern TOKEN_ASSIGNMENT =
+      Pattern.compile("(?i)\\b(?:bearer|token|secret|password|key)\\b\\s*[:=]\\s*\\S+");
 
   private static final String REDACTED_PRIVATE_URI = "[redacted-private-uri]";
   private static final String REDACTED_LOCAL_PATH = "[redacted-local-path]";
@@ -42,6 +46,7 @@ final class ConsentRedactor {
       return value;
     }
     String redacted = redactPrivateInsertUris(value);
+    redacted = AUTHORIZATION_ASSIGNMENT.matcher(redacted).replaceAll("[redacted-secret]");
     redacted = TOKEN_ASSIGNMENT.matcher(redacted).replaceAll("[redacted-secret]");
     return redactLocalPaths(redacted);
   }

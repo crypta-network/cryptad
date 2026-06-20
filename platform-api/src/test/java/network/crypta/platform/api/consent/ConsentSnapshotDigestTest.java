@@ -13,13 +13,19 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SuppressWarnings({"java:S100", "unchecked"})
 class ConsentSnapshotDigestTest {
+  private static final String KEY_ALPHA = "alpha";
+  private static final String LOCAL_SECRET_PATH =
+      String.join("/", "", "tmp", "local", "secret", "path");
+  private static final String PERMISSION_REQUIRED = "permission_required";
+  private static final String REDACTED_LOCAL_PATH = "[redacted-local-path]";
+  private static final String REDACTED_SECRET = "[redacted-secret]";
+  private static final String REQUEST_1 = "request-1";
   private static final Instant CREATED_AT = Instant.parse("2026-05-01T00:00:00Z");
 
   @Test
   void digest_whenRequestMetadataChanges_expectSameDigest() {
-    ConsentSnapshot first = snapshot("request-1", CREATED_AT, "permission_required");
-    ConsentSnapshot second =
-        snapshot("request-2", CREATED_AT.plusSeconds(60), "permission_required");
+    ConsentSnapshot first = snapshot(REQUEST_1, CREATED_AT, PERMISSION_REQUIRED);
+    ConsentSnapshot second = snapshot("request-2", CREATED_AT.plusSeconds(60), PERMISSION_REQUIRED);
 
     String firstDigest = first.snapshotDigest();
     String secondDigest = second.snapshotDigest();
@@ -29,8 +35,8 @@ class ConsentSnapshotDigestTest {
 
   @Test
   void digest_whenMaterialFindingChanges_expectDifferentDigest() {
-    ConsentSnapshot first = snapshot("request-1", CREATED_AT, "permission_required");
-    ConsentSnapshot second = snapshot("request-1", CREATED_AT, "review_trust_delta");
+    ConsentSnapshot first = snapshot(REQUEST_1, CREATED_AT, PERMISSION_REQUIRED);
+    ConsentSnapshot second = snapshot(REQUEST_1, CREATED_AT, "review_trust_delta");
 
     String firstDigest = first.snapshotDigest();
     String secondDigest = second.snapshotDigest();
@@ -46,20 +52,39 @@ class ConsentSnapshotDigestTest {
                 Map.of(
                     "zeta",
                     "token=secret-value",
-                    "alpha",
-                    List.of("CHK@private-material", "/tmp/local/secret/path", true)));
+                    KEY_ALPHA,
+                    List.of("CHK@private-material", LOCAL_SECRET_PATH, true)));
 
     List<String> keys = new ArrayList<>(canonical.keySet());
-    List<Object> nested = (List<Object>) canonical.get("alpha");
+    List<Object> nested = (List<Object>) canonical.get(KEY_ALPHA);
 
-    assertEquals(List.of("alpha", "zeta"), keys);
-    assertEquals("[redacted-secret]", canonical.get("zeta"));
+    assertEquals(List.of(KEY_ALPHA, "zeta"), keys);
+    assertEquals(REDACTED_SECRET, canonical.get("zeta"));
     assertTrue(nested.contains("[redacted-private-uri]"));
-    assertTrue(nested.contains("[redacted-local-path]"));
+    assertTrue(nested.contains(REDACTED_LOCAL_PATH));
     assertTrue(nested.contains(true));
     assertFalse(canonical.toString().contains("secret-value"));
     assertFalse(canonical.toString().contains("CHK@private"));
-    assertFalse(canonical.toString().contains("/tmp/local/secret/path"));
+    assertFalse(canonical.toString().contains(LOCAL_SECRET_PATH));
+  }
+
+  @Test
+  void canonicalize_whenAuthorizationBearerTextPresent_expectBearerTokenRedacted() {
+    Map<String, Object> canonical =
+        (Map<String, Object>)
+            ConsentJson.canonicalize(
+                Map.of(
+                    "header",
+                    "Authorization: Bearer concrete-token-value",
+                    "assignment",
+                    "authorization=Bearer inline-token-value"));
+
+    String rendered = canonical.toString();
+
+    assertEquals(REDACTED_SECRET, canonical.get("header"));
+    assertEquals(REDACTED_SECRET, canonical.get("assignment"));
+    assertFalse(rendered.contains("concrete-token-value"));
+    assertFalse(rendered.contains("inline-token-value"));
   }
 
   @Test
@@ -71,23 +96,23 @@ class ConsentSnapshotDigestTest {
                     "evidenceUri",
                     "https://example.invalid/review/1",
                     "localPath",
-                    "/tmp/local/secret/path"));
+                    LOCAL_SECRET_PATH));
 
     assertEquals("https://example.invalid/review/1", canonical.get("evidenceUri"));
-    assertEquals("[redacted-local-path]", canonical.get("localPath"));
+    assertEquals(REDACTED_LOCAL_PATH, canonical.get("localPath"));
   }
 
   @Test
   void digest_whenEvidenceUriChanges_expectDifferentDigest() {
     ConsentSnapshot first =
         snapshot(
-            "request-1",
+            REQUEST_1,
             CREATED_AT,
             "review_evidence_uri",
             "Evidence URI https://example.invalid/review/1");
     ConsentSnapshot second =
         snapshot(
-            "request-1",
+            REQUEST_1,
             CREATED_AT,
             "review_evidence_uri",
             "Evidence URI https://example.invalid/review/2");
