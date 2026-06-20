@@ -1690,14 +1690,19 @@
   function threadActionBar(thread) {
     const actions = document.createElement("div");
     actions.className = "message-actions thread-actions";
-    const allRead = visibleThreadSummary(thread).unreadMessages === 0;
+    const visibleThread = visibleThreadView(thread);
+    const allRead = visibleThread.unreadMessages === 0;
     actions.append(
       actionButton(allRead ? "Mark thread unread" : "Mark thread read", () =>
-        allRead ? markThreadUnread(thread) : markThreadRead(thread)
+        allRead ? markThreadUnread(visibleThread) : markThreadRead(visibleThread)
       ),
-      actionButton(thread.pinned ? "Unpin thread" : "Pin thread", () => toggleThreadPin(thread)),
-      actionButton(thread.archived ? "Unarchive thread" : "Archive thread", () => archiveThread(thread)),
-      actionButton("Export thread", () => exportThreadSummary(thread))
+      actionButton(visibleThread.pinned ? "Unpin thread" : "Pin thread", () =>
+        toggleThreadPin(visibleThread)
+      ),
+      actionButton(visibleThread.archived ? "Unarchive thread" : "Archive thread", () =>
+        archiveThread(visibleThread)
+      ),
+      actionButton("Export thread", () => exportThreadSummary(visibleThread))
     );
     return actions;
   }
@@ -2412,14 +2417,13 @@
     );
   }
 
-  function visibleThreadSummary(thread) {
+  function visibleThreadView(thread) {
     const messages = visibleThreadMessages(thread);
     const rootMessage = messages[0] || {};
-    return {
+    return Object.assign({}, thread, {
+      rootId: stringField(rootMessage, "messageId"),
       rootMessage,
-      visibleCount: messages.length,
-      unreadMessages: threadUnreadCount(messages, state.readState),
-      sourceCount: threadSourceCount(messages),
+      messages,
       latestAt: latestMessageTimestamp(messages),
       channel: normalizeChannel(rootMessage.channel),
       pinned: messages.some((message) => readStateValueFor(message, state.readState).pinned),
@@ -2427,6 +2431,24 @@
       archived:
         messages.length > 0 &&
         messages.every((message) => readStateValueFor(message, state.readState).archived),
+      totalMessages: messages.length,
+      unreadMessages: threadUnreadCount(messages, state.readState),
+      sourceCount: threadSourceCount(messages),
+    });
+  }
+
+  function visibleThreadSummary(thread) {
+    const visibleThread = visibleThreadView(thread);
+    return {
+      rootMessage: visibleThread.rootMessage,
+      visibleCount: visibleThread.totalMessages,
+      unreadMessages: visibleThread.unreadMessages,
+      sourceCount: visibleThread.sourceCount,
+      latestAt: visibleThread.latestAt,
+      channel: visibleThread.channel,
+      pinned: visibleThread.pinned,
+      hasArchived: visibleThread.hasArchived,
+      archived: visibleThread.archived,
     };
   }
 
