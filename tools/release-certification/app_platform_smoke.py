@@ -2456,7 +2456,7 @@ def collect_app_services_evidence(settings: Settings) -> list[EvidenceItem]:
 
     registry_checks = {
         "contractV12AndCapabilitiesPresent": (
-            "CURRENT_CONTRACT_VERSION = 20" in contract_text
+            "CURRENT_CONTRACT_VERSION = 21" in contract_text
             and "APP_SERVICES_CONTRACT_VERSION = 12" in contract_text
             and "APP_SERVICE_DEPENDENCY_BUNDLES_CONTRACT_VERSION = 16" in contract_text
             and "APP_SERVICES_READ" in capabilities_text
@@ -5525,6 +5525,7 @@ def collect_content_subscription_evidence(settings: Settings) -> EvidenceItem:
             or "CURRENT_CONTRACT_VERSION = 14" in contract_text
             or "CURRENT_CONTRACT_VERSION = 15" in contract_text
             or "CURRENT_CONTRACT_VERSION = 20" in contract_text
+            or "CURRENT_CONTRACT_VERSION = 21" in contract_text
         ),
         "capabilityDescriptorPresent": (
             "CONTENT_SUBSCRIBE" in contract_text
@@ -6250,6 +6251,7 @@ def collect_app_data_store_evidence(settings: Settings) -> EvidenceItem:
                 or "CURRENT_CONTRACT_VERSION = 14" in text["contract"]
                 or "CURRENT_CONTRACT_VERSION = 15" in text["contract"]
                 or "CURRENT_CONTRACT_VERSION = 20" in text["contract"]
+                or "CURRENT_CONTRACT_VERSION = 21" in text["contract"]
             )
             and "APP_DATA_STORE_CONTRACT_VERSION = 9" in text["contract"]
             and "app.data.read" in text["capabilities"]
@@ -7904,7 +7906,7 @@ def collect_trust_graph_rc_scope_and_safety_evidence(settings: Settings) -> Evid
     docs_lower = normalized_source_text(docs_text)
     checks = {
         "contractV15AndRoutesPresent": (
-            "CURRENT_CONTRACT_VERSION = 20" in contract_text
+            "CURRENT_CONTRACT_VERSION = 21" in contract_text
             and "TRUST_GRAPH_RC_SCOPE_CONTRACT_VERSION = 15" in contract_text
             and "/trust-graph/statements/{fingerprint}" in contract_text
             and "/trust-graph/statements/{fingerprint}/deprecate" in contract_text
@@ -8244,7 +8246,7 @@ def collect_trust_graph_exchange_evidence(settings: Settings) -> EvidenceItem:
     route_source_text = router_text + "\n" + route_text
     checks = {
         "contractVersionV10": (
-            "CURRENT_CONTRACT_VERSION = 20" in contract_text
+            "CURRENT_CONTRACT_VERSION = 21" in contract_text
             and "TRUST_GRAPH_EXCHANGE_CONTRACT_VERSION = 10" in contract_text
         ),
         "contractDescriptorsPresent": (
@@ -8592,7 +8594,7 @@ def collect_social_message_signing_evidence(settings: Settings) -> EvidenceItem:
     )
     checks = {
         "routeInContract": "/app-vault/identities/{identityId}/social-message" in contract_text,
-        "contractVersionV11": "CURRENT_CONTRACT_VERSION = 20" in contract_text
+        "contractVersionV11": "CURRENT_CONTRACT_VERSION = 21" in contract_text
         and "SOCIAL_MESSAGE_CONTRACT_VERSION = 11" in contract_text,
         "capabilitiesInContract": all(
             fragment in contract_text
@@ -11829,6 +11831,9 @@ def collect_user_consent_flow_evidence(settings: Settings) -> EvidenceItem:
     app_routes_text = read_source(
         workspace / "platform-api/src/main/java/network/crypta/platform/api/PlatformApiAppRoutes.java"
     )
+    contract_text = read_source(
+        workspace / "platform-api/src/main/java/network/crypta/platform/api/PlatformApiContract.java"
+    )
     toadlet_text = read_source(
         workspace / "adapter-http-legacy-admin/src/main/java/network/crypta/clients/http/PlatformApiToadlet.java"
     )
@@ -11909,6 +11914,25 @@ def collect_user_consent_flow_evidence(settings: Settings) -> EvidenceItem:
                 'case "approve"',
                 'case "reject"',
                 'case "audit"',
+            )
+        ),
+        "contractConsentDescriptorsPresent": all(
+            marker in contract_text
+            for marker in (
+                "CURRENT_CONTRACT_VERSION = 21",
+                "CONSENT_CONTRACT_VERSION = 21",
+                "ROUTE_FAMILY_CONSENT",
+                "consentEndpoints",
+                "consentEndpoint",
+                "PlatformApiStabilityLevel.OPERATOR_ONLY",
+                "/consent/install-preview",
+                "/consent/update-preview",
+                "/consent/catalog-update-preview",
+                "/consent/service-grant-preview",
+                "/consent/approve",
+                "/consent/reject",
+                "/consent/defer",
+                "/consent/audit",
             )
         ),
         "installPreviewCoversMaterialTrustAndPermissions": all(
@@ -12069,6 +12093,7 @@ def collect_user_consent_flow_evidence(settings: Settings) -> EvidenceItem:
         },
         "sources": {
             "consent": display_path(consent_dir, workspace),
+            "contract": "platform-api/src/main/java/network/crypta/platform/api/PlatformApiContract.java",
             "router": "platform-api/src/main/java/network/crypta/platform/api/PlatformApiRouter.java",
             "updateCandidate": (
                 "platform-api/src/main/java/network/crypta/platform/api/appupdates/"
@@ -16675,7 +16700,7 @@ def make_self_test_workspace(workspace: Path) -> None:
         encoding="utf-8",
     )
     (api_dir / "PlatformApiContract.java").write_text(
-        "final class PlatformApiContract { static final int CURRENT_CONTRACT_VERSION = 20; "
+        "final class PlatformApiContract { static final int CURRENT_CONTRACT_VERSION = 21; "
         "static final int TRUST_GRAPH_PREVIEW_CONTRACT_VERSION = 7; "
         "static final int TRUST_GRAPH_EXCHANGE_CONTRACT_VERSION = 10; "
         "static final int TRUST_GRAPH_RC_SCOPE_CONTRACT_VERSION = 15; "
@@ -19532,6 +19557,22 @@ final class ConsentApiHandler {
     app_routes.parent.mkdir(parents=True, exist_ok=True)
     app_routes.write_text(
         read_source(app_routes) + "\nString consentRequestId = \"consentRequestId\";\n",
+        encoding="utf-8",
+    )
+    contract = workspace / "platform-api/src/main/java/network/crypta/platform/api/PlatformApiContract.java"
+    contract.write_text(
+        read_source(contract)
+        + """
+static final int CONSENT_CONTRACT_VERSION = 21;
+static final String ROUTE_FAMILY_CONSENT = "consent";
+void consentEndpoints() {
+  String routes = "/consent/install-preview /consent/update-preview "
+      + "/consent/catalog-update-preview /consent/service-grant-preview "
+      + "/consent/approve /consent/reject /consent/defer /consent/audit";
+  Object stability = PlatformApiStabilityLevel.OPERATOR_ONLY;
+}
+void consentEndpoint() {}
+""",
         encoding="utf-8",
     )
     service_routes = (

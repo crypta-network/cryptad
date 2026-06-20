@@ -17,6 +17,49 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SuppressWarnings("java:S100")
 class PlatformApiContractTest {
+  private static final String CAP_APP_DATA_READ = PlatformApiCapabilities.APP_DATA_READ;
+  private static final String CAP_APP_DATA_WRITE = PlatformApiCapabilities.APP_DATA_WRITE;
+  private static final String CAP_APP_SERVICES_CALL = PlatformApiCapabilities.APP_SERVICES_CALL;
+  private static final String CAP_APP_SERVICES_READ = PlatformApiCapabilities.APP_SERVICES_READ;
+  private static final String CAP_CONTENT_FETCH = PlatformApiCapabilities.CONTENT_FETCH;
+  private static final String CAP_CONTENT_SUBSCRIBE = PlatformApiCapabilities.CONTENT_SUBSCRIBE;
+  private static final String CAP_TRUST_READ = PlatformApiCapabilities.TRUST_READ;
+  private static final String CAP_TRUST_WRITE = PlatformApiCapabilities.TRUST_WRITE;
+  private static final String FIELD_STABLE_BASELINE = "stableBaseline";
+  private static final String ROUTE_FAMILY_CONSENT = "consent";
+  private static final String ROUTE_FAMILY_APP_SERVICES = "app-services";
+  private static final String ROUTE_FAMILY_APP_VAULT = "app-vault";
+  private static final String ROUTE_FAMILY_TRUST_GRAPH = "trust-graph";
+  private static final String ROUTE_PREFIX_CONSENT = "/consent";
+  private static final String ROUTE_POST_APP_SERVICES_GRANT_BUNDLES =
+      "POST /app-services/grant-bundles";
+  private static final String SEGMENT_DEPENDENCIES = "dependencies";
+  private static final String SEGMENT_GRANT_BUNDLES = "grant-bundles";
+  private static final Map<String, Integer> SINCE_VERSION_BY_EXACT_ROUTE =
+      Map.ofEntries(
+          Map.entry("/trust-graph/statements/{fingerprint}", 15),
+          Map.entry("/trust-graph/import-uri", 10),
+          Map.entry("/trust-graph/audit", 10),
+          Map.entry("/app-vault/identities/{identityId}/social-message", 11),
+          Map.entry("/app-vault/identities/{identityId}/trust-statement", 7),
+          Map.entry("/queue/inserts/app-document", 5),
+          Map.entry("/app-vault/identities/{identityId}/profile-document", 5),
+          Map.entry("/content/fetch", 6));
+  private static final List<RouteVersionPrefix> SINCE_VERSION_BY_ROUTE_PREFIX =
+      List.of(
+          new RouteVersionPrefix(ROUTE_PREFIX_CONSENT, 21),
+          new RouteVersionPrefix("/trust-graph/statements/{fingerprint}/", 15),
+          new RouteVersionPrefix("/app-services/dependencies", 16),
+          new RouteVersionPrefix("/app-services/grant-bundles", 16),
+          new RouteVersionPrefix("/app-services", 12),
+          new RouteVersionPrefix("/trust-graph", 7),
+          new RouteVersionPrefix("/content/subscriptions", 8),
+          new RouteVersionPrefix("/app-data", 9),
+          new RouteVersionPrefix("/app-vault", 3),
+          new RouteVersionPrefix("/identity-vault", 3),
+          new RouteVersionPrefix("/app-catalogs/recommended", 4),
+          new RouteVersionPrefix("/apps/{appId}/updates", 2));
+
   @Test
   void writeEnvelope_whenCalledRepeatedly_expectDeterministicContractJson() {
     String first = PlatformApiContractJson.writeEnvelope(PlatformApiContract.current());
@@ -59,7 +102,7 @@ class PlatformApiContractTest {
         assertThrows(
             IllegalArgumentException.class, () -> PlatformApiContractJson.parse(staleJson));
 
-    assertTrue(thrown.getMessage().contains("stableBaseline"), thrown.getMessage());
+    assertTrue(thrown.getMessage().contains(FIELD_STABLE_BASELINE), thrown.getMessage());
   }
 
   @Test
@@ -71,7 +114,7 @@ class PlatformApiContractTest {
     IllegalArgumentException thrown =
         assertThrows(IllegalArgumentException.class, () -> PlatformApiContractJson.parse(json));
 
-    assertTrue(thrown.getMessage().contains("stableBaseline"), thrown.getMessage());
+    assertTrue(thrown.getMessage().contains(FIELD_STABLE_BASELINE), thrown.getMessage());
   }
 
   @Test
@@ -121,23 +164,28 @@ class PlatformApiContractTest {
     assertEquals(baseline.endpoints().size(), baseline.endpointCount());
     assertEquals(
         List.of(
-            "app.data.read",
-            "app.data.write",
-            "content.fetch",
+            CAP_APP_DATA_READ,
+            CAP_APP_DATA_WRITE,
+            CAP_CONTENT_FETCH,
             "content.insert",
             "content.insert.app-document",
-            "content.subscribe",
+            CAP_CONTENT_SUBSCRIBE,
             "platform.contract.read",
             "queue.read",
             "queue.write"),
         baseline.capabilities());
-    assertFalse(baseline.capabilities().contains("trust.read"));
-    assertFalse(baseline.capabilities().contains("app.services.read"));
+    assertFalse(baseline.capabilities().contains(CAP_TRUST_READ));
+    assertFalse(baseline.capabilities().contains(CAP_APP_SERVICES_READ));
     assertTrue(baseline.endpoints().contains("POST /content/fetch"));
     assertTrue(baseline.endpoints().contains("POST /queue/inserts/app-document"));
     assertTrue(baseline.endpoints().contains("GET /platform/contract"));
     assertTrue(baseline.endpoints().contains("POST /queue/inserts/file"));
-    assertFalse(baseline.endpoints().stream().anyMatch(endpoint -> endpoint.contains("app-vault")));
+    assertFalse(
+        baseline.endpoints().stream()
+            .anyMatch(endpoint -> endpoint.contains(ROUTE_FAMILY_APP_VAULT)));
+    assertFalse(
+        baseline.endpoints().stream()
+            .anyMatch(endpoint -> endpoint.contains(ROUTE_FAMILY_CONSENT)));
     assertFalse(baseline.endpoints().stream().anyMatch(endpoint -> endpoint.contains("operator")));
   }
 
@@ -192,49 +240,49 @@ class PlatformApiContractTest {
     assertEquals(5, appDocumentInsertCapability.sinceContractVersion());
     PlatformApiCapabilityDescriptor contentFetchCapability =
         PlatformApiContract.current().capabilities().stream()
-            .filter(capability -> capability.name().equals("content.fetch"))
+            .filter(capability -> capability.name().equals(CAP_CONTENT_FETCH))
             .findFirst()
             .orElseThrow();
     assertEquals(6, contentFetchCapability.sinceContractVersion());
     PlatformApiCapabilityDescriptor contentSubscribeCapability =
         PlatformApiContract.current().capabilities().stream()
-            .filter(capability -> capability.name().equals("content.subscribe"))
+            .filter(capability -> capability.name().equals(CAP_CONTENT_SUBSCRIBE))
             .findFirst()
             .orElseThrow();
     assertEquals(8, contentSubscribeCapability.sinceContractVersion());
     PlatformApiCapabilityDescriptor appDataReadCapability =
         PlatformApiContract.current().capabilities().stream()
-            .filter(capability -> capability.name().equals("app.data.read"))
+            .filter(capability -> capability.name().equals(CAP_APP_DATA_READ))
             .findFirst()
             .orElseThrow();
     assertEquals(9, appDataReadCapability.sinceContractVersion());
     PlatformApiCapabilityDescriptor appDataWriteCapability =
         PlatformApiContract.current().capabilities().stream()
-            .filter(capability -> capability.name().equals("app.data.write"))
+            .filter(capability -> capability.name().equals(CAP_APP_DATA_WRITE))
             .findFirst()
             .orElseThrow();
     assertEquals(9, appDataWriteCapability.sinceContractVersion());
     PlatformApiCapabilityDescriptor appServicesReadCapability =
         PlatformApiContract.current().capabilities().stream()
-            .filter(capability -> capability.name().equals("app.services.read"))
+            .filter(capability -> capability.name().equals(CAP_APP_SERVICES_READ))
             .findFirst()
             .orElseThrow();
     assertEquals(12, appServicesReadCapability.sinceContractVersion());
     PlatformApiCapabilityDescriptor appServicesCallCapability =
         PlatformApiContract.current().capabilities().stream()
-            .filter(capability -> capability.name().equals("app.services.call"))
+            .filter(capability -> capability.name().equals(CAP_APP_SERVICES_CALL))
             .findFirst()
             .orElseThrow();
     assertEquals(12, appServicesCallCapability.sinceContractVersion());
     PlatformApiCapabilityDescriptor trustReadCapability =
         PlatformApiContract.current().capabilities().stream()
-            .filter(capability -> capability.name().equals("trust.read"))
+            .filter(capability -> capability.name().equals(CAP_TRUST_READ))
             .findFirst()
             .orElseThrow();
     assertEquals(7, trustReadCapability.sinceContractVersion());
     PlatformApiCapabilityDescriptor trustWriteCapability =
         PlatformApiContract.current().capabilities().stream()
-            .filter(capability -> capability.name().equals("trust.write"))
+            .filter(capability -> capability.name().equals(CAP_TRUST_WRITE))
             .findFirst()
             .orElseThrow();
     assertEquals(7, trustWriteCapability.sinceContractVersion());
@@ -308,11 +356,11 @@ class PlatformApiContractTest {
 
     assertEquals(6, endpoint.sinceContractVersion());
     assertEquals("content", endpoint.routeFamily());
-    assertEquals("content.fetch", endpoint.actionLabel());
+    assertEquals(CAP_CONTENT_FETCH, endpoint.actionLabel());
     assertTrue(endpoint.hostOperatorBypassAllowed());
     assertTrue(endpoint.appProcessAllowed());
     assertTrue(endpoint.appBrowserAllowed());
-    assertEquals(List.of("content.fetch"), endpoint.requiredCapabilities());
+    assertEquals(List.of(CAP_CONTENT_FETCH), endpoint.requiredCapabilities());
   }
 
   @Test
@@ -320,19 +368,19 @@ class PlatformApiContractTest {
     Map<String, List<String>> expectedCapabilities =
         Map.of(
             "GET /content/subscriptions",
-            List.of("content.subscribe"),
+            List.of(CAP_CONTENT_SUBSCRIBE),
             "POST /content/subscriptions",
-            List.of("content.fetch", "content.subscribe"),
+            List.of(CAP_CONTENT_FETCH, CAP_CONTENT_SUBSCRIBE),
             "GET /content/subscriptions/{subscriptionId}",
-            List.of("content.subscribe"),
+            List.of(CAP_CONTENT_SUBSCRIBE),
             "POST /content/subscriptions/{subscriptionId}/refresh",
-            List.of("content.fetch", "content.subscribe"),
+            List.of(CAP_CONTENT_FETCH, CAP_CONTENT_SUBSCRIBE),
             "POST /content/subscriptions/{subscriptionId}/pause",
-            List.of("content.subscribe"),
+            List.of(CAP_CONTENT_SUBSCRIBE),
             "POST /content/subscriptions/{subscriptionId}/resume",
-            List.of("content.subscribe"),
+            List.of(CAP_CONTENT_SUBSCRIBE),
             "DELETE /content/subscriptions/{subscriptionId}",
-            List.of("content.subscribe"));
+            List.of(CAP_CONTENT_SUBSCRIBE));
     Set<String> seen = new TreeSet<>();
 
     for (PlatformApiEndpointDescriptor endpoint : PlatformApiContract.current().endpoints()) {
@@ -355,17 +403,17 @@ class PlatformApiContractTest {
   void current_whenInspectingAppDataEndpoints_expectContractV9AppScopedCapabilities() {
     Map<String, List<String>> expectedCapabilities =
         Map.ofEntries(
-            Map.entry("GET /app-data/status", List.of("app.data.read")),
-            Map.entry("GET /app-data/namespaces", List.of("app.data.read")),
-            Map.entry("GET /app-data/namespaces/{namespace}", List.of("app.data.read")),
-            Map.entry("POST /app-data/namespaces/{namespace}/schema", List.of("app.data.write")),
-            Map.entry("DELETE /app-data/namespaces/{namespace}", List.of("app.data.write")),
-            Map.entry("GET /app-data/records", List.of("app.data.read")),
-            Map.entry("GET /app-data/records/{namespace}/{key}", List.of("app.data.read")),
-            Map.entry("POST /app-data/records", List.of("app.data.write")),
-            Map.entry("DELETE /app-data/records/{namespace}/{key}", List.of("app.data.write")),
-            Map.entry("GET /app-data/export", List.of("app.data.read")),
-            Map.entry("POST /app-data/import", List.of("app.data.write")));
+            Map.entry("GET /app-data/status", List.of(CAP_APP_DATA_READ)),
+            Map.entry("GET /app-data/namespaces", List.of(CAP_APP_DATA_READ)),
+            Map.entry("GET /app-data/namespaces/{namespace}", List.of(CAP_APP_DATA_READ)),
+            Map.entry("POST /app-data/namespaces/{namespace}/schema", List.of(CAP_APP_DATA_WRITE)),
+            Map.entry("DELETE /app-data/namespaces/{namespace}", List.of(CAP_APP_DATA_WRITE)),
+            Map.entry("GET /app-data/records", List.of(CAP_APP_DATA_READ)),
+            Map.entry("GET /app-data/records/{namespace}/{key}", List.of(CAP_APP_DATA_READ)),
+            Map.entry("POST /app-data/records", List.of(CAP_APP_DATA_WRITE)),
+            Map.entry("DELETE /app-data/records/{namespace}/{key}", List.of(CAP_APP_DATA_WRITE)),
+            Map.entry("GET /app-data/export", List.of(CAP_APP_DATA_READ)),
+            Map.entry("POST /app-data/import", List.of(CAP_APP_DATA_WRITE)));
     Set<String> seen = new TreeSet<>();
 
     for (PlatformApiEndpointDescriptor endpoint : PlatformApiContract.current().endpoints()) {
@@ -389,21 +437,21 @@ class PlatformApiContractTest {
     Map<String, List<String>> expectedCapabilities =
         Map.of(
             "GET /trust-graph/status",
-            List.of("trust.read"),
+            List.of(CAP_TRUST_READ),
             "GET /trust-graph/anchors",
-            List.of("trust.read"),
+            List.of(CAP_TRUST_READ),
             "POST /trust-graph/anchors",
-            List.of("trust.write"),
+            List.of(CAP_TRUST_WRITE),
             "DELETE /trust-graph/anchors/{fingerprint}",
-            List.of("trust.write"),
+            List.of(CAP_TRUST_WRITE),
             "POST /trust-graph/import",
-            List.of("trust.write"),
+            List.of(CAP_TRUST_WRITE),
             "GET /trust-graph/subjects",
-            List.of("trust.read"),
+            List.of(CAP_TRUST_READ),
             "GET /trust-graph/statements",
-            List.of("trust.read"),
+            List.of(CAP_TRUST_READ),
             "GET /trust-graph/score",
-            List.of("trust.read"));
+            List.of(CAP_TRUST_READ));
     Set<String> seen = new TreeSet<>();
 
     for (PlatformApiEndpointDescriptor endpoint : PlatformApiContract.current().endpoints()) {
@@ -413,7 +461,7 @@ class PlatformApiContractTest {
       }
       seen.add(key);
       assertEquals(7, endpoint.sinceContractVersion(), key);
-      assertEquals("trust-graph", endpoint.routeFamily(), key);
+      assertEquals(ROUTE_FAMILY_TRUST_GRAPH, endpoint.routeFamily(), key);
       PlatformApiStabilityLevel expectedStability =
           expectedCapabilities.get(key).isEmpty()
               ? PlatformApiStabilityLevel.OPERATOR_ONLY
@@ -430,28 +478,28 @@ class PlatformApiContractTest {
   void current_whenInspectingAppServiceEndpoints_expectContractV12AndV16Capabilities() {
     Map<String, List<String>> expectedCapabilities =
         Map.ofEntries(
-            Map.entry("GET /app-services", List.of("app.services.read")),
+            Map.entry("GET /app-services", List.of(CAP_APP_SERVICES_READ)),
             Map.entry("GET /app-services/audit", List.of()),
-            Map.entry("GET /app-services/grants", List.of("app.services.read")),
-            Map.entry("GET /app-services/dependencies", List.of("app.services.read")),
+            Map.entry("GET /app-services/grants", List.of(CAP_APP_SERVICES_READ)),
+            Map.entry("GET /app-services/dependencies", List.of(CAP_APP_SERVICES_READ)),
             Map.entry(
                 "GET /app-services/dependencies/consumers/{consumerAppId}",
-                List.of("app.services.read")),
-            Map.entry("GET /app-services/grant-bundles", List.of("app.services.read")),
-            Map.entry("POST /app-services/grant-bundles", List.of("app.services.call")),
+                List.of(CAP_APP_SERVICES_READ)),
+            Map.entry("GET /app-services/grant-bundles", List.of(CAP_APP_SERVICES_READ)),
+            Map.entry(ROUTE_POST_APP_SERVICES_GRANT_BUNDLES, List.of(CAP_APP_SERVICES_CALL)),
             Map.entry("POST /app-services/grant-bundles/{bundleId}/approve", List.of()),
             Map.entry("POST /app-services/grant-bundles/{bundleId}/reject", List.of()),
             Map.entry("POST /app-services/grant-bundles/{bundleId}/renew", List.of()),
-            Map.entry("POST /app-services/grants", List.of("app.services.call")),
+            Map.entry("POST /app-services/grants", List.of(CAP_APP_SERVICES_CALL)),
             Map.entry("POST /app-services/grants/{grantId}/approve", List.of()),
-            Map.entry("POST /app-services/grants/{grantId}/revoke", List.of("app.services.call")),
-            Map.entry("GET /app-services/{providerAppId}/services", List.of("app.services.read")),
+            Map.entry("POST /app-services/grants/{grantId}/revoke", List.of(CAP_APP_SERVICES_CALL)),
+            Map.entry("GET /app-services/{providerAppId}/services", List.of(CAP_APP_SERVICES_READ)),
             Map.entry(
                 "GET /app-services/{providerAppId}/services/{serviceId}",
-                List.of("app.services.read")),
+                List.of(CAP_APP_SERVICES_READ)),
             Map.entry(
                 "POST /app-services/{providerAppId}/services/{serviceId}/invoke",
-                List.of("app.services.call")));
+                List.of(CAP_APP_SERVICES_CALL)));
     Set<String> seen = new TreeSet<>();
 
     for (PlatformApiEndpointDescriptor endpoint : PlatformApiContract.current().endpoints()) {
@@ -461,10 +509,10 @@ class PlatformApiContractTest {
       }
       seen.add(key);
       assertEquals(
-          key.contains("dependencies") || key.contains("grant-bundles") ? 16 : 12,
+          key.contains(SEGMENT_DEPENDENCIES) || key.contains(SEGMENT_GRANT_BUNDLES) ? 16 : 12,
           endpoint.sinceContractVersion(),
           key);
-      assertEquals("app-services", endpoint.routeFamily(), key);
+      assertEquals(ROUTE_FAMILY_APP_SERVICES, endpoint.routeFamily(), key);
       assertEquals(expectedCapabilities.get(key), endpoint.requiredCapabilities(), key);
       if (key.endsWith("/approve")
           || key.endsWith("/reject")
@@ -475,11 +523,11 @@ class PlatformApiContractTest {
         assertFalse(endpoint.appProcessAllowed(), key);
         assertFalse(endpoint.appBrowserAllowed(), key);
       } else if (key.equals("POST /app-services/grants")
-          || key.equals("POST /app-services/grant-bundles")
+          || key.equals(ROUTE_POST_APP_SERVICES_GRANT_BUNDLES)
           || key.equals("POST /app-services/{providerAppId}/services/{serviceId}/invoke")) {
         assertEquals(PlatformApiStabilityLevel.EXPERIMENTAL, endpoint.stability(), key);
         assertEquals(
-            key.equals("POST /app-services/grant-bundles"),
+            key.equals(ROUTE_POST_APP_SERVICES_GRANT_BUNDLES),
             endpoint.hostOperatorBypassAllowed(),
             key);
         assertTrue(endpoint.appProcessAllowed(), key);
@@ -492,18 +540,51 @@ class PlatformApiContractTest {
   }
 
   @Test
+  void current_whenInspectingConsentEndpoints_expectContractV21HostOperatorOnly() {
+    Map<String, String> expectedActions =
+        Map.ofEntries(
+            Map.entry("GET /consent/install-preview", "consent.install-preview"),
+            Map.entry("GET /consent/update-preview", "consent.update-preview.read"),
+            Map.entry("POST /consent/update-preview", "consent.update-preview.refresh"),
+            Map.entry("GET /consent/catalog-update-preview", "consent.catalog-update-preview"),
+            Map.entry("GET /consent/service-grant-preview", "consent.service-grant-preview"),
+            Map.entry("POST /consent/approve", "consent.approve"),
+            Map.entry("POST /consent/reject", "consent.reject"),
+            Map.entry("POST /consent/defer", "consent.defer"),
+            Map.entry("GET /consent/audit", "consent.audit"));
+    Set<String> seen = new TreeSet<>();
+
+    for (PlatformApiEndpointDescriptor endpoint : PlatformApiContract.current().endpoints()) {
+      String key = endpoint.method() + " " + endpoint.routeTemplate();
+      if (!expectedActions.containsKey(key)) {
+        continue;
+      }
+      seen.add(key);
+      assertEquals(21, endpoint.sinceContractVersion(), key);
+      assertEquals(ROUTE_FAMILY_CONSENT, endpoint.routeFamily(), key);
+      assertEquals(expectedActions.get(key), endpoint.actionLabel(), key);
+      assertEquals(List.of(), endpoint.requiredCapabilities(), key);
+      assertEquals(PlatformApiStabilityLevel.OPERATOR_ONLY, endpoint.stability(), key);
+      assertTrue(endpoint.hostOperatorBypassAllowed(), key);
+      assertFalse(endpoint.appProcessAllowed(), key);
+      assertFalse(endpoint.appBrowserAllowed(), key);
+    }
+    assertEquals(expectedActions.keySet(), seen);
+  }
+
+  @Test
   void endpointFor_whenDependencyConsumerIdIsServices_expectDisambiguatedContractRoute() {
     PlatformApiContract contract = PlatformApiContract.current();
 
     PlatformApiEndpointDescriptor dependencyRead =
         contract.endpointFor(
             "GET",
-            List.of("app-services", "dependencies", "consumers", "services"),
+            List.of(ROUTE_FAMILY_APP_SERVICES, SEGMENT_DEPENDENCIES, "consumers", "services"),
             PlatformApiPrincipalType.APP_BROWSER);
     PlatformApiEndpointDescriptor providerList =
         contract.endpointFor(
             "GET",
-            List.of("app-services", "dependencies", "services"),
+            List.of(ROUTE_FAMILY_APP_SERVICES, SEGMENT_DEPENDENCIES, "services"),
             PlatformApiPrincipalType.APP_BROWSER);
 
     assertNotNull(dependencyRead);
@@ -511,10 +592,10 @@ class PlatformApiContractTest {
     assertEquals(
         "/app-services/dependencies/consumers/{consumerAppId}", dependencyRead.routeTemplate());
     assertEquals("app-services.dependencies.read", dependencyRead.actionLabel());
-    assertEquals(List.of("app.services.read"), dependencyRead.requiredCapabilities());
+    assertEquals(List.of(CAP_APP_SERVICES_READ), dependencyRead.requiredCapabilities());
     assertEquals("/app-services/{providerAppId}/services", providerList.routeTemplate());
     assertEquals("app-services.provider.list", providerList.actionLabel());
-    assertEquals(List.of("app.services.read"), providerList.requiredCapabilities());
+    assertEquals(List.of(CAP_APP_SERVICES_READ), providerList.requiredCapabilities());
   }
 
   @Test
@@ -522,9 +603,9 @@ class PlatformApiContractTest {
     Map<String, List<String>> expectedCapabilities =
         Map.of(
             "POST /trust-graph/import-uri",
-            List.of("content.fetch", "trust.write"),
+            List.of(CAP_CONTENT_FETCH, CAP_TRUST_WRITE),
             "GET /trust-graph/audit",
-            List.of("trust.read"));
+            List.of(CAP_TRUST_READ));
     Set<String> seen = new TreeSet<>();
 
     for (PlatformApiEndpointDescriptor endpoint : PlatformApiContract.current().endpoints()) {
@@ -534,7 +615,7 @@ class PlatformApiContractTest {
       }
       seen.add(key);
       assertEquals(10, endpoint.sinceContractVersion(), key);
-      assertEquals("trust-graph", endpoint.routeFamily(), key);
+      assertEquals(ROUTE_FAMILY_TRUST_GRAPH, endpoint.routeFamily(), key);
       assertEquals(PlatformApiStabilityLevel.EXPERIMENTAL, endpoint.stability(), key);
       assertTrue(endpoint.appProcessAllowed(), key);
       assertTrue(endpoint.appBrowserAllowed(), key);
@@ -548,13 +629,13 @@ class PlatformApiContractTest {
     Map<String, List<String>> expectedCapabilities =
         Map.of(
             "GET /trust-graph/statements/{fingerprint}",
-            List.of("trust.read"),
+            List.of(CAP_TRUST_READ),
             "POST /trust-graph/statements/{fingerprint}/deprecate",
-            List.of("trust.write"),
+            List.of(CAP_TRUST_WRITE),
             "POST /trust-graph/statements/{fingerprint}/revoke",
-            List.of("trust.write"),
+            List.of(CAP_TRUST_WRITE),
             "POST /trust-graph/statements/{fingerprint}/reactivate",
-            List.of("trust.write"));
+            List.of(CAP_TRUST_WRITE));
     Set<String> seen = new TreeSet<>();
 
     for (PlatformApiEndpointDescriptor endpoint : PlatformApiContract.current().endpoints()) {
@@ -564,7 +645,7 @@ class PlatformApiContractTest {
       }
       seen.add(key);
       assertEquals(15, endpoint.sinceContractVersion(), key);
-      assertEquals("trust-graph", endpoint.routeFamily(), key);
+      assertEquals(ROUTE_FAMILY_TRUST_GRAPH, endpoint.routeFamily(), key);
       assertEquals(PlatformApiStabilityLevel.EXPERIMENTAL, endpoint.stability(), key);
       assertTrue(endpoint.appProcessAllowed(), key);
       assertTrue(endpoint.appBrowserAllowed(), key);
@@ -587,12 +668,12 @@ class PlatformApiContractTest {
             .orElseThrow();
 
     assertEquals(7, endpoint.sinceContractVersion());
-    assertEquals("app-vault", endpoint.routeFamily());
+    assertEquals(ROUTE_FAMILY_APP_VAULT, endpoint.routeFamily());
     assertEquals("app-vault.identities.trust-statement", endpoint.actionLabel());
     assertTrue(endpoint.appProcessAllowed());
     assertTrue(endpoint.appBrowserAllowed());
     assertEquals(
-        List.of("trust.write", "vault.identities.read", "vault.identities.use"),
+        List.of(CAP_TRUST_WRITE, "vault.identities.read", "vault.identities.use"),
         endpoint.requiredCapabilities());
   }
 
@@ -610,7 +691,7 @@ class PlatformApiContractTest {
             .orElseThrow();
 
     assertEquals(11, endpoint.sinceContractVersion());
-    assertEquals("app-vault", endpoint.routeFamily());
+    assertEquals(ROUTE_FAMILY_APP_VAULT, endpoint.routeFamily());
     assertEquals("app-vault.identities.social-message", endpoint.actionLabel());
     assertTrue(endpoint.appProcessAllowed());
     assertTrue(endpoint.appBrowserAllowed());
@@ -632,49 +713,17 @@ class PlatformApiContractTest {
   }
 
   private static int expectedSinceContractVersion(PlatformApiEndpointDescriptor endpoint) {
-    if (endpoint.routeTemplate().equals("/trust-graph/statements/{fingerprint}")
-        || endpoint.routeTemplate().startsWith("/trust-graph/statements/{fingerprint}/")) {
-      return 15;
+    String routeTemplate = endpoint.routeTemplate();
+    Integer exactVersion = SINCE_VERSION_BY_EXACT_ROUTE.get(routeTemplate);
+    if (exactVersion != null) {
+      return exactVersion;
     }
-    if (endpoint.routeTemplate().equals("/trust-graph/import-uri")
-        || endpoint.routeTemplate().equals("/trust-graph/audit")) {
-      return 10;
+    for (RouteVersionPrefix prefix : SINCE_VERSION_BY_ROUTE_PREFIX) {
+      if (routeTemplate.startsWith(prefix.routePrefix())) {
+        return prefix.contractVersion();
+      }
     }
-    if (endpoint.routeTemplate().equals("/app-vault/identities/{identityId}/social-message")) {
-      return 11;
-    }
-    if (endpoint.routeTemplate().startsWith("/app-services/dependencies")
-        || endpoint.routeTemplate().startsWith("/app-services/grant-bundles")) {
-      return 16;
-    }
-    if (endpoint.routeTemplate().startsWith("/app-services")) {
-      return 12;
-    }
-    if (endpoint.routeTemplate().startsWith("/trust-graph")
-        || endpoint.routeTemplate().equals("/app-vault/identities/{identityId}/trust-statement")) {
-      return 7;
-    }
-    if (endpoint.routeTemplate().startsWith("/content/subscriptions")) {
-      return 8;
-    }
-    if (endpoint.routeTemplate().startsWith("/app-data")) {
-      return 9;
-    }
-    if (endpoint.routeTemplate().equals("/queue/inserts/app-document")
-        || endpoint.routeTemplate().equals("/app-vault/identities/{identityId}/profile-document")) {
-      return 5;
-    }
-    if (endpoint.routeTemplate().equals("/content/fetch")) {
-      return 6;
-    }
-    if (endpoint.routeTemplate().startsWith("/app-vault")
-        || endpoint.routeTemplate().startsWith("/identity-vault")) {
-      return 3;
-    }
-    if (endpoint.routeTemplate().startsWith("/app-catalogs/recommended")) {
-      return 4;
-    }
-    return endpoint.routeTemplate().startsWith("/apps/{appId}/updates") ? 2 : 1;
+    return 1;
   }
 
   private static PlatformApiStabilityLevel expectedStability(
@@ -688,6 +737,9 @@ class PlatformApiContractTest {
       return PlatformApiStabilityLevel.EXPERIMENTAL;
     }
     if (endpoint.routeTemplate().startsWith("/identity-vault")) {
+      return PlatformApiStabilityLevel.OPERATOR_ONLY;
+    }
+    if (endpoint.routeTemplate().startsWith(ROUTE_PREFIX_CONSENT)) {
       return PlatformApiStabilityLevel.OPERATOR_ONLY;
     }
     return PlatformApiStabilityLevel.STABLE;
@@ -742,9 +794,11 @@ class PlatformApiContractTest {
     LinkedHashMap<String, Object> contract =
         new LinkedHashMap<>(PlatformApiContractJson.toJsonValue(PlatformApiContract.current()));
     contract.put("contractVersion", contractVersion);
-    contract.remove("stableBaseline");
+    contract.remove(FIELD_STABLE_BASELINE);
     LinkedHashMap<String, Object> envelope = LinkedHashMap.newLinkedHashMap(1);
     envelope.put("contract", contract);
     return PlatformApiJsonWriter.write(envelope);
   }
+
+  private record RouteVersionPrefix(String routePrefix, int contractVersion) {}
 }

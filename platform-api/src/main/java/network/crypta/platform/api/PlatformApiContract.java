@@ -56,11 +56,11 @@ public record PlatformApiContract(
   /**
    * Integer compatibility contract version used by app manifests and catalogs.
    *
-   * <p>The value increases only when the app-facing Platform API compatibility surface changes in a
-   * way that tooling should be able to compare. It is not the Cryptad build number, and it is not
-   * the URL API version.
+   * <p>The value increases when published Platform API compatibility metadata changes in a way that
+   * tooling should be able to compare. It is not the Cryptad build number, and it is not the URL
+   * API version.
    */
-  public static final int CURRENT_CONTRACT_VERSION = 20;
+  public static final int CURRENT_CONTRACT_VERSION = 21;
 
   /** Stable app-facing Platform API baseline name published in contract snapshots. */
   public static final String PLATFORM_API_STABLE_BASELINE_NAME = "1.0";
@@ -98,6 +98,7 @@ public record PlatformApiContract(
   private static final int NETWORK_SCALE_BUDGET_CONTRACT_VERSION = 18;
   private static final int FIRST_PARTY_MAINTENANCE_CONTRACT_VERSION = 19;
   private static final int THIRD_PARTY_REVIEW_METADATA_CONTRACT_VERSION = 20;
+  private static final int CONSENT_CONTRACT_VERSION = 21;
 
   /**
    * Stable producer label written into generated contract snapshots.
@@ -131,6 +132,9 @@ public record PlatformApiContract(
           + ". Contract version "
           + THIRD_PARTY_REVIEW_METADATA_CONTRACT_VERSION
           + " adds third-party submission review metadata to catalog app summaries"
+          + ". Contract version "
+          + CONSENT_CONTRACT_VERSION
+          + " adds host/operator-only consent preview, decision, and audit route descriptors"
           + ". Endpoint descriptors retain the contract version where each route first appeared. "
           + "Experimental, deprecated, scheduled-for-removal, and internal entries are flagged for "
           + "developer tooling and release review before behavior changes.";
@@ -141,6 +145,7 @@ public record PlatformApiContract(
   private static final String ROUTE_FAMILY_APP_CATALOGS = "app-catalogs";
   private static final String ROUTE_FAMILY_APP_VAULT = "app-vault";
   private static final String ROUTE_FAMILY_CONFIG = "config";
+  private static final String ROUTE_FAMILY_CONSENT = "consent";
   private static final String ROUTE_FAMILY_CONTENT = "content";
   private static final String ROUTE_FAMILY_IDENTITY_VAULT = "identity-vault";
   private static final String ROUTE_FAMILY_PEERS = "peers";
@@ -612,6 +617,7 @@ public record PlatformApiContract(
     builder.contentSubscriptionEndpoints();
     builder.appDataEndpoints();
     builder.appServiceEndpoints();
+    builder.consentEndpoints();
     builder.trustGraphPreviewEndpoints();
     builder.post(
         ROUTE_FAMILY_QUEUE,
@@ -1552,6 +1558,54 @@ public record PlatformApiContract(
               "Invoke one bounded local app service through an active grant."));
     }
 
+    private void consentEndpoints() {
+      consentEndpoint(
+          METHOD_GET,
+          "/consent/install-preview",
+          "consent.install-preview",
+          "Preview material install consent for a catalog app.");
+      consentEndpoint(
+          METHOD_GET,
+          "/consent/update-preview",
+          "consent.update-preview.read",
+          "Read a material update consent preview without refreshing catalogs.");
+      consentEndpoint(
+          METHOD_POST,
+          "/consent/update-preview",
+          "consent.update-preview.refresh",
+          "Refresh catalogs and preview material update consent.");
+      consentEndpoint(
+          METHOD_GET,
+          "/consent/catalog-update-preview",
+          "consent.catalog-update-preview",
+          "Preview catalog-backed update consent for a catalog app.");
+      consentEndpoint(
+          METHOD_GET,
+          "/consent/service-grant-preview",
+          "consent.service-grant-preview",
+          "Preview material consent for one app-service grant bundle.");
+      consentEndpoint(
+          METHOD_POST,
+          "/consent/approve",
+          "consent.approve",
+          "Approve one digest-bound consent request.");
+      consentEndpoint(
+          METHOD_POST,
+          "/consent/reject",
+          "consent.reject",
+          "Reject one digest-bound consent request.");
+      consentEndpoint(
+          METHOD_POST,
+          "/consent/defer",
+          "consent.defer",
+          "Defer one digest-bound consent request.");
+      consentEndpoint(
+          METHOD_GET,
+          "/consent/audit",
+          "consent.audit",
+          "List recent redacted consent audit events.");
+    }
+
     private void appServiceEndpoint(AppServiceEndpointSpec spec) {
       endpoint(
           new EndpointSpec(
@@ -1568,6 +1622,23 @@ public record PlatformApiContract(
                   ? PlatformApiStabilityLevel.OPERATOR_ONLY
                   : PlatformApiStabilityLevel.EXPERIMENTAL,
               spec.description()));
+    }
+
+    private void consentEndpoint(
+        String method, String routeTemplate, String actionLabel, String description) {
+      endpoint(
+          new EndpointSpec(
+              ROUTE_FAMILY_CONSENT,
+              method,
+              routeTemplate,
+              actionLabel,
+              List.of(),
+              CONSENT_CONTRACT_VERSION,
+              true,
+              false,
+              false,
+              PlatformApiStabilityLevel.OPERATOR_ONLY,
+              description));
     }
 
     private void trustGraphPreviewEndpoints() {
