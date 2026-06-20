@@ -15,8 +15,13 @@ import network.crypta.platform.api.networkbudget.InMemoryAppNetworkBudgetStore;
 import network.crypta.platform.api.trust.TrustGraphApiHandler;
 import network.crypta.platform.appui.AppUiOriginRegistry;
 import network.crypta.platform.trustgraph.InMemoryTrustGraphStore;
+import network.crypta.platform.trustgraph.TrustAnchor;
+import network.crypta.platform.trustgraph.TrustGraphImportResult;
+import network.crypta.platform.trustgraph.TrustGraphStore;
+import network.crypta.platform.trustgraph.TrustStatementDocument;
 import network.crypta.platform.trustgraph.TrustStatementFingerprint;
 import network.crypta.platform.trustgraph.TrustStatementParser;
+import network.crypta.platform.trustgraph.TrustSubject;
 import network.crypta.runtime.spi.BoundedContentFetchResult;
 import network.crypta.runtime.spi.ContentFetchPort;
 import network.crypta.runtime.spi.RuntimePorts;
@@ -354,6 +359,42 @@ class TrustGraphApiRouterTest {
     assertEquals(200, response.statusCode());
     assertTrue(response.body().contains("\"candidateStatementCount\":1"));
     assertTrue(fetchCalled.get());
+  }
+
+  @Test
+  void route_whenPreviewUriBuildsSummary_expectTrustGraphReservationHeldDuringStoreScan() {
+    AtomicBoolean nestedReservationChecked = new AtomicBoolean(false);
+    AtomicBoolean nestedReservationDenied = new AtomicBoolean(false);
+    AppNetworkBudgetService budgetService = trustImportBudget(10, 10);
+    TrustGraphStore store =
+        new ReservationCheckingTrustGraphStore(
+            new InMemoryTrustGraphStore(),
+            budgetService,
+            nestedReservationChecked,
+            nestedReservationDenied);
+    ContentFetchPort fetchPort =
+        request ->
+            new BoundedContentFetchResult(
+                validStatement().getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                request.uri(),
+                request.uri(),
+                "ok");
+    PlatformApiRouter router =
+        router(fetchPort, new TrustGraphApiHandler(store, FIXED_CLOCK, budgetService));
+
+    PlatformApiResponse response =
+        router.route(
+            request(
+                "POST",
+                List.of("trust-graph", "import-preview-uri"),
+                Map.of("uri", List.of("CHK@statement"), "maxBytes", List.of("65536")),
+                PlatformApiPrincipal.appBrowserSession(
+                    APP_ID, List.of("trust.write", "content.fetch"))));
+
+    assertEquals(200, response.statusCode());
+    assertTrue(response.body().contains("\"candidateStatementCount\":1"));
+    assertTrue(nestedReservationChecked.get());
+    assertTrue(nestedReservationDenied.get());
   }
 
   @Test
@@ -1214,6 +1255,62 @@ class TrustGraphApiRouterTest {
             1,
             8),
         FIXED_CLOCK);
+  }
+
+  private record ReservationCheckingTrustGraphStore(
+      TrustGraphStore delegate,
+      AppNetworkBudgetService budgetService,
+      AtomicBoolean nestedReservationChecked,
+      AtomicBoolean nestedReservationDenied)
+      implements TrustGraphStore {
+    @Override
+    public TrustGraphImportResult importStatement(
+        TrustStatementDocument document, String source, String sourceUri, String sourceLabel) {
+      return delegate.importStatement(document, source, sourceUri, sourceLabel);
+    }
+
+    @Override
+    public TrustAnchor addAnchor(TrustAnchor anchor) {
+      return delegate.addAnchor(anchor);
+    }
+
+    @Override
+    public boolean removeAnchor(String issuerFingerprint) {
+      return delegate.removeAnchor(issuerFingerprint);
+    }
+
+    @Override
+    public List<TrustAnchor> anchors() {
+      return delegate.anchors();
+    }
+
+    @Override
+    public List<StoredTrustStatement> statements() {
+      nestedReservationChecked.set(true);
+      try (var reservation =
+          budgetService.reserve(APP_ID, AppNetworkBudgetOperation.TRUST_GRAPH_IMPORT)) {
+        nestedReservationDenied.set(
+            !reservation.allowed()
+                && "trust_graph_import_concurrency_limited"
+                    .equals(reservation.decision().errorCode()));
+      }
+      return delegate.statements();
+    }
+
+    @Override
+    public List<TrustSubject> subjects() {
+      return delegate.subjects();
+    }
+
+    @Override
+    public boolean isAnchor(String issuerFingerprint) {
+      return delegate.isAnchor(issuerFingerprint);
+    }
+
+    @Override
+    public int statementCount() {
+      return delegate.statementCount();
+    }
   }
 
   private static String validStatement() {

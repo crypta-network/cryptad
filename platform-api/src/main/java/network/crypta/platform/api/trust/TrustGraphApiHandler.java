@@ -370,27 +370,28 @@ public final class TrustGraphApiHandler {
     String documentJson =
         optionalNonBlankString(
             PlatformApiParameters.readOptionalString(queryParameters, PARAM_DOCUMENT));
-    boolean importBudgetCharged = false;
     try {
       if (documentJson == null && uri != null) {
-        documentJson = fetchPreviewDocument(queryParameters, contentFetchPort, appId, uri);
-        sourceUri = uri;
-        importBudgetCharged = true;
-      }
-      if (documentJson == null) {
+        try (var importReservation = reserveTrustGraphImportBudget(appId)) {
+          documentJson = fetchPreviewDocument(queryParameters, contentFetchPort, appId, uri);
+          sourceUri = uri;
+          commitTrustGraphImportBudget(importReservation);
+          Map<String, Object> preview =
+              buildImportPreview(queryParameters, sourceUri, documentJson);
+          appendPreviewAudit(appId, sourceUri, preview);
+          return preview;
+        }
+      } else if (documentJson != null) {
+        try (var importReservation = reserveTrustGraphImportBudget(appId)) {
+          commitTrustGraphImportBudget(importReservation);
+          Map<String, Object> preview =
+              buildImportPreview(queryParameters, sourceUri, documentJson);
+          appendPreviewAudit(appId, sourceUri, preview);
+          return preview;
+        }
+      } else {
         throw new PlatformApiException(
             400, "invalid_query_parameter", "Import preview requires document or uri.");
-      }
-      if (importBudgetCharged) {
-        Map<String, Object> preview = buildImportPreview(queryParameters, sourceUri, documentJson);
-        appendPreviewAudit(appId, sourceUri, preview);
-        return preview;
-      }
-      try (var importReservation = reserveTrustGraphImportBudget(appId)) {
-        commitTrustGraphImportBudget(importReservation);
-        Map<String, Object> preview = buildImportPreview(queryParameters, sourceUri, documentJson);
-        appendPreviewAudit(appId, sourceUri, preview);
-        return preview;
       }
     } catch (TrustGraphException exception) {
       appendRejectedAudit(
@@ -504,35 +505,32 @@ public final class TrustGraphApiHandler {
           503, "content_fetch_failed", "Content fetch service is unavailable.");
     }
     int maxBytes = readMaxBytes(queryParameters);
-    try (var importReservation = reserveTrustGraphImportBudget(appId)) {
-      Map<String, Object> fetched =
-          new ContentApiHandler(
-                  contentFetchPort,
-                  networkBudgetService,
-                  AppNetworkBudgetOperation.TRUST_GRAPH_IMPORT_URI)
-              .fetch(
-                  Map.of(
-                      PARAM_URI,
-                      List.of(uri),
-                      PARAM_MAX_BYTES,
-                      List.of(Integer.toString(maxBytes)),
-                      "format",
-                      List.of("text"),
-                      "purpose",
-                      List.of("trust-graph-import-preview")),
-                  budgetAppId(appId));
-      Object contentText = fetched.get("contentText");
-      if (!(contentText instanceof String documentJson)) {
-        throw new PlatformApiException(
-            415, "unsupported_content_encoding", "Fetched trust statement is not valid UTF-8.");
-      }
-      if (documentJson.getBytes(StandardCharsets.UTF_8).length > maxBytes) {
-        throw new PlatformApiException(
-            502, "content_fetch_too_large", "Fetched content exceeded the configured byte bound.");
-      }
-      commitTrustGraphImportBudget(importReservation);
-      return documentJson;
+    Map<String, Object> fetched =
+        new ContentApiHandler(
+                contentFetchPort,
+                networkBudgetService,
+                AppNetworkBudgetOperation.TRUST_GRAPH_IMPORT_URI)
+            .fetch(
+                Map.of(
+                    PARAM_URI,
+                    List.of(uri),
+                    PARAM_MAX_BYTES,
+                    List.of(Integer.toString(maxBytes)),
+                    "format",
+                    List.of("text"),
+                    "purpose",
+                    List.of("trust-graph-import-preview")),
+                budgetAppId(appId));
+    Object contentText = fetched.get("contentText");
+    if (!(contentText instanceof String documentJson)) {
+      throw new PlatformApiException(
+          415, "unsupported_content_encoding", "Fetched trust statement is not valid UTF-8.");
     }
+    if (documentJson.getBytes(StandardCharsets.UTF_8).length > maxBytes) {
+      throw new PlatformApiException(
+          502, "content_fetch_too_large", "Fetched content exceeded the configured byte bound.");
+    }
+    return documentJson;
   }
 
   private static void verifyExpectedDocumentFingerprint(
