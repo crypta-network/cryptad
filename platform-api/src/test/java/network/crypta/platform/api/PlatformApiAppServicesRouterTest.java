@@ -26,6 +26,7 @@ import org.junit.jupiter.api.io.TempDir;
 import org.mockito.Answers;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -261,7 +262,41 @@ class PlatformApiAppServicesRouterTest {
                 List.of("app-services", "grant-bundles", bundleId, "approve"),
                 Map.of(),
                 socialInbox));
+    PlatformApiResponse pendingRenew =
+        router.route(
+            request(
+                "POST",
+                List.of("app-services", "grant-bundles", bundleId, "renew"),
+                Map.of(),
+                PlatformApiPrincipal.hostOperator()));
+    PlatformApiResponse preview =
+        router.route(
+            request(
+                "GET",
+                List.of("consent", "service-grant-preview"),
+                Map.of("bundleId", List.of(bundleId)),
+                PlatformApiPrincipal.hostOperator()));
+    Map<String, List<String>> approvalParams =
+        Map.of(
+            "consentRequestId",
+            List.of(jsonString(preview.body(), "consentRequestId")),
+            "snapshotDigest",
+            List.of(jsonString(preview.body(), "snapshotDigest")));
+    PlatformApiResponse consentApprove =
+        router.route(
+            request(
+                "POST",
+                List.of("consent", "approve"),
+                approvalParams,
+                PlatformApiPrincipal.hostOperator()));
     PlatformApiResponse hostApprove =
+        router.route(
+            request(
+                "POST",
+                List.of("app-services", "grant-bundles", bundleId, "approve"),
+                approvalParams,
+                PlatformApiPrincipal.hostOperator()));
+    PlatformApiResponse staleApprove =
         router.route(
             request(
                 "POST",
@@ -278,10 +313,68 @@ class PlatformApiAppServicesRouterTest {
     assertEquals(201, bundle.statusCode());
     assertTrue(bundle.body().contains("\"status\":\"pending\""));
     assertEquals(403, appApprove.statusCode());
+    assertEquals(409, pendingRenew.statusCode());
+    assertEquals("app_service_bundle_not_renewable", errorCode(pendingRenew));
+    assertFalse(pendingRenew.body().contains("consent_required"));
+    assertEquals(200, preview.statusCode());
+    assertEquals(200, consentApprove.statusCode());
     assertEquals(200, hostApprove.statusCode());
     assertTrue(hostApprove.body().contains("\"status\":\"approved\""));
+    assertEquals(409, staleApprove.statusCode());
+    assertEquals("app_service_bundle_not_pending", errorCode(staleApprove));
+    assertFalse(staleApprove.body().contains("consent_required"));
     assertEquals(200, bundles.statusCode());
     assertTrue(bundles.body().contains("\"trust-annotations\""));
+  }
+
+  @Test
+  void route_whenBundleRejectFails_expectConsentRejectionAuditNotRecorded() throws Exception {
+    InMemoryAppServiceGrantStore store = new InMemoryAppServiceGrantStore();
+    PlatformApiRouter router = router(store, installedProvider(), installedConsumer());
+    PlatformApiPrincipal socialInbox =
+        PlatformApiPrincipal.appBrowserSession(
+            "social-inbox", List.of("app.services.read", "app.services.call"));
+    PlatformApiResponse bundle =
+        router.route(
+            request(
+                "POST",
+                List.of("app-services", "grant-bundles"),
+                Map.of("bundleAlias", List.of("trust-annotations")),
+                socialInbox));
+    String bundleId = store.listBundles().getFirst().bundleId();
+
+    PlatformApiResponse appReject =
+        router.route(
+            request(
+                "POST",
+                List.of("app-services", "grant-bundles", bundleId, "reject"),
+                Map.of(),
+                socialInbox));
+    PlatformApiResponse auditAfterFailedReject =
+        router.route(
+            request(
+                "GET", List.of("consent", "audit"), Map.of(), PlatformApiPrincipal.hostOperator()));
+    PlatformApiResponse hostReject =
+        router.route(
+            request(
+                "POST",
+                List.of("app-services", "grant-bundles", bundleId, "reject"),
+                Map.of(),
+                PlatformApiPrincipal.hostOperator()));
+    PlatformApiResponse auditAfterHostReject =
+        router.route(
+            request(
+                "GET", List.of("consent", "audit"), Map.of(), PlatformApiPrincipal.hostOperator()));
+
+    assertEquals(201, bundle.statusCode());
+    assertEquals(403, appReject.statusCode());
+    assertEquals(200, auditAfterFailedReject.statusCode());
+    assertFalse(auditAfterFailedReject.body().contains("\"decision\":\"rejected\""));
+    assertEquals(200, hostReject.statusCode());
+    assertTrue(hostReject.body().contains("\"status\":\"rejected\""));
+    assertEquals(200, auditAfterHostReject.statusCode());
+    assertTrue(auditAfterHostReject.body().contains("\"decision\":\"rejected\""));
+    assertTrue(auditAfterHostReject.body().contains("\"action\":\"app_service_grant\""));
   }
 
   @Test
@@ -492,6 +585,16 @@ class PlatformApiAppServicesRouterTest {
     int start = index + "\"code\":\"".length();
     int end = response.body().indexOf('"', start);
     return response.body().substring(start, end);
+  }
+
+  private static String jsonString(String json, String field) {
+    String marker = "\"" + field + "\":\"";
+    int index = json.indexOf(marker);
+    assertTrue(index >= 0, "missing JSON field " + field + " in " + json);
+    int start = index + marker.length();
+    int end = json.indexOf('"', start);
+    assertTrue(end > start, "unterminated JSON field " + field + " in " + json);
+    return json.substring(start, end);
   }
 
   private static RuntimePorts runtimePorts() {

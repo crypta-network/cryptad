@@ -9,6 +9,8 @@ import network.crypta.platform.api.apps.AppsApiHandler;
 import network.crypta.platform.api.appservices.AppServiceCoordinator;
 import network.crypta.platform.api.appupdates.AppUpdateService;
 import network.crypta.platform.api.appupdates.AppUpdatesApiHandler;
+import network.crypta.platform.api.consent.ConsentApiHandler;
+import network.crypta.platform.api.consent.ConsentService;
 import network.crypta.platform.api.content.subscriptions.ContentSubscriptionService;
 import network.crypta.platform.appcatalog.AppCatalogManager;
 import network.crypta.platform.apphost.AppHost;
@@ -51,6 +53,8 @@ final class PlatformApiAppRoutes {
   private final AppDataService appDataService;
   private final AppServiceCoordinator appServiceCoordinator;
   private final AppCatalogsApiHandler appCatalogsApiHandler;
+  private final ConsentService consentService;
+  private final ConsentApiHandler consentApiHandler;
   private final PlatformApiVaultRouter vaultRouter;
 
   /**
@@ -120,6 +124,11 @@ final class PlatformApiAppRoutes {
             ? null
             : new AppCatalogsApiHandler(
                 appCatalogManager, appHost, dependencies.currentCryptaVersion(), appVaultService);
+    consentService =
+        appCatalogsApiHandler == null && appUpdateService == null && appServiceCoordinator == null
+            ? null
+            : new ConsentService(appCatalogsApiHandler, appUpdateService, appServiceCoordinator);
+    consentApiHandler = consentService == null ? null : new ConsentApiHandler(consentService);
     vaultRouter = appVaultService == null ? null : new PlatformApiVaultRouter(appVaultService);
   }
 
@@ -150,6 +159,17 @@ final class PlatformApiAppRoutes {
     }
     requireHostOperator(request);
     return vaultRouter.routeIdentityVaultRequest(segments, request);
+  }
+
+  PlatformApiResponse routeConsentRequest(List<String> segments, PlatformApiRequest request) {
+    if (consentApiHandler == null) {
+      throw notFound();
+    }
+    return consentApiHandler.route(segments, request);
+  }
+
+  ConsentService consentService() {
+    return consentService;
   }
 
   /**
@@ -445,10 +465,13 @@ final class PlatformApiAppRoutes {
         if (!METHOD_POST.equals(request.method())) {
           yield methodNotAllowed(METHOD_POST, POST_ONLY_MESSAGE);
         }
+        Map<String, List<String>> queryParameters =
+            consentService == null
+                ? request.queryParameters()
+                : consentService.requireApprovedUpdateIfRequired(
+                    appId, request.queryParameters(), request.principal());
         yield PlatformApiResponse.ok(
-            envelope(
-                UPDATES_ROUTE_SEGMENT,
-                appUpdatesApiHandler.stage(appId, request.queryParameters())));
+            envelope(UPDATES_ROUTE_SEGMENT, appUpdatesApiHandler.stage(appId, queryParameters)));
       }
       case "apply" -> {
         if (!METHOD_POST.equals(request.method())) {
@@ -586,16 +609,47 @@ final class PlatformApiAppRoutes {
     return switch (action) {
       case "install" ->
           PlatformApiResponse.created(
-              envelope(
-                  "app",
-                  appCatalogsApiHandler.install(catalogId, appId, request.queryParameters())));
+              envelope("app", installCatalogApp(catalogId, appId, request)));
       case "update" ->
-          PlatformApiResponse.ok(
-              envelope(
-                  "app",
-                  appCatalogsApiHandler.update(catalogId, appId, request.queryParameters())));
+          PlatformApiResponse.ok(envelope("app", updateCatalogApp(catalogId, appId, request)));
       default -> throw notFound();
     };
+  }
+
+  private Map<String, Object> installCatalogApp(
+      String catalogId, String appId, PlatformApiRequest request) {
+    if (consentService == null) {
+      return appCatalogsApiHandler.install(catalogId, appId, request.queryParameters());
+    }
+    appCatalogsApiHandler.requireInstallPreconditions(catalogId, appId);
+    Map<String, List<String>> consentParameters =
+        consentService.requireApprovedInstallIfRequired(
+            catalogId, appId, request.queryParameters(), request.principal());
+    return appCatalogsApiHandler.install(
+        catalogId,
+        appId,
+        consentParameters,
+        (preparedCatalogId, preparedEntry) ->
+            consentService.requireApprovedPreparedInstallIfRequired(
+                preparedCatalogId, preparedEntry, consentParameters, request.principal()));
+  }
+
+  private Map<String, Object> updateCatalogApp(
+      String catalogId, String appId, PlatformApiRequest request) {
+    if (consentService == null) {
+      return appCatalogsApiHandler.update(catalogId, appId, request.queryParameters());
+    }
+    appCatalogsApiHandler.requireUpdatePreconditions(catalogId, appId);
+    Map<String, List<String>> consentParameters =
+        consentService.requireApprovedCatalogUpdateIfRequired(
+            catalogId, appId, request.queryParameters(), request.principal());
+    return appCatalogsApiHandler.update(
+        catalogId,
+        appId,
+        consentParameters,
+        (preparedCatalogId, preparedEntry) ->
+            consentService.requireApprovedPreparedCatalogUpdateIfRequired(
+                preparedCatalogId, preparedEntry, consentParameters, request.principal()));
   }
 
   private static String requireAppPrincipal(PlatformApiRequest request) {

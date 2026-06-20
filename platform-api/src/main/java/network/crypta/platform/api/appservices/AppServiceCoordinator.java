@@ -310,6 +310,28 @@ public final class AppServiceCoordinator {
     return approveOrRenewBundle(bundle, false);
   }
 
+  /**
+   * Validates grant-bundle approval state without creating grants or changing the bundle.
+   *
+   * <p>Consent-gated routes call this before asking for approval so already-approved or rejected
+   * bundles keep the same state-machine errors as {@link #approveBundle(PlatformApiPrincipal,
+   * String)}. The mutation method still rechecks these conditions before writing state.
+   *
+   * @param principal request principal, which must be a host/operator
+   * @param bundleId stable bundle identifier from the request path
+   */
+  public synchronized void requireBundleApprovalPreconditions(
+      PlatformApiPrincipal principal, String bundleId) {
+    requireHostOperator(principal, "App principals cannot approve app-service grant bundles.");
+    AppServiceGrantBundle bundle = bundleRequired(bundleId);
+    if (bundle.status() != AppServiceGrantBundleStatus.PENDING) {
+      throw new PlatformApiException(
+          409,
+          "app_service_bundle_not_pending",
+          "Only pending app-service grant bundles can be approved.");
+    }
+  }
+
   /** Rejects a pending grant bundle without creating active grants. */
   public synchronized Map<String, Object> rejectBundle(
       PlatformApiPrincipal principal, String bundleId) {
@@ -355,6 +377,31 @@ public final class AppServiceCoordinator {
           "Only approved, expired, or revalidation-required bundles can be renewed.");
     }
     return approveOrRenewBundle(bundle, true);
+  }
+
+  /**
+   * Validates grant-bundle renewal state without creating grants or changing the bundle.
+   *
+   * <p>Consent-gated routes call this before asking for approval so pending, rejected, or missing
+   * bundles keep the same state-machine errors as {@link #renewBundle(PlatformApiPrincipal,
+   * String)}. The mutation method still rechecks these conditions before writing state.
+   *
+   * @param principal request principal, which must be a host/operator
+   * @param bundleId stable bundle identifier from the request path
+   */
+  public synchronized void requireBundleRenewalPreconditions(
+      PlatformApiPrincipal principal, String bundleId) {
+    requireHostOperator(principal, "App principals cannot renew app-service grant bundles.");
+    AppServiceGrantBundle bundle = bundleRequired(bundleId);
+    AppServiceGrantBundleStatus effective = effectiveBundleStatus(bundle, readGrants());
+    if (effective != AppServiceGrantBundleStatus.APPROVED
+        && effective != AppServiceGrantBundleStatus.EXPIRED
+        && effective != AppServiceGrantBundleStatus.REVALIDATION_REQUIRED) {
+      throw new PlatformApiException(
+          409,
+          "app_service_bundle_not_renewable",
+          "Only approved, expired, or revalidation-required bundles can be renewed.");
+    }
   }
 
   /**

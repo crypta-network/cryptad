@@ -302,9 +302,11 @@ class AppUpdateSchedulerTest {
 
   @Test
   void tick_whenStagePolicy_expectVerifiedCandidateStagedByServicePolicy() throws Exception {
-    AppUpdateService service = realServiceWithInstalled(List.of(QUEUE_READ_PERMISSION));
+    KeyPair reviewerKeyPair = reviewerKeyPair();
+    AppUpdateService service =
+        realServiceWithInstalled(List.of(QUEUE_READ_PERMISSION), reviewerKeyPair);
     service.setPolicy(APP_ID, AppUpdatePolicyMode.STAGE);
-    AppCatalogEntry updateEntry = updateEntry();
+    AppCatalogEntry updateEntry = reviewedEntryWithTrustedReceipt(reviewerKeyPair);
     AppCatalogInstallPlan plan = plan(updateEntry);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()), List.of(catalog()));
     when(catalogManager.refresh(CATALOG_ID)).thenReturn(catalog());
@@ -373,13 +375,18 @@ class AppUpdateSchedulerTest {
     InstalledAppSnapshot installed = installed(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
     when(appHost.describe(APP_ID)).thenReturn(Optional.of(installed));
     when(appHost.status(APP_ID)).thenReturn(Optional.of(running(installed)));
+    KeyPair reviewerKeyPair = reviewerKeyPair();
     AppUpdateService service =
         new AppUpdateService(
-            appHost, catalogManager, AppReviewPolicy.DEFAULT, TrustedReviewerKeys::empty);
+            appHost,
+            catalogManager,
+            AppReviewPolicy.DEFAULT,
+            () -> trustedReviewerKeys(reviewerKeyPair));
     service.setPolicy(APP_ID, AppUpdatePolicyMode.APPLY_WHEN_STOPPED);
+    AppCatalogEntry updateEntry = reviewedEntryWithTrustedReceipt(reviewerKeyPair);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()), List.of(catalog()));
     when(catalogManager.refresh(CATALOG_ID)).thenReturn(catalog());
-    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(updateEntry()));
+    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(updateEntry));
     when(appHost.listInstalled()).thenReturn(List.of(installed));
 
     scheduler(enabledConfig(), new InMemoryAppUpdateSchedulerStore(), service).tick(DUE_AT);
@@ -516,11 +523,20 @@ class AppUpdateSchedulerTest {
   }
 
   private AppUpdateService realServiceWithInstalled(List<String> permissions) throws IOException {
+    return realServiceWithInstalled(permissions, null);
+  }
+
+  private AppUpdateService realServiceWithInstalled(
+      List<String> permissions, KeyPair reviewerKeyPair) throws IOException {
     InstalledAppSnapshot installed = installed(INSTALLED_VERSION, permissions);
     when(appHost.describe(APP_ID)).thenReturn(Optional.of(installed));
     when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    AppUpdateService.ReviewerKeysProvider reviewerKeysProvider =
+        reviewerKeyPair == null
+            ? TrustedReviewerKeys::empty
+            : () -> trustedReviewerKeys(reviewerKeyPair);
     return new AppUpdateService(
-        appHost, catalogManager, AppReviewPolicy.DEFAULT, TrustedReviewerKeys::empty);
+        appHost, catalogManager, AppReviewPolicy.DEFAULT, reviewerKeysProvider);
   }
 
   private InstalledAppSnapshot installed(String version, List<String> permissions) {
@@ -587,8 +603,8 @@ class AppUpdateSchedulerTest {
         DIGEST,
         1234L,
         AppCatalogEntry.ZIP_BUNDLE_TYPE,
-        List.of(QUEUE_READ_PERMISSION, "queue.write"),
-        Map.of("queue.write", "Lets the app manage queue entries."));
+        List.of(QUEUE_READ_PERMISSION),
+        Map.of());
   }
 
   private static AppCatalogEntry reviewedEntryWithTrustedReceipt(KeyPair reviewerKeyPair) {

@@ -91,6 +91,8 @@ public final class AppUpdateService {
   private static final String ACTION_STAGE = "stage";
   private static final String ACTION_APPLY = "apply";
   private static final String ACTION_ROLLBACK = "rollback";
+  private static final String EVENT_STATUS_POLICY_PREFIX = "policy_";
+  private static final String EVENT_STATUS_BLOCKED_SUFFIX = "_blocked:";
   private static final String APP_NOT_INSTALLED_PREFIX = "app is not installed: ";
   private static final String CANNOT_UPDATE_RUNNING_APP_PREFIX = "cannot update a running app: ";
   private static final String CANNOT_ROLLBACK_RUNNING_APP_PREFIX =
@@ -103,6 +105,7 @@ public final class AppUpdateService {
   private static final String ERROR_UPDATE_INCOMPATIBLE = "update_incompatible";
   private static final String ERROR_UPDATE_POLICY_BLOCKED = "update_policy_blocked";
   private static final String ERROR_CHANNEL_POLICY_BLOCKED = "channel_policy_blocked";
+  private static final String ERROR_CONSENT_REQUIRED = "consent_required";
   private static final String ERROR_UPDATE_CANDIDATE_CHANGED = "update_candidate_changed";
   private static final String ERROR_ROLLBACK_NOT_AVAILABLE = "rollback_not_available";
   private static final String ERROR_ROLLBACK_APP_RUNNING = "rollback_app_running";
@@ -504,6 +507,68 @@ public final class AppUpdateService {
   public synchronized Map<String, Object> summary(String appId) {
     String normalizedAppId = normalizeInstalledAppId(appId);
     InstalledAppSnapshot installed = requireInstalled(normalizedAppId);
+    return summary(normalizedAppId, installed);
+  }
+
+  /**
+   * Detects the current catalog update candidate for operator consent without following policy.
+   *
+   * <p>This path is used by the unified consent preview. It refreshes and stores the same path-free
+   * candidate summary as {@link #check(String, boolean)}, but it deliberately does not invoke
+   * policy-driven stage or apply. Consent review therefore cannot cause an unattended update as a
+   * side effect.
+   *
+   * @param appId app id from the request path
+   * @param refreshCatalogs whether to refresh catalog sidecars before detection
+   * @return path-free update summary with the detected candidate
+   */
+  public synchronized Map<String, Object> preview(String appId, boolean refreshCatalogs) {
+    String normalizedAppId = normalizeInstalledAppId(appId);
+    InstalledAppSnapshot installed = requireInstalled(normalizedAppId);
+    AppUpdateCandidate candidate = detectCandidate(normalizedAppId, installed, refreshCatalogs);
+    candidates.put(normalizedAppId, candidate);
+    invalidateStaleStage(normalizedAppId, candidate);
+    return summary(normalizedAppId, installed);
+  }
+
+  /**
+   * Detects the current catalog update candidate without mutating candidate or staged state.
+   *
+   * <p>GET consent previews use this path so an operator refresh cannot invalidate an existing
+   * staged update or write cached candidate state without the form-password guard. The response
+   * still includes the currently staged summary, last check, scheduler status, and history, but the
+   * candidate object comes from a fresh in-memory detection pass.
+   *
+   * @param appId app id from the request path
+   * @return path-free update summary with the detected candidate and no state writes
+   */
+  public synchronized Map<String, Object> previewReadOnly(String appId) {
+    String normalizedAppId = normalizeInstalledAppId(appId);
+    InstalledAppSnapshot installed = requireInstalled(normalizedAppId);
+    AppUpdateCandidate candidate = detectCandidate(normalizedAppId, installed, false);
+    return summaryReadOnly(normalizedAppId, installed, candidate);
+  }
+
+  /**
+   * Detects the current catalog update candidate and prepares migration metadata for consent.
+   *
+   * <p>This method may prepare and immediately close the candidate install plan so it can inspect
+   * the signed target manifest and build the same path-free migration summary that staging later
+   * revalidates. It does not stage, dry-run, apply, retain catalog scratch paths, or change update
+   * policy. Transport bridges should expose this only through form-password guarded host/operator
+   * routes because preparing the candidate can consume catalog and bundle resources.
+   *
+   * @param appId app id from the request path
+   * @param refreshCatalogs whether to refresh catalog sidecars before detection
+   * @return path-free update summary with consent-ready migration metadata when available
+   */
+  public synchronized Map<String, Object> previewForConsent(String appId, boolean refreshCatalogs) {
+    String normalizedAppId = normalizeInstalledAppId(appId);
+    InstalledAppSnapshot installed = requireInstalled(normalizedAppId);
+    AppUpdateCandidate candidate = detectCandidate(normalizedAppId, installed, refreshCatalogs);
+    candidate = candidateWithConsentMigrationPlan(normalizedAppId, installed, candidate);
+    candidates.put(normalizedAppId, candidate);
+    invalidateStaleStage(normalizedAppId, candidate);
     return summary(normalizedAppId, installed);
   }
 
@@ -1400,6 +1465,10 @@ public final class AppUpdateService {
       String appId, AppUpdateCandidate candidate, AppUpdatePolicyMode policyMode) {
     if (securityGateRequiresOperator(candidate)) {
       appendSecurityGateHistory(appId, automaticAction(policyMode), candidate);
+    } else if (reviewGateRequiresOperator(candidate)) {
+      appendReviewGateHistory(appId, automaticAction(policyMode), candidate);
+    } else if (candidate.materialConsentBlocksAutomaticStage()) {
+      appendMaterialConsentHistory(appId, automaticAction(policyMode), candidate);
     } else {
       appendChannelPolicyHistory(appId, policyMode, candidate);
     }
@@ -1411,7 +1480,7 @@ public final class AppUpdateService {
       appendReviewGateHistory(appId, ACTION_STAGE, candidate);
       return;
     }
-    stageCandidateForAutomaticPolicy(appId, installed, candidate);
+    stageCandidateForAutomaticPolicy(appId, installed, candidate, ACTION_STAGE);
   }
 
   private void followApplyWhenStoppedPolicyAfterCheck(
@@ -1436,7 +1505,7 @@ public final class AppUpdateService {
           "policy_apply_blocked:" + ERROR_UPDATE_INCOMPATIBLE);
       return;
     }
-    if (!stageCandidateForAutomaticPolicy(appId, installed, candidate)) {
+    if (!stageCandidateForAutomaticPolicy(appId, installed, candidate, ACTION_APPLY)) {
       return;
     }
     apply(appId, ApplyOptions.policyDefault());
@@ -1458,15 +1527,29 @@ public final class AppUpdateService {
   }
 
   private boolean stageCandidateForAutomaticPolicy(
-      String appId, InstalledAppSnapshot installed, AppUpdateCandidate candidate) {
+      String appId,
+      InstalledAppSnapshot installed,
+      AppUpdateCandidate candidate,
+      String automaticAction) {
     try {
       stageCandidate(appId, installed, candidate, false);
       return true;
     } catch (PlatformApiException exception) {
       if (isAutomaticPolicyMigrationSkip(exception.errorCode())) {
+        appendAutomaticPolicyMigrationSkipHistory(appId, automaticAction, candidate, exception);
         return false;
       }
       throw exception;
+    }
+  }
+
+  private void appendAutomaticPolicyMigrationSkipHistory(
+      String appId,
+      String automaticAction,
+      AppUpdateCandidate candidate,
+      PlatformApiException exception) {
+    if (ERROR_APP_DATA_MIGRATION_REVIEW_REQUIRED.equals(exception.errorCode())) {
+      appendMaterialConsentHistory(appId, automaticAction, candidate);
     }
   }
 
@@ -2153,6 +2236,47 @@ public final class AppUpdateService {
         candidate.detectedAt());
   }
 
+  private AppUpdateCandidate candidateWithConsentMigrationPlan(
+      String appId, InstalledAppSnapshot installed, AppUpdateCandidate candidate) {
+    if (!candidate.eligibleByDefault() || updateGateBlocksConsentPreparation(candidate)) {
+      return candidate;
+    }
+    AppCatalogInstallPlan plan = null;
+    try {
+      plan = catalogManager.prepareInstallPlan(candidate.catalogId(), appId);
+      if (planDiffersFromCandidate(candidate, installed, plan)) {
+        throw lifecycleFailure(
+            409,
+            ERROR_UPDATE_CANDIDATE_CHANGED,
+            "Catalog candidate changed since consent preview generation.");
+      }
+      AppManifest targetManifest = stagedManifestForConsentPreview(plan);
+      return candidateWithMigrationPlan(
+          candidate,
+          buildMigrationPlan(appId, installed.manifest(), targetManifest).withoutDryRunResult());
+    } catch (AppCatalogException exception) {
+      throw catalogFailure(exception);
+    } catch (IOException _) {
+      throw lifecycleFailure(
+          400, ERROR_INVALID_APP_BUNDLE, "Candidate app bundle manifest is invalid.");
+    } finally {
+      if (plan != null) {
+        closePlan(plan);
+      }
+    }
+  }
+
+  private static boolean updateGateBlocksConsentPreparation(AppUpdateCandidate candidate) {
+    return Boolean.TRUE.equals(candidate.securityDecision().get(JSON_BLOCKS_UPDATE))
+        || Boolean.TRUE.equals(candidate.reviewTrust().get(JSON_BLOCKS_UPDATE));
+  }
+
+  private static AppManifest stagedManifestForConsentPreview(AppCatalogInstallPlan plan)
+      throws IOException {
+    return AppManifestParser.parse(
+        plan.stagedBundleDirectory().resolve(AppManifestParser.MANIFEST_FILE_NAME));
+  }
+
   private AppUpdateCandidate candidateOrDetect(String appId, InstalledAppSnapshot installed) {
     return candidates.computeIfAbsent(appId, _ -> detectCandidate(appId, installed, false));
   }
@@ -2662,7 +2786,7 @@ public final class AppUpdateService {
             ? AppReviewTransparencyEventKind.REVIEW_GATE_UPDATE
             : AppReviewTransparencyEventKind.REVIEW_GATE_POLICY_APPLY,
         candidate,
-        "policy_" + action + "_blocked:" + reviewGateFailureCode(candidate.reviewTrust()));
+        policyBlockedEventStatus(action, reviewGateFailureCode(candidate.reviewTrust())));
   }
 
   private void appendChannelPolicyHistory(
@@ -2681,7 +2805,29 @@ public final class AppUpdateService {
             ? AppReviewTransparencyEventKind.REVIEW_GATE_UPDATE
             : AppReviewTransparencyEventKind.REVIEW_GATE_POLICY_APPLY,
         candidate,
-        "policy_" + action + "_blocked:" + ERROR_CHANNEL_POLICY_BLOCKED);
+        policyBlockedEventStatus(action, ERROR_CHANNEL_POLICY_BLOCKED));
+  }
+
+  private void appendMaterialConsentHistory(
+      String appId, String action, AppUpdateCandidate candidate) {
+    appendHistory(
+        appId,
+        action,
+        STATUS_FAILED,
+        candidate.catalogId(),
+        candidate.targetVersion(),
+        ERROR_CONSENT_REQUIRED,
+        "Policy skipped update because material consent is required.");
+    recordUpdateReviewGate(
+        ACTION_STAGE.equals(action)
+            ? AppReviewTransparencyEventKind.REVIEW_GATE_UPDATE
+            : AppReviewTransparencyEventKind.REVIEW_GATE_POLICY_APPLY,
+        candidate,
+        policyBlockedEventStatus(action, ERROR_CONSENT_REQUIRED));
+  }
+
+  private static String policyBlockedEventStatus(String action, String errorCode) {
+    return EVENT_STATUS_POLICY_PREFIX + action + EVENT_STATUS_BLOCKED_SUFFIX + errorCode;
   }
 
   private void appendSecurityGateHistory(
@@ -2756,13 +2902,23 @@ public final class AppUpdateService {
 
   private Map<String, Object> summary(String appId, InstalledAppSnapshot installed) {
     invalidateStaleSummaryState(appId, installed);
+    return summaryJson(appId, installed, candidateSummary(appId, installed));
+  }
+
+  private Map<String, Object> summaryReadOnly(
+      String appId, InstalledAppSnapshot installed, AppUpdateCandidate candidate) {
+    return summaryJson(appId, installed, candidate.toJsonValue());
+  }
+
+  private Map<String, Object> summaryJson(
+      String appId, InstalledAppSnapshot installed, Map<String, Object> candidate) {
     RunningAppSnapshot running = appHost.status(appId).orElse(null);
     LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(10);
     json.put(JSON_APP_ID, appId);
     json.put("installedVersion", installed.manifest().appVersion());
     json.put("running", running != null);
     json.put("policy", policyFor(appId).toJsonValue());
-    json.put("candidate", candidateSummary(appId, installed));
+    json.put("candidate", candidate);
     json.put(
         "installedSecurityDecision",
         installedSecurityDecision(appId, installed.manifest().appVersion()).toJsonValue());

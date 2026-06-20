@@ -34,6 +34,7 @@ import network.crypta.platform.appcatalog.AppCatalogProductionMetadata;
 import network.crypta.platform.appcatalog.AppCatalogReviewMetadata;
 import network.crypta.platform.appcatalog.AppCatalogReviewStatus;
 import network.crypta.platform.appcatalog.AppCatalogSecurityAction;
+import network.crypta.platform.appcatalog.AppCatalogSecurityAdvisory;
 import network.crypta.platform.appcatalog.AppCatalogSecurityDecision;
 import network.crypta.platform.appcatalog.AppCatalogSecurityDecisionStatus;
 import network.crypta.platform.appcatalog.AppCatalogSecuritySeverity;
@@ -614,10 +615,17 @@ class AppUpdateServiceTest {
 
   @Test
   void check_whenPolicyStageFails_expectLastCheckFailureRecorded() throws Exception {
+    KeyPair reviewerKeyPair = reviewerKeyPair();
     AppUpdateService service =
-        serviceWithInstalled(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
+        serviceWithInstalled(
+            INSTALLED_VERSION,
+            List.of(QUEUE_READ_PERMISSION),
+            AppReviewPolicy.DEFAULT,
+            () -> trustedReviewerKeys(reviewerKeyPair));
     AppCatalogEntry entry =
-        entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
+        withTrustedReceipt(
+            entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata()),
+            reviewerKeyPair);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
     when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID))
@@ -701,11 +709,43 @@ class AppUpdateServiceTest {
   }
 
   @Test
-  void check_whenPolicyIsStage_expectVerifiedCandidateStagedWithoutApply() throws Exception {
+  void previewReadOnly_whenDetectedCandidateDiffersFromStaged_expectStagedUpdateRetained()
+      throws Exception {
     AppUpdateService service =
         serviceWithInstalled(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
-    AppCatalogEntry entry =
+    AppCatalogEntry stagedEntry =
         entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
+    AppCatalogEntry newerEntry =
+        entry(EXTERNAL_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listApps(CATALOG_ID))
+        .thenReturn(List.of(stagedEntry))
+        .thenReturn(List.of(newerEntry));
+    when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan(stagedEntry));
+    service.stage(APP_ID);
+
+    Map<String, Object> summary = service.previewReadOnly(APP_ID);
+
+    Map<String, Object> candidate = (Map<String, Object>) summary.get(CANDIDATE);
+    Map<String, Object> staged = (Map<String, Object>) summary.get(STAGED);
+    assertEquals(EXTERNAL_VERSION, candidate.get(TARGET_VERSION));
+    assertEquals(true, staged.get(AVAILABLE));
+    assertEquals(UPDATE_VERSION, staged.get(TARGET_VERSION));
+  }
+
+  @Test
+  void check_whenPolicyIsStage_expectVerifiedCandidateStagedWithoutApply() throws Exception {
+    KeyPair reviewerKeyPair = reviewerKeyPair();
+    AppUpdateService service =
+        serviceWithInstalled(
+            INSTALLED_VERSION,
+            List.of(QUEUE_READ_PERMISSION),
+            AppReviewPolicy.DEFAULT,
+            () -> trustedReviewerKeys(reviewerKeyPair));
+    AppCatalogEntry entry =
+        withTrustedReceipt(
+            entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata()),
+            reviewerKeyPair);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
     when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan(entry));
@@ -727,12 +767,16 @@ class AppUpdateServiceTest {
     InstalledAppSnapshot installed = installed(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
     when(appHost.describe(APP_ID)).thenReturn(Optional.of(installed));
     when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    KeyPair reviewerKeyPair = reviewerKeyPair();
     AppUpdateService service =
         serviceWithAppData(
             appDataServiceWithFeedRecord(),
-            (_, _, _, _) -> AppDataMigrationRunner.MigrationExecutionResult.passed());
+            (_, _, _, _) -> AppDataMigrationRunner.MigrationExecutionResult.passed(),
+            reviewerKeyPair);
     AppCatalogEntry entry =
-        entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
+        withTrustedReceipt(
+            entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata()),
+            reviewerKeyPair);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
     when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID))
@@ -749,13 +793,21 @@ class AppUpdateServiceTest {
     assertEquals("rollback_incompatible", migration.get(STATUS));
     assertEquals("app_data_migration_review_required", migration.get("blockReason"));
     assertEquals(true, migration.get("operatorReviewRequired"));
+    assertEquals(List.of("app_data_migration"), candidate.get("materialConsentReasons"));
     assertEquals(false, ((Map<?, ?>) summary.get(STAGED)).get(AVAILABLE));
     assertEquals("success", ((Map<?, ?>) summary.get("lastCheck")).get(STATUS));
+    Map<String, Object> historyEntry =
+        ((List<Map<String, Object>>) summary.get("history"))
+            .stream()
+                .filter(entryJson -> "stage".equals(entryJson.get("action")))
+                .findFirst()
+                .orElseThrow();
+    assertEquals("consent_required", historyEntry.get(ERROR_CODE));
     verify(appHost, never()).updateFromDirectory(any(), any());
   }
 
   @Test
-  void check_whenStagePolicyMigrationPathMissing_expectCandidateSummaryWithoutCheckFailure()
+  void previewForConsent_whenMigrationRollbackIncompatible_expectCandidateRequiresOperatorReview()
       throws Exception {
     InstalledAppSnapshot installed = installed(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
     when(appHost.describe(APP_ID)).thenReturn(Optional.of(installed));
@@ -770,6 +822,70 @@ class AppUpdateServiceTest {
             });
     AppCatalogEntry entry =
         entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID))
+        .thenReturn(planWithAppDataMigration(entry, false, true));
+
+    Map<String, Object> summary = service.previewForConsent(APP_ID, false);
+
+    Map<String, Object> candidate = (Map<String, Object>) summary.get(CANDIDATE);
+    Map<String, Object> migration = (Map<String, Object>) candidate.get("dataMigration");
+    assertFalse(runnerCalled.get());
+    assertEquals(AVAILABLE, candidate.get(STATUS));
+    assertEquals(false, candidate.get("autoStageAllowed"));
+    assertEquals(true, candidate.get(OPERATOR_ACTION_REQUIRED));
+    assertEquals("ready", migration.get(STATUS));
+    assertEquals(true, migration.get("required"));
+    assertEquals(true, migration.get("operatorReviewRequired"));
+    assertNull(migration.get("blockReason"));
+    assertNull(migration.get("dryRunStatus"));
+    verify(appHost, never()).updateFromDirectory(any(), any());
+  }
+
+  @Test
+  void previewForConsent_whenSecurityDecisionBlocksUpdate_expectDoesNotPrepareInstallPlan()
+      throws Exception {
+    AppUpdateService service =
+        serviceWithInstalled(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listApps(CATALOG_ID))
+        .thenReturn(List.of(entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED)));
+    when(catalogManager.securityDecision(CATALOG_ID, APP_ID))
+        .thenReturn(blockUpdateAndWarningSecurityDecision());
+
+    Map<String, Object> summary = service.previewForConsent(APP_ID, false);
+
+    Map<String, Object> candidate = (Map<String, Object>) summary.get(CANDIDATE);
+    Map<String, Object> securityDecision = (Map<String, Object>) candidate.get("securityDecision");
+    Map<String, Object> migration = (Map<String, Object>) candidate.get("dataMigration");
+    assertEquals(AVAILABLE, candidate.get(STATUS));
+    assertEquals("blocked", securityDecision.get(STATUS));
+    assertEquals(true, securityDecision.get("blocksUpdate"));
+    assertEquals("not_checked", migration.get(STATUS));
+    verifyNoInstallPlanPreparation();
+  }
+
+  @Test
+  void check_whenStagePolicyMigrationPathMissing_expectCandidateSummaryWithoutCheckFailure()
+      throws Exception {
+    InstalledAppSnapshot installed = installed(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
+    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installed));
+    when(appHost.status(APP_ID)).thenReturn(Optional.empty());
+    AtomicBoolean runnerCalled = new AtomicBoolean(false);
+    KeyPair reviewerKeyPair = reviewerKeyPair();
+    AppUpdateService service =
+        serviceWithAppData(
+            appDataServiceWithFeedRecord(),
+            (_, _, _, _) -> {
+              runnerCalled.set(true);
+              return AppDataMigrationRunner.MigrationExecutionResult.passed();
+            },
+            reviewerKeyPair);
+    AppCatalogEntry entry =
+        withTrustedReceipt(
+            entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata()),
+            reviewerKeyPair);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
     when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID))
@@ -798,15 +914,19 @@ class AppUpdateServiceTest {
     when(appHost.describe(APP_ID)).thenReturn(Optional.of(installed));
     when(appHost.status(APP_ID)).thenReturn(Optional.empty());
     AtomicBoolean runnerCalled = new AtomicBoolean(false);
+    KeyPair reviewerKeyPair = reviewerKeyPair();
     AppUpdateService service =
         serviceWithAppData(
             appDataServiceWithFeedRecord(),
             (_, _, _, _) -> {
               runnerCalled.set(true);
               return AppDataMigrationRunner.MigrationExecutionResult.failed(2);
-            });
+            },
+            reviewerKeyPair);
     AppCatalogEntry entry =
-        entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
+        withTrustedReceipt(
+            entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata()),
+            reviewerKeyPair);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
     when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID))
@@ -836,15 +956,19 @@ class AppUpdateServiceTest {
     when(appHost.describe(APP_ID)).thenReturn(Optional.of(installed));
     when(appHost.status(APP_ID)).thenReturn(Optional.empty());
     AtomicBoolean runnerCalled = new AtomicBoolean(false);
+    KeyPair reviewerKeyPair = reviewerKeyPair();
     AppUpdateService service =
         serviceWithAppData(
             appDataServiceWithFeedRecord(),
             (_, _, _, _) -> {
               runnerCalled.set(true);
               throw new IOException("missing migration output");
-            });
+            },
+            reviewerKeyPair);
     AppCatalogEntry entry =
-        entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
+        withTrustedReceipt(
+            entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata()),
+            reviewerKeyPair);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
     when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID))
@@ -874,15 +998,19 @@ class AppUpdateServiceTest {
     when(appHost.describe(APP_ID)).thenReturn(Optional.of(installed));
     when(appHost.status(APP_ID)).thenReturn(Optional.empty());
     AtomicBoolean runnerCalled = new AtomicBoolean(false);
+    KeyPair reviewerKeyPair = reviewerKeyPair();
     AppUpdateService service =
         serviceWithAppData(
             appDataServiceWithFeedRecord(),
             (_, _, _, _) -> {
               runnerCalled.set(true);
               return AppDataMigrationRunner.MigrationExecutionResult.failed(2);
-            });
+            },
+            reviewerKeyPair);
     AppCatalogEntry entry =
-        entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
+        withTrustedReceipt(
+            entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata()),
+            reviewerKeyPair);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
     when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID))
@@ -939,17 +1067,116 @@ class AppUpdateServiceTest {
   }
 
   @Test
+  void check_whenStagePolicyCandidateAddsPermission_expectConsentRequiredHistory()
+      throws Exception {
+    KeyPair reviewerKeyPair = reviewerKeyPair();
+    AppUpdateService service =
+        serviceWithInstalled(
+            INSTALLED_VERSION,
+            List.of(QUEUE_READ_PERMISSION),
+            AppReviewPolicy.DEFAULT,
+            () -> trustedReviewerKeys(reviewerKeyPair));
+    AppCatalogEntry entry =
+        withTrustedReceipt(
+            entry(
+                UPDATE_VERSION,
+                AppCatalogReviewStatus.REVIEWED,
+                compatibleApiMetadata(),
+                AppCatalogProductionMetadata.DEFAULT,
+                List.of(QUEUE_READ_PERMISSION, "content.fetch")),
+            reviewerKeyPair);
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    service.setPolicy(APP_ID, AppUpdatePolicyMode.STAGE);
+
+    Map<String, Object> summary = service.check(APP_ID, false);
+
+    Map<String, Object> candidate = (Map<String, Object>) summary.get(CANDIDATE);
+    assertEquals(AVAILABLE, candidate.get(STATUS));
+    assertEquals(true, candidate.get("channelPolicyAllowed"));
+    assertNull(candidate.get("policyBlockReason"));
+    assertEquals(false, candidate.get("autoStageAllowed"));
+    assertEquals(true, candidate.get(OPERATOR_ACTION_REQUIRED));
+    assertEquals(List.of("new_permission"), candidate.get("materialConsentReasons"));
+    assertEquals(false, ((Map<?, ?>) summary.get(STAGED)).get(AVAILABLE));
+    Map<String, Object> historyEntry =
+        ((List<Map<String, Object>>) summary.get("history"))
+            .stream()
+                .filter(entryJson -> "stage".equals(entryJson.get("action")))
+                .findFirst()
+                .orElseThrow();
+    assertEquals("consent_required", historyEntry.get(ERROR_CODE));
+    assertEquals(
+        "Policy skipped update because material consent is required.", historyEntry.get(MESSAGE));
+    verifyNoInstallPlanPreparation();
+  }
+
+  @Test
+  void check_whenStagePolicyCandidateHasSecurityAdvisory_expectConsentRequiredHistory()
+      throws Exception {
+    KeyPair reviewerKeyPair = reviewerKeyPair();
+    AppUpdateService service =
+        serviceWithInstalled(
+            INSTALLED_VERSION,
+            List.of(QUEUE_READ_PERMISSION),
+            AppReviewPolicy.DEFAULT,
+            () -> trustedReviewerKeys(reviewerKeyPair));
+    AppCatalogEntry entry =
+        withTrustedReceipt(
+            entry(
+                UPDATE_VERSION,
+                AppCatalogReviewStatus.REVIEWED,
+                compatibleApiMetadata(),
+                productionMetadataWithSecurityAdvisory()),
+            reviewerKeyPair);
+    when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
+    when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
+    service.setPolicy(APP_ID, AppUpdatePolicyMode.STAGE);
+
+    Map<String, Object> summary = service.check(APP_ID, false);
+
+    Map<String, Object> candidate = (Map<String, Object>) summary.get(CANDIDATE);
+    assertEquals(AVAILABLE, candidate.get(STATUS));
+    assertEquals(true, candidate.get("channelPolicyAllowed"));
+    assertNull(candidate.get("policyBlockReason"));
+    assertEquals(false, candidate.get("autoStageAllowed"));
+    assertEquals(true, candidate.get(OPERATOR_ACTION_REQUIRED));
+    assertEquals(List.of("security_advisory"), candidate.get("materialConsentReasons"));
+    assertEquals(false, ((Map<?, ?>) summary.get(STAGED)).get(AVAILABLE));
+    Map<String, Object> historyEntry =
+        ((List<Map<String, Object>>) summary.get("history"))
+            .stream()
+                .filter(entryJson -> "stage".equals(entryJson.get("action")))
+                .findFirst()
+                .orElseThrow();
+    assertEquals("consent_required", historyEntry.get(ERROR_CODE));
+    assertEquals(
+        "Policy skipped update because material consent is required.", historyEntry.get(MESSAGE));
+    verifyNoInstallPlanPreparation();
+  }
+
+  @Test
   void check_whenStableOnlyPolicySeesStableAndNewerBeta_expectStableCandidateAutoStaged()
       throws Exception {
+    KeyPair reviewerKeyPair = reviewerKeyPair();
     AppUpdateService service =
-        serviceWithInstalled(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
-    AppCatalogEntry stableEntry = entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED);
+        serviceWithInstalled(
+            INSTALLED_VERSION,
+            List.of(QUEUE_READ_PERMISSION),
+            AppReviewPolicy.DEFAULT,
+            () -> trustedReviewerKeys(reviewerKeyPair));
+    AppCatalogEntry stableEntry =
+        withTrustedReceipt(
+            entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata()),
+            reviewerKeyPair);
     AppCatalogEntry betaEntry =
-        entry(
-            EXTERNAL_VERSION,
-            AppCatalogReviewStatus.REVIEWED,
-            compatibleApiMetadata(),
-            productionMetadata(AppCatalogChannel.BETA));
+        withTrustedReceipt(
+            entry(
+                EXTERNAL_VERSION,
+                AppCatalogReviewStatus.REVIEWED,
+                compatibleApiMetadata(),
+                productionMetadata(AppCatalogChannel.BETA)),
+            reviewerKeyPair);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
     when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(stableEntry, betaEntry));
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan(stableEntry));
@@ -967,18 +1194,24 @@ class AppUpdateServiceTest {
   }
 
   @Test
-  void check_whenPolicyAllowsBeta_expectBetaCandidateAutoStaged() throws Exception {
+  void check_whenPolicyAllowsBeta_expectBetaCandidateRequiresConsent() throws Exception {
+    KeyPair reviewerKeyPair = reviewerKeyPair();
     AppUpdateService service =
-        serviceWithInstalled(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
+        serviceWithInstalled(
+            INSTALLED_VERSION,
+            List.of(QUEUE_READ_PERMISSION),
+            AppReviewPolicy.DEFAULT,
+            () -> trustedReviewerKeys(reviewerKeyPair));
     AppCatalogEntry entry =
-        entry(
-            UPDATE_VERSION,
-            AppCatalogReviewStatus.REVIEWED,
-            compatibleApiMetadata(),
-            productionMetadata(AppCatalogChannel.BETA));
+        withTrustedReceipt(
+            entry(
+                UPDATE_VERSION,
+                AppCatalogReviewStatus.REVIEWED,
+                compatibleApiMetadata(),
+                productionMetadata(AppCatalogChannel.BETA)),
+            reviewerKeyPair);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
     when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
-    when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan(entry));
     service.setPolicy(
         APP_ID,
         AppUpdatePolicyMode.STAGE,
@@ -989,25 +1222,42 @@ class AppUpdateServiceTest {
     Map<String, Object> candidate = (Map<String, Object>) summary.get(CANDIDATE);
     assertEquals(true, candidate.get("channelPolicyAllowed"));
     assertNull(candidate.get("policyBlockReason"));
-    assertEquals(true, candidate.get("autoStageAllowed"));
-    assertEquals(true, ((Map<?, ?>) summary.get(STAGED)).get(AVAILABLE));
+    assertEquals(false, candidate.get("autoStageAllowed"));
+    assertEquals(true, candidate.get(OPERATOR_ACTION_REQUIRED));
+    assertEquals(
+        List.of("catalog_support_or_deprecation_change"), candidate.get("materialConsentReasons"));
+    assertEquals(false, ((Map<?, ?>) summary.get(STAGED)).get(AVAILABLE));
+    Map<String, Object> historyEntry =
+        ((List<Map<String, Object>>) summary.get("history"))
+            .stream()
+                .filter(entryJson -> "stage".equals(entryJson.get("action")))
+                .findFirst()
+                .orElseThrow();
+    assertEquals("consent_required", historyEntry.get(ERROR_CODE));
+    assertEquals(
+        "Policy skipped update because material consent is required.", historyEntry.get(MESSAGE));
+    verifyNoInstallPlanPreparation();
   }
 
   @Test
-  void check_whenStagedBetaPolicyLaterBecomesStableOnly_expectStagedUpdatePreserved()
-      throws Exception {
+  void check_whenBetaPolicyLaterBecomesStableOnly_expectCandidateNotStaged() throws Exception {
+    KeyPair reviewerKeyPair = reviewerKeyPair();
     AppUpdateService service =
-        serviceWithInstalled(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
+        serviceWithInstalled(
+            INSTALLED_VERSION,
+            List.of(QUEUE_READ_PERMISSION),
+            AppReviewPolicy.DEFAULT,
+            () -> trustedReviewerKeys(reviewerKeyPair));
     AppCatalogEntry entry =
-        entry(
-            UPDATE_VERSION,
-            AppCatalogReviewStatus.REVIEWED,
-            compatibleApiMetadata(),
-            productionMetadata(AppCatalogChannel.BETA));
-    AppCatalogInstallPlan plan = plan(entry);
+        withTrustedReceipt(
+            entry(
+                UPDATE_VERSION,
+                AppCatalogReviewStatus.REVIEWED,
+                compatibleApiMetadata(),
+                productionMetadata(AppCatalogChannel.BETA)),
+            reviewerKeyPair);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
     when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry), List.of(entry));
-    when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
     service.setPolicy(
         APP_ID,
         AppUpdatePolicyMode.STAGE,
@@ -1020,9 +1270,8 @@ class AppUpdateServiceTest {
     Map<String, Object> candidate = (Map<String, Object>) summary.get(CANDIDATE);
     Map<String, Object> staged = (Map<String, Object>) summary.get(STAGED);
     assertEquals("channel_policy_blocked", candidate.get("policyBlockReason"));
-    assertEquals(true, staged.get(AVAILABLE));
-    assertEquals(UPDATE_VERSION, staged.get(TARGET_VERSION));
-    assertTrue(Files.exists(plan.scratchDirectory()));
+    assertEquals(false, staged.get(AVAILABLE));
+    verifyNoInstallPlanPreparation();
   }
 
   @Test
@@ -1136,16 +1385,10 @@ class AppUpdateServiceTest {
   }
 
   @Test
-  void check_whenPolicyApplyWhenStoppedAndAdvisoryReviewedWithoutReceipt_expectCandidateApplied()
+  void check_whenPolicyApplyWhenStoppedAndAdvisoryReviewedWithoutReceipt_expectConsentRequired()
       throws Exception {
     InstalledAppSnapshot installed = installed(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION));
-    InstalledAppSnapshot updated = installed(UPDATE_VERSION, List.of(QUEUE_READ_PERMISSION));
-    when(appHost.describe(APP_ID))
-        .thenReturn(
-            Optional.of(installed),
-            Optional.of(installed),
-            Optional.of(installed),
-            Optional.of(updated));
+    when(appHost.describe(APP_ID)).thenReturn(Optional.of(installed));
     when(appHost.status(APP_ID)).thenReturn(Optional.empty());
     AppUpdateService service =
         new AppUpdateService(
@@ -1154,20 +1397,32 @@ class AppUpdateServiceTest {
         entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
     when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
-    AppCatalogInstallPlan plan = plan(entry);
-    when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID)).thenReturn(plan);
-    when(appHost.updateFromDirectory(APP_ID, plan.stagedBundleDirectory())).thenReturn(updated);
     service.setPolicy(APP_ID, AppUpdatePolicyMode.APPLY_WHEN_STOPPED);
 
     Map<String, Object> summary = service.check(APP_ID, false);
 
     Map<String, Object> candidate = (Map<String, Object>) summary.get(CANDIDATE);
     Map<String, Object> reviewTrust = (Map<String, Object>) candidate.get("reviewTrust");
-    assertEquals(UPDATE_VERSION, summary.get(INSTALLED_VERSION_FIELD));
-    assertEquals(APPLIED, candidate.get(STATUS));
+    assertEquals(INSTALLED_VERSION, summary.get(INSTALLED_VERSION_FIELD));
+    assertEquals(AVAILABLE, candidate.get(STATUS));
+    assertEquals(false, candidate.get("autoStageAllowed"));
+    assertEquals(false, candidate.get("autoApplyAllowed"));
+    assertEquals(true, candidate.get(OPERATOR_ACTION_REQUIRED));
+    assertEquals(List.of("review_trust_delta"), candidate.get("materialConsentReasons"));
+    assertEquals(false, ((Map<?, ?>) summary.get(STAGED)).get(AVAILABLE));
     assertEquals("publisher_claim_only", reviewTrust.get(STATUS));
     assertEquals(false, reviewTrust.get("positive"));
-    verify(appHost).updateFromDirectory(APP_ID, plan.stagedBundleDirectory());
+    Map<String, Object> historyEntry =
+        ((List<Map<String, Object>>) summary.get("history"))
+            .stream()
+                .filter(entryJson -> "apply".equals(entryJson.get("action")))
+                .findFirst()
+                .orElseThrow();
+    assertEquals("consent_required", historyEntry.get(ERROR_CODE));
+    assertEquals(
+        "Policy skipped update because material consent is required.", historyEntry.get(MESSAGE));
+    verifyNoInstallPlanPreparation();
+    verify(appHost, never()).updateFromDirectory(any(), any());
   }
 
   @Test
@@ -1882,7 +2137,11 @@ class AppUpdateServiceTest {
                 .findFirst()
                 .orElseThrow();
     assertEquals(AVAILABLE, candidate.get(STATUS));
+    assertEquals(false, candidate.get("autoStageAllowed"));
     assertEquals(false, candidate.get("autoApplyAllowed"));
+    assertEquals(true, candidate.get("blocksAutoUpdate"));
+    assertEquals(true, candidate.get(OPERATOR_ACTION_REQUIRED));
+    assertEquals(List.of("review_trust_delta"), candidate.get("materialConsentReasons"));
     assertEquals("publisher_claim_only", reviewTrust.get(STATUS));
     assertEquals(true, reviewTrust.get("blocksPolicyApply"));
     assertEquals("app_review_missing", historyEntry.get(ERROR_CODE));
@@ -1925,8 +2184,9 @@ class AppUpdateServiceTest {
                 .filter(entry -> "apply".equals(entry.get("action")))
                 .findFirst()
                 .orElseThrow();
-    assertEquals("update_incompatible", historyEntry.get(ERROR_CODE));
-    assertTrue(((String) historyEntry.get("message")).contains("Platform API compatibility"));
+    assertEquals("consent_required", historyEntry.get(ERROR_CODE));
+    assertEquals(
+        "Policy skipped update because material consent is required.", historyEntry.get(MESSAGE));
     verifyNoInstallPlanPreparation();
     verify(appHost, never()).updateFromDirectory(any(), any());
   }
@@ -2305,16 +2565,20 @@ class AppUpdateServiceTest {
     when(appHost.describe(APP_ID)).thenReturn(Optional.of(installed));
     when(appHost.status(APP_ID)).thenReturn(Optional.of(running(installed)));
     AtomicBoolean runnerCalled = new AtomicBoolean(false);
+    KeyPair reviewerKeyPair = reviewerKeyPair();
     AppUpdateService service =
         serviceWithAppData(
             appDataServiceWithFeedRecord(),
             (_, _, _, _) -> {
               runnerCalled.set(true);
               return AppDataMigrationRunner.MigrationExecutionResult.passed();
-            });
+            },
+            reviewerKeyPair);
     service.setPolicy(APP_ID, AppUpdatePolicyMode.STAGE);
     AppCatalogEntry entry =
-        entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
+        withTrustedReceipt(
+            entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata()),
+            reviewerKeyPair);
     AppCatalogInstallPlan plan = planWithAppDataMigration(entry, true, true);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
     when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
@@ -3121,16 +3385,20 @@ class AppUpdateServiceTest {
     when(appHost.describe(APP_ID)).thenReturn(Optional.of(installed));
     when(appHost.status(APP_ID)).thenReturn(Optional.empty());
     AtomicBoolean runnerCalled = new AtomicBoolean(false);
+    KeyPair reviewerKeyPair = reviewerKeyPair();
     AppUpdateService service =
         serviceWithAppData(
             appDataServiceWithFeedRecord(),
             (_, _, _, _) -> {
               runnerCalled.set(true);
               return AppDataMigrationRunner.MigrationExecutionResult.passed();
-            });
+            },
+            reviewerKeyPair);
     service.setPolicy(APP_ID, AppUpdatePolicyMode.APPLY_WHEN_STOPPED);
     AppCatalogEntry entry =
-        entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata());
+        withTrustedReceipt(
+            entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, compatibleApiMetadata()),
+            reviewerKeyPair);
     when(catalogManager.listCatalogs()).thenReturn(List.of(catalog()));
     when(catalogManager.listApps(CATALOG_ID)).thenReturn(List.of(entry));
     when(catalogManager.prepareInstallPlan(CATALOG_ID, APP_ID))
@@ -3203,6 +3471,22 @@ class AppUpdateServiceTest {
         new AppUpdateService.AppUpdateDependencies(
             AppReviewPolicy.DEFAULT,
             TrustedReviewerKeys::empty,
+            null,
+            appDataService,
+            migrationRunner,
+            _ -> Map.of()));
+  }
+
+  private AppUpdateService serviceWithAppData(
+      AppDataService appDataService,
+      AppDataMigrationRunner migrationRunner,
+      KeyPair reviewerKeyPair) {
+    return new AppUpdateService(
+        appHost,
+        catalogManager,
+        new AppUpdateService.AppUpdateDependencies(
+            AppReviewPolicy.DEFAULT,
+            () -> trustedReviewerKeys(reviewerKeyPair),
             null,
             appDataService,
             migrationRunner,
@@ -3474,6 +3758,16 @@ class AppUpdateServiceTest {
       AppCatalogReviewStatus reviewStatus,
       AppApiCompatibilityMetadata metadata,
       AppCatalogProductionMetadata productionMetadata) {
+    return entry(
+        version, reviewStatus, metadata, productionMetadata, List.of(QUEUE_READ_PERMISSION));
+  }
+
+  private static AppCatalogEntry entry(
+      String version,
+      AppCatalogReviewStatus reviewStatus,
+      AppApiCompatibilityMetadata metadata,
+      AppCatalogProductionMetadata productionMetadata,
+      List<String> permissions) {
     return new AppCatalogEntry(
         APP_ID,
         APP_NAME,
@@ -3492,14 +3786,18 @@ class AppUpdateServiceTest {
         DIGEST,
         1234L,
         AppCatalogEntry.ZIP_BUNDLE_TYPE,
-        List.of(QUEUE_READ_PERMISSION, "queue.write"),
-        Map.of("queue.write", "Lets the app manage queue entries."));
+        permissions,
+        Map.of());
   }
 
   private static AppCatalogEntry reviewedUpdateEntryWithTrustedReceipt(
       AppApiCompatibilityMetadata metadata, KeyPair reviewerKeyPair) {
-    AppCatalogEntry unsignedEntry =
-        entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, metadata);
+    return withTrustedReceipt(
+        entry(UPDATE_VERSION, AppCatalogReviewStatus.REVIEWED, metadata), reviewerKeyPair);
+  }
+
+  private static AppCatalogEntry withTrustedReceipt(
+      AppCatalogEntry unsignedEntry, KeyPair reviewerKeyPair) {
     AppReviewReceipt receipt =
         AppReviewReceiptSigner.sign(reviewPayload(unsignedEntry), reviewerKeyPair.getPrivate());
     return new AppCatalogEntry(
@@ -3541,6 +3839,19 @@ class AppUpdateServiceTest {
         Optional.empty(),
         Optional.empty(),
         List.of(),
+        true);
+  }
+
+  private static AppCatalogProductionMetadata productionMetadataWithSecurityAdvisory() {
+    return new AppCatalogProductionMetadata(
+        AppCatalogChannel.STABLE,
+        AppCatalogSupportStatus.SUPPORTED,
+        AppCatalogDeprecationStatus.NONE,
+        Optional.empty(),
+        Optional.empty(),
+        List.of(
+            new AppCatalogSecurityAdvisory(
+                "ADV-1", URI.create("https://example.invalid/security/ADV-1"))),
         true);
   }
 

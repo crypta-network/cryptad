@@ -9,7 +9,7 @@ The current app-facing values are:
 
 ```text
 apiVersion=v1
-contractVersion=20
+contractVersion=21
 ```
 
 The contract does not change Platform API behavior. It publishes metadata that answers which
@@ -421,6 +421,11 @@ rejected, and resubmitted state, pre-review outcome, reviewer key status, receip
 redacted transparency-log status when present. It remains metadata-only and must not expose
 submission package bodies, rationale text, local paths, tokens, private keys, private insert URIs,
 raw app data, or raw fetched content.
+
+Contract version 21 adds host/operator-only consent route descriptors for install, update,
+catalog-update, service-grant, decision, and audit workflows. These descriptors make the existing
+local `/api/v1/consent/*` surface discoverable through `/api/v1/platform/contract` while keeping
+the routes outside the Platform API 1.0 app-facing stable baseline.
 
 App-update summaries also include scheduler metadata for background catalog refresh and app update
 checks. The scheduler fields are path-free and token-free: they expose enabled/status, last and

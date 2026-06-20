@@ -158,6 +158,13 @@ namespace validation, import size limits, record and value caps, namespace caps,
 preflight checks. The operator routes do not grant app principals cross-app read or write access,
 and they are separate from the app-facing Platform API compatibility contract.
 
+Schema-changing app updates also participate in the operator consent flow. Update consent previews
+show current and target schema versions, migration status, dry-run state when available, rollback
+compatibility, and backup-before-update recommendation or requirement. If a migration requires
+operator review or a required backup is missing, automatic staging/apply is blocked until an
+operator approves a fresh consent snapshot. See
+[user-consent-and-permission-upgrade-ux.md](user-consent-and-permission-upgrade-ux.md).
+
 ## Browser SDK
 
 Static browser apps should use `CryptaPlatform.data` helpers:

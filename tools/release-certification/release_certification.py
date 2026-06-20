@@ -216,6 +216,7 @@ ECOSYSTEM_RC_REQUIRED_EVIDENCE_IDS = (
     "app-review.first-party-catalog",
     "app-review.first-party-review-chain",
     *APP_STORE_SUBMISSION_EVIDENCE_IDS,
+    "app-platform.user-consent-flow",
     "app-update.lifecycle",
     "app-update.scheduler",
     "app-update.live-catalog-refresh",
@@ -1269,6 +1270,7 @@ def app_platform_evidence(
         "app-review.first-party-catalog",
         "app-review.first-party-review-chain",
         *APP_STORE_SUBMISSION_EVIDENCE_IDS,
+        "app-platform.user-consent-flow",
         "app-ui.design-system",
         "app-ui.lint",
         "app-ui.first-party-adoption",
@@ -2591,6 +2593,22 @@ def ecosystem_matrix_row_specs() -> list[MatrixRowSpec]:
                 "docs/release-certification.md",
             ),
             phase="phase-8",
+        ),
+        MatrixRowSpec(
+            id="app-platform-user-consent-flow",
+            category="app-platform",
+            title="User consent and permission-upgrade flow",
+            required_evidence_ids=("app-platform.user-consent-flow",),
+            docs=(
+                "docs/user-consent-and-permission-upgrade-ux.md",
+                "docs/app-update-lifecycle.md",
+                "docs/app-catalogs.md",
+                "docs/app-service-discovery-and-grants.md",
+                "docs/app-data-store.md",
+                "docs/app-upgrade-data-migrations.md",
+                "docs/release-certification.md",
+                "tools/release-certification/README.md",
+            ),
         ),
         MatrixRowSpec(
             id="app-update",
@@ -7595,6 +7613,7 @@ def run_self_test(repo_root: Path) -> None:
             "legacy-plugin-migration",
             "apphost-sandbox-provider",
             "public-beta-security-hardening",
+            "app-platform-user-consent-flow",
             "operator-beta-ux-and-recovery",
             "operator-rc-recovery-and-support-workflow",
             "platform-api-contract",
@@ -7657,6 +7676,7 @@ def run_self_test(repo_root: Path) -> None:
             "app-platform.beta-tutorials",
             "app-platform.docs-redaction",
             "app-data.backup-restore-portability",
+            "app-platform.user-consent-flow",
             "operator-beta.app-data-backup-restore",
             *pr253_app_service_evidence_ids,
             ECOSYSTEM_RC_EVIDENCE_ID,
@@ -7679,6 +7699,10 @@ def run_self_test(repo_root: Path) -> None:
         assert evidence_by_id[ECOSYSTEM_RC_EVIDENCE_ID]["requiredForReleaseCandidate"] is True
         assert evidence_by_id[ECOSYSTEM_RC_EVIDENCE_ID]["status"] == "warn", evidence_by_id
         assert evidence_by_id["app-update.lifecycle"]["status"] == "pass", evidence_by_id
+        assert evidence_by_id["app-platform.user-consent-flow"]["status"] == "pass", evidence_by_id
+        assert (
+            evidence_by_id["app-platform.user-consent-flow"]["requiredForReleaseCandidate"] is True
+        )
         assert evidence_by_id["app-update.lifecycle"]["requiredForReleaseCandidate"] is True
         assert evidence_by_id["app-update.scheduler"]["status"] == "pass", evidence_by_id
         assert evidence_by_id["app-update.scheduler"]["requiredForReleaseCandidate"] is True

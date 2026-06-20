@@ -192,6 +192,7 @@ Release-candidate mode requires these evidence ids:
 | `app-services.web-shell` | App-platform smoke summary. | Web Shell lists advertised services, dependencies, grant bundles, grants, expiry, revalidation warnings, and redacted audit events, and lets the operator approve/reject/renew bundles or revoke active grants. |
 | `app-services.redaction` | App-platform smoke summary. | App-service evidence excludes raw tokens, raw subject URIs, raw request bodies, private insert URIs, local paths, provider app data, and generic proxy behavior. |
 | `app-services.dependency-redaction` | App-platform smoke summary. | Dependency graph, bundle, Web Shell, and release evidence exclude raw service request bodies, raw subject URIs, raw Trust Graph data, raw signatures, tokens, private insert URIs, private keys, local paths, and app-data backup payloads. |
+| `app-platform.user-consent-flow` | App-platform smoke summary. | Unified install/update/service-grant/app-data consent model, digest-tied approvals, stale approval rejection, auto-update gating, redacted audit decisions, Web Shell consent UI, docs, and tests are present. |
 | `app-ui.design-system` | App-platform smoke summary. | Canonical app UI design-system assets exist and first-party staged bundles contain matching local copies. |
 | `app-update.live-catalog-refresh` | App-platform smoke summary. | App-update scheduler evidence shows configured signed catalog refresh, including live USK catalog refresh, before candidate discovery while keeping manual update policy as the default. |
 | `app-update.data-migration-contract` | App-platform smoke summary. | Signed app manifests declare app-data schema and migration metadata; update summaries expose path-free migration plans; dry-run, snapshot, missing-path, rollback-incompatible, Feed Reader, Trust Graph Local RC UI-state, and redaction checks are present. |
@@ -351,6 +352,12 @@ app-version denylists, warning acknowledgements, install/update/stage/apply/sche
 review receipt revocation, reviewer-key compromise, Web Shell warning rendering, safe uninstall
 guidance, and redaction. See
 [ecosystem-security-advisories.md](ecosystem-security-advisories.md).
+
+`app-platform.user-consent-flow` verifies the unified consent layer for material install, update,
+app-service grant, app-data migration, backup, channel/support, deprecation/replacement,
+review/trust, security, and automatic-update decisions. It also checks digest-tied approvals,
+stale approval rejection, redacted consent audit records, Web Shell rendering, docs, and tests. See
+[user-consent-and-permission-upgrade-ux.md](user-consent-and-permission-upgrade-ux.md).
 
 `catalog.live-usk-publication` and `catalog.live-usk-source-verification` are offline source
 evidence by default. They prove live publication support, redaction behavior, same USK sibling

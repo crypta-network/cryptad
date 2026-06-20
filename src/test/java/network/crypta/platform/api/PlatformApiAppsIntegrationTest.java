@@ -293,10 +293,13 @@ class PlatformApiAppsIntegrationTest {
     PlatformApiResponse listAppsResponse =
         productionRouter.route(
             request("GET", List.of("app-catalogs", CATALOG_ID, "apps"), Map.of()));
+    Map<String, List<String>> installConsent = approveCatalogInstallConsent(productionRouter);
     PlatformApiResponse installResponse =
         productionRouter.route(
             request(
-                "POST", List.of("app-catalogs", CATALOG_ID, "apps", APP_ID, "install"), Map.of()));
+                "POST",
+                List.of("app-catalogs", CATALOG_ID, "apps", APP_ID, "install"),
+                installConsent));
 
     assertEquals(201, addResponse.statusCode());
     assertEquals(200, listAppsResponse.statusCode());
@@ -311,10 +314,13 @@ class PlatformApiAppsIntegrationTest {
     PlatformApiResponse refreshResponse =
         productionRouter.route(
             request("POST", List.of("app-catalogs", CATALOG_ID, "refresh"), Map.of()));
+    Map<String, List<String>> updateConsent = approveCatalogUpdateConsent(productionRouter);
     PlatformApiResponse updateResponse =
         productionRouter.route(
             request(
-                "POST", List.of("app-catalogs", CATALOG_ID, "apps", APP_ID, "update"), Map.of()));
+                "POST",
+                List.of("app-catalogs", CATALOG_ID, "apps", APP_ID, "update"),
+                updateConsent));
 
     assertEquals(200, refreshResponse.statusCode());
     assertEquals(200, updateResponse.statusCode());
@@ -324,6 +330,51 @@ class PlatformApiAppsIntegrationTest {
   private PlatformApiRequest request(
       String method, List<String> pathSegments, Map<String, List<String>> queryParameters) {
     return new PlatformApiRequest(method, pathSegments, queryParameters);
+  }
+
+  private Map<String, List<String>> approveCatalogInstallConsent(PlatformApiRouter router) {
+    PlatformApiResponse preview =
+        router.route(
+            request(
+                "GET",
+                List.of("consent", "install-preview"),
+                Map.of("catalogId", List.of(CATALOG_ID), "appId", List.of(APP_ID))));
+    return approveConsent(router, preview);
+  }
+
+  private Map<String, List<String>> approveCatalogUpdateConsent(PlatformApiRouter router) {
+    PlatformApiResponse preview =
+        router.route(
+            request(
+                "GET",
+                List.of("consent", "catalog-update-preview"),
+                Map.of("catalogId", List.of(CATALOG_ID), "appId", List.of(APP_ID))));
+    return approveConsent(router, preview);
+  }
+
+  private Map<String, List<String>> approveConsent(
+      PlatformApiRouter router, PlatformApiResponse preview) {
+    assertEquals(200, preview.statusCode());
+    Map<String, List<String>> approvalParams =
+        Map.of(
+            "consentRequestId",
+            List.of(jsonString(preview.body(), "consentRequestId")),
+            "snapshotDigest",
+            List.of(jsonString(preview.body(), "snapshotDigest")));
+    PlatformApiResponse approval =
+        router.route(request("POST", List.of("consent", "approve"), approvalParams));
+    assertEquals(200, approval.statusCode());
+    return approvalParams;
+  }
+
+  private static String jsonString(String json, String field) {
+    String marker = "\"" + field + "\":\"";
+    int index = json.indexOf(marker);
+    assertTrue(index >= 0, "missing JSON field " + field + " in " + json);
+    int start = index + marker.length();
+    int end = json.indexOf('"', start);
+    assertTrue(end > start, "unterminated JSON field " + field + " in " + json);
+    return json.substring(start, end);
   }
 
   private PlatformApiRouter createRouter(AppHost appHost) throws Exception {

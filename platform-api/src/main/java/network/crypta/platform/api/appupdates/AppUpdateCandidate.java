@@ -85,6 +85,9 @@ public record AppUpdateCandidate(
   private static final String API_STATUS_COMPATIBLE = "compatible";
   private static final String REVIEW_STATUS_REVIEWED = "reviewed";
   private static final String REVIEW_TRUST_STATUS_PUBLISHER_CLAIM_ONLY = "publisher_claim_only";
+  private static final String CHANNEL_STABLE = "stable";
+  private static final String SUPPORT_STATUS_SUPPORTED = "supported";
+  private static final String DEPRECATION_STATUS_NONE = "none";
 
   /**
    * Creates a validated candidate.
@@ -173,7 +176,8 @@ public record AppUpdateCandidate(
         && channelPolicyAllowed
         && policyBlockReason == null
         && securityDecisionAllowsAutomaticStage()
-        && dataMigrationAllowsAutomaticStage();
+        && dataMigrationAllowsAutomaticStage()
+        && materialConsentAllowsAutomaticStage();
   }
 
   /**
@@ -213,7 +217,24 @@ public record AppUpdateCandidate(
 
   boolean dataMigrationAllowsAutomaticStage() {
     Object blockReason = dataMigration.get("blockReason");
-    return blockReason == null;
+    return blockReason == null && !Boolean.TRUE.equals(dataMigration.get("operatorReviewRequired"));
+  }
+
+  boolean materialConsentAllowsAutomaticStage() {
+    return permissionDeltaAllowsAutomaticStage()
+        && apiStabilityAllowsAutomaticStage()
+        && !reviewTrustRequiresMaterialConsent()
+        && securityAdvisoriesAllowAutomaticStage()
+        && dataMigrationAllowsAutomaticStage()
+        && supportAndDeprecationAllowAutomaticStage();
+  }
+
+  boolean materialConsentBlocksAutomaticStage() {
+    return eligibleByDefault()
+        && channelPolicyAllowed
+        && policyBlockReason == null
+        && securityDecisionAllowsAutomaticStage()
+        && !materialConsentAllowsAutomaticStage();
   }
 
   /**
@@ -250,9 +271,14 @@ public record AppUpdateCandidate(
     json.put("dataMigration", dataMigration);
     json.put("running", running);
     json.put("detectedAt", detectedAt.toString());
-    json.put("autoStageAllowed", eligibleForAutomaticStage());
-    json.put("autoApplyAllowed", eligibleForAutomaticApply());
-    json.put("operatorActionRequired", operatorActionRequired());
+    boolean autoStageAllowed = eligibleForAutomaticStage();
+    boolean autoApplyAllowed = eligibleForAutomaticApply();
+    boolean operatorActionRequired = operatorActionRequired();
+    json.put("autoStageAllowed", autoStageAllowed);
+    json.put("autoApplyAllowed", autoApplyAllowed);
+    json.put("blocksAutoUpdate", operatorActionRequired);
+    json.put("materialConsentReasons", materialConsentReasons());
+    json.put("operatorActionRequired", operatorActionRequired);
     return json;
   }
 
@@ -276,10 +302,79 @@ public record AppUpdateCandidate(
             || dataMigration.get("blockReason") != null)) {
       return true;
     }
+    if (status == AppUpdateCandidateStatus.AVAILABLE && !materialConsentAllowsAutomaticStage()) {
+      return true;
+    }
     return switch (status) {
       case AMBIGUOUS, BLOCKED, INCOMPATIBLE -> true;
       default -> false;
     };
+  }
+
+  private List<String> materialConsentReasons() {
+    java.util.ArrayList<String> reasons = new java.util.ArrayList<>();
+    if (!permissionDeltaAllowsAutomaticStage()) {
+      reasons.add("new_permission");
+    }
+    if (!apiStabilityAllowsAutomaticStage()) {
+      reasons.add("platform_api_stability_change");
+    }
+    if (reviewTrustRequiresMaterialConsent()) {
+      reasons.add("review_trust_delta");
+    }
+    if (!securityAdvisoriesAllowAutomaticStage()) {
+      reasons.add("security_advisory");
+    }
+    if (!dataMigrationAllowsAutomaticStage()) {
+      reasons.add("app_data_migration");
+    }
+    if (!supportAndDeprecationAllowAutomaticStage()) {
+      reasons.add("catalog_support_or_deprecation_change");
+    }
+    return List.copyOf(reasons);
+  }
+
+  private boolean permissionDeltaAllowsAutomaticStage() {
+    return jsonList(permissionDelta.get("added")).isEmpty();
+  }
+
+  private boolean apiStabilityAllowsAutomaticStage() {
+    Object statusValue = apiCompatibility.get(JSON_STATUS);
+    if (!(statusValue instanceof String compatibilityStatus)
+        || (!API_STATUS_COMPATIBLE.equals(compatibilityStatus)
+            && !"satisfied".equals(compatibilityStatus))) {
+      return false;
+    }
+    boolean experimentalAccepted =
+        Boolean.TRUE.equals(apiCompatibility.get("experimentalCapabilitiesAccepted"));
+    Object stability = apiCompatibility.get("targetStability");
+    boolean stableTargetDeclared =
+        Boolean.TRUE.equals(apiCompatibility.get("targetStabilityDeclared"))
+            && CHANNEL_STABLE.equals(stability);
+    if (!stableTargetDeclared) {
+      return false;
+    }
+    return !experimentalAccepted;
+  }
+
+  private boolean reviewTrustRequiresMaterialConsent() {
+    return !Boolean.TRUE.equals(reviewTrust.get(JSON_POSITIVE))
+        || Boolean.TRUE.equals(reviewTrust.get(JSON_REQUIRES_ACKNOWLEDGEMENT))
+        || Boolean.TRUE.equals(reviewTrust.get(JSON_BLOCKS_UPDATE))
+        || Boolean.TRUE.equals(reviewTrust.get(JSON_BLOCKS_POLICY_APPLY));
+  }
+
+  private boolean securityAdvisoriesAllowAutomaticStage() {
+    return securityAdvisories.isEmpty();
+  }
+
+  private boolean supportAndDeprecationAllowAutomaticStage() {
+    if (!CHANNEL_STABLE.equals(channel) || !SUPPORT_STATUS_SUPPORTED.equals(supportStatus)) {
+      return false;
+    }
+    Object deprecationStatus = deprecation.get(JSON_STATUS);
+    return DEPRECATION_STATUS_NONE.equals(deprecationStatus)
+        && deprecation.get("replacementAppId") == null;
   }
 
   private Map<String, Object> bundleSummary() {
@@ -364,5 +459,9 @@ public record AppUpdateCandidate(
     return value.stream()
         .map(item -> copyInOrder(item, JSON_SECURITY_ADVISORIES + " item"))
         .toList();
+  }
+
+  private static List<?> jsonList(Object value) {
+    return value instanceof List<?> list ? list : List.of();
   }
 }

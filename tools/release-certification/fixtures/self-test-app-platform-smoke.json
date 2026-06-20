@@ -2987,6 +2987,36 @@
     {
       "details": {
         "checks": {
+          "auditDecisionStoreRedacted": true,
+          "automaticUpdateGatingPresent": true,
+          "consentModelsPresent": true,
+          "docsPresent": true,
+          "installPreviewCoversMaterialTrustAndPermissions": true,
+          "migrationAndBackupConsentIntegrated": true,
+          "previewRoutesPresent": true,
+          "serviceGrantConsentIntegrated": true,
+          "snapshotDigestAndStaleApprovalProtection": true,
+          "testsCoverConsentFlow": true,
+          "updatePreviewCoversMaterialDeltas": true,
+          "webShellConsentUiPresent": true
+        },
+        "redaction": {
+          "absolutePathsExcluded": true,
+          "privateInsertUrisExcluded": true,
+          "rawAppDataExcluded": true,
+          "rawFetchedContentExcluded": true,
+          "tokensExcluded": true
+        }
+      },
+      "id": "app-platform.user-consent-flow",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "User consent and permission-upgrade flow evidence passed deterministic checks."
+    },
+    {
+      "details": {
+        "checks": {
           "apphostUpdateEntryPoint": true,
           "candidateCompatibilityMetadata": true,
           "candidateDetectionSemantics": true,

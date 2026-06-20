@@ -328,7 +328,9 @@ public final class PlatformApiRouter {
             checkedAppServices.contentSubscriptionService(),
             checkedAppServices.networkBudgetService());
     appDataRoutes = new PlatformApiAppDataRoutes(checkedAppServices.appDataService());
-    appServiceRoutes = new PlatformApiAppServiceRoutes(checkedAppServices.appServiceCoordinator());
+    appServiceRoutes =
+        new PlatformApiAppServiceRoutes(
+            checkedAppServices.appServiceCoordinator(), appRoutes.consentService());
   }
 
   /**
@@ -445,6 +447,7 @@ public final class PlatformApiRouter {
       case "content" -> contentRoutes.route(segments, request);
       case "app-data" -> appDataRoutes.route(segments, request);
       case "app-services" -> appServiceRoutes.route(segments, request);
+      case "consent" -> appRoutes.routeConsentRequest(segments, request);
       case "operator" -> operatorRoutes.route(segments, request);
       case "trust-graph" -> trustGraphRoutes.route(segments, request);
       case "node", "connectivity", "diagnostics", "updates", "wizard", "alerts" ->
