@@ -6,6 +6,7 @@ import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import network.crypta.platform.api.networkbudget.AppNetworkBudgetConfig;
 import network.crypta.platform.api.networkbudget.AppNetworkBudgetOperation;
 import network.crypta.platform.api.networkbudget.AppNetworkBudgetScope;
@@ -176,6 +177,242 @@ class TrustGraphApiRouterTest {
   }
 
   @Test
+  void route_whenWriterPreviewsDuplicateIssuerImport_expectRedactedConflictSummary() {
+    PlatformApiRouter router = router();
+    PlatformApiPrincipal writer =
+        PlatformApiPrincipal.appBrowserSession(APP_ID, List.of("trust.write"));
+    router.route(
+        request(
+            "POST",
+            List.of("trust-graph", "import"),
+            Map.of("document", List.of(validStatement())),
+            PlatformApiPrincipal.appBrowserSession(APP_ID, List.of("trust.write"))));
+
+    PlatformApiResponse preview =
+        router.route(
+            request(
+                "POST",
+                List.of("trust-graph", "import-preview"),
+                Map.of(
+                    "document",
+                    List.of(
+                        "{\"statements\":["
+                            + validStatement()
+                            + ","
+                            + conflictingStatement()
+                            + "]}"),
+                    "sourceUri",
+                    List.of("crypta:USK@publisher/trust/0/trust.json")),
+                writer));
+
+    assertEquals(200, preview.statusCode());
+    assertTrue(preview.body().contains("\"candidateStatementCount\":2"));
+    assertTrue(preview.body().contains("\"duplicateCount\":1"));
+    assertTrue(preview.body().contains("\"duplicateIssuerCount\":1"));
+    assertTrue(preview.body().contains("\"conflictCount\":1"));
+    assertTrue(preview.body().contains("\"rawContentDiscarded\":true"));
+    assertTrue(preview.body().contains("\"sourceUriKind\":\"crypta-usk\""));
+    assertFalse(preview.body().contains("signature-value"));
+    assertFalse(preview.body().contains("USK@example/subject/profile.json"));
+  }
+
+  @Test
+  void route_whenWriterPreviewsUriWithoutContentFetch_expectForbiddenBeforeFetch() {
+    AtomicBoolean fetchCalled = new AtomicBoolean(false);
+    ContentFetchPort fetchPort =
+        request -> {
+          fetchCalled.set(true);
+          return new BoundedContentFetchResult(
+              validStatement().getBytes(java.nio.charset.StandardCharsets.UTF_8),
+              request.uri(),
+              request.uri(),
+              "ok");
+        };
+    PlatformApiRouter router = router(fetchPort, new TrustGraphApiHandler());
+
+    PlatformApiResponse response =
+        router.route(
+            request(
+                "POST",
+                List.of("trust-graph", "import-preview-uri"),
+                Map.of("uri", List.of("CHK@statement")),
+                PlatformApiPrincipal.appBrowserSession(APP_ID, List.of("trust.write"))));
+
+    assertEquals(403, response.statusCode());
+    assertTrue(response.body().contains("forbidden"));
+    assertFalse(fetchCalled.get());
+  }
+
+  @Test
+  void route_whenWriterPreviewsUriOnDocumentRoute_expectBadRequestBeforeFetch() {
+    AtomicBoolean fetchCalled = new AtomicBoolean(false);
+    ContentFetchPort fetchPort =
+        request -> {
+          fetchCalled.set(true);
+          return new BoundedContentFetchResult(
+              validStatement().getBytes(java.nio.charset.StandardCharsets.UTF_8),
+              request.uri(),
+              request.uri(),
+              "ok");
+        };
+    PlatformApiRouter router = router(fetchPort, new TrustGraphApiHandler());
+
+    PlatformApiResponse response =
+        router.route(
+            request(
+                "POST",
+                List.of("trust-graph", "import-preview"),
+                Map.of("uri", List.of("CHK@statement")),
+                PlatformApiPrincipal.appBrowserSession(APP_ID, List.of("trust.write"))));
+
+    assertEquals(400, response.statusCode());
+    assertTrue(response.body().contains("invalid_query_parameter"));
+    assertTrue(response.body().contains("import-preview-uri"));
+    assertFalse(fetchCalled.get());
+  }
+
+  @Test
+  void route_whenWriterPreviewsDocumentOnUriRoute_expectBadRequestBeforeFetch() {
+    AtomicBoolean fetchCalled = new AtomicBoolean(false);
+    ContentFetchPort fetchPort =
+        request -> {
+          fetchCalled.set(true);
+          return new BoundedContentFetchResult(
+              validStatement().getBytes(java.nio.charset.StandardCharsets.UTF_8),
+              request.uri(),
+              request.uri(),
+              "ok");
+        };
+    PlatformApiRouter router = router(fetchPort, new TrustGraphApiHandler());
+
+    PlatformApiResponse response =
+        router.route(
+            request(
+                "POST",
+                List.of("trust-graph", "import-preview-uri"),
+                Map.of("document", List.of(validStatement())),
+                PlatformApiPrincipal.appBrowserSession(
+                    APP_ID, List.of("trust.write", "content.fetch"))));
+
+    assertEquals(400, response.statusCode());
+    assertTrue(response.body().contains("missing_query_parameter"));
+    assertFalse(fetchCalled.get());
+  }
+
+  @Test
+  void route_whenWriterPreviewsUriWithDocumentOnUriRoute_expectBadRequestBeforeFetch() {
+    AtomicBoolean fetchCalled = new AtomicBoolean(false);
+    ContentFetchPort fetchPort =
+        request -> {
+          fetchCalled.set(true);
+          return new BoundedContentFetchResult(
+              conflictingStatement().getBytes(java.nio.charset.StandardCharsets.UTF_8),
+              request.uri(),
+              request.uri(),
+              "ok");
+        };
+    PlatformApiRouter router = router(fetchPort, new TrustGraphApiHandler());
+
+    PlatformApiResponse response =
+        router.route(
+            request(
+                "POST",
+                List.of("trust-graph", "import-preview-uri"),
+                Map.of("uri", List.of("CHK@statement"), "document", List.of(validStatement())),
+                PlatformApiPrincipal.appBrowserSession(
+                    APP_ID, List.of("trust.write", "content.fetch"))));
+
+    assertEquals(400, response.statusCode());
+    assertTrue(response.body().contains("invalid_query_parameter"));
+    assertTrue(response.body().contains("must fetch"));
+    assertFalse(fetchCalled.get());
+  }
+
+  @Test
+  void route_whenWriterPreviewsUriWithBlankDocumentOnUriRoute_expectFetchPreview() {
+    AtomicBoolean fetchCalled = new AtomicBoolean(false);
+    ContentFetchPort fetchPort =
+        request -> {
+          fetchCalled.set(true);
+          return new BoundedContentFetchResult(
+              validStatement().getBytes(java.nio.charset.StandardCharsets.UTF_8),
+              request.uri(),
+              request.uri(),
+              "ok");
+        };
+    PlatformApiRouter router = router(fetchPort, new TrustGraphApiHandler());
+
+    PlatformApiResponse response =
+        router.route(
+            request(
+                "POST",
+                List.of("trust-graph", "import-preview-uri"),
+                Map.of("uri", List.of("CHK@statement"), "document", List.of("")),
+                PlatformApiPrincipal.appBrowserSession(
+                    APP_ID, List.of("trust.write", "content.fetch"))));
+
+    assertEquals(200, response.statusCode());
+    assertTrue(response.body().contains("\"candidateStatementCount\":1"));
+    assertTrue(fetchCalled.get());
+  }
+
+  @Test
+  void route_whenAnchorRevoked_expectAnchorLifecycleVisibleAndScoreStopsContributing() {
+    PlatformApiRouter router = router();
+    PlatformApiPrincipal writer =
+        PlatformApiPrincipal.appBrowserSession(APP_ID, List.of("trust.write"));
+    PlatformApiPrincipal reader =
+        PlatformApiPrincipal.appBrowserSession("trust-reader", List.of("trust.read"));
+    router.route(
+        request(
+            "POST",
+            List.of("trust-graph", "import"),
+            Map.of("document", List.of(validStatement())),
+            writer));
+    router.route(
+        request(
+            "POST",
+            List.of("trust-graph", "anchors"),
+            Map.of("issuerFingerprint", List.of("fingerprint-1"), "label", List.of("Alice")),
+            writer));
+
+    PlatformApiResponse revoked =
+        router.route(
+            request(
+                "POST",
+                List.of("trust-graph", "anchors", "fingerprint-1", "revoke"),
+                Map.of("reasonCode", List.of("operator-revoked")),
+                writer));
+    PlatformApiResponse anchors =
+        router.route(request("GET", List.of("trust-graph", "anchors"), Map.of(), reader));
+    PlatformApiResponse score =
+        router.route(
+            request(
+                "GET",
+                List.of("trust-graph", "score"),
+                Map.of(
+                    "subjectKind",
+                    List.of("profile"),
+                    "subjectUri",
+                    List.of("USK@example/subject/profile.json"),
+                    "context",
+                    List.of("profile"),
+                    "includeEvidence",
+                    List.of("true")),
+                reader));
+
+    assertEquals(200, revoked.statusCode());
+    assertTrue(revoked.body().contains("\"lifecycleStatus\":\"revoked\""));
+    assertTrue(revoked.body().contains("\"active\":false"));
+    assertEquals(200, anchors.statusCode());
+    assertTrue(anchors.body().contains("\"reasonCode\":\"operator-revoked\""));
+    assertEquals(200, score.statusCode());
+    assertTrue(score.body().contains("\"status\":\"unknown\""));
+    assertTrue(score.body().contains("\"nonContributingReasons\":[\"unanchored\",\"unverified\"]"));
+    assertFalse(score.body().contains("signature-value"));
+  }
+
+  @Test
   void route_whenReaderAttemptsLifecycleMutation_expectForbiddenBeforeHandler() {
     PlatformApiRouter router = router();
     PlatformApiPrincipal writer =
@@ -255,6 +492,73 @@ class TrustGraphApiRouterTest {
                 principal));
 
     assertEquals(200, first.statusCode());
+    assertEquals(429, denied.statusCode());
+    assertTrue(denied.body().contains("\"code\":\"trust_graph_import_budget_exhausted\""));
+    assertFalse(denied.body().contains("signature-value"));
+    assertFalse(denied.body().contains(validStatement()));
+  }
+
+  @Test
+  void route_whenPastedPreviewImportBudgetExhausted_expectSafeTooManyRequests() {
+    AppNetworkBudgetService budgetService = trustImportBudget(1, 100);
+    PlatformApiRouter router =
+        router(
+            null,
+            new TrustGraphApiHandler(new InMemoryTrustGraphStore(), FIXED_CLOCK, budgetService));
+    PlatformApiPrincipal principal =
+        PlatformApiPrincipal.appBrowserSession(APP_ID, List.of("trust.write"));
+    PlatformApiResponse first =
+        router.route(
+            request(
+                "POST",
+                List.of("trust-graph", "import-preview"),
+                Map.of("document", List.of(validStatement())),
+                principal));
+
+    PlatformApiResponse denied =
+        router.route(
+            request(
+                "POST",
+                List.of("trust-graph", "import-preview"),
+                Map.of("document", List.of(validStatement())),
+                principal));
+
+    assertEquals(200, first.statusCode());
+    assertTrue(first.body().contains("\"candidateStatementCount\":1"));
+    assertEquals(429, denied.statusCode());
+    assertTrue(denied.body().contains("\"code\":\"trust_graph_import_budget_exhausted\""));
+    assertFalse(denied.body().contains("signature-value"));
+    assertFalse(denied.body().contains(validStatement()));
+  }
+
+  @Test
+  void route_whenPastedPreviewRejectedCandidate_expectImportBudgetStillConsumed() {
+    AppNetworkBudgetService budgetService = trustImportBudget(1, 100);
+    PlatformApiRouter router =
+        router(
+            null,
+            new TrustGraphApiHandler(new InMemoryTrustGraphStore(), FIXED_CLOCK, budgetService));
+    PlatformApiPrincipal principal =
+        PlatformApiPrincipal.appBrowserSession(APP_ID, List.of("trust.write"));
+    PlatformApiResponse malformed =
+        router.route(
+            request(
+                "POST",
+                List.of("trust-graph", "import-preview"),
+                Map.of("document", List.of("{\"type\":\"wrong\"}")),
+                principal));
+
+    PlatformApiResponse denied =
+        router.route(
+            request(
+                "POST",
+                List.of("trust-graph", "import-preview"),
+                Map.of("document", List.of(validStatement())),
+                principal));
+
+    assertEquals(200, malformed.statusCode());
+    assertTrue(malformed.body().contains("\"candidateStatementCount\":1"));
+    assertTrue(malformed.body().contains("\"rejectedCount\":1"));
     assertEquals(429, denied.statusCode());
     assertTrue(denied.body().contains("\"code\":\"trust_graph_import_budget_exhausted\""));
     assertFalse(denied.body().contains("signature-value"));
@@ -498,6 +802,52 @@ class TrustGraphApiRouterTest {
     assertTrue(response.body().contains("\"sourceUriHash\""));
     assertFalse(response.body().contains("CHK@statement"));
     assertFalse(response.body().contains("signature-value"));
+  }
+
+  @Test
+  void route_whenImportUriExpectedFingerprintDiffers_expectStalePreviewRejected() {
+    AtomicInteger fetchCount = new AtomicInteger();
+    ContentFetchPort fetchPort =
+        request -> {
+          String statementJson =
+              fetchCount.getAndIncrement() == 0 ? validStatement() : conflictingStatement();
+          return new BoundedContentFetchResult(
+              statementJson.getBytes(java.nio.charset.StandardCharsets.UTF_8),
+              request.uri(),
+              request.uri(),
+              "ok");
+        };
+    InMemoryTrustGraphStore store = new InMemoryTrustGraphStore();
+    PlatformApiRouter router = router(fetchPort, new TrustGraphApiHandler(store, FIXED_CLOCK));
+    PlatformApiPrincipal principal =
+        PlatformApiPrincipal.appBrowserSession(APP_ID, List.of("trust.write", "content.fetch"));
+
+    PlatformApiResponse preview =
+        router.route(
+            request(
+                "POST",
+                List.of("trust-graph", "import-preview-uri"),
+                Map.of("uri", List.of("CHK@statement"), "maxBytes", List.of("65536")),
+                principal));
+    PlatformApiResponse importResponse =
+        router.route(
+            request(
+                "POST",
+                List.of("trust-graph", "import-uri"),
+                Map.of(
+                    "uri",
+                    List.of("CHK@statement"),
+                    "expectedDocumentFingerprint",
+                    List.of(documentFingerprint(validStatement()))),
+                principal));
+
+    assertEquals(200, preview.statusCode());
+    assertTrue(preview.body().contains("\"candidateStatementCount\":1"));
+    assertEquals(409, importResponse.statusCode());
+    assertTrue(importResponse.body().contains("\"code\":\"trust_import_preview_stale\""));
+    assertFalse(importResponse.body().contains("signature-value"));
+    assertFalse(importResponse.body().contains("CHK@statement"));
+    assertEquals(0, store.statementCount());
   }
 
   @Test
@@ -894,6 +1244,12 @@ class TrustGraphApiRouterTest {
       }
     }
     """;
+  }
+
+  private static String conflictingStatement() {
+    return validStatement()
+        .replace("\"score\": 50", "\"score\": -25")
+        .replace("\"reason\": \"known publisher\"", "\"reason\": \"conflicting local preview\"");
   }
 
   private static String documentFingerprint(String statementJson) {

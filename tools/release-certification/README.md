@@ -195,6 +195,7 @@ network-content.subscription-scheduler
 app-data.backup-restore-portability
 app-platform.trust-graph-preview
 app-platform.trust-graph-rc-scope-and-safety
+app-platform.trust-social-beta-hardening
 app-platform.trust-statement-signing
 app-platform.social-message-signing
 app-services.registry
@@ -334,8 +335,13 @@ legacy WebOfTrust, Freetalk, Sone, or Freemail compatibility claim.
 `reference-app.social-inbox-rc-threading` verifies the Social Inbox RC reference-app source for
 local thread reconstruction, reply actions using the existing `replyTo` field, channel filters,
 bounded local search, thread read/archive/pin actions, safe author profile display, mediated
-Trust Graph service annotations only, a non-blocking schema-1 app-data namespace contract, and
-path-free redacted evidence.
+Trust Graph service annotations only, additive schema-1 beta app-data records, and path-free
+redacted evidence.
+`app-platform.trust-social-beta-hardening` verifies PR-264 beta hardening across Trust Graph Local
+RC and Social Inbox RC: import preview, duplicate issuer/conflict summaries, anchor lifecycle,
+bounded score explanations, recovery/export/import docs, multi-source Social Inbox controls,
+read/unread state, local mute/block filters, redacted message export, mediated app-service trust
+annotations, additive schema readiness, consent markers, and redaction markers.
 `app-review.first-party-catalog`
 also runs offline, but release-candidate mode requires explicit reviewer key inputs so the runner
 can pack every staged first-party app and sign, verify, and embed a matching first-party review

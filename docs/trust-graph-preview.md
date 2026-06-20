@@ -202,6 +202,11 @@ GET  /api/v1/trust-graph/status
 GET  /api/v1/trust-graph/anchors
 POST /api/v1/trust-graph/anchors
 DELETE /api/v1/trust-graph/anchors/{fingerprint}
+POST /api/v1/trust-graph/anchors/{fingerprint}/deprecate
+POST /api/v1/trust-graph/anchors/{fingerprint}/revoke
+POST /api/v1/trust-graph/anchors/{fingerprint}/reactivate
+POST /api/v1/trust-graph/import-preview
+POST /api/v1/trust-graph/import-preview-uri
 POST /api/v1/trust-graph/import
 POST /api/v1/trust-graph/import-uri
 GET  /api/v1/trust-graph/audit
@@ -216,7 +221,33 @@ GET  /api/v1/trust-graph/score
 
 Contract v10 added the bounded exchange routes `POST /api/v1/trust-graph/import-uri` and
 `GET /api/v1/trust-graph/audit`. Contract v15 keeps those routes and adds local lifecycle
-management for imported statements.
+management for imported statements. Contract v22 adds the beta hardening preview routes,
+`POST /api/v1/trust-graph/import-preview` for pasted documents and
+`POST /api/v1/trust-graph/import-preview-uri` for content URI previews, plus local anchor
+lifecycle routes.
+
+`POST /api/v1/trust-graph/import-preview` is the beta import preview stage. It requires
+`trust.write` for pasted `document` previews and consumes Trust Graph import budget before parsing
+candidate statements. URI previews use
+`POST /api/v1/trust-graph/import-preview-uri`, whose descriptor requires both `trust.write` and
+`content.fetch` before any fetch occurs; they consume Trust Graph import budget before fetching and
+the shared content-fetch budget before fetched content is previewed. Both routes parse candidate
+statements, compare them against local statement fingerprints and issuer/subject/context keys, and
+return only path-free summaries. The preview includes source URI kind, redacted source label,
+candidate statement count, accepted count, rejected count, duplicate count, duplicate issuer count,
+conflict count, revoked/deprecated/expired count, approximate score impact, material-risk status,
+warnings, and limits. Candidate summaries are capped and include fingerprints, subject kind, subject
+URI hash, score/confidence, signature verification state, duplicate issuer status, conflict status,
+lifecycle status, and expiry state. The preview sets `rawContentDiscarded=true`; release artifacts
+and support bundles must not include raw fetched content, raw statement bodies, raw signatures,
+private insert URIs, raw app data, tokens, or absolute local paths.
+
+Preview does not mutate the store. A later commit must submit the same document or URI through the
+normal import path, consume Trust Graph import budget again, and use the unified consent snapshot
+when the preview reports material risk. Duplicate statement ids/digests are idempotent. Duplicate
+issuers are summarized deterministically by issuer, subject kind, subject URI, and context, and
+conflicting issuer/subject statements are reported as bounded conflict summaries rather than raw
+document dumps.
 
 `POST /api/v1/trust-graph/import` accepts form-encoded `document`, optional `sourceUri`, optional
 `sourceLabel`, and safe source metadata. It validates size, parses
@@ -230,10 +261,18 @@ statement and redacted source metadata, and never returns raw fetched content. P
 must not be stored or exposed.
 
 Platform API v18 adds import budgets. Direct `import` consumes Trust Graph import budget before
-parsing a document. `import-uri` consumes both Trust Graph import budget and the shared content-fetch
-budget family before imported content can reach the store. If import budget is exhausted, `import-uri`
-does not fetch. If content-fetch budget is exhausted, it does not import. Safe failures use stable
-codes such as `trust_graph_import_budget_exhausted` and `content_fetch_budget_exhausted`.
+parsing a document. `import-preview` consumes the same budget before parsing pasted preview
+candidates. `import-preview-uri` and `import-uri` consume both Trust Graph import budget and the
+shared content-fetch budget family before fetched content can be previewed or reach the store. If
+import budget is exhausted, URI paths do not fetch. If content-fetch budget is exhausted, they do
+not preview or import. Safe failures use stable codes such as
+`trust_graph_import_budget_exhausted` and `content_fetch_budget_exhausted`.
+
+Local anchor lifecycle routes let an authorized local app or host/operator deprecate, revoke, or
+reactivate an anchor by public fingerprint. These are local operator choices, not global truth.
+Only active anchors contribute to direct-anchor scores. Deprecated and revoked anchors remain
+listed with lifecycle state, update time, and reason code so recovery and support flows can explain
+why scores changed without exposing private material.
 
 `GET /api/v1/trust-graph/score` accepts `subjectKind`, `subjectUri`, `context`, and optional
 `includeEvidence=true`. The direct route requires `trust.read`. Apps can import statements, manage
@@ -304,11 +343,23 @@ anchors, manage local lifecycle records, query scores, show recent queue state, 
 trust audit entries. It uses `CryptaPlatform.data.records.getJson` and `putJson` only for
 UI-local state: draft form values, selected filters, and redacted import summaries.
 
-The app uses SDK helpers rather than hard-coded `/api/v1/` URLs. URI fetch/import does not display
-raw fetched bodies. Pasted statement JSON is rendered only as text when the operator deliberately
-imports pasted content. Publication and audit summaries avoid private insert URIs, private
-identity material, raw signatures, tokens, and local paths. Browser persistent storage must not be
-used for private data, raw statements, app-service tokens, or app-data backup payloads.
+The import UI must preview before committing source fetches or pasted statements. It shows grouped
+counts for duplicate statements, duplicate issuers, conflicts, revoked/deprecated/expired
+statements, source budget warnings, and approximate score impact. The UI also exposes path-free
+anchor lifecycle controls, audit summaries, app-data backup/export/import controls, and a local
+scope warning that local anchors are operator choices for this node only.
+
+The app uses SDK helpers rather than hard-coded `/api/v1/` URLs. URI previews call
+`CryptaPlatform.trust.previewImport({ uri, ... })`, which fetches through the Trust Graph import
+budget and discards the fetched body server-side after producing a redacted candidate summary. The
+browser stores only the URI, display label, and previewed `documentFingerprint`; commit calls
+`CryptaPlatform.trust.exchange.fetchAndImport({ uri, expectedDocumentFingerprint, ... })`, and the
+Platform API rejects the commit with `trust_import_preview_stale` if a mutable source resolves to a
+different document. URI fetch/import does not display raw fetched bodies. Pasted statement JSON is
+rendered only as text when the operator deliberately imports pasted content. Publication and audit
+summaries avoid private insert URIs, private identity material, raw signatures, tokens, and local
+paths. Browser persistent storage must not be used for private data, raw statements, app-service
+tokens, or app-data backup payloads.
 
 ## Redaction
 

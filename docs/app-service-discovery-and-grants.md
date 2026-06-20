@@ -375,6 +375,7 @@ app-services.provider-revalidation
 app-services.trust-score-provider
 reference-app.social-inbox-service-grant
 reference-app.social-inbox-service-dependency
+app-platform.trust-social-beta-hardening
 app-services.web-shell
 app-services.redaction
 app-services.dependency-redaction
@@ -385,3 +386,9 @@ reason codes. It must not include raw provider app data, Trust Graph store files
 bodies, raw signatures, raw request bodies, raw subject URIs, browser-session tokens, app process
 tokens, form passwords, private keys, private identity material, private insert URIs, absolute
 local paths, raw service tokens, or app-data backup payloads.
+
+`app-platform.trust-social-beta-hardening` additionally checks that Social Inbox keeps Trust Graph
+annotations behind this app-service grant path, stops score lookups when the grant is revoked or
+requires revalidation, and documents its degraded but usable unscored state. The evidence also
+checks that Trust Graph import preview and anchor lifecycle actions do not become an ambient
+localhost trust channel for Social Inbox.

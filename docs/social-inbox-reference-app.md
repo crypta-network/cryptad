@@ -10,8 +10,8 @@ app-service grants:
 ```text
 AppVault identity + signed profile/message documents
 + content insert/fetch/subscribe
-+ durable app data with a signed schema-1 namespace contract
-+ local thread, channel, search, and read-state UI
++ durable app data with an additive signed schema-1 namespace contract
++ local thread, channel, search, read-state, filter, and export UI
 + Trust Graph Local RC score annotations through app-service grants
 = Social Inbox RC reference layer outside the daemon
 ```
@@ -30,10 +30,13 @@ For broader legacy plugin categories and migration recipes, see
 app.id=social-inbox
 app.name=Social Inbox RC
 api.minimumVersion=16
-api.maximumTestedVersion=20
+api.maximumTestedVersion=22
 api.targetStability=experimental
 api.experimentalCapabilitiesAccepted=true
 app.data.schema.current=1
+app.data.schema.namespaces=ui-state,social
+app.data.schema.namespace.ui-state.current=1
+app.data.schema.namespace.social.current=1
 ```
 
 The app id remains `social-inbox` so installed app ownership and durable app-data namespaces stay
@@ -52,7 +55,7 @@ The app declares these permissions:
 | `queue.read` | Displays safe upload queue summaries for generated outbox publication. |
 | `queue.write` | Queues generated outbox document inserts. |
 | `app.data.read` | Restores bounded sources, summaries, drafts, imported message summaries, UI filters, and message read state used for thread actions. |
-| `app.data.write` | Saves bounded app-owned Social Inbox state under the existing schema-1 record contract. |
+| `app.data.write` | Saves bounded app-owned Social Inbox state under the additive schema-1 record contract. |
 | `app.services.read` | Discovers the local Trust Score Service descriptor and caller-visible grant state. |
 | `app.services.call` | Requests and invokes an approved local `trust.score` service grant. |
 
@@ -227,6 +230,7 @@ social/outbox-summary
 social/imported-message-index
 social/read-state
 social/drafts
+social/local-filters
 ```
 
 `ui-state/social-inbox` stores bounded UI selections such as channel and read/archive filters.
@@ -238,15 +242,36 @@ not raw source URIs. `social/imported-message-index` stores capped message summa
 `social/drafts` stores a draft body only when the user explicitly selects the draft checkbox, and
 the draft remains bounded.
 
-The signed manifest declares the existing `ui-state` and `social` namespaces at schema 1. The RC
-threading, filter, read-state, and source-summary additions are additive under that schema so
-installed Preview users do not need an update-time migration command. This is intentional while
-the production app-update migration runner still fails closed before executing signed migration
-commands; do not add a Social Inbox v1-to-v2 manifest migration until that runner can execute it
-without blocking installed updates.
+The signed manifest declares `ui-state` at schema 1 and `social` at schema 1. The beta hardening
+records for local filters, read state, redacted export metadata, and source pause state are additive
+schema-1 records so existing Social Inbox RC installs can update without launching a local migration
+process. Social Inbox does not currently declare `social-v1-v2`; that migration remains deferred
+until the production migration runner can prove executable process containment. A future schema bump
+must use the unified update consent preview, snapshot digest binding, stale approval rejection, and
+backup-before-update flow before replacing the installed bundle.
 
 These records must not contain private identity material, private insert URIs, browser-session
 tokens, app process tokens, raw fetched documents, raw signatures, local paths, or generic secrets.
+
+## Local filters and export
+
+Source pause/resume is a local subscription control. Pausing a source stops refresh requests for
+that source until the user resumes it, and the app preserves the paused state in app-owned data.
+Blocking a source locally and muting an author locally are UI filters only. They do not publish
+moderation metadata, modify the network, revoke trust statements, or change what other nodes see.
+
+Social Inbox persists local filters in `social/local-filters` as bounded author and source keys.
+The UI still keeps the underlying imported summaries available for backup/restore and for an
+operator who later unmutes or unblocks the source. Release evidence must summarize muted author
+counts and blocked source counts without exposing raw source URIs, raw profile bodies, or raw
+message bodies.
+
+Message export is bounded and redacted. The app can export visible message summaries, a thread
+summary, or one selected message summary. Export payloads include app id, schema version, export
+kind, message count, source/app/schema metadata, body preview and body SHA-256, profile URI
+summary, trust annotation summary, and local filter counts. They do not include private material,
+raw signatures, raw fetched source documents, raw message bodies, bearer tokens, browser session
+tokens, private insert URIs, raw app data dumps, or absolute local paths.
 
 ## Trust Score Service Dependency
 
@@ -308,6 +333,7 @@ reference-app.social-inbox-trust-annotations
 reference-app.social-inbox-service-grant
 reference-app.social-inbox-service-dependency
 reference-app.social-inbox-rc-threading
+app-platform.trust-social-beta-hardening
 network-scale.subscription-budget
 network-scale.queue-pressure-backoff
 network-scale.social-inbox-multi-source-soak
@@ -330,9 +356,11 @@ Evidence must verify the app exists and stages, preserves `app.id=social-inbox`,
 permissions, uses the SDK and design system, signs messages through the bounded AppVault
 social-message route, publishes generated outbox documents, manages durable USK subscriptions,
 persists only safe bounded app data, builds local threads from `replyTo`, supports channel
-filtering and bounded local search, renders safe author/profile metadata, requests the
-`trust-annotations` bundle, uses a mediated Trust Score Service grant for message-author scores,
-verifies expiry/revocation/provider-revalidation failure, and documents the migration boundary.
+filtering and bounded local search, persists read/unread state, renders safe author/profile
+metadata, supports source pause/resume, local mute/block filters, and bounded redacted message
+export, requests the `trust-annotations` bundle, uses a mediated Trust Score Service grant for
+message-author scores, verifies expiry/revocation/provider-revalidation failure, and documents the
+additive schema-1 beta data boundary and deferred executable migration requirement.
 
 Evidence must not include raw message bodies, raw fetched content, raw request bodies, queue HTML,
 raw signatures, private insert URIs, private keys, private identity material, browser-session

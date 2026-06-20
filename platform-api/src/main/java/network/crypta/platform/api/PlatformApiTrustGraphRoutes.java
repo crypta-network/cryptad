@@ -45,11 +45,20 @@ final class PlatformApiTrustGraphRoutes {
   /** Shared route segment and list envelope key for Trust Graph RC anchors. */
   private static final String ANCHORS_SEGMENT = "anchors";
 
+  /** Shared envelope key for Trust Graph RC anchor mutation responses. */
+  private static final String ANCHOR_ENVELOPE_KEY = "anchor";
+
   /** Shared route segment and list envelope key for Trust Graph statement summaries. */
   private static final String STATEMENTS_SEGMENT = "statements";
 
   /** Shared envelope key for Trust Graph statement lifecycle mutation responses. */
   private static final String LIFECYCLE_ENVELOPE_KEY = "lifecycle";
+
+  /** Query parameter that triggers the URI preview branch. */
+  private static final String PARAM_URI = "uri";
+
+  /** Query parameter that carries pasted Trust Graph statement JSON. */
+  private static final String PARAM_DOCUMENT = "document";
 
   /** Handler that performs bounded Trust Graph RC validation, storage, and redaction. */
   private final TrustGraphApiHandler trustGraphApiHandler;
@@ -138,6 +147,29 @@ final class PlatformApiTrustGraphRoutes {
                 trustGraphApiHandler.importStatement(
                     request.queryParameters(), optionalAppPrincipalId(request))));
       }
+      case "import-preview" -> {
+        if (!METHOD_POST.equals(request.method())) {
+          yield methodNotAllowed(METHOD_POST, POST_ONLY_MESSAGE);
+        }
+        rejectUriOnDocumentPreviewRoute(request);
+        yield PlatformApiResponse.ok(
+            envelope(
+                "importPreview",
+                trustGraphApiHandler.previewImport(
+                    request.queryParameters(), contentFetchPort, optionalAppPrincipalId(request))));
+      }
+      case "import-preview-uri" -> {
+        if (!METHOD_POST.equals(request.method())) {
+          yield methodNotAllowed(METHOD_POST, POST_ONLY_MESSAGE);
+        }
+        requireUriOnUriPreviewRoute(request);
+        rejectDocumentOnUriPreviewRoute(request);
+        yield PlatformApiResponse.ok(
+            envelope(
+                "importPreview",
+                trustGraphApiHandler.previewImport(
+                    request.queryParameters(), contentFetchPort, optionalAppPrincipalId(request))));
+      }
       case "import-uri" -> {
         if (!METHOD_POST.equals(request.method())) {
           yield methodNotAllowed(METHOD_POST, POST_ONLY_MESSAGE);
@@ -187,7 +219,7 @@ final class PlatformApiTrustGraphRoutes {
     if (METHOD_POST.equals(request.method())) {
       return PlatformApiResponse.created(
           envelope(
-              "anchor",
+              ANCHOR_ENVELOPE_KEY,
               trustGraphApiHandler.addAnchor(
                   request.queryParameters(), optionalAppPrincipalId(request))));
     }
@@ -202,7 +234,7 @@ final class PlatformApiTrustGraphRoutes {
       }
       return PlatformApiResponse.ok(
           envelope(
-              "anchor",
+              ANCHOR_ENVELOPE_KEY,
               trustGraphApiHandler.removeAnchor(resourceId, optionalAppPrincipalId(request))));
     }
     if (STATEMENTS_SEGMENT.equals(resource)) {
@@ -217,6 +249,9 @@ final class PlatformApiTrustGraphRoutes {
 
   private PlatformApiResponse routeNestedResourceAction(
       String resource, String resourceId, String action, PlatformApiRequest request) {
+    if (ANCHORS_SEGMENT.equals(resource)) {
+      return routeAnchorLifecycleAction(resourceId, action, request);
+    }
     if (!STATEMENTS_SEGMENT.equals(resource)) {
       throw notFound();
     }
@@ -246,8 +281,68 @@ final class PlatformApiTrustGraphRoutes {
     };
   }
 
+  private PlatformApiResponse routeAnchorLifecycleAction(
+      String resourceId, String action, PlatformApiRequest request) {
+    if (!METHOD_POST.equals(request.method())) {
+      return methodNotAllowed(METHOD_POST, POST_ONLY_MESSAGE);
+    }
+    return switch (action) {
+      case "deprecate" ->
+          PlatformApiResponse.ok(
+              envelope(
+                  ANCHOR_ENVELOPE_KEY,
+                  trustGraphApiHandler.deprecateAnchor(
+                      resourceId, request.queryParameters(), optionalAppPrincipalId(request))));
+      case "revoke" ->
+          PlatformApiResponse.ok(
+              envelope(
+                  ANCHOR_ENVELOPE_KEY,
+                  trustGraphApiHandler.revokeAnchor(
+                      resourceId, request.queryParameters(), optionalAppPrincipalId(request))));
+      case "reactivate" ->
+          PlatformApiResponse.ok(
+              envelope(
+                  ANCHOR_ENVELOPE_KEY,
+                  trustGraphApiHandler.reactivateAnchor(
+                      resourceId, request.queryParameters(), optionalAppPrincipalId(request))));
+      default -> throw notFound();
+    };
+  }
+
   private static String optionalAppPrincipalId(PlatformApiRequest request) {
     return request.principal().isApp() ? request.principal().appId() : null;
+  }
+
+  private static void rejectUriOnDocumentPreviewRoute(PlatformApiRequest request) {
+    if (!hasNonBlankQueryValue(request, PARAM_URI)) {
+      return;
+    }
+    throw new PlatformApiException(
+        400,
+        "invalid_query_parameter",
+        "Trust Graph URI previews use /trust-graph/import-preview-uri.");
+  }
+
+  private static void requireUriOnUriPreviewRoute(PlatformApiRequest request) {
+    if (hasNonBlankQueryValue(request, PARAM_URI)) {
+      return;
+    }
+    throw new PlatformApiException(
+        400, "missing_query_parameter", "Trust Graph URI previews require uri.");
+  }
+
+  private static void rejectDocumentOnUriPreviewRoute(PlatformApiRequest request) {
+    if (!hasNonBlankQueryValue(request, PARAM_DOCUMENT)) {
+      return;
+    }
+    throw new PlatformApiException(
+        400,
+        "invalid_query_parameter",
+        "Trust Graph URI previews must fetch the preview document from uri.");
+  }
+
+  private static boolean hasNonBlankQueryValue(PlatformApiRequest request, String name) {
+    return request.queryValues(name).stream().anyMatch(value -> !value.isBlank());
   }
 
   private static PlatformApiException mappedTrustGraphException(TrustGraphException exception) {

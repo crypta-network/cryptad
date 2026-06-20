@@ -467,6 +467,19 @@ class PlatformApiCapabilitiesTest {
             "content.fetch",
             "trust.write"),
         route(
+            "POST",
+            List.of("trust-graph", "import-preview"),
+            "trust-graph",
+            "trust-graph.import-preview",
+            "trust.write"),
+        route(
+            "POST",
+            List.of("trust-graph", "import-preview-uri"),
+            "trust-graph",
+            "trust-graph.import-preview-uri",
+            "content.fetch",
+            "trust.write"),
+        route(
             "GET",
             List.of("trust-graph", "audit"),
             "trust-graph",
@@ -654,6 +667,8 @@ class PlatformApiCapabilitiesTest {
         new UnmappedRouteCase("PUT", List.of("app-services", "grants")),
         new UnmappedRouteCase("PUT", List.of("trust-graph", "anchors")),
         new UnmappedRouteCase("GET", List.of("trust-graph", "import")),
+        new UnmappedRouteCase("GET", List.of("trust-graph", "import-preview")),
+        new UnmappedRouteCase("GET", List.of("trust-graph", "import-preview-uri")),
         new UnmappedRouteCase("POST", List.of("trust-graph", "score")),
         new UnmappedRouteCase("GET", List.of("queue", "requests", "remove")),
         new UnmappedRouteCase("POST", List.of("queue", "inserts", "unknown")),

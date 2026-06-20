@@ -107,6 +107,53 @@ class InMemoryTrustGraphStoreTest {
     assertEquals("trust_statement_not_found", exception.errorCode());
   }
 
+  @Test
+  void anchorLifecycle_whenRevokedAndReactivated_expectContributionFlagFollowsLocalState() {
+    InMemoryTrustGraphStore store = store();
+    store.addAnchor("fingerprint-1", "Alice", "manual");
+
+    TrustAnchor revoked =
+        store.updateAnchorLifecycle(
+            "fingerprint-1",
+            TrustStatementLifecycleStatus.REVOKED,
+            "operator-revoked",
+            "trust-graph",
+            "app");
+    assertEquals(TrustStatementLifecycleStatus.REVOKED, revoked.lifecycleStatus());
+    assertFalse(store.isAnchor("fingerprint-1"));
+
+    TrustAnchor active =
+        store.updateAnchorLifecycle(
+            "fingerprint-1",
+            TrustStatementLifecycleStatus.ACTIVE,
+            "operator-reactivated",
+            "trust-graph",
+            "app");
+
+    assertEquals(TrustStatementLifecycleStatus.ACTIVE, active.lifecycleStatus());
+    assertTrue(store.isAnchor("fingerprint-1"));
+    assertEquals("operator-reactivated", active.reasonCode());
+    assertFalse(active.toJson().toString().contains("CRYPTAD_APP_TOKEN"));
+  }
+
+  @Test
+  void anchorLifecycle_whenAnchorIsUnknown_expectTrustAnchorNotFound() {
+    InMemoryTrustGraphStore store = store();
+
+    TrustGraphException exception =
+        assertThrows(
+            TrustGraphException.class,
+            () ->
+                store.updateAnchorLifecycle(
+                    "missing-fingerprint",
+                    TrustStatementLifecycleStatus.REVOKED,
+                    null,
+                    "trust-graph",
+                    "app"));
+
+    assertEquals("trust_anchor_not_found", exception.errorCode());
+  }
+
   private static InMemoryTrustGraphStore store() {
     return new InMemoryTrustGraphStore(Clock.fixed(NOW, ZoneOffset.UTC));
   }

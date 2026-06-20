@@ -689,9 +689,41 @@
     ).then((response) => unwrapField(response, "anchor"));
   }
 
+  function deprecateTrustAnchor(fingerprintOrOptions, request, options) {
+    return mutateTrustAnchorLifecycle("deprecate", fingerprintOrOptions, request, options);
+  }
+
+  function revokeTrustAnchor(fingerprintOrOptions, request, options) {
+    return mutateTrustAnchorLifecycle("revoke", fingerprintOrOptions, request, options);
+  }
+
+  function reactivateTrustAnchor(fingerprintOrOptions, request, options) {
+    return mutateTrustAnchorLifecycle("reactivate", fingerprintOrOptions, request, options);
+  }
+
+  function mutateTrustAnchorLifecycle(action, fingerprintOrOptions, request, options) {
+    const normalized = trustAnchorLifecycleRequest(fingerprintOrOptions, request, options);
+    return apiPostForm(
+      `trust-graph/anchors/${encodeURIComponent(normalized.fingerprint)}/${action}`,
+      normalizeTrustLifecycleMutation(normalized.request),
+      normalized.options
+    ).then((response) => unwrapField(response, "anchor"));
+  }
+
   function importTrustStatement(request, options) {
     return apiPostForm("trust-graph/import", normalizeTrustImport(request), options).then(
       (response) => unwrapField(response, "importResult")
+    );
+  }
+
+  function previewTrustImport(request, options) {
+    const params = normalizeTrustImportPreview(request);
+    const route =
+      params.has("uri") && !params.has("document")
+        ? "trust-graph/import-preview-uri"
+        : "trust-graph/import-preview";
+    return apiPostForm(route, params, options).then((response) =>
+      unwrapField(response, "importPreview")
     );
   }
 
@@ -1661,6 +1693,29 @@
     copyStringParam(source, params, "sourceLabel");
     copyStringParamAs(source, params, "label", "sourceLabel");
     copyStringParam(source, params, "subscriptionId");
+    copyStringParam(source, params, "expectedDocumentFingerprint");
+    copyStringParamAs(source, params, "previewDocumentFingerprint", "expectedDocumentFingerprint");
+    copyIntegerParam(source, params, "maxBytes");
+    return params;
+  }
+
+  function normalizeTrustImportPreview(request) {
+    const source = requireOptionsObject(request, "Trust import preview");
+    const params = new URLSearchParams();
+    const hasDocument = hasTrustStatementText(source);
+    if (hasDocument) {
+      params.set("document", trustStatementText(source));
+      copyStringParam(source, params, "sourceUri");
+      copyStringParamAs(source, params, "uri", "sourceUri");
+    } else {
+      copyStringParam(source, params, "uri");
+      if (!params.has("uri")) {
+        params.set("uri", trimmedRequired(source.sourceUri, "uri"));
+      }
+    }
+    copyStringParam(source, params, "sourceLabel");
+    copyStringParamAs(source, params, "label", "sourceLabel");
+    copyStringParam(source, params, "subscriptionId");
     copyIntegerParam(source, params, "maxBytes");
     return params;
   }
@@ -1711,6 +1766,28 @@
     const mutation = request && typeof request === "object" ? request : {};
     return {
       fingerprint: trimmedRequired(fingerprintOrOptions, "statementFingerprint"),
+      request: mutation,
+      options: Object.assign({}, requestOptionsFrom(mutation), options || {}),
+    };
+  }
+
+  function trustAnchorLifecycleRequest(fingerprintOrOptions, request, options) {
+    if (
+      fingerprintOrOptions &&
+      typeof fingerprintOrOptions === "object" &&
+      !Array.isArray(fingerprintOrOptions) &&
+      typeof fingerprintOrOptions.entries !== "function"
+    ) {
+      const source = fingerprintOrOptions;
+      return {
+        fingerprint: trustAnchorFingerprint(source),
+        request: source,
+        options: Object.assign({}, requestOptionsFrom(source), request || {}),
+      };
+    }
+    const mutation = request && typeof request === "object" ? request : {};
+    return {
+      fingerprint: trimmedRequired(fingerprintOrOptions, "issuerFingerprint"),
       request: mutation,
       options: Object.assign({}, requestOptionsFrom(mutation), options || {}),
     };
@@ -1818,6 +1895,15 @@
     }
     const signed = await createTrustStatement(identityId, source, requestOptionsFrom(source));
     return trustStatementDocument({ statement: signed });
+  }
+
+  function hasTrustStatementText(source) {
+    return (
+      Object.prototype.hasOwnProperty.call(source, "document") ||
+      Object.prototype.hasOwnProperty.call(source, "trustStatement") ||
+      Object.prototype.hasOwnProperty.call(source, "statement") ||
+      Object.prototype.hasOwnProperty.call(source, "text")
+    );
   }
 
   function trustStatementText(source) {
@@ -2431,7 +2517,11 @@
         list: listTrustAnchors,
         add: addTrustAnchor,
         remove: removeTrustAnchor,
+        deprecate: deprecateTrustAnchor,
+        revoke: revokeTrustAnchor,
+        reactivate: reactivateTrustAnchor,
       }),
+      previewImport: previewTrustImport,
       importStatement: importTrustStatement,
       importUri: importTrustUri,
       audit: Object.freeze({

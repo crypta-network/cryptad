@@ -17,6 +17,7 @@
     subscriptions: [],
     statements: [],
     status: null,
+    pendingImport: null,
   };
 
   const elements = {};
@@ -48,6 +49,7 @@
     elements.refreshSubscriptionsButton = document.getElementById("refresh-subscriptions-button");
     elements.secondaryRefreshQueueButton =
       document.getElementById("secondary-refresh-queue-button");
+    elements.commitImportButton = document.getElementById("commit-import-button");
     elements.identityForm = document.getElementById("identity-form");
     elements.anchorForm = document.getElementById("anchor-form");
     elements.fetchForm = document.getElementById("fetch-form");
@@ -68,6 +70,7 @@
     elements.identityForm.addEventListener("submit", createIdentity);
     elements.anchorForm.addEventListener("submit", addAnchor);
     elements.fetchForm.addEventListener("submit", fetchAndImportStatement);
+    elements.commitImportButton.addEventListener("click", commitPendingImport);
     elements.scoreForm.addEventListener("submit", scoreSubject);
     elements.publishForm.addEventListener("submit", publishStatement);
     elements.subscriptionForm.addEventListener("submit", createSubscription);
@@ -252,6 +255,24 @@
     }
   }
 
+  async function updateAnchorLifecycle(action, identity) {
+    const helper = anchorLifecycleHelper(action);
+    if (!helper || !identity) {
+      setStatus("Anchor lifecycle helper is unavailable.");
+      return;
+    }
+    try {
+      await helper(identity, {
+        reasonCode: `operator-${action}`,
+        note: "Updated from Trust Graph Local RC UI",
+      });
+      await Promise.all([refreshAnchors(), refreshAudit(), refreshStatus()]);
+      setStatus(`Trust anchor lifecycle ${action} completed.`);
+    } catch (error) {
+      renderError(elements.anchorList, error);
+    }
+  }
+
   async function refreshIdentities() {
     try {
       const response = await CryptaPlatform.vault.identities.list();
@@ -288,12 +309,13 @@
 
   async function fetchAndImportStatement(event) {
     event.preventDefault();
+    clearPendingImport();
     const formData = new FormData(event.currentTarget);
     const uri = textValue(formData, "uri");
     const documentText = textValue(formData, "document");
     const action = event.submitter ? event.submitter.value : "fetch";
     if (action === "import" || (!uri && documentText)) {
-      await importStatementText("pasted", documentText, null);
+      await previewStatementText("pasted", documentText, null);
       return;
     }
     if (!uri) {
@@ -306,24 +328,101 @@
     }
 
     try {
-      const imported = await CryptaPlatform.trust.exchange.fetchAndImport({
-        uri,
-        maxBytes: maxStatementBytes,
-        sourceLabel: "Fetched statement",
-      });
-      state.lastStatementText = "";
-      rememberImportSummary(
-        "Fetched statement",
-        uri,
-        numberField(imported, "documentBytes", "bytes"),
-        imported
-      );
-      renderImportSummary(uri, imported);
-      await Promise.all([refreshStatus(), refreshStatements(), refreshAudit()]);
-      setStatus("Statement fetched and imported.");
+      await previewStatementUri(uri);
     } catch (error) {
       renderError(elements.statementPreview, error);
     }
+  }
+
+  async function commitPendingImport() {
+    const pending = state.pendingImport;
+    if (!pending) {
+      setStatus("Preview an import before committing it.");
+      return;
+    }
+    if (pending.kind === "document") {
+      await importStatementText(pending.label, pending.text, pending.sourceUri);
+      return;
+    }
+    if (pending.kind === "uri") {
+      await commitStatementUri(pending);
+      return;
+    }
+    clearPendingImport();
+    setStatus("Pending import preview is invalid.");
+  }
+
+  async function previewStatementUri(uri) {
+    clearPendingImport();
+    try {
+      const preview = await CryptaPlatform.trust.previewImport({
+        uri,
+        sourceLabel: "Fetched statement",
+        maxBytes: maxStatementBytes,
+      });
+      const blockReason = previewCommitBlockReason(preview);
+      if (blockReason) {
+        renderImportPreview(uri, preview);
+        setStatus(blockReason);
+        return;
+      }
+      const expectedDocumentFingerprint = previewDocumentFingerprint(preview);
+      state.pendingImport = {
+        kind: "uri",
+        label: "Fetched statement",
+        uri,
+        expectedDocumentFingerprint,
+      };
+      renderImportPreview(uri, preview);
+      updateCommitImportButton();
+      setStatus("Statement import preview is ready.");
+    } catch (error) {
+      clearPendingImport();
+      renderError(elements.statementPreview, error);
+    }
+  }
+
+  async function previewStatementText(label, text, sourceUri) {
+    clearPendingImport();
+    if (!text) {
+      setStatus("Paste statement JSON before previewing.");
+      return;
+    }
+    if (byteLength(text) > maxStatementBytes) {
+      setStatus("Trust statement JSON is too large.");
+      return;
+    }
+    try {
+      const request = { document: text, sourceLabel: label, maxBytes: maxStatementBytes };
+      if (sourceUri) {
+        request.sourceUri = sourceUri;
+      }
+      const preview = await CryptaPlatform.trust.previewImport(request);
+      const blockReason = previewCommitBlockReason(preview);
+      if (blockReason) {
+        renderImportPreview(sourceUri || label, preview);
+        setStatus(blockReason);
+        return;
+      }
+      state.pendingImport = {
+        kind: "document",
+        label,
+        text,
+        sourceUri,
+        expectedDocumentFingerprint: previewDocumentFingerprint(preview),
+      };
+      renderImportPreview(sourceUri || label, preview);
+      updateCommitImportButton();
+      setStatus("Statement import preview is ready.");
+    } catch (error) {
+      clearPendingImport();
+      renderError(elements.statementPreview, error);
+    }
+  }
+
+  function clearPendingImport() {
+    state.pendingImport = null;
+    updateCommitImportButton();
   }
 
   async function importStatementText(label, text, sourceUri) {
@@ -342,8 +441,38 @@
       }
       const imported = await CryptaPlatform.trust.importStatement(request);
       state.lastStatementText = text;
+      clearPendingImport();
       rememberImportSummary(label, sourceUri, byteLength(text || ""), imported);
       renderStatement(label, text, imported);
+      await Promise.all([refreshStatus(), refreshStatements(), refreshAudit()]);
+      setStatus("Statement imported.");
+    } catch (error) {
+      renderError(elements.statementPreview, error);
+    }
+  }
+
+  async function commitStatementUri(pending) {
+    if (!pending || !pending.uri || !pending.expectedDocumentFingerprint) {
+      clearPendingImport();
+      setStatus("Pending URI import preview is invalid.");
+      return;
+    }
+    try {
+      const imported = await CryptaPlatform.trust.exchange.fetchAndImport({
+        uri: pending.uri,
+        sourceLabel: pending.label || "Fetched statement",
+        maxBytes: maxStatementBytes,
+        expectedDocumentFingerprint: pending.expectedDocumentFingerprint,
+      });
+      state.lastStatementText = "";
+      clearPendingImport();
+      rememberImportSummary(
+        pending.label || "Fetched statement",
+        pending.uri,
+        numberField(imported, "documentBytes", "bytes"),
+        imported
+      );
+      renderImportSummary(pending.uri, imported);
       await Promise.all([refreshStatus(), refreshStatements(), refreshAudit()]);
       setStatus("Statement imported.");
     } catch (error) {
@@ -671,25 +800,62 @@
       item.append(
         rowNode("Identity", identity || "Unknown"),
         rowNode("Label", stringField(anchor, "label", "name") || "Unlabeled"),
+        rowNode("Lifecycle", anchorLifecycleStatus(anchor)),
+        rowNode("Source", stringField(anchor, "source") || "manual"),
         rowNode(
           "Created",
           stringField(anchor, "createdAt", "addedAt", "updatedAt", "updated") || "Unknown"
-        )
+        ),
+        rowNode("Updated", stringField(anchor, "updatedAt", "updated") || "Unknown")
       );
 
       const actions = document.createElement("div");
       actions.className = "anchor-item__actions";
-      const removeButton = document.createElement("button");
-      removeButton.className = "cr-button cr-button--secondary";
-      removeButton.type = "button";
-      removeButton.textContent = "Remove";
-      removeButton.addEventListener("click", () => removeAnchor(identity));
-      removeButton.disabled = !identity;
-      actions.append(removeButton);
+      const lifecycle = anchorLifecycleStatus(anchor);
+      actions.append(
+        anchorLifecycleButton("Deprecate", "deprecate", identity, lifecycle === "deprecated"),
+        anchorLifecycleButton("Revoke", "revoke", identity, lifecycle === "revoked"),
+        anchorLifecycleButton("Reactivate", "reactivate", identity, lifecycle === "active"),
+        removeAnchorButton(identity)
+      );
       item.append(actions);
       return item;
     });
     replaceChildren(elements.anchorList, nodes);
+  }
+
+  function removeAnchorButton(identity) {
+    const button = document.createElement("button");
+    button.className = "cr-button cr-button--secondary";
+    button.type = "button";
+    button.textContent = "Remove";
+    button.addEventListener("click", () => removeAnchor(identity));
+    button.disabled = !identity;
+    return button;
+  }
+
+  function anchorLifecycleButton(label, action, identity, alreadyApplied) {
+    const button = document.createElement("button");
+    button.className = "cr-button cr-button--secondary";
+    button.type = "button";
+    button.textContent = label;
+    const helper = anchorLifecycleHelper(action);
+    button.disabled = !identity || !helper || alreadyApplied;
+    if (!helper) {
+      button.title = "This Platform API contract does not expose an anchor lifecycle SDK helper.";
+    } else if (alreadyApplied) {
+      button.title = `Anchor is already ${label.toLowerCase()}d.`;
+    }
+    button.addEventListener("click", () => updateAnchorLifecycle(action, identity));
+    return button;
+  }
+
+  function anchorLifecycleHelper(action) {
+    const anchors = CryptaPlatform.trust && CryptaPlatform.trust.anchors;
+    if (anchors && typeof anchors[action] === "function") {
+      return (identity, request) => anchors[action](identity, request);
+    }
+    return null;
   }
 
   function renderIdentities() {
@@ -833,9 +999,89 @@
       rowNode("Source", importSummaryLabel(uri, "")),
       rowNode("Import", compactValue(imported)),
       rowNode("Lifecycle", lifecycleStatus(imported)),
-      textBlock("Statement text", text),
+      rowNode("Raw content", "Discarded after import"),
     ];
     replaceChildren(elements.statementPreview, nodes);
+  }
+
+  function renderImportPreview(source, preview) {
+    const summary = {
+      source: importSummaryLabel(source, ""),
+      expectedDocumentFingerprint: previewDocumentFingerprint(preview) || "Not committable",
+      sourceUriKind: sourceUriKind(preview) || importSourceKind(source),
+      candidateStatementCount: numberField(preview, "candidateStatementCount"),
+      acceptedCount: numberField(preview, "acceptedCount"),
+      rejectedCount: numberField(preview, "rejectedCount"),
+      duplicateCount: numberField(preview, "duplicateCount"),
+      duplicateIssuerCount: numberField(preview, "duplicateIssuerCount"),
+      conflictCount: numberField(preview, "conflictCount"),
+      revokedDeprecatedExpiredCount: numberField(preview, "revokedDeprecatedExpiredCount"),
+      materialRisk: yesNo(preview && preview.materialRisk),
+      rawContentDiscarded: yesNo(preview && preview.rawContentDiscarded),
+      approximateScoreImpact: stringField(preview, "approximateScoreImpact"),
+      warnings: compactValue(asArray(preview && preview.warnings)),
+    };
+    const nodes = summaryNodes(summary, "Import preview", Object.keys(summary).length);
+    nodes.push(candidatePreviewList(asArray(preview && preview.candidateSummaries)));
+    replaceChildren(elements.statementPreview, nodes);
+  }
+
+  function previewDocumentFingerprint(preview) {
+    const candidates = asArray(preview && preview.candidateSummaries);
+    for (const candidate of candidates) {
+      const fingerprint = stringField(candidate, "documentFingerprint");
+      if (fingerprint) {
+        return fingerprint;
+      }
+    }
+    return "";
+  }
+
+  function previewCommitBlockReason(preview) {
+    const candidateCount = numberField(preview, "candidateStatementCount");
+    const acceptedCount = numberField(preview, "acceptedCount");
+    const rejectedCount = numberField(preview, "rejectedCount");
+    const candidates = asArray(preview && preview.candidateSummaries);
+    if (candidateCount !== 1) {
+      return "Preview must contain exactly one candidate statement before it can be committed.";
+    }
+    if (acceptedCount !== 1) {
+      return "Preview has no accepted statement to commit.";
+    }
+    if (rejectedCount !== 0) {
+      return "Preview contains rejected statement data; commit disabled.";
+    }
+    if (candidates.length !== 1 || !stringField(candidates[0], "documentFingerprint")) {
+      return "Preview did not return a committable statement fingerprint.";
+    }
+    return "";
+  }
+
+  function candidatePreviewList(candidates) {
+    if (candidates.length === 0) {
+      return emptyNode("No candidate summaries returned.");
+    }
+    const list = document.createElement("div");
+    list.className = "summary-list";
+    candidates.slice(0, 8).forEach((candidate) => {
+      list.append(
+        summaryArticle("Candidate", [
+          ["Fingerprint", stringField(candidate, "documentFingerprint") || "Unknown"],
+          ["Issuer", stringField(candidate, "issuerFingerprint") || "Unknown"],
+          ["Subject kind", stringField(candidate, "subjectKind") || "Unknown"],
+          ["Subject URI hash", stringField(candidate, "subjectUriHash") || "Not shown"],
+          ["Context", stringField(candidate, "context") || "Unknown"],
+          ["Score", compactValue(candidate && candidate.score)],
+          ["Confidence", compactValue(candidate && candidate.confidence)],
+          ["Duplicate", yesNo(candidate && candidate.duplicate)],
+          ["Duplicate issuer", yesNo(candidate && candidate.duplicateIssuer)],
+          ["Conflict", stringField(candidate, "conflictStatus") || "none"],
+          ["Lifecycle", lifecycleStatus(candidate)],
+          ["Expired", yesNo(candidate && candidate.expired)],
+        ])
+      );
+    });
+    return list;
   }
 
   function renderImportSummary(uri, imported) {
@@ -854,6 +1100,13 @@
       updatedAt: stringField(imported, "updatedAt"),
     };
     replaceChildren(elements.statementPreview, summaryNodes(summary, "Imported statement"));
+  }
+
+  function updateCommitImportButton() {
+    if (!elements.commitImportButton) {
+      return;
+    }
+    elements.commitImportButton.disabled = !state.pendingImport;
   }
 
   function renderQueue(snapshot) {
@@ -1033,9 +1286,13 @@
     return item;
   }
 
-  function summaryNodes(value, title) {
+  function summaryNodes(value, title, maxEntries) {
     if (value && typeof value === "object" && !Array.isArray(value)) {
-      const keys = Object.keys(value).slice(0, 8);
+      const limit =
+        Number.isFinite(Number(maxEntries)) && Number(maxEntries) > 0
+          ? Math.floor(Number(maxEntries))
+          : 8;
+      const keys = Object.keys(value).slice(0, limit);
       if (keys.length === 0) {
         return [summaryArticle(title, [["Result", "No fields returned."]])];
       }
@@ -1149,6 +1406,13 @@
       stringField(lifecycle, "status") ||
       "active"
     ).toLowerCase();
+  }
+
+  function anchorLifecycleStatus(value) {
+    if (!value || typeof value !== "object") {
+      return "active";
+    }
+    return stringField(value, "lifecycleStatus", "status").toLowerCase() || "active";
   }
 
   function statementSubject(statement) {

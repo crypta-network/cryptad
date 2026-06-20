@@ -66,6 +66,32 @@ public interface TrustGraphStore {
   boolean removeAnchor(String issuerFingerprint);
 
   /**
+   * Updates the local lifecycle state for one retained trust anchor.
+   *
+   * <p>Anchor lifecycle is local operator policy. Deprecating or revoking an anchor removes it from
+   * score contribution checks without deleting its recovery/audit summary; reactivation makes it a
+   * contributing local anchor again. Implementations must keep returned summaries bounded and must
+   * not expose private key material, tokens, raw app data, or local paths through lifecycle
+   * metadata.
+   *
+   * @param issuerFingerprint public issuer fingerprint for the local anchor
+   * @param status lifecycle status to store for the anchor
+   * @param reasonCode optional bounded reason code for operator display
+   * @param actorAppId optional app id associated with the lifecycle request
+   * @param source local source label such as {@code operator} or {@code app}
+   * @return updated local anchor metadata
+   */
+  default TrustAnchor updateAnchorLifecycle(
+      String issuerFingerprint,
+      TrustStatementLifecycleStatus status,
+      String reasonCode,
+      String actorAppId,
+      String source) {
+    throw new TrustGraphException(
+        "trust_graph_store_unavailable", "Trust graph anchor lifecycle store is unavailable.");
+  }
+
+  /**
    * Returns all local trust anchors in deterministic order.
    *
    * @return immutable snapshot of local anchors
@@ -107,7 +133,7 @@ public interface TrustGraphStore {
    * Returns whether the supplied issuer fingerprint is a local anchor.
    *
    * @param issuerFingerprint issuer fingerprint from a retained statement payload
-   * @return {@code true} when the fingerprint is currently anchored locally
+   * @return {@code true} when the fingerprint is currently active as a local anchor
    */
   boolean isAnchor(String issuerFingerprint);
 

@@ -185,6 +185,14 @@
   gap: var(--cr-space-2);
 }
 
+.local-filter-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--cr-space-2);
+  margin-left: var(--cr-space-2);
+  vertical-align: middle;
+}
+
 .badge {
   border: var(--cr-border);
   border-radius: 999px;

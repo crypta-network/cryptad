@@ -60,7 +60,7 @@ class SocialInboxBundleStagingTest {
           "<a href=\"javascript:alert(1)\">click</a>",
           "<iframe srcdoc=\"<script>alert(1)</script>\"></iframe>");
   private static final int EXPECTED_PLATFORM_API_MINIMUM_VERSION = 16;
-  private static final int EXPECTED_PLATFORM_API_MAXIMUM_TESTED_VERSION = 20;
+  private static final int EXPECTED_PLATFORM_API_MAXIMUM_TESTED_VERSION = 22;
   private static final Path PLATFORM_SDK_SOURCE_PATH =
       Path.of(
           "platform-sdk-js",
@@ -121,7 +121,7 @@ class SocialInboxBundleStagingTest {
         manifest.dataSchemaContract().namespaces().stream()
             .map(AppDataNamespaceSchema::currentSchemaVersion)
             .toList());
-    assertEquals(List.of(), manifest.dataSchemaContract().migrations());
+    assertTrue(manifest.dataSchemaContract().migrations().isEmpty());
   }
 
   @Test
@@ -244,7 +244,11 @@ class SocialInboxBundleStagingTest {
         "app.data.schema.namespaces=ui-state,social",
         "app.data.schema.namespace.ui-state.current=1",
         "app.data.schema.namespace.social.current=1");
-    verifyContainsNone(manifestText, "app.data.migrations", "migrate-social-inbox-data.sh");
+    verifyContainsNone(
+        manifestText,
+        "app.data.migrations=",
+        "app.data.migration.social-v1-v2",
+        "migrate-social-inbox-data.sh");
   }
 
   private static void verifyDesignSystemCssLoadsBeforeAppCss(String indexHtml) {
@@ -415,9 +419,16 @@ class SocialInboxBundleStagingTest {
         "social\", \"imported-message-index\"",
         "social\", \"read-state\"",
         "social\", \"drafts\"",
+        "social\", \"local-filters\"",
         "dataSchemaVersion = 1",
+        "namespaceSchemaVersions",
+        "function schemaVersionForRecord",
+        "schemaVersion: schemaVersionForRecord(record)",
         "channelFilter",
         "readFilter",
+        "localFilters",
+        "mutedAuthors",
+        "blockedSources",
         "function buildThreadIndex",
         "function normalizeReplyReference",
         "function messageThreadRootId",
@@ -425,6 +436,25 @@ class SocialInboxBundleStagingTest {
         "function messageSortKey",
         "function threadUnreadCount",
         "function threadContainsMessage",
+        "function visibleThreadMessages",
+        "function visibleThreadSummary",
+        "visibleSummary.rootMessage.subject",
+        "visibleSummary.unreadMessages",
+        "visibleSummary.hasArchived",
+        "threadSourceCount(messages)",
+        "state.readFilter === \"archived\" && !visibleSummary.hasArchived",
+        "local filters hide messages in this thread",
+        "function isMessageLocallyHidden",
+        "function toggleMutedAuthor",
+        "function renderLocalFilterActions",
+        "function unmuteAuthorKey",
+        "Unmute all authors",
+        "function clearMutedAuthors",
+        "function unblockSourceKey",
+        "function toggleBlockedSource",
+        "function exportVisibleMessages",
+        "function boundedExportSummary",
+        "maxExportedMessages",
         "function prepareReply",
         "function renderReplyContext",
         "function refreshAllActiveSources",

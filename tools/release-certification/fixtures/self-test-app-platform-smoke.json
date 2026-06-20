@@ -60,7 +60,7 @@
       "details": {
         "apiVersion": "v1",
         "capabilityCount": 25,
-        "contractVersion": 20,
+        "contractVersion": 22,
         "endpointCount": 65,
         "flaggedStability": [],
         "stabilityCounts": {
@@ -2443,7 +2443,7 @@
           "dedupePreservesSafeSourceSummaries": true,
           "docsFrameRcReferenceAndNonGoals": true,
           "evidenceIdDocumented": true,
-          "manifestUsesNonBlockingSchemaContract": true,
+          "manifestUsesAdditiveBetaSchemaContract": true,
           "noUnsafeBrowserPersistenceOrExecution": true,
           "replyActionUsesExistingReplyTo": true,
           "subscriptionRefreshUxIsExplicit": true,
@@ -2481,6 +2481,56 @@
       "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
       "status": "pass",
       "summary": "Social Inbox RC threading evidence passed."
+    },
+    {
+      "details": {
+        "checks": {
+          "consentAndGrantMarkers": true,
+          "evidenceIdDocumented": true,
+          "redactionAndSupportBundleMarkers": true,
+          "socialInboxAdditiveSchemaReadiness": true,
+          "socialInboxLocalMuteBlockAndExport": true,
+          "socialInboxMultiSourceControls": true,
+          "socialInboxThreadReadAndProfileState": true,
+          "socialInboxTrustAnnotationsUseGrantPath": true,
+          "trustGraphBoundedScoreAndLifecycle": true,
+          "trustGraphDuplicateIssuerAndConflicts": true,
+          "trustGraphImportPreviewRouteSdkAndUi": true,
+          "trustGraphLocalScopeWarning": true,
+          "trustGraphRecoveryAndAuditSummaries": true,
+          "trustGraphSourceBudgetAndManualReview": true
+        },
+        "manifest": {
+          "socialInboxMigrations": [],
+          "socialInboxSchema": "1"
+        },
+        "redaction": {
+          "absolutePathsExcluded": true,
+          "privateInsertUrisExcluded": true,
+          "rawAppDataExcluded": true,
+          "rawFetchedContentExcluded": true,
+          "rawMessageBodiesExcluded": true,
+          "rawTrustStatementsExcluded": true,
+          "tokensExcluded": true
+        },
+        "sourceFiles": [
+          "platform-trustgraph/src/main/java/network/crypta/platform/trustgraph/TrustGraphImportPreview.java",
+          "platform-api/src/main/java/network/crypta/platform/api/PlatformApiTrustGraphRoutes.java",
+          "platform-api/src/main/java/network/crypta/platform/api/trust/TrustGraphApiHandler.java",
+          "platform-sdk-js/src/main/resources/network/crypta/platform/sdk/js/crypta-platform.js",
+          "apps/trust-graph/src/staged/static/app.js",
+          "apps/social-inbox/src/staged/static/app.js",
+          "docs/trust-graph-preview.md",
+          "docs/social-inbox-reference-app.md",
+          "docs/app-service-discovery-and-grants.md",
+          "docs/user-consent-and-permission-upgrade-ux.md"
+        ]
+      },
+      "id": "app-platform.trust-social-beta-hardening",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Trust Graph and Social Inbox beta hardening evidence passed."
     },
     {
       "details": {
@@ -2590,7 +2640,7 @@
           "manifestAdvertisesTrustScoreService": true,
           "manifestDeclaresTrustGraph": true,
           "manifestDeclaresTrustPermissions": true,
-          "manifestUsesContractV10ThroughCurrent": true,
+          "manifestUsesContractV22": true,
           "moduleExists": true,
           "noPersistentBrowserStorage": true,
           "noRawAdminApiReference": true,
@@ -2632,7 +2682,7 @@
         "appId": "trust-graph",
         "checks": {
           "manifestDeclaresExchangePermissions": true,
-          "manifestUsesContractV10ThroughCurrent": true,
+          "manifestUsesContractV22": true,
           "noPersistentBrowserStorage": true,
           "noRawApiOrManualFetch": true,
           "privateInsertUriNotPersisted": true,
