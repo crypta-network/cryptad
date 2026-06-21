@@ -353,10 +353,11 @@ public final class TrustGraphApiHandler {
    * Previews one bounded trust statement import without mutating local graph state.
    *
    * <p>The preview accepts either a pasted {@code document} or a bounded Crypta {@code uri}. URI
-   * previews use the same content-fetch boundary and Trust Graph import budget as commits, then
-   * discard the fetched body after constructing counts, hashes, source-kind summaries, and conflict
-   * markers. Pasted previews reserve the same Trust Graph import budget before parsing preview
-   * candidates.
+   * previews use the same content-fetch boundary and Trust Graph import budget as commits. The
+   * fetched body must be a root {@code crypta.trust.statement.v1} document because the matching
+   * commit route imports exactly that shape. Pasted previews reserve the same Trust Graph import
+   * budget before parsing preview candidates and may summarize wrapper payloads without making
+   * those wrappers valid URI import targets.
    *
    * @param queryParameters decoded fields containing either {@code document} or {@code uri}
    * @param contentFetchPort runtime content fetch port used for URI previews
@@ -375,6 +376,7 @@ public final class TrustGraphApiHandler {
         try (var importReservation = reserveTrustGraphImportBudget(appId)) {
           documentJson = fetchPreviewDocument(queryParameters, contentFetchPort, appId, uri);
           sourceUri = uri;
+          verifyUriPreviewIsDirectStatement(documentJson);
           commitTrustGraphImportBudget(importReservation);
           Map<String, Object> preview =
               buildImportPreview(queryParameters, sourceUri, documentJson);
@@ -531,6 +533,10 @@ public final class TrustGraphApiHandler {
           502, "content_fetch_too_large", "Fetched content exceeded the configured byte bound.");
     }
     return documentJson;
+  }
+
+  private static void verifyUriPreviewIsDirectStatement(String documentJson) {
+    TrustStatementParser.parse(documentJson);
   }
 
   private static void verifyExpectedDocumentFingerprint(

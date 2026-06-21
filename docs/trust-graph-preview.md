@@ -228,11 +228,15 @@ lifecycle routes.
 
 `POST /api/v1/trust-graph/import-preview` is the beta import preview stage. It requires
 `trust.write` for pasted `document` previews and consumes Trust Graph import budget before parsing
-candidate statements. URI previews use
-`POST /api/v1/trust-graph/import-preview-uri`, whose descriptor requires both `trust.write` and
-`content.fetch` before any fetch occurs; they consume Trust Graph import budget before fetching and
-the shared content-fetch budget before fetched content is previewed. Both routes parse candidate
-statements, compare them against local statement fingerprints and issuer/subject/context keys, and
+candidate statements. Pasted previews may summarize a direct trust statement, an array of
+statements, or a `{ "statements": [...] }` wrapper, but only a single extracted
+`crypta.trust.statement.v1` document is committable through the normal direct import path. URI
+previews use `POST /api/v1/trust-graph/import-preview-uri`, whose descriptor requires both
+`trust.write` and `content.fetch` before any fetch occurs; they consume Trust Graph import budget
+before fetching and the shared content-fetch budget before fetched content is previewed. The fetched
+URI body must be a root `crypta.trust.statement.v1` document because the matching
+`import-uri` commit route imports that same direct document shape. Preview routes compare accepted
+candidate statements against local statement fingerprints and issuer/subject/context keys, and
 return only path-free summaries. The preview includes source URI kind, redacted source label,
 candidate statement count, accepted count, rejected count, duplicate count, duplicate issuer count,
 conflict count, revoked/deprecated/expired count, approximate score impact, material-risk status,

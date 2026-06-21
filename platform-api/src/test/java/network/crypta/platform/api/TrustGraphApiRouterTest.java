@@ -362,6 +362,35 @@ class TrustGraphApiRouterTest {
   }
 
   @Test
+  void route_whenWriterPreviewsUriWrapperPayload_expectRejectedBeforeCommittablePreview() {
+    AtomicBoolean fetchCalled = new AtomicBoolean(false);
+    ContentFetchPort fetchPort =
+        request -> {
+          fetchCalled.set(true);
+          return new BoundedContentFetchResult(
+              ("[" + validStatement() + "]").getBytes(java.nio.charset.StandardCharsets.UTF_8),
+              request.uri(),
+              request.uri(),
+              "ok");
+        };
+    PlatformApiRouter router = router(fetchPort, new TrustGraphApiHandler());
+
+    PlatformApiResponse response =
+        router.route(
+            request(
+                "POST",
+                List.of("trust-graph", "import-preview-uri"),
+                Map.of("uri", List.of("CHK@statement")),
+                PlatformApiPrincipal.appBrowserSession(
+                    APP_ID, List.of("trust.write", "content.fetch"))));
+
+    assertEquals(400, response.statusCode());
+    assertTrue(response.body().contains("invalid_trust_statement"));
+    assertFalse(response.body().contains("\"candidateStatementCount\":1"));
+    assertTrue(fetchCalled.get());
+  }
+
+  @Test
   void route_whenPreviewUriBuildsSummary_expectTrustGraphReservationHeldDuringStoreScan() {
     AtomicBoolean nestedReservationChecked = new AtomicBoolean(false);
     AtomicBoolean nestedReservationDenied = new AtomicBoolean(false);
