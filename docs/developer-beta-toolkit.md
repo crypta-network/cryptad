@@ -74,7 +74,7 @@ template assets, local SDK wiring, and fixture-backed queue views. It is not the
 daemon, does not install the app into AppHost, does not fetch signed catalogs, and does not prove
 that a live node will grant the same permissions.
 
-For Trust Graph Preview-style apps, the mock server exposes deterministic local fixtures for
+For Trust Graph Local RC-style apps, the mock server exposes deterministic local fixtures for
 `GET /api/v1/trust-graph/status`, `GET /api/v1/trust-graph/anchors`,
 `POST /api/v1/trust-graph/anchors`, `DELETE /api/v1/trust-graph/anchors/{fingerprint}`,
 `POST /api/v1/trust-graph/import`, `GET /api/v1/trust-graph/score`, bounded

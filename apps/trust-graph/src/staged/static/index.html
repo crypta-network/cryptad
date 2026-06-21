@@ -50,7 +50,7 @@
         not moderation, not blocking, not routing policy, not network crawling, and not
         legacy WoT/Freetalk/Sone/Freemail compatibility.
       </p>
-      <p>App id: <code>trust-graph</code>. Platform API contracts: <code>10-15</code>.</p>
+      <p>App id: <code>trust-graph</code>. Platform API contract: <code>22</code>.</p>
       <ul>
         <li>Draft form values, selected filters, and redacted import summaries persist through app data.</li>
         <li>Anchors and imported statements persist through the platform trust graph backend.</li>
@@ -152,15 +152,22 @@
           </label>
           <div class="button-row">
             <button class="cr-button cr-button--primary" name="action" value="fetch" type="submit">
-              Fetch statement
+              Preview fetched statement
             </button>
             <button class="cr-button cr-button--secondary" name="action" value="import" type="submit">
-              Import pasted statement
+              Preview pasted statement
+            </button>
+            <button
+              class="cr-button cr-button--secondary"
+              id="commit-import-button"
+              type="button"
+              disabled>
+              Commit preview
             </button>
           </div>
         </form>
         <div class="statement-preview" id="statement-preview">
-          <p class="cr-empty">Fetched statement text appears here.</p>
+          <p class="cr-empty">Import previews appear here without raw fetched content.</p>
         </div>
       </section>
 

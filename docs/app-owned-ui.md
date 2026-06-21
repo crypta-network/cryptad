@@ -286,7 +286,7 @@ insert admin pages in the current retirement map. Site Publisher is the content 
 new app-platform publishing flows. Profile Publisher is the identity-profile reference app for
 vault-backed profile-document publishing. Feed Reader is the bounded content-subscription
 reference app for durable USK feed follow behavior, on-demand feed rendering, and generated feed
-publication. Trust Graph Preview is the
+publication. Trust Graph Local RC is the
 local trust-service reference app for local trust statements, anchors, and preview scoring. The
 full legacy map is maintained in [legacy-retirement-plan.md](legacy-retirement-plan.md).
 
@@ -477,12 +477,12 @@ private insert URIs, private identity material, raw social message bodies, raw f
 documents, raw profile documents, raw app-service request bodies, raw signatures, browser-session
 tokens, form passwords, or local paths.
 
-Trust Graph Preview reference app bundle:
+Trust Graph Local RC reference app bundle:
 
 ```properties
 manifest.version=1
 app.id=trust-graph
-app.name=Trust Graph Preview
+app.name=Trust Graph Local RC
 app.version=1.0.0
 app.exec=bin/trust-graph.sh
 app.ui.mode=static
@@ -498,7 +498,7 @@ quota.data.bytes=1048576
 quota.cache.bytes=2097152
 ```
 
-Trust Graph Preview needs `trust.read` and `trust.write` for local durable preview state,
+Trust Graph Local RC needs `trust.read` and `trust.write` for local durable RC state,
 `content.fetch` for bounded URI import, `content.subscribe` for trust statement subscriptions,
 `content.insert.app-document` plus queue capabilities for generated statement publication,
 `vault.identities.*` for app-owned trust identity creation and bounded trust-statement signing,

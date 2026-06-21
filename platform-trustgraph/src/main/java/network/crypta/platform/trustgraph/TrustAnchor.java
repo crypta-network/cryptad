@@ -19,15 +19,41 @@ import java.util.Map;
  * @param label optional bounded label
  * @param source bounded local source label
  * @param createdAt anchor creation time
+ * @param lifecycleStatus local lifecycle state for this anchor
+ * @param updatedAt latest local lifecycle or metadata update time
+ * @param reasonCode optional short stable local reason token for the current lifecycle state
  */
 public record TrustAnchor(
-    String issuerFingerprint, String label, String source, Instant createdAt) {
+    String issuerFingerprint,
+    String label,
+    String source,
+    Instant createdAt,
+    TrustStatementLifecycleStatus lifecycleStatus,
+    Instant updatedAt,
+    String reasonCode) {
+  /**
+   * Creates an active local trust anchor.
+   *
+   * <p>This overload preserves existing call sites that only supply anchor identity and display
+   * metadata. The resulting anchor is active immediately and records a default local reason code.
+   */
+  public TrustAnchor(String issuerFingerprint, String label, String source, Instant createdAt) {
+    this(
+        issuerFingerprint,
+        label,
+        source,
+        createdAt,
+        TrustStatementLifecycleStatus.ACTIVE,
+        createdAt,
+        "local-anchor");
+  }
+
   /**
    * Creates a bounded local trust anchor.
    *
-   * <p>Blank {@code source} values default to {@code manual}. Label and source text are trimmed and
-   * checked for control characters so anchor summaries are safe for API responses and release
-   * evidence.
+   * <p>Blank {@code source} values default to {@code manual}. Label and source text are trimmed,
+   * reason codes are normalized to lifecycle-style stable tokens, and all public metadata is
+   * checked before storage so anchor summaries stay safe for API responses and release evidence.
    */
   public TrustAnchor {
     issuerFingerprint =
@@ -38,6 +64,13 @@ public record TrustAnchor(
       source = "manual";
     }
     java.util.Objects.requireNonNull(createdAt, "createdAt");
+    java.util.Objects.requireNonNull(lifecycleStatus, "lifecycleStatus");
+    if (updatedAt == null) {
+      updatedAt = createdAt;
+    }
+    reasonCode =
+        TrustStatementLifecycleRecord.normalizeReasonCode(
+            reasonCode, defaultReason(lifecycleStatus));
   }
 
   /**
@@ -46,11 +79,21 @@ public record TrustAnchor(
    * @return public local-anchor metadata without private key or path material
    */
   public Map<String, Object> toJson() {
-    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(4);
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(8);
     json.put("issuerFingerprint", issuerFingerprint);
     json.put("label", label);
     json.put("source", source);
     json.put("createdAt", createdAt.toString());
+    json.put("lifecycleStatus", lifecycleStatus.jsonValue());
+    json.put("active", lifecycleStatus == TrustStatementLifecycleStatus.ACTIVE);
+    json.put("updatedAt", updatedAt.toString());
+    json.put("reasonCode", reasonCode);
     return json;
+  }
+
+  private static String defaultReason(TrustStatementLifecycleStatus lifecycleStatus) {
+    return lifecycleStatus == TrustStatementLifecycleStatus.ACTIVE
+        ? "local-anchor"
+        : "operator-" + lifecycleStatus.jsonValue();
   }
 }

@@ -198,6 +198,32 @@ public final class InMemoryTrustGraphStore implements TrustGraphStore {
   }
 
   @Override
+  public synchronized TrustAnchor updateAnchorLifecycle(
+      String issuerFingerprint,
+      TrustStatementLifecycleStatus status,
+      String reasonCode,
+      String actorAppId,
+      String source) {
+    String normalized =
+        TrustStatementValidator.requiredText("issuerFingerprint", issuerFingerprint, 128);
+    TrustAnchor existing = anchors.get(normalized);
+    if (existing == null) {
+      throw new TrustGraphException("trust_anchor_not_found", "Trust anchor was not found.");
+    }
+    TrustAnchor updated =
+        new TrustAnchor(
+            existing.issuerFingerprint(),
+            existing.label(),
+            source == null ? existing.source() : source,
+            existing.createdAt(),
+            java.util.Objects.requireNonNull(status, "status"),
+            clock.instant(),
+            reasonCode);
+    anchors.put(normalized, updated);
+    return updated;
+  }
+
+  @Override
   public synchronized List<TrustAnchor> anchors() {
     ArrayList<TrustAnchor> ordered = new ArrayList<>(anchors.values());
     ordered.sort(Comparator.comparing(TrustAnchor::issuerFingerprint));
@@ -232,7 +258,8 @@ public final class InMemoryTrustGraphStore implements TrustGraphStore {
 
   @Override
   public synchronized boolean isAnchor(String issuerFingerprint) {
-    return anchors.containsKey(issuerFingerprint);
+    TrustAnchor anchor = anchors.get(issuerFingerprint);
+    return anchor != null && anchor.lifecycleStatus() == TrustStatementLifecycleStatus.ACTIVE;
   }
 
   @Override

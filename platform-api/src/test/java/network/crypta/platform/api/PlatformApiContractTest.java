@@ -39,6 +39,8 @@ class PlatformApiContractTest {
       Map.ofEntries(
           Map.entry("/trust-graph/statements/{fingerprint}", 15),
           Map.entry("/trust-graph/import-uri", 10),
+          Map.entry("/trust-graph/import-preview", 22),
+          Map.entry("/trust-graph/import-preview-uri", 22),
           Map.entry("/trust-graph/audit", 10),
           Map.entry("/app-vault/identities/{identityId}/social-message", 11),
           Map.entry("/app-vault/identities/{identityId}/trust-statement", 7),
@@ -48,6 +50,7 @@ class PlatformApiContractTest {
   private static final List<RouteVersionPrefix> SINCE_VERSION_BY_ROUTE_PREFIX =
       List.of(
           new RouteVersionPrefix(ROUTE_PREFIX_CONSENT, 21),
+          new RouteVersionPrefix("/trust-graph/anchors/{fingerprint}/", 22),
           new RouteVersionPrefix("/trust-graph/statements/{fingerprint}/", 15),
           new RouteVersionPrefix("/app-services/dependencies", 16),
           new RouteVersionPrefix("/app-services/grant-bundles", 16),
@@ -615,6 +618,38 @@ class PlatformApiContractTest {
       }
       seen.add(key);
       assertEquals(10, endpoint.sinceContractVersion(), key);
+      assertEquals(ROUTE_FAMILY_TRUST_GRAPH, endpoint.routeFamily(), key);
+      assertEquals(PlatformApiStabilityLevel.EXPERIMENTAL, endpoint.stability(), key);
+      assertTrue(endpoint.appProcessAllowed(), key);
+      assertTrue(endpoint.appBrowserAllowed(), key);
+      assertEquals(expectedCapabilities.get(key), endpoint.requiredCapabilities(), key);
+    }
+    assertEquals(expectedCapabilities.keySet(), seen);
+  }
+
+  @Test
+  void current_whenInspectingTrustGraphBetaHardeningEndpoints_expectContractV22Capabilities() {
+    Map<String, List<String>> expectedCapabilities =
+        Map.of(
+            "POST /trust-graph/import-preview",
+            List.of(CAP_TRUST_WRITE),
+            "POST /trust-graph/import-preview-uri",
+            List.of(CAP_CONTENT_FETCH, CAP_TRUST_WRITE),
+            "POST /trust-graph/anchors/{fingerprint}/deprecate",
+            List.of(CAP_TRUST_WRITE),
+            "POST /trust-graph/anchors/{fingerprint}/revoke",
+            List.of(CAP_TRUST_WRITE),
+            "POST /trust-graph/anchors/{fingerprint}/reactivate",
+            List.of(CAP_TRUST_WRITE));
+    Set<String> seen = new TreeSet<>();
+
+    for (PlatformApiEndpointDescriptor endpoint : PlatformApiContract.current().endpoints()) {
+      String key = endpoint.method() + " " + endpoint.routeTemplate();
+      if (!expectedCapabilities.containsKey(key)) {
+        continue;
+      }
+      seen.add(key);
+      assertEquals(22, endpoint.sinceContractVersion(), key);
       assertEquals(ROUTE_FAMILY_TRUST_GRAPH, endpoint.routeFamily(), key);
       assertEquals(PlatformApiStabilityLevel.EXPERIMENTAL, endpoint.stability(), key);
       assertTrue(endpoint.appProcessAllowed(), key);

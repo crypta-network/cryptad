@@ -218,12 +218,13 @@ Treat these as release blockers, in order:
    feed/subscription-helper usage, generated-feed publication permissions, scheduler backoff and
    dedupe metadata, and redaction of raw feed bodies, raw fetched content, raw request bodies,
    tokens, form passwords, private insert URIs, queue HTML, and local paths.
-   Trust Graph Preview is the local trust-service reference app; evidence must prove Platform API
-   v7 trust routes, v10 URI import/audit routes, `trust.read`, `trust.write`, durable file-backed
-   trust graph storage, bounded AppVault trust-statement signing, SDK trust exchange helper usage,
-   trust-statement subscription management, generated trust-statement publication permissions, and
-   redaction of raw trust documents, raw fetched content, raw request bodies, tokens, form
-   passwords, private insert URIs, raw signatures, and local paths.
+   Trust Graph Local RC is the local trust-service reference app; evidence must prove Platform API
+   v7 trust routes, v10 URI import/audit routes, v22 import preview and anchor lifecycle routes,
+   `trust.read`, `trust.write`, durable file-backed trust graph storage, bounded AppVault
+   trust-statement signing, SDK trust exchange helper usage, trust-statement subscription
+   management, generated trust-statement publication permissions, and redaction of raw trust
+   documents, raw fetched content, raw request bodies, tokens, form passwords, private insert URIs,
+   raw signatures, and local paths.
    App-data backup/restore evidence must stay host/operator-only and metadata-only in support
    bundles and restore previews; do not include backup payload values, raw app data, form
    passwords, tokens, or local paths in release artifacts.

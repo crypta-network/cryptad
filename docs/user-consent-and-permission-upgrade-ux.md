@@ -20,6 +20,7 @@ Consent covers:
 - catalog security advisories, denylist decisions, and revoked review receipts;
 - app-service dependency bundles and grant renewal or revalidation;
 - app-data schema migration plans and backup-before-update recommendations;
+- Trust Graph import preview commits with material local score impact;
 - automatic update gating when material review is required;
 - audit records for approve, reject, defer, and expired decisions.
 
@@ -140,6 +141,12 @@ Approving, renewing, rejecting, or deferring a grant bundle writes a consent aud
 does not create ambient localhost trust; the app still needs the authenticated principal,
 `app.services.call`, and an active grant record for invocation.
 
+Social Inbox uses this path for the optional Trust Graph `trust.score` dependency. Installing or
+updating Social Inbox exposes the requested `trust-annotations` bundle in the install/update
+preview. Grant approval, renewal, or provider descriptor revalidation must bind to the current
+snapshot digest. Revoked, expired, stale, or revalidation-required grants leave Social Inbox in a
+neutral unscored state; they do not authorize a fallback to direct Trust Graph routes.
+
 ## App-Data Migration And Backup
 
 App-data migration findings summarize metadata only:
@@ -156,6 +163,28 @@ When a migration requires operator review, rollback compatibility is missing, or
 but absent, the update cannot be silently applied by scheduler policy. The preview must never show
 raw app-data values, backup contents, migration logs, command paths, process tokens, or private
 content identifiers.
+
+Social Inbox beta hardening is currently additive within schema-1 `ui-state` and `social`
+namespaces so installed schema-1 data can update without launching a migration process. A future
+Social Inbox schema bump must use the same consent preview, backup-before-update recommendation,
+snapshot digest binding, and stale approval rejection as other app-data migrations. Trust Graph
+Local RC UI-state migrations use the same mechanism for app-owned UI data; platform trust graph
+anchors and statements remain platform service state, not raw app-data payloads.
+
+## Trust Graph Import Consent
+
+Trust Graph import preview commit uses the unified consent language when a preview reports material
+risk, such as accepted statements that also contain duplicate issuers, conflicts,
+revoked/deprecated/expired candidates, oversized input warnings, or repeated high-risk source
+warnings. The consent snapshot includes bounded source summaries, candidate and rejection counts,
+duplicate issuer counts, conflict counts, approximate score impact, and whether raw content was
+discarded. The mutation must reject a stale approval if the preview digest no longer matches the
+import commit request.
+
+The consent record and audit event must remain path-free and summary-only. They must not include
+raw fetched content, raw trust statement bodies, raw Social Inbox messages, raw app data, backup
+payloads, private insert URIs, bearer tokens, browser session tokens, raw signatures, private keys,
+or absolute local paths.
 
 ## Security, Deprecation, And Replacement
 
@@ -240,6 +269,7 @@ Crypta node.
 
 ## Non-Goals
 
-This layer does not implement Trust Graph or Social Inbox beta hardening. It does not add a public
-remote app store, replace signed catalog verification, bypass review receipt validation, weaken
-denylist decisions, expose raw app data to operators, or make automatic updates the default.
+This layer is reused by Trust Graph and Social Inbox beta hardening, but it does not turn Trust
+Graph into global Web of Trust, make Social Inbox compatible with Freetalk/Sone/Freemail, add a
+public remote app store, replace signed catalog verification, bypass review receipt validation,
+weaken denylist decisions, expose raw app data to operators, or make automatic updates the default.

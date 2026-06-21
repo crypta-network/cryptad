@@ -146,6 +146,7 @@ class CryptaPlatformSdkResourceTest {
     assertTrue(script.contains("function addTrustAnchor(request, options)"));
     assertTrue(script.contains("function removeTrustAnchor(fingerprintOrOptions, options)"));
     assertTrue(script.contains("function importTrustStatement(request, options)"));
+    assertTrue(script.contains("function previewTrustImport(request, options)"));
     assertTrue(script.contains("function importTrustUri(request, options)"));
     assertTrue(script.contains("function trustAudit(request, options)"));
     assertTrue(script.contains("function trustSubjects(options)"));
@@ -156,6 +157,8 @@ class CryptaPlatformSdkResourceTest {
     assertTrue(script.contains("function createTrustSubscription(options)"));
     assertTrue(script.contains("\"trust-graph/score\""));
     assertTrue(script.contains("\"trust-graph/import\""));
+    assertTrue(script.contains("\"trust-graph/import-preview\""));
+    assertTrue(script.contains("\"trust-graph/import-preview-uri\""));
     assertTrue(script.contains("\"trust-graph/import-uri\""));
     assertTrue(script.contains("\"trust-graph/audit\""));
     assertTrue(script.contains("/trust-statement`"));
@@ -780,6 +783,89 @@ class CryptaPlatformSdkResourceTest {
         assert.equal(calls.length, 2);
         assert.equal(headerValue(calls[1].headers, "X-Crypta-App-Session"), "session-token");
         assert.equal(calls[1].credentials, "omit");
+        """);
+  }
+
+  @Test
+  void classpathResource_whenTrustImportPreviewRequested_expectDocumentAliasesUriAliasAndUriRoute()
+      throws Exception {
+    runSdkNode(
+        """
+        enqueueBootstrap();
+        enqueueResponse(
+          (url, options) => {
+            const parsed = new URL(url);
+            return parsed.pathname === "/api/v1/trust-graph/import-preview"
+              && options.method === "POST";
+          },
+          { importPreview: { candidateCount: 1, sourceUriKind: "content-uri" } });
+        enqueueResponse(
+          (url, options) => {
+            const parsed = new URL(url);
+            return parsed.pathname === "/api/v1/trust-graph/import-preview"
+              && options.method === "POST";
+          },
+          { importPreview: { candidateCount: 1, sourceUriKind: "content-uri" } });
+        enqueueResponse(
+          (url, options) => {
+            const parsed = new URL(url);
+            return parsed.pathname === "/api/v1/trust-graph/import-preview"
+              && options.method === "POST";
+          },
+          { importPreview: { candidateCount: 1, sourceUriKind: "content-uri" } });
+        enqueueResponse(
+          (url, options) => {
+            const parsed = new URL(url);
+            return parsed.pathname === "/api/v1/trust-graph/import-preview-uri"
+              && options.method === "POST";
+          },
+          { importPreview: { candidateCount: 1, sourceUriKind: "content-uri" } });
+
+        const pasted = await CryptaPlatform.trust.previewImport({
+          document: "{\\"type\\":\\"crypta.trust.statement.v1\\"}",
+          uri: "crypta:CHK@source-metadata",
+          sourceLabel: "Pasted statement"
+        });
+        assert.equal(pasted.candidateCount, 1);
+        const pastedParams = decodeFormBody(calls[1]);
+        assert.equal(pastedParams.get("document"), "{\\"type\\":\\"crypta.trust.statement.v1\\"}");
+        assert.equal(pastedParams.get("sourceUri"), "crypta:CHK@source-metadata");
+        assert.equal(pastedParams.has("uri"), false);
+        assert.equal(pastedParams.get("sourceLabel"), "Pasted statement");
+
+        const trustStatementAlias = await CryptaPlatform.trust.previewImport({
+          trustStatement: "{\\"type\\":\\"crypta.trust.statement.v1\\",\\"id\\":\\"trust-statement-alias\\"}",
+          sourceLabel: "Trust statement alias"
+        });
+        assert.equal(trustStatementAlias.candidateCount, 1);
+        const trustStatementParams = decodeFormBody(calls[2]);
+        assert.equal(
+          trustStatementParams.get("document"),
+          "{\\"type\\":\\"crypta.trust.statement.v1\\",\\"id\\":\\"trust-statement-alias\\"}");
+        assert.equal(trustStatementParams.has("uri"), false);
+        assert.equal(trustStatementParams.get("sourceLabel"), "Trust statement alias");
+
+        const textAlias = await CryptaPlatform.trust.previewImport({
+          text: "{\\"type\\":\\"crypta.trust.statement.v1\\",\\"id\\":\\"text-alias\\"}",
+          sourceLabel: "Text alias"
+        });
+        assert.equal(textAlias.candidateCount, 1);
+        const textParams = decodeFormBody(calls[3]);
+        assert.equal(
+          textParams.get("document"),
+          "{\\"type\\":\\"crypta.trust.statement.v1\\",\\"id\\":\\"text-alias\\"}");
+        assert.equal(textParams.has("uri"), false);
+        assert.equal(textParams.get("sourceLabel"), "Text alias");
+
+        const fetched = await CryptaPlatform.trust.previewImport({
+          uri: "crypta:CHK@statement",
+          maxBytes: 4096
+        });
+        assert.equal(fetched.candidateCount, 1);
+        const fetchedParams = decodeFormBody(calls[4]);
+        assert.equal(fetchedParams.get("uri"), "crypta:CHK@statement");
+        assert.equal(fetchedParams.has("document"), false);
+        assert.equal(fetchedParams.get("maxBytes"), "4096");
         """);
   }
 

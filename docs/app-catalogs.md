@@ -125,7 +125,7 @@ app.site-publisher.permissions.rationale.queue.write=Creates insert requests for
 app.site-publisher.permissions.rationale.queue.read=Displays publish progress from the local transfer queue.
 app.site-publisher.changelog.summary=Adds the first content reference app.
 app.site-publisher.api.minimumVersion=3
-app.site-publisher.api.maximumTestedVersion=20
+app.site-publisher.api.maximumTestedVersion=22
 app.site-publisher.api.targetStability=stable
 app.site-publisher.api.experimentalCapabilitiesAccepted=false
 
@@ -153,7 +153,7 @@ app.profile-publisher.permissions.rationale.app.data.read=Restores bounded profi
 app.profile-publisher.permissions.rationale.app.data.write=Saves bounded profile drafts and publish summaries.
 app.profile-publisher.changelog.summary=Adds the first identity-profile reference app.
 app.profile-publisher.api.minimumVersion=9
-app.profile-publisher.api.maximumTestedVersion=20
+app.profile-publisher.api.maximumTestedVersion=22
 app.profile-publisher.api.targetStability=experimental
 app.profile-publisher.api.experimentalCapabilitiesAccepted=true
 
@@ -192,7 +192,7 @@ app.social-inbox.service-request.trust-score.contexts=message-author
 app.social-inbox.service-request.trust-score.purpose=Annotate Social Inbox message authors using the local Trust Graph Local RC score service.
 app.social-inbox.changelog.summary=Adds the Social Inbox RC threaded reference app.
 app.social-inbox.api.minimumVersion=16
-app.social-inbox.api.maximumTestedVersion=20
+app.social-inbox.api.maximumTestedVersion=22
 app.social-inbox.api.targetStability=experimental
 app.social-inbox.api.experimentalCapabilitiesAccepted=true
 
@@ -220,7 +220,7 @@ app.feed-reader.permissions.rationale.app.data.read=Restores the app-owned feed 
 app.feed-reader.permissions.rationale.app.data.write=Saves bounded app-owned reader state through the durable app-data API.
 app.feed-reader.changelog.summary=Adds the first feed reader and publisher reference app.
 app.feed-reader.api.minimumVersion=9
-app.feed-reader.api.maximumTestedVersion=20
+app.feed-reader.api.maximumTestedVersion=22
 app.feed-reader.api.targetStability=stable
 app.feed-reader.api.experimentalCapabilitiesAccepted=false
 
@@ -260,8 +260,8 @@ app.trust-graph.service.trust-score.scopes=score.read
 app.trust-graph.service.trust-score.contexts=message-author,profile
 app.trust-graph.service.trust-score.description=Returns a bounded local RC Trust Graph score summary for an app-provided public subject.
 app.trust-graph.changelog.summary=Adds the local Trust Graph Local RC reference app.
-app.trust-graph.api.minimumVersion=10
-app.trust-graph.api.maximumTestedVersion=20
+app.trust-graph.api.minimumVersion=22
+app.trust-graph.api.maximumTestedVersion=22
 app.trust-graph.api.targetStability=experimental
 app.trust-graph.api.experimentalCapabilitiesAccepted=true
 app.queue-manager.review.receipt.version=1

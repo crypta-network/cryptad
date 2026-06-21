@@ -19,12 +19,14 @@ import network.crypta.platform.trustgraph.TrustAnchor;
 import network.crypta.platform.trustgraph.TrustDocumentTypes;
 import network.crypta.platform.trustgraph.TrustGraphAuditEvent;
 import network.crypta.platform.trustgraph.TrustGraphException;
+import network.crypta.platform.trustgraph.TrustGraphImportPreview;
 import network.crypta.platform.trustgraph.TrustGraphImportResult;
 import network.crypta.platform.trustgraph.TrustGraphQuery;
 import network.crypta.platform.trustgraph.TrustGraphScore;
 import network.crypta.platform.trustgraph.TrustGraphScorer;
 import network.crypta.platform.trustgraph.TrustGraphStore;
 import network.crypta.platform.trustgraph.TrustStatementDocument;
+import network.crypta.platform.trustgraph.TrustStatementFingerprint;
 import network.crypta.platform.trustgraph.TrustStatementLifecycleRecord;
 import network.crypta.platform.trustgraph.TrustStatementLifecycleStatus;
 import network.crypta.platform.trustgraph.TrustStatementParser;
@@ -50,6 +52,7 @@ import network.crypta.runtime.spi.ContentFetchPort;
 public final class TrustGraphApiHandler {
   private static final String PARAM_CONTEXT = "context";
   private static final String PARAM_DOCUMENT = "document";
+  private static final String PARAM_EXPECTED_DOCUMENT_FINGERPRINT = "expectedDocumentFingerprint";
   private static final String PARAM_INCLUDE_EVIDENCE = "includeEvidence";
   private static final String PARAM_ISSUER_FINGERPRINT = "issuerFingerprint";
   private static final String PARAM_LABEL = "label";
@@ -65,6 +68,9 @@ public final class TrustGraphApiHandler {
   private static final String PARAM_SUBJECT_KIND = "subjectKind";
   private static final String PARAM_SUBJECT_URI = "subjectUri";
   private static final String PARAM_URI = "uri";
+  private static final String AUDIT_EVENT_STATEMENT_IMPORT_PREVIEWED = "statement_import_previewed";
+  private static final String AUDIT_EVENT_STATEMENT_IMPORT_PREVIEW_REJECTED =
+      "statement_import_preview_rejected";
   private static final String AUDIT_EVENT_STATEMENT_IMPORT_REJECTED = "statement_import_rejected";
   private static final String AUDIT_STATUS_OK = "ok";
   private static final String CRYPTA_SCHEME_PREFIX = "crypta:";
@@ -154,6 +160,7 @@ public final class TrustGraphApiHandler {
     json.put("limits", limitsJson());
     json.put("scoring", "direct-local-anchors-confidence-weighted-average");
     json.put("statementLifecycle", statementLifecycleJson());
+    json.put("anchorLifecycle", anchorLifecycleJson());
     json.put("completeWot", false);
     return json;
   }
@@ -243,6 +250,48 @@ public final class TrustGraphApiHandler {
   }
 
   /**
+   * Marks one retained local anchor deprecated in local lifecycle policy.
+   *
+   * @param fingerprint issuer fingerprint path segment
+   * @param queryParameters decoded mutation parameters with optional reason fields
+   * @param appId optional app id associated with the request
+   * @return updated local anchor summary
+   */
+  public Map<String, Object> deprecateAnchor(
+      String fingerprint, Map<String, List<String>> queryParameters, String appId) {
+    return updateAnchorLifecycle(
+        fingerprint, TrustStatementLifecycleStatus.DEPRECATED, queryParameters, appId);
+  }
+
+  /**
+   * Marks one retained local anchor revoked in local lifecycle policy.
+   *
+   * @param fingerprint issuer fingerprint path segment
+   * @param queryParameters decoded mutation parameters with optional reason fields
+   * @param appId optional app id associated with the request
+   * @return updated local anchor summary
+   */
+  public Map<String, Object> revokeAnchor(
+      String fingerprint, Map<String, List<String>> queryParameters, String appId) {
+    return updateAnchorLifecycle(
+        fingerprint, TrustStatementLifecycleStatus.REVOKED, queryParameters, appId);
+  }
+
+  /**
+   * Restores one retained local anchor to active local lifecycle policy.
+   *
+   * @param fingerprint issuer fingerprint path segment
+   * @param queryParameters decoded mutation parameters with optional reason fields
+   * @param appId optional app id associated with the request
+   * @return updated local anchor summary
+   */
+  public Map<String, Object> reactivateAnchor(
+      String fingerprint, Map<String, List<String>> queryParameters, String appId) {
+    return updateAnchorLifecycle(
+        fingerprint, TrustStatementLifecycleStatus.ACTIVE, queryParameters, appId);
+  }
+
+  /**
    * Imports one trust statement from form parameters.
    *
    * <p>The handler parses the bounded JSON document, delegates signature verification and retention
@@ -301,6 +350,81 @@ public final class TrustGraphApiHandler {
   }
 
   /**
+   * Previews one bounded trust statement import without mutating local graph state.
+   *
+   * <p>The preview accepts either a pasted {@code document} or a bounded Crypta {@code uri}. URI
+   * previews use the same content-fetch boundary and Trust Graph import budget as commits. The
+   * fetched body must be a root {@code crypta.trust.statement.v1} document because the matching
+   * commit route imports exactly that shape. Pasted previews reserve the same Trust Graph import
+   * budget before parsing preview candidates and may summarize wrapper payloads without making
+   * those wrappers valid URI import targets.
+   *
+   * @param queryParameters decoded fields containing either {@code document} or {@code uri}
+   * @param contentFetchPort runtime content fetch port used for URI previews
+   * @param appId optional authenticated app id associated with the request
+   * @return redacted preview summary without raw candidate statement content
+   */
+  public Map<String, Object> previewImport(
+      Map<String, List<String>> queryParameters, ContentFetchPort contentFetchPort, String appId) {
+    String uri = PlatformApiParameters.readOptionalString(queryParameters, PARAM_URI);
+    String sourceUri = PlatformApiParameters.readOptionalString(queryParameters, PARAM_SOURCE_URI);
+    String documentJson =
+        optionalNonBlankString(
+            PlatformApiParameters.readOptionalString(queryParameters, PARAM_DOCUMENT));
+    try {
+      if (documentJson == null && uri != null) {
+        try (var importReservation = reserveTrustGraphImportBudget(appId)) {
+          documentJson = fetchPreviewDocument(queryParameters, contentFetchPort, appId, uri);
+          sourceUri = uri;
+          verifyUriPreviewIsDirectStatement(documentJson);
+          commitTrustGraphImportBudget(importReservation);
+          Map<String, Object> preview =
+              buildImportPreview(queryParameters, sourceUri, documentJson);
+          appendPreviewAudit(appId, sourceUri, preview);
+          return preview;
+        }
+      } else if (documentJson != null) {
+        try (var importReservation = reserveTrustGraphImportBudget(appId)) {
+          commitTrustGraphImportBudget(importReservation);
+          Map<String, Object> preview =
+              buildImportPreview(queryParameters, sourceUri, documentJson);
+          appendPreviewAudit(appId, sourceUri, preview);
+          return preview;
+        }
+      } else {
+        throw new PlatformApiException(
+            400, "invalid_query_parameter", "Import preview requires document or uri.");
+      }
+    } catch (TrustGraphException exception) {
+      appendRejectedAudit(
+          AUDIT_EVENT_STATEMENT_IMPORT_PREVIEW_REJECTED,
+          appId,
+          sourceUri == null ? uri : sourceUri,
+          exception.errorCode());
+      throw toPlatformException(exception);
+    } catch (PlatformApiException exception) {
+      appendRejectedAudit(
+          AUDIT_EVENT_STATEMENT_IMPORT_PREVIEW_REJECTED,
+          appId,
+          sourceUri == null ? uri : sourceUri,
+          exception.errorCode());
+      throw exception;
+    }
+  }
+
+  private Map<String, Object> buildImportPreview(
+      Map<String, List<String>> queryParameters, String sourceUri, String documentJson) {
+    return TrustGraphImportPreview.preview(
+            documentJson,
+            store,
+            sourceUri,
+            PlatformApiParameters.readOptionalString(queryParameters, PARAM_SOURCE_LABEL),
+            readMaxBytes(queryParameters),
+            clock.instant())
+        .toJson();
+  }
+
+  /**
    * Fetches one bounded Crypta content URI, parses it as a trust statement, and imports it.
    *
    * <p>The response is the same redacted import summary as {@link #importStatement(Map, String)}.
@@ -350,6 +474,10 @@ public final class TrustGraphApiHandler {
         }
         commitTrustGraphImportBudget(importReservation);
         TrustStatementDocument document = TrustStatementParser.parse(documentJson);
+        verifyExpectedDocumentFingerprint(
+            PlatformApiParameters.readOptionalString(
+                queryParameters, PARAM_EXPECTED_DOCUMENT_FINGERPRINT),
+            document);
         TrustGraphImportResult result =
             store.importStatement(
                 document,
@@ -366,6 +494,62 @@ public final class TrustGraphApiHandler {
     } catch (PlatformApiException exception) {
       appendRejectedAudit(AUDIT_EVENT_STATEMENT_IMPORT_REJECTED, appId, uri, exception.errorCode());
       throw exception;
+    }
+  }
+
+  private String fetchPreviewDocument(
+      Map<String, List<String>> queryParameters,
+      ContentFetchPort contentFetchPort,
+      String appId,
+      String uri) {
+    if (contentFetchPort == null) {
+      throw new PlatformApiException(
+          503, "content_fetch_failed", "Content fetch service is unavailable.");
+    }
+    int maxBytes = readMaxBytes(queryParameters);
+    Map<String, Object> fetched =
+        new ContentApiHandler(
+                contentFetchPort,
+                networkBudgetService,
+                AppNetworkBudgetOperation.TRUST_GRAPH_IMPORT_URI)
+            .fetch(
+                Map.of(
+                    PARAM_URI,
+                    List.of(uri),
+                    PARAM_MAX_BYTES,
+                    List.of(Integer.toString(maxBytes)),
+                    "format",
+                    List.of("text"),
+                    "purpose",
+                    List.of("trust-graph-import-preview")),
+                budgetAppId(appId));
+    Object contentText = fetched.get("contentText");
+    if (!(contentText instanceof String documentJson)) {
+      throw new PlatformApiException(
+          415, "unsupported_content_encoding", "Fetched trust statement is not valid UTF-8.");
+    }
+    if (documentJson.getBytes(StandardCharsets.UTF_8).length > maxBytes) {
+      throw new PlatformApiException(
+          502, "content_fetch_too_large", "Fetched content exceeded the configured byte bound.");
+    }
+    return documentJson;
+  }
+
+  private static void verifyUriPreviewIsDirectStatement(String documentJson) {
+    TrustStatementParser.parse(documentJson);
+  }
+
+  private static void verifyExpectedDocumentFingerprint(
+      String expectedDocumentFingerprint, TrustStatementDocument document) {
+    if (expectedDocumentFingerprint == null || expectedDocumentFingerprint.isBlank()) {
+      return;
+    }
+    String actualDocumentFingerprint = TrustStatementFingerprint.documentFingerprint(document);
+    if (!expectedDocumentFingerprint.equals(actualDocumentFingerprint)) {
+      throw new PlatformApiException(
+          409,
+          "trust_import_preview_stale",
+          "Fetched trust statement no longer matches the import preview.");
     }
   }
 
@@ -582,6 +766,9 @@ public final class TrustGraphApiHandler {
     if ("trust_statement_not_found".equals(exception.errorCode())) {
       return new PlatformApiException(404, exception.errorCode(), exception.getMessage());
     }
+    if ("trust_anchor_not_found".equals(exception.errorCode())) {
+      return new PlatformApiException(404, exception.errorCode(), exception.getMessage());
+    }
     return new PlatformApiException(400, exception.errorCode(), exception.getMessage());
   }
 
@@ -617,6 +804,16 @@ public final class TrustGraphApiHandler {
     return lifecycle;
   }
 
+  private static Map<String, Object> anchorLifecycleJson() {
+    LinkedHashMap<String, Object> lifecycle = LinkedHashMap.newLinkedHashMap(5);
+    lifecycle.put("supportsLocalRevocation", true);
+    lifecycle.put("supportsLocalDeprecation", true);
+    lifecycle.put("supportsLocalReactivation", true);
+    lifecycle.put("revokedContributes", false);
+    lifecycle.put("deprecatedContributes", false);
+    return lifecycle;
+  }
+
   private int readMaxBytes(Map<String, List<String>> queryParameters) {
     String raw = PlatformApiParameters.readOptionalString(queryParameters, PARAM_MAX_BYTES);
     if (raw == null || raw.isBlank()) {
@@ -642,6 +839,10 @@ public final class TrustGraphApiHandler {
           "Query parameter 'maxBytes' exceeds the supported trust statement limit.");
     }
     return value;
+  }
+
+  private static String optionalNonBlankString(String value) {
+    return value == null || value.isBlank() ? null : value;
   }
 
   private int readAuditLimit(Map<String, List<String>> queryParameters) {
@@ -703,6 +904,28 @@ public final class TrustGraphApiHandler {
     }
   }
 
+  private Map<String, Object> updateAnchorLifecycle(
+      String fingerprint,
+      TrustStatementLifecycleStatus status,
+      Map<String, List<String>> queryParameters,
+      String appId) {
+    try {
+      TrustAnchor anchor =
+          store.updateAnchorLifecycle(
+              fingerprint,
+              status,
+              PlatformApiParameters.readOptionalString(queryParameters, PARAM_REASON_CODE),
+              appId,
+              appId == null ? "operator" : "app");
+      appendAnchorAudit(
+          "anchor_lifecycle_" + status.jsonValue(), appId, anchor.issuerFingerprint());
+      return anchor.toJson();
+    } catch (TrustGraphException exception) {
+      appendRejectedAudit("anchor_lifecycle_rejected", appId, null, exception.errorCode());
+      throw toPlatformException(exception);
+    }
+  }
+
   private void appendAnchorAudit(String eventType, String appId, String issuerFingerprint) {
     store.appendAuditEvent(
         new TrustGraphAuditEvent(
@@ -760,6 +983,41 @@ public final class TrustGraphApiHandler {
             null,
             null,
             lifecycleRecord.status().jsonValue()));
+  }
+
+  private void appendPreviewAudit(String appId, String sourceUri, Map<String, Object> preview) {
+    store.appendAuditEvent(
+        new TrustGraphAuditEvent(
+            AUDIT_EVENT_STATEMENT_IMPORT_PREVIEWED,
+            clock.instant(),
+            appId,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            "preview",
+            null,
+            redactedRejectedUriSummary(sourceUri),
+            null,
+            previewStatus(preview)));
+  }
+
+  private static String previewStatus(Map<String, Object> preview) {
+    Object conflictCount = preview.get("conflictCount");
+    Object rejectedCount = preview.get("rejectedCount");
+    Object materialRisk = preview.get("materialRisk");
+    if (Boolean.TRUE.equals(materialRisk)) {
+      return "manual-review";
+    }
+    if (conflictCount instanceof Number number && number.intValue() > 0) {
+      return "conflict";
+    }
+    if (rejectedCount instanceof Number number && number.intValue() > 0) {
+      return "rejected";
+    }
+    return AUDIT_STATUS_OK;
   }
 
   private void appendRejectedAudit(

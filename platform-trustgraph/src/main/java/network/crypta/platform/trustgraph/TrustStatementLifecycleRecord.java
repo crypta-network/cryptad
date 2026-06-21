@@ -212,7 +212,7 @@ public record TrustStatementLifecycleRecord(
     return json;
   }
 
-  private static String normalizeReasonCode(String reasonCode, String fallback) {
+  static String normalizeReasonCode(String reasonCode, String fallback) {
     String normalized =
         TrustStatementValidator.optionalText("reasonCode", reasonCode, MAX_REASON_CODE_LENGTH);
     if (normalized == null) {

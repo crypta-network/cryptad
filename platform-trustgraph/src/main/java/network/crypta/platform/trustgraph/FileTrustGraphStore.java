@@ -332,6 +332,33 @@ public final class FileTrustGraphStore implements TrustGraphStore {
     return true;
   }
 
+  @Override
+  public synchronized TrustAnchor updateAnchorLifecycle(
+      String issuerFingerprint,
+      TrustStatementLifecycleStatus status,
+      String reasonCode,
+      String actorAppId,
+      String source) {
+    String normalized =
+        TrustStatementValidator.requiredText(KEY_ISSUER_FINGERPRINT, issuerFingerprint, 128);
+    TrustAnchor existing = anchors.get(normalized);
+    if (existing == null) {
+      throw new TrustGraphException("trust_anchor_not_found", "Trust anchor was not found.");
+    }
+    TrustAnchor updated =
+        new TrustAnchor(
+            existing.issuerFingerprint(),
+            existing.label(),
+            source == null ? existing.source() : source,
+            existing.createdAt(),
+            java.util.Objects.requireNonNull(status, "status"),
+            clock.instant(),
+            reasonCode);
+    writeAnchor(updated);
+    anchors.put(normalized, updated);
+    return updated;
+  }
+
   /**
    * Returns local anchors in deterministic issuer-fingerprint order.
    *
@@ -404,7 +431,8 @@ public final class FileTrustGraphStore implements TrustGraphStore {
    */
   @Override
   public synchronized boolean isAnchor(String issuerFingerprint) {
-    return anchors.containsKey(issuerFingerprint);
+    TrustAnchor anchor = anchors.get(issuerFingerprint);
+    return anchor != null && anchor.lifecycleStatus() == TrustStatementLifecycleStatus.ACTIVE;
   }
 
   /**
@@ -674,7 +702,12 @@ public final class FileTrustGraphStore implements TrustGraphStore {
               properties.getProperty(KEY_ISSUER_FINGERPRINT),
               properties.getProperty(KEY_LABEL),
               properties.getProperty(KEY_SOURCE),
-              instant(properties.getProperty(KEY_CREATED_AT))));
+              instant(properties.getProperty(KEY_CREATED_AT)),
+              TrustStatementLifecycleStatus.parse(
+                  properties.getProperty(KEY_LIFECYCLE_STATUS, "active")),
+              instant(
+                  properties.getProperty(KEY_UPDATED_AT, properties.getProperty(KEY_CREATED_AT))),
+              properties.getProperty(KEY_REASON_CODE)));
     } catch (IOException | RuntimeException _) {
       return Optional.empty();
     }
@@ -793,6 +826,9 @@ public final class FileTrustGraphStore implements TrustGraphStore {
     setOptional(properties, KEY_LABEL, anchor.label());
     properties.setProperty(KEY_SOURCE, anchor.source());
     properties.setProperty(KEY_CREATED_AT, anchor.createdAt().toString());
+    properties.setProperty(KEY_LIFECYCLE_STATUS, anchor.lifecycleStatus().jsonValue());
+    properties.setProperty(KEY_UPDATED_AT, anchor.updatedAt().toString());
+    properties.setProperty(KEY_REASON_CODE, anchor.reasonCode());
     writeProperties(anchorFile(anchor.issuerFingerprint()), properties, "Cryptad trust anchor");
   }
 

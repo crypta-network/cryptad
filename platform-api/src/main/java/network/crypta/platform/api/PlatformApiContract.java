@@ -60,7 +60,7 @@ public record PlatformApiContract(
    * tooling should be able to compare. It is not the Cryptad build number, and it is not the URL
    * API version.
    */
-  public static final int CURRENT_CONTRACT_VERSION = 21;
+  public static final int CURRENT_CONTRACT_VERSION = 22;
 
   /** Stable app-facing Platform API baseline name published in contract snapshots. */
   public static final String PLATFORM_API_STABLE_BASELINE_NAME = "1.0";
@@ -99,6 +99,7 @@ public record PlatformApiContract(
   private static final int FIRST_PARTY_MAINTENANCE_CONTRACT_VERSION = 19;
   private static final int THIRD_PARTY_REVIEW_METADATA_CONTRACT_VERSION = 20;
   private static final int CONSENT_CONTRACT_VERSION = 21;
+  private static final int TRUST_GRAPH_BETA_HARDENING_CONTRACT_VERSION = 22;
 
   /**
    * Stable producer label written into generated contract snapshots.
@@ -135,6 +136,10 @@ public record PlatformApiContract(
           + ". Contract version "
           + CONSENT_CONTRACT_VERSION
           + " adds host/operator-only consent preview, decision, and audit route descriptors"
+          + ". Contract version "
+          + TRUST_GRAPH_BETA_HARDENING_CONTRACT_VERSION
+          + " adds Trust Graph beta hardening import-preview and local-anchor lifecycle route"
+          + " descriptors"
           + ". Endpoint descriptors retain the contract version where each route first appeared. "
           + "Experimental, deprecated, scheduled-for-removal, and internal entries are flagged for "
           + "developer tooling and release review before behavior changes.";
@@ -1659,6 +1664,8 @@ public record PlatformApiContract(
           "trust-graph.import",
           List.of(PlatformApiCapabilities.TRUST_WRITE),
           "Import one bounded trust statement into the local preview store.");
+      trustGraphImportPreviewPost();
+      trustGraphImportPreviewUriPost();
       trustGraphImportUriPost();
       trustGraphAuditGet();
       trustGraphGet(
@@ -1682,6 +1689,18 @@ public record PlatformApiContract(
           "/trust-graph/statements/{fingerprint}/reactivate",
           "trust-graph.statements.reactivate",
           "Reactivate one imported statement in local lifecycle policy.");
+      trustGraphAnchorLifecyclePost(
+          "/trust-graph/anchors/{fingerprint}/deprecate",
+          "trust-graph.anchors.deprecate",
+          "Mark one local anchor deprecated in local lifecycle policy.");
+      trustGraphAnchorLifecyclePost(
+          "/trust-graph/anchors/{fingerprint}/revoke",
+          "trust-graph.anchors.revoke",
+          "Mark one local anchor revoked in local lifecycle policy.");
+      trustGraphAnchorLifecyclePost(
+          "/trust-graph/anchors/{fingerprint}/reactivate",
+          "trust-graph.anchors.reactivate",
+          "Reactivate one local anchor in local lifecycle policy.");
       trustGraphGet(
           "/trust-graph/score",
           "trust-graph.score",
@@ -1826,6 +1845,23 @@ public record PlatformApiContract(
               description));
     }
 
+    private void trustGraphAnchorLifecyclePost(
+        String routeTemplate, String actionLabel, String description) {
+      endpoint(
+          new EndpointSpec(
+              ROUTE_FAMILY_TRUST_GRAPH,
+              METHOD_POST,
+              routeTemplate,
+              actionLabel,
+              List.of(PlatformApiCapabilities.TRUST_WRITE),
+              TRUST_GRAPH_BETA_HARDENING_CONTRACT_VERSION,
+              true,
+              true,
+              true,
+              PlatformApiStabilityLevel.EXPERIMENTAL,
+              description));
+    }
+
     private void trustGraphAuditGet() {
       endpoint(
           new EndpointSpec(
@@ -1855,7 +1891,42 @@ public record PlatformApiContract(
               true,
               true,
               PlatformApiStabilityLevel.EXPERIMENTAL,
-              "Fetch and import one bounded trust statement from a Crypta content URI."));
+              "Fetch, optionally preview-bind, and import one bounded trust statement from a Crypta"
+                  + " content URI."));
+    }
+
+    private void trustGraphImportPreviewPost() {
+      endpoint(
+          new EndpointSpec(
+              ROUTE_FAMILY_TRUST_GRAPH,
+              METHOD_POST,
+              "/trust-graph/import-preview",
+              "trust-graph.import-preview",
+              List.of(PlatformApiCapabilities.TRUST_WRITE),
+              TRUST_GRAPH_BETA_HARDENING_CONTRACT_VERSION,
+              true,
+              true,
+              true,
+              PlatformApiStabilityLevel.EXPERIMENTAL,
+              "Preview one bounded pasted trust statement import without mutating local graph"
+                  + " state."));
+    }
+
+    private void trustGraphImportPreviewUriPost() {
+      endpoint(
+          new EndpointSpec(
+              ROUTE_FAMILY_TRUST_GRAPH,
+              METHOD_POST,
+              "/trust-graph/import-preview-uri",
+              "trust-graph.import-preview-uri",
+              List.of(PlatformApiCapabilities.CONTENT_FETCH, PlatformApiCapabilities.TRUST_WRITE),
+              TRUST_GRAPH_BETA_HARDENING_CONTRACT_VERSION,
+              true,
+              true,
+              true,
+              PlatformApiStabilityLevel.EXPERIMENTAL,
+              "Fetch and preview one bounded trust statement import from a Crypta content URI"
+                  + " without mutating local graph state."));
     }
 
     private void trustGraphAnchorDelete() {

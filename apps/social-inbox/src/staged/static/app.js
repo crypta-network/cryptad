@@ -32,6 +32,9 @@
   const maxTagLength = 32;
   const maxImportedBodyPreviewLength = 700;
   const maxSourcesPerMessage = 8;
+  const maxMutedAuthors = 128;
+  const maxBlockedSources = 64;
+  const maxExportedMessages = 80;
   const maxFetchedDocumentChars = 128 * 1024;
   const sourcePollIntervalSeconds = 15 * 60;
   const subscriptionStatusLabels = Object.freeze({
@@ -46,6 +49,10 @@
     disabled: "Disabled",
   });
   const dataSchemaVersion = 1;
+  const namespaceSchemaVersions = Object.freeze({
+    "ui-state": 1,
+    social: dataSchemaVersion,
+  });
   const messageIdPattern = /^msg-[0-9a-f]{64}$/;
 
   const records = {
@@ -55,6 +62,7 @@
     importedMessageIndex: ["social", "imported-message-index"],
     readState: ["social", "read-state"],
     drafts: ["social", "drafts"],
+    localFilters: ["social", "local-filters"],
   };
 
   const state = {
@@ -75,6 +83,11 @@
     channelFilter: "",
     readFilter: "active",
     searchQuery: "",
+    localFilters: {
+      mutedAuthors: [],
+      blockedSources: [],
+    },
+    exportSummary: null,
   };
 
   const elements = {
@@ -104,6 +117,8 @@
     readFilter: document.getElementById("read-filter"),
     searchInput: document.getElementById("search-input"),
     clearSearchButton: document.getElementById("clear-search-button"),
+    exportVisibleButton: document.getElementById("export-visible-button"),
+    exportSummary: document.getElementById("export-summary"),
     sourceForm: document.getElementById("source-form"),
     sourceList: document.getElementById("source-list"),
     status: document.getElementById("status"),
@@ -142,6 +157,7 @@
     elements.refreshSubscriptionsButton.addEventListener("click", refreshSubscriptions);
     elements.refreshTrustButton.addEventListener("click", refreshTrustAnnotations);
     elements.requestTrustGrantButton.addEventListener("click", requestTrustServiceGrant);
+    elements.exportVisibleButton.addEventListener("click", exportVisibleMessages);
     elements.inboxFilters.addEventListener("submit", (event) => event.preventDefault());
     elements.channelFilter.addEventListener("change", updateChannelFilter);
     elements.readFilter.addEventListener("change", updateReadFilter);
@@ -430,6 +446,14 @@
     if (!source) {
       return;
     }
+    if (isSourceBlocked(source)) {
+      setStatus("Source is locally blocked; unblock it before refreshing.", "warning");
+      return;
+    }
+    if (isSourcePaused(source)) {
+      setStatus("Source subscription is paused; resume it before refreshing.", "warning");
+      return;
+    }
     try {
       source.lastCheckedAt = new Date().toISOString();
       source.lastStatus = "Fetching";
@@ -466,7 +490,13 @@
 
   async function refreshAllActiveSources() {
     const activeSourceIds = state.sources
-      .filter((source) => source.subscriptionId && source.lastStatus !== "Subscription removed")
+      .filter(
+        (source) =>
+          source.subscriptionId &&
+          source.lastStatus !== "Subscription removed" &&
+          !isSourcePaused(source) &&
+          !isSourceBlocked(source)
+      )
       .map((source) => source.id)
       .slice(0, maxSources);
     if (activeSourceIds.length === 0) {
@@ -505,8 +535,18 @@
         await CryptaPlatform.content.subscriptions.refresh(subscriptionIdValue);
       } else if (action === "pause") {
         await CryptaPlatform.content.subscriptions.pause(subscriptionIdValue);
+        state.sources = state.sources.map((source) =>
+          source.subscriptionId === subscriptionIdValue
+            ? Object.assign({}, source, { lastStatus: "Paused" })
+            : source
+        );
       } else if (action === "resume") {
         await CryptaPlatform.content.subscriptions.resume(subscriptionIdValue);
+        state.sources = state.sources.map((source) =>
+          source.subscriptionId === subscriptionIdValue
+            ? Object.assign({}, source, { lastStatus: "Subscribed" })
+            : source
+        );
       } else if (action === "remove") {
         await CryptaPlatform.content.subscriptions.remove(subscriptionIdValue);
         state.sources = state.sources.map((source) =>
@@ -516,11 +556,56 @@
         );
         await persistSources();
       }
+      if (action === "pause" || action === "resume") {
+        await persistSources();
+      }
       await refreshSubscriptions({ silent: true });
       setStatus("Subscription updated.");
     } catch (error) {
       setStatus(CryptaPlatform.api.errorMessage(error), "error");
     }
+  }
+
+  async function pauseSource(source) {
+    if (!source || !source.subscriptionId) {
+      setStatus("Source has no active subscription to pause.", "warning");
+      return;
+    }
+    await mutateSubscription(source.subscriptionId, "pause");
+  }
+
+  async function resumeSource(source) {
+    if (!source || !source.subscriptionId) {
+      setStatus("Source has no active subscription to resume.", "warning");
+      return;
+    }
+    await mutateSubscription(source.subscriptionId, "resume");
+  }
+
+  async function toggleBlockedSource(source) {
+    const key = sourceFilterKey(source);
+    if (!key) {
+      setStatus("Source does not have a safe local filter key.", "error");
+      return;
+    }
+    const blocked = new Set(state.localFilters.blockedSources);
+    if (blocked.has(key)) {
+      blocked.delete(key);
+      setStatus("Source unblocked locally.");
+    } else {
+      if (blocked.size >= maxBlockedSources) {
+        setStatus(
+          "Source block list is full; unblock another source before blocking this one.",
+          "warning"
+        );
+        return;
+      }
+      blocked.add(key);
+      setStatus("Source blocked locally; this does not publish moderation metadata.");
+    }
+    state.localFilters.blockedSources = Array.from(blocked).slice(0, maxBlockedSources);
+    await persistLocalFilters();
+    renderAll();
   }
 
   async function importOutboxText(text, source, response) {
@@ -1095,7 +1180,7 @@
     state.selectedIdentityId = stringValue(uiState.selectedIdentityId);
     state.channelFilter = normalizeChannelFilter(uiState.channelFilter);
     state.readFilter = normalizeReadFilter(uiState.readFilter);
-    state.sources = boundedArray(await readAppDataRecord(records.sources, []), maxSources);
+    state.sources = boundedSources(await readAppDataRecord(records.sources, []));
     state.outboxSummary = await readAppDataRecord(records.outboxSummary, null);
     state.importedMessages = boundedImportedMessages(
       await readAppDataRecord(records.importedMessageIndex, []),
@@ -1106,6 +1191,7 @@
       maxReadStateEntries
     );
     state.drafts = await readAppDataRecord(records.drafts, {});
+    state.localFilters = boundedLocalFilters(await readAppDataRecord(records.localFilters, {}));
   }
 
   async function readAppDataRecord(record, fallback) {
@@ -1149,13 +1235,22 @@
     await putJsonRecord(records.drafts, boundedDrafts(state.drafts));
   }
 
+  async function persistLocalFilters() {
+    state.localFilters = boundedLocalFilters(state.localFilters);
+    await putJsonRecord(records.localFilters, state.localFilters);
+  }
+
   async function putJsonRecord(record, value) {
     await CryptaPlatform.data.records.putJson({
       namespace: record[0],
       key: record[1],
-      schemaVersion: dataSchemaVersion,
+      schemaVersion: schemaVersionForRecord(record),
       value,
     });
+  }
+
+  function schemaVersionForRecord(record) {
+    return namespaceSchemaVersions[record[0]] || dataSchemaVersion;
   }
 
   function restoreDrafts() {
@@ -1186,6 +1281,7 @@
     renderOutbox();
     renderPublishSummary();
     renderTrustServiceStatus();
+    renderExportSummary();
     renderInboxControls();
     renderReplyContext();
     renderInbox();
@@ -1287,6 +1383,7 @@
         summaryRow("Last seen edition", source.lastSeenEdition || ""),
         summaryRow("Resolved URI", source.lastSeenResolvedUriSummary || ""),
         summaryRow("Source URI SHA-256", source.uriHash || ""),
+        summaryRow("Local filter", isSourceBlocked(source) ? "Blocked locally" : "Visible locally"),
         summaryRow("Updates", String(source.updateCount || 0)),
         summaryRow(
           "Retry window",
@@ -1296,7 +1393,15 @@
       );
       const actions = document.createElement("div");
       actions.className = "source-actions";
-      actions.append(actionButton("Fetch current", () => refreshSource(source.id)));
+      actions.append(
+        actionButton("Fetch current", () => refreshSource(source.id)),
+        actionButton(isSourcePaused(source) ? "Resume source" : "Pause source", () =>
+          isSourcePaused(source) ? resumeSource(source) : pauseSource(source)
+        ),
+        actionButton(isSourceBlocked(source) ? "Unblock source" : "Block source", () =>
+          toggleBlockedSource(source)
+        )
+      );
       item.append(actions);
       elements.sourceList.append(item);
     }
@@ -1311,6 +1416,12 @@
     }
     if (attentionStatus) {
       values.push(attentionStatus);
+    }
+    if (isSourcePaused(source)) {
+      values.push("Paused");
+    }
+    if (isSourceBlocked(source)) {
+      values.push("Blocked");
     }
     if (isSourceStale(source)) {
       values.push("Stale");
@@ -1417,7 +1528,39 @@
     if (query) {
       fragments.push(`search ${query.length} chars`);
     }
-    elements.inboxResultSummary.textContent = fragments.join(" / ");
+    const mutedCount = state.localFilters.mutedAuthors.length;
+    const blockedCount = state.localFilters.blockedSources.length;
+    if (mutedCount || blockedCount) {
+      fragments.push(`${mutedCount} muted authors / ${blockedCount} blocked sources`);
+    }
+    elements.inboxResultSummary.replaceChildren(document.createTextNode(fragments.join(" / ")));
+    const localFilterActions = renderLocalFilterActions();
+    if (localFilterActions) {
+      elements.inboxResultSummary.append(document.createTextNode(" "), localFilterActions);
+    }
+  }
+
+  function renderLocalFilterActions() {
+    const mutedAuthors = state.localFilters.mutedAuthors.slice(0, maxMutedAuthors);
+    const blockedSources = state.localFilters.blockedSources.slice(0, maxBlockedSources);
+    if (mutedAuthors.length === 0 && blockedSources.length === 0) {
+      return null;
+    }
+    const actions = document.createElement("span");
+    actions.className = "local-filter-actions";
+    for (const key of mutedAuthors.slice(0, 6)) {
+      actions.append(actionButton(`Unmute ${fingerprintSummary(key)}`, () => unmuteAuthorKey(key)));
+    }
+    if (mutedAuthors.length > 6) {
+      actions.append(actionButton("Unmute all authors", clearMutedAuthors));
+    }
+    for (const key of blockedSources.slice(0, 4)) {
+      actions.append(actionButton(`Unblock ${fingerprintSummary(key)}`, () => unblockSourceKey(key)));
+    }
+    if (blockedSources.length > 4) {
+      actions.append(actionButton("Unblock all sources", clearBlockedSources));
+    }
+    return actions;
   }
 
   function renderThreadCard(thread) {
@@ -1434,22 +1577,27 @@
   function renderThreadSummary(thread) {
     const section = document.createElement("section");
     section.className = "thread-summary";
-    const title = headingText(thread.rootMessage.subject || "(no subject)", "h3");
+    const visibleSummary = visibleThreadSummary(thread);
+    const title = headingText(visibleSummary.rootMessage.subject || "(no subject)", "h3");
+    const hasHiddenMessages = hiddenThreadMessageCount(thread) > 0;
     const meta = paragraph(
       "message-meta",
-      `${thread.totalMessages} messages / ${thread.unreadMessages} unread / ${thread.sourceCount} sources`
+      `${visibleSummary.visibleCount} visible messages / ${visibleSummary.unreadMessages} unread / ${
+        visibleSummary.sourceCount
+      } sources`
     );
     section.append(
       title,
       meta,
       badges(
         [
-          thread.pinned ? "pinned thread" : "",
-          thread.archived ? "archived thread" : "",
-          `channel ${thread.channel}`,
-          `latest ${thread.latestAt || "not available"}`,
+          visibleSummary.pinned ? "pinned thread" : "",
+          visibleSummary.archived ? "archived thread" : "",
+          hasHiddenMessages ? "local filters hide messages in this thread" : "",
+          `channel ${visibleSummary.channel}`,
+          `latest ${visibleSummary.latestAt || "not available"}`,
         ],
-        thread.unreadMessages > 0 ? "warning" : "neutral"
+        visibleSummary.unreadMessages > 0 ? "warning" : "neutral"
       )
     );
     return section;
@@ -1465,6 +1613,13 @@
         return;
       }
       rendered.add(message.messageId);
+      if (isMessageLocallyHidden(message)) {
+        const hiddenChildren = thread.children.get(message.messageId) || [];
+        for (const child of hiddenChildren) {
+          appendMessage(child, depth + 1);
+        }
+        return;
+      }
       count += 1;
       container.append(renderMessageCard(message, thread, Math.min(depth, maxThreadDepth)));
       if (depth >= maxThreadDepth) {
@@ -1486,17 +1641,17 @@
   }
 
   function renderMessageCard(message, thread, depth) {
-      const card = document.createElement("article");
-      card.className = "message-card";
+    const card = document.createElement("article");
+    card.className = "message-card";
     card.dataset.depth = String(depth);
-      card.append(
-        headingText(message.subject || "(no subject)", "h3"),
+    card.append(
+      headingText(message.subject || "(no subject)", "h3"),
       renderAuthorBlock(message),
       paragraph("message-meta", messageMetaSummary(message)),
-        paragraph("message-body", message.bodyPreview || ""),
-        trustBadges(message),
+      paragraph("message-body", message.bodyPreview || ""),
+      trustBadges(message),
       messageActionBar(message, readState(message), thread)
-      );
+    );
     return card;
   }
 
@@ -1535,13 +1690,19 @@
   function threadActionBar(thread) {
     const actions = document.createElement("div");
     actions.className = "message-actions thread-actions";
-    const allRead = thread.unreadMessages === 0;
+    const visibleThread = visibleThreadView(thread);
+    const allRead = visibleThread.unreadMessages === 0;
     actions.append(
       actionButton(allRead ? "Mark thread unread" : "Mark thread read", () =>
-        allRead ? markThreadUnread(thread) : markThreadRead(thread)
+        allRead ? markThreadUnread(visibleThread) : markThreadRead(visibleThread)
       ),
-      actionButton(thread.pinned ? "Unpin thread" : "Pin thread", () => toggleThreadPin(thread)),
-      actionButton(thread.archived ? "Unarchive thread" : "Archive thread", () => archiveThread(thread))
+      actionButton(visibleThread.pinned ? "Unpin thread" : "Pin thread", () =>
+        toggleThreadPin(visibleThread)
+      ),
+      actionButton(visibleThread.archived ? "Unarchive thread" : "Archive thread", () =>
+        archiveThread(visibleThread)
+      ),
+      actionButton("Export thread", () => exportThreadSummary(visibleThread))
     );
     return actions;
   }
@@ -1577,6 +1738,27 @@
     elements.trustServiceStatus.append(...rows);
     elements.requestTrustGrantButton.disabled =
       !descriptor || ["active", "pending"].includes(status) || bundleStatus === "pending";
+  }
+
+  function renderExportSummary() {
+    elements.exportSummary.replaceChildren();
+    if (!state.exportSummary) {
+      elements.exportSummary.append(
+        empty("Message exports are redacted summaries with source and schema metadata.")
+      );
+      return;
+    }
+    const summary = state.exportSummary;
+    elements.exportSummary.append(
+      summaryRow("Export kind", stringField(summary, "kind")),
+      summaryRow("Messages", String(numberField(summary, "messageCount"))),
+      summaryRow("Schema", String(numberField(summary, "schemaVersion"))),
+      summaryRow("Redaction", stringField(summary, "redaction"))
+    );
+    const payload = document.createElement("pre");
+    payload.className = "export-payload";
+    payload.textContent = JSON.stringify(summary, null, 2);
+    elements.exportSummary.append(payload);
   }
 
   function renderQueue(response) {
@@ -1618,7 +1800,11 @@
       actionButton(
         itemState.archived ? "Unarchive" : "Archive",
         () => updateMessageState(message.messageId, { archived: !itemState.archived })
-      )
+      ),
+      actionButton(isAuthorMuted(message) ? "Unmute author" : "Mute author", () =>
+        toggleMutedAuthor(message)
+      ),
+      actionButton("Export message", () => exportMessageSummary(message))
     );
     return actions;
   }
@@ -1677,6 +1863,114 @@
     renderInbox();
   }
 
+  async function toggleMutedAuthor(message) {
+    const key = boundedFilterKey(message && message.authorFingerprint, maxRecipientFingerprintLength);
+    if (!key) {
+      setStatus("Message author does not have a safe local mute key.", "error");
+      return;
+    }
+    const muted = new Set(state.localFilters.mutedAuthors);
+    if (muted.has(key)) {
+      muted.delete(key);
+      setStatus("Author unmuted locally.");
+    } else {
+      if (muted.size >= maxMutedAuthors) {
+        setStatus(
+          "Author mute list is full; unmute another author before muting this one.",
+          "warning"
+        );
+        return;
+      }
+      muted.add(key);
+      setStatus("Author muted locally; this does not publish moderation metadata.");
+    }
+    state.localFilters.mutedAuthors = Array.from(muted).slice(0, maxMutedAuthors);
+    await persistLocalFilters();
+    renderAll();
+  }
+
+  async function unmuteAuthorKey(key) {
+    const normalized = boundedFilterKey(key, maxRecipientFingerprintLength);
+    if (!normalized) {
+      setStatus("Muted author key is no longer valid.", "error");
+      return;
+    }
+    const next = state.localFilters.mutedAuthors.filter((value) => value !== normalized);
+    if (next.length === state.localFilters.mutedAuthors.length) {
+      setStatus("Author is not muted locally.", "warning");
+      return;
+    }
+    state.localFilters.mutedAuthors = next;
+    await persistLocalFilters();
+    setStatus("Author unmuted locally.");
+    renderAll();
+  }
+
+  async function clearMutedAuthors() {
+    if (state.localFilters.mutedAuthors.length === 0) {
+      setStatus("No muted authors are configured.", "warning");
+      return;
+    }
+    state.localFilters.mutedAuthors = [];
+    await persistLocalFilters();
+    setStatus("All muted authors were unmuted locally.");
+    renderAll();
+  }
+
+  async function unblockSourceKey(key) {
+    const normalized = boundedFilterKey(key, 128);
+    if (!normalized) {
+      setStatus("Blocked source key is no longer valid.", "error");
+      return;
+    }
+    const next = state.localFilters.blockedSources.filter((value) => value !== normalized);
+    if (next.length === state.localFilters.blockedSources.length) {
+      setStatus("Source is not blocked locally.", "warning");
+      return;
+    }
+    state.localFilters.blockedSources = next;
+    await persistLocalFilters();
+    setStatus("Source unblocked locally.");
+    renderAll();
+  }
+
+  async function clearBlockedSources() {
+    if (state.localFilters.blockedSources.length === 0) {
+      setStatus("No blocked sources are configured.", "warning");
+      return;
+    }
+    state.localFilters.blockedSources = [];
+    await persistLocalFilters();
+    setStatus("All blocked sources were unblocked locally.");
+    renderAll();
+  }
+
+  function exportVisibleMessages() {
+    const threadIndex = buildThreadIndex(allMessageSummaries(), state.readState);
+    const messages = [];
+    for (const thread of filterThreads(threadIndex.threads)) {
+      messages.push(...visibleThreadMessages(thread));
+      if (messages.length >= maxExportedMessages) {
+        break;
+      }
+    }
+    updateExportSummary("visible", messages.slice(0, maxExportedMessages));
+  }
+
+  function exportThreadSummary(thread) {
+    updateExportSummary("thread", visibleThreadMessages(thread).slice(0, maxExportedMessages));
+  }
+
+  function exportMessageSummary(message) {
+    updateExportSummary("message", isMessageLocallyHidden(message) ? [] : [message]);
+  }
+
+  function updateExportSummary(kind, messages) {
+    state.exportSummary = boundedExportSummary(kind, messages);
+    renderExportSummary();
+    setStatus("Redacted message export summary prepared.");
+  }
+
   function trustBadges(message) {
     const score = state.trustScores[message.authorFingerprint];
     const values = [];
@@ -1691,6 +1985,12 @@
     }
     if (message.local) {
       values.push("local outbox");
+    }
+    if (isAuthorMuted(message)) {
+      values.push("author muted locally");
+    }
+    if (isSourceBlocked(message)) {
+      values.push("source blocked locally");
     }
     if (!score) {
       return badges(values.concat([trustServiceUnavailableSummary()]));
@@ -2111,31 +2411,130 @@
     return sources.size;
   }
 
+  function visibleThreadMessages(thread) {
+    return boundedArray(thread && thread.messages, maxRenderedThreadMessages).filter(
+      (message) => !isMessageLocallyHidden(message)
+    );
+  }
+
+  function visibleThreadView(thread) {
+    const messages = visibleThreadMessages(thread);
+    const rootMessage = messages[0] || {};
+    return Object.assign({}, thread, {
+      rootId: stringField(rootMessage, "messageId"),
+      rootMessage,
+      messages,
+      latestAt: latestMessageTimestamp(messages),
+      channel: normalizeChannel(rootMessage.channel),
+      pinned: messages.some((message) => readStateValueFor(message, state.readState).pinned),
+      hasArchived: messages.some((message) => readStateValueFor(message, state.readState).archived),
+      archived:
+        messages.length > 0 &&
+        messages.every((message) => readStateValueFor(message, state.readState).archived),
+      totalMessages: messages.length,
+      unreadMessages: threadUnreadCount(messages, state.readState),
+      sourceCount: threadSourceCount(messages),
+    });
+  }
+
+  function visibleThreadSummary(thread) {
+    const visibleThread = visibleThreadView(thread);
+    return {
+      rootMessage: visibleThread.rootMessage,
+      visibleCount: visibleThread.totalMessages,
+      unreadMessages: visibleThread.unreadMessages,
+      sourceCount: visibleThread.sourceCount,
+      latestAt: visibleThread.latestAt,
+      channel: visibleThread.channel,
+      pinned: visibleThread.pinned,
+      hasArchived: visibleThread.hasArchived,
+      archived: visibleThread.archived,
+    };
+  }
+
+  function hiddenThreadMessageCount(thread) {
+    return boundedArray(thread && thread.messages, maxRenderedThreadMessages).filter(
+      isMessageLocallyHidden
+    ).length;
+  }
+
+  function isMessageLocallyHidden(message) {
+    return isAuthorMuted(message) || isSourceBlocked(message);
+  }
+
+  function isAuthorMuted(message) {
+    const key = boundedFilterKey(message && message.authorFingerprint, maxRecipientFingerprintLength);
+    return key ? state.localFilters.mutedAuthors.includes(key) : false;
+  }
+
+  function isSourceBlocked(value) {
+    return sourceFilterKeys(value).some((key) => state.localFilters.blockedSources.includes(key));
+  }
+
+  function isSourcePaused(source) {
+    const subscription = subscriptionForSource(source);
+    const status = subscriptionStatusSummary(subscription) || source.lastSubscriptionStatus || source.lastStatus;
+    return ["Paused", "Disabled"].includes(status);
+  }
+
+  function sourceFilterKey(source) {
+    return sourceFilterKeys(source)[0] || "";
+  }
+
+  function sourceFilterKeys(value) {
+    const keys = [];
+    const addKey = (candidate) => {
+      const key = boundedFilterKey(candidate, 128);
+      if (key && !keys.includes(key) && key !== "local-outbox") {
+        keys.push(key);
+      }
+    };
+    if (value && typeof value === "object") {
+      addKey(value.uriHash);
+      addKey(value.sourceUriHash);
+      addKey(value.id);
+      addKey(value.sourceId);
+      for (const summary of boundedSourceSummaries(value.sourcesSeen)) {
+        addKey(summary.sourceUriHash);
+        addKey(summary.sourceId);
+      }
+    }
+    return keys.slice(0, maxSourcesPerMessage + 2);
+  }
+
   function filterThreads(threads) {
     const query = normalizedSearchQuery();
     const selectedChannelName = selectedChannel();
     return threads.filter((thread) => {
+      const visibleMessages = visibleThreadMessages(thread);
+      if (visibleMessages.length === 0) {
+        return false;
+      }
+      const visibleSummary = visibleThreadSummary(thread);
       if (
         selectedChannelName &&
-        !thread.messages.some((message) => normalizeChannel(message.channel) === selectedChannelName)
+        !visibleMessages.some((message) => normalizeChannel(message.channel) === selectedChannelName)
       ) {
         return false;
       }
-      if (state.readFilter === "active" && thread.archived) {
+      if (state.readFilter === "active" && visibleSummary.archived) {
         return false;
       }
-      if (state.readFilter === "unread" && (thread.archived || thread.unreadMessages === 0)) {
+      if (
+        state.readFilter === "unread" &&
+        (visibleSummary.archived || visibleSummary.unreadMessages === 0)
+      ) {
         return false;
       }
-      if (state.readFilter === "archived" && !thread.hasArchived) {
+      if (state.readFilter === "archived" && !visibleSummary.hasArchived) {
         return false;
       }
-      return !query || threadContainsMessage(thread, query);
+      return !query || threadContainsMessage(visibleMessages, query);
     });
   }
 
-  function threadContainsMessage(thread, query) {
-    return thread.messages.some((message) => searchableMessageText(message).includes(query));
+  function threadContainsMessage(messages, query) {
+    return messages.some((message) => searchableMessageText(message).includes(query));
   }
 
   function searchableMessageText(message) {
@@ -2464,7 +2863,76 @@
       ),
       updateCount: Math.max(0, numberField(source, "updateCount")),
       lastError: boundedPreview(source.lastError, 160),
-    }));
+	    }));
+  }
+
+  function boundedLocalFilters(filters) {
+    const source = filters && typeof filters === "object" && !Array.isArray(filters) ? filters : {};
+    return {
+      mutedAuthors: boundedFilterKeys(source.mutedAuthors, maxMutedAuthors, maxRecipientFingerprintLength),
+      blockedSources: boundedFilterKeys(source.blockedSources, maxBlockedSources, 128),
+    };
+  }
+
+  function boundedFilterKeys(values, limit, maxLength) {
+    return boundedArray(values, limit)
+      .map((value) => boundedFilterKey(value, maxLength))
+      .filter((value, index, array) => value && array.indexOf(value) === index)
+      .slice(0, limit);
+  }
+
+  function boundedFilterKey(value, maxLength) {
+    const text = boundedPreview(value, maxLength);
+    return /^[A-Za-z0-9._:@-]{1,128}$/.test(text) ? text : "";
+  }
+
+  function boundedExportSummary(kind, messages) {
+    const visibleMessages = boundedArray(messages, maxExportedMessages)
+      .filter((message) => message && isSafeMessageId(message.messageId))
+      .map(exportedMessageSummary);
+    return {
+      appId,
+      kind: ["visible", "thread", "message"].includes(kind) ? kind : "visible",
+      schemaVersion: dataSchemaVersion,
+      exportedAt: new Date().toISOString(),
+      messageCount: visibleMessages.length,
+      redaction: "message summaries only; raw fetched documents, private insert URIs, tokens, and raw signatures omitted",
+      sourceMetadata: {
+        sourceCount: state.sources.length,
+        mutedAuthorCount: state.localFilters.mutedAuthors.length,
+        blockedSourceCount: state.localFilters.blockedSources.length,
+      },
+      limits: {
+        maxExportedMessages,
+        maxBodyPreviewChars: maxImportedBodyPreviewLength,
+      },
+      messages: visibleMessages,
+    };
+  }
+
+  function exportedMessageSummary(message) {
+    const score = state.trustScores[message.authorFingerprint] || {};
+    return {
+      messageId: message.messageId,
+      subject: boundedPreview(message.subject, maxImportedSubjectLength),
+      channel: normalizeChannel(message.channel),
+      authorLabel: boundedPreview(message.authorLabel, maxAuthorLabelLength),
+      authorFingerprintSummary: fingerprintSummary(message.authorFingerprint),
+      profileUriSummary: redactedPublicUri(message.profileUri),
+      createdAt: boundedPreview(message.createdAt, 64),
+      replyTo: normalizeReplyReference(message.replyTo),
+      bodyPreview: boundedPreview(message.bodyPreview, maxImportedBodyPreviewLength),
+      bodySha256: boundedPreview(message.bodySha256, 64),
+      sourceLabel: boundedPreview(message.sourceLabel, maxSourceLabelLength),
+      sourceUriHash: boundedPreview(message.sourceUriHash, 64),
+      sourceCount: sourceCountForMessage(message),
+      duplicateSeenCount: Math.max(1, numberField(message, "seenCount")),
+      trust: {
+        status: stringField(score, "status") || "unscored",
+        summary: boundedPreview(stringField(score, "summary", "reasonSummary"), 120),
+        value: optionalNumberField(score, "value"),
+      },
+    };
   }
 
   function boundedArray(value, limit) {

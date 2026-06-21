@@ -52,8 +52,8 @@ class TrustGraphBundleStagingTest {
           "vault.identities.use",
           "app.data.read",
           "app.data.write");
-  private static final int EXPECTED_PLATFORM_API_MINIMUM_VERSION = 10;
-  private static final int EXPECTED_PLATFORM_API_MAXIMUM_TESTED_VERSION = 20;
+  private static final int EXPECTED_PLATFORM_API_MINIMUM_VERSION = 22;
+  private static final int EXPECTED_PLATFORM_API_MAXIMUM_TESTED_VERSION = 22;
   private static final Path PLATFORM_SDK_SOURCE_PATH =
       Path.of(
           "platform-sdk-js",
@@ -278,6 +278,7 @@ class TrustGraphBundleStagingTest {
         "<code>vault.identities.create</code>",
         "<code>vault.identities.use</code>",
         "Local RC scope",
+        "Platform API contract: <code>22</code>",
         "Local trust only",
         "not global truth",
         "moderation",
@@ -294,7 +295,8 @@ class TrustGraphBundleStagingTest {
         "Subscriptions",
         "Audit",
         "Pasted statement JSON",
-        "Import pasted statement",
+        "Preview pasted statement",
+        "Commit preview",
         "Score",
         "Subject kind",
         "Subject URI or identity",
@@ -307,6 +309,7 @@ class TrustGraphBundleStagingTest {
         "bounded and must explain",
         "rendered only as text",
         "without exposing private signing secrets");
+    verifyContainsNone(indexHtml, "Platform API contracts: <code>10-21</code>");
   }
 
   private static void verifyNoForbiddenBrowserPatterns(
@@ -364,6 +367,10 @@ class TrustGraphBundleStagingTest {
         "CryptaPlatform.trust.anchors.list",
         "CryptaPlatform.trust.anchors.add",
         "CryptaPlatform.trust.anchors.remove",
+        "CryptaPlatform.trust && CryptaPlatform.trust.anchors",
+        "typeof anchors[action] === \"function\"",
+        "anchors[action](identity, request)",
+        "CryptaPlatform.trust.previewImport",
         "CryptaPlatform.trust.importStatement",
         "CryptaPlatform.trust.exchange.fetchAndImport",
         "CryptaPlatform.trust.audit.list",
@@ -389,13 +396,35 @@ class TrustGraphBundleStagingTest {
         "state = {",
         "lastStatementText",
         "recentImports",
+        "pendingImport",
+        "clearPendingImport",
+        "const trustStatementType = \"crypta.trust.statement.v1\";",
+        "importableStatementText",
+        "singleImportableStatement",
+        "isTrustStatementDocument",
+        "Preview source must resolve to exactly one importable trust statement before commit.",
         "auditEvents",
         "subscriptions",
         "statements",
         "sourceKind",
         "importSummaryLabel",
         "statementFingerprint",
+        "renderImportPreview",
+        "summaryNodes(summary, \"Import preview\", Object.keys(summary).length)",
+        "candidateSummaries",
+        "previewCommitBlockReason",
+        "candidateStatementCount\")",
+        "acceptedCount\")",
+        "rejectedCount\")",
+        "conflictCount",
+        "materialRisk",
+        "approximateScoreImpact",
+        "warnings",
+        "Preview must contain exactly one candidate statement",
+        "Preview has no accepted statement to commit",
         "lifecycleStatus",
+        "anchorLifecycleStatus",
+        "anchorLifecycleHelper",
         "lifecycleActionsAvailable",
         "supportsLocalRevocation === true",
         "supportsLocalDeprecation === true",

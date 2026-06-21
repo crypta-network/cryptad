@@ -113,11 +113,13 @@ Use this skill when you need to:
   plus focused tests under `platform-appdist/src/test/java`.
 - `:platform-appcatalog` owns signed catalog source parsing, catalog writer/descriptor support,
   verification, `crypta:` catalog source fetching, app-store/API compatibility metadata,
-  independent app-review receipt trust metadata, artifact download, safe ZIP extraction, and
-  verified staging code plus focused tests under `platform-appcatalog/src/test/java`.
+  submission package/pre-review/candidate metadata, independent app-review receipt trust metadata,
+  artifact download, safe ZIP extraction, and verified staging code plus focused tests under
+  `platform-appcatalog/src/test/java`.
 - `:platform-trustgraph` owns Trust Graph Local RC statement parsing, canonicalization,
-  verification, process-local store/anchor behavior, lifecycle/status records, and deterministic
-  scoring plus focused tests under `platform-trustgraph/src/test/java`.
+  verification, process-local store/anchor behavior, import-preview summaries,
+  duplicate-issuer/conflict handling, lifecycle/status records, and bounded deterministic scoring
+  explanations plus focused tests under `platform-trustgraph/src/test/java`.
 - `:platform-design-system` owns the canonical local app UI CSS/JS resources plus safe
   asset-listing, hashing, and bundle-copy helpers. Its focused tests live under
   `platform-design-system/src/test/java`.
@@ -292,7 +294,7 @@ When running ./gradlew test via OpenCode bash, set timeout ≥ 15 minutes (≥ 9
 ## First-party app bundle checks
 - Stage first-party app bundles, especially after changing `:platform-sdk-js` or
   `:platform-design-system` because Queue Manager, Publisher, Site Publisher, Profile Publisher,
-  Social Inbox Preview, Feed Reader, and Trust Graph Local RC copy those assets into staged static UI
+  Social Inbox RC, Feed Reader, and Trust Graph Local RC copy those assets into staged static UI
   bundles:
   - `./gradlew stageFirstPartyApps`
 - Run app project tests:

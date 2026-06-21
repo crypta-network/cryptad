@@ -235,6 +235,7 @@ ECOSYSTEM_RC_REQUIRED_EVIDENCE_IDS = (
     "app-platform.trust-graph-rc-scope-and-safety",
     "app-platform.trust-graph-durable-store",
     "app-platform.trust-graph-exchange",
+    "app-platform.trust-social-beta-hardening",
     "app-platform.trust-statement-signing",
     "reference-app.trust-graph",
     "reference-app.trust-graph-durable-exchange",
@@ -1251,6 +1252,7 @@ def app_platform_evidence(
         "app-platform.trust-graph-rc-scope-and-safety",
         "app-platform.trust-graph-durable-store",
         "app-platform.trust-graph-exchange",
+        "app-platform.trust-social-beta-hardening",
         "app-platform.trust-statement-signing",
         "app-platform.social-message-signing",
         *APP_SERVICE_DISCOVERY_AND_GRANT_EVIDENCE_IDS,
@@ -2545,6 +2547,7 @@ def ecosystem_matrix_row_specs() -> list[MatrixRowSpec]:
                 "app-platform.trust-graph-rc-scope-and-safety",
                 "app-platform.trust-graph-durable-store",
                 "app-platform.trust-graph-exchange",
+                "app-platform.trust-social-beta-hardening",
                 "app-platform.trust-statement-signing",
             ),
             gate_ids=("ecosystem.reference-content-apps",),
@@ -2824,7 +2827,7 @@ def ecosystem_matrix_row_specs() -> list[MatrixRowSpec]:
         MatrixRowSpec(
             id="trust-graph-app",
             category="reference-apps",
-            title="Trust Graph Preview reference app",
+            title="Trust Graph Local RC reference app",
             required_evidence_ids=(
                 "reference-app.trust-graph",
                 "reference-app.trust-graph-durable-exchange",
@@ -2846,6 +2849,7 @@ def ecosystem_matrix_row_specs() -> list[MatrixRowSpec]:
                 "reference-app.social-inbox-app-data",
                 "reference-app.social-inbox-trust-annotations",
                 "reference-app.social-inbox-rc-threading",
+                "app-platform.trust-social-beta-hardening",
                 "reference-app.social-inbox-service-grant",
                 "reference-app.social-inbox-service-dependency",
                 "migration.social-mail-preview",
@@ -4977,6 +4981,10 @@ def evaluate_reference_content_gate(
     previous_social_inbox_rc_threading_item = previous.get(
         "reference-app.social-inbox-rc-threading"
     )
+    trust_social_beta_hardening_item = current.get("app-platform.trust-social-beta-hardening")
+    previous_trust_social_beta_hardening_item = previous.get(
+        "app-platform.trust-social-beta-hardening"
+    )
     social_mail_migration_item = current.get("migration.social-mail-preview")
     previous_social_mail_migration_item = previous.get("migration.social-mail-preview")
     generated_document_item = current.get("app-platform.generated-document-insert")
@@ -5161,6 +5169,10 @@ def evaluate_reference_content_gate(
     previous_social_inbox_rc_threading_status = evidence_status(
         previous_social_inbox_rc_threading_item
     )
+    trust_social_beta_hardening_status = evidence_status(trust_social_beta_hardening_item)
+    previous_trust_social_beta_hardening_status = evidence_status(
+        previous_trust_social_beta_hardening_item
+    )
     social_mail_migration_status = evidence_status(social_mail_migration_item)
     previous_social_mail_migration_status = evidence_status(previous_social_mail_migration_item)
     generated_document_status = evidence_status(generated_document_item)
@@ -5311,6 +5323,11 @@ def evaluate_reference_content_gate(
             "reference-app.social-inbox-rc-threading",
             social_inbox_rc_threading_status,
             previous_social_inbox_rc_threading_status,
+        ),
+        (
+            "app-platform.trust-social-beta-hardening",
+            trust_social_beta_hardening_status,
+            previous_trust_social_beta_hardening_status,
         ),
         (
             "migration.social-mail-preview",
@@ -5512,13 +5529,13 @@ def evaluate_reference_content_gate(
             gate_details, "warningEvidenceIds", "reference-app.feed-reader-app-data"
         )
     if trust_graph_details.get("appId") not in {"trust-graph", None}:
-        failures.append("Trust Graph Preview evidence is not for trust-graph")
+        failures.append("Trust Graph Local RC evidence is not for trust-graph")
         add_evidence_issue(gate_details, "failureEvidenceIds", "reference-app.trust-graph")
     if trust_graph_checks:
         for key in (
             "manifestDeclaresTrustGraph",
             "manifestDeclaresTrustPermissions",
-            "manifestUsesContractV10ThroughCurrent",
+            "manifestUsesContractV22",
             "usesTrustHelpers",
             "usesBoundedTrustSigningHelper",
             "usesTrustExchangeAndQueuePreview",
@@ -5527,10 +5544,10 @@ def evaluate_reference_content_gate(
             "manifestAdvertisesTrustScoreService",
         ):
             if trust_graph_checks.get(key) is not True:
-                failures.append(f"Trust Graph Preview reference app check {key} failed")
+                failures.append(f"Trust Graph Local RC reference app check {key} failed")
                 add_evidence_issue(gate_details, "failureEvidenceIds", "reference-app.trust-graph")
     elif trust_graph_status == "pass":
-        warnings.append("Trust Graph Preview coverage lacks detailed staged app checks")
+        warnings.append("Trust Graph Local RC coverage lacks detailed staged app checks")
         add_evidence_issue(gate_details, "warningEvidenceIds", "reference-app.trust-graph")
     if trust_graph_app_data_checks:
         for key in (
@@ -5669,7 +5686,7 @@ def evaluate_reference_content_gate(
             "subscriptionRefreshUxIsExplicit",
             "trustGraphMediatedOnly",
             "noUnsafeBrowserPersistenceOrExecution",
-            "manifestUsesNonBlockingSchemaContract",
+            "manifestUsesAdditiveBetaSchemaContract",
             "appWritesExistingSchemaVersion",
             "docsFrameRcReferenceAndNonGoals",
             "evidenceIdDocumented",
@@ -5911,12 +5928,12 @@ def evaluate_reference_content_gate(
                 )
     if trust_graph_durable_exchange_checks:
         for key in (
-            "manifestUsesContractV10ThroughCurrent",
+            "manifestUsesContractV22",
             "usesSdkExchangeHelpers",
             "noRawApiOrManualFetch",
         ):
             if trust_graph_durable_exchange_checks.get(key) is not True:
-                failures.append(f"Trust Graph Preview durable exchange app check {key} failed")
+                failures.append(f"Trust Graph Local RC durable exchange app check {key} failed")
                 add_evidence_issue(
                     gate_details,
                     "failureEvidenceIds",
@@ -5961,6 +5978,8 @@ def evaluate_reference_content_gate(
             "previousSocialInboxTrustAnnotationStatus": previous_social_inbox_trust_status,
             "socialInboxRcThreadingStatus": social_inbox_rc_threading_status,
             "previousSocialInboxRcThreadingStatus": previous_social_inbox_rc_threading_status,
+            "trustSocialBetaHardeningStatus": trust_social_beta_hardening_status,
+            "previousTrustSocialBetaHardeningStatus": previous_trust_social_beta_hardening_status,
             "socialMailMigrationStatus": social_mail_migration_status,
             "previousSocialMailMigrationStatus": previous_social_mail_migration_status,
             "generatedDocumentInsertStatus": generated_document_status,
@@ -6738,6 +6757,7 @@ def render_report(summary: dict[str, Any]) -> str:
         "app-platform.trust-graph-rc-scope-and-safety",
         "app-platform.trust-graph-durable-store",
         "app-platform.trust-graph-exchange",
+        "app-platform.trust-social-beta-hardening",
         "app-platform.trust-statement-signing",
         "app-platform.social-message-signing",
         "app-platform.signed-bundles",
@@ -6774,6 +6794,7 @@ def render_report(summary: dict[str, Any]) -> str:
         "reference-app.social-inbox-app-data",
         "reference-app.social-inbox-trust-annotations",
         "reference-app.social-inbox-rc-threading",
+        "app-platform.trust-social-beta-hardening",
         "migration.social-mail-preview",
         *APP_SERVICE_DISCOVERY_AND_GRANT_EVIDENCE_IDS,
         "legacy-plugin.migration-guide",
@@ -7664,6 +7685,7 @@ def run_self_test(repo_root: Path) -> None:
             "reference-app.trust-graph-durable-exchange",
             "reference-app.social-inbox",
             "reference-app.social-inbox-rc-threading",
+            "app-platform.trust-social-beta-hardening",
             "migration.social-mail-preview",
             "legacy-plugin.freeze-policy",
             "legacy-plugin.migration-guide",
@@ -7815,6 +7837,7 @@ def run_self_test(repo_root: Path) -> None:
             "reference-app.social-inbox-app-data",
             "reference-app.social-inbox-trust-annotations",
             "reference-app.social-inbox-rc-threading",
+            "app-platform.trust-social-beta-hardening",
             "reference-app.social-inbox-service-grant",
             "migration.social-mail-preview",
             "legacy-plugin.freeze-policy",

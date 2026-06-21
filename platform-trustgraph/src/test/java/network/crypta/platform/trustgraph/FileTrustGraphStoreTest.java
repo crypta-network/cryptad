@@ -36,6 +36,56 @@ class FileTrustGraphStoreTest {
   }
 
   @Test
+  void reopen_whenAnchorLifecycleUpdated_expectLifecycleDurableAndScoreUsesActiveOnly()
+      throws Exception {
+    TrustStatementDocument document = signedStatement(80, 50);
+    String issuerFingerprint = fingerprint(document);
+    FileTrustGraphStore store = store();
+    store.addAnchor(new TrustAnchor(issuerFingerprint, "Alice", "manual", NOW));
+    store.importStatement(document, "fetched", "crypta:CHK@trust-statement", "fixture");
+
+    TrustAnchor revoked =
+        store.updateAnchorLifecycle(
+            issuerFingerprint,
+            TrustStatementLifecycleStatus.REVOKED,
+            "operator-revoked",
+            "trust-graph",
+            "app");
+    FileTrustGraphStore reopenedRevoked = store();
+    TrustGraphScore revokedScore =
+        new TrustGraphScorer(reopenedRevoked, Clock.fixed(NOW, ZoneOffset.UTC)).score(query());
+
+    assertEquals(TrustStatementLifecycleStatus.REVOKED, revoked.lifecycleStatus());
+    assertFalse(reopenedRevoked.isAnchor(issuerFingerprint));
+    assertEquals(
+        TrustStatementLifecycleStatus.REVOKED,
+        reopenedRevoked.anchors().getFirst().lifecycleStatus());
+    assertEquals("operator-revoked", reopenedRevoked.anchors().getFirst().reasonCode());
+    assertEquals("app", reopenedRevoked.anchors().getFirst().source());
+    assertFalse((Boolean) reopenedRevoked.anchors().getFirst().toJson().get("active"));
+    assertEquals("unknown", revokedScore.status());
+    assertEquals(0, revokedScore.contributingEvidenceCount());
+
+    reopenedRevoked.updateAnchorLifecycle(
+        issuerFingerprint,
+        TrustStatementLifecycleStatus.ACTIVE,
+        "operator-reactivated",
+        "trust-graph",
+        "app");
+    FileTrustGraphStore reopenedActive = store();
+    TrustGraphScore activeScore =
+        new TrustGraphScorer(reopenedActive, Clock.fixed(NOW, ZoneOffset.UTC)).score(query());
+
+    assertTrue(reopenedActive.isAnchor(issuerFingerprint));
+    assertEquals(
+        TrustStatementLifecycleStatus.ACTIVE,
+        reopenedActive.anchors().getFirst().lifecycleStatus());
+    assertEquals("operator-reactivated", reopenedActive.anchors().getFirst().reasonCode());
+    assertEquals("trusted", activeScore.status());
+    assertEquals(1, activeScore.contributingEvidenceCount());
+  }
+
+  @Test
   void reopen_whenVerifiedStatementAndAnchorStored_expectScoreUsesDurableState() throws Exception {
     TrustStatementDocument document = signedStatement(80, 50);
     FileTrustGraphStore store = store();

@@ -37,10 +37,11 @@ Build: 2
   durable content-subscription evidence, shared app-network budget and network-scale soak evidence,
   durable app-data and app-data backup/restore evidence, app-service
   registry/grant/dependency/grant-bundle evidence, Trust Graph Local RC evidence, Site
-  Publisher/Profile Publisher/Social Inbox/Feed Reader/Trust Graph Local RC reference-app evidence,
-  app platform beta docs/program evidence, live USK catalog publication evidence, production beta
-  artifact redaction evidence when app artifacts ship, app-update lifecycle/scheduler/rollback and
-  app-data migration contract evidence, `crypta-app` developer beta toolkit smoke, operator RC
+  Publisher/Profile Publisher/Social Inbox RC/Feed Reader/Trust Graph Local RC reference-app
+  evidence, app platform beta docs/program evidence, live USK catalog publication evidence,
+  production beta artifact redaction evidence when app artifacts ship, app-update
+  lifecycle/scheduler/rollback and app-data migration contract evidence, `crypta-app` developer
+  beta toolkit smoke, operator RC
   recovery/support evidence, legacy plugin freeze evidence, legacy-admin retirement/removal Wave
   1-4 evidence, Hyphanet interop smoke/soak evidence, and the packaged-node performance smoke.
 

@@ -18,7 +18,7 @@ Static app bundles should load the staged SDK before app-specific JavaScript:
 ```
 
 The first-party Queue Manager, Publisher, Site Publisher, Profile Publisher, Social Inbox RC,
-Feed Reader, and Trust Graph Preview bundles receive `crypta-platform.js` during their Gradle
+Feed Reader, and Trust Graph Local RC bundles receive `crypta-platform.js` during their Gradle
 `stageApp` tasks. The canonical source
 lives in `platform-sdk-js/src/main/resources/network/crypta/platform/sdk/js/crypta-platform.js`.
 
@@ -347,7 +347,7 @@ The SDK never writes durable app state to `localStorage` or `sessionStorage`. Ap
 bounded app-owned user state, not secrets or identity material. Use AppVault for private material
 and keep raw app-data values out of release evidence.
 
-Trust Graph Preview uses the trust helpers:
+Trust Graph Local RC uses the trust helpers:
 
 ```js
 const status = await CryptaPlatform.trust.status();
@@ -357,6 +357,13 @@ await CryptaPlatform.trust.anchors.add({
   label,
   source: "manual",
 });
+await CryptaPlatform.trust.anchors.deprecate(issuerFingerprint, { reasonCode: "local-policy" });
+await CryptaPlatform.trust.anchors.revoke(issuerFingerprint, { reasonCode: "local-policy" });
+await CryptaPlatform.trust.anchors.reactivate(issuerFingerprint);
+const preview = await CryptaPlatform.trust.previewImport({
+  document: trustStatementJson,
+  sourceLabel: "pasted statement",
+});
 await CryptaPlatform.trust.importStatement({
   document: trustStatementJson,
   sourceUri,
@@ -365,6 +372,7 @@ await CryptaPlatform.trust.importStatement({
 const imported = await CryptaPlatform.trust.importUri({
   uri,
   sourceLabel: "reviewed statement",
+  expectedDocumentFingerprint: preview.candidateSummaries[0].documentFingerprint,
   maxBytes: 65536,
 });
 const score = await CryptaPlatform.trust.score({
@@ -376,9 +384,14 @@ const score = await CryptaPlatform.trust.score({
 const audit = await CryptaPlatform.trust.audit.list({ limit: 25 });
 ```
 
-Trust import responses expose document fingerprints, payload hashes, verification status, and
-redacted source URI summaries plus `sourceUriHash` when a source URI was supplied. They do not echo
-the raw URI, raw fetched body, raw statement JSON, or raw signature value.
+Trust import preview responses expose capped counts and redacted candidate summaries:
+`candidateStatementCount`, accepted/rejected counts, duplicate and duplicate issuer counts,
+conflict counts, revoked/deprecated/expired counts, approximate score impact, warning codes, and
+`rawContentDiscarded`. Trust import responses expose document fingerprints, payload hashes,
+verification status, and redacted source URI summaries plus `sourceUriHash` when a source URI was
+supplied. They do not echo the raw URI, raw fetched body, raw statement JSON, or raw signature
+value. Preview does not mutate graph state; apps should commit through the normal import route only
+after the operator approves any material-risk consent snapshot.
 
 To create and publish a bounded trust statement, apps should use the trust exchange helper instead
 of constructing API forms directly:
@@ -405,12 +418,22 @@ statement through `insertAppDocument`, default `contentType` to
 `application/vnd.crypta.trust+json` and `targetFilename` to `trust.json`, and import the local
 public statement summary into the durable trust graph backend with source `local-publish`.
 
-`CryptaPlatform.trust.exchange.fetchAndImport` is an alias for the v10 URI import workflow.
+For mutable URI sources, apps should preview with `CryptaPlatform.trust.previewImport({ uri, ... })`,
+retain only the redacted candidate `documentFingerprint`, and pass it as
+`expectedDocumentFingerprint` to `importUri` or `trust.exchange.fetchAndImport`. The Platform API
+rejects the commit with `trust_import_preview_stale` if the fetched document no longer matches the
+preview.
+
+`CryptaPlatform.trust.exchange.fetchAndImport` is an alias for the URI import workflow.
 `CryptaPlatform.trust.exchange.subscriptions.*` wraps the content subscription helpers with a
 trust-statement default label:
 
 ```js
-await CryptaPlatform.trust.exchange.fetchAndImport({ uri, maxBytes: 65536 });
+await CryptaPlatform.trust.exchange.fetchAndImport({
+  uri,
+  expectedDocumentFingerprint,
+  maxBytes: 65536,
+});
 await CryptaPlatform.trust.exchange.subscriptions.create({ uri, maxBytes: 65536 });
 await CryptaPlatform.trust.exchange.subscriptions.refresh(subscriptionId);
 await CryptaPlatform.trust.exchange.subscriptions.pause(subscriptionId);
@@ -420,10 +443,11 @@ await CryptaPlatform.trust.exchange.subscriptions.remove(subscriptionId);
 
 Trust helpers require the corresponding manifest capabilities: `trust.read` for status, anchors,
 subjects, statements, audit, and score reads; `trust.write` for import and anchor mutation;
-`content.fetch` for URI import and subscription refresh/create; `content.subscribe` for
-subscription metadata and lifecycle; `content.insert.app-document` plus `queue.write` for
-publication; and `vault.identities.read` plus `vault.identities.use` for bounded trust-statement
-signing. Apps should render pasted trust fields as text, keep document sizes bounded, and avoid
+`content.fetch` for URI import, URI import previews, and subscription refresh/create;
+`content.subscribe` for subscription metadata and lifecycle; `content.insert.app-document` plus
+`queue.write` for publication; and `vault.identities.read` plus `vault.identities.use` for bounded
+trust-statement signing. Apps should render pasted trust fields as text, keep document sizes
+bounded, and avoid
 storing raw trust documents from real users, raw fetched bodies, raw request bodies, signatures,
 private insert URIs, private identity material, browser-session tokens, form passwords, or local
 paths in browser storage or release evidence. Imported statements that lack a verifiable AppVault

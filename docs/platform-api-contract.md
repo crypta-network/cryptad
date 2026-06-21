@@ -9,7 +9,7 @@ The current app-facing values are:
 
 ```text
 apiVersion=v1
-contractVersion=21
+contractVersion=22
 ```
 
 The contract does not change Platform API behavior. It publishes metadata that answers which
@@ -37,7 +37,7 @@ The response shape is:
 {
   "contract": {
     "apiVersion": "v1",
-    "contractVersion": 20,
+    "contractVersion": 22,
     "generatedBy": "cryptad",
     "stabilityPolicy": "...",
     "capabilities": [],
@@ -115,7 +115,7 @@ app-data values. See [app-upgrade-data-migrations.md](app-upgrade-data-migration
 
 Contract version 15 moves Trust Graph from broad Preview wording into the bounded local RC trust
 service surface. It adds path-free local RC scope metadata on `GET /api/v1/trust-graph/status`,
-redacted statement lifecycle summaries, and local lifecycle mutation routes:
+redacted statement lifecycle summaries, and imported statement lifecycle mutation routes:
 
 | Route | Required app capabilities | Purpose |
 | --- | --- | --- |
@@ -298,8 +298,30 @@ Contract version 10 adds durable Trust Graph exchange and audit routes:
 
 | Route | Required app capabilities | Purpose |
 | --- | --- | --- |
-| `POST /api/v1/trust-graph/import-uri` | `trust.write`, `content.fetch` | Fetch bounded Crypta content by URI, parse one `crypta.trust.statement.v1` document, persist the normalized public statement in the local trust graph store, and return a redacted import summary. |
+| `POST /api/v1/trust-graph/import-uri` | `trust.write`, `content.fetch` | Fetch bounded Crypta content by URI, parse one `crypta.trust.statement.v1` document, optionally verify `expectedDocumentFingerprint` from a prior preview, persist the normalized public statement in the local trust graph store, and return a redacted import summary. |
 | `GET /api/v1/trust-graph/audit` | `trust.read` | Read bounded redacted local trust graph mutation and exchange audit entries. |
+
+Contract version 22 adds the Trust Graph beta hardening preview routes after the original v10
+exchange surface. `POST /api/v1/trust-graph/import-preview` previews pasted documents and requires
+`trust.write`. `POST /api/v1/trust-graph/import-preview-uri` previews content URI imports and
+requires both `trust.write` and `content.fetch` in the published endpoint descriptor before any
+fetch occurs. Previews discard raw content, cap statement and candidate-summary counts, summarize
+duplicate issuers and conflicts, consume Trust Graph import budget for pasted and URI previews, and
+require a later normal import to mutate local graph state. Pasted previews may summarize a direct
+statement, an array, or a `{ "statements": [...] }` wrapper, but only one extracted
+`crypta.trust.statement.v1` document can be committed through the direct import route. URI previews
+reject fetched arrays and wrappers because `import-uri` imports exactly one root
+`crypta.trust.statement.v1` document. First-party URI import commits pass
+`expectedDocumentFingerprint` to `import-uri`; if a mutable source resolves to a different document
+after preview, the commit fails with `trust_import_preview_stale`.
+
+| Route | Required app capabilities | Purpose |
+| --- | --- | --- |
+| `POST /api/v1/trust-graph/import-preview` | `trust.write` | Preview bounded pasted-document statement imports with redacted source, duplicate issuer, conflict, lifecycle, budget, and score-impact summaries before commit. |
+| `POST /api/v1/trust-graph/import-preview-uri` | `trust.write`, `content.fetch` | Fetch and preview bounded content URI statement imports with redacted source, duplicate issuer, conflict, lifecycle, budget, and score-impact summaries before commit. |
+| `POST /api/v1/trust-graph/anchors/{fingerprint}/deprecate` | `trust.write` | Mark one local anchor deprecated under local operator/app policy. |
+| `POST /api/v1/trust-graph/anchors/{fingerprint}/revoke` | `trust.write` | Mark one local anchor revoked under local operator/app policy. |
+| `POST /api/v1/trust-graph/anchors/{fingerprint}/reactivate` | `trust.write` | Return one local anchor to active local lifecycle status when local policy allows it. |
 
 The existing v7 trust routes remain compatible. Runtime embeddings can still inject an in-memory
 store for tests, but the full HTTP runtime wires a shared file-backed trust graph store under the
@@ -609,13 +631,16 @@ Feed Reader bundle. Social Inbox RC has separate evidence:
 `app-services.grant-expiry-renewal`, `app-services.provider-revalidation`,
 `app-services.trust-score-provider`, `reference-app.social-inbox-service-grant`,
 `reference-app.social-inbox-service-dependency`, `reference-app.social-inbox-rc-threading`,
+`app-platform.trust-social-beta-hardening`,
 `app-services.web-shell`, `app-services.redaction`, `app-services.dependency-redaction`, and
 `migration.social-mail-preview`.
 Trust Graph Local RC has
 separate evidence: `reference-app.trust-graph` for the first-party app,
 `app-platform.trust-graph-preview` for the original v7 trust routes and SDK helpers,
 `app-platform.trust-graph-rc-scope-and-safety` for the local RC scope, lifecycle, scoring, UI, and
-redaction checks, and `app-platform.trust-statement-signing` for the bounded AppVault signing route
+redaction checks, `app-platform.trust-social-beta-hardening` for import preview, duplicate issuer,
+anchor lifecycle, Social Inbox grant, schema migration, and redaction hardening, and
+`app-platform.trust-statement-signing` for the bounded AppVault signing route
 and redaction checks.
 
 In release-candidate mode, missing contract evidence, snapshot generation failure, descriptor

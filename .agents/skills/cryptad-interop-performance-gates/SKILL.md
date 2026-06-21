@@ -45,7 +45,7 @@ INTEROP_MODE=extended INTEROP_SKIP_BUILD=1 tools/interop/run-hyphanet-interop-sm
 - The performance gate records lightweight packaged-node startup, local FCP/Platform API timing,
   distribution size, Web Shell asset size, SDK asset size, and first-party static app source and
   staged-bundle size signals for Queue Manager, Publisher, Site Publisher, Profile Publisher,
-  Social Inbox Preview, Feed Reader, and Trust Graph Local RC. It is not a broad benchmark suite.
+  Social Inbox RC, Feed Reader, and Trust Graph Local RC. It is not a broad benchmark suite.
 - The runner requires Python 3.12 or newer.
 - Normal local commands:
 
@@ -94,19 +94,21 @@ build/release-certification/live-network-beta-smoke/live-network-beta-smoke-repo
   the aggregator. It keeps `--self-test` offline and Python-only, including source/test evidence
   for the Platform API contract, Platform API 1.0 stable baseline, manifest/catalog target
   stability, first-party stability declarations, stable reference docs, app-vault capability docs,
-  signed catalogs, first-party maintenance metadata, catalog security advisory/denylist evidence,
-  trusted app-review receipt/revocation evidence, app-owned UI origin behavior, app UI
-  design-system/lint evidence, live USK catalog publication, Site Publisher reference-content
-  coverage, Profile Publisher identity-profile coverage, Feed Reader content-fetch,
-  subscription, app-data, and app-data migration coverage,
-  Social Inbox RC threading/trust/dependency coverage, Trust Graph Local RC durable exchange,
-  lifecycle, and app-data migration coverage, app-data backup/restore portability evidence,
-  app-service registry/grant/dependency/grant-bundle/redaction coverage, generated document
-  insert/content-fetch and trust redaction coverage, app-network budget source evidence, legacy
-  plugin freeze evidence, app-review governance/reviewer-key/transparency-log evidence,
-  public-beta security hardening evidence, operator beta dashboard/recovery/support-bundle
-  evidence, legacy-admin retirement/removal Wave 1-4 evidence, sandbox provider selection, and
-  app-update lifecycle/scheduler/rollback.
+  signed catalogs, first-party maintenance metadata, app-store submission package and pre-review
+  evidence, catalog security advisory/denylist evidence, trusted app-review receipt/revocation
+  evidence, unified user-consent snapshot/digest/audit evidence, app-owned UI origin behavior,
+  app UI design-system/lint evidence, live USK catalog publication, Site Publisher
+  reference-content coverage, Profile Publisher identity-profile coverage, Feed Reader
+  content-fetch, subscription, app-data, and app-data migration coverage, Social Inbox RC
+  multi-source/threading/read-state/local-filter/export/trust-grant coverage, Trust Graph Local RC
+  durable exchange, import-preview, duplicate-issuer/conflict, anchor-lifecycle, bounded-score, and
+  app-data migration coverage, app-data backup/restore portability evidence, app-service
+  registry/grant/dependency/grant-bundle/redaction coverage, generated document insert/content-fetch
+  and trust redaction coverage, app-network budget source evidence, legacy plugin freeze evidence,
+  app-review governance/reviewer-key/transparency-log evidence, public-beta security hardening
+  evidence, operator beta dashboard/recovery/support-bundle evidence, legacy-admin
+  retirement/removal Wave 1-4 evidence, sandbox provider selection, and app-update
+  lifecycle/scheduler/rollback.
 - `tools/release-certification/network_scale_soak.py` produces the deterministic simulated
   network-scale soak summary consumed by the aggregator. Normal PR and CI runs must use simulated
   time instead of a literal 24-hour test. Release-candidate runs may attach an external
