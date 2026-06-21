@@ -83,7 +83,7 @@ recognizes the app-vault capability names `vault.secrets.read`, `vault.secrets.w
 `vault.identities.read`, `vault.identities.create`, and `vault.identities.use`; see
 [app-secret-and-identity-vault.md](app-secret-and-identity-vault.md) before requesting them.
 `vault.identities.manage` is host/operator-only and is rejected in third-party app manifests. The
-tooling also recognizes Trust Graph Preview capabilities `trust.read` and `trust.write`; see
+tooling also recognizes Trust Graph Local RC capabilities `trust.read` and `trust.write`; see
 [trust-graph-preview.md](trust-graph-preview.md) before using them. It recognizes local app-service
 capabilities `app.services.read` and `app.services.call`; see
 [app-service-discovery-and-grants.md](app-service-discovery-and-grants.md) before using them. Use

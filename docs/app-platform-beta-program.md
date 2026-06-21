@@ -81,7 +81,7 @@ Use the closest category when filing beta feedback:
 - AppVault/identity issue.
 - Content fetch/insert issue.
 - Network budget, subscription pressure, or stale-source issue.
-- Trust Graph Preview issue.
+- Trust Graph Local RC issue.
 - UI/design-system issue.
 - Legacy replacement issue.
 - Documentation issue.

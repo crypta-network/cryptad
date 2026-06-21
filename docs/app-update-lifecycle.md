@@ -287,7 +287,7 @@ scope:
   cache, and run directories are outside rollback scope.
 - `app-update.data-migration-contract` proves signed manifest schema/migration metadata,
   pre-update dry-run, app-scoped snapshot/restore, missing-path and rollback-incompatible blockers,
-  path-free Platform API/Web Shell summaries, Feed Reader and Trust Graph Preview examples, and
+  path-free Platform API/Web Shell summaries, Feed Reader and Trust Graph Local RC examples, and
   raw app-data/token/path/private-URI redaction.
 
 The evidence is collected by `tools/release-certification/app_platform_smoke.py` and aggregated by

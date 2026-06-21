@@ -223,12 +223,12 @@ Publisher may use the documented profile-document route when authorized by `vaul
 plus `vault.identities.use`. Raw secret read/write and broader identity-use operations remain
 restricted unless a contract explicitly broadens that surface with tests and docs.
 
-Trust Graph Preview adds a bounded trust-statement signing route rather than a generic browser-safe
+Trust Graph Local RC adds a bounded trust-statement signing route rather than a generic browser-safe
 identity-use route. `POST /api/v1/app-vault/identities/{identityId}/trust-statement` requires
 `trust.write`, `vault.identities.read`, and `vault.identities.use`; it signs only the canonical
 `crypta.trust.statement.v1` payload and must not expose private key material, vault paths, raw
 request bodies, app process tokens, browser session tokens, form passwords, or local paths. The
-local trust graph API is a durable local preview service, not full WoT, old WebOfTrust plugin
+local trust graph API is a durable local RC service, not full WoT, old WebOfTrust plugin
 compatibility, moderation, routing policy, or peer-selection policy. Trust anchors are local,
 imported statements are non-contributing until anchored and signature-verified, and release
 evidence must not record raw trust statement bodies from real users, raw fetched content, private

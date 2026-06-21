@@ -93,8 +93,8 @@ signed bundle and are validated during structure checks. They must not point at 
 distribution sidecars, absolute paths, traversal segments, Windows drive prefixes, empty segments,
 colons, or control characters. Existing shell-panel entries remain valid.
 
-The repo-owned Queue Manager, legacy Publisher, Site Publisher, Profile Publisher, Social Inbox
-Preview, Feed Reader, and Trust Graph Preview bundles use `app.ui.mode=static` and
+The repo-owned Queue Manager, legacy Publisher, Site Publisher, Profile Publisher, Social Inbox RC,
+Feed Reader, and Trust Graph Local RC bundles use `app.ui.mode=static` and
 `app.ui.entry=static/index.html`, so installed copies open through isolated app origins when
 available. Queue Manager and legacy Publisher remain compatibility fallbacks for the current
 retirement map. Site Publisher is the content reference app for local publishing workflows, Profile
@@ -102,7 +102,7 @@ Publisher is the identity-profile reference app for vault-backed profile-documen
 Social Inbox RC is the threaded social inbox reference app for local threads, read state,
 subscriptions, channel/search filters, safe author links, and advisory Trust Graph annotations.
 Feed Reader is the bounded content-subscription reference app for durable USK feed follow behavior,
-feed reading, and generated feed publication, and Trust Graph Preview is the local trust-service
+feed reading, and generated feed publication, and Trust Graph Local RC is the local trust-service
 reference app for trust statements, anchors, preview scoring, and the `trust.score` app-service
 provider.
 
@@ -260,7 +260,7 @@ is available, and copies canonical design-system assets into `static/crypta-ui/`
 [app-dev-cli.md](app-dev-cli.md) for the full scaffold, lint, pack, and catalog flow.
 
 The CLI does not replace the first-party Gradle workflow. Queue Manager, legacy Publisher, Site
-Publisher, Profile Publisher, Social Inbox RC, Feed Reader, and Trust Graph Preview can keep
+Publisher, Profile Publisher, Social Inbox RC, Feed Reader, and Trust Graph Local RC can keep
 using their `stageApp`, `signApp`, and `verifyApp` tasks.
 
 ## Catalog Store Metadata
@@ -387,7 +387,7 @@ Stage the Social Inbox RC reference app:
 ./gradlew :apps:social-inbox:stageApp
 ```
 
-Stage the Trust Graph Preview reference app:
+Stage the Trust Graph Local RC reference app:
 
 ```bash
 ./gradlew :apps:trust-graph:stageApp
@@ -433,7 +433,7 @@ Sign Social Inbox RC with the same local development key pair:
   -PcryptadAppSigningPrivateKeyFile=dev/app-signing-private.pem
 ```
 
-Sign Trust Graph Preview with the same local development key pair:
+Sign Trust Graph Local RC with the same local development key pair:
 
 ```bash
 ./gradlew :apps:trust-graph:signApp \
@@ -481,7 +481,7 @@ Verify Social Inbox RC with the matching public key:
   -PcryptadAppSigningPublicKeyFile=dev/app-signing-public.pem
 ```
 
-Verify Trust Graph Preview with the matching public key:
+Verify Trust Graph Local RC with the matching public key:
 
 ```bash
 ./gradlew :apps:trust-graph:verifyApp \
@@ -492,7 +492,7 @@ Verify Trust Graph Preview with the matching public key:
 Stage, sign, and verify all first-party apps:
 
 The root first-party tasks include Queue Manager, Publisher, Site Publisher, Profile Publisher,
-Social Inbox RC, Feed Reader, and Trust Graph Preview.
+Social Inbox RC, Feed Reader, and Trust Graph Local RC.
 
 ```bash
 ./gradlew \

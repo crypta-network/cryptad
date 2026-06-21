@@ -79,7 +79,7 @@ instead of writing a temporary local file path into the request. See
 
 ## Trust statement signing route
 
-Trust Graph Preview uses a separate bounded identity-use route:
+Trust Graph Local RC uses a separate bounded identity-use route:
 
 ```text
 POST /api/v1/app-vault/identities/{identityId}/trust-statement

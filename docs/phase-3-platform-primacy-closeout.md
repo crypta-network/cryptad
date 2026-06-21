@@ -85,9 +85,9 @@ The Phase 3 platform path is split across focused modules:
   staged bundles declare `app.ui.mode=static`, fetch bounded Crypta feed documents through
   `content.fetch`, publish generated feed snapshots through the app-document insert route, and keep
   USK follow behavior scoped to the open browser tab.
-- `apps/trust-graph` owns the Trust Graph Preview first-party local trust-service reference app
+- `apps/trust-graph` owns the Trust Graph Local RC first-party local trust-service reference app
   bundle. Current staged bundles declare `app.ui.mode=static`, use `trust.read` and `trust.write`
-  for local preview state, fetch bounded Crypta trust statement documents through `content.fetch`,
+  for local RC state, fetch bounded Crypta trust statement documents through `content.fetch`,
   and publish generated trust statements through the app-document insert route.
 - `:adapter-fcp` owns the detached FCP protocol adapter surface. It remains a compatibility and
   automation protocol, separate from Platform API.
@@ -202,8 +202,8 @@ Phase 4 candidates were plans, not PR-194 implementation scope. Current status:
   validation, signing, packaging, verification, and catalog authoring.
 - The first content-oriented reference app has landed as Site Publisher, the first
   identity-profile reference app has landed as Profile Publisher, the first feed/content-fetch
-  reference app has landed as Feed Reader, and the first local trust-service preview reference app
-  has landed as Trust Graph Preview. Later app-platform phases add Social Inbox RC, durable app
+  reference app has landed as Feed Reader, and the first local trust-service RC reference app has
+  landed as Trust Graph Local RC. Later app-platform phases added Social Inbox RC, durable app
   data, content subscriptions, and app-service grants; see
   [app-platform-developer-portal.md](app-platform-developer-portal.md) for the current first-party
   app map.

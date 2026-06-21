@@ -1,6 +1,6 @@
 ---
 name: cryptad-platform-apps
-description: "Work on Cryptad's app platform: Platform API v1/contract, AppHost runtime/rollback, signed app bundles/catalogs, trusted app-review receipts, Trust Graph Local RC, app-update lifecycle, durable app data, app-data backup/restore, content subscriptions, app-network budgets, local app-service discovery/dependencies/grant bundles, app-owned static UI, browser sessions, the browser SDK, the app UI design system/linter, developer CLI, app permissions/audit, sandbox providers, operator beta dashboard/support evidence, operator RC recovery/support workflows, live-network beta certification evidence, legacy plugin freeze, and legacy admin retirement routing."
+description: "Work on Cryptad's app platform: Platform API v1/contract, unified operator consent, AppHost runtime/rollback, signed app bundles/catalogs, app-store submission review, trusted app-review receipts, Trust Graph Local RC, Social Inbox RC, app-update lifecycle, durable app data, app-data backup/restore, content subscriptions, app-network budgets, local app-service discovery/dependencies/grant bundles, app-owned static UI, browser sessions, the browser SDK, the app UI design system/linter, developer CLI, app permissions/audit, sandbox providers, operator beta dashboard/support evidence, operator RC recovery/support workflows, live-network beta certification evidence, legacy plugin freeze, and legacy admin retirement routing."
 ---
 
 # Cryptad platform apps
@@ -21,8 +21,11 @@ Load only the docs needed for the change:
 - Signed bundles and first-party app tasks: `docs/app-distribution.md`
 - Standalone app developer CLI: `docs/app-dev-cli.md`
 - Signed catalogs: `docs/app-catalogs.md`
+- App-store submission and review workflow: `docs/app-store-submission-and-review-workflow.md`
+- App-review governance: `docs/app-review-governance.md`
 - App update lifecycle and rollback: `docs/app-update-lifecycle.md`
 - App upgrade data migrations: `docs/app-upgrade-data-migrations.md`
+- User consent and permission upgrade UX: `docs/user-consent-and-permission-upgrade-ux.md`
 - Durable app data: `docs/app-data-store.md`
 - App-data backup/restore portability: `docs/app-data-backup-restore-portability.md`
 - Local app-service discovery and grants: `docs/app-service-discovery-and-grants.md`
@@ -30,8 +33,8 @@ Load only the docs needed for the change:
 - App UI design-system assets and offline UI lint: `docs/app-ui-design-system.md`
 - Browser SDK behavior: `docs/platform-sdk-js.md`
 - Feed Reader and content-fetch reference app: `docs/feed-reader-reference-app.md`
-- Social Inbox Preview reference app: `docs/social-inbox-reference-app.md`
-- Trust Graph Preview reference app and local trust-service API: `docs/trust-graph-preview.md`
+- Social Inbox RC reference app: `docs/social-inbox-reference-app.md`
+- Trust Graph Local RC reference app and local trust-service API: `docs/trust-graph-preview.md`
 - Network-scale content/subscription budget: `docs/network-scale-soak-and-subscription-budget.md`
 - App secret and identity vault: `docs/app-secret-and-identity-vault.md`
 - AppHost runtime/log/token boundary: `docs/apphost-runtime-hardening.md`
@@ -50,13 +53,14 @@ Load only the docs needed for the change:
   authorization decisions, browser-session
   authorization decisions, capabilities, app-vault route handlers, generated app-document queue
   staging, bounded content fetch routing, shared app-network budget service/store, durable content
-  subscriptions, durable app data, app-data backup/restore planning and commit routes, internal
-  update snapshots, local Trust Graph Local RC route handlers, local app-service
-  discovery/dependency/grant-bundle routes and adapters, bounded app audit logs, and the local
-  app-update lifecycle service plus scheduler above AppHost, catalog, vault, app-data, content,
-  trust, and runtime primitives, plus the host/operator-only beta dashboard, subscription recovery
-  wrappers, typed operator RC recovery action planning/execution, safe network-budget snapshots,
-  support-bundle preview metadata, and redacted support-bundle assembly.
+  subscriptions, durable app data, app-data backup/restore planning and commit routes, unified
+  consent previews/decisions/audit stores, internal update snapshots, local Trust Graph Local RC
+  route handlers, local app-service discovery/dependency/grant-bundle routes and adapters, bounded
+  app audit logs, and the local app-update lifecycle service plus scheduler above AppHost, catalog,
+  vault, app-data, content, trust, and runtime primitives, plus the host/operator-only beta
+  dashboard, subscription recovery wrappers, typed operator RC recovery action planning/execution,
+  safe network-budget snapshots, support-bundle preview metadata, and redacted support-bundle
+  assembly.
 - `:platform-apphost` owns installed app layout, manifest parsing, app process lifecycle,
   per-launch `CRYPTAD_APP_TOKEN`, runtime status, process-log capture/redaction, and restart
   attempts, durable previous-bundle rollback records, plus sandbox policy/status reporting,
@@ -79,18 +83,20 @@ Load only the docs needed for the change:
   verification, `crypta:` catalog-source URI handling, safe ZIP extraction, and verified staging
   into AppHost install/update flows, plus optional review/API compatibility target-stability
   metadata, first-party maintenance metadata, catalog security advisories/version denylists,
-  independent app-review receipts, trusted reviewer-key loading, review policy modes, and review
-  trust decisions used by app update review, reviewer-key lifecycle parsing, local review
-  transparency logging, governance snapshots, and review-history API support.
+  submission package writing/verification/pre-review/redaction, independent app-review receipts,
+  trusted reviewer-key loading, review policy modes, and review trust decisions used by app update
+  review, reviewer-key lifecycle parsing, local review transparency logging, governance snapshots,
+  and review-history API support.
 - `:platform-trustgraph` owns the Trust Graph Local RC statement model, strict JSON parser,
   canonical payload and signature helpers, process-local anchor/store abstractions, lifecycle
-  status records, and deterministic direct-anchor scoring. It is a local preview library, not a
+  status records, and deterministic direct-anchor scoring. It is a local RC library, not a
   peer protocol or full Web of Trust implementation.
 - `:platform-devtools` owns the standalone `crypta-app` CLI for scaffolding, validating, signing,
-  packaging, verifying, catalog-authoring, API contract snapshotting, compatibility verification,
-  mock dev serving, offline app tests, developer key generation, and dry-run publication planning
-  or explicit live USK publication for developer-owned staged bundles, including `crypta-app ui
-  lint` and review receipt sign/verify helpers.
+  packaging, verifying, catalog-authoring, app-store submission package/pre-review/candidate
+  commands, API contract snapshotting, compatibility verification, mock dev serving, offline app
+  tests, developer key generation, and dry-run publication planning or explicit live USK
+  publication for developer-owned staged bundles, including `crypta-app ui lint` and review receipt
+  sign/verify helpers.
 - `:platform-web-shell` owns `/app/node/` browser shell assets, bootstrap, app/catalog/update/review
   operator views, the operator beta dashboard/support-bundle panel, the Operator RC Recovery
   surface, subscription recovery controls, app-data backup/restore controls, app-service
@@ -103,10 +109,13 @@ Load only the docs needed for the change:
 - `:apps:publisher` stages the legacy-publisher replacement static UI bundle.
 - `:apps:site-publisher` stages the first-party content reference static UI bundle.
 - `:apps:profile-publisher` stages the first-party identity-profile reference static UI bundle.
-- `:apps:social-inbox` stages the first-party social/mail migration preview static UI bundle.
+- `:apps:social-inbox` stages the first-party Social Inbox RC static UI bundle for beta
+  social/mail-like threading, multi-source subscriptions, local read/filter/export state, and
+  operator-approved Trust Graph score annotations through app-service grants.
 - `:apps:feed-reader` stages the first-party feed reader/subscription reference static UI bundle.
-- `:apps:trust-graph` stages the first-party Trust Graph Preview reference static UI bundle and
-  advertises the local `trust.score` app-service provider.
+- `:apps:trust-graph` stages the first-party Trust Graph Local RC static UI bundle, including local
+  anchor lifecycle controls, import previews, recovery/export/import affordances, and the local
+  `trust.score` app-service provider.
 
 ## Guardrails
 
@@ -120,6 +129,10 @@ Load only the docs needed for the change:
   persistent browser storage.
 - App-originated Platform API requests must authenticate with a live app process token or app
   browser session and pass the central capability matrix. Deny app principals by default.
+- Material install, update, app-data migration, backup-before-update, app-service grant, and Trust
+  Graph import-preview decisions must use unified consent snapshots when required. Approval is
+  bound to the exact snapshot digest, stale approvals must fail closed, and consent audit evidence
+  must stay path-free and token-free.
 - Platform API 1.0 is the stable app-facing baseline named `stableBaseline.name=1.0`, frozen at
   contract version 19 and distinct from the current integer contract version. Later contract bumps
   must not expand or shrink that baseline unless the change deliberately defines a new baseline.
@@ -159,12 +172,15 @@ Load only the docs needed for the change:
 - App-generated document insert routes accept generated document bytes, not local source paths.
   Keep raw generated documents, raw feed/profile/trust bodies, private insert URIs, raw
   signatures, and request bodies out of audit entries, logs, and release evidence.
-- Trust Graph Local RC is local preview scoring and bounded statement import/sign/publish support.
-  Direct import consumes Trust Graph import budget, and import-by-URI consumes both Trust Graph
-  import budget and the shared content-fetch budget. Do not claim full Web of Trust compatibility,
-  old plugin compatibility, global moderation, background crawling, daemon-core identity sharing,
-  or protocol/network behavior changes. Trust evidence must stay bounded and redacted; do not
-  record raw trust documents from real users.
+- Trust Graph Local RC is local RC scoring and bounded statement import/sign/publish support.
+  Direct import and pasted import preview consume Trust Graph import budget; import-by-URI and URI
+  preview consume both Trust Graph import budget and the shared content-fetch budget. URI previews
+  must fetch one root `crypta.trust.statement.v1` document so `import-preview-uri` and `import-uri`
+  agree. Pasted previews may summarize arrays or `{ "statements": [...] }` wrappers, but commits
+  must send one direct statement document. Do not claim full Web of Trust compatibility, old plugin
+  compatibility, global moderation, background crawling, daemon-core identity sharing, or
+  protocol/network behavior changes. Trust evidence must stay bounded and redacted; do not record
+  raw trust documents from real users.
 - App-service discovery and grants are local Platform API mediation only. Do not add generic RPC,
   arbitrary localhost proxying, bearer tokens apps can pass around, remote discovery, daemon-core
   plugin ABIs, cross-app app-data access, or provider run/cache/store path exposure. Invocation must
@@ -175,9 +191,11 @@ Load only the docs needed for the change:
   or invocation. Evidence and Web Shell summaries must not include raw service request bodies, raw
   subject URIs, raw Trust Graph data, provider app data, tokens, private keys, private insert URIs,
   raw signatures, backup payloads, or local paths.
-- Social Inbox Preview is a migration spike for social/mail-like workflows. Do not present it as
-  encrypted mail transport, Freetalk/Sone/Freemail compatibility, full WoT, or a daemon-core message
-  protocol.
+- Social Inbox RC is a first-party beta reference app for social/mail-like local workflows. It may
+  manage multiple bounded USK sources, local read/unread state, local mute/block filters, redacted
+  exports, author profile summaries, and Trust Graph score annotations only through app-service
+  grants. Do not present it as encrypted mail transport, Freetalk/Sone/Freemail compatibility, full
+  WoT, network moderation, or a daemon-core message protocol.
 - The legacy in-process plugin system is frozen and removed. Do not add
   `network.crypta.pluginmanager`, plugin toadlets, old plugin ABIs, old
   WebOfTrust/Freetalk/Sone/Freemail shims, or FCP plugin command execution. Legacy plugin FCP
@@ -194,6 +212,10 @@ Load only the docs needed for the change:
   the explicit development-only escape hatch.
 - Trusted app-review receipts are independent reviewer evidence. Do not treat publisher advisory
   `review.status`, app signing keys, or catalog signing keys as reviewer trust.
+- App-store submission packages are review inputs, not install approvals. Keep package bodies,
+  rationale documents, maintainer/source metadata, pre-review findings, transparency events, and
+  catalog candidates deterministic and redacted; consent previews may summarize review metadata but
+  must not include raw package bodies, local paths, keys, or tokens.
 - Reviewer governance is local trusted-key configuration plus a local tamper-evident transparency
   log. Do not present catalog-listed reviewer keys as automatically trusted, and do not describe
   the local transparency log as a global public log.
@@ -260,10 +282,11 @@ Load only the docs needed for the change:
   evidence, bounded content-fetch/subscription evidence, durable app-data and app-data
   backup/restore evidence, app-network budget and network-scale soak evidence, signed bundle
   evidence, signed catalog/live USK publication evidence,
-  first-party beta catalog metadata, trusted app-review receipt evidence, sandbox-provider
-  evidence, app-update lifecycle/scheduler/rollback and app-data migration contract evidence, Site
-  Publisher/Profile Publisher/Social Inbox/Feed Reader/Trust Graph Local RC reference-app evidence,
-  app-service registry/grant/dependency/grant-bundle/redaction evidence, legacy plugin freeze
+  first-party beta catalog metadata, app-store submission/pre-review evidence, trusted app-review
+  receipt evidence, sandbox-provider evidence, app-update lifecycle/scheduler/rollback and
+  app-data migration contract evidence, Site Publisher/Profile Publisher/Social Inbox RC/Feed
+  Reader/Trust Graph Local RC reference-app evidence, unified consent evidence, app-service
+  registry/grant/dependency/grant-bundle/redaction evidence, legacy plugin freeze
   evidence, app-review governance and local transparency-log evidence, public-beta security
   hardening evidence, operator beta dashboard/recovery/support-bundle evidence, operator RC
   recovery/support workflow evidence, legacy-admin retirement and Wave 1-4 removal state, and optional

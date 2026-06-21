@@ -2827,7 +2827,7 @@ def ecosystem_matrix_row_specs() -> list[MatrixRowSpec]:
         MatrixRowSpec(
             id="trust-graph-app",
             category="reference-apps",
-            title="Trust Graph Preview reference app",
+            title="Trust Graph Local RC reference app",
             required_evidence_ids=(
                 "reference-app.trust-graph",
                 "reference-app.trust-graph-durable-exchange",
@@ -5529,7 +5529,7 @@ def evaluate_reference_content_gate(
             gate_details, "warningEvidenceIds", "reference-app.feed-reader-app-data"
         )
     if trust_graph_details.get("appId") not in {"trust-graph", None}:
-        failures.append("Trust Graph Preview evidence is not for trust-graph")
+        failures.append("Trust Graph Local RC evidence is not for trust-graph")
         add_evidence_issue(gate_details, "failureEvidenceIds", "reference-app.trust-graph")
     if trust_graph_checks:
         for key in (
@@ -5544,10 +5544,10 @@ def evaluate_reference_content_gate(
             "manifestAdvertisesTrustScoreService",
         ):
             if trust_graph_checks.get(key) is not True:
-                failures.append(f"Trust Graph Preview reference app check {key} failed")
+                failures.append(f"Trust Graph Local RC reference app check {key} failed")
                 add_evidence_issue(gate_details, "failureEvidenceIds", "reference-app.trust-graph")
     elif trust_graph_status == "pass":
-        warnings.append("Trust Graph Preview coverage lacks detailed staged app checks")
+        warnings.append("Trust Graph Local RC coverage lacks detailed staged app checks")
         add_evidence_issue(gate_details, "warningEvidenceIds", "reference-app.trust-graph")
     if trust_graph_app_data_checks:
         for key in (
@@ -5933,7 +5933,7 @@ def evaluate_reference_content_gate(
             "noRawApiOrManualFetch",
         ):
             if trust_graph_durable_exchange_checks.get(key) is not True:
-                failures.append(f"Trust Graph Preview durable exchange app check {key} failed")
+                failures.append(f"Trust Graph Local RC durable exchange app check {key} failed")
                 add_evidence_issue(
                     gate_details,
                     "failureEvidenceIds",

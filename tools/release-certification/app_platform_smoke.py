@@ -7848,7 +7848,7 @@ def collect_trust_graph_preview_evidence(settings: Settings) -> EvidenceItem:
             "app-platform.trust-graph-preview",
             root_consequence(settings, "fail"),
             True,
-            "Trust Graph Preview Platform API evidence found problems.",
+            "Trust Graph Local RC Platform API evidence found problems.",
             source,
             {"errors": errors, **details},
         )
@@ -7856,7 +7856,7 @@ def collect_trust_graph_preview_evidence(settings: Settings) -> EvidenceItem:
         "app-platform.trust-graph-preview",
         "pass",
         True,
-        "Trust Graph Preview Platform API evidence passed.",
+        "Trust Graph Local RC Platform API evidence passed.",
         source,
         details,
     )
@@ -9900,7 +9900,8 @@ def collect_legacy_plugin_migration_evidence(settings: Settings) -> EvidenceItem
         "webOfTrustMigration": "WebOfTrust-like" in guide_text or "WoT-like" in guide_text,
         "freetalkSoneMigration": "Freetalk/Sone-like" in guide_text,
         "freemailMigration": "Freemail-like" in guide_text,
-        "trustGraphPreview": "Trust Graph Preview" in guide_text,
+        "trustGraphPreview": "Trust Graph Preview" in guide_text
+        or "Trust Graph Local RC" in guide_text,
         "socialInboxReference": "Social Inbox RC" in guide_text
         or "Social Inbox reference" in guide_text,
         "appVault": "app vault" in guide_lower or "AppVault" in guide_text,
@@ -10017,7 +10018,7 @@ def collect_legacy_plugin_social_inbox_spike_evidence(settings: Settings) -> Evi
             "legacy-plugin.social-inbox-spike",
             root_consequence(settings, "fail"),
             True,
-            "Legacy plugin Social Inbox migration spike evidence found problems.",
+            "Legacy plugin Social Inbox RC migration evidence found problems.",
             source,
             {"errors": errors, **details},
         )
@@ -10025,7 +10026,7 @@ def collect_legacy_plugin_social_inbox_spike_evidence(settings: Settings) -> Evi
         "legacy-plugin.social-inbox-spike",
         "pass",
         True,
-        "Legacy plugin Social Inbox migration spike evidence passed.",
+        "Legacy plugin Social Inbox RC migration evidence passed.",
         source,
         details,
     )
@@ -16635,7 +16636,7 @@ def make_self_test_workspace(workspace: Path) -> None:
                 "It uses AppVault identities, profile-document metadata, bounded crypta.social.message.v1 "
                 "domain-separated signing, generated app-document outbox publication, content.subscribe "
                 "USK source metadata, durable app-data records, additive schema-1 beta records without mandatory local migration, local message threads, "
-                "bounded local search, channel filters, read state, and Trust Graph Preview annotations only. "
+                "bounded local search, channel filters, read state, and Trust Graph Local RC annotations only. "
                 "It supports local-only mute/block filters, source pause/resume state, and redacted message export summaries. "
                 "It is not a production social network, mail protocol, full WoT implementation, "
                 "Freetalk/Sone/Freemail compatibility layer, not encrypted mail, daemon-core message store, "
@@ -18100,9 +18101,9 @@ def make_self_test_workspace(workspace: Path) -> None:
         "The local transparency log is not a global public log. "
         "queue-manager publisher site-publisher profile-publisher social-inbox feed-reader trust-graph use permissions.rationale entries, "
         "Profile Publisher is the identity-profile reference app. "
-        "Social Inbox RC is a social/mail-like reference app and migration spike outside the daemon core, outside the daemon, and not a generic browser signing API. "
+        "Social Inbox RC is a social/mail-like beta reference app outside the daemon core, outside the daemon, and not a generic browser signing API. "
         "It uses AppVault identity, bounded crypta.social.message.v1 social message signing, a Signed social message document format with domain-separated signatures, profile-document metadata, generated app-document outbox insert, "
-        "durable content.subscribe USK sources, local thread reconstruction, channel filters, bounded local search, app-data read state and drafts, additive schema-1 beta records without mandatory local migration, local mute/block filters, redacted message export, and Trust Graph Preview message-author annotations only that are not a moderation decision. "
+        "durable content.subscribe USK sources, local thread reconstruction, channel filters, bounded local search, app-data read state and drafts, additive schema-1 beta records without mandatory local migration, local mute/block filters, redacted message export, and Trust Graph Local RC message-author annotations only that are not a moderation decision. "
         "It is not old plugin ABI compatibility, not Freetalk, Sone, Freemail, not encrypted mail, not a full WoT, not a daemon-core message protocol, and not network protocol changes. "
         "Feed Reader & Publisher is the content subscription reference app and uses SDK helpers such as CryptaPlatform.feed.fetchSnapshot and CryptaPlatform.content.subscriptions. "
         "Trust Graph Local RC is local trust only, not global truth, not a full Web of Trust, "
@@ -18306,7 +18307,7 @@ def make_self_test_workspace(workspace: Path) -> None:
         "The old plugin runtime removed status is intentional. There is no old plugin ABI "
         "compatibility and no old FCP plugin command compatibility. No new in-core plugin APIs "
         "will be added. WebOfTrust-like and WoT-like "
-        "migration maps to Trust Graph Preview, durable trust graph storage, content subscriptions, "
+        "migration maps to Trust Graph Local RC, durable trust graph storage, content subscriptions, "
         "AppVault identity grants, durable app data, and app-service grants for trust.score. "
         "Freetalk/Sone-like migration maps to Social Inbox RC, Profile Publisher, Feed Reader, "
         "content subscriptions, app data, and Trust Graph annotations. Freemail-like migration uses "
@@ -20359,7 +20360,7 @@ def api_snapshot(args):
         for method, route, capabilities, since, description in stable_endpoint_specs
     ]
     experimental_endpoints = [
-        endpoint("GET", "/trust-graph/audit", ["trust.read"], 10, "List recent redacted Trust Graph Preview audit events.", "experimental"),
+        endpoint("GET", "/trust-graph/audit", ["trust.read"], 10, "List recent redacted Trust Graph Local RC audit events.", "experimental"),
         endpoint("POST", "/trust-graph/import-uri", ["content.fetch", "trust.write"], 10, "Fetch and import one bounded trust statement from a Crypta content URI.", "experimental"),
         endpoint("GET", "/trust-graph/statements/{fingerprint}", ["trust.read"], 15, "Read one redacted local Trust Graph RC statement summary.", "experimental"),
         endpoint("POST", "/trust-graph/statements/{fingerprint}/deprecate", ["trust.write"], 15, "Mark one imported statement deprecated in local lifecycle policy.", "experimental"),

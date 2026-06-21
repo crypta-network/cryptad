@@ -30,7 +30,7 @@ Legacy plugin responsibilities map to existing app-platform mechanisms:
 | Plugin identity/secrets | App vault grants and bounded AppVault signing routes |
 | Content polling | Budgeted USK content subscriptions |
 | Content publishing | App-generated documents plus queue APIs |
-| Trust scoring | Trust Graph Preview plus an app-service grant to `trust.score` |
+| Trust scoring | Trust Graph Local RC plus an app-service grant to `trust.score` |
 | Social/message board patterns | Social Inbox RC reference app |
 | Distribution | Signed bundles, signed catalogs, and trusted review receipts |
 | Compatibility/review | Platform API contract verifier and app review governance |
@@ -43,7 +43,7 @@ needs a local service from another app.
 
 ### WebOfTrust-like trust layer
 
-Map WebOfTrust-like or WoT-like trust behavior to Trust Graph Preview. The current preview gives
+Map WebOfTrust-like or WoT-like trust behavior to Trust Graph Local RC. The current RC gives
 apps a local trust graph backend, durable trust graph storage, AppVault-backed trust-statement
 signing, budgeted USK content subscriptions for public trust-statement exchange, and a mediated
 `trust.score` service that consumers can call only after an operator-approved app-service grant.
@@ -62,8 +62,8 @@ compatibility, and not an old plugin ABI compatibility layer.
 
 ### Freetalk/Sone-like social feed or forum layer
 
-Map Freetalk/Sone-like social feed, forum, profile, or message-board behavior to Social Inbox
-Preview, Profile Publisher, Feed Reader, budgeted USK content subscriptions, app-data state, and
+Map Freetalk/Sone-like social feed, forum, profile, or message-board behavior to Social Inbox RC,
+Profile Publisher, Feed Reader, budgeted USK content subscriptions, app-data state, and
 Trust Graph score annotations.
 
 Social or forum apps should:

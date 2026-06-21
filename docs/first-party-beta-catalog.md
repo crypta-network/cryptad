@@ -199,7 +199,7 @@ api.targetStability=experimental
 api.experimentalCapabilitiesAccepted=true
 ```
 
-Trust Graph Preview descriptors should include trust, vault, content-fetch, content-subscription,
+Trust Graph Local RC descriptors should include trust, vault, content-fetch, content-subscription,
 generated-document publication, and redacted audit rationales, while making clear that the app is a
 local durable preview and not full WoT or a moderation system:
 

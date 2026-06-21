@@ -131,7 +131,7 @@ The current capabilities are intentionally conservative:
 | `config.write` | config overrides and persist |
 | `security.read` | `GET /api/v1/security-levels/**` |
 | `security.write` | network and physical threat-level mutations |
-| `trust.read` | read local Trust Graph Preview status, anchors, subjects, statement summaries, scores, and bounded evidence |
+| `trust.read` | read local Trust Graph Local RC status, anchors, subjects, statement summaries, scores, and bounded evidence |
 | `trust.write` | import bounded trust statements and add/remove local trust anchors |
 | `app.services.read` | discover local app-service descriptors and read caller-visible grant state |
 | `app.services.call` | request and invoke operator-approved local app-service grants |
@@ -210,7 +210,7 @@ evidence for this route must keep raw feed bodies, raw fetched content, raw requ
 private insert URIs, app process tokens, browser-session tokens, form passwords, queue HTML, and
 local paths out of persisted output.
 
-Trust Graph Preview is the local trust-service reference app. Score/status reads require
+Trust Graph Local RC is the local trust-service reference app. Score/status reads require
 `trust.read`; imports and local anchor changes require `trust.write`; bounded trust-statement
 signing also requires `vault.identities.read` and `vault.identities.use`. URI import additionally
 requires `content.fetch`; trust-statement subscription management uses `content.subscribe` and the
@@ -219,7 +219,7 @@ same `content.fetch` grant for create/refresh that content subscriptions require
 only; it does not publish anchors automatically, export private identity material, grant moderation
 authority, or apply scores to content blocking.
 
-Trust Graph Preview also has a bounded redacted trust graph audit route:
+Trust Graph Local RC also has a bounded redacted trust graph audit route:
 
 ```text
 GET /api/v1/trust-graph/audit
@@ -233,7 +233,7 @@ status, and stable status codes. They must not include raw trust documents, raw 
 raw request bodies, signature values, private insert URIs, private keys, app process tokens,
 browser-session tokens, form passwords, daemon exception text, or absolute local paths.
 
-The Trust Graph Preview app also uses `app.data.read` and `app.data.write` for UI-local draft
+The Trust Graph Local RC app also uses `app.data.read` and `app.data.write` for UI-local draft
 values, selected filters, and redacted import summaries. Those permissions are separate from the
 platform trust graph backend, which persists public anchors and imported public statements as local
 platform service state.

@@ -17,8 +17,10 @@ staged app / signed bundle
 -> release certification evidence
 ```
 
-PR-263 consent and permission-upgrade UX is intentionally out of scope. This workflow records and
-displays review status only.
+The submission workflow does not approve installs or updates by itself. It records review status
+and redacted reviewer evidence that the catalog, Web Shell, and unified consent layer can display
+later. Install and update mutations still use the consent snapshot and digest checks described in
+[user-consent-and-permission-upgrade-ux.md](user-consent-and-permission-upgrade-ux.md).
 
 ## Submission Package
 

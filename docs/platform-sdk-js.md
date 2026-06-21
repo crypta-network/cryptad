@@ -18,7 +18,7 @@ Static app bundles should load the staged SDK before app-specific JavaScript:
 ```
 
 The first-party Queue Manager, Publisher, Site Publisher, Profile Publisher, Social Inbox RC,
-Feed Reader, and Trust Graph Preview bundles receive `crypta-platform.js` during their Gradle
+Feed Reader, and Trust Graph Local RC bundles receive `crypta-platform.js` during their Gradle
 `stageApp` tasks. The canonical source
 lives in `platform-sdk-js/src/main/resources/network/crypta/platform/sdk/js/crypta-platform.js`.
 
@@ -347,7 +347,7 @@ The SDK never writes durable app state to `localStorage` or `sessionStorage`. Ap
 bounded app-owned user state, not secrets or identity material. Use AppVault for private material
 and keep raw app-data values out of release evidence.
 
-Trust Graph Preview uses the trust helpers:
+Trust Graph Local RC uses the trust helpers:
 
 ```js
 const status = await CryptaPlatform.trust.status();

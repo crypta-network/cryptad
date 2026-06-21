@@ -194,7 +194,7 @@ sandbox requirements.
 ## Reference apps
 
 Feed Reader declares schema v2 with a `ui-state-v1-v2` migration step and
-`bin/migrate-feed-data.sh`. Trust Graph Preview declares schema v2 with a `ui-state-v1-v2`
+`bin/migrate-feed-data.sh`. Trust Graph Local RC declares schema v2 with a `ui-state-v1-v2`
 migration step and `bin/migrate-preview-data.sh`. Both scripts support `dry-run` and `apply`
 modes, validate the fixed environment variables, and print only generic status text. Both
 first-party steps are rollback-incompatible because the updated apps may persist schema-v2 state

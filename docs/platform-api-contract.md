@@ -307,7 +307,11 @@ exchange surface. `POST /api/v1/trust-graph/import-preview` previews pasted docu
 requires both `trust.write` and `content.fetch` in the published endpoint descriptor before any
 fetch occurs. Previews discard raw content, cap statement and candidate-summary counts, summarize
 duplicate issuers and conflicts, consume Trust Graph import budget for pasted and URI previews, and
-require a later normal import to mutate local graph state. First-party URI import commits pass
+require a later normal import to mutate local graph state. Pasted previews may summarize a direct
+statement, an array, or a `{ "statements": [...] }` wrapper, but only one extracted
+`crypta.trust.statement.v1` document can be committed through the direct import route. URI previews
+reject fetched arrays and wrappers because `import-uri` imports exactly one root
+`crypta.trust.statement.v1` document. First-party URI import commits pass
 `expectedDocumentFingerprint` to `import-uri`; if a mutable source resolves to a different document
 after preview, the commit fails with `trust_import_preview_stale`.
 

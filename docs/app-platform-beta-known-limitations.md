@@ -61,8 +61,8 @@ This page records conservative limits and safety boundaries for the Crypta app e
 - App-generated document insert stages bytes under Cryptad control. It must not expose absolute
   staging paths, local source paths, raw request bodies, raw profile/feed/trust documents, or
   private insert URIs.
-- Trust Graph Preview has durable local backend storage for anchors and imported public
-  statements, but it remains a local preview. It is not full Web of Trust, old plugin
+- Trust Graph Local RC has durable local backend storage for anchors and imported public
+  statements, but it remains local RC scope. It is not full Web of Trust, old plugin
   compatibility, global moderation, routing policy, peer selection, or a background crawler.
 - The [legacy plugin freeze policy](legacy-plugin-freeze-policy.md) and
   [legacy plugin migration guide](legacy-plugin-migration-guide.md) document the app-platform path,

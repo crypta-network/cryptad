@@ -68,9 +68,9 @@ Use this skill when you need to:
     app-vault routes, app-generated document inserts, bounded content fetch, shared app-network
     budget service/store, durable content
     subscriptions, durable app data and internal update snapshots, app-data backup/restore routes,
-    local app-service discovery/dependency graph/grant-bundle routes, app-update
-    lifecycle/scheduler, and host/operator-only beta dashboard/support-bundle, typed operator RC
-    recovery, and safe network-budget snapshot routes)
+    unified consent preview/decision/audit routes, local app-service discovery/dependency
+    graph/grant-bundle routes, app-update lifecycle/scheduler, and host/operator-only beta
+    dashboard/support-bundle, typed operator RC recovery, and safe network-budget snapshot routes)
   - `:platform-apphost` → `network.crypta.platform.apphost` (transport-neutral out-of-process
     AppHost core, sandbox status, durable rollback records, and AppHost-managed quota enforcement)
   - `:platform-app-ui` → `network.crypta.platform.appui` (app-owned static UI route and asset
@@ -88,20 +88,22 @@ Use this skill when you need to:
     deterministic packager, and distribution tooling)
   - `:platform-appcatalog` → `network.crypta.platform.appcatalog` (signed catalog sources,
     catalog writer/descriptors, Crypta catalog source handling, app-store/API compatibility
-    target-stability metadata, first-party maintenance metadata, independent app-review receipts,
-    catalog security advisory/denylist policy, artifact verification, safe ZIP extraction, and
-    verified staging)
+    target-stability metadata, first-party maintenance metadata, submission package
+    verification/pre-review/candidate metadata, independent app-review receipts, catalog security
+    advisory/denylist policy, artifact verification, safe ZIP extraction, and verified staging)
   - `:platform-trustgraph` → `network.crypta.platform.trustgraph` (Trust Graph Local RC statement
-    parsing, canonicalization, verification, process-local store/anchor behavior, lifecycle/status
-    records, and deterministic direct-anchor scoring)
+    parsing, canonicalization, verification, process-local store/anchor behavior, import-preview
+    summaries, duplicate-issuer/conflict handling, lifecycle/status records, and bounded
+    deterministic direct-anchor scoring explanations)
   - `:platform-devtools` → `network.crypta.platform.devtools` (standalone `crypta-app` developer
-    CLI for staged-bundle, UI lint, mock dev server, offline tests, catalog-authoring, developer
-    keys, publication plans, explicit live USK catalog publication, API snapshot, and compatibility
-    verification workflows)
+    CLI for staged-bundle, UI lint, mock dev server, offline tests, catalog-authoring, app-store
+    submission package/pre-review/candidate workflows, developer keys, publication plans, explicit
+    live USK catalog publication, API snapshot, and compatibility verification workflows)
   - `:platform-web-shell` → `network.crypta.platform.webshell` (browser-facing Web Shell v1,
-    including Apps, catalog, update, review, operator beta dashboard/support-bundle, Operator RC
-    Recovery, subscription recovery, app-data backup/restore, app-service dependency/grant-bundle
-    review, and explicit legacy security/diagnostic fallback surfaces)
+    including Apps, catalog, update, review, unified consent review, operator beta
+    dashboard/support-bundle, Operator RC Recovery, subscription recovery, app-data backup/restore,
+    app-service dependency/grant-bundle review, and explicit legacy security/diagnostic fallback
+    surfaces)
   - `:runtime-alerts` → the extracted leaf-safe `network.crypta.runtime.alerts` feed/model subset
     plus the detached `UserAlertSurface`
   - `:runtime-node` → extracted daemon runtime body across the remaining cyclic/high-level
@@ -134,19 +136,20 @@ Use this skill when you need to:
   - `:apps:profile-publisher` → staged Profile Publisher identity-profile reference AppHost bundle
     with a static UI under an isolated app origin when available, using app-vault profile-document
     creation and app-generated document insertion
-  - `:apps:social-inbox` → staged Social Inbox Preview social/mail migration reference AppHost
-    bundle with a static UI under an isolated app origin when available, using bounded AppVault
-    social-message signing, generated outbox insertion, budgeted durable content subscriptions,
-    durable app data, and operator-approved Trust Graph score app-service grants
+  - `:apps:social-inbox` → staged Social Inbox RC beta social/message reference AppHost bundle
+    with a static UI under an isolated app origin when available, using bounded AppVault
+    social-message signing, generated outbox insertion, multi-source durable content
+    subscriptions, durable app data for read state and local filters, redacted exports, and
+    operator-approved Trust Graph score app-service grants
   - `:apps:feed-reader` → staged Feed Reader content-fetch and subscription reference AppHost bundle
     with a static UI under an isolated app origin when available, using bounded Crypta content
     fetch, budgeted durable USK content subscriptions, durable app data, and app-generated feed
     document insertion
-  - `:apps:trust-graph` → staged Trust Graph Preview local trust-service reference AppHost bundle
-    with a static UI under an isolated app origin when available, using `trust.read`,
-    `trust.write`, durable trust graph storage/exchange, budgeted content fetch/subscriptions,
-    AppVault trust-statement signing, app-generated trust statement insertion, and the
-    `trust.score` app-service provider
+  - `:apps:trust-graph` → staged Trust Graph Local RC trust-service reference AppHost bundle with a
+    static UI under an isolated app origin when available, using `trust.read`, `trust.write`,
+    durable trust graph storage/exchange, budgeted import previews, local anchor lifecycle
+    actions, budgeted content fetch/subscriptions, AppVault trust-statement signing,
+    app-generated trust statement insertion, and the `trust.score` app-service provider
 - The runtime boundary is split intentionally:
   - `:runtime-spi` exposes small JDK-only ports plus immutable config, alert, queue, peer, wizard,
     updater, and shell DTOs.
@@ -176,20 +179,22 @@ Use this skill when you need to:
   `:platform-api` owns the transport-neutral Platform API surface including app-vault route
   handlers, social-message signing, app-generated document inserts, bounded content fetch,
   shared app-network budget service/store, durable content subscriptions, durable app data and
-  internal app-update snapshots, local app-service discovery/grants, app-update scheduling, and
-  host/operator-only beta dashboard/support-bundle, typed operator RC recovery, and
-  network-budget snapshot routes,
+  internal app-update snapshots, unified consent previews/decisions/audit, local app-service
+  discovery/grants, app-update scheduling, and host/operator-only beta dashboard/support-bundle,
+  typed operator RC recovery, and network-budget snapshot routes,
   `:platform-apphost` owns the transport-neutral AppHost core, `:platform-app-ui` owns
   app-owned static UI route helpers,
   `:platform-appvault` owns app secret and identity vault records/grants,
   `:platform-design-system` owns canonical local app UI assets, `:platform-sdk-js` owns the
   browser SDK resource, `:platform-appdist` owns signed local bundle distribution,
-  `:platform-appcatalog` owns signed catalog sources, trusted app-review receipts, and verified
-  staging, `:platform-trustgraph` owns local trust statement parsing, lifecycle records, and
-  deterministic preview scoring, `:platform-devtools` owns the standalone app developer CLI and
-  offline UI linter, `:platform-web-shell` owns the browser-facing node-management shell, app-data
-  backup/restore controls, app-service dependency/grant-bundle review, operator beta dashboard,
-  and Operator RC Recovery, `:runtime-alerts` owns the extracted alert/feed model subset,
+  `:platform-appcatalog` owns signed catalog sources, submission pre-review/candidate metadata,
+  trusted app-review receipts, and verified staging, `:platform-trustgraph` owns local trust
+  statement parsing, import-preview/conflict summaries, lifecycle records, and deterministic
+  bounded-score explanations, `:platform-devtools` owns the standalone app developer CLI, app-store
+  submission workflows, and offline UI linter, `:platform-web-shell` owns the browser-facing
+  node-management shell, unified consent review, app-data backup/restore controls, app-service
+  dependency/grant-bundle review, operator beta dashboard, and Operator RC Recovery,
+  `:runtime-alerts` owns the extracted alert/feed model subset,
   `:runtime-node` owns the
   remaining runtime/node/client/support body, `:adapter-fcp` owns the FCP adapter tree,
   `:bridge-fcp-runtime` owns the concrete FCP bridge implementations,
@@ -426,29 +431,31 @@ Use this skill when you need to:
 - `:platform-appcatalog` owns `network.crypta.platform.appcatalog`, the signed catalog source and
   artifact staging layer. It writes catalogs from descriptors, verifies catalog signatures,
   enforces source/URI policy including `crypta:` catalog sources, parses optional review/API
-  compatibility metadata, verifies independent app-review receipts against trusted reviewer keys
-  and local review policy, enforces catalog security advisory and exact-version denylist decisions,
-  validates artifact size and SHA-256, safely extracts ZIP bundles, and delegates verified staged
-  bundles to AppHost install/update flows.
+  compatibility metadata, verifies submission packages and pre-review/candidate metadata, verifies
+  independent app-review receipts against trusted reviewer keys and local review policy, enforces
+  catalog security advisory and exact-version denylist decisions, validates artifact size and
+  SHA-256, safely extracts ZIP bundles, and delegates verified staged bundles to AppHost
+  install/update flows.
 - `:platform-trustgraph` owns `network.crypta.platform.trustgraph`, the local Trust Graph Local RC
   model and scoring layer. It parses bounded trust statement documents, canonicalizes and verifies
-  statement payloads, stores process-local anchors/statements, records local lifecycle status, and
-  computes deterministic direct trust scores without changing peer protocols or claiming full Web
-  of Trust behavior.
+  statement payloads, builds redacted import previews, summarizes duplicate issuer conflicts,
+  stores process-local anchors/statements, records local lifecycle status, and computes bounded
+  deterministic direct trust scores without changing peer protocols or claiming full Web of Trust
+  behavior.
 - `:platform-devtools` owns `network.crypta.platform.devtools`, the standalone `crypta-app` CLI. It
   wires app template scaffolding, bundle validation, signing, packaging, verification, permission
   linting, offline UI linting, mock dev serving, offline app tests, developer key generation,
-  publication plan dry-runs, explicit live USK catalog publication, API contract
-  snapshot/compatibility verification, review receipt signing/verification, and catalog
-  create/sign/verify commands around the platform distribution, API, design-system, and catalog
-  libraries.
+  app-store submission package/pre-review/candidate commands, publication plan dry-runs, explicit
+  live USK catalog publication, API contract snapshot/compatibility verification, review receipt
+  signing/verification, and catalog create/sign/verify commands around the platform distribution,
+  API, design-system, and catalog libraries.
 - `:platform-web-shell` owns the first browser-facing Web Shell v1 under
   `network.crypta.platform.webshell`. It provides the current node-management shell route
   constants, bootstrap payload, renderer, and static browser assets mounted at `/app/node/`; it
   opens app-owned `uiUrl` values when installed app summaries expose them and surfaces app catalog
-  review, update candidate, staged update, policy, health-gate, rollback, app-data backup/restore
-  controls, advertised app-service dependencies, grant-bundle approval/renewal state, and explicit
-  legacy security/diagnostic fallback actions for operators.
+  review, unified consent previews, update candidate, staged update, policy, health-gate, rollback,
+  app-data backup/restore controls, advertised app-service dependencies, grant-bundle
+  approval/renewal state, and explicit legacy security/diagnostic fallback actions for operators.
 
 ### Runtime SPI (`network.crypta.runtime.spi`)
 - Aggregate boundary: `RuntimePorts`
