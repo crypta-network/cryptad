@@ -75,6 +75,40 @@ class TrustGraphImportPreviewTest {
   }
 
   @Test
+  void preview_whenStoredIssuerSubjectHasMultipleStatements_expectEveryProjectionChecked()
+      throws Exception {
+    InMemoryTrustGraphStore store = new InMemoryTrustGraphStore(FIXED_CLOCK);
+    KeyPair issuerKeys = keyPair();
+    TrustStatementDocument earlierConflicting = signedStatement(issuerKeys, 40);
+    TrustStatementDocument laterMatchingCandidate = signedStatement(issuerKeys, -20);
+    store.importStatement(earlierConflicting, "manual", "CHK@earlier", "earlier");
+    store.importStatement(laterMatchingCandidate, "manual", "CHK@later", "later");
+
+    Map<String, Object> preview =
+        TrustGraphImportPreview.preview(
+                TrustJson.write(laterMatchingCandidate.toJson()),
+                store,
+                "CHK@later",
+                "duplicate of latest",
+                65_536,
+                NOW)
+            .toJson();
+    List<?> summaries = (List<?>) preview.get("candidateSummaries");
+    Map<?, ?> summary = (Map<?, ?>) summaries.getFirst();
+
+    assertEquals(1, preview.get("candidateStatementCount"));
+    assertEquals(0, preview.get("acceptedCount"));
+    assertEquals(1, preview.get("duplicateCount"));
+    assertEquals(1, preview.get("duplicateIssuerCount"));
+    assertEquals(1, preview.get("conflictCount"));
+    assertEquals(Boolean.TRUE, preview.get("materialRisk"));
+    assertTrue(String.valueOf(preview.get("approximateScoreImpact")).contains("Manual review"));
+    assertEquals("conflict", summary.get("conflictStatus"));
+    assertEquals(Boolean.TRUE, summary.get("duplicate"));
+    assertEquals(Boolean.TRUE, summary.get("duplicateIssuer"));
+  }
+
+  @Test
   void preview_whenInputExceedsMaxBytes_expectRejectedWithoutCandidateSummaries() throws Exception {
     TrustStatementDocument document = signedStatement(keyPair(), 80);
 

@@ -119,7 +119,7 @@ public final class TrustGraphImportPreview {
     private final ArrayList<String> warnings = new ArrayList<>();
     private final ArrayList<Map<String, Object>> candidateSummaries = new ArrayList<>();
     private final HashMap<String, StatementProjection> byFingerprint = new HashMap<>();
-    private final HashMap<String, StatementProjection> byIssuerSubject = new HashMap<>();
+    private final HashMap<String, ArrayList<StatementProjection>> byIssuerSubject = new HashMap<>();
     private int candidateStatementCount;
     private int acceptedCount;
     private int rejectedCount;
@@ -172,7 +172,7 @@ public final class TrustGraphImportPreview {
             new StatementProjection(
                 statement.documentFingerprint(), payload.score(), payload.confidence(), lifecycle);
         byFingerprint.put(statement.documentFingerprint(), projection);
-        byIssuerSubject.put(issuerSubjectKey(payload), projection);
+        addIssuerSubjectProjection(issuerSubjectKey(payload), projection);
       }
     }
 
@@ -217,14 +217,16 @@ public final class TrustGraphImportPreview {
         String fingerprint = TrustStatementFingerprint.documentFingerprint(document);
         String issuerSubjectKey = issuerSubjectKey(payload);
         StatementProjection duplicate = byFingerprint.get(fingerprint);
-        StatementProjection issuerDuplicate = byIssuerSubject.get(issuerSubjectKey);
+        List<StatementProjection> issuerProjections = byIssuerSubject.get(issuerSubjectKey);
+        if (issuerProjections == null) {
+          issuerProjections = List.of();
+        }
         TrustStatementLifecycleStatus lifecycle =
             duplicate == null ? TrustStatementLifecycleStatus.ACTIVE : duplicate.lifecycleStatus();
         boolean expired = payload.expiresAt() != null && !payload.expiresAt().isAfter(now);
         boolean duplicateFingerprint = duplicate != null;
-        boolean duplicateIssuer =
-            issuerDuplicate != null && !issuerDuplicate.documentFingerprint().equals(fingerprint);
-        boolean conflict = duplicateIssuer && issuerDuplicate.conflictsWith(payload);
+        boolean duplicateIssuer = hasDifferentIssuerStatement(issuerProjections, fingerprint);
+        boolean conflict = hasConflictingIssuerStatement(issuerProjections, fingerprint, payload);
         if (duplicateFingerprint) {
           duplicateCount++;
         } else {
@@ -247,7 +249,7 @@ public final class TrustGraphImportPreview {
                   payload.confidence(),
                   TrustStatementLifecycleStatus.ACTIVE);
           byFingerprint.put(fingerprint, projection);
-          byIssuerSubject.putIfAbsent(issuerSubjectKey, projection);
+          addIssuerSubjectProjection(issuerSubjectKey, projection);
         }
         appendCandidateSummary(
             document,
@@ -261,6 +263,34 @@ public final class TrustGraphImportPreview {
         rejectedCount++;
         addWarning(exception.errorCode());
       }
+    }
+
+    private void addIssuerSubjectProjection(
+        String issuerSubjectKey, StatementProjection projection) {
+      byIssuerSubject.computeIfAbsent(issuerSubjectKey, _ -> new ArrayList<>()).add(projection);
+    }
+
+    private static boolean hasDifferentIssuerStatement(
+        List<StatementProjection> issuerProjections, String fingerprint) {
+      for (StatementProjection projection : issuerProjections) {
+        if (!projection.documentFingerprint().equals(fingerprint)) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    private static boolean hasConflictingIssuerStatement(
+        List<StatementProjection> issuerProjections,
+        String fingerprint,
+        TrustStatementPayload payload) {
+      for (StatementProjection projection : issuerProjections) {
+        if (!projection.documentFingerprint().equals(fingerprint)
+            && projection.conflictsWith(payload)) {
+          return true;
+        }
+      }
+      return false;
     }
 
     private void appendCandidateSummary(
@@ -314,22 +344,22 @@ public final class TrustGraphImportPreview {
     }
 
     private boolean materialRisk() {
-      return acceptedCount > 0
-          && (rejectedCount > 0
-              || duplicateIssuerCount > 0
-              || conflictCount > 0
-              || revokedDeprecatedExpiredCount > 0);
+      return conflictCount > 0
+          || (acceptedCount > 0
+              && (rejectedCount > 0
+                  || duplicateIssuerCount > 0
+                  || revokedDeprecatedExpiredCount > 0));
     }
 
     private String scoreImpactSummary() {
+      if (conflictCount > 0) {
+        return "Manual review recommended; duplicate issuer conflicts may affect matching local"
+            + " scores.";
+      }
       if (acceptedCount == 0) {
         return duplicateCount > 0
             ? "No score change expected from duplicate-only preview."
             : "No score impact; no accepted statements.";
-      }
-      if (conflictCount > 0) {
-        return "Manual review recommended; duplicate issuer conflicts may affect matching local"
-            + " scores.";
       }
       return "Potential score impact is limited to matching subjects from locally anchored"
           + " issuers.";
