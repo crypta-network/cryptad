@@ -3,6 +3,7 @@
 
   const appId = "trust-graph";
   const maxStatementBytes = 65536;
+  const trustStatementType = "crypta.trust.statement.v1";
   const dataNamespace = "ui-state";
   const dataStateKey = "preview-state";
   const dataSchemaVersion = 2;
@@ -404,10 +405,23 @@
         setStatus(blockReason);
         return;
       }
+      const importText = importableStatementText(text);
+      if (!importText) {
+        renderImportPreview(sourceUri || label, preview);
+        setStatus(
+          "Preview source must resolve to exactly one importable trust statement before commit."
+        );
+        return;
+      }
+      if (byteLength(importText) > maxStatementBytes) {
+        renderImportPreview(sourceUri || label, preview);
+        setStatus("Previewed trust statement JSON is too large to commit.");
+        return;
+      }
       state.pendingImport = {
         kind: "document",
         label,
-        text,
+        text: importText,
         sourceUri,
         expectedDocumentFingerprint: previewDocumentFingerprint(preview),
       };
@@ -1055,6 +1069,40 @@
       return "Preview did not return a committable statement fingerprint.";
     }
     return "";
+  }
+
+  function importableStatementText(text) {
+    try {
+      const candidate = singleImportableStatement(JSON.parse(text));
+      return candidate ? JSON.stringify(candidate) : "";
+    } catch (error) {
+      return "";
+    }
+  }
+
+  function singleImportableStatement(value) {
+    if (isTrustStatementDocument(value)) {
+      return value;
+    }
+    if (Array.isArray(value)) {
+      return value.length === 1 && isTrustStatementDocument(value[0]) ? value[0] : null;
+    }
+    if (value && typeof value === "object" && Array.isArray(value.statements)) {
+      const statements = value.statements;
+      return statements.length === 1 && isTrustStatementDocument(statements[0])
+        ? statements[0]
+        : null;
+    }
+    return null;
+  }
+
+  function isTrustStatementDocument(value) {
+    return (
+      value &&
+      typeof value === "object" &&
+      !Array.isArray(value) &&
+      value.type === trustStatementType
+    );
   }
 
   function candidatePreviewList(candidates) {
