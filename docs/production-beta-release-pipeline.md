@@ -260,7 +260,15 @@ raw output on the runner and do not publish rejected artifacts through GitHub Ac
   still control protected live publication.
 - Live-network beta evidence is localhost-only and release-manager driven. It is not a normal PR
   dependency.
-- Legacy admin Wave 5 readiness is outside PR-259. The summary records that it belongs to a later
-  release gate.
 - Generated dry-run keys are never release keys. Any output with `nonRelease=true` must not be
   promoted.
+
+## Legacy admin Wave 5 gate
+
+Production beta promotion now requires `legacy-admin.removal-wave-5`,
+`legacy-admin.final-admin-surface`, `legacy-admin.browse-retained`, and
+`legacy-admin.emergency-fallback-retained` evidence. The promotion summary reports the Wave 5
+statuses and promoted route ids. A production-ready result must show no missing Wave 5 evidence and
+must keep the evidence redacted: no query strings, request bodies, form passwords, app or browser
+tokens, private insert URIs, raw diagnostic output, raw fetched content, raw app data,
+support-bundle payloads, or absolute local paths.

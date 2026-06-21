@@ -224,6 +224,10 @@ Release-candidate mode requires these evidence ids:
 | `legacy-admin.removal-wave-2` | App-platform smoke summary. | The second removal wave records the next removed-by-default route ids, queue/config/statistics route-scope expansion metadata, replacement URLs, partial mutation fallback policy, retained diagnostic export status, diagnostics counters, and redaction checks without requiring a live node. |
 | `legacy-admin.removal-wave-3` | App-platform smoke summary. | The third removal wave records `security-levels` safe-read redirects to Web Shell security, mutating legacy fallback for incomplete security flows, stable wave 1/2 route sets, retained browse/filter/diagnostic/wizard surfaces, and redaction checks without requiring a live node. |
 | `legacy-admin.removal-wave-4` | App-platform smoke summary. | The fourth removal wave records `diagnostic` as the only new removed-by-default route, Web Shell diagnostics as the primary destination, exact safe-read plaintext export fallback behavior, retained FProxy/content-filter/startup/security fallback scope, and redaction checks without requiring a live node. |
+| `legacy-admin.removal-wave-5` | App-platform smoke summary. | The fifth wave records production-beta final-surface readiness, no additional promoted route ids, stable Wave 1-4 route sets, retained browse/content-filter/startup/recovery/support scope, and redaction checks without requiring a live node. |
+| `legacy-admin.final-admin-surface` | App-platform smoke summary. | The final-surface policy records removed-by-default admin surfaces, retained browse and browse-safety surfaces, explicit support/emergency fallbacks, startup/recovery fallbacks, pending gaps, retained support pages, and infrastructure route ids. |
+| `legacy-admin.browse-retained` | App-platform smoke summary. | FProxy browse, key/content rendering, and the content filter remain explicitly retained and outside admin-removal prefix matching. |
+| `legacy-admin.emergency-fallback-retained` | App-platform smoke summary. | Diagnostic export, security recovery, startup wizard, and support fallbacks remain explicit, bounded, and redacted. |
 | `apphost.sandbox-provider` | App-platform smoke summary. | AppHost sandbox provider source and deterministic offline tests prove bubblewrap selection, enforced status reporting, fail-closed required sandbox behavior, and token/path-free public status. |
 | `public-beta-security.app-ui-csp` | App-platform smoke summary. | Static app UI CSP uses `default-src 'none'`, local script/style/connect directives, no object/base/frame/worker/media execution paths, defensive browser headers, and local-only origin validation for CSP roots. |
 | `public-beta-security.app-origin-policy` | App-platform smoke summary. | Web Shell app launch/probe logic accepts only registered local loopback isolated origins and safe same-origin fallback paths, rejects credentials, query/hash confusion, remote schemes, and keeps probe fetches credential-free CORS. |
@@ -301,6 +305,18 @@ rendering remain retained, the content filter remains retained, startup wizard a
 remain retained or pending, the Wave 3 security fallback remains intact, and evidence excludes
 arbitrary query strings, request bodies, form passwords, tokens, private insert URIs, raw
 diagnostic output, raw fetched content, raw app data, raw signatures, and absolute local paths.
+
+`legacy-admin.removal-wave-5` is deterministic offline evidence for the production-beta final admin
+surface. It proves that Wave 5 promotes no additional route ids, that Wave 1-4 route sets remain
+stable, and that remaining surfaces are explicitly classified as retained, pending,
+support/emergency fallback, startup/recovery fallback, browse-owned, retained non-admin support, or
+infrastructure. `legacy-admin.final-admin-surface` exposes those final route-id buckets in a
+machine-checkable form. `legacy-admin.browse-retained` proves FProxy browse, key/content rendering,
+and the content filter remain retained. `legacy-admin.emergency-fallback-retained` proves startup,
+recovery, diagnostic export, and support fallbacks remain explicit. These evidence items exclude
+query strings, request bodies, form passwords, browser and app tokens, private insert URIs, raw
+diagnostic output, raw fetched content, raw app data, support-bundle payloads, raw signatures, and
+absolute local paths.
 
 `interop.extended` is optional in the machine gate but required by the release runbook when a
 release changes compatibility-sensitive behavior. `apphost.sandbox-provider` does not require
@@ -682,7 +698,9 @@ disappears, content-fetch evidence disappears, trust-statement signing evidence 
 reference app no longer proves its required helper usage. Legacy
 retirement gates block missing removal-wave evidence, including
 `legacy-admin.removal-wave-2`, `legacy-admin.removal-wave-3`, and
-`legacy-admin.removal-wave-4`, or failed retained browse safety evidence and warn on
+`legacy-admin.removal-wave-4`, `legacy-admin.removal-wave-5`,
+`legacy-admin.final-admin-surface`, `legacy-admin.browse-retained`, and
+`legacy-admin.emergency-fallback-retained`, or failed retained browse safety evidence and warn on
 removed-route count changes without update-note metadata.
 
 ## Waivers

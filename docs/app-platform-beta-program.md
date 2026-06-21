@@ -226,10 +226,12 @@ Use this runbook to decide whether the ecosystem beta is ready for a release can
 8. Confirm the legacy plugin freeze and migration evidence passes:
    `legacy-plugin.freeze-policy`, `legacy-plugin.migration-guide`, and
    `legacy-plugin.social-inbox-spike`.
-9. Confirm legacy retirement evidence passes, including `legacy-admin.removal-wave-3` and
-   `legacy-admin.removal-wave-4`, and FProxy browse/content rendering, content filter, startup
-   wizard, security recovery fallback, and pending chat/translation/help/node-to-node routes remain
-   retained or pending.
+9. Confirm legacy retirement evidence passes, including `legacy-admin.removal-wave-3`,
+   `legacy-admin.removal-wave-4`, `legacy-admin.removal-wave-5`,
+   `legacy-admin.final-admin-surface`, `legacy-admin.browse-retained`, and
+   `legacy-admin.emergency-fallback-retained`. Confirm FProxy browse/content rendering, content
+   filter, startup wizard, security recovery fallback, and pending chat/translation/help/node-to-node
+   routes remain retained or pending.
 10. Confirm app-update evidence passes, including `app-update.lifecycle`, `app-update.scheduler`,
    `app-update.rollback`, `app-update.live-catalog-refresh`, and
    `app-update.data-migration-contract`.

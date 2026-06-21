@@ -346,6 +346,12 @@ class LegacyAdminRemovalPolicyTest {
         LegacyAdminRemovalPolicy.decide("GET", URI.create("/apps/queue-manager/")).isPresent());
   }
 
+  @ParameterizedTest(name = "{0}")
+  @MethodSource("waveFiveRetainedInfrastructureAndFallbackRoutes")
+  void decide_whenWaveFiveFinalSurfaceRetainedRouteRequested_expectNoDecision(String path) {
+    assertFalse(LegacyAdminRemovalPolicy.decide("GET", URI.create(path)).isPresent(), path);
+  }
+
   @Test
   void decide_whenQueueReplacementUnavailable_expectNoRemovalDecision() {
     ToadletContainer container = availableReplacementContainer();
@@ -445,6 +451,34 @@ class LegacyAdminRemovalPolicyTest {
             "HEAD",
             DiagnosticToadlet.TOADLET_URL + "?legacyFallback=diagnostic-export&token=secret"),
         Arguments.of("GET", DiagnosticToadlet.TOADLET_URL + "?legacyFallback=unexpected"));
+  }
+
+  private static Stream<String> waveFiveRetainedInfrastructureAndFallbackRoutes() {
+    return Stream.of(
+        "/",
+        "/CHK@abc",
+        "/SSK@abc",
+        "/USK@abc",
+        "/filterfile/",
+        "/filter-browse/",
+        "/wizard/",
+        "/wiz/",
+        "/send_n2ntm/",
+        "/n2nm-browse/",
+        "/chat/",
+        "/translation/",
+        "/help/",
+        "/app/node/",
+        "/apps/",
+        "/apps/queue-manager/",
+        "/api/v1/diagnostics",
+        "/api/v1/wizard/first-time",
+        "/api/v1/operator/recovery/actions",
+        "/api/v1/operator/support-bundle",
+        DiagnosticToadlet.TOADLET_URL + "?legacyFallback=diagnostic-export",
+        "/diagnostic/requesters",
+        SecurityLevelsToadlet.PATH + "?legacyFallback=security-levels",
+        "/seclevels/network");
   }
 
   private static ToadletContainer availableReplacementContainer() {

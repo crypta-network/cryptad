@@ -103,6 +103,87 @@ class LegacyAdminRetirementRegistryTest {
   }
 
   @Test
+  void removalWaveSurfaces_whenWaveFiveRequested_expectNoUnprovenRoutePromotions() {
+    List<String> waveFiveIds =
+        LegacyAdminRetirementRegistry.removalWaveSurfaces(
+                LegacyAdminRetirementRegistry.REMOVAL_WAVE_5)
+            .stream()
+            .map(LegacyAdminSurface::id)
+            .toList();
+
+    assertEquals(List.of(), waveFiveIds);
+  }
+
+  @Test
+  void finalSurfacePolicy_whenRequested_expectWaveFiveMetadataAndNoPromotedRoutes() {
+    LegacyAdminRetirementRegistry.FinalSurfacePolicy policy =
+        LegacyAdminRetirementRegistry.finalSurfacePolicy();
+
+    assertEquals("legacy-admin.final-admin-surface", policy.evidenceId());
+    assertEquals(LegacyAdminRetirementRegistry.REMOVAL_WAVE_5, policy.readinessWave());
+    assertEquals(LegacyAdminRetirementRegistry.REMOVED_BY_DEFAULT_SINCE_WAVE_5, policy.since());
+    assertTrue(policy.waveFivePromotedEntries().isEmpty());
+  }
+
+  @Test
+  void finalSurfacePolicy_whenRemovedAdminRequested_expectAllRemovalWavesRepresented() {
+    List<String> removedIds =
+        finalSurfaceIdsIn(
+            LegacyAdminRetirementRegistry.FinalSurfaceCategory.REMOVED_BY_DEFAULT_ADMIN);
+
+    assertEquals(
+        List.of(
+            "queue-downloads",
+            "queue-uploads",
+            "file-insert",
+            "local-file-insert",
+            "friends",
+            "add-friend",
+            "strangers",
+            "connectivity",
+            "alerts",
+            "config",
+            "security-levels",
+            "core-update",
+            "statistics",
+            "diagnostic"),
+        removedIds);
+  }
+
+  @Test
+  void finalSurfacePolicy_whenRetainedBrowseRequested_expectBrowseAndFilterExplicit() {
+    assertEquals(
+        List.of("chat", "fproxy-browse-root", "fproxy-key-content-rendering"),
+        finalSurfaceIdsIn(
+            LegacyAdminRetirementRegistry.FinalSurfaceCategory.RETAINED_BROWSE_SURFACE));
+    assertEquals(
+        List.of("content-filter"),
+        finalSurfaceIdsIn(
+            LegacyAdminRetirementRegistry.FinalSurfaceCategory.RETAINED_BROWSE_SAFETY));
+  }
+
+  @Test
+  void finalSurfacePolicy_whenFallbacksRequested_expectRecoveryAndSupportExplicit() {
+    assertEquals(
+        List.of("diagnostic"),
+        finalSurfaceIdsIn(
+            LegacyAdminRetirementRegistry.FinalSurfaceCategory.SUPPORT_EMERGENCY_FALLBACK));
+    assertEquals(
+        List.of("security-levels", "first-time-wizard", "first-time-wizard-js"),
+        finalSurfaceIdsIn(
+            LegacyAdminRetirementRegistry.FinalSurfaceCategory.STARTUP_RECOVERY_FALLBACK));
+    assertEquals(
+        List.of(
+            "alerts",
+            "core-update",
+            "first-time-wizard",
+            "first-time-wizard-js",
+            "node-to-node-message"),
+        finalSurfaceIdsIn(
+            LegacyAdminRetirementRegistry.FinalSurfaceCategory.PENDING_MIGRATION_GAP));
+  }
+
+  @Test
   void scopeExpandedInWaveSurfaces_whenWaveTwoRequested_expectExpandedScopeSurfaces() {
     List<String> expandedIds =
         LegacyAdminRetirementRegistry.scopeExpandedInWaveSurfaces(2).stream()
@@ -125,6 +206,16 @@ class LegacyAdminRetirementRegistryTest {
     assertEquals("phase-7-pr-230", surface.removedByDefaultSince());
     assertEquals(LegacyAdminRemovalScope.PREFIX_FAMILY, surface.removalScope());
     assertEquals(WebShellPaths.SHELL_ROOT + "#config", surface.replacementUrl());
+  }
+
+  @Test
+  void findByLegacyPath_whenAppUiChildRequested_expectLongestSpecificInfrastructureSurface() {
+    LegacyAdminSurface surface =
+        LegacyAdminRetirementRegistry.findByLegacyPath("/apps/queue-manager/static/main.js")
+            .orElseThrow();
+
+    assertEquals("app-ui", surface.id());
+    assertEquals(LegacyAdminRetirementState.INFRASTRUCTURE, surface.state());
   }
 
   @Test
@@ -227,5 +318,12 @@ class LegacyAdminRetirementRegistryTest {
     assertTrue(LegacyAdminRetirementRegistry.shouldPromoteInLegacyNavigation("/chat/"));
     assertTrue(LegacyAdminRetirementRegistry.shouldPromoteInLegacyNavigation("/send_n2ntm/"));
     assertTrue(LegacyAdminRetirementRegistry.shouldPromoteInLegacyNavigation("/not-in-map/"));
+  }
+
+  private static List<String> finalSurfaceIdsIn(
+      LegacyAdminRetirementRegistry.FinalSurfaceCategory category) {
+    return LegacyAdminRetirementRegistry.finalSurfacePolicy().entriesInCategory(category).stream()
+        .map(LegacyAdminRetirementRegistry.FinalSurfaceEntry::id)
+        .toList();
   }
 }

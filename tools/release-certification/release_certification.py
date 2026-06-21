@@ -259,6 +259,10 @@ ECOSYSTEM_RC_REQUIRED_EVIDENCE_IDS = (
     "legacy-admin.removal-wave-2",
     "legacy-admin.removal-wave-3",
     "legacy-admin.removal-wave-4",
+    "legacy-admin.removal-wave-5",
+    "legacy-admin.final-admin-surface",
+    "legacy-admin.browse-retained",
+    "legacy-admin.emergency-fallback-retained",
     "legacy-plugin.freeze-policy",
     "legacy-plugin.migration-guide",
     "legacy-plugin.social-inbox-spike",
@@ -1301,6 +1305,10 @@ def app_platform_evidence(
         "legacy-admin.removal-wave-2",
         "legacy-admin.removal-wave-3",
         "legacy-admin.removal-wave-4",
+        "legacy-admin.removal-wave-5",
+        "legacy-admin.final-admin-surface",
+        "legacy-admin.browse-retained",
+        "legacy-admin.emergency-fallback-retained",
         "apphost.sandbox-provider",
         *PUBLIC_BETA_SECURITY_EVIDENCE_IDS,
         *ECOSYSTEM_SECURITY_EVIDENCE_IDS,
@@ -2892,10 +2900,14 @@ def ecosystem_matrix_row_specs() -> list[MatrixRowSpec]:
                 "legacy-admin.removal-wave-2",
                 "legacy-admin.removal-wave-3",
                 "legacy-admin.removal-wave-4",
+                "legacy-admin.removal-wave-5",
+                "legacy-admin.final-admin-surface",
+                "legacy-admin.browse-retained",
+                "legacy-admin.emergency-fallback-retained",
             ),
             gate_ids=("ecosystem.legacy-retirement",),
             docs=("docs/legacy-retirement-plan.md", "docs/release-certification.md"),
-            phase="phase-9",
+            phase="phase-10",
         ),
         MatrixRowSpec(
             id="redaction-and-private-artifacts",
@@ -6037,6 +6049,10 @@ def evaluate_legacy_retirement_gate(
         "legacy-admin.removal-wave-2",
         "legacy-admin.removal-wave-3",
         "legacy-admin.removal-wave-4",
+        "legacy-admin.removal-wave-5",
+        "legacy-admin.final-admin-surface",
+        "legacy-admin.browse-retained",
+        "legacy-admin.emergency-fallback-retained",
     ):
         status = evidence_status(current.get(evidence_id))
         previous_status = evidence_status(previous.get(evidence_id))
@@ -6054,6 +6070,8 @@ def evaluate_legacy_retirement_gate(
         "legacy-admin.removal-wave-1",
         "legacy-admin.removal-wave-2",
         "legacy-admin.removal-wave-3",
+        "legacy-admin.removal-wave-4",
+        "legacy-admin.removal-wave-5",
     ):
         current_wave = evidence_details(current.get(evidence_id))
         previous_wave = evidence_details(previous.get(evidence_id))
@@ -6070,7 +6088,7 @@ def evaluate_legacy_retirement_gate(
             else:
                 warnings.append(f"{evidence_id} route set changed without doc/update note metadata")
                 add_evidence_issue(details, "warningEvidenceIds", evidence_id)
-        safety = current_wave.get("retainedBrowseSafety")
+        safety = current_wave.get("retainedBrowseSafety") or current_wave.get("retainedScope")
         if isinstance(safety, dict) and any(value is False for value in safety.values()):
             failures.append(f"{evidence_id} retained browse safety evidence failed")
             add_evidence_issue(details, "failureEvidenceIds", evidence_id)
@@ -6817,6 +6835,10 @@ def render_report(summary: dict[str, Any]) -> str:
     append_detail(lines, summary, "legacy-admin.removal-wave-2")
     append_detail(lines, summary, "legacy-admin.removal-wave-3")
     append_detail(lines, summary, "legacy-admin.removal-wave-4")
+    append_detail(lines, summary, "legacy-admin.removal-wave-5")
+    append_detail(lines, summary, "legacy-admin.final-admin-surface")
+    append_detail(lines, summary, "legacy-admin.browse-retained")
+    append_detail(lines, summary, "legacy-admin.emergency-fallback-retained")
     lines.extend(
         [
             "",
@@ -7693,6 +7715,10 @@ def run_self_test(repo_root: Path) -> None:
             "legacy-admin.removal-wave-2",
             "legacy-admin.removal-wave-3",
             "legacy-admin.removal-wave-4",
+            "legacy-admin.removal-wave-5",
+            "legacy-admin.final-admin-surface",
+            "legacy-admin.browse-retained",
+            "legacy-admin.emergency-fallback-retained",
             "app-platform.docs-portal",
             "app-platform.beta-program",
             "app-platform.beta-tutorials",
@@ -7864,6 +7890,24 @@ def run_self_test(repo_root: Path) -> None:
         assert evidence_by_id["legacy-admin.removal-wave-3"]["requiredForReleaseCandidate"] is True
         assert evidence_by_id["legacy-admin.removal-wave-4"]["status"] == "pass", evidence_by_id
         assert evidence_by_id["legacy-admin.removal-wave-4"]["requiredForReleaseCandidate"] is True
+        assert evidence_by_id["legacy-admin.removal-wave-5"]["status"] == "pass", evidence_by_id
+        assert evidence_by_id["legacy-admin.removal-wave-5"]["requiredForReleaseCandidate"] is True
+        assert evidence_by_id["legacy-admin.final-admin-surface"]["status"] == "pass", evidence_by_id
+        assert (
+            evidence_by_id["legacy-admin.final-admin-surface"]["requiredForReleaseCandidate"]
+            is True
+        )
+        assert evidence_by_id["legacy-admin.browse-retained"]["status"] == "pass", evidence_by_id
+        assert evidence_by_id["legacy-admin.browse-retained"]["requiredForReleaseCandidate"] is True
+        assert (
+            evidence_by_id["legacy-admin.emergency-fallback-retained"]["status"] == "pass"
+        ), evidence_by_id
+        assert (
+            evidence_by_id["legacy-admin.emergency-fallback-retained"][
+                "requiredForReleaseCandidate"
+            ]
+            is True
+        )
         optional_skip_status, optional_skip_release_passed = determine_overall_status(
             "release-candidate",
             [
@@ -10173,6 +10217,28 @@ def run_self_test(repo_root: Path) -> None:
         assert legacy_wave_four_removed_exit_code == 1, legacy_wave_four_removed_summary
         assert (
             gate_by_id(legacy_wave_four_removed_summary, "ecosystem.legacy-retirement")["status"]
+            == "fail"
+        )
+
+        legacy_wave_five_removed_path = write_app_summary_variant(
+            "legacy-wave-five-removed",
+            lambda value: value.update(
+                {
+                    "evidence": [
+                        entry
+                        for entry in value["evidence"]
+                        if entry.get("id") != "legacy-admin.removal-wave-5"
+                    ]
+                }
+            ),
+        )
+        legacy_wave_five_removed_summary, legacy_wave_five_removed_exit_code = run_with_previous(
+            "legacy-wave-five-removed-cert",
+            app_platform_summary=legacy_wave_five_removed_path,
+        )
+        assert legacy_wave_five_removed_exit_code == 1, legacy_wave_five_removed_summary
+        assert (
+            gate_by_id(legacy_wave_five_removed_summary, "ecosystem.legacy-retirement")["status"]
             == "fail"
         )
 

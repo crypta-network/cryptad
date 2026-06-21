@@ -4,6 +4,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import network.crypta.l10n.TranslationPaths;
 import network.crypta.platform.appui.AppUiPaths;
@@ -56,10 +57,12 @@ public final class LegacyAdminRetirementRegistry {
   private static final int REMOVAL_WAVE_2 = 2;
   private static final int REMOVAL_WAVE_3 = 3;
   private static final int REMOVAL_WAVE_4 = 4;
+  static final int REMOVAL_WAVE_5 = 5;
   private static final String REMOVED_BY_DEFAULT_SINCE_WAVE_1 = "phase-6-pr-8";
   private static final String REMOVED_BY_DEFAULT_SINCE_WAVE_2 = "phase-7-pr-230";
   private static final String REMOVED_BY_DEFAULT_SINCE_WAVE_3 = "phase-8-pr-244";
   private static final String REMOVED_BY_DEFAULT_SINCE_WAVE_4 = "phase-9-pr-254";
+  static final String REMOVED_BY_DEFAULT_SINCE_WAVE_5 = "phase-10-pr-265";
   private static final String FALLBACK_POLICY_NONE = "none";
   private static final String FALLBACK_POLICY_MUTATING_LEGACY = "mutating-legacy-fallback";
   private static final String FALLBACK_POLICY_SUPPORT_EMERGENCY = "support-emergency-fallback";
@@ -251,6 +254,7 @@ public final class LegacyAdminRetirementRegistry {
               Comparator.comparingInt((LegacyAdminSurface surface) -> surface.legacyPath().length())
                   .reversed())
           .toList();
+  private static final FinalSurfacePolicy FINAL_SURFACE_POLICY = buildFinalSurfacePolicy();
 
   private LegacyAdminRetirementRegistry() {}
 
@@ -323,6 +327,20 @@ public final class LegacyAdminRetirementRegistry {
     return SURFACES.stream()
         .filter(surface -> surface.scopeExpandedInWave() == removalWave)
         .toList();
+  }
+
+  /**
+   * Returns the production-beta final legacy-admin surface policy.
+   *
+   * <p>Wave 5 is a readiness and classification wave. It does not promote additional routes into
+   * removal-by-default unless a route has a proven complete replacement. The policy therefore
+   * records the final maintenance-only shape: previous removal waves, explicit fallback surfaces,
+   * retained browse and browse-safety routes, pending gaps, and infrastructure entries.
+   *
+   * @return immutable final-surface policy snapshot for release certification and tests
+   */
+  static FinalSurfacePolicy finalSurfacePolicy() {
+    return FINAL_SURFACE_POLICY;
   }
 
   /**
@@ -408,8 +426,257 @@ public final class LegacyAdminRetirementRegistry {
     return Map.copyOf(byId);
   }
 
+  enum FinalSurfaceCategory {
+    REMOVED_BY_DEFAULT_ADMIN,
+    SUPPORT_EMERGENCY_FALLBACK,
+    STARTUP_RECOVERY_FALLBACK,
+    RETAINED_BROWSE_SURFACE,
+    RETAINED_BROWSE_SAFETY,
+    RETAINED_NON_ADMIN_SUPPORT,
+    PENDING_MIGRATION_GAP,
+    INFRASTRUCTURE
+  }
+
+  record FinalSurfaceEntry(
+      String id,
+      String title,
+      String routePattern,
+      List<FinalSurfaceCategory> categories,
+      LegacyAdminRemovalMode removalMode,
+      int removalWave,
+      String replacementUrl,
+      String fallbackPolicy,
+      String rationale) {
+    FinalSurfaceEntry {
+      requireText(id, "id");
+      requireText(title, "title");
+      requireText(routePattern, "routePattern");
+      categories = List.copyOf(categories);
+      if (categories.isEmpty()) {
+        throw new IllegalArgumentException("categories must not be empty");
+      }
+      categories.forEach(category -> Objects.requireNonNull(category, "category"));
+      Objects.requireNonNull(removalMode, "removalMode");
+      if (removalWave < 0) {
+        throw new IllegalArgumentException("removalWave must not be negative");
+      }
+      if (replacementUrl != null) {
+        requireSameOriginPath(replacementUrl);
+      }
+      requireText(fallbackPolicy, "fallbackPolicy");
+      requireText(rationale, "rationale");
+    }
+
+    boolean belongsTo(FinalSurfaceCategory category) {
+      return categories.contains(category);
+    }
+  }
+
+  record FinalSurfacePolicy(
+      String evidenceId, int readinessWave, String since, List<FinalSurfaceEntry> entries) {
+    FinalSurfacePolicy {
+      requireText(evidenceId, "evidenceId");
+      if (readinessWave <= NO_REMOVAL_WAVE) {
+        throw new IllegalArgumentException("readinessWave must be positive");
+      }
+      requireText(since, "since");
+      entries = List.copyOf(entries);
+      if (entries.isEmpty()) {
+        throw new IllegalArgumentException("entries must not be empty");
+      }
+    }
+
+    List<FinalSurfaceEntry> entriesInCategory(FinalSurfaceCategory category) {
+      return entries.stream().filter(entry -> entry.belongsTo(category)).toList();
+    }
+
+    List<FinalSurfaceEntry> waveFivePromotedEntries() {
+      return entries.stream().filter(entry -> entry.removalWave() == readinessWave).toList();
+    }
+  }
+
+  private static FinalSurfacePolicy buildFinalSurfacePolicy() {
+    return new FinalSurfacePolicy(
+        "legacy-admin.final-admin-surface",
+        REMOVAL_WAVE_5,
+        REMOVED_BY_DEFAULT_SINCE_WAVE_5,
+        List.of(
+            surfaceFinalSurface(
+                "queue-downloads",
+                "Daily transfer monitoring is app-first through Queue Manager.",
+                FinalSurfaceCategory.REMOVED_BY_DEFAULT_ADMIN),
+            surfaceFinalSurface(
+                "queue-uploads",
+                "Daily upload monitoring is app-first through Queue Manager and Publisher.",
+                FinalSurfaceCategory.REMOVED_BY_DEFAULT_ADMIN),
+            surfaceFinalSurface(
+                "file-insert",
+                "Daily file insertion is app-first through Publisher.",
+                FinalSurfaceCategory.REMOVED_BY_DEFAULT_ADMIN),
+            surfaceFinalSurface(
+                "local-file-insert",
+                "Daily local insert selection is app-first through Publisher.",
+                FinalSurfaceCategory.REMOVED_BY_DEFAULT_ADMIN),
+            surfaceFinalSurface(
+                "friends",
+                "Daily peer roster work is Web Shell peer control first.",
+                FinalSurfaceCategory.REMOVED_BY_DEFAULT_ADMIN),
+            surfaceFinalSurface(
+                "add-friend",
+                "Daily peer-add work is Web Shell peer control first.",
+                FinalSurfaceCategory.REMOVED_BY_DEFAULT_ADMIN),
+            surfaceFinalSurface(
+                "strangers",
+                "Daily opennet peer visibility is Web Shell peer control first.",
+                FinalSurfaceCategory.REMOVED_BY_DEFAULT_ADMIN),
+            surfaceFinalSurface(
+                "connectivity",
+                "Daily connectivity inspection is Web Shell first.",
+                FinalSurfaceCategory.REMOVED_BY_DEFAULT_ADMIN),
+            surfaceFinalSurface(
+                "alerts",
+                "Safe reads are Web Shell first; bulk legacy mutations remain a pending gap.",
+                FinalSurfaceCategory.REMOVED_BY_DEFAULT_ADMIN,
+                FinalSurfaceCategory.PENDING_MIGRATION_GAP),
+            surfaceFinalSurface(
+                "config",
+                "Daily configuration reads and covered writes are Web Shell first.",
+                FinalSurfaceCategory.REMOVED_BY_DEFAULT_ADMIN),
+            surfaceFinalSurface(
+                "security-levels",
+                "Safe reads are Web Shell first while recovery and high-security forms remain"
+                    + " explicit fallback.",
+                FinalSurfaceCategory.REMOVED_BY_DEFAULT_ADMIN,
+                FinalSurfaceCategory.STARTUP_RECOVERY_FALLBACK),
+            surfaceFinalSurface(
+                "core-update",
+                "Safe reads are Web Shell first; installer handoff remains a pending support gap.",
+                FinalSurfaceCategory.REMOVED_BY_DEFAULT_ADMIN,
+                FinalSurfaceCategory.PENDING_MIGRATION_GAP),
+            surfaceFinalSurface(
+                "statistics",
+                "Daily status inspection is Web Shell diagnostics first.",
+                FinalSurfaceCategory.REMOVED_BY_DEFAULT_ADMIN),
+            surfaceFinalSurface(
+                "diagnostic",
+                "Safe reads are Web Shell first while the exact plaintext export marker remains"
+                    + " support fallback.",
+                FinalSurfaceCategory.REMOVED_BY_DEFAULT_ADMIN,
+                FinalSurfaceCategory.SUPPORT_EMERGENCY_FALLBACK),
+            surfaceFinalSurface(
+                "first-time-wizard",
+                "Startup routing still uses the legacy wizard gate until a complete replacement is"
+                    + " proven.",
+                FinalSurfaceCategory.STARTUP_RECOVERY_FALLBACK,
+                FinalSurfaceCategory.PENDING_MIGRATION_GAP),
+            surfaceFinalSurface(
+                "first-time-wizard-js",
+                "The JavaScript wizard remains part of first-run fallback behavior.",
+                FinalSurfaceCategory.STARTUP_RECOVERY_FALLBACK,
+                FinalSurfaceCategory.PENDING_MIGRATION_GAP),
+            surfaceFinalSurface(
+                "node-to-node-message",
+                "Node-to-node messages have no complete Web Shell or app replacement yet.",
+                FinalSurfaceCategory.PENDING_MIGRATION_GAP),
+            surfaceFinalSurface(
+                "chat",
+                "Chat/forum discovery remains retained as browse-adjacent functionality.",
+                FinalSurfaceCategory.RETAINED_BROWSE_SURFACE),
+            surfaceFinalSurface(
+                "translation",
+                "Translation remains retained as a non-admin support page.",
+                FinalSurfaceCategory.RETAINED_NON_ADMIN_SUPPORT),
+            surfaceFinalSurface(
+                "help",
+                "Help remains retained as a non-admin support page.",
+                FinalSurfaceCategory.RETAINED_NON_ADMIN_SUPPORT),
+            surfaceFinalSurface(
+                "content-filter",
+                "The content filter remains retained browse safety tooling.",
+                FinalSurfaceCategory.RETAINED_BROWSE_SAFETY),
+            retainedBrowseFinalSurface(
+                "fproxy-browse-root",
+                "FProxy browse root",
+                "/",
+                "Browse root remains owned by the browse registrar and is outside admin"
+                    + " retirement matching."),
+            retainedBrowseFinalSurface(
+                "fproxy-key-content-rendering",
+                "FProxy key and content rendering",
+                "/{CHK,SSK,USK,KSK}@...",
+                "Key/content rendering remains retained FProxy behavior and is not an admin"
+                    + " removal target."),
+            surfaceFinalSurface(
+                "web-shell",
+                "Web Shell bridge is replacement infrastructure, not retired legacy admin.",
+                FinalSurfaceCategory.INFRASTRUCTURE),
+            surfaceFinalSurface(
+                "platform-api",
+                "Platform API bridge is replacement infrastructure, not retired legacy admin.",
+                FinalSurfaceCategory.INFRASTRUCTURE),
+            surfaceFinalSurface(
+                "app-ui",
+                "App-owned UI bridge is replacement infrastructure, not retired legacy admin.",
+                FinalSurfaceCategory.INFRASTRUCTURE),
+            surfaceFinalSurface(
+                "static-assets",
+                "Static assets support retained fallback pages.",
+                FinalSurfaceCategory.INFRASTRUCTURE),
+            surfaceFinalSurface(
+                "directory-browser",
+                "Directory browser remains helper infrastructure for retained fallback pages.",
+                FinalSurfaceCategory.INFRASTRUCTURE),
+            surfaceFinalSurface(
+                "symlink-resolver",
+                "Symlink resolver remains helper infrastructure for legacy aliases.",
+                FinalSurfaceCategory.INFRASTRUCTURE)));
+  }
+
+  private static FinalSurfaceEntry surfaceFinalSurface(
+      String id, String rationale, FinalSurfaceCategory... categories) {
+    LegacyAdminSurface surface = require(id);
+    return new FinalSurfaceEntry(
+        surface.id(),
+        surface.title(),
+        surface.legacyPath(),
+        List.of(categories),
+        surface.removalMode(),
+        surface.removalWave(),
+        surface.replacementUrl(),
+        surface.fallbackPolicy(),
+        rationale);
+  }
+
+  private static FinalSurfaceEntry retainedBrowseFinalSurface(
+      String id, String title, String routePattern, String rationale) {
+    return new FinalSurfaceEntry(
+        id,
+        title,
+        routePattern,
+        List.of(FinalSurfaceCategory.RETAINED_BROWSE_SURFACE),
+        LegacyAdminRemovalMode.RETAINED,
+        NO_REMOVAL_WAVE,
+        null,
+        FALLBACK_POLICY_RETAINED,
+        rationale);
+  }
+
   private static String localPath(String segment) {
     return "/" + segment + "/";
+  }
+
+  private static void requireText(String value, String label) {
+    Objects.requireNonNull(value, label);
+    if (value.isBlank()) {
+      throw new IllegalArgumentException(label + " must not be blank");
+    }
+  }
+
+  private static void requireSameOriginPath(String value) {
+    requireText(value, "replacementUrl");
+    if (!value.startsWith("/") || value.startsWith("//")) {
+      throw new IllegalArgumentException("replacementUrl must be a same-origin absolute path");
+    }
   }
 
   private static List<String> queueHelperPaths(String queuePath) {

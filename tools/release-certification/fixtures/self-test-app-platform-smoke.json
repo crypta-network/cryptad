@@ -2835,6 +2835,194 @@
     },
     {
       "details": {
+        "expectedRouteIds": [],
+        "liveNodeRequired": false,
+        "redaction": {
+          "absoluteLocalPathsExcluded": true,
+          "formPasswordsExcluded": true,
+          "privateInsertUrisExcluded": true,
+          "queryStringsExcluded": true,
+          "rawAppDataExcluded": true,
+          "rawDiagnosticOutputExcluded": true,
+          "rawFetchedBodiesExcluded": true,
+          "requestBodiesExcluded": true,
+          "tokensExcluded": true
+        },
+        "removedByDefaultRouteIds": [],
+        "retainedScope": {
+          "appUiOutOfScope": true,
+          "chatOutOfScope": true,
+          "contentFilterOutOfScope": true,
+          "contentRenderingOutOfScope": true,
+          "diagnosticExportFallbackOutOfScope": true,
+          "firstTimeWizardOutOfScope": true,
+          "fproxyBrowseRootOutOfScope": true,
+          "helpOutOfScope": true,
+          "nodeToNodeMessageOutOfScope": true,
+          "platformApiOutOfScope": true,
+          "securityRecoveryFallbackOutOfScope": true,
+          "translationOutOfScope": true,
+          "webShellOutOfScope": true
+        },
+        "since": "phase-10-pr-265",
+        "statusBehavior": {
+          "finalSurface": "remaining routes are explicitly retained, pending, support fallback, startup/recovery fallback, browse, or infrastructure",
+          "mutating": "no additional mutating legacy route is promoted in Wave 5; prior covered mutations remain blocked",
+          "safeRead": "no additional safe-read legacy route is promoted in Wave 5"
+        },
+        "waveFivePromotedRouteIds": []
+      },
+      "id": "legacy-admin.removal-wave-5",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Legacy-admin removal wave 5 final-surface readiness is documented and observable."
+    },
+    {
+      "details": {
+        "categories": {
+          "infrastructure": [
+            "web-shell",
+            "platform-api",
+            "app-ui",
+            "static-assets",
+            "directory-browser",
+            "symlink-resolver"
+          ],
+          "pendingMigrationGap": [
+            "alerts",
+            "core-update",
+            "first-time-wizard",
+            "first-time-wizard-js",
+            "node-to-node-message"
+          ],
+          "removedByDefaultAdmin": [
+            "queue-downloads",
+            "queue-uploads",
+            "file-insert",
+            "local-file-insert",
+            "friends",
+            "add-friend",
+            "strangers",
+            "connectivity",
+            "alerts",
+            "config",
+            "security-levels",
+            "core-update",
+            "statistics",
+            "diagnostic"
+          ],
+          "retainedBrowse": [
+            "chat",
+            "fproxy-browse-root",
+            "fproxy-key-content-rendering"
+          ],
+          "retainedBrowseSafety": [
+            "content-filter"
+          ],
+          "retainedNonAdminSupport": [
+            "translation",
+            "help"
+          ],
+          "startupRecoveryFallback": [
+            "security-levels",
+            "first-time-wizard",
+            "first-time-wizard-js"
+          ],
+          "supportEmergencyFallback": [
+            "diagnostic"
+          ]
+        },
+        "liveNodeRequired": false,
+        "redaction": {
+          "absoluteLocalPathsExcluded": true,
+          "formPasswordsExcluded": true,
+          "privateInsertUrisExcluded": true,
+          "queryStringsExcluded": true,
+          "rawAppDataExcluded": true,
+          "rawDiagnosticOutputExcluded": true,
+          "rawFetchedBodiesExcluded": true,
+          "requestBodiesExcluded": true,
+          "routeIdsOnly": true,
+          "tokensExcluded": true
+        },
+        "since": "phase-10-pr-265",
+        "waveFivePromotedRouteIds": []
+      },
+      "id": "legacy-admin.final-admin-surface",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Legacy-admin final-surface policy is deterministic and machine-checkable."
+    },
+    {
+      "details": {
+        "liveNodeRequired": false,
+        "redaction": {
+          "absoluteLocalPathsExcluded": true,
+          "privateInsertUrisExcluded": true,
+          "queryStringsExcluded": true,
+          "rawFetchedContentExcluded": true,
+          "requestBodiesExcluded": true
+        },
+        "retainedBrowseRouteIds": [
+          "chat",
+          "fproxy-browse-root",
+          "fproxy-key-content-rendering"
+        ],
+        "retainedBrowseSafetyRouteIds": [
+          "content-filter"
+        ],
+        "retainedRoutePatterns": [
+          "/",
+          "/{CHK,SSK,USK,KSK}@...",
+          "/filterfile/"
+        ]
+      },
+      "id": "legacy-admin.browse-retained",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "FProxy browse, content rendering, and content filter remain explicitly retained."
+    },
+    {
+      "details": {
+        "fallbackMarkers": [
+          "legacyFallback=diagnostic-export",
+          "legacyFallback=security-levels"
+        ],
+        "liveNodeRequired": false,
+        "redaction": {
+          "absoluteLocalPathsExcluded": true,
+          "formPasswordsExcluded": true,
+          "privateInsertUrisExcluded": true,
+          "rawDiagnosticOutputExcluded": true,
+          "requestBodiesExcluded": true,
+          "supportBundlePayloadsExcluded": true,
+          "tokensExcluded": true
+        },
+        "startupRecoveryRouteIds": [
+          "security-levels",
+          "first-time-wizard",
+          "first-time-wizard-js"
+        ],
+        "statusBehavior": {
+          "diagnostic": "exact safe-read fallback marker retains plaintext export; non-exact queries redirect",
+          "security": "exact safe-read fallback marker retains legacy recovery/security forms; child routes are not prefix removed",
+          "wizard": "startup wizard routes remain pending fallback and are not Wave 5 removals"
+        },
+        "supportEmergencyRouteIds": [
+          "diagnostic"
+        ]
+      },
+      "id": "legacy-admin.emergency-fallback-retained",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Startup, recovery, diagnostic export, and support fallbacks remain explicit and redacted."
+    },
+    {
+      "details": {
         "fixtureBacked": true,
         "hostBubblewrapProbe": {
           "enabled": false

@@ -14,6 +14,10 @@ archive text under `docs/legacy/**`.
 Cryptad's production RC app ecosystem uses the app platform as the only forward path for
 plugin-like functionality.
 
+Legacy admin Wave 5 does not reopen legacy plugin or plugin-admin surfaces. After Wave 5, legacy
+admin is maintenance-only; plugin-like workflows should use out-of-process apps, Web Shell entry
+points, Platform API routes with declared capabilities, and app-service grants where appropriate.
+
 The node must preserve these requirements:
 
 - Do not add a new in-core plugin runtime.
