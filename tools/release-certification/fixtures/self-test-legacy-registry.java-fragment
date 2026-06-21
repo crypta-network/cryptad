@@ -24,8 +24,10 @@ final class LegacyAdminRetirementRegistry {
   private static final int REMOVAL_WAVE_2 = 2;
   private static final int REMOVAL_WAVE_3 = 3;
   private static final int REMOVAL_WAVE_4 = 4;
+  private static final int REMOVAL_WAVE_5 = 5;
   private static final int NO_REMOVAL_WAVE = 0;
   private static final String REMOVED_BY_DEFAULT_SINCE_WAVE_4 = "phase-9-pr-254";
+  private static final String REMOVED_BY_DEFAULT_SINCE_WAVE_5 = "phase-10-pr-265";
   private static final String FALLBACK_POLICY_SUPPORT_EMERGENCY = "support-emergency-fallback";
 
   public static List<LegacyAdminSurface> webShellFallbackSurfaces() {
@@ -36,6 +38,64 @@ final class LegacyAdminRetirementRegistry {
     return findByLegacyPath(legacyPath)
         .map(surface -> surface.state() != LegacyAdminRetirementState.PRIMARY_REPLACED)
         .orElse(true);
+  }
+
+  private static FinalSurfacePolicy buildFinalSurfacePolicy() {
+    return new FinalSurfacePolicy(
+        "legacy-admin.final-admin-surface",
+        REMOVAL_WAVE_5,
+        REMOVED_BY_DEFAULT_SINCE_WAVE_5,
+        List.of(
+            surfaceFinalSurface("queue-downloads", FinalSurfaceCategory.REMOVED_BY_DEFAULT_ADMIN),
+            surfaceFinalSurface("queue-uploads", FinalSurfaceCategory.REMOVED_BY_DEFAULT_ADMIN),
+            surfaceFinalSurface("file-insert", FinalSurfaceCategory.REMOVED_BY_DEFAULT_ADMIN),
+            surfaceFinalSurface("local-file-insert", FinalSurfaceCategory.REMOVED_BY_DEFAULT_ADMIN),
+            surfaceFinalSurface("friends", FinalSurfaceCategory.REMOVED_BY_DEFAULT_ADMIN),
+            surfaceFinalSurface("add-friend", FinalSurfaceCategory.REMOVED_BY_DEFAULT_ADMIN),
+            surfaceFinalSurface("strangers", FinalSurfaceCategory.REMOVED_BY_DEFAULT_ADMIN),
+            surfaceFinalSurface("connectivity", FinalSurfaceCategory.REMOVED_BY_DEFAULT_ADMIN),
+            surfaceFinalSurface(
+                "alerts",
+                FinalSurfaceCategory.REMOVED_BY_DEFAULT_ADMIN,
+                FinalSurfaceCategory.PENDING_MIGRATION_GAP),
+            surfaceFinalSurface("config", FinalSurfaceCategory.REMOVED_BY_DEFAULT_ADMIN),
+            surfaceFinalSurface(
+                "security-levels",
+                FinalSurfaceCategory.REMOVED_BY_DEFAULT_ADMIN,
+                FinalSurfaceCategory.STARTUP_RECOVERY_FALLBACK),
+            surfaceFinalSurface(
+                "core-update",
+                FinalSurfaceCategory.REMOVED_BY_DEFAULT_ADMIN,
+                FinalSurfaceCategory.PENDING_MIGRATION_GAP),
+            surfaceFinalSurface("statistics", FinalSurfaceCategory.REMOVED_BY_DEFAULT_ADMIN),
+            surfaceFinalSurface(
+                "diagnostic",
+                FinalSurfaceCategory.REMOVED_BY_DEFAULT_ADMIN,
+                FinalSurfaceCategory.SUPPORT_EMERGENCY_FALLBACK),
+            surfaceFinalSurface(
+                "first-time-wizard",
+                FinalSurfaceCategory.STARTUP_RECOVERY_FALLBACK,
+                FinalSurfaceCategory.PENDING_MIGRATION_GAP),
+            surfaceFinalSurface(
+                "first-time-wizard-js",
+                FinalSurfaceCategory.STARTUP_RECOVERY_FALLBACK,
+                FinalSurfaceCategory.PENDING_MIGRATION_GAP),
+            surfaceFinalSurface(
+                "node-to-node-message", FinalSurfaceCategory.PENDING_MIGRATION_GAP),
+            surfaceFinalSurface("chat", FinalSurfaceCategory.RETAINED_BROWSE_SURFACE),
+            surfaceFinalSurface("translation", FinalSurfaceCategory.RETAINED_NON_ADMIN_SUPPORT),
+            surfaceFinalSurface("help", FinalSurfaceCategory.RETAINED_NON_ADMIN_SUPPORT),
+            surfaceFinalSurface("content-filter", FinalSurfaceCategory.RETAINED_BROWSE_SAFETY),
+            retainedBrowseFinalSurface("fproxy-browse-root", "/"),
+            retainedBrowseFinalSurface(
+                "fproxy-key-content-rendering",
+                "/{CHK,SSK,USK,KSK}@..."),
+            surfaceFinalSurface("web-shell", FinalSurfaceCategory.INFRASTRUCTURE),
+            surfaceFinalSurface("platform-api", FinalSurfaceCategory.INFRASTRUCTURE),
+            surfaceFinalSurface("app-ui", FinalSurfaceCategory.INFRASTRUCTURE),
+            surfaceFinalSurface("static-assets", FinalSurfaceCategory.INFRASTRUCTURE),
+            surfaceFinalSurface("directory-browser", FinalSurfaceCategory.INFRASTRUCTURE),
+            surfaceFinalSurface("symlink-resolver", FinalSurfaceCategory.INFRASTRUCTURE)));
   }
 
   private static LegacyAdminSurface diagnosticWave4Redirect() {

@@ -228,6 +228,10 @@ legacy-admin.removal-wave-1
 legacy-admin.removal-wave-2
 legacy-admin.removal-wave-3
 legacy-admin.removal-wave-4
+legacy-admin.removal-wave-5
+legacy-admin.final-admin-surface
+legacy-admin.browse-retained
+legacy-admin.emergency-fallback-retained
 apphost.sandbox-provider
 public-beta-security.app-ui-csp
 public-beta-security.app-origin-policy
@@ -444,8 +448,10 @@ blocker row becomes `warn`, never a silent `pass`.
 Required evidence that regresses from `pass` to `fail`, `missing`, or `skip` blocks
 release-candidate promotion unless a visible waiver applies. `pass` to `warn` is a warning.
 `legacy-plugin.freeze-policy`, `legacy-plugin.migration-guide`,
-`legacy-plugin.social-inbox-spike`, `legacy-admin.removal-wave-3`, and
-`legacy-admin.removal-wave-4` are required release-candidate evidence. The plugin evidence
+`legacy-plugin.social-inbox-spike`, `legacy-admin.removal-wave-3`,
+`legacy-admin.removal-wave-4`, `legacy-admin.removal-wave-5`,
+`legacy-admin.final-admin-surface`, `legacy-admin.browse-retained`, and
+`legacy-admin.emergency-fallback-retained` are required release-candidate evidence. The plugin evidence
 verifies that the old in-process plugin runtime is frozen and removed, that no in-core plugin
 runtime/API surface has been reintroduced, that old plugin command names still map only to
 deterministic unsupported responses, and that legacy plugin categories have a documented
@@ -453,6 +459,9 @@ out-of-process app-platform migration path without old plugin ABI or FCP command
 Social Inbox remains the executable social/mail-like migration spike. Wave 3 verifies only the
 `security-levels` route, safe-read redirect behavior, mutating legacy fallback, retained
 browse/filter/diagnostic/wizard surfaces, and redacted diagnostics counters without a live node.
+Wave 5 verifies the maintenance-only final admin surface, retained FProxy browse/content
+rendering, retained content filter, explicit startup/recovery and diagnostic support fallbacks, and
+redacted route-id evidence without promoting unproven legacy routes.
 Wave 4 verifies only the `diagnostic` route, Web Shell diagnostics at `/app/node/#diagnostics` as
 the primary destination, the exact safe-read plaintext export fallback, retained
 FProxy/content-filter/startup/security fallback scope, and evidence redaction without a live node.

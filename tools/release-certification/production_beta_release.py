@@ -247,6 +247,10 @@ CRITICAL_PRODUCTION_BETA_EVIDENCE_IDS = (
     "app-services.dependency-graph",
     "app-services.grant-bundles",
     "app-services.dependency-redaction",
+    "legacy-admin.removal-wave-5",
+    "legacy-admin.final-admin-surface",
+    "legacy-admin.browse-retained",
+    "legacy-admin.emergency-fallback-retained",
 )
 LIVE_NETWORK_REQUIRED_IDS = (
     "live-network-beta.preflight",
@@ -1938,6 +1942,29 @@ def evidence_status_ok(item: Any) -> bool:
     return status == "warn" and evidence_details(item).get("waived") is True
 
 
+def legacy_admin_final_surface_summary(all_evidence: dict[str, Any]) -> dict[str, Any]:
+    wave_five = all_evidence.get("legacy-admin.removal-wave-5")
+    final_surface = all_evidence.get("legacy-admin.final-admin-surface")
+    browse = all_evidence.get("legacy-admin.browse-retained")
+    emergency = all_evidence.get("legacy-admin.emergency-fallback-retained")
+    wave_five_details = evidence_details(wave_five) if isinstance(wave_five, dict) else {}
+    final_details = evidence_details(final_surface) if isinstance(final_surface, dict) else {}
+    return {
+        "removalWave5Status": wave_five.get("status") if isinstance(wave_five, dict) else "missing",
+        "finalAdminSurfaceStatus": final_surface.get("status")
+        if isinstance(final_surface, dict)
+        else "missing",
+        "browseRetainedStatus": browse.get("status") if isinstance(browse, dict) else "missing",
+        "emergencyFallbackStatus": emergency.get("status")
+        if isinstance(emergency, dict)
+        else "missing",
+        "waveFivePromotedRouteIds": wave_five_details.get("waveFivePromotedRouteIds", []),
+        "finalSurfaceCategories": sorted(final_details.get("categories", {}).keys())
+        if isinstance(final_details.get("categories"), dict)
+        else [],
+    }
+
+
 def evaluate_promotion(state: PipelineState, summaries: dict[str, Any]) -> dict[str, Any]:
     settings = state.settings
     cert_summary = summaries.get("certification") if isinstance(summaries.get("certification"), dict) else None
@@ -2070,9 +2097,8 @@ def evaluate_promotion(state: PipelineState, summaries: dict[str, Any]) -> dict[
         "nonRelease": non_release,
         "failedGateCount": len(failed),
         "gates": gates,
-        "knownLimitations": [
-            "Legacy admin Wave 5 readiness is intentionally not implemented in PR-259 and remains a later release gate."
-        ],
+        "legacyAdminFinalSurface": legacy_admin_final_surface_summary(all_evidence),
+        "knownLimitations": [],
     }
 
 
@@ -2579,6 +2605,27 @@ def render_markdown_summary(summary: dict[str, Any]) -> str:
     else:
         for gate in failed:
             lines.append(f"- `{gate['id']}`: {gate['summary']}")
+    legacy_admin = summary["promotion"].get("legacyAdminFinalSurface", {})
+    if isinstance(legacy_admin, dict) and legacy_admin:
+        lines.extend(["", "## Legacy Admin Wave 5", ""])
+        lines.append(
+            f"- Removal Wave 5 evidence: `{legacy_admin.get('removalWave5Status', 'missing')}`"
+        )
+        lines.append(
+            "- Final admin surface evidence: "
+            f"`{legacy_admin.get('finalAdminSurfaceStatus', 'missing')}`"
+        )
+        lines.append(
+            f"- Browse retained evidence: `{legacy_admin.get('browseRetainedStatus', 'missing')}`"
+        )
+        lines.append(
+            "- Emergency fallback evidence: "
+            f"`{legacy_admin.get('emergencyFallbackStatus', 'missing')}`"
+        )
+        lines.append(
+            "- Wave 5 promoted route ids: "
+            f"`{','.join(legacy_admin.get('waveFivePromotedRouteIds', [])) or 'none'}`"
+        )
     lines.extend(["", "## Known Limitations", ""])
     for limitation in summary["promotion"].get("knownLimitations", []):
         lines.append(f"- {limitation}")

@@ -186,11 +186,59 @@ LEGACY_REMOVAL_WAVE_THREE_IDS = (
 LEGACY_REMOVAL_WAVE_FOUR_IDS = (
     "diagnostic",
 )
+LEGACY_REMOVAL_WAVE_FIVE_IDS: tuple[str, ...] = ()
 LEGACY_REMOVAL_WAVE_TWO_SCOPE_EXPANSION_IDS = (
     "queue-downloads",
     "queue-uploads",
     "config",
     "statistics",
+)
+LEGACY_FINAL_ADMIN_REMOVED_IDS = (
+    "queue-downloads",
+    "queue-uploads",
+    "file-insert",
+    "local-file-insert",
+    "friends",
+    "add-friend",
+    "strangers",
+    "connectivity",
+    "alerts",
+    "config",
+    "security-levels",
+    "core-update",
+    "statistics",
+    "diagnostic",
+)
+LEGACY_FINAL_RETAINED_BROWSE_IDS = (
+    "chat",
+    "fproxy-browse-root",
+    "fproxy-key-content-rendering",
+)
+LEGACY_FINAL_RETAINED_BROWSE_SAFETY_IDS = ("content-filter",)
+LEGACY_FINAL_SUPPORT_EMERGENCY_IDS = ("diagnostic",)
+LEGACY_FINAL_STARTUP_RECOVERY_IDS = (
+    "security-levels",
+    "first-time-wizard",
+    "first-time-wizard-js",
+)
+LEGACY_FINAL_PENDING_GAP_IDS = (
+    "alerts",
+    "core-update",
+    "first-time-wizard",
+    "first-time-wizard-js",
+    "node-to-node-message",
+)
+LEGACY_FINAL_RETAINED_NON_ADMIN_SUPPORT_IDS = (
+    "translation",
+    "help",
+)
+LEGACY_FINAL_INFRASTRUCTURE_IDS = (
+    "web-shell",
+    "platform-api",
+    "app-ui",
+    "static-assets",
+    "directory-browser",
+    "symlink-resolver",
 )
 APP_UI_DESIGN_SYSTEM_DOC = Path("docs/app-ui-design-system.md")
 APP_VAULT_DOC = Path("docs/app-secret-and-identity-vault.md")
@@ -10446,6 +10494,30 @@ def legacy_removal_wave_four_ids(registry_text: str) -> list[str]:
     return ids
 
 
+def legacy_removal_wave_five_ids(registry_text: str) -> list[str]:
+    return re.findall(r"\n\s+wave5(?:Redirect|Removed)\(\s*\"([^\"]+)\"", registry_text)
+
+
+def legacy_final_surface_category_ids(registry_text: str, category: str) -> list[str]:
+    block = java_method_body(registry_text, "buildFinalSurfacePolicy")
+    if not block:
+        return []
+    helper_names = r"(?:surfaceFinalSurface|retainedBrowseFinalSurface)"
+    pattern = (
+        r"\n\s+surfaceFinalSurface\(\s*\"([^\"]+)\""
+        r"(?:(?!\n\s+"
+        + helper_names
+        + r"\().)*?"
+        + re.escape(f"FinalSurfaceCategory.{category}")
+    )
+    ids = re.findall(pattern, block, re.DOTALL)
+    if category == "RETAINED_BROWSE_SURFACE":
+        ids.extend(
+            re.findall(r"\n\s+retainedBrowseFinalSurface\(\s*\"([^\"]+)\"", block)
+        )
+    return ids
+
+
 def legacy_scope_expansion_wave_two_ids(registry_text: str) -> list[str]:
     try:
         start = registry_text.index("List.of(")
@@ -11026,6 +11098,417 @@ def collect_legacy_removal_wave_four_evidence(settings: Settings) -> EvidenceIte
         "pass",
         True,
         "Legacy-admin removal wave 4 diagnostic replacement behavior is documented and observable.",
+        source,
+        details,
+    )
+
+
+def collect_legacy_removal_wave_five_evidence(settings: Settings) -> EvidenceItem:
+    source = summary_source(settings)
+    root = settings.workspace_root
+    files = {
+        "registry": root / "adapter-http-legacy-admin/src/main/java/network/crypta/clients/http/LegacyAdminRetirementRegistry.java",
+        "policy": root / "adapter-http-legacy-admin/src/main/java/network/crypta/clients/http/LegacyAdminRemovalPolicy.java",
+        "docs": root / "docs/legacy-retirement-plan.md",
+        "policyTest": root
+        / "adapter-http-legacy-admin/src/test/java/network/crypta/clients/http/LegacyAdminRemovalPolicyTest.java",
+        "registryTest": root
+        / "adapter-http-legacy-admin/src/test/java/network/crypta/clients/http/LegacyAdminRetirementRegistryTest.java",
+        "browseRegistrarTest": root
+        / "adapter-http-legacy-browse/src/test/java/network/crypta/clients/http/LegacyFProxyBrowseRouteRegistrarTest.java",
+    }
+    text: dict[str, str] = {}
+    missing = []
+    for key, path in files.items():
+        if not path.is_file():
+            missing.append(key)
+            text[key] = ""
+        else:
+            text[key] = path.read_text(encoding="utf-8")
+
+    wave_ids = legacy_removal_wave_five_ids(text["registry"])
+    docs_lower = text["docs"].lower()
+    retained_scope = {
+        "fproxyBrowseRootOutOfScope": "/" not in wave_ids,
+        "contentRenderingOutOfScope": "fproxy-key-content-rendering" not in wave_ids,
+        "contentFilterOutOfScope": "content-filter" not in wave_ids,
+        "firstTimeWizardOutOfScope": "first-time-wizard" not in wave_ids
+        and "first-time-wizard-js" not in wave_ids,
+        "securityRecoveryFallbackOutOfScope": "security-levels" not in wave_ids,
+        "diagnosticExportFallbackOutOfScope": "diagnostic" not in wave_ids,
+        "chatOutOfScope": "chat" not in wave_ids,
+        "translationOutOfScope": "translation" not in wave_ids,
+        "helpOutOfScope": "help" not in wave_ids,
+        "nodeToNodeMessageOutOfScope": "node-to-node-message" not in wave_ids,
+        "platformApiOutOfScope": "platform-api" not in wave_ids,
+        "webShellOutOfScope": "web-shell" not in wave_ids,
+        "appUiOutOfScope": "app-ui" not in wave_ids,
+    }
+    checks = {
+        "waveFiveIdsMatch": wave_ids == list(LEGACY_REMOVAL_WAVE_FIVE_IDS),
+        "waveOneIdsStable": legacy_removal_wave_one_ids(text["registry"]) == list(LEGACY_REMOVAL_WAVE_ONE_IDS),
+        "waveTwoIdsStable": legacy_removal_wave_two_ids(text["registry"]) == list(LEGACY_REMOVAL_WAVE_TWO_IDS),
+        "waveThreeIdsStable": legacy_removal_wave_three_ids(text["registry"]) == list(LEGACY_REMOVAL_WAVE_THREE_IDS),
+        "waveFourIdsStable": legacy_removal_wave_four_ids(text["registry"]) == list(LEGACY_REMOVAL_WAVE_FOUR_IDS),
+        "waveFiveConstantPresent": "REMOVAL_WAVE_5" in text["registry"],
+        "waveFiveMarkerPresent": "phase-10-pr-265" in text["registry"],
+        "finalSurfacePolicyPresent": "FinalSurfacePolicy" in text["registry"]
+        and "buildFinalSurfacePolicy" in text["registry"],
+        "noUnprovenWaveFivePromotionTest": "removalWaveSurfaces_whenWaveFiveRequested_expectNoUnprovenRoutePromotions"
+        in text["registryTest"],
+        "retainedRouteNoDecisionTest": "waveFiveRetainedInfrastructureAndFallbackRoutes"
+        in text["policyTest"],
+        "browseRegistrarEvidencePresent": "ContentFilterToadlet" in text["browseRegistrarTest"]
+        and "LegacyHttpBrowseRouteRegistrar.Phase.QUEUE_FILTER_ROUTES" in text["browseRegistrarTest"],
+        "docsDescribeWave": "legacy-admin.removal-wave-5" in text["docs"],
+        "docsMaintenanceOnly": "maintenance-only" in docs_lower,
+        "docsRetainBrowse": "fproxy browse" in docs_lower and "content rendering" in docs_lower,
+        "docsRetainContentFilter": "content filter" in docs_lower,
+        "docsRetainStartupRecovery": "startup" in docs_lower and "recovery" in docs_lower,
+        "docsNoNewLegacyAdmin": "no new legacy admin surfaces" in docs_lower,
+        "liveNodeNotRequired": True,
+    }
+    redaction = {
+        "queryStringsExcluded": True,
+        "requestBodiesExcluded": True,
+        "formPasswordsExcluded": True,
+        "tokensExcluded": True,
+        "privateInsertUrisExcluded": True,
+        "rawDiagnosticOutputExcluded": True,
+        "rawFetchedBodiesExcluded": True,
+        "rawAppDataExcluded": True,
+        "absoluteLocalPathsExcluded": True,
+    }
+    details = {
+        "removedByDefaultRouteIds": wave_ids,
+        "expectedRouteIds": list(LEGACY_REMOVAL_WAVE_FIVE_IDS),
+        "waveFivePromotedRouteIds": wave_ids,
+        "since": "phase-10-pr-265",
+        "statusBehavior": {
+            "safeRead": "no additional safe-read legacy route is promoted in Wave 5",
+            "mutating": "no additional mutating legacy route is promoted in Wave 5; prior covered mutations remain blocked",
+            "finalSurface": "remaining routes are explicitly retained, pending, support fallback, startup/recovery fallback, browse, or infrastructure",
+        },
+        "retainedScope": retained_scope,
+        "liveNodeRequired": False,
+        "checks": checks,
+        "redaction": redaction,
+        "missingSources": missing,
+    }
+    errors = [name for name, passed in checks.items() if not passed]
+    errors.extend(f"retainedScope.{name}" for name, passed in retained_scope.items() if not passed)
+    errors.extend(f"missing {name}" for name in missing)
+    if errors:
+        return EvidenceItem(
+            "legacy-admin.removal-wave-5",
+            "fail",
+            True,
+            "Legacy-admin removal wave 5 final-surface readiness evidence is incomplete.",
+            source,
+            {"errors": errors, **details},
+        )
+    return EvidenceItem(
+        "legacy-admin.removal-wave-5",
+        "pass",
+        True,
+        "Legacy-admin removal wave 5 final-surface readiness is documented and observable.",
+        source,
+        details,
+    )
+
+
+def collect_legacy_final_admin_surface_evidence(settings: Settings) -> EvidenceItem:
+    source = summary_source(settings)
+    root = settings.workspace_root
+    files = {
+        "registry": root / "adapter-http-legacy-admin/src/main/java/network/crypta/clients/http/LegacyAdminRetirementRegistry.java",
+        "policy": root / "adapter-http-legacy-admin/src/main/java/network/crypta/clients/http/LegacyAdminRemovalPolicy.java",
+        "docs": root / "docs/legacy-retirement-plan.md",
+        "policyTest": root
+        / "adapter-http-legacy-admin/src/test/java/network/crypta/clients/http/LegacyAdminRemovalPolicyTest.java",
+        "registryTest": root
+        / "adapter-http-legacy-admin/src/test/java/network/crypta/clients/http/LegacyAdminRetirementRegistryTest.java",
+    }
+    text: dict[str, str] = {}
+    missing = []
+    for key, path in files.items():
+        if not path.is_file():
+            missing.append(key)
+            text[key] = ""
+        else:
+            text[key] = path.read_text(encoding="utf-8")
+
+    categories = {
+        "removedByDefaultAdmin": legacy_final_surface_category_ids(
+            text["registry"], "REMOVED_BY_DEFAULT_ADMIN"
+        ),
+        "retainedBrowse": legacy_final_surface_category_ids(
+            text["registry"], "RETAINED_BROWSE_SURFACE"
+        ),
+        "retainedBrowseSafety": legacy_final_surface_category_ids(
+            text["registry"], "RETAINED_BROWSE_SAFETY"
+        ),
+        "supportEmergencyFallback": legacy_final_surface_category_ids(
+            text["registry"], "SUPPORT_EMERGENCY_FALLBACK"
+        ),
+        "startupRecoveryFallback": legacy_final_surface_category_ids(
+            text["registry"], "STARTUP_RECOVERY_FALLBACK"
+        ),
+        "pendingMigrationGap": legacy_final_surface_category_ids(
+            text["registry"], "PENDING_MIGRATION_GAP"
+        ),
+        "retainedNonAdminSupport": legacy_final_surface_category_ids(
+            text["registry"], "RETAINED_NON_ADMIN_SUPPORT"
+        ),
+        "infrastructure": legacy_final_surface_category_ids(text["registry"], "INFRASTRUCTURE"),
+    }
+    docs_lower = text["docs"].lower()
+    checks = {
+        "policyEvidenceIdPresent": "legacy-admin.final-admin-surface" in text["registry"],
+        "waveFiveMarkerPresent": "phase-10-pr-265" in text["registry"],
+        "removedByDefaultAdminIdsMatch": categories["removedByDefaultAdmin"]
+        == list(LEGACY_FINAL_ADMIN_REMOVED_IDS),
+        "retainedBrowseIdsMatch": categories["retainedBrowse"]
+        == list(LEGACY_FINAL_RETAINED_BROWSE_IDS),
+        "retainedBrowseSafetyIdsMatch": categories["retainedBrowseSafety"]
+        == list(LEGACY_FINAL_RETAINED_BROWSE_SAFETY_IDS),
+        "supportEmergencyIdsMatch": categories["supportEmergencyFallback"]
+        == list(LEGACY_FINAL_SUPPORT_EMERGENCY_IDS),
+        "startupRecoveryIdsMatch": categories["startupRecoveryFallback"]
+        == list(LEGACY_FINAL_STARTUP_RECOVERY_IDS),
+        "pendingGapIdsMatch": categories["pendingMigrationGap"]
+        == list(LEGACY_FINAL_PENDING_GAP_IDS),
+        "retainedSupportIdsMatch": categories["retainedNonAdminSupport"]
+        == list(LEGACY_FINAL_RETAINED_NON_ADMIN_SUPPORT_IDS),
+        "infrastructureIdsMatch": categories["infrastructure"]
+        == list(LEGACY_FINAL_INFRASTRUCTURE_IDS),
+        "testsCoverFinalSurfacePolicy": "finalSurfacePolicy_whenRemovedAdminRequested" in text["registryTest"]
+        and "finalSurfacePolicy_whenFallbacksRequested" in text["registryTest"],
+        "testsCoverRetainedNoDecision": "waveFiveRetainedInfrastructureAndFallbackRoutes"
+        in text["policyTest"],
+        "docsFinalSurface": "final admin surface" in docs_lower,
+        "docsMaintenanceOnly": "maintenance-only" in docs_lower,
+        "docsNoNewLegacyAdmin": "no new legacy admin surfaces" in docs_lower,
+        "docsRedactionBoundary": "query strings" in docs_lower and "request bodies" in docs_lower,
+        "liveNodeNotRequired": True,
+    }
+    redaction = {
+        "routeIdsOnly": True,
+        "queryStringsExcluded": True,
+        "requestBodiesExcluded": True,
+        "formPasswordsExcluded": True,
+        "tokensExcluded": True,
+        "privateInsertUrisExcluded": True,
+        "rawDiagnosticOutputExcluded": True,
+        "rawFetchedBodiesExcluded": True,
+        "rawAppDataExcluded": True,
+        "absoluteLocalPathsExcluded": True,
+    }
+    details = {
+        "since": "phase-10-pr-265",
+        "categories": categories,
+        "waveFivePromotedRouteIds": legacy_removal_wave_five_ids(text["registry"]),
+        "liveNodeRequired": False,
+        "checks": checks,
+        "redaction": redaction,
+        "missingSources": missing,
+    }
+    errors = [name for name, passed in checks.items() if not passed]
+    errors.extend(f"missing {name}" for name in missing)
+    if errors:
+        return EvidenceItem(
+            "legacy-admin.final-admin-surface",
+            "fail",
+            True,
+            "Legacy-admin final-surface policy evidence is incomplete.",
+            source,
+            {"errors": errors, **details},
+        )
+    return EvidenceItem(
+        "legacy-admin.final-admin-surface",
+        "pass",
+        True,
+        "Legacy-admin final-surface policy is deterministic and machine-checkable.",
+        source,
+        details,
+    )
+
+
+def collect_legacy_browse_retained_evidence(settings: Settings) -> EvidenceItem:
+    source = summary_source(settings)
+    root = settings.workspace_root
+    files = {
+        "registry": root / "adapter-http-legacy-admin/src/main/java/network/crypta/clients/http/LegacyAdminRetirementRegistry.java",
+        "registryTest": root
+        / "adapter-http-legacy-admin/src/test/java/network/crypta/clients/http/LegacyAdminRetirementRegistryTest.java",
+        "policyTest": root
+        / "adapter-http-legacy-admin/src/test/java/network/crypta/clients/http/LegacyAdminRemovalPolicyTest.java",
+        "browseTest": root
+        / "adapter-http-legacy-browse/src/test/java/network/crypta/clients/http/LegacyFProxyBrowseRouteRegistrarTest.java",
+        "docs": root / "docs/legacy-retirement-plan.md",
+    }
+    text: dict[str, str] = {}
+    missing = []
+    for key, path in files.items():
+        if not path.is_file():
+            missing.append(key)
+            text[key] = ""
+        else:
+            text[key] = path.read_text(encoding="utf-8")
+
+    retained_browse_ids = legacy_final_surface_category_ids(
+        text["registry"], "RETAINED_BROWSE_SURFACE"
+    )
+    retained_safety_ids = legacy_final_surface_category_ids(
+        text["registry"], "RETAINED_BROWSE_SAFETY"
+    )
+    docs_lower = text["docs"].lower()
+    checks = {
+        "retainedBrowseIdsMatch": retained_browse_ids
+        == list(LEGACY_FINAL_RETAINED_BROWSE_IDS),
+        "retainedBrowseSafetyIdsMatch": retained_safety_ids
+        == list(LEGACY_FINAL_RETAINED_BROWSE_SAFETY_IDS),
+        "browseRootNotRetirementSurface": "findByLegacyPath_whenFProxyBrowseRouteRequested_expectNoRetirementSurface"
+        in text["registryTest"],
+        "policyTestsBrowseNoDecision": "/CHK@abc" in text["policyTest"]
+        and "/SSK@abc" in text["policyTest"]
+        and "/USK@abc" in text["policyTest"]
+        and "/filterfile/" in text["policyTest"]
+        and "/filter-browse/" in text["policyTest"],
+        "browseRegistrarRegistersRootAndFilter": '"/"' in text["browseTest"]
+        and "ContentFilterToadlet" in text["browseTest"]
+        and "LocalFileFilterToadlet" in text["browseTest"],
+        "docsRetainBrowse": "fproxy browse remains retained" in docs_lower
+        and "content rendering" in docs_lower,
+        "docsRetainContentFilter": "content filter remains retained" in docs_lower,
+        "liveNodeNotRequired": True,
+    }
+    details = {
+        "retainedBrowseRouteIds": retained_browse_ids,
+        "retainedBrowseSafetyRouteIds": retained_safety_ids,
+        "retainedRoutePatterns": ["/", "/{CHK,SSK,USK,KSK}@...", "/filterfile/"],
+        "liveNodeRequired": False,
+        "checks": checks,
+        "redaction": {
+            "rawFetchedContentExcluded": True,
+            "privateInsertUrisExcluded": True,
+            "queryStringsExcluded": True,
+            "requestBodiesExcluded": True,
+            "absoluteLocalPathsExcluded": True,
+        },
+        "missingSources": missing,
+    }
+    errors = [name for name, passed in checks.items() if not passed]
+    errors.extend(f"missing {name}" for name in missing)
+    if errors:
+        return EvidenceItem(
+            "legacy-admin.browse-retained",
+            "fail",
+            True,
+            "Legacy browse retention evidence is incomplete.",
+            source,
+            {"errors": errors, **details},
+        )
+    return EvidenceItem(
+        "legacy-admin.browse-retained",
+        "pass",
+        True,
+        "FProxy browse, content rendering, and content filter remain explicitly retained.",
+        source,
+        details,
+    )
+
+
+def collect_legacy_emergency_fallback_retained_evidence(settings: Settings) -> EvidenceItem:
+    source = summary_source(settings)
+    root = settings.workspace_root
+    files = {
+        "registry": root / "adapter-http-legacy-admin/src/main/java/network/crypta/clients/http/LegacyAdminRetirementRegistry.java",
+        "policy": root / "adapter-http-legacy-admin/src/main/java/network/crypta/clients/http/LegacyAdminRemovalPolicy.java",
+        "policyTest": root
+        / "adapter-http-legacy-admin/src/test/java/network/crypta/clients/http/LegacyAdminRemovalPolicyTest.java",
+        "docs": root / "docs/legacy-retirement-plan.md",
+        "operatorDocs": root / "docs/operator-rc-recovery-and-support-workflow.md",
+    }
+    text: dict[str, str] = {}
+    missing = []
+    for key, path in files.items():
+        if not path.is_file():
+            missing.append(key)
+            text[key] = ""
+        else:
+            text[key] = path.read_text(encoding="utf-8")
+
+    support_ids = legacy_final_surface_category_ids(
+        text["registry"], "SUPPORT_EMERGENCY_FALLBACK"
+    )
+    startup_ids = legacy_final_surface_category_ids(
+        text["registry"], "STARTUP_RECOVERY_FALLBACK"
+    )
+    docs_lower = text["docs"].lower()
+    operator_docs_lower = text["operatorDocs"].lower()
+    checks = {
+        "supportEmergencyIdsMatch": support_ids == list(LEGACY_FINAL_SUPPORT_EMERGENCY_IDS),
+        "startupRecoveryIdsMatch": startup_ids == list(LEGACY_FINAL_STARTUP_RECOVERY_IDS),
+        "diagnosticFallbackMarkerExact": "legacyFallback=diagnostic-export" in text["policy"]
+        and "getRawQuery()" in text["policy"],
+        "securityFallbackMarkerExact": "legacyFallback=security-levels" in text["policy"]
+        and "getRawQuery()" in text["policy"],
+        "testsCoverDiagnosticFallback": "legacyFallback=diagnostic-export" in text["policyTest"]
+        and "diagnostic-export&" in text["policyTest"],
+        "testsCoverSecurityFallback": "legacyFallback=security-levels" in text["policyTest"]
+        and "/seclevels/network" in text["policyTest"],
+        "testsCoverWizardNoDecision": "/wizard/" in text["policyTest"] and "/wiz/" in text["policyTest"],
+        "docsDiagnosticSupportEmergency": "diagnostic" in docs_lower
+        and "support" in docs_lower
+        and "emergency" in docs_lower,
+        "docsStartupRecoveryRetained": "startup" in docs_lower and "recovery" in docs_lower,
+        "supportBundleRedactionDocumented": "support bundles" in operator_docs_lower
+        and "form passwords" in operator_docs_lower
+        and "tokens" in operator_docs_lower,
+        "liveNodeNotRequired": True,
+    }
+    details = {
+        "supportEmergencyRouteIds": support_ids,
+        "startupRecoveryRouteIds": startup_ids,
+        "fallbackMarkers": [
+            "legacyFallback=diagnostic-export",
+            "legacyFallback=security-levels",
+        ],
+        "statusBehavior": {
+            "diagnostic": "exact safe-read fallback marker retains plaintext export; non-exact queries redirect",
+            "security": "exact safe-read fallback marker retains legacy recovery/security forms; child routes are not prefix removed",
+            "wizard": "startup wizard routes remain pending fallback and are not Wave 5 removals",
+        },
+        "liveNodeRequired": False,
+        "checks": checks,
+        "redaction": {
+            "rawDiagnosticOutputExcluded": True,
+            "supportBundlePayloadsExcluded": True,
+            "requestBodiesExcluded": True,
+            "formPasswordsExcluded": True,
+            "tokensExcluded": True,
+            "privateInsertUrisExcluded": True,
+            "absoluteLocalPathsExcluded": True,
+        },
+        "missingSources": missing,
+    }
+    errors = [name for name, passed in checks.items() if not passed]
+    errors.extend(f"missing {name}" for name in missing)
+    if errors:
+        return EvidenceItem(
+            "legacy-admin.emergency-fallback-retained",
+            "fail",
+            True,
+            "Legacy emergency and support fallback retention evidence is incomplete.",
+            source,
+            {"errors": errors, **details},
+        )
+    return EvidenceItem(
+        "legacy-admin.emergency-fallback-retained",
+        "pass",
+        True,
+        "Startup, recovery, diagnostic export, and support fallbacks remain explicit and redacted.",
         source,
         details,
     )
@@ -14474,6 +14957,10 @@ def run(settings: Settings) -> tuple[dict[str, Any], int]:
         collect_legacy_removal_wave_two_evidence(settings),
         collect_legacy_removal_wave_three_evidence(settings),
         collect_legacy_removal_wave_four_evidence(settings),
+        collect_legacy_removal_wave_five_evidence(settings),
+        collect_legacy_final_admin_surface_evidence(settings),
+        collect_legacy_browse_retained_evidence(settings),
+        collect_legacy_emergency_fallback_retained_evidence(settings),
         collect_sandbox_provider_evidence(settings),
         *collect_public_beta_security_evidence(settings),
         *collect_ecosystem_security_advisory_revocation_evidence(settings),
@@ -14696,6 +15183,16 @@ def run_self_test(repo_root: Path) -> None:
     }, counts
     assert legacy_removal_wave_three_ids(registry_text) == ["security-levels"]
     assert legacy_removal_wave_four_ids(registry_text) == ["diagnostic"]
+    assert legacy_removal_wave_five_ids(registry_text) == []
+    assert legacy_final_surface_category_ids(
+        registry_text, "RETAINED_BROWSE_SURFACE"
+    ) == list(LEGACY_FINAL_RETAINED_BROWSE_IDS)
+    assert legacy_final_surface_category_ids(
+        registry_text, "SUPPORT_EMERGENCY_FALLBACK"
+    ) == list(LEGACY_FINAL_SUPPORT_EMERGENCY_IDS)
+    assert legacy_final_surface_category_ids(
+        registry_text, "STARTUP_RECOVERY_FALLBACK"
+    ) == list(LEGACY_FINAL_STARTUP_RECOVERY_IDS)
     extra_wave_three_text = registry_text.replace(
         "securityLevelsWave3Redirect()",
         'securityLevelsWave3Redirect(),\n'
@@ -15275,6 +15772,25 @@ def run_self_test(repo_root: Path) -> None:
         assert evidence_by_id["legacy-admin.removal-wave-4"]["details"][
             "removedByDefaultRouteIds"
         ] == ["diagnostic"]
+        assert evidence_by_id["legacy-admin.removal-wave-5"]["status"] == "pass"
+        assert evidence_by_id["legacy-admin.removal-wave-5"]["requiredForReleaseCandidate"] is True
+        assert evidence_by_id["legacy-admin.removal-wave-5"]["details"][
+            "waveFivePromotedRouteIds"
+        ] == []
+        assert evidence_by_id["legacy-admin.final-admin-surface"]["status"] == "pass"
+        assert (
+            evidence_by_id["legacy-admin.final-admin-surface"]["requiredForReleaseCandidate"]
+            is True
+        )
+        assert evidence_by_id["legacy-admin.browse-retained"]["status"] == "pass"
+        assert evidence_by_id["legacy-admin.browse-retained"]["requiredForReleaseCandidate"] is True
+        assert evidence_by_id["legacy-admin.emergency-fallback-retained"]["status"] == "pass"
+        assert (
+            evidence_by_id["legacy-admin.emergency-fallback-retained"][
+                "requiredForReleaseCandidate"
+            ]
+            is True
+        )
         contract_item = evidence_by_id["platform-api.contract"]
         assert contract_item["status"] == "pass", contract_item
         assert evidence_by_id["platform-api.stable-baseline"]["status"] == "pass"
@@ -18374,6 +18890,16 @@ def make_self_test_workspace(workspace: Path) -> None:
         "legacy-admin.removal-wave-4 documents that diagnostic is the only Wave 4 route. Web Shell diagnostics "
         "at /app/node/#diagnostics is primary, while the raw diagnostic export remains a plain-text support "
         "or emergency fallback only through the exact bootstrap-resolved diagnostic fallback marker. "
+        "legacy-admin.removal-wave-5 documents final admin surface readiness with no additional promoted "
+        "route ids, because all remaining routes are retained, pending, infrastructure, browse, support, "
+        "or startup recovery fallback. legacy-admin.final-admin-surface documents the final admin surface "
+        "policy: legacy admin is maintenance-only after Wave 5, daily operator workflows are Web Shell "
+        "or app-first, and no new legacy admin surfaces should be added. legacy-admin.browse-retained "
+        "documents that FProxy browse and content rendering remain retained and content filter remains retained. "
+        "legacy-admin.emergency-fallback-retained documents startup and recovery fallback, diagnostic support "
+        "and emergency fallback, and redaction for support bundles. Query strings, request bodies, "
+        "tokens, private insert URIs, raw diagnostic output, raw fetched content, app data, and local "
+        "paths remain excluded from Wave 5 evidence. "
         "Startup wizard and emergency fallback remain "
         "pending. Node-to-node messages remain pending. "
         "FProxy browse remains retained, FProxy browse and content rendering remain retained, "
@@ -18421,14 +18947,38 @@ def make_self_test_workspace(workspace: Path) -> None:
         "class LegacyAdminRemovalPolicyTest { "
         "String fallback = \"legacyFallback=diagnostic-export\"; "
         "String nonExact = \"legacyFallback=diagnostic-export&token=secret\"; "
+        "String securityFallback = \"legacyFallback=security-levels\"; "
         "String slashless = \"/diagnostic\"; "
         "String subpath = \"/diagnostic/requesters\"; "
+        "String securityChild = \"/seclevels/network\"; "
+        "String retained = \"/ /CHK@abc /SSK@abc /USK@abc /filterfile/ /filter-browse/ "
+        "/wizard/ /wiz/ /send_n2ntm/ /n2nm-browse/ /chat/ /translation/ /help/ "
+        "/app/node/ /apps/ /apps/queue-manager/ /api/v1/diagnostics "
+        "/api/v1/wizard/first-time /api/v1/operator/recovery/actions "
+        "/api/v1/operator/support-bundle\"; "
+        "void decide_whenWaveFiveFinalSurfaceRetainedRouteRequested_expectNoDecision() {} "
+        "Object waveFiveRetainedInfrastructureAndFallbackRoutes() { return retained; } "
         "String replacement = \"/app/node/#diagnostics\"; }\n",
         encoding="utf-8",
     )
     (legacy_admin_test_dir / "LegacyAdminRetirementRegistryTest.java").write_text(
         "class LegacyAdminRetirementRegistryTest { String waveFour = \"REMOVAL_WAVE_4 diagnostic\"; "
+        "String waveFive = \"REMOVAL_WAVE_5 phase-10-pr-265\"; "
+        "void removalWaveSurfaces_whenWaveFiveRequested_expectNoUnprovenRoutePromotions() {} "
+        "void finalSurfacePolicy_whenRemovedAdminRequested_expectAllRemovalWavesRepresented() {} "
+        "void finalSurfacePolicy_whenFallbacksRequested_expectRecoveryAndSupportExplicit() {} "
+        "void findByLegacyPath_whenFProxyBrowseRouteRequested_expectNoRetirementSurface() {} "
         "String replacement = \"/app/node/#diagnostics\"; }\n",
+        encoding="utf-8",
+    )
+    legacy_browse_test_dir = (
+        workspace / "adapter-http-legacy-browse/src/test/java/network/crypta/clients/http"
+    )
+    legacy_browse_test_dir.mkdir(parents=True, exist_ok=True)
+    (legacy_browse_test_dir / "LegacyFProxyBrowseRouteRegistrarTest.java").write_text(
+        "class LegacyFProxyBrowseRouteRegistrarTest { String root = \"/\"; "
+        "String phase = \"LegacyHttpBrowseRouteRegistrar.Phase.QUEUE_FILTER_ROUTES\"; "
+        "String routes = \"ContentFilterToadlet LocalFileFilterToadlet\"; }\n",
         encoding="utf-8",
     )
     (legacy_admin_test_dir / "WebShellToadletBootstrapTest.java").write_text(
@@ -19800,7 +20350,8 @@ class OperatorSupportRedactorTest {
         "operator-rc.redaction. The routes are host/operator-only, typed action-id dispatch only, "
         "plan before execute, destructive confirmation, metadata-only Trust Graph export, no global truth, "
         "no moderation, no routing policy, no raw app-data backup payloads in support bundles, no plugin "
-        "runtime restoration, and no FProxy browse removal.\n",
+        "runtime restoration, and no FProxy browse removal. Support bundles exclude form passwords, "
+        "tokens, private insert URIs, raw bodies, raw app-data values, and local paths.\n",
         encoding="utf-8",
     )
     (docs / "app-platform-beta-program.md").write_text(

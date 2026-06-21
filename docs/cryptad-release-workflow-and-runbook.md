@@ -261,10 +261,13 @@ Treat these as release blockers, in order:
    route-scope expansion metadata and partial mutation fallbacks, prove
    `legacy-admin.removal-wave-3` security-level redirects plus the exact
    `legacyFallback=security-levels` fallback, prove `legacy-admin.removal-wave-4` diagnostic
-   redirects plus the exact `legacyFallback=diagnostic-export` plaintext export fallback, and
-   confirm retained/pending legacy routes remain documented. FProxy browse/content rendering,
-   content filter, startup wizard/recovery flows, security recovery fallback, chat, translation,
-   help, and node-to-node message routes remain outside Wave 4.
+   redirects plus the exact `legacyFallback=diagnostic-export` plaintext export fallback, and prove
+   `legacy-admin.removal-wave-5`, `legacy-admin.final-admin-surface`,
+   `legacy-admin.browse-retained`, and `legacy-admin.emergency-fallback-retained`. Wave 5 is the
+   maintenance-only final admin surface gate: it must show whether any new route ids were promoted,
+   keep FProxy browse/content rendering and content filter retained, keep startup wizard/recovery
+   flows, security recovery fallback, diagnostic export fallback, chat, translation, help, and
+   node-to-node message routes explicit, and forbid new daily legacy-admin surfaces.
    Optional live evidence may read `GET /api/v1/diagnostics`; those counters are process-local and
    are not durable audit logs. The retirement source of truth is
    [legacy-retirement-plan.md](legacy-retirement-plan.md).

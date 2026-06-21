@@ -85,6 +85,16 @@ diagnostic subpaths do not bypass the removal policy. FProxy browse/content rend
 filter, startup wizard/recovery flows, the Wave 3 security fallback, chat, translation, help, and
 node-to-node message routes remain retained or pending.
 
+Wave 5, reported as `legacy-admin.removal-wave-5`, is the production-beta final admin surface
+readiness wave. It promotes no additional route ids because the remaining surfaces are either
+retained, pending, support/emergency fallback, startup/recovery fallback, browse-owned, or
+infrastructure. `legacy-admin.final-admin-surface` records that legacy admin is maintenance-only
+after Wave 5 and that daily operator workflows are Web Shell or first-party app first. It also
+records the retained browse/content route ids, the retained content-filter safety route, the
+diagnostic and security fallback markers, wizard/startup fallback status, pending
+node-to-node-message status, and infrastructure routes without storing request query strings,
+bodies, tokens, private insert URIs, diagnostic output, support-bundle payloads, or local paths.
+
 Production code outside `:adapter-http-legacy-admin`, `:adapter-http-legacy-browse`, and
 `:bridge-http-runtime` should keep depending on runtime-owned seams, `:platform-api`, or
 `:platform-web-shell` instead of growing new direct dependencies on

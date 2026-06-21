@@ -15,7 +15,16 @@ next bounded set of admin/control-plane pages only when the replacement is reach
 current request. Phase 8 PR-244, tracked as `legacy-admin.removal-wave-3`, applies the same
 policy to the safe-read security-levels route only. Phase 9 PR-254, tracked as
 `legacy-admin.removal-wave-4`, applies the same default replacement policy to the diagnostic
-export route only while keeping a bounded support fallback.
+export route only while keeping a bounded support fallback. Phase 10 PR-265, tracked as
+`legacy-admin.removal-wave-5`, is the production-beta final admin surface readiness wave. It does
+not promote additional route ids because the remaining surfaces are retained, pending,
+infrastructure, browse-owned, support fallback, or startup and recovery fallback. It codifies the
+final admin surface as `legacy-admin.final-admin-surface` evidence.
+
+After Wave 5, legacy admin is maintenance-only. Daily operator workflows should start in Web Shell
+or first-party apps. No new legacy admin surfaces should be added; new operator workflows should
+use Web Shell, Platform API host/operator routes, app-owned UI, or retained FProxy browse where
+that is the documented product surface.
 
 FProxy browse remains retained. FProxy browse and content-rendering surfaces are explicitly
 retained. The browse split under
@@ -179,6 +188,38 @@ Wave 4 explicitly retains or leaves pending:
 - Translation and help.
 - Local directory/file helper infrastructure outside already-reviewed explicit queue helper paths.
 
+## Removal wave 5 and final admin surface
+
+Wave 5 is tracked in release certification as `legacy-admin.removal-wave-5`. It is the
+production-beta final admin surface readiness wave. It promotes no additional legacy route ids:
+
+| Legacy route scope | Surface id | Wave 5 behavior | Reason |
+| --- | --- | --- | --- |
+| None | None | No new redirect, gone-with-replacement, or mutating-block policy is added in Wave 5. | The remaining candidates do not have complete replacements or are intentionally retained. |
+
+Wave 5 adds machine-checkable `legacy-admin.final-admin-surface` evidence. The policy groups the
+remaining surface into these categories:
+
+| Final-surface category | Route ids |
+| --- | --- |
+| Removed-by-default admin surfaces | `queue-downloads`, `queue-uploads`, `file-insert`, `local-file-insert`, `friends`, `add-friend`, `strangers`, `connectivity`, `alerts`, `config`, `security-levels`, `core-update`, `statistics`, `diagnostic` |
+| Retained browse surfaces | `chat`, `fproxy-browse-root`, `fproxy-key-content-rendering` |
+| Retained browse safety tooling | `content-filter` |
+| Support and emergency fallback | `diagnostic` through the exact `legacyFallback=diagnostic-export` marker |
+| Startup and recovery fallback | `security-levels`, `first-time-wizard`, `first-time-wizard-js` |
+| Pending migration gaps | `alerts`, `core-update`, `first-time-wizard`, `first-time-wizard-js`, `node-to-node-message` |
+| Retained non-admin support pages | `translation`, `help` |
+| Infrastructure | `web-shell`, `platform-api`, `app-ui`, `static-assets`, `directory-browser`, `symlink-resolver` |
+
+`legacy-admin.browse-retained` evidence proves that FProxy browse and content rendering remain
+outside admin removal matching, and that the content filter remains retained as browse safety
+tooling. `legacy-admin.emergency-fallback-retained` evidence proves that startup, recovery,
+diagnostic export, and support fallbacks remain explicit and redacted.
+
+The Wave 5 evidence is route-id and policy-summary evidence only. It excludes query strings,
+request bodies, form passwords, browser or app tokens, private insert URIs, raw diagnostic output,
+raw fetched content, raw app data, signatures, support-bundle payloads, and absolute local paths.
+
 ## Current map
 
 | Legacy surface | Legacy path | State | Primary path or reason |
@@ -234,9 +275,9 @@ config, core-update status, statistics, and selected queue helpers do the same u
 route scopes. Wave-3 safe reads for `/seclevels/` redirect to Web Shell security under the
 canonical route scope while mutating requests remain legacy fallback. Wave-4 safe reads for
 `/diagnostic/` redirect to Web Shell diagnostics under the canonical route scope, while the
-plain-text export remains reachable only through the exact support fallback marker. Later-wave
-primary-replaced URLs still render the legacy page and replacement notice until a future removal
-wave changes their execution mode.
+plain-text export remains reachable only through the exact support fallback marker. Wave 5 adds no
+new removed-by-default routes and freezes the production-beta final admin surface as
+maintenance-only policy evidence.
 
 The legacy top-level Queue and Friends category roots no longer fall back to `/downloads/` or
 `/friends/` as normal navigation. Queue is shown only when Queue Manager is installed, static, and
