@@ -2,6 +2,8 @@
 
 This document describes how signed app catalogs, local review governance, update gates, Web Shell,
 developer tooling, and release certification handle app security advisories and review revocation.
+The executable production-beta response procedure is
+[production-security-response-runbook.md](production-security-response-runbook.md).
 
 ## Scope
 
@@ -55,7 +57,8 @@ The parser is strict:
 - advisory IDs and denylist IDs are bounded safe tokens;
 - title, summary, reason, and safe-uninstall guidance are bounded single-line text;
 - severity is one of `low`, `medium`, `high`, or `critical`;
-- status is one of `active`, `resolved`, or `withdrawn`;
+- status is one of `draft`, `detected`, `active`, `published`, `superseded`, `resolved`,
+  `withdrawn`, or `retracted`;
 - action is one of `inform`, `warn`, `block_install`, `block_update`, or `denylist`;
 - duplicate IDs fail closed;
 - denylist entries must reference a catalog-level advisory ID;
@@ -84,8 +87,10 @@ It cannot bypass denylist, block actions, signed catalog verification, artifact 
 signed bundle verification, app review policy, production channel policy, app-data migration gates,
 service dependency gates, or Platform API compatibility gates.
 
-Resolved or withdrawn advisories can remain visible for operator context. They do not block unless
-an active exact-version denylist entry still applies.
+Only `active` and `published` entry advisories produce entry-level policy decisions. `draft`,
+`detected`, `superseded`, `resolved`, `withdrawn`, and `retracted` advisories can remain visible
+for operator context. Exact-version denylist entries remain hard enforcement while present in the
+signed catalog, even when the referenced advisory is non-enforcing.
 
 ## Installed vulnerable apps
 
@@ -170,6 +175,11 @@ app-update.security-denylist-gates
 web-shell.security-advisory-trust-warnings
 ecosystem-security.advisory-revocation-redaction
 ```
+
+Production beta additionally requires `production-security.response-runbook`, which verifies the
+runbook document, machine-readable drill model, security-release-notes template, API/Web Shell
+summary integration, and support redaction coverage for emergency catalog updates and compromise
+drills.
 
 The evidence proves strict v4 parser/writer behavior, exact version denylist enforcement, warning
 acknowledgement behavior, install/update/stage/apply/scheduler gates, receipt revocation,

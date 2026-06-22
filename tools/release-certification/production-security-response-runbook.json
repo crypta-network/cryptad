@@ -1,0 +1,241 @@
+{
+  "schemaVersion": 1,
+  "kind": "cryptad-production-security-response-runbook",
+  "generatedFor": "production-beta",
+  "drills": [
+    {
+      "id": "vulnerable-app-version",
+      "severity": "high",
+      "trigger": "reviewed vulnerability affects an exact app version",
+      "containmentActions": [
+        "freeze affected catalog candidate",
+        "denylist exact app version"
+      ],
+      "catalogActions": [
+        "publish active advisory",
+        "add replacement version guidance"
+      ],
+      "reviewActions": [
+        "retain reviewer key unless evidence is invalid",
+        "revoke receipt when review evidence changed"
+      ],
+      "operatorActions": [
+        "show update guidance",
+        "offer export-before-uninstall when needed"
+      ],
+      "schedulerExpectations": [
+        "skip denied version",
+        "stage only verified replacement"
+      ],
+      "redactionRequirements": [
+        "omit raw exploit data",
+        "omit private URIs and tokens"
+      ],
+      "verificationEvidence": [
+        "catalog.version-denylist",
+        "app-update.security-denylist-gates"
+      ],
+      "releaseNotesTemplate": "affected apps, severity, containment, update guidance"
+    },
+    {
+      "id": "app-signing-key-compromise",
+      "severity": "critical",
+      "trigger": "app signing key is exposed or untrusted",
+      "containmentActions": [
+        "stop publishing old-key artifacts",
+        "denylist affected versions"
+      ],
+      "catalogActions": [
+        "publish critical advisory",
+        "point to replacement key version"
+      ],
+      "reviewActions": [
+        "revoke affected receipts when evidence no longer stands",
+        "require fresh review receipt"
+      ],
+      "operatorActions": [
+        "show compromised-key guidance",
+        "prefer reviewed replacement update"
+      ],
+      "schedulerExpectations": [
+        "reject compromised versions",
+        "require trusted replacement signature"
+      ],
+      "redactionRequirements": [
+        "omit private signing keys",
+        "omit key file paths"
+      ],
+      "verificationEvidence": [
+        "catalog.security-advisories",
+        "app-review.receipt-revocation"
+      ],
+      "releaseNotesTemplate": "signing key id, affected versions, replacement status"
+    },
+    {
+      "id": "reviewer-key-compromise",
+      "severity": "high",
+      "trigger": "trusted reviewer key is compromised",
+      "containmentActions": [
+        "mark reviewer key revoked",
+        "block trusted-review-required candidates"
+      ],
+      "catalogActions": [
+        "publish advisories only for affected apps",
+        "leave catalog trust separate"
+      ],
+      "reviewActions": [
+        "set status revoked",
+        "revoke exact receipt fingerprints"
+      ],
+      "operatorActions": [
+        "show reviewer key revoked",
+        "request replacement review"
+      ],
+      "schedulerExpectations": [
+        "fail revoked-reviewer receipts closed",
+        "do not apply untrusted candidate"
+      ],
+      "redactionRequirements": [
+        "omit reviewer private keys",
+        "omit raw receipt signatures"
+      ],
+      "verificationEvidence": [
+        "app-review.reviewer-key-compromise-flow",
+        "app-review.receipt-revocation"
+      ],
+      "releaseNotesTemplate": "reviewer key id, affected receipts, replacement review status"
+    },
+    {
+      "id": "catalog-signing-key-rotation",
+      "severity": "high",
+      "trigger": "catalog signing key rotates or is compromised",
+      "containmentActions": [
+        "update trusted catalog key registry",
+        "reject unknown key signatures"
+      ],
+      "catalogActions": [
+        "sign emergency catalog with new trusted key",
+        "record old and new key ids"
+      ],
+      "reviewActions": [
+        "do not change review receipts unless review evidence is affected"
+      ],
+      "operatorActions": [
+        "show catalog key rotation status",
+        "refresh catalog after trust update"
+      ],
+      "schedulerExpectations": [
+        "fail closed on unknown catalog key",
+        "discover candidates only after verified refresh"
+      ],
+      "redactionRequirements": [
+        "omit catalog private keys",
+        "omit trusted-key paths"
+      ],
+      "verificationEvidence": [
+        "catalog.smoke",
+        "production-security.response-runbook"
+      ],
+      "releaseNotesTemplate": "old key id, new key id, effective timestamp, verification status"
+    },
+    {
+      "id": "malicious-catalog-entry",
+      "severity": "critical",
+      "trigger": "catalog entry or metadata is malicious",
+      "containmentActions": [
+        "remove bad entry",
+        "denylist installed unsafe version"
+      ],
+      "catalogActions": [
+        "publish corrected emergency catalog",
+        "add bounded advisory summary"
+      ],
+      "reviewActions": [
+        "revoke receipts for the malicious artifact"
+      ],
+      "operatorActions": [
+        "show catalog refresh warning",
+        "guide replacement or uninstall"
+      ],
+      "schedulerExpectations": [
+        "reject blocked target",
+        "ignore failed catalog refresh candidates"
+      ],
+      "redactionRequirements": [
+        "omit raw catalog payload",
+        "omit fetched content"
+      ],
+      "verificationEvidence": [
+        "catalog.security-advisories",
+        "web-shell.security-advisory-trust-warnings"
+      ],
+      "releaseNotesTemplate": "catalog id, affected entry, corrected metadata, channel status"
+    },
+    {
+      "id": "emergency-replacement-app",
+      "severity": "high",
+      "trigger": "safe replacement must publish outside normal cadence",
+      "containmentActions": [
+        "build replacement in dry-run mode",
+        "keep old version denylisted"
+      ],
+      "catalogActions": [
+        "add replacement version metadata",
+        "publish signed emergency candidate"
+      ],
+      "reviewActions": [
+        "require fresh trusted review receipt",
+        "log replacement review event"
+      ],
+      "operatorActions": [
+        "show update action",
+        "show fallback uninstall guidance"
+      ],
+      "schedulerExpectations": [
+        "stage replacement only after all gates pass"
+      ],
+      "redactionRequirements": [
+        "omit live private publication material",
+        "omit raw bundle contents"
+      ],
+      "verificationEvidence": [
+        "catalog.smoke",
+        "app-review.first-party-catalog"
+      ],
+      "releaseNotesTemplate": "replacement version, review status, advisory id, support guidance"
+    },
+    {
+      "id": "support-bundle-intake-redaction",
+      "severity": "medium",
+      "trigger": "operator sends security incident support evidence",
+      "containmentActions": [
+        "request redacted support preview",
+        "separate sensitive backup payloads"
+      ],
+      "catalogActions": [
+        "create advisory only after affected version is confirmed"
+      ],
+      "reviewActions": [
+        "create receipt revocation only after fingerprint is confirmed"
+      ],
+      "operatorActions": [
+        "show redaction status",
+        "show support bundle guidance"
+      ],
+      "schedulerExpectations": [
+        "no scheduler change from support intake alone"
+      ],
+      "redactionRequirements": [
+        "omit private URIs",
+        "omit bearer tokens",
+        "omit raw app data",
+        "omit local absolute paths"
+      ],
+      "verificationEvidence": [
+        "operator-beta.support-bundle-redaction",
+        "operator-rc.redaction"
+      ],
+      "releaseNotesTemplate": "support bundle note, redaction note, private reporter data excluded"
+    }
+  ]
+}

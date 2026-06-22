@@ -320,6 +320,23 @@ public final class AppCatalogManager {
   }
 
   /**
+   * Returns the signed catalog security policy for one configured catalog.
+   *
+   * <p>The catalog is verified before the policy is exposed. The returned policy contains only
+   * bounded advisory and exact denylist metadata and can be rendered through {@link
+   * AppCatalogSecurityPolicy#toJsonValue()} for operator-facing summaries. It does not expose raw
+   * catalog bytes, local source-store paths, catalog signatures, trusted-key material, fetched
+   * content, or staged bundle paths.
+   *
+   * @param catalogId catalog id to read
+   * @return authenticated catalog security policy
+   * @throws IOException if catalog state cannot be read
+   */
+  public synchronized AppCatalogSecurityPolicy securityPolicy(String catalogId) throws IOException {
+    return readVerifiedCatalog(catalogId).securityPolicy();
+  }
+
+  /**
    * Returns one catalog app entry.
    *
    * <p>The app id is normalized using the same rules as signed app manifests. Missing catalogs and

@@ -90,6 +90,13 @@ channel, migration, service dependency, compatibility, digest, signed catalog, o
 gates. Web Shell may show safe uninstall guidance for installed vulnerable versions, but Cryptad
 does not automatically uninstall apps and does not silently migrate replacements.
 
+Production beta incident response for vulnerable app versions, malicious catalog entries, app or
+catalog signing-key compromise, reviewer-key compromise, emergency replacement publication, support
+bundle intake, and security release notes is defined in
+[production-security-response-runbook.md](production-security-response-runbook.md). The runbook is
+the release-manager procedure; this document defines the trust and redaction boundaries it must
+preserve.
+
 The app-review transparency log is local and tamper-evident. It is not a global public log and does
 not create trust by itself. Platform API, Web Shell, CLI, and release-certification review surfaces
 may expose reviewer key ids, display names, lifecycle status, policy ids/versions, timestamps,

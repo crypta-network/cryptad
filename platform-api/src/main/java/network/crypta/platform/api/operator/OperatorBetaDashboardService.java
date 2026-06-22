@@ -204,10 +204,11 @@ public final class OperatorBetaDashboardService {
     Map<String, Object> appServices = appServicesSummary(warnings);
     Map<String, Object> diagnostics = diagnosticsSummary(warnings);
     Map<String, Object> legacyAdmin = legacyAdminSummary(diagnostics, warnings);
+    Map<String, Object> securityResponse = securityResponseSummary(warnings);
     Map<String, Object> summary =
         summary(catalogs, apps, subscriptions, appServices, warnings.size());
 
-    LinkedHashMap<String, Object> dashboard = LinkedHashMap.newLinkedHashMap(12);
+    LinkedHashMap<String, Object> dashboard = LinkedHashMap.newLinkedHashMap(13);
     dashboard.put(GENERATED_AT_FIELD, clock.millis());
     dashboard.put("overallStatus", overallStatus(summary, warnings));
     dashboard.put("summary", summary);
@@ -216,6 +217,7 @@ public final class OperatorBetaDashboardService {
     dashboard.put("subscriptions", subscriptions);
     dashboard.put("trustGraph", trustGraph);
     dashboard.put("appServices", appServices);
+    dashboard.put("securityResponse", securityResponse);
     dashboard.put(LEGACY_ADMIN_FIELD, legacyAdmin);
     dashboard.put("diagnostics", diagnostics);
     dashboard.put(RECOVERY_ACTIONS_FIELD, topLevelRecoveryActions(catalogs, apps, subscriptions));
@@ -346,6 +348,27 @@ public final class OperatorBetaDashboardService {
       }
     } catch (RuntimeException exception) {
       warnings.add("Recommended catalog state could not be inspected: " + safeReason(exception));
+    }
+  }
+
+  private Map<String, Object> securityResponseSummary(List<String> warnings) {
+    if (appCatalogsApiHandler == null) {
+      return unavailableBlock(CATALOGS_UNAVAILABLE);
+    }
+    try {
+      Map<String, Object> securityResponse = appCatalogsApiHandler.securityResponseSummary();
+      String status = stringValue(securityResponse.get(STATUS_FIELD));
+      if ("denylist_active".equals(status)) {
+        warnings.add("Catalog security response has active denylist entries.");
+      } else if ("advisory_active".equals(status)) {
+        warnings.add("Catalog security response has active advisories.");
+      } else if ("reviewer_revocation_active".equals(status)) {
+        warnings.add("Catalog security response has reviewer revocations.");
+      }
+      return securityResponse;
+    } catch (RuntimeException exception) {
+      warnings.add("Catalog security response could not be inspected: " + safeReason(exception));
+      return unavailableBlock(CATALOGS_UNAVAILABLE);
     }
   }
 

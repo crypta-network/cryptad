@@ -114,6 +114,15 @@ Safe support content includes action ids, route names, app ids, catalog ids, bun
 evidence ids, status labels, timestamps, counts, byte sizes, limits, digests, warning codes, and
 redacted source displays.
 
+Security incident intake follows the production response runbook in
+[production-security-response-runbook.md](production-security-response-runbook.md). Incident
+artifacts may include advisory ids, app ids, versions, catalog key ids, reviewer key ids, receipt
+fingerprints, digest summaries, and bounded operator guidance. They must not include raw catalog
+payloads, raw fetched content, raw app data, raw support bundle payloads, private insert URIs,
+private keys, bearer/session/app tokens, authorization headers, command lines containing secrets,
+CI secret values, or absolute local paths. The `production-security.response-runbook` evidence and
+`operator-rc.redaction` evidence prove these constraints for release certification.
+
 ## Trust Graph Scope
 
 Trust Graph Local RC recovery is local operator-curated trust only. It is not global truth, not

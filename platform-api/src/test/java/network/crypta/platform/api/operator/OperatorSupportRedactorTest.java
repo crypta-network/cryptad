@@ -150,6 +150,59 @@ class OperatorSupportRedactorTest {
   }
 
   @Test
+  void redact_whenSecurityIncidentArtifactContainsIntakeSecrets_expectIncidentEvidenceRedacted() {
+    Map<String, Object> incidentArtifact =
+        Map.ofEntries(
+            Map.entry("incidentId", "CRYPTA-DRILL-0001"),
+            Map.entry("authorizationHeader", "Bearer incident-secret"),
+            Map.entry("proxyAuthorizationHeader", "Basic proxy-secret"),
+            Map.entry("ciSecretValue", "ci-secret-value"),
+            Map.entry("rawFetchedContent", "private fetched page"),
+            Map.entry("rawAppData", "private app record"),
+            Map.entry("rawAppDataValues", List.of("private app record values")),
+            Map.entry("rawAppDataPayload", "private app payload"),
+            Map.entry("rawAppDataPayloadBase64", "private app payload base64"),
+            Map.entry("rawAppDataStatus", "private app status record"),
+            Map.entry("rawAppDataSource", "private app source record"),
+            Map.entry("securityIncidentRawAppData", "private namespaced app record"),
+            Map.entry("appRawAppDataPayload", "private namespaced app payload"),
+            Map.entry("rawAppDataRedacted", true),
+            Map.entry("appToken", "app-token-value"),
+            Map.entry("commandLine", "crypta-app security drill create --token command-secret"),
+            Map.entry("localPath", "/work/cryptad/security/incidents/private.json"),
+            Map.entry("privateInsertUri", "crypta:SSK@example-private/INSERT"));
+
+    OperatorSupportRedactor.RedactionResult result =
+        OperatorSupportRedactor.redact(Map.of("securityIncidentArtifact", incidentArtifact));
+
+    String rendered = result.value().toString();
+    assertTrue(rendered.contains("CRYPTA-DRILL-0001"));
+    verifySecurityIncidentValuesRedacted(rendered);
+    verifySecurityIncidentFieldsRecorded(result);
+    Map<?, ?> redacted = assertInstanceOf(Map.class, result.value());
+    Map<?, ?> redactedArtifact =
+        assertInstanceOf(Map.class, redacted.get("securityIncidentArtifact"));
+    assertTrue(redactedArtifact.containsKey("rawAppDataRedacted"));
+  }
+
+  @Test
+  void redact_whenRawAppDataMetadataFieldCarriesString_expectMetadataFieldOmitted() {
+    Map<String, Object> incidentArtifact =
+        Map.of("rawAppDataPresent", true, "rawAppDataRedacted", "private app metadata record");
+
+    OperatorSupportRedactor.RedactionResult result =
+        OperatorSupportRedactor.redact(Map.of("securityIncidentArtifact", incidentArtifact));
+
+    String rendered = result.value().toString();
+    assertFalse(rendered.contains("private app metadata record"));
+    assertTrue(result.omittedFields().contains("rawAppDataRedacted"));
+    Map<?, ?> redacted = assertInstanceOf(Map.class, result.value());
+    Map<?, ?> redactedArtifact =
+        assertInstanceOf(Map.class, redacted.get("securityIncidentArtifact"));
+    assertTrue(redactedArtifact.containsKey("rawAppDataPresent"));
+  }
+
+  @Test
   void redact_whenArbitraryAbsolutePathsPresent_expectUnsafePathsRemoved() {
     String posixPath = posixAppPath();
     String macSupportPath = macSupportAppPath();
@@ -329,6 +382,51 @@ class OperatorSupportRedactorTest {
     List<String> presentKeys =
         Stream.of(AUTHORIZATION_FIELD, COOKIE_FIELD).filter(redacted::containsKey).toList();
     assertTrue(presentKeys.isEmpty(), () -> EXPECTED_KEYS_OMITTED + presentKeys);
+  }
+
+  private static void verifySecurityIncidentValuesRedacted(String rendered) {
+    List<String> leakedValues =
+        Stream.of(
+                "incident-secret",
+                "proxy-secret",
+                "ci-secret-value",
+                "private fetched page",
+                "private app record",
+                "private app record values",
+                "private app payload",
+                "private app payload base64",
+                "private app status record",
+                "private app source record",
+                "private namespaced app record",
+                "private namespaced app payload",
+                "app-token-value",
+                "command-secret",
+                "/work/cryptad/security",
+                "SSK@example-private")
+            .filter(rendered::contains)
+            .toList();
+    assertTrue(leakedValues.isEmpty(), () -> EXPECTED_VALUES_REDACTED + leakedValues);
+  }
+
+  private static void verifySecurityIncidentFieldsRecorded(
+      OperatorSupportRedactor.RedactionResult result) {
+    List<String> missingFields =
+        Stream.of(
+                "authorizationHeader",
+                "proxyAuthorizationHeader",
+                "ciSecretValue",
+                "rawFetchedContent",
+                "rawAppData",
+                "rawAppDataValues",
+                "rawAppDataPayload",
+                "rawAppDataPayloadBase64",
+                "rawAppDataStatus",
+                "rawAppDataSource",
+                "securityIncidentRawAppData",
+                "appRawAppDataPayload")
+            .filter(fieldName -> !result.omittedFields().contains(fieldName))
+            .toList();
+    assertTrue(missingFields.isEmpty(), () -> EXPECTED_OMITTED_FIELDS + missingFields);
   }
 
   private static void assertCredentialValuesRedacted(String rendered) {

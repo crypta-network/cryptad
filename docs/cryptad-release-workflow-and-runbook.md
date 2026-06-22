@@ -80,6 +80,12 @@ Treat these as release blockers, in order:
    `build/production-beta-release/dist/crypta-production-beta-<version>.tar.gz`. The workflow,
    modes, required secrets, artifact layout, cleanup guard, and rerun rules are documented in
    [production-beta-release-pipeline.md](production-beta-release-pipeline.md).
+   Confirm `production-security.response-runbook` passes in the production beta summary. Security
+   releases or app ecosystem incident responses must also run
+   `python3 tools/release-certification/security_response_runbook.py verify`, preserve the
+   generated drill/advisory artifacts as redacted release evidence, and draft public notes from
+   [templates/security-release-notes.md](templates/security-release-notes.md). The operational
+   procedure is [production-security-response-runbook.md](production-security-response-runbook.md).
 3. **Release certification report** - generate the release-candidate report after the source gates
    below have produced their summaries:
    ```bash

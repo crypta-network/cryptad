@@ -35,6 +35,8 @@ import network.crypta.platform.appcatalog.AppCatalogProductionMetadata;
 import network.crypta.platform.appcatalog.AppCatalogReviewMetadata;
 import network.crypta.platform.appcatalog.AppCatalogSecurityAdvisory;
 import network.crypta.platform.appcatalog.AppCatalogSecurityDecision;
+import network.crypta.platform.appcatalog.AppCatalogSecurityPolicy;
+import network.crypta.platform.appcatalog.AppCatalogSecurityStatus;
 import network.crypta.platform.appcatalog.AppCatalogSourceSnapshot;
 import network.crypta.platform.appcatalog.AppReviewPolicy;
 import network.crypta.platform.appcatalog.AppReviewReceiptVerifier;
@@ -48,6 +50,7 @@ import network.crypta.platform.appcatalog.RecommendedAppCatalogs;
 import network.crypta.platform.appcatalog.TrustedReviewerKeySummary;
 import network.crypta.platform.appcatalog.TrustedReviewerKeys;
 import network.crypta.platform.appcatalog.TrustedReviewerKeysLoader;
+import network.crypta.platform.appcatalog.TrustedReviewerRegistrySummary;
 import network.crypta.platform.appdist.AppApiCompatibilityMetadata;
 import network.crypta.platform.apphost.AppBundleVerificationException;
 import network.crypta.platform.apphost.AppHost;
@@ -92,6 +95,8 @@ public final class AppCatalogsApiHandler {
   private static final String VERSION_STATUS_CURRENT = "current";
   private static final String VERSION_STATUS_DIFFERENT = "different";
   private static final String VERSION_STATUS_UNKNOWN = "unknown";
+  private static final String VERSION_FIELD = "version";
+  private static final String CONFIGURED_FIELD = "configured";
   private static final String COMPATIBILITY_NOT_DECLARED = "not_declared";
   private static final String COMPATIBILITY_SATISFIED = "satisfied";
   private static final String COMPATIBILITY_NOT_SATISFIED = "not_satisfied";
@@ -119,7 +124,12 @@ public final class AppCatalogsApiHandler {
   private static final String SECURITY_DECISION_FIELD = "securityDecision";
   private static final String REVIEWER_KEY_ID_FIELD = "reviewerKeyId";
   private static final String STATUS_FIELD = "status";
+  private static final String SUMMARY_FIELD = "summary";
   private static final String ADVISORY_FIELD = "advisory";
+  private static final String REPLACEMENT_APP_ID_FIELD = "replacementAppId";
+  private static final String SAFE_UNINSTALL_GUIDANCE_FIELD = "safeUninstallGuidance";
+  private static final String REVIEWER_REGISTRY_COUNTS_FIELD = "counts";
+  private static final String REVIEWER_REVOKED_COUNT_FIELD = "revoked";
   private static final String ERROR_APP_REVIEW_MISSING = "app_review_missing";
   private static final String ERROR_APP_REVIEW_UNTRUSTED = "app_review_untrusted";
   private static final String ERROR_APP_REVIEW_REJECTED = "app_review_rejected";
@@ -485,7 +495,7 @@ public final class AppCatalogsApiHandler {
     json.put(SOURCE_KIND_FIELD, recommended.sourceKind().orElse(null));
     json.put(SOURCE_FIELD, redactedRecommendedSource(recommended));
     json.put("sourceConfigured", recommended.configured());
-    json.put("configured", configured);
+    json.put(CONFIGURED_FIELD, configured);
     json.put("trustedCatalogKeyId", recommended.trustedCatalogKeyId().orElse(null));
     json.put("trustedCatalogKeyConfigured", trustedCatalogKeyConfigured);
     json.put("reviewerPolicyHint", recommended.reviewerPolicyHint().orElse(null));
@@ -700,7 +710,7 @@ public final class AppCatalogsApiHandler {
     AppReviewTransparencyLog log = reviewTransparencyLog();
     AppReviewTransparencyVerificationResult verification = log.verify();
     LinkedHashMap<String, Object> transparency = LinkedHashMap.newLinkedHashMap(4);
-    transparency.put("configured", log.configured());
+    transparency.put(CONFIGURED_FIELD, log.configured());
     transparency.put("recordCount", log.recordCount());
     transparency.put("latestRecordHash", log.latestRecordHash());
     transparency.put("verified", verification.verified());
@@ -726,6 +736,67 @@ public final class AppCatalogsApiHandler {
   }
 
   /**
+   * Returns a compact operator-facing security response summary.
+   *
+   * <p>The summary aggregates signed catalog security-policy metadata with local reviewer
+   * governance counts. It intentionally exposes only bounded advisory ids, exact app versions,
+   * catalog signing key ids, reviewer lifecycle counts, and recovery labels. It does not include
+   * raw catalog bytes, signatures, public key bytes, private keys, catalog sources, local store
+   * paths, staged bundle paths, raw receipt bodies, or fetched content.
+   *
+   * @return safe security response state for operator dashboard and Web Shell rendering
+   */
+  public Map<String, Object> securityResponseSummary() {
+    try {
+      List<AppCatalogSourceSnapshot> catalogs = catalogManager.listCatalogs();
+      ArrayList<Map<String, Object>> activeAdvisories = new ArrayList<>();
+      ArrayList<Map<String, Object>> denylistedVersions = new ArrayList<>();
+      ArrayList<Map<String, Object>> catalogSigningKeys = new ArrayList<>();
+      for (AppCatalogSourceSnapshot snapshot : catalogs) {
+        AppCatalogSecurityPolicy policy = catalogManager.securityPolicy(snapshot.catalogId());
+        activeAdvisories.addAll(securityResponseAdvisories(snapshot.catalogId(), policy));
+        denylistedVersions.addAll(securityResponseDenylist(snapshot.catalogId(), policy));
+        catalogSigningKeys.add(securityResponseCatalogKey(snapshot));
+      }
+      TrustedReviewerRegistrySummary registry = trustedReviewerKeysOrEmpty().summary();
+      Map<String, Object> registryJson = registry.toJsonValue();
+      int revokedReviewerKeys = revokedReviewerCount(registryJson);
+      int revokedReceipts = registry.receiptRevocationCount();
+
+      LinkedHashMap<String, Object> summary = LinkedHashMap.newLinkedHashMap(7);
+      summary.put("activeAdvisoryCount", activeAdvisories.size());
+      summary.put("denylistedVersionCount", denylistedVersions.size());
+      summary.put("revokedReviewerKeyCount", revokedReviewerKeys);
+      summary.put("revokedReceiptCount", revokedReceipts);
+      summary.put("catalogSigningKeyCount", catalogSigningKeys.size());
+      summary.put(
+          "catalogKeyRotationStatus",
+          catalogSigningKeys.stream().anyMatch(key -> key.get("keyId") == null)
+              ? VERSION_STATUS_UNKNOWN
+              : CONFIGURED_FIELD);
+      summary.put("supportRedactionStatus", "required");
+
+      LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(8);
+      json.put(
+          STATUS_FIELD,
+          securityResponseStatus(
+              activeAdvisories, denylistedVersions, revokedReviewerKeys, revokedReceipts));
+      json.put(SUMMARY_FIELD, summary);
+      json.put("activeAdvisories", List.copyOf(activeAdvisories));
+      json.put("denylistedVersions", List.copyOf(denylistedVersions));
+      json.put("reviewerGovernance", registryJson);
+      json.put("catalogSigningKeys", List.copyOf(catalogSigningKeys));
+      json.put("operatorActions", securityResponseOperatorActions());
+      json.put("supportGuidance", "Use redacted support bundle preview before sharing evidence.");
+      return json;
+    } catch (AppCatalogException exception) {
+      throw catalogFailure(exception);
+    } catch (IOException _) {
+      throw internalError("Failed to read app catalog security response state.");
+    }
+  }
+
+  /**
    * Returns one bounded transparency-log page.
    *
    * @param queryParameters decoded query parameters
@@ -742,6 +813,113 @@ public final class AppCatalogsApiHandler {
    */
   public Map<String, Object> verifyTransparencyLog() {
     return reviewTransparencyLog().verify().toJsonValue();
+  }
+
+  private static List<Map<String, Object>> securityResponseAdvisories(
+      String catalogId, AppCatalogSecurityPolicy policy) {
+    return policy.advisories().stream()
+        .filter(AppCatalogsApiHandler::securityResponseAdvisoryIsCurrent)
+        .map(advisory -> securityResponseAdvisory(catalogId, advisory.toJsonValue()))
+        .toList();
+  }
+
+  private static boolean securityResponseAdvisoryIsCurrent(
+      network.crypta.platform.appcatalog.AppCatalogSecurityAdvisoryRecord advisory) {
+    return advisory.status() == AppCatalogSecurityStatus.ACTIVE
+        || advisory.status() == AppCatalogSecurityStatus.PUBLISHED;
+  }
+
+  private static Map<String, Object> securityResponseAdvisory(
+      String catalogId, Map<String, Object> advisory) {
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(12);
+    json.put(CATALOG_ID_FIELD, catalogId);
+    json.put("id", advisory.get("id"));
+    json.put("title", advisory.get("title"));
+    json.put("severity", advisory.get("severity"));
+    json.put(STATUS_FIELD, advisory.get(STATUS_FIELD));
+    json.put("action", advisory.get("action"));
+    json.put(SUMMARY_FIELD, advisory.get(SUMMARY_FIELD));
+    json.put("publishedAt", advisory.get("publishedAt"));
+    json.put("updatedAt", advisory.get("updatedAt"));
+    json.put(REPLACEMENT_APP_ID_FIELD, advisory.get(REPLACEMENT_APP_ID_FIELD));
+    json.put(SAFE_UNINSTALL_GUIDANCE_FIELD, advisory.get(SAFE_UNINSTALL_GUIDANCE_FIELD));
+    json.put("uri", advisory.get("uri"));
+    return json;
+  }
+
+  private static List<Map<String, Object>> securityResponseDenylist(
+      String catalogId, AppCatalogSecurityPolicy policy) {
+    return policy.denylist().stream()
+        .map(entry -> securityResponseDenylistEntry(catalogId, entry.toJsonValue()))
+        .toList();
+  }
+
+  private static Map<String, Object> securityResponseDenylistEntry(
+      String catalogId, Map<String, Object> denylistEntry) {
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(8);
+    json.put(CATALOG_ID_FIELD, catalogId);
+    json.put("id", denylistEntry.get("id"));
+    json.put(APP_ID_FIELD, denylistEntry.get(APP_ID_FIELD));
+    json.put(VERSION_FIELD, denylistEntry.get(VERSION_FIELD));
+    json.put("advisoryId", denylistEntry.get("advisoryId"));
+    json.put("reason", denylistEntry.get("reason"));
+    json.put(REPLACEMENT_APP_ID_FIELD, denylistEntry.get(REPLACEMENT_APP_ID_FIELD));
+    json.put(SAFE_UNINSTALL_GUIDANCE_FIELD, denylistEntry.get(SAFE_UNINSTALL_GUIDANCE_FIELD));
+    return json;
+  }
+
+  private static Map<String, Object> securityResponseCatalogKey(AppCatalogSourceSnapshot snapshot) {
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(4);
+    json.put(CATALOG_ID_FIELD, snapshot.catalogId());
+    json.put("keyId", snapshot.signatureKeyId().orElse(null));
+    json.put(
+        "rotationStatus",
+        snapshot.signatureKeyId().isPresent() ? VERSION_STATUS_CURRENT : VERSION_STATUS_UNKNOWN);
+    json.put("lastVerifiedAt", snapshot.lastSuccessfulRefreshAt().toString());
+    return json;
+  }
+
+  private static String securityResponseStatus(
+      List<Map<String, Object>> activeAdvisories,
+      List<Map<String, Object>> denylistedVersions,
+      int revokedReviewerKeys,
+      int revokedReceipts) {
+    if (!denylistedVersions.isEmpty()) {
+      return "denylist_active";
+    }
+    if (!activeAdvisories.isEmpty()) {
+      return "advisory_active";
+    }
+    if (revokedReviewerKeys > 0 || revokedReceipts > 0) {
+      return "reviewer_revocation_active";
+    }
+    return "clear";
+  }
+
+  private static int revokedReviewerCount(Map<String, Object> registryJson) {
+    Object counts = registryJson.get(REVIEWER_REGISTRY_COUNTS_FIELD);
+    if (counts instanceof Map<?, ?> map) {
+      Object value = map.get(REVIEWER_REVOKED_COUNT_FIELD);
+      if (value instanceof Number number) {
+        return number.intValue();
+      }
+    }
+    return 0;
+  }
+
+  private static List<Map<String, Object>> securityResponseOperatorActions() {
+    return List.of(
+        securityResponseAction("refresh-catalog", "Refresh affected catalog"),
+        securityResponseAction("review-governance", "Inspect reviewer governance"),
+        securityResponseAction("support-bundle-preview", "Create redacted support preview"),
+        securityResponseAction("export-before-uninstall", "Export before uninstall"));
+  }
+
+  private static Map<String, Object> securityResponseAction(String id, String label) {
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(2);
+    json.put("id", id);
+    json.put("label", label);
+    return json;
   }
 
   /**
@@ -1398,8 +1576,8 @@ public final class AppCatalogsApiHandler {
     LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(29);
     json.put(APP_ID_FIELD, entry.appId());
     json.put("name", entry.name());
-    json.put("version", entry.version());
-    json.put("summary", entry.summary());
+    json.put(VERSION_FIELD, entry.version());
+    json.put(SUMMARY_FIELD, entry.summary());
     json.put("homepage", entry.homepage().map(URI::toString).orElse(null));
     json.put(SOURCE_FIELD, entry.source().map(URI::toString).orElse(null));
     json.put("license", entry.license().orElse(null));
@@ -1524,7 +1702,7 @@ public final class AppCatalogsApiHandler {
     LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(3);
     json.put(STATUS_FIELD, metadata.deprecationStatus().catalogValue());
     json.put("message", metadata.deprecationMessage().orElse(null));
-    json.put("replacementAppId", metadata.replacementAppId().orElse(null));
+    json.put(REPLACEMENT_APP_ID_FIELD, metadata.replacementAppId().orElse(null));
     return json;
   }
 
@@ -1568,7 +1746,7 @@ public final class AppCatalogsApiHandler {
 
   private static Map<String, Object> summarizeChangelog(AppCatalogChangelog changelog) {
     LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(2);
-    json.put("summary", changelog.summary().orElse(null));
+    json.put(SUMMARY_FIELD, changelog.summary().orElse(null));
     json.put("uri", changelog.uri().map(URI::toString).orElse(null));
     return json;
   }
@@ -1752,7 +1930,7 @@ public final class AppCatalogsApiHandler {
     LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(13);
     json.put(APP_ID_FIELD, manifest.appId());
     json.put("name", manifest.appName());
-    json.put("version", manifest.appVersion());
+    json.put(VERSION_FIELD, manifest.appVersion());
     json.put("uiMode", manifest.uiMode().manifestValue());
     json.put("uiEntry", manifest.uiEntry());
     json.put("uiUrl", AppUiPaths.uiUrl(manifest));

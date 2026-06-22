@@ -34,6 +34,9 @@ and exact app-version denylist entries. Those records are enforceable: denyliste
 be installed, updated, staged, applied, or applied by automatic policy, and warning-level
 advisories require the independent `securityAcknowledged=true` acknowledgement for manual
 install/update. See [ecosystem-security-advisories.md](ecosystem-security-advisories.md).
+Production incident handling for advisory publication, denylist propagation, catalog signing-key
+rotation, emergency replacement apps, and release notes is covered by
+[production-security-response-runbook.md](production-security-response-runbook.md).
 
 The host/operator consent layer groups catalog trust metadata into one install or update preview
 before a material mutation. Permission rationales, review receipt state, reviewer-key lifecycle,

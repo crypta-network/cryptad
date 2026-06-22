@@ -91,8 +91,9 @@ public record AppCatalogSecurityPolicy(
    * Computes a security decision for a catalog entry.
    *
    * <p>Entry-level advisory references only contribute while the referenced catalog-level advisory
-   * has status {@code active}. Exact denylist matches contribute regardless of the advisory
-   * lifecycle status while the denylist entry remains present in the signed catalog.
+   * is in an enforcing lifecycle state such as {@code active} or {@code published}. Exact denylist
+   * matches contribute regardless of the advisory lifecycle status while the denylist entry remains
+   * present in the signed catalog.
    *
    * <p>The result is the correct decision for manual install/update checks and app-update candidate
    * creation for this entry. It includes entry advisory actions and exact denylist matches from the
