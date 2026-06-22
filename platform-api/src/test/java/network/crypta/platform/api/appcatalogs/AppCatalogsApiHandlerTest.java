@@ -29,11 +29,15 @@ import network.crypta.platform.appcatalog.AppCatalogReviewMetadata;
 import network.crypta.platform.appcatalog.AppCatalogReviewStatus;
 import network.crypta.platform.appcatalog.AppCatalogSecurityAction;
 import network.crypta.platform.appcatalog.AppCatalogSecurityAdvisory;
+import network.crypta.platform.appcatalog.AppCatalogSecurityAdvisoryRecord;
 import network.crypta.platform.appcatalog.AppCatalogSecurityDecision;
 import network.crypta.platform.appcatalog.AppCatalogSecurityDecisionStatus;
+import network.crypta.platform.appcatalog.AppCatalogSecurityPolicy;
 import network.crypta.platform.appcatalog.AppCatalogSecuritySeverity;
+import network.crypta.platform.appcatalog.AppCatalogSecurityStatus;
 import network.crypta.platform.appcatalog.AppCatalogSourceSnapshot;
 import network.crypta.platform.appcatalog.AppCatalogSupportStatus;
+import network.crypta.platform.appcatalog.AppCatalogVersionDenylistEntry;
 import network.crypta.platform.appcatalog.AppReviewPolicy;
 import network.crypta.platform.appcatalog.AppReviewPolicyMode;
 import network.crypta.platform.appcatalog.AppReviewReceipt;
@@ -45,6 +49,8 @@ import network.crypta.platform.appcatalog.AppReviewTransparencyLog;
 import network.crypta.platform.appcatalog.RecommendedAppCatalog;
 import network.crypta.platform.appcatalog.RecommendedAppCatalogs;
 import network.crypta.platform.appcatalog.TrustedReviewerKey;
+import network.crypta.platform.appcatalog.TrustedReviewerKeyLifecycle;
+import network.crypta.platform.appcatalog.TrustedReviewerKeyStatus;
 import network.crypta.platform.appcatalog.TrustedReviewerKeys;
 import network.crypta.platform.appdist.AppUiMode;
 import network.crypta.platform.apphost.AppHost;
@@ -728,6 +734,106 @@ class AppCatalogsApiHandlerTest {
   }
 
   @Test
+  void securityResponseSummary_whenCatalogHasEmergencyPolicy_expectBoundedStatus()
+      throws Exception {
+    KeyPair reviewerKeyPair = reviewerKeyPair();
+    AppCatalogSourceSnapshot snapshot = firstPartyCatalogSnapshot();
+    when(catalogManager.listCatalogs()).thenReturn(List.of(snapshot));
+    when(catalogManager.securityPolicy(snapshot.catalogId())).thenReturn(securityResponsePolicy());
+    AppCatalogsApiHandler handler =
+        new AppCatalogsApiHandler(
+            catalogManager,
+            appHost,
+            () -> null,
+            AppReviewPolicy.DEFAULT,
+            () -> revokedReviewerKeys(reviewerKeyPair));
+
+    Map<String, Object> response = handler.securityResponseSummary();
+
+    assertEquals("denylist_active", response.get("status"));
+    Map<String, Object> summary = (Map<String, Object>) response.get("summary");
+    assertEquals(1, summary.get("activeAdvisoryCount"));
+    assertEquals(1, summary.get("denylistedVersionCount"));
+    assertEquals(1, summary.get("revokedReviewerKeyCount"));
+    assertEquals("configured", summary.get("catalogKeyRotationStatus"));
+    assertEquals("required", summary.get("supportRedactionStatus"));
+    Map<String, Object> advisory =
+        ((List<Map<String, Object>>) response.get("activeAdvisories")).getFirst();
+    assertEquals("CRYPTA-2026-0001", advisory.get("id"));
+    assertEquals("published", advisory.get("status"));
+    Map<String, Object> denylist =
+        ((List<Map<String, Object>>) response.get("denylistedVersions")).getFirst();
+    assertEquals(APP_ID, denylist.get("appId"));
+    assertEquals("1.2.0", denylist.get("version"));
+    Map<String, Object> catalogKey =
+        ((List<Map<String, Object>>) response.get("catalogSigningKeys")).getFirst();
+    assertEquals(FIRST_PARTY_TRUSTED_KEY_ID, catalogKey.get("keyId"));
+    assertEquals("current", catalogKey.get("rotationStatus"));
+    assertFalse(response.toString().contains(FIRST_PARTY_SOURCE));
+    assertFalse(response.toString().contains(tempDir.toString()));
+    assertRedactsReviewerPublicKey(response, reviewerKeyPair);
+  }
+
+  @Test
+  void securityResponseSummary_whenReviewerRevokedWithoutCatalogPolicy_expectReviewerStatus()
+      throws Exception {
+    KeyPair reviewerKeyPair = reviewerKeyPair();
+    AppCatalogSourceSnapshot snapshot = firstPartyCatalogSnapshot();
+    when(catalogManager.listCatalogs()).thenReturn(List.of(snapshot));
+    when(catalogManager.securityPolicy(snapshot.catalogId()))
+        .thenReturn(AppCatalogSecurityPolicy.EMPTY);
+    AppCatalogsApiHandler handler =
+        new AppCatalogsApiHandler(
+            catalogManager,
+            appHost,
+            () -> null,
+            AppReviewPolicy.DEFAULT,
+            () -> revokedReviewerKeys(reviewerKeyPair));
+
+    Map<String, Object> response = handler.securityResponseSummary();
+
+    assertEquals("reviewer_revocation_active", response.get("status"));
+    Map<String, Object> summary = (Map<String, Object>) response.get("summary");
+    assertEquals(0, summary.get("activeAdvisoryCount"));
+    assertEquals(0, summary.get("denylistedVersionCount"));
+    assertEquals(1, summary.get("revokedReviewerKeyCount"));
+    assertRedactsReviewerPublicKey(response, reviewerKeyPair);
+  }
+
+  @Test
+  void securityResponseSummary_whenPublishedAdvisoryHasNoDenylist_expectAdvisoryStatus()
+      throws Exception {
+    AppCatalogSourceSnapshot snapshot = firstPartyCatalogSnapshotWithoutSigningKey();
+    when(catalogManager.listCatalogs()).thenReturn(List.of(snapshot));
+    when(catalogManager.securityPolicy(snapshot.catalogId()))
+        .thenReturn(advisoryOnlySecurityResponsePolicy());
+    AppCatalogsApiHandler handler =
+        new AppCatalogsApiHandler(
+            catalogManager,
+            appHost,
+            () -> null,
+            AppReviewPolicy.DEFAULT,
+            TrustedReviewerKeys::empty);
+
+    Map<String, Object> response = handler.securityResponseSummary();
+
+    assertEquals("advisory_active", response.get("status"));
+    Map<String, Object> summary = (Map<String, Object>) response.get("summary");
+    assertEquals(1, summary.get("activeAdvisoryCount"));
+    assertEquals(0, summary.get("denylistedVersionCount"));
+    assertEquals(0, summary.get("revokedReviewerKeyCount"));
+    assertEquals("unknown", summary.get("catalogKeyRotationStatus"));
+    Map<String, Object> advisory =
+        ((List<Map<String, Object>>) response.get("activeAdvisories")).getFirst();
+    assertEquals("CRYPTA-2026-0002", advisory.get("id"));
+    assertEquals("published", advisory.get("status"));
+    Map<String, Object> catalogKey =
+        ((List<Map<String, Object>>) response.get("catalogSigningKeys")).getFirst();
+    assertNull(catalogKey.get("keyId"));
+    assertEquals("unknown", catalogKey.get("rotationStatus"));
+  }
+
+  @Test
   void transparencyLog_whenFilteredByKind_expectPagedRedactedRecords() {
     AppReviewTransparencyLog log = AppReviewTransparencyLog.inMemory();
     log.recordReviewTrustMap(
@@ -1189,6 +1295,15 @@ class AppCatalogsApiHandlerTest {
   }
 
   private static AppCatalogSourceSnapshot firstPartyCatalogSnapshot() {
+    return firstPartyCatalogSnapshot(Optional.of(FIRST_PARTY_TRUSTED_KEY_ID));
+  }
+
+  private static AppCatalogSourceSnapshot firstPartyCatalogSnapshotWithoutSigningKey() {
+    return firstPartyCatalogSnapshot(Optional.empty());
+  }
+
+  private static AppCatalogSourceSnapshot firstPartyCatalogSnapshot(
+      Optional<String> signatureKeyId) {
     Instant generatedAt = Instant.parse("2026-04-24T12:00:00Z");
     Instant addedAt = Instant.parse("2026-04-24T12:01:00Z");
     Instant refreshedAt = Instant.parse("2026-04-24T12:02:00Z");
@@ -1207,7 +1322,7 @@ class AppCatalogsApiHandlerTest {
         Optional.empty(),
         Optional.empty(),
         Optional.of(source.toString()),
-        Optional.of(FIRST_PARTY_TRUSTED_KEY_ID));
+        signatureKeyId);
   }
 
   private void assertCatalogFailureStatus(String code, int statusCode) throws Exception {
@@ -1368,6 +1483,67 @@ class AppCatalogsApiHandlerTest {
             keyPair.getPublic().getEncoded(),
             "Crypta First-Party Review",
             REVIEW_POLICY_ID));
+  }
+
+  private static TrustedReviewerKeys revokedReviewerKeys(KeyPair keyPair) {
+    return TrustedReviewerKeys.of(
+        TrustedReviewerKey.ed25519(
+            REVIEWER_KEY_ID,
+            keyPair.getPublic().getEncoded(),
+            "Crypta First-Party Review",
+            REVIEW_POLICY_ID,
+            REVIEW_POLICY_VERSION,
+            TrustedReviewerKeyLifecycle.of(
+                TrustedReviewerKeyStatus.REVOKED,
+                null,
+                null,
+                Instant.parse("2026-06-12T00:00:00Z"),
+                "Reviewer key compromise drill.",
+                null,
+                null)));
+  }
+
+  private static AppCatalogSecurityPolicy securityResponsePolicy() {
+    AppCatalogSecurityAdvisoryRecord advisory =
+        new AppCatalogSecurityAdvisoryRecord(
+            "CRYPTA-2026-0001",
+            URI.create("https://example.invalid/advisories/CRYPTA-2026-0001"),
+            "Queue Manager vulnerable release",
+            AppCatalogSecuritySeverity.CRITICAL,
+            AppCatalogSecurityStatus.PUBLISHED,
+            AppCatalogSecurityAction.DENYLIST,
+            "Upgrade to the reviewed replacement version.",
+            Instant.parse("2026-06-11T00:00:00Z"),
+            Instant.parse("2026-06-12T00:00:00Z"),
+            Optional.of(APP_ID),
+            Optional.of("Export app data before removal."));
+    AppCatalogVersionDenylistEntry denylist =
+        new AppCatalogVersionDenylistEntry(
+            "deny-queue-1-2-0",
+            APP_ID,
+            "1.2.0",
+            advisory.id(),
+            "Known vulnerable release.",
+            Optional.of(APP_ID),
+            Optional.of("Export app data before removal."));
+    return new AppCatalogSecurityPolicy(List.of(advisory), List.of(denylist));
+  }
+
+  private static AppCatalogSecurityPolicy advisoryOnlySecurityResponsePolicy() {
+    AppCatalogSecurityAdvisoryRecord advisory =
+        new AppCatalogSecurityAdvisoryRecord(
+            "CRYPTA-2026-0002",
+            URI.create("https://example.invalid/advisories/CRYPTA-2026-0002"),
+            "Queue Manager advisory only",
+            AppCatalogSecuritySeverity.HIGH,
+            AppCatalogSecurityStatus.PUBLISHED,
+            AppCatalogSecurityAction.BLOCK_UPDATE,
+            "Block updates until the reviewed replacement is available.",
+            Instant.parse("2026-06-13T00:00:00Z"),
+            Instant.parse("2026-06-13T12:00:00Z"),
+            Optional.of(APP_ID),
+            Optional.of("Keep installed data until a replacement is reviewed."));
+    return new AppCatalogSecurityPolicy(List.of(advisory), List.of());
   }
 
   private static AppCatalogSecurityDecision denylistedSecurityDecision() {

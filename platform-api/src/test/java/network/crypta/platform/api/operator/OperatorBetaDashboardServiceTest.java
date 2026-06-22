@@ -176,6 +176,7 @@ class OperatorBetaDashboardServiceTest {
     AppCatalogsApiHandler catalogsApiHandler = mock(AppCatalogsApiHandler.class);
     when(catalogsApiHandler.listCatalogs()).thenReturn(List.of(catalog()));
     when(catalogsApiHandler.listRecommendedCatalogs()).thenReturn(List.of());
+    when(catalogsApiHandler.securityResponseSummary()).thenReturn(clearSecurityResponse());
 
     Map<String, Object> dashboard = service(appsHandler(), catalogsApiHandler, null).dashboard();
 
@@ -189,6 +190,7 @@ class OperatorBetaDashboardServiceTest {
     AppCatalogsApiHandler catalogsApiHandler = mock(AppCatalogsApiHandler.class);
     when(catalogsApiHandler.listCatalogs()).thenReturn(List.of(remoteCatalog()));
     when(catalogsApiHandler.listRecommendedCatalogs()).thenReturn(List.of());
+    when(catalogsApiHandler.securityResponseSummary()).thenReturn(clearSecurityResponse());
 
     Map<String, Object> dashboard = service(appsHandler(), catalogsApiHandler, null).dashboard();
 
@@ -197,6 +199,63 @@ class OperatorBetaDashboardServiceTest {
     assertEquals("https:<redacted>", catalog.get("sourceDisplay"));
     assertTrue(
         catalog.get("sourceDigest") instanceof String digest && digest.matches("[a-f0-9]{64}"));
+  }
+
+  @Test
+  void dashboard_whenSecurityResponseHasDenylist_expectSummaryAndWarning() {
+    AppCatalogsApiHandler catalogsApiHandler = mock(AppCatalogsApiHandler.class);
+    when(catalogsApiHandler.listCatalogs()).thenReturn(List.of());
+    when(catalogsApiHandler.listRecommendedCatalogs()).thenReturn(List.of());
+    when(catalogsApiHandler.securityResponseSummary()).thenReturn(denylistSecurityResponse());
+
+    Map<String, Object> dashboard = service(appsHandler(), catalogsApiHandler, null).dashboard();
+
+    Map<String, Object> securityResponse = mapValue(dashboard.get("securityResponse"));
+    Map<String, Object> securitySummary = mapValue(securityResponse.get(SUMMARY_FIELD));
+    assertEquals("denylist_active", securityResponse.get("status"));
+    assertEquals(1, securitySummary.get("denylistedVersionCount"));
+    assertTrue(
+        stringList(dashboard.get(WARNINGS_FIELD))
+            .contains("Catalog security response has active denylist entries."));
+  }
+
+  @Test
+  void dashboard_whenSecurityResponseHasReviewerRevocation_expectSummaryAndWarning() {
+    AppCatalogsApiHandler catalogsApiHandler = mock(AppCatalogsApiHandler.class);
+    when(catalogsApiHandler.listCatalogs()).thenReturn(List.of());
+    when(catalogsApiHandler.listRecommendedCatalogs()).thenReturn(List.of());
+    when(catalogsApiHandler.securityResponseSummary())
+        .thenReturn(reviewerRevocationSecurityResponse());
+
+    Map<String, Object> dashboard = service(appsHandler(), catalogsApiHandler, null).dashboard();
+
+    Map<String, Object> securityResponse = mapValue(dashboard.get("securityResponse"));
+    Map<String, Object> securitySummary = mapValue(securityResponse.get(SUMMARY_FIELD));
+    assertEquals("reviewer_revocation_active", securityResponse.get("status"));
+    assertEquals(1, securitySummary.get("revokedReviewerKeyCount"));
+    assertTrue(
+        stringList(dashboard.get(WARNINGS_FIELD))
+            .contains("Catalog security response has reviewer revocations."));
+  }
+
+  @Test
+  void dashboard_whenSecurityResponseInspectionFails_expectUnavailableBlockAndWarning() {
+    AppCatalogsApiHandler catalogsApiHandler = mock(AppCatalogsApiHandler.class);
+    when(catalogsApiHandler.listCatalogs()).thenReturn(List.of());
+    when(catalogsApiHandler.listRecommendedCatalogs()).thenReturn(List.of());
+    when(catalogsApiHandler.securityResponseSummary()).thenThrow(new IllegalStateException());
+
+    Map<String, Object> dashboard = service(appsHandler(), catalogsApiHandler, null).dashboard();
+
+    Map<String, Object> securityResponse = mapValue(dashboard.get("securityResponse"));
+    assertFalse((Boolean) securityResponse.get(AVAILABLE));
+    assertEquals(UNAVAILABLE, securityResponse.get("status"));
+    assertEquals(
+        List.of("Catalog service is unavailable."),
+        stringList(securityResponse.get(WARNINGS_FIELD)));
+    assertTrue(
+        stringList(dashboard.get(WARNINGS_FIELD))
+            .contains("Catalog security response could not be inspected: IllegalStateException"));
   }
 
   @Test
@@ -279,6 +338,7 @@ class OperatorBetaDashboardServiceTest {
     AppCatalogsApiHandler catalogsApiHandler = mock(AppCatalogsApiHandler.class);
     when(catalogsApiHandler.listCatalogs()).thenReturn(List.of());
     when(catalogsApiHandler.listRecommendedCatalogs()).thenReturn(List.of());
+    when(catalogsApiHandler.securityResponseSummary()).thenReturn(clearSecurityResponse());
     return catalogsApiHandler;
   }
 
@@ -429,6 +489,89 @@ class OperatorBetaDashboardServiceTest {
     catalog.put("lastFetchStatus", "success");
     catalog.put("appCount", 0);
     return catalog;
+  }
+
+  private static Map<String, Object> clearSecurityResponse() {
+    return Map.of(
+        "status",
+        "clear",
+        SUMMARY_FIELD,
+        Map.of(
+            "activeAdvisoryCount",
+            0,
+            "denylistedVersionCount",
+            0,
+            "revokedReviewerKeyCount",
+            0,
+            "revokedReceiptCount",
+            0,
+            "catalogSigningKeyCount",
+            0,
+            "catalogKeyRotationStatus",
+            "configured",
+            "supportRedactionStatus",
+            "required"),
+        "activeAdvisories",
+        List.of(),
+        "denylistedVersions",
+        List.of(),
+        "reviewerGovernance",
+        Map.of("counts", Map.of("active", 0, "retired", 0, "revoked", 0)),
+        "catalogSigningKeys",
+        List.of(),
+        "operatorActions",
+        List.of(),
+        "supportGuidance",
+        "Use redacted support bundle preview before sharing evidence.");
+  }
+
+  private static Map<String, Object> denylistSecurityResponse() {
+    Map<String, Object> response = new LinkedHashMap<>(clearSecurityResponse());
+    response.put("status", "denylist_active");
+    response.put(
+        SUMMARY_FIELD,
+        Map.of(
+            "activeAdvisoryCount",
+            1,
+            "denylistedVersionCount",
+            1,
+            "revokedReviewerKeyCount",
+            1,
+            "revokedReceiptCount",
+            0,
+            "catalogSigningKeyCount",
+            1,
+            "catalogKeyRotationStatus",
+            "configured",
+            "supportRedactionStatus",
+            "required"));
+    response.put(
+        "denylistedVersions",
+        List.of(Map.of("appId", APP_ID, "version", "1.0.0", "advisoryId", "CRYPTA-2026-0001")));
+    return response;
+  }
+
+  private static Map<String, Object> reviewerRevocationSecurityResponse() {
+    Map<String, Object> response = new LinkedHashMap<>(clearSecurityResponse());
+    response.put("status", "reviewer_revocation_active");
+    response.put(
+        SUMMARY_FIELD,
+        Map.of(
+            "activeAdvisoryCount",
+            0,
+            "denylistedVersionCount",
+            0,
+            "revokedReviewerKeyCount",
+            1,
+            "revokedReceiptCount",
+            1,
+            "catalogSigningKeyCount",
+            1,
+            "catalogKeyRotationStatus",
+            "configured",
+            "supportRedactionStatus",
+            "required"));
+    return response;
   }
 
   private static Map<String, Object> updateSummary(Map<String, Object> candidate) {

@@ -3225,6 +3225,54 @@
     {
       "details": {
         "checks": {
+          "advisoryLifecycleTestable": true,
+          "appSigningKeyCompromiseDrill": true,
+          "catalogKeyRotationDrill": true,
+          "docsCrossLinked": true,
+          "emergencyCatalogUpdateDrill": true,
+          "modelExists": true,
+          "operatorApiSummary": true,
+          "releaseNotesTemplate": true,
+          "requiredIncidentTypesDocumented": true,
+          "reviewerKeyCompromiseDrill": true,
+          "runbookDocExists": true,
+          "runbookModelValid": true,
+          "sensitiveMarkersAbsent": true,
+          "supportRedactionDrill": true,
+          "templateExists": true,
+          "toolingCommands": true,
+          "verifierScriptExists": true,
+          "webShellSummary": true
+        },
+        "drillIds": [
+          "app-signing-key-compromise",
+          "catalog-signing-key-rotation",
+          "emergency-replacement-app",
+          "malicious-catalog-entry",
+          "reviewer-key-compromise",
+          "support-bundle-intake-redaction",
+          "vulnerable-app-version"
+        ],
+        "duplicateDrillIds": [],
+        "sources": {
+          "model": "tools/release-certification/production-security-response-runbook.json",
+          "operatorApi": "platform-api/src/main/java/network/crypta/platform/api/appcatalogs/AppCatalogsApiHandler.java",
+          "runbook": "docs/production-security-response-runbook.md",
+          "supportRedactionTests": "platform-api/src/test/java/network/crypta/platform/api/operator/OperatorSupportRedactorTest.java",
+          "template": "docs/templates/security-release-notes.md",
+          "verifier": "tools/release-certification/security_response_runbook.py",
+          "webShell": "platform-web-shell/src/main/resources/network/crypta/platform/webshell/static/web-shell.js"
+        }
+      },
+      "id": "production-security.response-runbook",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Production security response runbook evidence passed deterministic checks."
+    },
+    {
+      "details": {
+        "checks": {
           "auditDecisionStoreRedacted": true,
           "automaticUpdateGatingPresent": true,
           "consentModelsPresent": true,

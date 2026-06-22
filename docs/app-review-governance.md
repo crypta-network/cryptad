@@ -73,6 +73,9 @@ A revoked receipt evaluates as `revoked_receipt`. It must not be treated as `tru
 `trusted_caution`, or `trusted_rejected`, and review policy treats it as fail-closed evidence.
 See [ecosystem-security-advisories.md](ecosystem-security-advisories.md) for the full advisory and
 revocation response process.
+See [production-security-response-runbook.md](production-security-response-runbook.md) for the
+production reviewer-key compromise drill, emergency receipt revocation checklist, operator UX
+expectations, support redaction requirements, and certification evidence.
 
 ## Lifecycle Semantics
 

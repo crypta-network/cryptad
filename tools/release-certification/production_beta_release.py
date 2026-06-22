@@ -247,6 +247,7 @@ CRITICAL_PRODUCTION_BETA_EVIDENCE_IDS = (
     "app-services.dependency-graph",
     "app-services.grant-bundles",
     "app-services.dependency-redaction",
+    "production-security.response-runbook",
     "legacy-admin.removal-wave-5",
     "legacy-admin.final-admin-surface",
     "legacy-admin.browse-retained",
@@ -1965,6 +1966,57 @@ def legacy_admin_final_surface_summary(all_evidence: dict[str, Any]) -> dict[str
     }
 
 
+def production_security_response_summary(all_evidence: dict[str, Any]) -> dict[str, Any]:
+    item = all_evidence.get("production-security.response-runbook")
+    if not isinstance(item, dict):
+        return {
+            "status": "missing",
+            "runbookStatus": "missing",
+            "advisoryLifecycleStatus": "missing",
+            "reviewerCompromiseDrillStatus": "missing",
+            "catalogKeyRotationDrillStatus": "missing",
+            "appSigningKeyCompromiseDrillStatus": "missing",
+            "emergencyCatalogUpdateDrillStatus": "missing",
+            "supportRedactionStatus": "missing",
+            "securityReleaseNotesTemplateStatus": "missing",
+            "blockers": ["production-security.response-runbook evidence is missing."],
+            "warnings": [],
+        }
+    details = evidence_details(item)
+    checks = details.get("checks") if isinstance(details.get("checks"), dict) else {}
+    drill_ids = set(details.get("drillIds") if isinstance(details.get("drillIds"), list) else [])
+    item_ok = evidence_status_ok(item)
+
+    def check_status(key: str) -> str:
+        if not checks:
+            return "pass" if item_ok else "missing"
+        return "pass" if checks.get(key) is True else "missing"
+
+    def drill_status(drill_id: str) -> str:
+        if not drill_ids:
+            return "pass" if item_ok else "missing"
+        return "pass" if drill_id in drill_ids else "missing"
+
+    blockers: list[str] = []
+    if not item_ok:
+        blockers.append(str(item.get("summary", "Security response runbook evidence is not passing.")))
+    errors = details.get("errors")
+    warnings = [str(error) for error in errors] if isinstance(errors, list) else []
+    return {
+        "status": str(item.get("status", "missing")),
+        "runbookStatus": check_status("runbookDocExists"),
+        "advisoryLifecycleStatus": check_status("advisoryLifecycleTestable"),
+        "reviewerCompromiseDrillStatus": drill_status("reviewer-key-compromise"),
+        "catalogKeyRotationDrillStatus": drill_status("catalog-signing-key-rotation"),
+        "appSigningKeyCompromiseDrillStatus": drill_status("app-signing-key-compromise"),
+        "emergencyCatalogUpdateDrillStatus": drill_status("emergency-replacement-app"),
+        "supportRedactionStatus": check_status("supportRedactionDrill"),
+        "securityReleaseNotesTemplateStatus": check_status("releaseNotesTemplate"),
+        "blockers": blockers,
+        "warnings": warnings,
+    }
+
+
 def evaluate_promotion(state: PipelineState, summaries: dict[str, Any]) -> dict[str, Any]:
     settings = state.settings
     cert_summary = summaries.get("certification") if isinstance(summaries.get("certification"), dict) else None
@@ -2098,6 +2150,7 @@ def evaluate_promotion(state: PipelineState, summaries: dict[str, Any]) -> dict[
         "failedGateCount": len(failed),
         "gates": gates,
         "legacyAdminFinalSurface": legacy_admin_final_surface_summary(all_evidence),
+        "securityResponse": production_security_response_summary(all_evidence),
         "knownLimitations": [],
     }
 
@@ -2626,6 +2679,42 @@ def render_markdown_summary(summary: dict[str, Any]) -> str:
             "- Wave 5 promoted route ids: "
             f"`{','.join(legacy_admin.get('waveFivePromotedRouteIds', [])) or 'none'}`"
         )
+    security_response = summary["promotion"].get("securityResponse", {})
+    if isinstance(security_response, dict) and security_response:
+        lines.extend(["", "## Security Response", ""])
+        lines.append(f"- Runbook evidence: `{security_response.get('status', 'missing')}`")
+        lines.append(f"- Runbook status: `{security_response.get('runbookStatus', 'missing')}`")
+        lines.append(
+            "- Advisory lifecycle: "
+            f"`{security_response.get('advisoryLifecycleStatus', 'missing')}`"
+        )
+        lines.append(
+            "- Reviewer compromise drill: "
+            f"`{security_response.get('reviewerCompromiseDrillStatus', 'missing')}`"
+        )
+        lines.append(
+            "- Catalog key rotation drill: "
+            f"`{security_response.get('catalogKeyRotationDrillStatus', 'missing')}`"
+        )
+        lines.append(
+            "- App signing key compromise drill: "
+            f"`{security_response.get('appSigningKeyCompromiseDrillStatus', 'missing')}`"
+        )
+        lines.append(
+            "- Emergency catalog update drill: "
+            f"`{security_response.get('emergencyCatalogUpdateDrillStatus', 'missing')}`"
+        )
+        lines.append(
+            f"- Support redaction: `{security_response.get('supportRedactionStatus', 'missing')}`"
+        )
+        lines.append(
+            "- Security release notes template: "
+            f"`{security_response.get('securityReleaseNotesTemplateStatus', 'missing')}`"
+        )
+        for blocker in security_response.get("blockers", []):
+            lines.append(f"- Blocker: {blocker}")
+        for warning in security_response.get("warnings", []):
+            lines.append(f"- Warning: {warning}")
     lines.extend(["", "## Known Limitations", ""])
     for limitation in summary["promotion"].get("knownLimitations", []):
         lines.append(f"- {limitation}")

@@ -1,6 +1,6 @@
 ---
 name: cryptad-platform-apps
-description: "Work on Cryptad's app platform: Platform API v1/contract, unified operator consent, AppHost runtime/rollback, signed app bundles/catalogs, app-store submission review, trusted app-review receipts, Trust Graph Local RC, Social Inbox RC, app-update lifecycle, durable app data, app-data backup/restore, content subscriptions, app-network budgets, local app-service discovery/dependencies/grant bundles, app-owned static UI, browser sessions, the browser SDK, the app UI design system/linter, developer CLI, app permissions/audit, sandbox providers, operator beta dashboard/support evidence, operator RC recovery/support workflows, live-network beta certification evidence, legacy plugin freeze, and legacy admin retirement routing."
+description: "Work on Cryptad's app platform: Platform API v1/contract, unified operator consent, AppHost runtime/rollback, signed app bundles/catalogs, app-store submission review, trusted app-review receipts, production security response runbooks, Trust Graph Local RC, Social Inbox RC, app-update lifecycle, durable app data, app-data backup/restore, content subscriptions, app-network budgets, local app-service discovery/dependencies/grant bundles, app-owned static UI, browser sessions, the browser SDK, the app UI design system/linter, developer CLI, app permissions/audit, sandbox providers, operator beta dashboard/support evidence, operator RC recovery/support workflows, live-network beta certification evidence, legacy plugin freeze, and legacy admin retirement routing."
 ---
 
 # Cryptad platform apps
@@ -21,6 +21,8 @@ Load only the docs needed for the change:
 - Signed bundles and first-party app tasks: `docs/app-distribution.md`
 - Standalone app developer CLI: `docs/app-dev-cli.md`
 - Signed catalogs: `docs/app-catalogs.md`
+- Ecosystem security advisories and denylists: `docs/ecosystem-security-advisories.md`
+- Production security response runbook: `docs/production-security-response-runbook.md`
 - App-store submission and review workflow: `docs/app-store-submission-and-review-workflow.md`
 - App-review governance: `docs/app-review-governance.md`
 - App update lifecycle and rollback: `docs/app-update-lifecycle.md`
@@ -82,11 +84,12 @@ Load only the docs needed for the change:
 - `:platform-appcatalog` owns signed catalog parsing, catalog writing, catalog source/artifact
   verification, `crypta:` catalog-source URI handling, safe ZIP extraction, and verified staging
   into AppHost install/update flows, plus optional review/API compatibility target-stability
-  metadata, first-party maintenance metadata, catalog security advisories/version denylists,
-  submission package writing/verification/pre-review/redaction, independent app-review receipts,
-  trusted reviewer-key loading, review policy modes, and review trust decisions used by app update
-  review, reviewer-key lifecycle parsing, local review transparency logging, governance snapshots,
-  and review-history API support.
+  metadata, first-party maintenance metadata, catalog security advisory lifecycle/version
+  denylists, production security response drill metadata, submission package
+  writing/verification/pre-review/redaction, independent app-review receipts, trusted reviewer-key
+  loading, review policy modes, and review trust decisions used by app update review,
+  reviewer-key lifecycle parsing, local review transparency logging, governance snapshots, and
+  review-history API support.
 - `:platform-trustgraph` owns the Trust Graph Local RC statement model, strict JSON parser,
   canonical payload and signature helpers, process-local anchor/store abstractions, lifecycle
   status records, and deterministic direct-anchor scoring. It is a local RC library, not a
@@ -100,11 +103,12 @@ Load only the docs needed for the change:
 - `:platform-web-shell` owns `/app/node/` browser shell assets, bootstrap, app/catalog/update/review
   operator views, the operator beta dashboard/support-bundle panel, the Operator RC Recovery
   surface, subscription recovery controls, app-data backup/restore controls, app-service
-  dependency/grant-bundle review UI, and explicit legacy security/diagnostic fallback actions.
+  dependency/grant-bundle review UI, security response status rendering, and explicit legacy
+  security/diagnostic fallback actions.
 - `:adapter-http-legacy-admin` hosts the current `/api/v1/`, `/app/node/`, `/apps/{appId}/`
   compatibility bridge, isolated app-UI loopback origin server, Platform API form-password guard,
-  operator recovery/subscription form-password guards, legacy admin retirement notices, diagnostic
-  Wave 4 replacement/fallback routing, and diagnostics counters.
+  operator recovery/subscription form-password guards, legacy admin retirement notices, Wave 5
+  final-surface policy, replacement/fallback routing, and diagnostics counters.
 - `:apps:queue-manager` stages the first-party queue-control static UI bundle.
 - `:apps:publisher` stages the legacy-publisher replacement static UI bundle.
 - `:apps:site-publisher` stages the first-party content reference static UI bundle.
@@ -222,6 +226,12 @@ Load only the docs needed for the change:
 - `crypta:` catalog sources still require signed catalog verification. They do not make catalog
   artifacts trusted, and catalog entry bundle artifacts remain limited to the schemes documented in
   `docs/app-catalogs.md`.
+- Production security response is catalog/app/reviewer governance only. Keep emergency advisories,
+  exact-version denylists, reviewer-key/receipt revocations, catalog signing-key rotation evidence,
+  replacement guidance, and safe uninstall/update labels compact and operator-facing. Do not expose
+  raw incident artifacts, raw catalog bytes, private insert URIs, tokens, private keys, raw fetched
+  content, raw app data, command lines containing secrets, CI secret values, or local absolute paths
+  through API responses, Web Shell text, support bundles, release notes, or certification evidence.
 - App-update lifecycle state, including app-data migration summaries, must stay path-free and
   token-free. Do not expose catalog scratch directories, staged bundle paths, migration command
   paths, rollback directories, launch tokens, browser sessions, form passwords, private signing
@@ -258,12 +268,11 @@ Load only the docs needed for the change:
   tokens, or host private configuration.
 - Legacy admin retirement changes must update both the code map
   (`LegacyAdminRetirementRegistry`) and `docs/legacy-retirement-plan.md`.
-- Legacy admin Wave 4 removes only the `diagnostic` surface by default. Safe reads should use Web
-  Shell diagnostics when available; the plaintext diagnostic export is retained only through the
-  exact same-origin fallback marker `legacyFallback=diagnostic-export`. Do not add FProxy browse,
-  content rendering, content filter, startup wizard/recovery, security recovery fallback, chat,
-  translation, help, or node-to-node message routes to a removal wave without a separate audited
-  replacement.
+- Legacy admin Wave 5 is the production-beta final admin surface. It adds no new removed-by-default
+  route ids, keeps Wave 1-4 removals stable, marks legacy admin maintenance-only, and retains FProxy
+  browse/content rendering, content filter, startup/recovery, support, and exact emergency fallback
+  surfaces. Do not add new daily legacy-admin surfaces; route new operator workflows through Web
+  Shell, Platform API, or first-party apps.
 - Release-certification evidence must not expose private signing keys, app process tokens,
   browser-session tokens, form passwords, raw request bodies, raw feed bodies, raw trust documents,
   raw diagnostic exports, raw app-data backup payloads, private insert URIs, non-localhost endpoint
@@ -289,8 +298,9 @@ Load only the docs needed for the change:
   registry/grant/dependency/grant-bundle/redaction evidence, legacy plugin freeze
   evidence, app-review governance and local transparency-log evidence, public-beta security
   hardening evidence, operator beta dashboard/recovery/support-bundle evidence, operator RC
-  recovery/support workflow evidence, legacy-admin retirement and Wave 1-4 removal state, and optional
-  localhost-only live AppHost lifecycle evidence.
+  recovery/support workflow evidence, production security response runbook evidence,
+  legacy-admin retirement Wave 1-5/final-surface state, and optional localhost-only live AppHost
+  lifecycle evidence.
 - `tools/release-certification/live_network_beta_smoke.py` is the explicit release-manager
   live-network beta evidence collector. It validates a prepared localhost node, live catalog
   source/key metadata, app-principal browser-session workflows, content/feed/profile/trust
@@ -337,6 +347,7 @@ Use `$cryptad-build-test` for Gradle rules and timeouts. Common focused checks:
 ./gradlew :apps:trust-graph:test
 ./gradlew stageFirstPartyApps
 python3 tools/release-certification/app_platform_docs_check.py --self-test
+python3 tools/release-certification/security_response_runbook.py verify
 python3 tools/release-certification/app_platform_smoke.py --self-test
 python3 tools/release-certification/network_scale_soak.py --self-test
 python3 tools/release-certification/live_network_beta_smoke.py --self-test
@@ -356,12 +367,13 @@ inserts, content fetch/subscriptions, shared app-network budgets, network-scale 
 durable app data, app-data backup/restore, app-service
 dependencies/grant bundles, Trust Graph Local RC, Social Inbox RC, app-update
 lifecycle/scheduler/rollback, sandbox-provider evidence, operator beta dashboard/support-bundle
-behavior, live-network beta certification behavior, reference content/profile/social/feed/trust
-apps, app platform beta docs evidence, operator RC recovery/support behavior, or legacy-admin
-retirement evidence behavior, also run:
+behavior, production security response runbook/verifier behavior, live-network beta certification
+behavior, reference content/profile/social/feed/trust apps, app platform beta docs evidence,
+operator RC recovery/support behavior, or legacy-admin retirement evidence behavior, also run:
 
 ```bash
 python3 tools/release-certification/app_platform_docs_check.py --self-test
+python3 tools/release-certification/security_response_runbook.py verify
 python3 tools/release-certification/app_platform_smoke.py --self-test
 python3 tools/release-certification/network_scale_soak.py --self-test
 python3 tools/release-certification/live_network_beta_smoke.py --self-test

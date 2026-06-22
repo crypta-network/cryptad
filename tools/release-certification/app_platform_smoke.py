@@ -319,6 +319,7 @@ SENSITIVE_KEY_PATTERN = (
     r"raw[-_ ]?trust[-_ ]?statement[-_ ]?bod(?:y|ies)|trust[-_ ]?statement[-_ ]?bod(?:y|ies)"
     r"|raw[-_ ]?message[-_ ]?bod(?:y|ies)|message[-_ ]?bod(?:y|ies)"
     r"|raw[-_ ]?fetched[-_ ]?bod(?:y|ies)|fetched[-_ ]?bod(?:y|ies)"
+    r"|raw[-_ ]?fetched[-_ ]?content|fetched[-_ ]?content"
     r"|raw[-_ ]?public[-_ ]?key[-_ ]?byt(?:e|es)|public[-_ ]?key[-_ ]?byt(?:e|es)"
     r"|raw[-_ ]?review[-_ ]?receipt|review[-_ ]?receipt[-_ ]?content|raw[-_ ]?receipt"
     r"|raw[-_ ]?signature[-_ ]?valu(?:e|es)|signature[-_ ]?valu(?:e|es)"
@@ -342,6 +343,7 @@ SENSITIVE_TEXT_LABEL_RE = re.compile(
     r"trust[-_ ]+statement[-_ ]+bod(?:y|ies)|"
     r"raw[-_ ]+message[-_ ]+bod(?:y|ies)|message[-_ ]+bod(?:y|ies)|"
     r"raw[-_ ]+fetched[-_ ]+bod(?:y|ies)|fetched[-_ ]+bod(?:y|ies)|"
+    r"raw[-_ ]+fetched[-_ ]+content|fetched[-_ ]+content|"
     r"raw[-_ ]+public[-_ ]+key[-_ ]+byt(?:e|es)|public[-_ ]+key[-_ ]+byt(?:e|es)|"
     r"raw[-_ ]+review[-_ ]+receipt|review[-_ ]+receipt[-_ ]+content|raw[-_ ]+receipt|"
     r"raw[-_ ]+trust[-_ ]+signature|trust[-_ ]+signature|"
@@ -384,6 +386,137 @@ ECOSYSTEM_SECURITY_EVIDENCE_IDS = (
     "app-update.security-denylist-gates",
     "web-shell.security-advisory-trust-warnings",
     "ecosystem-security.advisory-revocation-redaction",
+)
+PRODUCTION_SECURITY_EVIDENCE_IDS = ("production-security.response-runbook",)
+PRODUCTION_SECURITY_REQUIRED_DRILLS = (
+    "vulnerable-app-version",
+    "app-signing-key-compromise",
+    "reviewer-key-compromise",
+    "catalog-signing-key-rotation",
+    "malicious-catalog-entry",
+    "emergency-replacement-app",
+    "support-bundle-intake-redaction",
+)
+PRODUCTION_SECURITY_REQUIRED_DRILL_FIELDS = (
+    "id",
+    "severity",
+    "trigger",
+    "containmentActions",
+    "catalogActions",
+    "reviewActions",
+    "operatorActions",
+    "schedulerExpectations",
+    "redactionRequirements",
+    "verificationEvidence",
+    "releaseNotesTemplate",
+)
+PRODUCTION_SECURITY_ARRAY_DRILL_FIELDS = (
+    "containmentActions",
+    "catalogActions",
+    "reviewActions",
+    "operatorActions",
+    "schedulerExpectations",
+    "redactionRequirements",
+    "verificationEvidence",
+)
+PRODUCTION_SECURITY_SCALAR_DRILL_FIELDS = (
+    "severity",
+    "trigger",
+    "releaseNotesTemplate",
+)
+PRODUCTION_SECURITY_AUTH_SCHEME_RE = re.compile(
+    r"\bbearer\s+(?!(?:token|tokens)\b)[A-Za-z0-9._~+/=-]+",
+    re.IGNORECASE,
+)
+PRODUCTION_SECURITY_RAW_APP_DATA_RE = re.compile(
+    r"\braw[-_ ]?app[-_ ]?data"
+    r"(?:[-_ ]?(?:value|values|payload|payloads|record|records))?\s*[:=]\s*\S",
+    re.IGNORECASE,
+)
+PRODUCTION_SECURITY_RAW_FETCHED_CONTENT_RE = re.compile(
+    r"\braw[-_ ]?fetched[-_ ]?content\s*[:=]\s*\S",
+    re.IGNORECASE,
+)
+PRODUCTION_SECURITY_SAFE_BOOLEAN_METADATA_SUFFIXES = (
+    "available",
+    "configured",
+    "enabled",
+    "excluded",
+    "excludedfromevidence",
+    "present",
+    "redacted",
+    "required",
+    "status",
+)
+PRODUCTION_SECURITY_SAFE_RAW_APP_DATA_BOOLEAN_METADATA_KEYS = {
+    "rawappdataavailable",
+    "rawappdataconfigured",
+    "rawappdataenabled",
+    "rawappdataexcluded",
+    "rawappdataexcludedfromevidence",
+    "rawappdatapresent",
+    "rawappdataredacted",
+    "rawappdatarequired",
+}
+PRODUCTION_SECURITY_SENSITIVE_JSON_KEY_NAMES = {
+    "authorization",
+    "authorizationheader",
+    "proxyauthorization",
+    "proxyauthorizationheader",
+    "cookie",
+    "setcookie",
+    "credential",
+    "cryptadapptoken",
+    "formpassword",
+    "privatekey",
+    "secret",
+    "token",
+    "password",
+    "passwd",
+    "browsersession",
+    "browsersessiontoken",
+    "appsession",
+    "appsessiontoken",
+    "appprocesstoken",
+    "xcryptaappsession",
+    "rawappdata",
+    "rawappdatavalue",
+    "rawappdatavalues",
+    "rawappdatapayload",
+    "rawappdatapayloads",
+    "rawappdatarecord",
+    "rawappdatarecords",
+    "rawfetchedcontent",
+    "rawfetchedbody",
+    "rawpublickeybytes",
+    "publickeybytes",
+    "rawreviewreceipt",
+    "reviewreceiptcontent",
+    "rawreceipt",
+    "payloadbase64",
+    "cisecret",
+    "cisecretvalue",
+}
+PRODUCTION_SECURITY_SENSITIVE_JSON_KEY_FRAGMENTS = (
+    "authorization",
+    "credential",
+    "rawappdata",
+    "privatekey",
+    "browsersession",
+    "appsession",
+    "appprocesstoken",
+    "formpassword",
+    "rawfetchedcontent",
+    "rawfetchedbody",
+    "secret",
+    "token",
+)
+PRODUCTION_SECURITY_SENSITIVE_JSON_KEY_SUFFIXES = (
+    "token",
+    "password",
+    "passwd",
+    "secret",
+    "credential",
 )
 PUBLIC_BETA_SECURITY_SENSITIVE_FIXTURES = (
     "CRYPTAD_APP_TOKEN=0123456789abcdef0123456789abcdef",
@@ -438,6 +571,13 @@ NON_SECRET_METADATA_SUFFIXES = (
 BODY_KEY_FRAGMENTS = (
     "appdatabackup",
     "backuppayload",
+    "rawappdata",
+    "rawappdatavalue",
+    "rawappdatavalues",
+    "rawappdatapayload",
+    "rawappdatapayloads",
+    "rawappdatarecord",
+    "rawappdatarecords",
     "requestbody",
     "rawrequestbody",
     "requestbodies",
@@ -466,6 +606,8 @@ BODY_KEY_FRAGMENTS = (
     "rawfetchedbody",
     "fetchedbodies",
     "rawfetchedbodies",
+    "fetchedcontent",
+    "rawfetchedcontent",
 )
 SENSITIVE_PATH_KEYS = {
     "catalogscratchpath",
@@ -820,6 +962,9 @@ def should_redact_key_name(key_hint: str, value: Any | None = None) -> bool:
         return False
     if normalized in {
         "authorization",
+        "authorizationheader",
+        "proxyauthorization",
+        "proxyauthorizationheader",
         "cookie",
         "setcookie",
         "credential",
@@ -12617,6 +12762,327 @@ def collect_ecosystem_security_advisory_revocation_evidence(
     ]
 
 
+def production_security_redaction_findings(text: str, workspace: Path) -> list[str]:
+    findings: list[str] = []
+    if scrub_text(text, workspace) != text:
+        findings.append("credential-or-path marker")
+    if PRODUCTION_SECURITY_AUTH_SCHEME_RE.search(text):
+        findings.append("authorization scheme marker")
+    if PRODUCTION_SECURITY_RAW_APP_DATA_RE.search(text):
+        findings.append("raw app data marker")
+    if PRODUCTION_SECURITY_RAW_FETCHED_CONTENT_RE.search(text):
+        findings.append("raw fetched content marker")
+    return findings
+
+
+def production_security_should_redact_json_key(key_hint: str, value: Any | None = None) -> bool:
+    normalized = normalize_key_name(key_hint)
+    if not normalized:
+        return False
+    if "rawappdata" in normalized:
+        return not (
+            isinstance(value, bool)
+            and normalized in PRODUCTION_SECURITY_SAFE_RAW_APP_DATA_BOOLEAN_METADATA_KEYS
+        )
+    sensitive = (
+        normalized in PRODUCTION_SECURITY_SENSITIVE_JSON_KEY_NAMES
+        or any(fragment in normalized for fragment in PRODUCTION_SECURITY_SENSITIVE_JSON_KEY_FRAGMENTS)
+        or any(normalized.endswith(suffix) for suffix in PRODUCTION_SECURITY_SENSITIVE_JSON_KEY_SUFFIXES)
+    )
+    if not sensitive:
+        return False
+    return not (
+        isinstance(value, bool)
+        and normalized.endswith(PRODUCTION_SECURITY_SAFE_BOOLEAN_METADATA_SUFFIXES)
+    )
+
+
+def sensitive_json_key_findings(value: Any) -> list[str]:
+    findings: list[str] = []
+
+    def visit(current: Any) -> None:
+        if isinstance(current, dict):
+            for key, child in current.items():
+                if production_security_should_redact_json_key(str(key), child):
+                    findings.append("sensitive JSON key marker")
+                visit(child)
+        elif isinstance(current, (list, tuple)):
+            for child in current:
+                visit(child)
+
+    visit(value)
+    return list(dict.fromkeys(findings))
+
+
+def json_string_values(value: Any) -> list[str]:
+    values: list[str] = []
+
+    def visit(current: Any) -> None:
+        if isinstance(current, str):
+            values.append(current)
+        elif isinstance(current, dict):
+            for child in current.values():
+                visit(child)
+        elif isinstance(current, (list, tuple)):
+            for child in current:
+                visit(child)
+
+    visit(value)
+    return values
+
+
+def collect_production_security_response_runbook_evidence(settings: Settings) -> EvidenceItem:
+    workspace = settings.workspace_root
+    runbook_path = workspace / "docs/production-security-response-runbook.md"
+    model_path = workspace / "tools/release-certification/production-security-response-runbook.json"
+    template_path = workspace / "docs/templates/security-release-notes.md"
+    verifier_path = workspace / "tools/release-certification/security_response_runbook.py"
+    status_path = (
+        workspace
+        / "platform-appcatalog/src/main/java/network/crypta/platform/appcatalog/AppCatalogSecurityStatus.java"
+    )
+    catalog_tests_path = (
+        workspace
+        / "platform-appcatalog/src/test/java/network/crypta/platform/appcatalog/AppCatalogParserTest.java"
+    )
+    catalog_api_path = (
+        workspace
+        / "platform-api/src/main/java/network/crypta/platform/api/appcatalogs/AppCatalogsApiHandler.java"
+    )
+    dashboard_path = (
+        workspace
+        / "platform-api/src/main/java/network/crypta/platform/api/operator/OperatorBetaDashboardService.java"
+    )
+    support_redactor_path = (
+        workspace / "platform-api/src/main/java/network/crypta/platform/api/operator/OperatorSupportRedactor.java"
+    )
+    support_redactor_tests_path = (
+        workspace
+        / "platform-api/src/test/java/network/crypta/platform/api/operator/OperatorSupportRedactorTest.java"
+    )
+    shell_path = (
+        workspace
+        / "platform-web-shell/src/main/resources/network/crypta/platform/webshell/static/web-shell.js"
+    )
+    shell_tests_path = (
+        workspace
+        / "platform-web-shell/src/test/java/network/crypta/platform/webshell/WebShellResourcesTest.java"
+    )
+    required_docs = (
+        "docs/SECURITY.md",
+        "docs/ecosystem-security-advisories.md",
+        "docs/app-catalogs.md",
+        "docs/app-review-governance.md",
+        "docs/operator-rc-recovery-and-support-workflow.md",
+        "docs/production-beta-release-pipeline.md",
+        "docs/release-certification.md",
+        "tools/release-certification/README.md",
+        "docs/cryptad-release-workflow-and-runbook.md",
+    )
+    runbook_text = read_source(runbook_path)
+    template_text = read_source(template_path)
+    verifier_text = read_source(verifier_path)
+    status_text = read_source(status_path)
+    catalog_tests_text = "\n".join(
+        read_source(path) for path in sorted(catalog_tests_path.parent.glob("*.java"))
+    )
+    catalog_api_text = read_source(catalog_api_path)
+    dashboard_text = read_source(dashboard_path)
+    support_redactor_text = read_source(support_redactor_path)
+    support_redactor_tests = read_source(support_redactor_tests_path)
+    shell_text = read_source(shell_path)
+    shell_tests_text = read_source(shell_tests_path)
+    docs_text = "\n".join(read_source(workspace / path) for path in required_docs)
+    model_text = read_source(model_path)
+    model_is_object = False
+    try:
+        model = json.loads(model_text)
+        model_is_object = isinstance(model, dict)
+    except json.JSONDecodeError:
+        model = {}
+    drills = model.get("drills") if model_is_object else None
+    seen_drill_ids: set[str] = set()
+    duplicate_drill_ids: set[str] = set()
+    drill_by_id = {}
+    for drill in drills or []:
+        if not isinstance(drill, dict) or not isinstance(drill.get("id"), str):
+            continue
+        drill_id = drill["id"]
+        if drill_id in seen_drill_ids:
+            duplicate_drill_ids.add(drill_id)
+        seen_drill_ids.add(drill_id)
+        drill_by_id[drill_id] = drill
+    drill_ids = sorted(drill_by_id)
+    duplicate_drill_ids_sorted = sorted(duplicate_drill_ids)
+    required_drills_present = all(
+        drill_id in drill_by_id for drill_id in PRODUCTION_SECURITY_REQUIRED_DRILLS
+    )
+    required_fields_present = all(
+        all(field in drill_by_id.get(drill_id, {}) for field in PRODUCTION_SECURITY_REQUIRED_DRILL_FIELDS)
+        for drill_id in PRODUCTION_SECURITY_REQUIRED_DRILLS
+    )
+    array_fields_bounded = all(
+        isinstance(drill_by_id.get(drill_id, {}).get(field), list)
+        and 0 < len(drill_by_id[drill_id][field]) <= 6
+        and all(isinstance(item, str) and 0 < len(item) <= 160 for item in drill_by_id[drill_id][field])
+        for drill_id in PRODUCTION_SECURITY_REQUIRED_DRILLS
+        for field in PRODUCTION_SECURITY_ARRAY_DRILL_FIELDS
+    )
+    scalar_fields_bounded = all(
+        isinstance(drill_by_id.get(drill_id, {}).get(field), str)
+        and 0 < len(drill_by_id[drill_id][field]) <= 160
+        for drill_id in PRODUCTION_SECURITY_REQUIRED_DRILLS
+        for field in PRODUCTION_SECURITY_SCALAR_DRILL_FIELDS
+    )
+    combined_sensitive_text = "\n".join(
+        (
+            runbook_text,
+            template_text,
+            "\n".join(json_string_values(model)) if model_is_object else model_text,
+        )
+    )
+    runbook_lower = runbook_text.lower()
+    production_security_findings = production_security_redaction_findings(
+        combined_sensitive_text,
+        workspace,
+    )
+    if model_is_object:
+        production_security_findings.extend(sensitive_json_key_findings(model))
+        production_security_findings = list(dict.fromkeys(production_security_findings))
+    production_security_redaction_clean = not production_security_findings
+    checks = {
+        "runbookDocExists": runbook_path.is_file(),
+        "modelExists": model_path.is_file(),
+        "templateExists": template_path.is_file(),
+        "verifierScriptExists": verifier_path.is_file(),
+        "requiredIncidentTypesDocumented": all(
+            marker in runbook_text
+            for marker in (
+                "Vulnerable app version",
+                "Malicious or compromised app version",
+                "App signing key compromise",
+                "Reviewer key compromise",
+                "Review receipt revocation",
+                "Catalog signing key compromise or rotation",
+                "Malicious catalog entry or catalog metadata compromise",
+                "Emergency replacement app publication",
+                "Safe uninstall/update guidance",
+                "Support bundle intake and redaction handling",
+            )
+        ),
+        "runbookModelValid": (
+            model_is_object
+            and model.get("schemaVersion") == 1
+            and model.get("kind") == "cryptad-production-security-response-runbook"
+            and required_drills_present
+            and required_fields_present
+            and array_fields_bounded
+            and scalar_fields_bounded
+            and not duplicate_drill_ids_sorted
+        ),
+        "advisoryLifecycleTestable": all(
+            marker in status_text
+            for marker in ("DRAFT", "DETECTED", "PUBLISHED", "SUPERSEDED", "RETRACTED", "enforcesAdvisoryAction")
+        )
+        and all(
+            marker in catalog_tests_text
+            for marker in (
+                "parse_whenSecurityAdvisoryLifecycleIsPublished_expectEntryAdvisoryEnforced",
+                "parse_whenSecurityAdvisoryLifecycleIsNonEnforcing_expectEntryAdvisoryNotApplied",
+            )
+        ),
+        "reviewerKeyCompromiseDrill": "reviewer-key-compromise" in drill_by_id
+        and "revoked reviewer" in runbook_text.lower(),
+        "catalogKeyRotationDrill": "catalog-signing-key-rotation" in drill_by_id
+        and all(
+            marker in runbook_lower
+            for marker in ("unknown", "untrusted", "compromised")
+        )
+        and ("catalog key" in runbook_lower or "catalog signing key" in runbook_lower),
+        "appSigningKeyCompromiseDrill": "app-signing-key-compromise" in drill_by_id
+        and "App signing key compromise" in runbook_text,
+        "emergencyCatalogUpdateDrill": "emergency-replacement-app" in drill_by_id
+        and "Emergency catalog update workflow" in runbook_text,
+        "supportRedactionDrill": "support-bundle-intake-redaction" in drill_by_id
+        and "redact_whenSecurityIncidentArtifactContainsIntakeSecrets" in support_redactor_tests
+        and all(
+            marker in support_redactor_text
+            for marker in ("authorizationheader", "cisecretvalue", "rawappdata")
+        ),
+        "releaseNotesTemplate": all(
+            marker in template_text
+            for marker in (
+                "Advisory id",
+                "Affected apps and versions",
+                "Severity",
+                "Containment",
+                "Safe uninstall guidance",
+                "Support bundle guidance",
+                "Redaction note",
+                "Credits",
+            )
+        ),
+        "toolingCommands": all(
+            marker in verifier_text
+            for marker in (
+                "drill_create",
+                "drill_verify",
+                "advisory_template",
+                "verify_runbook",
+                "cryptad-security-response-drill",
+            )
+        ),
+        "operatorApiSummary": "securityResponseSummary()" in catalog_api_text
+        and '"securityResponse"' in dashboard_text,
+        "webShellSummary": all(
+            marker in shell_text
+            for marker in (
+                "renderSecurityResponseSummary",
+                "Production security response",
+                "Denylisted app versions",
+                "Support handling",
+            )
+        )
+        and "function renderSecurityResponseSummary(response)" in shell_tests_text,
+        "docsCrossLinked": all("production-security-response-runbook.md" in read_source(workspace / path) for path in required_docs),
+        "sensitiveMarkersAbsent": production_security_redaction_clean,
+    }
+    errors = [name for name, passed in checks.items() if not passed]
+    details = {
+        "checks": checks,
+        "drillIds": drill_ids,
+        "duplicateDrillIds": duplicate_drill_ids_sorted,
+        "sources": {
+            "runbook": display_path(runbook_path, workspace),
+            "model": display_path(model_path, workspace),
+            "template": display_path(template_path, workspace),
+            "verifier": display_path(verifier_path, workspace),
+            "operatorApi": display_path(catalog_api_path, workspace),
+            "webShell": display_path(shell_path, workspace),
+            "supportRedactionTests": display_path(support_redactor_tests_path, workspace),
+        },
+    }
+    if production_security_findings:
+        details["redactionFindings"] = production_security_findings
+    if errors:
+        return EvidenceItem(
+            "production-security.response-runbook",
+            root_consequence(settings, "fail"),
+            True,
+            "Production security response runbook evidence is incomplete.",
+            summary_source(settings),
+            {"errors": errors, **details},
+        )
+    return EvidenceItem(
+        "production-security.response-runbook",
+        "pass",
+        True,
+        "Production security response runbook evidence passed deterministic checks.",
+        summary_source(settings),
+        details,
+    )
+
+
 def collect_user_consent_flow_evidence(settings: Settings) -> EvidenceItem:
     source = summary_source(settings)
     workspace = settings.workspace_root
@@ -14964,6 +15430,7 @@ def run(settings: Settings) -> tuple[dict[str, Any], int]:
         collect_sandbox_provider_evidence(settings),
         *collect_public_beta_security_evidence(settings),
         *collect_ecosystem_security_advisory_revocation_evidence(settings),
+        collect_production_security_response_runbook_evidence(settings),
         collect_user_consent_flow_evidence(settings),
         collect_app_update_lifecycle_evidence(settings),
         collect_app_update_scheduler_evidence(settings),
@@ -15136,10 +15603,684 @@ def assert_maintenance_policy_evidence_rejects_allowed_policy_drift() -> None:
         assert '"deprecationPolicy": "security-only"' in encoded, encoded
 
 
+def assert_security_response_drill_verify_rejects_sensitive_artifacts(repo_root: Path) -> None:
+    verifier = repo_root / "tools/release-certification/security_response_runbook.py"
+    assert verifier.is_file(), verifier
+    tainted_values = (
+        "Bearer tainted-token",
+        "Authorization: Basic tainted-token",
+        "x-crypta-app-session: tainted-token",
+        "bearer tainted-token",
+        "rawAppData: private-app-record",
+        "local path /var/lib/crypta/private.json",
+        "content key crypta:USK@fetched-evidence/0/report.json",
+    )
+    for tainted_value in tainted_values:
+        assert_security_response_drill_verify_rejects_sensitive_artifact(verifier, tainted_value)
+
+
+def assert_security_response_drill_verify_rejects_sensitive_json_keys(repo_root: Path) -> None:
+    verifier = repo_root / "tools/release-certification/security_response_runbook.py"
+    assert verifier.is_file(), verifier
+    sensitive_fields = (
+        ("authorizationHeader", "private-auth-header"),
+        ("rawAppData", "private-app-record"),
+        ("rawAppDataSource", "private-app-record-source"),
+        ("rawAppDataStatus", "private-app-record-status"),
+        ("rawFetchedContent", "private-fetched-record"),
+        ("token", "tainted-token"),
+        ("tokenStatus", "tainted-token-status"),
+    )
+    for key, value in sensitive_fields:
+        assert_security_response_drill_verify_rejects_sensitive_json_key(verifier, key, value)
+
+
+def assert_security_response_drill_verify_allows_boolean_redaction_metadata(repo_root: Path) -> None:
+    verifier = repo_root / "tools/release-certification/security_response_runbook.py"
+    assert verifier.is_file(), verifier
+    with tempfile.TemporaryDirectory(prefix="cryptad-security-drill-boolean-metadata-") as temp_name:
+        artifact_path = Path(temp_name) / "support-bundle-intake-redaction.json"
+        artifact = {
+            "schemaVersion": 1,
+            "kind": "cryptad-security-response-drill",
+            "scenario": "support-bundle-intake-redaction",
+            "rawAppDataPresent": True,
+            "rawAppDataRedacted": True,
+            "drill": {
+                "id": "support-bundle-intake-redaction",
+                "severity": "medium",
+                "trigger": "operator sends security incident support evidence",
+                "containmentActions": ["quarantine inbound support bundle"],
+                "catalogActions": ["record no catalog mutation required"],
+                "reviewActions": ["record no review mutation required"],
+                "operatorActions": ["show support bundle redaction status"],
+                "schedulerExpectations": ["continue safe update checks"],
+                "redactionRequirements": ["omit raw app data"],
+                "verificationEvidence": ["production-security.support-redaction"],
+                "releaseNotesTemplate": "support bundle note and redaction note",
+                "rawAppDataPresent": True,
+                "rawAppDataRedacted": True,
+            },
+        }
+        artifact_path.write_text(json.dumps(artifact, sort_keys=True) + "\n", encoding="utf-8")
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(verifier),
+                "drill",
+                "verify",
+                "--input",
+                str(artifact_path),
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    assert result.returncode == 0, result.stdout
+    parsed = json.loads(result.stdout)
+    assert parsed["status"] == "pass", parsed
+    assert parsed["ok"] is True, parsed
+    assert parsed["redactionClean"] is True, parsed
+
+
+def assert_security_response_runbook_verify_rejects_sensitive_text_assignments(repo_root: Path) -> None:
+    verifier = repo_root / "tools/release-certification/security_response_runbook.py"
+    assert verifier.is_file(), verifier
+    with tempfile.TemporaryDirectory(prefix="cryptad-security-runbook-text-") as temp_name:
+        temp_dir = Path(temp_name)
+        runbook = temp_dir / "production-security-response-runbook.md"
+        model = temp_dir / "production-security-response-runbook.json"
+        template = temp_dir / "security-release-notes.md"
+        shutil.copyfile(repo_root / "docs/production-security-response-runbook.md", runbook)
+        shutil.copyfile(
+            repo_root / "tools/release-certification/production-security-response-runbook.json",
+            model,
+        )
+        shutil.copyfile(repo_root / "docs/templates/security-release-notes.md", template)
+        runbook.write_text(
+            runbook.read_text(encoding="utf-8")
+            + "\nauthorizationHeader=private-auth-header\n"
+            + "ciSecretValue=ci-secret-value\n"
+            + "rawFetchedContent=private-fetched-record\n"
+            + "localEvidencePath=/var/lib/crypta/private.json\n"
+            + "privateInsertUri=crypta:USK@fetched-evidence/0/report.json\n",
+            encoding="utf-8",
+        )
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(verifier),
+                "verify",
+                "--runbook",
+                str(runbook),
+                "--model",
+                str(model),
+                "--template",
+                str(template),
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    assert result.returncode != 0, result.stdout
+    parsed = json.loads(result.stdout)
+    assert parsed["status"] == "fail", parsed
+    assert parsed["checks"]["redactionClean"] is False, parsed
+    assert "redactionClean" in parsed["errors"], parsed
+    for forbidden_value in (
+        "private-auth-header",
+        "ci-secret-value",
+        "private-fetched-record",
+        "/var/lib/crypta/private.json",
+        "crypta:USK@fetched-evidence",
+    ):
+        assert forbidden_value not in result.stdout, result.stdout
+
+
+def assert_security_response_runbook_verify_allows_boolean_redaction_metadata(repo_root: Path) -> None:
+    verifier = repo_root / "tools/release-certification/security_response_runbook.py"
+    assert verifier.is_file(), verifier
+    with tempfile.TemporaryDirectory(prefix="cryptad-security-runbook-boolean-metadata-") as temp_name:
+        temp_dir = Path(temp_name)
+        runbook = temp_dir / "production-security-response-runbook.md"
+        model = temp_dir / "production-security-response-runbook.json"
+        template = temp_dir / "security-release-notes.md"
+        shutil.copyfile(repo_root / "docs/production-security-response-runbook.md", runbook)
+        shutil.copyfile(
+            repo_root / "tools/release-certification/production-security-response-runbook.json",
+            model,
+        )
+        shutil.copyfile(repo_root / "docs/templates/security-release-notes.md", template)
+        loaded_model = json.loads(model.read_text(encoding="utf-8"))
+        loaded_model["drills"][0]["rawAppDataPresent"] = True
+        loaded_model["drills"][0]["rawAppDataRedacted"] = True
+        write_json(model, loaded_model)
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(verifier),
+                "verify",
+                "--runbook",
+                str(runbook),
+                "--model",
+                str(model),
+                "--template",
+                str(template),
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    assert result.returncode == 0, result.stdout
+    parsed = json.loads(result.stdout)
+    assert parsed["status"] == "pass", parsed
+    assert parsed["checks"]["modelValid"] is True, parsed
+    assert parsed["checks"]["redactionClean"] is True, parsed
+
+
+def assert_security_response_drill_verify_rejects_sensitive_json_key(
+    verifier: Path,
+    key: str,
+    value: str,
+) -> None:
+    with tempfile.TemporaryDirectory(prefix="cryptad-security-drill-json-key-") as temp_name:
+        tainted_artifact = Path(temp_name) / "reviewer-key-compromise.json"
+        artifact = {
+            "schemaVersion": 1,
+            "kind": "cryptad-security-response-drill",
+            "scenario": "reviewer-key-compromise",
+            key: value,
+            "drill": {
+                "id": "reviewer-key-compromise",
+                "severity": "high",
+                "trigger": "reviewer key compromise drill",
+                "containmentActions": ["mark reviewer key revoked"],
+                "catalogActions": ["publish affected app advisories"],
+                "reviewActions": ["revoke exact receipt fingerprints"],
+                "operatorActions": ["show reviewer key revoked"],
+                "schedulerExpectations": ["fail revoked-reviewer receipts closed"],
+                "redactionRequirements": ["omit reviewer private keys"],
+                "verificationEvidence": ["app-review.reviewer-key-compromise-flow"],
+                "releaseNotesTemplate": "reviewer key id and replacement review status",
+            },
+        }
+        tainted_artifact.write_text(json.dumps(artifact, sort_keys=True) + "\n", encoding="utf-8")
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(verifier),
+                "drill",
+                "verify",
+                "--input",
+                str(tainted_artifact),
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    assert result.returncode != 0, result.stdout
+    parsed = json.loads(result.stdout)
+    assert parsed["status"] == "fail", parsed
+    assert parsed["ok"] is False, parsed
+    assert parsed["redactionClean"] is False, parsed
+    assert "redactionClean" in parsed["errors"], parsed
+    assert value not in result.stdout, result.stdout
+
+
+def assert_security_response_drill_verify_rejects_malformed_envelope(repo_root: Path) -> None:
+    verifier = repo_root / "tools/release-certification/security_response_runbook.py"
+    assert verifier.is_file(), verifier
+    with tempfile.TemporaryDirectory(prefix="cryptad-security-drill-envelope-") as temp_name:
+        malformed_artifact = Path(temp_name) / "reviewer-key-compromise.json"
+        malformed_artifact.write_text(
+            json.dumps(
+                {
+                    "schemaVersion": 2,
+                    "kind": "cryptad-security-response-drill",
+                    "scenario": "vulnerable-app-version",
+                    "drill": {
+                        "id": "reviewer-key-compromise",
+                        "severity": "high",
+                        "trigger": "reviewer key compromise drill",
+                        "containmentActions": ["mark reviewer key revoked"],
+                        "catalogActions": ["publish affected app advisories"],
+                        "reviewActions": ["revoke exact receipt fingerprints"],
+                        "operatorActions": ["show reviewer key revoked"],
+                        "schedulerExpectations": ["fail revoked-reviewer receipts closed"],
+                        "redactionRequirements": ["omit reviewer private keys"],
+                        "verificationEvidence": ["app-review.reviewer-key-compromise-flow"],
+                        "releaseNotesTemplate": "reviewer key id and replacement review status",
+                    },
+                },
+                sort_keys=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(verifier),
+                "drill",
+                "verify",
+                "--input",
+                str(malformed_artifact),
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    assert result.returncode != 0, result.stdout
+    parsed = json.loads(result.stdout)
+    assert parsed["status"] == "fail", parsed
+    assert parsed["ok"] is False, parsed
+    assert "schemaVersion must be 1" in parsed["errors"], parsed
+    assert "scenario must match drill id" in parsed["errors"], parsed
+
+
+def assert_security_response_verifier_rejects_bounded_model_violations(repo_root: Path) -> None:
+    verifier = repo_root / "tools/release-certification/security_response_runbook.py"
+    assert verifier.is_file(), verifier
+    with tempfile.TemporaryDirectory(prefix="cryptad-security-runbook-bounds-") as temp_name:
+        temp_dir = Path(temp_name)
+        runbook = temp_dir / "production-security-response-runbook.md"
+        model = temp_dir / "production-security-response-runbook.json"
+        template = temp_dir / "security-release-notes.md"
+        shutil.copyfile(repo_root / "docs/production-security-response-runbook.md", runbook)
+        shutil.copyfile(
+            repo_root / "tools/release-certification/production-security-response-runbook.json",
+            model,
+        )
+        shutil.copyfile(repo_root / "docs/templates/security-release-notes.md", template)
+        loaded_model = json.loads(model.read_text(encoding="utf-8"))
+        loaded_model["drills"][0]["containmentActions"] = [
+            f"bounded containment action {index}" for index in range(7)
+        ]
+        loaded_model["drills"][1]["verificationEvidence"] = ["v" * 161]
+        loaded_model["drills"][2]["releaseNotesTemplate"] = "r" * 161
+        write_json(model, loaded_model)
+
+        verify_result = subprocess.run(
+            [
+                sys.executable,
+                str(verifier),
+                "verify",
+                "--runbook",
+                str(runbook),
+                "--model",
+                str(model),
+                "--template",
+                str(template),
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        drill_artifact = temp_dir / "vulnerable-app-version.json"
+        write_json(
+            drill_artifact,
+            {
+                "schemaVersion": 1,
+                "kind": "cryptad-security-response-drill",
+                "scenario": loaded_model["drills"][0]["id"],
+                "drill": loaded_model["drills"][0],
+            },
+        )
+        drill_result = subprocess.run(
+            [
+                sys.executable,
+                str(verifier),
+                "drill",
+                "verify",
+                "--input",
+                str(drill_artifact),
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    assert verify_result.returncode != 0, verify_result.stdout
+    verify_parsed = json.loads(verify_result.stdout)
+    assert verify_parsed["status"] == "fail", verify_parsed
+    assert verify_parsed["checks"]["modelValid"] is False, verify_parsed
+    assert "modelValid" in verify_parsed["errors"], verify_parsed
+    assert any("at most 6 entries" in error for error in verify_parsed["errors"]), verify_parsed
+    assert any("1..160 characters" in error for error in verify_parsed["errors"]), verify_parsed
+
+    assert drill_result.returncode != 0, drill_result.stdout
+    drill_parsed = json.loads(drill_result.stdout)
+    assert drill_parsed["status"] == "fail", drill_parsed
+    assert drill_parsed["ok"] is False, drill_parsed
+    assert drill_parsed["redactionClean"] is True, drill_parsed
+    assert any("at most 6 entries" in error for error in drill_parsed["errors"]), drill_parsed
+
+
+def assert_security_response_drill_verify_rejects_sensitive_artifact(
+    verifier: Path, tainted_value: str
+) -> None:
+    with tempfile.TemporaryDirectory(prefix="cryptad-security-drill-redaction-") as temp_name:
+        tainted_artifact = Path(temp_name) / "reviewer-key-compromise.json"
+        tainted_artifact.write_text(
+            json.dumps(
+                {
+                    "schemaVersion": 1,
+                    "kind": "cryptad-security-response-drill",
+                    "scenario": "reviewer-key-compromise",
+                    "drill": {
+                        "id": "reviewer-key-compromise",
+                        "severity": "high",
+                        "trigger": tainted_value,
+                        "containmentActions": ["mark reviewer key revoked"],
+                        "catalogActions": ["publish affected app advisories"],
+                        "reviewActions": ["revoke exact receipt fingerprints"],
+                        "operatorActions": ["show reviewer key revoked"],
+                        "schedulerExpectations": ["fail revoked-reviewer receipts closed"],
+                        "redactionRequirements": ["omit reviewer private keys"],
+                        "verificationEvidence": ["app-review.reviewer-key-compromise-flow"],
+                        "releaseNotesTemplate": "reviewer key id and replacement review status",
+                    },
+                },
+                sort_keys=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(verifier),
+                "drill",
+                "verify",
+                "--input",
+                str(tainted_artifact),
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    assert result.returncode != 0, result.stdout
+    parsed = json.loads(result.stdout)
+    assert parsed["status"] == "fail", parsed
+    assert parsed["ok"] is False, parsed
+    assert parsed["redactionClean"] is False, parsed
+    assert "redactionClean" in parsed["errors"], parsed
+    for forbidden_value in (
+        "tainted-token",
+        "private-app-record",
+        "/var/lib/crypta/private.json",
+        "crypta:USK@fetched-evidence",
+    ):
+        assert forbidden_value not in result.stdout, result.stdout
+
+
+def assert_production_security_evidence_rejects_sensitive_text() -> None:
+    with tempfile.TemporaryDirectory(prefix="cryptad-security-response-evidence-") as temp_name:
+        workspace = Path(temp_name) / "repo"
+        make_self_test_workspace(workspace)
+        runbook_path = workspace / "docs/production-security-response-runbook.md"
+        runbook_path.write_text(
+            runbook_path.read_text(encoding="utf-8")
+            + "\nAuthorization: Basic tainted-token\n"
+            + "rawAppData: private-app-record\n"
+            + "rawFetchedContent=private-fetched-record\n",
+            encoding="utf-8",
+        )
+        settings = Settings(
+            workspace_root=workspace.resolve(),
+            out_dir=(workspace / DEFAULT_OUT_DIR).resolve(),
+            mode="pr",
+            skip_gradle=True,
+            cli_path=None,
+            live=False,
+            live_base_url="",
+            live_form_password="",
+            timeout_seconds=60,
+        )
+
+        item = collect_production_security_response_runbook_evidence(settings)
+        encoded = json.dumps(item.to_json(), sort_keys=True)
+
+        assert item.status == "warn", item
+        assert "sensitiveMarkersAbsent" in encoded, encoded
+        assert "redactionFindings" in encoded, encoded
+        assert "raw app data marker" in encoded, encoded
+        assert "raw fetched content marker" in encoded, encoded
+        assert "Basic tainted-token" not in encoded, encoded
+        assert "private-app-record" not in encoded, encoded
+        assert "private-fetched-record" not in encoded, encoded
+
+
+def assert_production_security_evidence_rejects_sensitive_model_keys() -> None:
+    with tempfile.TemporaryDirectory(prefix="cryptad-security-response-model-") as temp_name:
+        workspace = Path(temp_name) / "repo"
+        make_self_test_workspace(workspace)
+        model_path = workspace / "tools/release-certification/production-security-response-runbook.json"
+        model = json.loads(model_path.read_text(encoding="utf-8"))
+        model["drills"][0]["authorizationHeader"] = "private-auth-header"
+        model["drills"][0]["rawAppData"] = "private-app-record"
+        model["drills"][0]["rawAppDataSource"] = "private-app-record-source"
+        model["drills"][0]["rawAppDataStatus"] = "private-app-record-status"
+        model["drills"][0]["rawFetchedContent"] = "private-fetched-record"
+        model["drills"][0]["token"] = "tainted-token"
+        model["drills"][0]["tokenStatus"] = "tainted-token-status"
+        write_json(model_path, model)
+        settings = Settings(
+            workspace_root=workspace.resolve(),
+            out_dir=(workspace / DEFAULT_OUT_DIR).resolve(),
+            mode="pr",
+            skip_gradle=True,
+            cli_path=None,
+            live=False,
+            live_base_url="",
+            live_form_password="",
+            timeout_seconds=60,
+        )
+
+        item = collect_production_security_response_runbook_evidence(settings)
+        encoded = json.dumps(item.to_json(), sort_keys=True)
+
+        assert item.status == "warn", item
+        assert "sensitiveMarkersAbsent" in encoded, encoded
+        assert "redactionFindings" in encoded, encoded
+        assert "sensitive JSON key marker" in encoded, encoded
+        for forbidden_value in (
+            "private-auth-header",
+            "private-app-record",
+            "private-app-record-source",
+            "private-app-record-status",
+            "private-fetched-record",
+            "tainted-token",
+            "tainted-token-status",
+        ):
+            assert forbidden_value not in encoded, encoded
+
+    for key, value in (
+        ("authorizationHeader", "private-auth-header"),
+        ("rawAppDataStatus", "private-app-record-status"),
+        ("rawAppDataSource", "private-app-record-source"),
+        ("rawFetchedContent", "private-fetched-record"),
+        ("tokenStatus", "tainted-token-status"),
+    ):
+        with tempfile.TemporaryDirectory(prefix="cryptad-security-response-model-key-") as temp_name:
+            workspace = Path(temp_name) / "repo"
+            make_self_test_workspace(workspace)
+            model_path = workspace / "tools/release-certification/production-security-response-runbook.json"
+            model = json.loads(model_path.read_text(encoding="utf-8"))
+            model["drills"][0][key] = value
+            write_json(model_path, model)
+            settings = Settings(
+                workspace_root=workspace.resolve(),
+                out_dir=(workspace / DEFAULT_OUT_DIR).resolve(),
+                mode="pr",
+                skip_gradle=True,
+                cli_path=None,
+                live=False,
+                live_base_url="",
+                live_form_password="",
+                timeout_seconds=60,
+            )
+
+            item = collect_production_security_response_runbook_evidence(settings)
+            encoded = json.dumps(item.to_json(), sort_keys=True)
+
+        assert item.status == "warn", item
+        assert "sensitiveMarkersAbsent" in encoded, encoded
+        assert "redactionFindings" in encoded, encoded
+        assert "sensitive JSON key marker" in encoded, encoded
+        assert value not in encoded, encoded
+
+
+def assert_production_security_evidence_scans_raw_invalid_model_text() -> None:
+    tainted_models = (
+        '{"schemaVersion": 1, "token": "tainted-token", "path": "/var/lib/crypta/private.json",',
+        json.dumps(
+            [
+                "Authorization: Basic tainted-token",
+                "local path /var/lib/crypta/private.json",
+                "content key crypta:USK@fetched-evidence/0/report.json",
+            ]
+        ),
+    )
+    for model_text in tainted_models:
+        with tempfile.TemporaryDirectory(prefix="cryptad-security-response-raw-model-") as temp_name:
+            workspace = Path(temp_name) / "repo"
+            make_self_test_workspace(workspace)
+            model_path = workspace / "tools/release-certification/production-security-response-runbook.json"
+            model_path.write_text(model_text + "\n", encoding="utf-8")
+            settings = Settings(
+                workspace_root=workspace.resolve(),
+                out_dir=(workspace / DEFAULT_OUT_DIR).resolve(),
+                mode="pr",
+                skip_gradle=True,
+                cli_path=None,
+                live=False,
+                live_base_url="",
+                live_form_password="",
+                timeout_seconds=60,
+            )
+
+            item = collect_production_security_response_runbook_evidence(settings)
+            encoded = json.dumps(item.to_json(), sort_keys=True)
+
+        assert item.status == "warn", item
+        assert item.details["checks"]["runbookModelValid"] is False, item.details
+        assert item.details["checks"]["sensitiveMarkersAbsent"] is False, item.details
+        assert "redactionFindings" in item.details, item.details
+        assert "tainted-token" not in encoded, encoded
+        assert "/var/lib/crypta/private.json" not in encoded, encoded
+        assert "crypta:USK@fetched-evidence" not in encoded, encoded
+
+
+def assert_production_security_evidence_rejects_malformed_model_scalars() -> None:
+    with tempfile.TemporaryDirectory(prefix="cryptad-security-response-model-shape-") as temp_name:
+        workspace = Path(temp_name) / "repo"
+        make_self_test_workspace(workspace)
+        model_path = workspace / "tools/release-certification/production-security-response-runbook.json"
+        model = json.loads(model_path.read_text(encoding="utf-8"))
+        model["drills"][0]["severity"] = None
+        model["drills"][1]["trigger"] = 42
+        model["drills"][2]["releaseNotesTemplate"] = ""
+        write_json(model_path, model)
+        settings = Settings(
+            workspace_root=workspace.resolve(),
+            out_dir=(workspace / DEFAULT_OUT_DIR).resolve(),
+            mode="pr",
+            skip_gradle=True,
+            cli_path=None,
+            live=False,
+            live_base_url="",
+            live_form_password="",
+            timeout_seconds=60,
+        )
+
+        item = collect_production_security_response_runbook_evidence(settings)
+
+        assert item.status == "warn", item
+        assert item.details["checks"]["runbookModelValid"] is False, item.details
+        assert "runbookModelValid" in item.details["errors"], item.details
+
+
+def assert_production_security_evidence_rejects_duplicate_drill_ids() -> None:
+    with tempfile.TemporaryDirectory(prefix="cryptad-security-response-duplicate-drill-") as temp_name:
+        workspace = Path(temp_name) / "repo"
+        make_self_test_workspace(workspace)
+        model_path = workspace / "tools/release-certification/production-security-response-runbook.json"
+        model = json.loads(model_path.read_text(encoding="utf-8"))
+        duplicated = dict(model["drills"][0])
+        model["drills"].append(duplicated)
+        write_json(model_path, model)
+        settings = Settings(
+            workspace_root=workspace.resolve(),
+            out_dir=(workspace / DEFAULT_OUT_DIR).resolve(),
+            mode="pr",
+            skip_gradle=True,
+            cli_path=None,
+            live=False,
+            live_base_url="",
+            live_form_password="",
+            timeout_seconds=60,
+        )
+
+        item = collect_production_security_response_runbook_evidence(settings)
+
+        assert item.status == "warn", item
+        assert item.details["checks"]["runbookModelValid"] is False, item.details
+        assert item.details["duplicateDrillIds"] == [duplicated["id"]], item.details
+        assert "runbookModelValid" in item.details["errors"], item.details
+
+
+def assert_production_security_evidence_allows_boolean_redaction_metadata() -> None:
+    with tempfile.TemporaryDirectory(prefix="cryptad-security-response-boolean-metadata-") as temp_name:
+        workspace = Path(temp_name) / "repo"
+        make_self_test_workspace(workspace)
+        model_path = workspace / "tools/release-certification/production-security-response-runbook.json"
+        model = json.loads(model_path.read_text(encoding="utf-8"))
+        model["drills"][0]["rawAppDataPresent"] = True
+        model["drills"][0]["rawAppDataRedacted"] = True
+        write_json(model_path, model)
+        settings = Settings(
+            workspace_root=workspace.resolve(),
+            out_dir=(workspace / DEFAULT_OUT_DIR).resolve(),
+            mode="pr",
+            skip_gradle=True,
+            cli_path=None,
+            live=False,
+            live_base_url="",
+            live_form_password="",
+            timeout_seconds=60,
+        )
+
+        item = collect_production_security_response_runbook_evidence(settings)
+
+        assert item.status == "pass", item
+        assert item.details["checks"]["runbookModelValid"] is True, item.details
+        assert item.details["checks"]["sensitiveMarkersAbsent"] is True, item.details
+        assert "redactionFindings" not in item.details, item.details
+
+
 def run_self_test(repo_root: Path) -> None:
     assert_maintenance_policy_evidence_redacts_invalid_values()
     assert_maintenance_policy_evidence_rejects_redacted_uri_values()
     assert_maintenance_policy_evidence_rejects_allowed_policy_drift()
+    assert_security_response_drill_verify_rejects_sensitive_artifacts(repo_root)
+    assert_security_response_drill_verify_rejects_sensitive_json_keys(repo_root)
+    assert_security_response_drill_verify_allows_boolean_redaction_metadata(repo_root)
+    assert_security_response_runbook_verify_rejects_sensitive_text_assignments(repo_root)
+    assert_security_response_runbook_verify_allows_boolean_redaction_metadata(repo_root)
+    assert_security_response_drill_verify_rejects_malformed_envelope(repo_root)
+    assert_security_response_verifier_rejects_bounded_model_violations(repo_root)
+    assert_production_security_evidence_rejects_sensitive_text()
+    assert_production_security_evidence_rejects_sensitive_model_keys()
+    assert_production_security_evidence_scans_raw_invalid_model_text()
+    assert_production_security_evidence_rejects_malformed_model_scalars()
+    assert_production_security_evidence_rejects_duplicate_drill_ids()
+    assert_production_security_evidence_allows_boolean_redaction_metadata()
     fixture_dir = repo_root / "tools/release-certification/fixtures"
     catalog_fixture = fixture_dir / "self-test-catalog.properties"
     registry_fixture = fixture_dir / "self-test-legacy-registry.java-fragment"
@@ -16291,6 +17432,19 @@ def run_self_test(repo_root: Path) -> None:
         assert "noTokenSetenvCommand" not in sandbox_checks, sandbox_checks
         for evidence_id in PUBLIC_BETA_SECURITY_EVIDENCE_IDS:
             assert evidence_by_id[evidence_id]["status"] == "pass", evidence_by_id[evidence_id]
+        production_security_item = evidence_by_id["production-security.response-runbook"]
+        assert production_security_item["status"] == "pass", production_security_item
+        assert production_security_item["requiredForReleaseCandidate"] is True
+        production_security_checks = production_security_item["details"]["checks"]
+        assert production_security_checks["runbookModelValid"] is True, production_security_checks
+        assert production_security_checks["sensitiveMarkersAbsent"] is True, production_security_checks
+        assert "secretMarkersAbsent" not in production_security_checks, production_security_checks
+        assert production_security_checks["operatorApiSummary"] is True, production_security_checks
+        assert production_security_checks["webShellSummary"] is True, production_security_checks
+        assert production_security_item["details"]["duplicateDrillIds"] == [], production_security_item
+        assert set(production_security_item["details"]["drillIds"]) == set(
+            PRODUCTION_SECURITY_REQUIRED_DRILLS
+        )
         consent_item = evidence_by_id["app-platform.user-consent-flow"]
         assert consent_item["status"] == "pass", consent_item
         assert consent_item["requiredForReleaseCandidate"] is True
@@ -17400,7 +18554,8 @@ def make_self_test_workspace(workspace: Path) -> None:
         encoding="utf-8",
     )
     (appcatalog_dir / "AppCatalogSecurityStatus.java").write_text(
-        "enum AppCatalogSecurityStatus { ACTIVE, RESOLVED, WITHDRAWN }\n",
+        "enum AppCatalogSecurityStatus { DRAFT, DETECTED, ACTIVE, PUBLISHED, SUPERSEDED, "
+        "RESOLVED, WITHDRAWN, RETRACTED; boolean enforcesAdvisoryAction() { return true; } }\n",
         encoding="utf-8",
     )
     (appcatalog_dir / "AppCatalogSecurityAction.java").write_text(
@@ -17466,6 +18621,8 @@ def make_self_test_workspace(workspace: Path) -> None:
     )
     (appcatalog_tests / "AppCatalogSecurityPolicyTest.java").write_text(
         "void parse_whenCatalogHasSecurityPolicy_expectDecisionDenylisted() {}\n"
+        "void parse_whenSecurityAdvisoryLifecycleIsPublished_expectEntryAdvisoryEnforced() {}\n"
+        "void parse_whenSecurityAdvisoryLifecycleIsNonEnforcing_expectEntryAdvisoryNotApplied() {}\n"
         "void parse_whenVersionThreeCatalogDeclaresSecurityPolicy_expectInvalidCatalogEntry() {}\n"
         "void parse_whenSecurityPolicyHasDuplicateAdvisoryId_expectInvalidCatalogEntry() {}\n"
         "void parse_whenSecurityPolicyDenylistReferencesUnknownAdvisory_expectInvalidCatalogEntry() {}\n"
@@ -17557,6 +18714,7 @@ def make_self_test_workspace(workspace: Path) -> None:
     catalog_api_dir.mkdir(parents=True, exist_ok=True)
     (catalog_api_dir / "AppCatalogsApiHandler.java").write_text(
         "final class AppCatalogsApiHandler { void listRecommendedCatalogs() {} void addRecommended() {} "
+        "java.util.Map<String, Object> securityResponseSummary() { return java.util.Map.of(\"securityResponse\", \"clear\"); } "
         "void summarize() { json.put(\"channel\", channel); json.put(\"supportStatus\", supportStatus); "
         "json.put(\"maintenance\", summarizeMaintenance(metadata)); "
         "json.put(\"securityAdvisories\", securityAdvisories); json.put(\"defaultEntryChannel\", \"stable\"); "
@@ -18507,6 +19665,7 @@ def make_self_test_workspace(workspace: Path) -> None:
         "void listRecommendedCatalogs_whenHttpsSourceHasQuery_expectQueryRedacted() {}\n"
         "void listRecommendedCatalogs_whenFileSourceConfigured_expectPathRedacted() {}\n"
         "void listApps_whenCatalogSecurityDecisionExists_expectRedactedDecisionIncluded() {}\n"
+        "void securityResponseSummary_whenCatalogHasEmergencyPolicy_expectBoundedStatus() {}\n"
         "void install_whenCatalogSecurityDecisionIsDenylisted_expectStableSecurityError() {}\n"
         "void install_whenCatalogSecurityDecisionWarnsWithoutAcknowledgement_expectSecurityAckError() {}\n",
         encoding="utf-8",
@@ -18525,6 +19684,13 @@ def make_self_test_workspace(workspace: Path) -> None:
         "fetch('/.well-known/cryptad-origin.json', { credentials: \"omit\", mode: \"cors\" });\n"
         "function renderRecommendedCatalogs(){}\n"
         "function renderRecommendedCatalogCard(){}\n"
+        "function renderSecurityResponseSummary(response){ return 'Production security response Security response Denylisted app versions Support handling'; }\n"
+        "function securityResponseTone(status){}\n"
+        "function renderSecurityResponseActionLabels(actions){}\n"
+        "function renderSecurityResponseRecordCard(title, records, lineFormatter){}\n"
+        "function securityResponseAdvisoryLine(advisory){}\n"
+        "function securityResponseDenylistLine(denylistEntry){}\n"
+        "function securityResponseCatalogKeyLine(catalogKey){}\n"
         "function catalogAppChannel(){}\n"
         "function securityAdvisoryListNode(){}\n"
         "function catalogMaintenancePolicyNode(){ return 'Maintenance policy'; }\n"
@@ -18592,6 +19758,7 @@ def make_self_test_workspace(workspace: Path) -> None:
     web_shell_test.parent.mkdir(parents=True, exist_ok=True)
     web_shell_test.write_text(
         "class WebShellResourcesTest { String grants = \"App-service grants\"; "
+        "String security = \"function renderSecurityResponseSummary(response) Production security response\"; "
         "String bundles = \"grant-bundles Renew bundle renderAppServiceDependencyGraph\"; "
         "String diagnostic = \"legacyFallback=diagnostic-export "
         "legacyDiagnosticPath + \\\"?legacyFallback=diagnostic-export\\\" "
@@ -18743,6 +19910,11 @@ def make_self_test_workspace(workspace: Path) -> None:
         "absolute staging paths. It also excludes raw feed bodies, raw message bodies, raw fetched content, raw fetched documents, raw trust statement bodies, browser-session tokens, "
         "form passwords, and local paths.\n"
     )
+    first_party_docs += (
+        "Production security response uses docs/production-security-response-runbook.md and "
+        "production-security.response-runbook evidence for reviewer key compromise, catalog key rotation, "
+        "app signing key compromise, emergency catalog update drills, support redaction, and security release notes. "
+    )
     for doc_name in (
         "app-catalogs.md",
         "app-review-governance.md",
@@ -18763,6 +19935,9 @@ def make_self_test_workspace(workspace: Path) -> None:
         "first-party-app-maintenance-policy.md",
         "ecosystem-security-advisories.md",
         "SECURITY.md",
+        "operator-rc-recovery-and-support-workflow.md",
+        "production-beta-release-pipeline.md",
+        "cryptad-release-workflow-and-runbook.md",
         "social-inbox-reference-app.md",
         "trust-graph-preview.md",
         "first-party-beta-catalog.md",
@@ -18773,6 +19948,68 @@ def make_self_test_workspace(workspace: Path) -> None:
     cert_readme = workspace / "tools/release-certification/README.md"
     cert_readme.parent.mkdir(parents=True, exist_ok=True)
     cert_readme.write_text(first_party_docs, encoding="utf-8")
+    runbook_text = (
+        "# Production Security Response Runbook\n\n"
+        "Vulnerable app version\n"
+        "Malicious or compromised app version\n"
+        "App signing key compromise\n"
+        "Reviewer key compromise with revoked reviewer handling\n"
+        "Review receipt revocation\n"
+        "Catalog signing key compromise or rotation with unknown/untrusted/compromised key fail-closed behavior\n"
+        "Malicious catalog entry or catalog metadata compromise\n"
+        "Emergency replacement app publication\n"
+        "Safe uninstall/update guidance\n"
+        "Support bundle intake and redaction handling\n\n"
+        "Trigger signals Required evidence Immediate containment Catalog/advisory/denylist actions "
+        "Review/reviewer/revocation actions App update scheduler expected behavior "
+        "Web Shell/operator UX expected behavior Recovery guidance Redaction requirements "
+        "Release note fields Verification steps Rollback or follow-up\n\n"
+        "Emergency catalog update workflow covers advisory creation, exact denylist records, reviewer "
+        "revocation, dry-run signed catalog candidates, redaction checks, and release notes.\n"
+    )
+    (docs / "production-security-response-runbook.md").write_text(runbook_text, encoding="utf-8")
+    template_dir = docs / "templates"
+    template_dir.mkdir(parents=True, exist_ok=True)
+    (template_dir / "security-release-notes.md").write_text(
+        "# Security Release Notes\n\n"
+        "Advisory id\nAffected apps and versions\nSeverity\nImpact summary\nContainment\n"
+        "Update guidance\nSafe uninstall guidance\nReplacement app/version\nReview\nCatalog\n"
+        "Support bundle guidance\nRedaction note\nCredits\n",
+        encoding="utf-8",
+    )
+    drill_template = {
+        "severity": "high",
+        "trigger": "deterministic drill trigger",
+        "containmentActions": ["contain"],
+        "catalogActions": ["publish advisory"],
+        "reviewActions": ["record reviewer state"],
+        "operatorActions": ["show warning"],
+        "schedulerExpectations": ["block unsafe automatic apply"],
+        "redactionRequirements": ["omit private material"],
+        "verificationEvidence": ["self-test evidence"],
+        "releaseNotesTemplate": "docs/templates/security-release-notes.md",
+    }
+    runbook_model = {
+        "schemaVersion": 1,
+        "kind": "cryptad-production-security-response-runbook",
+        "drills": [
+            {"id": drill_id, **drill_template}
+            for drill_id in PRODUCTION_SECURITY_REQUIRED_DRILLS
+        ],
+    }
+    (workspace / "tools/release-certification").mkdir(parents=True, exist_ok=True)
+    (workspace / "tools/release-certification/production-security-response-runbook.json").write_text(
+        json.dumps(runbook_model, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    (workspace / "tools/release-certification/security_response_runbook.py").write_text(
+        "def verify_runbook(): pass\n"
+        "def drill_create(): pass\n"
+        "def drill_verify(): pass\n"
+        "def advisory_template(): pass\n"
+        "KIND = 'cryptad-security-response-drill'\n",
+        encoding="utf-8",
+    )
     (workspace / "tools/release-certification/production_beta_release.py").write_text(
         "FIRST_PARTY_MAINTENANCE_POLICY_FILE = 'first-party-app-maintenance-policy.json'\n"
         "def maintenance_policy_args(policy):\n"
@@ -19887,6 +21124,13 @@ const appDataRestoreFields = "payloadBase64 replaceNamespace replaceApp backupPa
 let betaDashboardLoadGeneration = 0;
 let supportBundleSnapshot = null;
 function renderBetaDashboard(data){}
+function renderSecurityResponseSummary(response){ return "Production security response Security response Denylisted app versions Support handling"; }
+function securityResponseTone(status){}
+function renderSecurityResponseActionLabels(actions){}
+function renderSecurityResponseRecordCard(title, records, lineFormatter){}
+function securityResponseAdvisoryLine(advisory){}
+function securityResponseDenylistLine(denylistEntry){}
+function securityResponseCatalogKeyLine(catalogKey){}
 function renderBetaCatalogs(catalogs){}
 function renderBetaApps(apps){}
 function renderBetaSubscriptions(subscriptions){}
@@ -19988,6 +21232,7 @@ final class OperatorBetaDashboardService {
     dashboard.put("subscriptions", subscriptions);
     dashboard.put("trustGraph", trustGraph);
     dashboard.put("appServices", appServices);
+    dashboard.put("securityResponse", securityResponse);
     dashboard.put("installedSecurityDecision", installedSecurityDecision);
     dashboard.put("legacyAdmin", legacyAdmin);
     dashboard.put("diagnostics", diagnostics);
@@ -20181,7 +21426,7 @@ record OperatorRecoveryTarget() {
     (operator_dir / "OperatorSupportRedactor.java").write_text(
         'final class OperatorSupportRedactor { String[] fields = {"formpassword", '
         '"browsersession", "plantoken", "requestbody", "rawbody", "sourcepath", "rollbackpath", '
-        '"backupbundle", "payloadbase64"}; String marker = "crypta-app-data-backup"; '
+        '"backupbundle", "payloadbase64", "authorizationheader", "cisecretvalue", "rawappdata"}; String marker = "crypta-app-data-backup"; '
         'String value = REDACTED_APP_DATA_BACKUP; }\n',
         encoding="utf-8",
     )
@@ -20313,6 +21558,7 @@ class OperatorSupportRedactorTest {
     String payloadBase64 = "secret";
     String stagedBundlePath = "/work/cryptad/staging";
   }
+  void redact_whenSecurityIncidentArtifactContainsIntakeSecrets_expectIncidentEvidenceRedacted() {}
   void redact_whenBackupPayloadAccidentallyEntersSupportBundle_expectWholeBackupRedacted() {}
 }
 """,
@@ -20350,7 +21596,8 @@ class OperatorSupportRedactorTest {
         "operator-rc.redaction. The routes are host/operator-only, typed action-id dispatch only, "
         "plan before execute, destructive confirmation, metadata-only Trust Graph export, no global truth, "
         "no moderation, no routing policy, no raw app-data backup payloads in support bundles, no plugin "
-        "runtime restoration, and no FProxy browse removal. Support bundles exclude form passwords, "
+        "runtime restoration, and no FProxy browse removal. production-security-response-runbook.md "
+        "covers security incident intake. Support bundles exclude form passwords, "
         "tokens, private insert URIs, raw bodies, raw app-data values, and local paths.\n",
         encoding="utf-8",
     )
@@ -20392,6 +21639,7 @@ class AppCatalogsApiHandler {
   String recommendedCatalogError = "recommended_catalog_trusted_key_missing";
   void listRecommendedCatalogs() {}
   void addRecommended() {}
+  java.util.Map<String, Object> securityResponseSummary() { return java.util.Map.of("securityResponse", "clear"); }
   void refresh(String catalogId) { refresh(catalogId); }
   void summarize() {
     json.put("channel", channel);

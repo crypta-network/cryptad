@@ -745,6 +745,7 @@
     const trustGraph = recordValue(data.trustGraph);
     const operatorRcRecovery = recordValue(data.operatorRcRecovery);
     const networkBudgets = recordValue(data.networkBudgets);
+    const securityResponse = recordValue(data.securityResponse);
 
     const summaryCards = document.createElement("div");
     summaryCards.className = "app-card-list";
@@ -802,6 +803,7 @@
     }
 
     sections.betaDashboard.append(
+      renderSecurityResponseSummary(securityResponse),
       renderBetaCatalogs(catalogs),
       renderBetaApps(apps),
       renderBetaSubscriptions(subscriptions),
@@ -824,6 +826,133 @@
     });
     card.append(list);
     return card;
+  }
+
+  function renderSecurityResponseSummary(response) {
+    const safeResponse = recordValue(response);
+    const group = document.createElement("section");
+    group.className = "diagnostics-section";
+    group.append(text("h3", "diagnostics-section-title", "Production security response"));
+    const summary = recordValue(safeResponse.summary);
+    const advisories = arrayValue(safeResponse.activeAdvisories).map(recordValue);
+    const denylistedVersions = arrayValue(safeResponse.denylistedVersions).map(recordValue);
+    const reviewerGovernance = recordValue(safeResponse.reviewerGovernance);
+    const catalogSigningKeys = arrayValue(safeResponse.catalogSigningKeys).map(recordValue);
+    const registryCounts = recordValue(reviewerGovernance.counts);
+    const status = typeof safeResponse.status === "string" ? safeResponse.status : "unavailable";
+    const list = document.createElement("div");
+    list.className = "app-card-list";
+
+    const overview = document.createElement("article");
+    overview.className = securityResponseTone(status) ? `app-card ${securityResponseTone(status)}` : "app-card";
+    overview.append(
+      betaCardHeader("Security response", normalizedStatus(status, "Unavailable"), securityResponseTone(status)),
+      definitionList([
+        ["Active advisories", scalar(summary.activeAdvisoryCount)],
+        ["Denylisted versions", scalar(summary.denylistedVersionCount)],
+        ["Revoked reviewer keys", scalar(summary.revokedReviewerKeyCount ?? registryCounts.revoked)],
+        ["Revoked receipts", scalar(summary.revokedReceiptCount)],
+        ["Catalog signing keys", scalar(summary.catalogSigningKeyCount)],
+        ["Catalog key rotation", normalizedStatus(summary.catalogKeyRotationStatus, "Unavailable")],
+        ["Support redaction", normalizedStatus(summary.supportRedactionStatus, "Unavailable")],
+      ]),
+      renderSecurityResponseActionLabels(arrayValue(safeResponse.operatorActions)),
+    );
+    list.append(overview);
+
+    if (advisories.length) {
+      list.append(renderSecurityResponseRecordCard("Active advisories", advisories, securityResponseAdvisoryLine));
+    }
+    if (denylistedVersions.length) {
+      list.append(
+        renderSecurityResponseRecordCard("Denylisted app versions", denylistedVersions, securityResponseDenylistLine),
+      );
+    }
+    if (catalogSigningKeys.length) {
+      list.append(
+        renderSecurityResponseRecordCard("Catalog signing keys", catalogSigningKeys, securityResponseCatalogKeyLine),
+      );
+    }
+    if (typeof safeResponse.supportGuidance === "string" && safeResponse.supportGuidance.length) {
+      const support = document.createElement("article");
+      support.className = "app-card";
+      support.append(
+        betaCardHeader("Support handling", "redacted", ""),
+        text("p", "empty-state", safeResponse.supportGuidance),
+      );
+      list.append(support);
+    }
+    group.append(list);
+    return group;
+  }
+
+  function securityResponseTone(status) {
+    if (status === "denylist_active") {
+      return "is-error";
+    }
+    if (
+      status === "advisory_active" ||
+      status === "reviewer_revocation_active" ||
+      status === "unavailable"
+    ) {
+      return "is-warning";
+    }
+    return "";
+  }
+
+  function renderSecurityResponseActionLabels(actions) {
+    const list = document.createElement("ul");
+    list.className = "permission-list";
+    actions.slice(0, 6).forEach((actionValue) => {
+      const action = recordValue(actionValue);
+      const label = typeof action.label === "string" && action.label ? action.label : action.id;
+      if (typeof label === "string" && label.length) {
+        const item = document.createElement("li");
+        item.textContent = label;
+        list.append(item);
+      }
+    });
+    return list;
+  }
+
+  function renderSecurityResponseRecordCard(title, records, lineFormatter) {
+    const card = document.createElement("article");
+    card.className = "app-card is-warning";
+    const list = document.createElement("ul");
+    list.className = "permission-list";
+    records.slice(0, 6).forEach((record) => {
+      const item = document.createElement("li");
+      item.textContent = lineFormatter(record);
+      list.append(item);
+    });
+    card.append(betaCardHeader(title, `${records.length}`, "is-warning"), list);
+    return card;
+  }
+
+  function securityResponseAdvisoryLine(advisory) {
+    return [
+      scalar(advisory.id),
+      normalizedStatus(advisory.severity, "Unknown"),
+      normalizedStatus(advisory.action, "Unknown"),
+      scalar(advisory.replacementAppId),
+    ].join(" / ");
+  }
+
+  function securityResponseDenylistLine(denylistEntry) {
+    return [
+      scalar(denylistEntry.appId),
+      scalar(denylistEntry.version),
+      scalar(denylistEntry.advisoryId),
+      scalar(denylistEntry.replacementAppId),
+    ].join(" / ");
+  }
+
+  function securityResponseCatalogKeyLine(catalogKey) {
+    return [
+      scalar(catalogKey.catalogId),
+      scalar(catalogKey.keyId),
+      normalizedStatus(catalogKey.rotationStatus, "Unavailable"),
+    ].join(" / ");
   }
 
   function renderBetaCatalogs(catalogs) {

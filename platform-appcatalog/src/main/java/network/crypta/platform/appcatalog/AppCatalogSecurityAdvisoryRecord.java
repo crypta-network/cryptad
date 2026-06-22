@@ -107,7 +107,7 @@ public record AppCatalogSecurityAdvisoryRecord(
   }
 
   boolean active() {
-    return status == AppCatalogSecurityStatus.ACTIVE;
+    return status.enforcesAdvisoryAction();
   }
 
   /**

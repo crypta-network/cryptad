@@ -107,8 +107,8 @@ build/release-certification/live-network-beta-smoke/live-network-beta-smoke-repo
   and trust redaction coverage, app-network budget source evidence, legacy plugin freeze evidence,
   app-review governance/reviewer-key/transparency-log evidence, public-beta security hardening
   evidence, operator beta dashboard/recovery/support-bundle evidence, legacy-admin
-  retirement/removal Wave 1-4 evidence, sandbox provider selection, and app-update
-  lifecycle/scheduler/rollback.
+  retirement/removal Wave 1-5 and final-surface evidence, production security response runbook
+  evidence, sandbox provider selection, and app-update lifecycle/scheduler/rollback.
 - `tools/release-certification/network_scale_soak.py` produces the deterministic simulated
   network-scale soak summary consumed by the aggregator. Normal PR and CI runs must use simulated
   time instead of a literal 24-hour test. Release-candidate runs may attach an external
@@ -132,6 +132,7 @@ build/release-certification/live-network-beta-smoke/live-network-beta-smoke-repo
 python3 tools/release-certification/app_platform_docs_check.py --self-test
 python3 tools/release-certification/release_certification.py --self-test
 python3 tools/release-certification/app_platform_smoke.py --self-test
+python3 tools/release-certification/security_response_runbook.py verify
 python3 tools/release-certification/network_scale_soak.py --self-test
 python3 tools/release-certification/live_network_beta_smoke.py --self-test
 python3 tools/release-certification/production_beta_release.py --self-test
@@ -151,7 +152,8 @@ tools/release-certification/run-production-beta-release.sh --mode developer-dry-
   `catalog.version-denylist`, `app-review.receipt-revocation`,
   `app-review.reviewer-key-compromise-flow`, `app-update.security-denylist-gates`,
   `web-shell.security-advisory-trust-warnings`,
-  `ecosystem-security.advisory-revocation-redaction`, `platform-api.contract`,
+  `ecosystem-security.advisory-revocation-redaction`, `production-security.response-runbook`,
+  `platform-api.contract`,
   `platform-api.stable-baseline`, `platform-api.stable-breaking-change-check`,
   `platform-api.manifest-target-stability`,
   `platform-api.first-party-stability-declarations`, `platform-api.stable-reference-docs`,
@@ -179,7 +181,10 @@ tools/release-certification/run-production-beta-release.sh --mode developer-dry-
   `reference-app.trust-graph-durable-exchange`, `reference-app.trust-graph-app-data-preview`,
   `legacy-plugin.freeze-policy`,
   `legacy.retirement`, `legacy-admin.removal-wave-1`, `legacy-admin.removal-wave-2`,
-  `legacy-admin.removal-wave-3`, `legacy-admin.removal-wave-4`, `apphost.sandbox-provider`,
+  `legacy-admin.removal-wave-3`, `legacy-admin.removal-wave-4`,
+  `legacy-admin.removal-wave-5`, `legacy-admin.final-admin-surface`,
+  `legacy-admin.browse-retained`, `legacy-admin.emergency-fallback-retained`,
+  `apphost.sandbox-provider`,
   `app-update.lifecycle`,
   `app-update.scheduler`, `app-update.rollback`, `app-update.live-catalog-refresh`,
   `app-update.data-migration-contract`,
@@ -211,10 +216,11 @@ tools/release-certification/run-production-beta-release.sh --mode developer-dry-
 - Do not publish private signing keys, form passwords, app tokens, browser-session tokens, raw
   reviewer keys, raw trusted reviewer public key bytes, raw request bodies, raw feed bodies, raw
   trust documents from real users, raw social message bodies, raw fetched social documents, raw
-  app-service subject URIs, provider app data, raw app-data values, raw update/rollback command
-  output, queue HTML, budget-store file paths, private insert URIs, non-localhost endpoint
-  metadata, catalog scratch paths, staged bundle paths, rollback backup paths, UI lint report
-  paths, or other unsanitized local paths. The aggregator filters
+  incident artifacts, raw app-service subject URIs, provider app data, raw app-data values, raw
+  update/rollback command output, command lines containing secrets, CI secret values, queue HTML,
+  budget-store file paths, private insert URIs, non-localhost endpoint metadata, catalog scratch
+  paths, staged bundle paths, rollback backup paths, UI lint report paths, or other unsanitized
+  local paths. The aggregator filters
   `artifacts/private-insert-uris.json` even when interop summaries reference it.
 - Treat docs redaction findings as non-waivable blockers. Link-only or presence-only docs gaps can
   be waived by a release manager when policy allows, but raw secret/path findings must keep the

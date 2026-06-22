@@ -78,6 +78,24 @@ policy into `inputs/first-party-app-maintenance-policy.json`, writes redacted pe
 summaries into `catalog/channel-metadata.json`, and relies on
 `app-catalog.first-party-maintenance-policy` evidence for release-candidate certification.
 
+Production security response drills are verified offline with:
+
+```bash
+python3 tools/release-certification/security_response_runbook.py verify
+python3 tools/release-certification/security_response_runbook.py drill create \
+  --scenario reviewer-key-compromise \
+  --out build/security-drills/reviewer-key-compromise.json
+python3 tools/release-certification/security_response_runbook.py drill verify \
+  --input build/security-drills/reviewer-key-compromise.json
+python3 tools/release-certification/security_response_runbook.py advisory template \
+  --scenario vulnerable-app-version \
+  --out build/security-advisory-template.md
+```
+
+These commands are deterministic, do not require live network access or private keys, and verify
+[docs/production-security-response-runbook.md](../../docs/production-security-response-runbook.md)
+for the `production-security.response-runbook` evidence used by production beta promotion.
+
 The command cleans existing output directories only under `build/production-beta*` or when the
 directory already contains the `.cryptad-production-beta-release-output` sentinel. Output is
 refused for source-controlled workspace paths such as `docs`, `tools`, `apps`, `.git`, and
@@ -180,6 +198,7 @@ app-review.reviewer-key-compromise-flow
 app-update.security-denylist-gates
 web-shell.security-advisory-trust-warnings
 ecosystem-security.advisory-revocation-redaction
+production-security.response-runbook
 platform-api.contract
 platform-api.stable-baseline
 platform-api.stable-breaking-change-check

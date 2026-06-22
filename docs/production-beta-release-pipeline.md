@@ -56,6 +56,12 @@ Production beta supports three explicit test/emergency escape hatches:
   non-production signing labels. It sets `nonRelease=true`, keeps `promotionReady=false`, and must
   not be used for release publication.
 
+Production beta requires `production-security.response-runbook` evidence. Missing runbook
+documentation, drill model, reviewer compromise drill, catalog key rotation drill, app signing key
+compromise drill, emergency catalog update drill, support redaction proof, or security release
+notes template is a production blocker. The runbook procedure is
+[production-security-response-runbook.md](production-security-response-runbook.md).
+
 ## Required inputs
 
 Dry-runs do not require release secrets. Production beta requires configured signing and review
@@ -135,6 +141,7 @@ directories are kept outside the public artifact tree.
 | `dirtyWorkspace` | `true` when `git status --porcelain` found uncommitted changes. Dirty production-beta runs fail the `workspace.clean-production-beta` gate even if `--allow-dirty-workspace` was used for a controlled rerun. |
 | `signingProfile.kind` | `production`, `configured`, `test`, `test-fixture`, or `missing`. |
 | `promotion.gates` | Per-gate pass/fail records for signed artifacts, evidence ids, live-network evidence, ecosystem certification, and signing profile checks. |
+| `promotion.securityResponse` | Compact status for the production security response runbook, advisory lifecycle, reviewer compromise drill, catalog key rotation drill, app signing key compromise drill, emergency catalog update drill, support redaction, security release notes template, blockers, and warnings. |
 | `artifacts.firstPartyMaintenancePolicy` | Redacted copy of the checked-in first-party maintenance policy source used to generate signed catalog descriptors. |
 | `redaction` | Final artifact scanner result and findings. |
 | `commands` | Redacted command metadata, exit codes, durations, and scrubbed output tails. |
@@ -146,7 +153,7 @@ without requiring a live node. Consent evidence must not include private insert 
 inputs, raw fetched content, raw app data, backup payloads, or host-local paths.
 
 `reports/production-beta-summary.md` is the human-readable companion. It lists failed gates, artifact
-paths, known limitations, and the production beta readiness decision.
+paths, the security response summary, known limitations, and the production beta readiness decision.
 
 ## Third-party submission evidence
 

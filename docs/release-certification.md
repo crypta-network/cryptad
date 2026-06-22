@@ -154,6 +154,7 @@ Release-candidate mode requires these evidence ids:
 | `app-update.security-denylist-gates` | App-platform smoke summary. | Install, update, stage, apply, and scheduler policy paths block denylisted candidates, warning advisories require `securityAcknowledged=true` for manual actions, and security acknowledgement does not bypass other gates. |
 | `web-shell.security-advisory-trust-warnings` | App-platform smoke summary. | Web Shell renders advisory, denylist, revoked-review, security acknowledgement, and safe uninstall guidance using safe DOM construction. |
 | `ecosystem-security.advisory-revocation-redaction` | App-platform smoke summary. | Advisory and revocation evidence excludes raw signatures, raw public keys, private keys, private insert URIs, tokens, request bodies, raw fetched content, app-data backup payloads, local filesystem paths, catalog scratch paths, and staged bundle paths. |
+| `production-security.response-runbook` | App-platform smoke summary. | [production-security-response-runbook.md](production-security-response-runbook.md), the deterministic drill model, verifier script, security release notes template, advisory lifecycle coverage, reviewer compromise drill, catalog key rotation drill, app signing key compromise drill, emergency catalog update workflow, API/Web Shell security response summary, and support redaction test coverage are present. |
 | `app-review.governance` | App-platform smoke summary. | Reviewer-key lifecycle statuses, policy-version constraints, governance API routes, and Web Shell governance rendering are present and redacted. |
 | `app-review.reviewer-key-lifecycle` | App-platform smoke summary. | Trusted reviewer registry v2 parsing, active/retired/revoked semantics, duplicate-id fail-closed behavior, strict instants, and lifecycle verifier tests are present. |
 | `app-review.transparency-log` | App-platform smoke summary. | A local hash-chained review transparency log exists, can be verified, deduplicates receipt observation, and has tamper/redaction tests. |
@@ -369,6 +370,13 @@ app-version denylists, warning acknowledgements, install/update/stage/apply/sche
 review receipt revocation, reviewer-key compromise, Web Shell warning rendering, safe uninstall
 guidance, and redaction. See
 [ecosystem-security-advisories.md](ecosystem-security-advisories.md).
+
+`production-security.response-runbook` is the Phase 10 production security response evidence. It
+checks the operator runbook, machine-readable drill model, standalone verifier, release-notes
+template, reviewer-key compromise drill, catalog-key rotation drill, app-signing-key compromise
+drill, emergency catalog update workflow, API/Web Shell security-response summary, support
+redaction behavior, and non-waivable sensitive marker scans. See
+[production-security-response-runbook.md](production-security-response-runbook.md).
 
 `app-platform.user-consent-flow` verifies the unified consent layer for material install, update,
 app-service grant, app-data migration, backup, channel/support, deprecation/replacement,

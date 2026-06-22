@@ -36,6 +36,16 @@ public final class OperatorSupportRedactor {
   private static final String PEM_END_PREFIX = "-----END ";
   private static final String PEM_LINE_SUFFIX = "-----";
   private static final String SIGNATURE_FIELD_NAME = "signature";
+  private static final Set<String> SAFE_RAW_APP_DATA_BOOLEAN_METADATA_FIELDS =
+      Set.of(
+          "rawappdataavailable",
+          "rawappdataconfigured",
+          "rawappdataenabled",
+          "rawappdataexcluded",
+          "rawappdataexcludedfromevidence",
+          "rawappdatapresent",
+          "rawappdataredacted",
+          "rawappdatarequired");
   private static final Pattern CONTENT_URI =
       Pattern.compile("(?i)\\b(?:crypta:)?(?:CHK|SSK|USK|KSK)@[^\\s\"'<>]+");
   private static final Pattern AUTHORIZATION_OR_COOKIE_HEADER =
@@ -48,7 +58,9 @@ public final class OperatorSupportRedactor {
   private static final Set<String> SENSITIVE_FIELD_NAMES =
       Set.of(
           "authorization",
+          "authorizationheader",
           "proxyauthorization",
+          "proxyauthorizationheader",
           "cookie",
           "setcookie",
           "token",
@@ -63,6 +75,9 @@ public final class OperatorSupportRedactor {
           "formpassword",
           "password",
           "secret",
+          "cisecret",
+          "cisecrets",
+          "cisecretvalue",
           "secretvalue",
           "privatekey",
           "privateuri",
@@ -88,6 +103,7 @@ public final class OperatorSupportRedactor {
           "appdatabackupbundle",
           "appdatabackuppayload",
           "restorepayloadbase64",
+          "rawappdata",
           "rawappdatavalue",
           "recordvalue",
           "payloadbase64",
@@ -182,7 +198,7 @@ public final class OperatorSupportRedactor {
     LinkedHashMap<String, Object> redacted = LinkedHashMap.newLinkedHashMap(map.size());
     for (Map.Entry<?, ?> entry : map.entrySet()) {
       String key = String.valueOf(entry.getKey());
-      if (isSensitiveFieldName(key)) {
+      if (isSensitiveFieldName(key, entry.getValue())) {
         omittedFields.add(key);
         continue;
       }
@@ -212,9 +228,9 @@ public final class OperatorSupportRedactor {
     return false;
   }
 
-  private static boolean isSensitiveFieldName(String fieldName) {
+  private static boolean isSensitiveFieldName(String fieldName, Object value) {
     String normalized = normalizeFieldName(fieldName);
-    return isSensitiveCredentialKey(normalized);
+    return isSensitiveCredentialKey(normalized, value);
   }
 
   private static String redactString(String input) {
@@ -651,7 +667,12 @@ public final class OperatorSupportRedactor {
   }
 
   private static boolean isSensitiveCredentialKey(String normalized) {
+    return isSensitiveCredentialKey(normalized, null);
+  }
+
+  private static boolean isSensitiveCredentialKey(String normalized, Object value) {
     return SENSITIVE_FIELD_NAMES.contains(normalized)
+        || isSensitiveRawAppDataKey(normalized, value)
         || normalized.endsWith("key")
         || isSensitiveSignatureKey(normalized)
         || normalized.endsWith("token")
@@ -661,6 +682,14 @@ public final class OperatorSupportRedactor {
         || normalized.endsWith("credential")
         || isSensitiveSeedOrMnemonicKey(normalized)
         || (normalized.contains("privatekey") && !normalized.endsWith("present"));
+  }
+
+  private static boolean isSensitiveRawAppDataKey(String normalized, Object value) {
+    if (!normalized.contains("rawappdata")) {
+      return false;
+    }
+    return !(value instanceof Boolean
+        && SAFE_RAW_APP_DATA_BOOLEAN_METADATA_FIELDS.contains(normalized));
   }
 
   private static boolean isSensitiveSeedOrMnemonicKey(String normalized) {

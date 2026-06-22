@@ -87,6 +87,7 @@ ECOSYSTEM_SECURITY_EVIDENCE_IDS = (
     "web-shell.security-advisory-trust-warnings",
     "ecosystem-security.advisory-revocation-redaction",
 )
+PRODUCTION_SECURITY_EVIDENCE_IDS = ("production-security.response-runbook",)
 APP_STORE_SUBMISSION_EVIDENCE_IDS = (
     "app-store.submission-package-schema",
     "app-store.submission-cli",
@@ -207,6 +208,7 @@ ECOSYSTEM_RC_REQUIRED_EVIDENCE_IDS = (
     "catalog.production-channels",
     "app-catalog.first-party-maintenance-policy",
     *ECOSYSTEM_SECURITY_EVIDENCE_IDS,
+    *PRODUCTION_SECURITY_EVIDENCE_IDS,
     "app-review.trusted-receipts",
     "app-review.policy",
     "app-review.governance",
@@ -289,6 +291,7 @@ ECOSYSTEM_RC_REDACTION_EVIDENCE_IDS = (
     "operator-beta.support-bundle-redaction",
     "operator-rc.redaction",
     "public-beta-security.audit-redaction-fuzz",
+    "production-security.response-runbook",
 )
 SENSITIVE_KEY_PATTERN = (
     r"token|password|passwd|secret|credential|authorization|cookie|set-cookie|"
@@ -2735,6 +2738,26 @@ def ecosystem_matrix_row_specs() -> list[MatrixRowSpec]:
                 "tools/release-certification/README.md",
             ),
             phase="phase-9",
+        ),
+        MatrixRowSpec(
+            id="production-security-response-runbook",
+            category="security-redaction",
+            title="Production security response runbook",
+            required_evidence_ids=PRODUCTION_SECURITY_EVIDENCE_IDS,
+            gate_ids=("ecosystem.security-advisory-revocation", "ecosystem.operator-rc-recovery"),
+            docs=(
+                "docs/production-security-response-runbook.md",
+                "docs/templates/security-release-notes.md",
+                "docs/SECURITY.md",
+                "docs/ecosystem-security-advisories.md",
+                "docs/app-catalogs.md",
+                "docs/app-review-governance.md",
+                "docs/operator-rc-recovery-and-support-workflow.md",
+                "docs/production-beta-release-pipeline.md",
+                "docs/release-certification.md",
+                "tools/release-certification/README.md",
+            ),
+            phase="phase-10",
         ),
         MatrixRowSpec(
             id="review-trusted-receipts",
@@ -7645,6 +7668,7 @@ def run_self_test(repo_root: Path) -> None:
             "production-catalog-channels",
             "first-party-app-maintenance-policy",
             "ecosystem-security-advisory-and-revocation",
+            "production-security-response-runbook",
             "developer-beta-toolkit",
             "app-platform-beta-docs-and-program",
             "review-governance-transparency",

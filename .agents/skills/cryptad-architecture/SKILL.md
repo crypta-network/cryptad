@@ -90,7 +90,8 @@ Use this skill when you need to:
     catalog writer/descriptors, Crypta catalog source handling, app-store/API compatibility
     target-stability metadata, first-party maintenance metadata, submission package
     verification/pre-review/candidate metadata, independent app-review receipts, catalog security
-    advisory/denylist policy, artifact verification, safe ZIP extraction, and verified staging)
+    advisory lifecycle/denylist policy, production security response metadata, artifact
+    verification, safe ZIP extraction, and verified staging)
   - `:platform-trustgraph` → `network.crypta.platform.trustgraph` (Trust Graph Local RC statement
     parsing, canonicalization, verification, process-local store/anchor behavior, import-preview
     summaries, duplicate-issuer/conflict handling, lifecycle/status records, and bounded
@@ -101,9 +102,9 @@ Use this skill when you need to:
     live USK catalog publication, API snapshot, and compatibility verification workflows)
   - `:platform-web-shell` → `network.crypta.platform.webshell` (browser-facing Web Shell v1,
     including Apps, catalog, update, review, unified consent review, operator beta
-    dashboard/support-bundle, Operator RC Recovery, subscription recovery, app-data backup/restore,
-    app-service dependency/grant-bundle review, and explicit legacy security/diagnostic fallback
-    surfaces)
+    dashboard/support-bundle, security response status rendering, Operator RC Recovery,
+    subscription recovery, app-data backup/restore, app-service dependency/grant-bundle review, and
+    explicit legacy security/diagnostic fallback surfaces)
   - `:runtime-alerts` → the extracted leaf-safe `network.crypta.runtime.alerts` feed/model subset
     plus the detached `UserAlertSurface`
   - `:runtime-node` → extracted daemon runtime body across the remaining cyclic/high-level
@@ -361,9 +362,11 @@ Use this skill when you need to:
   - Current legacy admin removal waves cover selected queue/publisher/peer/connectivity routes,
     selected alert/config/core-update/statistics/queue helper routes, the security-levels safe-read
     route with exact `legacyFallback=security-levels` support fallback, and the diagnostic safe-read
-    route with exact `legacyFallback=diagnostic-export` plaintext export fallback. FProxy
-    browse/content rendering, content filter, startup wizard/recovery flows, chat, translation,
-    help, and node-to-node message routes remain retained or pending.
+    route with exact `legacyFallback=diagnostic-export` plaintext export fallback. Wave 5 adds the
+    machine-checkable final admin surface without promoting new removals: legacy admin is
+    maintenance-only, FProxy browse/content rendering and the content filter remain retained, and
+    startup/recovery/support plus chat, translation, help, and node-to-node message routes remain
+    retained or pending.
   - `network.crypta.clients.http.updater.CoreActionToadlet` reaches updater availability,
     download triggers, and installer-path validation through `CoreUpdateActionPort`.
   - `FirstTimeWizardToadlet` and `FirstTimeWizardNewToadlet` use `FirstTimeWizardPort` for

@@ -294,6 +294,34 @@ class AppCatalogParserTest {
   }
 
   @Test
+  void parse_whenSecurityAdvisoryLifecycleIsPublished_expectEntryAdvisoryEnforced() {
+    AppCatalog catalog = AppCatalogParser.parse(bytes(advisoryLifecycleCatalog("published")));
+
+    AppCatalogSecurityDecision decision =
+        catalog.securityPolicy().decisionFor(catalog.entries().getFirst());
+
+    assertEquals(AppCatalogSecurityDecisionStatus.BLOCKED, decision.status());
+    assertEquals(AppCatalogSecurityAction.BLOCK_UPDATE, decision.action());
+    assertTrue(decision.blocksUpdate());
+    assertEquals(List.of("CRYPTA-2026-0004"), decision.advisoryIds());
+  }
+
+  @Test
+  void parse_whenSecurityAdvisoryLifecycleIsNonEnforcing_expectEntryAdvisoryNotApplied() {
+    for (String status :
+        List.of("draft", "detected", "superseded", "resolved", "retracted", "withdrawn")) {
+      AppCatalog catalog = AppCatalogParser.parse(bytes(advisoryLifecycleCatalog(status)));
+
+      AppCatalogSecurityDecision decision =
+          catalog.securityPolicy().decisionFor(catalog.entries().getFirst());
+
+      assertEquals(AppCatalogSecurityDecisionStatus.OK, decision.status(), status);
+      assertEquals(AppCatalogSecurityAction.INFORM, decision.action(), status);
+      assertTrue(decision.advisoryIds().isEmpty(), status);
+    }
+  }
+
+  @Test
   void parse_whenEntryHasMultipleSecurityActions_expectDecisionAccumulatesAllGates() {
     AppCatalog catalog = AppCatalogParser.parse(bytes(multiActionSecurityPolicyCatalog()));
 
@@ -739,6 +767,38 @@ class AppCatalogParserTest {
     app.queue-manager.permissions=queue.read
     """
         .formatted(GENERATED_AT, SHA256);
+  }
+
+  private static String advisoryLifecycleCatalog(String status) {
+    return """
+    catalog.version=4
+    catalog.id=core
+    catalog.name=Crypta Core Apps
+    catalog.generatedAt=%s
+    catalog.entries=queue-manager
+    catalog.securityAdvisories=CRYPTA-2026-0004
+    catalog.securityAdvisory.CRYPTA-2026-0004.uri=https://example.invalid/advisories/CRYPTA-2026-0004
+    catalog.securityAdvisory.CRYPTA-2026-0004.title=Queue Manager lifecycle advisory
+    catalog.securityAdvisory.CRYPTA-2026-0004.severity=high
+    catalog.securityAdvisory.CRYPTA-2026-0004.status=%s
+    catalog.securityAdvisory.CRYPTA-2026-0004.action=block_update
+    catalog.securityAdvisory.CRYPTA-2026-0004.summary=Do not update to this release.
+    catalog.securityAdvisory.CRYPTA-2026-0004.publishedAt=2026-06-11T00:00:00Z
+    catalog.securityAdvisory.CRYPTA-2026-0004.updatedAt=2026-06-11T00:00:00Z
+    app.queue-manager.id=queue-manager
+    app.queue-manager.name=Queue Manager
+    app.queue-manager.version=1.2.0
+    app.queue-manager.summary=Manage transfer queues.
+    app.queue-manager.channel=beta
+    app.queue-manager.securityAdvisories=CRYPTA-2026-0004
+    app.queue-manager.securityAdvisory.CRYPTA-2026-0004.uri=https://example.invalid/advisories/CRYPTA-2026-0004
+    app.queue-manager.bundle.uri=https://example.invalid/queue-manager.zip
+    app.queue-manager.bundle.sha256=%s
+    app.queue-manager.bundle.size.bytes=0
+    app.queue-manager.bundle.type=zip
+    app.queue-manager.permissions=queue.read
+    """
+        .formatted(GENERATED_AT, status, SHA256);
   }
 
   private static String validMaintenanceCatalog() {

@@ -39,11 +39,13 @@ Build: 2
   registry/grant/dependency/grant-bundle evidence, Trust Graph Local RC evidence, Site
   Publisher/Profile Publisher/Social Inbox RC/Feed Reader/Trust Graph Local RC reference-app
   evidence, app platform beta docs/program evidence, live USK catalog publication evidence,
-  production beta artifact redaction evidence when app artifacts ship, app-update
+  production beta artifact redaction evidence and `production-security.response-runbook` when app
+  artifacts ship, app-update
   lifecycle/scheduler/rollback and app-data migration contract evidence, `crypta-app` developer
   beta toolkit smoke, operator RC
   recovery/support evidence, legacy plugin freeze evidence, legacy-admin retirement/removal Wave
-  1-4 evidence, Hyphanet interop smoke/soak evidence, and the packaged-node performance smoke.
+  1-5 and final-surface evidence, Hyphanet interop smoke/soak evidence, and the packaged-node
+  performance smoke.
 
 ---
 
@@ -126,7 +128,8 @@ git push origin v<build-number>
 - [ ] Production beta app-ecosystem pipeline summary reviewed when first-party app artifacts ship;
       `promotionReady=true`, `nonRelease=false`, production signing, complete in-pipeline build,
       clean workspace, public HTTPS artifact base URI, required live-network evidence, and
-      redaction `pass` are all present before publication.
+      redaction `pass` are all present before publication. Confirm the security response section
+      reports `production-security.response-runbook` passing with no blockers.
 - [ ] First-party AppHost bundles staged, signed, and verified when shipping app-platform artifacts.
 - [ ] `crypta-app` CLI smoke completed when `:platform-devtools` changed.
 - [ ] Signed catalog, first-party beta catalog, first-party maintenance policy, catalog security
@@ -141,8 +144,8 @@ git push origin v<build-number>
       app-review governance/reviewer-key lifecycle and transparency-log, app platform beta
       docs/program/redaction, AppHost sandbox-provider, app-update lifecycle, app-update scheduler,
       app-update rollback, app-update data migration contract, developer beta toolkit, operator RC
-      recovery/support, legacy plugin freeze, and legacy-admin retirement/removal Wave 1-4 evidence are
-      present in the certification summary.
+      recovery/support, production security response runbook, legacy plugin freeze, and legacy-admin
+      retirement/removal Wave 1-5/final-surface evidence are present in the certification summary.
 - [ ] Hyphanet interop smoke passed or CI evidence recorded; extended interop captured when
       compatibility-sensitive behavior changed.
 - [ ] Performance smoke passed or scheduled/manual CI evidence recorded when release readiness or
@@ -151,8 +154,9 @@ git push origin v<build-number>
       reviewer keys, form passwords, app tokens, browser-session tokens, raw request bodies, raw
       feed bodies, raw social message bodies, raw trust documents, raw app-data values, raw
       app-data backup payloads, raw diagnostic exports, raw app-service subject URIs, private
-      insert URIs, raw trusted reviewer public key bytes, provider app data, raw signatures, and
-      unsanitized local paths.
+      insert URIs, raw trusted reviewer public key bytes, provider app data, raw signatures, raw
+      incident artifacts, raw fetched content, command lines containing secrets, CI secret values,
+      and unsanitized local paths.
 - [ ] Tag `v<build-number>` created.
 - [ ] Merged to `main` with `--no-ff` (no squash), then back-merged to `develop` with `--no-ff`.
 - [ ] Branches and tag pushed.
