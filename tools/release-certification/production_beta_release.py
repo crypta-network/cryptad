@@ -39,6 +39,7 @@ REPO_ROOT = TOOL_DIR.parents[1]
 sys.path.insert(0, str(TOOL_DIR))
 
 import release_certification  # noqa: E402
+import multi_node_beta_soak  # noqa: E402
 
 
 TOOL_NAME = "production-beta-release"
@@ -394,6 +395,11 @@ class Settings:
     waiver_file: Path | None
     timeout_seconds: int
     clean_out_dir: bool
+    multi_node_soak_summary: Path | None = None
+    run_multi_node_soak: bool = False
+    multi_node_soak_config: Path | None = None
+    require_multi_node_soak: bool = False
+    multi_node_mode: str | None = None
 
 
 @dataclasses.dataclass
@@ -501,6 +507,15 @@ def resolve_workspace_input_path(raw_path: str, workspace_root: Path | None) -> 
     if path.is_absolute() or workspace_root is None:
         return path
     return workspace_root / path
+
+
+def resolve_workspace_path_text(raw_path: str | None, workspace_root: Path | None) -> Path | None:
+    resolved = resolve_workspace_input_path(raw_path or "", workspace_root)
+    return resolved.resolve() if resolved is not None else None
+
+
+def resolve_workspace_path_arg(path: Path | None, workspace_root: Path | None) -> Path | None:
+    return resolve_workspace_path_text(str(path) if path is not None else None, workspace_root)
 
 
 def sha256_file(path: Path) -> str:
@@ -1765,6 +1780,9 @@ def release_config(state: PipelineState) -> dict[str, Any]:
         "artifactBaseUri": settings.artifact_base_uri,
         "requireLiveNetwork": settings.require_live_network,
         "requireSandboxProviderTests": settings.require_sandbox_provider_tests,
+        "requireMultiNodeSoak": settings.require_multi_node_soak,
+        "runMultiNodeSoak": settings.run_multi_node_soak,
+        "multiNodeMode": settings.multi_node_mode or "config",
         "skipGradle": settings.skip_gradle,
         "skipFullBuild": settings.skip_full_build,
         "useFixtureEvidence": settings.use_fixture_evidence,
@@ -1803,10 +1821,25 @@ def run_fixture_certification(state: PipelineState, cert_out: Path) -> None:
     cert_out.mkdir(parents=True, exist_ok=True)
     network_summary = cert_out / "network-scale-soak/summary.json"
     app_summary = cert_out / "app-platform-smoke/summary.json"
+    multi_node_summary = cert_out / "multi-node-beta-soak/summary.json"
     network_summary.parent.mkdir(parents=True, exist_ok=True)
     app_summary.parent.mkdir(parents=True, exist_ok=True)
+    multi_node_summary.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(fixtures / "self-test-network-scale-soak.json", network_summary)
     shutil.copy2(fixtures / "self-test-app-platform-smoke.json", app_summary)
+    multi_node_config = multi_node_beta_soak.validate_config(
+        multi_node_beta_soak.load_config(fixtures / "self-test-multi-node-beta-soak.json")
+    )
+    multi_node_value = multi_node_beta_soak.build_summary(
+        multi_node_config,
+        out_dir=multi_node_summary.parent,
+        base_dir=fixtures,
+    )
+    write_json(multi_node_summary, multi_node_value)
+    write_text(
+        multi_node_summary.parent / multi_node_beta_soak.REPORT_FILE_NAME,
+        multi_node_beta_soak.render_report(multi_node_value),
+    )
     args = [
         sys.executable,
         str(state.settings.workspace_root / "tools/release-certification/release_certification.py"),
@@ -1824,6 +1857,8 @@ def run_fixture_certification(state: PipelineState, cert_out: Path) -> None:
         str(app_summary),
         "--network-scale-soak-summary",
         str(network_summary),
+        "--multi-node-soak-summary",
+        str(multi_node_summary),
         "--skip-git-metadata",
     ]
     result = run_command(state, "release-certification-fixture", args, timeout_seconds=300, allow_failure=True)
@@ -1851,6 +1886,14 @@ def run_release_certification(state: PipelineState, env: dict[str, str], cert_ou
         args.append("--skip-gradle")
     if state.settings.require_live_network:
         args.append("--require-live-network-beta")
+    if state.settings.multi_node_soak_summary:
+        args.extend(["--multi-node-soak-summary", str(state.settings.multi_node_soak_summary)])
+    if state.settings.multi_node_soak_config:
+        args.extend(["--multi-node-soak-config", str(state.settings.multi_node_soak_config)])
+    if state.settings.multi_node_mode is not None:
+        args.extend(["--multi-node-mode", state.settings.multi_node_mode])
+    if state.settings.require_multi_node_soak:
+        args.append("--require-multi-node-soak")
     if state.settings.mode != "developer-dry-run":
         args.append("--require-history")
     if state.settings.previous_summary:
@@ -1886,15 +1929,53 @@ def evidence_by_id(summary: dict[str, Any] | None) -> dict[str, dict[str, Any]]:
     return {str(item.get("id")): item for item in evidence if isinstance(item, dict)}
 
 
+def multi_node_summary_path(settings: Settings, cert_out: Path) -> Path:
+    if settings.multi_node_soak_summary is not None:
+        return settings.multi_node_soak_summary
+    return cert_out / "multi-node-beta-soak/summary.json"
+
+
+def compact_multi_node_summary_for_release(summary: dict[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(summary, dict):
+        return {"status": "missing"}
+    compact = multi_node_beta_soak.compact_for_release(summary)
+    validation_errors = multi_node_beta_soak.validate_summary(summary, strict=False)
+    if not validation_errors:
+        return compact
+
+    compact["status"] = "fail"
+    compact["promotionReady"] = False
+    compact["validationErrors"] = validation_errors
+    blockers = compact.get("blockers", [])
+    if not isinstance(blockers, list):
+        blockers = []
+    compact["blockers"] = sorted(set([*blockers, "multi-node beta soak summary validation failed"]))
+
+    redaction = compact.get("redaction", {})
+    if not isinstance(redaction, dict):
+        redaction = {}
+    redaction_findings = redaction.get("findings", [])
+    if not isinstance(redaction_findings, list):
+        redaction_findings = []
+    validation_findings = release_certification.multi_node_validation_redaction_findings(validation_errors)
+    if validation_findings:
+        redaction["status"] = "fail"
+        redaction["findings"] = [*redaction_findings, *validation_findings]
+    compact["redaction"] = redaction
+    return compact
+
+
 def write_evidence_extracts(settings: Settings, cert_out: Path) -> dict[str, Any]:
     app_summary_path = cert_out / "app-platform-smoke/summary.json"
     live_summary_path = cert_out / "live-network-beta-smoke/summary.json"
     network_summary_path = cert_out / "network-scale-soak/summary.json"
+    resolved_multi_node_summary_path = multi_node_summary_path(settings, cert_out)
     cert_summary_path = cert_out / release_certification.SUMMARY_FILE_NAME
     matrix_path = cert_out / release_certification.ECOSYSTEM_MATRIX_FILE_NAME
     app_summary = read_json(app_summary_path)
     live_summary = read_json(live_summary_path)
     network_summary = read_json(network_summary_path)
+    multi_node_summary = read_json(resolved_multi_node_summary_path)
     cert_summary = read_json(cert_summary_path)
     matrix_summary = read_json(matrix_path)
 
@@ -1902,6 +1983,10 @@ def write_evidence_extracts(settings: Settings, cert_out: Path) -> dict[str, Any
     write_json(evidence_dir / "app-platform-smoke.json", app_summary or {"status": "missing"})
     write_json(evidence_dir / "live-network-beta-smoke.json", live_summary or {"status": "missing", "enabled": False})
     write_json(evidence_dir / "network-scale-soak.json", network_summary or {"status": "missing"})
+    write_json(
+        evidence_dir / "multi-node-beta-soak.json",
+        compact_multi_node_summary_for_release(multi_node_summary),
+    )
     write_json(evidence_dir / "ecosystem-rc-certification.json", cert_summary or {"status": "missing"})
     write_json(evidence_dir / "ecosystem-certification-matrix.json", matrix_summary or {"status": "missing"})
 
@@ -1913,6 +1998,7 @@ def write_evidence_extracts(settings: Settings, cert_out: Path) -> dict[str, Any
         "appPlatform": app_summary,
         "liveNetwork": live_summary,
         "networkScale": network_summary,
+        "multiNodeBetaSoak": multi_node_summary,
         "certification": cert_summary,
         "matrix": matrix_summary,
     }
@@ -2022,6 +2108,9 @@ def evaluate_promotion(state: PipelineState, summaries: dict[str, Any]) -> dict[
     cert_summary = summaries.get("certification") if isinstance(summaries.get("certification"), dict) else None
     app_summary = summaries.get("appPlatform") if isinstance(summaries.get("appPlatform"), dict) else None
     live_summary = summaries.get("liveNetwork") if isinstance(summaries.get("liveNetwork"), dict) else None
+    multi_node_summary = (
+        summaries.get("multiNodeBetaSoak") if isinstance(summaries.get("multiNodeBetaSoak"), dict) else None
+    )
     matrix_summary = summaries.get("matrix") if isinstance(summaries.get("matrix"), dict) else None
     app_evidence = evidence_by_id(app_summary)
     cert_evidence = evidence_by_id(cert_summary)
@@ -2095,6 +2184,51 @@ def evaluate_promotion(state: PipelineState, summaries: dict[str, Any]) -> dict[
             "Live-network beta evidence was skipped for a production-beta run; the candidate is not promotion-ready.",
         )
 
+    multi_node_compact = (
+        compact_multi_node_summary_for_release(multi_node_summary)
+        if isinstance(multi_node_summary, dict)
+        else {
+            "status": "missing",
+            "promotionReady": False,
+            "mode": settings.multi_node_mode or "config",
+            "scenarioStatuses": {},
+            "blockers": ["multi-node beta soak summary is missing"],
+            "warnings": [],
+            "redaction": {"status": "missing", "findings": []},
+        }
+    )
+    if settings.require_multi_node_soak:
+        multi_node_redaction = multi_node_compact.get("redaction", {})
+        multi_node_redaction_status = (
+            multi_node_redaction.get("status", "missing")
+            if isinstance(multi_node_redaction, dict)
+            else "missing"
+        )
+        add_gate(
+            "multi-node-beta.soak",
+            multi_node_compact.get("status") == "pass"
+            and multi_node_compact.get("promotionReady") is True
+            and multi_node_redaction_status == "pass",
+            "Required multi-node beta soak and upgrade drill evidence is passing.",
+            "multi-node-beta-soak",
+        )
+        scenario_statuses = multi_node_compact.get("scenarioStatuses", {})
+        if not isinstance(scenario_statuses, dict):
+            scenario_statuses = {}
+        for scenario_id, evidence_id in multi_node_beta_soak.SCENARIO_EVIDENCE_IDS.items():
+            add_gate(
+                evidence_id,
+                scenario_statuses.get(scenario_id) == "pass",
+                f"{scenario_id} status is {scenario_statuses.get(scenario_id, 'missing')}.",
+                "multi-node-beta-soak",
+            )
+        add_gate(
+            "multi-node-beta.redaction",
+            multi_node_redaction_status == "pass",
+            f"Multi-node beta soak redaction status is {multi_node_redaction_status}.",
+            "multi-node-beta-soak",
+        )
+
     cert_ok = isinstance(cert_summary, dict) and cert_summary.get("releaseCandidatePassed") is True
     add_gate("ecosystem.release-candidate-passed", cert_ok, "Ecosystem RC certification passed.", "release-certification")
     matrix_ok = (
@@ -2149,6 +2283,7 @@ def evaluate_promotion(state: PipelineState, summaries: dict[str, Any]) -> dict[
         "nonRelease": non_release,
         "failedGateCount": len(failed),
         "gates": gates,
+        "multiNodeBetaSoak": multi_node_compact,
         "legacyAdminFinalSurface": legacy_admin_final_surface_summary(all_evidence),
         "securityResponse": production_security_response_summary(all_evidence),
         "knownLimitations": [],
@@ -2651,6 +2786,22 @@ def render_markdown_summary(summary: dict[str, Any]) -> str:
     ]
     for name, path in summary.get("artifacts", {}).items():
         lines.append(f"- `{name}`: `{path}`")
+    multi_node = summary.get("multiNodeBetaSoak", {})
+    if isinstance(multi_node, dict) and multi_node:
+        lines.extend(["", "## Multi-node Beta Soak", ""])
+        lines.append(f"- Status: `{multi_node.get('status', 'missing')}`")
+        lines.append(f"- Mode: `{multi_node.get('mode', 'missing')}`")
+        lines.append(
+            f"- Promotion ready: `{str(multi_node.get('promotionReady', False)).lower()}`"
+        )
+        scenario_statuses = multi_node.get("scenarioStatuses", {})
+        if isinstance(scenario_statuses, dict):
+            for scenario_id in sorted(scenario_statuses):
+                lines.append(f"- `{scenario_id}`: `{scenario_statuses[scenario_id]}`")
+        for blocker in multi_node.get("blockers", []):
+            lines.append(f"- Blocker: {blocker}")
+        for warning in multi_node.get("warnings", []):
+            lines.append(f"- Warning: {warning}")
     lines.extend(["", "## Failed Gates", ""])
     failed = [gate for gate in summary["promotion"]["gates"] if gate["status"] != "pass"]
     if not failed:
@@ -2790,6 +2941,7 @@ def build_final_summary(
         "channelMetadata": "catalog/channel-metadata.json",
         "reviewReceipts": "reviews/review-receipts/",
         "appPlatformSmoke": "evidence/app-platform-smoke.json",
+        "multiNodeBetaSoak": "evidence/multi-node-beta-soak.json",
         "ecosystemCertification": "evidence/ecosystem-rc-certification.json",
         "redactionReport": "reports/redaction-report.json",
     }
@@ -2804,6 +2956,17 @@ def build_final_summary(
     summary_promotion_ready = bool(command_and_redaction_ok and status == "pass" and promotion["promotionReady"])
     final_promotion = dict(promotion)
     final_promotion["promotionReady"] = summary_promotion_ready
+    multi_node_compact = dict(final_promotion.get("multiNodeBetaSoak", {}))
+    if not multi_node_compact:
+        multi_node_compact = {
+            "status": "missing",
+            "promotionReady": False,
+            "mode": settings.multi_node_mode or "config",
+            "scenarioStatuses": {},
+            "blockers": [],
+            "warnings": [],
+        }
+    multi_node_compact["summaryPath"] = artifacts["multiNodeBetaSoak"]
     return {
         "schemaVersion": SCHEMA_VERSION,
         "tool": TOOL_NAME,
@@ -2829,6 +2992,7 @@ def build_final_summary(
         "certificationExitCode": state.certification_exit_code,
         "warnings": state.warnings,
         "failures": state.failures,
+        "multiNodeBetaSoak": multi_node_compact,
         "promotion": final_promotion,
         "redaction": redaction_report,
         "commands": [dataclasses.asdict(command) for command in state.commands],
@@ -2948,6 +3112,32 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument("--require-live-network", action="store_true", help="Require live-network beta evidence.")
+    parser.add_argument(
+        "--multi-node-soak-summary",
+        type=Path,
+        help="Attach an existing multi-node beta soak summary instead of generating one in certification.",
+    )
+    parser.add_argument(
+        "--run-multi-node-soak",
+        action="store_true",
+        help="Generate deterministic multi-node beta soak evidence during certification.",
+    )
+    parser.add_argument(
+        "--multi-node-soak-config",
+        type=Path,
+        help="Topology config for generated multi-node beta soak evidence.",
+    )
+    parser.add_argument(
+        "--require-multi-node-soak",
+        action="store_true",
+        help="Require passing multi-node beta soak evidence for promotion gates.",
+    )
+    parser.add_argument(
+        "--multi-node-mode",
+        choices=multi_node_beta_soak.MODES,
+        default=None,
+        help="Override the topology config mode for generated multi-node beta soak evidence.",
+    )
     parser.add_argument("--require-sandbox-provider-tests", action="store_true", help="Require sandbox evidence.")
     parser.add_argument("--skip-gradle", action="store_true", help="Skip Gradle stages. Use only for fixture/self-test dry-runs.")
     parser.add_argument("--skip-full-build", action="store_true", help="Skip buildJar and assembleCryptadDist.")
@@ -2970,6 +3160,12 @@ def build_parser() -> argparse.ArgumentParser:
 def settings_from_args(args: argparse.Namespace) -> Settings:
     workspace = args.workspace_root.resolve()
     out_dir = (workspace / args.out_dir).resolve() if not args.out_dir.is_absolute() else args.out_dir.resolve()
+    multi_node_soak_summary = (
+        resolve_workspace_path_arg(args.multi_node_soak_summary, workspace)
+        if args.multi_node_soak_summary is not None
+        else resolve_workspace_path_text(os.environ.get("CRYPTAD_CERT_MULTI_NODE_SOAK_SUMMARY"), workspace)
+    )
+    multi_node_soak_config = resolve_workspace_path_arg(args.multi_node_soak_config, workspace)
     artifact_base_uri = args.artifact_base_uri.strip() or os.environ.get(
         "CRYPTAD_PRODUCTION_BETA_ARTIFACT_BASE_URI", ""
     ).strip()
@@ -2986,6 +3182,8 @@ def settings_from_args(args: argparse.Namespace) -> Settings:
     require_live = args.require_live_network or (
         args.mode == "production-beta" and not args.emergency_skip_live_network
     )
+    require_multi_node_soak = args.require_multi_node_soak or args.mode == "production-beta"
+    run_multi_node_soak = args.run_multi_node_soak or require_multi_node_soak
     require_sandbox = args.require_sandbox_provider_tests or args.mode == "production-beta"
     return Settings(
         workspace_root=workspace,
@@ -3006,6 +3204,11 @@ def settings_from_args(args: argparse.Namespace) -> Settings:
         waiver_file=args.waiver_file.resolve() if args.waiver_file else None,
         timeout_seconds=args.timeout_seconds,
         clean_out_dir=not args.no_clean_out_dir,
+        multi_node_soak_summary=multi_node_soak_summary,
+        run_multi_node_soak=run_multi_node_soak,
+        multi_node_soak_config=multi_node_soak_config,
+        require_multi_node_soak=require_multi_node_soak,
+        multi_node_mode=args.multi_node_mode,
     )
 
 
@@ -3529,6 +3732,35 @@ def passing_promotion_summaries() -> dict[str, Any]:
     return {
         "certification": {"releaseCandidatePassed": True, "evidence": cert_evidence},
         "liveNetwork": {"status": "pass", "evidence": live_evidence},
+        "multiNodeBetaSoak": {
+            "schemaVersion": 1,
+            "kind": multi_node_beta_soak.SUMMARY_KIND,
+            "status": "pass",
+            "promotionReady": True,
+            "mode": "simulated",
+            "durationProfile": "ci-smoke",
+            "nodes": [{"id": "node-a"}, {"id": "node-b"}],
+            "scenarios": [
+                {
+                    "id": scenario_id,
+                    "status": "pass",
+                    "summary": f"{scenario_id} passed.",
+                    "evidence": {"evidenceId": evidence_id},
+                }
+                for scenario_id, evidence_id in multi_node_beta_soak.SCENARIO_EVIDENCE_IDS.items()
+            ],
+            "blockers": [],
+            "warnings": [],
+            "redaction": {
+                "status": "pass",
+                "findings": [],
+                "checks": {key: True for key in multi_node_beta_soak.REDACTION_KEYS},
+            },
+            "artifacts": {
+                "markdownReport": multi_node_beta_soak.REPORT_FILE_NAME,
+                "rawSummary": multi_node_beta_soak.SUMMARY_FILE_NAME,
+            },
+        },
         "matrix": {"status": "pass", "releaseBlockerCount": 0},
     }
 
@@ -3917,6 +4149,222 @@ def cleanup_test_settings(workspace: Path, out_dir: Path) -> Settings:
         timeout_seconds=60,
         clean_out_dir=True,
     )
+
+
+def assert_attached_multi_node_summary_is_extracted() -> None:
+    with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-attached-multi-node-") as temp_name:
+        workspace = Path(temp_name) / "repo"
+        workspace.mkdir(parents=True)
+        out_dir = workspace / "build/production-beta"
+        cert_out = workspace / "external-certification"
+        attached_summary = workspace / "attached/multi-node-summary.json"
+        settings = dataclasses.replace(
+            cleanup_test_settings(workspace, out_dir),
+            multi_node_soak_summary=attached_summary,
+        )
+        write_json(attached_summary, passing_promotion_summaries()["multiNodeBetaSoak"])
+
+        summaries = write_evidence_extracts(settings, cert_out)
+        extracted = read_json(out_dir / "evidence/multi-node-beta-soak.json")
+        assert summaries["multiNodeBetaSoak"]["status"] == "pass", summaries
+        assert isinstance(extracted, dict), extracted
+        assert extracted["status"] == "pass", extracted
+        assert extracted["promotionReady"] is True, extracted
+
+
+def assert_env_attached_multi_node_summary_is_extracted() -> None:
+    with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-env-multi-node-") as temp_name:
+        workspace = Path(temp_name) / "repo"
+        workspace.mkdir(parents=True)
+        out_dir = workspace / "build/production-beta"
+        cert_out = workspace / "external-certification"
+        attached_summary = workspace / "attached/multi-node-summary.json"
+        write_json(attached_summary, passing_promotion_summaries()["multiNodeBetaSoak"])
+        parser = build_parser()
+        env_name = "CRYPTAD_CERT_MULTI_NODE_SOAK_SUMMARY"
+        old_env = os.environ.get(env_name)
+        os.environ[env_name] = "attached/multi-node-summary.json"
+        try:
+            settings = settings_from_args(
+                parser.parse_args(
+                    [
+                        "--workspace-root",
+                        str(workspace),
+                        "--out-dir",
+                        str(out_dir.relative_to(workspace)),
+                        "--artifact-base-uri",
+                        "https://downloads.crypta.invalid/self-test",
+                    ]
+                )
+            )
+        finally:
+            if old_env is None:
+                os.environ.pop(env_name, None)
+            else:
+                os.environ[env_name] = old_env
+
+        assert settings.multi_node_soak_summary == attached_summary.resolve(), settings.multi_node_soak_summary
+        summaries = write_evidence_extracts(settings, cert_out)
+        extracted = read_json(out_dir / "evidence/multi-node-beta-soak.json")
+        assert summaries["multiNodeBetaSoak"]["status"] == "pass", summaries
+        assert isinstance(extracted, dict), extracted
+        assert extracted["status"] == "pass", extracted
+        assert extracted["promotionReady"] is True, extracted
+
+
+def assert_attached_multi_node_safety_flags_block_promotion() -> None:
+    with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-attached-multi-node-safety-") as temp_name:
+        workspace = Path(temp_name) / "repo"
+        workspace.mkdir(parents=True)
+        out_dir = workspace / "build/production-beta"
+        settings = dataclasses.replace(
+            cleanup_test_settings(workspace, out_dir),
+            require_multi_node_soak=True,
+        )
+        summaries = passing_promotion_summaries()
+        unsafe_summary = json.loads(json.dumps(summaries["multiNodeBetaSoak"], sort_keys=True))
+        support_bundle = next(
+            scenario for scenario in unsafe_summary["scenarios"] if scenario.get("id") == "support-bundle-drill"
+        )
+        evidence = support_bundle.setdefault("evidence", {})
+        evidence["privateInsertUrisIncluded"] = True
+        evidence["tokensIncluded"] = True
+        evidence["redactionScanStatus"] = "fail"
+        unsafe_summary["redaction"]["checks"]["failOnTokens"] = False
+        summaries["multiNodeBetaSoak"] = unsafe_summary
+
+        state = PipelineState(settings, "self-test", utc_now(), [], [], [])
+        promotion = evaluate_promotion(state, summaries)
+        failed_ids = {gate["id"] for gate in promotion["gates"] if gate["status"] == "fail"}
+        multi_node = promotion["multiNodeBetaSoak"]
+
+        assert "multi-node-beta.soak" in failed_ids, promotion
+        assert "multi-node-beta.redaction" in failed_ids, promotion
+        assert promotion["promotionReady"] is False, promotion
+        assert multi_node["status"] == "fail", multi_node
+        assert multi_node["promotionReady"] is False, multi_node
+        assert multi_node["redaction"]["status"] == "fail", multi_node
+        assert any(
+            finding.get("kind") == "forbidden-included-flag"
+            for finding in multi_node["redaction"].get("findings", [])
+            if isinstance(finding, dict)
+        ), multi_node
+        assert any(
+            finding.get("kind") == "disabled-redaction-check"
+            for finding in multi_node["redaction"].get("findings", [])
+            if isinstance(finding, dict)
+        ), multi_node
+
+
+def assert_attached_multi_node_non_promotable_summary_blocks_promotion() -> None:
+    with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-attached-multi-node-ready-") as temp_name:
+        workspace = Path(temp_name) / "repo"
+        workspace.mkdir(parents=True)
+        out_dir = workspace / "build/production-beta"
+        settings = dataclasses.replace(
+            cleanup_test_settings(workspace, out_dir),
+            require_multi_node_soak=True,
+        )
+        summaries = passing_promotion_summaries()
+        non_promotable_summary = json.loads(json.dumps(summaries["multiNodeBetaSoak"], sort_keys=True))
+        non_promotable_summary["promotionReady"] = False
+        summaries["multiNodeBetaSoak"] = non_promotable_summary
+
+        state = PipelineState(settings, "self-test", utc_now(), [], [], [])
+        promotion = evaluate_promotion(state, summaries)
+        failed_ids = {gate["id"] for gate in promotion["gates"] if gate["status"] == "fail"}
+        multi_node = promotion["multiNodeBetaSoak"]
+
+        assert "multi-node-beta.soak" in failed_ids, promotion
+        assert promotion["promotionReady"] is False, promotion
+        assert multi_node["status"] == "fail", multi_node
+        assert multi_node["promotionReady"] is False, multi_node
+        assert "promotionReady must be true when summary status is pass" in multi_node["validationErrors"], multi_node
+
+
+def assert_multi_node_mode_is_only_forwarded_when_overridden() -> None:
+    with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-multi-node-mode-") as temp_name:
+        workspace = Path(temp_name) / "repo"
+        workspace.mkdir(parents=True)
+        out_dir = workspace / "build/production-beta"
+        cert_out = workspace / "build/certification"
+        config_path = workspace / "topology.json"
+        captured_args: list[list[str]] = []
+
+        def fake_run_command(
+            state: PipelineState,
+            name: str,
+            args: list[str],
+            env: dict[str, str] | None = None,
+            timeout_seconds: int = 0,
+            allow_failure: bool = False,
+        ) -> CommandResult:
+            del state, env, timeout_seconds, allow_failure
+            captured_args.append(list(args))
+            return CommandResult(name, list(args), 0, 1, "", "")
+
+        original_run_command = globals()["run_command"]
+        try:
+            globals()["run_command"] = fake_run_command
+            settings = dataclasses.replace(
+                cleanup_test_settings(workspace, out_dir),
+                run_multi_node_soak=True,
+                multi_node_soak_config=config_path,
+                multi_node_mode=None,
+            )
+            run_release_certification(PipelineState(settings, "self-test", utc_now(), [], [], []), {}, cert_out)
+            assert "--multi-node-mode" not in captured_args[-1], captured_args[-1]
+
+            override_settings = dataclasses.replace(settings, multi_node_mode="hybrid")
+            run_release_certification(
+                PipelineState(override_settings, "self-test", utc_now(), [], [], []),
+                {},
+                cert_out,
+            )
+            assert "--multi-node-mode" in captured_args[-1], captured_args[-1]
+            mode_index = captured_args[-1].index("--multi-node-mode")
+            assert captured_args[-1][mode_index + 1] == "hybrid", captured_args[-1]
+        finally:
+            globals()["run_command"] = original_run_command
+
+
+def assert_multi_node_paths_resolve_from_workspace() -> None:
+    with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-multi-node-paths-") as temp_name:
+        workspace = Path(temp_name) / "repo"
+        outside = Path(temp_name) / "outside"
+        make_self_test_workspace(workspace)
+        outside.mkdir(parents=True)
+        summary_path = workspace / "build/multi-node/summary.json"
+        config_path = workspace / "tools/release-certification/fixtures/self-test-multi-node-beta-soak.json"
+        write_text(summary_path, "{}\n")
+        write_text(config_path, "{}\n")
+        parser = build_parser()
+        original_cwd = Path.cwd()
+        try:
+            os.chdir(outside)
+            settings = settings_from_args(
+                parser.parse_args(
+                    [
+                        "--workspace-root",
+                        str(workspace),
+                        "--out-dir",
+                        "build/production-beta",
+                        "--mode",
+                        "developer-dry-run",
+                        "--artifact-base-uri",
+                        "https://downloads.crypta.invalid/self-test",
+                        "--multi-node-soak-summary",
+                        "build/multi-node/summary.json",
+                        "--multi-node-soak-config",
+                        "tools/release-certification/fixtures/self-test-multi-node-beta-soak.json",
+                    ]
+                )
+            )
+        finally:
+            os.chdir(original_cwd)
+        assert settings.multi_node_soak_summary == summary_path.resolve(), settings.multi_node_soak_summary
+        assert settings.multi_node_soak_config == config_path.resolve(), settings.multi_node_soak_config
+        assert settings.multi_node_mode is None, settings.multi_node_mode
 
 
 def create_git_tracked_output_target(workspace: Path) -> Path | None:
@@ -4733,6 +5181,12 @@ def run_self_test() -> None:
     assert_waived_critical_evidence_is_accepted_without_redaction_findings()
     assert_developer_dry_run_exit_code_fails_on_recorded_failures()
     assert_certification_failure_marks_dry_run_failed()
+    assert_attached_multi_node_summary_is_extracted()
+    assert_env_attached_multi_node_summary_is_extracted()
+    assert_attached_multi_node_safety_flags_block_promotion()
+    assert_attached_multi_node_non_promotable_summary_blocks_promotion()
+    assert_multi_node_mode_is_only_forwarded_when_overridden()
+    assert_multi_node_paths_resolve_from_workspace()
     assert_cleanup_refuses_protected_workspace_paths()
     assert_cleanup_refuses_arbitrary_existing_directory_without_sentinel()
     assert_no_clean_refuses_arbitrary_existing_directory_without_sentinel()

@@ -10,7 +10,7 @@ It does not rewrite the app platform, change peer protocols, or publish a public
 itself. It combines the existing Gradle build, first-party app staging tasks, `crypta-app` signing
 and catalog tools, app-platform smoke checks, live-network beta evidence, network-scale soak
 evidence, first-party app maintenance policy metadata, user-consent flow evidence, ecosystem RC
-certification, and final artifact redaction.
+certification, multi-node beta soak and upgrade evidence, and final artifact redaction.
 
 The entrypoint is:
 
@@ -24,6 +24,24 @@ tools/release-certification/run-production-beta-release.sh \
   --require-live-network \
   --require-sandbox-provider-tests
 ```
+
+Add multi-node drill flags when a release run needs a specific topology or attached evidence:
+
+```bash
+tools/release-certification/run-production-beta-release.sh \
+  --mode developer-dry-run \
+  --multi-node-mode simulated \
+  --run-multi-node-soak
+```
+
+Use `--multi-node-soak-config <path>` for a topology config, `--multi-node-soak-summary <path>` to
+attach existing evidence, and `--require-multi-node-soak` to make the promotion gate fail closed
+outside production beta mode.
+
+Protected `production-beta` workflow dispatches must provide either a production multi-node topology
+config or an attached passing multi-node summary. The checked-in self-test topology is only for
+developer dry-runs and PR-safe validation because it intentionally leaves previous-candidate
+upgrade evidence as a warning.
 
 Relative `--out-dir` values are resolved under the workspace root. The command cleans that output
 directory by default only when it is under the dedicated `build/production-beta*` prefix or already
@@ -61,6 +79,11 @@ documentation, drill model, reviewer compromise drill, catalog key rotation dril
 compromise drill, emergency catalog update drill, support redaction proof, or security release
 notes template is a production blocker. The runbook procedure is
 [production-security-response-runbook.md](production-security-response-runbook.md).
+
+Production beta mode requires multi-node beta soak evidence by default. Missing soak,
+upgrade-drill, scenario, or redaction evidence keeps `promotionReady=false`. Developer dry-runs may
+run the deterministic simulated drill without live nodes and may show warnings for missing previous
+candidate summaries.
 
 ## Required inputs
 
@@ -114,6 +137,7 @@ build/production-beta-release/
     app-platform-smoke.json
     live-network-beta-smoke.json
     network-scale-soak.json
+    multi-node-beta-soak.json
     ecosystem-rc-certification.json
     ecosystem-certification-matrix.json
   reports/
@@ -142,6 +166,7 @@ directories are kept outside the public artifact tree.
 | `signingProfile.kind` | `production`, `configured`, `test`, `test-fixture`, or `missing`. |
 | `promotion.gates` | Per-gate pass/fail records for signed artifacts, evidence ids, live-network evidence, ecosystem certification, and signing profile checks. |
 | `promotion.securityResponse` | Compact status for the production security response runbook, advisory lifecycle, reviewer compromise drill, catalog key rotation drill, app signing key compromise drill, emergency catalog update drill, support redaction, security release notes template, blockers, and warnings. |
+| `multiNodeBetaSoak` | Compact status for multi-node soak and upgrade evidence, including mode, scenario statuses, blockers, warnings, promotion readiness, and the `evidence/multi-node-beta-soak.json` artifact path. |
 | `artifacts.firstPartyMaintenancePolicy` | Redacted copy of the checked-in first-party maintenance policy source used to generate signed catalog descriptors. |
 | `redaction` | Final artifact scanner result and findings. |
 | `commands` | Redacted command metadata, exit codes, durations, and scrubbed output tails. |
@@ -151,6 +176,13 @@ that install/update previews, service-grant consent, migration and backup consen
 gating, stale snapshot protection, audit redaction, Web Shell UI, tests, and docs are present
 without requiring a live node. Consent evidence must not include private insert URI values, secret
 inputs, raw fetched content, raw app data, backup payloads, or host-local paths.
+
+Production beta promotion also includes `multi-node-beta.*` evidence. The generated or attached
+summary must prove catalog channel behavior, first-party install/update/rollback, app-data
+migration, backup/restore, subscription pressure, Trust Graph import, Social Inbox multi-source
+behavior, support bundle redaction, previous-candidate upgrade handling, and artifact redaction.
+Use [multi-node-beta-soak-and-upgrade-drill.md](multi-node-beta-soak-and-upgrade-drill.md) for the
+topology schema and local commands.
 
 `reports/production-beta-summary.md` is the human-readable companion. It lists failed gates, artifact
 paths, the security response summary, known limitations, and the production beta readiness decision.
@@ -187,6 +219,7 @@ The pipeline classifies failures into these groups:
 | Build and staging | Gradle toolchain failure, `stageFirstPartyApps` failure, missing `crypta-app` launcher. | Fails release-candidate and production-beta. |
 | Signing and catalog | Missing production keys in production-beta, bundle verification failure, catalog signature failure, review receipt verification failure. | Fails release-candidate and production-beta. |
 | Evidence | Missing Platform API, UI lint, sandbox, app-platform smoke, first-party maintenance policy, network-scale soak, or ecosystem certification evidence. | Fails release-candidate and production-beta when critical. |
+| Multi-node beta soak | Missing required multi-node soak, upgrade-drill, scenario, previous-candidate, or redaction evidence. | Fails production-beta promotion when `--require-multi-node-soak` is set or production-beta mode is used. |
 | Live network | Required live-network beta evidence missing, stale, wrong mode, failed, or explicitly skipped. | Blocks production-beta promotion. `--emergency-skip-live-network` records an explicit failed skip gate instead of silently treating missing live evidence as acceptable. |
 | Redaction | Private insert URI, private key, bearer token, app/browser session token, raw fetched content, raw app data, host path, AppleDouble, `__MACOSX`, `.DS_Store`, or CI secret value found. | Always fails. Redaction findings are not waivable. |
 
@@ -237,6 +270,7 @@ rerunning the full pipeline, use the lower-level command for that stage:
 python3 tools/release-certification/app_platform_smoke.py --self-test
 python3 tools/release-certification/live_network_beta_smoke.py --self-test
 python3 tools/release-certification/network_scale_soak.py --self-test
+python3 tools/release-certification/multi_node_beta_soak.py --self-test
 python3 tools/release-certification/release_certification.py --self-test
 tools/release-certification/run-release-certification.sh --mode release-candidate --out-dir build/release-certification
 ```

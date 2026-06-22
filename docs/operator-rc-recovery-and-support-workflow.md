@@ -122,6 +122,9 @@ payloads, raw fetched content, raw app data, raw support bundle payloads, privat
 private keys, bearer/session/app tokens, authorization headers, command lines containing secrets,
 CI secret values, or absolute local paths. The `production-security.response-runbook` evidence and
 `operator-rc.redaction` evidence prove these constraints for release certification.
+The multi-node beta soak support-bundle drill records the same constraints after failed update,
+subscription-pressure, and advisory scenarios; see
+[multi-node-beta-soak-and-upgrade-drill.md](multi-node-beta-soak-and-upgrade-drill.md).
 
 ## Trust Graph Scope
 
