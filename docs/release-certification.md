@@ -371,6 +371,13 @@ review receipt revocation, reviewer-key compromise, Web Shell warning rendering,
 guidance, and redaction. See
 [ecosystem-security-advisories.md](ecosystem-security-advisories.md).
 
+`production-security.response-runbook` is the Phase 10 production security response evidence. It
+checks the operator runbook, machine-readable drill model, standalone verifier, release-notes
+template, reviewer-key compromise drill, catalog-key rotation drill, app-signing-key compromise
+drill, emergency catalog update workflow, API/Web Shell security-response summary, support
+redaction behavior, and non-waivable sensitive marker scans. See
+[production-security-response-runbook.md](production-security-response-runbook.md).
+
 `app-platform.user-consent-flow` verifies the unified consent layer for material install, update,
 app-service grant, app-data migration, backup, channel/support, deprecation/replacement,
 review/trust, security, and automatic-update decisions. It also checks digest-tied approvals,

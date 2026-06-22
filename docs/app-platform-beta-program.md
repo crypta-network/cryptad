@@ -254,16 +254,16 @@ Use this runbook to decide whether the ecosystem beta is ready for a release can
 Release-candidate mode should require docs and beta evidence unless a release-manager waiver
 explicitly accepts a docs-only gap. Do not waive redaction failures.
 
-## Phase 9 RC closeout statement
+## Phase 10 production beta closeout statement
 
-The current RC closeout story is:
+The current production beta closeout story is:
 
 ```text
 first-party catalog + developer toolkit + reference apps + Trust Graph Local RC
 + review governance + app-data backup/restore + app-service dependency/grant bundles
-+ network-scale budgets/subscription soak + legacy plugin freeze + legacy admin waves 1-4
-+ ecosystem certification matrix
--> documented and certified as Ecosystem RC readiness
++ network-scale budgets/subscription soak + legacy plugin freeze + final legacy admin surface
++ production security response runbook + ecosystem certification matrix
+-> documented and certified as production beta readiness
 ```
 
 The closeout evidence must be redacted and reproducible. It should show that docs are present,

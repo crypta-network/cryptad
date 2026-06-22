@@ -93,8 +93,8 @@ Use this skill when working on:
   that leaf JAR on the runtime classpath, so packaged/runtime code must treat them as classpath
   resources rather than plain files. This leaf also hosts the current `/api/v1/` bridge for
   `:platform-api`, the `/app/node/` bridge for `:platform-web-shell`, and the per-app loopback
-  origin server used by isolated static app UIs, plus legacy-admin retirement policy and the
-  Wave 4 diagnostic replacement/fallback route.
+  origin server used by isolated static app UIs, plus legacy-admin retirement policy, Wave 5
+  final-surface metadata, and explicit retained emergency fallback routes.
 - The `:adapter-http-legacy-browse` JAR carries the concrete legacy browse/FProxy classes.
 - The `:bridge-http-runtime` JAR carries the concrete `network.crypta.clients.http.bridge`
   runtime-binding implementations plus the legacy HTTP `network.crypta.clients.http.geoip`
