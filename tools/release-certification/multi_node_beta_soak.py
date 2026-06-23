@@ -1223,11 +1223,12 @@ def build_summary(
     *,
     out_dir: Path | None = None,
     require_live: bool = False,
+    require_all_scenarios: bool = False,
     strict: bool = False,
     base_dir: Path | None = None,
 ) -> dict[str, Any]:
     base = base_dir or Path.cwd()
-    scenario_strict = strict or bool(config["strict"].get("requireAllScenarios"))
+    scenario_strict = strict or require_all_scenarios or bool(config["strict"].get("requireAllScenarios"))
     scenarios: list[dict[str, Any]] = []
     warnings: list[str] = []
     blockers: list[str] = []
@@ -1510,6 +1511,41 @@ def validate_scenario_statuses(summary: dict[str, Any], scenario_entries: dict[s
     return errors
 
 
+def validate_catalog_channel_update_evidence(entry: dict[str, Any], evidence: dict[str, Any]) -> list[str]:
+    errors: list[str] = []
+    signature = evidence.get("catalogSignatureEvidence")
+    if not isinstance(signature, dict):
+        errors.append("scenario catalog-channel-update catalogSignatureEvidence must be an object")
+    else:
+        for field in ("catalogDigest", "signatureKeyId", "reviewChainDigest"):
+            if not isinstance(signature.get(field), str) or not signature.get(field, "").strip():
+                errors.append(f"scenario catalog-channel-update catalogSignatureEvidence missing {field}")
+
+    blocked_nodes = evidence.get("nodesWithBlockedCatalogChannels")
+    if "nodesWithBlockedCatalogChannels" in evidence and not isinstance(blocked_nodes, list):
+        errors.append("scenario catalog-channel-update nodesWithBlockedCatalogChannels must be a list")
+
+    if entry.get("status") != "pass":
+        return errors
+
+    for field in (
+        "stableNodesBlockBetaAndNightly",
+        "betaNodesOptInExplicitly",
+        "nightlyCandidatesBlocked",
+        "deprecatedCandidatesBlocked",
+        "denylistedCandidatesBlocked",
+    ):
+        if evidence.get(field) is not True:
+            errors.append(f"scenario catalog-channel-update pass requires {field}")
+    for field in ("stableOnlyNodeCount", "betaOptInNodeCount"):
+        value = evidence.get(field)
+        if not isinstance(value, int) or isinstance(value, bool) or value < 1:
+            errors.append(f"scenario catalog-channel-update pass requires {field}")
+    if blocked_nodes:
+        errors.append("scenario catalog-channel-update pass requires empty nodesWithBlockedCatalogChannels")
+    return errors
+
+
 def validate_required_evidence_fields(
     scenario_id: str,
     entry: dict[str, Any],
@@ -1527,13 +1563,7 @@ def validate_required_evidence_fields(
         if field not in evidence:
             errors.append(f"scenario {scenario_id} evidence missing {field}")
     if scenario_id == "catalog-channel-update":
-        signature = evidence.get("catalogSignatureEvidence")
-        if not isinstance(signature, dict):
-            errors.append("scenario catalog-channel-update catalogSignatureEvidence must be an object")
-        else:
-            for field in ("catalogDigest", "signatureKeyId", "reviewChainDigest"):
-                if not isinstance(signature.get(field), str) or not signature.get(field, "").strip():
-                    errors.append(f"scenario catalog-channel-update catalogSignatureEvidence missing {field}")
+        errors.extend(validate_catalog_channel_update_evidence(entry, evidence))
     if scenario_id == "app-install-update-rollback":
         installed_apps = evidence.get("installedFirstPartyApps")
         if not is_string_list(installed_apps) or not set(REQUIRED_LIFECYCLE_APPS).issubset(set(installed_apps)):
@@ -1899,6 +1929,7 @@ def run_soak(args: argparse.Namespace) -> int:
         config,
         out_dir=out_dir,
         require_live=args.require_live,
+        require_all_scenarios=args.require_all_scenarios,
         strict=args.strict,
         base_dir=(args.config.parent if args.config else Path.cwd()),
     )
@@ -2007,6 +2038,36 @@ def run_self_test() -> None:
             }
         ], deprecated_only_catalog_result
 
+        for field in (
+            "stableNodesBlockBetaAndNightly",
+            "betaNodesOptInExplicitly",
+            "nightlyCandidatesBlocked",
+            "deprecatedCandidatesBlocked",
+            "denylistedCandidatesBlocked",
+        ):
+            contradictory_catalog_summary = json.loads(json.dumps(summary, sort_keys=True))
+            contradictory_catalog_evidence = scenario_map(contradictory_catalog_summary)[
+                "catalog-channel-update"
+            ]["evidence"]
+            contradictory_catalog_evidence[field] = False
+            assert f"scenario catalog-channel-update pass requires {field}" in validate_summary(
+                contradictory_catalog_summary
+            ), (field, contradictory_catalog_summary)
+        contradictory_catalog_summary = json.loads(json.dumps(summary, sort_keys=True))
+        contradictory_catalog_evidence = scenario_map(contradictory_catalog_summary)["catalog-channel-update"][
+            "evidence"
+        ]
+        contradictory_catalog_evidence["nodesWithBlockedCatalogChannels"] = [
+            {
+                "nodeId": "node-a",
+                "catalogChannels": ["stable", "nightly"],
+                "blockedCatalogChannels": ["nightly"],
+            }
+        ]
+        assert "scenario catalog-channel-update pass requires empty nodesWithBlockedCatalogChannels" in (
+            validate_summary(contradictory_catalog_summary)
+        ), contradictory_catalog_summary
+
         strict_config = json.loads(json.dumps(config, sort_keys=True))
         strict_config["strict"]["requirePreviousSummary"] = True
         strict_summary = build_summary(strict_config, out_dir=out_dir, strict=True, base_dir=fixture.parent)
@@ -2084,6 +2145,7 @@ def run_self_test() -> None:
                 out_dir=warning_only_out_dir,
                 mode=None,
                 require_live=False,
+                require_all_scenarios=False,
                 strict=True,
             )
         )
@@ -2182,6 +2244,17 @@ def run_self_test() -> None:
         disabled_summary = build_summary(disabled_config, out_dir=out_dir, strict=True, base_dir=fixture.parent)
         assert disabled_summary["status"] == "fail", disabled_summary
         assert "backup-restore failed" in disabled_summary["blockers"], disabled_summary
+        required_scenario_summary = build_summary(
+            disabled_config,
+            out_dir=out_dir,
+            require_all_scenarios=True,
+            base_dir=fixture.parent,
+        )
+        assert required_scenario_summary["status"] == "fail", required_scenario_summary
+        assert "backup-restore failed" in required_scenario_summary["blockers"], required_scenario_summary
+        assert (
+            scenario_map(required_scenario_summary)["backup-restore"]["evidence"]["strict"] is True
+        ), required_scenario_summary
 
         live_unsafe_config = json.loads(json.dumps(config, sort_keys=True))
         live_unsafe_config["mode"] = "live"
@@ -2539,6 +2612,11 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--out-dir", type=Path, required=True)
     run_parser.add_argument("--mode", choices=MODES, default=None)
     run_parser.add_argument("--require-live", action="store_true")
+    run_parser.add_argument(
+        "--require-all-scenarios",
+        action="store_true",
+        help="Fail disabled required drill scenarios without enabling full strict candidate-summary policy.",
+    )
     run_parser.add_argument("--strict", action="store_true")
     run_parser.set_defaults(func=run_soak)
 

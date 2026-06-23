@@ -1834,12 +1834,31 @@ def multi_node_beta_soak_evidence(
         ]
 
     validation_errors = multi_node_beta_soak.validate_summary(summary, strict=False)
+    required_disabled_scenarios: set[str] = set()
+    if required_for_rc:
+        for scenario_id, entry in multi_node_beta_soak.scenario_map(summary).items():
+            if scenario_id not in MULTI_NODE_BETA_SCENARIO_EVIDENCE_IDS:
+                continue
+            evidence = entry.get("evidence") if isinstance(entry, dict) else None
+            if isinstance(evidence, dict) and evidence.get("configured") is False:
+                required_disabled_scenarios.add(scenario_id)
+        validation_errors = [
+            *validation_errors,
+            *[
+                f"scenario {scenario_id} is disabled but required in {mode}"
+                for scenario_id in sorted(required_disabled_scenarios)
+            ],
+        ]
     compact = multi_node_beta_soak.compact_for_release(summary)
     compact = dict(sanitize_value(compact, workspace_root, out_dir))
     summary_status = normalize_evidence_status(str(compact.get("status", "missing")))
     scenario_statuses = compact.get("scenarioStatuses", {})
     if not isinstance(scenario_statuses, dict):
         scenario_statuses = {}
+    else:
+        scenario_statuses = dict(scenario_statuses)
+    for scenario_id in required_disabled_scenarios:
+        scenario_statuses[scenario_id] = "fail"
     redaction = compact.get("redaction", {})
     if not isinstance(redaction, dict):
         redaction = {}
@@ -1862,6 +1881,8 @@ def multi_node_beta_soak_evidence(
         "warnings": compact.get("warnings", []),
         "validationErrors": validation_errors,
     }
+    if required_disabled_scenarios:
+        common_details["disabledRequiredScenarios"] = sorted(required_disabled_scenarios)
     if redaction_findings:
         common_details["redactionFindings"] = sanitize_value(redaction_findings, workspace_root, out_dir)
 
@@ -8372,6 +8393,43 @@ def run_self_test(repo_root: Path) -> None:
             multi_node_pass_path.parent / multi_node_beta_soak.REPORT_FILE_NAME,
             multi_node_beta_soak.render_report(multi_node_pass_summary),
         )
+        multi_node_disabled_required_path = workspace / "build/multi-node-disabled-required/summary.json"
+        multi_node_disabled_required_summary = json.loads(json.dumps(multi_node_pass_summary, sort_keys=True))
+        disabled_backup = multi_node_beta_soak.scenario_map(multi_node_disabled_required_summary)["backup-restore"]
+        disabled_backup["status"] = "warn"
+        disabled_backup["summary"] = "Scenario is disabled in the topology config."
+        disabled_backup["evidence"] = {
+            "evidenceId": "multi-node-beta.backup-restore",
+            "configured": False,
+            "strict": False,
+        }
+        multi_node_disabled_required_summary["scenarioStatuses"]["backup-restore"] = "warn"
+        multi_node_disabled_required_summary["status"] = "warn"
+        multi_node_disabled_required_summary["promotionReady"] = True
+        multi_node_disabled_required_summary["warnings"] = ["backup-restore has warnings"]
+        write_json(multi_node_disabled_required_path, multi_node_disabled_required_summary)
+        multi_node_disabled_required_items = multi_node_beta_soak_evidence(
+            multi_node_disabled_required_path,
+            workspace,
+            out_dir,
+            "release-candidate",
+            False,
+        )
+        multi_node_disabled_umbrella = next(
+            item for item in multi_node_disabled_required_items if item.id == "multi-node-beta.soak"
+        )
+        multi_node_disabled_backup = next(
+            item for item in multi_node_disabled_required_items if item.id == "multi-node-beta.backup-restore"
+        )
+        assert multi_node_disabled_umbrella.status == "fail", multi_node_disabled_umbrella
+        assert multi_node_disabled_backup.status == "fail", multi_node_disabled_backup
+        assert "backup-restore" in multi_node_disabled_umbrella.details.get("disabledRequiredScenarios", []), (
+            multi_node_disabled_umbrella
+        )
+        assert (
+            "scenario backup-restore is disabled but required in release-candidate"
+            in multi_node_disabled_umbrella.details.get("validationErrors", [])
+        ), multi_node_disabled_umbrella
         multi_node_publish_leak_path = workspace / "build/multi-node-publish-leak/summary.json"
         multi_node_publish_leak_summary = json.loads(json.dumps(multi_node_pass_summary, sort_keys=True))
         multi_node_publish_leak_summary["blockers"] = [

@@ -360,6 +360,9 @@ if [[ "$MULTI_NODE_SOAK_SUMMARY_PROVIDED" != "1" ]]; then
   if [[ "$REQUIRE_MULTI_NODE_SOAK" == "1" && "$EFFECTIVE_MULTI_NODE_MODE" == "live" ]]; then
     MULTI_NODE_ARGS+=(--require-live)
   fi
+  if [[ "$REQUIRE_MULTI_NODE_SOAK" == "1" || "$MODE" == "release-candidate" ]]; then
+    MULTI_NODE_ARGS+=(--require-all-scenarios)
+  fi
   set +e
   python3 "$ROOT_DIR/tools/release-certification/multi_node_beta_soak.py" "${MULTI_NODE_ARGS[@]}"
   MULTI_NODE_SOAK_EXIT=$?
