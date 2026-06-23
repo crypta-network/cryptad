@@ -86,6 +86,108 @@ EVIDENCE_IDS = (
     "multi-node-beta.support-bundle-drill",
     "multi-node-beta.redaction",
 )
+REQUIRED_SCENARIO_EVIDENCE_FIELDS = {
+    "catalog-channel-update": (
+        "stableOnlyNodeCount",
+        "betaOptInNodeCount",
+        "stableNodesBlockBetaAndNightly",
+        "betaNodesOptInExplicitly",
+        "nightlyCandidatesBlocked",
+        "deprecatedCandidatesBlocked",
+        "denylistedCandidatesBlocked",
+        "nodesWithBlockedCatalogChannels",
+        "catalogSignatureEvidence",
+        "privateInsertUrisIncluded",
+    ),
+    "app-install-update-rollback": (
+        "installedFirstPartyApps",
+        "updatedApps",
+        "missingRequiredApps",
+        "rollbackApp",
+        "healthFailureSimulated",
+        "rollbackAvailable",
+        "rollbackResult",
+        "majorDeltaConsentGatePreserved",
+        "autoUpdateBypassedConsent",
+    ),
+    "app-data-migration": (
+        "apps",
+        "failedMigrationBlocksUpdate",
+        "failedMigrationTriggersRollback",
+        "metadataOnly",
+    ),
+    "backup-restore": (
+        "exportedApps",
+        "restoredIntoCleanNodeId",
+        "manifestSchemaCompatible",
+        "restoreDigest",
+        "supportExportSeparateFromBackupBundle",
+        "vaultPrivateIdentityMaterialIncluded",
+        "rawBackupPayloadIncluded",
+    ),
+    "subscription-pressure": (
+        "nodesCovered",
+        "uskSubscriptionCount",
+        "queuePressureEvents",
+        "backoffDecisions",
+        "globalFetchPolicyRespected",
+        "rawFetchedContentIncluded",
+        "queueHtmlIncluded",
+    ),
+    "trust-graph-import": (
+        "signedStatementImportsAttempted",
+        "acceptedStatements",
+        "duplicateStatementsSummarized",
+        "hostileInputsRejected",
+        "oversizedInputsRejected",
+        "statementDigestSet",
+        "scoreExplanationLimit",
+        "localScopeMessagingPreserved",
+        "rawTrustStatementsIncluded",
+    ),
+    "social-inbox-multi-source": (
+        "sourceCount",
+        "threadCount",
+        "dedupedMessageCount",
+        "readStateTransitions",
+        "trustScoreAnnotationsViaGrant",
+        "grantRevokedDegradesSafely",
+        "rawMessageBodiesIncluded",
+    ),
+    "support-bundle-drill": (
+        "generatedAfterFailedUpdate",
+        "generatedAfterSubscriptionPressure",
+        "generatedAfterSecurityAdvisory",
+        "supportBundleDigest",
+        "redactionScanStatus",
+        "secretsIncluded",
+        "rawContentIncluded",
+        "rawAppDataIncluded",
+        "absolutePathsIncluded",
+        "tokensIncluded",
+        "privateInsertUrisIncluded",
+        "appleDoubleArtifactsIncluded",
+    ),
+    "upgrade-from-previous-candidate": (
+        "previousVersion",
+        "currentVersion",
+        "previousSummaryConfigured",
+        "previousSummaryProvided",
+        "previousSummaryValid",
+        "previousSummaryValidationErrors",
+        "previousSummaryStatus",
+        "currentProductionBetaSummaryConfigured",
+        "currentProductionBetaSummaryProvided",
+        "currentProductionBetaSummaryValid",
+        "currentProductionBetaValidationErrors",
+        "currentProductionBetaStatus",
+        "currentUpgradePathRepresented",
+        "firstPartyAppMigrationStatus",
+        "backupBeforeUpdateStatus",
+        "rollbackStatus",
+        "strictPreviousSummaryRequired",
+    ),
+}
 REDACTION_KEYS = (
     "failOnPrivateInsertUri",
     "failOnRawFetchedContent",
@@ -172,7 +274,7 @@ RAW_SIGNATURE_RE = re.compile(
     r"(?![\w-])\s*(?::|(?<![=!<>])=(?!=))\s*['\"]?([^'\"\r\n}]+)",
     re.IGNORECASE,
 )
-FILE_URI_RE = re.compile(r"\bfile:///[^\s\"'<>]+", re.IGNORECASE)
+FILE_URI_RE = re.compile(r"\bfile:(?://[^/\s\"'<>]*)?/[^\s\"'<>]+", re.IGNORECASE)
 WINDOWS_PATH_RE = re.compile(r"(?<![A-Za-z0-9_:/.\->])[A-Za-z]:[\\/][^:*?\"<>|\r\n]+")
 POSIX_ABSOLUTE_PATH_RE = re.compile(
     r"(?<![A-Za-z0-9_:/.\-><])/(?!/)[^\s\"'<>),;{}]+"
@@ -1214,14 +1316,30 @@ def build_summary(
     return summary
 
 
+def plan_candidate(candidate: dict[str, Any], summary_key: str, configured_key: str) -> dict[str, Any]:
+    return {
+        "version": candidate["version"],
+        "catalogChannel": candidate["catalogChannel"],
+        configured_key: bool(candidate.get(summary_key)),
+    }
+
+
 def render_plan(config: dict[str, Any]) -> dict[str, Any]:
     return {
         "schemaVersion": SCHEMA_VERSION,
         "kind": PLAN_KIND,
         "mode": config["mode"],
         "durationProfile": config["durationProfile"],
-        "previousCandidate": config["previousCandidate"],
-        "currentCandidate": config["currentCandidate"],
+        "previousCandidate": plan_candidate(
+            config["previousCandidate"],
+            "summaryPath",
+            "summaryConfigured",
+        ),
+        "currentCandidate": plan_candidate(
+            config["currentCandidate"],
+            "productionBetaSummaryPath",
+            "productionBetaSummaryConfigured",
+        ),
         "nodeCount": len(config["nodes"]),
         "nodes": [safe_node_summary(node) for node in config["nodes"]],
         "scenarioIds": [SCENARIO_IDS[key] for key in REQUIRED_SCENARIOS if config["scenarios"].get(key) is True],
@@ -1294,6 +1412,275 @@ def scenario_map(summary: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return {str(item.get("id")): item for item in scenarios if isinstance(item, dict)}
 
 
+def is_string_list(value: Any) -> bool:
+    return isinstance(value, list) and all(isinstance(item, str) for item in value)
+
+
+def validate_candidate_metadata(value: Any, name: str, provided_key: str) -> list[str]:
+    errors: list[str] = []
+    if not isinstance(value, dict):
+        return [f"{name} must be an object"]
+    if not isinstance(value.get("version"), str) or not value.get("version", "").strip():
+        errors.append(f"{name}.version must be a non-empty string")
+    if value.get("catalogChannel") not in CATALOG_CHANNELS:
+        errors.append(f"{name}.catalogChannel is invalid")
+    if not isinstance(value.get(provided_key), bool):
+        errors.append(f"{name}.{provided_key} must be boolean")
+    return errors
+
+
+def validate_summary_nodes(nodes: Any) -> tuple[list[str], list[dict[str, Any]]]:
+    errors: list[str] = []
+    valid_nodes: list[dict[str, Any]] = []
+    if not isinstance(nodes, list) or len(nodes) < 2:
+        return ["nodes must include at least two entries"], valid_nodes
+    seen_ids: set[str] = set()
+    for index, node in enumerate(nodes):
+        if not isinstance(node, dict):
+            errors.append(f"nodes[{index}] must be an object")
+            continue
+        node_id = node.get("id")
+        if not isinstance(node_id, str) or not node_id.strip():
+            errors.append(f"nodes[{index}].id must be a non-empty string")
+        elif node_id in seen_ids:
+            errors.append(f"nodes[{index}].id must be unique")
+        else:
+            seen_ids.add(node_id)
+        if node.get("role") not in NODE_ROLES:
+            errors.append(f"nodes[{index}].role is invalid")
+        if not is_string_list(node.get("catalogChannels")) or not node.get("catalogChannels"):
+            errors.append(f"nodes[{index}].catalogChannels must be a non-empty string list")
+        else:
+            invalid_channels = sorted(set(node["catalogChannels"]) - set(CATALOG_CHANNELS))
+            if invalid_channels:
+                errors.append(f"nodes[{index}].catalogChannels contains invalid channels")
+        if not is_string_list(node.get("apps")) or not node.get("apps"):
+            errors.append(f"nodes[{index}].apps must be a non-empty string list")
+        if isinstance(node_id, str) and node.get("role") in NODE_ROLES and is_string_list(
+            node.get("catalogChannels")
+        ) and is_string_list(node.get("apps")):
+            valid_nodes.append(node)
+    return errors, valid_nodes
+
+
+def validate_topology(topology: Any, nodes: Any, valid_nodes: list[dict[str, Any]]) -> list[str]:
+    errors: list[str] = []
+    if not isinstance(topology, dict):
+        return ["topology must be an object"]
+    if not isinstance(topology.get("nodeCount"), int):
+        errors.append("topology.nodeCount must be an integer")
+    elif isinstance(nodes, list) and topology["nodeCount"] != len(nodes):
+        errors.append("topology.nodeCount must match nodes length")
+    expected_roles = sorted({str(node["role"]) for node in valid_nodes})
+    if not is_string_list(topology.get("roles")):
+        errors.append("topology.roles must be a string list")
+    elif topology["roles"] != expected_roles:
+        errors.append("topology.roles must match node roles")
+    expected_channels = sorted({str(channel) for node in valid_nodes for channel in node["catalogChannels"]})
+    if not is_string_list(topology.get("catalogChannels")):
+        errors.append("topology.catalogChannels must be a string list")
+    elif topology["catalogChannels"] != expected_channels:
+        errors.append("topology.catalogChannels must match node catalog channels")
+    expected_apps = sorted(node_app_ids(valid_nodes).intersection(FIRST_PARTY_APPS))
+    covered_apps = topology.get("firstPartyAppsCovered")
+    if not is_string_list(covered_apps):
+        errors.append("topology.firstPartyAppsCovered must be a string list")
+    else:
+        if covered_apps != expected_apps:
+            errors.append("topology.firstPartyAppsCovered must match node app coverage")
+        missing_required_apps = sorted(set(REQUIRED_LIFECYCLE_APPS) - set(covered_apps))
+        if missing_required_apps:
+            errors.append("topology.firstPartyAppsCovered must include required lifecycle apps")
+    if not isinstance(topology.get("liveReachability"), list):
+        errors.append("topology.liveReachability must be a list")
+    return errors
+
+
+def validate_scenario_statuses(summary: dict[str, Any], scenario_entries: dict[str, dict[str, Any]]) -> list[str]:
+    errors: list[str] = []
+    statuses = summary.get("scenarioStatuses")
+    if not isinstance(statuses, dict):
+        return ["scenarioStatuses must be an object"]
+    for scenario_id in SCENARIO_EVIDENCE_IDS:
+        entry = scenario_entries.get(scenario_id)
+        if entry is None:
+            continue
+        if statuses.get(scenario_id) != entry.get("status"):
+            errors.append(f"scenarioStatuses.{scenario_id} must match scenario status")
+    return errors
+
+
+def validate_required_evidence_fields(
+    scenario_id: str,
+    entry: dict[str, Any],
+    evidence: dict[str, Any],
+    summary: dict[str, Any],
+) -> list[str]:
+    errors: list[str] = []
+    if evidence.get("configured") is False:
+        if entry.get("status") == "pass":
+            errors.append(f"scenario {scenario_id} cannot pass when configured is false")
+        if not isinstance(evidence.get("strict"), bool):
+            errors.append(f"scenario {scenario_id} disabled evidence must include strict")
+        return errors
+    for field in REQUIRED_SCENARIO_EVIDENCE_FIELDS.get(scenario_id, ()):
+        if field not in evidence:
+            errors.append(f"scenario {scenario_id} evidence missing {field}")
+    if scenario_id == "catalog-channel-update":
+        signature = evidence.get("catalogSignatureEvidence")
+        if not isinstance(signature, dict):
+            errors.append("scenario catalog-channel-update catalogSignatureEvidence must be an object")
+        else:
+            for field in ("catalogDigest", "signatureKeyId", "reviewChainDigest"):
+                if not isinstance(signature.get(field), str) or not signature.get(field, "").strip():
+                    errors.append(f"scenario catalog-channel-update catalogSignatureEvidence missing {field}")
+    if scenario_id == "app-install-update-rollback":
+        installed_apps = evidence.get("installedFirstPartyApps")
+        if not is_string_list(installed_apps) or not set(REQUIRED_LIFECYCLE_APPS).issubset(set(installed_apps)):
+            errors.append("scenario app-install-update-rollback installedFirstPartyApps must include required apps")
+        updated_apps = evidence.get("updatedApps")
+        if not is_string_list(updated_apps) or not set(REQUIRED_LIFECYCLE_APPS).issubset(set(updated_apps)):
+            errors.append("scenario app-install-update-rollback updatedApps must include required apps")
+    if scenario_id == "app-data-migration":
+        apps = evidence.get("apps")
+        if not isinstance(apps, dict):
+            errors.append("scenario app-data-migration apps must be an object")
+        else:
+            for app in REQUIRED_LIFECYCLE_APPS:
+                app_evidence = apps.get(app)
+                if not isinstance(app_evidence, dict):
+                    errors.append(f"scenario app-data-migration apps.{app} must be an object")
+                    continue
+                for field in (
+                    "fromSchema",
+                    "toSchema",
+                    "dryRunDigest",
+                    "backupBeforeUpdateRequired",
+                    "rawAppDataIncluded",
+                ):
+                    if field not in app_evidence:
+                        errors.append(f"scenario app-data-migration apps.{app} missing {field}")
+    if scenario_id == "backup-restore":
+        exported_apps = evidence.get("exportedApps")
+        if not is_string_list(exported_apps) or not set(REQUIRED_LIFECYCLE_APPS).issubset(set(exported_apps)):
+            errors.append("scenario backup-restore exportedApps must include required apps")
+    if scenario_id == "upgrade-from-previous-candidate":
+        previous = summary.get("previousCandidate")
+        current = summary.get("currentCandidate")
+        previous_errors = evidence.get("previousSummaryValidationErrors")
+        previous_error_entries = previous_errors if isinstance(previous_errors, list) else []
+        current_errors = evidence.get("currentProductionBetaValidationErrors")
+        current_error_entries = current_errors if isinstance(current_errors, list) else []
+        for field in (
+            "previousSummaryConfigured",
+            "previousSummaryProvided",
+            "previousSummaryValid",
+            "currentProductionBetaSummaryConfigured",
+            "currentProductionBetaSummaryProvided",
+            "currentProductionBetaSummaryValid",
+            "currentUpgradePathRepresented",
+            "strictPreviousSummaryRequired",
+        ):
+            if not isinstance(evidence.get(field), bool):
+                errors.append(f"scenario upgrade-from-previous-candidate {field} must be boolean")
+        if not isinstance(previous_errors, list):
+            errors.append(
+                "scenario upgrade-from-previous-candidate previousSummaryValidationErrors must be a list"
+            )
+        if not isinstance(current_errors, list):
+            errors.append(
+                "scenario upgrade-from-previous-candidate currentProductionBetaValidationErrors must be a list"
+            )
+        if isinstance(previous, dict):
+            if evidence.get("previousVersion") != previous.get("version"):
+                errors.append("scenario upgrade-from-previous-candidate previousVersion must match previousCandidate")
+            if evidence.get("previousSummaryConfigured") != previous.get("summaryProvided"):
+                errors.append(
+                    "scenario upgrade-from-previous-candidate previousSummaryConfigured must match previousCandidate"
+                )
+        if isinstance(current, dict):
+            if evidence.get("currentVersion") != current.get("version"):
+                errors.append("scenario upgrade-from-previous-candidate currentVersion must match currentCandidate")
+            if evidence.get("currentProductionBetaSummaryConfigured") != current.get(
+                "productionBetaSummaryProvided"
+            ):
+                errors.append(
+                    "scenario upgrade-from-previous-candidate currentProductionBetaSummaryConfigured must match "
+                    "currentCandidate"
+                )
+        if evidence.get("previousSummaryProvided") is True and evidence.get("previousSummaryConfigured") is not True:
+            errors.append(
+                "scenario upgrade-from-previous-candidate previousSummaryProvided requires previousSummaryConfigured"
+            )
+        if evidence.get("previousSummaryValid") is True:
+            if evidence.get("previousSummaryProvided") is not True:
+                errors.append(
+                    "scenario upgrade-from-previous-candidate previousSummaryValid requires previousSummaryProvided"
+                )
+            if previous_error_entries:
+                errors.append(
+                    "scenario upgrade-from-previous-candidate previousSummaryValid requires empty "
+                    "previousSummaryValidationErrors"
+                )
+        if evidence.get("currentProductionBetaSummaryProvided") is True and evidence.get(
+            "currentProductionBetaSummaryConfigured"
+        ) is not True:
+            errors.append(
+                "scenario upgrade-from-previous-candidate currentProductionBetaSummaryProvided requires "
+                "currentProductionBetaSummaryConfigured"
+            )
+        if evidence.get("currentProductionBetaSummaryValid") is True:
+            if evidence.get("currentProductionBetaSummaryProvided") is not True:
+                errors.append(
+                    "scenario upgrade-from-previous-candidate currentProductionBetaSummaryValid requires "
+                    "currentProductionBetaSummaryProvided"
+                )
+            if current_error_entries:
+                errors.append(
+                    "scenario upgrade-from-previous-candidate currentProductionBetaSummaryValid requires empty "
+                    "currentProductionBetaValidationErrors"
+                )
+        if entry.get("status") == "pass":
+            if evidence.get("previousSummaryConfigured") is not True:
+                errors.append(
+                    "scenario upgrade-from-previous-candidate pass requires previousSummaryConfigured"
+                )
+            if evidence.get("previousSummaryProvided") is not True:
+                errors.append("scenario upgrade-from-previous-candidate pass requires previousSummaryProvided")
+            if evidence.get("previousSummaryValid") is not True:
+                errors.append("scenario upgrade-from-previous-candidate pass requires previousSummaryValid")
+            if previous_error_entries:
+                errors.append(
+                    "scenario upgrade-from-previous-candidate pass requires empty previousSummaryValidationErrors"
+                )
+            if evidence.get("currentProductionBetaSummaryConfigured") is True:
+                if evidence.get("currentProductionBetaSummaryProvided") is not True:
+                    errors.append(
+                        "scenario upgrade-from-previous-candidate pass requires "
+                        "currentProductionBetaSummaryProvided when configured"
+                    )
+                if evidence.get("currentProductionBetaSummaryValid") is not True:
+                    errors.append(
+                        "scenario upgrade-from-previous-candidate pass requires "
+                        "currentProductionBetaSummaryValid when configured"
+                    )
+                if current_error_entries:
+                    errors.append(
+                        "scenario upgrade-from-previous-candidate pass requires empty "
+                        "currentProductionBetaValidationErrors when configured"
+                    )
+            for field in (
+                "currentUpgradePathRepresented",
+                "firstPartyAppMigrationStatus",
+                "backupBeforeUpdateStatus",
+                "rollbackStatus",
+            ):
+                expected = True if field == "currentUpgradePathRepresented" else "pass"
+                if evidence.get(field) != expected:
+                    errors.append(f"scenario upgrade-from-previous-candidate pass requires {field}")
+    return errors
+
+
 def validate_summary(summary: dict[str, Any] | None, *, strict: bool = False) -> list[str]:
     errors: list[str] = []
     if summary is None:
@@ -1306,14 +1693,38 @@ def validate_summary(summary: dict[str, Any] | None, *, strict: bool = False) ->
         errors.append("mode must be simulated, hybrid, or live")
     if summary.get("durationProfile") not in DURATION_PROFILES:
         errors.append("durationProfile is invalid")
+    if not isinstance(summary.get("generatedAt"), str) or not summary.get("generatedAt", "").strip():
+        errors.append("generatedAt must be a non-empty string")
     if summary.get("status") not in {"pass", "warn", "fail"}:
         errors.append("status must be pass, warn, or fail")
     if not isinstance(summary.get("promotionReady"), bool):
         errors.append("promotionReady must be boolean")
+    errors.extend(validate_candidate_metadata(summary.get("previousCandidate"), "previousCandidate", "summaryProvided"))
+    errors.extend(
+        validate_candidate_metadata(
+            summary.get("currentCandidate"),
+            "currentCandidate",
+            "productionBetaSummaryProvided",
+        )
+    )
+    blockers = summary.get("blockers", [])
+    blocker_entries: list[Any] = []
+    if not isinstance(blockers, list):
+        errors.append("blockers must be a list")
+    else:
+        blocker_entries = blockers
+    warnings = summary.get("warnings", [])
+    warning_entries: list[Any] = []
+    if not isinstance(warnings, list):
+        errors.append("warnings must be a list")
+    else:
+        warning_entries = warnings
     nodes = summary.get("nodes")
-    if not isinstance(nodes, list) or len(nodes) < 2:
-        errors.append("nodes must include at least two entries")
+    node_errors, valid_nodes = validate_summary_nodes(nodes)
+    errors.extend(node_errors)
+    errors.extend(validate_topology(summary.get("topology"), nodes, valid_nodes))
     scenario_entries = scenario_map(summary)
+    errors.extend(validate_scenario_statuses(summary, scenario_entries))
     for scenario_id in SCENARIO_EVIDENCE_IDS:
         entry = scenario_entries.get(scenario_id)
         if entry is None:
@@ -1328,6 +1739,7 @@ def validate_summary(summary: dict[str, Any] | None, *, strict: bool = False) ->
             if evidence.get("evidenceId") != SCENARIO_EVIDENCE_IDS[scenario_id]:
                 errors.append(f"scenario {scenario_id} has wrong evidenceId")
             errors.extend(validate_evidence_safety_flags(evidence, f"scenarios.{scenario_id}.evidence"))
+            errors.extend(validate_required_evidence_fields(scenario_id, entry, evidence, summary))
     redaction = summary.get("redaction")
     redaction_status = "missing"
     if not isinstance(redaction, dict):
@@ -1356,6 +1768,12 @@ def validate_summary(summary: dict[str, Any] | None, *, strict: bool = False) ->
         errors.append("summary status is fail")
     if summary.get("status") == "pass" and summary.get("promotionReady") is not True:
         errors.append("promotionReady must be true when summary status is pass")
+    if blocker_entries and summary.get("status") != "fail":
+        errors.append("summary status must be fail when blockers are present")
+    if blocker_entries and summary.get("promotionReady") is not False:
+        errors.append("promotionReady must be false when blockers are present")
+    if warning_entries and not blocker_entries and summary.get("status") == "pass":
+        errors.append("summary status must not be pass when warnings are present")
     if strict:
         if summary.get("status") != "pass":
             errors.append("strict summary status must be pass")
@@ -1527,6 +1945,27 @@ def run_self_test() -> None:
         write_json(out_dir / SUMMARY_FILE_NAME, summary)
         write_text(out_dir / REPORT_FILE_NAME, report)
         assert validate_summary(read_json(out_dir / SUMMARY_FILE_NAME)) == [], summary
+        path_plan_config = json.loads(json.dumps(config, sort_keys=True))
+        path_plan_config["previousCandidate"]["summaryPath"] = "/srv/runner/work/cryptad/previous-summary.json"
+        path_plan_current = path_plan_config["currentCandidate"]
+        path_plan_current["productionBetaSummaryPath"] = "/home/runner/work/cryptad/current-summary.json"
+        path_plan = render_plan(validate_config(path_plan_config))
+        assert path_plan["previousCandidate"] == {
+            "version": "previous-beta",
+            "catalogChannel": "stable",
+            "summaryConfigured": True,
+        }, path_plan
+        assert path_plan["currentCandidate"] == {
+            "version": "current-beta",
+            "catalogChannel": "stable",
+            "productionBetaSummaryConfigured": True,
+        }, path_plan
+        path_plan_text = stable_json(path_plan)
+        assert "summaryPath" not in path_plan_text, path_plan_text
+        assert "productionBetaSummaryPath" not in path_plan_text, path_plan_text
+        assert "/srv/runner/work" not in path_plan_text, path_plan_text
+        assert "/home/runner/work" not in path_plan_text, path_plan_text
+        assert scan_redaction_payload(path_plan) == [], path_plan
 
         unsafe_catalog_config = json.loads(json.dumps(config, sort_keys=True))
         unsafe_catalog_config["nodes"][0]["catalogChannels"] = ["stable", "nightly"]
@@ -1700,6 +2139,43 @@ def run_self_test() -> None:
         valid_current_upgrade = scenario_map(valid_current_summary)["upgrade-from-previous-candidate"]
         assert valid_current_upgrade["status"] == "pass", valid_current_summary
         assert valid_current_upgrade["evidence"]["currentProductionBetaSummaryValid"] is True, valid_current_upgrade
+        missing_previous_attached_summary = json.loads(json.dumps(valid_current_summary, sort_keys=True))
+        missing_previous_attached_summary["previousCandidate"]["summaryProvided"] = False
+        missing_previous_upgrade = scenario_map(missing_previous_attached_summary)["upgrade-from-previous-candidate"]
+        missing_previous_upgrade["status"] = "pass"
+        missing_previous_evidence = missing_previous_upgrade["evidence"]
+        missing_previous_evidence["previousSummaryConfigured"] = False
+        missing_previous_evidence["previousSummaryProvided"] = False
+        missing_previous_evidence["previousSummaryValid"] = False
+        missing_previous_evidence["previousSummaryValidationErrors"] = []
+        missing_previous_errors = validate_summary(missing_previous_attached_summary)
+        assert "scenario upgrade-from-previous-candidate pass requires previousSummaryConfigured" in (
+            missing_previous_errors
+        ), missing_previous_errors
+        assert "scenario upgrade-from-previous-candidate pass requires previousSummaryProvided" in (
+            missing_previous_errors
+        ), missing_previous_errors
+        assert "scenario upgrade-from-previous-candidate pass requires previousSummaryValid" in (
+            missing_previous_errors
+        ), missing_previous_errors
+
+        invalid_current_attached_summary = json.loads(json.dumps(valid_current_summary, sort_keys=True))
+        invalid_current_upgrade = scenario_map(invalid_current_attached_summary)["upgrade-from-previous-candidate"]
+        invalid_current_upgrade["status"] = "pass"
+        invalid_current_evidence = invalid_current_upgrade["evidence"]
+        invalid_current_evidence["currentProductionBetaSummaryConfigured"] = True
+        invalid_current_evidence["currentProductionBetaSummaryProvided"] = True
+        invalid_current_evidence["currentProductionBetaSummaryValid"] = False
+        invalid_current_evidence["currentProductionBetaValidationErrors"] = ["fixture current summary invalid"]
+        invalid_current_errors = validate_summary(invalid_current_attached_summary)
+        assert (
+            "scenario upgrade-from-previous-candidate pass requires currentProductionBetaSummaryValid "
+            "when configured"
+        ) in invalid_current_errors, invalid_current_errors
+        assert (
+            "scenario upgrade-from-previous-candidate pass requires empty "
+            "currentProductionBetaValidationErrors when configured"
+        ) in invalid_current_errors, invalid_current_errors
 
         disabled_config = json.loads(json.dumps(config, sort_keys=True))
         disabled_config["scenarios"]["backupRestore"] = False
@@ -1767,6 +2243,45 @@ def run_self_test() -> None:
 
     malformed = {"schemaVersion": 1, "kind": SUMMARY_KIND, "status": "pass"}
     assert validate_summary(malformed), malformed
+    minimal_attached_summary = {
+        "schemaVersion": SCHEMA_VERSION,
+        "kind": SUMMARY_KIND,
+        "generatedAt": DETERMINISTIC_GENERATED_AT,
+        "mode": "simulated",
+        "durationProfile": "ci-smoke",
+        "status": "pass",
+        "promotionReady": True,
+        "nodes": [{"id": "node-a"}, {"id": "node-b"}],
+        "scenarios": [
+            {
+                "id": scenario_id,
+                "status": "pass",
+                "summary": "minimal pass",
+                "evidence": {"evidenceId": evidence_id},
+            }
+            for scenario_id, evidence_id in SCENARIO_EVIDENCE_IDS.items()
+        ],
+        "scenarioStatuses": {scenario_id: "pass" for scenario_id in SCENARIO_EVIDENCE_IDS},
+        "blockers": [],
+        "warnings": [],
+        "redaction": {
+            "status": "pass",
+            "findings": [],
+            "checks": {key: True for key in REDACTION_KEYS},
+        },
+        "artifacts": {
+            "markdownReport": REPORT_FILE_NAME,
+            "rawSummary": SUMMARY_FILE_NAME,
+        },
+    }
+    minimal_attached_errors = validate_summary(minimal_attached_summary)
+    assert "previousCandidate must be an object" in minimal_attached_errors, minimal_attached_errors
+    assert "currentCandidate must be an object" in minimal_attached_errors, minimal_attached_errors
+    assert "topology must be an object" in minimal_attached_errors, minimal_attached_errors
+    assert "nodes[0].role is invalid" in minimal_attached_errors, minimal_attached_errors
+    assert "scenario catalog-channel-update evidence missing stableOnlyNodeCount" in minimal_attached_errors, (
+        minimal_attached_errors
+    )
     malformed_redaction = json.loads(json.dumps(summary, sort_keys=True))
     malformed_redaction["redaction"] = ["not", "an", "object"]
     assert "redaction must be an object" in validate_summary(malformed_redaction), malformed_redaction
@@ -1799,6 +2314,34 @@ def run_self_test() -> None:
     assert "promotionReady must be true when summary status is pass" in validate_summary(
         non_promotable_pass_summary
     ), non_promotable_pass_summary
+    pass_with_blockers_summary = json.loads(json.dumps(summary, sort_keys=True))
+    pass_with_blockers_summary["status"] = "pass"
+    pass_with_blockers_summary["promotionReady"] = True
+    pass_with_blockers_summary["blockers"] = ["fixture blocker"]
+    pass_with_blockers_errors = validate_summary(pass_with_blockers_summary)
+    assert "summary status must be fail when blockers are present" in pass_with_blockers_errors, (
+        pass_with_blockers_errors
+    )
+    assert "promotionReady must be false when blockers are present" in pass_with_blockers_errors, (
+        pass_with_blockers_errors
+    )
+    pass_with_warnings_summary = json.loads(json.dumps(summary, sort_keys=True))
+    pass_with_warnings_summary["status"] = "pass"
+    pass_with_warnings_summary["promotionReady"] = True
+    pass_with_warnings_summary["warnings"] = ["fixture warning"]
+    assert "summary status must not be pass when warnings are present" in validate_summary(
+        pass_with_warnings_summary
+    ), pass_with_warnings_summary
+    malformed_blockers_summary = json.loads(json.dumps(summary, sort_keys=True))
+    malformed_blockers_summary["blockers"] = "fixture blocker"
+    assert "blockers must be a list" in validate_summary(malformed_blockers_summary), (
+        malformed_blockers_summary
+    )
+    malformed_warnings_summary = json.loads(json.dumps(summary, sort_keys=True))
+    malformed_warnings_summary["warnings"] = "fixture warning"
+    assert "warnings must be a list" in validate_summary(malformed_warnings_summary), (
+        malformed_warnings_summary
+    )
     unsafe_safety_summary = json.loads(json.dumps(summary, sort_keys=True))
     unsafe_safety_evidence = scenario_map(unsafe_safety_summary)["support-bundle-drill"]["evidence"]
     unsafe_safety_evidence["privateInsertUrisIncluded"] = True
@@ -1937,6 +2480,9 @@ def run_self_test() -> None:
         "absolute-local-path": "/home/alice/.cryptad/private-state",
         "etc-absolute-local-path": "/etc/cryptad/private-state",
         "srv-absolute-local-path": "/srv/runner/work/cryptad/private-state",
+        "file-uri-single-slash-local-path": "file:/home/alice/.cryptad/state",
+        "file-uri-triple-slash-local-path": "file:///home/alice/.cryptad/state",
+        "file-uri-localhost-local-path": "file://localhost/home/alice/.cryptad/state",
         "authorization-header": "Authorization: Basic abcdef123456",
         "appledouble": "._secret-sidecar",
         "macosx": "__MACOSX/archive-sidecar",

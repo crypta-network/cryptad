@@ -348,7 +348,7 @@ SECRET_ENV_FILE_INDIRECTION_NAMES = {
 }
 MIN_SECRET_ENV_VALUE_LENGTH = 6
 URL_USERINFO_RE = re.compile(r"\b[a-z][a-z0-9+.-]*://[^/\s:@]+:[^/\s@]+@", re.IGNORECASE)
-FILE_URI_RE = re.compile(r"\bfile:///[^\s\"'<>]+", re.IGNORECASE)
+FILE_URI_RE = re.compile(r"\bfile:(?://[^/\s\"'<>]*)?/[^\s\"'<>]+", re.IGNORECASE)
 WINDOWS_PATH_RE = re.compile(r"(?<![A-Za-z0-9_:/.\->])[A-Za-z]:[\\/][^:*?\"<>|\r\n]+")
 HOST_PATH_RE = re.compile(
     r"(?<![A-Za-z0-9_:/.\->])/"
@@ -1886,7 +1886,7 @@ def run_release_certification(state: PipelineState, env: dict[str, str], cert_ou
         args.append("--skip-gradle")
     if state.settings.require_live_network:
         args.append("--require-live-network-beta")
-    if state.settings.multi_node_soak_summary:
+    if state.settings.multi_node_soak_summary and not state.settings.run_multi_node_soak:
         args.extend(["--multi-node-soak-summary", str(state.settings.multi_node_soak_summary)])
     if state.settings.multi_node_soak_config:
         args.extend(["--multi-node-soak-config", str(state.settings.multi_node_soak_config)])
@@ -1900,11 +1900,14 @@ def run_release_certification(state: PipelineState, env: dict[str, str], cert_ou
         args.extend(["--previous-summary", str(state.settings.previous_summary)])
     if state.settings.waiver_file:
         args.extend(["--waiver-file", str(state.settings.waiver_file)])
+    cert_env = dict(env)
+    if state.settings.run_multi_node_soak:
+        cert_env.pop("CRYPTAD_CERT_MULTI_NODE_SOAK_SUMMARY", None)
     result = run_command(
         state,
         "release-certification",
         args,
-        env=env,
+        env=cert_env,
         timeout_seconds=max(state.settings.timeout_seconds, 1800),
         allow_failure=True,
     )
@@ -1930,7 +1933,7 @@ def evidence_by_id(summary: dict[str, Any] | None) -> dict[str, dict[str, Any]]:
 
 
 def multi_node_summary_path(settings: Settings, cert_out: Path) -> Path:
-    if settings.multi_node_soak_summary is not None:
+    if settings.multi_node_soak_summary is not None and not settings.run_multi_node_soak:
         return settings.multi_node_soak_summary
     return cert_out / "multi-node-beta-soak/summary.json"
 
@@ -3160,11 +3163,15 @@ def build_parser() -> argparse.ArgumentParser:
 def settings_from_args(args: argparse.Namespace) -> Settings:
     workspace = args.workspace_root.resolve()
     out_dir = (workspace / args.out_dir).resolve() if not args.out_dir.is_absolute() else args.out_dir.resolve()
-    multi_node_soak_summary = (
-        resolve_workspace_path_arg(args.multi_node_soak_summary, workspace)
-        if args.multi_node_soak_summary is not None
-        else resolve_workspace_path_text(os.environ.get("CRYPTAD_CERT_MULTI_NODE_SOAK_SUMMARY"), workspace)
-    )
+    if args.run_multi_node_soak and args.multi_node_soak_summary is not None:
+        raise SystemExit("--run-multi-node-soak cannot be combined with --multi-node-soak-summary.")
+    multi_node_soak_summary = None
+    if not args.run_multi_node_soak:
+        multi_node_soak_summary = (
+            resolve_workspace_path_arg(args.multi_node_soak_summary, workspace)
+            if args.multi_node_soak_summary is not None
+            else resolve_workspace_path_text(os.environ.get("CRYPTAD_CERT_MULTI_NODE_SOAK_SUMMARY"), workspace)
+        )
     multi_node_soak_config = resolve_workspace_path_arg(args.multi_node_soak_config, workspace)
     artifact_base_uri = args.artifact_base_uri.strip() or os.environ.get(
         "CRYPTAD_PRODUCTION_BETA_ARTIFACT_BASE_URI", ""
@@ -3183,7 +3190,7 @@ def settings_from_args(args: argparse.Namespace) -> Settings:
         args.mode == "production-beta" and not args.emergency_skip_live_network
     )
     require_multi_node_soak = args.require_multi_node_soak or args.mode == "production-beta"
-    run_multi_node_soak = args.run_multi_node_soak or require_multi_node_soak
+    run_multi_node_soak = args.run_multi_node_soak or multi_node_soak_summary is None
     require_sandbox = args.require_sandbox_provider_tests or args.mode == "production-beta"
     return Settings(
         workspace_root=workspace,
@@ -3710,6 +3717,68 @@ def write_minimal_promotion_artifacts(out_dir: Path) -> None:
     write_text(out_dir / "catalog" / CANONICAL_CATALOG_SIGNATURE, "signature=ok\n")
 
 
+def passing_multi_node_beta_soak_summary() -> dict[str, Any]:
+    with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-multi-node-summary-") as temp_name:
+        base_dir = Path(temp_name)
+        write_json(
+            base_dir / "previous-summary.json",
+            {"schemaVersion": 1, "status": "pass", "promotionReady": True},
+        )
+        write_json(
+            base_dir / "current-summary.json",
+            {"schemaVersion": 1, "status": "pass", "promotionReady": True},
+        )
+        config = multi_node_beta_soak.validate_config(
+            {
+                "schemaVersion": 1,
+                "kind": multi_node_beta_soak.CONFIG_KIND,
+                "mode": "simulated",
+                "durationProfile": "ci-smoke",
+                "previousCandidate": {
+                    "version": "previous-beta",
+                    "summaryPath": "previous-summary.json",
+                    "catalogChannel": "stable",
+                },
+                "currentCandidate": {
+                    "version": "current-beta",
+                    "productionBetaSummaryPath": "current-summary.json",
+                    "catalogChannel": "stable",
+                },
+                "nodes": [
+                    {
+                        "id": "node-a",
+                        "role": "publisher",
+                        "catalogChannels": ["stable"],
+                        "apps": ["feed-reader", "profile-publisher", "trust-graph", "social-inbox"],
+                    },
+                    {
+                        "id": "node-b",
+                        "role": "subscriber",
+                        "catalogChannels": ["stable", "beta"],
+                        "apps": ["feed-reader", "social-inbox"],
+                    },
+                    {
+                        "id": "node-c",
+                        "role": "subscriber",
+                        "catalogChannels": ["stable"],
+                        "apps": ["feed-reader", "trust-graph"],
+                    },
+                ],
+                "scenarios": {scenario: True for scenario in multi_node_beta_soak.REQUIRED_SCENARIOS},
+                "redaction": {key: True for key in multi_node_beta_soak.REDACTION_KEYS},
+                "strict": {
+                    "requireAllScenarios": True,
+                    "requirePreviousSummary": True,
+                },
+            },
+            strict=True,
+        )
+        summary = multi_node_beta_soak.build_summary(config, strict=True, base_dir=base_dir)
+    assert summary["status"] == "pass", summary
+    assert summary["promotionReady"] is True, summary
+    return summary
+
+
 def passing_promotion_summaries() -> dict[str, Any]:
     cert_evidence = [
         {
@@ -3732,35 +3801,7 @@ def passing_promotion_summaries() -> dict[str, Any]:
     return {
         "certification": {"releaseCandidatePassed": True, "evidence": cert_evidence},
         "liveNetwork": {"status": "pass", "evidence": live_evidence},
-        "multiNodeBetaSoak": {
-            "schemaVersion": 1,
-            "kind": multi_node_beta_soak.SUMMARY_KIND,
-            "status": "pass",
-            "promotionReady": True,
-            "mode": "simulated",
-            "durationProfile": "ci-smoke",
-            "nodes": [{"id": "node-a"}, {"id": "node-b"}],
-            "scenarios": [
-                {
-                    "id": scenario_id,
-                    "status": "pass",
-                    "summary": f"{scenario_id} passed.",
-                    "evidence": {"evidenceId": evidence_id},
-                }
-                for scenario_id, evidence_id in multi_node_beta_soak.SCENARIO_EVIDENCE_IDS.items()
-            ],
-            "blockers": [],
-            "warnings": [],
-            "redaction": {
-                "status": "pass",
-                "findings": [],
-                "checks": {key: True for key in multi_node_beta_soak.REDACTION_KEYS},
-            },
-            "artifacts": {
-                "markdownReport": multi_node_beta_soak.REPORT_FILE_NAME,
-                "rawSummary": multi_node_beta_soak.SUMMARY_FILE_NAME,
-            },
-        },
+        "multiNodeBetaSoak": passing_multi_node_beta_soak_summary(),
         "matrix": {"status": "pass", "releaseBlockerCount": 0},
     }
 
@@ -4212,6 +4253,132 @@ def assert_env_attached_multi_node_summary_is_extracted() -> None:
         assert extracted["promotionReady"] is True, extracted
 
 
+def assert_attached_multi_node_summary_is_not_marked_generated() -> None:
+    with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-attached-multi-node-config-") as temp_name:
+        workspace = Path(temp_name) / "repo"
+        workspace.mkdir(parents=True)
+        out_dir = workspace / "build/production-beta"
+        attached_summary = workspace / "attached/multi-node-summary.json"
+        write_json(attached_summary, passing_promotion_summaries()["multiNodeBetaSoak"])
+        parser = build_parser()
+        settings = settings_from_args(
+            parser.parse_args(
+                [
+                    "--workspace-root",
+                    str(workspace),
+                    "--out-dir",
+                    str(out_dir.relative_to(workspace)),
+                    "--mode",
+                    "production-beta",
+                    "--artifact-base-uri",
+                    "https://downloads.crypta.org/self-test",
+                    "--multi-node-soak-summary",
+                    str(attached_summary.relative_to(workspace)),
+                ]
+            )
+        )
+        state = PipelineState(settings, "self-test", utc_now(), [], [], [])
+        config = release_config(state)
+
+        assert settings.require_multi_node_soak is True, settings
+        assert settings.run_multi_node_soak is False, settings
+        assert config["requireMultiNodeSoak"] is True, config
+        assert config["runMultiNodeSoak"] is False, config
+
+
+def assert_run_multi_node_soak_overrides_attached_env_summary() -> None:
+    with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-run-multi-node-") as temp_name:
+        workspace = Path(temp_name) / "repo"
+        workspace.mkdir(parents=True)
+        out_dir = workspace / "build/production-beta"
+        cert_out = workspace / "build/certification"
+        attached_summary = workspace / "attached/multi-node-summary.json"
+        captured_args: list[list[str]] = []
+        captured_envs: list[dict[str, str]] = []
+
+        parser = build_parser()
+        env_name = "CRYPTAD_CERT_MULTI_NODE_SOAK_SUMMARY"
+        old_env = os.environ.get(env_name)
+        os.environ[env_name] = str(attached_summary.relative_to(workspace))
+        try:
+            settings = settings_from_args(
+                parser.parse_args(
+                    [
+                        "--workspace-root",
+                        str(workspace),
+                        "--out-dir",
+                        str(out_dir.relative_to(workspace)),
+                        "--artifact-base-uri",
+                        "https://downloads.crypta.invalid/self-test",
+                        "--run-multi-node-soak",
+                    ]
+                )
+            )
+        finally:
+            if old_env is None:
+                os.environ.pop(env_name, None)
+            else:
+                os.environ[env_name] = old_env
+
+        def fake_run_command(
+            state: PipelineState,
+            name: str,
+            args: list[str],
+            env: dict[str, str] | None = None,
+            timeout_seconds: int = 0,
+            allow_failure: bool = False,
+        ) -> CommandResult:
+            del state, timeout_seconds, allow_failure
+            captured_args.append(list(args))
+            captured_envs.append(dict(env or {}))
+            return CommandResult(name, list(args), 0, 1, "", "")
+
+        original_run_command = globals()["run_command"]
+        try:
+            globals()["run_command"] = fake_run_command
+            run_release_certification(
+                PipelineState(settings, "self-test", utc_now(), [], [], []),
+                {env_name: str(attached_summary)},
+                cert_out,
+            )
+        finally:
+            globals()["run_command"] = original_run_command
+
+        assert settings.multi_node_soak_summary is None, settings
+        assert settings.run_multi_node_soak is True, settings
+        assert "--multi-node-soak-summary" not in captured_args[-1], captured_args[-1]
+        assert env_name not in captured_envs[-1], captured_envs[-1]
+        assert multi_node_summary_path(settings, cert_out) == cert_out / "multi-node-beta-soak/summary.json"
+
+
+def assert_run_multi_node_soak_rejects_cli_summary() -> None:
+    with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-run-multi-node-conflict-") as temp_name:
+        workspace = Path(temp_name) / "repo"
+        workspace.mkdir(parents=True)
+        out_dir = workspace / "build/production-beta"
+        parser = build_parser()
+        try:
+            settings_from_args(
+                parser.parse_args(
+                    [
+                        "--workspace-root",
+                        str(workspace),
+                        "--out-dir",
+                        str(out_dir.relative_to(workspace)),
+                        "--artifact-base-uri",
+                        "https://downloads.crypta.invalid/self-test",
+                        "--run-multi-node-soak",
+                        "--multi-node-soak-summary",
+                        "attached/multi-node-summary.json",
+                    ]
+                )
+            )
+        except SystemExit as exc:
+            assert "--run-multi-node-soak cannot be combined" in str(exc), exc
+        else:
+            raise AssertionError("--run-multi-node-soak accepted --multi-node-soak-summary")
+
+
 def assert_attached_multi_node_safety_flags_block_promotion() -> None:
     with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-attached-multi-node-safety-") as temp_name:
         workspace = Path(temp_name) / "repo"
@@ -4280,6 +4447,39 @@ def assert_attached_multi_node_non_promotable_summary_blocks_promotion() -> None
         assert multi_node["status"] == "fail", multi_node
         assert multi_node["promotionReady"] is False, multi_node
         assert "promotionReady must be true when summary status is pass" in multi_node["validationErrors"], multi_node
+
+
+def assert_attached_multi_node_blockers_and_warnings_block_promotion() -> None:
+    with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-attached-multi-node-blockers-") as temp_name:
+        workspace = Path(temp_name) / "repo"
+        workspace.mkdir(parents=True)
+        out_dir = workspace / "build/production-beta"
+        settings = dataclasses.replace(
+            cleanup_test_settings(workspace, out_dir),
+            require_multi_node_soak=True,
+        )
+
+        for field, message, expected_error in (
+            ("blockers", "fixture blocker", "summary status must be fail when blockers are present"),
+            ("warnings", "fixture warning", "summary status must not be pass when warnings are present"),
+        ):
+            summaries = passing_promotion_summaries()
+            malformed_summary = json.loads(json.dumps(summaries["multiNodeBetaSoak"], sort_keys=True))
+            malformed_summary["status"] = "pass"
+            malformed_summary["promotionReady"] = True
+            malformed_summary[field] = [message]
+            summaries["multiNodeBetaSoak"] = malformed_summary
+
+            state = PipelineState(settings, "self-test", utc_now(), [], [], [])
+            promotion = evaluate_promotion(state, summaries)
+            failed_ids = {gate["id"] for gate in promotion["gates"] if gate["status"] == "fail"}
+            multi_node = promotion["multiNodeBetaSoak"]
+
+            assert "multi-node-beta.soak" in failed_ids, promotion
+            assert promotion["promotionReady"] is False, promotion
+            assert multi_node["status"] == "fail", multi_node
+            assert multi_node["promotionReady"] is False, multi_node
+            assert expected_error in multi_node["validationErrors"], multi_node
 
 
 def assert_multi_node_mode_is_only_forwarded_when_overridden() -> None:
@@ -5183,8 +5383,12 @@ def run_self_test() -> None:
     assert_certification_failure_marks_dry_run_failed()
     assert_attached_multi_node_summary_is_extracted()
     assert_env_attached_multi_node_summary_is_extracted()
+    assert_attached_multi_node_summary_is_not_marked_generated()
+    assert_run_multi_node_soak_overrides_attached_env_summary()
+    assert_run_multi_node_soak_rejects_cli_summary()
     assert_attached_multi_node_safety_flags_block_promotion()
     assert_attached_multi_node_non_promotable_summary_blocks_promotion()
+    assert_attached_multi_node_blockers_and_warnings_block_promotion()
     assert_multi_node_mode_is_only_forwarded_when_overridden()
     assert_multi_node_paths_resolve_from_workspace()
     assert_cleanup_refuses_protected_workspace_paths()
@@ -5533,6 +5737,18 @@ def run_self_test() -> None:
     assert_redaction_fails(
         "absolute-path",
         lambda out_dir: write_redaction_fixture_text(out_dir / "path.txt", "localPath=/home/alice/private/key.pem\n"),
+    )
+    assert_redaction_fails(
+        "file-uri-single-slash-path",
+        lambda out_dir: write_redaction_fixture_text(
+            out_dir / "path.txt", "localPath=file:/home/alice/.cryptad/state\n"
+        ),
+    )
+    assert_redaction_fails(
+        "file-uri-localhost-path",
+        lambda out_dir: write_redaction_fixture_text(
+            out_dir / "path.txt", "localPath=file://localhost/home/alice/.cryptad/state\n"
+        ),
     )
     assert_redaction_fails(
         "root-gradle-path",
