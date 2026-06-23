@@ -349,7 +349,12 @@ SECRET_ENV_FILE_INDIRECTION_NAMES = {
 }
 MIN_SECRET_ENV_VALUE_LENGTH = 6
 URL_USERINFO_RE = re.compile(r"\b[a-z][a-z0-9+.-]*://[^/\s:@]+:[^/\s@]+@", re.IGNORECASE)
-FILE_URI_RE = re.compile(r"\bfile:(?://[^/\s\"'<>]*)?/[^\s\"'<>]+", re.IGNORECASE)
+FILE_URI_RE = re.compile(
+    r"(?<![\w^])file:(?://[^/\s\"'<>]*)?/"
+    r"(?:private/tmp|var/folders|Users|home|work|workspace|tmp|mnt|Volumes|root|opt|runner|__w|srv|etc)"
+    r"(?:/[^\s\"'<>),;]*)?(?=$|[\s\"'<>),;])",
+    re.IGNORECASE,
+)
 WINDOWS_PATH_RE = re.compile(r"(?<![A-Za-z0-9_:/.\->])[A-Za-z]:[\\/][^:*?\"<>|\r\n]+")
 HOST_PATH_RE = re.compile(
     r"(?<![A-Za-z0-9_:/.\->])/"
@@ -5758,9 +5763,22 @@ def run_self_test() -> None:
         ),
     )
     assert_redaction_fails(
+        "file-uri-triple-slash-path",
+        lambda out_dir: write_redaction_fixture_text(
+            out_dir / "path.txt", "localPath=file:///home/alice/.cryptad/state\n"
+        ),
+    )
+    assert_redaction_fails(
         "file-uri-localhost-path",
         lambda out_dir: write_redaction_fixture_text(
             out_dir / "path.txt", "localPath=file://localhost/home/alice/.cryptad/state\n"
+        ),
+    )
+    assert_redaction_allows(
+        "file-uri-regex-literal",
+        lambda out_dir: write_redaction_fixture_text(
+            out_dir / "static/app.js",
+            'if (/^file:/i.test(sourceUri)) {\n  return "file";\n}\n',
         ),
     )
     assert_redaction_fails(
