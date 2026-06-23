@@ -301,7 +301,8 @@ PRIVATE_KEY_RE = re.compile(
 PRIVATE_KEY_HEADER_RE = re.compile(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----", re.IGNORECASE)
 BEARER_RE = re.compile(r"\bBearer\s+[A-Za-z0-9._~+/=-]{12,}", re.IGNORECASE)
 AUTH_HEADER_RE = re.compile(
-    r"(?<![\w-])[\"']?Authorization[\"']?\s*:\s*[\"']?(?:Bearer|Basic|Digest)?\s*([^\s,'\"}]+)",
+    r"(?<![\w-])[\"']?Authorization[\"']?(?![\w-])"
+    r"\s*(?::|(?<![=!<>])=(?!=))\s*[\"']?(?:Bearer|Basic|Digest)?\s*([^\s,'\"}]+)",
     re.IGNORECASE,
 )
 APP_TOKEN_VALUE_RE = re.compile(
@@ -1902,7 +1903,7 @@ def run_release_certification(state: PipelineState, env: dict[str, str], cert_ou
         args.extend(["--waiver-file", str(state.settings.waiver_file)])
     cert_env = dict(env)
     if state.settings.run_multi_node_soak:
-        cert_env.pop("CRYPTAD_CERT_MULTI_NODE_SOAK_SUMMARY", None)
+        cert_env["CRYPTAD_CERT_MULTI_NODE_SOAK_SUMMARY"] = ""
     result = run_command(
         state,
         "release-certification",
@@ -4347,7 +4348,7 @@ def assert_run_multi_node_soak_overrides_attached_env_summary() -> None:
         assert settings.multi_node_soak_summary is None, settings
         assert settings.run_multi_node_soak is True, settings
         assert "--multi-node-soak-summary" not in captured_args[-1], captured_args[-1]
-        assert env_name not in captured_envs[-1], captured_envs[-1]
+        assert captured_envs[-1].get(env_name) == "", captured_envs[-1]
         assert multi_node_summary_path(settings, cert_out) == cert_out / "multi-node-beta-soak/summary.json"
 
 
@@ -5586,6 +5587,18 @@ def run_self_test() -> None:
         "bearer",
         lambda out_dir: write_redaction_fixture_text(
             out_dir / "auth.txt", "Authorization: Bearer abcdefghijklmnopqrstuvwxyz\n"
+        ),
+    )
+    assert_redaction_fails(
+        "authorization-assignment",
+        lambda out_dir: write_redaction_fixture_text(
+            out_dir / "auth.txt", "Authorization=Basic abcdefghijklmnopqrstuvwxyz\n"
+        ),
+    )
+    assert_redaction_fails(
+        "json-authorization-header",
+        lambda out_dir: write_redaction_fixture_text(
+            out_dir / "auth.json", '{"Authorization": "Digest abcdefghijklmnopqrstuvwxyz"}\n'
         ),
     )
     assert_redaction_fails(

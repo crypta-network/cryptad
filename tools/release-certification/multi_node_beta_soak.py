@@ -213,7 +213,8 @@ PRIVATE_KEY_RE = re.compile(
     re.IGNORECASE,
 )
 AUTH_HEADER_RE = re.compile(
-    r"(?<![\w-])Authorization\s*:\s*(?:Bearer|Basic|Digest)?\s*([^\s,'\"}]+)",
+    r"(?<![\w-])[\"']?Authorization[\"']?(?![\w-])"
+    r"\s*(?::|(?<![=!<>])=(?!=))\s*[\"']?(?:Bearer|Basic|Digest)?\s*([^\s,'\"}]+)",
     re.IGNORECASE,
 )
 BEARER_RE = re.compile(r"\bBearer\s+[A-Za-z0-9._~+/=-]{12,}", re.IGNORECASE)
@@ -2617,6 +2618,8 @@ def run_self_test() -> None:
         "file-uri-triple-slash-local-path": "file:///home/alice/.cryptad/state",
         "file-uri-localhost-local-path": "file://localhost/home/alice/.cryptad/state",
         "authorization-header": "Authorization: Basic abcdef123456",
+        "authorization-assignment": "Authorization=Basic abcdef123456",
+        "authorization-json-header": '"Authorization": "Digest abcdef123456"',
         "appledouble": "._secret-sidecar",
         "macosx": "__MACOSX/archive-sidecar",
     }
