@@ -32,6 +32,26 @@ on:
         required: true
         default: false
         type: boolean
+      multi_node_mode:
+        description: Optional multi-node soak mode override. Leave blank to use the topology config mode.
+        required: false
+        default: ''
+        type: string
+      multi_node_soak_config:
+        description: Multi-node soak topology config path. Leave blank for PR-safe default; production-beta requires a production config or summary.
+        required: false
+        default: ''
+        type: string
+      multi_node_soak_summary:
+        description: Existing multi-node soak summary path for protected production promotion.
+        required: false
+        default: ''
+        type: string
+      require_multi_node_soak:
+        description: Require multi-node beta soak evidence.
+        required: true
+        default: false
+        type: boolean
       artifact_base_uri:
         description: Public base URI where staged app bundles will be published.
         required: false
@@ -72,6 +92,10 @@ jobs:
           INPUT_MODE: ${{ inputs.mode || '' }}
           INPUT_CATALOG_CHANNEL: ${{ inputs.catalog_channel || 'stable' }}
           INPUT_REQUIRE_LIVE_NETWORK: ${{ inputs.require_live_network || 'false' }}
+          INPUT_MULTI_NODE_MODE: ${{ inputs.multi_node_mode || '' }}
+          INPUT_MULTI_NODE_SOAK_CONFIG: ${{ inputs.multi_node_soak_config || 'tools/release-certification/fixtures/self-test-multi-node-beta-soak.json' }}
+          INPUT_MULTI_NODE_SOAK_SUMMARY: ${{ inputs.multi_node_soak_summary || '' }}
+          INPUT_REQUIRE_MULTI_NODE_SOAK: ${{ inputs.require_multi_node_soak || 'false' }}
           INPUT_ARTIFACT_BASE_URI: ${{ inputs.artifact_base_uri || vars.CRYPTAD_PRODUCTION_BETA_ARTIFACT_BASE_URI || (github.event_name != 'pull_request' && secrets.CRYPTAD_PRODUCTION_BETA_ARTIFACT_BASE_URI) || '' }}
           CRYPTAD_CERT_NODE_BASE_URL: ${{ github.event_name == 'workflow_dispatch' && inputs.require_live_network && secrets.CRYPTAD_CERT_NODE_BASE_URL || '' }}
           CRYPTAD_CERT_FORM_PASSWORD: ${{ github.event_name == 'workflow_dispatch' && inputs.require_live_network && secrets.CRYPTAD_CERT_FORM_PASSWORD || '' }}
@@ -100,6 +124,20 @@ jobs:
             --catalog-channel "$INPUT_CATALOG_CHANNEL"
           )
 
+          if [[ -n "$INPUT_MULTI_NODE_MODE" ]]; then
+            args+=(--multi-node-mode "$INPUT_MULTI_NODE_MODE")
+          fi
+
+          if [[ -n "$INPUT_MULTI_NODE_SOAK_SUMMARY" ]]; then
+            args+=(--multi-node-soak-summary "$INPUT_MULTI_NODE_SOAK_SUMMARY")
+          else
+            args+=(--run-multi-node-soak)
+          fi
+
+          if [[ -z "$INPUT_MULTI_NODE_SOAK_SUMMARY" && -n "$INPUT_MULTI_NODE_SOAK_CONFIG" ]]; then
+            args+=(--multi-node-soak-config "$INPUT_MULTI_NODE_SOAK_CONFIG")
+          fi
+
           if [[ "$mode" == "developer-dry-run" ]]; then
             args+=(--allow-dirty-workspace)
           fi
@@ -109,6 +147,10 @@ jobs:
             if [[ -n "${CRYPTAD_CERT_LIVE_TEST_INSERT_URI:-}" ]]; then
               export CRYPTAD_CERT_LIVE_TEST_INSERT_URI_ENV=CRYPTAD_CERT_LIVE_TEST_INSERT_URI
             fi
+          fi
+
+          if [[ "$INPUT_REQUIRE_MULTI_NODE_SOAK" == "true" ]]; then
+            args+=(--require-multi-node-soak)
           fi
 
           if [[ -n "$INPUT_ARTIFACT_BASE_URI" ]]; then
@@ -207,6 +249,9 @@ jobs:
           CRYPTAD_CERT_LIVE_TRUST_PUBLIC_URI: ${{ secrets.CRYPTAD_CERT_LIVE_TRUST_PUBLIC_URI }}
           CRYPTAD_CERT_LIVE_TEST_INSERT_URI: ${{ secrets.CRYPTAD_CERT_LIVE_TEST_INSERT_URI }}
           INPUT_ARTIFACT_BASE_URI: ${{ inputs.artifact_base_uri || vars.CRYPTAD_PRODUCTION_BETA_ARTIFACT_BASE_URI || secrets.CRYPTAD_PRODUCTION_BETA_ARTIFACT_BASE_URI || '' }}
+          INPUT_MULTI_NODE_MODE: ${{ inputs.multi_node_mode || '' }}
+          INPUT_MULTI_NODE_SOAK_CONFIG: ${{ inputs.multi_node_soak_config || '' }}
+          INPUT_MULTI_NODE_SOAK_SUMMARY: ${{ inputs.multi_node_soak_summary || '' }}
         run: |
           if [[ -z "$INPUT_ARTIFACT_BASE_URI" ]]; then
             echo "::error::CRYPTAD_PRODUCTION_BETA_ARTIFACT_BASE_URI or workflow artifact_base_uri input is required for production-beta."
@@ -218,14 +263,36 @@ jobs:
           fi
           export CRYPTAD_CERT_LIVE_TEST_INSERT_URI_ENV=CRYPTAD_CERT_LIVE_TEST_INSERT_URI
 
-          tools/release-certification/run-production-beta-release.sh \
-            --workspace-root . \
-            --out-dir build/production-beta-release \
-            --mode production-beta \
-            --catalog-channel "${{ inputs.catalog_channel }}" \
-            --artifact-base-uri "$INPUT_ARTIFACT_BASE_URI" \
-            --require-live-network \
+          self_test_multi_node_config="tools/release-certification/fixtures/self-test-multi-node-beta-soak.json"
+          if [[ -z "$INPUT_MULTI_NODE_SOAK_SUMMARY" && -z "$INPUT_MULTI_NODE_SOAK_CONFIG" ]]; then
+            echo "::error::production-beta requires multi_node_soak_summary or a production multi_node_soak_config."
+            exit 1
+          fi
+          if [[ -z "$INPUT_MULTI_NODE_SOAK_SUMMARY" && "$INPUT_MULTI_NODE_SOAK_CONFIG" == "$self_test_multi_node_config" ]]; then
+            echo "::error::production-beta cannot use the self-test multi-node soak topology as required promotion evidence."
+            exit 1
+          fi
+
+          args=(
+            tools/release-certification/run-production-beta-release.sh
+            --workspace-root .
+            --out-dir build/production-beta-release
+            --mode production-beta
+            --catalog-channel "${{ inputs.catalog_channel }}"
+            --artifact-base-uri "$INPUT_ARTIFACT_BASE_URI"
+            --require-multi-node-soak
+            --require-live-network
             --require-sandbox-provider-tests
+          )
+          if [[ -n "$INPUT_MULTI_NODE_SOAK_SUMMARY" ]]; then
+            args+=(--multi-node-soak-summary "$INPUT_MULTI_NODE_SOAK_SUMMARY")
+          else
+            args+=(--run-multi-node-soak --multi-node-soak-config "$INPUT_MULTI_NODE_SOAK_CONFIG")
+          fi
+          if [[ -n "$INPUT_MULTI_NODE_MODE" ]]; then
+            args+=(--multi-node-mode "$INPUT_MULTI_NODE_MODE")
+          fi
+          "${args[@]}"
 
       - name: Read production beta redaction status
         id: redaction

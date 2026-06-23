@@ -1,0 +1,75 @@
+{
+  "currentCandidate": {
+    "catalogChannel": "stable",
+    "productionBetaSummaryPath": "",
+    "version": "current-beta"
+  },
+  "durationProfile": "ci-smoke",
+  "kind": "cryptad-multi-node-beta-soak-config",
+  "mode": "simulated",
+  "nodes": [
+    {
+      "apps": [
+        "feed-reader",
+        "profile-publisher",
+        "trust-graph",
+        "social-inbox"
+      ],
+      "catalogChannels": [
+        "stable"
+      ],
+      "id": "node-a",
+      "role": "publisher"
+    },
+    {
+      "apps": [
+        "feed-reader",
+        "social-inbox"
+      ],
+      "catalogChannels": [
+        "stable",
+        "beta"
+      ],
+      "id": "node-b",
+      "role": "subscriber"
+    },
+    {
+      "apps": [
+        "feed-reader",
+        "trust-graph"
+      ],
+      "catalogChannels": [
+        "stable"
+      ],
+      "id": "node-c",
+      "role": "subscriber"
+    }
+  ],
+  "previousCandidate": {
+    "catalogChannel": "stable",
+    "summaryPath": "",
+    "version": "previous-beta"
+  },
+  "redaction": {
+    "failOnAbsoluteLocalPaths": true,
+    "failOnPrivateInsertUri": true,
+    "failOnRawFetchedContent": true,
+    "failOnTokens": true
+  },
+  "scenarios": {
+    "appDataMigration": true,
+    "appInstallUpdateRollback": true,
+    "backupRestore": true,
+    "catalogUpdate": true,
+    "socialInboxMultiSource": true,
+    "subscriptionPressure": true,
+    "supportBundleDrill": true,
+    "trustGraphImport": true,
+    "upgradeFromPreviousCandidate": true
+  },
+  "schemaVersion": 1,
+  "strict": {
+    "requireAllScenarios": false,
+    "requirePreviousSummary": false
+  }
+}

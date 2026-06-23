@@ -25,6 +25,7 @@ from typing import Any
 # Local release-certification helpers must not create __pycache__ before git metadata is collected.
 sys.dont_write_bytecode = True
 import app_platform_docs_check
+import multi_node_beta_soak
 
 
 TOOL_NAME = "release-certification"
@@ -149,6 +150,8 @@ NETWORK_SCALE_SOAK_REDACTION_KEYS = (
     "absolutePathsExcluded",
     "queueHtmlExcluded",
 )
+MULTI_NODE_BETA_EVIDENCE_IDS = multi_node_beta_soak.EVIDENCE_IDS
+MULTI_NODE_BETA_SCENARIO_EVIDENCE_IDS = multi_node_beta_soak.SCENARIO_EVIDENCE_IDS
 ECOSYSTEM_RC_GATE_ID = "ecosystem.rc-certification"
 ECOSYSTEM_RC_EVIDENCE_ID = "release-certification.ecosystem-rc-gate"
 ECOSYSTEM_RC_MATRIX_ROW_ID = "ecosystem-rc-certification-gate"
@@ -188,6 +191,7 @@ ECOSYSTEM_RC_REQUIRED_GATE_IDS = (
     "ecosystem.app-vault",
     "ecosystem.sandbox-provider",
     "ecosystem.reference-content-apps",
+    "ecosystem.multi-node-beta",
     "ecosystem.legacy-retirement",
 )
 ECOSYSTEM_RC_REQUIRED_EVIDENCE_IDS = (
@@ -255,6 +259,7 @@ ECOSYSTEM_RC_REQUIRED_EVIDENCE_IDS = (
     *APP_SERVICE_DISCOVERY_AND_GRANT_EVIDENCE_IDS,
     *NETWORK_SCALE_EVIDENCE_IDS,
     NETWORK_SCALE_SOAK_EVIDENCE_ID,
+    *MULTI_NODE_BETA_EVIDENCE_IDS,
     *OPERATOR_RC_EVIDENCE_IDS,
     "legacy.retirement",
     "legacy-admin.removal-wave-1",
@@ -286,6 +291,7 @@ ECOSYSTEM_RC_REDACTION_EVIDENCE_IDS = (
     "ecosystem-security.advisory-revocation-redaction",
     "live-network-beta.redaction",
     "network-scale.redaction",
+    "multi-node-beta.redaction",
     "app-services.redaction",
     "app-services.dependency-redaction",
     "operator-beta.support-bundle-redaction",
@@ -552,6 +558,8 @@ class Settings:
     write_history: bool = False
     history_label: str = ""
     waiver_files: tuple[Path, ...] = ()
+    multi_node_soak_summary: Path = DEFAULT_OUT_DIR / "multi-node-beta-soak" / "summary.json"
+    multi_node_soak_required: bool = False
 
 
 def utc_now() -> str:
@@ -1784,6 +1792,165 @@ def network_scale_soak_evidence(
     )
 
 
+def multi_node_validation_redaction_findings(validation_errors: list[str]) -> list[dict[str, str]]:
+    findings: list[dict[str, str]] = []
+    for error in validation_errors:
+        match = re.match(r"^redaction leak detected: (?P<kind>[^ ]+) at (?P<location>.+)$", error)
+        if not match:
+            match = re.match(r"^redaction safety violation: (?P<kind>[^ ]+) at (?P<location>.+)$", error)
+        if match:
+            findings.append(
+                {
+                    "kind": match.group("kind"),
+                    "location": match.group("location"),
+                    "source": "validation",
+                }
+            )
+    return findings
+
+
+def multi_node_beta_soak_evidence(
+    path: Path,
+    workspace_root: Path,
+    out_dir: Path,
+    mode: str,
+    required: bool,
+) -> list[EvidenceItem]:
+    source = display_path(path, workspace_root, out_dir)
+    summary = read_json(path)
+    required_for_rc = required or mode == "release-candidate"
+    if summary is None:
+        status = "missing" if required_for_rc else "skip"
+        return [
+            EvidenceItem(
+                evidence_id,
+                status,
+                required_for_rc,
+                "Multi-node beta soak summary is missing.",
+                source,
+                {"requiredInMode": required_for_rc},
+            )
+            for evidence_id in MULTI_NODE_BETA_EVIDENCE_IDS
+        ]
+
+    validation_errors = multi_node_beta_soak.validate_summary(summary, strict=False)
+    required_disabled_scenarios: set[str] = set()
+    if required_for_rc:
+        for scenario_id, entry in multi_node_beta_soak.scenario_map(summary).items():
+            if scenario_id not in MULTI_NODE_BETA_SCENARIO_EVIDENCE_IDS:
+                continue
+            evidence = entry.get("evidence") if isinstance(entry, dict) else None
+            if isinstance(evidence, dict) and evidence.get("configured") is False:
+                required_disabled_scenarios.add(scenario_id)
+        validation_errors = [
+            *validation_errors,
+            *[
+                f"scenario {scenario_id} is disabled but required in {mode}"
+                for scenario_id in sorted(required_disabled_scenarios)
+            ],
+        ]
+    compact = multi_node_beta_soak.compact_for_release(summary)
+    compact = dict(sanitize_value(compact, workspace_root, out_dir))
+    summary_status = normalize_evidence_status(str(compact.get("status", "missing")))
+    scenario_statuses = compact.get("scenarioStatuses", {})
+    if not isinstance(scenario_statuses, dict):
+        scenario_statuses = {}
+    else:
+        scenario_statuses = dict(scenario_statuses)
+    for scenario_id in required_disabled_scenarios:
+        scenario_statuses[scenario_id] = "fail"
+    redaction = compact.get("redaction", {})
+    if not isinstance(redaction, dict):
+        redaction = {}
+    redaction_findings = redaction.get("findings", [])
+    if not isinstance(redaction_findings, list):
+        redaction_findings = []
+    redaction_findings = [
+        *redaction_findings,
+        *multi_node_validation_redaction_findings(validation_errors),
+    ]
+    promotion_ready = compact.get("promotionReady") is True
+    common_details = {
+        "requiredInMode": required_for_rc,
+        "summaryStatus": summary_status,
+        "mode": compact.get("mode", "missing"),
+        "durationProfile": compact.get("durationProfile", "missing"),
+        "promotionReady": promotion_ready,
+        "scenarioStatuses": scenario_statuses,
+        "blockers": compact.get("blockers", []),
+        "warnings": compact.get("warnings", []),
+        "validationErrors": validation_errors,
+    }
+    if required_disabled_scenarios:
+        common_details["disabledRequiredScenarios"] = sorted(required_disabled_scenarios)
+    if redaction_findings:
+        common_details["redactionFindings"] = sanitize_value(redaction_findings, workspace_root, out_dir)
+
+    umbrella_status = summary_status
+    if validation_errors or not promotion_ready:
+        umbrella_status = "fail" if required_for_rc else ("fail" if summary_status == "fail" else "warn")
+    items = [
+        EvidenceItem(
+            "multi-node-beta.soak",
+            umbrella_status,
+            required_for_rc,
+            (
+                "Multi-node beta soak and upgrade drill evidence is promotion-ready."
+                if umbrella_status == "pass"
+                else "Multi-node beta soak and upgrade drill evidence has warnings or failures."
+            ),
+            source,
+            common_details,
+        )
+    ]
+
+    scenario_by_evidence_id = {
+        evidence_id: scenario_id for scenario_id, evidence_id in MULTI_NODE_BETA_SCENARIO_EVIDENCE_IDS.items()
+    }
+    for evidence_id in MULTI_NODE_BETA_EVIDENCE_IDS:
+        if evidence_id in {"multi-node-beta.soak", "multi-node-beta.redaction"}:
+            continue
+        scenario_id = scenario_by_evidence_id.get(evidence_id, "")
+        scenario_status = normalize_evidence_status(str(scenario_statuses.get(scenario_id, "missing")))
+        if scenario_status == "missing" and required_for_rc:
+            scenario_summary = f"{scenario_id or evidence_id} was not reported by multi-node beta soak."
+        else:
+            scenario_summary = f"{scenario_id or evidence_id} status is {scenario_status}."
+        items.append(
+            EvidenceItem(
+                evidence_id,
+                scenario_status,
+                required_for_rc,
+                scenario_summary,
+                source,
+                {**common_details, "scenarioId": scenario_id, "scenarioStatus": scenario_status},
+            )
+        )
+
+    redaction_status = normalize_evidence_status(str(redaction.get("status", "missing")))
+    if redaction_findings:
+        redaction_status = "fail"
+    items.append(
+        EvidenceItem(
+            "multi-node-beta.redaction",
+            redaction_status,
+            required_for_rc,
+            (
+                "Multi-node beta soak artifacts passed redaction checks."
+                if redaction_status == "pass"
+                else "Multi-node beta soak artifacts failed or missed redaction checks."
+            ),
+            source,
+            {
+                **common_details,
+                "redactionStatus": redaction_status,
+                "redactionFindings": sanitize_value(redaction_findings, workspace_root, out_dir),
+            },
+        )
+    )
+    return items
+
+
 def app_platform_docs_evidence(workspace_root: Path, out_dir: Path) -> list[EvidenceItem]:
     source = display_path(
         workspace_root / "tools/release-certification/app_platform_docs_check.py",
@@ -2530,6 +2697,22 @@ def ecosystem_matrix_row_specs() -> list[MatrixRowSpec]:
             ),
             phase="phase-9",
             first_party_apps=("social-inbox", "feed-reader", "trust-graph"),
+        ),
+        MatrixRowSpec(
+            id="multi-node-beta-soak-and-upgrade-drill",
+            category="release-operations",
+            title="Multi-node beta soak and upgrade drill",
+            required_evidence_ids=MULTI_NODE_BETA_EVIDENCE_IDS,
+            gate_ids=("ecosystem.multi-node-beta",),
+            docs=(
+                "docs/multi-node-beta-soak-and-upgrade-drill.md",
+                "docs/release-certification.md",
+                "docs/production-beta-release-pipeline.md",
+                "tools/release-certification/README.md",
+                "docs/operator-rc-recovery-and-support-workflow.md",
+            ),
+            phase="phase-10",
+            first_party_apps=("feed-reader", "social-inbox", "trust-graph", "profile-publisher"),
         ),
         MatrixRowSpec(
             id="app-data-backup-restore-portability",
@@ -4852,6 +5035,59 @@ def evaluate_live_network_beta_gate(
     )
 
 
+def evaluate_multi_node_beta_gate(
+    current: dict[str, dict[str, Any]],
+    settings: Settings,
+) -> GateResult:
+    entries = {evidence_id: current.get(evidence_id) for evidence_id in MULTI_NODE_BETA_EVIDENCE_IDS}
+    statuses = {evidence_id: evidence_status(entry) for evidence_id, entry in entries.items()}
+    details_by_id = {evidence_id: evidence_details(entry) for evidence_id, entry in entries.items()}
+    required = settings.multi_node_soak_required or settings.mode == "release-candidate"
+    failures: list[str] = []
+    warnings: list[str] = []
+    failure_evidence_ids: list[str] = []
+    warning_evidence_ids: list[str] = []
+    for evidence_id, status in statuses.items():
+        if status in {"fail", "missing", "skip"}:
+            message = f"{evidence_id} evidence is {status}"
+            if required:
+                failures.append(message)
+                failure_evidence_ids.append(evidence_id)
+            else:
+                warnings.append(message)
+                warning_evidence_ids.append(evidence_id)
+        elif status == "warn":
+            warnings.append(f"{evidence_id} evidence is warning")
+            warning_evidence_ids.append(evidence_id)
+    redaction_details = details_by_id.get("multi-node-beta.redaction", {})
+    redaction_findings = redaction_details.get("redactionFindings")
+    if isinstance(redaction_findings, list) and redaction_findings:
+        failures.append("multi-node-beta.redaction has unwaivable redaction findings")
+        failure_evidence_ids.append("multi-node-beta.redaction")
+    representative_details = details_by_id.get("multi-node-beta.soak", {})
+    compact_details = {
+        "required": required,
+        "statuses": statuses,
+        "mode": representative_details.get("mode", "missing"),
+        "durationProfile": representative_details.get("durationProfile", "missing"),
+        "promotionReady": bool(representative_details.get("promotionReady", False)),
+        "scenarioStatuses": representative_details.get("scenarioStatuses", {}),
+        "blockers": representative_details.get("blockers", []),
+        "warnings": representative_details.get("warnings", []),
+    }
+    if failure_evidence_ids:
+        compact_details["failureEvidenceIds"] = sorted(dict.fromkeys(failure_evidence_ids))
+    if warning_evidence_ids:
+        compact_details["warningEvidenceIds"] = sorted(dict.fromkeys(warning_evidence_ids))
+    return gate_from_issues(
+        "ecosystem.multi-node-beta",
+        "Multi-node beta soak and upgrade drill evidence is complete.",
+        sorted(dict.fromkeys(failures)),
+        sorted(dict.fromkeys(warnings)),
+        compact_details,
+    )
+
+
 def evaluate_app_vault_gate(
     current: dict[str, dict[str, Any]], previous: dict[str, dict[str, Any]]
 ) -> GateResult:
@@ -6358,6 +6594,15 @@ def evaluate_ecosystem_rc_certification_gate(
         NETWORK_SCALE_SOAK_EVIDENCE_ID,
         settings.mode,
     )
+    multi_node_beta_satisfied = all(
+        ecosystem_rc_evidence_satisfied(
+            current,
+            waiver_context,
+            evidence_id,
+            settings.mode,
+        )
+        for evidence_id in MULTI_NODE_BETA_EVIDENCE_IDS
+    )
     first_party_gate = gate_entries.get("ecosystem.first-party-apps")
     first_party_apps_covered = first_party_gate is not None and first_party_gate.status in {"pass", "warn"}
 
@@ -6379,6 +6624,7 @@ def evaluate_ecosystem_rc_certification_gate(
         or blocking_gate_ids
         or not redaction_passed
         or not network_scale_soak_satisfied
+        or not multi_node_beta_satisfied
         or not live_network_satisfied
     )
     has_warnings = bool(
@@ -6409,6 +6655,7 @@ def evaluate_ecosystem_rc_certification_gate(
         "liveNetworkRequired": live_required,
         "liveNetworkSatisfied": live_network_satisfied,
         "networkScaleSoakSatisfied": network_scale_soak_satisfied,
+        "multiNodeBetaSatisfied": multi_node_beta_satisfied,
         "redactionPassed": redaction_passed,
         "redactionFailureEvidenceIds": redaction_failure_ids,
         "firstPartyAppsCovered": first_party_apps_covered,
@@ -6457,6 +6704,7 @@ def evaluate_ecosystem_gates(
         evaluate_operator_rc_recovery_gate(current, previous),
         evaluate_ecosystem_security_advisory_revocation_gate(current, previous),
         evaluate_live_network_beta_gate(current, settings),
+        evaluate_multi_node_beta_gate(current, settings),
         evaluate_app_vault_gate(current, previous),
         evaluate_sandbox_provider_gate(current, previous, settings.mode, metadata),
         evaluate_reference_content_gate(current, previous),
@@ -6579,6 +6827,24 @@ def ecosystem_rc_decision(compact_gate: dict[str, Any]) -> str:
     return "PASS"
 
 
+def safe_multi_node_report_text(source_path: Path, settings: Settings, out_dir: Path) -> str | None:
+    try:
+        report_text = source_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
+    findings = multi_node_beta_soak.scan_redaction_payload({}, report_text)
+    if not findings:
+        return scrub_text(report_text, settings.workspace_root, out_dir)
+    finding_kinds = sorted({str(finding.get("kind", "redaction-finding")) for finding in findings})
+    return (
+        "# Multi-node Beta Soak Report Redacted\n\n"
+        "The attached multi-node report was not copied because the multi-node redaction "
+        "scanner found prohibited content. Use the compact JSON summary for release evidence.\n\n"
+        f"- findingCount: {len(findings)}\n"
+        f"- findingKinds: {', '.join(finding_kinds)}\n"
+    )
+
+
 def collect_source_artifacts(settings: Settings, out_dir: Path) -> list[str]:
     artifacts_dir = out_dir / "artifacts"
     if artifacts_dir.exists():
@@ -6594,6 +6860,9 @@ def collect_source_artifacts(settings: Settings, out_dir: Path) -> list[str]:
         "performance-smoke-report.md": settings.perf_smoke_summary.parent / "artifacts" / "perf-report.md",
         "app-platform-smoke-report.md": settings.app_platform_summary.parent / "app-platform-smoke-report.md",
         "network-scale-soak-summary.json": settings.network_scale_soak_summary,
+        "multi-node-beta-soak-summary.json": settings.multi_node_soak_summary,
+        "multi-node-beta-soak-report.md": settings.multi_node_soak_summary.parent
+        / multi_node_beta_soak.REPORT_FILE_NAME,
     }
     if settings.live_network_beta_enabled or settings.live_network_beta_required:
         source_map.update(
@@ -6610,15 +6879,22 @@ def collect_source_artifacts(settings: Settings, out_dir: Path) -> list[str]:
         if any(name in str(source_path) for name in PRIVATE_ARTIFACT_NAMES):
             continue
         target_path = artifacts_dir / target_name
-        if source_path.suffix == ".json":
+        if target_name.endswith(".json"):
             value = read_json(source_path)
             if value is None:
                 continue
             if target_name == "network-scale-soak-summary.json":
                 safe_value, _ = allowlisted_network_scale_soak_summary(value)
+            elif target_name == "multi-node-beta-soak-summary.json":
+                safe_value = sanitize_compact_multi_node_summary(value, settings.workspace_root, out_dir)
             else:
                 safe_value = sanitize_value(value, settings.workspace_root, out_dir)
             write_json(target_path, safe_value)
+        elif target_name == "multi-node-beta-soak-report.md":
+            safe_text = safe_multi_node_report_text(source_path, settings, out_dir)
+            if safe_text is None:
+                continue
+            target_path.write_text(safe_text, encoding="utf-8")
         else:
             target_path.write_text(
                 scrub_text(source_path.read_text(encoding="utf-8"), settings.workspace_root, out_dir),
@@ -6626,6 +6902,30 @@ def collect_source_artifacts(settings: Settings, out_dir: Path) -> list[str]:
             )
         copied.append(display_path(target_path, settings.workspace_root, out_dir))
     return copied
+
+
+def sanitize_compact_multi_node_summary(
+    value: dict[str, Any],
+    workspace_root: Path,
+    out_dir: Path,
+) -> dict[str, Any]:
+    compact = multi_node_beta_soak.compact_for_release(value)
+    safe_value = sanitize_value(compact, workspace_root, out_dir)
+    if not isinstance(safe_value, dict):
+        return {}
+    safe_redaction = safe_value.get("redaction")
+    compact_redaction = compact.get("redaction")
+    if not isinstance(safe_redaction, dict) or not isinstance(compact_redaction, dict):
+        return safe_value
+    safe_checks = safe_redaction.get("checks")
+    compact_checks = compact_redaction.get("checks")
+    if not isinstance(safe_checks, dict) or not isinstance(compact_checks, dict):
+        return safe_value
+    for key in multi_node_beta_soak.REDACTION_KEYS:
+        value = compact_checks.get(key)
+        if isinstance(value, bool):
+            safe_checks[key] = value
+    return safe_value
 
 
 def collect_metadata(settings: Settings) -> dict[str, Any]:
@@ -7227,6 +7527,15 @@ def gather_evidence(settings: Settings, waiver_context: WaiverContext) -> list[E
             settings.mode,
         )
     )
+    evidence.extend(
+        multi_node_beta_soak_evidence(
+            settings.multi_node_soak_summary,
+            settings.workspace_root,
+            settings.out_dir,
+            settings.mode,
+            settings.multi_node_soak_required,
+        )
+    )
     evidence.extend(app_platform_docs_evidence(settings.workspace_root, settings.out_dir))
     return [
         sanitize_evidence_item(
@@ -7489,6 +7798,8 @@ def settings_from_args(args: argparse.Namespace) -> Settings:
         write_history=args.write_history,
         history_label=args.history_label,
         waiver_files=waiver_files,
+        multi_node_soak_summary=resolve_path(workspace_root, args.multi_node_soak_summary),
+        multi_node_soak_required=args.require_multi_node_soak,
     )
 
 
@@ -7520,11 +7831,21 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=DEFAULT_OUT_DIR / "network-scale-soak" / "summary.json",
     )
+    parser.add_argument(
+        "--multi-node-soak-summary",
+        type=Path,
+        default=DEFAULT_OUT_DIR / "multi-node-beta-soak" / "summary.json",
+    )
     parser.add_argument("--live-network-beta", action="store_true", help="Expect optional live-network beta evidence.")
     parser.add_argument(
         "--require-live-network-beta",
         action="store_true",
         help="Treat missing or failing live-network beta evidence as release-blocking.",
+    )
+    parser.add_argument(
+        "--require-multi-node-soak",
+        action="store_true",
+        help="Treat missing or failing multi-node beta soak evidence as release-blocking.",
     )
     parser.add_argument("--waive", action="append", default=[], metavar="ID=REASON")
     parser.add_argument("--waiver-file", action="append", default=[], type=Path)
@@ -7548,6 +7869,7 @@ def run_self_test(repo_root: Path) -> None:
         (workspace / "build/perf-smoke").mkdir(parents=True)
         (out_dir / "app-platform-smoke").mkdir(parents=True)
         (out_dir / "network-scale-soak").mkdir(parents=True)
+        (out_dir / "multi-node-beta-soak").mkdir(parents=True)
         for spec in ecosystem_matrix_row_specs():
             for doc_path in spec.docs:
                 source_doc = repo_root / doc_path
@@ -7585,6 +7907,19 @@ def run_self_test(repo_root: Path) -> None:
             fixture_dir / "self-test-network-scale-soak.json",
             out_dir / "network-scale-soak/summary.json",
         )
+        multi_node_config = multi_node_beta_soak.validate_config(
+            multi_node_beta_soak.load_config(fixture_dir / "self-test-multi-node-beta-soak.json")
+        )
+        multi_node_summary = multi_node_beta_soak.build_summary(
+            multi_node_config,
+            out_dir=out_dir / "multi-node-beta-soak",
+            base_dir=fixture_dir,
+        )
+        write_json(out_dir / "multi-node-beta-soak/summary.json", multi_node_summary)
+        write_text(
+            out_dir / "multi-node-beta-soak/multi-node-beta-soak-summary.md",
+            multi_node_beta_soak.render_report(multi_node_summary),
+        )
         settings = Settings(
             workspace_root=workspace.resolve(),
             out_dir=out_dir.resolve(),
@@ -7597,6 +7932,8 @@ def run_self_test(repo_root: Path) -> None:
             network_scale_soak_summary=out_dir / "network-scale-soak/summary.json",
             live_network_beta_enabled=False,
             live_network_beta_required=False,
+            multi_node_soak_summary=out_dir / "multi-node-beta-soak/summary.json",
+            multi_node_soak_required=False,
             waivers={},
             metadata={"selfTest": "true"},
             skip_git_metadata=True,
@@ -8061,10 +8398,215 @@ def run_self_test(repo_root: Path) -> None:
             "matrixDiffs": [],
         }
         write_json(previous_matrix_good_path, previous_matrix_good)
+        multi_node_pass_config = multi_node_beta_soak.validate_config(
+            multi_node_beta_soak.load_config(fixture_dir / "self-test-multi-node-beta-soak.json")
+        )
+        multi_node_pass_config["previousCandidate"]["summaryPath"] = str(previous_good_path)
+        multi_node_pass_path = workspace / "build/multi-node-pass/summary.json"
+        multi_node_pass_summary = multi_node_beta_soak.build_summary(
+            multi_node_pass_config,
+            out_dir=multi_node_pass_path.parent,
+            base_dir=fixture_dir,
+        )
+        write_json(multi_node_pass_path, multi_node_pass_summary)
+        write_text(
+            multi_node_pass_path.parent / multi_node_beta_soak.REPORT_FILE_NAME,
+            multi_node_beta_soak.render_report(multi_node_pass_summary),
+        )
+        multi_node_disabled_required_path = workspace / "build/multi-node-disabled-required/summary.json"
+        multi_node_disabled_required_summary = json.loads(json.dumps(multi_node_pass_summary, sort_keys=True))
+        disabled_backup = multi_node_beta_soak.scenario_map(multi_node_disabled_required_summary)["backup-restore"]
+        disabled_backup["status"] = "warn"
+        disabled_backup["summary"] = "Scenario is disabled in the topology config."
+        disabled_backup["evidence"] = {
+            "evidenceId": "multi-node-beta.backup-restore",
+            "configured": False,
+            "strict": False,
+        }
+        multi_node_disabled_required_summary["scenarioStatuses"]["backup-restore"] = "warn"
+        multi_node_disabled_required_summary["status"] = "warn"
+        multi_node_disabled_required_summary["promotionReady"] = True
+        multi_node_disabled_required_summary["warnings"] = ["backup-restore has warnings"]
+        write_json(multi_node_disabled_required_path, multi_node_disabled_required_summary)
+        multi_node_disabled_required_items = multi_node_beta_soak_evidence(
+            multi_node_disabled_required_path,
+            workspace,
+            out_dir,
+            "release-candidate",
+            False,
+        )
+        multi_node_disabled_umbrella = next(
+            item for item in multi_node_disabled_required_items if item.id == "multi-node-beta.soak"
+        )
+        multi_node_disabled_backup = next(
+            item for item in multi_node_disabled_required_items if item.id == "multi-node-beta.backup-restore"
+        )
+        assert multi_node_disabled_umbrella.status == "fail", multi_node_disabled_umbrella
+        assert multi_node_disabled_backup.status == "fail", multi_node_disabled_backup
+        assert "backup-restore" in multi_node_disabled_umbrella.details.get("disabledRequiredScenarios", []), (
+            multi_node_disabled_umbrella
+        )
+        assert (
+            "scenario backup-restore is disabled but required in release-candidate"
+            in multi_node_disabled_umbrella.details.get("validationErrors", [])
+        ), multi_node_disabled_umbrella
+        multi_node_publish_leak_path = workspace / "build/multi-node-publish-leak/summary.json"
+        multi_node_publish_leak_summary = json.loads(json.dumps(multi_node_pass_summary, sort_keys=True))
+        multi_node_publish_leak_summary["blockers"] = [
+            "rawBackupPayload: backup bundle bytes /srv/runner/work/cryptad/private-state"
+        ]
+        multi_node_publish_leak_summary["warnings"] = ["/etc/cryptad/private-state"]
+        multi_node_publish_leak_summary["redaction"]["rawBackupPayload"] = "backup bundle bytes"
+        multi_node_publish_leak_summary["redaction"]["findings"] = [
+            {
+                "kind": "raw-backup-payload",
+                "location": "/srv/runner/work/cryptad/private-state",
+                "source": "validation",
+                "rawBackupPayload": "backup bundle bytes",
+            }
+        ]
+        write_json(multi_node_publish_leak_path, multi_node_publish_leak_summary)
+        write_text(
+            multi_node_publish_leak_path.parent / multi_node_beta_soak.REPORT_FILE_NAME,
+            "rawBackupPayload: backup bundle bytes\n/srv/runner/work/cryptad/private-state\n",
+        )
+        multi_node_publish_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/multi-node-publish-cert").resolve(),
+            multi_node_soak_summary=multi_node_publish_leak_path,
+        )
+        collect_source_artifacts(multi_node_publish_settings, multi_node_publish_settings.out_dir)
+        published_multi_node_summary = (
+            multi_node_publish_settings.out_dir / "artifacts/multi-node-beta-soak-summary.json"
+        ).read_text(encoding="utf-8")
+        published_multi_node_report = (
+            multi_node_publish_settings.out_dir / "artifacts/multi-node-beta-soak-report.md"
+        ).read_text(encoding="utf-8")
+        for forbidden in ("rawBackupPayload", "backup bundle bytes", "/srv/runner", "/etc/cryptad"):
+            assert forbidden not in published_multi_node_summary, published_multi_node_summary
+            assert forbidden not in published_multi_node_report, published_multi_node_report
+        published_multi_node_summary_json = json.loads(published_multi_node_summary)
+        assert (
+            published_multi_node_summary_json["redaction"]["checks"]["failOnTokens"] is True
+        ), published_multi_node_summary_json
+        assert "Multi-node Beta Soak Report Redacted" in published_multi_node_report, published_multi_node_report
+        multi_node_publish_tmp_path = workspace / "build/multi-node-publish-leak/summary.json.tmp"
+        write_json(multi_node_publish_tmp_path, multi_node_publish_leak_summary)
+        multi_node_publish_tmp_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/multi-node-publish-tmp-cert").resolve(),
+            multi_node_soak_summary=multi_node_publish_tmp_path,
+        )
+        collect_source_artifacts(multi_node_publish_tmp_settings, multi_node_publish_tmp_settings.out_dir)
+        published_multi_node_tmp_summary = (
+            multi_node_publish_tmp_settings.out_dir / "artifacts/multi-node-beta-soak-summary.json"
+        ).read_text(encoding="utf-8")
+        for forbidden in ("rawBackupPayload", "backup bundle bytes", "/srv/runner", "/etc/cryptad"):
+            assert forbidden not in published_multi_node_tmp_summary, published_multi_node_tmp_summary
+        published_multi_node_tmp_summary_json = json.loads(published_multi_node_tmp_summary)
+        assert (
+            published_multi_node_tmp_summary_json["redaction"]["checks"]["failOnTokens"] is True
+        ), published_multi_node_tmp_summary_json
+        multi_node_leaky_path = workspace / "build/multi-node-leaky/summary.json"
+        multi_node_leaky_summary = json.loads(json.dumps(multi_node_pass_summary, sort_keys=True))
+        multi_node_leaky_summary.setdefault("evidence", {})["rawAppData"] = {"value": "unredacted value"}
+        write_json(multi_node_leaky_path, multi_node_leaky_summary)
+        multi_node_leaky_items = multi_node_beta_soak_evidence(
+            multi_node_leaky_path,
+            workspace,
+            out_dir,
+            "release-candidate",
+            True,
+        )
+        multi_node_leaky_redaction = next(
+            item for item in multi_node_leaky_items if item.id == "multi-node-beta.redaction"
+        )
+        assert multi_node_leaky_redaction.status == "fail", multi_node_leaky_redaction
+        assert evidence_item_has_unwaivable_redaction_findings(multi_node_leaky_redaction), (
+            multi_node_leaky_redaction
+        )
+        assert any(
+            finding.get("kind") == "raw-app-data" and finding.get("source") == "validation"
+            for finding in multi_node_leaky_redaction.details.get("redactionFindings", [])
+            if isinstance(finding, dict)
+        ), multi_node_leaky_redaction
+        multi_node_unsafe_flags_path = workspace / "build/multi-node-unsafe-flags/summary.json"
+        multi_node_unsafe_flags_summary = json.loads(json.dumps(multi_node_pass_summary, sort_keys=True))
+        unsafe_support_evidence = multi_node_beta_soak.scenario_map(multi_node_unsafe_flags_summary)[
+            "support-bundle-drill"
+        ]["evidence"]
+        unsafe_support_evidence["privateInsertUrisIncluded"] = True
+        unsafe_support_evidence["tokensIncluded"] = True
+        unsafe_support_evidence["redactionScanStatus"] = "fail"
+        write_json(multi_node_unsafe_flags_path, multi_node_unsafe_flags_summary)
+        multi_node_unsafe_flags_items = multi_node_beta_soak_evidence(
+            multi_node_unsafe_flags_path,
+            workspace,
+            out_dir,
+            "release-candidate",
+            True,
+        )
+        multi_node_unsafe_flags_redaction = next(
+            item for item in multi_node_unsafe_flags_items if item.id == "multi-node-beta.redaction"
+        )
+        assert multi_node_unsafe_flags_redaction.status == "fail", multi_node_unsafe_flags_redaction
+        assert evidence_item_has_unwaivable_redaction_findings(multi_node_unsafe_flags_redaction), (
+            multi_node_unsafe_flags_redaction
+        )
+        assert any(
+            finding.get("kind") == "forbidden-included-flag" and finding.get("source") == "validation"
+            for finding in multi_node_unsafe_flags_redaction.details.get("redactionFindings", [])
+            if isinstance(finding, dict)
+        ), multi_node_unsafe_flags_redaction
+        assert any(
+            finding.get("kind") == "redaction-scan-status" and finding.get("source") == "validation"
+            for finding in multi_node_unsafe_flags_redaction.details.get("redactionFindings", [])
+            if isinstance(finding, dict)
+        ), multi_node_unsafe_flags_redaction
+        multi_node_disabled_checks_path = workspace / "build/multi-node-disabled-checks/summary.json"
+        multi_node_disabled_checks_summary = json.loads(json.dumps(multi_node_pass_summary, sort_keys=True))
+        multi_node_disabled_checks_summary["redaction"]["checks"]["failOnTokens"] = False
+        write_json(multi_node_disabled_checks_path, multi_node_disabled_checks_summary)
+        multi_node_disabled_checks_items = multi_node_beta_soak_evidence(
+            multi_node_disabled_checks_path,
+            workspace,
+            out_dir,
+            "release-candidate",
+            True,
+        )
+        multi_node_disabled_checks_redaction = next(
+            item for item in multi_node_disabled_checks_items if item.id == "multi-node-beta.redaction"
+        )
+        assert multi_node_disabled_checks_redaction.status == "fail", multi_node_disabled_checks_redaction
+        assert evidence_item_has_unwaivable_redaction_findings(multi_node_disabled_checks_redaction), (
+            multi_node_disabled_checks_redaction
+        )
+        assert any(
+            finding.get("kind") == "disabled-redaction-check" and finding.get("source") == "validation"
+            for finding in multi_node_disabled_checks_redaction.details.get("redactionFindings", [])
+            if isinstance(finding, dict)
+        ), multi_node_disabled_checks_redaction
+        multi_node_non_promotable_path = workspace / "build/multi-node-non-promotable/summary.json"
+        multi_node_non_promotable_summary = json.loads(json.dumps(multi_node_pass_summary, sort_keys=True))
+        multi_node_non_promotable_summary["promotionReady"] = False
+        write_json(multi_node_non_promotable_path, multi_node_non_promotable_summary)
+        multi_node_non_promotable_items = multi_node_beta_soak_evidence(
+            multi_node_non_promotable_path,
+            workspace,
+            out_dir,
+            "release-candidate",
+            True,
+        )
+        multi_node_non_promotable_soak = next(
+            item for item in multi_node_non_promotable_items if item.id == "multi-node-beta.soak"
+        )
+        assert multi_node_non_promotable_soak.status == "fail", multi_node_non_promotable_soak
+        assert multi_node_non_promotable_soak.details["promotionReady"] is False, multi_node_non_promotable_soak
         with_previous_settings = dataclasses.replace(
             settings,
             out_dir=(workspace / "build/with-previous-cert").resolve(),
             previous_summary=previous_good_path,
+            multi_node_soak_summary=multi_node_pass_path,
         )
         with_previous_summary, with_previous_exit_code = run(with_previous_settings)
         assert with_previous_exit_code == 0, with_previous_summary
@@ -8119,10 +8661,12 @@ def run_self_test(repo_root: Path) -> None:
 
         def run_with_previous(name: str, **overrides: Any) -> tuple[dict[str, Any], int]:
             previous_summary_override = overrides.pop("previous_summary", previous_good_path)
+            multi_node_summary_override = overrides.pop("multi_node_soak_summary", multi_node_pass_path)
             variant_settings = dataclasses.replace(
                 settings,
                 out_dir=(workspace / f"build/{name}").resolve(),
                 previous_summary=previous_summary_override,
+                multi_node_soak_summary=multi_node_summary_override,
                 **overrides,
             )
             return run(variant_settings)

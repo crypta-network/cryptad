@@ -24,6 +24,7 @@ Use this portal first, then follow the detailed source-of-truth pages for the ar
 | First-party beta catalog | [first-party-beta-catalog.md](first-party-beta-catalog.md) |
 | Production catalog channels | [production-first-party-catalog-channels.md](production-first-party-catalog-channels.md) |
 | Production beta release pipeline | [production-beta-release-pipeline.md](production-beta-release-pipeline.md) |
+| Multi-node beta soak and upgrade drill | [multi-node-beta-soak-and-upgrade-drill.md](multi-node-beta-soak-and-upgrade-drill.md) |
 | Platform API contract | [platform-api-contract.md](platform-api-contract.md) |
 | Platform API route surface | [platform-api-surface.md](platform-api-surface.md) |
 | Browser SDK | [platform-sdk-js.md](platform-sdk-js.md) |
@@ -150,6 +151,7 @@ Public beta readiness treats these workstreams as one ecosystem beta release sto
 | Developer toolkit | [developer-beta-toolkit.md](developer-beta-toolkit.md), `app-platform.devtools-cli`, `app-platform.developer-beta-toolkit` |
 | Reference apps | [social-inbox-reference-app.md](social-inbox-reference-app.md), [feed-reader-reference-app.md](feed-reader-reference-app.md), [trust-graph-preview.md](trust-graph-preview.md), `reference-app.*` evidence, `app-platform.trust-graph-rc-scope-and-safety` |
 | Network-scale budgets and soak | [network-scale-soak-and-subscription-budget.md](network-scale-soak-and-subscription-budget.md), [release-certification.md](release-certification.md), `network-scale.*` evidence, `network-scale-soak-and-subscription-budget` matrix row |
+| Multi-node beta soak and upgrade drill | [multi-node-beta-soak-and-upgrade-drill.md](multi-node-beta-soak-and-upgrade-drill.md), `multi-node-beta.*` evidence, `multi-node-beta-soak-and-upgrade-drill` matrix row |
 | Review governance | [app-review-governance.md](app-review-governance.md), `review receipt`, `reviewer key lifecycle`, `transparency log` evidence |
 | Updates, migrations, and rollback | [app-update-lifecycle.md](app-update-lifecycle.md), [app-upgrade-data-migrations.md](app-upgrade-data-migrations.md), `app-update.scheduler`, `app-update.rollback`, `app-update.data-migration-contract` evidence |
 | User consent | [user-consent-and-permission-upgrade-ux.md](user-consent-and-permission-upgrade-ux.md), `app-platform.user-consent-flow` evidence |
@@ -168,6 +170,7 @@ python3 tools/release-certification/app_platform_docs_check.py --self-test
 python3 tools/release-certification/release_certification.py --self-test
 python3 tools/release-certification/app_platform_smoke.py --self-test
 python3 tools/release-certification/network_scale_soak.py --self-test
+python3 tools/release-certification/multi_node_beta_soak.py --self-test
 python3 tools/release-certification/live_network_beta_smoke.py --self-test
 tools/release-certification/run-release-certification.sh --mode release-candidate --out-dir build/release-certification
 ```

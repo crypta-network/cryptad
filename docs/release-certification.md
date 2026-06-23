@@ -2,7 +2,8 @@
 
 Release certification is the reproducible evidence bundle for a Cryptad release candidate. It
 aggregates compatibility, performance, app-platform, catalog, app-owned UI, operator beta recovery,
-network-scale soak, ecosystem RC certification, optional live-network beta certification,
+network-scale soak, multi-node beta soak and upgrade drill, ecosystem RC certification,
+optional live-network beta certification,
 legacy-admin retirement, and CI metadata into one redacted report.
 
 The generated artifacts are:
@@ -19,6 +20,8 @@ build/release-certification/app-platform-smoke/summary.json
 build/release-certification/app-platform-smoke/app-platform-smoke-report.md
 build/release-certification/app-platform-smoke/artifacts/
 build/release-certification/network-scale-soak/summary.json
+build/release-certification/multi-node-beta-soak/summary.json
+build/release-certification/multi-node-beta-soak/multi-node-beta-soak-summary.md
 build/release-certification/live-network-beta-smoke/summary.json
 build/release-certification/live-network-beta-smoke/live-network-beta-smoke-report.md
 ```
@@ -56,6 +59,7 @@ python3 tools/release-certification/app_platform_docs_check.py --self-test
 python3 tools/release-certification/release_certification.py --self-test
 python3 tools/release-certification/app_platform_smoke.py --self-test
 python3 tools/release-certification/network_scale_soak.py --self-test
+python3 tools/release-certification/multi_node_beta_soak.py --self-test
 python3 tools/release-certification/live_network_beta_smoke.py --self-test
 python3 tools/release-certification/production_beta_release.py --self-test
 ```
@@ -114,6 +118,7 @@ build/perf-smoke/summary.json
 build/perf-smoke/artifacts/perf-report.md
 build/release-certification/app-platform-smoke/summary.json
 build/release-certification/network-scale-soak/summary.json
+build/release-certification/multi-node-beta-soak/summary.json
 build/release-certification/live-network-beta-smoke/summary.json
 ```
 
@@ -633,13 +638,25 @@ bounded budgets, queue pressure can delay polling without budget consumption, So
 multi-source refresh remains capped, and release evidence excludes raw content, queue HTML, tokens,
 private insert URIs, raw signatures, app-data payloads, and absolute local paths.
 
+The `multi-node-beta-soak-and-upgrade-drill` row records PR-267 evidence. It requires
+`multi-node-beta.soak`, `multi-node-beta.upgrade-drill`,
+`multi-node-beta.catalog-channel-update`, `multi-node-beta.app-install-update-rollback`,
+`multi-node-beta.app-data-migration`, `multi-node-beta.backup-restore`,
+`multi-node-beta.subscription-pressure`, `multi-node-beta.trust-graph-import`,
+`multi-node-beta.social-inbox-multi-source`, `multi-node-beta.support-bundle-drill`, and
+`multi-node-beta.redaction`. These evidence items prove that a multi-node beta topology is modeled,
+previous-candidate upgrade evidence is consumed or clearly warned, first-party apps update and roll
+back, app-data backup and restore paths stay metadata-only, subscription and Trust Graph pressure
+stay bounded, Social Inbox multi-source behavior is represented, and support bundle artifacts pass
+redaction checks.
+
 The `ecosystem-rc-certification-gate` row records PR-258 final ecosystem release-candidate
 certification. It is the release-manager summary row for the `ecosystem.rc-certification` gate and
 is documented in [ecosystem-rc-certification-gate.md](ecosystem-rc-certification-gate.md). The row
 must remain sensitive to required-evidence failures, ecosystem-gate failures, matrix coverage gaps,
-network-scale RC soak status, live-network beta status when required, redaction failures, and
-waiver visibility. Passing the row means the release evidence is complete enough for promotion; it
-does not claim global network propagation, deletion of published bytes, legacy WebOfTrust or
+network-scale RC soak status, multi-node beta soak status, live-network beta status when required,
+redaction failures, and waiver visibility. Passing the row means the release evidence is complete
+enough for promotion; it does not claim global network propagation, deletion of published bytes, legacy WebOfTrust or
 plugin compatibility, production-key handling, or third-party app safety beyond the recorded gates.
 
 ## Network-scale soak
@@ -668,8 +685,38 @@ source strings, or absolute local paths.
 
 A literal 24-hour live soak is optional release-candidate evidence. It is represented by an
 attached redacted summary; it is not part of ordinary unit tests, nightly certification, or
-Python-only self-tests. Record the external soak source, collector mode, runner identity, and
-redaction status in the release log without copying raw node output into the release record.
+developer dry-runs. Record the external soak source, collector mode, runner identity, and redaction
+status in the release log without copying raw node output into the release record.
+
+## Multi-node beta soak and upgrade drill
+
+Normal PR and CI evidence uses deterministic simulated topology data:
+
+```bash
+python3 tools/release-certification/multi_node_beta_soak.py --self-test
+python3 tools/release-certification/multi_node_beta_soak.py run \
+  --mode simulated \
+  --out-dir build/multi-node-beta-soak
+python3 tools/release-certification/multi_node_beta_soak.py verify \
+  --summary build/multi-node-beta-soak/multi-node-beta-soak-summary.json
+```
+
+`run-release-certification.sh` writes a fresh
+`build/release-certification/multi-node-beta-soak/summary.json` by default and forwards that path
+to `release_certification.py`. Pass `--multi-node-soak-summary <path>` or set
+`CRYPTAD_CERT_MULTI_NODE_SOAK_SUMMARY` to attach hybrid or live evidence. Pass
+`--multi-node-mode simulated|hybrid|live` and `--multi-node-soak-config <path>` when a release
+candidate needs a specific topology config.
+
+The summary kind is `cryptad-multi-node-beta-soak-summary`. It records `pass`, `warn`, or `fail`
+for the umbrella soak, upgrade drill, catalog channel update, app lifecycle, app-data migration,
+backup/restore, subscription pressure, Trust Graph import, Social Inbox multi-source behavior,
+support bundle drill, and redaction. Simulated and release-candidate modes may warn when no
+previous beta candidate summary is supplied. Strict production promotion can require the previous
+summary and fail closed when it is absent.
+
+See [multi-node-beta-soak-and-upgrade-drill.md](multi-node-beta-soak-and-upgrade-drill.md) for the
+topology schema, mode behavior, redaction rules, and production beta integration.
 
 In `release-candidate` mode, unmapped required evidence, unmapped ecosystem gates, missing docs,
 or failed redaction make the matrix fail. In `pr` and `nightly` mode, coverage gaps warn unless

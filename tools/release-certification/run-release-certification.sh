@@ -10,6 +10,12 @@ REQUIRE_LIVE_NETWORK_BETA="${CRYPTAD_CERT_REQUIRE_LIVE_NETWORK_BETA:-0}"
 NODE_BASE_URL="${CRYPTAD_CERT_NODE_BASE_URL:-}"
 NETWORK_SCALE_SOAK_SUMMARY="${CRYPTAD_CERT_NETWORK_SCALE_SOAK_SUMMARY:-}"
 NETWORK_SCALE_SOAK_SUMMARY_PROVIDED=0
+MULTI_NODE_SOAK_SUMMARY="${CRYPTAD_CERT_MULTI_NODE_SOAK_SUMMARY:-}"
+MULTI_NODE_SOAK_SUMMARY_PROVIDED=0
+MULTI_NODE_MODE="${CRYPTAD_CERT_MULTI_NODE_MODE:-}"
+MULTI_NODE_MODE_PROVIDED=0
+MULTI_NODE_SOAK_CONFIG="${CRYPTAD_CERT_MULTI_NODE_SOAK_CONFIG:-}"
+REQUIRE_MULTI_NODE_SOAK="${CRYPTAD_CERT_REQUIRE_MULTI_NODE_SOAK:-0}"
 SKIP_GRADLE_ARG=()
 LIVE_ARGS=()
 LIVE_NETWORK_ARGS=()
@@ -18,6 +24,12 @@ CERT_ARGS=()
 
 if [[ -n "$NETWORK_SCALE_SOAK_SUMMARY" ]]; then
   NETWORK_SCALE_SOAK_SUMMARY_PROVIDED=1
+fi
+if [[ -n "$MULTI_NODE_SOAK_SUMMARY" ]]; then
+  MULTI_NODE_SOAK_SUMMARY_PROVIDED=1
+fi
+if [[ -n "$MULTI_NODE_MODE" ]]; then
+  MULTI_NODE_MODE_PROVIDED=1
 fi
 
 normalize_flag() {
@@ -88,6 +100,38 @@ while [[ $# -gt 0 ]]; do
       NETWORK_SCALE_SOAK_SUMMARY_PROVIDED=1
       shift
       ;;
+    --multi-node-soak-summary)
+      MULTI_NODE_SOAK_SUMMARY="$2"
+      MULTI_NODE_SOAK_SUMMARY_PROVIDED=1
+      shift 2
+      ;;
+    --multi-node-soak-summary=*)
+      MULTI_NODE_SOAK_SUMMARY="${1#--multi-node-soak-summary=}"
+      MULTI_NODE_SOAK_SUMMARY_PROVIDED=1
+      shift
+      ;;
+    --multi-node-mode)
+      MULTI_NODE_MODE="$2"
+      MULTI_NODE_MODE_PROVIDED=1
+      shift 2
+      ;;
+    --multi-node-mode=*)
+      MULTI_NODE_MODE="${1#--multi-node-mode=}"
+      MULTI_NODE_MODE_PROVIDED=1
+      shift
+      ;;
+    --multi-node-soak-config)
+      MULTI_NODE_SOAK_CONFIG="$2"
+      shift 2
+      ;;
+    --multi-node-soak-config=*)
+      MULTI_NODE_SOAK_CONFIG="${1#--multi-node-soak-config=}"
+      shift
+      ;;
+    --require-multi-node-soak)
+      REQUIRE_MULTI_NODE_SOAK=1
+      shift
+      ;;
     --form-password)
       echo "--form-password is not supported; set CRYPTAD_CERT_FORM_PASSWORD in the environment." >&2
       exit 2
@@ -124,6 +168,17 @@ case "$MODE" in
     ;;
 esac
 
+if [[ "$MULTI_NODE_MODE_PROVIDED" == "1" ]]; then
+  case "$MULTI_NODE_MODE" in
+    simulated|hybrid|live)
+      ;;
+    *)
+      echo "--multi-node-mode must be simulated, hybrid, or live; got: $MULTI_NODE_MODE" >&2
+      exit 2
+      ;;
+  esac
+fi
+
 case "$OUT_DIR" in
   /*)
     ;;
@@ -145,6 +200,29 @@ case "$NETWORK_SCALE_SOAK_SUMMARY" in
 esac
 NETWORK_SCALE_SOAK_OUT_DIR="$(dirname "$NETWORK_SCALE_SOAK_SUMMARY")"
 
+case "$MULTI_NODE_SOAK_SUMMARY" in
+  "")
+    MULTI_NODE_SOAK_SUMMARY_PROVIDED=0
+    MULTI_NODE_SOAK_SUMMARY="$OUT_DIR/multi-node-beta-soak/summary.json"
+    ;;
+  /*)
+    ;;
+  *)
+    MULTI_NODE_SOAK_SUMMARY="$ROOT_DIR/$MULTI_NODE_SOAK_SUMMARY"
+    ;;
+esac
+MULTI_NODE_SOAK_OUT_DIR="$(dirname "$MULTI_NODE_SOAK_SUMMARY")"
+
+if [[ -n "$MULTI_NODE_SOAK_CONFIG" ]]; then
+  case "$MULTI_NODE_SOAK_CONFIG" in
+    /*)
+      ;;
+    *)
+      MULTI_NODE_SOAK_CONFIG="$ROOT_DIR/$MULTI_NODE_SOAK_CONFIG"
+      ;;
+  esac
+fi
+
 if ! command -v python3 >/dev/null 2>&1; then
   mkdir -p "$OUT_DIR"
   echo "python3 is required." | tee "$OUT_DIR/shell-error.txt" >&2
@@ -156,6 +234,28 @@ if ! python3 -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 10) e
   python_version="$(python3 -c 'import platform; print(platform.python_version())' 2>/dev/null || echo unknown)"
   echo "python3 3.10 or newer is required; found ${python_version}." | tee "$OUT_DIR/shell-error.txt" >&2
   exit 1
+fi
+
+EFFECTIVE_MULTI_NODE_MODE="$MULTI_NODE_MODE"
+if [[ "$MULTI_NODE_MODE_PROVIDED" != "1" ]]; then
+  EFFECTIVE_MULTI_NODE_MODE="simulated"
+  if [[ -n "$MULTI_NODE_SOAK_CONFIG" ]]; then
+    EFFECTIVE_MULTI_NODE_MODE="$(
+      python3 - "$MULTI_NODE_SOAK_CONFIG" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+try:
+    value = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+except Exception:
+    print("simulated")
+else:
+    mode = str(value.get("mode", "simulated")).strip()
+    print(mode or "simulated")
+PY
+    )"
+  fi
 fi
 
 mkdir -p "$OUT_DIR"
@@ -174,6 +274,7 @@ if [[ -n "$NODE_BASE_URL" ]]; then
 fi
 LIVE_NETWORK_BETA="$(normalize_flag "$LIVE_NETWORK_BETA")"
 REQUIRE_LIVE_NETWORK_BETA="$(normalize_flag "$REQUIRE_LIVE_NETWORK_BETA")"
+REQUIRE_MULTI_NODE_SOAK="$(normalize_flag "$REQUIRE_MULTI_NODE_SOAK")"
 if [[ "$REQUIRE_LIVE_NETWORK_BETA" == "1" ]]; then
   LIVE_NETWORK_BETA=1
   LIVE_NETWORK_ARGS+=(--require)
@@ -184,11 +285,20 @@ fi
 if [[ "$REQUIRE_LIVE_NETWORK_BETA" == "1" ]]; then
   CERT_LIVE_ARGS+=(--require-live-network-beta)
 fi
+if [[ "$REQUIRE_MULTI_NODE_SOAK" == "1" ]]; then
+  CERT_ARGS+=(--require-multi-node-soak)
+fi
 
 rm -f "$APP_SMOKE_SUMMARY" "$APP_SMOKE_OUT_DIR/app-platform-smoke-report.md"
 rm -f "$LIVE_NETWORK_SUMMARY" "$LIVE_NETWORK_OUT_DIR/live-network-beta-smoke-report.md"
 if [[ "$NETWORK_SCALE_SOAK_SUMMARY_PROVIDED" != "1" ]]; then
   rm -f "$NETWORK_SCALE_SOAK_SUMMARY"
+fi
+if [[ "$MULTI_NODE_SOAK_SUMMARY_PROVIDED" != "1" ]]; then
+  rm -f \
+    "$MULTI_NODE_SOAK_SUMMARY" \
+    "$MULTI_NODE_SOAK_OUT_DIR/multi-node-beta-soak-summary.json" \
+    "$MULTI_NODE_SOAK_OUT_DIR/multi-node-beta-soak-summary.md"
 fi
 
 if [[ "$SKIP_APP_SMOKE" != "1" ]]; then
@@ -235,6 +345,34 @@ if [[ "$NETWORK_SCALE_SOAK_SUMMARY_PROVIDED" != "1" ]]; then
   fi
 fi
 
+if [[ "$MULTI_NODE_SOAK_SUMMARY_PROVIDED" != "1" ]]; then
+  mkdir -p "$MULTI_NODE_SOAK_OUT_DIR"
+  MULTI_NODE_ARGS=(
+    run
+    --out-dir "$MULTI_NODE_SOAK_OUT_DIR"
+  )
+  if [[ "$MULTI_NODE_MODE_PROVIDED" == "1" ]]; then
+    MULTI_NODE_ARGS+=(--mode "$MULTI_NODE_MODE")
+  fi
+  if [[ -n "$MULTI_NODE_SOAK_CONFIG" ]]; then
+    MULTI_NODE_ARGS+=(--config "$MULTI_NODE_SOAK_CONFIG")
+  fi
+  if [[ "$REQUIRE_MULTI_NODE_SOAK" == "1" && "$EFFECTIVE_MULTI_NODE_MODE" == "live" ]]; then
+    MULTI_NODE_ARGS+=(--require-live)
+  fi
+  if [[ "$REQUIRE_MULTI_NODE_SOAK" == "1" || "$MODE" == "release-candidate" ]]; then
+    MULTI_NODE_ARGS+=(--require-all-scenarios)
+  fi
+  set +e
+  python3 "$ROOT_DIR/tools/release-certification/multi_node_beta_soak.py" "${MULTI_NODE_ARGS[@]}"
+  MULTI_NODE_SOAK_EXIT=$?
+  set -e
+  if [[ "$MULTI_NODE_SOAK_EXIT" -ne 0 ]]; then
+    echo "Multi-node beta soak evidence exited with $MULTI_NODE_SOAK_EXIT; certification aggregation will record" \
+      "the evidence state." >&2
+  fi
+fi
+
 exec python3 "$ROOT_DIR/tools/release-certification/release_certification.py" \
   --workspace-root "$ROOT_DIR" \
   --out-dir "$OUT_DIR" \
@@ -242,5 +380,6 @@ exec python3 "$ROOT_DIR/tools/release-certification/release_certification.py" \
   --app-platform-summary "$APP_SMOKE_SUMMARY" \
   --live-network-summary "$LIVE_NETWORK_SUMMARY" \
   --network-scale-soak-summary "$NETWORK_SCALE_SOAK_SUMMARY" \
+  --multi-node-soak-summary "$MULTI_NODE_SOAK_SUMMARY" \
   "${CERT_LIVE_ARGS[@]}" \
   "${CERT_ARGS[@]}"
