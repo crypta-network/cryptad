@@ -1794,18 +1794,41 @@ def validate_summary(summary: dict[str, Any] | None, *, strict: bool = False) ->
     for finding in scan_redaction_payload(summary, report_text):
         errors.append(f"redaction leak detected: {finding['kind']} at {finding['location']}")
 
-    if summary.get("status") == "fail":
+    summary_status = summary.get("status")
+    scenario_status_values = {
+        scenario_id: (
+            str(entry.get("status", "missing"))
+            if isinstance(entry := scenario_entries.get(scenario_id), dict)
+            else "missing"
+        )
+        for scenario_id in SCENARIO_EVIDENCE_IDS
+    }
+    nonpassing_scenarios = [
+        scenario_id for scenario_id, status in scenario_status_values.items() if status != "pass"
+    ]
+    failing_scenarios = [
+        scenario_id for scenario_id, status in scenario_status_values.items() if status == "fail"
+    ]
+    if summary_status == "fail":
         errors.append("summary status is fail")
-    if summary.get("status") == "pass" and summary.get("promotionReady") is not True:
+    if summary_status == "pass" and summary.get("promotionReady") is not True:
         errors.append("promotionReady must be true when summary status is pass")
-    if blocker_entries and summary.get("status") != "fail":
+    if summary_status == "pass" and nonpassing_scenarios:
+        errors.append("summary status must not be pass when scenarios are not pass")
+    if summary_status == "pass" and redaction_status != "pass":
+        errors.append("summary status must not be pass when redaction is not pass")
+    if failing_scenarios and summary_status != "fail":
+        errors.append("summary status must be fail when scenarios fail")
+    if redaction_status == "fail" and summary_status != "fail":
+        errors.append("summary status must be fail when redaction fails")
+    if blocker_entries and summary_status != "fail":
         errors.append("summary status must be fail when blockers are present")
     if blocker_entries and summary.get("promotionReady") is not False:
         errors.append("promotionReady must be false when blockers are present")
-    if warning_entries and not blocker_entries and summary.get("status") == "pass":
+    if warning_entries and not blocker_entries and summary_status == "pass":
         errors.append("summary status must not be pass when warnings are present")
     if strict:
-        if summary.get("status") != "pass":
+        if summary_status != "pass":
             errors.append("strict summary status must be pass")
         for scenario_id, entry in scenario_entries.items():
             if scenario_id in SCENARIO_EVIDENCE_IDS and entry.get("status") != "pass":
@@ -2201,6 +2224,43 @@ def run_self_test() -> None:
         valid_current_upgrade = scenario_map(valid_current_summary)["upgrade-from-previous-candidate"]
         assert valid_current_upgrade["status"] == "pass", valid_current_summary
         assert valid_current_upgrade["evidence"]["currentProductionBetaSummaryValid"] is True, valid_current_upgrade
+        pass_with_warn_scenario_summary = json.loads(json.dumps(valid_current_summary, sort_keys=True))
+        scenario_map(pass_with_warn_scenario_summary)["backup-restore"]["status"] = "warn"
+        pass_with_warn_scenario_summary["scenarioStatuses"]["backup-restore"] = "warn"
+        pass_with_warn_scenario_summary["status"] = "pass"
+        pass_with_warn_scenario_summary["promotionReady"] = True
+        pass_with_warn_scenario_summary["warnings"] = []
+        assert "summary status must not be pass when scenarios are not pass" in validate_summary(
+            pass_with_warn_scenario_summary
+        ), pass_with_warn_scenario_summary
+
+        warn_with_fail_scenario_summary = json.loads(json.dumps(valid_current_summary, sort_keys=True))
+        scenario_map(warn_with_fail_scenario_summary)["backup-restore"]["status"] = "fail"
+        warn_with_fail_scenario_summary["scenarioStatuses"]["backup-restore"] = "fail"
+        warn_with_fail_scenario_summary["status"] = "warn"
+        warn_with_fail_scenario_summary["promotionReady"] = False
+        warn_with_fail_scenario_summary["blockers"] = []
+        assert "summary status must be fail when scenarios fail" in validate_summary(
+            warn_with_fail_scenario_summary
+        ), warn_with_fail_scenario_summary
+
+        pass_with_warn_redaction_summary = json.loads(json.dumps(valid_current_summary, sort_keys=True))
+        pass_with_warn_redaction_summary["redaction"]["status"] = "warn"
+        pass_with_warn_redaction_summary["status"] = "pass"
+        pass_with_warn_redaction_summary["promotionReady"] = True
+        pass_with_warn_redaction_summary["warnings"] = []
+        assert "summary status must not be pass when redaction is not pass" in validate_summary(
+            pass_with_warn_redaction_summary
+        ), pass_with_warn_redaction_summary
+
+        warn_with_fail_redaction_summary = json.loads(json.dumps(valid_current_summary, sort_keys=True))
+        warn_with_fail_redaction_summary["redaction"]["status"] = "fail"
+        warn_with_fail_redaction_summary["status"] = "warn"
+        warn_with_fail_redaction_summary["promotionReady"] = False
+        warn_with_fail_redaction_summary["blockers"] = []
+        assert "summary status must be fail when redaction fails" in validate_summary(
+            warn_with_fail_redaction_summary
+        ), warn_with_fail_redaction_summary
         missing_previous_attached_summary = json.loads(json.dumps(valid_current_summary, sort_keys=True))
         missing_previous_attached_summary["previousCandidate"]["summaryProvided"] = False
         missing_previous_upgrade = scenario_map(missing_previous_attached_summary)["upgrade-from-previous-candidate"]

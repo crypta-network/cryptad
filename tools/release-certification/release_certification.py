@@ -6879,7 +6879,7 @@ def collect_source_artifacts(settings: Settings, out_dir: Path) -> list[str]:
         if any(name in str(source_path) for name in PRIVATE_ARTIFACT_NAMES):
             continue
         target_path = artifacts_dir / target_name
-        if source_path.suffix == ".json":
+        if target_name.endswith(".json"):
             value = read_json(source_path)
             if value is None:
                 continue
@@ -8490,6 +8490,23 @@ def run_self_test(repo_root: Path) -> None:
             published_multi_node_summary_json["redaction"]["checks"]["failOnTokens"] is True
         ), published_multi_node_summary_json
         assert "Multi-node Beta Soak Report Redacted" in published_multi_node_report, published_multi_node_report
+        multi_node_publish_tmp_path = workspace / "build/multi-node-publish-leak/summary.json.tmp"
+        write_json(multi_node_publish_tmp_path, multi_node_publish_leak_summary)
+        multi_node_publish_tmp_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/multi-node-publish-tmp-cert").resolve(),
+            multi_node_soak_summary=multi_node_publish_tmp_path,
+        )
+        collect_source_artifacts(multi_node_publish_tmp_settings, multi_node_publish_tmp_settings.out_dir)
+        published_multi_node_tmp_summary = (
+            multi_node_publish_tmp_settings.out_dir / "artifacts/multi-node-beta-soak-summary.json"
+        ).read_text(encoding="utf-8")
+        for forbidden in ("rawBackupPayload", "backup bundle bytes", "/srv/runner", "/etc/cryptad"):
+            assert forbidden not in published_multi_node_tmp_summary, published_multi_node_tmp_summary
+        published_multi_node_tmp_summary_json = json.loads(published_multi_node_tmp_summary)
+        assert (
+            published_multi_node_tmp_summary_json["redaction"]["checks"]["failOnTokens"] is True
+        ), published_multi_node_tmp_summary_json
         multi_node_leaky_path = workspace / "build/multi-node-leaky/summary.json"
         multi_node_leaky_summary = json.loads(json.dumps(multi_node_pass_summary, sort_keys=True))
         multi_node_leaky_summary.setdefault("evidence", {})["rawAppData"] = {"value": "unredacted value"}
