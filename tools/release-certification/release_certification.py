@@ -6886,11 +6886,7 @@ def collect_source_artifacts(settings: Settings, out_dir: Path) -> list[str]:
             if target_name == "network-scale-soak-summary.json":
                 safe_value, _ = allowlisted_network_scale_soak_summary(value)
             elif target_name == "multi-node-beta-soak-summary.json":
-                safe_value = sanitize_value(
-                    multi_node_beta_soak.compact_for_release(value),
-                    settings.workspace_root,
-                    out_dir,
-                )
+                safe_value = sanitize_compact_multi_node_summary(value, settings.workspace_root, out_dir)
             else:
                 safe_value = sanitize_value(value, settings.workspace_root, out_dir)
             write_json(target_path, safe_value)
@@ -6906,6 +6902,30 @@ def collect_source_artifacts(settings: Settings, out_dir: Path) -> list[str]:
             )
         copied.append(display_path(target_path, settings.workspace_root, out_dir))
     return copied
+
+
+def sanitize_compact_multi_node_summary(
+    value: dict[str, Any],
+    workspace_root: Path,
+    out_dir: Path,
+) -> dict[str, Any]:
+    compact = multi_node_beta_soak.compact_for_release(value)
+    safe_value = sanitize_value(compact, workspace_root, out_dir)
+    if not isinstance(safe_value, dict):
+        return {}
+    safe_redaction = safe_value.get("redaction")
+    compact_redaction = compact.get("redaction")
+    if not isinstance(safe_redaction, dict) or not isinstance(compact_redaction, dict):
+        return safe_value
+    safe_checks = safe_redaction.get("checks")
+    compact_checks = compact_redaction.get("checks")
+    if not isinstance(safe_checks, dict) or not isinstance(compact_checks, dict):
+        return safe_value
+    for key in multi_node_beta_soak.REDACTION_KEYS:
+        value = compact_checks.get(key)
+        if isinstance(value, bool):
+            safe_checks[key] = value
+    return safe_value
 
 
 def collect_metadata(settings: Settings) -> dict[str, Any]:
@@ -8465,6 +8485,10 @@ def run_self_test(repo_root: Path) -> None:
         for forbidden in ("rawBackupPayload", "backup bundle bytes", "/srv/runner", "/etc/cryptad"):
             assert forbidden not in published_multi_node_summary, published_multi_node_summary
             assert forbidden not in published_multi_node_report, published_multi_node_report
+        published_multi_node_summary_json = json.loads(published_multi_node_summary)
+        assert (
+            published_multi_node_summary_json["redaction"]["checks"]["failOnTokens"] is True
+        ), published_multi_node_summary_json
         assert "Multi-node Beta Soak Report Redacted" in published_multi_node_report, published_multi_node_report
         multi_node_leaky_path = workspace / "build/multi-node-leaky/summary.json"
         multi_node_leaky_summary = json.loads(json.dumps(multi_node_pass_summary, sort_keys=True))
