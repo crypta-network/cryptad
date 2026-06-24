@@ -321,6 +321,7 @@ python3 tools/release-certification/live_network_beta_smoke.py --self-test
 python3 tools/release-certification/network_scale_soak.py --self-test
 python3 tools/release-certification/multi_node_beta_soak.py --self-test
 python3 tools/release-certification/release_certification.py --self-test
+python3 tools/release-certification/production_beta_go_no_go_dashboard.py --self-test
 tools/release-certification/run-release-certification.sh --mode release-candidate --out-dir build/release-certification
 ```
 
@@ -340,9 +341,11 @@ runs do not receive protected release artifact, live-node, form-password, catalo
 secrets; those are wired only for protected production-beta dispatches or manual release-candidate
 dispatches that explicitly require live-network evidence.
 
-The workflow uploads the full production beta artifact tree only when
-`reports/production-beta-summary.json` reports `redaction.status=pass`. Redaction failures keep the
-raw output on the runner and do not publish rejected artifacts through GitHub Actions.
+The workflow uploads the full production beta artifact tree only when both
+`reports/production-beta-summary.json` reports `redaction.status=pass` and
+`reports/go-no-go-redaction-report.json` reports `status=pass`. Redaction failures keep the raw
+output on the runner and do not publish rejected artifacts or the dashboard Markdown through
+GitHub Actions.
 
 ## Known limitations
 

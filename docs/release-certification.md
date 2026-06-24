@@ -355,6 +355,14 @@ Trust Graph statements, app tokens, private insert URIs, or local paths. `apphos
 optional stronger evidence because normal PR and scheduled CI must not require a live local node or
 operator form password.
 
+`production-beta.go-no-go-dashboard`, `production-beta.go-no-go-decision`,
+`production-beta.waiver-validation`, `production-beta.dashboard-redaction`, and
+`production-beta.launch-artifact-hygiene` are deterministic evidence for the final production beta
+launch dashboard. The self-test covers `go`, `no-go`, and `go-with-waivers`, malformed and expired
+waivers, redaction failures, production summary readiness, live-network waiver aliases, and
+test-only signing in production mode without requiring Gradle, signing keys, network access, or a
+live node.
+
 `app-catalog.first-party-beta` reports whether `CRYPTAD_FIRST_PARTY_CATALOG_SOURCE` and the trusted
 catalog key hints are configured in the certification environment, but it does not fetch a public
 Crypta catalog during normal tests. It uses source checks, documentation checks, and deterministic

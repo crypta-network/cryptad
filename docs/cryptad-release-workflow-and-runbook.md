@@ -72,7 +72,7 @@ Treat these as release blockers, in order:
    A promotable `production-beta` run requires production signing inputs, a complete in-pipeline
    Gradle build/stage/sign run, a clean git workspace, a public HTTPS artifact base URI, required
    live-network beta evidence, required multi-node beta soak evidence, ecosystem RC certification,
-   and a passing final redaction scan.
+   a passing final artifact redaction scan, and a passing go/no-go dashboard redaction report.
    Signed catalog bundle URLs resolve under the published artifact root, for example
    `<base>/build/app-bundles/<app>-<version>.zip`. Preserve
    `build/production-beta-release/reports/production-beta-summary.json`,

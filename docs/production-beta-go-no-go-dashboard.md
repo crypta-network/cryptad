@@ -171,7 +171,8 @@ raw command output, local absolute paths, or secret-bearing values.
 
 The production beta GitHub Actions workflow writes the dashboard during both dry-run and protected
 production-beta jobs. The workflow appends the Markdown dashboard to the job summary only when the
-production beta redaction status is `pass`.
+production beta redaction status is `pass` and the dashboard's own redaction report status is
+`pass`.
 
 Protected `production-beta` dispatches fail on `no-go`. A `go-with-waivers` decision is allowed
 only when the dashboard validates and records the waiver records that made the candidate

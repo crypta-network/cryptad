@@ -368,6 +368,7 @@ python3 tools/release-certification/app_platform_smoke.py --self-test
 python3 tools/release-certification/network_scale_soak.py --self-test
 python3 tools/release-certification/multi_node_beta_soak.py --self-test
 python3 tools/release-certification/live_network_beta_smoke.py --self-test
+python3 tools/release-certification/production_beta_go_no_go_dashboard.py --self-test
 ```
 
 When changing route contracts or bridge wiring, also run the relevant root router/toadlet tests
@@ -385,8 +386,9 @@ durable app data, app-data backup/restore, app-service
 dependencies/grant bundles, Trust Graph Local RC, Social Inbox RC, app-update
 lifecycle/scheduler/rollback, sandbox-provider evidence, operator beta dashboard/support-bundle
 behavior, production security response runbook/verifier behavior, live-network beta certification
-behavior, third-party developer beta docs/template/sample/submission evidence, reference
-content/profile/social/feed/trust apps, app platform beta docs evidence,
+behavior, production beta go/no-go dashboard behavior, third-party developer beta
+docs/template/sample/submission evidence, reference content/profile/social/feed/trust apps, app
+platform beta docs evidence,
 operator RC recovery/support behavior, or legacy-admin retirement evidence behavior, also run:
 
 ```bash
@@ -396,6 +398,7 @@ python3 tools/release-certification/app_platform_smoke.py --self-test
 python3 tools/release-certification/network_scale_soak.py --self-test
 python3 tools/release-certification/multi_node_beta_soak.py --self-test
 python3 tools/release-certification/live_network_beta_smoke.py --self-test
+python3 tools/release-certification/production_beta_go_no_go_dashboard.py --self-test
 python3 tools/release-certification/production_beta_release.py --self-test
 tools/release-certification/run-release-certification.sh --mode pr --skip-gradle --skip-git-metadata
 ```
