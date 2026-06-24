@@ -78,11 +78,18 @@ Treat these as release blockers, in order:
    `build/production-beta-release/reports/production-beta-summary.json`,
    `build/production-beta-release/reports/production-beta-summary.md`,
    `build/production-beta-release/reports/redaction-report.json`,
+   `build/production-beta-release/reports/go-no-go-dashboard.json`,
+   `build/production-beta-release/reports/go-no-go-dashboard.md`,
+   `build/production-beta-release/reports/go-no-go-redaction-report.json`,
    `build/production-beta-release/evidence/`, and
    `build/production-beta-release/dist/checksums.txt`. The public archive is
    `build/production-beta-release/dist/crypta-production-beta-<version>.tar.gz`. The workflow,
    modes, required secrets, artifact layout, cleanup guard, and rerun rules are documented in
    [production-beta-release-pipeline.md](production-beta-release-pipeline.md).
+   Read `go-no-go-dashboard.md` first. It is the release-manager launch surface that rolls the
+   production beta summary, ecosystem matrix, redaction report, waivers, live-network evidence, and
+   multi-node evidence into `go`, `no-go`, or `go-with-waivers`; drill into the detailed summaries
+   only after reviewing that decision.
    Confirm `production-security.response-runbook` passes in the production beta summary, and review
    the compact `multiNodeBetaSoak` and `developerBetaProgram` sections before promotion. Security
    releases or app ecosystem incident responses must also run
@@ -120,6 +127,9 @@ Treat these as release blockers, in order:
    network-scale soak, required live-network beta evidence, redaction, and waivers. Its scope and
    non-claims are documented in
    [ecosystem-rc-certification-gate.md](ecosystem-rc-certification-gate.md).
+   Production beta runs also surface this gate through
+   [production-beta-go-no-go-dashboard.md](production-beta-go-no-go-dashboard.md), which is the
+   final launch decision artifact for app-ecosystem production beta candidates.
    Confirm the `network-scale-soak-and-subscription-budget` row and
    `network-scale.rc-soak-summary` evidence are present. The wrapper generates a fresh simulated
    summary by default. Use `--network-scale-soak-summary <path>` or

@@ -43,9 +43,12 @@ Production beta candidates use a separate wrapper around this release-candidate 
 `tools/release-certification/run-production-beta-release.sh`. That command builds and signs
 first-party app bundles, creates a signed first-party catalog, generates review receipts, runs the
 app-platform/live-network/soak/certification collectors, scans the final public artifact tree, and
-writes `reports/production-beta-summary.json`. See
+writes `reports/production-beta-summary.json` plus a production beta go/no-go dashboard. See
 [production-beta-release-pipeline.md](production-beta-release-pipeline.md) for the exact command,
 mode semantics, required secrets, artifact layout, failure classes, and rerun guidance.
+The go/no-go dashboard is a final review surface over the sanitized production beta and
+release-certification outputs; it does not replace this certification summary or the ecosystem
+matrix.
 
 ## Run locally
 
@@ -61,6 +64,7 @@ python3 tools/release-certification/app_platform_smoke.py --self-test
 python3 tools/release-certification/network_scale_soak.py --self-test
 python3 tools/release-certification/multi_node_beta_soak.py --self-test
 python3 tools/release-certification/live_network_beta_smoke.py --self-test
+python3 tools/release-certification/production_beta_go_no_go_dashboard.py --self-test
 python3 tools/release-certification/production_beta_release.py --self-test
 ```
 
@@ -600,6 +604,11 @@ The aggregator writes `ecosystem-certification-matrix.json` and
 `ecosystem-certification-matrix.md` beside the summary and report. The matrix is the primary
 release-candidate checklist for the networked app layer. It does not replace the detailed evidence
 or ecosystem gates; it summarizes them into deterministic rows that answer:
+
+The production beta go/no-go dashboard consumes this matrix as an input and surfaces its blocker
+count, waiver ids, redaction coverage, and recommendations in one launch decision. Release
+managers should keep the matrix with the release record because it remains the detailed checklist
+behind the dashboard.
 
 | Field | Meaning |
 | --- | --- |

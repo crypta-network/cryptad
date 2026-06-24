@@ -1,0 +1,26 @@
+{
+  "extends": "go-no-go-pass.json",
+  "inputs": {
+    "productionBetaSummary": {
+      "failures": [
+        "release-certification failed after promotion gates were evaluated"
+      ],
+      "promotion": {
+        "failedGateCount": 0,
+        "gates": [
+          {
+            "id": "ecosystem.certification",
+            "source": "release-certification",
+            "status": "pass",
+            "summary": "Ecosystem certification gate passed."
+          }
+        ],
+        "promotionReady": true,
+        "status": "pass"
+      },
+      "promotionReady": false,
+      "status": "fail"
+    }
+  },
+  "releaseId": "crypta-production-beta-269-summary-failure-with-gates"
+}

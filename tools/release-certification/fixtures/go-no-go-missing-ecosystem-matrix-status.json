@@ -1,0 +1,9 @@
+{
+  "extends": "go-no-go-pass.json",
+  "inputs": {
+    "ecosystemMatrix": {
+      "status": "missing"
+    }
+  },
+  "releaseId": "crypta-production-beta-269-missing-ecosystem-matrix-status"
+}

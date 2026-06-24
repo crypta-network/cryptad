@@ -1,0 +1,81 @@
+{
+  "extends": "go-no-go-with-waivers.json",
+  "inputs": {
+    "liveNetworkSummary": {
+      "enabled": true,
+      "evidence": [
+        {
+          "id": "live-network-beta.preflight",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-live-network",
+          "status": "pass",
+          "summary": "Live preflight passed."
+        },
+        {
+          "id": "live-network-beta.catalog-usk-fetch",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-live-network",
+          "status": "pass",
+          "summary": "Live catalog fetch passed."
+        },
+        {
+          "id": "live-network-beta.app-install-update-rollback",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-live-network",
+          "status": "pass",
+          "summary": "Live app install/update/rollback passed."
+        },
+        {
+          "id": "live-network-beta.content-fetch",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-live-network",
+          "status": "fail",
+          "summary": "Live content fetch lab node was unavailable during the RC window."
+        },
+        {
+          "id": "live-network-beta.feed-subscription",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-live-network",
+          "status": "pass",
+          "summary": "Live feed subscription passed."
+        },
+        {
+          "id": "live-network-beta.profile-publish",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-live-network",
+          "status": "pass",
+          "summary": "Live profile publish passed."
+        },
+        {
+          "id": "live-network-beta.trust-statement-publish-import",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-live-network",
+          "status": "pass",
+          "summary": "Live trust statement publish/import passed."
+        },
+        {
+          "id": "live-network-beta.interop-perf-budget",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-live-network",
+          "status": "pass",
+          "summary": "Live interop/perf budget passed."
+        },
+        {
+          "id": "live-network-beta.redaction",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-live-network",
+          "status": "pass",
+          "summary": "Live redaction passed."
+        }
+      ],
+      "kind": "live-network-beta-smoke",
+      "mode": "release-candidate",
+      "redaction": {
+        "status": "pass"
+      },
+      "required": true,
+      "status": "fail"
+    }
+  },
+  "releaseId": "crypta-production-beta-269-live-waiver-alias"
+}

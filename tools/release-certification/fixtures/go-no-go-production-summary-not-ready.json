@@ -1,0 +1,16 @@
+{
+  "extends": "go-no-go-pass.json",
+  "inputs": {
+    "productionBetaSummary": {
+      "promotion": {
+        "failedGateCount": 0,
+        "gates": [],
+        "promotionReady": false,
+        "status": "pass"
+      },
+      "promotionReady": false,
+      "status": "pass"
+    }
+  },
+  "releaseId": "crypta-production-beta-269-summary-not-ready"
+}

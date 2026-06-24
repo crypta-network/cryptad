@@ -1,0 +1,529 @@
+{
+  "generatedAt": "1970-01-01T00:00:00Z",
+  "inputs": {
+    "appPlatformSummary": {
+      "evidence": [
+        {
+          "id": "app-platform.signed-bundles",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-app-platform",
+          "status": "pass",
+          "summary": "Signed first-party bundles passed."
+        },
+        {
+          "id": "catalog.smoke",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-app-platform",
+          "status": "pass",
+          "summary": "Catalog smoke passed."
+        },
+        {
+          "id": "catalog.production-channels",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-app-platform",
+          "status": "pass",
+          "summary": "Production channels passed."
+        },
+        {
+          "id": "app-review.trusted-receipts",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-app-platform",
+          "status": "pass",
+          "summary": "Trusted review receipts passed."
+        },
+        {
+          "id": "app-review.first-party-catalog",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-app-platform",
+          "status": "pass",
+          "summary": "First-party catalog review chain passed."
+        },
+        {
+          "id": "app-review.first-party-review-chain",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-app-platform",
+          "status": "pass",
+          "summary": "First-party review chain passed."
+        },
+        {
+          "id": "app-catalog.first-party-maintenance-policy",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-app-platform",
+          "status": "pass",
+          "summary": "Maintenance policy passed."
+        },
+        {
+          "id": "platform-api.contract",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-app-platform",
+          "status": "pass",
+          "summary": "Platform API contract passed."
+        },
+        {
+          "id": "platform-api.stable-baseline",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-app-platform",
+          "status": "pass",
+          "summary": "Stable baseline passed."
+        },
+        {
+          "id": "platform-api.stable-breaking-change-check",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-app-platform",
+          "status": "pass",
+          "summary": "Stable breaking-change check passed."
+        },
+        {
+          "id": "platform-api.manifest-target-stability",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-app-platform",
+          "status": "pass",
+          "summary": "Manifest target stability passed."
+        },
+        {
+          "id": "platform-api.first-party-stability-declarations",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-app-platform",
+          "status": "pass",
+          "summary": "First-party stability declarations passed."
+        },
+        {
+          "id": "platform-api.stable-reference-docs",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-app-platform",
+          "status": "pass",
+          "summary": "Stable reference docs passed."
+        },
+        {
+          "id": "app-store.submission-package-schema",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-app-platform",
+          "status": "pass",
+          "summary": "Submission package schema passed."
+        },
+        {
+          "id": "app-store.submission-cli",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-app-platform",
+          "status": "pass",
+          "summary": "Submission CLI passed."
+        },
+        {
+          "id": "app-store.pre-review",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-app-platform",
+          "status": "pass",
+          "summary": "Pre-review passed."
+        },
+        {
+          "id": "app-store.review-decision-states",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-app-platform",
+          "status": "pass",
+          "summary": "Review decision states passed."
+        },
+        {
+          "id": "app-store.review-receipt-issued",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-app-platform",
+          "status": "pass",
+          "summary": "Review receipt issued evidence passed."
+        },
+        {
+          "id": "app-store.rejection-record",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-app-platform",
+          "status": "pass",
+          "summary": "Rejection record passed."
+        },
+        {
+          "id": "app-store.resubmission-link",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-app-platform",
+          "status": "pass",
+          "summary": "Resubmission link passed."
+        },
+        {
+          "id": "app-store.transparency-log",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-app-platform",
+          "status": "pass",
+          "summary": "Transparency log passed."
+        },
+        {
+          "id": "app-store.catalog-candidate",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-app-platform",
+          "status": "pass",
+          "summary": "Catalog candidate passed."
+        },
+        {
+          "id": "app-store.third-party-sample-flow",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-app-platform",
+          "status": "pass",
+          "summary": "Third-party sample flow passed."
+        },
+        {
+          "id": "app-store.redaction-clean",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-app-platform",
+          "status": "pass",
+          "summary": "App-store redaction passed."
+        },
+        {
+          "id": "app-platform.user-consent-flow",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-app-platform",
+          "status": "pass",
+          "summary": "Consent and permission upgrade UX passed."
+        },
+        {
+          "id": "app-platform.trust-social-beta-hardening",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-app-platform",
+          "status": "pass",
+          "summary": "Trust/social hardening passed."
+        },
+        {
+          "id": "reference-app.trust-graph",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-app-platform",
+          "status": "pass",
+          "summary": "Trust Graph app passed."
+        },
+        {
+          "id": "reference-app.trust-graph-durable-exchange",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-app-platform",
+          "status": "pass",
+          "summary": "Trust Graph durable exchange passed."
+        },
+        {
+          "id": "reference-app.trust-graph-app-data-preview",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-app-platform",
+          "status": "pass",
+          "summary": "Trust Graph app-data preview passed."
+        },
+        {
+          "id": "reference-app.social-inbox",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-app-platform",
+          "status": "pass",
+          "summary": "Social Inbox passed."
+        },
+        {
+          "id": "reference-app.social-inbox-signed-message",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-app-platform",
+          "status": "pass",
+          "summary": "Social Inbox signed message passed."
+        },
+        {
+          "id": "reference-app.social-inbox-subscriptions",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-app-platform",
+          "status": "pass",
+          "summary": "Social Inbox subscriptions passed."
+        },
+        {
+          "id": "reference-app.social-inbox-app-data",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-app-platform",
+          "status": "pass",
+          "summary": "Social Inbox app data passed."
+        },
+        {
+          "id": "reference-app.social-inbox-trust-annotations",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-app-platform",
+          "status": "pass",
+          "summary": "Social Inbox trust annotations passed."
+        },
+        {
+          "id": "reference-app.social-inbox-rc-threading",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-app-platform",
+          "status": "pass",
+          "summary": "Social Inbox RC threading passed."
+        },
+        {
+          "id": "legacy-admin.removal-wave-5",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-app-platform",
+          "status": "pass",
+          "summary": "Legacy admin Wave 5 passed."
+        },
+        {
+          "id": "legacy-admin.final-admin-surface",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-app-platform",
+          "status": "pass",
+          "summary": "Legacy admin final surface passed."
+        },
+        {
+          "id": "legacy-admin.browse-retained",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-app-platform",
+          "status": "pass",
+          "summary": "Legacy browse retained evidence passed."
+        },
+        {
+          "id": "legacy-admin.emergency-fallback-retained",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-app-platform",
+          "status": "pass",
+          "summary": "Legacy emergency fallback evidence passed."
+        },
+        {
+          "id": "production-security.response-runbook",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-app-platform",
+          "status": "pass",
+          "summary": "Production security response runbook passed."
+        },
+        {
+          "id": "third-party-developer.beta-program",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-app-platform",
+          "status": "pass",
+          "summary": "Developer beta program passed."
+        },
+        {
+          "id": "third-party-developer.docs",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-app-platform",
+          "status": "pass",
+          "summary": "Developer beta docs passed."
+        },
+        {
+          "id": "third-party-developer.template",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-app-platform",
+          "status": "pass",
+          "summary": "Developer beta template passed."
+        },
+        {
+          "id": "third-party-developer.sample-app-flow",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-app-platform",
+          "status": "pass",
+          "summary": "Developer sample app flow passed."
+        },
+        {
+          "id": "third-party-developer.submission-checklist",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-app-platform",
+          "status": "pass",
+          "summary": "Developer submission checklist passed."
+        },
+        {
+          "id": "third-party-developer.compatibility-window",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-app-platform",
+          "status": "pass",
+          "summary": "Developer compatibility window passed."
+        },
+        {
+          "id": "third-party-developer.feedback-workflow",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-app-platform",
+          "status": "pass",
+          "summary": "Developer feedback workflow passed."
+        },
+        {
+          "id": "third-party-developer.plugin-author-migration",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-app-platform",
+          "status": "pass",
+          "summary": "Plugin author migration passed."
+        },
+        {
+          "id": "third-party-developer.redaction",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-app-platform",
+          "status": "pass",
+          "summary": "Developer beta redaction passed."
+        },
+        {
+          "id": "live-network-beta.preflight",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-live-network",
+          "status": "pass",
+          "summary": "Live preflight passed."
+        },
+        {
+          "id": "live-network-beta.catalog-usk-fetch",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-live-network",
+          "status": "pass",
+          "summary": "Live catalog fetch passed."
+        },
+        {
+          "id": "live-network-beta.app-install-update-rollback",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-live-network",
+          "status": "pass",
+          "summary": "Live app install/update/rollback passed."
+        },
+        {
+          "id": "live-network-beta.content-fetch",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-live-network",
+          "status": "pass",
+          "summary": "Live content fetch passed."
+        },
+        {
+          "id": "live-network-beta.feed-subscription",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-live-network",
+          "status": "pass",
+          "summary": "Live feed subscription passed."
+        },
+        {
+          "id": "live-network-beta.profile-publish",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-live-network",
+          "status": "pass",
+          "summary": "Live profile publish passed."
+        },
+        {
+          "id": "live-network-beta.trust-statement-publish-import",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-live-network",
+          "status": "pass",
+          "summary": "Live trust statement publish/import passed."
+        },
+        {
+          "id": "live-network-beta.interop-perf-budget",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-live-network",
+          "status": "pass",
+          "summary": "Live interop/perf budget passed."
+        },
+        {
+          "id": "live-network-beta.redaction",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-live-network",
+          "status": "pass",
+          "summary": "Live redaction passed."
+        }
+      ],
+      "mode": "release-candidate",
+      "schemaVersion": 1,
+      "status": "pass",
+      "tool": "app-platform-smoke"
+    },
+    "ecosystemMatrix": {
+      "coverage": {
+        "docsCovered": true,
+        "ecosystemGatesCovered": true,
+        "firstPartyAppsCovered": true,
+        "redactionPassed": true,
+        "requiredEvidenceCovered": true
+      },
+      "releaseBlockerCount": 0,
+      "rows": [
+        {
+          "id": "production-beta-go-no-go-dashboard",
+          "releaseBlocker": false,
+          "status": "pass",
+          "title": "Production beta go/no-go dashboard"
+        }
+      ],
+      "status": "pass"
+    },
+    "liveNetworkSummary": {
+      "enabled": true,
+      "evidence": [],
+      "kind": "live-network-beta-smoke",
+      "mode": "release-candidate",
+      "redaction": {
+        "status": "pass"
+      },
+      "required": true,
+      "status": "pass"
+    },
+    "multiNodeBetaSoakSummary": {
+      "mode": "hybrid",
+      "promotionReady": true,
+      "redaction": {
+        "findings": [],
+        "status": "pass"
+      },
+      "scenarioStatuses": {
+        "app-install-update-rollback": "pass",
+        "backup-restore": "pass",
+        "catalog-channel-update": "pass",
+        "social-inbox-multi-source": "pass",
+        "subscription-pressure": "pass",
+        "support-bundle-drill": "pass",
+        "trust-graph-import": "pass",
+        "upgrade-from-previous-candidate": "pass"
+      },
+      "status": "pass"
+    },
+    "networkScaleSoakSummary": {
+      "budgets": {
+        "concurrencyLeasesReleased": true,
+        "globalFetchBudgetEnforced": true,
+        "perAppFetchBudgetEnforced": true
+      },
+      "durationHoursSimulated": 24,
+      "mode": "simulated-rc-soak",
+      "redaction": {
+        "absolutePathsExcluded": true,
+        "privateInsertUrisExcluded": true,
+        "queueHtmlExcluded": true,
+        "rawFetchedContentExcluded": true,
+        "tokensExcluded": true
+      },
+      "status": "success"
+    },
+    "productionBetaSummary": {
+      "artifacts": {
+        "checksums": "dist/checksums.txt",
+        "distArchive": "dist/crypta-production-beta-269.tar.gz",
+        "redactionReport": "reports/redaction-report.json"
+      },
+      "mode": "production-beta",
+      "nonRelease": false,
+      "promotion": {
+        "failedGateCount": 0,
+        "gates": [],
+        "promotionReady": true,
+        "status": "pass"
+      },
+      "promotionReady": true,
+      "redaction": {
+        "findingCount": 0,
+        "findings": [],
+        "status": "pass"
+      },
+      "schemaVersion": 1,
+      "signingProfile": {
+        "generatedTestKeys": false,
+        "kind": "production"
+      },
+      "status": "pass",
+      "tool": "production-beta-release",
+      "version": "269"
+    },
+    "releaseCertificationSummary": {
+      "ecosystemGates": [],
+      "ecosystemRcPassed": true,
+      "evidence": [],
+      "promotionDecision": "PASS",
+      "releaseCandidatePassed": true,
+      "status": "pass",
+      "waiverRecords": []
+    },
+    "securityResponseSummary": {
+      "status": "pass",
+      "tool": "security-response-runbook"
+    }
+  },
+  "mode": "production-beta",
+  "releaseId": "crypta-production-beta-269"
+}

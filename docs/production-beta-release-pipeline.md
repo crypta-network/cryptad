@@ -144,6 +144,9 @@ build/production-beta-release/
     production-beta-summary.json
     production-beta-summary.md
     redaction-report.json
+    go-no-go-dashboard.json
+    go-no-go-dashboard.md
+    go-no-go-redaction-report.json
   dist/
     crypta-production-beta-<version>.tar.gz
     checksums.txt
@@ -169,7 +172,33 @@ directories are kept outside the public artifact tree.
 | `multiNodeBetaSoak` | Compact status for multi-node soak and upgrade evidence, including mode, scenario statuses, blockers, warnings, promotion readiness, and the `evidence/multi-node-beta-soak.json` artifact path. |
 | `artifacts.firstPartyMaintenancePolicy` | Redacted copy of the checked-in first-party maintenance policy source used to generate signed catalog descriptors. |
 | `redaction` | Final artifact scanner result and findings. |
+| `goNoGo` | Compact pointer to the final production beta go/no-go decision, dashboard JSON, dashboard Markdown, redaction report, failed gate count, waiver count, and non-release state. |
 | `commands` | Redacted command metadata, exit codes, durations, and scrubbed output tails. |
+
+## Go/no-go dashboard
+
+The pipeline generates a final release-manager dashboard after `production-beta-summary.json` and
+before the public archive is created. The dashboard lives under `reports/`:
+
+```text
+reports/go-no-go-dashboard.json
+reports/go-no-go-dashboard.md
+reports/go-no-go-redaction-report.json
+```
+
+The dashboard consumes sanitized summaries and emits one decision:
+
+- `go`: production beta promotion is ready.
+- `go-with-waivers`: promotion is launchable only with the listed approved, scoped, unexpired
+  waivers preserved in the release record.
+- `no-go`: at least one unwaived blocker, invalid waiver, critical redaction finding, unsafe
+  artifact hygiene finding, test signing in production mode, or non-release production artifact
+  remains.
+
+Developer dry-runs can still exit successfully when command execution and redaction pass, but the
+dashboard marks `nonRelease=true` artifacts as `no-go` for publication. See
+[production-beta-go-no-go-dashboard.md](production-beta-go-no-go-dashboard.md) for the waiver schema,
+redaction rules, and release-manager review workflow.
 
 Production beta promotion includes `app-platform.user-consent-flow` evidence. That evidence proves
 that install/update previews, service-grant consent, migration and backup consent, automatic update
@@ -186,6 +215,7 @@ topology schema and local commands.
 
 `reports/production-beta-summary.md` is the human-readable companion. It lists failed gates, artifact
 paths, the security response summary, known limitations, and the production beta readiness decision.
+It also links the go/no-go dashboard artifacts.
 
 ## Third-party submission evidence
 

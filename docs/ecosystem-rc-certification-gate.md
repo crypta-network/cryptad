@@ -64,6 +64,12 @@ promote, resolve blockers, attach missing evidence, or record an approved waiver
 gap. A promoted release record should preserve the sanitized summary, report, matrix, history
 comparison, waiver records, and copied public artifacts.
 
+Production beta candidates surface this gate again in
+[production-beta-go-no-go-dashboard.md](production-beta-go-no-go-dashboard.md). The dashboard rolls
+the ecosystem RC gate, matrix blocker count, waiver usage, redaction status, live-network evidence,
+network-scale soak, and multi-node beta soak into the final `go`, `no-go`, or
+`go-with-waivers` launch decision.
+
 ## Network-scale soak evidence
 
 The release wrapper generates a fresh deterministic
