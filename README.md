@@ -504,10 +504,10 @@ crypta-app compat verify \
 `crypta-app init` writes a standalone staged bundle directory, not a new Gradle subproject. Static
 scaffolds copy or vendor the browser SDK as `static/crypta-platform.js` when available and copy the
 canonical app UI design-system assets into `static/crypta-ui/`. The CLI is local developer
-tooling; it does not add hot reload or a daemon-side install command. Devtools validation and UI
-lint recognize the app-vault capability names so vault-aware apps can disclose
-`vault.secrets.read`, `vault.secrets.write`, `vault.identities.read`,
-`vault.identities.create`, `vault.identities.use`, and `vault.identities.manage` before signing.
+tooling; it does not add hot reload or a daemon-side install command. Third-party scaffolds and
+submission checks reject internal and host/operator-only capabilities. `vault.identities.manage`
+is operator-only; app authors should use the documented app-facing vault capabilities only when
+their workflow needs them.
 
 `crypta-app catalog create` descriptors can author optional store metadata such as homepage,
 source, license, categories, advisory review status/note, permission rationales, screenshot URL
@@ -529,7 +529,11 @@ developer portal, [docs/app-platform-beta-tutorials.md](docs/app-platform-beta-t
 copyable offline flows, [docs/app-dev-cli.md](docs/app-dev-cli.md) for the standalone CLI flow,
 and [docs/app-catalogs.md](docs/app-catalogs.md) for catalog entry descriptors and verification.
 The developer beta toolkit walkthrough is in
-[docs/developer-beta-toolkit.md](docs/developer-beta-toolkit.md).
+[docs/developer-beta-toolkit.md](docs/developer-beta-toolkit.md). External app authors should use
+[docs/third-party-developer-beta-program.md](docs/third-party-developer-beta-program.md),
+[docs/third-party-app-submission-checklist.md](docs/third-party-app-submission-checklist.md), and
+[docs/platform-api-compatibility-support-window.md](docs/platform-api-compatibility-support-window.md)
+before generating a submission package.
 
 ## Platform Closeout & API Surface
 
@@ -595,6 +599,14 @@ is available only through the exact support fallback marker
 subpaths do not bypass the removal policy. FProxy browse/content rendering, content filter,
 startup wizard/recovery flows, security recovery fallback, chat, translation, help, and
 node-to-node messages remain outside Wave 4.
+Phase 10 moves the app ecosystem from prototype to production beta readiness. It adds first-party
+maintenance policy metadata, freezes the Platform API 1.0 stable baseline, adds deterministic
+third-party submission/review/catalog-candidate tooling, unifies user-consent upgrade UX, hardens
+Trust Graph Local RC and Social Inbox RC, finalizes the retained legacy admin surface, adds the
+production security response runbook, records multi-node beta soak and upgrade/rollback/backup
+drills, and documents the external third-party developer beta program with the stable-only
+`hello-stable` sample. These gates do not create a hosted public app store or introduce production
+signing material into local tests.
 
 Key docs:
 
@@ -606,9 +618,15 @@ Key docs:
 - [App platform beta program](docs/app-platform-beta-program.md)
 - [Developer app CLI](docs/app-dev-cli.md)
 - [Developer beta toolkit](docs/developer-beta-toolkit.md)
+- [Third-party developer beta program](docs/third-party-developer-beta-program.md)
+- [Third-party app submission checklist](docs/third-party-app-submission-checklist.md)
+- [Platform API compatibility support window](docs/platform-api-compatibility-support-window.md)
+- [Third-party Hello Stable SDK example](docs/examples/third-party-hello-stable.md)
 - [Signed App Distribution](docs/app-distribution.md)
 - [Signed app catalogs](docs/app-catalogs.md)
 - [First-party beta app catalog](docs/first-party-beta-catalog.md)
+- [Production beta release pipeline](docs/production-beta-release-pipeline.md)
+- [Multi-node beta soak and upgrade drill](docs/multi-node-beta-soak-and-upgrade-drill.md)
 - [App-owned static UI](docs/app-owned-ui.md)
 - [App UI design system](docs/app-ui-design-system.md)
 - [Platform JavaScript SDK](docs/platform-sdk-js.md)
@@ -626,6 +644,8 @@ Key docs:
 - [App platform beta known limitations](docs/app-platform-beta-known-limitations.md)
 - [Legacy admin retirement plan](docs/legacy-retirement-plan.md)
 - [Legacy plugin freeze policy](docs/legacy-plugin-freeze-policy.md)
+- [Legacy plugin migration guide](docs/legacy-plugin-migration-guide.md)
+- [Production security response runbook](docs/production-security-response-runbook.md)
 - [Release certification](docs/release-certification.md)
 
 ## Hyphanet Interop Gate
@@ -669,11 +689,13 @@ tools/perf/run-performance-smoke.sh
 Release-candidate evidence is aggregated by the release certification tooling under
 `tools/release-certification/`. It consumes the interop, performance, app-platform, catalog,
 Platform API contract, app-owned UI, trusted app-review receipt, app-data backup/restore,
-app-service dependency/grant-bundle, legacy plugin freeze, legacy-admin retirement and
-removal-wave evidence, and CI summaries and writes a redacted report plus a stable JSON companion.
-The report also includes historical comparison output and ecosystem gates when a previous
-certified summary is provided. `legacy-admin.removal-wave-1` through
-`legacy-admin.removal-wave-4`, `legacy-plugin.freeze-policy`, and
+app-service dependency/grant-bundle, network-scale soak, multi-node beta soak, third-party
+developer beta, production security response, legacy plugin freeze, legacy-admin retirement and
+final-surface evidence, and CI summaries. It writes a redacted report plus a stable JSON
+companion. The report also includes historical comparison output and ecosystem gates when a
+previous certified summary is provided. `legacy-admin.removal-wave-1` through
+`legacy-admin.removal-wave-5`, `legacy-admin.final-admin-surface`,
+`legacy-plugin.freeze-policy`, `multi-node-beta.*`, `third-party-developer.*`, and
 `app-data.backup-restore-portability` are release-candidate-blocking deterministic evidence and do
 not require a live node.
 
@@ -683,6 +705,9 @@ Fast self-tests:
 python3 tools/release-certification/app_platform_docs_check.py --self-test
 python3 tools/release-certification/release_certification.py --self-test
 python3 tools/release-certification/app_platform_smoke.py --self-test
+python3 tools/release-certification/network_scale_soak.py --self-test
+python3 tools/release-certification/multi_node_beta_soak.py --self-test
+python3 tools/release-certification/production_beta_release.py --self-test
 ```
 
 Generate a local report:
@@ -709,9 +734,10 @@ including `app-review.trusted-receipts`, `app-review.policy`,
 `app-platform.durable-app-data-store`, `reference-app.profile-publisher`,
 `reference-app.feed-reader`, `reference-app.social-inbox`, `reference-app.trust-graph`,
 `app-services.registry`, `app-services.grants`, `app-services.trust-score-provider`,
-`app-services.web-shell`, `app-services.redaction`, app-vault capability/redaction evidence,
-historical comparison, ecosystem gates, structured waivers, optional live-node evidence, and
-redaction rules.
+`app-services.web-shell`, `app-services.redaction`, `network-scale.*`, `multi-node-beta.*`,
+`third-party-developer.*`, app-vault capability/redaction evidence, historical comparison,
+ecosystem gates, structured waivers, optional live-node evidence, production beta promotion
+summaries, and redaction rules.
 
 ## Trust Graph Preview
 

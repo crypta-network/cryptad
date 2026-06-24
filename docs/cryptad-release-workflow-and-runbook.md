@@ -1,10 +1,11 @@
 # Cryptad Release Workflow and Runbook
 
-> Updated June 15, 2026, to cover the production beta app-ecosystem release pipeline and the
-> release certification report that aggregates interop, performance, app-platform, beta
-> documentation, public-beta hardening, operator beta recovery, network-scale soak, ecosystem RC
-> certification, optional live-network beta certification, app-review governance, catalog,
-> app-owned UI, legacy-admin retirement, and CI evidence for a release candidate.
+> Updated June 24, 2026, to cover the production beta app-ecosystem release pipeline and the
+> release certification report that aggregates interop, performance, app-platform, third-party
+> developer beta, multi-node beta soak and upgrade drills, beta documentation, public-beta
+> hardening, operator beta recovery, network-scale soak, ecosystem RC certification, optional
+> live-network beta certification, app-review governance, catalog, app-owned UI, legacy-admin
+> retirement, and CI evidence for a release candidate.
 
 ## Overview
 - Purpose: publish a Cryptad release so running nodes discover a new `info/<edition>` descriptor, download OS-specific installers, and guide operators through installation without self-replacing the running JAR.
@@ -63,13 +64,15 @@ Treat these as release blockers, in order:
      --catalog-channel stable \
      --artifact-base-uri "$CRYPTAD_PRODUCTION_BETA_ARTIFACT_BASE_URI" \
      --require-live-network \
+     --require-multi-node-soak \
      --require-sandbox-provider-tests
    ```
    Use `--mode developer-dry-run` for local or PR-safe rehearsal and `--mode release-candidate`
    for release-branch evidence that does not have production signing or protected live inputs yet.
    A promotable `production-beta` run requires production signing inputs, a complete in-pipeline
    Gradle build/stage/sign run, a clean git workspace, a public HTTPS artifact base URI, required
-   live-network beta evidence, ecosystem RC certification, and a passing final redaction scan.
+   live-network beta evidence, required multi-node beta soak evidence, ecosystem RC certification,
+   and a passing final redaction scan.
    Signed catalog bundle URLs resolve under the published artifact root, for example
    `<base>/build/app-bundles/<app>-<version>.zip`. Preserve
    `build/production-beta-release/reports/production-beta-summary.json`,
@@ -80,7 +83,8 @@ Treat these as release blockers, in order:
    `build/production-beta-release/dist/crypta-production-beta-<version>.tar.gz`. The workflow,
    modes, required secrets, artifact layout, cleanup guard, and rerun rules are documented in
    [production-beta-release-pipeline.md](production-beta-release-pipeline.md).
-   Confirm `production-security.response-runbook` passes in the production beta summary. Security
+   Confirm `production-security.response-runbook` passes in the production beta summary, and review
+   the compact `multiNodeBetaSoak` and `developerBetaProgram` sections before promotion. Security
    releases or app ecosystem incident responses must also run
    `python3 tools/release-certification/security_response_runbook.py verify`, preserve the
    generated drill/advisory artifacts as redacted release evidence, and draft public notes from
@@ -98,7 +102,9 @@ Treat these as release blockers, in order:
    `build/release-certification/history-comparison.json`,
    `build/release-certification/history-comparison.md`,
    `build/release-certification/ecosystem-certification-matrix.json`,
-   `build/release-certification/ecosystem-certification-matrix.md`, and the sanitized
+   `build/release-certification/ecosystem-certification-matrix.md`,
+   `build/release-certification/network-scale-soak/summary.json`,
+   `build/release-certification/multi-node-beta-soak/summary.json`, and the sanitized
    `build/release-certification/artifacts/` directory as release-candidate evidence. Restore the
    previous release's sanitized summary and add
    `--previous-summary build/release-certification-history/latest-summary.json` when it is
@@ -120,6 +126,17 @@ Treat these as release blockers, in order:
    `CRYPTAD_CERT_NETWORK_SCALE_SOAK_SUMMARY` only for an externally collected
    `simulated-rc-soak` or `live-rc-soak` summary that uses the same redacted schema. Record any
    external soak source and redaction status in the release log.
+   Confirm the `multi-node-beta-soak-and-upgrade-drill` row and `multi-node-beta.*` evidence are
+   present. The wrapper generates a fresh deterministic summary by default. Use
+   `--multi-node-soak-summary <path>` or `CRYPTAD_CERT_MULTI_NODE_SOAK_SUMMARY` only for an
+   externally collected redacted summary, and use `--multi-node-mode simulated|hybrid|live` plus
+   `--multi-node-soak-config <path>` when generating a release-specific topology. Production beta
+   promotion requires passing multi-node evidence unless the run is explicitly non-promotable.
+   Confirm the `third-party-developer-beta-program` row and `third-party-developer.*` evidence are
+   present. The evidence must cover the public developer beta docs, `hello-stable` template,
+   checked-in sample app, submission checklist, compatibility support window, feedback workflow,
+   plugin migration path, sample submission/review/catalog-candidate flow, operator-only negative
+   path, and redaction checks.
    Confirm `app-platform.docs-portal`, `app-platform.beta-program`,
    `app-platform.beta-tutorials`, `app-platform.docs-redaction`, and the
    `app-platform-beta-docs-and-program` matrix row are present. Docs-only gaps require an explicit
@@ -179,8 +196,11 @@ Treat these as release blockers, in order:
    on a node that already has first-party apps installed.
 6. **Developer app CLI smoke, when `:platform-devtools` changes** - run
    `./gradlew :platform-devtools:test` and `./gradlew :platform-devtools:installDist`, then verify
-   `platform-devtools/build/install/crypta-app/bin/crypta-app --help`. The CLI contract is
-   documented in [app-dev-cli.md](app-dev-cli.md).
+   `platform-devtools/build/install/crypta-app/bin/crypta-app --help`. When template,
+   compatibility, mock Platform API, or submission commands changed, also exercise the
+   `hello-stable` path or confirm `third-party-developer.*` evidence is passing. The CLI contract
+   is documented in [app-dev-cli.md](app-dev-cli.md); the external developer path is documented in
+   [third-party-developer-beta-program.md](third-party-developer-beta-program.md).
 7. **App-owned UI smoke and lint, when static UI apps ship** - open the advertised `uiUrl` for at
    least one static UI app, confirm nested-entry assets load on the isolated app origin or the
    `/apps/{appId}/` compatibility fallback, and verify no filesystem path leaks appear in error

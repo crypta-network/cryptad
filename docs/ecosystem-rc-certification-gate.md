@@ -14,7 +14,8 @@ PR-258 records final ecosystem release-candidate readiness with:
 
 The gate is a summary over the existing release evidence. It does not replace the detailed matrix
 rows for interop, performance, app platform, app review, public-beta hardening, network-scale soak,
-operator RC recovery, live-network beta, legacy retirement, or redaction.
+multi-node beta soak, third-party developer beta, operator RC recovery, live-network beta, legacy
+retirement, or redaction.
 
 ## Release-candidate requirements
 
@@ -51,6 +52,10 @@ unless an allowed release-manager waiver applies:
 - the matrix, summary, report, or copied artifacts fail redaction checks;
 - the network-scale RC soak summary is missing, stale, malformed, failing, or uses an unsanitized
   schema;
+- required multi-node beta soak evidence is missing, stale, malformed, failing, or was generated
+  from the developer-only self-test topology in a production promotion run;
+- third-party developer beta evidence is missing, failing, or reports a redaction finding in the
+  public developer docs, checked-in sample, review notes, or generated summary fields;
 - live-network beta is marked required but any required `live-network-beta.*` evidence is missing,
   skipped, or failing.
 
@@ -86,6 +91,76 @@ backup payloads, rejected source strings, or absolute local paths.
 A literal 24-hour live soak is optional release-manager evidence. It is represented by the
 attached redacted summary and release-log notes, not by ordinary PR, nightly, unit-test, or
 Python-only self-test runs.
+
+## Multi-node beta soak evidence
+
+The release wrapper generates a fresh deterministic
+`build/release-certification/multi-node-beta-soak/summary.json` by default. A release manager may
+select the simulated, hybrid, or live mode for generated evidence:
+
+```bash
+tools/release-certification/run-release-certification.sh \
+  --mode release-candidate \
+  --multi-node-mode simulated \
+  --out-dir build/release-certification
+```
+
+Attach an external summary only when the release record already has redacted evidence:
+
+```bash
+tools/release-certification/run-release-certification.sh \
+  --mode release-candidate \
+  --multi-node-soak-summary path/to/redacted-multi-node-summary.json \
+  --out-dir build/release-certification
+```
+
+`CRYPTAD_CERT_MULTI_NODE_SOAK_SUMMARY` is the environment-variable equivalent. The attached summary
+must use `kind=cryptad-multi-node-beta-soak-summary`, identify `simulated`, `hybrid`, or `live`
+mode, and keep scenario evidence metadata-only. Production beta promotion requires passing
+`multi-node-beta.*` evidence unless the release manager records an explicit non-promotable
+emergency/test run. The row `multi-node-beta-soak-and-upgrade-drill` covers:
+
+```text
+multi-node-beta.soak
+multi-node-beta.upgrade-drill
+multi-node-beta.catalog-channel-update
+multi-node-beta.app-install-update-rollback
+multi-node-beta.app-data-migration
+multi-node-beta.backup-restore
+multi-node-beta.subscription-pressure
+multi-node-beta.trust-graph-import
+multi-node-beta.social-inbox-multi-source
+multi-node-beta.support-bundle-drill
+multi-node-beta.redaction
+```
+
+Multi-node evidence must not include private insert URIs, private keys, form passwords, app or
+browser-session tokens, raw fetched content, raw app-data values, support bundle bodies, local
+absolute paths, previous-candidate archive paths, or CI secret names/values.
+
+## Third-party developer beta evidence
+
+The app-platform smoke summary records `third-party-developer.*` evidence for the public external
+developer workflow. Release-candidate runs require:
+
+```text
+third-party-developer.beta-program
+third-party-developer.docs
+third-party-developer.template
+third-party-developer.sample-app-flow
+third-party-developer.submission-checklist
+third-party-developer.compatibility-window
+third-party-developer.feedback-workflow
+third-party-developer.plugin-author-migration
+third-party-developer.redaction
+```
+
+These items prove the public docs, `hello-stable` template, checked-in sample app, local
+lint/compat/submission/pre-review/review/catalog-candidate flow, operator-only rejection path,
+feedback issue templates, plugin-author migration notes, and redaction checks are present. They do
+not approve arbitrary third-party apps or bypass signed bundle, catalog, review, sandbox,
+permission, and consent gates. Redaction findings in the sample app or its `review/*.md` files are
+release blockers.
 
 ## Live-network beta optional versus required
 
@@ -132,8 +207,9 @@ structured waivers do not apply; malformed waiver files fail release-candidate m
 
 Docs-only presence or link gaps may be waived when release policy allows, but the waiver must name
 the accepted risk and expiration. Waivers for compatibility, performance, sandbox enforcement,
-review trust, operator RC recovery, network-scale soak, or live-network beta should cite the
-release plan and the replacement evidence being accepted.
+review trust, operator RC recovery, network-scale soak, multi-node beta soak, third-party developer
+beta, or live-network beta should cite the release plan and the replacement evidence being
+accepted.
 
 ## Redaction sensitivity
 
@@ -167,6 +243,7 @@ Passing `ecosystem.rc-certification` does not claim:
 - legacy WebOfTrust, Freetalk, Sone, Freemail, old plugin ABI, or `FCPPluginMessage`
   compatibility;
 - safety of third-party apps beyond the signed catalog, signed bundle, app-review, sandbox,
-  permission, and redaction gates actually present in the release evidence;
+  permission, consent, and redaction gates actually present in the release evidence;
 - production-key handling, real-user content handling, or non-localhost live-node operation;
-- performance guarantees beyond the recorded performance smoke and network-scale soak summaries.
+- performance guarantees beyond the recorded performance smoke, network-scale soak, and multi-node
+  beta soak summaries.
