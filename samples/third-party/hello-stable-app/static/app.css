@@ -1,0 +1,14 @@
+.sample-layout {
+  display: grid;
+  gap: var(--cr-space-4);
+}
+
+.sample-status {
+  margin-top: var(--cr-space-3);
+}
+
+.sample-grid {
+  display: grid;
+  gap: var(--cr-space-3);
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+}

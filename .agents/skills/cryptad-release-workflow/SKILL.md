@@ -38,7 +38,8 @@ Build: 2
   durable app-data and app-data backup/restore evidence, app-service
   registry/grant/dependency/grant-bundle evidence, Trust Graph Local RC evidence, Site
   Publisher/Profile Publisher/Social Inbox RC/Feed Reader/Trust Graph Local RC reference-app
-  evidence, app platform beta docs/program evidence, live USK catalog publication evidence,
+  evidence, app platform beta docs/program evidence, third-party developer beta evidence,
+  multi-node beta soak and upgrade drill evidence, live USK catalog publication evidence,
   production beta artifact redaction evidence and `production-security.response-runbook` when app
   artifacts ship, app-update
   lifecycle/scheduler/rollback and app-data migration contract evidence, `crypta-app` developer
@@ -70,7 +71,8 @@ git checkout -b release/<build-number>
    ```
    Preserve `build/release-certification/release-certification-summary.json`,
    `build/release-certification/release-certification-report.md`,
-   `build/release-certification/network-scale-soak/summary.json`, and sanitized
+   `build/release-certification/network-scale-soak/summary.json`,
+   `build/release-certification/multi-node-beta-soak/summary.json`, and sanitized
    `build/release-certification/artifacts/`.
 
    When the release includes production beta app-ecosystem artifacts, run the top-level production
@@ -84,6 +86,7 @@ git checkout -b release/<build-number>
      --catalog-channel stable \
      --artifact-base-uri "$CRYPTAD_PRODUCTION_BETA_ARTIFACT_BASE_URI" \
      --require-live-network \
+     --require-multi-node-soak \
      --require-sandbox-provider-tests
    ```
    Preserve the JSON/Markdown summaries, redaction report, extracted `evidence/`, and
@@ -127,9 +130,10 @@ git push origin v<build-number>
       passed or has an explicit release-manager waiver.
 - [ ] Production beta app-ecosystem pipeline summary reviewed when first-party app artifacts ship;
       `promotionReady=true`, `nonRelease=false`, production signing, complete in-pipeline build,
-      clean workspace, public HTTPS artifact base URI, required live-network evidence, and
-      redaction `pass` are all present before publication. Confirm the security response section
-      reports `production-security.response-runbook` passing with no blockers.
+      clean workspace, public HTTPS artifact base URI, required live-network evidence, required
+      multi-node beta evidence, and redaction `pass` are all present before publication. Confirm the
+      security response section reports `production-security.response-runbook` passing with no
+      blockers and confirm `developerBetaProgram.status=pass`.
 - [ ] First-party AppHost bundles staged, signed, and verified when shipping app-platform artifacts.
 - [ ] `crypta-app` CLI smoke completed when `:platform-devtools` changed.
 - [ ] Signed catalog, first-party beta catalog, first-party maintenance policy, catalog security
@@ -142,10 +146,13 @@ git push origin v<build-number>
       Publisher identity-profile, Social Inbox RC threading/trust/service-dependency, Feed Reader
       content-subscription, Trust Graph Local RC durable exchange/scope, live USK catalog refresh,
       app-review governance/reviewer-key lifecycle and transparency-log, app platform beta
-      docs/program/redaction, AppHost sandbox-provider, app-update lifecycle, app-update scheduler,
-      app-update rollback, app-update data migration contract, developer beta toolkit, operator RC
-      recovery/support, production security response runbook, legacy plugin freeze, and legacy-admin
-      retirement/removal Wave 1-5/final-surface evidence are present in the certification summary.
+      docs/program/redaction, third-party developer beta docs, template, sample-flow, checklist,
+      compatibility, feedback, plugin-migration and redaction, multi-node beta soak, upgrade,
+      rollback, backup, support-bundle and redaction, AppHost sandbox-provider, app-update
+      lifecycle, app-update scheduler, app-update rollback, app-update data migration contract,
+      developer beta toolkit, operator RC recovery/support, production security response runbook,
+      legacy plugin freeze, and legacy-admin retirement/removal Wave 1-5/final-surface evidence
+      are present in the certification summary.
 - [ ] Hyphanet interop smoke passed or CI evidence recorded; extended interop captured when
       compatibility-sensitive behavior changed.
 - [ ] Performance smoke passed or scheduled/manual CI evidence recorded when release readiness or

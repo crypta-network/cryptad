@@ -22,6 +22,14 @@ and redacted reviewer evidence that the catalog, Web Shell, and unified consent 
 later. Install and update mutations still use the consent snapshot and digest checks described in
 [user-consent-and-permission-upgrade-ux.md](user-consent-and-permission-upgrade-ux.md).
 
+Third-party authors should start with
+[third-party-developer-beta-program.md](third-party-developer-beta-program.md), prepare the
+[third-party-app-submission-checklist.md](third-party-app-submission-checklist.md), and verify the
+stability target against
+[platform-api-compatibility-support-window.md](platform-api-compatibility-support-window.md) before
+creating a package. The checked-in stable sample is
+`samples/third-party/hello-stable-app/`.
+
 ## Submission Package
 
 A submission package is a deterministic ZIP with this layout:

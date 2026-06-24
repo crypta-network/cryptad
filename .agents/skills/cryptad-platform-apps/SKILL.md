@@ -1,6 +1,6 @@
 ---
 name: cryptad-platform-apps
-description: "Work on Cryptad's app platform: Platform API v1/contract, unified operator consent, AppHost runtime/rollback, signed app bundles/catalogs, app-store submission review, trusted app-review receipts, production security response runbooks, Trust Graph Local RC, Social Inbox RC, app-update lifecycle, durable app data, app-data backup/restore, content subscriptions, app-network budgets, local app-service discovery/dependencies/grant bundles, app-owned static UI, browser sessions, the browser SDK, the app UI design system/linter, developer CLI, app permissions/audit, sandbox providers, operator beta dashboard/support evidence, operator RC recovery/support workflows, live-network beta certification evidence, legacy plugin freeze, and legacy admin retirement routing."
+description: "Work on Cryptad's app platform: Platform API v1/contract, unified operator consent, AppHost runtime/rollback, signed app bundles/catalogs, app-store submission review, trusted app-review receipts, third-party developer beta program, production security response runbooks, Trust Graph Local RC, Social Inbox RC, app-update lifecycle, durable app data, app-data backup/restore, content subscriptions, app-network budgets, multi-node beta soak evidence, local app-service discovery/dependencies/grant bundles, app-owned static UI, browser sessions, the browser SDK, the app UI design system/linter, developer CLI, app permissions/audit, sandbox providers, operator beta dashboard/support evidence, operator RC recovery/support workflows, live-network beta certification evidence, legacy plugin freeze, and legacy admin retirement routing."
 ---
 
 # Cryptad platform apps
@@ -15,6 +15,10 @@ Load only the docs needed for the change:
 - Offline beta tutorials: `docs/app-platform-beta-tutorials.md`
 - Beta limitations and safety boundaries: `docs/app-platform-beta-known-limitations.md`
 - Beta program, submission, feedback, and closeout runbook: `docs/app-platform-beta-program.md`
+- Third-party developer beta program: `docs/third-party-developer-beta-program.md`
+- Third-party app submission checklist: `docs/third-party-app-submission-checklist.md`
+- Third-party app compatibility support window: `docs/platform-api-compatibility-support-window.md`
+- Third-party Hello Stable SDK example: `docs/examples/third-party-hello-stable.md`
 - Platform API and shell surface: `docs/platform-api-surface.md`
 - Platform API compatibility contract: `docs/platform-api-contract.md`
 - Platform API 1.0 stable baseline reference: `docs/platform-api-1.0-stable-reference.md`
@@ -43,10 +47,12 @@ Load only the docs needed for the change:
 - App-token permission matrix and audit model: `docs/app-permissions-and-audit.md`
 - Legacy admin replacement map and usage counters: `docs/legacy-retirement-plan.md`
 - Legacy plugin freeze policy: `docs/legacy-plugin-freeze-policy.md`
+- Legacy plugin migration guide: `docs/legacy-plugin-migration-guide.md`
 - Operator beta dashboard and redacted support bundle: `docs/operator-beta-dashboard.md`
 - Operator RC recovery and support workflow: `docs/operator-rc-recovery-and-support-workflow.md`
 - App-platform release evidence: `docs/release-certification.md`
 - Production beta release pipeline: `docs/production-beta-release-pipeline.md`
+- Multi-node beta soak and upgrade drill: `docs/multi-node-beta-soak-and-upgrade-drill.md`
 
 ## Ownership map
 
@@ -96,10 +102,11 @@ Load only the docs needed for the change:
   peer protocol or full Web of Trust implementation.
 - `:platform-devtools` owns the standalone `crypta-app` CLI for scaffolding, validating, signing,
   packaging, verifying, catalog-authoring, app-store submission package/pre-review/candidate
-  commands, API contract snapshotting, compatibility verification, mock dev serving, offline app
-  tests, developer key generation, and dry-run publication planning or explicit live USK
-  publication for developer-owned staged bundles, including `crypta-app ui lint` and review receipt
-  sign/verify helpers.
+  commands, API contract snapshotting, compatibility verification, stable-only `hello-stable`
+  third-party templates and review-note scaffolds, mock dev serving with deterministic Platform API
+  contract fixtures, offline app tests, developer key generation, and dry-run publication planning
+  or explicit live USK publication for developer-owned staged bundles, including `crypta-app ui
+  lint` and review receipt sign/verify helpers.
 - `:platform-web-shell` owns `/app/node/` browser shell assets, bootstrap, app/catalog/update/review
   operator views, the operator beta dashboard/support-bundle panel, the Operator RC Recovery
   surface, subscription recovery controls, app-data backup/restore controls, app-service
@@ -220,6 +227,13 @@ Load only the docs needed for the change:
   rationale documents, maintainer/source metadata, pre-review findings, transparency events, and
   catalog candidates deterministic and redacted; consent previews may summarize review metadata but
   must not include raw package bodies, local paths, keys, or tokens.
+- Third-party developer beta artifacts are non-production unless explicitly promoted through the
+  normal signed bundle, review, catalog, consent, and compatibility gates. The checked-in
+  `hello-stable` sample and generated `review/*.md` files must stay stable-only by default,
+  use only non-production reviewer material in tests, write generated ZIPs/reports outside the
+  bundle root, and avoid private insert URIs, private keys, bearer/session tokens, raw fetched
+  content, raw app data, raw rationale bodies, local absolute paths, and production signing or
+  reviewer material.
 - Reviewer governance is local trusted-key configuration plus a local tamper-evident transparency
   log. Do not present catalog-listed reviewer keys as automatically trusted, and do not describe
   the local transparency log as a global public log.
@@ -291,7 +305,9 @@ Load only the docs needed for the change:
   evidence, bounded content-fetch/subscription evidence, durable app-data and app-data
   backup/restore evidence, app-network budget and network-scale soak evidence, signed bundle
   evidence, signed catalog/live USK publication evidence,
-  first-party beta catalog metadata, app-store submission/pre-review evidence, trusted app-review
+  first-party beta catalog metadata, app-store submission/pre-review evidence, third-party
+  developer beta docs, template, sample flow, checklist, compatibility, feedback,
+  plugin-migration, and redaction evidence, trusted app-review
   receipt evidence, sandbox-provider evidence, app-update lifecycle/scheduler/rollback and
   app-data migration contract evidence, Site Publisher/Profile Publisher/Social Inbox RC/Feed
   Reader/Trust Graph Local RC reference-app evidence, unified consent evidence, app-service
@@ -350,6 +366,7 @@ python3 tools/release-certification/app_platform_docs_check.py --self-test
 python3 tools/release-certification/security_response_runbook.py verify
 python3 tools/release-certification/app_platform_smoke.py --self-test
 python3 tools/release-certification/network_scale_soak.py --self-test
+python3 tools/release-certification/multi_node_beta_soak.py --self-test
 python3 tools/release-certification/live_network_beta_smoke.py --self-test
 ```
 
@@ -368,7 +385,8 @@ durable app data, app-data backup/restore, app-service
 dependencies/grant bundles, Trust Graph Local RC, Social Inbox RC, app-update
 lifecycle/scheduler/rollback, sandbox-provider evidence, operator beta dashboard/support-bundle
 behavior, production security response runbook/verifier behavior, live-network beta certification
-behavior, reference content/profile/social/feed/trust apps, app platform beta docs evidence,
+behavior, third-party developer beta docs/template/sample/submission evidence, reference
+content/profile/social/feed/trust apps, app platform beta docs evidence,
 operator RC recovery/support behavior, or legacy-admin retirement evidence behavior, also run:
 
 ```bash
@@ -376,6 +394,7 @@ python3 tools/release-certification/app_platform_docs_check.py --self-test
 python3 tools/release-certification/security_response_runbook.py verify
 python3 tools/release-certification/app_platform_smoke.py --self-test
 python3 tools/release-certification/network_scale_soak.py --self-test
+python3 tools/release-certification/multi_node_beta_soak.py --self-test
 python3 tools/release-certification/live_network_beta_smoke.py --self-test
 python3 tools/release-certification/production_beta_release.py --self-test
 tools/release-certification/run-release-certification.sh --mode pr --skip-gradle --skip-git-metadata

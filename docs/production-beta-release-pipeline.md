@@ -210,6 +210,25 @@ metadata, fixture sample flow, and redaction checks:
 The evidence uses fixture/test inputs and must remain marked non-production. It does not require
 production reviewer private keys, a hosted submission portal, or live network access.
 
+Production beta summaries also include a compact `developerBetaProgram` object with status fields
+for docs, template, sample app flow, submission checklist, compatibility window, feedback workflow,
+plugin-author migration, and redaction. The summary records only pass/warn/fail-style status,
+blocker summaries, and warning ids; it must not include local absolute paths, raw submission
+package bodies, raw rationale text, private keys, tokens, private insert URIs, raw app data, or raw
+fetched content.
+
+Developer beta program evidence is required alongside the app-store evidence:
+
+- `third-party-developer.beta-program`
+- `third-party-developer.docs`
+- `third-party-developer.template`
+- `third-party-developer.sample-app-flow`
+- `third-party-developer.submission-checklist`
+- `third-party-developer.compatibility-window`
+- `third-party-developer.feedback-workflow`
+- `third-party-developer.plugin-author-migration`
+- `third-party-developer.redaction`
+
 ## Failure classes
 
 The pipeline classifies failures into these groups:

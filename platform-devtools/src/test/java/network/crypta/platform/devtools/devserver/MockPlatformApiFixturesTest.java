@@ -18,6 +18,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
+import network.crypta.platform.api.PlatformApiContract;
+import network.crypta.platform.api.PlatformApiContractJson;
 import network.crypta.platform.appdist.AppDistributionException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -42,6 +44,74 @@ class MockPlatformApiFixturesTest {
     assertTrue(json.contains("\"appId\":\"sample-app\""));
     assertTrue(json.contains("\"name\":\"Name \\\"One\\\"\""));
     assertTrue(json.contains("\"version\":\"0.1\\\\beta\""));
+  }
+
+  @Test
+  void platformContract_whenFixtureMissing_expectCurrentContractEnvelope() throws Exception {
+    Files.createDirectories(tempDir);
+    MockPlatformApiFixtures fixtures =
+        new MockPlatformApiFixtures(tempDir, "sample-app", "Sample App", "0.1.0");
+    MockPlatformApi api = new MockPlatformApi("mock-session"::equals, fixtures);
+    TestHttpExchange contractRequest = TestHttpExchange.get();
+
+    api.handle(contractRequest);
+    String body = contractRequest.responseBody();
+
+    assertEquals(200, contractRequest.responseCode());
+    assertEquals(PlatformApiContractJson.writeEnvelope(PlatformApiContract.current()), body);
+    assertTrue(body.contains("\"generatedBy\""));
+    assertTrue(body.contains("\"stabilityPolicy\""));
+    assertTrue(body.contains("\"capabilities\""));
+    assertTrue(body.contains("\"endpoints\""));
+    assertFalse(body.contains("browserSessionToken"));
+    assertFalse(body.contains("privateKey"));
+    assertFalse(body.contains("/work/"));
+  }
+
+  @Test
+  void platformContract_whenFixtureContainsRouteTemplates_expectAccepted() throws Exception {
+    String contract = PlatformApiContractJson.writeEnvelope(PlatformApiContract.current());
+    Files.writeString(tempDir.resolve("platform-contract.json"), contract, StandardCharsets.UTF_8);
+    MockPlatformApiFixtures fixtures =
+        new MockPlatformApiFixtures(tempDir, "sample-app", "Sample App", "0.1.0");
+
+    String json = fixtures.platformContract();
+
+    assertEquals(contract, json);
+    assertTrue(json.contains("\"routeTemplate\":\"/platform/contract\""));
+  }
+
+  @Test
+  void platformContract_whenFixtureContainsNonRouteAbsolutePath_expectRejected() throws Exception {
+    String contract =
+        PlatformApiContractJson.writeEnvelope(PlatformApiContract.current())
+            .replace("\"generatedBy\":\"cryptad\"", "\"generatedBy\":\"/Users/alice/cryptad\"");
+    Files.writeString(tempDir.resolve("platform-contract.json"), contract, StandardCharsets.UTF_8);
+    MockPlatformApiFixtures fixtures =
+        new MockPlatformApiFixtures(tempDir, "sample-app", "Sample App", "0.1.0");
+
+    AppDistributionException exception =
+        assertThrows(AppDistributionException.class, fixtures::platformContract);
+
+    assertTrue(exception.getMessage().contains("fixture output contains an absolute local path"));
+  }
+
+  @Test
+  void platformContract_whenFixtureRouteTemplateContainsLocalPath_expectRejected()
+      throws Exception {
+    String contract =
+        PlatformApiContractJson.writeEnvelope(PlatformApiContract.current())
+            .replace(
+                "\"routeTemplate\":\"/platform/contract\"",
+                "\"routeTemplate\":\"/home/alice/.crypta/private-route\"");
+    Files.writeString(tempDir.resolve("platform-contract.json"), contract, StandardCharsets.UTF_8);
+    MockPlatformApiFixtures fixtures =
+        new MockPlatformApiFixtures(tempDir, "sample-app", "Sample App", "0.1.0");
+
+    AppDistributionException exception =
+        assertThrows(AppDistributionException.class, fixtures::platformContract);
+
+    assertTrue(exception.getMessage().contains("fixture output contains an absolute local path"));
   }
 
   @Test
@@ -206,6 +276,10 @@ class MockPlatformApiFixturesTest {
       this.requestUri = URI.create(path);
       this.requestBody = new ByteArrayInputStream(body.getBytes(StandardCharsets.UTF_8));
       requestHeaders.add(MockPlatformApi.SESSION_HEADER, "mock-session");
+    }
+
+    private static TestHttpExchange get() {
+      return new TestHttpExchange("GET", "/api/v1/platform/contract", "");
     }
 
     private static TestHttpExchange post(String path, String body) {

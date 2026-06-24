@@ -1786,6 +1786,429 @@
     },
     {
       "details": {
+        "apiTargetStability": "stable",
+        "checks": {
+          "fixture": true
+        },
+        "defaultPermissions": [
+          "platform.contract.read"
+        ],
+        "errors": [],
+        "experimentalCapabilitiesAccepted": false,
+        "redaction": {
+          "absolutePathsExcluded": true,
+          "privateInsertUrisExcluded": true,
+          "privateKeysExcluded": true,
+          "productionReviewerMaterialExcluded": true,
+          "rawAppDataExcluded": true,
+          "rawFetchedContentExcluded": true,
+          "tokensExcluded": true
+        },
+        "reviewStatuses": [
+          "reviewed",
+          "caution",
+          "rejected",
+          "resubmitted"
+        ],
+        "sampleApp": "samples/third-party/hello-stable-app",
+        "sampleFlow": [
+          "init/template",
+          "test",
+          "ui lint",
+          "compat verify",
+          "submission create",
+          "submission verify",
+          "pre-review",
+          "reviewed decision",
+          "catalog candidate",
+          "operator-only rejection"
+        ],
+        "template": "hello-stable"
+      },
+      "id": "third-party-developer.beta-program",
+      "requiredForReleaseCandidate": true,
+      "source": "self-test-fixture",
+      "status": "pass",
+      "summary": "third-party-developer.beta-program passed."
+    },
+    {
+      "details": {
+        "apiTargetStability": "stable",
+        "checks": {
+          "fixture": true
+        },
+        "defaultPermissions": [
+          "platform.contract.read"
+        ],
+        "errors": [],
+        "experimentalCapabilitiesAccepted": false,
+        "redaction": {
+          "absolutePathsExcluded": true,
+          "privateInsertUrisExcluded": true,
+          "privateKeysExcluded": true,
+          "productionReviewerMaterialExcluded": true,
+          "rawAppDataExcluded": true,
+          "rawFetchedContentExcluded": true,
+          "tokensExcluded": true
+        },
+        "reviewStatuses": [
+          "reviewed",
+          "caution",
+          "rejected",
+          "resubmitted"
+        ],
+        "sampleApp": "samples/third-party/hello-stable-app",
+        "sampleFlow": [
+          "init/template",
+          "test",
+          "ui lint",
+          "compat verify",
+          "submission create",
+          "submission verify",
+          "pre-review",
+          "reviewed decision",
+          "catalog candidate",
+          "operator-only rejection"
+        ],
+        "template": "hello-stable"
+      },
+      "id": "third-party-developer.docs",
+      "requiredForReleaseCandidate": true,
+      "source": "self-test-fixture",
+      "status": "pass",
+      "summary": "third-party-developer.docs passed."
+    },
+    {
+      "details": {
+        "apiTargetStability": "stable",
+        "checks": {
+          "fixture": true
+        },
+        "defaultPermissions": [
+          "platform.contract.read"
+        ],
+        "errors": [],
+        "experimentalCapabilitiesAccepted": false,
+        "redaction": {
+          "absolutePathsExcluded": true,
+          "privateInsertUrisExcluded": true,
+          "privateKeysExcluded": true,
+          "productionReviewerMaterialExcluded": true,
+          "rawAppDataExcluded": true,
+          "rawFetchedContentExcluded": true,
+          "tokensExcluded": true
+        },
+        "reviewStatuses": [
+          "reviewed",
+          "caution",
+          "rejected",
+          "resubmitted"
+        ],
+        "sampleApp": "samples/third-party/hello-stable-app",
+        "sampleFlow": [
+          "init/template",
+          "test",
+          "ui lint",
+          "compat verify",
+          "submission create",
+          "submission verify",
+          "pre-review",
+          "reviewed decision",
+          "catalog candidate",
+          "operator-only rejection"
+        ],
+        "template": "hello-stable"
+      },
+      "id": "third-party-developer.template",
+      "requiredForReleaseCandidate": true,
+      "source": "self-test-fixture",
+      "status": "pass",
+      "summary": "third-party-developer.template passed."
+    },
+    {
+      "details": {
+        "apiTargetStability": "stable",
+        "checks": {
+          "fixture": true
+        },
+        "defaultPermissions": [
+          "platform.contract.read"
+        ],
+        "errors": [],
+        "experimentalCapabilitiesAccepted": false,
+        "redaction": {
+          "absolutePathsExcluded": true,
+          "privateInsertUrisExcluded": true,
+          "privateKeysExcluded": true,
+          "productionReviewerMaterialExcluded": true,
+          "rawAppDataExcluded": true,
+          "rawFetchedContentExcluded": true,
+          "tokensExcluded": true
+        },
+        "reviewStatuses": [
+          "reviewed",
+          "caution",
+          "rejected",
+          "resubmitted"
+        ],
+        "sampleApp": "samples/third-party/hello-stable-app",
+        "sampleFlow": [
+          "init/template",
+          "test",
+          "ui lint",
+          "compat verify",
+          "submission create",
+          "submission verify",
+          "pre-review",
+          "reviewed decision",
+          "catalog candidate",
+          "operator-only rejection"
+        ],
+        "template": "hello-stable"
+      },
+      "id": "third-party-developer.sample-app-flow",
+      "requiredForReleaseCandidate": true,
+      "source": "self-test-fixture",
+      "status": "pass",
+      "summary": "third-party-developer.sample-app-flow passed."
+    },
+    {
+      "details": {
+        "apiTargetStability": "stable",
+        "checks": {
+          "fixture": true
+        },
+        "defaultPermissions": [
+          "platform.contract.read"
+        ],
+        "errors": [],
+        "experimentalCapabilitiesAccepted": false,
+        "redaction": {
+          "absolutePathsExcluded": true,
+          "privateInsertUrisExcluded": true,
+          "privateKeysExcluded": true,
+          "productionReviewerMaterialExcluded": true,
+          "rawAppDataExcluded": true,
+          "rawFetchedContentExcluded": true,
+          "tokensExcluded": true
+        },
+        "reviewStatuses": [
+          "reviewed",
+          "caution",
+          "rejected",
+          "resubmitted"
+        ],
+        "sampleApp": "samples/third-party/hello-stable-app",
+        "sampleFlow": [
+          "init/template",
+          "test",
+          "ui lint",
+          "compat verify",
+          "submission create",
+          "submission verify",
+          "pre-review",
+          "reviewed decision",
+          "catalog candidate",
+          "operator-only rejection"
+        ],
+        "template": "hello-stable"
+      },
+      "id": "third-party-developer.submission-checklist",
+      "requiredForReleaseCandidate": true,
+      "source": "self-test-fixture",
+      "status": "pass",
+      "summary": "third-party-developer.submission-checklist passed."
+    },
+    {
+      "details": {
+        "apiTargetStability": "stable",
+        "checks": {
+          "fixture": true
+        },
+        "defaultPermissions": [
+          "platform.contract.read"
+        ],
+        "errors": [],
+        "experimentalCapabilitiesAccepted": false,
+        "redaction": {
+          "absolutePathsExcluded": true,
+          "privateInsertUrisExcluded": true,
+          "privateKeysExcluded": true,
+          "productionReviewerMaterialExcluded": true,
+          "rawAppDataExcluded": true,
+          "rawFetchedContentExcluded": true,
+          "tokensExcluded": true
+        },
+        "reviewStatuses": [
+          "reviewed",
+          "caution",
+          "rejected",
+          "resubmitted"
+        ],
+        "sampleApp": "samples/third-party/hello-stable-app",
+        "sampleFlow": [
+          "init/template",
+          "test",
+          "ui lint",
+          "compat verify",
+          "submission create",
+          "submission verify",
+          "pre-review",
+          "reviewed decision",
+          "catalog candidate",
+          "operator-only rejection"
+        ],
+        "template": "hello-stable"
+      },
+      "id": "third-party-developer.compatibility-window",
+      "requiredForReleaseCandidate": true,
+      "source": "self-test-fixture",
+      "status": "pass",
+      "summary": "third-party-developer.compatibility-window passed."
+    },
+    {
+      "details": {
+        "apiTargetStability": "stable",
+        "checks": {
+          "fixture": true
+        },
+        "defaultPermissions": [
+          "platform.contract.read"
+        ],
+        "errors": [],
+        "experimentalCapabilitiesAccepted": false,
+        "redaction": {
+          "absolutePathsExcluded": true,
+          "privateInsertUrisExcluded": true,
+          "privateKeysExcluded": true,
+          "productionReviewerMaterialExcluded": true,
+          "rawAppDataExcluded": true,
+          "rawFetchedContentExcluded": true,
+          "tokensExcluded": true
+        },
+        "reviewStatuses": [
+          "reviewed",
+          "caution",
+          "rejected",
+          "resubmitted"
+        ],
+        "sampleApp": "samples/third-party/hello-stable-app",
+        "sampleFlow": [
+          "init/template",
+          "test",
+          "ui lint",
+          "compat verify",
+          "submission create",
+          "submission verify",
+          "pre-review",
+          "reviewed decision",
+          "catalog candidate",
+          "operator-only rejection"
+        ],
+        "template": "hello-stable"
+      },
+      "id": "third-party-developer.feedback-workflow",
+      "requiredForReleaseCandidate": true,
+      "source": "self-test-fixture",
+      "status": "pass",
+      "summary": "third-party-developer.feedback-workflow passed."
+    },
+    {
+      "details": {
+        "apiTargetStability": "stable",
+        "checks": {
+          "fixture": true
+        },
+        "defaultPermissions": [
+          "platform.contract.read"
+        ],
+        "errors": [],
+        "experimentalCapabilitiesAccepted": false,
+        "redaction": {
+          "absolutePathsExcluded": true,
+          "privateInsertUrisExcluded": true,
+          "privateKeysExcluded": true,
+          "productionReviewerMaterialExcluded": true,
+          "rawAppDataExcluded": true,
+          "rawFetchedContentExcluded": true,
+          "tokensExcluded": true
+        },
+        "reviewStatuses": [
+          "reviewed",
+          "caution",
+          "rejected",
+          "resubmitted"
+        ],
+        "sampleApp": "samples/third-party/hello-stable-app",
+        "sampleFlow": [
+          "init/template",
+          "test",
+          "ui lint",
+          "compat verify",
+          "submission create",
+          "submission verify",
+          "pre-review",
+          "reviewed decision",
+          "catalog candidate",
+          "operator-only rejection"
+        ],
+        "template": "hello-stable"
+      },
+      "id": "third-party-developer.plugin-author-migration",
+      "requiredForReleaseCandidate": true,
+      "source": "self-test-fixture",
+      "status": "pass",
+      "summary": "third-party-developer.plugin-author-migration passed."
+    },
+    {
+      "details": {
+        "apiTargetStability": "stable",
+        "checks": {
+          "fixture": true
+        },
+        "defaultPermissions": [
+          "platform.contract.read"
+        ],
+        "errors": [],
+        "experimentalCapabilitiesAccepted": false,
+        "redaction": {
+          "absolutePathsExcluded": true,
+          "privateInsertUrisExcluded": true,
+          "privateKeysExcluded": true,
+          "productionReviewerMaterialExcluded": true,
+          "rawAppDataExcluded": true,
+          "rawFetchedContentExcluded": true,
+          "tokensExcluded": true
+        },
+        "reviewStatuses": [
+          "reviewed",
+          "caution",
+          "rejected",
+          "resubmitted"
+        ],
+        "sampleApp": "samples/third-party/hello-stable-app",
+        "sampleFlow": [
+          "init/template",
+          "test",
+          "ui lint",
+          "compat verify",
+          "submission create",
+          "submission verify",
+          "pre-review",
+          "reviewed decision",
+          "catalog candidate",
+          "operator-only rejection"
+        ],
+        "template": "hello-stable"
+      },
+      "id": "third-party-developer.redaction",
+      "requiredForReleaseCandidate": true,
+      "source": "self-test-fixture",
+      "status": "pass",
+      "summary": "third-party-developer.redaction passed."
+    },
+    {
+      "details": {
         "receiptSchemaVersion": 1,
         "signatureAlgorithm": "Ed25519"
       },

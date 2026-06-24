@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Hello Stable</title>
+    <link rel="stylesheet" href="./crypta-ui/crypta-ui-tokens.css">
+    <link rel="stylesheet" href="./crypta-ui/crypta-ui.css">
+    <link rel="stylesheet" href="./app.css">
+  </head>
+  <body class="cr-app">
+    <main class="cr-shell sample-layout">
+      <header class="cr-header">
+        <div>
+          <p class="cr-label">Third-party sample</p>
+          <h1>Hello Stable</h1>
+        </div>
+      </header>
+
+      <section class="cr-permission-summary" data-crypta-permission-summary>
+        <p><strong>Declared permissions</strong></p>
+        <ul>
+          <li><code>platform.contract.read</code></li>
+        </ul>
+      </section>
+
+      <section class="cr-card" aria-labelledby="status-heading">
+        <h2 id="status-heading">Connection</h2>
+        <p class="cr-status cr-status--info sample-status" id="status" role="status" aria-live="polite">
+          Connecting to Crypta...
+        </p>
+      </section>
+
+      <section class="cr-card" aria-labelledby="contract-heading">
+        <h2 id="contract-heading">Platform API</h2>
+        <div class="sample-grid">
+          <div>
+            <p class="cr-label">Current contract</p>
+            <p id="contract-version">Waiting for mock API...</p>
+          </div>
+          <div>
+            <p class="cr-label">Stable baseline</p>
+            <p id="stable-baseline">Waiting for mock API...</p>
+          </div>
+          <div>
+            <p class="cr-label">Stable capabilities</p>
+            <p id="capability-count">Waiting for mock API...</p>
+          </div>
+        </div>
+      </section>
+    </main>
+    <script src="./crypta-platform.js"></script>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

@@ -4,6 +4,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.stream.Collectors;
+import network.crypta.platform.api.PlatformApiContract;
 
 /**
  * Named beta developer templates accepted by {@code crypta-app init --template}.
@@ -23,6 +24,9 @@ import java.util.stream.Collectors;
 enum AppTemplateKind {
   /** Minimal static app equivalent to the pre-template scaffold. */
   STATIC_BASIC("static-basic"),
+
+  /** Stable-only third-party sample that reads Platform API contract metadata. */
+  HELLO_STABLE("hello-stable"),
 
   /** Queue dashboard sample that reads and mutates queue entries through the browser SDK. */
   QUEUE_DASHBOARD("queue-dashboard"),
@@ -83,11 +87,24 @@ enum AppTemplateKind {
   List<String> defaultPermissions() {
     return switch (this) {
       case STATIC_BASIC -> List.of();
+      case HELLO_STABLE -> List.of("platform.contract.read");
       case QUEUE_DASHBOARD -> List.of("queue.read", "queue.write");
       case PUBLISHER -> List.of("content.insert", "queue.read", "queue.write");
       case VAULT_PROFILE ->
           List.of("vault.identities.read", "vault.identities.create", "vault.identities.use");
     };
+  }
+
+  /**
+   * Returns the minimum Platform API contract version generated for this template.
+   *
+   * @return stable-baseline minimum for the stable-only sample, otherwise the current contract
+   *     version used by the generic scaffolds
+   */
+  int minimumContractVersion() {
+    return this == HELLO_STABLE
+        ? PlatformApiContract.PLATFORM_API_STABLE_BASELINE_CONTRACT_VERSION
+        : PlatformApiContract.current().contractVersion();
   }
 
   /**

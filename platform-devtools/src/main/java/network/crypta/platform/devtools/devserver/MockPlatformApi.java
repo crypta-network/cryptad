@@ -15,10 +15,10 @@ import java.util.function.Predicate;
  * Deterministic mock Platform API used by {@code crypta-app dev} and app tests.
  *
  * <p>The handler implements the small Platform API subset needed by scaffold templates and offline
- * smoke tests: node metadata, queue reads and mutations, content insert requests, app-vault
- * identity/grant examples, and current-app metadata. Every endpoint requires the {@code
- * X-Crypta-App-Session} header value issued by the dev bootstrap response, which keeps local
- * examples aligned with the browser SDK's production calling convention.
+ * smoke tests: node metadata, Platform API contract metadata, queue reads and mutations, content
+ * insert requests, app-vault identity/grant examples, and current-app metadata. Every endpoint
+ * requires the {@code X-Crypta-App-Session} header value issued by the dev bootstrap response,
+ * which keeps local examples aligned with the browser SDK's production calling convention.
  *
  * <p>This is not a daemon simulator. Responses are deterministic JSON fixtures or simple mutation
  * acknowledgements, and no request reaches FCP, a live node, disk-backed queue state, or real vault
@@ -121,6 +121,8 @@ final class MockPlatformApi {
       sendJson(exchange, 200, fixtures.vaultGrants());
     } else if (suffix.equals("/apps/current")) {
       sendJson(exchange, 200, fixtures.appsCurrent());
+    } else if (suffix.equals("/platform/contract")) {
+      sendJson(exchange, 200, fixtures.platformContract());
     } else if (suffix.equals("/content/subscriptions")) {
       sendJson(exchange, 200, fixtures.contentSubscriptions());
     } else if (suffix.matches("/content/subscriptions/[^/]+")) {

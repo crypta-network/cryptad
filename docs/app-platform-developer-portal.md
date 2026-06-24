@@ -19,6 +19,10 @@ Use this portal first, then follow the detailed source-of-truth pages for the ar
 | Beta submission, feedback, and closeout runbook | [app-platform-beta-program.md](app-platform-beta-program.md) |
 | Developer CLI reference | [app-dev-cli.md](app-dev-cli.md) |
 | Developer beta toolkit flow | [developer-beta-toolkit.md](developer-beta-toolkit.md) |
+| Third-party developer beta program | [third-party-developer-beta-program.md](third-party-developer-beta-program.md) |
+| Third-party submission checklist | [third-party-app-submission-checklist.md](third-party-app-submission-checklist.md) |
+| Platform API compatibility support window | [platform-api-compatibility-support-window.md](platform-api-compatibility-support-window.md) |
+| Third-party Hello Stable SDK example | [examples/third-party-hello-stable.md](examples/third-party-hello-stable.md) |
 | Signed app bundles | [app-distribution.md](app-distribution.md) |
 | Signed catalogs and catalog sources | [app-catalogs.md](app-catalogs.md) |
 | First-party beta catalog | [first-party-beta-catalog.md](first-party-beta-catalog.md) |
@@ -126,12 +130,15 @@ Then follow this path:
 
 | Step | Command or doc |
 | --- | --- |
-| Scaffold an app from a template | `crypta-app init --template static-basic|queue-dashboard|publisher|vault-profile` in [app-platform-beta-tutorials.md](app-platform-beta-tutorials.md) |
+| Scaffold an app from a template | `crypta-app init --template hello-stable|static-basic|queue-dashboard|publisher|vault-profile` in [third-party-developer-beta-program.md](third-party-developer-beta-program.md) and [app-platform-beta-tutorials.md](app-platform-beta-tutorials.md) |
 | Run local UI against mock Platform API fixtures | `crypta-app dev --bundle-dir <bundle>` in [developer-beta-toolkit.md](developer-beta-toolkit.md) |
 | Run offline checks | `crypta-app test --bundle-dir <bundle> --strict --json <report.json>` |
+| Verify stable API compatibility | [platform-api-compatibility-support-window.md](platform-api-compatibility-support-window.md) and `crypta-app compat verify --bundle-dir <bundle> --strict` |
 | Generate local development signing keys | `crypta-app keys generate` |
 | Sign and verify the staged bundle | `crypta-app sign`, then `crypta-app verify` |
 | Pack a deterministic ZIP artifact | `crypta-app pack` |
+| Create and verify a submission package | [third-party-app-submission-checklist.md](third-party-app-submission-checklist.md), `crypta-app submission create`, `crypta-app submission verify`, and `crypta-app submission pre-review` |
+| Produce a reviewed catalog candidate | `crypta-app submission catalog-candidate` in [app-store-submission-and-review-workflow.md](app-store-submission-and-review-workflow.md) |
 | Create a catalog entry descriptor | `crypta-app catalog entry` |
 | Create, sign, and verify a catalog | `crypta-app catalog create`, `crypta-app catalog sign`, `crypta-app catalog verify` |
 | Produce an offline USK publication plan | `crypta-app publish-usk --dry-run` |
@@ -149,6 +156,7 @@ Public beta readiness treats these workstreams as one ecosystem beta release sto
 | --- | --- |
 | First-party catalog | [first-party-beta-catalog.md](first-party-beta-catalog.md), [production-first-party-catalog-channels.md](production-first-party-catalog-channels.md), `app-catalog.first-party-beta`, `catalog.production-channels`, `catalog.smoke` |
 | Developer toolkit | [developer-beta-toolkit.md](developer-beta-toolkit.md), `app-platform.devtools-cli`, `app-platform.developer-beta-toolkit` |
+| Third-party developer beta | [third-party-developer-beta-program.md](third-party-developer-beta-program.md), [third-party-app-submission-checklist.md](third-party-app-submission-checklist.md), [platform-api-compatibility-support-window.md](platform-api-compatibility-support-window.md), `third-party-developer.*` evidence |
 | Reference apps | [social-inbox-reference-app.md](social-inbox-reference-app.md), [feed-reader-reference-app.md](feed-reader-reference-app.md), [trust-graph-preview.md](trust-graph-preview.md), `reference-app.*` evidence, `app-platform.trust-graph-rc-scope-and-safety` |
 | Network-scale budgets and soak | [network-scale-soak-and-subscription-budget.md](network-scale-soak-and-subscription-budget.md), [release-certification.md](release-certification.md), `network-scale.*` evidence, `network-scale-soak-and-subscription-budget` matrix row |
 | Multi-node beta soak and upgrade drill | [multi-node-beta-soak-and-upgrade-drill.md](multi-node-beta-soak-and-upgrade-drill.md), `multi-node-beta.*` evidence, `multi-node-beta-soak-and-upgrade-drill` matrix row |
@@ -212,7 +220,11 @@ Start here:
 
 ## Feedback and submissions
 
-Use [app-platform-beta-program.md](app-platform-beta-program.md) for proposal requirements,
-feedback categories, redaction rules, and the maintainer closeout runbook. GitHub issue forms are
-available for app platform beta feedback and app submission proposals when GitHub issue templates
-are enabled for the repository.
+Use [third-party-developer-beta-program.md](third-party-developer-beta-program.md) for the external
+developer happy path and [app-platform-beta-program.md](app-platform-beta-program.md) for proposal
+requirements, feedback categories, redaction rules, and the maintainer closeout runbook. The
+submission flow is defined in
+[app-store-submission-and-review-workflow.md](app-store-submission-and-review-workflow.md).
+GitHub issue forms are available for app platform beta feedback, app submission proposals,
+compatibility issues, review appeals, and plugin migration feedback when GitHub issue templates are
+enabled for the repository.

@@ -131,6 +131,33 @@ Use this checklist before proposing an app migration:
 - Add release-certification evidence that proves the migration path without raw payloads or
   secrets.
 
+For third-party beta submissions, follow
+[third-party-developer-beta-program.md](third-party-developer-beta-program.md),
+[third-party-app-submission-checklist.md](third-party-app-submission-checklist.md), and
+[app-store-submission-and-review-workflow.md](app-store-submission-and-review-workflow.md). A
+migrated app should start with the Platform API 1.0 stable baseline when possible, declare
+`api.targetStability=stable`, set `api.experimentalCapabilitiesAccepted=false`, and add only the
+manifest permissions needed for the mapped app-platform mechanism. If a migration needs
+experimental AppVault, Trust Graph, or app-service capabilities, the app must opt into
+experimental API use and explain why stable Platform API 1.0 is not sufficient.
+
+Legacy plugin patterns map to beta app artifacts as follows:
+
+| Old plugin pattern | Developer beta artifact |
+| --- | --- |
+| Plugin descriptor and startup class | `cryptad-app.properties`, `app.exec`, signed staged bundle |
+| Toadlet or FProxy UI | App-owned static UI, browser SDK, UI lint, permission disclosure |
+| Plugin configuration files | App-data namespaces and migration notes |
+| Plugin callbacks into daemon internals | Platform API capability or app-service grant, when exposed |
+| Local identity/private signing | AppVault route or service grant, never exported private material |
+| Public distribution ZIP | Submission package, review receipt, catalog candidate |
+
+Unsupported patterns stay unsupported: in-process daemon hooks, old plugin ABI/FCP command
+compatibility, arbitrary localhost RPC, raw FProxy scraping, private-key export, unbounded crawling,
+and direct access to WebOfTrust/Freetalk/Sone/Freemail internals. Retained FProxy browse behavior
+is an emergency and compatibility fallback for content browsing; it does not create a new plugin
+API or bypass app review.
+
 ## Executable reference app
 
 `apps/social-inbox` is the current executable threaded social inbox reference app. See

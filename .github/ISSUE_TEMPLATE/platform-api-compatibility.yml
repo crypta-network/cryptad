@@ -1,0 +1,55 @@
+name: Platform API compatibility issue
+description: Report a third-party app compatibility-window problem.
+title: "[platform-api-compat] "
+labels:
+  - app-platform
+  - compatibility
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not paste private keys, tokens, private insert URIs, authorization headers, raw app data, raw fetched content, raw request bodies, or local absolute paths. Use contract versions, capability names, finding ids, and digests.
+  - type: input
+    id: app-id-version
+    attributes:
+      label: App id/version
+      placeholder: "Example: org.example.hello 0.1.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: target-stability
+    attributes:
+      label: API target stability
+      options:
+        - stable
+        - experimental
+    validations:
+      required: true
+  - type: input
+    id: contract-range
+    attributes:
+      label: Tested contract range
+      placeholder: "Example: minimum 19, maximum tested 22"
+    validations:
+      required: true
+  - type: textarea
+    id: capabilities
+    attributes:
+      label: Capability names involved
+      placeholder: "Example: platform.contract.read"
+    validations:
+      required: true
+  - type: textarea
+    id: verifier-output
+    attributes:
+      label: Redacted verifier finding ids or summary
+      description: Include `crypta-app compat verify` finding ids and status, not raw bundle bodies.
+    validations:
+      required: true
+  - type: checkboxes
+    id: redaction-confirmation
+    attributes:
+      label: Redaction confirmation
+      options:
+        - label: I confirm this issue contains no secrets, private URIs, tokens, raw app data, raw fetched content, or unredacted local absolute paths.
+          required: true

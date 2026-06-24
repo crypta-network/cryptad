@@ -1,5 +1,6 @@
 package network.crypta.platform.devtools;
 
+import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
@@ -16,6 +17,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 import java.util.zip.ZipOutputStream;
 import network.crypta.platform.api.PlatformApiContract;
+import network.crypta.platform.api.PlatformApiContractJson;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -1296,6 +1298,50 @@ class CryptaAppCliTest {
   }
 
   @Test
+  void compatVerify_whenHelloStableTargetsStableBaselineContract_expectSuccess() throws Exception {
+    Path appDir = tempDir.resolve("hello-stable-app");
+    Path baselineContract = tempDir.resolve("platform-api-contract-19.json");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "hello-stable-app",
+        "--name",
+        "Hello Stable App",
+        "--version",
+        "0.1.0",
+        "--template",
+        "hello-stable");
+    Files.writeString(
+        baselineContract,
+        PlatformApiContractJson.writeEnvelope(stableBaselineContract()),
+        StandardCharsets.UTF_8);
+
+    CliResult result =
+        runCli(
+            "compat",
+            "verify",
+            "--bundle-dir",
+            appDir.toString(),
+            "--contract",
+            baselineContract.toString(),
+            "--strict");
+
+    String manifest =
+        Files.readString(appDir.resolve("cryptad-app.properties"), StandardCharsets.UTF_8);
+    assertTrue(
+        manifest.contains(
+            "api.minimumVersion="
+                + PlatformApiContract.PLATFORM_API_STABLE_BASELINE_CONTRACT_VERSION
+                + "\n"));
+    assertTrue(manifest.contains("api.maximumTestedVersion=" + currentContractVersion() + "\n"));
+    assertEquals(CommandLine.ExitCode.OK, result.exitCode(), result.err());
+    assertTrue(result.out().contains("Compatibility verified."));
+    assertEquals("", result.err());
+  }
+
+  @Test
   void compatVerify_whenCatalogEntryApiRangeOmitsTargetStability_expectManifestTargetIsUsed()
       throws Exception {
     Path appDir = tempDir.resolve("sample-app");
@@ -2198,17 +2244,20 @@ class CryptaAppCliTest {
   void submissionCreate_whenInitializedStaticBundleIncludesSdk_expectAccepted() {
     Path appDir = tempDir.resolve("sdk-template-app");
     Path submission = tempDir.resolve("sdk-template-submission.zip");
+    Path reviewDir = appDir.resolve("review");
     CliResult init =
         runCli(
             "init",
             "--dir",
             appDir.toString(),
-            "--app-id",
+            "--id",
             "sdk-template-app",
             "--name",
             "SDK Template App",
             "--version",
-            "1.0.0");
+            "1.0.0",
+            "--template",
+            "hello-stable");
 
     CliResult create =
         runCli(
@@ -2226,12 +2275,25 @@ class CryptaAppCliTest {
             "mailto:maintainer@example.invalid",
             "--source-url",
             "https://example.invalid/sdk-template-app",
+            "--permission-rationale",
+            reviewDir.resolve("permission-rationale.md").toString(),
+            "--sandbox-rationale",
+            reviewDir.resolve("sandbox-rationale.md").toString(),
+            "--data-schema",
+            reviewDir.resolve("data-schema.md").toString(),
+            "--backup-restore",
+            reviewDir.resolve("backup-restore.md").toString(),
+            "--security-notes",
+            reviewDir.resolve("security-notes.md").toString(),
+            "--changelog",
+            reviewDir.resolve("changelog.md").toString(),
             "--non-production");
 
     assertEquals(CommandLine.ExitCode.OK, init.exitCode(), init.err());
     assertEquals(CommandLine.ExitCode.OK, create.exitCode(), create.err());
     assertTrue(Files.isRegularFile(submission));
     assertFalse(create.err().contains("redaction.session-token"));
+    assertFalse(create.err().contains("redaction.raw-content"));
   }
 
   @Test
@@ -2344,7 +2406,7 @@ class CryptaAppCliTest {
     Path privateKey = tempDir.resolve("review-private.der");
     Files.write(privateKey, keyPair.getPrivate().getEncoded());
     Path trustedReviewers = tempDir.resolve("review-trusted-reviewers.properties");
-    writeTrustedReviewers(trustedReviewers, "reviewer-dev", keyPair);
+    writeTrustedReviewers(trustedReviewers, keyPair);
     Path reason = tempDir.resolve("review-reason.md");
     Files.writeString(reason, "Reviewed resubmission.\n", StandardCharsets.UTF_8);
     Path receipt = tempDir.resolve("review-receipt.properties");
@@ -2460,7 +2522,7 @@ class CryptaAppCliTest {
     Path privateKey = tempDir.resolve("reserved-version-review-private.der");
     Files.write(privateKey, keyPair.getPrivate().getEncoded());
     Path trustedReviewers = tempDir.resolve("reserved-version-trusted-reviewers.properties");
-    writeTrustedReviewers(trustedReviewers, "reviewer-dev", keyPair);
+    writeTrustedReviewers(trustedReviewers, keyPair);
     Path reason = tempDir.resolve("reserved-version-review-reason.md");
     Files.writeString(reason, "Reviewed reserved version.\n", StandardCharsets.UTF_8);
     Path receipt = tempDir.resolve("reserved-version-review-receipt.properties");
@@ -2545,7 +2607,7 @@ class CryptaAppCliTest {
     Path privateKey = tempDir.resolve("legacy-receipt-review-private.der");
     Files.write(privateKey, keyPair.getPrivate().getEncoded());
     Path trustedReviewers = tempDir.resolve("legacy-receipt-trusted-reviewers.properties");
-    writeTrustedReviewers(trustedReviewers, "reviewer-dev", keyPair);
+    writeTrustedReviewers(trustedReviewers, keyPair);
     Path legacyReceipt = tempDir.resolve("legacy-review-receipt.properties");
     CliResult signLegacyReceipt =
         runCli(
@@ -2625,7 +2687,7 @@ class CryptaAppCliTest {
     Path privateKey = tempDir.resolve("untrusted-receipt-review-private.der");
     Files.write(privateKey, signingKeyPair.getPrivate().getEncoded());
     Path trustedReviewers = tempDir.resolve("untrusted-receipt-trusted-reviewers.properties");
-    writeTrustedReviewers(trustedReviewers, "reviewer-dev", registryKeyPair);
+    writeTrustedReviewers(trustedReviewers, registryKeyPair);
     Path reason = tempDir.resolve("untrusted-receipt-reason.md");
     Files.writeString(
         reason, "Reviewed with untrusted registry fixture.\n", StandardCharsets.UTF_8);
@@ -3118,13 +3180,12 @@ class CryptaAppCliTest {
     return String.join("\n", values) + "\n";
   }
 
-  private static void writeTrustedReviewers(Path output, String reviewerId, KeyPair keyPair)
-      throws Exception {
+  private static void writeTrustedReviewers(Path output, KeyPair keyPair) throws IOException {
     Files.writeString(
         output,
         lines(
             "trusted.reviewers.version=1",
-            "reviewer.1.id=" + reviewerId,
+            "reviewer.1.id=reviewer-dev",
             "reviewer.1.algorithm=Ed25519",
             "reviewer.1.public.key.base64="
                 + Base64.getEncoder().encodeToString(keyPair.getPublic().getEncoded()),
@@ -3155,5 +3216,17 @@ class CryptaAppCliTest {
 
   private static int currentContractVersion() {
     return PlatformApiContract.current().contractVersion();
+  }
+
+  private static PlatformApiContract stableBaselineContract() {
+    PlatformApiContract current = PlatformApiContract.current();
+    return new PlatformApiContract(
+        current.apiVersion(),
+        PlatformApiContract.PLATFORM_API_STABLE_BASELINE_CONTRACT_VERSION,
+        current.generatedBy(),
+        current.stabilityPolicy(),
+        current.stableBaseline(),
+        current.capabilities(),
+        current.endpoints());
   }
 }

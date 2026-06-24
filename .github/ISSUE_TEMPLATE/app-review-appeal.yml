@@ -1,0 +1,61 @@
+name: App review appeal or resubmission
+description: Request reviewer clarification or document a beta resubmission.
+title: "[app-review-appeal] "
+labels:
+  - app-platform
+  - app-submission
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not paste reviewer private keys, app signing private keys, private insert URIs, browser session tokens, authorization headers, raw rationale bodies, raw app data, raw fetched content, raw receipt signatures, or local absolute paths.
+  - type: input
+    id: app-id-version
+    attributes:
+      label: App id/version
+      placeholder: "Example: org.example.hello 0.1.0"
+    validations:
+      required: true
+  - type: input
+    id: submission-id
+    attributes:
+      label: Submission id
+      placeholder: "Example: sub-0123456789abcdef01234567"
+    validations:
+      required: true
+  - type: dropdown
+    id: current-review-status
+    attributes:
+      label: Current review status
+      options:
+        - caution
+        - rejected
+        - resubmitted
+    validations:
+      required: true
+  - type: input
+    id: resubmission-of
+    attributes:
+      label: Resubmission of
+      placeholder: "Previous submission id, when applicable"
+  - type: textarea
+    id: finding-summary
+    attributes:
+      label: Finding summary
+      description: Summarize reviewer findings or pre-review blocker ids without raw private material.
+    validations:
+      required: true
+  - type: textarea
+    id: author-response
+    attributes:
+      label: Author response or resubmission delta
+      description: Describe changed permissions, API target, UI fixes, data migration notes, or redaction fixes.
+    validations:
+      required: true
+  - type: checkboxes
+    id: redaction-confirmation
+    attributes:
+      label: Redaction confirmation
+      options:
+        - label: I confirm this appeal contains no secrets, private URIs, tokens, raw app data, raw fetched content, raw signatures, or unredacted local absolute paths.
+          required: true

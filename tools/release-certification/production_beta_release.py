@@ -220,6 +220,17 @@ APP_STORE_SUBMISSION_EVIDENCE_IDS = (
     "app-store.third-party-sample-flow",
     "app-store.redaction-clean",
 )
+THIRD_PARTY_DEVELOPER_BETA_EVIDENCE_IDS = (
+    "third-party-developer.beta-program",
+    "third-party-developer.docs",
+    "third-party-developer.template",
+    "third-party-developer.sample-app-flow",
+    "third-party-developer.submission-checklist",
+    "third-party-developer.compatibility-window",
+    "third-party-developer.feedback-workflow",
+    "third-party-developer.plugin-author-migration",
+    "third-party-developer.redaction",
+)
 CRITICAL_PRODUCTION_BETA_EVIDENCE_IDS = (
     "app-platform.signed-bundles",
     "app-catalog.first-party-maintenance-policy",
@@ -228,6 +239,7 @@ CRITICAL_PRODUCTION_BETA_EVIDENCE_IDS = (
     "app-review.first-party-catalog",
     "app-review.first-party-review-chain",
     *APP_STORE_SUBMISSION_EVIDENCE_IDS,
+    *THIRD_PARTY_DEVELOPER_BETA_EVIDENCE_IDS,
     "platform-api.contract",
     "platform-api.stable-baseline",
     "platform-api.stable-breaking-change-check",
@@ -2112,6 +2124,62 @@ def production_security_response_summary(all_evidence: dict[str, Any]) -> dict[s
     }
 
 
+def developer_beta_program_summary(all_evidence: dict[str, Any]) -> dict[str, Any]:
+    status_by_id = {
+        evidence_id: str(all_evidence.get(evidence_id, {}).get("status", "missing"))
+        if isinstance(all_evidence.get(evidence_id), dict)
+        else "missing"
+        for evidence_id in THIRD_PARTY_DEVELOPER_BETA_EVIDENCE_IDS
+    }
+
+    def status_for(*evidence_ids: str) -> str:
+        values = [status_by_id[evidence_id] for evidence_id in evidence_ids]
+        if any(value in {"fail", "missing"} for value in values):
+            return "fail" if "fail" in values else "missing"
+        if any(value in {"warn", "skip"} for value in values):
+            return "warn"
+        return "pass"
+
+    blockers = [
+        str(item.get("summary", f"{evidence_id} is not passing."))
+        for evidence_id in THIRD_PARTY_DEVELOPER_BETA_EVIDENCE_IDS
+        if isinstance((item := all_evidence.get(evidence_id)), dict)
+        and not evidence_status_ok(item)
+    ]
+    missing = [
+        evidence_id
+        for evidence_id in THIRD_PARTY_DEVELOPER_BETA_EVIDENCE_IDS
+        if not isinstance(all_evidence.get(evidence_id), dict)
+    ]
+    warnings: list[str] = []
+    for evidence_id in THIRD_PARTY_DEVELOPER_BETA_EVIDENCE_IDS:
+        item = all_evidence.get(evidence_id)
+        if not isinstance(item, dict):
+            continue
+        details = evidence_details(item)
+        errors = details.get("errors")
+        if isinstance(errors, list):
+            warnings.extend(str(error) for error in errors)
+    if missing:
+        blockers.extend(f"{evidence_id} evidence is missing." for evidence_id in missing)
+    return {
+        "status": status_for(*THIRD_PARTY_DEVELOPER_BETA_EVIDENCE_IDS),
+        "sampleAppFlow": status_for("third-party-developer.sample-app-flow"),
+        "docs": status_for(
+            "third-party-developer.beta-program",
+            "third-party-developer.docs",
+        ),
+        "submissionChecklist": status_for("third-party-developer.submission-checklist"),
+        "compatibilityWindow": status_for("third-party-developer.compatibility-window"),
+        "feedbackWorkflow": status_for("third-party-developer.feedback-workflow"),
+        "template": status_for("third-party-developer.template"),
+        "pluginAuthorMigration": status_for("third-party-developer.plugin-author-migration"),
+        "redaction": status_for("third-party-developer.redaction"),
+        "blockers": blockers,
+        "warnings": warnings,
+    }
+
+
 def evaluate_promotion(state: PipelineState, summaries: dict[str, Any]) -> dict[str, Any]:
     settings = state.settings
     cert_summary = summaries.get("certification") if isinstance(summaries.get("certification"), dict) else None
@@ -2295,6 +2363,7 @@ def evaluate_promotion(state: PipelineState, summaries: dict[str, Any]) -> dict[
         "multiNodeBetaSoak": multi_node_compact,
         "legacyAdminFinalSurface": legacy_admin_final_surface_summary(all_evidence),
         "securityResponse": production_security_response_summary(all_evidence),
+        "developerBetaProgram": developer_beta_program_summary(all_evidence),
         "knownLimitations": [],
     }
 
@@ -2811,6 +2880,23 @@ def render_markdown_summary(summary: dict[str, Any]) -> str:
             lines.append(f"- Blocker: {blocker}")
         for warning in multi_node.get("warnings", []):
             lines.append(f"- Warning: {warning}")
+    developer_beta = summary.get("developerBetaProgram", {})
+    if isinstance(developer_beta, dict) and developer_beta:
+        lines.extend(["", "## Developer Beta Program", ""])
+        lines.append(f"- Status: `{developer_beta.get('status', 'missing')}`")
+        lines.append(f"- Sample app flow: `{developer_beta.get('sampleAppFlow', 'missing')}`")
+        lines.append(f"- Docs: `{developer_beta.get('docs', 'missing')}`")
+        lines.append(
+            f"- Submission checklist: `{developer_beta.get('submissionChecklist', 'missing')}`"
+        )
+        lines.append(
+            f"- Compatibility window: `{developer_beta.get('compatibilityWindow', 'missing')}`"
+        )
+        lines.append(f"- Feedback workflow: `{developer_beta.get('feedbackWorkflow', 'missing')}`")
+        lines.append(f"- Redaction: `{developer_beta.get('redaction', 'missing')}`")
+        blockers = developer_beta.get("blockers", [])
+        if isinstance(blockers, list):
+            lines.append(f"- Blocker count: `{len(blockers)}`")
     lines.extend(["", "## Failed Gates", ""])
     failed = [gate for gate in summary["promotion"]["gates"] if gate["status"] != "pass"]
     if not failed:
@@ -3002,6 +3088,10 @@ def build_final_summary(
         "warnings": state.warnings,
         "failures": state.failures,
         "multiNodeBetaSoak": multi_node_compact,
+        "developerBetaProgram": final_promotion.get(
+            "developerBetaProgram",
+            {"status": "missing"},
+        ),
         "promotion": final_promotion,
         "redaction": redaction_report,
         "commands": [dataclasses.asdict(command) for command in state.commands],
@@ -3859,6 +3949,11 @@ def assert_emergency_build_skip_is_non_promotable() -> None:
         assert "build.production-beta-complete" in failed_ids, promotion
         assert promotion["nonRelease"] is True, promotion
         assert promotion["promotionReady"] is False, promotion
+        developer_beta = promotion["developerBetaProgram"]
+        assert developer_beta["status"] == "pass", developer_beta
+        assert developer_beta["sampleAppFlow"] == "pass", developer_beta
+        assert developer_beta["submissionChecklist"] == "pass", developer_beta
+        assert developer_beta["compatibilityWindow"] == "pass", developer_beta
 
 
 def assert_allow_test_signing_env_profile_is_non_release() -> None:

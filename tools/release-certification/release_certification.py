@@ -102,6 +102,17 @@ APP_STORE_SUBMISSION_EVIDENCE_IDS = (
     "app-store.third-party-sample-flow",
     "app-store.redaction-clean",
 )
+THIRD_PARTY_DEVELOPER_BETA_EVIDENCE_IDS = (
+    "third-party-developer.beta-program",
+    "third-party-developer.docs",
+    "third-party-developer.template",
+    "third-party-developer.sample-app-flow",
+    "third-party-developer.submission-checklist",
+    "third-party-developer.compatibility-window",
+    "third-party-developer.feedback-workflow",
+    "third-party-developer.plugin-author-migration",
+    "third-party-developer.redaction",
+)
 LIVE_NETWORK_BETA_EVIDENCE_IDS = (
     "live-network-beta.preflight",
     "live-network-beta.catalog-usk-fetch",
@@ -222,6 +233,7 @@ ECOSYSTEM_RC_REQUIRED_EVIDENCE_IDS = (
     "app-review.first-party-catalog",
     "app-review.first-party-review-chain",
     *APP_STORE_SUBMISSION_EVIDENCE_IDS,
+    *THIRD_PARTY_DEVELOPER_BETA_EVIDENCE_IDS,
     "app-platform.user-consent-flow",
     "app-update.lifecycle",
     "app-update.scheduler",
@@ -298,6 +310,7 @@ ECOSYSTEM_RC_REDACTION_EVIDENCE_IDS = (
     "operator-rc.redaction",
     "public-beta-security.audit-redaction-fuzz",
     "production-security.response-runbook",
+    "third-party-developer.redaction",
 )
 SENSITIVE_KEY_PATTERN = (
     r"token|password|passwd|secret|credential|authorization|cookie|set-cookie|"
@@ -1287,6 +1300,7 @@ def app_platform_evidence(
         "app-review.first-party-catalog",
         "app-review.first-party-review-chain",
         *APP_STORE_SUBMISSION_EVIDENCE_IDS,
+        *THIRD_PARTY_DEVELOPER_BETA_EVIDENCE_IDS,
         "app-platform.user-consent-flow",
         "app-ui.design-system",
         "app-ui.lint",
@@ -2980,6 +2994,23 @@ def ecosystem_matrix_row_specs() -> list[MatrixRowSpec]:
                 "docs/app-review-governance.md",
                 "docs/app-catalogs.md",
                 "docs/production-beta-release-pipeline.md",
+            ),
+        ),
+        MatrixRowSpec(
+            id="third-party-developer-beta-program",
+            category="review-governance",
+            title="Third-party developer beta program",
+            required_evidence_ids=THIRD_PARTY_DEVELOPER_BETA_EVIDENCE_IDS,
+            gate_ids=("ecosystem.app-review-trust",),
+            docs=(
+                "docs/third-party-developer-beta-program.md",
+                "docs/third-party-app-submission-checklist.md",
+                "docs/platform-api-compatibility-support-window.md",
+                "docs/examples/third-party-hello-stable.md",
+                "docs/app-store-submission-and-review-workflow.md",
+                "docs/app-catalogs.md",
+                "docs/legacy-plugin-migration-guide.md",
+                "docs/release-certification.md",
             ),
         ),
         MatrixRowSpec(
@@ -7085,6 +7116,7 @@ def render_report(summary: dict[str, Any]) -> str:
         "app-platform.beta-program",
         "app-platform.beta-tutorials",
         "app-platform.docs-redaction",
+        *THIRD_PARTY_DEVELOPER_BETA_EVIDENCE_IDS,
         "platform-api.contract",
         "app-vault.capabilities",
         "app-platform.identity-profile-publish",
@@ -8008,6 +8040,8 @@ def run_self_test(repo_root: Path) -> None:
             "production-security-response-runbook",
             "developer-beta-toolkit",
             "app-platform-beta-docs-and-program",
+            "third-party-developer-beta-program",
+            "app-store-submission-and-review",
             "review-governance-transparency",
             "app-vault-and-generated-documents",
             "content-fetch-and-networked-content",

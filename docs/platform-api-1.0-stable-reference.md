@@ -124,4 +124,7 @@ Experimental app-facing capabilities require `api.targetStability=experimental` 
 fail pre-review for third-party submissions.
 
 See [app-store-submission-and-review-workflow.md](app-store-submission-and-review-workflow.md) for
-the submission package format, automated pre-review report, and reviewer decision workflow.
+the submission package format, automated pre-review report, and reviewer decision workflow. See
+[platform-api-compatibility-support-window.md](platform-api-compatibility-support-window.md) for
+the beta support-window policy, experimental opt-in consequences, deprecation windows, and release
+certification behavior for stable baseline regressions.

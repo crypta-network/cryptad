@@ -14,6 +14,7 @@ related CI jobs, or release-gate documentation.
 - Performance regression gate: `tools/perf/README.md`
 - Release certification workflow: `docs/release-certification.md`
 - Production beta release pipeline: `docs/production-beta-release-pipeline.md`
+- Multi-node beta soak and upgrade drill: `docs/multi-node-beta-soak-and-upgrade-drill.md`
 - Ecosystem RC certification gate: `docs/ecosystem-rc-certification-gate.md`
 - Release certification tooling: `tools/release-certification/README.md`
 - Release readiness gates: `docs/cryptad-release-workflow-and-runbook.md`
@@ -65,8 +66,8 @@ PERF_MODE=collect PERF_SKIP_BUILD=1 tools/perf/run-performance-smoke.sh
 ## Release certification gate
 
 - `tools/release-certification/release_certification.py` aggregates interop, performance,
-  app-platform, network-scale soak, catalog, app-owned UI, operator beta recovery, optional
-  live-network beta certification, legacy-admin retirement, and CI metadata into:
+  app-platform, network-scale soak, multi-node beta soak, catalog, app-owned UI, operator beta
+  recovery, optional live-network beta certification, legacy-admin retirement, and CI metadata into:
 
 ```text
 build/release-certification/release-certification-summary.json
@@ -75,6 +76,8 @@ build/release-certification/ecosystem-certification-matrix.json
 build/release-certification/ecosystem-certification-matrix.md
 build/release-certification/artifacts/
 build/release-certification/network-scale-soak/summary.json
+build/release-certification/multi-node-beta-soak/summary.json
+build/release-certification/multi-node-beta-soak/multi-node-beta-soak-summary.md
 build/release-certification/live-network-beta-smoke/summary.json
 build/release-certification/live-network-beta-smoke/live-network-beta-smoke-report.md
 ```
@@ -82,14 +85,15 @@ build/release-certification/live-network-beta-smoke/live-network-beta-smoke-repo
 - `tools/release-certification/production_beta_release.py` is the top-level production beta
   app-ecosystem release pipeline. It orchestrates Gradle build/install tasks, first-party app
   staging/signing/verification, signed catalog and review receipt generation, app-platform smoke,
-  live-network beta smoke when required, network-scale soak, ecosystem RC certification, final
-  artifact redaction, and public archive creation under `build/production-beta-release/`.
+  live-network beta smoke when required, network-scale soak, multi-node beta soak and upgrade
+  evidence, ecosystem RC certification, final artifact redaction, and public archive creation
+  under `build/production-beta-release/`.
   `developer-dry-run` is CI-safe and non-release; `release-candidate` is strict but may use
   non-production signing labels; `production-beta` requires production signing, a complete
   in-pipeline Gradle build/stage/sign run, a public HTTPS artifact base URI, live-network evidence
-  unless the explicit emergency skip is used, and a clean workspace before `promotionReady` can
-  become true. Emergency build skips must leave `nonRelease=true` and fail the build-complete
-  promotion gate.
+  unless the explicit emergency skip is used, passing multi-node beta evidence, and a clean
+  workspace before `promotionReady` can become true. Emergency build skips must leave
+  `nonRelease=true` and fail the build-complete promotion gate.
 - `tools/release-certification/app_platform_smoke.py` produces the app-platform summary consumed by
   the aggregator. It keeps `--self-test` offline and Python-only, including source/test evidence
   for the Platform API contract, Platform API 1.0 stable baseline, manifest/catalog target
@@ -104,8 +108,10 @@ build/release-certification/live-network-beta-smoke/live-network-beta-smoke-repo
   durable exchange, import-preview, duplicate-issuer/conflict, anchor-lifecycle, bounded-score, and
   app-data migration coverage, app-data backup/restore portability evidence, app-service
   registry/grant/dependency/grant-bundle/redaction coverage, generated document insert/content-fetch
-  and trust redaction coverage, app-network budget source evidence, legacy plugin freeze evidence,
-  app-review governance/reviewer-key/transparency-log evidence, public-beta security hardening
+  and trust redaction coverage, app-network budget source evidence, third-party developer beta
+  docs, template, sample-flow, checklist, compatibility, feedback, plugin-migration, and redaction
+  evidence, legacy plugin freeze evidence, app-review governance/reviewer-key/transparency-log
+  evidence, public-beta security hardening
   evidence, operator beta dashboard/recovery/support-bundle evidence, legacy-admin
   retirement/removal Wave 1-5 and final-surface evidence, production security response runbook
   evidence, sandbox provider selection, and app-update lifecycle/scheduler/rollback.
@@ -113,6 +119,10 @@ build/release-certification/live-network-beta-smoke/live-network-beta-smoke-repo
   network-scale soak summary consumed by the aggregator. Normal PR and CI runs must use simulated
   time instead of a literal 24-hour test. Release-candidate runs may attach an external
   `simulated-rc-soak` or `live-rc-soak` summary with the same redacted schema.
+- `tools/release-certification/multi_node_beta_soak.py` produces deterministic multi-node beta
+  soak and upgrade/rollback/backup drill evidence consumed by the aggregator and production beta
+  pipeline. Normal PR and CI runs use the checked-in simulated topology. Release-manager runs may
+  attach an external `simulated`, `hybrid`, or `live` summary with the same redacted schema.
 - `tools/release-certification/live_network_beta_smoke.py` is the explicit release-manager live
   network collector. Its self-test is offline and deterministic, but normal runs may call only a
   validated localhost node and use env/protected-file fixtures for form passwords, catalog expected
@@ -120,12 +130,13 @@ build/release-certification/live-network-beta-smoke/live-network-beta-smoke-repo
   closed for missing fixtures, failed required evidence, stale app principals, cleanup failures, or
   redaction findings.
 - `tools/release-certification/app_platform_docs_check.py` produces deterministic app-platform
-  beta docs evidence for the developer portal, tutorials, beta program, issue templates, relative
-  Markdown links, and docs redaction checks.
+  beta docs evidence for the developer portal, tutorials, beta program, third-party developer beta
+  docs, issue templates, relative Markdown links, and docs redaction checks.
 - The wrapper resolves relative `--out-dir` values under the repository root, runs the
   app-platform smoke collector, regenerates the default network-scale soak summary unless an
-  explicit summary path or `CRYPTAD_CERT_NETWORK_SCALE_SOAK_SUMMARY` is set, then aggregates the
-  evidence.
+  explicit summary path or `CRYPTAD_CERT_NETWORK_SCALE_SOAK_SUMMARY` is set, regenerates the
+  default multi-node beta soak summary unless `--multi-node-soak-summary` or
+  `CRYPTAD_CERT_MULTI_NODE_SOAK_SUMMARY` is set, then aggregates the evidence.
 - Normal local commands:
 
 ```bash
@@ -134,10 +145,12 @@ python3 tools/release-certification/release_certification.py --self-test
 python3 tools/release-certification/app_platform_smoke.py --self-test
 python3 tools/release-certification/security_response_runbook.py verify
 python3 tools/release-certification/network_scale_soak.py --self-test
+python3 tools/release-certification/multi_node_beta_soak.py --self-test
 python3 tools/release-certification/live_network_beta_smoke.py --self-test
 python3 tools/release-certification/production_beta_release.py --self-test
 tools/release-certification/run-release-certification.sh
 tools/release-certification/run-release-certification.sh --mode release-candidate --out-dir build/release-certification
+tools/release-certification/run-release-certification.sh --mode release-candidate --multi-node-mode simulated --out-dir build/release-certification
 tools/release-certification/run-production-beta-release.sh --mode developer-dry-run --out-dir build/production-beta-dry-run
 ```
 
@@ -146,7 +159,12 @@ tools/release-certification/run-production-beta-release.sh --mode developer-dry-
   includes `app-platform.first-party`, `app-platform.devtools-cli`,
   `app-platform.developer-beta-toolkit`, `app-platform.docs-portal`,
   `app-platform.beta-program`, `app-platform.beta-tutorials`,
-  `app-platform.docs-redaction`, `app-platform.signed-bundles`, `catalog.smoke`,
+  `app-platform.docs-redaction`, `app-platform.signed-bundles`,
+  `third-party-developer.beta-program`, `third-party-developer.docs`,
+  `third-party-developer.template`, `third-party-developer.sample-app-flow`,
+  `third-party-developer.submission-checklist`, `third-party-developer.compatibility-window`,
+  `third-party-developer.feedback-workflow`, `third-party-developer.plugin-author-migration`,
+  `third-party-developer.redaction`, `catalog.smoke`,
   `app-catalog.first-party-beta`, `catalog.production-channels`,
   `app-catalog.first-party-maintenance-policy`, `catalog.security-advisories`,
   `catalog.version-denylist`, `app-review.receipt-revocation`,
@@ -195,7 +213,12 @@ tools/release-certification/run-production-beta-release.sh --mode developer-dry-
   `network-scale.app-network-budget`, `network-scale.content-fetch-budget`,
   `network-scale.subscription-budget`, `network-scale.queue-pressure-backoff`,
   `network-scale.trust-graph-import-budget`, `network-scale.social-inbox-multi-source-soak`,
-  `network-scale.redaction`, `network-scale.rc-soak-summary`, and
+  `network-scale.redaction`, `network-scale.rc-soak-summary`, `multi-node-beta.soak`,
+  `multi-node-beta.upgrade-drill`, `multi-node-beta.catalog-channel-update`,
+  `multi-node-beta.app-install-update-rollback`, `multi-node-beta.app-data-migration`,
+  `multi-node-beta.backup-restore`, `multi-node-beta.subscription-pressure`,
+  `multi-node-beta.trust-graph-import`, `multi-node-beta.social-inbox-multi-source`,
+  `multi-node-beta.support-bundle-drill`, `multi-node-beta.redaction`, and
   `release-certification.ecosystem-matrix`.
 - Platform API stable-history checks compare the stable baseline name/counts/lists, stable endpoint
   required-capability sets, and stable endpoint app-process/app-browser access flags. In production
@@ -204,6 +227,10 @@ tools/release-certification/run-production-beta-release.sh --mode developer-dry-
 - Network-scale release-candidate evidence must be generated fresh by the wrapper or attached
   explicitly. Do not let the aggregator reuse stale default `network-scale-soak/summary.json`
   files across release workspaces.
+- Multi-node beta release-candidate evidence must be generated fresh by the wrapper or attached
+  explicitly. Do not use the checked-in self-test topology as production promotion evidence, and do
+  not let the aggregator reuse stale default `multi-node-beta-soak/summary.json` files across
+  release workspaces.
 - `live-network-beta.*` evidence is release-blocking only when `--require-live-network-beta` or
   `CRYPTAD_CERT_REQUIRE_LIVE_NETWORK_BETA=1` is set. When live-network beta is disabled, the
   aggregator must ignore stale live summaries and must not copy stale live artifacts into the
@@ -219,9 +246,9 @@ tools/release-certification/run-production-beta-release.sh --mode developer-dry-
   incident artifacts, raw app-service subject URIs, provider app data, raw app-data values, raw
   update/rollback command output, command lines containing secrets, CI secret values, queue HTML,
   budget-store file paths, private insert URIs, non-localhost endpoint metadata, catalog scratch
-  paths, staged bundle paths, rollback backup paths, UI lint report paths, or other unsanitized
-  local paths. The aggregator filters
-  `artifacts/private-insert-uris.json` even when interop summaries reference it.
+  paths, staged bundle paths, rollback backup paths, multi-node node profile paths, previous
+  candidate archive paths, UI lint report paths, or other unsanitized local paths. The aggregator
+  filters `artifacts/private-insert-uris.json` even when interop summaries reference it.
 - Treat docs redaction findings as non-waivable blockers. Link-only or presence-only docs gaps can
   be waived by a release manager when policy allows, but raw secret/path findings must keep the
   evidence and matrix row failing.

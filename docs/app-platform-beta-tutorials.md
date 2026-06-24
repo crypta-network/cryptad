@@ -214,6 +214,107 @@ metadata, and deterministic digests for offline pre-review. See
 [app-store-submission-and-review-workflow.md](app-store-submission-and-review-workflow.md) for
 reviewer decisions, caution/rejection handling, and catalog-candidate promotion rules.
 
+For the third-party developer beta happy path, start from the stable-only template and checklist:
+
+```bash
+"$CRYPTA_APP" init \
+  --dir build/dev-apps/hello-stable \
+  --template hello-stable \
+  --id org.example.hello \
+  --name "Hello Stable" \
+  --version 0.1.0
+
+"$CRYPTA_APP" test --bundle-dir build/dev-apps/hello-stable --strict
+"$CRYPTA_APP" ui lint --bundle-dir build/dev-apps/hello-stable --strict
+"$CRYPTA_APP" api snapshot --output build/platform-api-contract.json
+"$CRYPTA_APP" compat verify \
+  --bundle-dir build/dev-apps/hello-stable \
+  --contract build/platform-api-contract.json \
+  --strict
+"$CRYPTA_APP" submission create \
+  --bundle-dir build/dev-apps/hello-stable \
+  --output dist/submissions/hello-stable-submission.zip \
+  --submission-type new_app \
+  --permission-rationale build/dev-apps/hello-stable/review/permission-rationale.md \
+  --sandbox-rationale build/dev-apps/hello-stable/review/sandbox-rationale.md \
+  --data-schema build/dev-apps/hello-stable/review/data-schema.md \
+  --backup-restore build/dev-apps/hello-stable/review/backup-restore.md \
+  --security-notes build/dev-apps/hello-stable/review/security-notes.md \
+  --changelog build/dev-apps/hello-stable/review/changelog.md \
+  --maintainer-name "Example Maintainer" \
+  --maintainer-contact "mailto:maintainer@example.invalid" \
+  --source-url "https://example.invalid/org.example.hello" \
+  --non-production \
+  --transparency-log dist/submissions/review-transparency.jsonl \
+  --overwrite
+"$CRYPTA_APP" submission verify --submission dist/submissions/hello-stable-submission.zip --json
+"$CRYPTA_APP" submission pre-review \
+  --submission dist/submissions/hello-stable-submission.zip \
+  --contract build/platform-api-contract.json \
+  --output dist/submissions/hello-stable-pre-review.json \
+  --transparency-log dist/submissions/review-transparency.jsonl \
+  --overwrite
+# Create local test-only reviewer material for this tutorial receipt.
+mkdir -p "$HOME/.crypta-dev/keys"
+"$CRYPTA_APP" keys generate \
+  --key-id dev-reviewer \
+  --private-key-file "$HOME/.crypta-dev/keys/dev-reviewer-private.der" \
+  --public-key-file "$HOME/.crypta-dev/keys/dev-reviewer-public.der" \
+  --overwrite
+python3 - <<'PY'
+import base64
+from pathlib import Path
+
+key_dir = Path.home() / ".crypta-dev" / "keys"
+public_key = base64.b64encode((key_dir / "dev-reviewer-public.der").read_bytes()).decode("ascii")
+(key_dir / "trusted-reviewer-keys.properties").write_text(
+    "\n".join(
+        (
+            "trusted.reviewers.version=1",
+            "reviewer.1.id=dev-reviewer",
+            "reviewer.1.algorithm=Ed25519",
+            f"reviewer.1.public.key.base64={public_key}",
+            "reviewer.1.display.name=Development Reviewer",
+            "reviewer.1.policy.id=crypta-app-review-v1",
+            "",
+        )
+    ),
+    encoding="utf-8",
+)
+PY
+"$CRYPTA_APP" submission decide \
+  --submission dist/submissions/hello-stable-submission.zip \
+  --pre-review dist/submissions/hello-stable-pre-review.json \
+  --decision reviewed \
+  --reviewer-key-id dev-reviewer \
+  --reviewer-private-key "$HOME/.crypta-dev/keys/dev-reviewer-private.der" \
+  --trusted-reviewer-keys "$HOME/.crypta-dev/keys/trusted-reviewer-keys.properties" \
+  --reason build/dev-apps/hello-stable/review/decision-reason.md \
+  --receipt-output dist/submissions/hello-stable-review-receipt.properties \
+  --transparency-log dist/submissions/review-transparency.jsonl \
+  --allow-non-production \
+  --overwrite
+"$CRYPTA_APP" review transparency verify --log-file dist/submissions/review-transparency.jsonl
+"$CRYPTA_APP" submission catalog-candidate \
+  --submission dist/submissions/hello-stable-submission.zip \
+  --review-receipt dist/submissions/hello-stable-review-receipt.properties \
+  --trusted-reviewer-keys "$HOME/.crypta-dev/keys/trusted-reviewer-keys.properties" \
+  --bundle-uri "crypta:CHK@<artifact-key>/hello-stable-0.1.0.zip" \
+  --output dist/catalog/hello-stable-candidate.properties \
+  --summary "Non-production Hello Stable beta candidate." \
+  --transparency-log dist/submissions/review-transparency.jsonl \
+  --overwrite
+```
+
+The `hello-stable` template declares `api.targetStability=stable`,
+`api.experimentalCapabilitiesAccepted=false`, and `platform.contract.read`. The review decision
+states are `reviewed`, `caution`, `rejected`, and `resubmission` / `resubmitted`; non-production
+fixtures use `--allow-non-production` and deterministic reviewer material only in tests. File
+feedback with `docs/third-party-app-submission-checklist.md` and
+`docs/third-party-developer-beta-program.md`; release evidence records
+`third-party-developer.sample-app-flow` and redaction checks without raw app data, private insert
+URIs, browser session tokens, private keys, or local absolute paths.
+
 Write an offline Crypta USK publication plan:
 
 ```bash

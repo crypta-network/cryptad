@@ -1,0 +1,59 @@
+name: Developer beta feedback
+description: Report third-party developer beta workflow feedback.
+title: "[developer-beta] "
+labels:
+  - app-platform
+  - beta-feedback
+  - developer-beta
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not paste private keys, reviewer private keys, seed phrases, private insert URIs, browser session tokens, AppHost process tokens, form passwords, authorization headers, cookies, request bodies, raw fetched content, raw app data, raw signatures, or local absolute paths.
+  - type: dropdown
+    id: workflow-step
+    attributes:
+      label: Workflow step
+      options:
+        - read public docs
+        - crypta-app init/template
+        - local dev/test
+        - UI lint
+        - API compatibility verify
+        - submission create/verify
+        - pre-review
+        - review decision
+        - catalog candidate
+        - feedback/resubmission
+    validations:
+      required: true
+  - type: input
+    id: app-template
+    attributes:
+      label: Template or sample
+      placeholder: "Example: hello-stable"
+  - type: input
+    id: contract-version
+    attributes:
+      label: Platform API contract version
+      placeholder: "Example: 22"
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or feedback
+      description: Use redacted command summaries, status values, and digests instead of raw artifacts.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: checkboxes
+    id: redaction-confirmation
+    attributes:
+      label: Redaction confirmation
+      options:
+        - label: I confirm this report contains no secrets, private URIs, tokens, raw app data, raw fetched content, raw signatures, or unredacted local absolute paths.
+          required: true
