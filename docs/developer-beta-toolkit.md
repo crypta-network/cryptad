@@ -37,6 +37,28 @@ The examples below assume the launcher directory is on `PATH`:
 export PATH="$PWD/platform-devtools/build/install/crypta-app/bin:$PATH"
 ```
 
+## Create a stable third-party sample app
+
+Start external developer beta work with the stable-only template:
+
+```bash
+crypta-app init \
+  --dir build/dev-apps/hello-stable \
+  --template hello-stable \
+  --id org.example.hello \
+  --name "Hello Stable" \
+  --version 0.1.0
+```
+
+The generated manifest declares `api.targetStability=stable`,
+`api.experimentalCapabilitiesAccepted=false`, and `app.permissions=platform.contract.read`. The UI
+uses the browser SDK to read `GET /api/v1/platform/contract`, which keeps the first local sample
+inside the Platform API 1.0 stable baseline. Use
+[third-party-developer-beta-program.md](third-party-developer-beta-program.md) for the complete
+external developer flow and
+[third-party-app-submission-checklist.md](third-party-app-submission-checklist.md) before creating a
+submission package.
+
 ## Create a queue dashboard app
 
 Scaffold a standalone staged bundle with the queue dashboard template:
@@ -462,6 +484,15 @@ become failures with `--strict`.
   limits and safety boundaries.
 - [app-platform-beta-program.md](app-platform-beta-program.md) covers app submission, feedback, and
   release closeout.
+- [third-party-developer-beta-program.md](third-party-developer-beta-program.md) covers the external
+  developer beta workflow from `hello-stable` through catalog candidate.
+- [third-party-app-submission-checklist.md](third-party-app-submission-checklist.md) is the public
+  pre-submission checklist for manifest, UI, compatibility, rationale, redaction, and resubmission
+  evidence.
+- [platform-api-compatibility-support-window.md](platform-api-compatibility-support-window.md)
+  defines stable baseline, experimental opt-in, deprecation, and scheduled-removal expectations.
+- [app-store-submission-and-review-workflow.md](app-store-submission-and-review-workflow.md)
+  documents submission packages, pre-review, decisions, receipts, and catalog candidates.
 - [app-dev-cli.md](app-dev-cli.md) documents the base standalone CLI workflow.
 - [app-distribution.md](app-distribution.md) documents signed bundle sidecars and runtime trusted
   key inputs.
@@ -471,6 +502,8 @@ become failures with `--strict`.
   publication and Web Shell onboarding.
 - [app-ui-design-system.md](app-ui-design-system.md) documents static UI assets and offline lint.
 - [platform-sdk-js.md](platform-sdk-js.md) documents the browser SDK and browser session handling.
+- [examples/third-party-hello-stable.md](examples/third-party-hello-stable.md) shows the
+  stable-only SDK call used by the `hello-stable` template.
 - [app-permissions-and-audit.md](app-permissions-and-audit.md) documents process principals,
   browser principals, permission checks, and audit redaction.
 - [platform-api-contract.md](platform-api-contract.md) documents API compatibility snapshots and

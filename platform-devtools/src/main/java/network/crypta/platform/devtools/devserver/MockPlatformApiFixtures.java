@@ -6,6 +6,12 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.Map;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import network.crypta.platform.api.PlatformApiContract;
+import network.crypta.platform.api.PlatformApiContractJson;
+import network.crypta.platform.api.PlatformApiEndpointDescriptor;
 import network.crypta.platform.appdist.AppDistributionException;
 
 /**
@@ -23,6 +29,26 @@ import network.crypta.platform.appdist.AppDistributionException;
  * browser-visible responses or app test reports.
  */
 final class MockPlatformApiFixtures {
+  private static final String PLATFORM_CONTRACT_FIXTURE = "platform-contract.json";
+  private static final Pattern QUOTED_UNIX_ABSOLUTE_PATH = Pattern.compile("\"(/[^\"]*)\"");
+  private static final Pattern QUOTED_WINDOWS_ABSOLUTE_PATH =
+      Pattern.compile("\"[A-Za-z]:\\\\\\\\[^\"]*\"");
+
+  /** Built-in Platform API contract fixture derived from the same source as the live route. */
+  private static final String DEFAULT_PLATFORM_CONTRACT =
+      PlatformApiContractJson.writeEnvelope(PlatformApiContract.current());
+
+  /**
+   * Route templates that may appear as quoted Unix-style strings in custom contract fixtures.
+   *
+   * <p>This allow-list is derived from the trusted in-process contract, not from the developer
+   * fixture being scanned. That keeps route templates from weakening the local path leak guard.
+   */
+  private static final Set<String> DEFAULT_PLATFORM_CONTRACT_ROUTE_TEMPLATES =
+      PlatformApiContract.current().endpoints().stream()
+          .map(PlatformApiEndpointDescriptor::routeTemplate)
+          .collect(java.util.stream.Collectors.toUnmodifiableSet());
+
   /** Built-in JSON fixtures keyed by the optional fixture file names accepted by the CLI. */
   private static final Map<String, String> DEFAULTS =
       Map.ofEntries(
@@ -51,6 +77,7 @@ final class MockPlatformApiFixtures {
               """
               {"appId":"${APP_ID}","name":"${APP_NAME}","version":"${APP_VERSION}","mode":"mock-dev"}
               """),
+          Map.entry(PLATFORM_CONTRACT_FIXTURE, DEFAULT_PLATFORM_CONTRACT),
           Map.entry(
               "content-subscriptions.json",
               """
@@ -181,6 +208,16 @@ final class MockPlatformApiFixtures {
    */
   String appsCurrent() throws IOException {
     return fixture("apps-current.json");
+  }
+
+  /**
+   * Returns Platform API contract metadata fixture JSON.
+   *
+   * @return fixture-backed or built-in contract JSON with the stable 1.0 baseline
+   * @throws IOException if fixture loading fails
+   */
+  String platformContract() throws IOException {
+    return fixture(PLATFORM_CONTRACT_FIXTURE);
   }
 
   /**
@@ -376,8 +413,18 @@ final class MockPlatformApiFixtures {
    */
   private static void rejectLocalPathLeaks(String text, String name)
       throws AppDistributionException {
-    if (text.matches("(?s).*\"/[^\"]*\".*")
-        || text.matches("(?s).*\"[A-Za-z]:\\\\\\\\[^\"]*\".*")) {
+    Set<String> allowedUnixPaths =
+        PLATFORM_CONTRACT_FIXTURE.equals(name)
+            ? DEFAULT_PLATFORM_CONTRACT_ROUTE_TEMPLATES
+            : Set.of();
+    Matcher unixPath = QUOTED_UNIX_ABSOLUTE_PATH.matcher(text);
+    while (unixPath.find()) {
+      if (!allowedUnixPaths.contains(unixPath.group(1))) {
+        throw new AppDistributionException(
+            "fixture output contains an absolute local path: " + name);
+      }
+    }
+    if (QUOTED_WINDOWS_ABSOLUTE_PATH.matcher(text).find()) {
       throw new AppDistributionException("fixture output contains an absolute local path: " + name);
     }
   }

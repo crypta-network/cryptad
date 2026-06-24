@@ -18,6 +18,13 @@ scaffold app -> run mock dev server -> run offline tests -> sign bundle -> pack 
 The beta is not a public production app store, does not auto-install recommended catalog apps, and
 does not introduce public network dependencies into tests.
 
+External third-party authors should use
+[third-party-developer-beta-program.md](third-party-developer-beta-program.md) as the public
+happy-path guide, [third-party-app-submission-checklist.md](third-party-app-submission-checklist.md)
+as the pre-submission checklist, and
+[platform-api-compatibility-support-window.md](platform-api-compatibility-support-window.md) for
+stable versus experimental support-window rules.
+
 ## Participants
 
 | Role | What they test |
@@ -35,6 +42,9 @@ An app proposal should include:
 - `cryptad-app.properties` manifest.
 - Requested capabilities and permission rationales.
 - Platform API contract `api.minimumVersion` and `api.maximumTestedVersion`.
+- Platform API stability target, using
+  [platform-api-1.0-stable-reference.md](platform-api-1.0-stable-reference.md) and
+  [platform-api-compatibility-support-window.md](platform-api-compatibility-support-window.md).
 - UI lint output, preferably from `crypta-app ui lint --strict --json`.
 - API compatibility output, preferably from `crypta-app compat verify --strict`.
 - `crypta-app test --strict --json` output.
@@ -70,6 +80,9 @@ Reviewers should check:
 
 Review receipts are independent of catalog signatures and bundle signatures. Catalog publisher
 metadata does not create reviewer trust by itself.
+See [app-store-submission-and-review-workflow.md](app-store-submission-and-review-workflow.md) for
+submission package verification, pre-review, reviewed/caution/rejected decisions, resubmission, and
+catalog-candidate generation.
 
 ## Feedback categories
 
@@ -78,16 +91,22 @@ Use the closest category when filing beta feedback:
 - Install/catalog issue.
 - Update/rollback issue.
 - Platform API compatibility issue.
+- Third-party developer workflow issue.
+- App submission/review issue.
 - AppVault/identity issue.
 - Content fetch/insert issue.
 - Network budget, subscription pressure, or stale-source issue.
 - Trust Graph Local RC issue.
 - UI/design-system issue.
-- Legacy replacement issue.
+- Legacy plugin migration issue.
 - Documentation issue.
 
 Use `.github/ISSUE_TEMPLATE/app-platform-beta-feedback.yml` when filing general feedback and
-`.github/ISSUE_TEMPLATE/app-submission-beta.yml` when proposing an app for beta review.
+`.github/ISSUE_TEMPLATE/app-submission-beta.yml` when proposing an app for beta review. Use
+`.github/ISSUE_TEMPLATE/developer-beta-feedback.yml` for external developer workflow feedback,
+`.github/ISSUE_TEMPLATE/app-review-appeal.yml` for review appeals or resubmissions,
+`.github/ISSUE_TEMPLATE/platform-api-compatibility.yml` for compatibility-window issues, and
+`.github/ISSUE_TEMPLATE/plugin-migration-feedback.yml` for legacy plugin author feedback.
 
 ## Bug report redaction
 

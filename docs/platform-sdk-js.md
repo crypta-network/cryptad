@@ -34,6 +34,18 @@ mock server exposes both `/.well-known/cryptad-bootstrap.json` and
 [developer-beta-toolkit.md](developer-beta-toolkit.md) for the local mock-server flow and its
 limits.
 
+## Third-party stable example
+
+Third-party authors should start with the `hello-stable` template or the checked-in sample at
+`samples/third-party/hello-stable-app/`. The sample declares
+`api.targetStability=stable`, `api.experimentalCapabilitiesAccepted=false`, and
+`app.permissions=platform.contract.read`, then reads `GET /api/v1/platform/contract` through
+`CryptaPlatform.api.get("platform/contract")`.
+
+See [examples/third-party-hello-stable.md](examples/third-party-hello-stable.md) for the concise
+SDK snippet and [third-party-developer-beta-program.md](third-party-developer-beta-program.md) for
+the full local test, lint, compatibility, submission, pre-review, and catalog-candidate flow.
+
 ## Bootstrap
 
 Call `CryptaPlatform.bootstrap.load()` before using API helpers:

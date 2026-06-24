@@ -1,0 +1,62 @@
+name: Plugin migration feedback
+description: Report legacy plugin migration questions or beta feedback.
+title: "[plugin-migration] "
+labels:
+  - app-platform
+  - plugin-migration
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not paste private keys, seed phrases, private insert URIs, browser session tokens, authorization headers, raw plugin state, raw app data, raw fetched content, raw trust documents, or local absolute paths.
+  - type: dropdown
+    id: legacy-plugin-category
+    attributes:
+      label: Legacy plugin category
+      options:
+        - WebOfTrust-like
+        - Freetalk/Sone-like
+        - Freemail-like
+        - content publishing
+        - queue/insert-helper
+        - other
+    validations:
+      required: true
+  - type: textarea
+    id: old-surfaces
+    attributes:
+      label: Old plugin surfaces used
+      description: Summarize UI, state, identity, queue, content, or trust behavior without raw data.
+    validations:
+      required: true
+  - type: textarea
+    id: proposed-app-platform-mechanisms
+    attributes:
+      label: Proposed app-platform mechanisms
+      description: List manifest capabilities, app data, app services, AppVault, content subscriptions, or catalog/review needs.
+    validations:
+      required: true
+  - type: dropdown
+    id: stable-baseline-possible
+    attributes:
+      label: Can the first migration target Platform API 1.0 stable only?
+      options:
+        - "yes"
+        - "no, experimental API is needed"
+        - unsure
+    validations:
+      required: true
+  - type: textarea
+    id: unsupported-patterns
+    attributes:
+      label: Unsupported old patterns acknowledged
+      description: Note any old ABI, old FCP command, daemon-private hook, or localhost RPC behavior that will not migrate directly.
+    validations:
+      required: true
+  - type: checkboxes
+    id: redaction-confirmation
+    attributes:
+      label: Redaction confirmation
+      options:
+        - label: I confirm this feedback contains no secrets, private URIs, tokens, raw plugin state, raw app data, raw fetched content, or unredacted local absolute paths.
+          required: true

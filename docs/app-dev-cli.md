@@ -58,7 +58,7 @@ crypta-app init \
   --app-id <app-id> \
   --name <display-name> \
   --version <version> \
-  [--template static-basic|queue-dashboard|publisher|vault-profile] \
+  [--template static-basic|hello-stable|queue-dashboard|publisher|vault-profile] \
   [--ui-mode static|shell-panel|none] \
   [--permission <capability>] \
   [--overwrite]
@@ -115,9 +115,11 @@ scaffold is created with `--ui-mode none`, no browser UI is declared. If it uses
 `--ui-mode shell-panel`, the manifest points at a shell-panel entry instead of an app-owned static
 route.
 
-`--template` defaults to `static-basic`, which preserves the minimal static scaffold. The beta
-templates `queue-dashboard`, `publisher`, and `vault-profile` are static-only examples that vendor
-the same SDK and design-system assets, declare the permissions they demonstrate, and include visible
+`--app-id` also accepts the alias `--id`. `--template` defaults to `static-basic`, which preserves
+the minimal static scaffold. The stable third-party `hello-stable` template demonstrates
+`platform.contract.read` and targets Platform API 1.0 stable. The beta templates
+`queue-dashboard`, `publisher`, and `vault-profile` are static-only examples that vendor the same
+SDK and design-system assets, declare the permissions they demonstrate, and include visible
 permission disclosure. They are intended as staged bundles for app authors, not new Gradle
 subprojects. The `publisher` template uses the same `sourcePath`, `insertUri`, and `identifier`
 form fields accepted by `/api/v1/queue/inserts/file`; it does not read local files through browser

@@ -18,6 +18,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import network.crypta.platform.api.PlatformApiContract;
 import network.crypta.platform.appdist.AppDistributionException;
 import network.crypta.platform.devtools.devserver.CryptaAppDevServer;
 import network.crypta.platform.devtools.devserver.DevServerConfig;
@@ -49,6 +50,16 @@ class DeveloperBetaToolkitCliTest {
 
   @Test
   void init_whenBetaTemplatesRequested_expectStrictTestCleanStaticApps() throws Exception {
+    assertTemplate(
+        "hello-stable",
+        "hello-stable-app",
+        "app.permissions=platform.contract.read\n",
+        "platform.api.get(\"platform/contract\")",
+        "api.minimumVersion="
+            + PlatformApiContract.PLATFORM_API_STABLE_BASELINE_CONTRACT_VERSION
+            + "\n",
+        "api.targetStability=stable\n",
+        "api.experimentalCapabilitiesAccepted=false\n");
     assertTemplate(
         "queue-dashboard",
         "queue-app",
@@ -92,8 +103,68 @@ class DeveloperBetaToolkitCliTest {
 
     assertEquals(CommandLine.ExitCode.SOFTWARE, result.exitCode());
     assertTrue(result.err().contains("unsupported app template: missing-template"));
+    assertTrue(result.err().contains("hello-stable"));
     assertTrue(result.err().contains("queue-dashboard"));
     assertFalse(Files.exists(appDir.resolve("cryptad-app.properties")));
+  }
+
+  @Test
+  void init_whenHelloStableHasExtraPermissions_expectReviewNotesMatchManifest() throws Exception {
+    Path appDir = tempDir.resolve("hello-stable-extra");
+
+    CliResult result =
+        runCli(
+            "init",
+            "--dir",
+            appDir.toString(),
+            "--app-id",
+            "hello-stable-extra",
+            "--name",
+            "Hello Stable Extra",
+            "--version",
+            "0.1.0",
+            "--template",
+            "hello-stable",
+            "--permission",
+            "queue.read",
+            "--permission",
+            "app.data.write",
+            "--permission",
+            "app.services.read");
+
+    String manifest =
+        Files.readString(appDir.resolve("cryptad-app.properties"), StandardCharsets.UTF_8);
+    Path reviewDir = appDir.resolve("review");
+    String permissionRationale =
+        Files.readString(reviewDir.resolve("permission-rationale.md"), StandardCharsets.UTF_8);
+    String dataSchema =
+        Files.readString(reviewDir.resolve("data-schema.md"), StandardCharsets.UTF_8);
+    String backupRestore =
+        Files.readString(reviewDir.resolve("backup-restore.md"), StandardCharsets.UTF_8);
+    String securityNotes =
+        Files.readString(reviewDir.resolve("security-notes.md"), StandardCharsets.UTF_8);
+
+    assertEquals(CommandLine.ExitCode.OK, result.exitCode(), result.err());
+    assertTrue(
+        manifest.contains(
+            "app.permissions=platform.contract.read,queue.read,app.data.write,app.services.read\n"));
+    assertTrue(
+        manifest.contains(
+            "api.minimumVersion=" + PlatformApiContract.current().contractVersion() + "\n"));
+    assertTrue(manifest.contains("api.targetStability=experimental\n"));
+    assertTrue(permissionRationale.contains("`platform.contract.read`:"));
+    assertTrue(permissionRationale.contains("`queue.read`:"));
+    assertTrue(permissionRationale.contains("`app.data.write`:"));
+    assertTrue(permissionRationale.contains("`app.services.read`:"));
+    assertFalse(permissionRationale.contains("does not request queue"));
+    assertTrue(dataSchema.contains("`app.data.write`"));
+    assertFalse(dataSchema.contains("does not use durable app data"));
+    assertTrue(backupRestore.contains("`app.data.write`"));
+    assertFalse(backupRestore.contains("no app-data namespaces"));
+    assertTrue(securityNotes.contains("app-service permissions"));
+    assertTrue(securityNotes.contains("app-owned record values"));
+    assertFalse(securityNotes.contains("raw fetched content"));
+    assertFalse(securityNotes.contains("raw app data"));
   }
 
   @Test
@@ -876,6 +947,9 @@ class DeveloperBetaToolkitCliTest {
     if ("queue-dashboard".equals(template)) {
       assertTrue(script.contains("form.set(\"priority\", \"2\");"));
     }
+    if ("hello-stable".equals(template)) {
+      assertHelloStableReviewNotes(appDir);
+    }
     if ("publisher".equals(template)) {
       assertTrue(index.contains("name=\"sourcePath\""));
       assertTrue(index.contains("name=\"insertUri\""));
@@ -905,6 +979,35 @@ class DeveloperBetaToolkitCliTest {
     assertFalse(script.contains("http://"));
     assertFalse(script.contains("vault.secrets"));
     assertFalse(script.toLowerCase(java.util.Locale.ROOT).contains("seed phrase"));
+  }
+
+  private static void assertHelloStableReviewNotes(Path appDir) throws IOException {
+    Path reviewDir = appDir.resolve("review");
+    List<String> expectedReviewFiles =
+        List.of(
+            "permission-rationale.md",
+            "sandbox-rationale.md",
+            "data-schema.md",
+            "backup-restore.md",
+            "security-notes.md",
+            "changelog.md",
+            "decision-reason.md");
+    for (String reviewFile : expectedReviewFiles) {
+      assertTrue(Files.isRegularFile(reviewDir.resolve(reviewFile)), reviewFile);
+    }
+    String permissionRationale =
+        Files.readString(reviewDir.resolve("permission-rationale.md"), StandardCharsets.UTF_8);
+    String securityNotes =
+        Files.readString(reviewDir.resolve("security-notes.md"), StandardCharsets.UTF_8);
+    String backupRestore =
+        Files.readString(reviewDir.resolve("backup-restore.md"), StandardCharsets.UTF_8);
+    assertTrue(permissionRationale.contains("platform.contract.read"));
+    assertTrue(permissionRationale.contains("operator-only"));
+    assertTrue(securityNotes.contains("remote scripts"));
+    assertTrue(backupRestore.contains("no app-data namespaces"));
+    assertFalse(securityNotes.contains("Bearer "));
+    assertFalse(securityNotes.contains("raw fetched content"));
+    assertFalse(securityNotes.contains("raw app data"));
   }
 
   private Path scaffold(String template, String appId) {

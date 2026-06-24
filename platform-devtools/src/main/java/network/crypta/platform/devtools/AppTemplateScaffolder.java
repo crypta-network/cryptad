@@ -47,6 +47,22 @@ final class AppTemplateScaffolder {
   /** Placeholder token replaced with the normalized app identifier in generated template files. */
   private static final String APP_ID_PLACEHOLDER = "${APP_ID}";
 
+  /** Placeholder token replaced with the app display name in generated template files. */
+  private static final String APP_NAME_PLACEHOLDER = "${APP_NAME}";
+
+  /** Placeholder token replaced with the app version in generated template files. */
+  private static final String APP_VERSION_PLACEHOLDER = "${APP_VERSION}";
+
+  /** Platform API permission for reading app-owned durable records. */
+  private static final String APP_DATA_READ_PERMISSION = "app.data.read";
+
+  /** Platform API permission for writing app-owned durable records. */
+  private static final String APP_DATA_WRITE_PERMISSION = "app.data.write";
+
+  /** App-data permissions that require generated schema and backup review notes. */
+  private static final Set<String> APP_DATA_PERMISSIONS =
+      Set.of(APP_DATA_READ_PERMISSION, APP_DATA_WRITE_PERMISSION);
+
   /** Stylesheet content written to {@code static/app.css} for the static scaffold. */
   private static final String STATIC_CSS =
       """
@@ -91,6 +107,25 @@ final class AppTemplateScaffolder {
       }
       """;
 
+  /** Review-note scaffold explaining the template's default sandbox posture. */
+  private static final String HELLO_STABLE_SANDBOX_RATIONALE =
+      """
+      # Sandbox rationale
+
+      This scaffold uses a static UI and a placeholder launcher. It declares `sandbox.mode=none`
+      because it has no background runtime behavior in the local beta fixture. A production
+      third-party app must document the sandbox provider it needs and why.
+      """;
+
+  /** Review-note scaffold used for deterministic local reviewer decisions. */
+  private static final String HELLO_STABLE_DECISION_REASON =
+      """
+      # Review decision reason
+
+      Non-production reviewed decision for the local Hello Stable beta fixture. Use only with
+      deterministic test reviewer material and `--allow-non-production`.
+      """;
+
   /** Utility class; template generation is exposed through {@link #scaffold(ScaffoldRequest)}. */
   private AppTemplateScaffolder() {}
 
@@ -129,6 +164,9 @@ final class AppTemplateScaffolder {
         checked.directory().resolve("bin").resolve("start.sh"), launcherScript(checked.appId()));
     if (checked.uiMode() == UiMode.STATIC) {
       writeStaticTemplate(checked);
+    }
+    if (checked.templateKind() == AppTemplateKind.HELLO_STABLE) {
+      writeHelloStableReviewNotes(checked);
     }
     writeTemplateFile(checked.directory().resolve("README.md"), readme(checked));
     return checked.directory();
@@ -271,6 +309,225 @@ final class AppTemplateScaffolder {
     DesignSystemAssets.copyIntoBundle(request.directory());
   }
 
+  private static void writeHelloStableReviewNotes(ScaffoldRequest request) throws IOException {
+    Path reviewDir = request.directory().resolve("review");
+    createTemplateDirectory(reviewDir, "review notes directory");
+    Map<String, String> notes = new LinkedHashMap<>();
+    notes.put("permission-rationale.md", helloStablePermissionRationale(request));
+    notes.put("sandbox-rationale.md", HELLO_STABLE_SANDBOX_RATIONALE);
+    notes.put("data-schema.md", helloStableDataSchema(request));
+    notes.put("backup-restore.md", helloStableBackupRestore(request));
+    notes.put("security-notes.md", helloStableSecurityNotes(request));
+    notes.put("changelog.md", helloStableChangelog(request));
+    notes.put("decision-reason.md", HELLO_STABLE_DECISION_REASON);
+    for (Map.Entry<String, String> note : notes.entrySet()) {
+      writeTemplateFile(reviewDir.resolve(note.getKey()), note.getValue());
+    }
+  }
+
+  private static String helloStablePermissionRationale(ScaffoldRequest request) {
+    return """
+    # Permission rationale
+
+    The generated manifest requests these permissions:
+
+    ${PERMISSION_RATIONALES}
+    No capabilities outside this list are requested. Known internal and operator-only capabilities
+    are rejected before this scaffold is written. Replace any placeholder rationale with the exact
+    user-facing workflow before submission.
+    """
+        .replace(
+            "${PERMISSION_RATIONALES}",
+            permissionRationales(request.permissions(), request.name()));
+  }
+
+  private static String permissionRationales(List<String> permissions, String appName) {
+    if (permissions.isEmpty()) {
+      return "- No Platform API permissions are requested.\n";
+    }
+    StringBuilder builder = new StringBuilder();
+    for (String permission : permissions) {
+      builder
+          .append("- `")
+          .append(permission)
+          .append("`: ")
+          .append(permissionRationale(permission, appName))
+          .append('\n');
+    }
+    return builder.toString();
+  }
+
+  private static String permissionRationale(String permission, String appName) {
+    return switch (permission) {
+      case "platform.contract.read" ->
+          "Allows "
+              + appName
+              + " to display the local Platform API contract version and stable baseline metadata.";
+      case "queue.read" ->
+          "Allows the app to display user-visible queue status and item summaries.";
+      case "queue.write" -> "Allows the app to update queue items after an explicit user action.";
+      case "content.fetch" ->
+          "Allows bounded foreground fetches for user-supplied Crypta or Freenet content keys.";
+      case "content.insert" ->
+          "Allows local insert requests for user-selected files or directories.";
+      case "content.insert.app-document" ->
+          "Allows publishing bounded app-generated documents after user action.";
+      case "content.subscribe" -> "Allows app-owned subscriptions for user-approved USK sources.";
+      case APP_DATA_READ_PERMISSION ->
+          "Allows reading app-owned durable records for this app only.";
+      case APP_DATA_WRITE_PERMISSION ->
+          "Allows writing app-owned durable records for this app only.";
+      case "app.services.read" ->
+          "Allows discovery of local app-service descriptors and active grant metadata.";
+      case "app.services.call" ->
+          "Allows invocation of operator-approved local app-service grants.";
+      case "trust.read" -> "Allows reading local Trust Graph preview data exposed to this app.";
+      case "trust.write" ->
+          "Allows importing Trust Graph statements and managing local anchors after user action.";
+      case "vault.identities.read" -> "Allows reading identity metadata granted to this app.";
+      case "vault.identities.create" ->
+          "Allows creating app-owned identities after explicit user action.";
+      case "vault.identities.use" ->
+          "Allows using granted identities for bounded app document signing workflows.";
+      default ->
+          "Replace this scaffold line with the exact user-facing reason "
+              + appName
+              + " needs this capability before submission.";
+    };
+  }
+
+  private static String helloStableDataSchema(ScaffoldRequest request) {
+    if (hasAnyAppDataPermission(request.permissions())) {
+      return """
+      # App-data schema
+
+      ${APP_NAME} declares ${APP_DATA_PERMISSIONS}. Replace this scaffold note with the exact
+      app-data namespaces, record shapes, size bounds, and migration behavior before submission. Do
+      not paste raw app-data values.
+      """
+          .replace(APP_NAME_PLACEHOLDER, request.name())
+          .replace("${APP_DATA_PERMISSIONS}", inlineAppDataPermissions(request.permissions()));
+    }
+    return """
+    # App-data schema
+
+    ${APP_NAME} does not use durable app data and does not create app-owned records. There is no
+    schema to migrate for version `${APP_VERSION}`.
+    """
+        .replace(APP_NAME_PLACEHOLDER, request.name())
+        .replace(APP_VERSION_PLACEHOLDER, request.version());
+  }
+
+  private static String helloStableBackupRestore(ScaffoldRequest request) {
+    if (hasAnyAppDataPermission(request.permissions())) {
+      return """
+      # Backup and restore
+
+      ${APP_NAME} declares ${APP_DATA_PERMISSIONS}. Replace this scaffold note with the app-owned
+      namespaces that participate in backup/restore, restore prerequisites, unsupported restore
+      cases, and any beta data-discard policy before submission.
+      """
+          .replace(APP_NAME_PLACEHOLDER, request.name())
+          .replace("${APP_DATA_PERMISSIONS}", inlineAppDataPermissions(request.permissions()));
+    }
+    return """
+    # Backup and restore
+
+    ${APP_NAME} has no app-data namespaces, cache state, or background runtime state to include in
+    app-data backup/restore. A future version that writes durable app data must declare namespaces,
+    restore behavior, and migration expectations before submission.
+    """
+        .replace(APP_NAME_PLACEHOLDER, request.name());
+  }
+
+  private static String helloStableSecurityNotes(ScaffoldRequest request) {
+    StringBuilder builder =
+        new StringBuilder(
+            """
+            # Security notes
+
+            This non-production scaffold loads only local static assets and avoids remote scripts,
+            authorization headers, bearer tokens, private keys, private insert URIs, fetched
+            payload bodies, app-owned record values, and local filesystem paths.
+            """);
+    if (hasAnyPermission(request.permissions(), "content.fetch")) {
+      builder.append(
+          """
+
+          If `content.fetch` remains, keep fetches bounded to user-supplied Crypta/Freenet keys \
+          and do not log retrieved payload bodies.
+          """);
+    }
+    if (hasAnyAppDataPermission(request.permissions())) {
+      builder.append(
+          """
+
+          If app-data permissions remain, keep records app-owned and avoid raw values in logs, \
+          review notes, support bundles, and issue reports.
+          """);
+    }
+    if (hasAnyPermission(request.permissions(), "app.services.read", "app.services.call")) {
+      builder.append(
+          """
+
+          If app-service permissions remain, document grant context and do not log service \
+          request bodies, subject URIs, provider app data, or grant tokens.
+          """);
+    }
+    if (hasAnyPermission(
+        request.permissions(),
+        "vault.identities.read",
+        "vault.identities.create",
+        "vault.identities.use")) {
+      builder.append(
+          """
+
+          If vault identity permissions remain, document consent scope and do not log raw \
+          signatures, private keys, or identity secret material.
+          """);
+    }
+    return builder.toString();
+  }
+
+  private static boolean hasAnyPermission(List<String> permissions, String... names) {
+    Set<String> expected = Set.of(names);
+    for (String permission : permissions) {
+      if (expected.contains(permission)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private static boolean hasAnyAppDataPermission(List<String> permissions) {
+    return hasAnyPermission(permissions, APP_DATA_READ_PERMISSION, APP_DATA_WRITE_PERMISSION);
+  }
+
+  private static String inlineAppDataPermissions(List<String> permissions) {
+    StringBuilder builder = new StringBuilder();
+    for (String permission : permissions) {
+      if (!APP_DATA_PERMISSIONS.contains(permission)) {
+        continue;
+      }
+      if (!builder.isEmpty()) {
+        builder.append(", ");
+      }
+      builder.append('`').append(permission).append('`');
+    }
+    return builder.isEmpty() ? "`none`" : builder.toString();
+  }
+
+  private static String helloStableChangelog(ScaffoldRequest request) {
+    return """
+    # Changelog
+
+    ## ${APP_VERSION}
+
+    Initial non-production third-party beta scaffold.
+    """
+        .replace(APP_VERSION_PLACEHOLDER, request.version());
+  }
+
   /**
    * Copies the canonical browser SDK resource into a generated static UI.
    *
@@ -353,7 +610,7 @@ final class AppTemplateScaffolder {
       </body>
     </html>
     """
-        .replace("${APP_NAME}", escapedName)
+        .replace(APP_NAME_PLACEHOLDER, escapedName)
         .replace("${PERMISSION_SUMMARY}", permissionSummary(request.permissions()))
         .replace("${TEMPLATE_BODY}", templateBody(request.templateKind()));
   }
@@ -361,6 +618,26 @@ final class AppTemplateScaffolder {
   private static String templateBody(AppTemplateKind templateKind) {
     return switch (templateKind) {
       case STATIC_BASIC -> "";
+      case HELLO_STABLE ->
+          """
+          <section class="cr-card" aria-labelledby="contract-heading">
+            <h2 id="contract-heading">Platform API</h2>
+            <div class="sample-grid">
+              <div>
+                <p class="cr-label">Current contract</p>
+                <p id="contract-version">Waiting for mock API...</p>
+              </div>
+              <div>
+                <p class="cr-label">Stable baseline</p>
+                <p id="stable-baseline">Waiting for mock API...</p>
+              </div>
+              <div>
+                <p class="cr-label">Stable capabilities</p>
+                <p id="capability-count">Waiting for mock API...</p>
+              </div>
+            </div>
+          </section>
+          """;
       case QUEUE_DASHBOARD ->
           """
           <section class="cr-card" aria-labelledby="queue-heading">
@@ -451,10 +728,44 @@ final class AppTemplateScaffolder {
           });
           """
               .replace(APP_ID_PLACEHOLDER, request.appId());
+      case HELLO_STABLE -> helloStableJavaScript(request.appId());
       case QUEUE_DASHBOARD -> queueDashboardJavaScript(request.appId());
       case PUBLISHER -> publisherJavaScript(request.appId());
       case VAULT_PROFILE -> vaultProfileJavaScript(request.appId());
     };
+  }
+
+  private static String helloStableJavaScript(String appId) {
+    return """
+    const status = document.querySelector("#status");
+    const contractVersion = document.querySelector("#contract-version");
+    const stableBaseline = document.querySelector("#stable-baseline");
+    const capabilityCount = document.querySelector("#capability-count");
+
+    async function main() {
+      const platform = window.CryptaPlatform;
+      const bootstrap = await platform.bootstrap.load({ appId: "${APP_ID}" });
+      const response = await platform.api.get("platform/contract");
+      const contract = response.contract || response;
+      const baseline = contract.stableBaseline || {};
+      const capabilities = Array.isArray(baseline.capabilities) ? baseline.capabilities : [];
+
+      contractVersion.textContent = String(contract.contractVersion || "unknown");
+      stableBaseline.textContent = baseline.name || "1.0";
+      capabilityCount.textContent =
+        capabilities.length > 0 ? String(capabilities.length) : String(baseline.capabilityCount || "unknown");
+      status.textContent = `${bootstrap.name} loaded stable Platform API metadata.`;
+      status.className = "cr-status cr-status--success sample-status";
+    }
+
+    function showError(error) {
+      status.textContent = window.CryptaPlatform.api.errorMessage(error);
+      status.className = "cr-status cr-status--danger sample-status";
+    }
+
+    main().catch(showError);
+    """
+        .replace(APP_ID_PLACEHOLDER, appId);
   }
 
   private static String queueDashboardJavaScript(String appId) {
@@ -756,11 +1067,17 @@ final class AppTemplateScaffolder {
 
     Template: `${TEMPLATE}`.
 
+    Third-party beta submissions should follow
+    `docs/third-party-developer-beta-program.md` and
+    `docs/third-party-app-submission-checklist.md` from the Crypta source tree before packaging.
+    Keep permission rationales, sandbox notes, app-data schema notes, backup/restore notes, and
+    security notes beside the bundle so `crypta-app submission create` can include their digests.
+
     Replace `bin/start.sh` with the production launcher before distributing the app.
     """
-        .replace("${APP_NAME}", request.name())
+        .replace(APP_NAME_PLACEHOLDER, request.name())
         .replace(APP_ID_PLACEHOLDER, request.appId())
-        .replace("${APP_VERSION}", request.version())
+        .replace(APP_VERSION_PLACEHOLDER, request.version())
         .replace("${TEMPLATE}", request.templateKind().cliName());
   }
 
@@ -912,6 +1229,10 @@ final class AppTemplateScaffolder {
       StringBuilder builder = new StringBuilder();
       int currentContractVersion = PlatformApiContract.current().contractVersion();
       ApiMetadataDefaults apiMetadataDefaults = apiMetadataDefaults(permissions);
+      int minimumContractVersion =
+          apiMetadataDefaults.experimentalCapabilitiesAccepted()
+              ? currentContractVersion
+              : templateKind.minimumContractVersion();
       builder
           .append("manifest.version=1\n")
           .append("app.id=")
@@ -924,7 +1245,7 @@ final class AppTemplateScaffolder {
           .append(version)
           .append('\n')
           .append("api.minimumVersion=")
-          .append(currentContractVersion)
+          .append(minimumContractVersion)
           .append('\n')
           .append("api.maximumTestedVersion=")
           .append(currentContractVersion)

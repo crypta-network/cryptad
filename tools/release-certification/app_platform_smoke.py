@@ -1856,6 +1856,7 @@ def collect_developer_beta_toolkit_evidence(settings: Settings) -> EvidenceItem:
     text = {name: read_source(path) for name, path in sources.items()}
     required_templates = {
         "static-basic": "STATIC_BASIC",
+        "hello-stable": "HELLO_STABLE",
         "queue-dashboard": "QUEUE_DASHBOARD",
         "publisher": "PUBLISHER",
         "vault-profile": "VAULT_PROFILE",
@@ -1892,6 +1893,7 @@ def collect_developer_beta_toolkit_evidence(settings: Settings) -> EvidenceItem:
         "guideExists": docs_path.is_file(),
         "guideCoversFlow": (
             "crypta-app init" in text["docs"]
+            and "--template hello-stable" in text["docs"]
             and "--template queue-dashboard" in text["docs"]
             and "crypta-app dev --bundle-dir" in text["docs"]
             and "crypta-app test --bundle-dir" in text["docs"]
@@ -4231,6 +4233,18 @@ APP_STORE_SUBMISSION_EVIDENCE_IDS = (
     "app-store.redaction-clean",
 )
 
+THIRD_PARTY_DEVELOPER_BETA_EVIDENCE_IDS = (
+    "third-party-developer.beta-program",
+    "third-party-developer.docs",
+    "third-party-developer.template",
+    "third-party-developer.sample-app-flow",
+    "third-party-developer.submission-checklist",
+    "third-party-developer.compatibility-window",
+    "third-party-developer.feedback-workflow",
+    "third-party-developer.plugin-author-migration",
+    "third-party-developer.redaction",
+)
+
 
 def collect_app_store_submission_workflow_evidence(settings: Settings) -> list[EvidenceItem]:
     source = summary_source(settings)
@@ -4391,6 +4405,311 @@ def collect_app_store_submission_workflow_evidence(settings: Settings) -> list[E
         EvidenceItem(evidence_id, status, True, summary, source, {"errors": errors, **details})
         for evidence_id in APP_STORE_SUBMISSION_EVIDENCE_IDS
     ]
+
+
+def collect_third_party_developer_beta_program_evidence(
+    settings: Settings,
+) -> list[EvidenceItem]:
+    source = summary_source(settings)
+    docs_dir = settings.workspace_root / "docs"
+    issue_dir = settings.workspace_root / ".github/ISSUE_TEMPLATE"
+    devtools_dir = (
+        settings.workspace_root
+        / "platform-devtools/src/main/java/network/crypta/platform/devtools"
+    )
+    devserver_dir = devtools_dir / "devserver"
+    devtools_test_dir = (
+        settings.workspace_root
+        / "platform-devtools/src/test/java/network/crypta/platform/devtools"
+    )
+    sample_dir = settings.workspace_root / "samples/third-party/hello-stable-app"
+    beta_doc = docs_dir / "third-party-developer-beta-program.md"
+    checklist_doc = docs_dir / "third-party-app-submission-checklist.md"
+    compatibility_doc = docs_dir / "platform-api-compatibility-support-window.md"
+    sdk_example_doc = docs_dir / "examples/third-party-hello-stable.md"
+    legacy_migration_doc = docs_dir / "legacy-plugin-migration-guide.md"
+    release_cert_doc = docs_dir / "release-certification.md"
+    template_kind_text = read_source(devtools_dir / "AppTemplateKind.java")
+    scaffolder_text = read_source(devtools_dir / "AppTemplateScaffolder.java")
+    cli_text = read_source(devtools_dir / "CryptaAppCli.java")
+    mock_api_text = read_source(devserver_dir / "MockPlatformApi.java")
+    mock_fixtures_text = read_source(devserver_dir / "MockPlatformApiFixtures.java")
+    toolkit_test_text = read_source(devtools_test_dir / "DeveloperBetaToolkitCliTest.java")
+    cli_test_text = read_source(devtools_test_dir / "CryptaAppCliTest.java")
+    beta_doc_text = read_source(beta_doc)
+    checklist_text = read_source(checklist_doc)
+    compatibility_text = read_source(compatibility_doc)
+    sdk_example_text = read_source(sdk_example_doc)
+    legacy_migration_text = read_source(legacy_migration_doc)
+    release_cert_text = read_source(release_cert_doc)
+    sample_manifest = read_source(sample_dir / "cryptad-app.properties")
+    sample_script = read_source(sample_dir / "static/app.js")
+    sample_index = read_source(sample_dir / "static/index.html")
+    sample_readme = read_source(sample_dir / "README.md")
+    sample_review_files = (
+        "permission-rationale.md",
+        "sandbox-rationale.md",
+        "data-schema.md",
+        "backup-restore.md",
+        "security-notes.md",
+        "changelog.md",
+    )
+    sample_review_texts = {
+        name: read_source(sample_dir / "review" / name) for name in sample_review_files
+    }
+    sample_redaction_text = "\n".join(
+        (
+            sample_manifest,
+            sample_script,
+            sample_index,
+            sample_readme,
+            *sample_review_texts.values(),
+        )
+    )
+    sample_redaction_findings = production_security_redaction_findings(
+        sample_redaction_text, settings.workspace_root
+    )
+    issue_templates = {
+        name: read_source(issue_dir / name)
+        for name in (
+            "developer-beta-feedback.yml",
+            "app-submission-beta.yml",
+            "app-review-appeal.yml",
+            "platform-api-compatibility.yml",
+            "plugin-migration-feedback.yml",
+        )
+    }
+    checklist_sections = (
+        "Manifest validation",
+        "API stability target",
+        "No internal/operator-only permissions",
+        "Permission rationale",
+        "UI lint",
+        "CSP and remote script policy",
+        "Sandbox declaration",
+        "App-data schema declaration",
+        "Data migration declaration",
+        "Backup/restore declaration",
+        "Service dependency/grant declaration",
+        "Security notes",
+        "Support/maintainer metadata",
+        "Redaction and privacy review",
+        "Submission package generation",
+        "Pre-review output",
+        "Resubmission requirements",
+    )
+    docs_checks = {
+        "betaProgramDoc": all(
+            token in beta_doc_text
+            for token in (
+                "crypta-app init",
+                "--template hello-stable",
+                "crypta-app submission create",
+                "crypta-app submission verify",
+                "crypta-app submission pre-review",
+                "crypta-app submission catalog-candidate",
+                "reviewed",
+                "caution",
+                "rejected",
+                "resubmitted",
+                "third-party-app-submission-checklist.md",
+            )
+        ),
+        "sdkExampleDoc": (
+            any(
+                token in sdk_example_text
+                for token in (
+                    'CryptaPlatform.api.get("platform/contract")',
+                    'window.CryptaPlatform.api.get("platform/contract")',
+                    'platform.api.get("platform/contract")',
+                )
+            )
+            and "api.targetStability=stable" in sdk_example_text
+            and "crypta-app compat verify" in sdk_example_text
+        ),
+        "releaseCertificationDoc": all(
+            token in release_cert_text
+            for token in (
+                "third-party-developer.beta-program",
+                "third-party-developer.sample-app-flow",
+                "third-party-developer.redaction",
+            )
+        ),
+    }
+    template_checks = {
+        "templateKind": "HELLO_STABLE" in template_kind_text
+        and '"hello-stable"' in template_kind_text,
+        "stablePermission": "platform.contract.read" in template_kind_text,
+        "scaffoldUsesContract": 'platform.api.get("platform/contract")' in scaffolder_text,
+        "cliHelpAndAlias": "hello-stable" in cli_text and '{"--app-id", "--id"}' in cli_text,
+        "mockContractRoute": 'suffix.equals("/platform/contract")' in mock_api_text
+        and "platform-contract.json" in mock_fixtures_text,
+        "testsCoverTemplate": "hello-stable" in toolkit_test_text
+        and "platform.contract.read" in toolkit_test_text
+        and "submissionCreate_whenInitializedStaticBundleIncludesSdk_expectAccepted"
+        in cli_test_text,
+    }
+    sample_checks = {
+        "sampleManifestStable": all(
+            token in sample_manifest
+            for token in (
+                "app.id=org.example.hello",
+                "api.targetStability=stable",
+                "api.experimentalCapabilitiesAccepted=false",
+                "app.permissions=platform.contract.read",
+            )
+        ),
+        "sampleNoRestrictedPermissions": all(
+            token not in sample_manifest
+            for token in ("vault.identities.manage", "internal", "operator-only")
+        ),
+        "sampleSdkUsage": "CryptaPlatform" in sample_script
+        and 'api.get("platform/contract")' in sample_script
+        and "console.log" not in sample_script,
+        "samplePermissionDisclosure": "data-crypta-permission-summary" in sample_index,
+        "sampleReviewNotes": all(
+            (sample_dir / "review" / name).is_file() for name in sample_review_files
+        ),
+        "sampleReadmeFlow": "crypta-app submission create" in sample_readme
+        and "crypta-app submission pre-review" in sample_readme,
+    }
+    checklist_checks = {section: section in checklist_text for section in checklist_sections}
+    compatibility_checks = {
+        "stableBaselineExpectation": "Platform API 1.0 stable baseline" in compatibility_text,
+        "experimentalOptIn": "api.experimentalCapabilitiesAccepted=true" in compatibility_text,
+        "deprecationWindow": "scheduled-for-removal" in compatibility_text,
+        "releaseCertificationBehavior": "Release certification" in compatibility_text,
+        "candidateSnapshots": "previous release-candidate snapshot" in compatibility_text,
+        "catalogReviewMetadata": "Catalog candidates and review metadata" in compatibility_text,
+    }
+    feedback_checks = {
+        name: (
+            "Do not paste" in text
+            and "private" in text
+            and "local absolute paths" in text
+        )
+        for name, text in issue_templates.items()
+    }
+    plugin_checks = {
+        "developerBetaLinks": "third-party-developer-beta-program.md" in legacy_migration_text
+        and "third-party-app-submission-checklist.md" in legacy_migration_text,
+        "stableBaseline": "Platform API 1.0 stable baseline" in legacy_migration_text,
+        "unsupportedPatterns": all(
+            token in legacy_migration_text
+            for token in ("old plugin ABI", "old FCP", "Retained FProxy browse")
+        ),
+    }
+    redaction_checks = {
+        "sampleSensitiveMarkersAbsent": not sample_redaction_findings,
+        "sampleReviewNotesScanned": all(
+            (sample_dir / "review" / name).is_file() for name in sample_review_files
+        ),
+        "issueTemplatesWarn": all(feedback_checks.values()),
+        "docsWarnRedaction": all(
+            token in beta_doc_text
+            for token in (
+                "private keys",
+                "private insert URIs",
+                "browser session tokens",
+                "raw app data",
+                "local absolute paths",
+            )
+        ),
+    }
+    flow_checks = {
+        "localWorkflow": all(
+            token in beta_doc_text
+            for token in (
+                "crypta-app test",
+                "crypta-app ui lint",
+                "crypta-app compat verify",
+                "crypta-app pack",
+                "crypta-app submission create",
+                "crypta-app submission verify",
+                "crypta-app submission pre-review",
+            )
+        ),
+        "reviewedDecision": "submission decide" in beta_doc_text and "reviewed" in beta_doc_text,
+        "negativeOperatorOnlyPath": "vault.identities.manage" in cli_test_text
+        or "operator-only" in beta_doc_text
+        or "operator-only" in compatibility_text,
+        "catalogCandidate": "submission catalog-candidate" in beta_doc_text,
+    }
+    evidence_checks: dict[str, dict[str, bool]] = {
+        "third-party-developer.beta-program": docs_checks,
+        "third-party-developer.docs": docs_checks,
+        "third-party-developer.template": template_checks,
+        "third-party-developer.sample-app-flow": {**sample_checks, **flow_checks},
+        "third-party-developer.submission-checklist": checklist_checks,
+        "third-party-developer.compatibility-window": compatibility_checks,
+        "third-party-developer.feedback-workflow": feedback_checks,
+        "third-party-developer.plugin-author-migration": plugin_checks,
+        "third-party-developer.redaction": redaction_checks,
+    }
+    base_details = {
+        "sampleApp": "samples/third-party/hello-stable-app",
+        "template": "hello-stable",
+        "apiTargetStability": "stable",
+        "experimentalCapabilitiesAccepted": False,
+        "defaultPermissions": ["platform.contract.read"],
+        "sampleReviewFilesScanned": list(sample_review_files),
+        "sampleRedactionFindings": sample_redaction_findings,
+        "reviewStatuses": ["reviewed", "caution", "rejected", "resubmitted"],
+        "sampleFlow": [
+            "init/template",
+            "test",
+            "ui lint",
+            "compat verify",
+            "submission create",
+            "submission verify",
+            "pre-review",
+            "reviewed decision",
+            "catalog candidate",
+            "operator-only rejection",
+        ],
+        "redaction": {
+            "privateKeysExcluded": True,
+            "tokensExcluded": True,
+            "privateInsertUrisExcluded": True,
+            "rawAppDataExcluded": True,
+            "rawFetchedContentExcluded": True,
+            "absolutePathsExcluded": True,
+            "productionReviewerMaterialExcluded": True,
+        },
+        "sources": {
+            "program": display_path(beta_doc, settings.workspace_root),
+            "checklist": display_path(checklist_doc, settings.workspace_root),
+            "compatibilityWindow": display_path(compatibility_doc, settings.workspace_root),
+            "sdkExample": display_path(sdk_example_doc, settings.workspace_root),
+            "sampleApp": display_path(sample_dir, settings.workspace_root),
+            "templateKind": display_path(
+                devtools_dir / "AppTemplateKind.java", settings.workspace_root
+            ),
+            "scaffolder": display_path(
+                devtools_dir / "AppTemplateScaffolder.java", settings.workspace_root
+            ),
+        },
+    }
+    evidence = []
+    for evidence_id in THIRD_PARTY_DEVELOPER_BETA_EVIDENCE_IDS:
+        checks = evidence_checks[evidence_id]
+        errors = [key for key, passed in checks.items() if not passed]
+        status = "pass" if not errors else root_consequence(settings, "fail")
+        evidence.append(
+            EvidenceItem(
+                evidence_id,
+                status,
+                True,
+                (
+                    "Third-party developer beta program evidence passed."
+                    if not errors
+                    else "Third-party developer beta program evidence is incomplete."
+                ),
+                source,
+                {"checks": checks, "errors": errors, **base_details},
+            )
+        )
+    return evidence
 
 
 def collect_app_review_policy_evidence(settings: Settings) -> EvidenceItem:
@@ -15387,6 +15706,7 @@ def run(settings: Settings) -> tuple[dict[str, Any], int]:
         collect_live_usk_source_verification_evidence(settings),
         collect_app_review_receipt_evidence(settings),
         *collect_app_store_submission_workflow_evidence(settings),
+        *collect_third_party_developer_beta_program_evidence(settings),
         collect_app_review_policy_evidence(settings),
         collect_app_review_governance_evidence(settings),
         collect_app_review_reviewer_key_lifecycle_evidence(settings),
@@ -16902,6 +17222,45 @@ def run_self_test(repo_root: Path) -> None:
         assert toolkit_item["status"] == "pass", toolkit_item
         assert toolkit_item["details"]["checks"]["devCommand"] is True, toolkit_item
         assert toolkit_item["details"]["checks"]["templates"]["queue-dashboard"] is True, toolkit_item
+        for evidence_id in THIRD_PARTY_DEVELOPER_BETA_EVIDENCE_IDS:
+            assert evidence_by_id[evidence_id]["status"] == "pass", evidence_by_id[evidence_id]
+        third_party_sample = evidence_by_id["third-party-developer.sample-app-flow"]
+        assert third_party_sample["details"]["template"] == "hello-stable", third_party_sample
+        assert (
+            third_party_sample["details"]["apiTargetStability"] == "stable"
+        ), third_party_sample
+        assert "operator-only rejection" in third_party_sample["details"]["sampleFlow"]
+        third_party_redaction = evidence_by_id["third-party-developer.redaction"]
+        assert "security-notes.md" in third_party_redaction["details"][
+            "sampleReviewFilesScanned"
+        ], third_party_redaction
+        tainted_review_note = (
+            workspace
+            / "samples/third-party/hello-stable-app/review/security-notes.md"
+        )
+        for tainted_text, expected_finding in (
+            ("Authorization: Bearer review-note-secret\n", "credential-or-path marker"),
+            ("publish URI: USK@PRIVATE-INSERT-URI\n", "credential-or-path marker"),
+            ("/home/alice/.crypta/apps/hello-stable/data.json\n", "credential-or-path marker"),
+            ("raw app data: private-record-value\n", "raw app data marker"),
+            ("raw fetched content: private-fetched-body\n", "raw fetched content marker"),
+        ):
+            tainted_review_note.write_text(tainted_text, encoding="utf-8")
+            tainted_third_party_evidence = {
+                item.id: item
+                for item in collect_third_party_developer_beta_program_evidence(settings)
+            }
+            tainted_redaction = tainted_third_party_evidence[
+                "third-party-developer.redaction"
+            ]
+            assert tainted_redaction.status != "pass", tainted_redaction
+            assert (
+                "sampleSensitiveMarkersAbsent" in tainted_redaction.details["errors"]
+            ), tainted_redaction
+            assert (
+                expected_finding in tainted_redaction.details["sampleRedactionFindings"]
+            ), tainted_redaction
+        tainted_review_note.write_text("fixture\n", encoding="utf-8")
         assert evidence_by_id["legacy-admin.removal-wave-1"]["status"] == "pass"
         assert evidence_by_id["legacy-admin.removal-wave-1"]["requiredForReleaseCandidate"] is True
         assert evidence_by_id["legacy-admin.removal-wave-2"]["status"] == "pass"
@@ -19914,6 +20273,22 @@ def make_self_test_workspace(workspace: Path) -> None:
         "Production security response uses docs/production-security-response-runbook.md and "
         "production-security.response-runbook evidence for reviewer key compromise, catalog key rotation, "
         "app signing key compromise, emergency catalog update drills, support redaction, and security release notes. "
+        "Third-party developer beta program docs cover crypta-app init --template hello-stable, "
+        "crypta-app test, crypta-app ui lint, crypta-app compat verify, crypta-app pack, "
+        "crypta-app submission create, crypta-app submission verify, crypta-app submission pre-review, "
+        "crypta-app submission decide, crypta-app submission catalog-candidate, reviewed, caution, "
+        "rejected, resubmission, resubmitted, api.targetStability=stable, "
+        "api.experimentalCapabilitiesAccepted=false, platform.contract.read, "
+        "third-party-app-submission-checklist.md, third-party-developer-beta-program.md, "
+        "platform-api-compatibility-support-window.md, third-party-developer.beta-program, "
+        "third-party-developer.docs, third-party-developer.template, "
+        "third-party-developer.sample-app-flow, third-party-developer.submission-checklist, "
+        "third-party-developer.compatibility-window, third-party-developer.feedback-workflow, "
+        "third-party-developer.plugin-author-migration, third-party-developer.redaction, "
+        "Platform API 1.0 stable baseline, api.experimentalCapabilitiesAccepted=true, "
+        "scheduled-for-removal, Release certification, previous release-candidate snapshot, "
+        "Catalog candidates and review metadata, private keys, private insert URIs, "
+        "browser session tokens, raw app data, local absolute paths, and raw fetched content. "
     )
     for doc_name in (
         "app-catalogs.md",
@@ -19924,6 +20299,9 @@ def make_self_test_workspace(workspace: Path) -> None:
         "app-platform-developer-portal.md",
         "app-platform-beta-known-limitations.md",
         "app-platform-beta-tutorials.md",
+        "third-party-developer-beta-program.md",
+        "third-party-app-submission-checklist.md",
+        "platform-api-compatibility-support-window.md",
         "app-upgrade-data-migrations.md",
         "app-permissions-and-audit.md",
         "feed-reader-reference-app.md",
@@ -19945,6 +20323,84 @@ def make_self_test_workspace(workspace: Path) -> None:
         "network-scale-soak-and-subscription-budget.md",
     ):
         (docs / doc_name).write_text(first_party_docs, encoding="utf-8")
+    (docs / "third-party-app-submission-checklist.md").write_text(
+        "\n".join(
+            (
+                "# Third-party app submission checklist",
+                "Manifest validation",
+                "API stability target",
+                "No internal/operator-only permissions",
+                "Permission rationale",
+                "UI lint",
+                "CSP and remote script policy",
+                "Sandbox declaration",
+                "App-data schema declaration",
+                "Data migration declaration",
+                "Backup/restore declaration",
+                "Service dependency/grant declaration",
+                "Security notes",
+                "Support/maintainer metadata",
+                "Redaction and privacy review",
+                "Submission package generation",
+                "Pre-review output",
+                "Resubmission requirements",
+            )
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    examples_dir = docs / "examples"
+    examples_dir.mkdir(parents=True, exist_ok=True)
+    (examples_dir / "third-party-hello-stable.md").write_text(
+        'CryptaPlatform.api.get("platform/contract") api.targetStability=stable '
+        "crypta-app compat verify third-party hello-stable SDK example.\n",
+        encoding="utf-8",
+    )
+    issue_dir = workspace / ".github/ISSUE_TEMPLATE"
+    issue_dir.mkdir(parents=True, exist_ok=True)
+    issue_text = (
+        "Do not paste private keys, private insert URIs, tokens, raw app data, "
+        "raw fetched content, raw signatures, or local absolute paths.\n"
+    )
+    for template_name in (
+        "developer-beta-feedback.yml",
+        "app-submission-beta.yml",
+        "app-review-appeal.yml",
+        "platform-api-compatibility.yml",
+        "plugin-migration-feedback.yml",
+    ):
+        (issue_dir / template_name).write_text(issue_text, encoding="utf-8")
+    sample_dir = workspace / "samples/third-party/hello-stable-app"
+    (sample_dir / "static").mkdir(parents=True, exist_ok=True)
+    (sample_dir / "review").mkdir(parents=True, exist_ok=True)
+    (sample_dir / "cryptad-app.properties").write_text(
+        "app.id=org.example.hello\n"
+        "api.targetStability=stable\n"
+        "api.experimentalCapabilitiesAccepted=false\n"
+        "app.permissions=platform.contract.read\n",
+        encoding="utf-8",
+    )
+    (sample_dir / "static/app.js").write_text(
+        'window.CryptaPlatform.api.get("platform/contract");\n',
+        encoding="utf-8",
+    )
+    (sample_dir / "static/index.html").write_text(
+        '<section data-crypta-permission-summary>platform.contract.read</section>\n',
+        encoding="utf-8",
+    )
+    (sample_dir / "README.md").write_text(
+        "crypta-app submission create\ncrypta-app submission pre-review\n",
+        encoding="utf-8",
+    )
+    for review_file_name in (
+        "permission-rationale.md",
+        "sandbox-rationale.md",
+        "data-schema.md",
+        "backup-restore.md",
+        "security-notes.md",
+        "changelog.md",
+    ):
+        (sample_dir / "review" / review_file_name).write_text("fixture\n", encoding="utf-8")
     cert_readme = workspace / "tools/release-certification/README.md"
     cert_readme.parent.mkdir(parents=True, exist_ok=True)
     cert_readme.write_text(first_party_docs, encoding="utf-8")
@@ -20067,6 +20523,10 @@ def make_self_test_workspace(workspace: Path) -> None:
         "Social Inbox as a bounded spike and is not encrypted mail transport or Freemail protocol "
         "compatibility. Distribution uses signed catalog entries, signed bundles, review receipt "
         "evidence, and review governance. The guide links to social-inbox-reference-app.md. "
+        "Third-party migration uses third-party-developer-beta-program.md and "
+        "third-party-app-submission-checklist.md with the Platform API 1.0 stable baseline when "
+        "possible. Retained FProxy browse is an emergency and compatibility fallback, not a new "
+        "plugin API. "
         "Legacy docs under docs/legacy are historical only and are not implementation commitments. "
         "This is not full WoT, not old WebOfTrust plugin compatibility, not Freetalk/Sone/Freemail "
         "compatibility, not encrypted mail transport, and not a daemon-core social or mail protocol.\n",
@@ -20267,6 +20727,8 @@ def make_self_test_workspace(workspace: Path) -> None:
         encoding="utf-8",
     )
     (devtools_dir / "CryptaAppCli.java").write_text(
+        '@Option(names = {"--app-id", "--id"}) String appId;\n'
+        'class InitCommand { String template = "static-basic, hello-stable, queue-dashboard, publisher, vault-profile"; }\n'
         '@Command(name = "dev") class DevCommand {}\n'
         '@Command(name = "test") class AppTestCommand {}\n'
         '@Command(name = "generate") class KeysGenerateCommand {}\n'
@@ -20287,11 +20749,13 @@ def make_self_test_workspace(workspace: Path) -> None:
         encoding="utf-8",
     )
     (devtools_dir / "AppTemplateKind.java").write_text(
-        "static-basic queue-dashboard publisher vault-profile\n",
+        'STATIC_BASIC HELLO_STABLE("hello-stable") QUEUE_DASHBOARD PUBLISHER VAULT_PROFILE '
+        'List.of("platform.contract.read") static-basic queue-dashboard publisher vault-profile\n',
         encoding="utf-8",
     )
     (devtools_dir / "AppTemplateScaffolder.java").write_text(
-        "STATIC_BASIC QUEUE_DASHBOARD PUBLISHER VAULT_PROFILE\n",
+        'STATIC_BASIC HELLO_STABLE QUEUE_DASHBOARD PUBLISHER VAULT_PROFILE '
+        'platform.api.get("platform/contract")\n',
         encoding="utf-8",
     )
     (devtools_dir / "AppTestSuite.java").write_text(
@@ -20353,7 +20817,13 @@ def make_self_test_workspace(workspace: Path) -> None:
     )
     (devserver_dir / "MockPlatformApi.java").write_text(
         "class MockPlatformApi { String s = \"invalid_app_browser_session X-Crypta-App-Session "
-        "/trust-graph/status /trust-graph/anchors /trust-graph/import /trust-graph/score\"; }\n",
+        "/trust-graph/status /trust-graph/anchors /trust-graph/import /trust-graph/score "
+        '\"; boolean b = suffix.equals("/platform/contract"); }\n',
+        encoding="utf-8",
+    )
+    (devserver_dir / "MockPlatformApiFixtures.java").write_text(
+        "class MockPlatformApiFixtures { String s = \"platform-contract.json stableBaseline "
+        "platform.contract.read\"; }\n",
         encoding="utf-8",
     )
     toolkit_test_dir = workspace / "platform-devtools/src/test/java/network/crypta/platform/devtools"
@@ -20365,9 +20835,15 @@ def make_self_test_workspace(workspace: Path) -> None:
         "void publish_whenFakePublisherSucceeds_expectSanitizedSummaryAndRetainedStaging() {}\n"
         "void publish_whenInsertIsOnlyQueued_expectStagingRetainedWithoutPathInSummary() {}\n"
         "void publish_whenPrivateInsertUriDoesNotMatchPublicSource_expectFailureWithoutPublisherOrSummary() {}\n"
+        "void init_whenBetaTemplatesRequested_expectStrictTestCleanStaticApps() { String s = \"hello-stable platform.contract.read\"; }\n"
         "String e = \"private insert URI must be configured by exactly one env or file source\";\n"
         "String w = \"staging_sidecars_retained_until_live_insert_completion\";\n"
         "void redaction() { assertFalse(liveSummaryText.contains(LIVE_PRIVATE_INSERT_URI)); }\n",
+        encoding="utf-8",
+    )
+    (toolkit_test_dir / "CryptaAppCliTest.java").write_text(
+        "void submissionCreate_whenInitializedStaticBundleIncludesSdk_expectAccepted() {} "
+        "String s = \"vault.identities.manage operator-only\";\n",
         encoding="utf-8",
     )
     (toolkit_test_dir / "LiveUskPublicationServiceTest.java").write_text(
@@ -20379,6 +20855,7 @@ def make_self_test_workspace(workspace: Path) -> None:
         encoding="utf-8",
     )
     (docs / DEVELOPER_BETA_TOOLKIT_DOC.name).write_text(
+        "crypta-app init --template hello-stable\n"
         "crypta-app init --template queue-dashboard\n"
         "crypta-app dev --bundle-dir .\n"
         "crypta-app test --bundle-dir . --strict\n"

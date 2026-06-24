@@ -9,6 +9,7 @@ body:
     attributes:
       value: |
         Do not paste private keys, reviewer private keys, seed phrases, private insert URIs, browser session tokens, AppHost process tokens, form passwords, authorization headers, cookies, request bodies, raw feed bodies, raw trust documents, raw receipt signatures, or local absolute paths.
+        Use `docs/third-party-app-submission-checklist.md`, `docs/third-party-developer-beta-program.md`, `docs/app-store-submission-and-review-workflow.md`, and `docs/platform-api-compatibility-support-window.md` before filing.
   - type: input
     id: app-id-name-version
     attributes:
@@ -49,7 +50,37 @@ body:
     id: lineage
     attributes:
       label: Template or reference app lineage
-      placeholder: "Example: static-basic, queue-dashboard, publisher, vault-profile, or custom"
+      placeholder: "Example: hello-stable, static-basic, queue-dashboard, publisher, vault-profile, or custom"
+  - type: dropdown
+    id: api-target-stability
+    attributes:
+      label: API target stability
+      options:
+        - stable
+        - experimental
+    validations:
+      required: true
+  - type: dropdown
+    id: experimental-capabilities-accepted
+    attributes:
+      label: Experimental capabilities accepted
+      options:
+        - "false"
+        - "true"
+    validations:
+      required: true
+  - type: dropdown
+    id: legacy-migration-lineage
+    attributes:
+      label: Legacy plugin migration lineage
+      options:
+        - none
+        - WebOfTrust-like
+        - Freetalk/Sone-like
+        - Freemail-like
+        - content publishing
+        - queue/insert-helper
+        - other legacy plugin migration
   - type: textarea
     id: capabilities
     attributes:
@@ -69,7 +100,7 @@ body:
     id: api-range
     attributes:
       label: API min/max tested version
-      placeholder: "Example: minimum 1, maximum tested 7, target stable, experimental accepted false"
+      placeholder: "Example: minimum 19, maximum tested 22"
     validations:
       required: true
   - type: dropdown
@@ -127,7 +158,7 @@ body:
     id: compatibility
     attributes:
       label: Compatibility status
-      placeholder: "Example: crypta-app compat verify --strict passed against contract v7"
+      placeholder: "Example: crypta-app compat verify --strict passed against contract v22"
     validations:
       required: true
   - type: textarea

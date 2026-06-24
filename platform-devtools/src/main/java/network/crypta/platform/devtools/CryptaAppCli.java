@@ -250,7 +250,10 @@ public final class CryptaAppCli implements Runnable {
     @Option(names = "--dir", required = true, description = "Target staged bundle directory.")
     private Path directory;
 
-    @Option(names = "--app-id", required = true, description = "Stable app id.")
+    @Option(
+        names = {"--app-id", "--id"},
+        required = true,
+        description = "Stable app id.")
     private String appId;
 
     @Option(names = "--name", required = true, description = "Display name.")
@@ -270,7 +273,7 @@ public final class CryptaAppCli implements Runnable {
         defaultValue = "static-basic",
         description =
             "Beta app template: ${COMPLETION-CANDIDATES}. Supported: "
-                + "static-basic, queue-dashboard, publisher, vault-profile.")
+                + "static-basic, hello-stable, queue-dashboard, publisher, vault-profile.")
     private String template;
 
     @Option(names = "--permission", description = "Manifest permission to add; repeatable.")
