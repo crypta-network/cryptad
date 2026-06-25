@@ -612,6 +612,9 @@ emitted under `waiverRecords`. Active waivers downgrade matching evidence or eco
 blockers to `warn`; they do not remove the evidence, gate, or reason.
 Expired, unapproved, malformed, or release-candidate-disallowed waivers do not apply. A malformed
 waiver file fails `release-candidate` mode and warns in `pr` or `nightly` mode.
+The production beta go/no-go dashboard waiver schema is accepted by release certification too:
+`schemaVersion` is treated like `version`, `rationale` is treated like `reason`, and
+release-candidate scopes derive `allowReleaseCandidate=true`.
 Redaction findings are not waiver material. Raw secrets, private URIs, credentials, raw payloads,
 or local-path leaks keep the evidence, matrix row, and final ecosystem RC gate failing even when a
 waiver targets the same evidence id, row id, gate id, or issue id.

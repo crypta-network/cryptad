@@ -124,6 +124,12 @@ Each waiver must include `id`, `evidenceId`, `severity`, `scope`, `rationale`, `
 `owner`, and `expiresAt`. `expiresAt` must be in the future at dashboard generation time. Scope is
 exact; `release-candidate-only` does not apply to production beta.
 
+The dashboard also accepts the existing release-certification structured waiver schema
+(`version`, `reason`, `status: approved`, `allowReleaseCandidate`) so a release-candidate pipeline
+can pass one waiver file through release certification and the final dashboard. When a record has
+no dashboard `scope`, `allowReleaseCandidate=true` maps to release-candidate scope only; it is not
+treated as a production-beta waiver.
+
 Unknown evidence ids are rejected unless the waiver explicitly sets
 `externalRiskAccepted=true`. External risk waivers still need owner, approver, rationale, scope,
 and expiry.

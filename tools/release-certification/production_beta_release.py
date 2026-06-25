@@ -3424,7 +3424,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--emergency-skip-build", action="store_true", help="Production-beta emergency/test escape hatch for skipped Gradle stages.")
     parser.add_argument("--allow-test-signing-in-production", action="store_true", help="Explicit test escape hatch; artifacts remain non-release.")
     parser.add_argument("--previous-summary", type=Path, help="Previous release-certification summary for history comparison.")
-    parser.add_argument("--waiver-file", type=Path, help="Structured release waiver JSON file.")
+    parser.add_argument("--waiver-file", type=Path, help="Structured release or go/no-go dashboard waiver JSON file.")
     parser.add_argument("--timeout-seconds", type=int, default=1800)
     parser.add_argument("--no-clean-out-dir", action="store_true", help="Do not remove an existing output directory before running.")
     return parser

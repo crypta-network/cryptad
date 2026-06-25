@@ -853,14 +853,27 @@ def parse_expiry(value: str) -> dt.datetime | None:
     return parsed.astimezone(dt.timezone.utc)
 
 
+def waiver_scope_allows_release_candidate(scope: str) -> bool:
+    normalized = scope.strip().lower()
+    return normalized in {
+        "all",
+        "all-modes",
+        "any",
+        "release-candidate",
+        "release-candidate-only",
+        "release-candidate-and-production-beta",
+    }
+
+
 def load_structured_waiver_file(path: Path, settings: Settings, now: dt.datetime) -> tuple[list[WaiverRecord], list[str]]:
     source = display_path(path, settings.workspace_root, settings.out_dir)
     value = read_json(path)
     if value is None:
         return [], [f"Waiver file {source} is missing or malformed."]
     records = value.get("waivers", [])
-    if value.get("version") != 1 or not isinstance(records, list):
-        return [], [f"Waiver file {source} must use version 1 and a waivers array."]
+    schema_version = value.get("version", value.get("schemaVersion"))
+    if schema_version != 1 or not isinstance(records, list):
+        return [], [f"Waiver file {source} must use version/schemaVersion 1 and a waivers array."]
     loaded: list[WaiverRecord] = []
     errors: list[str] = []
     for index, entry in enumerate(records):
@@ -869,14 +882,19 @@ def load_structured_waiver_file(path: Path, settings: Settings, now: dt.datetime
             continue
         waiver_id = str(entry.get("id", "")).strip()
         evidence_id = str(entry.get("evidenceId", waiver_id)).strip()
-        reason = str(entry.get("reason", "")).strip()
-        raw_status = str(entry.get("status", "")).strip().lower()
+        reason = str(entry.get("reason", entry.get("rationale", ""))).strip()
+        dashboard_style = "rationale" in entry or "scope" in entry or "owner" in entry or "severity" in entry
+        raw_status = str(entry.get("status", "approved" if dashboard_style else "")).strip().lower()
         status = raw_status if raw_status == "approved" else ("pending" if not raw_status else "invalid")
         approved_by = str(entry.get("approvedBy", "")).strip()
         raw_expires_at = str(entry.get("expiresAt", "")).strip()
+        allow_release_candidate_present = "allowReleaseCandidate" in entry
         allow_release_candidate_value = entry.get("allowReleaseCandidate", False)
+        scope = str(entry.get("scope", "")).strip()
         allow_release_candidate = (
-            allow_release_candidate_value if isinstance(allow_release_candidate_value, bool) else False
+            allow_release_candidate_value
+            if allow_release_candidate_present and isinstance(allow_release_candidate_value, bool)
+            else waiver_scope_allows_release_candidate(scope)
         )
         validation_errors: list[str] = []
         if not waiver_id:
@@ -887,7 +905,7 @@ def load_structured_waiver_file(path: Path, settings: Settings, now: dt.datetime
             validation_errors.append("reason is required")
         if status != "approved":
             validation_errors.append("status must be approved")
-        if not isinstance(allow_release_candidate_value, bool):
+        if allow_release_candidate_present and not isinstance(allow_release_candidate_value, bool):
             validation_errors.append("allowReleaseCandidate must be a boolean")
         expiry = parse_expiry(raw_expires_at)
         if raw_expires_at and expiry is None:
@@ -10977,6 +10995,45 @@ def run_self_test(repo_root: Path) -> None:
         waived_encoded = json.dumps(waived_sandbox_summary, sort_keys=True) + waived_report
         for forbidden in ("hunter2", str(workspace)):
             assert forbidden not in waived_encoded, f"structured waiver leaked {forbidden}"
+
+        dashboard_waiver_file_path = workspace / "docs/release-waivers/dashboard-schema.json"
+        write_json(
+            dashboard_waiver_file_path,
+            {
+                "schemaVersion": 1,
+                "releaseId": "self-test",
+                "waivers": [
+                    {
+                        "id": "waiver-ecosystem-sandbox-provider-dashboard-schema",
+                        "evidenceId": "ecosystem.sandbox-provider",
+                        "severity": "blocker",
+                        "scope": "release-candidate",
+                        "rationale": "Release manager accepted the sandbox provider evidence gap.",
+                        "approvedBy": "release-manager",
+                        "owner": "release-engineering",
+                        "createdAt": "2026-06-24T00:00:00Z",
+                        "expiresAt": "2099-01-01T00:00:00Z",
+                        "references": ["self-test"],
+                    }
+                ],
+            },
+        )
+        dashboard_waived_summary, dashboard_waived_exit_code = run_with_previous(
+            "dashboard-waiver-schema-cert",
+            app_platform_summary=sandbox_best_effort_path,
+            waiver_files=(dashboard_waiver_file_path,),
+        )
+        assert dashboard_waived_exit_code == 0, dashboard_waived_summary
+        assert dashboard_waived_summary["status"] == "warn", dashboard_waived_summary
+        assert len(dashboard_waived_summary["waiverRecords"]) == 1, dashboard_waived_summary
+        dashboard_waived_record = dashboard_waived_summary["waiverRecords"][0]
+        assert dashboard_waived_record["allowReleaseCandidate"] is True, dashboard_waived_record
+        assert dashboard_waived_record["reason"] == (
+            "Release manager accepted the sandbox provider evidence gap."
+        ), dashboard_waived_record
+        dashboard_waived_gate = gate_by_id(dashboard_waived_summary, "ecosystem.sandbox-provider")
+        assert dashboard_waived_gate["status"] == "warn", dashboard_waived_gate
+        assert dashboard_waived_gate["details"]["waived"] is True, dashboard_waived_gate
 
         malformed_rc_waiver_file_path = workspace / "docs/release-waivers/nonboolean.json"
         write_json(

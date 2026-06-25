@@ -1,0 +1,46 @@
+{
+  "extends": "go-no-go-pass.json",
+  "inputs": {
+    "multiNodeBetaSoakSummary": {
+      "mode": "hybrid",
+      "promotionReady": true,
+      "redaction": {
+        "findings": [],
+        "status": "pass"
+      },
+      "scenarioStatuses": {
+        "app-install-update-rollback": "pass",
+        "backup-restore": "pass",
+        "catalog-channel-update": "pass",
+        "social-inbox-multi-source": "pass",
+        "subscription-pressure": "pass",
+        "support-bundle-drill": "pass",
+        "trust-graph-import": "pass",
+        "upgrade-from-previous-candidate": "fail"
+      },
+      "status": "pass"
+    }
+  },
+  "mode": "release-candidate",
+  "releaseId": "crypta-production-beta-269-multi-node-upgrade-waiver",
+  "waivers": {
+    "releaseId": "crypta-production-beta-269-multi-node-upgrade-waiver",
+    "schemaVersion": 1,
+    "waivers": [
+      {
+        "approvedBy": "release-manager@example.invalid",
+        "createdAt": "2026-06-24T00:00:00Z",
+        "evidenceId": "multi-node-beta.upgrade-drill",
+        "expiresAt": "2099-06-30T00:00:00Z",
+        "id": "waiver-multi-node-upgrade-drill-001",
+        "owner": "release-engineering",
+        "rationale": "Release manager accepted the multi-node upgrade-drill evidence gap for this release-candidate run.",
+        "references": [
+          "fixture-pr-269-multi-node-upgrade"
+        ],
+        "scope": "release-candidate",
+        "severity": "blocker"
+      }
+    ]
+  }
+}

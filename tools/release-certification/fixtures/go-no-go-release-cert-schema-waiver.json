@@ -1,0 +1,39 @@
+{
+  "extends": "go-no-go-pass.json",
+  "inputs": {
+    "productionBetaSummary": {
+      "promotion": {
+        "failedGateCount": 1,
+        "gates": [
+          {
+            "id": "evidence.app-store.submission-cli",
+            "source": "release-certification",
+            "status": "fail",
+            "summary": "App-store submission CLI evidence was not available for the release-candidate run."
+          }
+        ],
+        "promotionReady": false,
+        "status": "fail"
+      },
+      "promotionReady": false,
+      "status": "fail"
+    }
+  },
+  "mode": "release-candidate",
+  "releaseId": "crypta-production-beta-269-release-cert-schema-waiver",
+  "waivers": {
+    "release": "crypta-production-beta-269-release-cert-schema-waiver",
+    "version": 1,
+    "waivers": [
+      {
+        "allowReleaseCandidate": true,
+        "approvedBy": "release-manager@example.invalid",
+        "evidenceId": "app-store.submission-cli",
+        "expiresAt": "2099-06-30T00:00:00Z",
+        "id": "waiver-app-store-submission-cli-001",
+        "reason": "Release manager accepted the app-store submission CLI evidence gap for this release-candidate run.",
+        "status": "approved"
+      }
+    ]
+  }
+}

@@ -824,6 +824,9 @@ Structured waivers are merged with CLI `--waive` records and remain visible in t
 summary, and history comparison. Active waivers downgrade matching evidence or ecosystem gate
 blockers to `warn`; they do not erase the gate. Expired or malformed waivers do not apply.
 Malformed waiver files fail `release-candidate` mode and warn in `pr` or `nightly` mode.
+The production beta dashboard waiver schema is accepted here too: `schemaVersion` is treated like
+`version`, `rationale` is treated like `reason`, and `scope: release-candidate` or
+`scope: release-candidate-only` derives `allowReleaseCandidate=true`.
 
 ## Optional live-node evidence
 

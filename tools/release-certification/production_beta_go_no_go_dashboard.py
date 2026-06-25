@@ -27,6 +27,7 @@ from typing import Any, Iterable, Iterator
 
 
 sys.dont_write_bytecode = True
+import multi_node_beta_soak
 
 TOOL_NAME = "production-beta-go-no-go-dashboard"
 SCHEMA_VERSION = 1
@@ -540,12 +541,26 @@ def live_network_target_aliases(value: str) -> set[str]:
     return aliases
 
 
+def evidence_prefix_target_aliases(value: str) -> set[str]:
+    aliases = {value}
+    if value.startswith("evidence."):
+        aliases.add(value.removeprefix("evidence."))
+    elif "." in value:
+        aliases.add(f"evidence.{value}")
+    return aliases
+
+
+def canonical_evidence_id(value: str) -> str:
+    return value.removeprefix("evidence.")
+
+
 def expand_waiver_target_aliases(*values: str) -> set[str]:
     aliases: set[str] = set()
     for value in values:
         if not value:
             continue
-        aliases.update(live_network_target_aliases(value))
+        for alias in evidence_prefix_target_aliases(value):
+            aliases.update(live_network_target_aliases(alias))
     return aliases
 
 
@@ -1450,8 +1465,14 @@ def production_summary_issues(summary: dict[str, Any] | None, mode: str) -> list
         if not isinstance(gate, dict) or normalize_status(gate.get("status")) == "pass":
             continue
         gate_id = str(gate.get("id", "promotion-gate"))
+        evidence_id = canonical_evidence_id(gate_id)
         source = str(gate.get("source", "promotion"))
-        nonwaivable = gate_id in NON_WAIVABLE_EVIDENCE_IDS or is_redaction_evidence(gate_id)
+        nonwaivable = (
+            gate_id in NON_WAIVABLE_EVIDENCE_IDS
+            or evidence_id in NON_WAIVABLE_EVIDENCE_IDS
+            or is_redaction_evidence(gate_id)
+            or is_redaction_evidence(evidence_id)
+        )
         if gate_id == "signing.production-keys" or "test-signing" in gate_id:
             nonwaivable = True
         if gate_id in {"build.production-beta-complete", "workspace.clean-production-beta", "fixture-evidence.strict-mode"}:
@@ -1459,8 +1480,8 @@ def production_summary_issues(summary: dict[str, Any] | None, mode: str) -> list
         issues.append(
             Issue(
                 id=f"promotion.{gate_id}",
-                evidence_id=gate_id,
-                domain_id=domain_for_gate(gate_id, source),
+                evidence_id=evidence_id,
+                domain_id=domain_for_gate(evidence_id, source),
                 severity="critical" if nonwaivable else "blocker",
                 title=f"{gate_id} failed",
                 summary=str(gate.get("summary", "Promotion gate failed.")),
@@ -1695,10 +1716,14 @@ def multi_node_issues(summary: dict[str, Any] | None, mode: str) -> list[Issue]:
     if isinstance(scenario_statuses, dict):
         for scenario_id, scenario_status in sorted(scenario_statuses.items()):
             if normalize_status(scenario_status) != "pass":
+                evidence_id = multi_node_beta_soak.SCENARIO_EVIDENCE_IDS.get(
+                    scenario_id,
+                    f"multi-node-beta.{scenario_id}",
+                )
                 issues.append(
                     Issue(
                         id=f"multi-node-beta-soak.{scenario_id}",
-                        evidence_id=f"multi-node-beta.{scenario_id}",
+                        evidence_id=evidence_id,
                         domain_id="multi-node-beta-soak",
                         severity="blocker",
                         title=f"{scenario_id} scenario is not passing",
@@ -1804,6 +1829,25 @@ def scope_applies(scope: str, mode: str) -> bool:
     return False
 
 
+def release_certification_scope(entry: dict[str, Any]) -> str:
+    scope = str(entry.get("scope", "")).strip()
+    if scope:
+        return scope
+    allow_release_candidate = entry.get("allowReleaseCandidate")
+    if isinstance(allow_release_candidate, bool):
+        return "release-candidate" if allow_release_candidate else "developer-dry-run"
+    return ""
+
+
+def release_certification_owner(entry: dict[str, Any]) -> str:
+    owner = str(entry.get("owner", "")).strip()
+    if owner:
+        return owner
+    if "reason" in entry or "allowReleaseCandidate" in entry:
+        return str(entry.get("approvedBy", "")).strip() or "release-certification"
+    return ""
+
+
 def severity_covers(waiver: Waiver, issue: Issue) -> bool:
     return SEVERITY_RANK.get(waiver.severity, -1) >= SEVERITY_RANK.get(issue.severity, 99)
 
@@ -1859,10 +1903,10 @@ def load_waivers(
         waiver_id = str(entry.get("id", "")).strip()
         evidence_id = str(entry.get("evidenceId", waiver_id)).strip()
         severity = str(entry.get("severity", "blocker")).strip().lower()
-        scope = str(entry.get("scope", "")).strip()
+        scope = release_certification_scope(entry)
         rationale = str(entry.get("rationale", entry.get("reason", ""))).strip()
         approved_by = str(entry.get("approvedBy", "")).strip()
-        owner = str(entry.get("owner", "")).strip()
+        owner = release_certification_owner(entry)
         created_at = str(entry.get("createdAt", "")).strip()
         expires_at = str(entry.get("expiresAt", "")).strip()
         references = tuple(str(item) for item in entry.get("references", []) if isinstance(entry.get("references"), list))
@@ -2362,6 +2406,8 @@ def run_self_test(quiet: bool = False) -> None:
         "go-no-go-missing-ecosystem-matrix-status.json": "no-go",
         "go-no-go-warning-ecosystem-matrix.json": "go",
         "go-no-go-malformed-ecosystem-matrix-count.json": "no-go",
+        "go-no-go-release-cert-schema-waiver.json": "go-with-waivers",
+        "go-no-go-multi-node-upgrade-waiver.json": "go-with-waivers",
         "go-no-go-network-scale-redaction-waiver.json": "no-go",
         "go-no-go-secret-value-redaction.json": "no-go",
         "go-no-go-underseverity-waiver.json": "no-go",
@@ -2432,6 +2478,32 @@ def run_self_test(quiet: bool = False) -> None:
                 }
                 if "live-network-beta.content-fetch" not in waived_evidence_ids:
                     raise AssertionError("live evidence alias waiver did not cover live-network evidence")
+            if fixture_name == "go-no-go-release-cert-schema-waiver.json":
+                if int(dashboard.get("summary", {}).get("waiversUsed", 0)) != 1:
+                    raise AssertionError("release-certification schema waiver was not used by dashboard")
+                waived_evidence_ids = {
+                    str(warning.get("evidenceId"))
+                    for warning in dashboard.get("warnings", [])
+                    if isinstance(warning, dict) and warning.get("waivedBy")
+                }
+                if "app-store.submission-cli" not in waived_evidence_ids:
+                    raise AssertionError("canonical app-store evidence id did not waive evidence-prefixed gate")
+                if any(
+                    str(warning.get("evidenceId")).startswith("evidence.")
+                    for warning in dashboard.get("warnings", [])
+                    if isinstance(warning, dict)
+                ):
+                    raise AssertionError("dashboard exposed evidence-prefixed promotion evidence id")
+            if fixture_name == "go-no-go-multi-node-upgrade-waiver.json":
+                if int(dashboard.get("summary", {}).get("waiversUsed", 0)) != 1:
+                    raise AssertionError("canonical multi-node upgrade-drill waiver was not used")
+                waived_evidence_ids = {
+                    str(warning.get("evidenceId"))
+                    for warning in dashboard.get("warnings", [])
+                    if isinstance(warning, dict) and warning.get("waivedBy")
+                }
+                if "multi-node-beta.upgrade-drill" not in waived_evidence_ids:
+                    raise AssertionError("multi-node upgrade scenario did not use canonical evidence id")
             if fixture_name == "go-no-go-live-network-skip-waiver.json":
                 if int(dashboard.get("summary", {}).get("waiversUsed", 0)) != 0:
                     raise AssertionError("live-network production-beta skip hard blocker was incorrectly waived")
