@@ -1,0 +1,39 @@
+{
+  "extends": "go-no-go-pass.json",
+  "inputs": {
+    "releaseCertificationSummary": {
+      "evidence": [
+        {
+          "details": {
+            "waived": true,
+            "waiverId": "waiver-ecosystem-rc-gate-applied-001",
+            "waiverReason": "Release certification accepted the ecosystem RC gate warning.",
+            "waiverSource": "release-certification"
+          },
+          "id": "release-certification.ecosystem-rc-gate",
+          "requiredForReleaseCandidate": true,
+          "source": "release-certification",
+          "status": "warn",
+          "summary": "Ecosystem RC gate warning was waived during release certification."
+        }
+      ],
+      "waiverRecords": [
+        {
+          "active": true,
+          "allowReleaseCandidate": true,
+          "appliesToReleaseCandidate": true,
+          "approvedBy": "release-manager@example.invalid",
+          "evidenceId": "release-certification.ecosystem-rc-gate",
+          "expiresAt": "2099-06-30T00:00:00Z",
+          "expired": false,
+          "id": "waiver-ecosystem-rc-gate-applied-001",
+          "reason": "Release certification accepted the ecosystem RC gate warning.",
+          "source": "release-certification",
+          "status": "approved"
+        }
+      ]
+    }
+  },
+  "mode": "release-candidate",
+  "releaseId": "crypta-production-beta-269-release-cert-applied-waiver"
+}

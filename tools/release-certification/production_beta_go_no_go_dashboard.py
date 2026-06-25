@@ -283,6 +283,11 @@ NON_WAIVABLE_EVIDENCE_IDS = {
     "fixture-evidence.strict-mode",
     "live.production-beta-skip",
 }
+PRODUCTION_ARTIFACT_GATE_IDS = {
+    "artifact.signed-first-party-bundles",
+    "artifact.signed-first-party-catalog",
+    "artifact.first-party-review-receipts",
+}
 
 REDACTION_FINDING_KINDS = {
     "private-insert-uri",
@@ -799,14 +804,28 @@ def normalize_status(value: Any) -> str:
     }.get(status, status if status in {"pass", "warn", "fail", "skip", "missing"} else "missing")
 
 
+def entry_has_redaction_findings(entry: dict[str, Any] | None) -> bool:
+    if not isinstance(entry, dict):
+        return False
+    details = entry.get("details", {})
+    return isinstance(details, dict) and bool(details.get("redactionFindings"))
+
+
+def entry_waiver_id(entry: dict[str, Any] | None) -> str:
+    if not isinstance(entry, dict):
+        return ""
+    details = entry.get("details", {})
+    if not isinstance(details, dict) or details.get("waived") is not True:
+        return ""
+    return str(details.get("waiverId", "")).strip()
+
+
 def status_ok(entry: dict[str, Any] | None) -> bool:
     if not isinstance(entry, dict):
         return False
-    status = normalize_status(entry.get("status"))
-    details = entry.get("details", {})
-    if isinstance(details, dict) and details.get("redactionFindings"):
+    if entry_has_redaction_findings(entry):
         return False
-    return status == "pass" or (status == "warn" and isinstance(details, dict) and details.get("waived") is True)
+    return normalize_status(entry.get("status")) == "pass"
 
 
 def status_warn(entry: dict[str, Any] | None) -> bool:
@@ -849,6 +868,20 @@ def is_redaction_evidence(evidence_id: str, domain_id: str = "") -> bool:
 def issue_for_evidence(domain_id: str, evidence_id: str, entry: dict[str, Any] | None) -> Issue | None:
     if status_ok(entry):
         return None
+    waiver_id = "" if entry_has_redaction_findings(entry) else entry_waiver_id(entry)
+    if waiver_id and status_warn(entry):
+        return Issue(
+            id=issue_id(domain_id, evidence_id, "waived"),
+            evidence_id=evidence_id,
+            domain_id=domain_id,
+            severity="blocker",
+            title=f"{evidence_id} is waived",
+            summary=evidence_summary(entry),
+            source=str(entry.get("source", domain_id)) if isinstance(entry, dict) else domain_id,
+            waivable=True,
+            category="evidence-waiver",
+            waived_by=waiver_id,
+        )
     if status_warn(entry):
         return Issue(
             id=issue_id(domain_id, evidence_id, "warning"),
@@ -1414,7 +1447,7 @@ def production_summary_issues(summary: dict[str, Any] | None, mode: str) -> list
                 title="Production beta summary failed",
                 summary=f"Production beta summary status is fail.{detail}",
                 source="production-beta-summary",
-                waivable=True,
+                waivable=False,
                 category="pipeline",
             )
         )
@@ -1470,6 +1503,7 @@ def production_summary_issues(summary: dict[str, Any] | None, mode: str) -> list
         nonwaivable = (
             gate_id in NON_WAIVABLE_EVIDENCE_IDS
             or evidence_id in NON_WAIVABLE_EVIDENCE_IDS
+            or (mode == "production-beta" and gate_id in PRODUCTION_ARTIFACT_GATE_IDS)
             or is_redaction_evidence(gate_id)
             or is_redaction_evidence(evidence_id)
         )
@@ -1511,6 +1545,16 @@ def release_certification_issues(summary: dict[str, Any] | None) -> list[Issue]:
     if not isinstance(summary, dict):
         return []
     issues: list[Issue] = []
+    evidence_entries = summary.get("evidence") if isinstance(summary.get("evidence"), list) else []
+    for entry in evidence_entries:
+        if not isinstance(entry, dict):
+            continue
+        evidence_id = str(entry.get("id", ""))
+        if evidence_id != "release-certification.ecosystem-rc-gate":
+            continue
+        issue = issue_for_evidence("release-certification", evidence_id, entry)
+        if issue is not None:
+            issues.append(issue)
     if summary.get("releaseCandidatePassed") is not True:
         issues.append(
             Issue(
@@ -1848,8 +1892,91 @@ def release_certification_owner(entry: dict[str, Any]) -> str:
     return ""
 
 
+def release_certification_record_scope(record: dict[str, Any]) -> str:
+    scope = str(record.get("scope", "")).strip()
+    if scope:
+        return scope
+    if record.get("allowReleaseCandidate") is True or record.get("appliesToReleaseCandidate") is True:
+        return "release-candidate"
+    return "developer-dry-run"
+
+
+def release_certification_record_applies(record: dict[str, Any], mode: str) -> bool:
+    if mode == "production-beta":
+        return release_certification_record_scope(record).strip().lower() in {
+            "production-beta",
+            "production-beta-only",
+            "release-candidate-and-production-beta",
+            "all",
+            "all-modes",
+            "any",
+        }
+    if mode == "release-candidate":
+        return record.get("allowReleaseCandidate") is True or record.get("appliesToReleaseCandidate") is True
+    return True
+
+
+def release_certification_waiver_records(
+    summary: dict[str, Any] | None,
+    mode: str,
+    workspace_root: Path,
+    out_dir: Path,
+) -> list[Waiver]:
+    if not isinstance(summary, dict):
+        return []
+    records = summary.get("waiverRecords")
+    if not isinstance(records, list):
+        return []
+    waivers: list[Waiver] = []
+    for index, record in enumerate(records):
+        if not isinstance(record, dict):
+            continue
+        waiver_id = str(record.get("id", "")).strip()
+        evidence_id = str(record.get("evidenceId", waiver_id)).strip()
+        if not waiver_id and not evidence_id:
+            continue
+        status = str(record.get("status", "approved")).strip().lower()
+        expired = record.get("expired") is True
+        applies = release_certification_record_applies(record, mode)
+        validation_error = str(record.get("validationError", "")).strip()
+        active = (
+            record.get("active") is True
+            and status == "approved"
+            and not expired
+            and applies
+            and not validation_error
+        )
+        waivers.append(
+            Waiver(
+                id=scrub_text(waiver_id or evidence_id or f"release-certification-waiver-{index}", workspace_root, out_dir),
+                evidence_id=scrub_text(evidence_id or waiver_id or f"release-certification-waiver-{index}", workspace_root, out_dir),
+                severity="blocker",
+                scope=scrub_text(release_certification_record_scope(record), workspace_root, out_dir),
+                rationale=scrub_text(str(record.get("reason", record.get("rationale", ""))).strip(), workspace_root, out_dir),
+                approved_by=scrub_text(str(record.get("approvedBy", "")).strip(), workspace_root, out_dir),
+                owner=scrub_text(str(record.get("owner", "release-certification")).strip() or "release-certification", workspace_root, out_dir),
+                created_at=scrub_text(str(record.get("createdAt", "")).strip(), workspace_root, out_dir),
+                expires_at=scrub_text(str(record.get("expiresAt", "")).strip(), workspace_root, out_dir),
+                references=(),
+                source=scrub_text(str(record.get("source", "release-certification")).strip() or "release-certification", workspace_root, out_dir),
+                active=active,
+                applies_to_mode=applies,
+                external_risk_accepted=False,
+                validation_errors=(validation_error,) if validation_error else (),
+            )
+        )
+    return waivers
+
+
 def severity_covers(waiver: Waiver, issue: Issue) -> bool:
     return SEVERITY_RANK.get(waiver.severity, -1) >= SEVERITY_RANK.get(issue.severity, 99)
+
+
+def issue_is_non_waivable_in_mode(issue: Issue, mode: str) -> bool:
+    return mode == "production-beta" and (
+        issue.evidence_id in NON_WAIVABLE_EVIDENCE_IDS | PRODUCTION_ARTIFACT_GATE_IDS
+        or issue.severity == "critical"
+    )
 
 
 def load_waivers(
@@ -1943,7 +2070,7 @@ def load_waivers(
             validation_errors.append(f"scope does not apply to {mode}")
         if evidence_id and evidence_id not in known_ids and not external_risk_accepted:
             validation_errors.append("evidenceId is unknown and externalRiskAccepted is not true")
-        if mode == "production-beta" and evidence_id in NON_WAIVABLE_EVIDENCE_IDS:
+        if mode == "production-beta" and evidence_id in NON_WAIVABLE_EVIDENCE_IDS | PRODUCTION_ARTIFACT_GATE_IDS:
             validation_errors.append("target is non-waivable in production-beta mode")
         active = not validation_errors
         safe_errors = tuple(scrub_text(error, workspace_root, out_dir) for error in validation_errors)
@@ -1987,6 +2114,37 @@ def apply_waivers(issues: list[Issue], waivers: list[Waiver], mode: str) -> tupl
     usage: dict[str, list[str]] = {waiver.id: [] for waiver in waivers}
     validation_issues: list[Issue] = []
     for issue in issues:
+        if issue.waived_by:
+            matching = next(
+                (
+                    waiver
+                    for waiver in waivers
+                    if waiver.active
+                    and waiver.id == issue.waived_by
+                    and waiver.matches(issue)
+                    and severity_covers(waiver, issue)
+                ),
+                None,
+            )
+            if matching is None or issue_is_non_waivable_in_mode(issue, mode):
+                validation_issues.append(
+                    Issue(
+                        id=f"waiver.{issue.waived_by}.missing-or-invalid",
+                        evidence_id="production-beta.waiver-validation",
+                        domain_id="redaction-artifact-hygiene",
+                        severity="blocker",
+                        title="Applied waiver is missing or invalid",
+                        summary=f"Evidence {issue.evidence_id} references waiver {issue.waived_by}, but no matching active waiver record is valid.",
+                        source=issue.source,
+                        waivable=False,
+                        category="waiver-validation",
+                    )
+                )
+                applied.append(dataclasses.replace(issue, waived_by=""))
+                continue
+            usage.setdefault(matching.id, []).append(issue.id)
+            applied.append(dataclasses.replace(issue, waived_by=matching.id))
+            continue
         if issue.severity not in {"blocker", "critical"} or not issue.waivable:
             applied.append(issue)
             continue
@@ -2020,7 +2178,7 @@ def apply_waivers(issues: list[Issue], waivers: list[Waiver], mode: str) -> tupl
                 )
             applied.append(issue)
             continue
-        if mode == "production-beta" and (issue.evidence_id in NON_WAIVABLE_EVIDENCE_IDS or issue.severity == "critical"):
+        if issue_is_non_waivable_in_mode(issue, mode):
             validation_issues.append(
                 Issue(
                     id=f"waiver.{matching.id}.non-waivable-target",
@@ -2114,6 +2272,7 @@ def known_ids(all_evidence: dict[str, dict[str, Any]], issues: list[Issue]) -> s
     for issue in issues:
         ids.update({issue.id, issue.evidence_id, issue.domain_id, f"evidence.{issue.evidence_id}"})
     ids.update(NON_WAIVABLE_EVIDENCE_IDS)
+    ids.update(PRODUCTION_ARTIFACT_GATE_IDS)
     return expand_waiver_target_aliases(*ids)
 
 
@@ -2153,6 +2312,12 @@ def build_dashboard(
     if mode not in MODES:
         raise SystemExit(f"--mode must be one of {', '.join(MODES)}")
     issues, all_evidence = collect_issues(inputs, mode, input_paths)
+    imported_waivers = release_certification_waiver_records(
+        inputs.get("releaseCertificationSummary") if isinstance(inputs.get("releaseCertificationSummary"), dict) else None,
+        mode,
+        workspace_root,
+        out_dir,
+    )
     waivers, waiver_issues = load_waivers(
         waiver_value,
         display_path(input_paths.get("waivers", Path("waivers.json")), workspace_root) if input_paths.get("waivers") else "fixture-waivers",
@@ -2162,6 +2327,7 @@ def build_dashboard(
         workspace_root,
         out_dir,
     )
+    waivers = [*imported_waivers, *waivers]
     issues = dedupe_issues([*issues, *waiver_issues])
     issues, waivers, _validation_issues = apply_waivers(issues, waivers, mode)
     domains = build_domain_rows(inputs, input_paths, workspace_root, out_dir, issues, all_evidence)
@@ -2410,6 +2576,9 @@ def run_self_test(quiet: bool = False) -> None:
         "go-no-go-warning-ecosystem-matrix.json": "go",
         "go-no-go-malformed-ecosystem-matrix-count.json": "no-go",
         "go-no-go-release-cert-schema-waiver.json": "go-with-waivers",
+        "go-no-go-release-cert-applied-waiver.json": "go-with-waivers",
+        "go-no-go-release-cert-applied-waiver-missing-record.json": "no-go",
+        "go-no-go-artifact-gate-waiver.json": "no-go",
         "go-no-go-multi-node-upgrade-waiver.json": "go-with-waivers",
         "go-no-go-network-scale-redaction-waiver.json": "no-go",
         "go-no-go-secret-value-redaction.json": "no-go",
@@ -2497,6 +2666,26 @@ def run_self_test(quiet: bool = False) -> None:
                     if isinstance(warning, dict)
                 ):
                     raise AssertionError("dashboard exposed evidence-prefixed promotion evidence id")
+            if fixture_name == "go-no-go-release-cert-applied-waiver.json":
+                if int(dashboard.get("summary", {}).get("waiversUsed", 0)) != 1:
+                    raise AssertionError("already-applied release-certification waiver was not preserved")
+                waived_evidence_ids = {
+                    str(warning.get("evidenceId"))
+                    for warning in dashboard.get("warnings", [])
+                    if isinstance(warning, dict) and warning.get("waivedBy")
+                }
+                if "release-certification.ecosystem-rc-gate" not in waived_evidence_ids:
+                    raise AssertionError("already-applied release-certification waiver did not remain visible")
+            if fixture_name == "go-no-go-release-cert-applied-waiver-missing-record.json":
+                if int(dashboard.get("summary", {}).get("waiversUsed", 0)) != 0:
+                    raise AssertionError("missing release-certification waiver record was incorrectly counted")
+                if "production-beta.waiver-validation" not in blocker_ids:
+                    raise AssertionError("missing release-certification waiver record did not block the dashboard")
+            if fixture_name == "go-no-go-artifact-gate-waiver.json":
+                if "artifact.signed-first-party-bundles" not in blocker_ids:
+                    raise AssertionError("artifact-presence gate waiver incorrectly removed the blocker")
+                if int(dashboard.get("summary", {}).get("waiversUsed", 0)) != 0:
+                    raise AssertionError("artifact-presence gate waiver was incorrectly used")
             if fixture_name == "go-no-go-multi-node-upgrade-waiver.json":
                 if int(dashboard.get("summary", {}).get("waiversUsed", 0)) != 1:
                     raise AssertionError("canonical multi-node upgrade-drill waiver was not used")

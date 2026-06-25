@@ -3210,20 +3210,20 @@ def go_no_go_dashboard_artifact_failure(
     if missing_artifacts:
         return "Go/no-go dashboard did not generate a complete artifact set: " + ", ".join(missing_artifacts)
 
-    decision = str(dashboard.get("decision", "no-go"))
-    if decision not in {"go", "go-with-waivers"}:
-        return None
-    if result.exit_code != 0:
-        return f"Go/no-go dashboard returned launchable decision but exited with code {result.exit_code}."
     redaction_status = str(redaction_report.get("status", "missing"))
     if redaction_status != "pass":
-        return f"Go/no-go dashboard redaction report status is {redaction_status}; launchable decisions require pass."
+        return f"Go/no-go dashboard redaction report status is {redaction_status}; dashboard artifacts require pass."
     dashboard_redaction = dashboard.get("redaction")
     dashboard_redaction_status = (
         str(dashboard_redaction.get("status", "missing")) if isinstance(dashboard_redaction, dict) else "missing"
     )
     if dashboard_redaction_status != "pass":
-        return f"Go/no-go dashboard redaction status is {dashboard_redaction_status}; launchable decisions require pass."
+        return f"Go/no-go dashboard redaction status is {dashboard_redaction_status}; dashboard artifacts require pass."
+    decision = str(dashboard.get("decision", "no-go"))
+    if decision not in {"go", "go-with-waivers"}:
+        return None
+    if result.exit_code != 0:
+        return f"Go/no-go dashboard returned launchable decision but exited with code {result.exit_code}."
     return None
 
 
@@ -4835,6 +4835,93 @@ def assert_incomplete_go_no_go_dashboard_outputs_fail_summary_and_exit() -> None
         assert regenerated_dashboard["decision"] == "no-go", regenerated_dashboard
 
 
+def assert_failed_go_no_go_redaction_fails_summary_and_exit() -> None:
+    with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-dashboard-redaction-fail-") as temp_name:
+        workspace = Path(temp_name) / "repo"
+        workspace.mkdir(parents=True)
+        out_dir = workspace / "build/production-beta"
+        settings = dataclasses.replace(
+            cleanup_test_settings(workspace, out_dir),
+            mode="release-candidate",
+        )
+        state = PipelineState(settings, "self-test", utc_now(), [], [], [])
+        summary = build_final_summary(
+            state,
+            {
+                "status": "pass",
+                "promotionReady": False,
+                "nonRelease": True,
+                "failedGateCount": 0,
+                "gates": [],
+                "knownLimitations": [],
+            },
+            {
+                "schemaVersion": 1,
+                "status": "pass",
+                "scannedRoot": "<release-out>",
+                "findingCount": 0,
+                "findings": [],
+            },
+            None,
+        )
+
+        def fake_run_command(
+            state: PipelineState,
+            name: str,
+            args: list[str],
+            env: dict[str, str] | None = None,
+            timeout_seconds: int = 0,
+            allow_failure: bool = False,
+        ) -> CommandResult:
+            del name, args, env, timeout_seconds, allow_failure
+            redaction = {
+                "schemaVersion": SCHEMA_VERSION,
+                "status": "fail",
+                "findingCount": 1,
+                "criticalFindingCount": 1,
+                "findings": [
+                    {
+                        "kind": "protected-secret-value",
+                        "path": GO_NO_GO_DASHBOARD_JSON,
+                        "severity": "critical",
+                    }
+                ],
+            }
+            write_json(
+                state.settings.out_dir / GO_NO_GO_DASHBOARD_JSON,
+                {
+                    "decision": "no-go",
+                    "promotionReady": False,
+                    "summary": {"blockers": 1, "warnings": 0, "waiversUsed": 0, "criticalRedactionFindings": 1},
+                    "blockers": [
+                        {
+                            "id": "dashboard.redaction.scan",
+                            "evidenceId": "production-beta.dashboard-redaction",
+                            "severity": "critical",
+                            "summary": "Dashboard redaction scanner found 1 finding.",
+                        }
+                    ],
+                    "redaction": redaction,
+                },
+            )
+            write_text(state.settings.out_dir / GO_NO_GO_DASHBOARD_MARKDOWN, "Decision: `NO-GO`\n")
+            write_json(state.settings.out_dir / GO_NO_GO_REDACTION_REPORT, redaction)
+            return CommandResult("production-beta-go-no-go-dashboard", [], 1, 1, "", "")
+
+        original_run_command = globals()["run_command"]
+        try:
+            globals()["run_command"] = fake_run_command
+            attached = attach_go_no_go_dashboard(state, summary)
+        finally:
+            globals()["run_command"] = original_run_command
+
+        assert attached["goNoGo"]["decision"] == "no-go", attached
+        assert attached["status"] == "fail", attached
+        assert attached["promotionReady"] is False, attached
+        assert release_exit_code(settings, attached) == 1, attached
+        assert any("redaction report status is fail" in failure for failure in attached["failures"]), attached
+
+
 def cleanup_test_settings(workspace: Path, out_dir: Path) -> Settings:
     return Settings(
         workspace_root=workspace,
@@ -6051,6 +6138,7 @@ def run_self_test() -> None:
     assert_missing_go_no_go_dashboard_fails_summary_and_exit()
     assert_stale_go_no_go_dashboard_is_not_reused()
     assert_incomplete_go_no_go_dashboard_outputs_fail_summary_and_exit()
+    assert_failed_go_no_go_redaction_fails_summary_and_exit()
     assert_attached_multi_node_summary_is_extracted()
     assert_env_attached_multi_node_summary_is_extracted()
     assert_attached_multi_node_summary_is_not_marked_generated()
