@@ -1954,6 +1954,7 @@ def release_certification_record_applies(record: dict[str, Any], mode: str) -> b
 def release_certification_waiver_records(
     summary: dict[str, Any] | None,
     mode: str,
+    now: dt.datetime,
     workspace_root: Path,
     out_dir: Path,
 ) -> list[Waiver]:
@@ -1973,14 +1974,26 @@ def release_certification_waiver_records(
         status = str(record.get("status", "approved")).strip().lower()
         expired = record.get("expired") is True
         applies = release_certification_record_applies(record, mode)
+        expires_at = str(record.get("expiresAt", "")).strip()
+        expiry = parse_time(expires_at)
         validation_error = str(record.get("validationError", "")).strip()
+        validation_errors: list[str] = []
+        if validation_error:
+            validation_errors.append(validation_error)
+        if not expires_at:
+            validation_errors.append("expiresAt is required")
+        elif expiry is None:
+            validation_errors.append("expiresAt must be an ISO-8601 timestamp")
+        elif expiry <= now:
+            validation_errors.append("waiver is expired")
         active = (
             record.get("active") is True
             and status == "approved"
             and not expired
             and applies
-            and not validation_error
+            and not validation_errors
         )
+        safe_errors = tuple(scrub_text(error, workspace_root, out_dir) for error in validation_errors)
         waivers.append(
             Waiver(
                 id=scrub_text(waiver_id or evidence_id or f"release-certification-waiver-{index}", workspace_root, out_dir),
@@ -1991,13 +2004,13 @@ def release_certification_waiver_records(
                 approved_by=scrub_text(str(record.get("approvedBy", "")).strip(), workspace_root, out_dir),
                 owner=scrub_text(str(record.get("owner", "release-certification")).strip() or "release-certification", workspace_root, out_dir),
                 created_at=scrub_text(str(record.get("createdAt", "")).strip(), workspace_root, out_dir),
-                expires_at=scrub_text(str(record.get("expiresAt", "")).strip(), workspace_root, out_dir),
+                expires_at=scrub_text(expires_at, workspace_root, out_dir),
                 references=(),
                 source=scrub_text(str(record.get("source", "release-certification")).strip() or "release-certification", workspace_root, out_dir),
                 active=active,
                 applies_to_mode=applies,
                 external_risk_accepted=False,
-                validation_errors=(validation_error,) if validation_error else (),
+                validation_errors=safe_errors,
             )
         )
     return waivers
@@ -2354,6 +2367,7 @@ def build_dashboard(
     imported_waivers = release_certification_waiver_records(
         inputs.get("releaseCertificationSummary") if isinstance(inputs.get("releaseCertificationSummary"), dict) else None,
         mode,
+        now,
         workspace_root,
         out_dir,
     )
@@ -2616,6 +2630,7 @@ def run_self_test(quiet: bool = False) -> None:
         "go-no-go-malformed-ecosystem-matrix-count.json": "no-go",
         "go-no-go-release-cert-schema-waiver.json": "go-with-waivers",
         "go-no-go-release-cert-applied-waiver.json": "go-with-waivers",
+        "go-no-go-release-cert-applied-waiver-expired.json": "no-go",
         "go-no-go-release-cert-applied-waiver-missing-record.json": "no-go",
         "go-no-go-artifact-gate-waiver.json": "no-go",
         "go-no-go-warning-redaction-findings.json": "no-go",
@@ -2716,6 +2731,11 @@ def run_self_test(quiet: bool = False) -> None:
                 }
                 if "release-certification.ecosystem-rc-gate" not in waived_evidence_ids:
                     raise AssertionError("already-applied release-certification waiver did not remain visible")
+            if fixture_name == "go-no-go-release-cert-applied-waiver-expired.json":
+                if int(dashboard.get("summary", {}).get("waiversUsed", 0)) != 0:
+                    raise AssertionError("expired release-certification waiver record was incorrectly counted")
+                if "production-beta.waiver-validation" not in blocker_ids:
+                    raise AssertionError("expired release-certification waiver record did not block the dashboard")
             if fixture_name == "go-no-go-release-cert-applied-waiver-missing-record.json":
                 if int(dashboard.get("summary", {}).get("waiversUsed", 0)) != 0:
                     raise AssertionError("missing release-certification waiver record was incorrectly counted")
