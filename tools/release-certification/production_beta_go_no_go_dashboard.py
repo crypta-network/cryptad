@@ -280,6 +280,7 @@ NON_WAIVABLE_EVIDENCE_IDS = {
     "build.production-beta-complete",
     "workspace.clean-production-beta",
     "fixture-evidence.strict-mode",
+    "live.production-beta-skip",
 }
 
 REDACTION_FINDING_KINDS = {
@@ -2363,6 +2364,7 @@ def run_self_test(quiet: bool = False) -> None:
         "go-no-go-secret-value-redaction.json": "no-go",
         "go-no-go-underseverity-waiver.json": "no-go",
         "go-no-go-live-evidence-waiver-alias.json": "go-with-waivers",
+        "go-no-go-live-network-skip-waiver.json": "no-go",
         "go-no-go-release-candidate-live-disabled.json": "no-go",
         "go-no-go-malformed-non-release-status.json": "no-go",
     }
@@ -2428,6 +2430,13 @@ def run_self_test(quiet: bool = False) -> None:
                 }
                 if "live-network-beta.content-fetch" not in waived_evidence_ids:
                     raise AssertionError("live evidence alias waiver did not cover live-network evidence")
+            if fixture_name == "go-no-go-live-network-skip-waiver.json":
+                if int(dashboard.get("summary", {}).get("waiversUsed", 0)) != 0:
+                    raise AssertionError("live-network production-beta skip hard blocker was incorrectly waived")
+                if "live.production-beta-skip" not in blocker_ids:
+                    raise AssertionError("live-network production-beta skip did not block launch")
+                if "production-beta.waiver-validation" not in blocker_ids:
+                    raise AssertionError("live-network production-beta skip waiver did not fail validation")
             if fixture_name == "go-no-go-release-candidate-live-disabled.json":
                 if any(blocker_id.startswith("live-network-beta.") for blocker_id in blocker_ids):
                     raise AssertionError("disabled live-network evidence blocked release-candidate mode")

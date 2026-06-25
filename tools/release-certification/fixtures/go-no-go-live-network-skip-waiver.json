@@ -1,0 +1,43 @@
+{
+  "extends": "go-no-go-pass.json",
+  "inputs": {
+    "productionBetaSummary": {
+      "promotion": {
+        "failedGateCount": 1,
+        "gates": [
+          {
+            "id": "live.production-beta-skip",
+            "source": "live-network-beta-smoke",
+            "status": "fail",
+            "summary": "Live-network beta evidence was skipped for a production-beta run."
+          }
+        ],
+        "promotionReady": false,
+        "status": "fail"
+      },
+      "promotionReady": false,
+      "status": "fail"
+    }
+  },
+  "releaseId": "crypta-production-beta-269-live-network-skip-waiver",
+  "waivers": {
+    "releaseId": "crypta-production-beta-269-live-network-skip-waiver",
+    "schemaVersion": 1,
+    "waivers": [
+      {
+        "approvedBy": "release-manager@example.invalid",
+        "createdAt": "2026-06-20T00:00:00Z",
+        "evidenceId": "live.production-beta-skip",
+        "expiresAt": "2026-06-30T00:00:00Z",
+        "id": "waiver-live-network-production-beta-skip-001",
+        "owner": "release-engineering",
+        "rationale": "Fixture waiver that must not make skipped production live-network evidence launchable.",
+        "references": [
+          "fixture-pr-269-live-network-skip"
+        ],
+        "scope": "production-beta",
+        "severity": "blocker"
+      }
+    ]
+  }
+}
