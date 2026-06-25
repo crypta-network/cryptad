@@ -1616,9 +1616,10 @@ def ecosystem_matrix_issues(matrix: dict[str, Any] | None) -> list[Issue]:
 def network_scale_issues(summary: dict[str, Any] | None, mode: str) -> list[Issue]:
     if not isinstance(summary, dict):
         return []
+    issues: list[Issue] = []
     status = normalize_status(summary.get("status"))
     if status != "pass":
-        return [
+        issues.append(
             Issue(
                 id="network-scale-soak.status",
                 evidence_id="network-scale.rc-soak-summary",
@@ -1630,7 +1631,7 @@ def network_scale_issues(summary: dict[str, Any] | None, mode: str) -> list[Issu
                 waivable=mode != "production-beta",
                 category="network-scale",
             )
-        ]
+        )
     findings = []
     for section, keys in (
         ("redaction", ("rawFetchedContentExcluded", "privateInsertUrisExcluded", "tokensExcluded", "absolutePathsExcluded", "queueHtmlExcluded")),
@@ -1640,7 +1641,7 @@ def network_scale_issues(summary: dict[str, Any] | None, mode: str) -> list[Issu
         if not isinstance(value, dict) or any(value.get(key) is not True for key in keys):
             findings.append(section)
     if findings:
-        return [
+        issues.append(
             Issue(
                 id="network-scale-soak.redaction-or-budget",
                 evidence_id="network-scale.redaction",
@@ -1652,8 +1653,8 @@ def network_scale_issues(summary: dict[str, Any] | None, mode: str) -> list[Issu
                 waivable=False,
                 category="redaction",
             )
-        ]
-    return []
+        )
+    return issues
 
 
 def multi_node_issues(summary: dict[str, Any] | None, mode: str) -> list[Issue]:
@@ -2361,6 +2362,7 @@ def run_self_test(quiet: bool = False) -> None:
         "go-no-go-missing-ecosystem-matrix-status.json": "no-go",
         "go-no-go-warning-ecosystem-matrix.json": "go",
         "go-no-go-malformed-ecosystem-matrix-count.json": "no-go",
+        "go-no-go-network-scale-redaction-waiver.json": "no-go",
         "go-no-go-secret-value-redaction.json": "no-go",
         "go-no-go-underseverity-waiver.json": "no-go",
         "go-no-go-live-evidence-waiver-alias.json": "go-with-waivers",
@@ -2448,6 +2450,18 @@ def run_self_test(quiet: bool = False) -> None:
             if fixture_name == "go-no-go-malformed-ecosystem-matrix-count.json":
                 if "release-certification.ecosystem-matrix" not in blocker_ids:
                     raise AssertionError("malformed ecosystem matrix releaseBlockerCount did not block launch")
+            if fixture_name == "go-no-go-network-scale-redaction-waiver.json":
+                if int(dashboard.get("summary", {}).get("waiversUsed", 0)) != 1:
+                    raise AssertionError("network-scale status waiver was not recorded")
+                if "network-scale.redaction" not in blocker_ids:
+                    raise AssertionError("network-scale redaction failure was incorrectly waived")
+                waived_evidence_ids = {
+                    str(warning.get("evidenceId"))
+                    for warning in dashboard.get("warnings", [])
+                    if isinstance(warning, dict) and warning.get("waivedBy")
+                }
+                if "network-scale.rc-soak-summary" not in waived_evidence_ids:
+                    raise AssertionError("network-scale status waiver did not apply to the generic status issue")
             for artifact_name in (OUTPUT_JSON, OUTPUT_MARKDOWN, OUTPUT_REDACTION):
                 if not (out_dir / artifact_name).is_file():
                     raise AssertionError(f"{fixture_name} did not write {artifact_name}")
