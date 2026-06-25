@@ -12,5 +12,25 @@
       "status": "skip"
     }
   },
-  "releaseId": "crypta-production-beta-269-summary-skipped"
+  "releaseId": "crypta-production-beta-269-summary-skipped",
+  "waivers": {
+    "releaseId": "crypta-production-beta-269-summary-skipped",
+    "schemaVersion": 1,
+    "waivers": [
+      {
+        "approvedBy": "release-manager@example.invalid",
+        "createdAt": "2026-06-20T00:00:00Z",
+        "evidenceId": "production-beta.summary",
+        "expiresAt": "2026-06-30T00:00:00Z",
+        "id": "waiver-production-summary-skipped-001",
+        "owner": "release-engineering",
+        "rationale": "Fixture waiver that must not make a skipped production summary launchable.",
+        "references": [
+          "fixture-pr-269-summary-skipped"
+        ],
+        "scope": "production-beta",
+        "severity": "blocker"
+      }
+    ]
+  }
 }

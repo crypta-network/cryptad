@@ -11,6 +11,7 @@ non-release production-beta runs.
 from __future__ import annotations
 
 import argparse
+import base64
 import dataclasses
 import datetime as dt
 import io
@@ -296,6 +297,7 @@ REDACTION_FINDING_KINDS = {
     "raw-content-or-app-data",
     "ci-secret-value",
     "protected-secret-value",
+    "sensitive-field-value",
     "file-uri-local-path",
     "windows-local-path",
     "host-local-path",
@@ -376,6 +378,12 @@ CI_SECRET_VALUE_RE = re.compile(
     r"[\"']?(?![\w-])\s*(?::|(?<![=!<>])=(?!=))\s*['\"]?([^'\"\s,;&}]+)",
     re.IGNORECASE,
 )
+SENSITIVE_FIELD_VALUE_RE = re.compile(
+    r"(?P<key>\"(?:\\.|[^\"\\])*\"|[A-Za-z_][A-Za-z0-9_-]*)"
+    r"\s*:\s*"
+    r"(?P<value>\"(?:\\.|[^\"\\])*\"|[^\s,}\]]+)",
+    re.IGNORECASE,
+)
 SECRET_ENV_VALUE_NAME_RE = re.compile(
     r"(?:^|_)(?:TOKEN|PASSWORD|SECRET|PRIVATE|PRIVATE_KEY|INSERT_URI|FORM_PASSWORD)(?:$|_)",
     re.IGNORECASE,
@@ -387,6 +395,23 @@ SECRET_ENV_FILE_INDIRECTION_NAMES = {
     "CRYPTAD_APP_SIGNING_PRIVATE_KEY_FILE",
     "CRYPTAD_CERT_LIVE_TEST_INSERT_URI_FILE",
 }
+SENSITIVE_NORMALIZED_KEYS = frozenset(
+    {
+        "privatekey",
+        "privatekeybase64",
+        "privatekeyfile",
+        "privateinserturi",
+        "token",
+        "password",
+        "formpassword",
+        "browsersessiontoken",
+        "appprocesstoken",
+        "authorization",
+        "cookie",
+        "rawappdatavalue",
+        "rawfetchedcontent",
+    }
+)
 MIN_SECRET_ENV_VALUE_LENGTH = 6
 URL_USERINFO_RE = re.compile(r"\b[a-z][a-z0-9+.-]*://[^/\s:@]+:[^/\s@]+@", re.IGNORECASE)
 FILE_URI_RE = re.compile(
@@ -593,6 +618,15 @@ def display_path(path: Path, workspace_root: Path) -> str:
         return f"<workdir>/{path.name}"
 
 
+def display_unresolved_path(path: Path, workspace_root: Path) -> str:
+    try:
+        absolute_path = Path(os.path.abspath(path))
+        absolute_root = Path(os.path.abspath(workspace_root))
+        return absolute_path.relative_to(absolute_root).as_posix()
+    except (OSError, ValueError):
+        return f"<workdir>/{path.name}"
+
+
 def resolve_workspace_input_path(raw_path: str, workspace_root: Path | None) -> Path | None:
     value = raw_path.strip()
     if not value:
@@ -644,8 +678,10 @@ def protected_secret_environment_values(
             return
         if not content_bytes:
             return
-        add(name, content_bytes.decode("utf-8", errors="ignore"))
-        for line in content_bytes.decode("utf-8", errors="ignore").splitlines():
+        add(name, base64.b64encode(content_bytes).decode("ascii"))
+        content = content_bytes.decode("utf-8", errors="ignore")
+        add(name, content)
+        for line in content.splitlines():
             add(name, line)
 
     for name, raw_value in source.items():
@@ -721,21 +757,7 @@ def sanitize_value(value: Any, workspace_root: Path, out_dir: Path) -> Any:
         for key, child in sorted(value.items(), key=lambda item: str(item[0])):
             key_text = str(key)
             normalized = re.sub(r"[^a-z0-9]", "", key_text.lower())
-            if normalized in {
-                "privatekey",
-                "privatekeybase64",
-                "privatekeyfile",
-                "privateinserturi",
-                "token",
-                "password",
-                "formpassword",
-                "browsersessiontoken",
-                "appprocesstoken",
-                "authorization",
-                "cookie",
-                "rawappdatavalue",
-                "rawfetchedcontent",
-            }:
+            if normalized in SENSITIVE_NORMALIZED_KEYS:
                 result[key_text] = "<redacted>"
             else:
                 result[key_text] = sanitize_value(child, workspace_root, out_dir)
@@ -867,6 +889,35 @@ def scan_safe_value(raw_value: str, allow_code_like: bool = True) -> bool:
     return False
 
 
+def decode_json_like_token(raw_value: str) -> str:
+    value = raw_value.strip()
+    if value.startswith('"') and value.endswith('"'):
+        try:
+            decoded = json.loads(value)
+        except json.JSONDecodeError:
+            return value.strip('"')
+        return decoded if isinstance(decoded, str) else str(decoded)
+    return value
+
+
+def add_sensitive_field_value_findings(findings: list[dict[str, str]], text: str, rel_path: str) -> None:
+    for match in SENSITIVE_FIELD_VALUE_RE.finditer(text):
+        key = decode_json_like_token(match.group("key"))
+        normalized_key = re.sub(r"[^a-z0-9]", "", key.lower())
+        if normalized_key not in SENSITIVE_NORMALIZED_KEYS:
+            continue
+        value = decode_json_like_token(match.group("value"))
+        if not scan_safe_value(value, allow_code_like=False):
+            findings.append(
+                {
+                    "path": rel_path,
+                    "kind": "sensitive-field-value",
+                    "detail": f"{key} field appeared unredacted.",
+                }
+            )
+            return
+
+
 def add_value_findings(
     findings: list[dict[str, str]],
     text: str,
@@ -947,6 +998,7 @@ def scan_text_for_findings(text: str, rel_path: str, workspace_root: Path, out_d
     add_value_findings(findings, text, rel_path, "form-password", FORM_PASSWORD_VALUE_RE, allow_code_like=False)
     add_value_findings(findings, text, rel_path, "raw-content-or-app-data", RAW_BODY_VALUE_RE, allow_code_like=False)
     add_value_findings(findings, text, rel_path, "ci-secret-value", CI_SECRET_VALUE_RE, allow_code_like=False)
+    add_sensitive_field_value_findings(findings, text, rel_path)
     add_protected_secret_value_findings(findings, text, rel_path, workspace_root)
     for kind, raw_path in (
         ("workspace-path", str(workspace_root.resolve())),
@@ -1118,13 +1170,38 @@ def scan_file(path: Path, rel_path: str, workspace_root: Path, out_dir: Path) ->
 
 def scan_paths(paths: Iterable[Path], workspace_root: Path, out_dir: Path) -> list[dict[str, str]]:
     findings: list[dict[str, str]] = []
-    for path in sorted({candidate.resolve() for candidate in paths if candidate.exists()}):
+    seen: set[Path] = set()
+    for candidate in sorted(paths, key=lambda item: str(item)):
+        if not candidate.exists() and not candidate.is_symlink():
+            continue
+        rel_path = display_unresolved_path(candidate, workspace_root)
+        reason = bad_artifact_name(rel_path)
+        if candidate.is_symlink():
+            if reason:
+                findings.append({"path": rel_path, "kind": "forbidden-path", "detail": reason})
+            findings.append({"path": rel_path, "kind": "forbidden-symlink"})
+            continue
+        path = candidate.resolve()
+        if path in seen:
+            continue
+        seen.add(path)
         if path.is_dir():
             for child in sorted(path.rglob("*")):
+                if child.is_symlink():
+                    findings.extend(
+                        scan_file(child, display_unresolved_path(child, workspace_root), workspace_root, out_dir)
+                    )
+                    continue
                 if child.is_dir():
                     reason = bad_artifact_name(display_path(child, workspace_root))
                     if reason:
-                        findings.append({"path": display_path(child, workspace_root), "kind": "forbidden-path", "detail": reason})
+                        findings.append(
+                            {
+                                "path": display_path(child, workspace_root),
+                                "kind": "forbidden-path",
+                                "detail": reason,
+                            }
+                        )
                     continue
                 findings.extend(scan_file(child, display_path(child, workspace_root), workspace_root, out_dir))
         else:
@@ -1147,6 +1224,7 @@ def redaction_report(findings: list[dict[str, str]]) -> dict[str, Any]:
             "failOnAbsoluteLocalPaths": True,
             "failOnArchiveSidecars": True,
             "failOnProtectedSecretValues": True,
+            "failOnSensitiveFieldValues": True,
         },
         "findings": sorted(findings, key=lambda item: (item.get("path", ""), item.get("kind", ""), item.get("detail", ""))),
     }
@@ -1303,7 +1381,7 @@ def production_summary_issues(summary: dict[str, Any] | None, mode: str) -> list
                 title="Production beta summary is not passing",
                 summary=f"Production beta summary status is {status}.{detail}",
                 source="production-beta-summary",
-                waivable=True,
+                waivable=False,
                 category="pipeline",
             )
         )
@@ -1334,20 +1412,20 @@ def production_summary_issues(summary: dict[str, Any] | None, mode: str) -> list
                 title="Production beta summary is not promotion-ready",
                 summary=f"Production beta summary promotionReady is {summary.get('promotionReady')}.",
                 source="production-beta-summary",
-                waivable=True,
+                waivable=False,
                 category="pipeline",
             )
         )
     profile = summary.get("signingProfile") if isinstance(summary.get("signingProfile"), dict) else {}
-    if mode == "production-beta" and summary.get("nonRelease") is True:
+    if summary.get("nonRelease") is not False:
         issues.append(
             Issue(
                 id="production-beta.non-release",
                 evidence_id="production-beta.non-release",
                 domain_id="production-beta-release-pipeline",
                 severity="critical",
-                title="Candidate is marked non-release",
-                summary="A non-release artifact is not launchable as a production beta.",
+                title="Candidate is not a release artifact",
+                summary="Launchable dashboard decisions require productionBetaSummary.nonRelease to be false.",
                 source="production-beta-summary",
                 waivable=False,
                 category="pipeline",
@@ -1450,12 +1528,37 @@ def release_certification_issues(summary: dict[str, Any] | None) -> list[Issue]:
     return issues
 
 
+def parse_release_blocker_count(value: Any) -> tuple[int, bool]:
+    if value is None or value == "":
+        return 0, False
+    if isinstance(value, bool):
+        return 0, True
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return 0, True
+    if parsed < 0:
+        return 0, True
+    return parsed, False
+
+
 def ecosystem_matrix_issues(matrix: dict[str, Any] | None) -> list[Issue]:
     if not isinstance(matrix, dict):
         return []
     issues: list[Issue] = []
     status = normalize_status(matrix.get("status"))
-    if status not in {"pass", "warn"} or int(matrix.get("releaseBlockerCount", 0) or 0) > 0:
+    release_blocker_count, malformed_release_blocker_count = parse_release_blocker_count(
+        matrix.get("releaseBlockerCount", 0)
+    )
+    if status not in {"pass", "warn"} or malformed_release_blocker_count or release_blocker_count > 0:
+        details: list[str] = []
+        if status not in {"pass", "warn"}:
+            details.append(f"status is {status}")
+        if malformed_release_blocker_count:
+            details.append("releaseBlockerCount is not a non-negative integer")
+        elif release_blocker_count > 0:
+            details.append(f"releaseBlockerCount is {release_blocker_count}")
+        detail = "; ".join(details) if details else "contains release blockers"
         issues.append(
             Issue(
                 id="ecosystem-matrix.release-blockers",
@@ -1463,9 +1566,9 @@ def ecosystem_matrix_issues(matrix: dict[str, Any] | None) -> list[Issue]:
                 domain_id="ecosystem-rc-certification-matrix",
                 severity="blocker",
                 title="Ecosystem matrix has release blockers",
-                summary=f"Ecosystem certification matrix status is {status} or contains release blockers.",
+                summary=f"Ecosystem certification matrix {detail}.",
                 source="ecosystem-certification-matrix",
-                waivable=True,
+                waivable=not malformed_release_blocker_count,
                 category="ecosystem-matrix",
             )
         )
@@ -2256,10 +2359,12 @@ def run_self_test(quiet: bool = False) -> None:
         "go-no-go-production-summary-skipped.json": "no-go",
         "go-no-go-missing-ecosystem-matrix-status.json": "no-go",
         "go-no-go-warning-ecosystem-matrix.json": "go",
+        "go-no-go-malformed-ecosystem-matrix-count.json": "no-go",
         "go-no-go-secret-value-redaction.json": "no-go",
         "go-no-go-underseverity-waiver.json": "no-go",
         "go-no-go-live-evidence-waiver-alias.json": "go-with-waivers",
-        "go-no-go-release-candidate-live-disabled.json": "go",
+        "go-no-go-release-candidate-live-disabled.json": "no-go",
+        "go-no-go-malformed-non-release-status.json": "no-go",
     }
     with tempfile.TemporaryDirectory(prefix="cryptad-go-no-go-dashboard-") as temp_name:
         root = Path(temp_name)
@@ -2306,9 +2411,13 @@ def run_self_test(quiet: bool = False) -> None:
             if fixture_name == "go-no-go-production-summary-not-ready.json":
                 if "production-beta.promotion-ready" not in blocker_ids:
                     raise AssertionError("non-ready production summary did not block production beta")
+                if int(dashboard.get("summary", {}).get("waiversUsed", 0)) != 0:
+                    raise AssertionError("promotionReady=false hard blocker was incorrectly waived")
             if fixture_name == "go-no-go-production-summary-skipped.json":
                 if "production-beta.summary" not in blocker_ids:
                     raise AssertionError("skipped production summary did not block production beta")
+                if int(dashboard.get("summary", {}).get("waiversUsed", 0)) != 0:
+                    raise AssertionError("non-passing production summary hard blocker was incorrectly waived")
             if fixture_name == "go-no-go-live-evidence-waiver-alias.json":
                 if int(dashboard.get("summary", {}).get("waiversUsed", 0)) != 1:
                     raise AssertionError("live evidence alias waiver was not used")
@@ -2322,6 +2431,14 @@ def run_self_test(quiet: bool = False) -> None:
             if fixture_name == "go-no-go-release-candidate-live-disabled.json":
                 if any(blocker_id.startswith("live-network-beta.") for blocker_id in blocker_ids):
                     raise AssertionError("disabled live-network evidence blocked release-candidate mode")
+                if "production-beta.non-release" not in blocker_ids:
+                    raise AssertionError("release-candidate non-release artifact did not block publication")
+            if fixture_name == "go-no-go-malformed-non-release-status.json":
+                if "production-beta.non-release" not in blocker_ids:
+                    raise AssertionError("malformed nonRelease value did not block launchable decision")
+            if fixture_name == "go-no-go-malformed-ecosystem-matrix-count.json":
+                if "release-certification.ecosystem-matrix" not in blocker_ids:
+                    raise AssertionError("malformed ecosystem matrix releaseBlockerCount did not block launch")
             for artifact_name in (OUTPUT_JSON, OUTPUT_MARKDOWN, OUTPUT_REDACTION):
                 if not (out_dir / artifact_name).is_file():
                     raise AssertionError(f"{fixture_name} did not write {artifact_name}")
@@ -2365,6 +2482,7 @@ def run_self_test(quiet: bool = False) -> None:
             raise AssertionError("go/no-go dashboard JSON is not deterministic for fixed fixture inputs")
         assert_supplied_waiver_file_errors_block_launch(root)
         assert_protected_secret_values_are_scanned_and_redacted(root)
+        assert_symlink_inputs_are_rejected(root)
     if not quiet:
         print("production beta go/no-go dashboard self-test passed")
 
@@ -2396,22 +2514,64 @@ def path_input_args_from_pass_fixture(root: Path, input_dir_name: str) -> tuple[
     return input_args, input_paths
 
 
+def assert_symlink_inputs_are_rejected(root: Path) -> None:
+    input_args, input_paths = path_input_args_from_pass_fixture(root, "symlink-inputs")
+    link_dir = root / "symlink-links"
+    link_dir.mkdir(parents=True)
+    summary_link = link_dir / "productionBetaSummary.json"
+    summary_link.symlink_to(input_paths["productionBetaSummary"])
+    out_dir = root / "symlink-output"
+    args_list = [
+        "build",
+        "--workspace-root",
+        str(Path(__file__).resolve().parents[2]),
+        "--out-dir",
+        str(out_dir),
+        "--mode",
+        "production-beta",
+    ]
+    for flag, input_name in input_args:
+        value = summary_link if input_name == "productionBetaSummary" else input_paths[input_name]
+        args_list.extend([flag, str(value)])
+    dashboard, _exit_code = build_command(build_parser().parse_args(args_list))
+    if dashboard.get("decision") != "no-go":
+        raise AssertionError("symlinked dashboard input did not force no-go")
+    redaction = read_json(out_dir / OUTPUT_REDACTION)
+    findings = redaction.get("findings") if isinstance(redaction, dict) else []
+    if not any(
+        isinstance(finding, dict) and finding.get("kind") == "forbidden-symlink" for finding in findings
+    ):
+        raise AssertionError("symlinked dashboard input did not produce a forbidden-symlink finding")
+
+
 def assert_protected_secret_values_are_scanned_and_redacted(root: Path) -> None:
     secret_name = "CRYPTAD_DASHBOARD_TEST_TOKEN"
     secret_value = "dashboard-protected-secret-12345"
     short_secret_name = "CRYPTAD_DASHBOARD_TEST_SHORT_TOKEN"
     long_secret_name = "CRYPTAD_DASHBOARD_TEST_LONG_TOKEN"
+    file_secret_name = "CRYPTAD_APP_SIGNING_PRIVATE_KEY_FILE"
     short_secret_value = "dashboard-overlap-secret"
     long_secret_suffix = "TAILLEAK12345"
     long_secret_value = f"{short_secret_value}-{long_secret_suffix}"
+    generic_token = "generic-dashboard-token-12345"
+    generic_password = "generic-dashboard-password-12345"
+    generic_private_key_base64 = "Z2VuZXJpYy1kYXNoYm9hcmQtcHJpdmF0ZS1rZXktMTIzNDU="
     previous = os.environ.get(secret_name)
     previous_short = os.environ.get(short_secret_name)
     previous_long = os.environ.get(long_secret_name)
+    previous_file = os.environ.get(file_secret_name)
     os.environ[secret_name] = secret_value
     os.environ[short_secret_name] = short_secret_value
     os.environ[long_secret_name] = long_secret_value
     try:
         input_args, input_paths = path_input_args_from_pass_fixture(root, "protected-secret-inputs")
+        protected_dir = root / "protected"
+        protected_dir.mkdir(parents=True)
+        file_secret_bytes = b"\x01cryptad-dashboard-file-backed-private-key\x02\xff"
+        file_secret_path = protected_dir / "app-signing-private.der"
+        file_secret_path.write_bytes(file_secret_bytes)
+        file_secret_base64 = base64.b64encode(file_secret_bytes).decode("ascii")
+        os.environ[file_secret_name] = str(file_secret_path.relative_to(root))
         production_summary = read_json(input_paths["productionBetaSummary"])
         if not isinstance(production_summary, dict):
             raise AssertionError("productionBetaSummary path input is missing")
@@ -2420,7 +2580,11 @@ def assert_protected_secret_values_are_scanned_and_redacted(root: Path) -> None:
         production_summary["failures"] = [
             f"dashboard input leaked {secret_value} without an environment variable name",
             f"dashboard input leaked overlapping protected value {long_secret_value}",
+            f"dashboard input leaked file-backed signing material {file_secret_base64}",
         ]
+        production_summary["token"] = generic_token
+        production_summary["password"] = generic_password
+        production_summary["privateKeyBase64"] = generic_private_key_base64
         write_json(input_paths["productionBetaSummary"], production_summary)
         out_dir = root / "protected-secret-output"
         args_list = [
@@ -2444,10 +2608,22 @@ def assert_protected_secret_values_are_scanned_and_redacted(root: Path) -> None:
         }
         if dashboard["decision"] != "no-go" or "protected-secret-value" not in finding_kinds:
             raise AssertionError(f"protected secret value did not block dashboard: {dashboard}")
-        generated_text = (out_dir / OUTPUT_JSON).read_text(encoding="utf-8") + (out_dir / OUTPUT_MARKDOWN).read_text(encoding="utf-8")
+        if "sensitive-field-value" not in finding_kinds:
+            raise AssertionError(f"generic sensitive fields did not block dashboard: {dashboard}")
+        generated_text = (out_dir / OUTPUT_JSON).read_text(encoding="utf-8") + (
+            out_dir / OUTPUT_MARKDOWN
+        ).read_text(encoding="utf-8")
         if secret_value in generated_text:
             raise AssertionError("dashboard artifacts leaked a protected secret value")
-        for forbidden in (short_secret_value, long_secret_value, long_secret_suffix):
+        for forbidden in (
+            short_secret_value,
+            long_secret_value,
+            long_secret_suffix,
+            file_secret_base64,
+            generic_token,
+            generic_password,
+            generic_private_key_base64,
+        ):
             if forbidden in generated_text:
                 raise AssertionError(f"dashboard artifacts leaked overlapping protected secret content: {forbidden}")
     finally:
@@ -2463,6 +2639,10 @@ def assert_protected_secret_values_are_scanned_and_redacted(root: Path) -> None:
             os.environ.pop(long_secret_name, None)
         else:
             os.environ[long_secret_name] = previous_long
+        if previous_file is None:
+            os.environ.pop(file_secret_name, None)
+        else:
+            os.environ[file_secret_name] = previous_file
 
 
 def assert_supplied_waiver_file_errors_block_launch(root: Path) -> None:

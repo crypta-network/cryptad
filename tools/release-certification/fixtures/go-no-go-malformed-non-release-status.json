@@ -1,0 +1,9 @@
+{
+  "extends": "go-no-go-pass.json",
+  "inputs": {
+    "productionBetaSummary": {
+      "nonRelease": null
+    }
+  },
+  "releaseId": "crypta-production-beta-269-malformed-non-release-status"
+}
