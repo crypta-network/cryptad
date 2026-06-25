@@ -1,0 +1,25 @@
+{
+  "extends": "go-no-go-with-waivers.json",
+  "generatedAt": "2026-06-24T00:00:00Z",
+  "releaseId": "crypta-production-beta-269-expired-waiver",
+  "waivers": {
+    "releaseId": "crypta-production-beta-269-expired-waiver",
+    "schemaVersion": 1,
+    "waivers": [
+      {
+        "approvedBy": "release-manager@example.invalid",
+        "createdAt": "2026-06-24T00:00:00Z",
+        "evidenceId": "live.live-network-beta.content-fetch",
+        "expiresAt": "2000-06-30T00:00:00Z",
+        "id": "waiver-live-network-lab-outage-expired",
+        "owner": "release-engineering",
+        "rationale": "Expired waiver fixture.",
+        "references": [
+          "internal-ticket-1234"
+        ],
+        "scope": "production-beta",
+        "severity": "blocker"
+      }
+    ]
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "extends": "go-no-go-pass.json",
+  "inputs": {
+    "productionBetaSummary": {
+      "promotion": {
+        "failedGateCount": 0,
+        "gates": [],
+        "promotionReady": false,
+        "status": "pass"
+      },
+      "promotionReady": false,
+      "status": "pass"
+    }
+  },
+  "releaseId": "crypta-production-beta-269-summary-not-ready",
+  "waivers": {
+    "releaseId": "crypta-production-beta-269-summary-not-ready",
+    "schemaVersion": 1,
+    "waivers": [
+      {
+        "approvedBy": "release-manager@example.invalid",
+        "createdAt": "2026-06-20T00:00:00Z",
+        "evidenceId": "production-beta.promotion-ready",
+        "expiresAt": "2026-06-30T00:00:00Z",
+        "id": "waiver-production-summary-not-ready-001",
+        "owner": "release-engineering",
+        "rationale": "Fixture waiver that must not make promotionReady=false launchable.",
+        "references": [
+          "fixture-pr-269-summary-not-ready"
+        ],
+        "scope": "production-beta",
+        "severity": "blocker"
+      }
+    ]
+  }
+}

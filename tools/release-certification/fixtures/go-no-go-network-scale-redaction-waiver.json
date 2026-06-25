@@ -1,0 +1,44 @@
+{
+  "extends": "go-no-go-pass.json",
+  "inputs": {
+    "networkScaleSoakSummary": {
+      "budgets": {
+        "concurrencyLeasesReleased": true,
+        "globalFetchBudgetEnforced": true,
+        "perAppFetchBudgetEnforced": true
+      },
+      "durationHoursSimulated": 24,
+      "mode": "simulated-rc-soak",
+      "redaction": {
+        "absolutePathsExcluded": true,
+        "privateInsertUrisExcluded": false,
+        "queueHtmlExcluded": true,
+        "rawFetchedContentExcluded": true,
+        "tokensExcluded": true
+      },
+      "status": "fail"
+    }
+  },
+  "mode": "release-candidate",
+  "releaseId": "crypta-production-beta-269-network-scale-redaction-waiver",
+  "waivers": {
+    "releaseId": "crypta-production-beta-269-network-scale-redaction-waiver",
+    "schemaVersion": 1,
+    "waivers": [
+      {
+        "approvedBy": "release-manager@example.invalid",
+        "createdAt": "2026-06-24T00:00:00Z",
+        "evidenceId": "network-scale.rc-soak-summary",
+        "expiresAt": "2099-06-30T00:00:00Z",
+        "id": "waiver-network-scale-status-001",
+        "owner": "release-engineering",
+        "rationale": "Fixture waiver for the generic network-scale status issue; redaction evidence must remain non-waivable.",
+        "references": [
+          "fixture-pr-269-network-scale-redaction"
+        ],
+        "scope": "release-candidate",
+        "severity": "blocker"
+      }
+    ]
+  }
+}

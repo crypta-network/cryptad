@@ -169,6 +169,7 @@ Public beta readiness treats these workstreams as one ecosystem beta release sto
 | Operator recovery and support | [operator-rc-recovery-and-support-workflow.md](operator-rc-recovery-and-support-workflow.md), [operator-beta-dashboard.md](operator-beta-dashboard.md), [app-data-backup-restore-portability.md](app-data-backup-restore-portability.md), `operator-rc.*` evidence, `operator-beta.*` evidence, `operator-rc-recovery-and-support-workflow` and `operator-beta-ux-and-recovery` matrix rows |
 | Live-network beta certification | [release-certification.md](release-certification.md), `live-network-beta.*` evidence, `live-network-beta-certification` matrix row when explicitly required |
 | Ecosystem matrix | [release-certification.md](release-certification.md), `ecosystem certification matrix` |
+| Production beta go/no-go dashboard | [production-beta-go-no-go-dashboard.md](production-beta-go-no-go-dashboard.md), `production-beta.go-no-go-*` evidence, final `go`, `no-go`, or `go-with-waivers` launch decision |
 | Docs and beta program | This portal, [app-platform-beta-tutorials.md](app-platform-beta-tutorials.md), [app-platform-beta-known-limitations.md](app-platform-beta-known-limitations.md), [app-platform-beta-program.md](app-platform-beta-program.md) |
 
 Release candidates should run the normal build/test gates plus release certification:
@@ -180,14 +181,16 @@ python3 tools/release-certification/app_platform_smoke.py --self-test
 python3 tools/release-certification/network_scale_soak.py --self-test
 python3 tools/release-certification/multi_node_beta_soak.py --self-test
 python3 tools/release-certification/live_network_beta_smoke.py --self-test
+python3 tools/release-certification/production_beta_go_no_go_dashboard.py --self-test
 tools/release-certification/run-release-certification.sh --mode release-candidate --out-dir build/release-certification
 ```
 
 The generated release summary, release report, app-platform smoke report, review transparency-log
 evidence, network-scale soak summary, legacy retirement evidence, optional live-network beta
-evidence, and ecosystem certification matrix are the closeout record. Live-network beta mode
-remains opt-in and should use only a localhost node with disposable fixtures unless the release
-manager is intentionally publishing the candidate first-party beta catalog.
+evidence, ecosystem certification matrix, and production beta go/no-go dashboard are the closeout
+record. Live-network beta mode remains opt-in and should use only a localhost node with disposable
+fixtures unless the release manager is intentionally publishing the candidate first-party beta
+catalog.
 
 ## Security entry points
 

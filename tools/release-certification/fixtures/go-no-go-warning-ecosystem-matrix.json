@@ -1,0 +1,25 @@
+{
+  "extends": "go-no-go-pass.json",
+  "inputs": {
+    "ecosystemMatrix": {
+      "coverage": {
+        "docsCovered": true,
+        "ecosystemGatesCovered": true,
+        "firstPartyAppsCovered": true,
+        "redactionPassed": true,
+        "requiredEvidenceCovered": true
+      },
+      "releaseBlockerCount": 0,
+      "rows": [
+        {
+          "id": "non-blocking-doc-follow-up",
+          "releaseBlocker": false,
+          "status": "warn",
+          "title": "Non-blocking documentation follow-up"
+        }
+      ],
+      "status": "warn"
+    }
+  },
+  "releaseId": "crypta-production-beta-269-warning-ecosystem-matrix"
+}

@@ -86,14 +86,19 @@ build/release-certification/live-network-beta-smoke/live-network-beta-smoke-repo
   app-ecosystem release pipeline. It orchestrates Gradle build/install tasks, first-party app
   staging/signing/verification, signed catalog and review receipt generation, app-platform smoke,
   live-network beta smoke when required, network-scale soak, multi-node beta soak and upgrade
-  evidence, ecosystem RC certification, final artifact redaction, and public archive creation
-  under `build/production-beta-release/`.
+  evidence, ecosystem RC certification, final artifact redaction, the production beta go/no-go
+  dashboard, and public archive creation under `build/production-beta-release/`.
   `developer-dry-run` is CI-safe and non-release; `release-candidate` is strict but may use
   non-production signing labels; `production-beta` requires production signing, a complete
   in-pipeline Gradle build/stage/sign run, a public HTTPS artifact base URI, live-network evidence
   unless the explicit emergency skip is used, passing multi-node beta evidence, and a clean
   workspace before `promotionReady` can become true. Emergency build skips must leave
   `nonRelease=true` and fail the build-complete promotion gate.
+- `tools/release-certification/production_beta_go_no_go_dashboard.py` is the final release-manager
+  dashboard generator for production beta launch candidates. It consumes sanitized production beta,
+  release-certification, ecosystem matrix, app-platform, live-network, network-scale, multi-node,
+  security-response, and waiver inputs; emits JSON, Markdown, and a dashboard redaction report; and
+  decides only `go`, `no-go`, or `go-with-waivers`.
 - `tools/release-certification/app_platform_smoke.py` produces the app-platform summary consumed by
   the aggregator. It keeps `--self-test` offline and Python-only, including source/test evidence
   for the Platform API contract, Platform API 1.0 stable baseline, manifest/catalog target
@@ -147,6 +152,7 @@ python3 tools/release-certification/security_response_runbook.py verify
 python3 tools/release-certification/network_scale_soak.py --self-test
 python3 tools/release-certification/multi_node_beta_soak.py --self-test
 python3 tools/release-certification/live_network_beta_smoke.py --self-test
+python3 tools/release-certification/production_beta_go_no_go_dashboard.py --self-test
 python3 tools/release-certification/production_beta_release.py --self-test
 tools/release-certification/run-release-certification.sh
 tools/release-certification/run-release-certification.sh --mode release-candidate --out-dir build/release-certification
@@ -219,7 +225,9 @@ tools/release-certification/run-production-beta-release.sh --mode developer-dry-
   `multi-node-beta.backup-restore`, `multi-node-beta.subscription-pressure`,
   `multi-node-beta.trust-graph-import`, `multi-node-beta.social-inbox-multi-source`,
   `multi-node-beta.support-bundle-drill`, `multi-node-beta.redaction`, and
-  `release-certification.ecosystem-matrix`.
+  `release-certification.ecosystem-matrix`, `production-beta.go-no-go-dashboard`,
+  `production-beta.go-no-go-decision`, `production-beta.waiver-validation`,
+  `production-beta.dashboard-redaction`, and `production-beta.launch-artifact-hygiene`.
 - Platform API stable-history checks compare the stable baseline name/counts/lists, stable endpoint
   required-capability sets, and stable endpoint app-process/app-browser access flags. In production
   history mode, missing previous baseline or endpoint metadata is a blocker; developer dry runs may
@@ -265,7 +273,7 @@ tools/release-certification/run-production-beta-release.sh --mode developer-dry-
 - `.github/workflows/production-beta-release.yml` runs the production beta pipeline in
   `developer-dry-run` for PR-safe checks, `release-candidate` for release refs/manual dispatch, and
   protected `production-beta` only when release secrets, live-node inputs, and a real artifact base
-  URI are available. Artifact uploads must stay gated on a passing production-beta redaction
-  summary.
+  URI are available. Artifact uploads and job-summary dashboard publication must stay gated on both
+  the production-beta redaction summary and `go-no-go-redaction-report.json` passing.
 - Release notes should mention interop, performance, or certification gate changes only when they
   affect release readiness, operator confidence, app/platform behavior, or packager workflows.

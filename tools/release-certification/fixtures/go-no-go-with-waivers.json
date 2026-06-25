@@ -1,0 +1,43 @@
+{
+  "extends": "go-no-go-pass.json",
+  "inputs": {
+    "productionBetaSummary": {
+      "promotion": {
+        "failedGateCount": 1,
+        "gates": [
+          {
+            "id": "live.live-network-beta.content-fetch",
+            "source": "live-network-beta-smoke",
+            "status": "fail",
+            "summary": "Live content fetch lab node was unavailable during the RC window."
+          }
+        ],
+        "promotionReady": false,
+        "status": "fail"
+      },
+      "promotionReady": false,
+      "status": "fail"
+    }
+  },
+  "releaseId": "crypta-production-beta-269-with-waiver",
+  "waivers": {
+    "releaseId": "crypta-production-beta-269-with-waiver",
+    "schemaVersion": 1,
+    "waivers": [
+      {
+        "approvedBy": "release-manager@example.invalid",
+        "createdAt": "2026-06-24T00:00:00Z",
+        "evidenceId": "live.live-network-beta.content-fetch",
+        "expiresAt": "2099-06-30T00:00:00Z",
+        "id": "waiver-live-network-lab-outage-001",
+        "owner": "release-engineering",
+        "rationale": "Lab live node was unavailable during the RC dry run; the release manager accepted this single evidence gap.",
+        "references": [
+          "internal-ticket-1234"
+        ],
+        "scope": "production-beta",
+        "severity": "blocker"
+      }
+    ]
+  }
+}

@@ -40,8 +40,8 @@ Build: 2
   Publisher/Profile Publisher/Social Inbox RC/Feed Reader/Trust Graph Local RC reference-app
   evidence, app platform beta docs/program evidence, third-party developer beta evidence,
   multi-node beta soak and upgrade drill evidence, live USK catalog publication evidence,
-  production beta artifact redaction evidence and `production-security.response-runbook` when app
-  artifacts ship, app-update
+  production beta artifact redaction evidence, production beta go/no-go dashboard evidence, and
+  `production-security.response-runbook` when app artifacts ship, app-update
   lifecycle/scheduler/rollback and app-data migration contract evidence, `crypta-app` developer
   beta toolkit smoke, operator RC
   recovery/support evidence, legacy plugin freeze evidence, legacy-admin retirement/removal Wave
@@ -89,10 +89,12 @@ git checkout -b release/<build-number>
      --require-multi-node-soak \
      --require-sandbox-provider-tests
    ```
-   Preserve the JSON/Markdown summaries, redaction report, extracted `evidence/`, and
-   `dist/checksums.txt`. Any summary with `nonRelease=true`, `promotionReady=false`, failed
-   redaction, dirty workspace, fixture evidence, test signing, skipped production-beta build
-   stages, or an emergency live-network skip is not promotable.
+   Preserve the JSON/Markdown summaries, production redaction report, go/no-go dashboard JSON,
+   go/no-go dashboard Markdown, go/no-go redaction report, extracted `evidence/`, and
+   `dist/checksums.txt`. Any summary with `nonRelease=true`, `promotionReady=false`, `goNoGo`
+   decision `no-go`, failed production or dashboard redaction, dirty workspace, fixture evidence,
+   test signing, skipped production-beta build stages, or an emergency live-network skip is not
+   promotable.
 
 3) Stabilize on `release/<build-number>` (critical fixes only). Keep diffs minimal.
 

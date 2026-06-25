@@ -1,0 +1,28 @@
+{
+  "extends": "go-no-go-pass.json",
+  "inputs": {
+    "productionBetaSummary": {
+      "nonRelease": true,
+      "promotion": {
+        "failedGateCount": 1,
+        "gates": [
+          {
+            "id": "signing.production-keys",
+            "source": "pipeline",
+            "status": "fail",
+            "summary": "Production beta used test-only signing material."
+          }
+        ],
+        "promotionReady": false,
+        "status": "fail"
+      },
+      "promotionReady": false,
+      "signingProfile": {
+        "generatedTestKeys": true,
+        "kind": "test-fixture"
+      },
+      "status": "fail"
+    }
+  },
+  "releaseId": "crypta-production-beta-269-test-signing"
+}

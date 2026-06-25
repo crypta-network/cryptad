@@ -18,6 +18,7 @@ python3 tools/release-certification/app_platform_smoke.py --self-test
 python3 tools/release-certification/network_scale_soak.py --self-test
 python3 tools/release-certification/multi_node_beta_soak.py --self-test
 python3 tools/release-certification/live_network_beta_smoke.py --self-test
+python3 tools/release-certification/production_beta_go_no_go_dashboard.py --self-test
 python3 tools/release-certification/production_beta_release.py --self-test
 ```
 
@@ -70,8 +71,9 @@ tools/release-certification/run-production-beta-release.sh \
 
 The production beta command writes signed first-party app bundles, a signed first-party catalog,
 review receipts, extracted evidence, a redaction report, JSON/Markdown summaries, and a final
-`dist/crypta-production-beta-<version>.tar.gz` archive. `release-candidate` and `production-beta`
-runs require a real HTTPS artifact base URI through `--artifact-base-uri` or
+go/no-go dashboard under `reports/`, plus `dist/crypta-production-beta-<version>.tar.gz`.
+`release-candidate` and `production-beta` runs require a real HTTPS artifact base URI through
+`--artifact-base-uri` or
 `CRYPTAD_PRODUCTION_BETA_ARTIFACT_BASE_URI`; developer dry-runs may use the non-release fallback
 URI. Catalog bundle URLs are signed under the published layout root, for example
 `<base>/build/app-bundles/<app>-<version>.zip`. `--use-fixture-evidence` is accepted only for
@@ -157,6 +159,9 @@ evidence/
 reports/production-beta-summary.json
 reports/production-beta-summary.md
 reports/redaction-report.json
+reports/go-no-go-dashboard.json
+reports/go-no-go-dashboard.md
+reports/go-no-go-redaction-report.json
 dist/crypta-production-beta-<version>.tar.gz
 dist/checksums.txt
 ```
@@ -187,6 +192,10 @@ missing
 
 Each item contains `id`, `status`, `requiredForReleaseCandidate`, `summary`, `source`, and
 `details`.
+
+The production beta go/no-go dashboard emits `go`, `no-go`, or `go-with-waivers` from the sanitized
+pipeline summaries. Waiver rendering preserves ids, rationale, owner, approver, expiry, scope, and
+usage, but redaction findings and unsafe artifact hygiene findings are never downgraded by waivers.
 
 ## Required release-candidate evidence
 
@@ -603,6 +612,9 @@ emitted under `waiverRecords`. Active waivers downgrade matching evidence or eco
 blockers to `warn`; they do not remove the evidence, gate, or reason.
 Expired, unapproved, malformed, or release-candidate-disallowed waivers do not apply. A malformed
 waiver file fails `release-candidate` mode and warns in `pr` or `nightly` mode.
+The production beta go/no-go dashboard waiver schema is accepted by release certification too:
+`schemaVersion` is treated like `version`, `rationale` is treated like `reason`, and
+release-candidate scopes derive `allowReleaseCandidate=true`.
 Redaction findings are not waiver material. Raw secrets, private URIs, credentials, raw payloads,
 or local-path leaks keep the evidence, matrix row, and final ecosystem RC gate failing even when a
 waiver targets the same evidence id, row id, gate id, or issue id.

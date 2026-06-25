@@ -1,0 +1,24 @@
+{
+  "extends": "go-no-go-with-waivers.json",
+  "releaseId": "crypta-production-beta-269-underseverity-waiver",
+  "waivers": {
+    "releaseId": "crypta-production-beta-269-underseverity-waiver",
+    "schemaVersion": 1,
+    "waivers": [
+      {
+        "approvedBy": "release-manager@example.invalid",
+        "createdAt": "2026-06-24T00:00:00Z",
+        "evidenceId": "live.live-network-beta.content-fetch",
+        "expiresAt": "2099-06-30T00:00:00Z",
+        "id": "waiver-live-network-lab-outage-warning-only",
+        "owner": "release-engineering",
+        "rationale": "A warning-only waiver must not waive a blocker.",
+        "references": [
+          "internal-ticket-1234"
+        ],
+        "scope": "production-beta",
+        "severity": "warning"
+      }
+    ]
+  }
+}

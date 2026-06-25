@@ -1,0 +1,9 @@
+{
+  "extends": "go-no-go-release-cert-applied-waiver.json",
+  "inputs": {
+    "releaseCertificationSummary": {
+      "waiverRecords": []
+    }
+  },
+  "releaseId": "crypta-production-beta-269-release-cert-applied-waiver-missing-record"
+}

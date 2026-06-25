@@ -208,6 +208,7 @@ Use this runbook to decide whether the ecosystem beta is ready for a release can
    python3 tools/release-certification/app_platform_docs_check.py --self-test
    python3 tools/release-certification/app_platform_smoke.py --self-test
    python3 tools/release-certification/network_scale_soak.py --self-test
+   python3 tools/release-certification/production_beta_go_no_go_dashboard.py --self-test
    ```
 
 3. Run release certification self-tests.
@@ -228,7 +229,8 @@ Use this runbook to decide whether the ecosystem beta is ready for a release can
    readiness. Use the command above with disposable fixture keys unless the release manager is
    intentionally publishing the candidate catalog.
 
-6. Inspect the release summary and report.
+6. Inspect the release summary and report. When the production beta wrapper runs, also inspect the
+   dashboard artifacts under `build/production-beta-release/reports/`.
 
    ```text
    build/release-certification/release-certification-summary.json
@@ -238,6 +240,9 @@ Use this runbook to decide whether the ecosystem beta is ready for a release can
    build/release-certification/app-platform-smoke/summary.json
    build/release-certification/app-platform-smoke/app-platform-smoke-report.md
    build/release-certification/network-scale-soak/summary.json
+   build/production-beta-release/reports/go-no-go-dashboard.json
+   build/production-beta-release/reports/go-no-go-dashboard.md
+   build/production-beta-release/reports/go-no-go-redaction-report.json
    ```
 
 7. Confirm the app-review governance evidence passes: review receipts, reviewer key lifecycle,

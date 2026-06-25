@@ -43,9 +43,12 @@ Production beta candidates use a separate wrapper around this release-candidate 
 `tools/release-certification/run-production-beta-release.sh`. That command builds and signs
 first-party app bundles, creates a signed first-party catalog, generates review receipts, runs the
 app-platform/live-network/soak/certification collectors, scans the final public artifact tree, and
-writes `reports/production-beta-summary.json`. See
+writes `reports/production-beta-summary.json` plus a production beta go/no-go dashboard. See
 [production-beta-release-pipeline.md](production-beta-release-pipeline.md) for the exact command,
 mode semantics, required secrets, artifact layout, failure classes, and rerun guidance.
+The go/no-go dashboard is a final review surface over the sanitized production beta and
+release-certification outputs; it does not replace this certification summary or the ecosystem
+matrix.
 
 ## Run locally
 
@@ -61,6 +64,7 @@ python3 tools/release-certification/app_platform_smoke.py --self-test
 python3 tools/release-certification/network_scale_soak.py --self-test
 python3 tools/release-certification/multi_node_beta_soak.py --self-test
 python3 tools/release-certification/live_network_beta_smoke.py --self-test
+python3 tools/release-certification/production_beta_go_no_go_dashboard.py --self-test
 python3 tools/release-certification/production_beta_release.py --self-test
 ```
 
@@ -351,6 +355,14 @@ Trust Graph statements, app tokens, private insert URIs, or local paths. `apphos
 optional stronger evidence because normal PR and scheduled CI must not require a live local node or
 operator form password.
 
+`production-beta.go-no-go-dashboard`, `production-beta.go-no-go-decision`,
+`production-beta.waiver-validation`, `production-beta.dashboard-redaction`, and
+`production-beta.launch-artifact-hygiene` are deterministic evidence for the final production beta
+launch dashboard. The self-test covers `go`, `no-go`, and `go-with-waivers`, malformed and expired
+waivers, redaction failures, production summary readiness, live-network waiver aliases, and
+test-only signing in production mode without requiring Gradle, signing keys, network access, or a
+live node.
+
 `app-catalog.first-party-beta` reports whether `CRYPTAD_FIRST_PARTY_CATALOG_SOURCE` and the trusted
 catalog key hints are configured in the certification environment, but it does not fetch a public
 Crypta catalog during normal tests. It uses source checks, documentation checks, and deterministic
@@ -601,6 +613,11 @@ The aggregator writes `ecosystem-certification-matrix.json` and
 release-candidate checklist for the networked app layer. It does not replace the detailed evidence
 or ecosystem gates; it summarizes them into deterministic rows that answer:
 
+The production beta go/no-go dashboard consumes this matrix as an input and surfaces its blocker
+count, waiver ids, redaction coverage, and recommendations in one launch decision. Release
+managers should keep the matrix with the release record because it remains the detailed checklist
+behind the dashboard.
+
 | Field | Meaning |
 | --- | --- |
 | `category` and `title` | The ecosystem area being certified, such as app updates, review governance, Platform API compatibility, first-party apps, reference apps, or legacy retirement. |
@@ -807,6 +824,9 @@ Structured waivers are merged with CLI `--waive` records and remain visible in t
 summary, and history comparison. Active waivers downgrade matching evidence or ecosystem gate
 blockers to `warn`; they do not erase the gate. Expired or malformed waivers do not apply.
 Malformed waiver files fail `release-candidate` mode and warn in `pr` or `nightly` mode.
+The production beta dashboard waiver schema is accepted here too: `schemaVersion` is treated like
+`version`, `rationale` is treated like `reason`, and `scope: release-candidate` or
+`scope: release-candidate-only` derives `allowReleaseCandidate=true`.
 
 ## Optional live-node evidence
 

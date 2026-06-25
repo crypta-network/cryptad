@@ -1,0 +1,10 @@
+{
+  "extends": "go-no-go-pass.json",
+  "inputs": {
+    "ecosystemMatrix": {
+      "releaseBlockerCount": "not-a-number",
+      "status": "pass"
+    }
+  },
+  "releaseId": "crypta-production-beta-269-malformed-ecosystem-matrix-count"
+}

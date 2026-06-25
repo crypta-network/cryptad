@@ -181,8 +181,34 @@ jobs:
           echo "status=$status" >> "$GITHUB_OUTPUT"
           echo "Production beta redaction status: $status"
 
+      - name: Read go/no-go dashboard redaction status
+        id: go_no_go_redaction
+        if: always()
+        run: |
+          status="$(python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = Path("build/production-beta-release/reports/go-no-go-redaction-report.json")
+          try:
+              data = json.loads(report.read_text(encoding="utf-8"))
+              print(data.get("status") or "missing")
+          except Exception:
+              print("missing")
+          PY
+          )"
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          echo "Go/no-go dashboard redaction status: $status"
+
+      - name: Publish go/no-go dashboard summary
+        if: always() && steps.redaction.outputs.status == 'pass' && steps.go_no_go_redaction.outputs.status == 'pass'
+        run: |
+          if [[ -f build/production-beta-release/reports/go-no-go-dashboard.md ]]; then
+            cat build/production-beta-release/reports/go-no-go-dashboard.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - name: Upload production beta dry-run artifacts
-        if: always() && steps.redaction.outputs.status == 'pass'
+        if: always() && steps.redaction.outputs.status == 'pass' && steps.go_no_go_redaction.outputs.status == 'pass'
         uses: actions/upload-artifact@v6
         with:
           name: production-beta-pipeline-${{ github.run_id }}-${{ github.run_attempt }}
@@ -313,8 +339,34 @@ jobs:
           echo "status=$status" >> "$GITHUB_OUTPUT"
           echo "Production beta redaction status: $status"
 
+      - name: Read go/no-go dashboard redaction status
+        id: go_no_go_redaction
+        if: always()
+        run: |
+          status="$(python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = Path("build/production-beta-release/reports/go-no-go-redaction-report.json")
+          try:
+              data = json.loads(report.read_text(encoding="utf-8"))
+              print(data.get("status") or "missing")
+          except Exception:
+              print("missing")
+          PY
+          )"
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          echo "Go/no-go dashboard redaction status: $status"
+
+      - name: Publish go/no-go dashboard summary
+        if: always() && steps.redaction.outputs.status == 'pass' && steps.go_no_go_redaction.outputs.status == 'pass'
+        run: |
+          if [[ -f build/production-beta-release/reports/go-no-go-dashboard.md ]]; then
+            cat build/production-beta-release/reports/go-no-go-dashboard.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - name: Upload production beta artifacts
-        if: always() && steps.redaction.outputs.status == 'pass'
+        if: always() && steps.redaction.outputs.status == 'pass' && steps.go_no_go_redaction.outputs.status == 'pass'
         uses: actions/upload-artifact@v6
         with:
           name: production-beta-release-${{ github.run_id }}-${{ github.run_attempt }}

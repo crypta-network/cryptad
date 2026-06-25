@@ -1,0 +1,20 @@
+{
+  "extends": "go-no-go-pass.json",
+  "inputs": {
+    "releaseCertificationSummary": {
+      "ecosystemGates": [
+        {
+          "id": "ecosystem.app-review-trust",
+          "releaseBlocker": true,
+          "status": "fail",
+          "summary": "App review trust evidence failed."
+        }
+      ],
+      "ecosystemRcPassed": false,
+      "promotionDecision": "FAIL",
+      "releaseCandidatePassed": false,
+      "status": "fail"
+    }
+  },
+  "releaseId": "crypta-production-beta-269-no-go"
+}

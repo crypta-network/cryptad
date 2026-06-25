@@ -1,0 +1,19 @@
+{
+  "extends": "go-no-go-pass.json",
+  "inputs": {
+    "productionBetaSummary": {
+      "redaction": {
+        "findingCount": 1,
+        "findings": [
+          {
+            "kind": "private-insert-uri",
+            "path": "reports/unsafe-redaction-fixture.txt"
+          }
+        ],
+        "status": "fail"
+      }
+    }
+  },
+  "releaseId": "crypta-production-beta-269-critical-redaction",
+  "unsafeFixtureValue": "insert=USK@PRIVATE-INSERT/test"
+}

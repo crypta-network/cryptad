@@ -604,8 +604,9 @@ maintenance policy metadata, freezes the Platform API 1.0 stable baseline, adds 
 third-party submission/review/catalog-candidate tooling, unifies user-consent upgrade UX, hardens
 Trust Graph Local RC and Social Inbox RC, finalizes the retained legacy admin surface, adds the
 production security response runbook, records multi-node beta soak and upgrade/rollback/backup
-drills, and documents the external third-party developer beta program with the stable-only
-`hello-stable` sample. These gates do not create a hosted public app store or introduce production
+drills, documents the external third-party developer beta program with the stable-only
+`hello-stable` sample, and adds the production beta go/no-go dashboard as the final launch
+decision artifact. These gates do not create a hosted public app store or introduce production
 signing material into local tests.
 
 Key docs:
@@ -626,6 +627,7 @@ Key docs:
 - [Signed app catalogs](docs/app-catalogs.md)
 - [First-party beta app catalog](docs/first-party-beta-catalog.md)
 - [Production beta release pipeline](docs/production-beta-release-pipeline.md)
+- [Production beta go/no-go dashboard](docs/production-beta-go-no-go-dashboard.md)
 - [Multi-node beta soak and upgrade drill](docs/multi-node-beta-soak-and-upgrade-drill.md)
 - [App-owned static UI](docs/app-owned-ui.md)
 - [App UI design system](docs/app-ui-design-system.md)
@@ -707,6 +709,7 @@ python3 tools/release-certification/release_certification.py --self-test
 python3 tools/release-certification/app_platform_smoke.py --self-test
 python3 tools/release-certification/network_scale_soak.py --self-test
 python3 tools/release-certification/multi_node_beta_soak.py --self-test
+python3 tools/release-certification/production_beta_go_no_go_dashboard.py --self-test
 python3 tools/release-certification/production_beta_release.py --self-test
 ```
 
@@ -737,7 +740,7 @@ including `app-review.trusted-receipts`, `app-review.policy`,
 `app-services.web-shell`, `app-services.redaction`, `network-scale.*`, `multi-node-beta.*`,
 `third-party-developer.*`, app-vault capability/redaction evidence, historical comparison,
 ecosystem gates, structured waivers, optional live-node evidence, production beta promotion
-summaries, and redaction rules.
+summaries, the go/no-go dashboard, and redaction rules.
 
 ## Trust Graph Preview
 

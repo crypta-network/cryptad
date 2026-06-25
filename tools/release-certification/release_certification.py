@@ -26,6 +26,7 @@ from typing import Any
 sys.dont_write_bytecode = True
 import app_platform_docs_check
 import multi_node_beta_soak
+import production_beta_go_no_go_dashboard
 
 
 TOOL_NAME = "release-certification"
@@ -42,6 +43,7 @@ ECOSYSTEM_MATRIX_SCHEMA_VERSION = 1
 CERT_STATUSES = ("pass", "warn", "fail", "skip", "missing")
 MODES = ("pr", "nightly", "release-candidate")
 PRIVATE_ARTIFACT_NAMES = ("private-insert-uris.json",)
+PRODUCTION_BETA_GO_NO_GO_SELF_TEST_RESULT: tuple[bool, str] | None = None
 PUBLIC_BETA_SECURITY_EVIDENCE_IDS = (
     "public-beta-security.app-ui-csp",
     "public-beta-security.app-origin-policy",
@@ -166,6 +168,7 @@ MULTI_NODE_BETA_SCENARIO_EVIDENCE_IDS = multi_node_beta_soak.SCENARIO_EVIDENCE_I
 ECOSYSTEM_RC_GATE_ID = "ecosystem.rc-certification"
 ECOSYSTEM_RC_EVIDENCE_ID = "release-certification.ecosystem-rc-gate"
 ECOSYSTEM_RC_MATRIX_ROW_ID = "ecosystem-rc-certification-gate"
+PRODUCTION_BETA_GO_NO_GO_EVIDENCE_IDS = production_beta_go_no_go_dashboard.DASHBOARD_EVIDENCE_IDS
 APP_SERVICE_DEPENDENCY_AND_GRANT_BUNDLE_EVIDENCE_IDS = (
     "app-services.dependency-graph",
     "app-services.grant-bundles",
@@ -209,6 +212,7 @@ ECOSYSTEM_RC_REQUIRED_EVIDENCE_IDS = (
     "interop.smoke",
     "performance.smoke",
     "release-certification.ecosystem-matrix",
+    *PRODUCTION_BETA_GO_NO_GO_EVIDENCE_IDS,
     "platform-api.contract",
     *PLATFORM_API_STABLE_FREEZE_EVIDENCE_IDS,
     "app-platform.first-party",
@@ -849,14 +853,27 @@ def parse_expiry(value: str) -> dt.datetime | None:
     return parsed.astimezone(dt.timezone.utc)
 
 
+def waiver_scope_allows_release_candidate(scope: str) -> bool:
+    normalized = scope.strip().lower()
+    return normalized in {
+        "all",
+        "all-modes",
+        "any",
+        "release-candidate",
+        "release-candidate-only",
+        "release-candidate-and-production-beta",
+    }
+
+
 def load_structured_waiver_file(path: Path, settings: Settings, now: dt.datetime) -> tuple[list[WaiverRecord], list[str]]:
     source = display_path(path, settings.workspace_root, settings.out_dir)
     value = read_json(path)
     if value is None:
         return [], [f"Waiver file {source} is missing or malformed."]
     records = value.get("waivers", [])
-    if value.get("version") != 1 or not isinstance(records, list):
-        return [], [f"Waiver file {source} must use version 1 and a waivers array."]
+    schema_version = value.get("version", value.get("schemaVersion"))
+    if schema_version != 1 or not isinstance(records, list):
+        return [], [f"Waiver file {source} must use version/schemaVersion 1 and a waivers array."]
     loaded: list[WaiverRecord] = []
     errors: list[str] = []
     for index, entry in enumerate(records):
@@ -865,14 +882,19 @@ def load_structured_waiver_file(path: Path, settings: Settings, now: dt.datetime
             continue
         waiver_id = str(entry.get("id", "")).strip()
         evidence_id = str(entry.get("evidenceId", waiver_id)).strip()
-        reason = str(entry.get("reason", "")).strip()
-        raw_status = str(entry.get("status", "")).strip().lower()
+        reason = str(entry.get("reason", entry.get("rationale", ""))).strip()
+        dashboard_style = "rationale" in entry or "scope" in entry or "owner" in entry or "severity" in entry
+        raw_status = str(entry.get("status", "approved" if dashboard_style else "")).strip().lower()
         status = raw_status if raw_status == "approved" else ("pending" if not raw_status else "invalid")
         approved_by = str(entry.get("approvedBy", "")).strip()
         raw_expires_at = str(entry.get("expiresAt", "")).strip()
+        allow_release_candidate_present = "allowReleaseCandidate" in entry
         allow_release_candidate_value = entry.get("allowReleaseCandidate", False)
+        scope = str(entry.get("scope", "")).strip()
         allow_release_candidate = (
-            allow_release_candidate_value if isinstance(allow_release_candidate_value, bool) else False
+            allow_release_candidate_value
+            if allow_release_candidate_present and isinstance(allow_release_candidate_value, bool)
+            else waiver_scope_allows_release_candidate(scope)
         )
         validation_errors: list[str] = []
         if not waiver_id:
@@ -883,7 +905,7 @@ def load_structured_waiver_file(path: Path, settings: Settings, now: dt.datetime
             validation_errors.append("reason is required")
         if status != "approved":
             validation_errors.append("status must be approved")
-        if not isinstance(allow_release_candidate_value, bool):
+        if allow_release_candidate_present and not isinstance(allow_release_candidate_value, bool):
             validation_errors.append("allowReleaseCandidate must be a boolean")
         expiry = parse_expiry(raw_expires_at)
         if raw_expires_at and expiry is None:
@@ -2036,6 +2058,84 @@ def app_platform_docs_evidence(workspace_root: Path, out_dir: Path) -> list[Evid
     return items
 
 
+def production_beta_go_no_go_evidence(workspace_root: Path, out_dir: Path) -> list[EvidenceItem]:
+    global PRODUCTION_BETA_GO_NO_GO_SELF_TEST_RESULT
+    generator_path = Path(production_beta_go_no_go_dashboard.__file__).resolve()
+    fixture_dir = Path(production_beta_go_no_go_dashboard.FIXTURE_DIR).resolve()
+    source = display_path(generator_path, workspace_root, out_dir)
+    fixture_names = (
+        "go-no-go-pass.json",
+        "go-no-go-no-go.json",
+        "go-no-go-with-waivers.json",
+        "go-no-go-expired-waiver.json",
+        "go-no-go-critical-redaction.json",
+        "go-no-go-test-signing-production.json",
+    )
+    fixture_paths = [fixture_dir / fixture_name for fixture_name in fixture_names]
+    generator_exists = generator_path.is_file()
+    fixtures_present = all(path.is_file() for path in fixture_paths)
+    self_test_passed = False
+    error = ""
+    if generator_exists and fixtures_present:
+        if PRODUCTION_BETA_GO_NO_GO_SELF_TEST_RESULT is None:
+            try:
+                production_beta_go_no_go_dashboard.run_self_test(quiet=True)
+                PRODUCTION_BETA_GO_NO_GO_SELF_TEST_RESULT = (True, "")
+            except SystemExit as exception:
+                code = exception.code if exception.code is not None else "unknown"
+                PRODUCTION_BETA_GO_NO_GO_SELF_TEST_RESULT = (
+                    False,
+                    f"dashboard self-test exited with {code}",
+                )
+            except Exception as exception:  # noqa: BLE001 - release evidence must degrade to redacted failure.
+                PRODUCTION_BETA_GO_NO_GO_SELF_TEST_RESULT = (False, str(exception))
+        self_test_passed, raw_error = PRODUCTION_BETA_GO_NO_GO_SELF_TEST_RESULT
+        error = scrub_text(raw_error, workspace_root, out_dir) if raw_error else ""
+    checks = {
+        "generatorExists": generator_exists,
+        "fixturesPresent": fixtures_present,
+        "selfTestPasses": self_test_passed,
+        "jsonMarkdownArtifactsCovered": self_test_passed,
+        "waiverValidationCovered": self_test_passed,
+        "redactionScanningCovered": self_test_passed,
+        "noGoCriticalFailuresCovered": self_test_passed,
+        "goWithWaiversCovered": self_test_passed,
+        "goCovered": self_test_passed,
+    }
+    status = "pass" if all(checks.values()) else "fail"
+    details: dict[str, Any] = {
+        "checks": checks,
+        "fixtureCount": len(fixture_names),
+        "outputFiles": [
+            production_beta_go_no_go_dashboard.OUTPUT_JSON,
+            production_beta_go_no_go_dashboard.OUTPUT_MARKDOWN,
+            production_beta_go_no_go_dashboard.OUTPUT_REDACTION,
+        ],
+        "decisions": list(production_beta_go_no_go_dashboard.DECISIONS),
+    }
+    if error:
+        details["error"] = error
+
+    summaries = {
+        "production-beta.go-no-go-dashboard": "Go/no-go dashboard generator and fixture self-test passed.",
+        "production-beta.go-no-go-decision": "Go, no-go, and go-with-waivers decision fixtures passed.",
+        "production-beta.waiver-validation": "Waiver validation fixtures passed.",
+        "production-beta.dashboard-redaction": "Dashboard redaction negative fixture passed.",
+        "production-beta.launch-artifact-hygiene": "Launch artifact hygiene fixture coverage passed.",
+    }
+    return [
+        EvidenceItem(
+            evidence_id,
+            status,
+            True,
+            summaries[evidence_id] if status == "pass" else "Go/no-go dashboard self-test failed.",
+            source,
+            details,
+        )
+        for evidence_id in PRODUCTION_BETA_GO_NO_GO_EVIDENCE_IDS
+    ]
+
+
 def command_output(args: list[str], cwd: Path) -> str:
     try:
         completed = subprocess.run(
@@ -2587,6 +2687,19 @@ def ecosystem_matrix_row_specs() -> list[MatrixRowSpec]:
                 "tools/release-certification/README.md",
             ),
             phase="phase-9",
+        ),
+        MatrixRowSpec(
+            id="production-beta-go-no-go-dashboard",
+            category="release-operations",
+            title="Production beta go/no-go dashboard",
+            required_evidence_ids=PRODUCTION_BETA_GO_NO_GO_EVIDENCE_IDS,
+            docs=(
+                "docs/production-beta-go-no-go-dashboard.md",
+                "docs/production-beta-release-pipeline.md",
+                "docs/release-certification.md",
+                "tools/release-certification/README.md",
+            ),
+            phase="phase-10",
         ),
         MatrixRowSpec(
             id="interop-smoke",
@@ -7569,6 +7682,7 @@ def gather_evidence(settings: Settings, waiver_context: WaiverContext) -> list[E
         )
     )
     evidence.extend(app_platform_docs_evidence(settings.workspace_root, settings.out_dir))
+    evidence.extend(production_beta_go_no_go_evidence(settings.workspace_root, settings.out_dir))
     return [
         sanitize_evidence_item(
             with_waiver_record(
@@ -10881,6 +10995,45 @@ def run_self_test(repo_root: Path) -> None:
         waived_encoded = json.dumps(waived_sandbox_summary, sort_keys=True) + waived_report
         for forbidden in ("hunter2", str(workspace)):
             assert forbidden not in waived_encoded, f"structured waiver leaked {forbidden}"
+
+        dashboard_waiver_file_path = workspace / "docs/release-waivers/dashboard-schema.json"
+        write_json(
+            dashboard_waiver_file_path,
+            {
+                "schemaVersion": 1,
+                "releaseId": "self-test",
+                "waivers": [
+                    {
+                        "id": "waiver-ecosystem-sandbox-provider-dashboard-schema",
+                        "evidenceId": "ecosystem.sandbox-provider",
+                        "severity": "blocker",
+                        "scope": "release-candidate",
+                        "rationale": "Release manager accepted the sandbox provider evidence gap.",
+                        "approvedBy": "release-manager",
+                        "owner": "release-engineering",
+                        "createdAt": "2026-06-24T00:00:00Z",
+                        "expiresAt": "2099-01-01T00:00:00Z",
+                        "references": ["self-test"],
+                    }
+                ],
+            },
+        )
+        dashboard_waived_summary, dashboard_waived_exit_code = run_with_previous(
+            "dashboard-waiver-schema-cert",
+            app_platform_summary=sandbox_best_effort_path,
+            waiver_files=(dashboard_waiver_file_path,),
+        )
+        assert dashboard_waived_exit_code == 0, dashboard_waived_summary
+        assert dashboard_waived_summary["status"] == "warn", dashboard_waived_summary
+        assert len(dashboard_waived_summary["waiverRecords"]) == 1, dashboard_waived_summary
+        dashboard_waived_record = dashboard_waived_summary["waiverRecords"][0]
+        assert dashboard_waived_record["allowReleaseCandidate"] is True, dashboard_waived_record
+        assert dashboard_waived_record["reason"] == (
+            "Release manager accepted the sandbox provider evidence gap."
+        ), dashboard_waived_record
+        dashboard_waived_gate = gate_by_id(dashboard_waived_summary, "ecosystem.sandbox-provider")
+        assert dashboard_waived_gate["status"] == "warn", dashboard_waived_gate
+        assert dashboard_waived_gate["details"]["waived"] is True, dashboard_waived_gate
 
         malformed_rc_waiver_file_path = workspace / "docs/release-waivers/nonboolean.json"
         write_json(

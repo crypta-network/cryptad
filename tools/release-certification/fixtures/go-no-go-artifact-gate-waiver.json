@@ -1,0 +1,43 @@
+{
+  "extends": "go-no-go-pass.json",
+  "inputs": {
+    "productionBetaSummary": {
+      "promotion": {
+        "failedGateCount": 1,
+        "gates": [
+          {
+            "id": "artifact.signed-first-party-bundles",
+            "source": "pipeline",
+            "status": "fail",
+            "summary": "Signed sidecars are missing for at least one first-party staged app."
+          }
+        ],
+        "promotionReady": true,
+        "status": "pass"
+      },
+      "promotionReady": true,
+      "status": "pass"
+    }
+  },
+  "mode": "production-beta",
+  "releaseId": "crypta-production-beta-269-artifact-gate-waiver",
+  "waivers": {
+    "schemaVersion": 1,
+    "waivers": [
+      {
+        "approvedBy": "release-manager@example.invalid",
+        "createdAt": "2026-06-24T00:00:00Z",
+        "evidenceId": "artifact.signed-first-party-bundles",
+        "expiresAt": "2099-06-30T00:00:00Z",
+        "id": "waiver-signed-first-party-bundles-001",
+        "owner": "release-engineering",
+        "rationale": "Self-test waiver must not make missing signed app artifacts promotable.",
+        "references": [
+          "self-test"
+        ],
+        "scope": "production-beta",
+        "severity": "critical"
+      }
+    ]
+  }
+}

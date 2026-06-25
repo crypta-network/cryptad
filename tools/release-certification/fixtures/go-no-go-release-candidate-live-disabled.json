@@ -1,0 +1,25 @@
+{
+  "extends": "go-no-go-pass.json",
+  "inputs": {
+    "liveNetworkSummary": {
+      "enabled": false,
+      "evidence": [],
+      "mode": "release-candidate",
+      "redaction": {
+        "status": "pass"
+      },
+      "required": false,
+      "status": "skip"
+    },
+    "productionBetaSummary": {
+      "mode": "release-candidate",
+      "nonRelease": true,
+      "signingProfile": {
+        "generatedTestKeys": true,
+        "kind": "test-fixture"
+      }
+    }
+  },
+  "mode": "release-candidate",
+  "releaseId": "crypta-production-beta-269-release-candidate-live-disabled"
+}
