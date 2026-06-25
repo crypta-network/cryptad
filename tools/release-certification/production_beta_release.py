@@ -3168,7 +3168,31 @@ def dashboard_args(settings: Settings) -> list[str]:
     return args
 
 
+def clear_stale_go_no_go_dashboard_artifacts(out_dir: Path) -> list[str]:
+    failures: list[str] = []
+    for artifact in (
+        GO_NO_GO_DASHBOARD_JSON,
+        GO_NO_GO_DASHBOARD_MARKDOWN,
+        GO_NO_GO_REDACTION_REPORT,
+    ):
+        path = out_dir / artifact
+        try:
+            if path.is_dir() and not path.is_symlink():
+                shutil.rmtree(path)
+            else:
+                path.unlink()
+        except FileNotFoundError:
+            continue
+        except OSError as exc:
+            failures.append(f"Could not remove stale go/no-go dashboard artifact {artifact}: {exc}")
+    return failures
+
+
 def attach_go_no_go_dashboard(state: PipelineState, summary: dict[str, Any]) -> dict[str, Any]:
+    stale_clear_failures = clear_stale_go_no_go_dashboard_artifacts(state.settings.out_dir)
+    for failure in stale_clear_failures:
+        if failure not in state.failures:
+            state.failures.append(failure)
     result = run_command(
         state,
         "production-beta-go-no-go-dashboard",
@@ -3177,12 +3201,15 @@ def attach_go_no_go_dashboard(state: PipelineState, summary: dict[str, Any]) -> 
         allow_failure=True,
     )
     dashboard_path = state.settings.out_dir / GO_NO_GO_DASHBOARD_JSON
-    dashboard = read_json(dashboard_path)
+    dashboard = None if stale_clear_failures else read_json(dashboard_path)
     dashboard_missing = dashboard is None
     dashboard_failure: str | None = None
     if dashboard is None:
-        dashboard_failure = "Go/no-go dashboard did not generate a readable JSON artifact."
-        if result.exit_code != 0:
+        if stale_clear_failures:
+            dashboard_failure = "Go/no-go dashboard could not safely clear stale artifacts before regeneration."
+        else:
+            dashboard_failure = "Go/no-go dashboard did not generate a readable JSON artifact."
+        if result.exit_code != 0 and not stale_clear_failures:
             dashboard_failure = (
                 f"Go/no-go dashboard failed with exit code {result.exit_code} before producing a readable JSON artifact."
             )
@@ -4595,6 +4622,101 @@ def assert_missing_go_no_go_dashboard_fails_summary_and_exit() -> None:
         assert (out_dir / GO_NO_GO_REDACTION_REPORT).is_file(), attached
 
 
+def assert_stale_go_no_go_dashboard_is_not_reused() -> None:
+    with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-stale-dashboard-") as temp_name:
+        workspace = Path(temp_name) / "repo"
+        workspace.mkdir(parents=True)
+        out_dir = workspace / "build/production-beta"
+        settings = dataclasses.replace(
+            cleanup_test_settings(workspace, out_dir),
+            mode="production-beta",
+        )
+        state = PipelineState(settings, "self-test", utc_now(), [], [], [])
+        write_json(
+            out_dir / GO_NO_GO_DASHBOARD_JSON,
+            {
+                "decision": "go",
+                "promotionReady": True,
+                "summary": {"blockers": 0, "warnings": 0, "waiversUsed": 0, "criticalRedactionFindings": 0},
+                "blockers": [],
+                "redaction": {"status": "pass", "findings": []},
+            },
+        )
+        write_text(out_dir / GO_NO_GO_DASHBOARD_MARKDOWN, "Decision: `GO`\n")
+        write_json(
+            out_dir / GO_NO_GO_REDACTION_REPORT,
+            {
+                "schemaVersion": SCHEMA_VERSION,
+                "status": "pass",
+                "findingCount": 0,
+                "criticalFindingCount": 0,
+                "findings": [],
+            },
+        )
+        summary = build_final_summary(
+            state,
+            {
+                "status": "fail",
+                "promotionReady": False,
+                "nonRelease": False,
+                "failedGateCount": 1,
+                "gates": [
+                    {
+                        "id": "artifact-redaction",
+                        "status": "fail",
+                        "required": True,
+                        "summary": "Artifact redaction scan failed.",
+                    }
+                ],
+                "knownLimitations": [],
+            },
+            {
+                "schemaVersion": 1,
+                "status": "fail",
+                "scannedRoot": "<release-out>",
+                "findingCount": 1,
+                "findings": [{"kind": "raw-app-data", "path": "reports/production-beta-summary.json"}],
+            },
+            None,
+        )
+
+        def fake_run_command(
+            state: PipelineState,
+            name: str,
+            args: list[str],
+            env: dict[str, str] | None = None,
+            timeout_seconds: int = 0,
+            allow_failure: bool = False,
+        ) -> CommandResult:
+            del state, name, args, env, timeout_seconds, allow_failure
+            return CommandResult(
+                "production-beta-go-no-go-dashboard",
+                [],
+                23,
+                1,
+                "",
+                "failed before artifact write",
+            )
+
+        original_run_command = globals()["run_command"]
+        try:
+            globals()["run_command"] = fake_run_command
+            attached = attach_go_no_go_dashboard(state, summary)
+        finally:
+            globals()["run_command"] = original_run_command
+
+        assert attached["goNoGo"]["decision"] == "no-go", attached
+        assert attached["status"] == "fail", attached
+        assert attached["promotionReady"] is False, attached
+        assert release_exit_code(settings, attached) == 1, attached
+        regenerated_dashboard = read_json(out_dir / GO_NO_GO_DASHBOARD_JSON)
+        assert regenerated_dashboard is not None, attached
+        assert regenerated_dashboard["decision"] == "no-go", regenerated_dashboard
+        regenerated_markdown = (out_dir / GO_NO_GO_DASHBOARD_MARKDOWN).read_text(encoding="utf-8")
+        assert regenerated_markdown != "Decision: `GO`\n", regenerated_markdown
+        assert "did not produce a readable JSON artifact" in regenerated_markdown, regenerated_markdown
+
+
 def cleanup_test_settings(workspace: Path, out_dir: Path) -> Settings:
     return Settings(
         workspace_root=workspace,
@@ -5809,6 +5931,7 @@ def run_self_test() -> None:
     assert_certification_failure_marks_dry_run_failed()
     assert_release_candidate_no_go_dashboard_preserves_summary_and_exit()
     assert_missing_go_no_go_dashboard_fails_summary_and_exit()
+    assert_stale_go_no_go_dashboard_is_not_reused()
     assert_attached_multi_node_summary_is_extracted()
     assert_env_attached_multi_node_summary_is_extracted()
     assert_attached_multi_node_summary_is_not_marked_generated()
