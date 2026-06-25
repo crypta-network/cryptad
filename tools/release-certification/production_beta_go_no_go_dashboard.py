@@ -846,6 +846,26 @@ def evidence_map(*summaries: dict[str, Any] | None) -> dict[str, dict[str, Any]]
     return result
 
 
+def security_response_evidence(summary: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(summary, dict):
+        return None
+    status = normalize_status(summary.get("status"))
+    if status == "missing":
+        return None
+    summary_text = (
+        "Production security response runbook passed."
+        if status == "pass"
+        else f"Production security response runbook status is {status}."
+    )
+    return {
+        "id": "production-security.response-runbook",
+        "requiredForReleaseCandidate": True,
+        "source": "security-response-summary",
+        "status": status,
+        "summary": summary_text,
+    }
+
+
 def evidence_summary(entry: dict[str, Any] | None) -> str:
     if not isinstance(entry, dict):
         return "Required evidence is missing."
@@ -881,6 +901,21 @@ def issue_for_evidence(domain_id: str, evidence_id: str, entry: dict[str, Any] |
             waivable=True,
             category="evidence-waiver",
             waived_by=waiver_id,
+        )
+    if entry_has_redaction_findings(entry):
+        details = entry.get("details", {}) if isinstance(entry, dict) else {}
+        findings = details.get("redactionFindings") if isinstance(details, dict) else []
+        finding_count = len(findings) if isinstance(findings, list) else 1
+        return Issue(
+            id=issue_id(domain_id, evidence_id, "redaction"),
+            evidence_id=evidence_id,
+            domain_id=domain_id,
+            severity="critical",
+            title=f"{evidence_id} has redaction findings",
+            summary=f"{evidence_summary(entry)} Redaction findings reported: {finding_count}.",
+            source=str(entry.get("source", domain_id)) if isinstance(entry, dict) else domain_id,
+            waivable=False,
+            category="redaction",
         )
     if status_warn(entry):
         return Issue(
@@ -2218,7 +2253,11 @@ def collect_issues(
         inputs.get("releaseCertificationSummary"),
         inputs.get("appPlatformSummary"),
         inputs.get("liveNetworkSummary"),
+        inputs.get("securityResponseSummary"),
     )
+    standalone_security_evidence = security_response_evidence(inputs.get("securityResponseSummary"))
+    if standalone_security_evidence is not None:
+        all_evidence.setdefault("production-security.response-runbook", standalone_security_evidence)
     issues: list[Issue] = []
     for name in CRITICAL_INPUTS_BY_MODE.get(mode, ()):
         if name not in inputs:
@@ -2579,6 +2618,7 @@ def run_self_test(quiet: bool = False) -> None:
         "go-no-go-release-cert-applied-waiver.json": "go-with-waivers",
         "go-no-go-release-cert-applied-waiver-missing-record.json": "no-go",
         "go-no-go-artifact-gate-waiver.json": "no-go",
+        "go-no-go-warning-redaction-findings.json": "no-go",
         "go-no-go-multi-node-upgrade-waiver.json": "go-with-waivers",
         "go-no-go-network-scale-redaction-waiver.json": "no-go",
         "go-no-go-secret-value-redaction.json": "no-go",
@@ -2686,6 +2726,16 @@ def run_self_test(quiet: bool = False) -> None:
                     raise AssertionError("artifact-presence gate waiver incorrectly removed the blocker")
                 if int(dashboard.get("summary", {}).get("waiversUsed", 0)) != 0:
                     raise AssertionError("artifact-presence gate waiver was incorrectly used")
+            if fixture_name == "go-no-go-warning-redaction-findings.json":
+                if "release-certification.ecosystem-rc-gate" not in blocker_ids:
+                    raise AssertionError("warning evidence with redaction findings did not block launch")
+                critical_ids = {
+                    str(blocker.get("evidenceId"))
+                    for blocker in dashboard.get("blockers", [])
+                    if isinstance(blocker, dict) and blocker.get("severity") == "critical"
+                }
+                if "release-certification.ecosystem-rc-gate" not in critical_ids:
+                    raise AssertionError("warning evidence redaction findings were not critical")
             if fixture_name == "go-no-go-multi-node-upgrade-waiver.json":
                 if int(dashboard.get("summary", {}).get("waiversUsed", 0)) != 1:
                     raise AssertionError("canonical multi-node upgrade-drill waiver was not used")
@@ -2770,8 +2820,44 @@ def run_self_test(quiet: bool = False) -> None:
         assert_supplied_waiver_file_errors_block_launch(root)
         assert_protected_secret_values_are_scanned_and_redacted(root)
         assert_symlink_inputs_are_rejected(root)
+        assert_standalone_security_response_summary_is_honored(root)
     if not quiet:
         print("production beta go/no-go dashboard self-test passed")
+
+
+def assert_standalone_security_response_summary_is_honored(root: Path) -> None:
+    pass_fixture = load_fixture(FIXTURE_DIR / "go-no-go-pass.json")
+    inputs = json.loads(json.dumps(pass_fixture["inputs"]))
+    app_summary = inputs["appPlatformSummary"]
+    evidence = app_summary["evidence"]
+    app_summary["evidence"] = [
+        entry
+        for entry in evidence
+        if not (isinstance(entry, dict) and entry.get("id") == "production-security.response-runbook")
+    ]
+    if len(app_summary["evidence"]) == len(evidence):
+        raise AssertionError("standalone security response self-test did not remove duplicated app-platform evidence")
+    generated_at, now = parse_generated_at(DEFAULT_GENERATED_AT)
+    dashboard = build_dashboard(
+        inputs,
+        {},
+        [FIXTURE_DIR / "go-no-go-pass.json"],
+        None,
+        Path(__file__).resolve().parents[2],
+        root / "standalone-security-response",
+        "production-beta",
+        "crypta-production-beta-269-standalone-security-response",
+        generated_at,
+        now,
+    )
+    if dashboard.get("decision") != "go":
+        raise AssertionError(f"standalone security-response summary produced {dashboard.get('decision')}: {dashboard}")
+    security_domain = next(
+        (domain for domain in dashboard.get("domains", []) if domain.get("id") == "production-security-response"),
+        {},
+    )
+    if security_domain.get("status") != "pass":
+        raise AssertionError(f"standalone security-response domain did not pass: {security_domain}")
 
 
 def path_input_args_from_pass_fixture(root: Path, input_dir_name: str) -> tuple[tuple[tuple[str, str], ...], dict[str, Path]]:

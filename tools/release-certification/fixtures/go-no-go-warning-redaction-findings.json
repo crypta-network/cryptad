@@ -1,0 +1,25 @@
+{
+  "extends": "go-no-go-pass.json",
+  "inputs": {
+    "releaseCertificationSummary": {
+      "evidence": [
+        {
+          "details": {
+            "redactionFindings": [
+              {
+                "kind": "token",
+                "path": "<redacted-artifact>"
+              }
+            ]
+          },
+          "id": "release-certification.ecosystem-rc-gate",
+          "requiredForReleaseCandidate": true,
+          "source": "release-certification",
+          "status": "warn",
+          "summary": "Release certification evidence reported a redaction warning."
+        }
+      ]
+    }
+  },
+  "releaseId": "crypta-production-beta-269-warning-redaction-findings"
+}
