@@ -3188,6 +3188,45 @@ def clear_stale_go_no_go_dashboard_artifacts(out_dir: Path) -> list[str]:
     return failures
 
 
+def go_no_go_dashboard_artifact_failure(
+    settings: Settings,
+    dashboard: dict[str, Any] | None,
+    result: CommandResult,
+    stale_clear_failures: list[str],
+) -> str | None:
+    if stale_clear_failures:
+        return "Go/no-go dashboard could not safely clear stale artifacts before regeneration."
+    if dashboard is None:
+        if result.exit_code != 0:
+            return f"Go/no-go dashboard failed with exit code {result.exit_code} before producing a readable JSON artifact."
+        return "Go/no-go dashboard did not generate a readable JSON artifact."
+
+    missing_artifacts: list[str] = []
+    if not (settings.out_dir / GO_NO_GO_DASHBOARD_MARKDOWN).is_file():
+        missing_artifacts.append(GO_NO_GO_DASHBOARD_MARKDOWN)
+    redaction_report = read_json(settings.out_dir / GO_NO_GO_REDACTION_REPORT)
+    if redaction_report is None:
+        missing_artifacts.append(GO_NO_GO_REDACTION_REPORT)
+    if missing_artifacts:
+        return "Go/no-go dashboard did not generate a complete artifact set: " + ", ".join(missing_artifacts)
+
+    decision = str(dashboard.get("decision", "no-go"))
+    if decision not in {"go", "go-with-waivers"}:
+        return None
+    if result.exit_code != 0:
+        return f"Go/no-go dashboard returned launchable decision but exited with code {result.exit_code}."
+    redaction_status = str(redaction_report.get("status", "missing"))
+    if redaction_status != "pass":
+        return f"Go/no-go dashboard redaction report status is {redaction_status}; launchable decisions require pass."
+    dashboard_redaction = dashboard.get("redaction")
+    dashboard_redaction_status = (
+        str(dashboard_redaction.get("status", "missing")) if isinstance(dashboard_redaction, dict) else "missing"
+    )
+    if dashboard_redaction_status != "pass":
+        return f"Go/no-go dashboard redaction status is {dashboard_redaction_status}; launchable decisions require pass."
+    return None
+
+
 def attach_go_no_go_dashboard(state: PipelineState, summary: dict[str, Any]) -> dict[str, Any]:
     stale_clear_failures = clear_stale_go_no_go_dashboard_artifacts(state.settings.out_dir)
     for failure in stale_clear_failures:
@@ -3202,19 +3241,24 @@ def attach_go_no_go_dashboard(state: PipelineState, summary: dict[str, Any]) -> 
     )
     dashboard_path = state.settings.out_dir / GO_NO_GO_DASHBOARD_JSON
     dashboard = None if stale_clear_failures else read_json(dashboard_path)
-    dashboard_missing = dashboard is None
-    dashboard_failure: str | None = None
-    if dashboard is None:
-        if stale_clear_failures:
-            dashboard_failure = "Go/no-go dashboard could not safely clear stale artifacts before regeneration."
-        else:
-            dashboard_failure = "Go/no-go dashboard did not generate a readable JSON artifact."
-        if result.exit_code != 0 and not stale_clear_failures:
-            dashboard_failure = (
-                f"Go/no-go dashboard failed with exit code {result.exit_code} before producing a readable JSON artifact."
-            )
+    dashboard_failure = go_no_go_dashboard_artifact_failure(state.settings, dashboard, result, stale_clear_failures)
+    dashboard_missing = dashboard_failure is not None
+    if dashboard_missing:
         if dashboard_failure not in state.failures:
             state.failures.append(dashboard_failure)
+        redaction_path = state.settings.out_dir / GO_NO_GO_REDACTION_REPORT
+        existing_redaction = read_json(redaction_path)
+        fallback_redaction = (
+            existing_redaction
+            if existing_redaction is not None
+            else {
+                "schemaVersion": SCHEMA_VERSION,
+                "status": "missing",
+                "findingCount": 0,
+                "criticalFindingCount": 0,
+                "findings": [],
+            }
+        )
         dashboard = {
             "decision": "no-go",
             "promotionReady": False,
@@ -3227,7 +3271,7 @@ def attach_go_no_go_dashboard(state: PipelineState, summary: dict[str, Any]) -> 
                     "summary": dashboard_failure,
                 }
             ],
-            "redaction": {"status": "missing", "findings": []},
+            "redaction": fallback_redaction,
         }
         write_json(dashboard_path, dashboard)
         write_text(
@@ -3238,7 +3282,7 @@ def attach_go_no_go_dashboard(state: PipelineState, summary: dict[str, Any]) -> 
                     "",
                     "Decision: `NO-GO`",
                     "",
-                    "The go/no-go dashboard generator did not produce a readable JSON artifact.",
+                    "The go/no-go dashboard generator did not produce a complete, readable artifact set.",
                     "",
                     f"- Failure: {dashboard_failure}",
                     f"- Mode: `{state.settings.mode}`",
@@ -3246,16 +3290,8 @@ def attach_go_no_go_dashboard(state: PipelineState, summary: dict[str, Any]) -> 
                 ]
             ),
         )
-        write_json(
-            state.settings.out_dir / GO_NO_GO_REDACTION_REPORT,
-            {
-                "schemaVersion": SCHEMA_VERSION,
-                "status": "missing",
-                "findingCount": 0,
-                "criticalFindingCount": 0,
-                "findings": [],
-            },
-        )
+        if existing_redaction is None:
+            write_json(redaction_path, fallback_redaction)
     failed_gate_ids = [
         str(gate.get("id", ""))
         for gate in summary.get("promotion", {}).get("gates", [])
@@ -4540,6 +4576,17 @@ def assert_release_candidate_no_go_dashboard_preserves_summary_and_exit() -> Non
                     "redaction": {"status": "pass", "findings": []},
                 },
             )
+            write_text(state.settings.out_dir / GO_NO_GO_DASHBOARD_MARKDOWN, "Decision: `NO-GO`\n")
+            write_json(
+                state.settings.out_dir / GO_NO_GO_REDACTION_REPORT,
+                {
+                    "schemaVersion": SCHEMA_VERSION,
+                    "status": "pass",
+                    "findingCount": 0,
+                    "criticalFindingCount": 0,
+                    "findings": [],
+                },
+            )
             return CommandResult("production-beta-go-no-go-dashboard", [], 1, 1, "", "")
 
         original_run_command = globals()["run_command"]
@@ -4714,7 +4761,78 @@ def assert_stale_go_no_go_dashboard_is_not_reused() -> None:
         assert regenerated_dashboard["decision"] == "no-go", regenerated_dashboard
         regenerated_markdown = (out_dir / GO_NO_GO_DASHBOARD_MARKDOWN).read_text(encoding="utf-8")
         assert regenerated_markdown != "Decision: `GO`\n", regenerated_markdown
-        assert "did not produce a readable JSON artifact" in regenerated_markdown, regenerated_markdown
+        assert "before producing a readable JSON artifact" in regenerated_markdown, regenerated_markdown
+
+
+def assert_incomplete_go_no_go_dashboard_outputs_fail_summary_and_exit() -> None:
+    with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-incomplete-dashboard-") as temp_name:
+        workspace = Path(temp_name) / "repo"
+        workspace.mkdir(parents=True)
+        out_dir = workspace / "build/production-beta"
+        settings = dataclasses.replace(
+            cleanup_test_settings(workspace, out_dir),
+            mode="production-beta",
+        )
+        state = PipelineState(settings, "self-test", utc_now(), [], [], [])
+        summary = build_final_summary(
+            state,
+            {
+                "status": "pass",
+                "promotionReady": True,
+                "nonRelease": False,
+                "failedGateCount": 0,
+                "gates": [],
+                "knownLimitations": [],
+            },
+            {
+                "schemaVersion": 1,
+                "status": "pass",
+                "scannedRoot": "<release-out>",
+                "findingCount": 0,
+                "findings": [],
+            },
+            None,
+        )
+
+        def fake_run_command(
+            state: PipelineState,
+            name: str,
+            args: list[str],
+            env: dict[str, str] | None = None,
+            timeout_seconds: int = 0,
+            allow_failure: bool = False,
+        ) -> CommandResult:
+            del name, args, env, timeout_seconds, allow_failure
+            write_json(
+                state.settings.out_dir / GO_NO_GO_DASHBOARD_JSON,
+                {
+                    "decision": "go",
+                    "promotionReady": True,
+                    "summary": {"blockers": 0, "warnings": 0, "waiversUsed": 0, "criticalRedactionFindings": 0},
+                    "blockers": [],
+                    "redaction": {"status": "pass", "findings": []},
+                },
+            )
+            return CommandResult("production-beta-go-no-go-dashboard", [], 0, 1, "", "")
+
+        original_run_command = globals()["run_command"]
+        try:
+            globals()["run_command"] = fake_run_command
+            attached = attach_go_no_go_dashboard(state, summary)
+        finally:
+            globals()["run_command"] = original_run_command
+
+        assert attached["goNoGo"]["decision"] == "no-go", attached
+        assert attached["status"] == "fail", attached
+        assert attached["promotionReady"] is False, attached
+        assert release_exit_code(settings, attached) == 1, attached
+        assert any("complete artifact set" in failure for failure in attached["failures"]), attached
+        assert (out_dir / GO_NO_GO_DASHBOARD_JSON).is_file(), attached
+        assert (out_dir / GO_NO_GO_DASHBOARD_MARKDOWN).is_file(), attached
+        assert (out_dir / GO_NO_GO_REDACTION_REPORT).is_file(), attached
+        regenerated_dashboard = read_json(out_dir / GO_NO_GO_DASHBOARD_JSON)
+        assert regenerated_dashboard is not None, attached
+        assert regenerated_dashboard["decision"] == "no-go", regenerated_dashboard
 
 
 def cleanup_test_settings(workspace: Path, out_dir: Path) -> Settings:
@@ -5932,6 +6050,7 @@ def run_self_test() -> None:
     assert_release_candidate_no_go_dashboard_preserves_summary_and_exit()
     assert_missing_go_no_go_dashboard_fails_summary_and_exit()
     assert_stale_go_no_go_dashboard_is_not_reused()
+    assert_incomplete_go_no_go_dashboard_outputs_fail_summary_and_exit()
     assert_attached_multi_node_summary_is_extracted()
     assert_env_attached_multi_node_summary_is_extracted()
     assert_attached_multi_node_summary_is_not_marked_generated()

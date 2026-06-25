@@ -1909,7 +1909,8 @@ def load_waivers(
         owner = release_certification_owner(entry)
         created_at = str(entry.get("createdAt", "")).strip()
         expires_at = str(entry.get("expiresAt", "")).strip()
-        references = tuple(str(item) for item in entry.get("references", []) if isinstance(entry.get("references"), list))
+        references_value = entry.get("references", [])
+        references = tuple(str(item) for item in references_value) if isinstance(references_value, list) else ()
         external_risk_accepted = entry.get("externalRiskAccepted") is True
         status = str(entry.get("status", "approved")).strip().lower()
         applies = scope_applies(scope, mode) if scope else False
@@ -1930,6 +1931,8 @@ def load_waivers(
             validation_errors.append("owner is required")
         if status != "approved":
             validation_errors.append("status must be approved")
+        if not isinstance(references_value, list):
+            validation_errors.append("references must be an array when provided")
         if not expires_at:
             validation_errors.append("expiresAt is required")
         elif expiry is None:
@@ -2742,10 +2745,29 @@ def assert_protected_secret_values_are_scanned_and_redacted(root: Path) -> None:
 
 def assert_supplied_waiver_file_errors_block_launch(root: Path) -> None:
     input_args, input_paths = path_input_args_from_pass_fixture(root, "path-inputs")
+    valid_waiver = {
+        "id": "waiver-malformed-references",
+        "evidenceId": "app-store.submission-cli",
+        "severity": "blocker",
+        "scope": "production-beta-only",
+        "rationale": "Self-test malformed references record.",
+        "approvedBy": "release-manager@example.invalid",
+        "owner": "release-engineering",
+        "createdAt": "2026-06-24T00:00:00Z",
+        "expiresAt": "2099-06-30T00:00:00Z",
+    }
+
+    def waiver_with_references(references: Any) -> str:
+        waiver = dict(valid_waiver)
+        waiver["references"] = references
+        return json.dumps({"schemaVersion": 1, "waivers": [waiver]}, sort_keys=True)
+
     waiver_cases = {
         "missing": None,
         "malformed": "{",
         "non-object": "[]",
+        "references-null": waiver_with_references(None),
+        "references-number": waiver_with_references(123),
     }
     for case_name, content in waiver_cases.items():
         waiver_path = root / f"{case_name}-waivers.json"
