@@ -592,7 +592,7 @@ Do not commit generated history summaries by default. Release managers should re
 the previous release's sanitized certification artifact into the local workspace or CI job before
 running certification, then pass its path with `--previous-summary`.
 
-Protected `production-beta` GitHub Actions dispatches can also materialize prior JSON evidence
+Manual production beta pipeline GitHub Actions dispatches can also materialize prior JSON evidence
 before the pipeline starts. For the `previous_summary`, `multi_node_soak_summary`, and `waiver_file`
 workflow inputs, pass a local checked-out path, an HTTPS JSON URL, or a GitHub Actions artifact
 reference:

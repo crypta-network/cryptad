@@ -192,7 +192,7 @@ candidate summaries, simulated mode, the checked-in self-test topology, failed s
 redaction findings are production blockers and cannot be waived into a launchable dashboard
 decision.
 
-When the protected GitHub Actions workflow consumes prior evidence from another run, the
+When the manual GitHub Actions workflow consumes prior evidence from another run, the
 `previous_summary` and `multi_node_soak_summary` dispatch inputs may be a checked-out local path, an
 HTTPS JSON URL, or an Actions artifact reference:
 

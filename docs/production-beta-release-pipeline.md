@@ -114,8 +114,8 @@ inputs through environment variables or protected files:
 | `CRYPTAD_CERT_FORM_PASSWORD` | Local node form password for live collectors. Pass it through the environment only. |
 | Live fixture variables from `live_network_beta_smoke.py` | Catalog source, expected catalog key id, content/feed/profile/trust fixtures, and protected private insert URI indirection for required live evidence. |
 | `CRYPTAD_CERT_LIVE_TEST_INSERT_URI_ENV=CRYPTAD_CERT_LIVE_TEST_INSERT_URI` plus `CRYPTAD_CERT_LIVE_TEST_INSERT_URI` | GitHub Actions production-beta runs use this environment-name indirection for the private insert URI fixture. The raw URI lives only in the secret-valued `CRYPTAD_CERT_LIVE_TEST_INSERT_URI` variable. |
-| `--previous-summary "$PREVIOUS_RELEASE_CERTIFICATION_SUMMARY"` | Previous release-certification summary used for history comparison and previous-candidate upgrade evidence. Required for protected production-beta promotion. CLI runs pass a local JSON path. Protected workflow dispatches may pass a local checked-out path, an HTTPS JSON URL, or `actions-artifact://<run-id>/<artifact-name>/<path-inside-artifact>`. |
-| `--multi-node-soak-summary "$MULTI_NODE_BETA_SOAK_SUMMARY"` or `--run-multi-node-soak --multi-node-soak-config <production topology>` | Passing multi-node soak and upgrade evidence. CLI runs pass a local summary path. Protected workflow dispatches may pass a local checked-out path, an HTTPS JSON URL, or `actions-artifact://<run-id>/<artifact-name>/<path-inside-artifact>` for `multi_node_soak_summary`. Production-beta rejects the self-test topology and simulated mode as required promotion evidence. |
+| `--previous-summary "$PREVIOUS_RELEASE_CERTIFICATION_SUMMARY"` | Previous release-certification summary used for history comparison and previous-candidate upgrade evidence. Required for protected production-beta promotion. CLI runs pass a local JSON path. Manual workflow dispatches may pass a local checked-out path, an HTTPS JSON URL, or `actions-artifact://<run-id>/<artifact-name>/<path-inside-artifact>`. |
+| `--multi-node-soak-summary "$MULTI_NODE_BETA_SOAK_SUMMARY"` or `--run-multi-node-soak --multi-node-soak-config <production topology>` | Passing multi-node soak and upgrade evidence. CLI runs pass a local summary path. Manual workflow dispatches may pass a local checked-out path, an HTTPS JSON URL, or `actions-artifact://<run-id>/<artifact-name>/<path-inside-artifact>` for `multi_node_soak_summary`. Production-beta rejects the self-test topology and simulated mode as required promotion evidence. |
 
 Do not pass private keys, private insert URIs, form passwords, app tokens, or browser session tokens
 as command-line arguments.
@@ -367,7 +367,7 @@ The workflow uploads the full production beta artifact tree only when both
 output on the runner and do not publish rejected artifacts or the dashboard Markdown through
 GitHub Actions.
 
-Protected `production-beta` dispatch file inputs are materialized before strict validation. For
+Manual workflow dispatch file inputs are materialized before strict validation. For
 `previous_summary`, `multi_node_soak_summary`, and `waiver_file`, use one of these forms:
 
 ```text
