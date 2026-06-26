@@ -47,6 +47,16 @@ on:
         required: false
         default: ''
         type: string
+      previous_summary:
+        description: Previous release-certification summary path for production history and upgrade evidence.
+        required: false
+        default: ''
+        type: string
+      waiver_file:
+        description: Optional structured go/no-go waiver file path. Production-beta cannot waive mandatory launch evidence.
+        required: false
+        default: ''
+        type: string
       require_multi_node_soak:
         description: Require multi-node beta soak evidence.
         required: true
@@ -95,6 +105,8 @@ jobs:
           INPUT_MULTI_NODE_MODE: ${{ inputs.multi_node_mode || '' }}
           INPUT_MULTI_NODE_SOAK_CONFIG: ${{ inputs.multi_node_soak_config || 'tools/release-certification/fixtures/self-test-multi-node-beta-soak.json' }}
           INPUT_MULTI_NODE_SOAK_SUMMARY: ${{ inputs.multi_node_soak_summary || '' }}
+          INPUT_PREVIOUS_SUMMARY: ${{ inputs.previous_summary || '' }}
+          INPUT_WAIVER_FILE: ${{ inputs.waiver_file || '' }}
           INPUT_REQUIRE_MULTI_NODE_SOAK: ${{ inputs.require_multi_node_soak || 'false' }}
           INPUT_ARTIFACT_BASE_URI: ${{ inputs.artifact_base_uri || vars.CRYPTAD_PRODUCTION_BETA_ARTIFACT_BASE_URI || (github.event_name != 'pull_request' && secrets.CRYPTAD_PRODUCTION_BETA_ARTIFACT_BASE_URI) || '' }}
           CRYPTAD_CERT_NODE_BASE_URL: ${{ github.event_name == 'workflow_dispatch' && inputs.require_live_network && secrets.CRYPTAD_CERT_NODE_BASE_URL || '' }}
@@ -151,6 +163,12 @@ jobs:
 
           if [[ "$INPUT_REQUIRE_MULTI_NODE_SOAK" == "true" ]]; then
             args+=(--require-multi-node-soak)
+          fi
+          if [[ -n "$INPUT_PREVIOUS_SUMMARY" ]]; then
+            args+=(--previous-summary "$INPUT_PREVIOUS_SUMMARY")
+          fi
+          if [[ -n "$INPUT_WAIVER_FILE" ]]; then
+            args+=(--waiver-file "$INPUT_WAIVER_FILE")
           fi
 
           if [[ -n "$INPUT_ARTIFACT_BASE_URI" ]]; then
@@ -278,11 +296,67 @@ jobs:
           INPUT_MULTI_NODE_MODE: ${{ inputs.multi_node_mode || '' }}
           INPUT_MULTI_NODE_SOAK_CONFIG: ${{ inputs.multi_node_soak_config || '' }}
           INPUT_MULTI_NODE_SOAK_SUMMARY: ${{ inputs.multi_node_soak_summary || '' }}
+          INPUT_PREVIOUS_SUMMARY: ${{ inputs.previous_summary || '' }}
+          INPUT_WAIVER_FILE: ${{ inputs.waiver_file || '' }}
         run: |
+          materialize_secret_file() {
+            local encoded="$1"
+            local env_name="$2"
+            local file_name="$3"
+            if [[ -z "$encoded" ]]; then
+              return 0
+            fi
+            local path="$RUNNER_TEMP/cryptad-production-beta-secrets/$file_name"
+            mkdir -p "$(dirname "$path")"
+            printf '%s' "$encoded" | base64 --decode > "$path"
+            chmod 600 "$path"
+            export "$env_name=$path"
+          }
+
+          require_env() {
+            local name="$1"
+            local description="$2"
+            if [[ -z "${!name:-}" ]]; then
+              echo "::error::$description ($name) is required for production-beta."
+              exit 1
+            fi
+          }
+
+          require_file() {
+            local path="$1"
+            local description="$2"
+            if [[ -z "$path" || ! -f "$path" ]]; then
+              echo "::error::$description must point to a readable file: $path"
+              exit 1
+            fi
+          }
+
+          materialize_secret_file "${CRYPTAD_APP_SIGNING_PRIVATE_KEY_BASE64:-}" CRYPTAD_APP_SIGNING_PRIVATE_KEY_FILE app-signing-private.der
+          materialize_secret_file "${CRYPTAD_APP_SIGNING_PUBLIC_KEY_BASE64:-}" CRYPTAD_APP_SIGNING_PUBLIC_KEY_FILE app-signing-public.der
+          materialize_secret_file "${CRYPTAD_APP_REVIEWER_PRIVATE_KEY_BASE64:-}" CRYPTAD_APP_REVIEWER_PRIVATE_KEY_FILE reviewer-private.der
+          materialize_secret_file "${CRYPTAD_APP_REVIEWER_PUBLIC_KEY_BASE64:-}" CRYPTAD_APP_REVIEWER_PUBLIC_KEY_FILE reviewer-public.der
+
           if [[ -z "$INPUT_ARTIFACT_BASE_URI" ]]; then
             echo "::error::CRYPTAD_PRODUCTION_BETA_ARTIFACT_BASE_URI or workflow artifact_base_uri input is required for production-beta."
             exit 1
           fi
+          require_env CRYPTAD_APP_SIGNING_KEY_ID "App signing key ID"
+          require_file "${CRYPTAD_APP_SIGNING_PRIVATE_KEY_FILE:-}" "App signing private key"
+          require_file "${CRYPTAD_APP_SIGNING_PUBLIC_KEY_FILE:-}" "App signing public key"
+          require_env CRYPTAD_APP_REVIEWER_KEY_ID "App reviewer key ID"
+          require_file "${CRYPTAD_APP_REVIEWER_PRIVATE_KEY_FILE:-}" "Reviewer private key"
+          require_file "${CRYPTAD_APP_REVIEWER_PUBLIC_KEY_FILE:-}" "Reviewer public key"
+          require_env CRYPTAD_APP_REVIEW_POLICY_ID "App review policy ID"
+          require_env CRYPTAD_APP_REVIEW_POLICY_VERSION "App review policy version"
+          require_env CRYPTAD_CERT_NODE_BASE_URL "Live-node base URL"
+          require_env CRYPTAD_CERT_FORM_PASSWORD "Live-node form password"
+          require_env CRYPTAD_CERT_LIVE_CATALOG_SOURCE "Live catalog source URI"
+          require_env CRYPTAD_CERT_LIVE_CATALOG_EXPECTED_KEY_ID "Live catalog expected signing key ID"
+          require_env CRYPTAD_CERT_LIVE_CATALOG_ID "Live catalog ID"
+          require_env CRYPTAD_CERT_LIVE_CONTENT_FETCH_URI "Live content fetch URI"
+          require_env CRYPTAD_CERT_LIVE_FEED_USK_URI "Live feed USK URI"
+          require_env CRYPTAD_CERT_LIVE_PROFILE_PUBLIC_URI "Live profile public URI"
+          require_env CRYPTAD_CERT_LIVE_TRUST_PUBLIC_URI "Live trust statement public URI"
           if [[ -z "${CRYPTAD_CERT_LIVE_TEST_INSERT_URI:-}" ]]; then
             echo "::error::CRYPTAD_CERT_LIVE_TEST_INSERT_URI secret is required for production-beta live profile/trust evidence."
             exit 1
@@ -290,13 +364,31 @@ jobs:
           export CRYPTAD_CERT_LIVE_TEST_INSERT_URI_ENV=CRYPTAD_CERT_LIVE_TEST_INSERT_URI
 
           self_test_multi_node_config="tools/release-certification/fixtures/self-test-multi-node-beta-soak.json"
+          if [[ -z "$INPUT_PREVIOUS_SUMMARY" ]]; then
+            echo "::error::production-beta requires previous_summary pointing to the previous release-certification summary."
+            exit 1
+          fi
+          require_file "$INPUT_PREVIOUS_SUMMARY" "Previous release-certification summary"
           if [[ -z "$INPUT_MULTI_NODE_SOAK_SUMMARY" && -z "$INPUT_MULTI_NODE_SOAK_CONFIG" ]]; then
             echo "::error::production-beta requires multi_node_soak_summary or a production multi_node_soak_config."
             exit 1
           fi
+          if [[ -n "$INPUT_MULTI_NODE_SOAK_SUMMARY" ]]; then
+            require_file "$INPUT_MULTI_NODE_SOAK_SUMMARY" "Multi-node soak summary"
+          fi
+          if [[ -n "$INPUT_MULTI_NODE_SOAK_CONFIG" ]]; then
+            require_file "$INPUT_MULTI_NODE_SOAK_CONFIG" "Multi-node soak topology config"
+          fi
           if [[ -z "$INPUT_MULTI_NODE_SOAK_SUMMARY" && "$INPUT_MULTI_NODE_SOAK_CONFIG" == "$self_test_multi_node_config" ]]; then
             echo "::error::production-beta cannot use the self-test multi-node soak topology as required promotion evidence."
             exit 1
+          fi
+          if [[ "$INPUT_MULTI_NODE_MODE" == "simulated" ]]; then
+            echo "::error::production-beta cannot use simulated multi-node mode as required promotion evidence."
+            exit 1
+          fi
+          if [[ -n "$INPUT_WAIVER_FILE" ]]; then
+            require_file "$INPUT_WAIVER_FILE" "Go/no-go waiver file"
           fi
 
           args=(
@@ -309,6 +401,7 @@ jobs:
             --require-multi-node-soak
             --require-live-network
             --require-sandbox-provider-tests
+            --previous-summary "$INPUT_PREVIOUS_SUMMARY"
           )
           if [[ -n "$INPUT_MULTI_NODE_SOAK_SUMMARY" ]]; then
             args+=(--multi-node-soak-summary "$INPUT_MULTI_NODE_SOAK_SUMMARY")
@@ -317,6 +410,9 @@ jobs:
           fi
           if [[ -n "$INPUT_MULTI_NODE_MODE" ]]; then
             args+=(--multi-node-mode "$INPUT_MULTI_NODE_MODE")
+          fi
+          if [[ -n "$INPUT_WAIVER_FILE" ]]; then
+            args+=(--waiver-file "$INPUT_WAIVER_FILE")
           fi
           "${args[@]}"
 

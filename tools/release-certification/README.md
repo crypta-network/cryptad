@@ -66,7 +66,10 @@ tools/release-certification/run-production-beta-release.sh \
   --catalog-channel stable \
   --artifact-base-uri "$CRYPTAD_PRODUCTION_BETA_ARTIFACT_BASE_URI" \
   --require-live-network \
-  --require-sandbox-provider-tests
+  --require-multi-node-soak \
+  --require-sandbox-provider-tests \
+  --previous-summary "$PREVIOUS_RELEASE_CERTIFICATION_SUMMARY" \
+  --multi-node-soak-summary "$MULTI_NODE_BETA_SOAK_SUMMARY"
 ```
 
 The production beta command writes signed first-party app bundles, a signed first-party catalog,
@@ -78,7 +81,12 @@ go/no-go dashboard under `reports/`, plus `dist/crypta-production-beta-<version>
 URI. Catalog bundle URLs are signed under the published layout root, for example
 `<base>/build/app-bundles/<app>-<version>.zip`. `--use-fixture-evidence` is accepted only for
 `developer-dry-run` and internal self-tests. Use
-`developer-dry-run` for PR-safe local runs without release keys or live-network access. See
+`developer-dry-run` for PR-safe local runs without release keys or live-network access. Protected
+`production-beta` also requires previous release-certification history and passing multi-node
+upgrade evidence through `--previous-summary` plus either `--multi-node-soak-summary` or an explicit
+non-self-test `hybrid`/`live` topology config. Simulated multi-node mode, fixture evidence, test
+signing, skipped build stages, missing sandbox evidence, and missing live-network evidence remain
+non-release/no-go in production-beta. See
 [docs/production-beta-release-pipeline.md](../../docs/production-beta-release-pipeline.md) for
 mode semantics, required environment variables, artifact layout, failure classes, redaction rules,
 and rerun guidance.
@@ -195,7 +203,8 @@ Each item contains `id`, `status`, `requiredForReleaseCandidate`, `summary`, `so
 
 The production beta go/no-go dashboard emits `go`, `no-go`, or `go-with-waivers` from the sanitized
 pipeline summaries. Waiver rendering preserves ids, rationale, owner, approver, expiry, scope, and
-usage, but redaction findings and unsafe artifact hygiene findings are never downgraded by waivers.
+usage, but production-beta launch evidence, redaction findings, and unsafe artifact hygiene
+findings are never downgraded by waivers.
 
 ## Required release-candidate evidence
 

@@ -24,8 +24,9 @@ release-certification tools. It consumes and complements those tools.
 | `live` | Release-manager drill against prepared local beta nodes. | May check configured localhost node base URLs. `--require-live` fails closed if no configured localhost node is reachable. |
 
 Normal pull requests and developer dry-runs use `simulated`. Release-candidate runs can use
-`simulated` or `hybrid`. Protected production beta runs may use `live` only when the release
-environment provides the required local node endpoints and fixture inputs.
+`simulated` or `hybrid`. Protected production beta promotion requires attached passing evidence or
+an explicit production `hybrid`/`live` topology. `simulated` and the checked-in self-test topology
+are PR-safe only and cannot satisfy production promotion gates.
 
 ## Topology config
 
@@ -152,6 +153,22 @@ tools/release-certification/run-production-beta-release.sh \
   --run-multi-node-soak
 ```
 
+The canonical protected production command attaches real previous-candidate and multi-node evidence:
+
+```bash
+tools/release-certification/run-production-beta-release.sh \
+  --workspace-root . \
+  --out-dir build/production-beta-release \
+  --mode production-beta \
+  --catalog-channel stable \
+  --artifact-base-uri "$CRYPTAD_PRODUCTION_BETA_ARTIFACT_BASE_URI" \
+  --require-live-network \
+  --require-multi-node-soak \
+  --require-sandbox-provider-tests \
+  --previous-summary "$PREVIOUS_RELEASE_CERTIFICATION_SUMMARY" \
+  --multi-node-soak-summary "$MULTI_NODE_BETA_SOAK_SUMMARY"
+```
+
 Useful flags are:
 
 | Flag | Meaning |
@@ -159,24 +176,29 @@ Useful flags are:
 | `--run-multi-node-soak` | Generate multi-node evidence during release certification. |
 | `--multi-node-soak-config <path>` | Use a specific topology config. |
 | `--multi-node-soak-summary <path>` | Attach an existing summary instead of generated evidence. |
-| `--multi-node-mode simulated|hybrid|live` | Select the drill mode for generated evidence. |
+| `--multi-node-mode simulated|hybrid|live` | Select the drill mode for generated evidence. Production-beta promotion rejects `simulated`. |
 | `--require-multi-node-soak` | Require passing multi-node evidence for production beta promotion gates. |
 
-Production beta mode requires multi-node soak evidence by default. The final
-`reports/production-beta-summary.json` includes a compact `multiNodeBetaSoak` object with status,
-mode, scenario statuses, blockers, warnings, and the evidence artifact path.
+Production beta mode requires multi-node soak evidence by default. It also requires
+`--previous-summary`, passing `upgrade-from-previous-candidate` evidence, and a real attached summary
+or explicit non-self-test `hybrid`/`live` topology. The final `reports/production-beta-summary.json`
+includes a compact `multiNodeBetaSoak` object with status, mode, scenario statuses, blockers,
+warnings, and the evidence artifact path.
 
 The checked-in self-test topology is suitable for developer dry-runs and PR-safe validation only.
 Protected production-beta workflow dispatches must use an attached passing summary or a production
-topology whose previous-candidate upgrade evidence can pass without warnings.
+topology whose previous-candidate upgrade evidence can pass without warnings. Missing previous
+candidate summaries, simulated mode, the checked-in self-test topology, failed scenario evidence, or
+redaction findings are production blockers and cannot be waived into a launchable dashboard
+decision.
 
 ## Previous candidate summaries
 
 Set `previousCandidate.summaryPath` in the topology config to consume a previous production beta or
 release-certification summary. In simulated and release-candidate contexts, a missing previous
-summary is recorded as a warning so the rest of the drill can still prove the gates. In strict
-production contexts, set `strict.requirePreviousSummary=true` or run strict verification so missing
-previous-candidate evidence becomes blocking.
+summary is recorded as a warning so the rest of the drill can still prove the gates. In
+production-beta promotion, missing previous-candidate evidence is blocking even if the topology
+would otherwise pass.
 
 When a previous summary path is supplied, the file must be a `schemaVersion=1` summary with passing
 or warning status, or a release-certification summary with `releaseCandidatePassed=true`. Empty,

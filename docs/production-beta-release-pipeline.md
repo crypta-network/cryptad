@@ -22,26 +22,34 @@ tools/release-certification/run-production-beta-release.sh \
   --catalog-channel stable \
   --artifact-base-uri "$CRYPTAD_PRODUCTION_BETA_ARTIFACT_BASE_URI" \
   --require-live-network \
-  --require-sandbox-provider-tests
+  --require-multi-node-soak \
+  --require-sandbox-provider-tests \
+  --previous-summary "$PREVIOUS_RELEASE_CERTIFICATION_SUMMARY" \
+  --multi-node-soak-summary "$MULTI_NODE_BETA_SOAK_SUMMARY"
 ```
 
 Add multi-node drill flags when a release run needs a specific topology or attached evidence:
 
 ```bash
 tools/release-certification/run-production-beta-release.sh \
+  --workspace-root . \
+  --out-dir build/production-beta-release-dry-run \
   --mode developer-dry-run \
+  --catalog-channel stable \
+  --use-fixture-evidence \
   --multi-node-mode simulated \
-  --run-multi-node-soak
+  --run-multi-node-soak \
+  --allow-dirty-workspace
 ```
 
 Use `--multi-node-soak-config <path>` for a topology config, `--multi-node-soak-summary <path>` to
 attach existing evidence, and `--require-multi-node-soak` to make the promotion gate fail closed
 outside production beta mode.
 
-Protected `production-beta` workflow dispatches must provide either a production multi-node topology
-config or an attached passing multi-node summary. The checked-in self-test topology is only for
-developer dry-runs and PR-safe validation because it intentionally leaves previous-candidate
-upgrade evidence as a warning.
+Protected `production-beta` workflow dispatches must provide `--previous-summary` and either a
+passing attached multi-node summary or an explicit production `hybrid`/`live` multi-node topology
+config. The checked-in self-test topology and `--multi-node-mode simulated` are only for developer
+dry-runs and PR-safe validation; they cannot satisfy production promotion evidence.
 
 Relative `--out-dir` values are resolved under the workspace root. The command cleans that output
 directory by default only when it is under the dedicated `build/production-beta*` prefix or already
@@ -58,7 +66,7 @@ upload.
 | --- | --- | --- | --- |
 | `developer-dry-run` | Local and PR-safe pipeline exercise. | Uses configured keys when present, otherwise generates ephemeral non-production keys outside the artifact tree. Live network is not required. If no artifact base URI is supplied, the command uses a `.invalid` non-release URI. | Exits successfully only when pipeline commands and redaction pass, and always marks artifacts as `nonRelease=true` and `promotionReady=false`. |
 | `release-candidate` | Release branch or manual candidate evidence. | Requires staged apps, signed bundles, signed catalog artifacts, review receipts, smoke summaries, ecosystem certification, and a real HTTPS artifact base URI. Test keys are allowed when no release keys are configured, and outputs remain labeled non-production. | Fails on critical missing evidence. Promotion is not marked ready unless all production-beta-only requirements are also satisfied. |
-| `production-beta` | Protected production beta candidate build. | Requires real signing/reviewer inputs, a full in-pipeline Gradle build/stage/sign run, a real HTTPS artifact base URI, app-platform evidence, sandbox evidence, ecosystem RC certification, and live-network beta evidence unless an explicitly named emergency/test flag is used. | Fails closed when critical evidence, live evidence, production signing, a complete build, or redaction is missing. |
+| `production-beta` | Protected production beta candidate build. | Requires real signing/reviewer inputs, a full in-pipeline Gradle `build`, `:platform-devtools:installDist`, first-party app staging/signing/verification, a real HTTPS artifact base URI, app-platform evidence, sandbox evidence, ecosystem RC certification, live-network beta evidence, and previous-candidate multi-node upgrade evidence unless an explicitly named emergency/test flag is used. | Fails closed when critical evidence, live evidence, production signing, a complete build, previous-candidate multi-node evidence, sandbox evidence, go/no-go validation, or redaction is missing. |
 
 `--use-fixture-evidence` is accepted only with `developer-dry-run` and internal self-tests. Strict
 `release-candidate` and `production-beta` runs reject fixture evidence before certification.
@@ -68,8 +76,9 @@ Production beta supports three explicit test/emergency escape hatches:
 - `--emergency-skip-live-network` records that live-network evidence was skipped. The run still
   records a failed live-skip gate and keeps `promotionReady=false`.
 - `--emergency-skip-build` allows a controlled test or emergency run to continue after
-  `--skip-gradle` or `--skip-full-build`. The run still records a failed build-complete gate,
-  sets `nonRelease=true`, and keeps `promotionReady=false`.
+  `--skip-gradle` or `--skip-full-build`. Without this flag, production-beta rejects skipped Gradle
+  flags before running. With it, the run still records a failed build-complete gate, sets
+  `nonRelease=true`, and keeps `promotionReady=false`.
 - `--allow-test-signing-in-production` permits a controlled test run of production-beta mode with
   non-production signing labels. It sets `nonRelease=true`, keeps `promotionReady=false`, and must
   not be used for release publication.
@@ -81,9 +90,9 @@ notes template is a production blocker. The runbook procedure is
 [production-security-response-runbook.md](production-security-response-runbook.md).
 
 Production beta mode requires multi-node beta soak evidence by default. Missing soak,
-upgrade-drill, scenario, or redaction evidence keeps `promotionReady=false`. Developer dry-runs may
-run the deterministic simulated drill without live nodes and may show warnings for missing previous
-candidate summaries.
+previous-candidate summary, upgrade-drill, scenario, real `hybrid`/`live` mode, or redaction
+evidence keeps `promotionReady=false`. Developer dry-runs may run the deterministic simulated drill
+without live nodes and may show warnings for missing previous-candidate summaries.
 
 ## Required inputs
 
@@ -105,6 +114,8 @@ inputs through environment variables or protected files:
 | `CRYPTAD_CERT_FORM_PASSWORD` | Local node form password for live collectors. Pass it through the environment only. |
 | Live fixture variables from `live_network_beta_smoke.py` | Catalog source, expected catalog key id, content/feed/profile/trust fixtures, and protected private insert URI indirection for required live evidence. |
 | `CRYPTAD_CERT_LIVE_TEST_INSERT_URI_ENV=CRYPTAD_CERT_LIVE_TEST_INSERT_URI` plus `CRYPTAD_CERT_LIVE_TEST_INSERT_URI` | GitHub Actions production-beta runs use this environment-name indirection for the private insert URI fixture. The raw URI lives only in the secret-valued `CRYPTAD_CERT_LIVE_TEST_INSERT_URI` variable. |
+| `--previous-summary "$PREVIOUS_RELEASE_CERTIFICATION_SUMMARY"` | Previous release-certification summary used for history comparison and previous-candidate upgrade evidence. Required for protected production-beta promotion. |
+| `--multi-node-soak-summary "$MULTI_NODE_BETA_SOAK_SUMMARY"` or `--run-multi-node-soak --multi-node-soak-config <production topology>` | Passing multi-node soak and upgrade evidence. Production-beta rejects the self-test topology and simulated mode as required promotion evidence. |
 
 Do not pass private keys, private insert URIs, form passwords, app tokens, or browser session tokens
 as command-line arguments.
@@ -155,6 +166,12 @@ build/production-beta-release/
 Temporary descriptors, generated test private keys, trusted-key scratch files, and raw command work
 directories are kept outside the public artifact tree.
 
+The public `dist/` archive is created only after the main artifact redaction report and the
+go/no-go dashboard redaction report both pass. Archive creation rejects AppleDouble files,
+`.DS_Store`, `__MACOSX/`, secret-looking filenames, symlinks, hard links, device nodes, nested
+unsafe archives, private insert URIs, private keys, app or browser-session tokens, raw fetched
+content, raw app data, and host-local absolute paths.
+
 ## Summary files
 
 `reports/production-beta-summary.json` is the machine-readable result. Important fields:
@@ -167,6 +184,7 @@ directories are kept outside the public artifact tree.
 | `workspaceStatusKnown` | `false` when `git status --porcelain` could not be read. Strict `release-candidate` and `production-beta` runs fail closed when workspace cleanliness is unknown. |
 | `dirtyWorkspace` | `true` when `git status --porcelain` found uncommitted changes. Dirty production-beta runs fail the `workspace.clean-production-beta` gate even if `--allow-dirty-workspace` was used for a controlled rerun. |
 | `signingProfile.kind` | `production`, `configured`, `test`, `test-fixture`, or `missing`. |
+| `pipelineStages` | Per-stage proof for launcher installation, full Gradle build, first-party app staging, signing, and verification. Production-beta promotion requires all required stages to be `pass` from this pipeline execution. |
 | `promotion.gates` | Per-gate pass/fail records for signed artifacts, evidence ids, live-network evidence, ecosystem certification, and signing profile checks. |
 | `promotion.securityResponse` | Compact status for the production security response runbook, advisory lifecycle, reviewer compromise drill, catalog key rotation drill, app signing key compromise drill, emergency catalog update drill, support redaction, security release notes template, blockers, and warnings. |
 | `multiNodeBetaSoak` | Compact status for multi-node soak and upgrade evidence, including mode, scenario statuses, blockers, warnings, promotion readiness, and the `evidence/multi-node-beta-soak.json` artifact path. |
@@ -190,7 +208,9 @@ The dashboard consumes sanitized summaries and emits one decision:
 
 - `go`: production beta promotion is ready.
 - `go-with-waivers`: promotion is launchable only with the listed approved, scoped, unexpired
-  waivers preserved in the release record.
+  waivers preserved in the release record. Production-beta cannot waive fixture evidence, test
+  signing, skipped build, dirty workspace, live-network evidence, sandbox provider evidence,
+  previous-candidate multi-node upgrade evidence, multi-node redaction, or redaction findings.
 - `no-go`: at least one unwaived blocker, invalid waiver, critical redaction finding, unsafe
   artifact hygiene finding, test signing in production mode, or non-release production artifact
   remains.

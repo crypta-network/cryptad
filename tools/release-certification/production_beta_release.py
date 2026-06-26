@@ -327,21 +327,22 @@ APP_TOKEN_VALUE_RE = re.compile(
     re.IGNORECASE,
 )
 FORM_PASSWORD_VALUE_RE = re.compile(
-    r"(?<![\w-])[\"']?(?:CRYPTAD_CERT_FORM_PASSWORD|formPassword|form[-_ ]?password)[\"']?(?![\w-])"
+    r"(?<![\w-])[\"']?(?:CRYPTAD_CERT_FORM_PASSWORD|formPassword|form[-_ ]?password|X-Crypta-Form-Password)[\"']?(?![\w-])"
     r"\s*(?::|(?<![=!<>])=(?!=))\s*['\"]?([^'\"\s,;&}]+)",
     re.IGNORECASE,
 )
 RAW_BODY_VALUE_RE = re.compile(
     r"(?<![\w-])[\"']?(?:"
-    r"raw[-_ ]*(?:(?:request|response|feed|fetched|social|message|profile|trust|app[-_ ]?data)[-_ ]*)?"
+    r"raw[-_ ]*(?:(?:request|response|feed|fetched|social|message|profile|trust|app[-_ ]?data|backup|signature)[-_ ]*)?"
     r"(?:body|document|payload|content|value|values)"
     r"|"
-    r"(?:request|response|feed|fetched|social|message|profile|trust|app[-_ ]?data)[-_ ]*raw[-_ ]*"
+    r"(?:request|response|feed|fetched|social|message|profile|trust|app[-_ ]?data|backup|signature)[-_ ]*raw[-_ ]*"
     r"(?:body|document|payload|content|value|values)"
     r"|"
     r"(?:private|unredacted)[-_ ]*"
-    r"(?:(?:request|response|feed|fetched|social|message|profile|trust|app[-_ ]?data)[-_ ]*)?"
+    r"(?:(?:request|response|feed|fetched|social|message|profile|trust|app[-_ ]?data|backup|signature)[-_ ]*)?"
     r"(?:body|document|payload|content|value|values)"
+    r"|payloadBase64|plainTextExport|queueHtml"
     r")[\"']?(?![\w-])\s*(?::|(?<![=!<>])=(?!=))\s*['\"]?([^'\"\r\n}]+)",
     re.IGNORECASE,
 )
@@ -373,13 +374,17 @@ FILE_URI_RE = re.compile(
 WINDOWS_PATH_RE = re.compile(r"(?<![A-Za-z0-9_:/.\->])[A-Za-z]:[\\/][^:*?\"<>|\r\n]+")
 HOST_PATH_RE = re.compile(
     r"(?<![A-Za-z0-9_:/.\->])/"
-    r"(?:Users|home|work|workspace|tmp|private/tmp|var/folders|mnt|Volumes|root|opt|runner|__w)"
+    r"(?:Users|home|work|workspace|tmp|private/tmp|var/folders|var/lib|var/log|mnt|Volumes|root|opt|runner|__w|srv|etc)"
     r"(?:/[^\s\"'<>),;]+)+"
 )
 DEFAULT_REVIEW_POLICY_ID = "crypta-app-review-v1"
 DEFAULT_REVIEW_POLICY_VERSION = "1"
 FIXTURE_APP_SIGNING_KEY_ID = "crypta-production-beta-test-app"
 FIXTURE_REVIEWER_KEY_ID = "crypta-production-beta-test-review"
+NON_PRODUCTION_KEY_ID_RE = re.compile(
+    r"(?:^|[._-])(?:test|fixture|dry[-_]?run|sample|example|dev|development|local)(?:$|[._-])",
+    re.IGNORECASE,
+)
 SIGNING_PROFILE_ENV_KEYS = (
     "CRYPTAD_APP_SIGNING_KEY_ID",
     "CRYPTAD_APP_SIGNING_PRIVATE_KEY_FILE",
@@ -460,10 +465,20 @@ class PipelineState:
     certification_exit_code: int | None = None
     workspace_status_known: bool = True
     dirty_workspace: bool = False
+    pipeline_stages: dict[str, dict[str, Any]] = dataclasses.field(default_factory=dict)
 
 
 class ReleaseArtifactError(RuntimeError):
     """Raised when a staged release artifact source is unsafe to publish."""
+
+
+PRODUCTION_BETA_REQUIRED_PIPELINE_STAGES = (
+    "crypta-app-launcher-install",
+    "gradle-full-build",
+    "first-party-app-staging",
+    "first-party-app-signing",
+    "first-party-app-verification",
+)
 
 
 def production_build_skipped(settings: Settings) -> bool:
@@ -475,10 +490,49 @@ def release_config_non_release(settings: Settings, profile: SigningProfile | Non
         settings.mode == "developer-dry-run"
         or settings.allow_test_signing_in_production
         or production_build_skipped(settings)
+        or (settings.mode == "production-beta" and not all_required_production_pipeline_stages_completed(state))
         or state.dirty_workspace
         or not state.workspace_status_known
         or bool(profile and profile.kind != "production")
     )
+
+
+def pipeline_stage_completed(state: PipelineState, stage_id: str) -> bool:
+    return state.pipeline_stages.get(stage_id, {}).get("status") == "pass"
+
+
+def record_pipeline_stage(
+    state: PipelineState,
+    stage_id: str,
+    status: str,
+    summary: str,
+    command: CommandResult | None = None,
+) -> None:
+    entry: dict[str, Any] = {
+        "status": status,
+        "summary": summary,
+    }
+    if command is not None:
+        entry["command"] = command.name
+        entry["exitCode"] = command.exit_code
+        entry["durationMs"] = command.duration_ms
+    state.pipeline_stages[stage_id] = entry
+
+
+def record_gradle_stage(
+    state: PipelineState,
+    stage_id: str,
+    result: CommandResult | None,
+    summary: str,
+) -> None:
+    if result is None:
+        record_pipeline_stage(state, stage_id, "skipped", summary)
+        return
+    record_pipeline_stage(state, stage_id, "pass" if result.ok() else "fail", summary, result)
+
+
+def all_required_production_pipeline_stages_completed(state: PipelineState) -> bool:
+    return all(pipeline_stage_completed(state, stage_id) for stage_id in PRODUCTION_BETA_REQUIRED_PIPELINE_STAGES)
 
 
 def utc_now() -> str:
@@ -857,6 +911,11 @@ def env_value_or_default(env: dict[str, str], key: str, default: str) -> str:
     return env.get(key, "").strip() or default
 
 
+def key_id_looks_non_production(key_id: str) -> bool:
+    normalized = key_id.strip()
+    return bool(normalized and NON_PRODUCTION_KEY_ID_RE.search(normalized))
+
+
 def fixture_signing_env(source: dict[str, str]) -> dict[str, str]:
     env = source.copy()
     for key in SIGNING_PROFILE_ENV_KEYS:
@@ -935,6 +994,18 @@ def prepare_signing_profile(state: PipelineState, key_dir: Path) -> SigningProfi
             state.warnings.append(
                 "Production-beta test-signing escape hatch is enabled; configured signing inputs are labelled non-production and outputs remain non-release."
             )
+        elif state.settings.mode == "production-beta":
+            non_production_key_ids = [
+                key_id
+                for key_id in (app_key_id, reviewer_key_id)
+                if key_id_looks_non_production(key_id) or key_id in {FIXTURE_APP_SIGNING_KEY_ID, FIXTURE_REVIEWER_KEY_ID}
+            ]
+            if non_production_key_ids:
+                kind = "configured"
+                state.failures.append(
+                    "production-beta signing and reviewer key IDs must be production key IDs; "
+                    "test, fixture, dry-run, sample, local, or example key IDs are not release material."
+                )
         return SigningProfile(
             kind=kind,
             generated_test_keys=False,
@@ -1069,7 +1140,7 @@ def safe_copy_tree(src: Path, dst: Path, label: str) -> None:
     if dst.exists():
         shutil.rmtree(dst)
     ignore = shutil.ignore_patterns("._*", ".DS_Store", "__MACOSX")
-    shutil.copytree(src, dst, ignore=ignore, symlinks=True)
+    shutil.copytree(src, dst, ignore=ignore, symlinks=True, copy_function=shutil.copy)
     try:
         reject_tree_symlinks(dst, f"copied {label}")
     except ReleaseArtifactError:
@@ -1079,6 +1150,27 @@ def safe_copy_tree(src: Path, dst: Path, label: str) -> None:
 
 def launcher_install_dir(settings: Settings) -> Path:
     return settings.workspace_root / "platform-devtools/build/install/crypta-app"
+
+
+def clear_workspace_generated_release_outputs(state: PipelineState) -> None:
+    if state.settings.mode != "production-beta" or state.settings.skip_gradle:
+        return
+    generated_paths = [
+        launcher_install_dir(state.settings),
+        state.settings.workspace_root / "build/cryptad-dist",
+        *[
+            state.settings.workspace_root / APP_PROJECT_DIRS[app_id] / "build/cryptad-app"
+            for app_id in APP_IDS
+        ],
+    ]
+    for path in generated_paths:
+        try:
+            if path.exists() and not path.is_symlink():
+                shutil.rmtree(path)
+            elif path.exists():
+                path.unlink()
+        except OSError as exc:
+            state.failures.append(f"Could not remove stale generated release output {path}: {exc}")
 
 
 def copy_launcher_distribution(state: PipelineState) -> None:
@@ -1667,10 +1759,10 @@ def package_catalog_and_reviews(
     )
     signature = working_catalog.with_name(CANONICAL_CATALOG_SIGNATURE)
     if working_catalog.is_file():
-        shutil.copy2(working_catalog, catalog_dir / "first-party-catalog.properties")
+        shutil.copy(working_catalog, catalog_dir / "first-party-catalog.properties")
     if signature.is_file():
-        shutil.copy2(signature, catalog_dir / CANONICAL_CATALOG_SIGNATURE)
-        shutil.copy2(signature, catalog_dir / RELEASE_CATALOG_SIGNATURE_ALIAS)
+        shutil.copy(signature, catalog_dir / CANONICAL_CATALOG_SIGNATURE)
+        shutil.copy(signature, catalog_dir / RELEASE_CATALOG_SIGNATURE_ALIAS)
     write_json(
         catalog_dir / "channel-metadata.json",
         {
@@ -1810,6 +1902,7 @@ def release_config(state: PipelineState) -> dict[str, Any]:
         "workspaceStatusKnown": state.workspace_status_known,
         "dirtyWorkspace": state.dirty_workspace,
         "nonRelease": release_config_non_release(settings, profile, state),
+        "pipelineStages": state.pipeline_stages,
         "signingProfile": None
         if profile is None
         else {
@@ -1846,8 +1939,8 @@ def run_fixture_certification(state: PipelineState, cert_out: Path) -> None:
     network_summary.parent.mkdir(parents=True, exist_ok=True)
     app_summary.parent.mkdir(parents=True, exist_ok=True)
     multi_node_summary.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(fixtures / "self-test-network-scale-soak.json", network_summary)
-    shutil.copy2(fixtures / "self-test-app-platform-smoke.json", app_summary)
+    shutil.copy(fixtures / "self-test-network-scale-soak.json", network_summary)
+    shutil.copy(fixtures / "self-test-app-platform-smoke.json", app_summary)
     multi_node_config = multi_node_beta_soak.validate_config(
         multi_node_beta_soak.load_config(fixtures / "self-test-multi-node-beta-soak.json")
     )
@@ -1959,11 +2052,22 @@ def multi_node_summary_path(settings: Settings, cert_out: Path) -> Path:
     return cert_out / "multi-node-beta-soak/summary.json"
 
 
-def compact_multi_node_summary_for_release(summary: dict[str, Any] | None) -> dict[str, Any]:
+def uses_self_test_multi_node_topology(settings: Settings) -> bool:
+    config = settings.multi_node_soak_config
+    if config is None:
+        return False
+    try:
+        rel = config.resolve().relative_to(settings.workspace_root.resolve()).as_posix()
+    except ValueError:
+        rel = config.name
+    return rel == "tools/release-certification/fixtures/self-test-multi-node-beta-soak.json"
+
+
+def compact_multi_node_summary_for_release(summary: dict[str, Any] | None, *, strict: bool = False) -> dict[str, Any]:
     if not isinstance(summary, dict):
         return {"status": "missing"}
     compact = multi_node_beta_soak.compact_for_release(summary)
-    validation_errors = multi_node_beta_soak.validate_summary(summary, strict=False)
+    validation_errors = multi_node_beta_soak.validate_summary(summary, strict=strict)
     if not validation_errors:
         return compact
 
@@ -2009,7 +2113,10 @@ def write_evidence_extracts(settings: Settings, cert_out: Path) -> dict[str, Any
     write_json(evidence_dir / "network-scale-soak.json", network_summary or {"status": "missing"})
     write_json(
         evidence_dir / "multi-node-beta-soak.json",
-        compact_multi_node_summary_for_release(multi_node_summary),
+        compact_multi_node_summary_for_release(
+            multi_node_summary,
+            strict=settings.mode == "production-beta" and settings.require_multi_node_soak,
+        ),
     )
     write_json(evidence_dir / "ecosystem-rc-certification.json", cert_summary or {"status": "missing"})
     write_json(evidence_dir / "ecosystem-certification-matrix.json", matrix_summary or {"status": "missing"})
@@ -2265,7 +2372,10 @@ def evaluate_promotion(state: PipelineState, summaries: dict[str, Any]) -> dict[
         )
 
     multi_node_compact = (
-        compact_multi_node_summary_for_release(multi_node_summary)
+        compact_multi_node_summary_for_release(
+            multi_node_summary,
+            strict=settings.mode == "production-beta" and settings.require_multi_node_soak,
+        )
         if isinstance(multi_node_summary, dict)
         else {
             "status": "missing",
@@ -2308,6 +2418,24 @@ def evaluate_promotion(state: PipelineState, summaries: dict[str, Any]) -> dict[
             f"Multi-node beta soak redaction status is {multi_node_redaction_status}.",
             "multi-node-beta-soak",
         )
+        if settings.mode == "production-beta":
+            add_gate(
+                "multi-node-beta.previous-candidate-summary",
+                settings.previous_summary is not None
+                and settings.previous_summary.is_file()
+                and scenario_statuses.get("upgrade-from-previous-candidate") == "pass",
+                "Production beta promotion requires a previous release-certification summary and passing previous-candidate upgrade drill evidence.",
+                "multi-node-beta-soak",
+            )
+            multi_node_mode = str(multi_node_compact.get("mode", "missing"))
+            add_gate(
+                "multi-node-beta.production-evidence-mode",
+                multi_node_mode in {"hybrid", "live"}
+                and not uses_self_test_multi_node_topology(settings)
+                and not (settings.run_multi_node_soak and settings.multi_node_soak_config is None),
+                "Production beta multi-node evidence must be attached from a real run or generated from an explicit non-self-test hybrid/live topology.",
+                "multi-node-beta-soak",
+            )
 
     cert_ok = isinstance(cert_summary, dict) and cert_summary.get("releaseCandidatePassed") is True
     add_gate("ecosystem.release-candidate-passed", cert_ok, "Ecosystem RC certification passed.", "release-certification")
@@ -2325,9 +2453,17 @@ def evaluate_promotion(state: PipelineState, summaries: dict[str, Any]) -> dict[
     profile = state.signing_profile
     production_signing = bool(profile and profile.kind == "production" and not profile.generated_test_keys)
     if settings.mode == "production-beta":
+        for stage_id in PRODUCTION_BETA_REQUIRED_PIPELINE_STAGES:
+            stage = state.pipeline_stages.get(stage_id, {})
+            stage_status = stage.get("status", "missing") if isinstance(stage, dict) else "missing"
+            add_gate(
+                f"build.{stage_id}",
+                stage_status == "pass",
+                f"Pipeline stage {stage_id} status is {stage_status}.",
+            )
         add_gate(
             "build.production-beta-complete",
-            not production_build_skipped(settings),
+            not production_build_skipped(settings) and all_required_production_pipeline_stages_completed(state),
             "Production beta promotion requires the Gradle build and first-party app staging/signing stages to run in this pipeline execution.",
         )
         add_gate(
@@ -2352,6 +2488,7 @@ def evaluate_promotion(state: PipelineState, summaries: dict[str, Any]) -> dict[
         settings.mode == "developer-dry-run"
         or settings.allow_test_signing_in_production
         or production_build_skipped(settings)
+        or (settings.mode == "production-beta" and not all_required_production_pipeline_stages_completed(state))
         or state.dirty_workspace
         or not state.workspace_status_known
         or bool(profile and profile.kind != "production")
@@ -3022,11 +3159,22 @@ def create_dist_bundle(settings: Settings, version: str) -> Path:
     dist_dir = settings.out_dir / "dist"
     dist_dir.mkdir(parents=True, exist_ok=True)
     tar_path = dist_bundle_path(settings, version)
+
+    def tar_filter(info: tarfile.TarInfo) -> tarfile.TarInfo:
+        reason = bad_artifact_name(info.name)
+        if reason:
+            raise ReleaseArtifactError(f"dist archive would include forbidden artifact {info.name}: {reason}")
+        if info.issym() or info.islnk():
+            raise ReleaseArtifactError(f"dist archive would include a link entry, which is not allowed: {info.name}")
+        if info.isdev():
+            raise ReleaseArtifactError(f"dist archive would include a device entry, which is not allowed: {info.name}")
+        return info
+
     with tarfile.open(tar_path, "w:gz", format=tarfile.PAX_FORMAT) as archive:
         for root_name in RELEASE_OUTPUT_ROOTS:
             root_path = settings.out_dir / root_name
             if root_path.exists():
-                archive.add(root_path, arcname=root_name, recursive=True)
+                archive.add(root_path, arcname=root_name, recursive=True, filter=tar_filter)
     checksums = dist_checksums_path(settings)
     checksum_lines = [f"{sha256_file(tar_path)}  {tar_path.name}"]
     write_text(checksums, "\n".join(checksum_lines) + "\n")
@@ -3102,6 +3250,7 @@ def build_final_summary(
             "privateKeyMaterialIncluded": False,
         },
         "certificationExitCode": state.certification_exit_code,
+        "pipelineStages": state.pipeline_stages,
         "warnings": state.warnings,
         "failures": state.failures,
         "multiNodeBetaSoak": multi_node_compact,
@@ -3131,7 +3280,9 @@ def release_exit_code(settings: Settings, summary: dict[str, Any]) -> int:
     go_no_go = summary.get("goNoGo") if isinstance(summary.get("goNoGo"), dict) else {}
     decision = go_no_go.get("decision")
     if settings.mode == "production-beta" and decision in {"go", "go-with-waivers", "no-go"}:
-        return 0 if decision in {"go", "go-with-waivers"} else 1
+        if decision == "no-go":
+            return 1
+        return 0 if summary.get("status") == "pass" and summary.get("promotionReady") is True and summary.get("nonRelease") is False else 1
     if settings.mode == "developer-dry-run":
         return 0 if summary.get("status") == "pass" else 1
     return 0 if summary.get("status") == "pass" and (settings.mode != "production-beta" or summary.get("promotionReady") is True) else 1
@@ -3331,10 +3482,40 @@ def attach_go_no_go_dashboard(state: PipelineState, summary: dict[str, Any]) -> 
         if state.settings.mode == "production-beta":
             summary["status"] = "fail"
     elif state.settings.mode == "production-beta":
-        summary["promotionReady"] = True
-        if isinstance(summary.get("promotion"), dict):
-            summary["promotion"]["promotionReady"] = True
-        summary["status"] = "pass"
+        promotion = summary.get("promotion") if isinstance(summary.get("promotion"), dict) else {}
+        try:
+            failed_gate_count = int(promotion.get("failedGateCount", go_no_go["failedGateCount"]))
+        except (TypeError, ValueError):
+            failed_gate_count = go_no_go["failedGateCount"]
+        dashboard_confirms_ready = (
+            dashboard.get("promotionReady") is True
+            and summary.get("promotionReady") is True
+            and promotion.get("promotionReady") is True
+            and summary.get("nonRelease") is False
+            and failed_gate_count == 0
+            and go_no_go["redactionStatus"] == "pass"
+            and not state.failures
+        )
+        if dashboard_confirms_ready:
+            summary["promotionReady"] = True
+            promotion["promotionReady"] = True
+            summary["promotion"] = promotion
+            summary["status"] = "pass"
+        else:
+            summary["promotionReady"] = False
+            promotion["promotionReady"] = False
+            summary["promotion"] = promotion
+            summary["status"] = "fail"
+            failure = (
+                "Go/no-go dashboard returned a launchable decision, but the pre-dashboard production "
+                "summary was not promotion-ready."
+            )
+            failures = summary.get("failures") if isinstance(summary.get("failures"), list) else []
+            if failure not in failures:
+                failures.append(failure)
+            if failure not in state.failures:
+                state.failures.append(failure)
+            summary["failures"] = failures
     write_json(state.settings.out_dir / "reports/production-beta-summary.json", summary)
     write_text(state.settings.out_dir / "reports/production-beta-summary.md", render_markdown_summary(summary))
     return summary
@@ -3361,28 +3542,67 @@ def run_pipeline(settings: Settings) -> tuple[dict[str, Any], int]:
             copy_first_party_maintenance_policy_input(state)
             create_fixture_artifacts(state)
         else:
-            run_gradle(state, "gradle-install-crypta-app", [":platform-devtools:installDist"])
+            clear_workspace_generated_release_outputs(state)
+            install_result = run_gradle(state, "gradle-install-crypta-app", [":platform-devtools:installDist"])
+            record_gradle_stage(
+                state,
+                "crypta-app-launcher-install",
+                install_result,
+                "Installed the crypta-app launcher distribution in this pipeline execution.",
+            )
             state.signing_profile = prepare_signing_profile(state, key_dir)
             copy_first_party_maintenance_policy_input(state)
             write_json(settings.out_dir / "inputs/release-config.json", release_config(state))
             if not settings.skip_full_build:
-                run_gradle(
+                build_tasks = ["build"] if settings.mode == "production-beta" else ["buildJar", "assembleCryptadDist"]
+                build_result = run_gradle(
                     state,
                     "gradle-release-build",
-                    ["buildJar", "assembleCryptadDist"],
+                    build_tasks,
                     env=state.signing_profile.env if state.signing_profile else None,
+                )
+                record_gradle_stage(
+                    state,
+                    "gradle-full-build",
+                    build_result,
+                    "Ran the full Gradle build in this pipeline execution.",
                 )
             elif settings.mode in {"release-candidate", "production-beta"} and not settings.emergency_skip_build:
                 state.failures.append("release-candidate and production-beta modes require the build stage unless --emergency-skip-build is used.")
-            run_gradle(
+                record_pipeline_stage(
+                    state,
+                    "gradle-full-build",
+                    "skipped",
+                    "Skipped the Gradle build stage without an emergency build skip.",
+                )
+            else:
+                record_pipeline_stage(
+                    state,
+                    "gradle-full-build",
+                    "skipped",
+                    "Skipped the Gradle build stage by explicit emergency or non-production request.",
+                )
+            stage_result = run_gradle(
                 state,
                 "gradle-stage-sign-verify-first-party-apps",
                 ["stageFirstPartyApps", "signFirstPartyApps", "verifyFirstPartyApps"],
                 env=state.signing_profile.env if state.signing_profile else None,
             )
-            copy_launcher_distribution(state)
-            copied_apps = copy_staged_apps(state)
-            package_catalog_and_reviews(state, state.signing_profile, copied_apps, work_dir)
+            for stage_id, summary in (
+                ("first-party-app-staging", "Staged first-party app bundles in this pipeline execution."),
+                ("first-party-app-signing", "Signed first-party app bundles in this pipeline execution."),
+                ("first-party-app-verification", "Verified first-party app bundle signatures in this pipeline execution."),
+            ):
+                record_gradle_stage(state, stage_id, stage_result, summary)
+            if settings.mode == "production-beta" and not all_required_production_pipeline_stages_completed(state):
+                state.failures.append(
+                    "production-beta mode did not complete all required Gradle build/stage/sign/verify stages; "
+                    "stale workspace artifacts will not be packaged."
+                )
+            else:
+                copy_launcher_distribution(state)
+                copied_apps = copy_staged_apps(state)
+                package_catalog_and_reviews(state, state.signing_profile, copied_apps, work_dir)
 
         check_workspace_clean(state, "post-artifact-build")
         write_json(settings.out_dir / "inputs/release-config.json", release_config(state))
@@ -3403,14 +3623,36 @@ def run_pipeline(settings: Settings) -> tuple[dict[str, Any], int]:
         archive: Path | None = None
         summary: dict[str, Any] | None = None
         if redaction_report["status"] == "pass":
-            archive = dist_bundle_path(settings, version)
-            summary = build_final_summary(state, promotion, redaction_report, archive)
+            planned_archive = dist_bundle_path(settings, version)
+            summary = build_final_summary(state, promotion, redaction_report, planned_archive)
             write_json(settings.out_dir / "reports/production-beta-summary.json", summary)
             write_text(settings.out_dir / "reports/production-beta-summary.md", render_markdown_summary(summary))
             summary = attach_go_no_go_dashboard(state, summary)
-            archive = create_dist_bundle(settings, version)
-            tar_findings = scan_tarball(archive, settings)
-            if tar_findings:
+            if summary.get("goNoGo", {}).get("redactionStatus") == "pass":
+                try:
+                    archive = create_dist_bundle(settings, version)
+                except ReleaseArtifactError as exc:
+                    tar_findings = [{"kind": "forbidden-tar-entry", "path": "dist", "detail": str(exc)}]
+                    partial_archive = dist_bundle_path(settings, version)
+                    remove_dist_bundle(settings, partial_archive)
+                    archive = None
+                else:
+                    tar_findings = scan_tarball(archive, settings)
+            else:
+                tar_findings = []
+                archive = None
+                artifacts = summary.get("artifacts") if isinstance(summary.get("artifacts"), dict) else {}
+                artifacts.pop("distArchive", None)
+                artifacts.pop("checksums", None)
+                summary["artifacts"] = artifacts
+                write_json(settings.out_dir / "reports/production-beta-summary.json", summary)
+                write_text(settings.out_dir / "reports/production-beta-summary.md", render_markdown_summary(summary))
+            if archive is not None and not tar_findings:
+                summary.setdefault("artifacts", {})["distArchive"] = f"dist/{archive.name}"
+                summary.setdefault("artifacts", {})["checksums"] = "dist/checksums.txt"
+                write_json(settings.out_dir / "reports/production-beta-summary.json", summary)
+                write_text(settings.out_dir / "reports/production-beta-summary.md", render_markdown_summary(summary))
+            elif tar_findings:
                 redaction_report = {
                     "schemaVersion": 1,
                     "status": "fail",
@@ -3419,7 +3661,8 @@ def run_pipeline(settings: Settings) -> tuple[dict[str, Any], int]:
                     "findings": tar_findings,
                 }
                 write_json(settings.out_dir / "reports/redaction-report.json", redaction_report)
-                remove_dist_bundle(settings, archive)
+                if archive is not None:
+                    remove_dist_bundle(settings, archive)
                 archive = None
                 summary = None
         if redaction_report["status"] != "pass":
@@ -3525,6 +3768,32 @@ def settings_from_args(args: argparse.Namespace) -> Settings:
     require_multi_node_soak = args.require_multi_node_soak or args.mode == "production-beta"
     run_multi_node_soak = args.run_multi_node_soak or multi_node_soak_summary is None
     require_sandbox = args.require_sandbox_provider_tests or args.mode == "production-beta"
+    if args.mode == "production-beta":
+        if (args.skip_gradle or args.skip_full_build) and not args.emergency_skip_build:
+            raise SystemExit(
+                "production-beta mode cannot use --skip-gradle or --skip-full-build without --emergency-skip-build; "
+                "emergency build skips are always non-release and cannot be promoted."
+            )
+        if require_multi_node_soak and multi_node_soak_summary is None:
+            if not args.run_multi_node_soak:
+                raise SystemExit(
+                    "production-beta mode requires --multi-node-soak-summary or explicit --run-multi-node-soak "
+                    "with a production --multi-node-soak-config."
+                )
+            if multi_node_soak_config is None:
+                raise SystemExit(
+                    "production-beta --run-multi-node-soak requires an explicit production --multi-node-soak-config."
+                )
+            if args.multi_node_mode == "simulated":
+                raise SystemExit("production-beta cannot use --multi-node-mode simulated as required promotion evidence.")
+            try:
+                rel_config = multi_node_soak_config.resolve().relative_to(workspace).as_posix()
+            except ValueError:
+                rel_config = multi_node_soak_config.name
+            if rel_config == "tools/release-certification/fixtures/self-test-multi-node-beta-soak.json":
+                raise SystemExit(
+                    "production-beta cannot use the self-test multi-node soak topology as required promotion evidence."
+                )
     return Settings(
         workspace_root=workspace,
         out_dir=out_dir,
@@ -3540,8 +3809,8 @@ def settings_from_args(args: argparse.Namespace) -> Settings:
         emergency_skip_live_network=args.emergency_skip_live_network,
         emergency_skip_build=args.emergency_skip_build,
         allow_test_signing_in_production=args.allow_test_signing_in_production,
-        previous_summary=args.previous_summary.resolve() if args.previous_summary else None,
-        waiver_file=args.waiver_file.resolve() if args.waiver_file else None,
+        previous_summary=resolve_workspace_path_arg(args.previous_summary, workspace),
+        waiver_file=resolve_workspace_path_arg(args.waiver_file, workspace),
         timeout_seconds=args.timeout_seconds,
         clean_out_dir=not args.no_clean_out_dir,
         multi_node_soak_summary=multi_node_soak_summary,
@@ -3597,9 +3866,16 @@ def validate_artifact_base_uri(mode: str, artifact_base_uri: str) -> None:
 
 
 def make_self_test_workspace(root: Path) -> None:
-    shutil.copytree(REPO_ROOT / "tools", root / "tools")
-    shutil.copytree(REPO_ROOT / "docs", root / "docs")
-    shutil.copy2(REPO_ROOT / "build.gradle.kts", root / "build.gradle.kts")
+    root.mkdir(parents=True, exist_ok=True)
+    ignore = shutil.ignore_patterns("._*", ".DS_Store", "__MACOSX", "__pycache__", "*.pyc")
+    shutil.copytree(
+        REPO_ROOT / "tools/release-certification",
+        root / "tools/release-certification",
+        ignore=ignore,
+        copy_function=shutil.copy,
+    )
+    shutil.copytree(REPO_ROOT / "docs", root / "docs", ignore=ignore, copy_function=shutil.copy)
+    shutil.copy(REPO_ROOT / "build.gradle.kts", root / "build.gradle.kts")
     write_text(root / "gradlew", "#!/usr/bin/env sh\nexit 0\n")
     (root / "gradlew").chmod(0o755)
 
@@ -3680,7 +3956,7 @@ def write_fake_crypta_app_cli(workspace: Path) -> Path:
     if platform.system() == "Windows":
         write_text(cli, f'@echo off\r\n"{sys.executable}" "%~dp0crypta-app.py" %*\r\n')
     else:
-        shutil.copy2(python_cli, cli)
+        shutil.copy(python_cli, cli)
         cli.chmod(0o755)
     return cli
 
@@ -4065,7 +4341,7 @@ def passing_multi_node_beta_soak_summary() -> dict[str, Any]:
             {
                 "schemaVersion": 1,
                 "kind": multi_node_beta_soak.CONFIG_KIND,
-                "mode": "simulated",
+                "mode": "hybrid",
                 "durationProfile": "ci-smoke",
                 "previousCandidate": {
                     "version": "previous-beta",
@@ -4152,6 +4428,15 @@ def production_signing_profile() -> SigningProfile:
     )
 
 
+def mark_required_pipeline_stages_passed(state: PipelineState) -> None:
+    for stage_id in PRODUCTION_BETA_REQUIRED_PIPELINE_STAGES:
+        record_pipeline_stage(state, stage_id, "pass", f"{stage_id} passed in self-test.")
+
+
+def write_previous_release_summary(path: Path) -> None:
+    write_json(path, {"schemaVersion": 1, "status": "pass", "promotionReady": True})
+
+
 def assert_emergency_build_skip_is_non_promotable() -> None:
     with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-build-skip-") as temp_name:
         workspace = Path(temp_name) / "repo"
@@ -4226,6 +4511,8 @@ def assert_allow_test_signing_env_profile_is_non_release() -> None:
             workspace = Path(temp_name) / "repo"
             make_self_test_workspace(workspace)
             out_dir = workspace / "build/production-beta"
+            previous_summary = workspace / "previous-summary.json"
+            write_previous_release_summary(previous_summary)
             write_minimal_promotion_artifacts(out_dir)
             settings = Settings(
                 workspace_root=workspace,
@@ -4242,7 +4529,7 @@ def assert_allow_test_signing_env_profile_is_non_release() -> None:
                 emergency_skip_live_network=False,
                 emergency_skip_build=False,
                 allow_test_signing_in_production=True,
-                previous_summary=None,
+                previous_summary=previous_summary,
                 waiver_file=None,
                 timeout_seconds=60,
                 clean_out_dir=True,
@@ -4250,12 +4537,73 @@ def assert_allow_test_signing_env_profile_is_non_release() -> None:
             state = PipelineState(settings, "self-test", utc_now(), [], [], [])
             profile = prepare_signing_profile(state, workspace / "keys")
             state.signing_profile = profile
+            mark_required_pipeline_stages_passed(state)
             assert profile.kind == "configured", profile
             assert profile.generated_test_keys is False, profile
             assert release_config(state)["nonRelease"] is True
             promotion = evaluate_promotion(state, passing_promotion_summaries())
             assert promotion_gate_by_id(promotion, "signing.production-keys")["status"] == "pass", promotion
             assert promotion["status"] == "pass", promotion
+            assert promotion["nonRelease"] is True, promotion
+            assert promotion["promotionReady"] is False, promotion
+    finally:
+        for key, value in saved.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+
+
+def assert_test_key_ids_without_escape_hatch_are_rejected() -> None:
+    saved = {key: os.environ.get(key) for key in SIGNING_PROFILE_ENV_KEYS}
+    try:
+        for key in SIGNING_PROFILE_ENV_KEYS:
+            os.environ.pop(key, None)
+        os.environ.update(
+            {
+                "CRYPTAD_APP_SIGNING_KEY_ID": "test-app-key",
+                "CRYPTAD_APP_SIGNING_PRIVATE_KEY_BASE64": "dGVzdC1hcHAtcHJpdmF0ZS1rZXk=",
+                "CRYPTAD_APP_SIGNING_PUBLIC_KEY_BASE64": "dGVzdC1hcHAtcHVibGljLWtleQ==",
+                "CRYPTAD_APP_REVIEWER_KEY_ID": "fixture-reviewer-key",
+                "CRYPTAD_APP_REVIEWER_PRIVATE_KEY_BASE64": "dGVzdC1yZXZpZXdlci1wcml2YXRlLWtleQ==",
+                "CRYPTAD_APP_REVIEWER_PUBLIC_KEY_BASE64": "dGVzdC1yZXZpZXdlci1wdWJsaWMta2V5",
+            }
+        )
+        with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-test-key-policy-") as temp_name:
+            workspace = Path(temp_name) / "repo"
+            make_self_test_workspace(workspace)
+            out_dir = workspace / "build/production-beta"
+            previous_summary = workspace / "previous-summary.json"
+            write_previous_release_summary(previous_summary)
+            write_minimal_promotion_artifacts(out_dir)
+            settings = Settings(
+                workspace_root=workspace,
+                out_dir=out_dir,
+                mode="production-beta",
+                catalog_channel="stable",
+                artifact_base_uri="https://downloads.crypta.network/production-beta/self-test",
+                require_live_network=True,
+                require_sandbox_provider_tests=True,
+                skip_gradle=False,
+                skip_full_build=False,
+                use_fixture_evidence=False,
+                allow_dirty_workspace=False,
+                emergency_skip_live_network=False,
+                emergency_skip_build=False,
+                allow_test_signing_in_production=False,
+                previous_summary=previous_summary,
+                waiver_file=None,
+                timeout_seconds=60,
+                clean_out_dir=True,
+            )
+            state = PipelineState(settings, "self-test", utc_now(), [], [], [])
+            profile = prepare_signing_profile(state, workspace / "keys")
+            state.signing_profile = profile
+            mark_required_pipeline_stages_passed(state)
+            promotion = evaluate_promotion(state, passing_promotion_summaries())
+            assert profile.kind == "configured", profile
+            assert any("key IDs must be production key IDs" in failure for failure in state.failures), state.failures
+            assert promotion_gate_by_id(promotion, "signing.production-keys")["status"] == "fail", promotion
             assert promotion["nonRelease"] is True, promotion
             assert promotion["promotionReady"] is False, promotion
     finally:
@@ -4600,6 +4948,100 @@ def assert_release_candidate_no_go_dashboard_preserves_summary_and_exit() -> Non
         assert attached["status"] == "pass", attached
         assert attached["promotionReady"] is False, attached
         assert release_exit_code(settings, attached) == 0, attached
+
+
+def assert_go_with_waivers_cannot_promote_failed_production_summary() -> None:
+    with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-waived-dashboard-") as temp_name:
+        workspace = Path(temp_name) / "repo"
+        workspace.mkdir(parents=True)
+        out_dir = workspace / "build/production-beta"
+        settings = dataclasses.replace(
+            cleanup_test_settings(workspace, out_dir),
+            mode="production-beta",
+            artifact_base_uri="https://downloads.crypta.network/production-beta/self-test",
+            skip_gradle=False,
+            skip_full_build=False,
+            allow_dirty_workspace=False,
+        )
+        state = PipelineState(settings, "self-test", utc_now(), [], [], [])
+        summary = build_final_summary(
+            state,
+            {
+                "status": "fail",
+                "promotionReady": False,
+                "nonRelease": False,
+                "failedGateCount": 1,
+                "gates": [
+                    {
+                        "id": "live.live-network-beta.content-fetch",
+                        "status": "fail",
+                        "summary": "Live content fetch evidence is missing.",
+                    }
+                ],
+                "knownLimitations": [],
+            },
+            {
+                "schemaVersion": 1,
+                "status": "pass",
+                "scannedRoot": "<release-out>",
+                "findingCount": 0,
+                "findings": [],
+            },
+            None,
+        )
+
+        def fake_run_command(
+            state: PipelineState,
+            name: str,
+            args: list[str],
+            env: dict[str, str] | None = None,
+            timeout_seconds: int = 0,
+            allow_failure: bool = False,
+        ) -> CommandResult:
+            del name, args, env, timeout_seconds, allow_failure
+            write_json(
+                state.settings.out_dir / GO_NO_GO_DASHBOARD_JSON,
+                {
+                    "decision": "go-with-waivers",
+                    "promotionReady": True,
+                    "summary": {"blockers": 0, "warnings": 1, "waiversUsed": 1, "criticalRedactionFindings": 0},
+                    "warnings": [
+                        {
+                            "id": "promotion.live.live-network-beta.content-fetch",
+                            "evidenceId": "live-network-beta.content-fetch",
+                            "severity": "blocker",
+                            "summary": "Waived live content fetch evidence.",
+                            "waivedBy": "waiver-live-content",
+                        }
+                    ],
+                    "redaction": {"status": "pass", "findings": []},
+                },
+            )
+            write_text(state.settings.out_dir / GO_NO_GO_DASHBOARD_MARKDOWN, "Decision: `GO WITH WAIVERS`\n")
+            write_json(
+                state.settings.out_dir / GO_NO_GO_REDACTION_REPORT,
+                {
+                    "schemaVersion": SCHEMA_VERSION,
+                    "status": "pass",
+                    "findingCount": 0,
+                    "criticalFindingCount": 0,
+                    "findings": [],
+                },
+            )
+            return CommandResult("production-beta-go-no-go-dashboard", [], 0, 1, "", "")
+
+        original_run_command = globals()["run_command"]
+        try:
+            globals()["run_command"] = fake_run_command
+            attached = attach_go_no_go_dashboard(state, summary)
+        finally:
+            globals()["run_command"] = original_run_command
+
+        assert attached["goNoGo"]["decision"] == "go-with-waivers", attached
+        assert attached["status"] == "fail", attached
+        assert attached["promotionReady"] is False, attached
+        assert attached["promotion"]["promotionReady"] is False, attached
+        assert release_exit_code(settings, attached) == 1, attached
 
 
 def assert_missing_go_no_go_dashboard_fails_summary_and_exit() -> None:
@@ -5235,6 +5677,34 @@ def assert_attached_multi_node_blockers_and_warnings_block_promotion() -> None:
             assert expected_error in multi_node["validationErrors"], multi_node
 
 
+def assert_missing_previous_summary_blocks_production_multi_node_promotion() -> None:
+    with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-missing-previous-") as temp_name:
+        workspace = Path(temp_name) / "repo"
+        workspace.mkdir(parents=True)
+        out_dir = workspace / "build/production-beta"
+        settings = dataclasses.replace(
+            cleanup_test_settings(workspace, out_dir),
+            mode="production-beta",
+            artifact_base_uri="https://downloads.crypta.network/production-beta/self-test",
+            require_live_network=True,
+            require_sandbox_provider_tests=True,
+            skip_gradle=False,
+            skip_full_build=False,
+            allow_dirty_workspace=False,
+            require_multi_node_soak=True,
+        )
+        write_minimal_promotion_artifacts(out_dir)
+        state = PipelineState(settings, "self-test", utc_now(), [], [], [])
+        state.signing_profile = production_signing_profile()
+        mark_required_pipeline_stages_passed(state)
+
+        promotion = evaluate_promotion(state, passing_promotion_summaries())
+        failed_ids = {gate["id"] for gate in promotion["gates"] if gate["status"] == "fail"}
+
+        assert "multi-node-beta.previous-candidate-summary" in failed_ids, promotion
+        assert promotion["promotionReady"] is False, promotion
+
+
 def assert_multi_node_mode_is_only_forwarded_when_overridden() -> None:
     with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-multi-node-mode-") as temp_name:
         workspace = Path(temp_name) / "repo"
@@ -5318,6 +5788,57 @@ def assert_multi_node_paths_resolve_from_workspace() -> None:
         assert settings.multi_node_soak_summary == summary_path.resolve(), settings.multi_node_soak_summary
         assert settings.multi_node_soak_config == config_path.resolve(), settings.multi_node_soak_config
         assert settings.multi_node_mode is None, settings.multi_node_mode
+
+
+def assert_production_beta_cli_rejects_unsafe_strict_inputs() -> None:
+    with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-cli-strict-") as temp_name:
+        workspace = Path(temp_name) / "repo"
+        make_self_test_workspace(workspace)
+        parser = build_parser()
+        summary_path = workspace / "multi-node-summary.json"
+        write_json(summary_path, passing_promotion_summaries()["multiNodeBetaSoak"])
+        base_args = [
+            "--workspace-root",
+            str(workspace),
+            "--out-dir",
+            "build/production-beta",
+            "--mode",
+            "production-beta",
+            "--artifact-base-uri",
+            "https://downloads.crypta.network/production-beta/self-test",
+        ]
+
+        for extra_args, expected in (
+            (
+                ["--skip-gradle", "--multi-node-soak-summary", str(summary_path.relative_to(workspace))],
+                "cannot use --skip-gradle or --skip-full-build",
+            ),
+            ([], "requires --multi-node-soak-summary or explicit --run-multi-node-soak"),
+            (
+                [
+                    "--run-multi-node-soak",
+                    "--multi-node-soak-config",
+                    "topology.json",
+                    "--multi-node-mode",
+                    "simulated",
+                ],
+                "cannot use --multi-node-mode simulated",
+            ),
+            (
+                [
+                    "--run-multi-node-soak",
+                    "--multi-node-soak-config",
+                    "tools/release-certification/fixtures/self-test-multi-node-beta-soak.json",
+                ],
+                "cannot use the self-test multi-node soak topology",
+            ),
+        ):
+            try:
+                settings_from_args(parser.parse_args([*base_args, *extra_args]))
+            except SystemExit as exc:
+                assert expected in str(exc), exc
+            else:
+                raise AssertionError(f"production-beta accepted unsafe input combination: {extra_args}")
 
 
 def create_git_tracked_output_target(workspace: Path) -> Path | None:
@@ -6130,11 +6651,13 @@ def run_self_test() -> None:
     assert_dirty_production_beta_is_non_promotable()
     assert_emergency_build_skip_is_non_promotable()
     assert_allow_test_signing_env_profile_is_non_release()
+    assert_test_key_ids_without_escape_hatch_are_rejected()
     assert_failed_final_summary_clears_promotion_ready()
     assert_waived_critical_evidence_is_accepted_without_redaction_findings()
     assert_developer_dry_run_exit_code_fails_on_recorded_failures()
     assert_certification_failure_marks_dry_run_failed()
     assert_release_candidate_no_go_dashboard_preserves_summary_and_exit()
+    assert_go_with_waivers_cannot_promote_failed_production_summary()
     assert_missing_go_no_go_dashboard_fails_summary_and_exit()
     assert_stale_go_no_go_dashboard_is_not_reused()
     assert_incomplete_go_no_go_dashboard_outputs_fail_summary_and_exit()
@@ -6147,8 +6670,10 @@ def run_self_test() -> None:
     assert_attached_multi_node_safety_flags_block_promotion()
     assert_attached_multi_node_non_promotable_summary_blocks_promotion()
     assert_attached_multi_node_blockers_and_warnings_block_promotion()
+    assert_missing_previous_summary_blocks_production_multi_node_promotion()
     assert_multi_node_mode_is_only_forwarded_when_overridden()
     assert_multi_node_paths_resolve_from_workspace()
+    assert_production_beta_cli_rejects_unsafe_strict_inputs()
     assert_cleanup_refuses_protected_workspace_paths()
     assert_cleanup_refuses_arbitrary_existing_directory_without_sentinel()
     assert_no_clean_refuses_arbitrary_existing_directory_without_sentinel()
@@ -6404,6 +6929,12 @@ def run_self_test() -> None:
         lambda out_dir: write_redaction_fixture_text(out_dir / "secret.json", '{"formPassword": "hunter2-password"}\n'),
     )
     assert_redaction_fails(
+        "form-password-header",
+        lambda out_dir: write_redaction_fixture_text(
+            out_dir / "secret.http", "X-Crypta-Form-Password: hunter2-password\n"
+        ),
+    )
+    assert_redaction_fails(
         "parenthesized-form-password-field",
         lambda out_dir: write_redaction_fixture_text(
             out_dir / "secret.json", '{"formPassword": "(hunter2-password)"}\n'
@@ -6444,6 +6975,18 @@ def run_self_test() -> None:
     assert_redaction_fails(
         "raw-app-data-value",
         lambda out_dir: write_redaction_fixture_text(out_dir / "raw.txt", "rawAppDataValue=abcdefghijklmnop\n"),
+    )
+    assert_redaction_fails(
+        "queue-html-raw-payload",
+        lambda out_dir: write_redaction_fixture_text(
+            out_dir / "raw.json", '{"queueHtml": "private-queue-html-payload-abcdefghijklmnop"}\n'
+        ),
+    )
+    assert_redaction_fails(
+        "payload-base64-raw-payload",
+        lambda out_dir: write_redaction_fixture_text(
+            out_dir / "raw.json", '{"payloadBase64": "cHJpdmF0ZS1wYXlsb2FkLWFiY2RlZmdoaWprbG1ub3A="}\n'
+        ),
     )
     assert_redaction_fails(
         "unredacted-payload",
@@ -6544,6 +7087,14 @@ def run_self_test() -> None:
         lambda out_dir: write_redaction_fixture_text(
             out_dir / "path.txt", "localPath=/root/.gradle/caches/modules-2/files-2.1\n"
         ),
+    )
+    assert_redaction_fails(
+        "etc-local-path",
+        lambda out_dir: write_redaction_fixture_text(out_dir / "path.txt", "config=/etc/cryptad/config.ini\n"),
+    )
+    assert_redaction_fails(
+        "srv-local-path",
+        lambda out_dir: write_redaction_fixture_text(out_dir / "path.txt", "artifact=/srv/cryptad/release\n"),
     )
     assert_redaction_fails(
         "hostedtoolcache-path",
