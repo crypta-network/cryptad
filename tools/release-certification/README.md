@@ -592,6 +592,19 @@ Do not commit generated history summaries by default. Release managers should re
 the previous release's sanitized certification artifact into the local workspace or CI job before
 running certification, then pass its path with `--previous-summary`.
 
+Protected `production-beta` GitHub Actions dispatches can also materialize prior JSON evidence
+before the pipeline starts. For the `previous_summary`, `multi_node_soak_summary`, and `waiver_file`
+workflow inputs, pass a local checked-out path, an HTTPS JSON URL, or a GitHub Actions artifact
+reference:
+
+```text
+actions-artifact://<run-id>/<artifact-name>/<path-inside-artifact>
+```
+
+The workflow restores these inputs into `$RUNNER_TEMP` and then passes the restored local path to
+the release tool. Plain `http://` URLs, missing artifact paths, absolute artifact paths, and
+artifact paths containing `..` are rejected before strict production-beta validation runs.
+
 ## Structured waiver files
 
 CLI `--waive ID=REASON` remains supported. Structured waiver files can be merged in with

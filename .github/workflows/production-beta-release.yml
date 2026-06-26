@@ -43,17 +43,17 @@ on:
         default: ''
         type: string
       multi_node_soak_summary:
-        description: Existing multi-node soak summary path for protected production promotion.
+        description: Existing multi-node soak summary path, HTTPS JSON URL, or actions-artifact://run/artifact/path reference for protected production promotion.
         required: false
         default: ''
         type: string
       previous_summary:
-        description: Previous release-certification summary path for production history and upgrade evidence.
+        description: Previous release-certification summary path, HTTPS JSON URL, or actions-artifact://run/artifact/path reference for production history and upgrade evidence.
         required: false
         default: ''
         type: string
       waiver_file:
-        description: Optional structured go/no-go waiver file path. Production-beta cannot waive mandatory launch evidence.
+        description: Optional structured go/no-go waiver file path, HTTPS JSON URL, or actions-artifact://run/artifact/path reference. Production-beta cannot waive mandatory launch evidence.
         required: false
         default: ''
         type: string
@@ -298,6 +298,7 @@ jobs:
           INPUT_MULTI_NODE_SOAK_SUMMARY: ${{ inputs.multi_node_soak_summary || '' }}
           INPUT_PREVIOUS_SUMMARY: ${{ inputs.previous_summary || '' }}
           INPUT_WAIVER_FILE: ${{ inputs.waiver_file || '' }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           materialize_secret_file() {
             local encoded="$1"
@@ -331,10 +332,77 @@ jobs:
             fi
           }
 
+          materialize_input_file() {
+            local value="$1"
+            local env_name="$2"
+            local file_name="$3"
+            local description="$4"
+            if [[ -z "$value" ]]; then
+              return 0
+            fi
+            case "$value" in
+              https://*)
+                local path="$RUNNER_TEMP/cryptad-production-beta-inputs/$file_name"
+                mkdir -p "$(dirname "$path")"
+                curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 --retry 3 --output "$path" "$value"
+                chmod 600 "$path"
+                export "$env_name=$path"
+                ;;
+              http://*)
+                echo "::error::$description URL must use HTTPS: $value"
+                exit 1
+                ;;
+              actions-artifact://*)
+                materialize_actions_artifact_file "$value" "$env_name" "$file_name" "$description"
+                ;;
+              *)
+                export "$env_name=$value"
+                ;;
+            esac
+          }
+
+          materialize_actions_artifact_file() {
+            local value="$1"
+            local env_name="$2"
+            local file_name="$3"
+            local description="$4"
+            local rest="${value#actions-artifact://}"
+            local run_id="${rest%%/*}"
+            if [[ -z "$run_id" || "$run_id" == "$rest" ]]; then
+              echo "::error::$description actions artifact reference must be actions-artifact://<run-id>/<artifact-name>/<path>."
+              exit 1
+            fi
+            rest="${rest#*/}"
+            local artifact_name="${rest%%/*}"
+            if [[ -z "$artifact_name" || "$artifact_name" == "$rest" ]]; then
+              echo "::error::$description actions artifact reference must include an artifact name and path."
+              exit 1
+            fi
+            local artifact_path="${rest#*/}"
+            if [[ -z "$artifact_path" || "$artifact_path" == /* || "$artifact_path" == *".."* ]]; then
+              echo "::error::$description actions artifact path must be relative and cannot contain '..'."
+              exit 1
+            fi
+            local download_dir="$RUNNER_TEMP/cryptad-production-beta-inputs/$file_name-artifact"
+            rm -rf "$download_dir"
+            mkdir -p "$download_dir"
+            gh run download "$run_id" --repo "$GITHUB_REPOSITORY" --name "$artifact_name" --dir "$download_dir"
+            local path="$download_dir/$artifact_path"
+            if [[ ! -f "$path" && -f "$download_dir/$artifact_name/$artifact_path" ]]; then
+              path="$download_dir/$artifact_name/$artifact_path"
+            fi
+            require_file "$path" "$description from $value"
+            chmod 600 "$path"
+            export "$env_name=$path"
+          }
+
           materialize_secret_file "${CRYPTAD_APP_SIGNING_PRIVATE_KEY_BASE64:-}" CRYPTAD_APP_SIGNING_PRIVATE_KEY_FILE app-signing-private.der
           materialize_secret_file "${CRYPTAD_APP_SIGNING_PUBLIC_KEY_BASE64:-}" CRYPTAD_APP_SIGNING_PUBLIC_KEY_FILE app-signing-public.der
           materialize_secret_file "${CRYPTAD_APP_REVIEWER_PRIVATE_KEY_BASE64:-}" CRYPTAD_APP_REVIEWER_PRIVATE_KEY_FILE reviewer-private.der
           materialize_secret_file "${CRYPTAD_APP_REVIEWER_PUBLIC_KEY_BASE64:-}" CRYPTAD_APP_REVIEWER_PUBLIC_KEY_FILE reviewer-public.der
+          materialize_input_file "$INPUT_PREVIOUS_SUMMARY" INPUT_PREVIOUS_SUMMARY previous-release-certification-summary.json "Previous release-certification summary"
+          materialize_input_file "$INPUT_MULTI_NODE_SOAK_SUMMARY" INPUT_MULTI_NODE_SOAK_SUMMARY multi-node-beta-soak-summary.json "Multi-node soak summary"
+          materialize_input_file "$INPUT_WAIVER_FILE" INPUT_WAIVER_FILE go-no-go-waivers.json "Go/no-go waiver file"
 
           if [[ -z "$INPUT_ARTIFACT_BASE_URI" ]]; then
             echo "::error::CRYPTAD_PRODUCTION_BETA_ARTIFACT_BASE_URI or workflow artifact_base_uri input is required for production-beta."
