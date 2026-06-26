@@ -3378,6 +3378,63 @@ def go_no_go_dashboard_artifact_failure(
     return None
 
 
+def write_rejected_launchable_dashboard_artifacts(
+    settings: Settings,
+    dashboard: dict[str, Any],
+    failure: str,
+) -> dict[str, Any]:
+    redaction = dashboard.get("redaction") if isinstance(dashboard.get("redaction"), dict) else {}
+    overridden = dict(dashboard)
+    blocker = {
+        "id": "production-beta.wrapper.rejected-launchable-dashboard",
+        "evidenceId": "production-beta.go-no-go-decision",
+        "domainId": "production-beta-release-pipeline",
+        "severity": "blocker",
+        "title": "Release wrapper rejected launchable dashboard decision",
+        "summary": failure,
+        "source": "production-beta-release",
+        "waivable": False,
+        "category": "pipeline",
+    }
+    blockers = [item for item in overridden.get("blockers", []) if isinstance(item, dict)]
+    if not any(item.get("id") == blocker["id"] for item in blockers):
+        blockers.append(blocker)
+    dashboard_summary = overridden.get("summary") if isinstance(overridden.get("summary"), dict) else {}
+    dashboard_summary = dict(dashboard_summary)
+    dashboard_summary["blockers"] = max(int(dashboard_summary.get("blockers", 0)), len(blockers))
+    dashboard_summary.setdefault("warnings", 0)
+    dashboard_summary.setdefault("waiversUsed", 0)
+    dashboard_summary.setdefault("criticalRedactionFindings", 0)
+    overridden.update(
+        {
+            "decision": "no-go",
+            "promotionReady": False,
+            "summary": dashboard_summary,
+            "blockers": blockers,
+            "redaction": redaction,
+            "recommendation": "Do not launch. Regenerate the dashboard after the production summary is promotion-ready.",
+        }
+    )
+    write_json(settings.out_dir / GO_NO_GO_DASHBOARD_JSON, overridden)
+    write_text(
+        settings.out_dir / GO_NO_GO_DASHBOARD_MARKDOWN,
+        "\n".join(
+            [
+                "# Production Beta Go/No-Go Dashboard",
+                "",
+                "Decision: `NO-GO`",
+                "",
+                "The production beta release wrapper rejected a launchable dashboard decision.",
+                "",
+                f"- Failure: {failure}",
+                f"- Mode: `{settings.mode}`",
+                "",
+            ]
+        ),
+    )
+    return overridden
+
+
 def attach_go_no_go_dashboard(state: PipelineState, summary: dict[str, Any]) -> dict[str, Any]:
     stale_clear_failures = clear_stale_go_no_go_dashboard_artifacts(state.settings.out_dir)
     for failure in stale_clear_failures:
@@ -3516,6 +3573,16 @@ def attach_go_no_go_dashboard(state: PipelineState, summary: dict[str, Any]) -> 
             if failure not in state.failures:
                 state.failures.append(failure)
             summary["failures"] = failures
+            dashboard = write_rejected_launchable_dashboard_artifacts(state.settings, dashboard, failure)
+            go_no_go["decision"] = "no-go"
+            dashboard_summary = dashboard.get("summary") if isinstance(dashboard.get("summary"), dict) else {}
+            go_no_go["waiversUsed"] = int(dashboard_summary.get("waiversUsed", 0))
+            blocking_gate_ids = list(go_no_go.get("blockingGateIds", []))
+            if "production-beta.go-no-go-decision" not in blocking_gate_ids:
+                blocking_gate_ids.append("production-beta.go-no-go-decision")
+            go_no_go["blockingGateIds"] = blocking_gate_ids
+            go_no_go["failedGateCount"] = max(int(go_no_go.get("failedGateCount", 0)), len(blocking_gate_ids))
+            summary["goNoGo"] = go_no_go
     write_json(state.settings.out_dir / "reports/production-beta-summary.json", summary)
     write_text(state.settings.out_dir / "reports/production-beta-summary.md", render_markdown_summary(summary))
     return summary
@@ -5037,11 +5104,23 @@ def assert_go_with_waivers_cannot_promote_failed_production_summary() -> None:
         finally:
             globals()["run_command"] = original_run_command
 
-        assert attached["goNoGo"]["decision"] == "go-with-waivers", attached
+        assert attached["goNoGo"]["decision"] == "no-go", attached
         assert attached["status"] == "fail", attached
         assert attached["promotionReady"] is False, attached
         assert attached["promotion"]["promotionReady"] is False, attached
+        assert "production-beta.go-no-go-decision" in attached["goNoGo"]["blockingGateIds"], attached
         assert release_exit_code(settings, attached) == 1, attached
+        regenerated_dashboard = read_json(out_dir / GO_NO_GO_DASHBOARD_JSON)
+        assert regenerated_dashboard["decision"] == "no-go", regenerated_dashboard
+        assert regenerated_dashboard["promotionReady"] is False, regenerated_dashboard
+        assert any(
+            blocker.get("id") == "production-beta.wrapper.rejected-launchable-dashboard"
+            for blocker in regenerated_dashboard.get("blockers", [])
+            if isinstance(blocker, dict)
+        ), regenerated_dashboard
+        regenerated_markdown = (out_dir / GO_NO_GO_DASHBOARD_MARKDOWN).read_text(encoding="utf-8")
+        assert "Decision: `NO-GO`" in regenerated_markdown, regenerated_markdown
+        assert "GO WITH WAIVERS" not in regenerated_markdown, regenerated_markdown
 
 
 def assert_missing_go_no_go_dashboard_fails_summary_and_exit() -> None:

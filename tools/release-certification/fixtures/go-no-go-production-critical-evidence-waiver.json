@@ -1,0 +1,49 @@
+{
+  "extends": "go-no-go-pass.json",
+  "inputs": {
+    "productionBetaSummary": {
+      "nonRelease": false,
+      "promotion": {
+        "failedGateCount": 1,
+        "gates": [
+          {
+            "id": "evidence.app-store.submission-cli",
+            "source": "release-certification-summary",
+            "status": "fail",
+            "summary": "App-store submission CLI evidence is missing from the production beta launch record."
+          }
+        ],
+        "promotionReady": false,
+        "status": "fail"
+      },
+      "promotionReady": false,
+      "redaction": {
+        "findings": [],
+        "status": "pass"
+      },
+      "status": "fail"
+    }
+  },
+  "mode": "production-beta",
+  "releaseId": "crypta-production-beta-270-critical-evidence-waiver",
+  "waivers": {
+    "releaseId": "crypta-production-beta-270-critical-evidence-waiver",
+    "schemaVersion": 1,
+    "waivers": [
+      {
+        "approvedBy": "release-manager@example.invalid",
+        "createdAt": "2026-06-24T00:00:00Z",
+        "evidenceId": "app-store.submission-cli",
+        "expiresAt": "2099-06-30T00:00:00Z",
+        "id": "waiver-production-critical-app-store-cli-001",
+        "owner": "release-engineering",
+        "rationale": "Fixture waiver attempt for mandatory production app-store submission CLI evidence.",
+        "references": [
+          "fixture-pr-270-production-critical-waiver"
+        ],
+        "scope": "production-beta",
+        "severity": "blocker"
+      }
+    ]
+  }
+}
