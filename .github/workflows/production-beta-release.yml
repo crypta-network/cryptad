@@ -346,6 +346,9 @@ jobs:
           require_env CRYPTAD_APP_REVIEWER_KEY_ID "App reviewer key ID"
           require_file "${CRYPTAD_APP_REVIEWER_PRIVATE_KEY_FILE:-}" "Reviewer private key"
           require_file "${CRYPTAD_APP_REVIEWER_PUBLIC_KEY_FILE:-}" "Reviewer public key"
+          : "${CRYPTAD_APP_REVIEW_POLICY_ID:=crypta-app-review-v1}"
+          : "${CRYPTAD_APP_REVIEW_POLICY_VERSION:=1}"
+          export CRYPTAD_APP_REVIEW_POLICY_ID CRYPTAD_APP_REVIEW_POLICY_VERSION
           require_env CRYPTAD_APP_REVIEW_POLICY_ID "App review policy ID"
           require_env CRYPTAD_APP_REVIEW_POLICY_VERSION "App review policy version"
           require_env CRYPTAD_CERT_NODE_BASE_URL "Live-node base URL"
