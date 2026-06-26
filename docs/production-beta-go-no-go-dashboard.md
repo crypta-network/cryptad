@@ -82,7 +82,9 @@ blockers.
 
 `go-with-waivers` means every remaining blocker is waivable and has a valid, scoped, approved, and
 unexpired waiver. The waiver remains visible in JSON and Markdown. Waived blockers are not hidden
-or converted to `pass`.
+or converted to `pass`. In `production-beta` mode, mandatory launch evidence is not waivable; a
+`go-with-waivers` decision is possible only for waiverable residual blockers outside the strict
+production launch set.
 
 `no-go` means at least one of these conditions exists:
 
@@ -93,7 +95,8 @@ or converted to `pass`.
 - critical redaction finding;
 - unsafe artifact hygiene finding such as AppleDouble metadata, `.DS_Store`, or `__MACOSX`;
 - production beta mode using test-only or generated signing material;
-- production beta artifact marked `nonRelease=true`.
+- production beta artifact marked `nonRelease=true`;
+- production beta summary with failed promotion gates or `promotionReady=false`.
 
 ## Waiver format
 
@@ -105,11 +108,11 @@ The dashboard accepts a JSON waiver file:
   "releaseId": "crypta-production-beta-2026-06-24",
   "waivers": [
     {
-      "id": "waiver-live-network-lab-outage-001",
-      "evidenceId": "live.live-network-beta.content-fetch",
+      "id": "waiver-release-candidate-doc-followup-001",
+      "evidenceId": "app-store.submission-cli",
       "severity": "blocker",
-      "scope": "production-beta",
-      "rationale": "Lab live node unavailable during the RC window.",
+      "scope": "release-candidate",
+      "rationale": "Release-candidate docs follow-up is accepted before production-beta promotion.",
       "approvedBy": "release-manager@example.invalid",
       "owner": "release-engineering",
       "createdAt": "2026-06-24T00:00:00Z",
@@ -145,6 +148,11 @@ These findings always produce `no-go`:
   special files, invalid archives, or unsafe nested archive entries;
 - production beta using test-only signing material or generated test keys;
 - production beta output marked `nonRelease=true`;
+- fixture evidence, skipped Gradle build/stage/sign/verify stages, or dirty/unknown workspace in
+  production beta;
+- missing or failing live-network beta evidence, sandbox provider evidence, production signing,
+  previous-candidate multi-node upgrade evidence, multi-node redaction, or ecosystem RC gates in
+  production beta;
 - malformed or expired waiver records.
 
 The scanner allows deterministic placeholders such as `<redacted-private-insert-uri>`,
@@ -182,7 +190,9 @@ production beta redaction status is `pass` and the dashboard's own redaction rep
 
 Protected `production-beta` dispatches fail on `no-go`. A `go-with-waivers` decision is allowed
 only when the dashboard validates and records the waiver records that made the candidate
-launchable.
+launchable and the production summary already has `promotionReady=true`, `nonRelease=false`, no
+failed promotion gates, and passing redaction. The release wrapper treats any launchable dashboard
+decision over a failed or non-release production summary as a failed run.
 
 ## Release-manager workflow
 

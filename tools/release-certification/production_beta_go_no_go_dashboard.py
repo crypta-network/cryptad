@@ -137,6 +137,33 @@ CATALOG_AND_SIGNING_EVIDENCE_IDS = (
 CONSENT_EVIDENCE_IDS = ("app-platform.user-consent-flow",)
 SECURITY_RESPONSE_EVIDENCE_IDS = ("production-security.response-runbook",)
 FIRST_PARTY_MAINTENANCE_EVIDENCE_IDS = ("app-catalog.first-party-maintenance-policy",)
+CRITICAL_PRODUCTION_BETA_EVIDENCE_IDS = (
+    "app-platform.signed-bundles",
+    "app-catalog.first-party-maintenance-policy",
+    "catalog.smoke",
+    "app-review.trusted-receipts",
+    "app-review.first-party-catalog",
+    "app-review.first-party-review-chain",
+    *APP_STORE_SUBMISSION_EVIDENCE_IDS,
+    *THIRD_PARTY_DEVELOPER_BETA_EVIDENCE_IDS,
+    *PLATFORM_API_STABLE_FREEZE_EVIDENCE_IDS,
+    "app-ui.lint",
+    "apphost.sandbox-provider",
+    "app-update.data-migration-contract",
+    "app-data.backup-restore-portability",
+    "catalog.security-advisories",
+    "catalog.version-denylist",
+    "app-review.receipt-revocation",
+    "app-review.reviewer-key-compromise-flow",
+    "app-update.security-denylist-gates",
+    "app-services.registry",
+    "app-services.grants",
+    "app-services.dependency-graph",
+    "app-services.grant-bundles",
+    "app-services.dependency-redaction",
+    "production-security.response-runbook",
+    *LEGACY_ADMIN_EVIDENCE_IDS,
+)
 
 DASHBOARD_EVIDENCE_IDS = (
     "production-beta.go-no-go-dashboard",
@@ -270,24 +297,90 @@ NON_WAIVABLE_EVIDENCE_IDS = {
     "production-beta.dashboard-redaction",
     "production-beta.launch-artifact-hygiene",
     "production-beta.waiver-validation",
-    "production-beta.production-signing",
     "production-beta.non-release",
+    "redaction.status",
+}
+PRODUCTION_BETA_NON_WAIVABLE_EVIDENCE_IDS = {
+    "production-beta.production-signing",
     "production-beta.test-signing",
     "production-beta.build-complete",
     "production-beta.workspace-clean",
     "production-beta.fixture-evidence",
-    "redaction.status",
     "signing.production-keys",
+    "apphost.sandbox-provider",
+    "evidence.required-sandbox-provider-tests",
+    "evidence.apphost.sandbox-provider",
     "build.production-beta-complete",
+    "build.crypta-app-launcher-install",
+    "build.gradle-full-build",
+    "build.first-party-app-staging",
+    "build.first-party-app-signing",
+    "build.first-party-app-verification",
     "workspace.clean-production-beta",
     "fixture-evidence.strict-mode",
     "live.production-beta-skip",
+    "live-network-beta.preflight",
+    "live-network-beta.catalog-usk-fetch",
+    "live-network-beta.app-install-update-rollback",
+    "live-network-beta.content-fetch",
+    "live-network-beta.feed-subscription",
+    "live-network-beta.profile-publish",
+    "live-network-beta.trust-statement-publish-import",
+    "live-network-beta.interop-perf-budget",
+    "live-network-beta.redaction",
+    "live.live-network-beta.preflight",
+    "live.live-network-beta.catalog-usk-fetch",
+    "live.live-network-beta.app-install-update-rollback",
+    "live.live-network-beta.content-fetch",
+    "live.live-network-beta.feed-subscription",
+    "live.live-network-beta.profile-publish",
+    "live.live-network-beta.trust-statement-publish-import",
+    "live.live-network-beta.interop-perf-budget",
+    "live.live-network-beta.redaction",
+    "multi-node-beta.soak",
+    "multi-node-beta.redaction",
+    "multi-node-beta.previous-candidate-summary",
+    "multi-node-beta.production-evidence-mode",
+    "multi-node-beta.upgrade-drill",
+    "multi-node-beta.catalog-channel-update",
+    "multi-node-beta.app-install-update-rollback",
+    "multi-node-beta.app-data-migration",
+    "multi-node-beta.backup-restore",
+    "multi-node-beta.subscription-pressure",
+    "multi-node-beta.trust-graph-import",
+    "multi-node-beta.social-inbox-multi-source",
+    "multi-node-beta.support-bundle-drill",
+    "release-certification.ecosystem-rc-gate",
+    "ecosystem.release-candidate-passed",
+    "ecosystem.certification-matrix",
 }
 PRODUCTION_ARTIFACT_GATE_IDS = {
     "artifact.signed-first-party-bundles",
     "artifact.signed-first-party-catalog",
     "artifact.first-party-review-receipts",
 }
+
+
+def evidence_ids_with_gate_aliases(evidence_ids: Iterable[str]) -> set[str]:
+    ids: set[str] = set()
+    for evidence_id in evidence_ids:
+        ids.add(evidence_id)
+        ids.add(f"evidence.{evidence_id}")
+    return ids
+
+
+def non_waivable_evidence_ids_for_mode(mode: str) -> set[str]:
+    ids = set(NON_WAIVABLE_EVIDENCE_IDS)
+    if mode == "production-beta":
+        ids.update(PRODUCTION_BETA_NON_WAIVABLE_EVIDENCE_IDS)
+        ids.update(evidence_ids_with_gate_aliases(CRITICAL_PRODUCTION_BETA_EVIDENCE_IDS))
+        ids.update(PRODUCTION_ARTIFACT_GATE_IDS)
+    return ids
+
+
+def evidence_id_is_non_waivable_in_mode(evidence_id: str, mode: str) -> bool:
+    return evidence_id in non_waivable_evidence_ids_for_mode(mode)
+
 
 REDACTION_FINDING_KINDS = {
     "private-insert-uri",
@@ -364,7 +457,7 @@ APP_TOKEN_VALUE_RE = re.compile(
     re.IGNORECASE,
 )
 FORM_PASSWORD_VALUE_RE = re.compile(
-    r"(?<![\w-])[\"']?(?:CRYPTAD_CERT_FORM_PASSWORD|formPassword|form[-_ ]?password)[\"']?(?![\w-])"
+    r"(?<![\w-])[\"']?(?:CRYPTAD_CERT_FORM_PASSWORD|formPassword|form[-_ ]?password|X-Crypta-Form-Password)[\"']?(?![\w-])"
     r"\s*(?::|(?<![=!<>])=(?!=))\s*['\"]?([^'\"\s,;&}]+)",
     re.IGNORECASE,
 )
@@ -885,7 +978,7 @@ def is_redaction_evidence(evidence_id: str, domain_id: str = "") -> bool:
     }
 
 
-def issue_for_evidence(domain_id: str, evidence_id: str, entry: dict[str, Any] | None) -> Issue | None:
+def issue_for_evidence(domain_id: str, evidence_id: str, entry: dict[str, Any] | None, mode: str) -> Issue | None:
     if status_ok(entry):
         return None
     waiver_id = "" if entry_has_redaction_findings(entry) else entry_waiver_id(entry)
@@ -938,7 +1031,7 @@ def issue_for_evidence(domain_id: str, evidence_id: str, entry: dict[str, Any] |
         title=f"{evidence_id} is not passing",
         summary=evidence_summary(entry),
         source=str(entry.get("source", domain_id)) if isinstance(entry, dict) else domain_id,
-        waivable=severity != "critical" and evidence_id not in NON_WAIVABLE_EVIDENCE_IDS,
+        waivable=severity != "critical" and not evidence_id_is_non_waivable_in_mode(evidence_id, mode),
         category="evidence",
     )
 
@@ -1535,16 +1628,20 @@ def production_summary_issues(summary: dict[str, Any] | None, mode: str) -> list
         gate_id = str(gate.get("id", "promotion-gate"))
         evidence_id = canonical_evidence_id(gate_id)
         source = str(gate.get("source", "promotion"))
+        mode_non_waivable_ids = non_waivable_evidence_ids_for_mode(mode)
         nonwaivable = (
-            gate_id in NON_WAIVABLE_EVIDENCE_IDS
-            or evidence_id in NON_WAIVABLE_EVIDENCE_IDS
-            or (mode == "production-beta" and gate_id in PRODUCTION_ARTIFACT_GATE_IDS)
+            gate_id in mode_non_waivable_ids
+            or evidence_id in mode_non_waivable_ids
             or is_redaction_evidence(gate_id)
             or is_redaction_evidence(evidence_id)
         )
-        if gate_id == "signing.production-keys" or "test-signing" in gate_id:
+        if mode == "production-beta" and (gate_id == "signing.production-keys" or "test-signing" in gate_id):
             nonwaivable = True
-        if gate_id in {"build.production-beta-complete", "workspace.clean-production-beta", "fixture-evidence.strict-mode"}:
+        if mode == "production-beta" and gate_id in {
+            "build.production-beta-complete",
+            "workspace.clean-production-beta",
+            "fixture-evidence.strict-mode",
+        }:
             nonwaivable = True
         issues.append(
             Issue(
@@ -1576,7 +1673,7 @@ def domain_for_gate(gate_id: str, source: str) -> str:
     return "production-beta-release-pipeline"
 
 
-def release_certification_issues(summary: dict[str, Any] | None) -> list[Issue]:
+def release_certification_issues(summary: dict[str, Any] | None, mode: str) -> list[Issue]:
     if not isinstance(summary, dict):
         return []
     issues: list[Issue] = []
@@ -1587,7 +1684,7 @@ def release_certification_issues(summary: dict[str, Any] | None) -> list[Issue]:
         evidence_id = str(entry.get("id", ""))
         if evidence_id != "release-certification.ecosystem-rc-gate":
             continue
-        issue = issue_for_evidence("release-certification", evidence_id, entry)
+        issue = issue_for_evidence("release-certification", evidence_id, entry, mode)
         if issue is not None:
             issues.append(issue)
     if summary.get("releaseCandidatePassed") is not True:
@@ -1808,7 +1905,7 @@ def multi_node_issues(summary: dict[str, Any] | None, mode: str) -> list[Issue]:
                         title=f"{scenario_id} scenario is not passing",
                         summary=f"{scenario_id} status is {scenario_status}.",
                         source="multi-node-beta-soak-summary",
-                        waivable=True,
+                        waivable=mode != "production-beta",
                         category="multi-node",
                     )
                 )
@@ -2021,10 +2118,10 @@ def severity_covers(waiver: Waiver, issue: Issue) -> bool:
 
 
 def issue_is_non_waivable_in_mode(issue: Issue, mode: str) -> bool:
-    return mode == "production-beta" and (
-        issue.evidence_id in NON_WAIVABLE_EVIDENCE_IDS | PRODUCTION_ARTIFACT_GATE_IDS
-        or issue.severity == "critical"
-    )
+    if issue.severity == "critical":
+        return True
+    mode_non_waivable_ids = non_waivable_evidence_ids_for_mode(mode)
+    return issue.id in mode_non_waivable_ids or issue.evidence_id in mode_non_waivable_ids
 
 
 def load_waivers(
@@ -2118,7 +2215,7 @@ def load_waivers(
             validation_errors.append(f"scope does not apply to {mode}")
         if evidence_id and evidence_id not in known_ids and not external_risk_accepted:
             validation_errors.append("evidenceId is unknown and externalRiskAccepted is not true")
-        if mode == "production-beta" and evidence_id in NON_WAIVABLE_EVIDENCE_IDS | PRODUCTION_ARTIFACT_GATE_IDS:
+        if mode == "production-beta" and evidence_id_is_non_waivable_in_mode(evidence_id, mode):
             validation_errors.append("target is non-waivable in production-beta mode")
         active = not validation_errors
         safe_errors = tuple(scrub_text(error, workspace_root, out_dir) for error in validation_errors)
@@ -2279,7 +2376,7 @@ def collect_issues(
         if name != "waivers" and name not in inputs and name in {spec_name for spec in DOMAIN_SPECS for spec_name in spec.get("artifactInputs", ())}:
             issues.append(input_missing_issue(name, mode))
     issues.extend(production_summary_issues(inputs.get("productionBetaSummary"), mode))
-    issues.extend(release_certification_issues(inputs.get("releaseCertificationSummary")))
+    issues.extend(release_certification_issues(inputs.get("releaseCertificationSummary"), mode))
     issues.extend(ecosystem_matrix_issues(inputs.get("ecosystemMatrix")))
     issues.extend(network_scale_issues(inputs.get("networkScaleSoakSummary"), mode))
     issues.extend(multi_node_issues(inputs.get("multiNodeBetaSoakSummary"), mode))
@@ -2298,7 +2395,7 @@ def collect_issues(
         if domain_id == "live-network-beta-smoke" and not live_evidence_required(inputs, mode):
             continue
         for evidence_id in spec["evidenceIds"]:
-            issue = issue_for_evidence(domain_id, str(evidence_id), all_evidence.get(str(evidence_id)))
+            issue = issue_for_evidence(domain_id, str(evidence_id), all_evidence.get(str(evidence_id)), mode)
             if issue is not None:
                 issues.append(issue)
     return dedupe_issues(issues), all_evidence
@@ -2324,6 +2421,7 @@ def known_ids(all_evidence: dict[str, dict[str, Any]], issues: list[Issue]) -> s
     for issue in issues:
         ids.update({issue.id, issue.evidence_id, issue.domain_id, f"evidence.{issue.evidence_id}"})
     ids.update(NON_WAIVABLE_EVIDENCE_IDS)
+    ids.update(PRODUCTION_BETA_NON_WAIVABLE_EVIDENCE_IDS)
     ids.update(PRODUCTION_ARTIFACT_GATE_IDS)
     return expand_waiver_target_aliases(*ids)
 
@@ -2614,12 +2712,21 @@ def build_command(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
 
 
 def run_self_test(quiet: bool = False) -> None:
+    for evidence_id in CRITICAL_PRODUCTION_BETA_EVIDENCE_IDS:
+        if not evidence_id_is_non_waivable_in_mode(evidence_id, "production-beta"):
+            raise AssertionError(f"production critical evidence is waivable in production-beta: {evidence_id}")
+        gate_id = f"evidence.{evidence_id}"
+        if not evidence_id_is_non_waivable_in_mode(gate_id, "production-beta"):
+            raise AssertionError(f"production critical evidence gate is waivable in production-beta: {gate_id}")
+    if evidence_id_is_non_waivable_in_mode("app-store.submission-cli", "release-candidate"):
+        raise AssertionError("release-candidate app-store evidence should remain waiverable")
+
     fixture_expectations = {
         "go-no-go-pass.json": "go",
         "go-no-go-no-go.json": "no-go",
-        "go-no-go-with-waivers.json": "go-with-waivers",
+        "go-no-go-with-waivers.json": "no-go",
         "go-no-go-expired-waiver.json": "no-go",
-        "go-no-go-waiver-valid-at-generated-at.json": "go-with-waivers",
+        "go-no-go-waiver-valid-at-generated-at.json": "no-go",
         "go-no-go-critical-redaction.json": "no-go",
         "go-no-go-test-signing-production.json": "no-go",
         "go-no-go-summary-failure-with-gates.json": "no-go",
@@ -2638,8 +2745,10 @@ def run_self_test(quiet: bool = False) -> None:
         "go-no-go-network-scale-redaction-waiver.json": "no-go",
         "go-no-go-secret-value-redaction.json": "no-go",
         "go-no-go-underseverity-waiver.json": "no-go",
-        "go-no-go-live-evidence-waiver-alias.json": "go-with-waivers",
+        "go-no-go-live-evidence-waiver-alias.json": "no-go",
         "go-no-go-live-network-skip-waiver.json": "no-go",
+        "go-no-go-production-critical-evidence-waiver.json": "no-go",
+        "go-no-go-release-candidate-live-waiver.json": "go-with-waivers",
         "go-no-go-release-candidate-live-disabled.json": "no-go",
         "go-no-go-malformed-non-release-status.json": "no-go",
     }
@@ -2681,10 +2790,12 @@ def run_self_test(quiet: bool = False) -> None:
                 if dashboard.get("generatedAt") != "2026-06-24T00:00:00Z":
                     raise AssertionError("expired waiver fixture did not use its recorded generatedAt")
             if fixture_name == "go-no-go-waiver-valid-at-generated-at.json":
-                if int(dashboard.get("summary", {}).get("waiversUsed", 0)) != 1:
-                    raise AssertionError("waiver valid at generatedAt was not used")
+                if int(dashboard.get("summary", {}).get("waiversUsed", 0)) != 0:
+                    raise AssertionError("non-waivable live evidence waiver was incorrectly used")
                 if dashboard.get("generatedAt") != "1999-06-24T00:00:00Z":
                     raise AssertionError("historical waiver fixture did not use its recorded generatedAt")
+                if "production-beta.waiver-validation" not in blocker_ids:
+                    raise AssertionError("historical non-waivable live evidence waiver did not fail validation")
             if fixture_name == "go-no-go-production-summary-not-ready.json":
                 if "production-beta.promotion-ready" not in blocker_ids:
                     raise AssertionError("non-ready production summary did not block production beta")
@@ -2696,15 +2807,29 @@ def run_self_test(quiet: bool = False) -> None:
                 if int(dashboard.get("summary", {}).get("waiversUsed", 0)) != 0:
                     raise AssertionError("non-passing production summary hard blocker was incorrectly waived")
             if fixture_name == "go-no-go-live-evidence-waiver-alias.json":
+                if int(dashboard.get("summary", {}).get("waiversUsed", 0)) != 0:
+                    raise AssertionError("live evidence alias waiver was incorrectly used")
+                if "live-network-beta.content-fetch" not in blocker_ids:
+                    raise AssertionError("live evidence waiver attempt did not leave live-network evidence blocked")
+                if "production-beta.waiver-validation" not in blocker_ids:
+                    raise AssertionError("live evidence waiver attempt did not fail waiver validation")
+            if fixture_name == "go-no-go-release-candidate-live-waiver.json":
                 if int(dashboard.get("summary", {}).get("waiversUsed", 0)) != 1:
-                    raise AssertionError("live evidence alias waiver was not used")
+                    raise AssertionError("release-candidate live evidence waiver was not used")
                 waived_evidence_ids = {
                     str(warning.get("evidenceId"))
                     for warning in dashboard.get("warnings", [])
                     if isinstance(warning, dict) and warning.get("waivedBy")
                 }
                 if "live-network-beta.content-fetch" not in waived_evidence_ids:
-                    raise AssertionError("live evidence alias waiver did not cover live-network evidence")
+                    raise AssertionError("release-candidate live evidence waiver did not waive content-fetch evidence")
+            if fixture_name == "go-no-go-production-critical-evidence-waiver.json":
+                if int(dashboard.get("summary", {}).get("waiversUsed", 0)) != 0:
+                    raise AssertionError("production-critical evidence waiver was incorrectly used")
+                if "app-store.submission-cli" not in blocker_ids:
+                    raise AssertionError("production-critical app-store evidence did not remain blocked")
+                if "production-beta.waiver-validation" not in blocker_ids:
+                    raise AssertionError("production-critical evidence waiver attempt did not fail validation")
             if fixture_name == "go-no-go-release-cert-schema-waiver.json":
                 if int(dashboard.get("summary", {}).get("waiversUsed", 0)) != 1:
                     raise AssertionError("release-certification schema waiver was not used by dashboard")

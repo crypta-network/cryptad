@@ -8022,7 +8022,7 @@ def run_self_test(repo_root: Path) -> None:
                 target_doc = workspace / doc_path
                 target_doc.parent.mkdir(parents=True, exist_ok=True)
                 assert source_doc.is_file(), f"matrix doc path missing: {doc_path}"
-                shutil.copy2(source_doc, target_doc)
+                shutil.copy(source_doc, target_doc)
         docs_check_paths = {
             *app_platform_docs_check.REQUIRED_DOCS,
             *app_platform_docs_check.REQUIRED_PORTAL_LINKS,
@@ -8032,24 +8032,24 @@ def run_self_test(repo_root: Path) -> None:
         for source_doc in repo_root.glob("docs/**/*.md"):
             target_doc = workspace / source_doc.relative_to(repo_root)
             target_doc.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(source_doc, target_doc)
+            shutil.copy(source_doc, target_doc)
         for doc_path in sorted(docs_check_paths):
             source_doc = repo_root / doc_path
             target_doc = workspace / doc_path
             target_doc.parent.mkdir(parents=True, exist_ok=True)
             assert source_doc.is_file(), f"docs-check path missing: {doc_path}"
-            shutil.copy2(source_doc, target_doc)
-        shutil.copy2(fixture_dir / "self-test-interop-smoke.json", workspace / "build/interop-smoke/summary.json")
-        shutil.copy2(
+            shutil.copy(source_doc, target_doc)
+        shutil.copy(fixture_dir / "self-test-interop-smoke.json", workspace / "build/interop-smoke/summary.json")
+        shutil.copy(
             fixture_dir / "self-test-interop-extended.json",
             workspace / "build/interop-extended/summary.json",
         )
-        shutil.copy2(fixture_dir / "self-test-perf-smoke.json", workspace / "build/perf-smoke/summary.json")
-        shutil.copy2(
+        shutil.copy(fixture_dir / "self-test-perf-smoke.json", workspace / "build/perf-smoke/summary.json")
+        shutil.copy(
             fixture_dir / "self-test-app-platform-smoke.json",
             out_dir / "app-platform-smoke/summary.json",
         )
-        shutil.copy2(
+        shutil.copy(
             fixture_dir / "self-test-network-scale-soak.json",
             out_dir / "network-scale-soak/summary.json",
         )

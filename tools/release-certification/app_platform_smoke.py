@@ -16743,7 +16743,7 @@ def run_self_test(repo_root: Path) -> None:
         )
         canonical_sdk = repo_root / "platform-sdk-js/src/main/resources/network/crypta/platform/sdk/js/crypta-platform.js"
         if canonical_sdk.is_file():
-            shutil.copy2(canonical_sdk, static_dir / "crypta-platform.js")
+            shutil.copy(canonical_sdk, static_dir / "crypta-platform.js")
         else:
             (static_dir / "crypta-platform.js").write_text(
                 'window.CryptaPlatform={}; X="X-Crypta-App-Session";\n',
@@ -18524,8 +18524,8 @@ def make_self_test_workspace(workspace: Path) -> None:
                     encoding="utf-8",
                 )
             for asset_name in design_system_asset_names():
-                shutil.copy2(design_dir / asset_name, root / "static/crypta-ui" / asset_name)
-            shutil.copy2(sdk, root / "static/crypta-platform.js")
+                shutil.copy(design_dir / asset_name, root / "static/crypta-ui" / asset_name)
+            shutil.copy(sdk, root / "static/crypta-platform.js")
         is_profile_publisher = app_id == "profile-publisher"
         is_feed_reader = app_id == "feed-reader"
         is_social_inbox = app_id == "social-inbox"

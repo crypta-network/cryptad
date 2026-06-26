@@ -1,0 +1,47 @@
+{
+  "extends": "go-no-go-pass.json",
+  "inputs": {
+    "liveNetworkSummary": {
+      "enabled": true,
+      "evidence": [
+        {
+          "id": "live-network-beta.content-fetch",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-live-network",
+          "status": "fail",
+          "summary": "Release-candidate live content fetch evidence failed during a controlled lab outage."
+        }
+      ],
+      "kind": "live-network-beta-smoke",
+      "mode": "release-candidate",
+      "redaction": {
+        "findings": [],
+        "status": "pass"
+      },
+      "required": true,
+      "status": "fail"
+    }
+  },
+  "mode": "release-candidate",
+  "releaseId": "crypta-production-beta-270-release-candidate-live-waiver",
+  "waivers": {
+    "releaseId": "crypta-production-beta-270-release-candidate-live-waiver",
+    "schemaVersion": 1,
+    "waivers": [
+      {
+        "approvedBy": "release-manager@example.invalid",
+        "createdAt": "2026-06-24T00:00:00Z",
+        "evidenceId": "live-network-beta.content-fetch",
+        "expiresAt": "2099-06-30T00:00:00Z",
+        "id": "waiver-release-candidate-live-content-fetch-001",
+        "owner": "release-engineering",
+        "rationale": "Release manager accepted the release-candidate live content fetch gap for this dry-run evidence window.",
+        "references": [
+          "fixture-pr-270-release-candidate-live-waiver"
+        ],
+        "scope": "release-candidate",
+        "severity": "blocker"
+      }
+    ]
+  }
+}
