@@ -946,6 +946,62 @@ class AppCatalogManagerTest {
   }
 
   @Test
+  void
+      refresh_whenPreviouslySuccessfulMirrorLaterReturnsStaleRevision_expectSuccessDigestPreserved()
+          throws Exception {
+    KeyPair keyPair = keyPair();
+    Path bundle = signedBundle(keyPair);
+    Path artifact = zipDirectory(bundle, tempDir.resolve(ARTIFACT_ZIP));
+    Path catalog = signedCatalog(artifact, keyPair, sha256(artifact), Files.size(artifact));
+    FakeContentFetchPort contentFetchPort =
+        new FakeContentFetchPort(
+            Map.of(
+                CRYPTA_CATALOG_KEY,
+                Files.readAllBytes(catalog),
+                CRYPTA_SIGNATURE_KEY,
+                Files.readAllBytes(
+                    catalog.resolveSibling(AppCatalogSignature.SIGNATURE_FILE_NAME))));
+    AppCatalogManager manager = manager(trustedKeys(keyPair), contentFetchPort);
+    manager.addSource(CRYPTA_CATALOG_SOURCE);
+    Instant successfulMirrorGeneratedAt = GENERATED_AT.plusSeconds(3600);
+    Path mirrorCatalog =
+        signedCatalog(
+            CATALOG_ID,
+            artifact.toUri(),
+            keyPair,
+            KEY_ID,
+            sha256(artifact),
+            Files.size(artifact),
+            successfulMirrorGeneratedAt);
+    manager.addMirror(CATALOG_ID, "backup", mirrorCatalog.toString(), 1, true);
+    contentFetchPort.failWith(new IOException("primary unavailable"));
+    manager.refresh(CATALOG_ID);
+    AppCatalogMirrorHealth successfulHealth = healthFor(manager.sourceHealth(CATALOG_ID), "backup");
+    Optional<Instant> previousSuccessAt = successfulHealth.lastSuccessfulRefreshAt();
+    Optional<String> previousDigest = successfulHealth.lastCatalogDigest();
+
+    signedCatalog(
+        CATALOG_ID,
+        artifact.toUri(),
+        keyPair,
+        KEY_ID,
+        sha256(artifact),
+        Files.size(artifact),
+        GENERATED_AT.minusSeconds(3600));
+    assertThrows(AppCatalogException.class, () -> manager.refresh(CATALOG_ID));
+    AppCatalogMirrorHealth staleHealth = healthFor(manager.sourceHealth(CATALOG_ID), "backup");
+
+    assertEquals(AppCatalogFetchStatus.SUCCESS, successfulHealth.lastFetchStatus());
+    assertTrue(previousSuccessAt.isPresent());
+    assertTrue(previousDigest.isPresent());
+    assertEquals(AppCatalogFetchStatus.STALE, staleHealth.lastFetchStatus());
+    assertEquals(previousSuccessAt, staleHealth.lastSuccessfulRefreshAt());
+    assertEquals(previousDigest, staleHealth.lastCatalogDigest());
+    assertEquals(Optional.of(KEY_ID), staleHealth.lastSignatureKeyId());
+    assertEquals(Optional.of(successfulMirrorGeneratedAt), staleHealth.lastGeneratedAt());
+  }
+
+  @Test
   void rollback_whenPreviousRevisionIsRetained_expectRevisionReverifiedAndRestored()
       throws Exception {
     KeyPair keyPair = keyPair();

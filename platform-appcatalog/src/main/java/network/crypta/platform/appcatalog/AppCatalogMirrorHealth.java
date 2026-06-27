@@ -162,19 +162,27 @@ public record AppCatalogMirrorHealth(
       String digest,
       String signatureKeyId,
       Instant generatedAt) {
+    boolean hasPreviousSuccess = hasPreviousSuccessfulRevision();
     return new AppCatalogMirrorHealth(
         id,
         role,
         AppCatalogFetchStatus.STALE,
         Optional.of(attemptedAt),
-        lastSuccessfulRefreshAt,
+        hasPreviousSuccess ? lastSuccessfulRefreshAt : Optional.empty(),
         Optional.of("failed_stale_revision"),
         Optional.of("mirror returned an older catalog revision"),
-        Optional.ofNullable(resolvedUri),
-        Optional.of(digest),
-        Optional.of(signatureKeyId),
-        Optional.of(generatedAt),
+        hasPreviousSuccess ? lastResolvedUri : Optional.ofNullable(resolvedUri),
+        hasPreviousSuccess ? lastCatalogDigest : Optional.of(digest),
+        hasPreviousSuccess ? lastSignatureKeyId : Optional.of(signatureKeyId),
+        hasPreviousSuccess ? lastGeneratedAt : Optional.of(generatedAt),
         lastRollbackReason);
+  }
+
+  private boolean hasPreviousSuccessfulRevision() {
+    return lastSuccessfulRefreshAt.isPresent()
+        && lastCatalogDigest.isPresent()
+        && lastSignatureKeyId.isPresent()
+        && lastGeneratedAt.isPresent();
   }
 
   /**
