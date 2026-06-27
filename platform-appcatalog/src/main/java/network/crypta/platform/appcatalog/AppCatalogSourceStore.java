@@ -2,6 +2,7 @@ package network.crypta.platform.appcatalog;
 
 import java.io.IOException;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
@@ -71,6 +72,7 @@ public final class AppCatalogSourceStore {
   private static final String ENDPOINT_PRIORITY_KEY = "priority";
   private static final String HEALTH_LAST_GENERATED_AT_KEY = "lastGeneratedAt";
   private static final String HEALTH_LAST_ROLLBACK_REASON_KEY = "lastRollbackReason";
+  private static final long MAX_SOURCE_METADATA_BYTES = AppCatalogSidecars.MAX_SIGNATURE_BYTES;
   private static final int REVISION_RETENTION_COUNT = 5;
 
   private final Path rootDirectory;
@@ -583,7 +585,7 @@ public final class AppCatalogSourceStore {
           AppCatalogSidecars.utf8(
               AppCatalogSidecars.readRequiredBytes(
                   file,
-                  AppCatalogSidecars.MAX_SIGNATURE_BYTES,
+                  MAX_SOURCE_METADATA_BYTES,
                   description,
                   AppCatalogSidecars.INVALID_CATALOG_SOURCE)),
           description);
@@ -975,7 +977,17 @@ public final class AppCatalogSourceStore {
       appendProperty(builder, prefix + "enabled", Boolean.toString(mirror.enabled()));
       appendProperty(builder, prefix + ADDED_AT_KEY, mirror.addedAt().toString());
     }
-    writeStringAtomic(directory, directory.resolve(ENDPOINTS_FILE_NAME), builder.toString());
+    String content = builder.toString();
+    rejectOversizedEndpointSidecar(content);
+    writeStringAtomic(directory, directory.resolve(ENDPOINTS_FILE_NAME), content);
+  }
+
+  private static void rejectOversizedEndpointSidecar(String content) {
+    if (content.getBytes(StandardCharsets.UTF_8).length > MAX_SOURCE_METADATA_BYTES) {
+      throw new AppCatalogException(
+          AppCatalogSidecars.INVALID_CATALOG_SOURCE,
+          "catalog source endpoints exceed the allowed size");
+    }
   }
 
   private static void writeHealth(

@@ -906,6 +906,56 @@ class AppCatalogManagerTest {
   }
 
   @Test
+  void addMirror_whenEndpointMetadataWouldExceedReadBound_expectRejectedAndCatalogReadable()
+      throws Exception {
+    KeyPair keyPair = keyPair();
+    Path bundle = signedBundle(keyPair);
+    Path artifact = zipDirectory(bundle, tempDir.resolve(ARTIFACT_ZIP));
+    Path catalog = signedCatalog(artifact, keyPair, sha256(artifact), Files.size(artifact));
+    AppCatalogManager manager = manager(trustedKeys(keyPair));
+
+    manager.addSource(catalog.toString());
+    AppCatalogException exception =
+        assertThrows(
+            AppCatalogException.class,
+            () -> manager.addMirror(CATALOG_ID, "oversized", oversizedMirrorSource(), 1, true));
+
+    assertEquals(AppCatalogSidecars.INVALID_CATALOG_SOURCE, exception.errorCode());
+    assertEquals(APP_ID, manager.listApps(CATALOG_ID).getFirst().appId());
+    assertTrue(
+        manager.listMirrors(CATALOG_ID).stream()
+            .noneMatch(mirror -> "oversized".equals(mirror.id().value())));
+  }
+
+  @Test
+  void updateMirror_whenEndpointMetadataWouldExceedReadBound_expectExistingMirrorPreserved()
+      throws Exception {
+    KeyPair keyPair = keyPair();
+    Path bundle = signedBundle(keyPair);
+    Path artifact = zipDirectory(bundle, tempDir.resolve(ARTIFACT_ZIP));
+    Path catalog = signedCatalog(artifact, keyPair, sha256(artifact), Files.size(artifact));
+    String originalSource = "https://mirror.example.invalid/cryptad-app-catalog.properties";
+    AppCatalogManager manager = manager(trustedKeys(keyPair));
+
+    manager.addSource(catalog.toString());
+    manager.addMirror(CATALOG_ID, "backup", originalSource, 1, true);
+    AppCatalogException exception =
+        assertThrows(
+            AppCatalogException.class,
+            () -> manager.updateMirror(CATALOG_ID, "backup", oversizedMirrorSource(), null, null));
+    AppCatalogMirror retained =
+        manager.listMirrors(CATALOG_ID).stream()
+            .filter(mirror -> "backup".equals(mirror.id().value()))
+            .findFirst()
+            .orElseThrow();
+
+    assertEquals(AppCatalogSidecars.INVALID_CATALOG_SOURCE, exception.errorCode());
+    assertEquals(
+        AppCatalogSource.parse(originalSource).displayUri(), retained.source().displayUri());
+    assertEquals(APP_ID, manager.listApps(CATALOG_ID).getFirst().appId());
+  }
+
+  @Test
   void refresh_whenMirrorReturnsOlderVerifiedRevision_expectCurrentCatalogPreserved()
       throws Exception {
     KeyPair keyPair = keyPair();
@@ -1893,6 +1943,12 @@ class AppCatalogManagerTest {
         .filter(entry -> entry.id().value().equals(sourceId))
         .findFirst()
         .orElseThrow();
+  }
+
+  private static String oversizedMirrorSource() {
+    return "https://mirror.example.invalid/"
+        + "a".repeat((int) AppCatalogSidecars.MAX_SIGNATURE_BYTES)
+        + "/cryptad-app-catalog.properties";
   }
 
   private Path signedBundle(KeyPair keyPair) throws IOException {
