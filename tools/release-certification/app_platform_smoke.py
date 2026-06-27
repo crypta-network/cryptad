@@ -3880,6 +3880,11 @@ def collect_catalog_operations_and_mirrors_evidence(settings: Settings) -> Evide
         )
     )
     manager_text = read_source(appcatalog_dir / "AppCatalogManager.java")
+    operations_text = read_source(appcatalog_dir / "AppCatalogOperations.java")
+    refresh_coordinator_text = read_source(appcatalog_dir / "AppCatalogRefreshCoordinator.java")
+    catalog_operations_text = "\n".join(
+        (manager_text, operations_text, refresh_coordinator_text)
+    )
     store_text = read_source(appcatalog_dir / "AppCatalogSourceStore.java")
     handler_text = read_source(api_handler)
     routes_text = read_source(api_dir / "PlatformApiAppRoutes.java")
@@ -3917,24 +3922,24 @@ def collect_catalog_operations_and_mirrors_evidence(settings: Settings) -> Evide
             and "AppCatalogMirrorHealth" in model_text
         ),
         "mirrorFallbackKeepsSignatureTrust": (
-            "refreshEndpoints" in manager_text
-            and "fetchAndVerifyEndpoint" in manager_text
-            and "AppCatalogVerifier.verify" in manager_text
-            and "CATALOG_ID_MISMATCH" in manager_text
-            and "candidate.generatedAt().isBefore" in manager_text
+            "refreshEndpoints" in catalog_operations_text
+            and "fetchAndVerifyEndpoint" in catalog_operations_text
+            and "AppCatalogVerifier.verify" in catalog_operations_text
+            and "CATALOG_ID_MISMATCH" in catalog_operations_text
+            and "candidate.generatedAt().isBefore" in catalog_operations_text
         ),
         "revisionHistoryAndRollbackPresent": (
             "HISTORY_DIRECTORY_NAME" in store_text
             and "REVISION_RETENTION_COUNT" in store_text
             and "recordRevision" in store_text
             and "listRevisions" in store_text
-            and "rollbackCandidates" in manager_text
-            and "sourceStore.readRevision" in manager_text
+            and "rollbackCandidates" in catalog_operations_text
+            and "sourceStore.readRevision" in catalog_operations_text
         ),
         "keyRotationAndEmergencyRefreshPresent": (
-            "keyRotationStatus" in manager_text
+            "keyRotationStatus" in catalog_operations_text
             and "AppCatalogKeyRotationStatus" in model_text
-            and "emergencyRefresh" in manager_text
+            and "emergencyRefresh" in catalog_operations_text
             and "emergency-refresh" in routes_text
         ),
         "platformApiOperationsRoutesPresent": (
@@ -3996,6 +4001,10 @@ def collect_catalog_operations_and_mirrors_evidence(settings: Settings) -> Evide
         ],
         "sources": {
             "manager": display_path(appcatalog_dir / "AppCatalogManager.java", workspace),
+            "operations": display_path(appcatalog_dir / "AppCatalogOperations.java", workspace),
+            "refreshCoordinator": display_path(
+                appcatalog_dir / "AppCatalogRefreshCoordinator.java", workspace
+            ),
             "store": display_path(appcatalog_dir / "AppCatalogSourceStore.java", workspace),
             "apiHandler": display_path(api_handler, workspace),
             "apiRoutes": display_path(api_dir / "PlatformApiAppRoutes.java", workspace),
@@ -19131,11 +19140,20 @@ def make_self_test_workspace(workspace: Path) -> None:
         "final class AppCatalogManager { Object downloader = new AppCatalogArtifactDownloader(contentFetchPort); "
         "String s = \"AppCatalogVerifier.verify sourceStore.write(catalog, source, fetched "
         "CATALOG_ID_MISMATCH recordRefreshFailure previous stored sidecars remain in place "
-        "refreshEndpoints fetchAndVerifyEndpoint candidate.generatedAt().isBefore rollbackCandidates "
-        "sourceStore.readRevision keyRotationStatus emergencyRefresh\"; "
+        "keyRotationStatus emergencyRefresh\"; "
         "Object securityDecision(String catalogId, String appId) { return null; } "
         "Object installedSecurityDecision(String appId, String version) { return null; } "
         "void verifyInstallPlan(AppCatalogInstallPlan plan) { bundleExtractor.verifyStagedBundle(plan.entry(), plan.stagedBundleDirectory(), trustedKeyProvider.trustedKeys()); } }\n",
+        encoding="utf-8",
+    )
+    (appcatalog_dir / "AppCatalogOperations.java").write_text(
+        "final class AppCatalogOperations { String s = \"refreshEndpoints rollbackCandidates "
+        "sourceStore.readRevision keyRotationStatus\"; }\n",
+        encoding="utf-8",
+    )
+    (appcatalog_dir / "AppCatalogRefreshCoordinator.java").write_text(
+        "final class AppCatalogRefreshCoordinator { String s = \"fetchAndVerifyEndpoint "
+        "AppCatalogVerifier.verify CATALOG_ID_MISMATCH candidate.generatedAt().isBefore\"; }\n",
         encoding="utf-8",
     )
     (appcatalog_dir / "AppCatalogSourceStore.java").write_text(
