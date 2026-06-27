@@ -84,7 +84,7 @@ final class AppCatalogOperations {
     Map<AppCatalogMirrorId, AppCatalogMirrorHealth> health =
         new LinkedHashMap<>(stored.mirrorHealth());
     if (currentRevision != null) {
-      health.putIfAbsent(currentRevision.sourceId(), healthFromRevision(currentRevision));
+      putCurrentRevisionHealth(health, currentRevision);
     }
     addPrimaryHealthWhenCurrent(stored, catalog, currentRevision, health);
     return sourceHealthEntries(stored, currentRevision, health);
@@ -285,6 +285,23 @@ final class AppCatalogOperations {
     if (entries.stream().noneMatch(entry -> entry.id().equals(revision.sourceId()))) {
       entries.add(health.getOrDefault(revision.sourceId(), healthFromRevision(revision)));
     }
+  }
+
+  private static void putCurrentRevisionHealth(
+      Map<AppCatalogMirrorId, AppCatalogMirrorHealth> health,
+      AppCatalogVerifiedRevision currentRevision) {
+    AppCatalogMirrorHealth currentHealth = healthFromRevision(currentRevision);
+    health.compute(
+        currentRevision.sourceId(),
+        (_, existing) -> shouldUseCurrentRevisionHealth(existing) ? currentHealth : existing);
+  }
+
+  private static boolean shouldUseCurrentRevisionHealth(AppCatalogMirrorHealth existing) {
+    return existing == null
+        || (existing.lastFetchStatus() == AppCatalogFetchStatus.SKIPPED
+            && existing.lastSuccessfulRefreshAt().isEmpty()
+            && existing.lastCatalogDigest().isEmpty()
+            && existing.lastSignatureKeyId().isEmpty());
   }
 
   private static AppCatalogMirrorHealth healthFromRevision(AppCatalogVerifiedRevision revision) {

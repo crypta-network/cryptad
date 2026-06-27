@@ -826,7 +826,9 @@ class AppCatalogManagerTest {
                 CRYPTA_SIGNATURE_KEY,
                 Files.readAllBytes(
                     catalog.resolveSibling(AppCatalogSignature.SIGNATURE_FILE_NAME))));
-    AppCatalogManager manager = manager(trustedKeys(keyPair), contentFetchPort);
+    AppCatalogSourceStore sourceStore =
+        new AppCatalogSourceStore(tempDir.resolve(CATALOG_SOURCE_STORE_DIRECTORY));
+    AppCatalogManager manager = manager(sourceStore, trustedKeys(keyPair), contentFetchPort);
     manager.addSource(CRYPTA_CATALOG_SOURCE);
     manager.addMirror(CATALOG_ID, "backup", catalog.toString(), 1, true);
     contentFetchPort.failWith(new IOException("primary unavailable"));
@@ -848,6 +850,13 @@ class AppCatalogManagerTest {
         "https://replacement.example.invalid/cryptad-app-catalog.properties",
         1,
         true);
+    AppCatalogMirror reusedMirror =
+        manager.listMirrors(CATALOG_ID).stream()
+            .filter(mirror -> "backup".equals(mirror.id().value()))
+            .findFirst()
+            .orElseThrow();
+    sourceStore.writeMirrorHealth(
+        CATALOG_ID, Map.of(reusedMirror.id(), AppCatalogMirrorHealth.skipped(reusedMirror)));
     AppCatalogMirrorHealth reusedHealth = healthFor(manager.sourceHealth(CATALOG_ID), "backup");
 
     assertEquals(AppCatalogFetchStatus.SUCCESS, reusedHealth.lastFetchStatus());
