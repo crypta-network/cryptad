@@ -46,6 +46,7 @@ import network.crypta.platform.appcatalog.AppCatalogSecurityPolicy;
 import network.crypta.platform.appcatalog.AppCatalogSecurityStatus;
 import network.crypta.platform.appcatalog.AppCatalogSourceSnapshot;
 import network.crypta.platform.appcatalog.AppCatalogVerifiedRevision;
+import network.crypta.platform.appcatalog.AppCatalogVersionDenylistEntry;
 import network.crypta.platform.appcatalog.AppReviewPolicy;
 import network.crypta.platform.appcatalog.AppReviewReceiptVerifier;
 import network.crypta.platform.appcatalog.AppReviewTransparencyEventKind;
@@ -820,9 +821,7 @@ public final class AppCatalogsApiHandler {
               .flatMap(AppCatalogMirrorHealth::lastCatalogDigest)
               .orElse(null));
       json.put("advisoryIdsAdded", advisoryIdsAdded(beforePolicy, afterPolicy));
-      json.put(
-          "denylistEntriesAdded",
-          Math.max(0, afterPolicy.denylist().size() - beforePolicy.denylist().size()));
+      json.put("denylistEntriesAdded", denylistEntriesAdded(beforePolicy, afterPolicy));
       json.put(LAST_ATTEMPT_AT_FIELD, after.lastAttemptAt().toString());
       json.put(REDACTED_FIELD, true);
       return json;
@@ -1857,6 +1856,25 @@ public final class AppCatalogsApiHandler {
         .map(advisory -> String.valueOf(advisory.toJsonValue().get("id")))
         .filter(id -> !before.contains(id))
         .toList();
+  }
+
+  private static int denylistEntriesAdded(
+      AppCatalogSecurityPolicy beforePolicy, AppCatalogSecurityPolicy afterPolicy) {
+    Set<String> before =
+        beforePolicy.denylist().stream()
+            .map(AppCatalogsApiHandler::denylistIdentity)
+            .collect(java.util.stream.Collectors.toSet());
+    long added =
+        afterPolicy.denylist().stream()
+            .map(AppCatalogsApiHandler::denylistIdentity)
+            .filter(identity -> !before.contains(identity))
+            .distinct()
+            .count();
+    return Math.toIntExact(added);
+  }
+
+  private static String denylistIdentity(AppCatalogVersionDenylistEntry entry) {
+    return entry.id() + '\n' + entry.appId() + '\n' + entry.version();
   }
 
   private static Integer optionalPriority(Map<String, List<String>> queryParameters) {

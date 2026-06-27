@@ -487,6 +487,64 @@ class AppCatalogsApiHandlerTest {
   }
 
   @Test
+  void emergencyRefresh_whenDenylistEntryIsReplaced_expectAddedEntryCountByIdentity()
+      throws Exception {
+    AppCatalogsApiHandler handler = new AppCatalogsApiHandler(catalogManager, appHost, () -> null);
+    Instant generatedAt = Instant.parse(GENERATED_AT_TEXT);
+    Instant refreshedAt = Instant.parse(PRIMARY_REFRESHED_AT_TEXT);
+    AppCatalogSource source = AppCatalogSource.parse(CATALOG_SOURCE_URI_TEXT);
+    AppCatalogSourceSnapshot snapshot =
+        new AppCatalogSourceSnapshot(
+            "core",
+            CORE_CATALOG_NAME,
+            source.uri(),
+            generatedAt,
+            2,
+            refreshedAt,
+            refreshedAt,
+            refreshedAt,
+            refreshedAt,
+            AppCatalogFetchStatus.SUCCESS,
+            Optional.empty(),
+            Optional.empty(),
+            Optional.of(source.resolvedCatalogFetchUri()),
+            Optional.of(CORE_CATALOG_KEY_ID));
+    List<AppCatalogMirrorHealth> health =
+        List.of(
+            new AppCatalogMirrorHealth(
+                AppCatalogMirrorId.PRIMARY,
+                AppCatalogSourceRole.PRIMARY,
+                AppCatalogFetchStatus.SUCCESS,
+                Optional.of(refreshedAt),
+                Optional.of(refreshedAt),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.of(source.resolvedCatalogFetchUri()),
+                Optional.of(PRIMARY_CATALOG_DIGEST),
+                Optional.of(CORE_CATALOG_KEY_ID),
+                Optional.of(generatedAt)));
+    AppCatalogSecurityPolicy beforePolicy = securityResponsePolicy();
+    AppCatalogVersionDenylistEntry replacementDenylist =
+        new AppCatalogVersionDenylistEntry(
+            "deny-queue-1-3-0",
+            APP_ID,
+            NEWER_VERSION,
+            SECURITY_ADVISORY_ID_0001,
+            "New vulnerable release.",
+            Optional.of(APP_ID),
+            Optional.of("Export app data before removal."));
+    AppCatalogSecurityPolicy afterPolicy =
+        new AppCatalogSecurityPolicy(beforePolicy.advisories(), List.of(replacementDenylist));
+    when(catalogManager.securityPolicy("core")).thenReturn(beforePolicy).thenReturn(afterPolicy);
+    when(catalogManager.emergencyRefresh("core")).thenReturn(snapshot);
+    when(catalogManager.sourceHealth("core")).thenReturn(health);
+
+    Map<String, Object> response = handler.emergencyRefresh("core");
+
+    assertEquals(1, response.get("denylistEntriesAdded"));
+  }
+
+  @Test
   void listRecommendedCatalogs_whenSourceAndTrustedKeyAreMissing_expectNotConfiguredStatus()
       throws Exception {
     AppCatalogsApiHandler handler = handlerWithRecommended(List.of(recommended(null, null)));
