@@ -114,7 +114,7 @@ permissions=queue.read,queue.write
 permissions.rationale.queue.read=Reads local transfer queue state.
 permissions.rationale.queue.write=Updates local queue state after operator action.
 api.minimumVersion=1
-api.maximumTestedVersion=22
+api.maximumTestedVersion=23
 review.status=reviewed
 review.note=First-party beta review completed.
 changelog.summary=First public beta catalog entry.
@@ -130,7 +130,7 @@ permissions.rationale.content.insert.app-document=Queues the generated profile d
 permissions.rationale.app.data.read=Restores bounded profile drafts and publish summaries.
 permissions.rationale.app.data.write=Saves bounded profile drafts and publish summaries.
 api.minimumVersion=9
-api.maximumTestedVersion=22
+api.maximumTestedVersion=23
 api.targetStability=experimental
 api.experimentalCapabilitiesAccepted=true
 ```
@@ -151,7 +151,7 @@ categories=reader,publishing,content
 review.status=reviewed
 review.note=First-party feed reference app.
 api.minimumVersion=9
-api.maximumTestedVersion=22
+api.maximumTestedVersion=23
 api.targetStability=stable
 api.experimentalCapabilitiesAccepted=false
 maintenance.owner=crypta-core
@@ -194,7 +194,7 @@ categories=social,identity,reference
 review.status=reviewed
 review.note=First-party Social Inbox RC reference app; local threading and Trust Graph annotations only, not full WoT, plugin compatibility, Freetalk/Sone/Freemail, encrypted mail, crawler, or daemon-core protocol.
 api.minimumVersion=16
-api.maximumTestedVersion=22
+api.maximumTestedVersion=23
 api.targetStability=experimental
 api.experimentalCapabilitiesAccepted=true
 ```
@@ -303,6 +303,14 @@ catalog verification remains mandatory; live publication only changes the transp
 the signed sidecars. Bundle artifacts in catalog entries should remain immutable
 `crypta:CHK@...` ZIP URIs with declared size and SHA-256 values.
 
+Stable and beta catalog operations can configure a primary source plus mirrors for the same signed
+catalog id. Mirrors are transport fallback endpoints only: the catalog signature, trusted key id,
+catalog id, parser checks, and stale/downgrade policy still decide whether a refreshed catalog can
+become active. Operators can inspect mirror health, fallback state, verified revision history,
+explicit rollback candidates, key-rotation status, and emergency advisory refresh controls in Web
+Shell and Platform API. See
+[catalog-operations-and-mirrors.md](catalog-operations-and-mirrors.md).
+
 The live queue endpoint registers a disk-backed directory insert. The private insert URI must be the
 matching private USK directory insert URI for the configured public source parent. For example,
 `crypta:USK@PUBLIC.../catalog/42/cryptad-app-catalog.properties` is inserted from the secure
@@ -323,7 +331,8 @@ private insertion material into the repository or uploaded release artifacts.
 
 Release certification records `catalog.live-usk-publication`,
 `catalog.live-usk-source-verification`, `app-update.live-catalog-refresh`,
-`app-catalog.first-party-beta`, plus app-review governance evidence such as
+`app-catalog.first-party-beta`, `catalog.operations-and-mirrors`, plus app-review governance
+evidence such as
 `app-review.governance`, `app-review.reviewer-key-lifecycle`,
 `app-review.transparency-log`, `app-review.review-history-api`, and
 `app-review.first-party-review-chain`. The evidence is deterministic and offline: it checks for the

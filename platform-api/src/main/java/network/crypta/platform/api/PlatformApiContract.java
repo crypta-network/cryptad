@@ -60,7 +60,7 @@ public record PlatformApiContract(
    * tooling should be able to compare. It is not the Cryptad build number, and it is not the URL
    * API version.
    */
-  public static final int CURRENT_CONTRACT_VERSION = 22;
+  public static final int CURRENT_CONTRACT_VERSION = 23;
 
   /** Stable app-facing Platform API baseline name published in contract snapshots. */
   public static final String PLATFORM_API_STABLE_BASELINE_NAME = "1.0";
@@ -100,6 +100,7 @@ public record PlatformApiContract(
   private static final int THIRD_PARTY_REVIEW_METADATA_CONTRACT_VERSION = 20;
   private static final int CONSENT_CONTRACT_VERSION = 21;
   private static final int TRUST_GRAPH_BETA_HARDENING_CONTRACT_VERSION = 22;
+  private static final int CATALOG_OPERATIONS_CONTRACT_VERSION = 23;
 
   /**
    * Stable producer label written into generated contract snapshots.
@@ -140,6 +141,10 @@ public record PlatformApiContract(
           + TRUST_GRAPH_BETA_HARDENING_CONTRACT_VERSION
           + " adds Trust Graph beta hardening import-preview and local-anchor lifecycle route"
           + " descriptors"
+          + ". Contract version "
+          + CATALOG_OPERATIONS_CONTRACT_VERSION
+          + " adds signed catalog operations for mirrors, source health, rollback, key-rotation"
+          + " status, and emergency advisory refresh"
           + ". Endpoint descriptors retain the contract version where each route first appeared. "
           + "Experimental, deprecated, scheduled-for-removal, and internal entries are flagged for "
           + "developer tooling and release review before behavior changes.";
@@ -815,6 +820,7 @@ public record PlatformApiContract(
         "catalogs.refresh",
         List.of(PlatformApiCapabilities.CATALOGS_MANAGE),
         "Refresh one signed catalog source.");
+    builder.catalogOperations();
     builder.delete(
         ROUTE_FAMILY_APP_CATALOGS,
         "/app-catalogs/{catalogId}",
@@ -1235,6 +1241,90 @@ public record PlatformApiContract(
               true,
               true,
               "Add one recommended signed catalog source."));
+    }
+
+    private void catalogOperations() {
+      catalogOperationEndpoint(
+          METHOD_GET,
+          "/app-catalogs/{catalogId}/mirrors",
+          "catalogs.mirrors.list",
+          List.of(PlatformApiCapabilities.CATALOGS_READ),
+          "List redacted mirror endpoints for one signed catalog.");
+      catalogOperationEndpoint(
+          METHOD_POST,
+          "/app-catalogs/{catalogId}/mirrors",
+          "catalogs.mirrors.add",
+          List.of(PlatformApiCapabilities.CATALOGS_MANAGE),
+          "Add one mirror transport endpoint to a signed catalog.");
+      catalogOperationEndpoint(
+          METHOD_POST,
+          "/app-catalogs/{catalogId}/mirrors/{mirrorId}",
+          "catalogs.mirrors.update",
+          List.of(PlatformApiCapabilities.CATALOGS_MANAGE),
+          "Update one mirror transport endpoint.");
+      catalogOperationEndpoint(
+          METHOD_DELETE,
+          "/app-catalogs/{catalogId}/mirrors/{mirrorId}",
+          "catalogs.mirrors.remove",
+          List.of(PlatformApiCapabilities.CATALOGS_MANAGE),
+          "Remove one mirror transport endpoint.");
+      catalogOperationEndpoint(
+          METHOD_GET,
+          "/app-catalogs/{catalogId}/operations/health",
+          "catalogs.operations.health",
+          List.of(PlatformApiCapabilities.CATALOGS_READ),
+          "Read primary and mirror health for one signed catalog.");
+      catalogOperationEndpoint(
+          METHOD_GET,
+          "/app-catalogs/{catalogId}/operations/revisions",
+          "catalogs.operations.revisions",
+          List.of(PlatformApiCapabilities.CATALOGS_READ),
+          "List retained verified revisions and rollback eligibility.");
+      catalogOperationEndpoint(
+          METHOD_GET,
+          "/app-catalogs/{catalogId}/operations/key-rotation",
+          "catalogs.operations.key-rotation",
+          List.of(PlatformApiCapabilities.CATALOGS_READ),
+          "Read operator-safe catalog signing-key rotation status.");
+      catalogOperationEndpoint(
+          METHOD_POST,
+          "/app-catalogs/{catalogId}/operations/refresh-primary",
+          "catalogs.operations.refresh-primary",
+          List.of(PlatformApiCapabilities.CATALOGS_MANAGE),
+          "Refresh only the primary catalog source.");
+      catalogOperationEndpoint(
+          METHOD_POST,
+          "/app-catalogs/{catalogId}/operations/rollback",
+          "catalogs.operations.rollback",
+          List.of(PlatformApiCapabilities.CATALOGS_MANAGE),
+          "Roll back to a retained verified catalog revision.");
+      catalogOperationEndpoint(
+          METHOD_POST,
+          "/app-catalogs/{catalogId}/operations/emergency-refresh",
+          "catalogs.operations.emergency-refresh",
+          List.of(PlatformApiCapabilities.CATALOGS_MANAGE),
+          "Run an immediate signed catalog refresh for advisory propagation.");
+    }
+
+    private void catalogOperationEndpoint(
+        String method,
+        String routeTemplate,
+        String actionLabel,
+        List<String> capabilities,
+        String description) {
+      endpoint(
+          new EndpointSpec(
+              ROUTE_FAMILY_APP_CATALOGS,
+              method,
+              routeTemplate,
+              actionLabel,
+              capabilities,
+              CATALOG_OPERATIONS_CONTRACT_VERSION,
+              true,
+              false,
+              false,
+              PlatformApiStabilityLevel.OPERATOR_ONLY,
+              description));
     }
 
     private void queueAppDocumentPost() {

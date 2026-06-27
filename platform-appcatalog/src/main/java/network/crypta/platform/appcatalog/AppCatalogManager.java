@@ -1,9 +1,6 @@
 package network.crypta.platform.appcatalog;
 
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
 import network.crypta.platform.appdist.TrustedAppKeys;
@@ -28,9 +25,10 @@ public final class AppCatalogManager {
   private final AppCatalogSourceStore sourceStore;
   private final TrustedKeyProvider trustedKeyProvider;
   private final AppCatalogFetcher fetcher;
-  private final AppCatalogArtifactDownloader artifactDownloader;
-  private final AppCatalogBundleExtractor bundleExtractor;
   private final AppReviewTransparencyLog reviewTransparencyLog;
+  private final AppCatalogOperations operations;
+  private final AppCatalogRefreshCoordinator refreshCoordinator;
+  private final AppCatalogInstallPlanner installPlanner;
 
   /**
    * Creates a manager with default JDK fetch and download helpers.
@@ -124,10 +122,16 @@ public final class AppCatalogManager {
     this.sourceStore = Objects.requireNonNull(sourceStore, "sourceStore");
     this.trustedKeyProvider = Objects.requireNonNull(trustedKeyProvider, "trustedKeyProvider");
     this.fetcher = Objects.requireNonNull(fetcher, "fetcher");
-    this.artifactDownloader = Objects.requireNonNull(artifactDownloader, "artifactDownloader");
-    this.bundleExtractor = Objects.requireNonNull(bundleExtractor, "bundleExtractor");
     this.reviewTransparencyLog =
         Objects.requireNonNull(reviewTransparencyLog, "reviewTransparencyLog");
+    this.operations =
+        new AppCatalogOperations(this.sourceStore, this.trustedKeyProvider, this.fetcher);
+    this.refreshCoordinator =
+        new AppCatalogRefreshCoordinator(
+            this.sourceStore, this.trustedKeyProvider, this.fetcher, this.operations);
+    this.installPlanner =
+        new AppCatalogInstallPlanner(
+            this.sourceStore, this.trustedKeyProvider, artifactDownloader, bundleExtractor);
   }
 
   /**
@@ -164,6 +168,22 @@ public final class AppCatalogManager {
   }
 
   /**
+   * Reads one configured catalog after re-verifying its stored sidecars.
+   *
+   * <p>This is intentionally scoped to the requested catalog so operator troubleshooting endpoints
+   * can still inspect a healthy catalog when another configured catalog has corrupt or untrusted
+   * cached sidecars.
+   *
+   * @param catalogId catalog id to read
+   * @return verified source snapshot for the requested catalog
+   * @throws IOException if the requested catalog cannot be read or verified
+   */
+  public synchronized AppCatalogSourceSnapshot catalog(String catalogId) throws IOException {
+    StoredCatalogSource stored = sourceStore.read(normalizeCatalogIdForLookup(catalogId));
+    return snapshot(stored, trustedKeyProvider.trustedKeys());
+  }
+
+  /**
    * Adds a catalog source and immediately verifies its signed catalog.
    *
    * <p>The source is fetched before it is persisted. A catalog id conflict is checked after
@@ -193,33 +213,7 @@ public final class AppCatalogManager {
    */
   public synchronized AppCatalogSourceSnapshot addSource(String rawSource, String expectedCatalogId)
       throws IOException {
-    AppCatalogSource source = AppCatalogSource.parse(rawSource);
-    TrustedAppKeys trustedKeys = trustedKeyProvider.trustedKeys();
-    FetchedCatalog fetched = fetcher.fetch(source);
-    AppCatalog catalog =
-        AppCatalogVerifier.verify(fetched.catalogBytes(), fetched.signatureBytes(), trustedKeys);
-    if (expectedCatalogId != null && !expectedCatalogId.isBlank()) {
-      String normalizedExpectedCatalogId = AppCatalog.normalizeCatalogId(expectedCatalogId);
-      if (!normalizedExpectedCatalogId.equals(catalog.catalogId())) {
-        throw new AppCatalogException(
-            AppCatalogSidecars.CATALOG_ID_MISMATCH,
-            "Catalog id does not match the requested catalog.");
-      }
-    }
-    if (sourceStore.exists(catalog.catalogId())) {
-      throw new AppCatalogException(
-          AppCatalogSidecars.CATALOG_CONFLICT,
-          "Catalog already configured: " + catalog.catalogId());
-    }
-    Instant now = Instant.now();
-    sourceStore.write(catalog, source, fetched, now, now);
-    return AppCatalogSourceSnapshot.of(
-        catalog,
-        source,
-        now,
-        now,
-        AppCatalogSourceRefreshMetadata.success(now, resolvedCatalogUri(fetched, source)),
-        fetched);
+    return operations.addSource(rawSource, expectedCatalogId);
   }
 
   /**
@@ -247,62 +241,87 @@ public final class AppCatalogManager {
    * @throws IOException if fetch, verification, or persistence fails
    */
   public synchronized AppCatalogSourceSnapshot refresh(String catalogId) throws IOException {
-    String normalizedCatalogId = normalizeCatalogIdForLookup(catalogId);
-    StoredCatalogSource stored = sourceStore.read(normalizedCatalogId);
-    TrustedAppKeys trustedKeys = trustedKeyProvider.trustedKeys();
-    Instant attemptedAt = Instant.now();
-    FetchedCatalog fetched = fetchForRefresh(normalizedCatalogId, stored, attemptedAt);
-    AppCatalog catalog =
-        verifyForRefresh(normalizedCatalogId, stored, attemptedAt, fetched, trustedKeys);
-    sourceStore.write(catalog, stored.source(), fetched, stored.addedAt(), attemptedAt);
-    return AppCatalogSourceSnapshot.of(
-        catalog,
-        stored.source(),
-        stored.addedAt(),
-        attemptedAt,
-        AppCatalogSourceRefreshMetadata.success(
-            attemptedAt, resolvedCatalogUri(fetched, stored.source())),
-        fetched);
+    return refresh(catalogId, false);
   }
 
-  private FetchedCatalog fetchForRefresh(
-      String normalizedCatalogId, StoredCatalogSource stored, Instant attemptedAt) {
-    try {
-      return fetcher.fetch(stored.source());
-    } catch (AppCatalogException exception) {
-      recordRefreshFailure(stored, attemptedAt, exception);
-      throw exception;
-    } catch (IOException exception) {
-      AppCatalogException catalogException =
-          new AppCatalogException(
-              AppCatalogSidecars.CATALOG_FETCH_FAILED,
-              "failed to refresh catalog source: " + normalizedCatalogId,
-              exception);
-      recordRefreshFailure(stored, attemptedAt, catalogException);
-      throw catalogException;
-    }
+  /**
+   * Refreshes one catalog for urgent advisory propagation.
+   *
+   * <p>Emergency refresh uses the same primary-then-mirror ordering and verification gates as
+   * ordinary refresh. It does not install, update, remove, or roll back apps.
+   *
+   * @param catalogId catalog id to refresh
+   * @return updated source snapshot after successful verification
+   * @throws IOException if all endpoints fail or only stale candidates are available
+   */
+  public synchronized AppCatalogSourceSnapshot emergencyRefresh(String catalogId)
+      throws IOException {
+    return refresh(catalogId, false);
   }
 
-  private AppCatalog verifyForRefresh(
-      String normalizedCatalogId,
-      StoredCatalogSource stored,
-      Instant attemptedAt,
-      FetchedCatalog fetched,
-      TrustedAppKeys trustedKeys) {
-    try {
-      AppCatalog catalog =
-          AppCatalogVerifier.verify(fetched.catalogBytes(), fetched.signatureBytes(), trustedKeys);
-      if (!normalizedCatalogId.equals(catalog.catalogId())) {
-        throw new AppCatalogException(
-            AppCatalogSidecars.INVALID_CATALOG_ENTRY,
-            "refreshed catalog id does not match configured source: " + normalizedCatalogId);
-      }
-      return catalog;
-    } catch (AppCatalogException exception) {
-      recordRefreshFailure(
-          stored, attemptedAt, exception, resolvedCatalogUri(fetched, stored.source()));
-      throw exception;
-    }
+  /**
+   * Refreshes only the primary endpoint, without mirror fallback.
+   *
+   * @param catalogId catalog id to refresh
+   * @return updated source snapshot
+   * @throws IOException if the primary source fails verification or persistence
+   */
+  public synchronized AppCatalogSourceSnapshot refreshPrimaryOnly(String catalogId)
+      throws IOException {
+    return refresh(catalogId, true);
+  }
+
+  private AppCatalogSourceSnapshot refresh(String catalogId, boolean primaryOnly)
+      throws IOException {
+    return refreshCoordinator.refresh(catalogId, primaryOnly);
+  }
+
+  /** Lists primary and mirror endpoints for one catalog. */
+  public synchronized List<AppCatalogMirror> listMirrors(String catalogId) throws IOException {
+    return operations.listMirrors(catalogId);
+  }
+
+  /** Lists endpoint health for one catalog. */
+  public synchronized List<AppCatalogMirrorHealth> sourceHealth(String catalogId)
+      throws IOException {
+    return operations.sourceHealth(catalogId);
+  }
+
+  /** Adds one fallback mirror endpoint. */
+  public synchronized AppCatalogMirror addMirror(
+      String catalogId, String rawMirrorId, String rawSource, int priority, boolean enabled)
+      throws IOException {
+    return operations.addMirror(catalogId, rawMirrorId, rawSource, priority, enabled);
+  }
+
+  /** Updates local mirror metadata. */
+  public synchronized AppCatalogMirror updateMirror(
+      String catalogId, String mirrorId, String rawSource, Integer priority, Boolean enabled)
+      throws IOException {
+    return operations.updateMirror(catalogId, mirrorId, rawSource, priority, enabled);
+  }
+
+  /** Removes one mirror endpoint. */
+  public synchronized void removeMirror(String catalogId, String mirrorId) throws IOException {
+    operations.removeMirror(catalogId, mirrorId);
+  }
+
+  /** Lists retained rollback candidates for one catalog. */
+  public synchronized List<AppCatalogRollbackCandidate> rollbackCandidates(String catalogId)
+      throws IOException {
+    return operations.rollbackCandidates(catalogId);
+  }
+
+  /** Reactivates a retained verified catalog revision. */
+  public synchronized AppCatalogSourceSnapshot rollback(
+      String catalogId, String revisionDigest, String reason) throws IOException {
+    return operations.rollback(catalogId, revisionDigest, reason);
+  }
+
+  /** Returns signing-key rotation status for one catalog. */
+  public synchronized AppCatalogKeyRotationStatus keyRotationStatus(String catalogId)
+      throws IOException {
+    return operations.keyRotationStatus(catalogId);
   }
 
   /**
@@ -425,19 +444,7 @@ public final class AppCatalogManager {
       throws IOException {
     String normalizedCatalogId = normalizeCatalogIdForLookup(catalogId);
     AppCatalogEntry entry = getApp(normalizedCatalogId, appId);
-    Path stagingDirectory = sourceStore.stagingDirectory();
-    Files.createDirectories(stagingDirectory);
-    Path scratchRoot = Files.createTempDirectory(stagingDirectory, normalizedCatalogId + "-");
-    try {
-      Path artifactZip = artifactDownloader.download(entry, scratchRoot);
-      Path stagedBundle =
-          bundleExtractor.extract(
-              entry, artifactZip, scratchRoot, trustedKeyProvider.trustedKeys());
-      return new AppCatalogInstallPlan(normalizedCatalogId, entry, stagedBundle, scratchRoot);
-    } catch (IOException | RuntimeException exception) {
-      AppCatalogBundleExtractor.deleteRecursively(scratchRoot);
-      throw exception;
-    }
+    return installPlanner.prepareInstallPlan(normalizedCatalogId, entry);
   }
 
   /**
@@ -454,9 +461,7 @@ public final class AppCatalogManager {
    * @throws IOException if staged bundle verification or filesystem access fails
    */
   public synchronized void verifyInstallPlan(AppCatalogInstallPlan plan) throws IOException {
-    AppCatalogInstallPlan checkedPlan = Objects.requireNonNull(plan, "plan");
-    bundleExtractor.verifyStagedBundle(
-        checkedPlan.entry(), checkedPlan.stagedBundleDirectory(), trustedKeyProvider.trustedKeys());
+    installPlanner.verifyInstallPlan(plan);
   }
 
   /**
@@ -483,8 +488,7 @@ public final class AppCatalogManager {
     return verifyStoredCatalog(stored, trustedKeyProvider.trustedKeys());
   }
 
-  private static AppCatalogSourceSnapshot snapshot(
-      StoredCatalogSource stored, TrustedAppKeys trustedKeys) {
+  static AppCatalogSourceSnapshot snapshot(StoredCatalogSource stored, TrustedAppKeys trustedKeys) {
     AppCatalog catalog = verifyStoredCatalog(stored, trustedKeys);
     return AppCatalogSourceSnapshot.of(
         catalog,
@@ -495,41 +499,19 @@ public final class AppCatalogManager {
         stored.fetchedCatalog());
   }
 
-  private void recordRefreshFailure(
-      StoredCatalogSource stored, Instant attemptedAt, AppCatalogException exception) {
-    recordRefreshFailure(stored, attemptedAt, exception, stored.source().resolvedCatalogFetchUri());
-  }
-
-  private void recordRefreshFailure(
-      StoredCatalogSource stored,
-      Instant attemptedAt,
-      AppCatalogException exception,
-      String resolvedUri) {
-    try {
-      sourceStore.recordRefreshFailure(stored, attemptedAt, exception, resolvedUri);
-    } catch (IOException metadataException) {
-      exception.addSuppressed(metadataException);
-    }
-  }
-
-  private static AppCatalog verifyStoredCatalog(
-      StoredCatalogSource stored, TrustedAppKeys trustedKeys) {
+  static AppCatalog verifyStoredCatalog(StoredCatalogSource stored, TrustedAppKeys trustedKeys) {
     return AppCatalogVerifier.verify(
         stored.fetchedCatalog().catalogBytes(),
         stored.fetchedCatalog().signatureBytes(),
         trustedKeys);
   }
 
-  private static String normalizeCatalogIdForLookup(String catalogId) {
+  static String normalizeCatalogIdForLookup(String catalogId) {
     try {
       return AppCatalog.normalizeCatalogId(catalogId);
     } catch (AppCatalogException _) {
       throw new AppCatalogException(AppCatalogSidecars.CATALOG_NOT_FOUND, "Catalog not found.");
     }
-  }
-
-  private static String resolvedCatalogUri(FetchedCatalog fetched, AppCatalogSource source) {
-    return fetched.resolvedCatalogUri().orElseGet(source::resolvedCatalogFetchUri);
   }
 
   /**

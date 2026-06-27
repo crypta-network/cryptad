@@ -60,6 +60,8 @@ class PlatformApiContractTest {
           new RouteVersionPrefix("/app-data", 9),
           new RouteVersionPrefix("/app-vault", 3),
           new RouteVersionPrefix("/identity-vault", 3),
+          new RouteVersionPrefix("/app-catalogs/{catalogId}/operations", 23),
+          new RouteVersionPrefix("/app-catalogs/{catalogId}/mirrors", 23),
           new RouteVersionPrefix("/app-catalogs/recommended", 4),
           new RouteVersionPrefix("/apps/{appId}/updates", 2));
 
@@ -576,6 +578,59 @@ class PlatformApiContractTest {
   }
 
   @Test
+  void current_whenInspectingCatalogOperationEndpoints_expectContractV23HostOperatorOnly() {
+    Map<String, List<String>> expectedCapabilities =
+        Map.ofEntries(
+            Map.entry(
+                "GET /app-catalogs/{catalogId}/mirrors",
+                List.of(PlatformApiCapabilities.CATALOGS_READ)),
+            Map.entry(
+                "POST /app-catalogs/{catalogId}/mirrors",
+                List.of(PlatformApiCapabilities.CATALOGS_MANAGE)),
+            Map.entry(
+                "POST /app-catalogs/{catalogId}/mirrors/{mirrorId}",
+                List.of(PlatformApiCapabilities.CATALOGS_MANAGE)),
+            Map.entry(
+                "DELETE /app-catalogs/{catalogId}/mirrors/{mirrorId}",
+                List.of(PlatformApiCapabilities.CATALOGS_MANAGE)),
+            Map.entry(
+                "GET /app-catalogs/{catalogId}/operations/health",
+                List.of(PlatformApiCapabilities.CATALOGS_READ)),
+            Map.entry(
+                "GET /app-catalogs/{catalogId}/operations/revisions",
+                List.of(PlatformApiCapabilities.CATALOGS_READ)),
+            Map.entry(
+                "GET /app-catalogs/{catalogId}/operations/key-rotation",
+                List.of(PlatformApiCapabilities.CATALOGS_READ)),
+            Map.entry(
+                "POST /app-catalogs/{catalogId}/operations/refresh-primary",
+                List.of(PlatformApiCapabilities.CATALOGS_MANAGE)),
+            Map.entry(
+                "POST /app-catalogs/{catalogId}/operations/rollback",
+                List.of(PlatformApiCapabilities.CATALOGS_MANAGE)),
+            Map.entry(
+                "POST /app-catalogs/{catalogId}/operations/emergency-refresh",
+                List.of(PlatformApiCapabilities.CATALOGS_MANAGE)));
+    Set<String> seen = new TreeSet<>();
+
+    for (PlatformApiEndpointDescriptor endpoint : PlatformApiContract.current().endpoints()) {
+      String key = endpoint.method() + " " + endpoint.routeTemplate();
+      if (!expectedCapabilities.containsKey(key)) {
+        continue;
+      }
+      seen.add(key);
+      assertEquals(23, endpoint.sinceContractVersion(), key);
+      assertEquals("app-catalogs", endpoint.routeFamily(), key);
+      assertEquals(expectedCapabilities.get(key), endpoint.requiredCapabilities(), key);
+      assertEquals(PlatformApiStabilityLevel.OPERATOR_ONLY, endpoint.stability(), key);
+      assertTrue(endpoint.hostOperatorBypassAllowed(), key);
+      assertFalse(endpoint.appProcessAllowed(), key);
+      assertFalse(endpoint.appBrowserAllowed(), key);
+    }
+    assertEquals(expectedCapabilities.keySet(), seen);
+  }
+
+  @Test
   void endpointFor_whenDependencyConsumerIdIsServices_expectDisambiguatedContractRoute() {
     PlatformApiContract contract = PlatformApiContract.current();
 
@@ -775,6 +830,10 @@ class PlatformApiContractTest {
       return PlatformApiStabilityLevel.OPERATOR_ONLY;
     }
     if (endpoint.routeTemplate().startsWith(ROUTE_PREFIX_CONSENT)) {
+      return PlatformApiStabilityLevel.OPERATOR_ONLY;
+    }
+    if (endpoint.routeTemplate().startsWith("/app-catalogs/{catalogId}/operations")
+        || endpoint.routeTemplate().startsWith("/app-catalogs/{catalogId}/mirrors")) {
       return PlatformApiStabilityLevel.OPERATOR_ONLY;
     }
     return PlatformApiStabilityLevel.STABLE;

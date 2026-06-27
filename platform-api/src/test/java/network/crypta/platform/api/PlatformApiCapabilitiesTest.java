@@ -686,6 +686,19 @@ class PlatformApiCapabilitiesTest {
         new UnmappedRouteCase("GET", List.of("identity-vault", "identities")),
         new UnmappedRouteCase("GET", List.of("app-catalogs", "default")),
         new UnmappedRouteCase("GET", List.of("app-catalogs", "default", "refresh")),
+        new UnmappedRouteCase("GET", List.of("app-catalogs", "default", "mirrors")),
+        new UnmappedRouteCase("POST", List.of("app-catalogs", "default", "mirrors")),
+        new UnmappedRouteCase("POST", List.of("app-catalogs", "default", "mirrors", "backup")),
+        new UnmappedRouteCase("DELETE", List.of("app-catalogs", "default", "mirrors", "backup")),
+        new UnmappedRouteCase("GET", List.of("app-catalogs", "default", "operations", "health")),
+        new UnmappedRouteCase("GET", List.of("app-catalogs", "default", "operations", "revisions")),
+        new UnmappedRouteCase(
+            "GET", List.of("app-catalogs", "default", "operations", "key-rotation")),
+        new UnmappedRouteCase(
+            "POST", List.of("app-catalogs", "default", "operations", "refresh-primary")),
+        new UnmappedRouteCase("POST", List.of("app-catalogs", "default", "operations", "rollback")),
+        new UnmappedRouteCase(
+            "POST", List.of("app-catalogs", "default", "operations", "emergency-refresh")),
         new UnmappedRouteCase(
             "GET", List.of("app-catalogs", "default", "apps", "alpha", "install")),
         new UnmappedRouteCase(

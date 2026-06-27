@@ -36,7 +36,10 @@ advisories require the independent `securityAcknowledged=true` acknowledgement f
 install/update. See [ecosystem-security-advisories.md](ecosystem-security-advisories.md).
 Production incident handling for advisory publication, denylist propagation, catalog signing-key
 rotation, emergency replacement apps, and release notes is covered by
-[production-security-response-runbook.md](production-security-response-runbook.md).
+[production-security-response-runbook.md](production-security-response-runbook.md). Production
+source operations for a primary source plus mirrors, transport fallback, verified revision history,
+explicit rollback, key-rotation status, and emergency advisory refresh are covered by
+[catalog-operations-and-mirrors.md](catalog-operations-and-mirrors.md).
 
 The host/operator consent layer groups catalog trust metadata into one install or update preview
 before a material mutation. Permission rationales, review receipt state, reviewer-key lifecycle,
@@ -128,7 +131,7 @@ app.site-publisher.permissions.rationale.queue.write=Creates insert requests for
 app.site-publisher.permissions.rationale.queue.read=Displays publish progress from the local transfer queue.
 app.site-publisher.changelog.summary=Adds the first content reference app.
 app.site-publisher.api.minimumVersion=3
-app.site-publisher.api.maximumTestedVersion=22
+app.site-publisher.api.maximumTestedVersion=23
 app.site-publisher.api.targetStability=stable
 app.site-publisher.api.experimentalCapabilitiesAccepted=false
 
@@ -156,7 +159,7 @@ app.profile-publisher.permissions.rationale.app.data.read=Restores bounded profi
 app.profile-publisher.permissions.rationale.app.data.write=Saves bounded profile drafts and publish summaries.
 app.profile-publisher.changelog.summary=Adds the first identity-profile reference app.
 app.profile-publisher.api.minimumVersion=9
-app.profile-publisher.api.maximumTestedVersion=22
+app.profile-publisher.api.maximumTestedVersion=23
 app.profile-publisher.api.targetStability=experimental
 app.profile-publisher.api.experimentalCapabilitiesAccepted=true
 
@@ -195,7 +198,7 @@ app.social-inbox.service-request.trust-score.contexts=message-author
 app.social-inbox.service-request.trust-score.purpose=Annotate Social Inbox message authors using the local Trust Graph Local RC score service.
 app.social-inbox.changelog.summary=Adds the Social Inbox RC threaded reference app.
 app.social-inbox.api.minimumVersion=16
-app.social-inbox.api.maximumTestedVersion=22
+app.social-inbox.api.maximumTestedVersion=23
 app.social-inbox.api.targetStability=experimental
 app.social-inbox.api.experimentalCapabilitiesAccepted=true
 
@@ -223,7 +226,7 @@ app.feed-reader.permissions.rationale.app.data.read=Restores the app-owned feed 
 app.feed-reader.permissions.rationale.app.data.write=Saves bounded app-owned reader state through the durable app-data API.
 app.feed-reader.changelog.summary=Adds the first feed reader and publisher reference app.
 app.feed-reader.api.minimumVersion=9
-app.feed-reader.api.maximumTestedVersion=22
+app.feed-reader.api.maximumTestedVersion=23
 app.feed-reader.api.targetStability=stable
 app.feed-reader.api.experimentalCapabilitiesAccepted=false
 
@@ -775,6 +778,14 @@ then checks the lowercase `bundle.sha256` before extraction. The extracted bundl
 manifest id/version checks still run exactly as they do for `file:`, `https:`, and loopback `http:`
 artifacts.
 
+Catalog sources can also be operated as a primary source plus mirrors. Refresh tries the primary
+first and then enabled mirrors in priority order, but every fetched catalog still must verify with
+the configured trusted catalog key, parse successfully, match the configured catalog id, and pass
+the stale/downgrade policy before it can replace the active revision. A mirror is only a transport
+fallback and never a trust authority. Older mirror revisions are marked stale and cannot silently
+replace the current verified catalog; only an explicit rollback to a previously verified revision
+can move backward. See [catalog-operations-and-mirrors.md](catalog-operations-and-mirrors.md).
+
 Remote fetches use finite timeouts, no automatic redirects, and size caps for catalog, signature,
 and artifact downloads. Artifact bytes are written to catalog-owned scratch storage, checked
 against the catalog size and SHA-256, then extracted into a separate staging directory. The
@@ -837,11 +848,29 @@ POST   /api/v1/app-catalogs/{catalogId}/apps/{appId}/install
 POST   /api/v1/app-catalogs/{catalogId}/apps/{appId}/update
 ```
 
+Operational catalog routes add mirror, health, revision, rollback, key-rotation, and emergency
+advisory refresh controls:
+
+```text
+GET    /api/v1/app-catalogs/<catalogId>/operations/health
+GET    /api/v1/app-catalogs/<catalogId>/operations/revisions
+GET    /api/v1/app-catalogs/<catalogId>/operations/key-rotation
+GET    /api/v1/app-catalogs/<catalogId>/mirrors
+POST   /api/v1/app-catalogs/<catalogId>/mirrors
+POST   /api/v1/app-catalogs/<catalogId>/mirrors/<mirrorId>
+DELETE /api/v1/app-catalogs/<catalogId>/mirrors/<mirrorId>
+POST   /api/v1/app-catalogs/<catalogId>/operations/refresh-primary
+POST   /api/v1/app-catalogs/<catalogId>/operations/rollback
+POST   /api/v1/app-catalogs/<catalogId>/operations/emergency-refresh
+```
+
 Refresh failures update the catalog source's last-attempt and last-failure status, but they do not
 replace or delete the last successfully verified catalog sidecars. Catalog listing, detail,
 install, and update operations continue to use the last verified catalog until a later refresh
 verifies a replacement. Already installed apps are not removed or rolled back because a catalog
-refresh failed.
+refresh failed. Mirror fallback records the active source and whether fallback was used. Verified
+revision history is bounded and rollback candidates are re-verified before use. Emergency advisory
+refresh uses the same fail-closed verification path and only updates verified catalog metadata.
 
 Install and update endpoints prepare a verified temporary staged bundle, then delegate to
 `AppHost.installFromDirectory(...)` or `AppHost.updateFromDirectory(...)`. Existing local
@@ -881,7 +910,10 @@ links, permission explanations, installed-vs-catalog version difference, advisor
 hints, and changelog metadata when present. The channel selector defaults to `stable`; beta,
 nightly, and deprecated entries are shown only when the operator selects that channel. Deprecated
 entries do not render as ordinary install/update candidates in the shell. Web Shell wording must
-distinguish "signed by catalog publisher" from "reviewed by trusted reviewer". See
+distinguish "signed by catalog publisher" from "reviewed by trusted reviewer". Catalog operations
+also show primary and mirror health, fallback warnings, key-rotation status, rollback candidates,
+and emergency advisory refresh controls without rendering private insert URI values, private keys,
+tokens, raw content, raw app data, scratch paths, staged paths, or an absolute local path. See
 [app-update-lifecycle.md](app-update-lifecycle.md) for candidate detection, manual apply,
 permission-delta review, and rollback scope.
 

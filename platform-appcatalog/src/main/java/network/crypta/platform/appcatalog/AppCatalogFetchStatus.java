@@ -31,7 +31,23 @@ public enum AppCatalogFetchStatus {
    * still have a valid prior catalog snapshot, and callers should keep showing that snapshot while
    * also reporting the failed attempt metadata.
    */
-  FAILED("failed");
+  FAILED("failed"),
+
+  /**
+   * The endpoint was not attempted during the last refresh pass.
+   *
+   * <p>This is used for disabled mirrors and mirrors that were not needed because an earlier
+   * endpoint produced an accepted verified catalog.
+   */
+  SKIPPED("skipped"),
+
+  /**
+   * The endpoint produced a verified catalog that was older than the current active revision.
+   *
+   * <p>Stale candidates are not persisted as the active catalog unless an operator executes an
+   * explicit rollback to a retained verified revision.
+   */
+  STALE("stale");
 
   /** Lowercase token persisted in source metadata and exposed as UI-facing status text. */
   private final String metadataValue;
@@ -50,7 +66,7 @@ public enum AppCatalogFetchStatus {
    *
    * @return lowercase value written to and read from catalog-source metadata
    */
-  String metadataValue() {
+  public String metadataValue() {
     return metadataValue;
   }
 

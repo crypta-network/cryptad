@@ -60,7 +60,7 @@
       "details": {
         "apiVersion": "v1",
         "capabilityCount": 25,
-        "contractVersion": 22,
+        "contractVersion": 23,
         "endpointCount": 65,
         "flaggedStability": [],
         "stabilityCounts": {
@@ -1504,6 +1504,37 @@
       "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
       "status": "pass",
       "summary": "Production first-party catalog channel evidence passed deterministic checks."
+    },
+    {
+      "details": {
+        "checks": {
+          "docsCoverOperations": true,
+          "keyRotationAndEmergencyRefreshPresent": true,
+          "mirrorFallbackKeepsSignatureTrust": true,
+          "platformApiOperationsRoutesPresent": true,
+          "primaryMirrorModelPresent": true,
+          "redactionCoveragePresent": true,
+          "revisionHistoryAndRollbackPresent": true,
+          "testsCoverOperations": true,
+          "webShellOperationsPresent": true
+        },
+        "evidenceId": "catalog.operations-and-mirrors",
+        "liveNodeRequired": false,
+        "redactionGuarantees": [
+          "private insert URIs excluded",
+          "private keys excluded",
+          "tokens excluded",
+          "raw catalog content excluded",
+          "raw app data excluded",
+          "scratch and staged paths excluded",
+          "absolute local paths redacted"
+        ]
+      },
+      "id": "catalog.operations-and-mirrors",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Catalog operations and mirrors evidence passed deterministic checks."
     },
     {
       "details": {

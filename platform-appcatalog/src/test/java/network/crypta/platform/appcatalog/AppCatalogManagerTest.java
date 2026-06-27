@@ -53,6 +53,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -726,6 +727,7 @@ class AppCatalogManagerTest {
         assertThrows(AppCatalogException.class, () -> manager.refresh(CATALOG_ID));
     List<AppCatalogEntry> entries = manager.listApps(CATALOG_ID);
     AppCatalogSourceSnapshot snapshot = manager.listCatalogs().getFirst();
+    AppCatalogMirrorHealth primaryHealth = healthFor(manager.sourceHealth(CATALOG_ID), "primary");
 
     assertEquals(AppCatalogSidecars.CATALOG_FETCH_FAILED, exception.errorCode());
     assertEquals(APP_ID, entries.getFirst().appId());
@@ -733,6 +735,266 @@ class AppCatalogManagerTest {
     assertEquals(
         Optional.of(AppCatalogSidecars.CATALOG_FETCH_FAILED), snapshot.lastFetchErrorCode());
     assertEquals(snapshot.refreshedAt(), snapshot.lastSuccessfulRefreshAt());
+    assertEquals(AppCatalogFetchStatus.FAILED, primaryHealth.lastFetchStatus());
+    assertEquals(Optional.of(snapshot.refreshedAt()), primaryHealth.lastSuccessfulRefreshAt());
+    assertTrue(primaryHealth.lastCatalogDigest().isPresent());
+    assertEquals(Optional.of(KEY_ID), primaryHealth.lastSignatureKeyId());
+    assertEquals(Optional.of(GENERATED_AT), primaryHealth.lastGeneratedAt());
+  }
+
+  @Test
+  void refresh_whenPrimaryFailsAndMirrorIsVerified_expectMirrorFallbackAccepted() throws Exception {
+    KeyPair keyPair = keyPair();
+    Path bundle = signedBundle(keyPair);
+    Path artifact = zipDirectory(bundle, tempDir.resolve(ARTIFACT_ZIP));
+    Path catalog = signedCatalog(artifact, keyPair, sha256(artifact), Files.size(artifact));
+    FakeContentFetchPort contentFetchPort =
+        new FakeContentFetchPort(
+            Map.of(
+                CRYPTA_CATALOG_KEY,
+                Files.readAllBytes(catalog),
+                CRYPTA_SIGNATURE_KEY,
+                Files.readAllBytes(
+                    catalog.resolveSibling(AppCatalogSignature.SIGNATURE_FILE_NAME))));
+    AppCatalogManager manager = manager(trustedKeys(keyPair), contentFetchPort);
+    manager.addSource(CRYPTA_CATALOG_SOURCE);
+    manager.addMirror(CATALOG_ID, "backup", catalog.toString(), 1, true);
+    contentFetchPort.failWith(new IOException("primary unavailable"));
+
+    AppCatalogSourceSnapshot refreshed = manager.refresh(CATALOG_ID);
+    List<AppCatalogMirrorHealth> health = manager.sourceHealth(CATALOG_ID);
+
+    assertEquals(AppCatalogFetchStatus.SUCCESS, refreshed.lastFetchStatus());
+    assertEquals(AppCatalogFetchStatus.FAILED, healthFor(health, "primary").lastFetchStatus());
+    assertEquals(AppCatalogFetchStatus.SUCCESS, healthFor(health, "backup").lastFetchStatus());
+    assertEquals(Optional.of(KEY_ID), healthFor(health, "backup").lastSignatureKeyId());
+  }
+
+  @Test
+  void updateMirror_whenActiveMirrorSourceChanges_expectActiveRevisionProvenancePreserved()
+      throws Exception {
+    KeyPair keyPair = keyPair();
+    Path bundle = signedBundle(keyPair);
+    Path artifact = zipDirectory(bundle, tempDir.resolve(ARTIFACT_ZIP));
+    Path catalog = signedCatalog(artifact, keyPair, sha256(artifact), Files.size(artifact));
+    String originalMirrorUri = AppCatalogSource.parse(catalog.toString()).resolvedCatalogFetchUri();
+    FakeContentFetchPort contentFetchPort =
+        new FakeContentFetchPort(
+            Map.of(
+                CRYPTA_CATALOG_KEY,
+                Files.readAllBytes(catalog),
+                CRYPTA_SIGNATURE_KEY,
+                Files.readAllBytes(
+                    catalog.resolveSibling(AppCatalogSignature.SIGNATURE_FILE_NAME))));
+    AppCatalogManager manager = manager(trustedKeys(keyPair), contentFetchPort);
+    manager.addSource(CRYPTA_CATALOG_SOURCE);
+    manager.addMirror(CATALOG_ID, "backup", catalog.toString(), 1, true);
+    contentFetchPort.failWith(new IOException("primary unavailable"));
+    manager.refresh(CATALOG_ID);
+    assertEquals(
+        AppCatalogFetchStatus.SUCCESS,
+        healthFor(manager.sourceHealth(CATALOG_ID), "backup").lastFetchStatus());
+
+    manager.updateMirror(
+        CATALOG_ID,
+        "backup",
+        "https://mirror.example.invalid/cryptad-app-catalog.properties",
+        null,
+        null);
+    AppCatalogMirrorHealth updatedHealth = healthFor(manager.sourceHealth(CATALOG_ID), "backup");
+
+    assertEquals(AppCatalogFetchStatus.SUCCESS, updatedHealth.lastFetchStatus());
+    assertTrue(updatedHealth.lastSuccessfulRefreshAt().isPresent());
+    assertTrue(updatedHealth.lastCatalogDigest().isPresent());
+    assertEquals(Optional.of(KEY_ID), updatedHealth.lastSignatureKeyId());
+    assertEquals(Optional.of(originalMirrorUri), updatedHealth.lastResolvedUri());
+  }
+
+  @Test
+  void addMirror_whenReusingRemovedActiveMirrorId_expectActiveRevisionProvenancePreserved()
+      throws Exception {
+    KeyPair keyPair = keyPair();
+    Path bundle = signedBundle(keyPair);
+    Path artifact = zipDirectory(bundle, tempDir.resolve(ARTIFACT_ZIP));
+    Path catalog = signedCatalog(artifact, keyPair, sha256(artifact), Files.size(artifact));
+    String originalMirrorUri = AppCatalogSource.parse(catalog.toString()).resolvedCatalogFetchUri();
+    FakeContentFetchPort contentFetchPort =
+        new FakeContentFetchPort(
+            Map.of(
+                CRYPTA_CATALOG_KEY,
+                Files.readAllBytes(catalog),
+                CRYPTA_SIGNATURE_KEY,
+                Files.readAllBytes(
+                    catalog.resolveSibling(AppCatalogSignature.SIGNATURE_FILE_NAME))));
+    AppCatalogManager manager = manager(trustedKeys(keyPair), contentFetchPort);
+    manager.addSource(CRYPTA_CATALOG_SOURCE);
+    manager.addMirror(CATALOG_ID, "backup", catalog.toString(), 1, true);
+    contentFetchPort.failWith(new IOException("primary unavailable"));
+    manager.refresh(CATALOG_ID);
+    assertEquals(
+        AppCatalogFetchStatus.SUCCESS,
+        healthFor(manager.sourceHealth(CATALOG_ID), "backup").lastFetchStatus());
+
+    manager.removeMirror(CATALOG_ID, "backup");
+    AppCatalogMirrorHealth removedHealth = healthFor(manager.sourceHealth(CATALOG_ID), "backup");
+    assertEquals(AppCatalogFetchStatus.SUCCESS, removedHealth.lastFetchStatus());
+    assertEquals(Optional.of(originalMirrorUri), removedHealth.lastResolvedUri());
+    assertTrue(
+        manager.listMirrors(CATALOG_ID).stream()
+            .noneMatch(mirror -> "backup".equals(mirror.id().value())));
+    manager.addMirror(
+        CATALOG_ID,
+        "backup",
+        "https://replacement.example.invalid/cryptad-app-catalog.properties",
+        1,
+        true);
+    AppCatalogMirrorHealth reusedHealth = healthFor(manager.sourceHealth(CATALOG_ID), "backup");
+
+    assertEquals(AppCatalogFetchStatus.SUCCESS, reusedHealth.lastFetchStatus());
+    assertTrue(reusedHealth.lastSuccessfulRefreshAt().isPresent());
+    assertTrue(reusedHealth.lastCatalogDigest().isPresent());
+    assertEquals(Optional.of(KEY_ID), reusedHealth.lastSignatureKeyId());
+    assertEquals(Optional.of(originalMirrorUri), reusedHealth.lastResolvedUri());
+  }
+
+  @Test
+  void updateMirror_whenInactiveMirrorSourceChanges_expectPreviousMirrorHealthCleared()
+      throws Exception {
+    KeyPair keyPair = keyPair();
+    Path bundle = signedBundle(keyPair);
+    Path artifact = zipDirectory(bundle, tempDir.resolve(ARTIFACT_ZIP));
+    Path catalog = signedCatalog(artifact, keyPair, sha256(artifact), Files.size(artifact));
+    byte[] catalogBytes = Files.readAllBytes(catalog);
+    byte[] signatureBytes =
+        Files.readAllBytes(catalog.resolveSibling(AppCatalogSignature.SIGNATURE_FILE_NAME));
+    FakeContentFetchPort contentFetchPort =
+        new FakeContentFetchPort(
+            Map.of(CRYPTA_CATALOG_KEY, catalogBytes, CRYPTA_SIGNATURE_KEY, signatureBytes));
+    AppCatalogManager manager = manager(trustedKeys(keyPair), contentFetchPort);
+    manager.addSource(CRYPTA_CATALOG_SOURCE);
+    manager.addMirror(CATALOG_ID, "backup", catalog.toString(), 1, true);
+    contentFetchPort.failWith(new IOException("primary unavailable"));
+    manager.refresh(CATALOG_ID);
+    contentFetchPort.replaceContent(
+        Map.of(CRYPTA_CATALOG_KEY, catalogBytes, CRYPTA_SIGNATURE_KEY, signatureBytes), Map.of());
+    manager.refresh(CATALOG_ID);
+    assertEquals(
+        AppCatalogFetchStatus.SUCCESS,
+        healthFor(manager.sourceHealth(CATALOG_ID), "primary").lastFetchStatus());
+
+    manager.updateMirror(
+        CATALOG_ID,
+        "backup",
+        "https://mirror.example.invalid/cryptad-app-catalog.properties",
+        null,
+        null);
+    AppCatalogMirrorHealth updatedHealth = healthFor(manager.sourceHealth(CATALOG_ID), "backup");
+
+    assertEquals(AppCatalogFetchStatus.SKIPPED, updatedHealth.lastFetchStatus());
+    assertTrue(updatedHealth.lastSuccessfulRefreshAt().isEmpty());
+    assertTrue(updatedHealth.lastCatalogDigest().isEmpty());
+    assertTrue(updatedHealth.lastSignatureKeyId().isEmpty());
+  }
+
+  @Test
+  void refresh_whenMirrorReturnsOlderVerifiedRevision_expectCurrentCatalogPreserved()
+      throws Exception {
+    KeyPair keyPair = keyPair();
+    Path bundle = signedBundle(keyPair);
+    Path artifact = zipDirectory(bundle, tempDir.resolve(ARTIFACT_ZIP));
+    Path catalog = signedCatalog(artifact, keyPair, sha256(artifact), Files.size(artifact));
+    FakeContentFetchPort contentFetchPort =
+        new FakeContentFetchPort(
+            Map.of(
+                CRYPTA_CATALOG_KEY,
+                Files.readAllBytes(catalog),
+                CRYPTA_SIGNATURE_KEY,
+                Files.readAllBytes(
+                    catalog.resolveSibling(AppCatalogSignature.SIGNATURE_FILE_NAME))));
+    AppCatalogManager manager = manager(trustedKeys(keyPair), contentFetchPort);
+    manager.addSource(CRYPTA_CATALOG_SOURCE);
+    Path staleCatalog =
+        signedCatalog(
+            CATALOG_ID,
+            artifact.toUri(),
+            keyPair,
+            KEY_ID,
+            sha256(artifact),
+            Files.size(artifact),
+            GENERATED_AT.minusSeconds(3600));
+    manager.addMirror(CATALOG_ID, "stale", staleCatalog.toString(), 1, true);
+    contentFetchPort.failWith(new IOException("primary unavailable"));
+
+    AppCatalogException exception =
+        assertThrows(AppCatalogException.class, () -> manager.refresh(CATALOG_ID));
+    AppCatalogSourceSnapshot snapshot = manager.listCatalogs().getFirst();
+    List<AppCatalogMirrorHealth> health = manager.sourceHealth(CATALOG_ID);
+
+    assertEquals(AppCatalogSidecars.CATALOG_FETCH_FAILED, exception.errorCode());
+    assertEquals(GENERATED_AT, snapshot.generatedAt());
+    assertEquals(AppCatalogFetchStatus.FAILED, snapshot.lastFetchStatus());
+    assertEquals(AppCatalogFetchStatus.STALE, healthFor(health, "stale").lastFetchStatus());
+  }
+
+  @Test
+  void rollback_whenPreviousRevisionIsRetained_expectRevisionReverifiedAndRestored()
+      throws Exception {
+    KeyPair keyPair = keyPair();
+    Path bundle = signedBundle(keyPair);
+    Path artifact = zipDirectory(bundle, tempDir.resolve(ARTIFACT_ZIP));
+    Path catalog = signedCatalog(artifact, keyPair, sha256(artifact), Files.size(artifact));
+    FakeContentFetchPort contentFetchPort =
+        new FakeContentFetchPort(
+            Map.of(
+                CRYPTA_CATALOG_KEY,
+                Files.readAllBytes(catalog),
+                CRYPTA_SIGNATURE_KEY,
+                Files.readAllBytes(
+                    catalog.resolveSibling(AppCatalogSignature.SIGNATURE_FILE_NAME))));
+    AppCatalogManager manager = manager(trustedKeys(keyPair), contentFetchPort);
+    manager.addSource(CRYPTA_CATALOG_SOURCE);
+    Path newerCatalog =
+        signedCatalog(
+            CATALOG_ID,
+            artifact.toUri(),
+            keyPair,
+            KEY_ID,
+            sha256(artifact),
+            Files.size(artifact),
+            GENERATED_AT.plusSeconds(3600));
+    manager.addMirror(CATALOG_ID, "mirror-1", newerCatalog.toString(), 1, true);
+    contentFetchPort.failWith(new IOException("primary unavailable"));
+    AppCatalogSourceSnapshot refreshed = manager.refresh(CATALOG_ID);
+
+    AppCatalogRollbackCandidate candidate =
+        manager.rollbackCandidates(CATALOG_ID).stream()
+            .filter(AppCatalogRollbackCandidate::eligible)
+            .findFirst()
+            .orElseThrow();
+    AppCatalogSourceSnapshot rolledBack =
+        manager.rollback(CATALOG_ID, candidate.revision().revisionDigest(), "bad publication");
+
+    assertEquals(GENERATED_AT.plusSeconds(3600), refreshed.generatedAt());
+    assertEquals(GENERATED_AT, rolledBack.generatedAt());
+    assertEquals(AppCatalogFetchStatus.SUCCESS, rolledBack.lastFetchStatus());
+  }
+
+  @Test
+  void rollback_whenRevisionDigestContainsPathTraversal_expectInvalidRevisionDigest()
+      throws Exception {
+    KeyPair keyPair = keyPair();
+    Path bundle = signedBundle(keyPair);
+    Path artifact = zipDirectory(bundle, tempDir.resolve(ARTIFACT_ZIP));
+    Path catalog = signedCatalog(artifact, keyPair, sha256(artifact), Files.size(artifact));
+    AppCatalogManager manager = manager(trustedKeys(keyPair));
+    manager.addSource(catalog.toString());
+
+    AppCatalogException exception =
+        assertThrows(
+            AppCatalogException.class,
+            () -> manager.rollback(CATALOG_ID, "sha256:../../core", "bad publication"));
+
+    assertEquals(AppCatalogSidecars.INVALID_CATALOG_SOURCE, exception.errorCode());
   }
 
   @Test
@@ -791,6 +1053,167 @@ class AppCatalogManagerTest {
     assertEquals(Optional.of(KEY_ID), added.signatureKeyId());
     assertEquals(Optional.of(ROTATED_KEY_ID), refreshed.signatureKeyId());
     assertEquals(Optional.of(ROTATED_KEY_ID), listedSnapshot.signatureKeyId());
+  }
+
+  @Test
+  void keyRotationStatus_whenCachedCatalogBytesAreCorrupted_expectSignatureVerificationFailure()
+      throws Exception {
+    KeyPair keyPair = keyPair();
+    Path bundle = signedBundle(keyPair);
+    Path artifact = zipDirectory(bundle, tempDir.resolve(ARTIFACT_ZIP));
+    Path catalog = signedCatalog(artifact, keyPair, sha256(artifact), Files.size(artifact));
+    AppCatalogSourceStore sourceStore =
+        new AppCatalogSourceStore(tempDir.resolve(CATALOG_SOURCE_STORE_DIRECTORY));
+    AppCatalogManager manager = new AppCatalogManager(sourceStore, () -> trustedKeys(keyPair));
+    manager.addSource(catalog.toString());
+    Files.writeString(
+        sourceStore
+            .rootDirectory()
+            .resolve(CATALOG_ID)
+            .resolve(AppCatalogSignature.CATALOG_FILE_NAME),
+        "\n# tampered\n",
+        StandardCharsets.UTF_8,
+        java.nio.file.StandardOpenOption.APPEND);
+
+    AppCatalogException exception =
+        assertThrows(AppCatalogException.class, () -> manager.keyRotationStatus(CATALOG_ID));
+
+    assertEquals(AppCatalogSidecars.INVALID_CATALOG_SIGNATURE, exception.errorCode());
+  }
+
+  @Test
+  void refresh_whenCatalogIsResignedWithSameBytes_expectBothRevisionSignaturesRetained()
+      throws Exception {
+    KeyPair initialKeyPair = keyPair();
+    KeyPair rotatedKeyPair = keyPair();
+    Path bundle = signedBundle(initialKeyPair);
+    Path artifact = zipDirectory(bundle, tempDir.resolve(ARTIFACT_ZIP));
+    Path initialCatalog =
+        signedCatalog(
+            CATALOG_ID,
+            artifact.toUri(),
+            initialKeyPair,
+            KEY_ID,
+            sha256(artifact),
+            Files.size(artifact),
+            GENERATED_AT);
+    byte[] initialCatalogBytes = Files.readAllBytes(initialCatalog);
+    byte[] initialSignatureBytes =
+        Files.readAllBytes(initialCatalog.resolveSibling(AppCatalogSignature.SIGNATURE_FILE_NAME));
+    Path rotatedCatalog =
+        signedCatalog(
+            CATALOG_ID,
+            artifact.toUri(),
+            rotatedKeyPair,
+            ROTATED_KEY_ID,
+            sha256(artifact),
+            Files.size(artifact),
+            GENERATED_AT);
+    byte[] rotatedCatalogBytes = Files.readAllBytes(rotatedCatalog);
+    byte[] rotatedSignatureBytes =
+        Files.readAllBytes(rotatedCatalog.resolveSibling(AppCatalogSignature.SIGNATURE_FILE_NAME));
+    FakeContentFetchPort contentFetchPort =
+        new FakeContentFetchPort(
+            Map.of(
+                CRYPTA_CATALOG_KEY,
+                initialCatalogBytes,
+                CRYPTA_SIGNATURE_KEY,
+                initialSignatureBytes));
+    TrustedAppKeys trustedKeys =
+        TrustedAppKeys.of(
+            trustedKey(KEY_ID, initialKeyPair), trustedKey(ROTATED_KEY_ID, rotatedKeyPair));
+    AppCatalogSourceStore sourceStore =
+        new AppCatalogSourceStore(tempDir.resolve(CATALOG_SOURCE_STORE_DIRECTORY));
+    AppCatalogManager manager = manager(sourceStore, trustedKeys, contentFetchPort);
+
+    manager.addSource(CRYPTA_CATALOG_SOURCE);
+    contentFetchPort.replaceContent(
+        Map.of(
+            CRYPTA_CATALOG_KEY, rotatedCatalogBytes, CRYPTA_SIGNATURE_KEY, rotatedSignatureBytes),
+        Map.of());
+    manager.refresh(CATALOG_ID);
+
+    assertArrayEquals(initialCatalogBytes, rotatedCatalogBytes);
+    String currentDigest =
+        AppCatalogRevisions.catalogDigest(
+            new FetchedCatalog(rotatedCatalogBytes, rotatedSignatureBytes));
+    List<AppCatalogVerifiedRevision> revisions =
+        sourceStore.listRevisions(CATALOG_ID, currentDigest);
+    List<String> signatureKeyIds =
+        revisions.stream().map(AppCatalogVerifiedRevision::signatureKeyId).toList();
+
+    assertEquals(2, revisions.size());
+    assertEquals(
+        2, revisions.stream().map(AppCatalogVerifiedRevision::revisionDigest).distinct().count());
+    assertTrue(signatureKeyIds.contains(KEY_ID));
+    assertTrue(signatureKeyIds.contains(ROTATED_KEY_ID));
+    assertTrue(
+        revisions.stream()
+            .anyMatch(
+                revision ->
+                    revision.current() && ROTATED_KEY_ID.equals(revision.signatureKeyId())));
+    assertEquals(Optional.of(KEY_ID), manager.keyRotationStatus(CATALOG_ID).previousKeyId());
+  }
+
+  @Test
+  void refresh_whenCachedCatalogKeyIsNoLongerTrusted_expectFreshTrustedCatalogReplacesCache()
+      throws Exception {
+    KeyPair initialKeyPair = keyPair();
+    KeyPair rotatedKeyPair = keyPair();
+    Path bundle = signedBundle(initialKeyPair);
+    Path artifact = zipDirectory(bundle, tempDir.resolve(ARTIFACT_ZIP));
+    Path initialCatalog =
+        signedCatalog(
+            CATALOG_ID,
+            artifact.toUri(),
+            initialKeyPair,
+            KEY_ID,
+            sha256(artifact),
+            Files.size(artifact),
+            GENERATED_AT);
+    byte[] initialCatalogBytes = Files.readAllBytes(initialCatalog);
+    byte[] initialSignatureBytes =
+        Files.readAllBytes(initialCatalog.resolveSibling(AppCatalogSignature.SIGNATURE_FILE_NAME));
+    Path rotatedCatalog =
+        signedCatalog(
+            CATALOG_ID,
+            artifact.toUri(),
+            rotatedKeyPair,
+            ROTATED_KEY_ID,
+            sha256(artifact),
+            Files.size(artifact),
+            GENERATED_AT.plusSeconds(3600));
+    FakeContentFetchPort contentFetchPort =
+        new FakeContentFetchPort(
+            Map.of(
+                CRYPTA_CATALOG_KEY,
+                initialCatalogBytes,
+                CRYPTA_SIGNATURE_KEY,
+                initialSignatureBytes));
+    AppCatalogSourceStore sourceStore =
+        new AppCatalogSourceStore(tempDir.resolve(CATALOG_SOURCE_STORE_DIRECTORY));
+    AppCatalogManager initialManager =
+        manager(sourceStore, trustedKeys(initialKeyPair), contentFetchPort);
+    initialManager.addSource(CRYPTA_CATALOG_SOURCE);
+    contentFetchPort.replaceContent(
+        Map.of(
+            CRYPTA_CATALOG_KEY,
+            Files.readAllBytes(rotatedCatalog),
+            CRYPTA_SIGNATURE_KEY,
+            Files.readAllBytes(
+                rotatedCatalog.resolveSibling(AppCatalogSignature.SIGNATURE_FILE_NAME))),
+        Map.of());
+    AppCatalogManager rotatedManager =
+        manager(
+            sourceStore,
+            TrustedAppKeys.of(trustedKey(ROTATED_KEY_ID, rotatedKeyPair)),
+            contentFetchPort);
+
+    AppCatalogSourceSnapshot refreshed = rotatedManager.refresh(CATALOG_ID);
+
+    assertEquals(GENERATED_AT.plusSeconds(3600), refreshed.generatedAt());
+    assertEquals(Optional.of(ROTATED_KEY_ID), refreshed.signatureKeyId());
+    assertEquals(APP_ID, rotatedManager.listApps(CATALOG_ID).getFirst().appId());
   }
 
   @Test
@@ -1241,13 +1664,31 @@ class AppCatalogManagerTest {
 
   private AppCatalogManager manager(
       TrustedAppKeys trustedKeys, FakeContentFetchPort contentFetchPort) {
-    return new AppCatalogManager(
+    return manager(
         new AppCatalogSourceStore(tempDir.resolve(CATALOG_SOURCE_STORE_DIRECTORY)),
+        trustedKeys,
+        contentFetchPort);
+  }
+
+  private AppCatalogManager manager(
+      AppCatalogSourceStore sourceStore,
+      TrustedAppKeys trustedKeys,
+      FakeContentFetchPort contentFetchPort) {
+    return new AppCatalogManager(
+        sourceStore,
         () -> trustedKeys,
         new AppCatalogFetcher(
             new FixedResponseHttpClient(new IOException(UNEXPECTED_HTTP_FETCH)), contentFetchPort),
         new AppCatalogArtifactDownloader(),
         new AppCatalogBundleExtractor());
+  }
+
+  private static AppCatalogMirrorHealth healthFor(
+      List<AppCatalogMirrorHealth> health, String sourceId) {
+    return health.stream()
+        .filter(entry -> entry.id().value().equals(sourceId))
+        .findFirst()
+        .orElseThrow();
   }
 
   private Path signedBundle(KeyPair keyPair) throws IOException {
@@ -1324,6 +1765,19 @@ class AppCatalogManagerTest {
       String artifactSha256,
       long artifactSize)
       throws IOException {
+    return signedCatalog(
+        catalogId, artifactUri, keyPair, keyId, artifactSha256, artifactSize, GENERATED_AT);
+  }
+
+  private Path signedCatalog(
+      String catalogId,
+      URI artifactUri,
+      KeyPair keyPair,
+      String keyId,
+      String artifactSha256,
+      long artifactSize,
+      Instant generatedAt)
+      throws IOException {
     Path catalogDir = Files.createDirectories(tempDir.resolve("catalog-" + catalogId));
     Path catalog = catalogDir.resolve(AppCatalogSignature.CATALOG_FILE_NAME);
     Files.writeString(
@@ -1346,7 +1800,7 @@ class AppCatalogManagerTest {
         """
             .formatted(
                 catalogId,
-                GENERATED_AT,
+                generatedAt,
                 APP_ID,
                 APP_ID,
                 APP_ID,

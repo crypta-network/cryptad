@@ -9,7 +9,7 @@ The current app-facing values are:
 
 ```text
 apiVersion=v1
-contractVersion=22
+contractVersion=23
 ```
 
 The contract does not change Platform API behavior. It publishes metadata that answers which
@@ -37,7 +37,7 @@ The response shape is:
 {
   "contract": {
     "apiVersion": "v1",
-    "contractVersion": 22,
+    "contractVersion": 23,
     "generatedBy": "cryptad",
     "stabilityPolicy": "...",
     "capabilities": [],

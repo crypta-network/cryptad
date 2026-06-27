@@ -27,6 +27,7 @@ Use this portal first, then follow the detailed source-of-truth pages for the ar
 | Signed catalogs and catalog sources | [app-catalogs.md](app-catalogs.md) |
 | First-party beta catalog | [first-party-beta-catalog.md](first-party-beta-catalog.md) |
 | Production catalog channels | [production-first-party-catalog-channels.md](production-first-party-catalog-channels.md) |
+| Catalog operations and mirrors | [catalog-operations-and-mirrors.md](catalog-operations-and-mirrors.md) |
 | Production beta release pipeline | [production-beta-release-pipeline.md](production-beta-release-pipeline.md) |
 | Multi-node beta soak and upgrade drill | [multi-node-beta-soak-and-upgrade-drill.md](multi-node-beta-soak-and-upgrade-drill.md) |
 | Platform API contract | [platform-api-contract.md](platform-api-contract.md) |
@@ -66,13 +67,13 @@ The current source declares:
 
 ```text
 PlatformApiContract.CURRENT_API_VERSION = "v1"
-PlatformApiContract.CURRENT_CONTRACT_VERSION = 22
+PlatformApiContract.CURRENT_CONTRACT_VERSION = 23
 ```
 
 In docs, manifests, and catalog descriptors:
 
 - `/api/v1` identifies the transport route family.
-- `contractVersion=22` identifies the current Platform API compatibility contract snapshot.
+- `contractVersion=23` identifies the current Platform API compatibility contract snapshot.
 - `api.minimumVersion` and `api.maximumTestedVersion` compare against the integer contract
   version, not against the URL route prefix or the Cryptad build number.
 - `api.targetStability=stable` selects the Platform API 1.0 stable baseline for third-party app
@@ -154,7 +155,7 @@ Public beta readiness treats these workstreams as one ecosystem beta release sto
 
 | Readiness area | Evidence and docs |
 | --- | --- |
-| First-party catalog | [first-party-beta-catalog.md](first-party-beta-catalog.md), [production-first-party-catalog-channels.md](production-first-party-catalog-channels.md), `app-catalog.first-party-beta`, `catalog.production-channels`, `catalog.smoke` |
+| First-party catalog | [first-party-beta-catalog.md](first-party-beta-catalog.md), [production-first-party-catalog-channels.md](production-first-party-catalog-channels.md), [catalog-operations-and-mirrors.md](catalog-operations-and-mirrors.md), `app-catalog.first-party-beta`, `catalog.production-channels`, `catalog.operations-and-mirrors`, `catalog.smoke` |
 | Developer toolkit | [developer-beta-toolkit.md](developer-beta-toolkit.md), `app-platform.devtools-cli`, `app-platform.developer-beta-toolkit` |
 | Third-party developer beta | [third-party-developer-beta-program.md](third-party-developer-beta-program.md), [third-party-app-submission-checklist.md](third-party-app-submission-checklist.md), [platform-api-compatibility-support-window.md](platform-api-compatibility-support-window.md), `third-party-developer.*` evidence |
 | Reference apps | [social-inbox-reference-app.md](social-inbox-reference-app.md), [feed-reader-reference-app.md](feed-reader-reference-app.md), [trust-graph-preview.md](trust-graph-preview.md), `reference-app.*` evidence, `app-platform.trust-graph-rc-scope-and-safety` |

@@ -797,7 +797,10 @@ class WebShellResourcesTest {
     assertTrue(script.contains("pills.append(createPill(sourceKind));"));
     assertTrue(script.contains("pills.append(createPill(\"refresh failed\", \"is-warning\"));"));
     assertTrue(script.contains("[\"Source type\", sourceKind]"));
-    assertTrue(script.contains("[\"Resolved source\", scalar(catalog.lastResolvedUri)]"));
+    assertTrue(script.contains("[\"Source\", scalar(catalogSourceDisplay(catalog))]"));
+    assertTrue(
+        script.contains("[\"Resolved source\", scalar(catalogResolvedSourceDisplay(catalog))]"));
+    assertTrue(script.contains("function renderCatalogOperationsNode(catalog)"));
     assertTrue(
         script.contains(
             "[\"Last successful refresh\","
@@ -806,10 +809,10 @@ class WebShellResourcesTest {
     assertTrue(
         script.contains("Crypta catalog refresh failed; showing last successful app listing."));
     assertTrue(script.contains("catalog.appsError"));
-    assertTrue(
-        script.contains(
-            "const apps = await"
-                + " loadJson(apiUrl(`app-catalogs/${encodeURIComponent(catalog.catalogId)}/apps`));"));
+    assertTrue(script.contains("loadJson(apiUrl(`app-catalogs/${encodedCatalogId}/apps`))"));
+    assertTrue(script.contains("operations/health"));
+    assertTrue(script.contains("operations/revisions"));
+    assertTrue(script.contains("operations/key-rotation"));
     assertTrue(script.contains("return `apps/${encodedAppId}/${action}`;"));
     assertTrue(script.contains("return `apps/${encodedAppId}`;"));
     assertTrue(script.contains("`apps/${encodeURIComponent(appId)}/runtime`"));
@@ -817,6 +820,11 @@ class WebShellResourcesTest {
     assertTrue(script.contains("`apps/${encodeURIComponent(appId)}/audit`"));
     assertTrue(script.contains("`apps/${encodeURIComponent(appId)}/updates`"));
     assertTrue(script.contains("return `app-catalogs/${encodedCatalogId}/refresh`;"));
+    assertTrue(
+        script.contains("return `app-catalogs/${encodedCatalogId}/operations/refresh-primary`;"));
+    assertTrue(
+        script.contains("return `app-catalogs/${encodedCatalogId}/operations/emergency-refresh`;"));
+    assertTrue(script.contains("return `app-catalogs/${encodedCatalogId}/operations/rollback`;"));
     assertTrue(script.contains("return `app-catalogs/recommended/${encodedCatalogId}/add`;"));
     assertTrue(
         script.contains(

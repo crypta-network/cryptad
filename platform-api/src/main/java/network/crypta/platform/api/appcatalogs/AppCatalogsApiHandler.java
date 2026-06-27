@@ -5,6 +5,7 @@ import java.lang.reflect.Method;
 import java.net.URI;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -23,6 +24,8 @@ import network.crypta.platform.appcatalog.AppCatalogCompatibilityMetadata;
 import network.crypta.platform.appcatalog.AppCatalogEntry;
 import network.crypta.platform.appcatalog.AppCatalogException;
 import network.crypta.platform.appcatalog.AppCatalogInstallPlan;
+import network.crypta.platform.appcatalog.AppCatalogKeyRotationPlan;
+import network.crypta.platform.appcatalog.AppCatalogKeyRotationStatus;
 import network.crypta.platform.appcatalog.AppCatalogMaintenanceMetadata.BackupRestoreSupport;
 import network.crypta.platform.appcatalog.AppCatalogMaintenanceMetadata.DataSchemaPolicy;
 import network.crypta.platform.appcatalog.AppCatalogMaintenanceMetadata.DeprecationPolicy;
@@ -31,13 +34,18 @@ import network.crypta.platform.appcatalog.AppCatalogMaintenanceMetadata.Security
 import network.crypta.platform.appcatalog.AppCatalogMaintenanceMetadata.SupportLevel;
 import network.crypta.platform.appcatalog.AppCatalogMaintenanceMetadata;
 import network.crypta.platform.appcatalog.AppCatalogManager;
+import network.crypta.platform.appcatalog.AppCatalogMirror;
+import network.crypta.platform.appcatalog.AppCatalogMirrorHealth;
+import network.crypta.platform.appcatalog.AppCatalogMirrorId;
 import network.crypta.platform.appcatalog.AppCatalogProductionMetadata;
 import network.crypta.platform.appcatalog.AppCatalogReviewMetadata;
+import network.crypta.platform.appcatalog.AppCatalogRollbackCandidate;
 import network.crypta.platform.appcatalog.AppCatalogSecurityAdvisory;
 import network.crypta.platform.appcatalog.AppCatalogSecurityDecision;
 import network.crypta.platform.appcatalog.AppCatalogSecurityPolicy;
 import network.crypta.platform.appcatalog.AppCatalogSecurityStatus;
 import network.crypta.platform.appcatalog.AppCatalogSourceSnapshot;
+import network.crypta.platform.appcatalog.AppCatalogVerifiedRevision;
 import network.crypta.platform.appcatalog.AppReviewPolicy;
 import network.crypta.platform.appcatalog.AppReviewReceiptVerifier;
 import network.crypta.platform.appcatalog.AppReviewTransparencyEventKind;
@@ -106,6 +114,16 @@ public final class AppCatalogsApiHandler {
   private static final String SOURCE_KIND_FIELD = "sourceKind";
   private static final String CATALOG_ID_FIELD = "catalogId";
   private static final String APP_ID_FIELD = "appId";
+  private static final String REDACTED_FIELD = "redacted";
+  private static final String REDACTED_VALUE = "<redacted>";
+  private static final String REMOVED_FIELD = "removed";
+  private static final String SIGNATURE_KEY_ID_FIELD = "signatureKeyId";
+  private static final String MIRROR_ID_FIELD = "mirrorId";
+  private static final String MIRROR_VALUE = "mirror";
+  private static final String PRIORITY_FIELD = "priority";
+  private static final String ENABLED_FIELD = "enabled";
+  private static final String REVISION_DIGEST_FIELD = "revisionDigest";
+  private static final String REASON_FIELD = "reason";
   private static final String INSTALLED_FIELD = VERSION_STATUS_INSTALLED;
   private static final String INSTALLED_VERSION_FIELD = "installedVersion";
   private static final String LAST_ATTEMPT_AT_FIELD = "lastAttemptAt";
@@ -563,7 +581,7 @@ public final class AppCatalogsApiHandler {
               uri.getHost(),
               uri.getPort(),
               uri.getPath(),
-              "<redacted>",
+              REDACTED_VALUE,
               null)
           .toString();
     } catch (java.net.URISyntaxException _) {
@@ -586,7 +604,7 @@ public final class AppCatalogsApiHandler {
       catalogManager.remove(catalogId);
       LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(2);
       json.put(CATALOG_ID_FIELD, catalogId);
-      json.put("removed", true);
+      json.put(REMOVED_FIELD, true);
       return json;
     } catch (AppCatalogException exception) {
       throw catalogFailure(exception);
@@ -612,6 +630,212 @@ public final class AppCatalogsApiHandler {
       throw catalogFailure(exception);
     } catch (IOException _) {
       throw internalError("Failed to refresh app catalog.");
+    }
+  }
+
+  /** Refreshes only the primary catalog source, without using mirrors as fallback transports. */
+  public Map<String, Object> refreshPrimaryOnly(String catalogId) {
+    try {
+      return summarizeCatalog(catalogManager.refreshPrimaryOnly(catalogId));
+    } catch (AppCatalogException exception) {
+      throw catalogFailure(exception);
+    } catch (IOException _) {
+      throw internalError("Failed to refresh primary app catalog source.");
+    }
+  }
+
+  /** Returns source and mirror health for one catalog. */
+  public Map<String, Object> health(String catalogId) {
+    try {
+      AppCatalogSourceSnapshot snapshot = catalogById(catalogId);
+      List<AppCatalogMirrorHealth> health = catalogManager.sourceHealth(catalogId);
+      AppCatalogMirrorHealth activeHealth =
+          latestSuccessfulHealth(health).orElseGet(health::getFirst);
+      LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(11);
+      json.put(CATALOG_ID_FIELD, snapshot.catalogId());
+      json.put(STATUS_FIELD, lastFetchStatus(snapshot));
+      json.put("primarySource", sourceHealthEntry(health.getFirst()));
+      json.put("sourceHealth", health.stream().map(this::sourceHealthEntry).toList());
+      json.put(
+          "mirrors",
+          catalogManager.listMirrors(catalogId).stream().map(this::summarizeMirror).toList());
+      json.put("fallbackUsed", fallbackUsed(health));
+      json.put("activeSourceId", activeHealth.id().value());
+      json.put("verifiedRevision", activeHealth.lastCatalogDigest().orElse(null));
+      json.put("catalogDigest", activeHealth.lastCatalogDigest().orElse(null));
+      json.put(SIGNATURE_KEY_ID_FIELD, snapshot.signatureKeyId().orElse(null));
+      json.put(REDACTED_FIELD, true);
+      return json;
+    } catch (AppCatalogException exception) {
+      throw catalogFailure(exception);
+    } catch (IOException _) {
+      throw internalError("Failed to read app catalog health.");
+    }
+  }
+
+  /** Lists mirrors for one catalog. */
+  public Map<String, Object> mirrors(String catalogId) {
+    try {
+      LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(3);
+      json.put(CATALOG_ID_FIELD, catalogId);
+      json.put(
+          "mirrors",
+          catalogManager.listMirrors(catalogId).stream().map(this::summarizeMirror).toList());
+      json.put(REDACTED_FIELD, true);
+      return json;
+    } catch (AppCatalogException exception) {
+      throw catalogFailure(exception);
+    } catch (IOException _) {
+      throw internalError("Failed to list catalog mirrors.");
+    }
+  }
+
+  /** Adds one mirror to a catalog. */
+  public Map<String, Object> addMirror(
+      String catalogId, Map<String, List<String>> queryParameters) {
+    String source = PlatformApiParameters.requireString(queryParameters, SOURCE_FIELD);
+    String mirrorId = PlatformApiParameters.readOptionalString(queryParameters, MIRROR_ID_FIELD);
+    int priority = optionalPositivePriority(queryParameters);
+    boolean enabled = PlatformApiParameters.readBoolean(queryParameters, ENABLED_FIELD, true);
+    try {
+      AppCatalogMirror mirror =
+          catalogManager.addMirror(catalogId, mirrorId, source, priority, enabled);
+      LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(3);
+      json.put(CATALOG_ID_FIELD, catalogId);
+      json.put(MIRROR_VALUE, summarizeMirror(mirror));
+      json.put(REDACTED_FIELD, true);
+      return json;
+    } catch (AppCatalogException exception) {
+      throw catalogFailure(exception);
+    } catch (IOException _) {
+      throw internalError("Failed to add catalog mirror.");
+    }
+  }
+
+  /** Updates one catalog mirror. */
+  public Map<String, Object> updateMirror(
+      String catalogId, String mirrorId, Map<String, List<String>> queryParameters) {
+    String source = PlatformApiParameters.readOptionalString(queryParameters, SOURCE_FIELD);
+    Integer priority = optionalPriority(queryParameters);
+    Boolean enabled = PlatformApiParameters.readOptionalBoolean(queryParameters, ENABLED_FIELD);
+    try {
+      AppCatalogMirror mirror =
+          catalogManager.updateMirror(catalogId, mirrorId, source, priority, enabled);
+      LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(3);
+      json.put(CATALOG_ID_FIELD, catalogId);
+      json.put(MIRROR_VALUE, summarizeMirror(mirror));
+      json.put(REDACTED_FIELD, true);
+      return json;
+    } catch (AppCatalogException exception) {
+      throw catalogFailure(exception);
+    } catch (IOException _) {
+      throw internalError("Failed to update catalog mirror.");
+    }
+  }
+
+  /** Removes one catalog mirror. */
+  public Map<String, Object> removeMirror(String catalogId, String mirrorId) {
+    try {
+      catalogManager.removeMirror(catalogId, mirrorId);
+      LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(4);
+      json.put(CATALOG_ID_FIELD, catalogId);
+      json.put(MIRROR_ID_FIELD, mirrorId);
+      json.put(REMOVED_FIELD, true);
+      json.put(REDACTED_FIELD, true);
+      return json;
+    } catch (AppCatalogException exception) {
+      throw catalogFailure(exception);
+    } catch (IOException _) {
+      throw internalError("Failed to remove catalog mirror.");
+    }
+  }
+
+  /** Lists catalog rollback candidates. */
+  public Map<String, Object> rollbackCandidates(String catalogId) {
+    try {
+      LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(3);
+      json.put(CATALOG_ID_FIELD, catalogId);
+      json.put(
+          "revisions",
+          catalogManager.rollbackCandidates(catalogId).stream()
+              .map(this::summarizeRollbackCandidate)
+              .toList());
+      json.put(REDACTED_FIELD, true);
+      return json;
+    } catch (AppCatalogException exception) {
+      throw catalogFailure(exception);
+    } catch (IOException _) {
+      throw internalError("Failed to list catalog rollback candidates.");
+    }
+  }
+
+  /** Executes catalog rollback to a retained verified revision. */
+  public Map<String, Object> rollback(String catalogId, Map<String, List<String>> queryParameters) {
+    String revisionDigest =
+        PlatformApiParameters.requireString(queryParameters, REVISION_DIGEST_FIELD);
+    String reason = PlatformApiParameters.readOptionalString(queryParameters, REASON_FIELD);
+    try {
+      LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(4);
+      json.put(CATALOG_ID_FIELD, catalogId);
+      json.put("rolledBack", true);
+      json.put(
+          "catalog", summarizeCatalog(catalogManager.rollback(catalogId, revisionDigest, reason)));
+      json.put(REDACTED_FIELD, true);
+      return json;
+    } catch (AppCatalogException exception) {
+      throw catalogFailure(exception);
+    } catch (IOException _) {
+      throw internalError("Failed to roll back app catalog.");
+    }
+  }
+
+  /** Returns catalog signing-key rotation status. */
+  public Map<String, Object> keyRotationStatus(String catalogId) {
+    try {
+      return summarizeKeyRotation(catalogManager.keyRotationStatus(catalogId));
+    } catch (AppCatalogException exception) {
+      throw catalogFailure(exception);
+    } catch (IOException _) {
+      throw internalError("Failed to read catalog key rotation status.");
+    }
+  }
+
+  /** Runs an emergency advisory refresh through the normal signed-catalog gates. */
+  public Map<String, Object> emergencyRefresh(String catalogId) {
+    try {
+      AppCatalogSecurityPolicy beforePolicy = securityPolicyOrEmpty(catalogId);
+      AppCatalogSourceSnapshot after = catalogManager.emergencyRefresh(catalogId);
+      AppCatalogSecurityPolicy afterPolicy = catalogManager.securityPolicy(catalogId);
+      List<AppCatalogMirrorHealth> health = catalogManager.sourceHealth(catalogId);
+      LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(9);
+      json.put(CATALOG_ID_FIELD, after.catalogId());
+      json.put(STATUS_FIELD, lastFetchStatus(after));
+      json.put("activeSourceId", activeSourceId(health));
+      json.put("fallbackUsed", fallbackUsed(health));
+      json.put(
+          REVISION_DIGEST_FIELD,
+          latestSuccessfulHealth(health)
+              .flatMap(AppCatalogMirrorHealth::lastCatalogDigest)
+              .orElse(null));
+      json.put("advisoryIdsAdded", advisoryIdsAdded(beforePolicy, afterPolicy));
+      json.put(
+          "denylistEntriesAdded",
+          Math.max(0, afterPolicy.denylist().size() - beforePolicy.denylist().size()));
+      json.put(LAST_ATTEMPT_AT_FIELD, after.lastAttemptAt().toString());
+      json.put(REDACTED_FIELD, true);
+      return json;
+    } catch (AppCatalogException exception) {
+      throw catalogFailure(exception);
+    } catch (IOException _) {
+      throw internalError("Failed to run emergency catalog refresh.");
+    }
+  }
+
+  private AppCatalogSecurityPolicy securityPolicyOrEmpty(String catalogId) throws IOException {
+    try {
+      return catalogManager.securityPolicy(catalogId);
+    } catch (AppCatalogException _) {
+      return AppCatalogSecurityPolicy.EMPTY;
     }
   }
 
@@ -862,7 +1086,7 @@ public final class AppCatalogsApiHandler {
     json.put(APP_ID_FIELD, denylistEntry.get(APP_ID_FIELD));
     json.put(VERSION_FIELD, denylistEntry.get(VERSION_FIELD));
     json.put("advisoryId", denylistEntry.get("advisoryId"));
-    json.put("reason", denylistEntry.get("reason"));
+    json.put(REASON_FIELD, denylistEntry.get(REASON_FIELD));
     json.put(REPLACEMENT_APP_ID_FIELD, denylistEntry.get(REPLACEMENT_APP_ID_FIELD));
     json.put(SAFE_UNINSTALL_GUIDANCE_FIELD, denylistEntry.get(SAFE_UNINSTALL_GUIDANCE_FIELD));
     return json;
@@ -1487,6 +1711,7 @@ public final class AppCatalogsApiHandler {
     json.put(CATALOG_ID_FIELD, snapshot.catalogId());
     json.put("name", snapshot.name());
     json.put(SOURCE_FIELD, snapshot.sourceUri().toString());
+    json.put("sourceDisplay", redactedCatalogSource(snapshot.sourceUri().toString(), sourceKind));
     json.put(SOURCE_TYPE_FIELD, sourceKind);
     json.put(SOURCE_KIND_FIELD, sourceKind);
     json.put("generatedAt", snapshot.generatedAt().toString());
@@ -1503,8 +1728,195 @@ public final class AppCatalogsApiHandler {
     json.put(
         LAST_RESOLVED_URI_FIELD,
         stringField(snapshot, LAST_RESOLVED_URI_FIELD, snapshot.sourceUri().toString()));
-    json.put("signatureKeyId", snapshot.signatureKeyId().orElse(null));
+    json.put(
+        "lastResolvedDisplay",
+        redactedCatalogSource(
+            stringField(snapshot, LAST_RESOLVED_URI_FIELD, snapshot.sourceUri().toString()),
+            sourceKind));
+    json.put(SIGNATURE_KEY_ID_FIELD, snapshot.signatureKeyId().orElse(null));
     return json;
+  }
+
+  private AppCatalogSourceSnapshot catalogById(String catalogId) throws IOException {
+    return catalogManager.catalog(catalogId);
+  }
+
+  private Map<String, Object> summarizeMirror(AppCatalogMirror mirror) {
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(8);
+    json.put(MIRROR_ID_FIELD, mirror.id().value());
+    json.put("role", mirror.role().metadataValue());
+    json.put(SOURCE_KIND_FIELD, mirror.sourceKind().name().toLowerCase(Locale.ROOT));
+    json.put(
+        "sourceDisplay",
+        redactedCatalogSource(mirror.source().displayUri(), mirror.sourceKind().name()));
+    json.put(PRIORITY_FIELD, mirror.priority());
+    json.put(ENABLED_FIELD, mirror.enabled());
+    json.put("addedAt", mirror.addedAt().toString());
+    json.put(REDACTED_FIELD, true);
+    return json;
+  }
+
+  private Map<String, Object> sourceHealthEntry(AppCatalogMirrorHealth health) {
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(13);
+    json.put("sourceId", health.id().value());
+    json.put("role", health.role().metadataValue());
+    json.put(LAST_FETCH_STATUS_FIELD, health.lastFetchStatus().metadataValue());
+    json.put(LAST_ATTEMPT_AT_FIELD, health.lastAttemptAt().map(Instant::toString).orElse(null));
+    json.put(
+        LAST_SUCCESSFUL_REFRESH_AT_FIELD,
+        health.lastSuccessfulRefreshAt().map(Instant::toString).orElse(null));
+    json.put(LAST_FETCH_ERROR_CODE_FIELD, health.lastFetchErrorCode().orElse(null));
+    json.put(LAST_FETCH_ERROR_MESSAGE_FIELD, health.lastFetchErrorMessage().orElse(null));
+    json.put(LAST_RESOLVED_URI_FIELD, null);
+    json.put("lastResolvedDisplay", redactedResolvedHealthSource(health));
+    json.put("lastCatalogDigest", health.lastCatalogDigest().orElse(null));
+    json.put("lastSignatureKeyId", health.lastSignatureKeyId().orElse(null));
+    json.put("lastGeneratedAt", health.lastGeneratedAt().map(Instant::toString).orElse(null));
+    json.put(REDACTED_FIELD, true);
+    return json;
+  }
+
+  private Map<String, Object> summarizeRollbackCandidate(AppCatalogRollbackCandidate candidate) {
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(5);
+    json.put("revision", summarizeRevision(candidate.revision()));
+    json.put("eligible", candidate.eligible());
+    json.put(REASON_FIELD, candidate.reason().orElse(null));
+    json.put(VERSION_STATUS_CURRENT, candidate.revision().current());
+    json.put(REDACTED_FIELD, true);
+    return json;
+  }
+
+  private Map<String, Object> summarizeRevision(AppCatalogVerifiedRevision revision) {
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(15);
+    json.put(REVISION_DIGEST_FIELD, revision.revisionDigest());
+    json.put(CATALOG_ID_FIELD, revision.catalogId());
+    json.put("catalogName", revision.catalogName());
+    json.put("generatedAt", revision.generatedAt().toString());
+    json.put("verifiedAt", revision.verifiedAt().toString());
+    json.put("sourceId", revision.sourceId().value());
+    json.put("sourceRole", revision.sourceRole().metadataValue());
+    json.put("resolvedDisplay", redactedCatalogSource(revision.resolvedUri().orElse(null), null));
+    json.put(SIGNATURE_KEY_ID_FIELD, revision.signatureKeyId());
+    json.put("appCount", revision.appCount());
+    json.put("advisoryCount", revision.advisoryCount());
+    json.put("denylistCount", revision.denylistCount());
+    json.put("channels", revision.channels());
+    json.put(VERSION_STATUS_CURRENT, revision.current());
+    json.put(REDACTED_FIELD, true);
+    return json;
+  }
+
+  private Map<String, Object> summarizeKeyRotation(AppCatalogKeyRotationStatus status) {
+    AppCatalogKeyRotationPlan plan = status.plan();
+    LinkedHashMap<String, Object> planJson = LinkedHashMap.newLinkedHashMap(4);
+    planJson.put("nextKeyId", plan.nextKeyId().orElse(null));
+    planJson.put("startsAt", plan.startsAt().map(Instant::toString).orElse(null));
+    planJson.put("endsAt", plan.endsAt().map(Instant::toString).orElse(null));
+    planJson.put("message", plan.message().orElse(null));
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(7);
+    json.put(STATUS_FIELD, status.status());
+    json.put("currentKeyId", status.currentKeyId().orElse(null));
+    json.put("previousKeyId", status.previousKeyId().orElse(null));
+    json.put("currentKeyTrusted", status.currentKeyTrusted());
+    json.put("plan", planJson);
+    json.put("blockerReasons", status.blockerReasons());
+    json.put(REDACTED_FIELD, true);
+    return json;
+  }
+
+  private static boolean fallbackUsed(List<AppCatalogMirrorHealth> health) {
+    return latestSuccessfulHealth(health)
+        .map(entry -> MIRROR_VALUE.equals(entry.role().metadataValue()))
+        .orElse(false);
+  }
+
+  private static String activeSourceId(List<AppCatalogMirrorHealth> health) {
+    return latestSuccessfulHealth(health)
+        .map(entry -> entry.id().value())
+        .orElse(AppCatalogMirrorId.PRIMARY.value());
+  }
+
+  private static Optional<AppCatalogMirrorHealth> latestSuccessfulHealth(
+      List<AppCatalogMirrorHealth> health) {
+    return health.stream()
+        .filter(entry -> entry.lastSuccessfulRefreshAt().isPresent())
+        .max(Comparator.comparing(entry -> entry.lastSuccessfulRefreshAt().orElse(Instant.EPOCH)));
+  }
+
+  private static List<String> advisoryIdsAdded(
+      AppCatalogSecurityPolicy beforePolicy, AppCatalogSecurityPolicy afterPolicy) {
+    Set<String> before =
+        beforePolicy.advisories().stream()
+            .map(advisory -> String.valueOf(advisory.toJsonValue().get("id")))
+            .collect(java.util.stream.Collectors.toSet());
+    return afterPolicy.advisories().stream()
+        .map(advisory -> String.valueOf(advisory.toJsonValue().get("id")))
+        .filter(id -> !before.contains(id))
+        .toList();
+  }
+
+  private static Integer optionalPriority(Map<String, List<String>> queryParameters) {
+    String value = PlatformApiParameters.readOptionalString(queryParameters, PRIORITY_FIELD);
+    if (value == null || value.isBlank()) {
+      return null;
+    }
+    try {
+      return Integer.valueOf(value);
+    } catch (NumberFormatException _) {
+      throw new PlatformApiException(
+          400, "invalid_query_parameter", PRIORITY_FIELD + " must be an integer.");
+    }
+  }
+
+  private static int optionalPositivePriority(Map<String, List<String>> queryParameters) {
+    Integer value = optionalPriority(queryParameters);
+    if (value == null) {
+      return 0;
+    }
+    if (value <= 0) {
+      throw new PlatformApiException(
+          400, "invalid_query_parameter", PRIORITY_FIELD + " must be positive.");
+    }
+    return value;
+  }
+
+  private static String redactedResolvedHealthSource(AppCatalogMirrorHealth health) {
+    return redactedCatalogSource(health.lastResolvedUri().orElse(null), null);
+  }
+
+  private static String redactedCatalogSource(String rawSource, String sourceKind) {
+    if (rawSource == null || rawSource.isBlank()) {
+      return null;
+    }
+    String normalizedKind = sourceKind == null ? "" : sourceKind.toLowerCase(Locale.ROOT);
+    String normalizedSource = rawSource.toLowerCase(Locale.ROOT);
+    if ("file".equals(normalizedKind) || normalizedSource.startsWith("file:")) {
+      return "file:<configured>";
+    }
+    if ("crypta".equals(normalizedKind)
+        || normalizedSource.startsWith("crypta:")
+        || normalizedSource.startsWith("usk@")
+        || normalizedSource.startsWith("ssk@")
+        || normalizedSource.startsWith("chk@")) {
+      return "crypta:<configured>";
+    }
+    try {
+      URI uri = URI.create(rawSource);
+      if (uri.getQuery() == null && uri.getUserInfo() == null) {
+        return uri.toString();
+      }
+      return new URI(
+              uri.getScheme(),
+              null,
+              uri.getHost(),
+              uri.getPort(),
+              uri.getPath(),
+              uri.getQuery() == null ? null : REDACTED_VALUE,
+              null)
+          .toString();
+    } catch (Exception _) {
+      return REDACTED_VALUE;
+    }
   }
 
   private static String sourceKind(AppCatalogSourceSnapshot snapshot) {
@@ -1773,7 +2185,7 @@ public final class AppCatalogsApiHandler {
     }
     LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(3);
     json.put("added", List.copyOf(added));
-    json.put("removed", List.copyOf(removed));
+    json.put(REMOVED_FIELD, List.copyOf(removed));
     json.put("unchanged", List.copyOf(unchanged));
     return json;
   }

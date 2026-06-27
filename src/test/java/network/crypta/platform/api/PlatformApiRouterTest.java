@@ -25,6 +25,7 @@ import network.crypta.platform.appcatalog.AppCatalogManager;
 import network.crypta.platform.appcatalog.AppCatalogReviewMetadata;
 import network.crypta.platform.appcatalog.AppCatalogSourceSnapshot;
 import network.crypta.platform.appcatalog.AppReviewPolicy;
+import network.crypta.platform.appcatalog.RecommendedAppCatalogs;
 import network.crypta.platform.appcatalog.TrustedReviewerKeys;
 import network.crypta.platform.apphost.AppBundleVerificationException;
 import network.crypta.platform.apphost.AppHost;
@@ -2193,6 +2194,43 @@ class PlatformApiRouterTest {
   }
 
   @Test
+  void route_whenRecommendedCatalogIdMatchesOperationsSubroute_expectRecommendedAdd()
+      throws Exception {
+    assertRecommendedCatalogAddForCatalogId("operations");
+  }
+
+  @Test
+  void route_whenRecommendedCatalogIdMatchesMirrorsSubroute_expectRecommendedAdd()
+      throws Exception {
+    assertRecommendedCatalogAddForCatalogId("mirrors");
+  }
+
+  private void assertRecommendedCatalogAddForCatalogId(String catalogId) throws Exception {
+    AppCatalogManager catalogManager = mock(AppCatalogManager.class);
+    PlatformApiRouter catalogRouter = new PlatformApiRouter(runtimePorts, appHost, catalogManager);
+    String source = "https://example.invalid/cryptad-app-catalog.properties";
+    when(catalogManager.listCatalogs()).thenReturn(List.of());
+    when(catalogManager.hasTrustedCatalogKey(FIRST_PARTY_TRUSTED_KEY_ID)).thenReturn(true);
+    when(catalogManager.addSource(source, catalogId))
+        .thenReturn(recommendedCatalogSourceSnapshot(catalogId, source));
+
+    withFirstPartyCatalogProperties(
+        catalogId,
+        source,
+        () -> {
+          PlatformApiResponse response =
+              catalogRouter.route(
+                  request(
+                      "POST", List.of("app-catalogs", "recommended", catalogId, "add"), Map.of()));
+
+          assertEquals(201, response.statusCode());
+          assertTrue(response.body().contains("\"catalogId\":\"" + catalogId + "\""));
+          verify(catalogManager).addSource(source, catalogId);
+          verify(appHost, never()).installFromDirectory(any());
+        });
+  }
+
+  @Test
   void route_whenRecommendedCatalogHasAppNamedAdd_expectCatalogAppDetailJson() throws Exception {
     AppCatalogManager catalogManager = mock(AppCatalogManager.class);
     PlatformApiRouter catalogRouter = new PlatformApiRouter(runtimePorts, appHost, catalogManager);
@@ -4252,8 +4290,14 @@ class PlatformApiRouterTest {
   }
 
   private AppCatalogSourceSnapshot recommendedCatalogSourceSnapshot(String source) {
+    return recommendedCatalogSourceSnapshot(
+        RecommendedAppCatalogs.FIRST_PARTY_BETA_CATALOG_ID, source);
+  }
+
+  private AppCatalogSourceSnapshot recommendedCatalogSourceSnapshot(
+      String catalogId, String source) {
     return new AppCatalogSourceSnapshot(
-        "crypta-first-party-beta",
+        catalogId,
         "Crypta First-Party Beta Catalog",
         URI.create(source),
         STARTED_AT,
@@ -4271,18 +4315,27 @@ class PlatformApiRouterTest {
 
   private static void withFirstPartyCatalogProperties(String source, ThrowingRunnable action)
       throws Exception {
+    withFirstPartyCatalogProperties(
+        RecommendedAppCatalogs.FIRST_PARTY_BETA_CATALOG_ID, source, action);
+  }
+
+  private static void withFirstPartyCatalogProperties(
+      String catalogId, String source, ThrowingRunnable action) throws Exception {
     String previousEnabled = System.getProperty("cryptad.firstPartyCatalog.enabled");
+    String previousId = System.getProperty("cryptad.firstPartyCatalog.id");
     String previousSource = System.getProperty("cryptad.firstPartyCatalog.source");
     String previousTrustedKeyId =
         System.getProperty("cryptad.firstPartyCatalog.trustedCatalogKeyId");
     try {
       System.setProperty("cryptad.firstPartyCatalog.enabled", "true");
+      System.setProperty("cryptad.firstPartyCatalog.id", catalogId);
       System.setProperty("cryptad.firstPartyCatalog.source", source);
       System.setProperty(
           "cryptad.firstPartyCatalog.trustedCatalogKeyId", FIRST_PARTY_TRUSTED_KEY_ID);
       action.run();
     } finally {
       restoreSystemProperty("cryptad.firstPartyCatalog.enabled", previousEnabled);
+      restoreSystemProperty("cryptad.firstPartyCatalog.id", previousId);
       restoreSystemProperty("cryptad.firstPartyCatalog.source", previousSource);
       restoreSystemProperty("cryptad.firstPartyCatalog.trustedCatalogKeyId", previousTrustedKeyId);
     }

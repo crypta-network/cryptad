@@ -7,6 +7,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -53,6 +54,24 @@ class AppCatalogSourceStoreTest {
         source.resolvedCatalogFetchUri(), stored.refreshMetadata().lastResolvedUri().orElseThrow());
     assertArrayEquals(fetchedCatalog.catalogBytes(), stored.fetchedCatalog().catalogBytes());
     assertArrayEquals(fetchedCatalog.signatureBytes(), stored.fetchedCatalog().signatureBytes());
+  }
+
+  @Test
+  void read_whenLegacySingleSourceExists_expectPrimaryOnlyMirrorModel() throws Exception {
+    AppCatalogSourceStore store = new AppCatalogSourceStore(tempDir.resolve(STORE_DIRECTORY));
+    FetchedCatalog fetchedCatalog = fetchedCatalog("core");
+    AppCatalogSource source = source("core");
+
+    store.write(catalog("core"), source, fetchedCatalog, ADDED_AT, REFRESHED_AT);
+    StoredCatalogSource stored = store.read("core");
+
+    assertEquals(1, stored.mirrors().size());
+    AppCatalogMirror primary = stored.mirrors().getFirst();
+    assertEquals(AppCatalogMirrorId.PRIMARY, primary.id());
+    assertEquals(AppCatalogSourceRole.PRIMARY, primary.role());
+    assertEquals(source, primary.source());
+    assertEquals(0, primary.priority());
+    assertTrue(primary.enabled());
   }
 
   @Test
@@ -108,6 +127,20 @@ class AppCatalogSourceStoreTest {
             bytes("catalog.id=core\nreplacement=true\n"),
             bytes("catalog.signature.key.id=replacement\n"));
     store.write(catalog("core"), source("core"), original, ADDED_AT, REFRESHED_AT);
+    String originalDigest = AppCatalogRevisions.catalogDigest(original);
+    String replacementDigest = AppCatalogRevisions.catalogDigest(replacement);
+    Instant replacementRefreshedAt = REFRESHED_AT.plusSeconds(60);
+    AppCatalogMirror primary = AppCatalogMirror.primary(source("core"), ADDED_AT);
+    Map<AppCatalogMirrorId, AppCatalogMirrorHealth> replacementHealth =
+        Map.of(
+            primary.id(),
+            AppCatalogMirrorHealth.skipped(primary)
+                .successfulAttempt(
+                    replacementRefreshedAt,
+                    primary.source().resolvedCatalogFetchUri(),
+                    replacementDigest,
+                    "replacement",
+                    replacementRefreshedAt));
     AppCatalogSourceStore.SourceMetadataWriter failingWriter =
         (_, _, _) -> {
           throw new IOException("metadata write failed");
@@ -119,18 +152,32 @@ class AppCatalogSourceStoreTest {
             IOException.class,
             () ->
                 failingStore.write(
-                    catalog("core"),
-                    source("core"),
-                    replacement,
-                    ADDED_AT,
-                    REFRESHED_AT.plusSeconds(60)));
+                    new AppCatalogSourceStore.VerifiedCatalogWrite(
+                        catalog("core"),
+                        source("core"),
+                        replacement,
+                        ADDED_AT,
+                        replacementRefreshedAt),
+                    new AppCatalogSourceStore.EndpointWriteState(
+                        primary, List.of(primary), replacementHealth)));
     StoredCatalogSource stored = store.read("core");
+    List<AppCatalogVerifiedRevision> revisions = store.listRevisions("core", originalDigest);
 
     assertEquals("metadata write failed", exception.getMessage());
     assertEquals(REFRESHED_AT, stored.refreshedAt());
     assertEquals(AppCatalogFetchStatus.SUCCESS, stored.refreshMetadata().lastFetchStatus());
     assertArrayEquals(original.catalogBytes(), stored.fetchedCatalog().catalogBytes());
     assertArrayEquals(original.signatureBytes(), stored.fetchedCatalog().signatureBytes());
+    assertTrue(stored.mirrorHealth().isEmpty());
+    assertEquals(
+        List.of(originalDigest),
+        revisions.stream().map(AppCatalogVerifiedRevision::revisionDigest).toList());
+    assertFalse(
+        Files.exists(
+            rootDirectory
+                .resolve("core")
+                .resolve("history")
+                .resolve(AppCatalogRevisions.digestDirectoryName(replacementDigest))));
   }
 
   @Test

@@ -152,7 +152,7 @@ FIRST_PARTY_MAINTENANCE_ENUMS = {
     "securityPolicy": {"catalog-advisories", "project-security-policy", "unsupported"},
     "deprecationPolicy": {"none", "notice-only", "replacement-required", "security-only"},
 }
-CURRENT_PLATFORM_API_CONTRACT_VERSION = 22
+CURRENT_PLATFORM_API_CONTRACT_VERSION = 23
 CURRENT_PLATFORM_API_STABLE_BASELINE_CONTRACT_VERSION = 19
 FIRST_PARTY_CERTIFIED_MAX_CONTRACT_VERSION = CURRENT_PLATFORM_API_CONTRACT_VERSION
 NETWORK_SCALE_EVIDENCE_IDS = (
@@ -2652,7 +2652,7 @@ def collect_app_services_evidence(settings: Settings) -> list[EvidenceItem]:
 
     registry_checks = {
         "contractV12AndCapabilitiesPresent": (
-            "CURRENT_CONTRACT_VERSION = 22" in contract_text
+            "CURRENT_CONTRACT_VERSION = 23" in contract_text
             and "APP_SERVICES_CONTRACT_VERSION = 12" in contract_text
             and "APP_SERVICE_DEPENDENCY_BUNDLES_CONTRACT_VERSION = 16" in contract_text
             and "APP_SERVICES_READ" in capabilities_text
@@ -3850,6 +3850,174 @@ def collect_production_catalog_channels_evidence(settings: Settings) -> Evidence
         "pass",
         True,
         "Production catalog channel evidence passed deterministic checks.",
+        source,
+        details,
+    )
+
+
+def collect_catalog_operations_and_mirrors_evidence(settings: Settings) -> EvidenceItem:
+    source = summary_source(settings)
+    workspace = settings.workspace_root
+    appcatalog_dir = workspace / "platform-appcatalog/src/main/java/network/crypta/platform/appcatalog"
+    appcatalog_tests = workspace / "platform-appcatalog/src/test/java/network/crypta/platform/appcatalog"
+    api_dir = workspace / "platform-api/src/main/java/network/crypta/platform/api"
+    api_handler = api_dir / "appcatalogs/AppCatalogsApiHandler.java"
+    shell = (
+        workspace
+        / "platform-web-shell/src/main/resources/network/crypta/platform/webshell/static/web-shell.js"
+    )
+    model_text = "\n".join(
+        read_source(appcatalog_dir / name)
+        for name in (
+            "AppCatalogMirror.java",
+            "AppCatalogMirrorId.java",
+            "AppCatalogSourceRole.java",
+            "AppCatalogMirrorHealth.java",
+            "AppCatalogVerifiedRevision.java",
+            "AppCatalogRollbackCandidate.java",
+            "AppCatalogKeyRotationStatus.java",
+            "AppCatalogKeyRotationPlan.java",
+        )
+    )
+    manager_text = read_source(appcatalog_dir / "AppCatalogManager.java")
+    store_text = read_source(appcatalog_dir / "AppCatalogSourceStore.java")
+    handler_text = read_source(api_handler)
+    routes_text = read_source(api_dir / "PlatformApiAppRoutes.java")
+    contract_text = read_source(api_dir / "PlatformApiContract.java")
+    shell_text = read_source(shell)
+    appcatalog_test_text = "\n".join(
+        read_source(path)
+        for path in (
+            appcatalog_tests / "AppCatalogManagerTest.java",
+            appcatalog_tests / "AppCatalogSourceStoreTest.java",
+        )
+    )
+    api_test_text = read_source(
+        workspace
+        / "platform-api/src/test/java/network/crypta/platform/api/appcatalogs/AppCatalogsApiHandlerTest.java"
+    )
+    docs_text = "\n".join(
+        read_source(workspace / path)
+        for path in (
+            "docs/catalog-operations-and-mirrors.md",
+            "docs/app-catalogs.md",
+            "docs/first-party-beta-catalog.md",
+            "docs/production-security-response-runbook.md",
+            "docs/production-beta-release-pipeline.md",
+            "docs/release-certification.md",
+            "tools/release-certification/README.md",
+        )
+    )
+    checks = {
+        "primaryMirrorModelPresent": (
+            "record AppCatalogMirror" in model_text
+            and "AppCatalogMirrorId" in model_text
+            and "PRIMARY" in model_text
+            and "MIRROR" in model_text
+            and "AppCatalogMirrorHealth" in model_text
+        ),
+        "mirrorFallbackKeepsSignatureTrust": (
+            "refreshEndpoints" in manager_text
+            and "fetchAndVerifyEndpoint" in manager_text
+            and "AppCatalogVerifier.verify" in manager_text
+            and "CATALOG_ID_MISMATCH" in manager_text
+            and "candidate.generatedAt().isBefore" in manager_text
+        ),
+        "revisionHistoryAndRollbackPresent": (
+            "HISTORY_DIRECTORY_NAME" in store_text
+            and "REVISION_RETENTION_COUNT" in store_text
+            and "recordRevision" in store_text
+            and "listRevisions" in store_text
+            and "rollbackCandidates" in manager_text
+            and "sourceStore.readRevision" in manager_text
+        ),
+        "keyRotationAndEmergencyRefreshPresent": (
+            "keyRotationStatus" in manager_text
+            and "AppCatalogKeyRotationStatus" in model_text
+            and "emergencyRefresh" in manager_text
+            and "emergency-refresh" in routes_text
+        ),
+        "platformApiOperationsRoutesPresent": (
+            "sourceHealth" in handler_text
+            and "addMirror" in handler_text
+            and "rollback(" in handler_text
+            and "keyRotationStatus" in handler_text
+            and "/app-catalogs/{catalogId}/operations/health" in contract_text
+            and "/app-catalogs/{catalogId}/mirrors" in contract_text
+        ),
+        "webShellOperationsPresent": (
+            "renderCatalogOperationsNode" in shell_text
+            and "buildCatalogRollbackForm" in shell_text
+            and "operations/health" in shell_text
+            and "operations/emergency-refresh" in shell_text
+            and "catalogSourceDisplay" in shell_text
+        ),
+        "testsCoverOperations": (
+            "refresh_whenPrimaryFailsAndMirrorIsVerified_expectMirrorFallbackAccepted"
+            in appcatalog_test_text
+            and "refresh_whenMirrorReturnsOlderVerifiedRevision_expectCurrentCatalogPreserved"
+            in appcatalog_test_text
+            and "rollback_whenPreviousRevisionIsRetained_expectRevisionReverifiedAndRestored"
+            in appcatalog_test_text
+            and "read_whenLegacySingleSourceExists_expectPrimaryOnlyMirrorModel"
+            in appcatalog_test_text
+            and "health_whenSourcesContainPathsAndTokens_expectOperationsOutputRedacted"
+            in api_test_text
+        ),
+        "docsCoverOperations": (
+            "primary source plus mirrors" in docs_text
+            and "transport fallback" in docs_text
+            and "explicit rollback" in docs_text
+            and "key-rotation status" in docs_text
+            and "emergency advisory refresh" in docs_text
+            and "catalog.operations-and-mirrors" in docs_text
+        ),
+        "redactionCoveragePresent": (
+            "redactedCatalogSource" in handler_text
+            and "lastResolvedDisplay" in handler_text
+            and "sourceDisplay" in handler_text
+            and "file:<configured>" in api_test_text
+            and "private insert uri" in docs_text.lower()
+            and "absolute local path" in docs_text.lower()
+        ),
+    }
+    details = {
+        "liveNodeRequired": False,
+        "evidenceId": "catalog.operations-and-mirrors",
+        "checks": checks,
+        "redactionGuarantees": [
+            "private insert URIs excluded",
+            "private keys excluded",
+            "tokens excluded",
+            "raw catalog content excluded",
+            "raw app data excluded",
+            "scratch and staged paths excluded",
+            "absolute local paths redacted",
+        ],
+        "sources": {
+            "manager": display_path(appcatalog_dir / "AppCatalogManager.java", workspace),
+            "store": display_path(appcatalog_dir / "AppCatalogSourceStore.java", workspace),
+            "apiHandler": display_path(api_handler, workspace),
+            "apiRoutes": display_path(api_dir / "PlatformApiAppRoutes.java", workspace),
+            "webShell": display_path(shell, workspace),
+            "docs": display_path(workspace / "docs/catalog-operations-and-mirrors.md", workspace),
+        },
+    }
+    errors = [name for name, passed in checks.items() if not passed]
+    if errors:
+        return EvidenceItem(
+            "catalog.operations-and-mirrors",
+            "fail" if settings.mode == "release-candidate" else "warn",
+            True,
+            "Catalog operations and mirrors evidence is incomplete.",
+            source,
+            {"errors": errors, **details},
+        )
+    return EvidenceItem(
+        "catalog.operations-and-mirrors",
+        "pass",
+        True,
+        "Catalog operations and mirrors evidence passed deterministic checks.",
         source,
         details,
     )
@@ -6043,6 +6211,7 @@ def collect_content_subscription_evidence(settings: Settings) -> EvidenceItem:
             or "CURRENT_CONTRACT_VERSION = 15" in contract_text
             or "CURRENT_CONTRACT_VERSION = 20" in contract_text
             or "CURRENT_CONTRACT_VERSION = 22" in contract_text
+            or "CURRENT_CONTRACT_VERSION = 23" in contract_text
         ),
         "capabilityDescriptorPresent": (
             "CONTENT_SUBSCRIBE" in contract_text
@@ -6769,6 +6938,7 @@ def collect_app_data_store_evidence(settings: Settings) -> EvidenceItem:
                 or "CURRENT_CONTRACT_VERSION = 15" in text["contract"]
                 or "CURRENT_CONTRACT_VERSION = 20" in text["contract"]
                 or "CURRENT_CONTRACT_VERSION = 22" in text["contract"]
+                or "CURRENT_CONTRACT_VERSION = 23" in text["contract"]
             )
             and "APP_DATA_STORE_CONTRACT_VERSION = 9" in text["contract"]
             and "app.data.read" in text["capabilities"]
@@ -8425,7 +8595,7 @@ def collect_trust_graph_rc_scope_and_safety_evidence(settings: Settings) -> Evid
     docs_lower = normalized_source_text(docs_text)
     checks = {
         "contractV15AndRoutesPresent": (
-            "CURRENT_CONTRACT_VERSION = 22" in contract_text
+            "CURRENT_CONTRACT_VERSION = 23" in contract_text
             and "TRUST_GRAPH_RC_SCOPE_CONTRACT_VERSION = 15" in contract_text
             and "/trust-graph/statements/{fingerprint}" in contract_text
             and "/trust-graph/statements/{fingerprint}/deprecate" in contract_text
@@ -8765,7 +8935,7 @@ def collect_trust_graph_exchange_evidence(settings: Settings) -> EvidenceItem:
     route_source_text = router_text + "\n" + route_text
     checks = {
         "contractVersionV10": (
-            "CURRENT_CONTRACT_VERSION = 22" in contract_text
+            "CURRENT_CONTRACT_VERSION = 23" in contract_text
             and "TRUST_GRAPH_EXCHANGE_CONTRACT_VERSION = 10" in contract_text
         ),
         "contractDescriptorsPresent": (
@@ -9115,7 +9285,7 @@ def collect_social_message_signing_evidence(settings: Settings) -> EvidenceItem:
     )
     checks = {
         "routeInContract": "/app-vault/identities/{identityId}/social-message" in contract_text,
-        "contractVersionV11": "CURRENT_CONTRACT_VERSION = 22" in contract_text
+        "contractVersionV11": "CURRENT_CONTRACT_VERSION = 23" in contract_text
         and "SOCIAL_MESSAGE_CONTRACT_VERSION = 11" in contract_text,
         "capabilitiesInContract": all(
             fragment in contract_text
@@ -13501,7 +13671,7 @@ def collect_user_consent_flow_evidence(settings: Settings) -> EvidenceItem:
         "contractConsentDescriptorsPresent": all(
             marker in contract_text
             for marker in (
-                "CURRENT_CONTRACT_VERSION = 22",
+                "CURRENT_CONTRACT_VERSION = 23",
                 "CONSENT_CONTRACT_VERSION = 21",
                 "ROUTE_FAMILY_CONSENT",
                 "consentEndpoints",
@@ -15702,6 +15872,7 @@ def run(settings: Settings) -> tuple[dict[str, Any], int]:
         collect_live_usk_catalog_publication_evidence(settings, sample_paths),
         collect_first_party_beta_catalog_evidence(settings),
         collect_production_catalog_channels_evidence(settings),
+        collect_catalog_operations_and_mirrors_evidence(settings),
         collect_first_party_maintenance_policy_evidence(settings),
         collect_live_usk_source_verification_evidence(settings),
         collect_app_review_receipt_evidence(settings),
@@ -17336,8 +17507,8 @@ def run_self_test(repo_root: Path) -> None:
         assert (
             contract_details["contractVersion"] == CURRENT_PLATFORM_API_CONTRACT_VERSION
         ), contract_item
-        assert contract_details["capabilityCount"] == 15, contract_item
-        assert contract_details["endpointCount"] == 55, contract_item
+        assert contract_details["capabilityCount"] == 17, contract_item
+        assert contract_details["endpointCount"] == 65, contract_item
         assert contract_details["appServicesContract"]["missingCapabilities"] == [], contract_item
         assert contract_details["appServicesContract"]["missingEndpoints"] == [], contract_item
         assert contract_details["stableBaselineCapabilities"] == [
@@ -17414,6 +17585,9 @@ def run_self_test(repo_root: Path) -> None:
             "nightly",
             "deprecated",
         ]
+        catalog_operations_item = evidence_by_id["catalog.operations-and-mirrors"]
+        assert catalog_operations_item["status"] == "pass", catalog_operations_item
+        assert catalog_operations_item["details"]["liveNodeRequired"] is False
         maintenance_item = evidence_by_id["app-catalog.first-party-maintenance-policy"]
         assert maintenance_item["status"] == "pass", maintenance_item
         assert maintenance_item["details"]["requiredFirstPartyApps"] == list(APP_IDS)
@@ -18539,7 +18713,7 @@ def make_self_test_workspace(workspace: Path) -> None:
                 else "9" if is_feed_reader or is_profile_publisher else "3" if app_id == "site-publisher" else "1"
             )
         )
-        api_maximum = str(FIRST_PARTY_CERTIFIED_MAX_CONTRACT_VERSION)
+        api_maximum = "22" if is_trust_graph else str(FIRST_PARTY_CERTIFIED_MAX_CONTRACT_VERSION)
         experimental_accepted = "true" if is_profile_publisher or is_social_inbox or is_trust_graph else "false"
         service_lines: list[str] = []
         migration_lines: list[str] = []
@@ -18937,6 +19111,17 @@ def make_self_test_workspace(workspace: Path) -> None:
         "MAX_SIGNATURE_BYTES\"; }\n",
         encoding="utf-8",
     )
+    for name, text in {
+        "AppCatalogMirror.java": "record AppCatalogMirror(AppCatalogMirrorId id, AppCatalogSourceRole role) { String m = \"AppCatalogMirrorHealth\"; }\n",
+        "AppCatalogMirrorId.java": "record AppCatalogMirrorId(String value) { static final AppCatalogMirrorId PRIMARY = null; }\n",
+        "AppCatalogSourceRole.java": "enum AppCatalogSourceRole { PRIMARY, MIRROR }\n",
+        "AppCatalogMirrorHealth.java": "record AppCatalogMirrorHealth() {}\n",
+        "AppCatalogVerifiedRevision.java": "record AppCatalogVerifiedRevision(String revisionDigest) {}\n",
+        "AppCatalogRollbackCandidate.java": "record AppCatalogRollbackCandidate(AppCatalogVerifiedRevision revision) {}\n",
+        "AppCatalogKeyRotationStatus.java": "record AppCatalogKeyRotationStatus(String status) {}\n",
+        "AppCatalogKeyRotationPlan.java": "record AppCatalogKeyRotationPlan(String nextKeyId) {}\n",
+    }.items():
+        (appcatalog_dir / name).write_text(text, encoding="utf-8")
     (appcatalog_dir / "AppCatalogArtifactDownloader.java").write_text(
         "final class AppCatalogArtifactDownloader { ContentFetchPort port; "
         "void copyCryptaArtifact() { Object key = AppCatalogSidecars.cryptaArtifactFetchKey(null); } }\n",
@@ -18945,10 +19130,17 @@ def make_self_test_workspace(workspace: Path) -> None:
     (appcatalog_dir / "AppCatalogManager.java").write_text(
         "final class AppCatalogManager { Object downloader = new AppCatalogArtifactDownloader(contentFetchPort); "
         "String s = \"AppCatalogVerifier.verify sourceStore.write(catalog, source, fetched "
-        "CATALOG_ID_MISMATCH recordRefreshFailure previous stored sidecars remain in place\"; "
+        "CATALOG_ID_MISMATCH recordRefreshFailure previous stored sidecars remain in place "
+        "refreshEndpoints fetchAndVerifyEndpoint candidate.generatedAt().isBefore rollbackCandidates "
+        "sourceStore.readRevision keyRotationStatus emergencyRefresh\"; "
         "Object securityDecision(String catalogId, String appId) { return null; } "
         "Object installedSecurityDecision(String appId, String version) { return null; } "
         "void verifyInstallPlan(AppCatalogInstallPlan plan) { bundleExtractor.verifyStagedBundle(plan.entry(), plan.stagedBundleDirectory(), trustedKeyProvider.trustedKeys()); } }\n",
+        encoding="utf-8",
+    )
+    (appcatalog_dir / "AppCatalogSourceStore.java").write_text(
+        "final class AppCatalogSourceStore { String s = \"HISTORY_DIRECTORY_NAME "
+        "REVISION_RETENTION_COUNT recordRevision listRevisions\"; }\n",
         encoding="utf-8",
     )
     appcatalog_tests = workspace / "platform-appcatalog/src/test/java/network/crypta/platform/appcatalog"
@@ -18963,7 +19155,14 @@ def make_self_test_workspace(workspace: Path) -> None:
         "void fetch_whenCryptaResolvedCatalogChangesKeyKind_expectInvalidCatalogSource() {}\n"
         "void fetch_whenCryptaSourceUsesContentFetchPort_expectBoundedRequests() {}\n"
         "void refresh_whenCryptaFetchFails_expectPreviousVerifiedCatalogPreservedAndMetadataUpdated() {}\n"
-        "void refresh_whenCryptaVerificationFailsAfterResolvedFetch_expectMetadataUsesResolvedUri() {}\n",
+        "void refresh_whenCryptaVerificationFailsAfterResolvedFetch_expectMetadataUsesResolvedUri() {}\n"
+        "void refresh_whenPrimaryFailsAndMirrorIsVerified_expectMirrorFallbackAccepted() {}\n"
+        "void refresh_whenMirrorReturnsOlderVerifiedRevision_expectCurrentCatalogPreserved() {}\n"
+        "void rollback_whenPreviousRevisionIsRetained_expectRevisionReverifiedAndRestored() {}\n",
+        encoding="utf-8",
+    )
+    (appcatalog_tests / "AppCatalogSourceStoreTest.java").write_text(
+        "void read_whenLegacySingleSourceExists_expectPrimaryOnlyMirrorModel() {}\n",
         encoding="utf-8",
     )
     (appcatalog_tests / "AppCatalogParserTest.java").write_text(
@@ -19073,8 +19272,10 @@ def make_self_test_workspace(workspace: Path) -> None:
     catalog_api_dir.mkdir(parents=True, exist_ok=True)
     (catalog_api_dir / "AppCatalogsApiHandler.java").write_text(
         "final class AppCatalogsApiHandler { void listRecommendedCatalogs() {} void addRecommended() {} "
+        "void sourceHealth() {} void addMirror() {} void rollback() {} void keyRotationStatus() {} "
         "java.util.Map<String, Object> securityResponseSummary() { return java.util.Map.of(\"securityResponse\", \"clear\"); } "
         "void summarize() { json.put(\"channel\", channel); json.put(\"supportStatus\", supportStatus); "
+        "json.put(\"sourceDisplay\", redactedCatalogSource(source)); json.put(\"lastResolvedDisplay\", lastResolvedDisplay); "
         "json.put(\"maintenance\", summarizeMaintenance(metadata)); "
         "json.put(\"securityAdvisories\", securityAdvisories); json.put(\"defaultEntryChannel\", \"stable\"); "
         "json.put(\"allowedChannels\", allowedChannels); } "
@@ -19084,11 +19285,12 @@ def make_self_test_workspace(workspace: Path) -> None:
     )
     (api_dir / "PlatformApiAppRoutes.java").write_text(
         "final class PlatformApiAppRoutes { void routeRecommendedAppCatalogs() {} "
-        "void routeRecommendedAppCatalogAddOrApp() {} boolean refresh = \"refresh\".equals(action); }\n",
+        "void routeRecommendedAppCatalogAddOrApp() {} boolean refresh = \"refresh\".equals(action); "
+        "String ops = \"operations/health operations/revisions operations/key-rotation emergency-refresh mirrors\"; }\n",
         encoding="utf-8",
     )
     (api_dir / "PlatformApiContract.java").write_text(
-        "final class PlatformApiContract { static final int CURRENT_CONTRACT_VERSION = 22; "
+        "final class PlatformApiContract { static final int CURRENT_CONTRACT_VERSION = 23; "
         "static final int TRUST_GRAPH_PREVIEW_CONTRACT_VERSION = 7; "
         "static final int TRUST_GRAPH_EXCHANGE_CONTRACT_VERSION = 10; "
         "static final int TRUST_GRAPH_RC_SCOPE_CONTRACT_VERSION = 15; "
@@ -19102,6 +19304,8 @@ def make_self_test_workspace(workspace: Path) -> None:
         "String list = \"/app-catalogs/recommended\"; "
         "String add = \"/app-catalogs/recommended/{catalogId}/add\"; "
         "String refresh = \"/app-catalogs/{catalogId}/refresh\"; "
+        "String mirrors = \"/app-catalogs/{catalogId}/mirrors\"; "
+        "String operations = \"/app-catalogs/{catalogId}/operations/health\"; "
         "String listAction = \"catalogs.recommended.list\"; "
         "String addAction = \"catalogs.recommended.add\"; "
         "String profileDocument = \"/app-vault/identities/{identityId}/profile-document\"; "
@@ -20023,6 +20227,7 @@ def make_self_test_workspace(workspace: Path) -> None:
         "void listRecommendedCatalogs_whenConfiguredAndTrusted_expectCanAddAndRedactedSource() {}\n"
         "void listRecommendedCatalogs_whenHttpsSourceHasQuery_expectQueryRedacted() {}\n"
         "void listRecommendedCatalogs_whenFileSourceConfigured_expectPathRedacted() {}\n"
+        "void health_whenSourcesContainPathsAndTokens_expectOperationsOutputRedacted() { String s = \"file:<configured>\"; }\n"
         "void listApps_whenCatalogSecurityDecisionExists_expectRedactedDecisionIncluded() {}\n"
         "void securityResponseSummary_whenCatalogHasEmergencyPolicy_expectBoundedStatus() {}\n"
         "void install_whenCatalogSecurityDecisionIsDenylisted_expectStableSecurityError() {}\n"
@@ -20043,6 +20248,10 @@ def make_self_test_workspace(workspace: Path) -> None:
         "fetch('/.well-known/cryptad-origin.json', { credentials: \"omit\", mode: \"cors\" });\n"
         "function renderRecommendedCatalogs(){}\n"
         "function renderRecommendedCatalogCard(){}\n"
+        "function renderCatalogOperationsNode(){}\n"
+        "function buildCatalogRollbackForm(){}\n"
+        "function catalogSourceDisplay(){}\n"
+        "const catalogOperations = 'operations/health operations/revisions operations/key-rotation operations/emergency-refresh';\n"
         "function renderSecurityResponseSummary(response){ return 'Production security response Security response Denylisted app versions Support handling'; }\n"
         "function securityResponseTone(status){}\n"
         "function renderSecurityResponseActionLabels(actions){}\n"
@@ -20166,6 +20375,8 @@ def make_self_test_workspace(workspace: Path) -> None:
         "crypta:USK@.../cryptad-app-catalog.properties and cryptad-app-catalog.signature is the "
         "sibling sidecar at the same USK edition. Signed catalog verification remains mandatory. "
         "Catalog refresh records last verified state, and manual remains the default update policy. "
+        "Catalog operations use a primary source plus mirrors, mirror transport fallback, explicit rollback, "
+        "key-rotation status, emergency advisory refresh, and catalog.operations-and-mirrors evidence while excluding private insert URI, absolute local path, private keys, tokens, raw catalog content, raw app data, scratch paths, and staged paths. "
         "POST /api/v1/app-vault/identities creates browser-safe app-owned identities with "
         "vault.identities.create. POST /api/v1/app-vault/identities/{identityId}/profile-document "
         "uses vault.identities.read and vault.identities.use for profile document signing. "
@@ -22116,11 +22327,17 @@ class AppCatalogsApiHandler {
   String recommendedCatalogError = "recommended_catalog_trusted_key_missing";
   void listRecommendedCatalogs() {}
   void addRecommended() {}
+  void sourceHealth() {}
+  void addMirror() {}
+  void rollback() {}
+  void keyRotationStatus() {}
   java.util.Map<String, Object> securityResponseSummary() { return java.util.Map.of("securityResponse", "clear"); }
   void refresh(String catalogId) { refresh(catalogId); }
   void summarize() {
     json.put("channel", channel);
     json.put("supportStatus", supportStatus);
+    json.put("sourceDisplay", redactedCatalogSource(source));
+    json.put("lastResolvedDisplay", lastResolvedDisplay);
     json.put("maintenance", summarizeMaintenance(entry.maintenanceMetadata()));
     json.put("securityAdvisories", securityAdvisories);
     json.put("defaultEntryChannel", "stable");
@@ -22144,6 +22361,8 @@ class AppCatalogsApiHandler {
   private static boolean versionDifferent(String catalogVersion, String installedVersion, boolean installed) { return false; }
   private static Optional<Boolean> updateAvailable(String catalogVersion, String installedVersion, boolean installed) { return Optional.empty(); }
   private Object summarizeMaintenance(Object metadata) { return metadata; }
+  private Object redactedCatalogSource(Object source) { return source; }
+  private String lastResolvedDisplay = "redacted";
 }
 """,
         encoding="utf-8",
@@ -22283,6 +22502,10 @@ void consentEndpoint() {}
 function renderConsentPreview(preview, form) {}
 function renderConsentSection(section) {}
 function submitConsentDecision(preview, decision) {}
+function renderCatalogOperationsNode() {}
+function buildCatalogRollbackForm() {}
+function catalogSourceDisplay() {}
+const catalogOperations = "operations/health operations/revisions operations/key-rotation operations/emergency-refresh";
 const consentMarkers = "consent/install-preview consent/update-preview consent/service-grant-preview "
   + "This approval is stale. Refresh the consent preview. consentRequestId snapshotDigest blocksAutoUpdate "
   + "Consent previews unavailable in read-only mode.";
@@ -22357,7 +22580,7 @@ import os
 import sys
 from pathlib import Path
 
-CURRENT_PLATFORM_API_CONTRACT_VERSION = 22
+CURRENT_PLATFORM_API_CONTRACT_VERSION = 23
 STABLE_BASELINE_CONTRACT_VERSION = 19
 
 
@@ -22659,6 +22882,16 @@ def api_snapshot(args):
         endpoint("GET", "/app-services/{providerAppId}/services", ["app.services.read"], 12, "List services advertised by one provider app.", "experimental"),
         endpoint("GET", "/app-services/{providerAppId}/services/{serviceId}", ["app.services.read"], 12, "Read one advertised local app-service descriptor.", "experimental"),
         endpoint("POST", "/app-services/{providerAppId}/services/{serviceId}/invoke", ["app.services.call"], 12, "Invoke one bounded local app service.", "experimental"),
+        endpoint("GET", "/app-catalogs/{catalogId}/mirrors", ["catalogs.read"], 23, "List catalog primary and mirror endpoints.", "experimental", True, False, False),
+        endpoint("POST", "/app-catalogs/{catalogId}/mirrors", ["catalogs.manage"], 23, "Add one catalog mirror endpoint.", "experimental", True, False, False),
+        endpoint("POST", "/app-catalogs/{catalogId}/mirrors/{mirrorId}", ["catalogs.manage"], 23, "Update one catalog mirror endpoint.", "experimental", True, False, False),
+        endpoint("DELETE", "/app-catalogs/{catalogId}/mirrors/{mirrorId}", ["catalogs.manage"], 23, "Remove one catalog mirror endpoint.", "experimental", True, False, False),
+        endpoint("GET", "/app-catalogs/{catalogId}/operations/health", ["catalogs.read"], 23, "Read catalog source and mirror health.", "experimental", True, False, False),
+        endpoint("GET", "/app-catalogs/{catalogId}/operations/revisions", ["catalogs.read"], 23, "List verified catalog rollback candidates.", "experimental", True, False, False),
+        endpoint("GET", "/app-catalogs/{catalogId}/operations/key-rotation", ["catalogs.read"], 23, "Read catalog signing-key rotation status.", "experimental", True, False, False),
+        endpoint("POST", "/app-catalogs/{catalogId}/operations/refresh-primary", ["catalogs.manage"], 23, "Refresh only the primary catalog endpoint.", "experimental", True, False, False),
+        endpoint("POST", "/app-catalogs/{catalogId}/operations/rollback", ["catalogs.manage"], 23, "Roll back to a verified catalog revision.", "experimental", True, False, False),
+        endpoint("POST", "/app-catalogs/{catalogId}/operations/emergency-refresh", ["catalogs.manage"], 23, "Refresh catalogs for emergency advisory propagation.", "experimental", True, False, False),
     ]
     contract = {
         "apiVersion": "v1",
@@ -22689,6 +22922,8 @@ def api_snapshot(args):
             capability("vault.identities.use", "experimental", 11, "Use bounded AppVault signing routes."),
             capability("app.services.read", "experimental", 12, "Discover local app services and grants."),
             capability("app.services.call", "experimental", 12, "Request grants and invoke approved services."),
+            capability("catalogs.read", "experimental", 23, "Read signed app-catalog sources and entries."),
+            capability("catalogs.manage", "experimental", 23, "Manage signed app-catalog sources and operations."),
         ],
         "endpoints": stable_endpoints + experimental_endpoints,
     }
@@ -22945,7 +23180,7 @@ PY
 {
   "contract": {
     "apiVersion": "v1",
-    "contractVersion": 22,
+    "contractVersion": 23,
     "generatedBy": "cryptad",
     "stabilityPolicy": "self-test",
     "stableBaseline": {
