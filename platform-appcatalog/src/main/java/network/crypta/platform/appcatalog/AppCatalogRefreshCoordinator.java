@@ -69,6 +69,7 @@ final class AppCatalogRefreshCoordinator {
         trustedKeys,
         Instant.now(),
         operations.currentGeneratedAt(stored, trustedKeys).orElse(null),
+        AppCatalogRevisions.catalogContentDigest(stored.fetchedCatalog()),
         new LinkedHashMap<>(stored.mirrorHealth()));
   }
 
@@ -104,7 +105,9 @@ final class AppCatalogRefreshCoordinator {
       RefreshContext context, AppCatalogMirror endpoint, FetchAttempt attempt) throws IOException {
     AppCatalog candidate = attempt.catalog().orElseThrow();
     FetchedCatalog fetched = attempt.fetchedCatalog().orElseThrow();
-    if (isOlderRevision(candidate, context.currentGeneratedAt())) {
+    String contentDigest = AppCatalogRevisions.catalogContentDigest(fetched);
+    if (isStaleOrAmbiguousRevision(
+        candidate, contentDigest, context.currentGeneratedAt(), context.currentContentDigest())) {
       return Optional.empty();
     }
     String digest = AppCatalogRevisions.catalogDigest(fetched);
@@ -141,7 +144,7 @@ final class AppCatalogRefreshCoordinator {
     AppCatalogException failure =
         new AppCatalogException(
             AppCatalogSidecars.CATALOG_FETCH_FAILED,
-            "catalog source returned an older verified revision");
+            "catalog source returned an older or ambiguous verified revision");
     AppCatalogMirrorHealth previous =
         operations.previousHealth(
             context.health(), endpoint, context.stored(), context.trustedKeys());
@@ -207,8 +210,19 @@ final class AppCatalogRefreshCoordinator {
     }
   }
 
-  private static boolean isOlderRevision(AppCatalog candidate, Instant currentGeneratedAt) {
-    return currentGeneratedAt != null && candidate.generatedAt().isBefore(currentGeneratedAt);
+  private static boolean isStaleOrAmbiguousRevision(
+      AppCatalog candidate,
+      String candidateContentDigest,
+      Instant currentGeneratedAt,
+      String currentContentDigest) {
+    if (currentGeneratedAt == null) {
+      return false;
+    }
+    int generatedAtComparison = candidate.generatedAt().compareTo(currentGeneratedAt);
+    if (generatedAtComparison != 0) {
+      return generatedAtComparison < 0;
+    }
+    return !candidateContentDigest.equals(currentContentDigest);
   }
 
   private record RefreshContext(
@@ -217,6 +231,7 @@ final class AppCatalogRefreshCoordinator {
       TrustedAppKeys trustedKeys,
       Instant attemptedAt,
       Instant currentGeneratedAt,
+      String currentContentDigest,
       Map<AppCatalogMirrorId, AppCatalogMirrorHealth> health) {}
 
   private record RefreshEndpointResult(

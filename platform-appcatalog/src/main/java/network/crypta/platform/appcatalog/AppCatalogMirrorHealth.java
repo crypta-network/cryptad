@@ -147,7 +147,7 @@ public record AppCatalogMirrorHealth(
   }
 
   /**
-   * Returns health for a stale verified candidate.
+   * Returns health for a stale or ambiguously ordered verified candidate.
    *
    * @param attemptedAt attempt timestamp
    * @param resolvedUri resolved transport URI or fetch key
@@ -170,7 +170,7 @@ public record AppCatalogMirrorHealth(
         Optional.of(attemptedAt),
         hasPreviousSuccess ? lastSuccessfulRefreshAt : Optional.empty(),
         Optional.of("failed_stale_revision"),
-        Optional.of("mirror returned an older catalog revision"),
+        Optional.of("mirror returned an older or ambiguous catalog revision"),
         hasPreviousSuccess ? lastResolvedUri : Optional.ofNullable(resolvedUri),
         hasPreviousSuccess ? lastCatalogDigest : Optional.of(digest),
         hasPreviousSuccess ? lastSignatureKeyId : Optional.of(signatureKeyId),

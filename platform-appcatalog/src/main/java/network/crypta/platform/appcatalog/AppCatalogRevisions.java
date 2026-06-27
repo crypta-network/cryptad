@@ -16,6 +16,12 @@ final class AppCatalogRevisions {
     return DIGEST_PREFIX + AppCatalogSidecars.lowercaseHex(digest.digest());
   }
 
+  static String catalogContentDigest(FetchedCatalog fetchedCatalog) {
+    MessageDigest digest = AppCatalogSidecars.newArtifactSha256Digest();
+    return DIGEST_PREFIX
+        + AppCatalogSidecars.lowercaseHex(digest.digest(fetchedCatalog.catalogBytes()));
+  }
+
   static String signatureDigest(FetchedCatalog fetchedCatalog) {
     MessageDigest digest = AppCatalogSidecars.newArtifactSha256Digest();
     return DIGEST_PREFIX

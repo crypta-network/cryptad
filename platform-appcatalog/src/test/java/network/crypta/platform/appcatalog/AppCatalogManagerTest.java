@@ -946,6 +946,48 @@ class AppCatalogManagerTest {
   }
 
   @Test
+  void refresh_whenMirrorReturnsSameTimestampDifferentCatalog_expectCurrentCatalogPreserved()
+      throws Exception {
+    KeyPair keyPair = keyPair();
+    Path bundle = signedBundle(keyPair);
+    Path artifact = zipDirectory(bundle, tempDir.resolve(ARTIFACT_ZIP));
+    Path catalog = signedCatalog(artifact, keyPair, sha256(artifact), Files.size(artifact));
+    byte[] catalogBytes = Files.readAllBytes(catalog);
+    byte[] signatureBytes =
+        Files.readAllBytes(catalog.resolveSibling(AppCatalogSignature.SIGNATURE_FILE_NAME));
+    FakeContentFetchPort contentFetchPort =
+        new FakeContentFetchPort(
+            Map.of(CRYPTA_CATALOG_KEY, catalogBytes, CRYPTA_SIGNATURE_KEY, signatureBytes));
+    AppCatalogManager manager = manager(trustedKeys(keyPair), contentFetchPort);
+    manager.addSource(CRYPTA_CATALOG_SOURCE);
+    Path alternateArtifact = tempDir.resolve("alternate-" + ARTIFACT_ZIP);
+    Files.copy(artifact, alternateArtifact);
+    Path ambiguousCatalog =
+        signedCatalog(
+            CATALOG_ID,
+            alternateArtifact.toUri(),
+            keyPair,
+            KEY_ID,
+            sha256(alternateArtifact),
+            Files.size(alternateArtifact),
+            GENERATED_AT);
+    manager.addMirror(CATALOG_ID, "ambiguous", ambiguousCatalog.toString(), 1, true);
+    contentFetchPort.failWith(new IOException("primary unavailable"));
+
+    AppCatalogException exception =
+        assertThrows(AppCatalogException.class, () -> manager.refresh(CATALOG_ID));
+    AppCatalogSourceSnapshot snapshot = manager.listCatalogs().getFirst();
+    AppCatalogEntry entry = manager.listApps(CATALOG_ID).getFirst();
+    List<AppCatalogMirrorHealth> health = manager.sourceHealth(CATALOG_ID);
+
+    assertEquals(AppCatalogSidecars.CATALOG_FETCH_FAILED, exception.errorCode());
+    assertEquals(GENERATED_AT, snapshot.generatedAt());
+    assertEquals(artifact.toUri(), entry.bundleUri());
+    assertEquals(AppCatalogFetchStatus.FAILED, snapshot.lastFetchStatus());
+    assertEquals(AppCatalogFetchStatus.STALE, healthFor(health, "ambiguous").lastFetchStatus());
+  }
+
+  @Test
   void
       refresh_whenPreviouslySuccessfulMirrorLaterReturnsStaleRevision_expectSuccessDigestPreserved()
           throws Exception {
