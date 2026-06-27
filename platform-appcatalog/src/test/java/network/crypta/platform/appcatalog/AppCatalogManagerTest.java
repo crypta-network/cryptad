@@ -1570,6 +1570,82 @@ class AppCatalogManagerTest {
   }
 
   @Test
+  void refresh_whenRevisionPruneRejectsCorruptHistory_expectActiveCatalogRestored()
+      throws Exception {
+    KeyPair keyPair = keyPair();
+    Path bundle = signedBundle(keyPair);
+    Path artifact = zipDirectory(bundle, tempDir.resolve(ARTIFACT_ZIP));
+    Path initialCatalog =
+        signedCatalog(
+            CATALOG_ID,
+            artifact.toUri(),
+            keyPair,
+            KEY_ID,
+            sha256(artifact),
+            Files.size(artifact),
+            GENERATED_AT);
+    byte[] initialCatalogBytes = Files.readAllBytes(initialCatalog);
+    byte[] initialSignatureBytes =
+        Files.readAllBytes(initialCatalog.resolveSibling(AppCatalogSignature.SIGNATURE_FILE_NAME));
+    Path refreshedCatalog =
+        signedCatalog(
+            CATALOG_ID,
+            artifact.toUri(),
+            keyPair,
+            KEY_ID,
+            sha256(artifact),
+            Files.size(artifact),
+            GENERATED_AT.plusSeconds(3600));
+    byte[] refreshedCatalogBytes = Files.readAllBytes(refreshedCatalog);
+    byte[] refreshedSignatureBytes =
+        Files.readAllBytes(
+            refreshedCatalog.resolveSibling(AppCatalogSignature.SIGNATURE_FILE_NAME));
+    FakeContentFetchPort contentFetchPort =
+        new FakeContentFetchPort(
+            Map.of(
+                CRYPTA_CATALOG_KEY,
+                initialCatalogBytes,
+                CRYPTA_SIGNATURE_KEY,
+                initialSignatureBytes));
+    AppCatalogSourceStore sourceStore =
+        new AppCatalogSourceStore(tempDir.resolve(CATALOG_SOURCE_STORE_DIRECTORY));
+    AppCatalogManager manager = manager(sourceStore, trustedKeys(keyPair), contentFetchPort);
+
+    manager.addSource(CRYPTA_CATALOG_SOURCE);
+    AppCatalogSourceSnapshot beforeRefresh = manager.listCatalogs().getFirst();
+    String initialRevisionDigest =
+        AppCatalogRevisions.catalogDigest(
+            new FetchedCatalog(initialCatalogBytes, initialSignatureBytes));
+    Files.writeString(
+        sourceStore
+            .rootDirectory()
+            .resolve(CATALOG_ID)
+            .resolve("history")
+            .resolve(AppCatalogRevisions.digestDirectoryName(initialRevisionDigest))
+            .resolve("revision.properties"),
+        "unsupported.property=true\n",
+        StandardCharsets.UTF_8,
+        java.nio.file.StandardOpenOption.APPEND);
+    contentFetchPort.replaceContent(
+        Map.of(
+            CRYPTA_CATALOG_KEY,
+            refreshedCatalogBytes,
+            CRYPTA_SIGNATURE_KEY,
+            refreshedSignatureBytes),
+        Map.of());
+
+    AppCatalogException exception =
+        assertThrows(AppCatalogException.class, () -> manager.refresh(CATALOG_ID));
+    AppCatalogSourceSnapshot afterRefresh = manager.listCatalogs().getFirst();
+
+    assertEquals(AppCatalogSidecars.INVALID_CATALOG_SOURCE, exception.errorCode());
+    assertEquals(beforeRefresh.generatedAt(), afterRefresh.generatedAt());
+    assertEquals(beforeRefresh.signatureKeyId(), afterRefresh.signatureKeyId());
+    assertEquals(beforeRefresh.refreshedAt(), afterRefresh.refreshedAt());
+    assertEquals(AppCatalogFetchStatus.SUCCESS, afterRefresh.lastFetchStatus());
+  }
+
+  @Test
   void entry_whenArtifactUriIsCryptaChk_expectAccepted() {
     String artifactDigest = "0".repeat(64);
     List<String> permissions = List.of(QUEUE_READ_PERMISSION);

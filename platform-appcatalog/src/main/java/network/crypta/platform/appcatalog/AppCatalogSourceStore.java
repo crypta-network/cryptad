@@ -274,7 +274,7 @@ public final class AppCatalogSourceStore {
               addedAt,
               refreshedAt,
               AppCatalogSourceRefreshMetadata.success(refreshedAt, resolvedUri)));
-    } catch (IOException exception) {
+    } catch (IOException | AppCatalogException exception) {
       if (previousSnapshot == null) {
         cleanupIncompleteAdd(directory, exception);
       } else {
@@ -624,7 +624,7 @@ public final class AppCatalogSourceStore {
     }
   }
 
-  private static void cleanupIncompleteAdd(Path directory, IOException originalException) {
+  private static void cleanupIncompleteAdd(Path directory, Exception originalException) {
     try {
       AppCatalogBundleExtractor.deleteRecursively(directory);
     } catch (IOException cleanupException) {
@@ -726,7 +726,7 @@ public final class AppCatalogSourceStore {
       return historyBackup;
     }
 
-    private void restore(Path directory, IOException originalException) {
+    private void restore(Path directory, Exception originalException) {
       restoreFetchedCatalog(directory, originalException);
       restoreSnapshotFile(directory.resolve(SOURCE_FILE_NAME), sourceMetadata, originalException);
       restoreSnapshotFile(
@@ -735,7 +735,7 @@ public final class AppCatalogSourceStore {
       restoreHistory(directory, originalException);
     }
 
-    private void restoreHistory(Path directory, IOException originalException) {
+    private void restoreHistory(Path directory, Exception originalException) {
       Path historyDirectory = directory.resolve(HISTORY_DIRECTORY_NAME);
       try {
         AppCatalogBundleExtractor.deleteRecursively(historyDirectory);
@@ -751,7 +751,7 @@ public final class AppCatalogSourceStore {
       cleanupBackup(backupDirectory, null);
     }
 
-    private static void cleanupBackup(Path backupDirectory, IOException originalException) {
+    private static void cleanupBackup(Path backupDirectory, Exception originalException) {
       try {
         AppCatalogBundleExtractor.deleteRecursively(backupDirectory);
       } catch (IOException cleanupException) {
@@ -761,7 +761,7 @@ public final class AppCatalogSourceStore {
       }
     }
 
-    private void restoreFetchedCatalog(Path directory, IOException originalException) {
+    private void restoreFetchedCatalog(Path directory, Exception originalException) {
       try {
         Files.write(
             directory.resolve(AppCatalogSignature.CATALOG_FILE_NAME),
@@ -775,7 +775,7 @@ public final class AppCatalogSourceStore {
     }
 
     private static void restoreSnapshotFile(
-        Path file, SnapshotFile snapshot, IOException originalException) {
+        Path file, SnapshotFile snapshot, Exception originalException) {
       try {
         if (snapshot.present()) {
           Files.write(file, snapshot.content());
