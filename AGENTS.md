@@ -50,6 +50,7 @@ Load only what you need. It’s normal to load multiple skills for one task.
 - **OpenCode LSP:** Treat LSP/typechecker diagnostics as blockers for touched files.
   - If the OpenCode `lsp` tool is enabled, prefer it for definition/reference/hover instead of guessing
 - **Repository discovery:** If the task does not provide exact paths/symbols, identify the relevant files with deterministic local search before making code changes.
+- **GitHub identity:** For every GitHub operation in this repository, use the `leumor` GitHub identity explicitly. Do not rely on the active/default `gh` account.
 - **Codex Docker / Playwright:** For `tools/codex-docker`, Codex container helpers, Playwright remote browser server wiring, or related docs, load `$cryptad-codex-docker`.
 - **Compatibility:** Avoid breaking persistent formats, on-disk layouts, and wire protocols without an explicit migration plan.
   - For AEAD stream / format changes, load `$cryptad-crypto-aead` first.

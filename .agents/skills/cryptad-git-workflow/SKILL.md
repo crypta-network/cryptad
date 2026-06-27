@@ -54,6 +54,18 @@ Use this skill whenever you:
 - [ ] Release notes updated (if applicable).
 
 ## Git identity policy (must follow)
+### GitHub operation identity
+- All GitHub operations for this repository must use the `leumor` account, including PR creation,
+  review comments, issue comments, review-thread resolution, release edits, CI inspection, and
+  branch pushes.
+- Do not rely on the active/default `gh` account. Prefix every manual `gh` command with:
+  `GH_TOKEN="$(gh auth token --user leumor)" gh ...`.
+- If a GitHub MCP or plugin tool performs a write operation, verify the created PR/comment/review
+  author is `leumor`. If it is not `leumor`, delete or close the accidental artifact when possible
+  and recreate it as `leumor`.
+- If `gh auth token --user leumor` fails, stop and ask the user to authenticate `leumor`; do not
+  fall back to another GitHub account.
+
 ### Never override authorship/committer identity
 - Do not pass `--author` or `--reset-author` to `git commit`.
 - Do not set `GIT_AUTHOR_NAME`, `GIT_AUTHOR_EMAIL`, `GIT_COMMITTER_NAME`, or `GIT_COMMITTER_EMAIL` in commit flows.
