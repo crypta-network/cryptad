@@ -96,8 +96,9 @@ Use this skill when you need to:
   handlers, content/app-data/subscription/service routes, app-data backup/restore planning and
   commit routes, app-service dependency graph and grant-bundle routes, shared app-network budget
   service/store, app-update lifecycle service, app-data migration planning/execution and internal
-  update snapshots, and host/operator-only beta dashboard/support-bundle, typed operator RC
-  recovery, and network-budget snapshot routes. Its focused leaf tests now live under
+  update snapshots, host/operator-only catalog operation routes, and host/operator-only beta
+  dashboard/support-bundle, typed operator RC recovery, and network-budget snapshot routes. Its
+  focused leaf tests now live under
   `platform-api/src/test/java`.
 - `:platform-apphost` owns the transport-neutral out-of-process AppHost core, sandbox
   policy/status reporting, Linux bubblewrap provider selection, durable rollback records,
@@ -114,8 +115,10 @@ Use this skill when you need to:
 - `:platform-appcatalog` owns signed catalog source parsing, catalog writer/descriptor support,
   verification, `crypta:` catalog source fetching, app-store/API compatibility metadata,
   submission package/pre-review/candidate metadata, independent app-review receipt trust metadata,
-  artifact download, safe ZIP extraction, and verified staging code plus focused tests under
-  `platform-appcatalog/src/test/java`.
+  primary-plus-mirror source operations, mirror fallback refresh, verified revision history,
+  explicit rollback re-verification, catalog signing-key rotation status, emergency advisory
+  refresh metadata, artifact download, safe ZIP extraction, and verified staging code plus focused
+  tests under `platform-appcatalog/src/test/java`.
 - `:platform-trustgraph` owns Trust Graph Local RC statement parsing, canonicalization,
   verification, process-local store/anchor behavior, import-preview summaries,
   duplicate-issuer/conflict handling, lifecycle/status records, and bounded deterministic scoring
@@ -129,9 +132,10 @@ Use this skill when you need to:
 - `:platform-sdk-js` owns the dependency-free browser SDK resource and focused resource/boundary
   tests under `platform-sdk-js/src/test/java`.
 - `:platform-web-shell` owns the browser-facing Web Shell leaf, including app/catalog/update/review
-  views, app-service dependency/grant-bundle review, operator beta dashboard, Operator RC
-  Recovery, app-data backup/restore controls, legacy explicit fallback actions, and focused leaf
-  tests under `platform-web-shell/src/test/java`.
+  views, catalog source/mirror health and guarded catalog operation controls, app-service
+  dependency/grant-bundle review, operator beta dashboard, Operator RC Recovery, app-data
+  backup/restore controls, legacy explicit fallback actions, and focused leaf tests under
+  `platform-web-shell/src/test/java`.
 - `:runtime-alerts` owns the extracted leaf-safe `network.crypta.runtime.alerts` feed/model
   subset plus the detached `UserAlertSurface` used by legacy HTTP/admin code.
 - `:runtime-node` is the extracted daemon runtime leaf. It now owns the remaining cyclic/high-level
@@ -148,8 +152,9 @@ Use this skill when you need to:
   implementations plus the legacy HTTP `network.crypta.clients.http.geoip` helper package, with
   focused leaf tests under `bridge-http-runtime/src/test/java`.
 - `:adapter-http-legacy-admin` owns the detached shared legacy `network.crypta.clients.http`
-  shell, admin toadlets, `/api/v1/` and `/app/node/` bridge entrypoints, and the matching
-  `network/crypta/clients/http/**` main resources.
+  shell, admin toadlets, `/api/v1/` and `/app/node/` bridge entrypoints, Platform API
+  form-password guards for mutating host/operator routes such as catalog operations, and the
+  matching `network/crypta/clients/http/**` main resources.
 - `:adapter-http-legacy-browse` owns the concrete browse/FProxy routes, toadlets, and helper
   models under `network.crypta.clients.http`, with focused leaf tests under
   `adapter-http-legacy-browse/src/test/java`.

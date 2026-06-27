@@ -90,8 +90,10 @@ Use this skill when you need to:
     catalog writer/descriptors, Crypta catalog source handling, app-store/API compatibility
     target-stability metadata, first-party maintenance metadata, submission package
     verification/pre-review/candidate metadata, independent app-review receipts, catalog security
-    advisory lifecycle/denylist policy, production security response metadata, artifact
-    verification, safe ZIP extraction, and verified staging)
+    advisory lifecycle/denylist policy, production security response metadata, primary-plus-mirror
+    catalog source operations, mirror fallback refresh, bounded verified revision history,
+    explicit rollback re-verification, catalog signing-key rotation status, emergency advisory
+    refresh metadata, artifact verification, safe ZIP extraction, and verified staging)
   - `:platform-trustgraph` → `network.crypta.platform.trustgraph` (Trust Graph Local RC statement
     parsing, canonicalization, verification, process-local store/anchor behavior, import-preview
     summaries, duplicate-issuer/conflict handling, lifecycle/status records, and bounded
@@ -102,9 +104,10 @@ Use this skill when you need to:
     live USK catalog publication, API snapshot, and compatibility verification workflows)
   - `:platform-web-shell` → `network.crypta.platform.webshell` (browser-facing Web Shell v1,
     including Apps, catalog, update, review, unified consent review, operator beta
-    dashboard/support-bundle, security response status rendering, Operator RC Recovery,
-    subscription recovery, app-data backup/restore, app-service dependency/grant-bundle review, and
-    explicit legacy security/diagnostic fallback surfaces)
+    dashboard/support-bundle, catalog source/mirror health and guarded catalog operation controls,
+    security response status rendering, Operator RC Recovery, subscription recovery, app-data
+    backup/restore, app-service dependency/grant-bundle review, and explicit legacy
+    security/diagnostic fallback surfaces)
   - `:runtime-alerts` → the extracted leaf-safe `network.crypta.runtime.alerts` feed/model subset
     plus the detached `UserAlertSurface`
   - `:runtime-node` → extracted daemon runtime body across the remaining cyclic/high-level
@@ -188,13 +191,16 @@ Use this skill when you need to:
   `:platform-appvault` owns app secret and identity vault records/grants,
   `:platform-design-system` owns canonical local app UI assets, `:platform-sdk-js` owns the
   browser SDK resource, `:platform-appdist` owns signed local bundle distribution,
-  `:platform-appcatalog` owns signed catalog sources, submission pre-review/candidate metadata,
-  trusted app-review receipts, and verified staging, `:platform-trustgraph` owns local trust
+  `:platform-appcatalog` owns signed catalog sources, source/mirror operations, verified revision
+  history, rollback, key-rotation status, emergency advisory refresh, submission
+  pre-review/candidate metadata, trusted app-review receipts, and verified staging,
+  `:platform-trustgraph` owns local trust
   statement parsing, import-preview/conflict summaries, lifecycle records, and deterministic
   bounded-score explanations, `:platform-devtools` owns the standalone app developer CLI, app-store
   submission workflows, and offline UI linter, `:platform-web-shell` owns the browser-facing
-  node-management shell, unified consent review, app-data backup/restore controls, app-service
-  dependency/grant-bundle review, operator beta dashboard, and Operator RC Recovery,
+  node-management shell, unified consent review, catalog source/mirror operations, app-data
+  backup/restore controls, app-service dependency/grant-bundle review, operator beta dashboard, and
+  Operator RC Recovery,
   `:runtime-alerts` owns the extracted alert/feed model subset,
   `:runtime-node` owns the
   remaining runtime/node/client/support body, `:adapter-fcp` owns the FCP adapter tree,
@@ -436,7 +442,10 @@ Use this skill when you need to:
   enforces source/URI policy including `crypta:` catalog sources, parses optional review/API
   compatibility metadata, verifies submission packages and pre-review/candidate metadata, verifies
   independent app-review receipts against trusted reviewer keys and local review policy, enforces
-  catalog security advisory and exact-version denylist decisions, validates artifact size and
+  catalog security advisory and exact-version denylist decisions, stores primary-plus-mirror source
+  metadata, performs signed primary-then-mirror fallback refresh, retains bounded verified revision
+  history, re-verifies explicit rollback candidates, reports catalog signing-key rotation status
+  without key material, records emergency advisory refresh metadata, validates artifact size and
   SHA-256, safely extracts ZIP bundles, and delegates verified staged bundles to AppHost
   install/update flows.
 - `:platform-trustgraph` owns `network.crypta.platform.trustgraph`, the local Trust Graph Local RC
@@ -456,9 +465,11 @@ Use this skill when you need to:
   `network.crypta.platform.webshell`. It provides the current node-management shell route
   constants, bootstrap payload, renderer, and static browser assets mounted at `/app/node/`; it
   opens app-owned `uiUrl` values when installed app summaries expose them and surfaces app catalog
-  review, unified consent previews, update candidate, staged update, policy, health-gate, rollback,
-  app-data backup/restore controls, advertised app-service dependencies, grant-bundle
-  approval/renewal state, and explicit legacy security/diagnostic fallback actions for operators.
+  review, catalog source/mirror health, fallback warnings, rollback candidates, key-rotation
+  status, emergency advisory refresh controls, unified consent previews, update candidate, staged
+  update, policy, health-gate, rollback, app-data backup/restore controls, advertised app-service
+  dependencies, grant-bundle approval/renewal state, and explicit legacy security/diagnostic
+  fallback actions for operators.
 
 ### Runtime SPI (`network.crypta.runtime.spi`)
 - Aggregate boundary: `RuntimePorts`

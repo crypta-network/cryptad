@@ -40,7 +40,8 @@ Build: 2
   Publisher/Profile Publisher/Social Inbox RC/Feed Reader/Trust Graph Local RC reference-app
   evidence, app platform beta docs/program evidence, third-party developer beta evidence,
   multi-node beta soak and upgrade drill evidence, live USK catalog publication evidence,
-  production beta artifact redaction evidence, production beta go/no-go dashboard evidence, and
+  catalog operations and mirrors evidence, production beta artifact redaction evidence, production
+  beta go/no-go dashboard evidence, waiver validation, and
   `production-security.response-runbook` when app artifacts ship, app-update
   lifecycle/scheduler/rollback and app-data migration contract evidence, `crypta-app` developer
   beta toolkit smoke, operator RC
@@ -94,7 +95,9 @@ git checkout -b release/<build-number>
    `dist/checksums.txt`. Any summary with `nonRelease=true`, `promotionReady=false`, `goNoGo`
    decision `no-go`, failed production or dashboard redaction, dirty workspace, fixture evidence,
    test signing, skipped production-beta build stages, or an emergency live-network skip is not
-   promotable.
+   promotable. A `go-with-waivers` decision is launchable only when every residual blocker has a
+   valid, scoped, approved, unexpired waiver and none of the non-waivable production-beta evidence,
+   redaction, signing, live-network, sandbox, multi-node, or artifact-hygiene gates failed.
 
 3) Stabilize on `release/<build-number>` (critical fixes only). Keep diffs minimal.
 
@@ -138,8 +141,9 @@ git push origin v<build-number>
       blockers and confirm `developerBetaProgram.status=pass`.
 - [ ] First-party AppHost bundles staged, signed, and verified when shipping app-platform artifacts.
 - [ ] `crypta-app` CLI smoke completed when `:platform-devtools` changed.
-- [ ] Signed catalog, first-party beta catalog, first-party maintenance policy, catalog security
-      advisory/denylist gates, trusted app-review receipt, Platform API contract, Platform API 1.0
+- [ ] Signed catalog, first-party beta catalog, production catalog channels, catalog operations
+      and mirrors, first-party maintenance policy, catalog security advisory/denylist gates,
+      trusted app-review receipt, Platform API contract, Platform API 1.0
       stable baseline, target-stability, and stable breaking-change evidence, app-vault capability,
       generated-document insert, content-fetch/subscription, shared
       app-network budget, network-scale soak, durable app-data, app-data backup/restore, app-service
