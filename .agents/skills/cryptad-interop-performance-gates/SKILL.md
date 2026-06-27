@@ -14,6 +14,7 @@ related CI jobs, or release-gate documentation.
 - Performance regression gate: `tools/perf/README.md`
 - Release certification workflow: `docs/release-certification.md`
 - Production beta release pipeline: `docs/production-beta-release-pipeline.md`
+- Production beta go/no-go dashboard: `docs/production-beta-go-no-go-dashboard.md`
 - Multi-node beta soak and upgrade drill: `docs/multi-node-beta-soak-and-upgrade-drill.md`
 - Ecosystem RC certification gate: `docs/ecosystem-rc-certification-gate.md`
 - Release certification tooling: `tools/release-certification/README.md`
@@ -98,15 +99,18 @@ build/release-certification/live-network-beta-smoke/live-network-beta-smoke-repo
   dashboard generator for production beta launch candidates. It consumes sanitized production beta,
   release-certification, ecosystem matrix, app-platform, live-network, network-scale, multi-node,
   security-response, and waiver inputs; emits JSON, Markdown, and a dashboard redaction report; and
-  decides only `go`, `no-go`, or `go-with-waivers`.
+  decides only `go`, `no-go`, or `go-with-waivers`. Production-beta mode fails closed for
+  mandatory launch evidence, invalid or expired waivers, unsafe artifact hygiene, fixture/test
+  signing, non-release summaries, dirty workspaces, and redaction findings.
 - `tools/release-certification/app_platform_smoke.py` produces the app-platform summary consumed by
   the aggregator. It keeps `--self-test` offline and Python-only, including source/test evidence
   for the Platform API contract, Platform API 1.0 stable baseline, manifest/catalog target
   stability, first-party stability declarations, stable reference docs, app-vault capability docs,
   signed catalogs, first-party maintenance metadata, app-store submission package and pre-review
-  evidence, catalog security advisory/denylist evidence, trusted app-review receipt/revocation
-  evidence, unified user-consent snapshot/digest/audit evidence, app-owned UI origin behavior,
-  app UI design-system/lint evidence, live USK catalog publication, Site Publisher
+  evidence, catalog security advisory/denylist evidence, catalog operations and mirrors evidence,
+  trusted app-review receipt/revocation evidence, unified user-consent snapshot/digest/audit
+  evidence, app-owned UI origin behavior, app UI design-system/lint evidence, live USK catalog
+  publication, Site Publisher
   reference-content coverage, Profile Publisher identity-profile coverage, Feed Reader
   content-fetch, subscription, app-data, and app-data migration coverage, Social Inbox RC
   multi-source/threading/read-state/local-filter/export/trust-grant coverage, Trust Graph Local RC
@@ -172,7 +176,8 @@ tools/release-certification/run-production-beta-release.sh --mode developer-dry-
   `third-party-developer.feedback-workflow`, `third-party-developer.plugin-author-migration`,
   `third-party-developer.redaction`, `catalog.smoke`,
   `app-catalog.first-party-beta`, `catalog.production-channels`,
-  `app-catalog.first-party-maintenance-policy`, `catalog.security-advisories`,
+  `catalog.operations-and-mirrors`, `app-catalog.first-party-maintenance-policy`,
+  `catalog.security-advisories`,
   `catalog.version-denylist`, `app-review.receipt-revocation`,
   `app-review.reviewer-key-compromise-flow`, `app-update.security-denylist-gates`,
   `web-shell.security-advisory-trust-warnings`,
@@ -232,6 +237,11 @@ tools/release-certification/run-production-beta-release.sh --mode developer-dry-
   required-capability sets, and stable endpoint app-process/app-browser access flags. In production
   history mode, missing previous baseline or endpoint metadata is a blocker; developer dry runs may
   warn when no production history is available.
+- `catalog.operations-and-mirrors` is deterministic source-level evidence. It must verify the
+  primary-plus-mirrors model, mirror fallback with signed verification, stale/downgrade
+  prevention, bounded verified revision history, explicit rollback re-verification, key-rotation
+  status visibility, emergency advisory refresh support, Platform API/Web Shell wiring, docs
+  coverage, and redaction without requiring live mirror infrastructure or production signing keys.
 - Network-scale release-candidate evidence must be generated fresh by the wrapper or attached
   explicitly. Do not let the aggregator reuse stale default `network-scale-soak/summary.json`
   files across release workspaces.

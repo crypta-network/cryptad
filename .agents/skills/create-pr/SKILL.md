@@ -8,6 +8,18 @@ allowed-tools: Bash(git:*), Bash(./gradlew:*), Bash(gradle:*), Read, Grep, Glob,
 
 Create a GitHub pull request **into `develop` by default** by first reviewing the current branch’s commit history and diffs, ensuring any pending local changes are formatted and committed, then opening the PR via the GitHub MCP server.
 
+## GitHub identity
+
+- All GitHub operations in this repository must use the `leumor` account.
+- Do not rely on the active/default `gh` account. For any fallback `gh` command, inject the token
+  explicitly:
+  `GH_TOKEN="$(gh auth token --user leumor)" gh <command>`.
+- Before creating a PR through GitHub MCP, verify the MCP-authenticated user is `leumor` when the
+  tool supports it. If the author cannot be verified, create the PR with `gh` and the explicit
+  `leumor` token instead.
+- After creating the PR, confirm the author is `leumor`. If a PR was accidentally created by a
+  different account, close it and recreate it as `leumor`.
+
 ## Target branch selection
 
 - **Default base branch:** `develop`
@@ -167,7 +179,16 @@ git push -u origin HEAD
 
 ### 7) Create the PR via the GitHub MCP server (base: default `develop`, override allowed)
 
-Use the GitHub MCP server’s PR creation capability (tool names vary; look for an operation like “create pull request”).
+Use the GitHub MCP server’s PR creation capability only when its authenticated writer is verified
+as `leumor` (tool names vary; look for an operation like “create pull request”). Otherwise use:
+
+```bash
+GH_TOKEN="$(gh auth token --user leumor)" gh pr create \
+  --base "$BASE_BRANCH" \
+  --head "$(git rev-parse --abbrev-ref HEAD)" \
+  --title "<type>(<scope>): <summary>" \
+  --body-file <body-file>
+```
 
 Provide at minimum:
 - `base`: `BASE_BRANCH` (default `develop`, unless overridden)
@@ -196,6 +217,7 @@ args:
 
 After creation:
 - return the PR URL
+- state that the PR author is `leumor`
 - summarize key changes and how to test
 - clearly state which base branch was used (e.g., “PR opened into `develop`” / “PR opened into `release/1.2`”)
 

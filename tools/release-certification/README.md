@@ -234,6 +234,7 @@ app-platform.signed-bundles
 catalog.smoke
 app-catalog.first-party-beta
 catalog.production-channels
+catalog.operations-and-mirrors
 app-catalog.first-party-maintenance-policy
 catalog.security-advisories
 catalog.version-denylist
@@ -385,6 +386,11 @@ coverage.
 public Crypta catalog. `catalog.production-channels` verifies schema v3 stable/beta/nightly/
 deprecated metadata, stable-only default update automation, deprecated replacement metadata, API
 and Web Shell exposure, signature/review verification preservation, and redaction guarantees.
+`catalog.operations-and-mirrors` verifies the primary source plus mirrors model, mirror transport
+fallback with signed verification, stale/downgrade prevention, bounded verified revision history,
+explicit rollback re-verification, key-rotation status, emergency advisory refresh, Platform API
+routes, Web Shell rendering, docs coverage, and redaction without needing a live mirror or
+production signing key.
 The `catalog.security-advisories`, `catalog.version-denylist`,
 `app-review.receipt-revocation`, `app-review.reviewer-key-compromise-flow`,
 `app-update.security-denylist-gates`, `web-shell.security-advisory-trust-warnings`, and

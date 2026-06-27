@@ -1926,6 +1926,15 @@
     if (action === "remove") {
       return `app-catalogs/${encodedCatalogId}`;
     }
+    if (action === "refreshPrimary") {
+      return `app-catalogs/${encodedCatalogId}/operations/refresh-primary`;
+    }
+    if (action === "emergencyRefresh") {
+      return `app-catalogs/${encodedCatalogId}/operations/emergency-refresh`;
+    }
+    if (action === "rollback") {
+      return `app-catalogs/${encodedCatalogId}/operations/rollback`;
+    }
     if (action === "addRecommended") {
       return `app-catalogs/recommended/${encodedCatalogId}/add`;
     }
@@ -2507,6 +2516,38 @@
       form.dataset.disabledReason = disabledReason;
     }
     form.append(submit);
+    return form;
+  }
+
+  function buildCatalogRollbackForm(catalog, candidate) {
+    const revision = recordValue(candidate && candidate.revision);
+    const revisionDigest = typeof revision.revisionDigest === "string" ? revision.revisionDigest : "";
+    if (!candidate || candidate.eligible !== true || !revisionDigest) {
+      return null;
+    }
+    const path = catalogMutationPath(catalog.catalogId || "", "", "rollback");
+    if (!path) {
+      return null;
+    }
+    const form = document.createElement("form");
+    form.className = "app-action-form";
+    form.dataset.catalogId = catalog.catalogId || "";
+    form.dataset.catalogAction = "rollback";
+    form.dataset.catalogAppName = catalog.catalogId || "";
+    const digestInput = document.createElement("input");
+    digestInput.type = "hidden";
+    digestInput.name = "revisionDigest";
+    digestInput.value = revisionDigest;
+    const reasonInput = document.createElement("input");
+    reasonInput.type = "hidden";
+    reasonInput.name = "reason";
+    reasonInput.value = "operator rollback from Web Shell";
+    const submit = document.createElement("button");
+    submit.className = "button button-danger";
+    submit.type = "submit";
+    submit.textContent = "Rollback catalog";
+    submit.title = `Roll back to ${revisionDigest}`;
+    form.append(digestInput, reasonInput, submit);
     return form;
   }
 
@@ -5106,6 +5147,22 @@
       : catalog.refreshedAt;
   }
 
+  function catalogSourceDisplay(catalog) {
+    return typeof catalog.sourceDisplay === "string" && catalog.sourceDisplay
+      ? catalog.sourceDisplay
+      : typeof catalog.source === "string"
+        ? catalog.source
+        : "";
+  }
+
+  function catalogResolvedSourceDisplay(catalog) {
+    return typeof catalog.lastResolvedDisplay === "string" && catalog.lastResolvedDisplay
+      ? catalog.lastResolvedDisplay
+      : typeof catalog.lastResolvedUri === "string"
+        ? catalog.lastResolvedUri
+        : "";
+  }
+
   function catalogFetchStatus(catalog) {
     return typeof catalog.lastFetchStatus === "string" && catalog.lastFetchStatus
       ? catalog.lastFetchStatus.toLowerCase()
@@ -5146,11 +5203,56 @@
     );
   }
 
+  function renderCatalogOperationsNode(catalog) {
+    const health = recordValue(catalog.operationsHealth);
+    const keyRotation = recordValue(catalog.keyRotation);
+    const sourceHealth = arrayValue(health.sourceHealth);
+    const rollbackCandidates = arrayValue(catalog.rollbackCandidates);
+    const details = document.createElement("details");
+    details.className = "json-details catalog-operations-details";
+    const summary = document.createElement("summary");
+    summary.textContent = "Catalog operations";
+    details.append(summary);
+    details.append(
+      definitionList([
+        ["Active source", scalar(health.activeSourceId)],
+        ["Fallback used", yesNoText(health.fallbackUsed, false)],
+        ["Revision digest", scalar(health.catalogDigest || catalog.catalogDigest)],
+        ["Key rotation", normalizedStatus(keyRotation.status, "Unavailable")],
+        ["Current key trusted", yesNoText(keyRotation.currentKeyTrusted, null)],
+        ["Rollback candidates", scalar(rollbackCandidates.length)],
+      ]),
+    );
+    if (catalog.catalogOperationsError) {
+      details.append(text("p", "error-state", `Catalog operations unavailable: ${catalog.catalogOperationsError}`));
+    }
+    if (sourceHealth.length) {
+      const list = document.createElement("ul");
+      list.className = "permission-list catalog-source-health-list";
+      sourceHealth.forEach((entry) => {
+        const record = recordValue(entry);
+        const item = document.createElement("li");
+        item.textContent = [
+          scalar(record.sourceId),
+          normalizedStatus(record.role, "source"),
+          normalizedStatus(record.lastFetchStatus, "unknown"),
+          formatIsoTimestamp(record.lastSuccessfulRefreshAt),
+        ].join(" / ");
+        list.append(item);
+      });
+      details.append(list);
+    }
+    return details;
+  }
+
   function renderCatalogCard(catalog, selectedChannel) {
     const card = document.createElement("article");
     card.className = "app-card";
     const title = typeof catalog.name === "string" && catalog.name ? catalog.name : scalar(catalog.catalogId);
     const sourceKind = catalogSourceKind(catalog);
+    const operationsHealth = recordValue(catalog.operationsHealth);
+    const keyRotation = recordValue(catalog.keyRotation);
+    const rollbackCandidates = arrayValue(catalog.rollbackCandidates);
     const apps = Array.isArray(catalog.apps) ? catalog.apps : [];
     const visibleApps = apps.filter((app) => catalogAppChannel(app) === selectedChannel);
     const header = document.createElement("div");
@@ -5165,6 +5267,12 @@
     if (catalogFetchFailed(catalog)) {
       pills.append(createPill("refresh failed", "is-warning"));
     }
+    if (operationsHealth.fallbackUsed === true) {
+      pills.append(createPill("fallback active", "is-warning"));
+    }
+    if (typeof keyRotation.status === "string" && keyRotation.status) {
+      pills.append(createPill(`key ${keyRotation.status}`, operatorStatusTone(keyRotation.status)));
+    }
     pills.append(
       createPill(
         `${visibleApps.length}/${apps.length} ${catalogChannelLabel(selectedChannel)} apps`,
@@ -5176,8 +5284,9 @@
     card.append(
       definitionList([
         ["Source type", sourceKind],
-        ["Source", scalar(catalog.source)],
-        ["Resolved source", scalar(catalog.lastResolvedUri)],
+        ["Source", scalar(catalogSourceDisplay(catalog))],
+        ["Resolved source", scalar(catalogResolvedSourceDisplay(catalog))],
+        ["Active source", scalar(operationsHealth.activeSourceId)],
         ["Generated", formatIsoTimestamp(catalog.generatedAt)],
         ["Last successful refresh", formatIsoTimestamp(catalogLastSuccessfulRefreshAt(catalog))],
         ["Last failed attempt", catalogLastFailedAttempt(catalog)],
@@ -5187,6 +5296,7 @@
     if (fetchWarning) {
       card.append(fetchWarning);
     }
+    card.append(renderCatalogOperationsNode(catalog));
     if (catalog.appsError) {
       card.append(text("p", "error-state", `Catalog apps unavailable: ${catalog.appsError}`));
     }
@@ -5194,9 +5304,24 @@
       const actions = document.createElement("div");
       actions.className = "app-card-actions";
       const refreshForm = buildCatalogActionForm(catalog, null, "refresh", "Refresh");
+      const refreshPrimaryForm = buildCatalogActionForm(catalog, null, "refreshPrimary", "Refresh primary");
+      const emergencyRefreshForm = buildCatalogActionForm(catalog, null, "emergencyRefresh", "Emergency refresh");
       const removeForm = buildCatalogActionForm(catalog, null, "remove", "Remove");
+      const rollbackForm = buildCatalogRollbackForm(
+        catalog,
+        rollbackCandidates.find((candidate) => candidate && candidate.eligible === true),
+      );
       if (refreshForm) {
         actions.append(refreshForm);
+      }
+      if (refreshPrimaryForm) {
+        actions.append(refreshPrimaryForm);
+      }
+      if (emergencyRefreshForm) {
+        actions.append(emergencyRefreshForm);
+      }
+      if (rollbackForm) {
+        actions.append(rollbackForm);
       }
       if (removeForm) {
         actions.append(removeForm);
@@ -6810,13 +6935,41 @@
     if (!catalog || typeof catalog !== "object" || typeof catalog.catalogId !== "string") {
       return catalog;
     }
+    const encodedCatalogId = encodeURIComponent(catalog.catalogId);
     try {
-      const apps = await loadJson(apiUrl(`app-catalogs/${encodeURIComponent(catalog.catalogId)}/apps`));
+      const [apps, healthSnapshot, revisionsSnapshot, keyRotationSnapshot] = await Promise.all([
+        loadJson(apiUrl(`app-catalogs/${encodedCatalogId}/apps`)),
+        loadOptionalJson(apiUrl(`app-catalogs/${encodedCatalogId}/operations/health`)).catch((error) => ({
+          operationError:
+            error instanceof Error ? error.message : typeof error === "string" ? error : "Unknown error",
+        })),
+        loadOptionalJson(apiUrl(`app-catalogs/${encodedCatalogId}/operations/revisions`)).catch((error) => ({
+          operationError:
+            error instanceof Error ? error.message : typeof error === "string" ? error : "Unknown error",
+        })),
+        loadOptionalJson(apiUrl(`app-catalogs/${encodedCatalogId}/operations/key-rotation`)).catch((error) => ({
+          operationError:
+            error instanceof Error ? error.message : typeof error === "string" ? error : "Unknown error",
+        })),
+      ]);
       const catalogApps = apps && Array.isArray(apps.apps) ? apps.apps : [];
       const appsWithHistory = await Promise.all(
         catalogApps.map((app) => loadCatalogAppReviewHistory(catalog.catalogId, app)),
       );
-      return { ...catalog, apps: appsWithHistory };
+      const operationsHealth = recordValue(healthSnapshot && healthSnapshot.health);
+      const revisions = recordValue(revisionsSnapshot && revisionsSnapshot.revisions);
+      const keyRotation = recordValue(keyRotationSnapshot && keyRotationSnapshot.keyRotation);
+      const operationErrors = [healthSnapshot, revisionsSnapshot, keyRotationSnapshot]
+        .map((snapshot) => snapshot && snapshot.operationError)
+        .filter((error) => typeof error === "string" && error.length > 0);
+      return {
+        ...catalog,
+        apps: appsWithHistory,
+        operationsHealth,
+        rollbackCandidates: arrayValue(revisions.revisions),
+        keyRotation,
+        catalogOperationsError: operationErrors.join("; "),
+      };
     } catch (error) {
       const appsError =
         error instanceof Error ? error.message : typeof error === "string" ? error : "Unknown error";

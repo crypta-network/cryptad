@@ -34,6 +34,8 @@ Notes: <what changed / why>
   - push.
 - If currently on `main` or `develop`, create a new `feature/…`, `bugfix/…`, or `hotfix/…` branch **before** any commit.
   - **Never** commit directly to `main` or `develop`.
+- For GitHub pushes and any related `gh` commands, use the `leumor` GitHub identity explicitly.
+  Do not rely on the active/default `gh` account.
 
 ---
 
@@ -101,7 +103,10 @@ For each untracked file, open/read it (do not edit), using an appropriate viewer
 1) Load and follow `$git-commit-helper`.
 2) Add **all related files** (including any new files that belong to the change).
 3) Create a commit message that reflects what Spotless changed (and any other intended changes).
-4) Push the branch to the remote.
+4) Before pushing, verify the GitHub remote/credentials are for `leumor`. If using `gh`, run it as
+   `GH_TOKEN="$(gh auth token --user leumor)" gh ...`. If `leumor` auth is unavailable, stop and
+   ask the user to authenticate it.
+5) Push the branch to the remote.
 
 ### 4) Finish
 Report:

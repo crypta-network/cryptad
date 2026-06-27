@@ -32,6 +32,7 @@ REQUIRED_DOCS = (
     "docs/platform-api-compatibility-support-window.md",
     "docs/examples/third-party-hello-stable.md",
     "docs/app-catalogs.md",
+    "docs/catalog-operations-and-mirrors.md",
     "docs/app-dev-cli.md",
     "docs/platform-api-contract.md",
     "docs/platform-api-surface.md",

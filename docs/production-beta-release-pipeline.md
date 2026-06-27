@@ -89,6 +89,13 @@ compromise drill, emergency catalog update drill, support redaction proof, or se
 notes template is a production blocker. The runbook procedure is
 [production-security-response-runbook.md](production-security-response-runbook.md).
 
+Production beta also requires `catalog.operations-and-mirrors` evidence. That row proves
+source-level support for a primary source plus mirrors, mirror transport fallback without weakening
+catalog signatures, stale/downgrade prevention, bounded verified revision history, explicit
+rollback re-verification, key-rotation status visibility, emergency advisory refresh, Platform API
+routes, Web Shell rendering, docs coverage, and redaction coverage. It is deterministic and does
+not require live mirror infrastructure or production signing keys.
+
 Production beta mode requires multi-node beta soak evidence by default. Missing soak,
 previous-candidate summary, upgrade-drill, scenario, real `hybrid`/`live` mode, or redaction
 evidence keeps `promotionReady=false`. Developer dry-runs may run the deterministic simulated drill
@@ -188,6 +195,7 @@ content, raw app data, and host-local absolute paths.
 | `promotion.gates` | Per-gate pass/fail records for signed artifacts, evidence ids, live-network evidence, ecosystem certification, and signing profile checks. |
 | `promotion.securityResponse` | Compact status for the production security response runbook, advisory lifecycle, reviewer compromise drill, catalog key rotation drill, app signing key compromise drill, emergency catalog update drill, support redaction, security release notes template, blockers, and warnings. |
 | `multiNodeBetaSoak` | Compact status for multi-node soak and upgrade evidence, including mode, scenario statuses, blockers, warnings, promotion readiness, and the `evidence/multi-node-beta-soak.json` artifact path. |
+| `catalogOperations` | Compact source-level evidence for mirror health, fallback, rollback, key-rotation status, emergency advisory refresh, and redaction when present in the app-platform smoke summary. |
 | `artifacts.firstPartyMaintenancePolicy` | Redacted copy of the checked-in first-party maintenance policy source used to generate signed catalog descriptors. |
 | `redaction` | Final artifact scanner result and findings. |
 | `goNoGo` | Compact pointer to the final production beta go/no-go decision, dashboard JSON, dashboard Markdown, redaction report, failed gate count, waiver count, and non-release state. |

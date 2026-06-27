@@ -553,6 +553,18 @@ final class PlatformApiAppRoutes {
       return PlatformApiResponse.ok(
           envelope(CATALOG_ENVELOPE_KEY, appCatalogsApiHandler.refresh(catalogId)));
     }
+    if ("mirrors".equals(action)) {
+      if (METHOD_GET.equals(request.method())) {
+        return PlatformApiResponse.ok(
+            envelope("mirrors", appCatalogsApiHandler.mirrors(catalogId)));
+      }
+      if (METHOD_POST.equals(request.method())) {
+        return PlatformApiResponse.created(
+            envelope(
+                "mirror", appCatalogsApiHandler.addMirror(catalogId, request.queryParameters())));
+      }
+      return methodNotAllowed(METHODS_GET_POST, GET_POST_ONLY_MESSAGE);
+    }
     if ("apps".equals(action)) {
       if (!METHOD_GET.equals(request.method())) {
         return methodNotAllowed(METHOD_GET, GET_ONLY_MESSAGE);
@@ -573,7 +585,79 @@ final class PlatformApiAppRoutes {
             envelope(CATALOG_ENVELOPE_KEY, appCatalogsApiHandler.addRecommended(secondSegment)));
       }
     }
+    if ("operations".equals(secondSegment)) {
+      return routeAppCatalogOperation(firstSegment, thirdSegment, request);
+    }
+    if ("mirrors".equals(secondSegment)) {
+      return routeAppCatalogMirror(firstSegment, thirdSegment, request);
+    }
     return routeAppCatalogApp(firstSegment, secondSegment, thirdSegment, request);
+  }
+
+  private PlatformApiResponse routeAppCatalogOperation(
+      String catalogId, String operation, PlatformApiRequest request) {
+    return switch (operation) {
+      case "health" -> {
+        if (!METHOD_GET.equals(request.method())) {
+          yield methodNotAllowed(METHOD_GET, GET_ONLY_MESSAGE);
+        }
+        yield PlatformApiResponse.ok(envelope("health", appCatalogsApiHandler.health(catalogId)));
+      }
+      case "revisions" -> {
+        if (!METHOD_GET.equals(request.method())) {
+          yield methodNotAllowed(METHOD_GET, GET_ONLY_MESSAGE);
+        }
+        yield PlatformApiResponse.ok(
+            envelope("revisions", appCatalogsApiHandler.rollbackCandidates(catalogId)));
+      }
+      case "key-rotation" -> {
+        if (!METHOD_GET.equals(request.method())) {
+          yield methodNotAllowed(METHOD_GET, GET_ONLY_MESSAGE);
+        }
+        yield PlatformApiResponse.ok(
+            envelope("keyRotation", appCatalogsApiHandler.keyRotationStatus(catalogId)));
+      }
+      case "refresh-primary" -> {
+        if (!METHOD_POST.equals(request.method())) {
+          yield methodNotAllowed(METHOD_POST, POST_ONLY_MESSAGE);
+        }
+        yield PlatformApiResponse.ok(
+            envelope(CATALOG_ENVELOPE_KEY, appCatalogsApiHandler.refreshPrimaryOnly(catalogId)));
+      }
+      case "rollback" -> {
+        if (!METHOD_POST.equals(request.method())) {
+          yield methodNotAllowed(METHOD_POST, POST_ONLY_MESSAGE);
+        }
+        yield PlatformApiResponse.ok(
+            envelope(
+                CATALOG_ENVELOPE_KEY,
+                appCatalogsApiHandler.rollback(catalogId, request.queryParameters())));
+      }
+      case "emergency-refresh" -> {
+        if (!METHOD_POST.equals(request.method())) {
+          yield methodNotAllowed(METHOD_POST, POST_ONLY_MESSAGE);
+        }
+        yield PlatformApiResponse.ok(
+            envelope("emergencyRefresh", appCatalogsApiHandler.emergencyRefresh(catalogId)));
+      }
+      default -> throw notFound();
+    };
+  }
+
+  private PlatformApiResponse routeAppCatalogMirror(
+      String catalogId, String mirrorId, PlatformApiRequest request) {
+    if (METHOD_POST.equals(request.method())) {
+      return PlatformApiResponse.ok(
+          envelope(
+              "mirror",
+              appCatalogsApiHandler.updateMirror(catalogId, mirrorId, request.queryParameters())));
+    }
+    if (METHOD_DELETE.equals(request.method())) {
+      return PlatformApiResponse.ok(
+          envelope("mirror", appCatalogsApiHandler.removeMirror(catalogId, mirrorId)));
+    }
+    return methodNotAllowed(
+        "POST, DELETE", "Platform API v1 supports POST and DELETE requests only.");
   }
 
   private PlatformApiResponse routeAppCatalogApp(

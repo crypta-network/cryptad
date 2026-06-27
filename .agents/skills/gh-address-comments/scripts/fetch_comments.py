@@ -6,19 +6,22 @@ for the PR associated with the current git branch, by shelling out to:
   gh api graphql
 
 Requires:
-  - `gh auth login` already set up
+  - `gh auth login` already set up for the `leumor` account
   - current branch has an associated (open) PR
 
 Usage:
-  python fetch_comments.py > pr_comments.json
+  python3 fetch_comments.py > pr_comments.json
 """
 
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from typing import Any
+
+GH_AUTH_USER = "leumor"
 
 QUERY = """\
 query(
@@ -92,15 +95,17 @@ query(
 """
 
 
-def _run(cmd: list[str], stdin: str | None = None) -> str:
-    p = subprocess.run(cmd, input=stdin, capture_output=True, text=True)
+def _run(cmd: list[str], stdin: str | None = None, env: dict[str, str] | None = None) -> str:
+    p = subprocess.run(cmd, input=stdin, capture_output=True, text=True, env=env)
     if p.returncode != 0:
         raise RuntimeError(f"Command failed: {' '.join(cmd)}\n{p.stderr}")
     return p.stdout
 
 
-def _run_json(cmd: list[str], stdin: str | None = None) -> dict[str, Any]:
-    out = _run(cmd, stdin=stdin)
+def _run_json(
+    cmd: list[str], stdin: str | None = None, env: dict[str, str] | None = None
+) -> dict[str, Any]:
+    out = _run(cmd, stdin=stdin, env=env)
     try:
         return json.loads(out)
     except json.JSONDecodeError as e:
@@ -109,15 +114,30 @@ def _run_json(cmd: list[str], stdin: str | None = None) -> dict[str, Any]:
 
 def _ensure_gh_authenticated() -> None:
     try:
-        _run(["gh", "auth", "status"])
+        _run(["gh", "auth", "token", "--user", GH_AUTH_USER])
     except RuntimeError:
-        print("run `gh auth login` to authenticate the GitHub CLI", file=sys.stderr)
-        raise RuntimeError("gh auth status failed; run `gh auth login` to authenticate the GitHub CLI") from None
+        print(
+            f"run `gh auth login` to authenticate the GitHub CLI as {GH_AUTH_USER}",
+            file=sys.stderr,
+        )
+        raise RuntimeError(
+            "gh auth token failed; run `gh auth login` to authenticate the "
+            f"GitHub CLI as {GH_AUTH_USER}"
+        ) from None
+
+
+def _leumor_gh_env() -> dict[str, str]:
+    token = _run(["gh", "auth", "token", "--user", GH_AUTH_USER]).strip()
+    if not token:
+        raise RuntimeError(f"gh auth token returned no token for {GH_AUTH_USER}")
+    env = os.environ.copy()
+    env["GH_TOKEN"] = token
+    return env
 
 
 def gh_pr_view_json(fields: str) -> dict[str, Any]:
     # fields is a comma-separated list like: "number,headRepositoryOwner,headRepository"
-    return _run_json(["gh", "pr", "view", "--json", fields])
+    return _run_json(["gh", "pr", "view", "--json", fields], env=_leumor_gh_env())
 
 
 def get_current_pr_ref() -> tuple[str, str, int]:
@@ -164,7 +184,7 @@ def gh_api_graphql(
     if threads_cursor:
         cmd += ["-F", f"threadsCursor={threads_cursor}"]
 
-    return _run_json(cmd, stdin=QUERY)
+    return _run_json(cmd, stdin=QUERY, env=_leumor_gh_env())
 
 
 def fetch_all(owner: str, repo: str, number: int) -> dict[str, Any]:

@@ -1,11 +1,12 @@
 # Cryptad Release Workflow and Runbook
 
-> Updated June 24, 2026, to cover the production beta app-ecosystem release pipeline and the
-> release certification report that aggregates interop, performance, app-platform, third-party
-> developer beta, multi-node beta soak and upgrade drills, beta documentation, public-beta
-> hardening, operator beta recovery, network-scale soak, ecosystem RC certification, optional
-> live-network beta certification, app-review governance, catalog, app-owned UI, legacy-admin
-> retirement, and CI evidence for a release candidate.
+> Updated June 27, 2026, to cover the production beta app-ecosystem release pipeline, catalog
+> operations and mirrors, the production beta go/no-go dashboard, and the release certification
+> report that aggregates interop, performance, app-platform, third-party developer beta,
+> multi-node beta soak and upgrade drills, beta documentation, public-beta hardening, operator beta
+> recovery, network-scale soak, ecosystem RC certification, optional live-network beta
+> certification, app-review governance, catalog, app-owned UI, legacy-admin retirement, and CI
+> evidence for a release candidate.
 
 ## Overview
 - Purpose: publish a Cryptad release so running nodes discover a new `info/<edition>` descriptor, download OS-specific installers, and guide operators through installation without self-replacing the running JAR.
@@ -89,7 +90,10 @@ Treat these as release blockers, in order:
    Read `go-no-go-dashboard.md` first. It is the release-manager launch surface that rolls the
    production beta summary, ecosystem matrix, redaction report, waivers, live-network evidence, and
    multi-node evidence into `go`, `no-go`, or `go-with-waivers`; drill into the detailed summaries
-   only after reviewing that decision.
+   only after reviewing that decision. Treat `go-with-waivers` as launchable only when every
+   residual blocker has a valid, scoped, approved, and unexpired waiver and no non-waivable
+   redaction, signing, fixture-evidence, live-network, sandbox, multi-node, production summary, or
+   artifact-hygiene gate failed.
    Confirm `production-security.response-runbook` passes in the production beta summary, and review
    the compact `multiNodeBetaSoak` and `developerBetaProgram` sections before promotion. Security
    releases or app ecosystem incident responses must also run
@@ -168,6 +172,13 @@ Treat these as release blockers, in order:
    `cryptad-app-catalog.signature` is the sibling at the same USK edition. The catalog contract is
    documented in
    [app-catalogs.md](app-catalogs.md).
+   When stable or beta catalog operations are part of the release, also verify
+   `catalog.operations-and-mirrors` passes. That deterministic evidence covers primary-plus-mirror
+   source metadata, signed mirror fallback, stale/downgrade prevention, bounded verified revision
+   history, explicit rollback re-verification, signing-key rotation status, emergency advisory
+   refresh, Platform API/Web Shell wiring, docs coverage, and redaction without requiring live
+   mirror infrastructure. The operational runbook is
+   [catalog-operations-and-mirrors.md](catalog-operations-and-mirrors.md).
    PR-246 live-network beta certification is an explicit release-manager wrapper mode. Run it only
    with a localhost node, redacted environment variables, and disposable live fixtures unless the
    release manager is intentionally publishing the candidate first-party beta catalog. It becomes

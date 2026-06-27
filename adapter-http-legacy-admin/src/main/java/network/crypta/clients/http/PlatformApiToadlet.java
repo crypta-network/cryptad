@@ -91,6 +91,7 @@ public final class PlatformApiToadlet extends Toadlet {
   private static final String GRANT_BUNDLES_SEGMENT = "grant-bundles";
   private static final String GRANTS_SEGMENT = "grants";
   private static final String IDENTITY_VAULT_SEGMENT = "identity-vault";
+  private static final String MIRRORS_SEGMENT = "mirrors";
   private static final String OPERATOR_SEGMENT = "operator";
   private static final int MAX_PLATFORM_API_FORM_FIELD_LENGTH = QueueToadlet.MAX_KEY_LENGTH;
   private static final String CONFIG_SEGMENT = "config";
@@ -758,22 +759,41 @@ public final class PlatformApiToadlet extends Toadlet {
       return false;
     }
     if (DELETE_METHOD.equals(method)) {
-      return pathSegments.size() == 2;
+      return requiresAppCatalogsDeleteFormPassword(pathSegments);
     }
     if (!"POST".equals(method)) {
       return false;
     }
-    if (pathSegments.size() == 2) {
-      return "add".equals(pathSegments.get(1));
-    }
-    if (pathSegments.size() == 3) {
-      return "refresh".equals(pathSegments.get(2));
-    }
-    if (pathSegments.size() == 4) {
-      return "recommended".equals(pathSegments.get(1)) && "add".equals(pathSegments.get(3));
-    }
-    return pathSegments.size() == 5
-        && "apps".equals(pathSegments.get(2))
+    return requiresAppCatalogsPostFormPassword(pathSegments);
+  }
+
+  private static boolean requiresAppCatalogsDeleteFormPassword(List<String> pathSegments) {
+    return pathSegments.size() == 2
+        || (pathSegments.size() == 4 && MIRRORS_SEGMENT.equals(pathSegments.get(2)));
+  }
+
+  private static boolean requiresAppCatalogsPostFormPassword(List<String> pathSegments) {
+    return switch (pathSegments.size()) {
+      case 2 -> "add".equals(pathSegments.get(1));
+      case 3 ->
+          "refresh".equals(pathSegments.get(2)) || MIRRORS_SEGMENT.equals(pathSegments.get(2));
+      case 4 -> requiresFourSegmentAppCatalogPostFormPassword(pathSegments);
+      case 5 -> requiresAppCatalogInstallOrUpdateFormPassword(pathSegments);
+      default -> false;
+    };
+  }
+
+  private static boolean requiresFourSegmentAppCatalogPostFormPassword(List<String> pathSegments) {
+    return ("recommended".equals(pathSegments.get(1)) && "add".equals(pathSegments.get(3)))
+        || MIRRORS_SEGMENT.equals(pathSegments.get(2))
+        || ("operations".equals(pathSegments.get(2))
+            && ("refresh-primary".equals(pathSegments.get(3))
+                || "rollback".equals(pathSegments.get(3))
+                || "emergency-refresh".equals(pathSegments.get(3))));
+  }
+
+  private static boolean requiresAppCatalogInstallOrUpdateFormPassword(List<String> pathSegments) {
+    return "apps".equals(pathSegments.get(2))
         && ("install".equals(pathSegments.get(4)) || "update".equals(pathSegments.get(4)));
   }
 

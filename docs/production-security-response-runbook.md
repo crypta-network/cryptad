@@ -254,12 +254,21 @@ malformed advisory or denylist records.
 4. Regenerate the catalog candidate in dry-run or test-key mode.
 5. Verify the catalog signature, catalog parser, advisory enforcement, exact denylist decisions,
    review trust state, update scheduler behavior, Web Shell warnings, and support redaction.
-6. Produce security release notes from [docs/templates/security-release-notes.md](templates/security-release-notes.md).
-7. Run `python3 tools/release-certification/security_response_runbook.py verify`.
-8. Run `python3 tools/release-certification/app_platform_smoke.py --self-test`.
-9. Run `python3 tools/release-certification/release_certification.py --self-test` before release
+6. Use the catalog emergency advisory refresh action to pull the signed candidate through the
+   configured primary source plus mirrors. Mirror transport fallback must not bypass catalog
+   signature verification, trusted-key policy, catalog id checks, advisory parsing, or
+   stale/downgrade protection.
+7. Inspect Platform API or Web Shell source health for fallback warnings, active source id,
+   advisory/denylist deltas, rollback candidates, and key-rotation status.
+8. If the emergency catalog is bad but a previous verified revision remains safe, use explicit
+   rollback to that digest after re-verification. Rollback does not uninstall apps, change app
+   data, or bypass signed advisories and denylists.
+9. Produce security release notes from [docs/templates/security-release-notes.md](templates/security-release-notes.md).
+10. Run `python3 tools/release-certification/security_response_runbook.py verify`.
+11. Run `python3 tools/release-certification/app_platform_smoke.py --self-test`.
+12. Run `python3 tools/release-certification/release_certification.py --self-test` before release
    candidate certification.
-10. Publish only the signed emergency catalog and redacted release artifacts.
+13. Publish only the signed emergency catalog and redacted release artifacts.
 
 No production private key is required for deterministic tests. Fixture and dry-run artifacts use
 synthetic ids, digests, and test keys only.
@@ -273,6 +282,8 @@ synthetic ids, digests, and test keys only.
 - advisory lifecycle, reviewer-key compromise, catalog signing key rotation, app signing key
   compromise, emergency catalog update, support redaction, release notes, Web Shell/API/operator
   status, and redaction boundaries are represented;
+- catalog.operations-and-mirrors evidence covers mirror health, transport fallback, explicit
+  rollback, key-rotation status, emergency advisory refresh, and redacted operator metadata;
 - fixtures and docs contain no obvious private keys, private insert URIs, bearer/session/app
   tokens, raw fetched content, raw app data, local absolute paths, command lines with secrets, CI
   secret values, reporter private data, or raw support payloads.

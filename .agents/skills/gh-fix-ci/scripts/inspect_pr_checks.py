@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
@@ -41,6 +42,7 @@ FAILURE_MARKERS = (
 
 DEFAULT_MAX_LINES = 160
 DEFAULT_CONTEXT_LINES = 30
+GH_AUTH_USER = "leumor"
 PENDING_LOG_MARKERS = (
     "still in progress",
     "log will be available when it is complete",
@@ -54,21 +56,46 @@ class GhResult:
         self.stderr = stderr
 
 
+def leumor_gh_env(cwd: Path) -> tuple[dict[str, str] | None, str | None]:
+    process = subprocess.run(
+        ["gh", "auth", "token", "--user", GH_AUTH_USER],
+        cwd=cwd,
+        text=True,
+        capture_output=True,
+    )
+    if process.returncode != 0:
+        return None, (process.stderr or process.stdout or "").strip()
+    token = process.stdout.strip()
+    if not token:
+        return None, f"gh auth token returned no token for {GH_AUTH_USER}"
+    env = os.environ.copy()
+    env["GH_TOKEN"] = token
+    return env, None
+
+
 def run_gh_command(args: Sequence[str], cwd: Path) -> GhResult:
+    env, error = leumor_gh_env(cwd)
+    if env is None:
+        return GhResult(1, "", error or f"gh is not authenticated as {GH_AUTH_USER}")
     process = subprocess.run(
         ["gh", *args],
         cwd=cwd,
         text=True,
         capture_output=True,
+        env=env,
     )
     return GhResult(process.returncode, process.stdout, process.stderr)
 
 
 def run_gh_command_raw(args: Sequence[str], cwd: Path) -> tuple[int, bytes, str]:
+    env, error = leumor_gh_env(cwd)
+    if env is None:
+        return 1, b"", error or f"gh is not authenticated as {GH_AUTH_USER}"
     process = subprocess.run(
         ["gh", *args],
         cwd=cwd,
         capture_output=True,
+        env=env,
     )
     stderr = process.stderr.decode(errors="replace")
     return process.returncode, process.stdout, stderr

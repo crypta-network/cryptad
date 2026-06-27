@@ -1,6 +1,6 @@
 ---
 name: cryptad-platform-apps
-description: "Work on Cryptad's app platform: Platform API v1/contract, unified operator consent, AppHost runtime/rollback, signed app bundles/catalogs, app-store submission review, trusted app-review receipts, third-party developer beta program, production security response runbooks, Trust Graph Local RC, Social Inbox RC, app-update lifecycle, durable app data, app-data backup/restore, content subscriptions, app-network budgets, multi-node beta soak evidence, local app-service discovery/dependencies/grant bundles, app-owned static UI, browser sessions, the browser SDK, the app UI design system/linter, developer CLI, app permissions/audit, sandbox providers, operator beta dashboard/support evidence, operator RC recovery/support workflows, live-network beta certification evidence, legacy plugin freeze, and legacy admin retirement routing."
+description: "Work on Cryptad's app platform: Platform API v1/contract, unified operator consent, AppHost runtime/rollback, signed app bundles/catalogs, catalog operations and mirrors, app-store submission review, trusted app-review receipts, third-party developer beta program, production security response runbooks, Trust Graph Local RC, Social Inbox RC, app-update lifecycle, durable app data, app-data backup/restore, content subscriptions, app-network budgets, multi-node beta soak evidence, local app-service discovery/dependencies/grant bundles, app-owned static UI, browser sessions, the browser SDK, the app UI design system/linter, developer CLI, app permissions/audit, sandbox providers, operator beta dashboard/support evidence, operator RC recovery/support workflows, live-network beta certification evidence, production beta go/no-go evidence, legacy plugin freeze, and legacy admin retirement routing."
 ---
 
 # Cryptad platform apps
@@ -25,6 +25,8 @@ Load only the docs needed for the change:
 - Signed bundles and first-party app tasks: `docs/app-distribution.md`
 - Standalone app developer CLI: `docs/app-dev-cli.md`
 - Signed catalogs: `docs/app-catalogs.md`
+- Production first-party catalog channels: `docs/production-first-party-catalog-channels.md`
+- Catalog operations and mirrors: `docs/catalog-operations-and-mirrors.md`
 - Ecosystem security advisories and denylists: `docs/ecosystem-security-advisories.md`
 - Production security response runbook: `docs/production-security-response-runbook.md`
 - App-store submission and review workflow: `docs/app-store-submission-and-review-workflow.md`
@@ -52,6 +54,7 @@ Load only the docs needed for the change:
 - Operator RC recovery and support workflow: `docs/operator-rc-recovery-and-support-workflow.md`
 - App-platform release evidence: `docs/release-certification.md`
 - Production beta release pipeline: `docs/production-beta-release-pipeline.md`
+- Production beta go/no-go dashboard: `docs/production-beta-go-no-go-dashboard.md`
 - Multi-node beta soak and upgrade drill: `docs/multi-node-beta-soak-and-upgrade-drill.md`
 
 ## Ownership map
@@ -65,10 +68,11 @@ Load only the docs needed for the change:
   consent previews/decisions/audit stores, internal update snapshots, local Trust Graph Local RC
   route handlers, local app-service discovery/dependency/grant-bundle routes and adapters, bounded
   app audit logs, and the local app-update lifecycle service plus scheduler above AppHost, catalog,
-  vault, app-data, content, trust, and runtime primitives, plus the host/operator-only beta
-  dashboard, subscription recovery wrappers, typed operator RC recovery action planning/execution,
-  safe network-budget snapshots, support-bundle preview metadata, and redacted support-bundle
-  assembly.
+  vault, app-data, content, trust, and runtime primitives, plus host/operator-only catalog
+  operation routes for mirror management, source health, revision history, rollback, key-rotation
+  status, and emergency advisory refresh; the host/operator-only beta dashboard, subscription
+  recovery wrappers, typed operator RC recovery action planning/execution, safe network-budget
+  snapshots, support-bundle preview metadata, and redacted support-bundle assembly.
 - `:platform-apphost` owns installed app layout, manifest parsing, app process lifecycle,
   per-launch `CRYPTAD_APP_TOKEN`, runtime status, process-log capture/redaction, and restart
   attempts, durable previous-bundle rollback records, plus sandbox policy/status reporting,
@@ -94,8 +98,10 @@ Load only the docs needed for the change:
   denylists, production security response drill metadata, submission package
   writing/verification/pre-review/redaction, independent app-review receipts, trusted reviewer-key
   loading, review policy modes, and review trust decisions used by app update review,
-  reviewer-key lifecycle parsing, local review transparency logging, governance snapshots, and
-  review-history API support.
+  reviewer-key lifecycle parsing, local review transparency logging, governance snapshots,
+  review-history API support, primary-plus-mirror source metadata, mirror fallback refresh,
+  bounded verified revision history, explicit rollback re-verification, catalog key-rotation
+  status, and emergency advisory refresh metadata.
 - `:platform-trustgraph` owns the Trust Graph Local RC statement model, strict JSON parser,
   canonical payload and signature helpers, process-local anchor/store abstractions, lifecycle
   status records, and deterministic direct-anchor scoring. It is a local RC library, not a
@@ -108,14 +114,15 @@ Load only the docs needed for the change:
   or explicit live USK publication for developer-owned staged bundles, including `crypta-app ui
   lint` and review receipt sign/verify helpers.
 - `:platform-web-shell` owns `/app/node/` browser shell assets, bootstrap, app/catalog/update/review
-  operator views, the operator beta dashboard/support-bundle panel, the Operator RC Recovery
-  surface, subscription recovery controls, app-data backup/restore controls, app-service
-  dependency/grant-bundle review UI, security response status rendering, and explicit legacy
-  security/diagnostic fallback actions.
+  operator views, catalog source/mirror health and guarded catalog operations, the operator beta
+  dashboard/support-bundle panel, the Operator RC Recovery surface, subscription recovery
+  controls, app-data backup/restore controls, app-service dependency/grant-bundle review UI,
+  security response status rendering, and explicit legacy security/diagnostic fallback actions.
 - `:adapter-http-legacy-admin` hosts the current `/api/v1/`, `/app/node/`, `/apps/{appId}/`
   compatibility bridge, isolated app-UI loopback origin server, Platform API form-password guard,
-  operator recovery/subscription form-password guards, legacy admin retirement notices, Wave 5
-  final-surface policy, replacement/fallback routing, and diagnostics counters.
+  mutating catalog-operation form-password guard, operator recovery/subscription form-password
+  guards, legacy admin retirement notices, Wave 5 final-surface policy, replacement/fallback
+  routing, and diagnostics counters.
 - `:apps:queue-manager` stages the first-party queue-control static UI bundle.
 - `:apps:publisher` stages the legacy-publisher replacement static UI bundle.
 - `:apps:site-publisher` stages the first-party content reference static UI bundle.
@@ -240,6 +247,18 @@ Load only the docs needed for the change:
 - `crypta:` catalog sources still require signed catalog verification. They do not make catalog
   artifacts trusted, and catalog entry bundle artifacts remain limited to the schemes documented in
   `docs/app-catalogs.md`.
+- Catalog mirrors are transport fallbacks only. Every primary or mirror refresh must preserve safe
+  source URI validation, signed catalog verification, catalog-id matching, trusted-key policy,
+  parser/security-advisory checks, digest/revision calculation, and stale/downgrade prevention.
+  Mirror refresh must not silently roll back to older bytes; only an explicit operator rollback to
+  a previously verified revision may move backward.
+- Catalog operation routes under `/api/v1/app-catalogs/{catalogId}/mirrors` and
+  `/api/v1/app-catalogs/{catalogId}/operations/*` are host/operator-only local-management routes.
+  They must deny app-process and app-browser principals, and mutating bridge requests must pass the
+  form-password guard. Support/API/Web Shell output must remain redacted: no private insert URIs,
+  private keys, app/session/process tokens, form passwords, raw catalog bytes, raw signature bytes,
+  raw fetched content, raw app data, scratch paths, staged paths, rollback paths, or absolute local
+  paths.
 - Production security response is catalog/app/reviewer governance only. Keep emergency advisories,
   exact-version denylists, reviewer-key/receipt revocations, catalog signing-key rotation evidence,
   replacement guidance, and safe uninstall/update labels compact and operator-facing. Do not expose
@@ -313,8 +332,9 @@ Load only the docs needed for the change:
   Reader/Trust Graph Local RC reference-app evidence, unified consent evidence, app-service
   registry/grant/dependency/grant-bundle/redaction evidence, legacy plugin freeze
   evidence, app-review governance and local transparency-log evidence, public-beta security
-  hardening evidence, operator beta dashboard/recovery/support-bundle evidence, operator RC
-  recovery/support workflow evidence, production security response runbook evidence,
+  hardening evidence, catalog operations and mirrors evidence, operator beta
+  dashboard/recovery/support-bundle evidence, operator RC recovery/support workflow evidence,
+  production security response runbook evidence,
   legacy-admin retirement Wave 1-5/final-surface state, and optional localhost-only live AppHost
   lifecycle evidence.
 - `tools/release-certification/live_network_beta_smoke.py` is the explicit release-manager
@@ -378,15 +398,15 @@ When changing `crypta-app` command wiring or distribution behavior, also run
 `./gradlew :platform-devtools:installDist` and smoke the generated
 `platform-devtools/build/install/crypta-app/bin/crypta-app --help` launcher.
 
-When changing signed bundle/catalog, live USK publication, app-review receipts, static UI,
-design-system assets, UI lint, SDK, Platform API contract, stable-baseline metadata, manifest or
-catalog target-stability behavior, AppHost lifecycle, app-vault capabilities, generated document
-inserts, content fetch/subscriptions, shared app-network budgets, network-scale soak evidence,
-durable app data, app-data backup/restore, app-service
+When changing signed bundle/catalog, catalog operations/mirrors, live USK publication, app-review
+receipts, static UI, design-system assets, UI lint, SDK, Platform API contract, stable-baseline
+metadata, manifest or catalog target-stability behavior, AppHost lifecycle, app-vault
+capabilities, generated document inserts, content fetch/subscriptions, shared app-network budgets,
+network-scale soak evidence, durable app data, app-data backup/restore, app-service
 dependencies/grant bundles, Trust Graph Local RC, Social Inbox RC, app-update
 lifecycle/scheduler/rollback, sandbox-provider evidence, operator beta dashboard/support-bundle
 behavior, production security response runbook/verifier behavior, live-network beta certification
-behavior, production beta go/no-go dashboard behavior, third-party developer beta
+behavior, production beta release/go-no-go dashboard behavior, third-party developer beta
 docs/template/sample/submission evidence, reference content/profile/social/feed/trust apps, app
 platform beta docs evidence,
 operator RC recovery/support behavior, or legacy-admin retirement evidence behavior, also run:

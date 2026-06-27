@@ -6,6 +6,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
+import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.LinkedHashMap;
@@ -24,6 +25,9 @@ import network.crypta.platform.appcatalog.AppCatalogFetchStatus;
 import network.crypta.platform.appcatalog.AppCatalogInstallPlan;
 import network.crypta.platform.appcatalog.AppCatalogMaintenanceMetadata;
 import network.crypta.platform.appcatalog.AppCatalogManager;
+import network.crypta.platform.appcatalog.AppCatalogMirror;
+import network.crypta.platform.appcatalog.AppCatalogMirrorHealth;
+import network.crypta.platform.appcatalog.AppCatalogMirrorId;
 import network.crypta.platform.appcatalog.AppCatalogProductionMetadata;
 import network.crypta.platform.appcatalog.AppCatalogReviewMetadata;
 import network.crypta.platform.appcatalog.AppCatalogReviewStatus;
@@ -35,6 +39,8 @@ import network.crypta.platform.appcatalog.AppCatalogSecurityDecisionStatus;
 import network.crypta.platform.appcatalog.AppCatalogSecurityPolicy;
 import network.crypta.platform.appcatalog.AppCatalogSecuritySeverity;
 import network.crypta.platform.appcatalog.AppCatalogSecurityStatus;
+import network.crypta.platform.appcatalog.AppCatalogSource;
+import network.crypta.platform.appcatalog.AppCatalogSourceRole;
 import network.crypta.platform.appcatalog.AppCatalogSourceSnapshot;
 import network.crypta.platform.appcatalog.AppCatalogSupportStatus;
 import network.crypta.platform.appcatalog.AppCatalogVersionDenylistEntry;
@@ -92,6 +98,73 @@ class AppCatalogsApiHandlerTest {
   private static final String FIRST_PARTY_SOURCE =
       "crypta:USK@example/catalog/cryptad-app-catalog.properties";
   private static final String FIRST_PARTY_TRUSTED_KEY_ID = "first-party-catalog";
+  private static final String GENERATED_AT_TEXT = "2026-04-24T12:00:00Z";
+  private static final String REFRESHED_AT_TEXT = "2026-04-24T12:02:00Z";
+  private static final String PRIMARY_REFRESHED_AT_TEXT = "2026-04-24T12:05:00Z";
+  private static final String CORE_CATALOG_NAME = "Core Apps";
+  private static final String CORE_CATALOG_SOURCE =
+      "https://example.invalid/cryptad-app-catalog.properties";
+  private static final String CATALOG_SOURCE_URI_TEXT = "https://catalog.example.invalid/catalog";
+  private static final String CORE_CATALOG_KEY_ID = "core-catalog-key";
+  private static final String PRIMARY_CATALOG_DIGEST = "sha256:primary";
+  private static final String CATALOG_ID_FIELD = "catalogId";
+  private static final String SOURCE_FIELD = "source";
+  private static final String HTTPS_SOURCE_KIND = "https";
+  private static final String SOURCE_KIND_FIELD = "sourceKind";
+  private static final String STATUS_FIELD = "status";
+  private static final String CHANNEL_FIELD = "channel";
+  private static final String CONFIGURED_TEXT = "configured";
+  private static final String TRUSTED_CATALOG_KEY_CONFIGURED_FIELD = "trustedCatalogKeyConfigured";
+  private static final String CAN_ADD_FIELD = "canAdd";
+  private static final String MISSING_CONFIGURATION_FIELD = "missingConfiguration";
+  private static final String UNKNOWN_STATUS = "unknown";
+  private static final String APP_ID_FIELD = "appId";
+  private static final String VERSION_FIELD = "version";
+  private static final String CATALOG_VERSION = "1.2.0";
+  private static final String INSTALLED_VERSION_FIELD = "installedVersion";
+  private static final String INSTALLED_VERSION = "1.1.0";
+  private static final String INSTALLED_TEXT = "installed";
+  private static final String VERSION_DIFFERENT_FIELD = "versionDifferent";
+  private static final String UPDATE_AVAILABLE_FIELD = "updateAvailable";
+  private static final String VERSION_STATUS_FIELD = "versionStatus";
+  private static final String DIFFERENT_STATUS = "different";
+  private static final String CATEGORIES_FIELD = "categories";
+  private static final String HOMEPAGE_FIELD = "homepage";
+  private static final String LICENSE_FIELD = "license";
+  private static final String SUPPORT_STATUS_FIELD = "supportStatus";
+  private static final String SECURITY_ADVISORY_ID_0001 = "CRYPTA-2026-0001";
+  private static final String SECURITY_ADVISORY_URI_0001 =
+      "https://example.invalid/advisories/CRYPTA-2026-0001";
+  private static final String ADVISORY_FIELD = "advisory";
+  private static final String REVIEW_TRUST_FIELD = "reviewTrust";
+  private static final String TRUSTED_FIELD = "trusted";
+  private static final String POSITIVE_FIELD = "positive";
+  private static final String BLOCKS_INSTALL_FIELD = "blocksInstall";
+  private static final String QUEUE_READ_PERMISSION = "queue.read";
+  private static final String QUEUE_WRITE_PERMISSION = "queue.write";
+  private static final String CURRENT_CRYPTA_VERSION = "0.2.0";
+  private static final String COMPATIBILITY_FIELD = "compatibility";
+  private static final String MINIMUM_CRYPTA_VERSION_FIELD = "minimumCryptaVersion";
+  private static final String CURRENT_CRYPTA_VERSION_FIELD = "currentCryptaVersion";
+  private static final String SATISFIED_TEXT = "satisfied";
+  private static final String SUMMARY_FIELD = "summary";
+  private static final String NEWER_VERSION = "1.3.0";
+  private static final String API_TEST_TRACE_LABEL = "api-test";
+  private static final String ACTIVE_STATUS = "active";
+  private static final String KEY_ID_FIELD = "keyId";
+  private static final String REVIEWER_DISPLAY_NAME = "Crypta First-Party Review";
+  private static final String ACTIVE_ADVISORY_COUNT_FIELD = "activeAdvisoryCount";
+  private static final String DENYLISTED_VERSION_COUNT_FIELD = "denylistedVersionCount";
+  private static final String REVOKED_REVIEWER_KEY_COUNT_FIELD = "revokedReviewerKeyCount";
+  private static final String SECURITY_ADVISORY_ID_0002 = "CRYPTA-2026-0002";
+  private static final String TRUSTED_REVIEWED_STATUS = "trusted_reviewed";
+  private static final String APP_REVIEW_MISSING_ERROR = "app_review_missing";
+  private static final String APP_SECURITY_DENYLISTED_ERROR = "app_security_denylisted";
+  private static final String VAULT_DIRECTORY = "vault";
+  private static final String QUEUE_MANAGER_NAME = "Queue Manager";
+  private static final String QUEUE_MANAGER_SUMMARY = "Manage local Crypta transfer queues.";
+  private static final String QUEUE_MANAGER_BUNDLE_URI =
+      "https://example.invalid/apps/queue-manager.zip";
   private static final Instant REVIEWED_AT = Instant.parse("2026-05-01T00:00:00Z");
 
   @Mock private AppCatalogManager catalogManager;
@@ -102,14 +175,14 @@ class AppCatalogsApiHandlerTest {
   @Test
   void listCatalogs_whenSnapshotHasSourceUri_expectSourceKindAndSyncFields() throws Exception {
     AppCatalogsApiHandler handler = new AppCatalogsApiHandler(catalogManager, appHost, () -> null);
-    Instant generatedAt = Instant.parse("2026-04-24T12:00:00Z");
+    Instant generatedAt = Instant.parse(GENERATED_AT_TEXT);
     Instant addedAt = Instant.parse("2026-04-24T12:01:00Z");
-    Instant refreshedAt = Instant.parse("2026-04-24T12:02:00Z");
+    Instant refreshedAt = Instant.parse(REFRESHED_AT_TEXT);
     AppCatalogSourceSnapshot snapshot =
         new AppCatalogSourceSnapshot(
             "core",
-            "Core Apps",
-            URI.create("https://example.invalid/cryptad-app-catalog.properties"),
+            CORE_CATALOG_NAME,
+            URI.create(CORE_CATALOG_SOURCE),
             generatedAt,
             2,
             addedAt,
@@ -119,17 +192,17 @@ class AppCatalogsApiHandlerTest {
             AppCatalogFetchStatus.SUCCESS,
             Optional.empty(),
             Optional.empty(),
-            Optional.of("https://example.invalid/cryptad-app-catalog.properties"),
-            Optional.of("core-catalog-key"));
+            Optional.of(CORE_CATALOG_SOURCE),
+            Optional.of(CORE_CATALOG_KEY_ID));
     when(catalogManager.listCatalogs()).thenReturn(List.of(snapshot));
 
     Map<String, Object> catalog = handler.listCatalogs().getFirst();
 
-    assertEquals("core", catalog.get("catalogId"));
-    assertEquals("Core Apps", catalog.get("name"));
-    assertEquals("https://example.invalid/cryptad-app-catalog.properties", catalog.get("source"));
-    assertEquals("https", catalog.get("sourceType"));
-    assertEquals("https", catalog.get("sourceKind"));
+    assertEquals("core", catalog.get(CATALOG_ID_FIELD));
+    assertEquals(CORE_CATALOG_NAME, catalog.get("name"));
+    assertEquals(CORE_CATALOG_SOURCE, catalog.get(SOURCE_FIELD));
+    assertEquals(HTTPS_SOURCE_KIND, catalog.get("sourceType"));
+    assertEquals(HTTPS_SOURCE_KIND, catalog.get(SOURCE_KIND_FIELD));
     assertEquals(generatedAt.toString(), catalog.get("generatedAt"));
     assertEquals(2, catalog.get("appCount"));
     assertEquals(addedAt.toString(), catalog.get("addedAt"));
@@ -139,9 +212,336 @@ class AppCatalogsApiHandlerTest {
     assertEquals("success", catalog.get("lastFetchStatus"));
     assertNull(catalog.get("lastFetchErrorCode"));
     assertNull(catalog.get("lastFetchErrorMessage"));
-    assertEquals(
-        "https://example.invalid/cryptad-app-catalog.properties", catalog.get("lastResolvedUri"));
-    assertEquals("core-catalog-key", catalog.get("signatureKeyId"));
+    assertEquals(CORE_CATALOG_SOURCE, catalog.get("lastResolvedUri"));
+    assertEquals(CORE_CATALOG_KEY_ID, catalog.get("signatureKeyId"));
+  }
+
+  @Test
+  void health_whenSourcesContainPathsAndTokens_expectOperationsOutputRedacted() throws Exception {
+    AppCatalogsApiHandler handler = new AppCatalogsApiHandler(catalogManager, appHost, () -> null);
+    Instant generatedAt = Instant.parse(GENERATED_AT_TEXT);
+    Instant refreshedAt = Instant.parse(REFRESHED_AT_TEXT);
+    String privatePathSource = tempDir.resolve("private/cryptad-app-catalog.properties").toString();
+    AppCatalogSource privateSource = AppCatalogSource.parse(privatePathSource);
+    AppCatalogSourceSnapshot snapshot =
+        new AppCatalogSourceSnapshot(
+            "core",
+            CORE_CATALOG_NAME,
+            privateSource.uri(),
+            generatedAt,
+            2,
+            refreshedAt,
+            refreshedAt,
+            refreshedAt,
+            refreshedAt,
+            AppCatalogFetchStatus.SUCCESS,
+            Optional.empty(),
+            Optional.empty(),
+            Optional.of(privateSource.resolvedCatalogFetchUri()),
+            Optional.of(CORE_CATALOG_KEY_ID));
+    AppCatalogMirror mirror =
+        new AppCatalogMirror(
+            AppCatalogMirrorId.parse("backup"),
+            AppCatalogSourceRole.MIRROR,
+            AppCatalogSource.parse(
+                "https://mirror.example.invalid/cryptad-app-catalog.properties?token=secret"),
+            1,
+            true,
+            refreshedAt);
+    List<AppCatalogMirrorHealth> health =
+        List.of(
+            new AppCatalogMirrorHealth(
+                AppCatalogMirrorId.PRIMARY,
+                AppCatalogSourceRole.PRIMARY,
+                AppCatalogFetchStatus.SUCCESS,
+                Optional.of(refreshedAt),
+                Optional.of(refreshedAt),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.of(privateSource.resolvedCatalogFetchUri()),
+                Optional.of("sha256:active"),
+                Optional.of(CORE_CATALOG_KEY_ID),
+                Optional.of(generatedAt),
+                Optional.of("rollback after incident")),
+            new AppCatalogMirrorHealth(
+                mirror.id(),
+                mirror.role(),
+                AppCatalogFetchStatus.FAILED,
+                Optional.of(refreshedAt),
+                Optional.empty(),
+                Optional.of("catalog_fetch_failed"),
+                Optional.of("fetch failed"),
+                Optional.of(
+                    "https://mirror.example.invalid/cryptad-app-catalog.properties?token=secret"),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty()));
+    when(catalogManager.catalog("core")).thenReturn(snapshot);
+    when(catalogManager.sourceHealth("core")).thenReturn(health);
+    when(catalogManager.listMirrors("core"))
+        .thenReturn(List.of(AppCatalogMirror.primary(privateSource, refreshedAt), mirror));
+
+    Map<String, Object> response = handler.health("core");
+    String rendered = response.toString();
+
+    assertEquals("core", response.get(CATALOG_ID_FIELD));
+    assertEquals("sha256:active", response.get("catalogDigest"));
+    assertEquals(true, response.get("redacted"));
+    List<Map<String, Object>> sourceHealth =
+        (List<Map<String, Object>>) response.get("sourceHealth");
+    assertEquals("rollback after incident", sourceHealth.getFirst().get("lastRollbackReason"));
+    assertFalse(rendered.contains(tempDir.toString()));
+    assertFalse(rendered.contains("secret"));
+    assertFalse(rendered.contains("token="));
+    assertTrue(rendered.contains("file:<configured>"));
+  }
+
+  @Test
+  void health_whenMirrorSuccessIsOlderThanPrimarySuccess_expectPrimaryReportedActive()
+      throws Exception {
+    AppCatalogsApiHandler handler = new AppCatalogsApiHandler(catalogManager, appHost, () -> null);
+    Instant generatedAt = Instant.parse(GENERATED_AT_TEXT);
+    Instant mirrorRefreshedAt = Instant.parse(REFRESHED_AT_TEXT);
+    Instant primaryRefreshedAt = Instant.parse(PRIMARY_REFRESHED_AT_TEXT);
+    AppCatalogSource source = AppCatalogSource.parse(CATALOG_SOURCE_URI_TEXT);
+    AppCatalogSourceSnapshot snapshot =
+        new AppCatalogSourceSnapshot(
+            "core",
+            CORE_CATALOG_NAME,
+            source.uri(),
+            generatedAt,
+            2,
+            primaryRefreshedAt,
+            primaryRefreshedAt,
+            primaryRefreshedAt,
+            primaryRefreshedAt,
+            AppCatalogFetchStatus.SUCCESS,
+            Optional.empty(),
+            Optional.empty(),
+            Optional.of(source.resolvedCatalogFetchUri()),
+            Optional.of(CORE_CATALOG_KEY_ID));
+    AppCatalogMirror mirror =
+        new AppCatalogMirror(
+            AppCatalogMirrorId.parse("backup"),
+            AppCatalogSourceRole.MIRROR,
+            AppCatalogSource.parse("https://mirror.example.invalid/catalog"),
+            1,
+            true,
+            mirrorRefreshedAt);
+    List<AppCatalogMirrorHealth> health =
+        List.of(
+            new AppCatalogMirrorHealth(
+                AppCatalogMirrorId.PRIMARY,
+                AppCatalogSourceRole.PRIMARY,
+                AppCatalogFetchStatus.SUCCESS,
+                Optional.of(primaryRefreshedAt),
+                Optional.of(primaryRefreshedAt),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.of(source.resolvedCatalogFetchUri()),
+                Optional.of(PRIMARY_CATALOG_DIGEST),
+                Optional.of(CORE_CATALOG_KEY_ID),
+                Optional.of(generatedAt)),
+            new AppCatalogMirrorHealth(
+                mirror.id(),
+                mirror.role(),
+                AppCatalogFetchStatus.SUCCESS,
+                Optional.of(mirrorRefreshedAt),
+                Optional.of(mirrorRefreshedAt),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.of(mirror.source().resolvedCatalogFetchUri()),
+                Optional.of("sha256:mirror"),
+                Optional.of(CORE_CATALOG_KEY_ID),
+                Optional.of(generatedAt.minusSeconds(60))));
+    when(catalogManager.catalog("core")).thenReturn(snapshot);
+    when(catalogManager.sourceHealth("core")).thenReturn(health);
+    when(catalogManager.listMirrors("core"))
+        .thenReturn(List.of(AppCatalogMirror.primary(source, primaryRefreshedAt), mirror));
+
+    Map<String, Object> response = handler.health("core");
+
+    assertEquals(false, response.get("fallbackUsed"));
+    assertEquals("primary", response.get("activeSourceId"));
+    assertEquals(PRIMARY_CATALOG_DIGEST, response.get("catalogDigest"));
+  }
+
+  @Test
+  void health_whenReadingOneCatalog_expectDoesNotListAllCatalogs() throws Exception {
+    AppCatalogsApiHandler handler = new AppCatalogsApiHandler(catalogManager, appHost, () -> null);
+    Instant generatedAt = Instant.parse(GENERATED_AT_TEXT);
+    Instant refreshedAt = Instant.parse(PRIMARY_REFRESHED_AT_TEXT);
+    AppCatalogSource source = AppCatalogSource.parse(CATALOG_SOURCE_URI_TEXT);
+    AppCatalogSourceSnapshot snapshot =
+        new AppCatalogSourceSnapshot(
+            "core",
+            CORE_CATALOG_NAME,
+            source.uri(),
+            generatedAt,
+            2,
+            refreshedAt,
+            refreshedAt,
+            refreshedAt,
+            refreshedAt,
+            AppCatalogFetchStatus.SUCCESS,
+            Optional.empty(),
+            Optional.empty(),
+            Optional.of(source.resolvedCatalogFetchUri()),
+            Optional.of(CORE_CATALOG_KEY_ID));
+    List<AppCatalogMirrorHealth> health =
+        List.of(
+            new AppCatalogMirrorHealth(
+                AppCatalogMirrorId.PRIMARY,
+                AppCatalogSourceRole.PRIMARY,
+                AppCatalogFetchStatus.SUCCESS,
+                Optional.of(refreshedAt),
+                Optional.of(refreshedAt),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.of(source.resolvedCatalogFetchUri()),
+                Optional.of(PRIMARY_CATALOG_DIGEST),
+                Optional.of(CORE_CATALOG_KEY_ID),
+                Optional.of(generatedAt)));
+    when(catalogManager.catalog("core")).thenReturn(snapshot);
+    when(catalogManager.sourceHealth("core")).thenReturn(health);
+    when(catalogManager.listMirrors("core"))
+        .thenReturn(List.of(AppCatalogMirror.primary(source, refreshedAt)));
+
+    Map<String, Object> response = handler.health("core");
+
+    assertEquals("core", response.get(CATALOG_ID_FIELD));
+    verify(catalogManager, never()).listCatalogs();
+  }
+
+  @Test
+  void rollback_whenReasonSupplied_expectReasonReturnedAndDelegated() throws Exception {
+    AppCatalogsApiHandler handler = new AppCatalogsApiHandler(catalogManager, appHost, () -> null);
+    AppCatalogSourceSnapshot snapshot = firstPartyCatalogSnapshot();
+    String rollbackReason = " operator rollback after bad publication ";
+    when(catalogManager.rollback("core", PRIMARY_CATALOG_DIGEST, rollbackReason))
+        .thenReturn(snapshot);
+
+    Map<String, Object> response =
+        handler.rollback(
+            "core",
+            Map.of(
+                "revisionDigest",
+                List.of(PRIMARY_CATALOG_DIGEST),
+                "reason",
+                List.of(rollbackReason)));
+
+    assertEquals("core", response.get(CATALOG_ID_FIELD));
+    assertEquals(true, response.get("rolledBack"));
+    assertEquals("operator rollback after bad publication", response.get("reason"));
+    verify(catalogManager).rollback("core", PRIMARY_CATALOG_DIGEST, rollbackReason);
+  }
+
+  @Test
+  void emergencyRefresh_whenCachedPolicyCannotVerify_expectRefreshStillRuns() throws Exception {
+    AppCatalogsApiHandler handler = new AppCatalogsApiHandler(catalogManager, appHost, () -> null);
+    Instant generatedAt = Instant.parse(GENERATED_AT_TEXT);
+    Instant refreshedAt = Instant.parse(PRIMARY_REFRESHED_AT_TEXT);
+    AppCatalogSource source = AppCatalogSource.parse(CATALOG_SOURCE_URI_TEXT);
+    AppCatalogSourceSnapshot snapshot =
+        new AppCatalogSourceSnapshot(
+            "core",
+            CORE_CATALOG_NAME,
+            source.uri(),
+            generatedAt,
+            2,
+            refreshedAt,
+            refreshedAt,
+            refreshedAt,
+            refreshedAt,
+            AppCatalogFetchStatus.SUCCESS,
+            Optional.empty(),
+            Optional.empty(),
+            Optional.of(source.resolvedCatalogFetchUri()),
+            Optional.of(CORE_CATALOG_KEY_ID));
+    List<AppCatalogMirrorHealth> health =
+        List.of(
+            new AppCatalogMirrorHealth(
+                AppCatalogMirrorId.PRIMARY,
+                AppCatalogSourceRole.PRIMARY,
+                AppCatalogFetchStatus.SUCCESS,
+                Optional.of(refreshedAt),
+                Optional.of(refreshedAt),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.of(source.resolvedCatalogFetchUri()),
+                Optional.of(PRIMARY_CATALOG_DIGEST),
+                Optional.of(CORE_CATALOG_KEY_ID),
+                Optional.of(generatedAt)));
+    when(catalogManager.securityPolicy("core"))
+        .thenThrow(new AppCatalogException("catalog_signature_untrusted", "cached key removed"))
+        .thenReturn(AppCatalogSecurityPolicy.EMPTY);
+    when(catalogManager.emergencyRefresh("core")).thenReturn(snapshot);
+    when(catalogManager.sourceHealth("core")).thenReturn(health);
+
+    Map<String, Object> response = handler.emergencyRefresh("core");
+
+    assertEquals("success", response.get(STATUS_FIELD));
+    assertEquals(false, response.get("fallbackUsed"));
+    assertEquals("primary", response.get("activeSourceId"));
+    verify(catalogManager).emergencyRefresh("core");
+  }
+
+  @Test
+  void emergencyRefresh_whenDenylistEntryIsReplaced_expectAddedEntryCountByIdentity()
+      throws Exception {
+    AppCatalogsApiHandler handler = new AppCatalogsApiHandler(catalogManager, appHost, () -> null);
+    Instant generatedAt = Instant.parse(GENERATED_AT_TEXT);
+    Instant refreshedAt = Instant.parse(PRIMARY_REFRESHED_AT_TEXT);
+    AppCatalogSource source = AppCatalogSource.parse(CATALOG_SOURCE_URI_TEXT);
+    AppCatalogSourceSnapshot snapshot =
+        new AppCatalogSourceSnapshot(
+            "core",
+            CORE_CATALOG_NAME,
+            source.uri(),
+            generatedAt,
+            2,
+            refreshedAt,
+            refreshedAt,
+            refreshedAt,
+            refreshedAt,
+            AppCatalogFetchStatus.SUCCESS,
+            Optional.empty(),
+            Optional.empty(),
+            Optional.of(source.resolvedCatalogFetchUri()),
+            Optional.of(CORE_CATALOG_KEY_ID));
+    List<AppCatalogMirrorHealth> health =
+        List.of(
+            new AppCatalogMirrorHealth(
+                AppCatalogMirrorId.PRIMARY,
+                AppCatalogSourceRole.PRIMARY,
+                AppCatalogFetchStatus.SUCCESS,
+                Optional.of(refreshedAt),
+                Optional.of(refreshedAt),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.of(source.resolvedCatalogFetchUri()),
+                Optional.of(PRIMARY_CATALOG_DIGEST),
+                Optional.of(CORE_CATALOG_KEY_ID),
+                Optional.of(generatedAt)));
+    AppCatalogSecurityPolicy beforePolicy = securityResponsePolicy();
+    AppCatalogVersionDenylistEntry replacementDenylist =
+        new AppCatalogVersionDenylistEntry(
+            "deny-queue-1-3-0",
+            APP_ID,
+            NEWER_VERSION,
+            SECURITY_ADVISORY_ID_0001,
+            "New vulnerable release.",
+            Optional.of(APP_ID),
+            Optional.of("Export app data before removal."));
+    AppCatalogSecurityPolicy afterPolicy =
+        new AppCatalogSecurityPolicy(beforePolicy.advisories(), List.of(replacementDenylist));
+    when(catalogManager.securityPolicy("core")).thenReturn(beforePolicy).thenReturn(afterPolicy);
+    when(catalogManager.emergencyRefresh("core")).thenReturn(snapshot);
+    when(catalogManager.sourceHealth("core")).thenReturn(health);
+
+    Map<String, Object> response = handler.emergencyRefresh("core");
+
+    assertEquals(1, response.get("denylistEntriesAdded"));
   }
 
   @Test
@@ -152,16 +552,17 @@ class AppCatalogsApiHandlerTest {
 
     Map<String, Object> catalog = handler.listRecommendedCatalogs().getFirst();
 
-    assertEquals(RecommendedAppCatalogs.FIRST_PARTY_BETA_CATALOG_ID, catalog.get("catalogId"));
+    assertEquals(RecommendedAppCatalogs.FIRST_PARTY_BETA_CATALOG_ID, catalog.get(CATALOG_ID_FIELD));
     assertEquals("Crypta First-Party Beta Catalog", catalog.get("name"));
-    assertEquals("beta", catalog.get("channel"));
-    assertNull(catalog.get("sourceKind"));
-    assertNull(catalog.get("source"));
+    assertEquals("beta", catalog.get(CHANNEL_FIELD));
+    assertNull(catalog.get(SOURCE_KIND_FIELD));
+    assertNull(catalog.get(SOURCE_FIELD));
     assertEquals(false, catalog.get("sourceConfigured"));
-    assertEquals(false, catalog.get("configured"));
-    assertEquals(false, catalog.get("trustedCatalogKeyConfigured"));
-    assertEquals(false, catalog.get("canAdd"));
-    assertEquals(List.of("source", "trusted_catalog_key"), catalog.get("missingConfiguration"));
+    assertEquals(false, catalog.get(CONFIGURED_TEXT));
+    assertEquals(false, catalog.get(TRUSTED_CATALOG_KEY_CONFIGURED_FIELD));
+    assertEquals(false, catalog.get(CAN_ADD_FIELD));
+    assertEquals(
+        List.of(SOURCE_FIELD, "trusted_catalog_key"), catalog.get(MISSING_CONFIGURATION_FIELD));
   }
 
   @Test
@@ -175,12 +576,12 @@ class AppCatalogsApiHandlerTest {
 
     Map<String, Object> catalog = handler.listRecommendedCatalogs().getFirst();
 
-    assertEquals("crypta", catalog.get("sourceKind"));
-    assertEquals("crypta:<configured>", catalog.get("source"));
+    assertEquals("crypta", catalog.get(SOURCE_KIND_FIELD));
+    assertEquals("crypta:<configured>", catalog.get(SOURCE_FIELD));
     assertEquals(true, catalog.get("sourceConfigured"));
-    assertEquals(true, catalog.get("trustedCatalogKeyConfigured"));
-    assertEquals(true, catalog.get("canAdd"));
-    assertEquals(List.of(), catalog.get("missingConfiguration"));
+    assertEquals(true, catalog.get(TRUSTED_CATALOG_KEY_CONFIGURED_FIELD));
+    assertEquals(true, catalog.get(CAN_ADD_FIELD));
+    assertEquals(List.of(), catalog.get(MISSING_CONFIGURATION_FIELD));
     assertFalse(catalog.toString().contains("USK@example"));
   }
 
@@ -195,8 +596,8 @@ class AppCatalogsApiHandlerTest {
 
     Map<String, Object> catalog = handler.listRecommendedCatalogs().getFirst();
 
-    assertEquals("https", catalog.get("sourceKind"));
-    assertTrue(((String) catalog.get("source")).contains("redacted"));
+    assertEquals(HTTPS_SOURCE_KIND, catalog.get(SOURCE_KIND_FIELD));
+    assertTrue(((String) catalog.get(SOURCE_FIELD)).contains("redacted"));
     assertFalse(catalog.toString().contains("secret-value"));
     assertFalse(catalog.toString().contains("token"));
   }
@@ -211,8 +612,8 @@ class AppCatalogsApiHandlerTest {
 
     Map<String, Object> catalog = handler.listRecommendedCatalogs().getFirst();
 
-    assertEquals("file", catalog.get("sourceKind"));
-    assertEquals("file:<configured>", catalog.get("source"));
+    assertEquals("file", catalog.get(SOURCE_KIND_FIELD));
+    assertEquals("file:<configured>", catalog.get(SOURCE_FIELD));
     assertFalse(catalog.toString().contains("catalog.properties"));
   }
 
@@ -228,9 +629,9 @@ class AppCatalogsApiHandlerTest {
 
     Map<String, Object> catalog = handler.listRecommendedCatalogs().getFirst();
 
-    assertEquals(false, catalog.get("trustedCatalogKeyConfigured"));
-    assertEquals(false, catalog.get("canAdd"));
-    assertEquals(List.of("trusted_catalog_key"), catalog.get("missingConfiguration"));
+    assertEquals(false, catalog.get(TRUSTED_CATALOG_KEY_CONFIGURED_FIELD));
+    assertEquals(false, catalog.get(CAN_ADD_FIELD));
+    assertEquals(List.of("trusted_catalog_key"), catalog.get(MISSING_CONFIGURATION_FIELD));
     assertEquals(List.of("missing_trusted_catalog_key"), catalog.get("warnings"));
   }
 
@@ -250,7 +651,7 @@ class AppCatalogsApiHandlerTest {
     Map<String, Object> catalog =
         handler.addRecommended(RecommendedAppCatalogs.FIRST_PARTY_BETA_CATALOG_ID);
 
-    assertEquals(RecommendedAppCatalogs.FIRST_PARTY_BETA_CATALOG_ID, catalog.get("catalogId"));
+    assertEquals(RecommendedAppCatalogs.FIRST_PARTY_BETA_CATALOG_ID, catalog.get(CATALOG_ID_FIELD));
     verify(catalogManager)
         .addSource(FIRST_PARTY_SOURCE, RecommendedAppCatalogs.FIRST_PARTY_BETA_CATALOG_ID);
     verify(appHost, never()).installFromDirectory(any());
@@ -309,7 +710,7 @@ class AppCatalogsApiHandlerTest {
     AppCatalogsApiHandler handler = handlerWithRecommended(List.of(recommended(null, null)));
 
     PlatformApiException exception =
-        assertThrows(PlatformApiException.class, () -> handler.addRecommended("unknown"));
+        assertThrows(PlatformApiException.class, () -> handler.addRecommended(UNKNOWN_STATUS));
 
     assertEquals(404, exception.statusCode());
     assertEquals("recommended_catalog_not_found", exception.errorCode());
@@ -332,44 +733,51 @@ class AppCatalogsApiHandlerTest {
 
     assertEquals(
         Map.of(
-            "appId",
+            APP_ID_FIELD,
             APP_ID,
-            "version",
-            "1.2.0",
-            "installedVersion",
-            "1.1.0",
-            "installed",
+            VERSION_FIELD,
+            CATALOG_VERSION,
+            INSTALLED_VERSION_FIELD,
+            INSTALLED_VERSION,
+            INSTALLED_TEXT,
             true,
-            "versionDifferent",
+            VERSION_DIFFERENT_FIELD,
             true,
-            "updateAvailable",
+            UPDATE_AVAILABLE_FIELD,
             true,
-            "versionStatus",
-            "different"),
+            VERSION_STATUS_FIELD,
+            DIFFERENT_STATUS),
         fields(
             app,
-            "appId",
-            "version",
-            "installedVersion",
-            "installed",
-            "versionDifferent",
-            "updateAvailable",
-            "versionStatus"));
+            APP_ID_FIELD,
+            VERSION_FIELD,
+            INSTALLED_VERSION_FIELD,
+            INSTALLED_TEXT,
+            VERSION_DIFFERENT_FIELD,
+            UPDATE_AVAILABLE_FIELD,
+            VERSION_STATUS_FIELD));
     assertEquals(
         Map.of(
-            "categories",
+            CATEGORIES_FIELD,
             List.of("productivity", "network"),
-            "homepage",
+            HOMEPAGE_FIELD,
             "https://example.invalid/app",
-            "source",
+            SOURCE_FIELD,
             "https://example.invalid/repo",
-            "license",
+            LICENSE_FIELD,
             "MIT",
-            "channel",
+            CHANNEL_FIELD,
             "beta",
-            "supportStatus",
+            SUPPORT_STATUS_FIELD,
             "experimental"),
-        fields(app, "categories", "homepage", "source", "license", "channel", "supportStatus"));
+        fields(
+            app,
+            CATEGORIES_FIELD,
+            HOMEPAGE_FIELD,
+            SOURCE_FIELD,
+            LICENSE_FIELD,
+            CHANNEL_FIELD,
+            SUPPORT_STATUS_FIELD));
     Map<String, Object> maintenance = (Map<String, Object>) app.get("maintenance");
     assertEquals(
         Map.of(
@@ -395,7 +803,7 @@ class AppCatalogsApiHandlerTest {
     Map<String, Object> deprecation = (Map<String, Object>) app.get("deprecation");
     assertEquals(
         Map.of(
-            "status",
+            STATUS_FIELD,
             "deprecated",
             "message",
             "Use Queue Manager stable.",
@@ -405,42 +813,48 @@ class AppCatalogsApiHandlerTest {
     List<Map<String, Object>> advisories =
         (List<Map<String, Object>>) app.get("securityAdvisories");
     assertEquals(
-        List.of(
-            Map.of(
-                "id",
-                "CRYPTA-2026-0001",
-                "uri",
-                "https://example.invalid/advisories/CRYPTA-2026-0001")),
+        List.of(Map.of("id", SECURITY_ADVISORY_ID_0001, "uri", SECURITY_ADVISORY_URI_0001)),
         advisories);
 
     Map<String, Object> review = (Map<String, Object>) app.get("review");
     assertEquals(
         Map.of(
-            "status", "reviewed", "note", "Reviewed for local operator safety.", "advisory", true),
+            STATUS_FIELD,
+            "reviewed",
+            "note",
+            "Reviewed for local operator safety.",
+            ADVISORY_FIELD,
+            true),
         review);
 
-    Map<String, Object> reviewTrust = (Map<String, Object>) app.get("reviewTrust");
+    Map<String, Object> reviewTrust = (Map<String, Object>) app.get(REVIEW_TRUST_FIELD);
     assertEquals(
         Map.of(
-            "status",
+            STATUS_FIELD,
             "publisher_claim_only",
-            "trusted",
+            TRUSTED_FIELD,
             false,
-            "positive",
+            POSITIVE_FIELD,
             false,
-            "blocksInstall",
+            BLOCKS_INSTALL_FIELD,
             false,
             "blocksUpdate",
             false),
-        fields(reviewTrust, "status", "trusted", "positive", "blocksInstall", "blocksUpdate"));
+        fields(
+            reviewTrust,
+            STATUS_FIELD,
+            TRUSTED_FIELD,
+            POSITIVE_FIELD,
+            BLOCKS_INSTALL_FIELD,
+            "blocksUpdate"));
     assertFalse(app.toString().contains("PUBLIC KEY"));
 
     Map<String, Object> rationales = (Map<String, Object>) app.get("permissionRationales");
     assertEquals(
         Map.of(
-            "queue.read",
+            QUEUE_READ_PERMISSION,
             "Reads the local transfer queue.",
-            "queue.write",
+            QUEUE_WRITE_PERMISSION,
             "Lets the app manage queue entries."),
         rationales);
   }
@@ -449,7 +863,7 @@ class AppCatalogsApiHandlerTest {
   void listApps_whenEntryHasStatusOnlySubmissionReview_expectSubmissionMetadataFlag()
       throws Exception {
     AppCatalogsApiHandler handler =
-        new AppCatalogsApiHandler(catalogManager, appHost, () -> "0.2.0");
+        new AppCatalogsApiHandler(catalogManager, appHost, () -> CURRENT_CRYPTA_VERSION);
     when(catalogManager.listApps("core")).thenReturn(List.of(statusOnlySubmissionCatalogEntry()));
     when(appHost.describe(APP_ID)).thenReturn(Optional.empty());
     when(appHost.status(APP_ID)).thenReturn(Optional.empty());
@@ -457,7 +871,7 @@ class AppCatalogsApiHandlerTest {
     Map<String, Object> app = handler.listApps("core").getFirst();
 
     Map<String, Object> thirdPartyReview = (Map<String, Object>) app.get("thirdPartyReview");
-    assertEquals("submitted", thirdPartyReview.get("status"));
+    assertEquals("submitted", thirdPartyReview.get(STATUS_FIELD));
     assertEquals(true, thirdPartyReview.get("hasSubmissionMetadata"));
     assertNull(thirdPartyReview.get("submissionId"));
     assertNull(thirdPartyReview.get("submissionSha256"));
@@ -468,15 +882,15 @@ class AppCatalogsApiHandlerTest {
       throws Exception {
     Map<String, Object> app = listRichInstalledCatalogApp();
 
-    Map<String, Object> compatibility = (Map<String, Object>) app.get("compatibility");
-    assertEquals("0.1.0", compatibility.get("minimumCryptaVersion"));
+    Map<String, Object> compatibility = (Map<String, Object>) app.get(COMPATIBILITY_FIELD);
+    assertEquals("0.1.0", compatibility.get(MINIMUM_CRYPTA_VERSION_FIELD));
     assertEquals("0.9.99", compatibility.get("maximumCryptaVersion"));
-    assertEquals("0.2.0", compatibility.get("currentCryptaVersion"));
-    assertEquals(true, compatibility.get("satisfied"));
-    assertEquals(true, compatibility.get("advisory"));
-    assertEquals("satisfied", compatibility.get("status"));
+    assertEquals(CURRENT_CRYPTA_VERSION, compatibility.get(CURRENT_CRYPTA_VERSION_FIELD));
+    assertEquals(true, compatibility.get(SATISFIED_TEXT));
+    assertEquals(true, compatibility.get(ADVISORY_FIELD));
+    assertEquals(SATISFIED_TEXT, compatibility.get(STATUS_FIELD));
     Map<String, Object> changelog = (Map<String, Object>) app.get("changelog");
-    assertEquals("Adds queue retry controls.", changelog.get("summary"));
+    assertEquals("Adds queue retry controls.", changelog.get(SUMMARY_FIELD));
     assertEquals("https://example.invalid/changelog.txt", changelog.get("uri"));
     assertEquals(List.of("https://example.invalid/shot-1.png"), app.get("screenshots"));
   }
@@ -487,9 +901,9 @@ class AppCatalogsApiHandlerTest {
     Map<String, Object> app = listRichInstalledCatalogApp();
 
     Map<String, Object> delta = (Map<String, Object>) app.get("permissionDelta");
-    assertEquals(List.of("queue.write"), delta.get("added"));
+    assertEquals(List.of(QUEUE_WRITE_PERMISSION), delta.get("added"));
     assertEquals(List.of("network.access"), delta.get("removed"));
-    assertEquals(List.of("queue.read"), delta.get("unchanged"));
+    assertEquals(List.of(QUEUE_READ_PERMISSION), delta.get("unchanged"));
   }
 
   @Test
@@ -502,38 +916,38 @@ class AppCatalogsApiHandlerTest {
 
     Map<String, Object> app = handler.listApps("core").getFirst();
 
-    assertNull(app.get("homepage"));
-    assertNull(app.get("source"));
-    assertNull(app.get("license"));
-    assertEquals(List.of(), app.get("categories"));
-    assertEquals("stable", app.get("channel"));
-    assertEquals("supported", app.get("supportStatus"));
+    assertNull(app.get(HOMEPAGE_FIELD));
+    assertNull(app.get(SOURCE_FIELD));
+    assertNull(app.get(LICENSE_FIELD));
+    assertEquals(List.of(), app.get(CATEGORIES_FIELD));
+    assertEquals("stable", app.get(CHANNEL_FIELD));
+    assertEquals("supported", app.get(SUPPORT_STATUS_FIELD));
     Map<String, Object> maintenance = (Map<String, Object>) app.get("maintenance");
     assertNull(maintenance.get("owner"));
     assertNull(maintenance.get("supportLevel"));
     assertNull(maintenance.get("supportUri"));
-    assertEquals("none", ((Map<?, ?>) app.get("deprecation")).get("status"));
+    assertEquals("none", ((Map<?, ?>) app.get("deprecation")).get(STATUS_FIELD));
     assertEquals(List.of(), app.get("securityAdvisories"));
-    assertFalse((Boolean) app.get("installed"));
-    assertEquals(false, app.get("versionDifferent"));
-    assertEquals(false, app.get("updateAvailable"));
-    assertEquals("not_installed", app.get("versionStatus"));
+    assertFalse((Boolean) app.get(INSTALLED_TEXT));
+    assertEquals(false, app.get(VERSION_DIFFERENT_FIELD));
+    assertEquals(false, app.get(UPDATE_AVAILABLE_FIELD));
+    assertEquals("not_installed", app.get(VERSION_STATUS_FIELD));
 
     Map<String, Object> review = (Map<String, Object>) app.get("review");
-    assertEquals("unreviewed", review.get("status"));
+    assertEquals("unreviewed", review.get(STATUS_FIELD));
     assertNull(review.get("note"));
-    assertTrue((Boolean) review.get("advisory"));
+    assertTrue((Boolean) review.get(ADVISORY_FIELD));
 
-    Map<String, Object> reviewTrust = (Map<String, Object>) app.get("reviewTrust");
-    assertEquals("not_configured", reviewTrust.get("status"));
-    assertEquals(false, reviewTrust.get("trusted"));
+    Map<String, Object> reviewTrust = (Map<String, Object>) app.get(REVIEW_TRUST_FIELD);
+    assertEquals("not_configured", reviewTrust.get(STATUS_FIELD));
+    assertEquals(false, reviewTrust.get(TRUSTED_FIELD));
 
-    Map<String, Object> compatibility = (Map<String, Object>) app.get("compatibility");
-    assertNull(compatibility.get("minimumCryptaVersion"));
+    Map<String, Object> compatibility = (Map<String, Object>) app.get(COMPATIBILITY_FIELD);
+    assertNull(compatibility.get(MINIMUM_CRYPTA_VERSION_FIELD));
     assertNull(compatibility.get("maximumCryptaVersion"));
-    assertNull(compatibility.get("currentCryptaVersion"));
-    assertEquals(true, compatibility.get("satisfied"));
-    assertEquals("not_declared", compatibility.get("status"));
+    assertNull(compatibility.get(CURRENT_CRYPTA_VERSION_FIELD));
+    assertEquals(true, compatibility.get(SATISFIED_TEXT));
+    assertEquals("not_declared", compatibility.get(STATUS_FIELD));
   }
 
   @Test
@@ -548,11 +962,11 @@ class AppCatalogsApiHandlerTest {
     Map<String, Object> app = handler.listApps("core").getFirst();
 
     Map<String, Object> securityDecision = (Map<String, Object>) app.get("securityDecision");
-    assertEquals("denylisted", securityDecision.get("status"));
+    assertEquals("denylisted", securityDecision.get(STATUS_FIELD));
     assertEquals("denylist", securityDecision.get("action"));
     assertEquals("critical", securityDecision.get("severity"));
-    assertEquals(List.of("CRYPTA-2026-0001"), securityDecision.get("advisoryIds"));
-    assertEquals(true, securityDecision.get("blocksInstall"));
+    assertEquals(List.of(SECURITY_ADVISORY_ID_0001), securityDecision.get("advisoryIds"));
+    assertEquals(true, securityDecision.get(BLOCKS_INSTALL_FIELD));
     assertFalse(securityDecision.toString().contains(tempDir.toString()));
   }
 
@@ -570,47 +984,51 @@ class AppCatalogsApiHandlerTest {
     Map<String, Object> app = handler.listApps("core").getFirst();
 
     Map<String, Object> securityDecision = (Map<String, Object>) app.get("securityDecision");
-    assertEquals("denylisted", securityDecision.get("status"));
+    assertEquals("denylisted", securityDecision.get(STATUS_FIELD));
     assertEquals("denylist", securityDecision.get("action"));
-    assertEquals(true, securityDecision.get("blocksInstall"));
+    assertEquals(true, securityDecision.get(BLOCKS_INSTALL_FIELD));
   }
 
   @Test
   void listApps_whenInstalledVersionAndPermissionsMatchCatalog_expectCurrentVersionReview()
       throws Exception {
     AppCatalogsApiHandler handler =
-        new AppCatalogsApiHandler(catalogManager, appHost, () -> "1.2.0");
+        new AppCatalogsApiHandler(catalogManager, appHost, () -> CATALOG_VERSION);
     when(catalogManager.listApps("core")).thenReturn(List.of(richCatalogEntry()));
     when(appHost.describe(APP_ID))
-        .thenReturn(Optional.of(installedSnapshot("1.2.0", List.of("queue.read", "queue.write"))));
+        .thenReturn(
+            Optional.of(
+                installedSnapshot(
+                    CATALOG_VERSION, List.of(QUEUE_READ_PERMISSION, QUEUE_WRITE_PERMISSION))));
     when(appHost.status(APP_ID)).thenReturn(Optional.empty());
 
     Map<String, Object> app = handler.listApps("core").getFirst();
 
-    assertEquals(false, app.get("versionDifferent"));
-    assertEquals(false, app.get("updateAvailable"));
-    assertEquals("current", app.get("versionStatus"));
+    assertEquals(false, app.get(VERSION_DIFFERENT_FIELD));
+    assertEquals(false, app.get(UPDATE_AVAILABLE_FIELD));
+    assertEquals("current", app.get(VERSION_STATUS_FIELD));
 
     Map<String, Object> delta = (Map<String, Object>) app.get("permissionDelta");
     assertEquals(List.of(), delta.get("added"));
     assertEquals(List.of(), delta.get("removed"));
-    assertEquals(List.of("queue.read", "queue.write"), delta.get("unchanged"));
+    assertEquals(List.of(QUEUE_READ_PERMISSION, QUEUE_WRITE_PERMISSION), delta.get("unchanged"));
   }
 
   @Test
   void listApps_whenInstalledVersionIsNewerThanCatalog_expectDifferenceWithoutUpdateAvailable()
       throws Exception {
     AppCatalogsApiHandler handler = new AppCatalogsApiHandler(catalogManager, appHost, () -> null);
-    when(catalogManager.listApps("core")).thenReturn(List.of(catalogEntryWithVersion("1.2.0")));
+    when(catalogManager.listApps("core"))
+        .thenReturn(List.of(catalogEntryWithVersion(CATALOG_VERSION)));
     when(appHost.describe(APP_ID))
-        .thenReturn(Optional.of(installedSnapshot("1.3.0", List.of("queue.read"))));
+        .thenReturn(Optional.of(installedSnapshot(NEWER_VERSION, List.of(QUEUE_READ_PERMISSION))));
     when(appHost.status(APP_ID)).thenReturn(Optional.empty());
 
     Map<String, Object> app = handler.listApps("core").getFirst();
 
-    assertEquals(true, app.get("versionDifferent"));
-    assertEquals(false, app.get("updateAvailable"));
-    assertEquals("different", app.get("versionStatus"));
+    assertEquals(true, app.get(VERSION_DIFFERENT_FIELD));
+    assertEquals(false, app.get(UPDATE_AVAILABLE_FIELD));
+    assertEquals(DIFFERENT_STATUS, app.get(VERSION_STATUS_FIELD));
   }
 
   @Test
@@ -619,33 +1037,34 @@ class AppCatalogsApiHandlerTest {
     AppCatalogsApiHandler handler = new AppCatalogsApiHandler(catalogManager, appHost, () -> null);
     when(catalogManager.listApps("core")).thenReturn(List.of(catalogEntryWithVersion("1.2-beta")));
     when(appHost.describe(APP_ID))
-        .thenReturn(Optional.of(installedSnapshot("1.1.0", List.of("queue.read"))));
+        .thenReturn(
+            Optional.of(installedSnapshot(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION))));
     when(appHost.status(APP_ID)).thenReturn(Optional.empty());
 
     Map<String, Object> app = handler.listApps("core").getFirst();
 
-    assertEquals(true, app.get("versionDifferent"));
-    assertNull(app.get("updateAvailable"));
-    assertEquals("different", app.get("versionStatus"));
+    assertEquals(true, app.get(VERSION_DIFFERENT_FIELD));
+    assertNull(app.get(UPDATE_AVAILABLE_FIELD));
+    assertEquals(DIFFERENT_STATUS, app.get(VERSION_STATUS_FIELD));
   }
 
   @Test
   void listApps_whenMinimumVersionExceedsCurrentVersion_expectNotSatisfiedCompatibility()
       throws Exception {
     AppCatalogsApiHandler handler =
-        new AppCatalogsApiHandler(catalogManager, appHost, () -> "1.2.0");
+        new AppCatalogsApiHandler(catalogManager, appHost, () -> CATALOG_VERSION);
     when(catalogManager.listApps("core"))
-        .thenReturn(List.of(catalogEntryWithMinimumCryptaVersion("1.3.0")));
+        .thenReturn(List.of(catalogEntryWithMinimumCryptaVersion(NEWER_VERSION)));
     when(appHost.describe(APP_ID)).thenReturn(Optional.empty());
     when(appHost.status(APP_ID)).thenReturn(Optional.empty());
 
     Map<String, Object> app = handler.listApps("core").getFirst();
 
-    Map<String, Object> compatibility = (Map<String, Object>) app.get("compatibility");
-    assertEquals("1.3.0", compatibility.get("minimumCryptaVersion"));
-    assertEquals("1.2.0", compatibility.get("currentCryptaVersion"));
-    assertEquals(false, compatibility.get("satisfied"));
-    assertEquals("not_satisfied", compatibility.get("status"));
+    Map<String, Object> compatibility = (Map<String, Object>) app.get(COMPATIBILITY_FIELD);
+    assertEquals(NEWER_VERSION, compatibility.get(MINIMUM_CRYPTA_VERSION_FIELD));
+    assertEquals(CATALOG_VERSION, compatibility.get(CURRENT_CRYPTA_VERSION_FIELD));
+    assertEquals(false, compatibility.get(SATISFIED_TEXT));
+    assertEquals("not_satisfied", compatibility.get(STATUS_FIELD));
   }
 
   @Test
@@ -664,11 +1083,11 @@ class AppCatalogsApiHandlerTest {
 
     Map<String, Object> app = handler.listApps("core").getFirst();
 
-    Map<String, Object> compatibility = (Map<String, Object>) app.get("compatibility");
-    assertEquals("1.0.0", compatibility.get("minimumCryptaVersion"));
-    assertNull(compatibility.get("currentCryptaVersion"));
-    assertNull(compatibility.get("satisfied"));
-    assertEquals("unknown", compatibility.get("status"));
+    Map<String, Object> compatibility = (Map<String, Object>) app.get(COMPATIBILITY_FIELD);
+    assertEquals("1.0.0", compatibility.get(MINIMUM_CRYPTA_VERSION_FIELD));
+    assertNull(compatibility.get(CURRENT_CRYPTA_VERSION_FIELD));
+    assertNull(compatibility.get(SATISFIED_TEXT));
+    assertEquals(UNKNOWN_STATUS, compatibility.get(STATUS_FIELD));
   }
 
   @Test
@@ -678,9 +1097,9 @@ class AppCatalogsApiHandlerTest {
     AppReviewTransparencyLog log = AppReviewTransparencyLog.inMemory();
     log.recordReviewTrustMap(
         AppReviewTransparencyEventKind.REVIEW_TRUST_EVALUATED,
-        reviewTrustMapSubject("1.2.0", "0".repeat(64), 0L),
+        reviewTrustMapSubject(CATALOG_VERSION, "0".repeat(64), 0L),
         trustedReviewTrustMap(),
-        List.of("api-test"));
+        List.of(API_TEST_TRACE_LABEL));
     when(catalogManager.reviewTransparencyLog()).thenReturn(log);
     AppCatalogsApiHandler handler =
         new AppCatalogsApiHandler(
@@ -694,13 +1113,13 @@ class AppCatalogsApiHandlerTest {
 
     assertEquals(AppReviewPolicy.DEFAULT.mode().jsonValue(), governance.get("reviewPolicyMode"));
     Map<String, Object> registry = (Map<String, Object>) governance.get("trustedReviewerRegistry");
-    assertEquals(true, registry.get("configured"));
+    assertEquals(true, registry.get(CONFIGURED_TEXT));
     Map<String, Object> counts = (Map<String, Object>) registry.get("counts");
-    assertEquals(1, counts.get("active"));
+    assertEquals(1, counts.get(ACTIVE_STATUS));
     assertEquals(0, counts.get("retired"));
     assertEquals(0, counts.get("revoked"));
     Map<String, Object> transparency = (Map<String, Object>) governance.get("transparencyLog");
-    assertEquals(true, transparency.get("configured"));
+    assertEquals(true, transparency.get(CONFIGURED_TEXT));
     assertEquals(1L, transparency.get("recordCount"));
     assertEquals(true, transparency.get("verified"));
     assertInstanceOf(String.class, transparency.get("latestRecordHash"));
@@ -723,10 +1142,10 @@ class AppCatalogsApiHandlerTest {
     List<Map<String, Object>> keys = (List<Map<String, Object>>) response.get("keys");
     assertEquals(1, keys.size());
     Map<String, Object> key = keys.getFirst();
-    assertEquals(REVIEWER_KEY_ID, key.get("keyId"));
-    assertEquals("Crypta First-Party Review", key.get("displayName"));
+    assertEquals(REVIEWER_KEY_ID, key.get(KEY_ID_FIELD));
+    assertEquals(REVIEWER_DISPLAY_NAME, key.get("displayName"));
     assertEquals("Ed25519", key.get("algorithm"));
-    assertEquals("active", key.get("status"));
+    assertEquals(ACTIVE_STATUS, key.get(STATUS_FIELD));
     assertEquals(REVIEW_POLICY_ID, key.get("policyId"));
     assertFalse(key.containsKey("publicKey"));
     assertFalse(key.containsKey("publicKeyBase64"));
@@ -750,24 +1169,24 @@ class AppCatalogsApiHandlerTest {
 
     Map<String, Object> response = handler.securityResponseSummary();
 
-    assertEquals("denylist_active", response.get("status"));
-    Map<String, Object> summary = (Map<String, Object>) response.get("summary");
-    assertEquals(1, summary.get("activeAdvisoryCount"));
-    assertEquals(1, summary.get("denylistedVersionCount"));
-    assertEquals(1, summary.get("revokedReviewerKeyCount"));
-    assertEquals("configured", summary.get("catalogKeyRotationStatus"));
+    assertEquals("denylist_active", response.get(STATUS_FIELD));
+    Map<String, Object> summary = (Map<String, Object>) response.get(SUMMARY_FIELD);
+    assertEquals(1, summary.get(ACTIVE_ADVISORY_COUNT_FIELD));
+    assertEquals(1, summary.get(DENYLISTED_VERSION_COUNT_FIELD));
+    assertEquals(1, summary.get(REVOKED_REVIEWER_KEY_COUNT_FIELD));
+    assertEquals(CONFIGURED_TEXT, summary.get("catalogKeyRotationStatus"));
     assertEquals("required", summary.get("supportRedactionStatus"));
     Map<String, Object> advisory =
         ((List<Map<String, Object>>) response.get("activeAdvisories")).getFirst();
-    assertEquals("CRYPTA-2026-0001", advisory.get("id"));
-    assertEquals("published", advisory.get("status"));
+    assertEquals(SECURITY_ADVISORY_ID_0001, advisory.get("id"));
+    assertEquals("published", advisory.get(STATUS_FIELD));
     Map<String, Object> denylist =
         ((List<Map<String, Object>>) response.get("denylistedVersions")).getFirst();
-    assertEquals(APP_ID, denylist.get("appId"));
-    assertEquals("1.2.0", denylist.get("version"));
+    assertEquals(APP_ID, denylist.get(APP_ID_FIELD));
+    assertEquals(CATALOG_VERSION, denylist.get(VERSION_FIELD));
     Map<String, Object> catalogKey =
         ((List<Map<String, Object>>) response.get("catalogSigningKeys")).getFirst();
-    assertEquals(FIRST_PARTY_TRUSTED_KEY_ID, catalogKey.get("keyId"));
+    assertEquals(FIRST_PARTY_TRUSTED_KEY_ID, catalogKey.get(KEY_ID_FIELD));
     assertEquals("current", catalogKey.get("rotationStatus"));
     assertFalse(response.toString().contains(FIRST_PARTY_SOURCE));
     assertFalse(response.toString().contains(tempDir.toString()));
@@ -792,11 +1211,11 @@ class AppCatalogsApiHandlerTest {
 
     Map<String, Object> response = handler.securityResponseSummary();
 
-    assertEquals("reviewer_revocation_active", response.get("status"));
-    Map<String, Object> summary = (Map<String, Object>) response.get("summary");
-    assertEquals(0, summary.get("activeAdvisoryCount"));
-    assertEquals(0, summary.get("denylistedVersionCount"));
-    assertEquals(1, summary.get("revokedReviewerKeyCount"));
+    assertEquals("reviewer_revocation_active", response.get(STATUS_FIELD));
+    Map<String, Object> summary = (Map<String, Object>) response.get(SUMMARY_FIELD);
+    assertEquals(0, summary.get(ACTIVE_ADVISORY_COUNT_FIELD));
+    assertEquals(0, summary.get(DENYLISTED_VERSION_COUNT_FIELD));
+    assertEquals(1, summary.get(REVOKED_REVIEWER_KEY_COUNT_FIELD));
     assertRedactsReviewerPublicKey(response, reviewerKeyPair);
   }
 
@@ -817,20 +1236,20 @@ class AppCatalogsApiHandlerTest {
 
     Map<String, Object> response = handler.securityResponseSummary();
 
-    assertEquals("advisory_active", response.get("status"));
-    Map<String, Object> summary = (Map<String, Object>) response.get("summary");
-    assertEquals(1, summary.get("activeAdvisoryCount"));
-    assertEquals(0, summary.get("denylistedVersionCount"));
-    assertEquals(0, summary.get("revokedReviewerKeyCount"));
-    assertEquals("unknown", summary.get("catalogKeyRotationStatus"));
+    assertEquals("advisory_active", response.get(STATUS_FIELD));
+    Map<String, Object> summary = (Map<String, Object>) response.get(SUMMARY_FIELD);
+    assertEquals(1, summary.get(ACTIVE_ADVISORY_COUNT_FIELD));
+    assertEquals(0, summary.get(DENYLISTED_VERSION_COUNT_FIELD));
+    assertEquals(0, summary.get(REVOKED_REVIEWER_KEY_COUNT_FIELD));
+    assertEquals(UNKNOWN_STATUS, summary.get("catalogKeyRotationStatus"));
     Map<String, Object> advisory =
         ((List<Map<String, Object>>) response.get("activeAdvisories")).getFirst();
-    assertEquals("CRYPTA-2026-0002", advisory.get("id"));
-    assertEquals("published", advisory.get("status"));
+    assertEquals(SECURITY_ADVISORY_ID_0002, advisory.get("id"));
+    assertEquals("published", advisory.get(STATUS_FIELD));
     Map<String, Object> catalogKey =
         ((List<Map<String, Object>>) response.get("catalogSigningKeys")).getFirst();
-    assertNull(catalogKey.get("keyId"));
-    assertEquals("unknown", catalogKey.get("rotationStatus"));
+    assertNull(catalogKey.get(KEY_ID_FIELD));
+    assertEquals(UNKNOWN_STATUS, catalogKey.get("rotationStatus"));
   }
 
   @Test
@@ -838,12 +1257,12 @@ class AppCatalogsApiHandlerTest {
     AppReviewTransparencyLog log = AppReviewTransparencyLog.inMemory();
     log.recordReviewTrustMap(
         AppReviewTransparencyEventKind.REVIEW_TRUST_EVALUATED,
-        reviewTrustMapSubject("1.2.0", "0".repeat(64), 0L),
+        reviewTrustMapSubject(CATALOG_VERSION, "0".repeat(64), 0L),
         trustedReviewTrustMap(),
-        List.of("api-test"));
+        List.of(API_TEST_TRACE_LABEL));
     log.recordReviewTrustMap(
         AppReviewTransparencyEventKind.REVIEW_GATE_INSTALL,
-        reviewTrustMapSubject("1.2.0", "0".repeat(64), 0L),
+        reviewTrustMapSubject(CATALOG_VERSION, "0".repeat(64), 0L),
         trustedReviewTrustMap(),
         List.of("phase=install"));
     when(catalogManager.reviewTransparencyLog()).thenReturn(log);
@@ -863,9 +1282,9 @@ class AppCatalogsApiHandlerTest {
     assertEquals(1, records.size());
     Map<String, Object> transparencyRecord = records.getFirst();
     assertEquals("review_gate_install", transparencyRecord.get("kind"));
-    assertEquals(APP_ID, transparencyRecord.get("appId"));
-    assertEquals("core", transparencyRecord.get("catalogId"));
-    assertEquals("trusted_reviewed", transparencyRecord.get("trustStatus"));
+    assertEquals(APP_ID, transparencyRecord.get(APP_ID_FIELD));
+    assertEquals("core", transparencyRecord.get(CATALOG_ID_FIELD));
+    assertEquals(TRUSTED_REVIEWED_STATUS, transparencyRecord.get("trustStatus"));
     assertFalse(page.toString().contains(tempDir.toString()));
   }
 
@@ -897,7 +1316,7 @@ class AppCatalogsApiHandlerTest {
         AppReviewTransparencyEventKind.REVIEW_TRUST_EVALUATED,
         reviewTrustMapSubject(entry.version(), entry.bundleSha256(), entry.bundleSizeBytes()),
         trustedReviewTrustMap(),
-        List.of("api-test"));
+        List.of(API_TEST_TRACE_LABEL));
     when(catalogManager.getApp("core", APP_ID)).thenReturn(entry);
     when(catalogManager.reviewTransparencyLog()).thenReturn(log);
     when(appHost.describe(APP_ID)).thenReturn(Optional.of(installedSnapshot()));
@@ -911,28 +1330,28 @@ class AppCatalogsApiHandlerTest {
 
     Map<String, Object> history = handler.reviewHistory("core", APP_ID);
 
-    assertEquals("core", history.get("catalogId"));
-    assertEquals(APP_ID, history.get("appId"));
-    assertEquals("1.2.0", history.get("catalogVersion"));
-    assertEquals("1.1.0", history.get("installedVersion"));
-    Map<String, Object> reviewTrust = (Map<String, Object>) history.get("reviewTrust");
-    assertEquals("trusted_reviewed", reviewTrust.get("status"));
-    assertEquals(true, reviewTrust.get("trusted"));
-    assertEquals(true, reviewTrust.get("positive"));
+    assertEquals("core", history.get(CATALOG_ID_FIELD));
+    assertEquals(APP_ID, history.get(APP_ID_FIELD));
+    assertEquals(CATALOG_VERSION, history.get("catalogVersion"));
+    assertEquals(INSTALLED_VERSION, history.get(INSTALLED_VERSION_FIELD));
+    Map<String, Object> reviewTrust = (Map<String, Object>) history.get(REVIEW_TRUST_FIELD);
+    assertEquals(TRUSTED_REVIEWED_STATUS, reviewTrust.get(STATUS_FIELD));
+    assertEquals(true, reviewTrust.get(TRUSTED_FIELD));
+    assertEquals(true, reviewTrust.get(POSITIVE_FIELD));
     assertEquals(REVIEWER_KEY_ID, reviewTrust.get("reviewerKeyId"));
-    assertEquals("active", reviewTrust.get("reviewerKeyStatus"));
+    assertEquals(ACTIVE_STATUS, reviewTrust.get("reviewerKeyStatus"));
     assertEquals(REVIEW_POLICY_VERSION, reviewTrust.get("policyVersion"));
     Map<String, Object> reviewerKey = (Map<String, Object>) history.get("reviewerKey");
     assertNotNull(reviewerKey);
-    assertEquals(REVIEWER_KEY_ID, reviewerKey.get("keyId"));
-    assertEquals("active", reviewerKey.get("status"));
+    assertEquals(REVIEWER_KEY_ID, reviewerKey.get(KEY_ID_FIELD));
+    assertEquals(ACTIVE_STATUS, reviewerKey.get(STATUS_FIELD));
     Map<String, Object> transparency = (Map<String, Object>) history.get("transparencyLog");
     List<Map<String, Object>> records = (List<Map<String, Object>>) transparency.get("records");
     assertEquals(1, records.size());
     assertEquals("review_trust_evaluated", records.getFirst().get("kind"));
     Map<String, Object> delta = (Map<String, Object>) history.get("trustDelta");
     assertEquals(true, delta.get("versionChanged"));
-    assertEquals("trusted_reviewed", delta.get("trustStatus"));
+    assertEquals(TRUSTED_REVIEWED_STATUS, delta.get("trustStatus"));
     assertRedactsReviewerPublicKey(history, reviewerKeyPair);
   }
 
@@ -953,7 +1372,7 @@ class AppCatalogsApiHandlerTest {
         assertThrows(PlatformApiException.class, () -> handler.install("core", APP_ID));
 
     assertEquals(409, exception.statusCode());
-    assertEquals("app_review_missing", exception.errorCode());
+    assertEquals(APP_REVIEW_MISSING_ERROR, exception.errorCode());
     assertFalse(exception.getMessage().contains(tempDir.toString()));
   }
 
@@ -969,7 +1388,7 @@ class AppCatalogsApiHandlerTest {
         assertThrows(PlatformApiException.class, () -> handler.install("core", APP_ID));
 
     assertEquals(409, exception.statusCode());
-    assertEquals("app_security_denylisted", exception.errorCode());
+    assertEquals(APP_SECURITY_DENYLISTED_ERROR, exception.errorCode());
     verify(catalogManager, never()).prepareInstallPlan(any(), any());
     verify(appHost, never()).installFromDirectory(any());
   }
@@ -988,7 +1407,7 @@ class AppCatalogsApiHandlerTest {
         assertThrows(PlatformApiException.class, () -> handler.install("core", APP_ID));
 
     assertEquals(409, exception.statusCode());
-    assertEquals("app_security_denylisted", exception.errorCode());
+    assertEquals(APP_SECURITY_DENYLISTED_ERROR, exception.errorCode());
     verify(catalogManager, never()).prepareInstallPlan(any(), any());
     verify(appHost, never()).installFromDirectory(any());
   }
@@ -1029,7 +1448,7 @@ class AppCatalogsApiHandlerTest {
             () -> handler.update("core", APP_ID, securityAcknowledgedQuery));
 
     assertEquals(409, exception.statusCode());
-    assertEquals("app_security_denylisted", exception.errorCode());
+    assertEquals(APP_SECURITY_DENYLISTED_ERROR, exception.errorCode());
     verify(catalogManager, never()).prepareInstallPlan(any(), any());
     verify(appHost, never()).updateFromDirectory(any(), any());
   }
@@ -1055,7 +1474,7 @@ class AppCatalogsApiHandlerTest {
         assertThrows(PlatformApiException.class, () -> handler.install("core", APP_ID));
 
     assertEquals(409, exception.statusCode());
-    assertEquals("app_review_missing", exception.errorCode());
+    assertEquals(APP_REVIEW_MISSING_ERROR, exception.errorCode());
     verify(appHost, never()).installFromDirectory(any());
   }
 
@@ -1081,7 +1500,7 @@ class AppCatalogsApiHandlerTest {
         assertThrows(PlatformApiException.class, () -> handler.update("core", APP_ID));
 
     assertEquals(409, exception.statusCode());
-    assertEquals("app_review_missing", exception.errorCode());
+    assertEquals(APP_REVIEW_MISSING_ERROR, exception.errorCode());
     verify(appHost, never()).updateFromDirectory(any(), any());
   }
 
@@ -1147,7 +1566,7 @@ class AppCatalogsApiHandlerTest {
   @Test
   void update_whenCatalogUpdateRemovesVaultUsePermission_expectMatchingGrantInactive()
       throws Exception {
-    AppVaultService vaultService = AppVaultService.open(tempDir.resolve("vault"));
+    AppVaultService vaultService = AppVaultService.open(tempDir.resolve(VAULT_DIRECTORY));
     AppIdentityRecord identity =
         vaultService.createOperatorIdentity(
             AppIdentityKind.LOCAL_ED25519_SIGNING,
@@ -1178,9 +1597,13 @@ class AppCatalogsApiHandlerTest {
     when(appHost.status(APP_ID)).thenReturn(Optional.empty());
     when(appHost.describe(APP_ID))
         .thenReturn(
-            Optional.of(installedSnapshot("1.1.0", List.of("queue.read", "vault.identities.use"))));
+            Optional.of(
+                installedSnapshot(
+                    INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION, "vault.identities.use"))));
     when(appHost.updateFromDirectory(APP_ID, plan.stagedBundleDirectory()))
-        .thenReturn(installedSnapshot("1.2.0", List.of("queue.read", "vault.identities.read")));
+        .thenReturn(
+            installedSnapshot(
+                CATALOG_VERSION, List.of(QUEUE_READ_PERMISSION, "vault.identities.read")));
 
     handler.update("core", APP_ID);
 
@@ -1195,7 +1618,7 @@ class AppCatalogsApiHandlerTest {
 
   @Test
   void update_whenVaultGrantCleanupFailsAfterCatalogUpdate_expectWarning() throws Exception {
-    AppVaultService vaultService = AppVaultService.open(tempDir.resolve("vault"));
+    AppVaultService vaultService = AppVaultService.open(tempDir.resolve(VAULT_DIRECTORY));
     AppIdentityRecord identity =
         vaultService.createOperatorIdentity(
             AppIdentityKind.LOCAL_ED25519_SIGNING,
@@ -1212,7 +1635,7 @@ class AppCatalogsApiHandlerTest {
             null,
             null);
     Files.writeString(
-        tempDir.resolve("vault").resolve("grants").resolve(grant.grantId() + ".properties"),
+        tempDir.resolve(VAULT_DIRECTORY).resolve("grants").resolve(grant.grantId() + ".properties"),
         """
         grantId=%s
         identityId=%s
@@ -1243,9 +1666,13 @@ class AppCatalogsApiHandlerTest {
     when(appHost.status(APP_ID)).thenReturn(Optional.empty());
     when(appHost.describe(APP_ID))
         .thenReturn(
-            Optional.of(installedSnapshot("1.1.0", List.of("queue.read", "vault.identities.use"))));
+            Optional.of(
+                installedSnapshot(
+                    INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION, "vault.identities.use"))));
     when(appHost.updateFromDirectory(APP_ID, plan.stagedBundleDirectory()))
-        .thenReturn(installedSnapshot("1.2.0", List.of("queue.read", "vault.identities.read")));
+        .thenReturn(
+            installedSnapshot(
+                CATALOG_VERSION, List.of(QUEUE_READ_PERMISSION, "vault.identities.read")));
 
     Map<String, Object> summary = handler.update("core", APP_ID);
 
@@ -1256,7 +1683,7 @@ class AppCatalogsApiHandlerTest {
 
   private Map<String, Object> listRichInstalledCatalogApp() throws Exception {
     AppCatalogsApiHandler handler =
-        new AppCatalogsApiHandler(catalogManager, appHost, () -> "0.2.0");
+        new AppCatalogsApiHandler(catalogManager, appHost, () -> CURRENT_CRYPTA_VERSION);
     when(catalogManager.listApps("core")).thenReturn(List.of(richCatalogEntry()));
     when(appHost.describe(APP_ID)).thenReturn(Optional.of(installedSnapshot()));
     when(appHost.status(APP_ID)).thenReturn(Optional.empty());
@@ -1295,22 +1722,21 @@ class AppCatalogsApiHandlerTest {
   }
 
   private static AppCatalogSourceSnapshot firstPartyCatalogSnapshot() {
-    return firstPartyCatalogSnapshot(Optional.of(FIRST_PARTY_TRUSTED_KEY_ID));
+    return firstPartyCatalogSnapshot(FIRST_PARTY_TRUSTED_KEY_ID);
   }
 
   private static AppCatalogSourceSnapshot firstPartyCatalogSnapshotWithoutSigningKey() {
-    return firstPartyCatalogSnapshot(Optional.empty());
+    return firstPartyCatalogSnapshot(null);
   }
 
-  private static AppCatalogSourceSnapshot firstPartyCatalogSnapshot(
-      Optional<String> signatureKeyId) {
-    Instant generatedAt = Instant.parse("2026-04-24T12:00:00Z");
+  private static AppCatalogSourceSnapshot firstPartyCatalogSnapshot(String signatureKeyId) {
+    Instant generatedAt = Instant.parse(GENERATED_AT_TEXT);
     Instant addedAt = Instant.parse("2026-04-24T12:01:00Z");
-    Instant refreshedAt = Instant.parse("2026-04-24T12:02:00Z");
+    Instant refreshedAt = Instant.parse(REFRESHED_AT_TEXT);
     URI source = URI.create(FIRST_PARTY_SOURCE);
     return new AppCatalogSourceSnapshot(
         RecommendedAppCatalogs.FIRST_PARTY_BETA_CATALOG_ID,
-        "Core Apps",
+        CORE_CATALOG_NAME,
         source,
         generatedAt,
         2,
@@ -1322,7 +1748,7 @@ class AppCatalogsApiHandlerTest {
         Optional.empty(),
         Optional.empty(),
         Optional.of(source.toString()),
-        signatureKeyId);
+        Optional.ofNullable(signatureKeyId));
   }
 
   private void assertCatalogFailureStatus(String code, int statusCode) throws Exception {
@@ -1341,9 +1767,9 @@ class AppCatalogsApiHandlerTest {
   private AppCatalogEntry richCatalogEntry() {
     return new AppCatalogEntry(
         APP_ID,
-        "Queue Manager",
-        "1.2.0",
-        "Manage local Crypta transfer queues.",
+        QUEUE_MANAGER_NAME,
+        CATALOG_VERSION,
+        QUEUE_MANAGER_SUMMARY,
         URI.create("https://example.invalid/app"),
         URI.create("https://example.invalid/repo"),
         "MIT",
@@ -1357,15 +1783,15 @@ class AppCatalogsApiHandlerTest {
         List.of(URI.create("https://example.invalid/shot-1.png")),
         productionMetadata(),
         maintenanceMetadata(),
-        URI.create("https://example.invalid/apps/queue-manager.zip"),
+        URI.create(QUEUE_MANAGER_BUNDLE_URI),
         "0".repeat(64),
         0L,
         AppCatalogEntry.ZIP_BUNDLE_TYPE,
-        List.of("queue.read", "queue.write"),
+        List.of(QUEUE_READ_PERMISSION, QUEUE_WRITE_PERMISSION),
         Map.of(
-            "queue.read",
+            QUEUE_READ_PERMISSION,
             "Reads the local transfer queue.",
-            "queue.write",
+            QUEUE_WRITE_PERMISSION,
             "Lets the app manage queue entries."));
   }
 
@@ -1436,8 +1862,7 @@ class AppCatalogsApiHandlerTest {
         Optional.of("queue-manager-stable"),
         List.of(
             new AppCatalogSecurityAdvisory(
-                "CRYPTA-2026-0001",
-                URI.create("https://example.invalid/advisories/CRYPTA-2026-0001"))),
+                SECURITY_ADVISORY_ID_0001, URI.create(SECURITY_ADVISORY_URI_0001))),
         true);
   }
 
@@ -1481,7 +1906,7 @@ class AppCatalogsApiHandlerTest {
         TrustedReviewerKey.ed25519(
             REVIEWER_KEY_ID,
             keyPair.getPublic().getEncoded(),
-            "Crypta First-Party Review",
+            REVIEWER_DISPLAY_NAME,
             REVIEW_POLICY_ID));
   }
 
@@ -1490,7 +1915,7 @@ class AppCatalogsApiHandlerTest {
         TrustedReviewerKey.ed25519(
             REVIEWER_KEY_ID,
             keyPair.getPublic().getEncoded(),
-            "Crypta First-Party Review",
+            REVIEWER_DISPLAY_NAME,
             REVIEW_POLICY_ID,
             REVIEW_POLICY_VERSION,
             TrustedReviewerKeyLifecycle.of(
@@ -1506,8 +1931,8 @@ class AppCatalogsApiHandlerTest {
   private static AppCatalogSecurityPolicy securityResponsePolicy() {
     AppCatalogSecurityAdvisoryRecord advisory =
         new AppCatalogSecurityAdvisoryRecord(
-            "CRYPTA-2026-0001",
-            URI.create("https://example.invalid/advisories/CRYPTA-2026-0001"),
+            SECURITY_ADVISORY_ID_0001,
+            URI.create(SECURITY_ADVISORY_URI_0001),
             "Queue Manager vulnerable release",
             AppCatalogSecuritySeverity.CRITICAL,
             AppCatalogSecurityStatus.PUBLISHED,
@@ -1521,7 +1946,7 @@ class AppCatalogsApiHandlerTest {
         new AppCatalogVersionDenylistEntry(
             "deny-queue-1-2-0",
             APP_ID,
-            "1.2.0",
+            CATALOG_VERSION,
             advisory.id(),
             "Known vulnerable release.",
             Optional.of(APP_ID),
@@ -1532,7 +1957,7 @@ class AppCatalogsApiHandlerTest {
   private static AppCatalogSecurityPolicy advisoryOnlySecurityResponsePolicy() {
     AppCatalogSecurityAdvisoryRecord advisory =
         new AppCatalogSecurityAdvisoryRecord(
-            "CRYPTA-2026-0002",
+            SECURITY_ADVISORY_ID_0002,
             URI.create("https://example.invalid/advisories/CRYPTA-2026-0002"),
             "Queue Manager advisory only",
             AppCatalogSecuritySeverity.HIGH,
@@ -1551,7 +1976,7 @@ class AppCatalogsApiHandlerTest {
         AppCatalogSecurityDecisionStatus.DENYLISTED,
         AppCatalogSecurityAction.DENYLIST,
         AppCatalogSecuritySeverity.CRITICAL,
-        List.of("CRYPTA-2026-0001"),
+        List.of(SECURITY_ADVISORY_ID_0001),
         false,
         true,
         true,
@@ -1566,7 +1991,7 @@ class AppCatalogsApiHandlerTest {
         AppCatalogSecurityDecisionStatus.WARNING,
         AppCatalogSecurityAction.WARN,
         AppCatalogSecuritySeverity.HIGH,
-        List.of("CRYPTA-2026-0002"),
+        List.of(SECURITY_ADVISORY_ID_0002),
         true,
         false,
         false,
@@ -1582,16 +2007,16 @@ class AppCatalogsApiHandlerTest {
 
   private static Map<String, Object> trustedReviewTrustMap() {
     return Map.of(
-        "status",
-        "trusted_reviewed",
-        "trusted",
+        STATUS_FIELD,
+        TRUSTED_REVIEWED_STATUS,
+        TRUSTED_FIELD,
         true,
-        "positive",
+        POSITIVE_FIELD,
         true,
         "reviewerKeyId",
         REVIEWER_KEY_ID,
         "reviewerKeyStatus",
-        "active",
+        ACTIVE_STATUS,
         "policyId",
         REVIEW_POLICY_ID,
         "policyVersion",
@@ -1612,7 +2037,7 @@ class AppCatalogsApiHandlerTest {
     assertFalse(rendered.contains("public.key.base64"));
   }
 
-  private static KeyPair reviewerKeyPair() throws Exception {
+  private static KeyPair reviewerKeyPair() throws NoSuchAlgorithmException {
     return KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
   }
 
@@ -1624,28 +2049,28 @@ class AppCatalogsApiHandlerTest {
   }
 
   private AppCatalogEntry minimalCatalogEntry() {
-    return catalogEntryWithVersion("1.2.0");
+    return catalogEntryWithVersion(CATALOG_VERSION);
   }
 
   private AppCatalogEntry catalogEntryWithVersion(String version) {
     return new AppCatalogEntry(
         APP_ID,
-        "Queue Manager",
+        QUEUE_MANAGER_NAME,
         version,
-        "Manage local Crypta transfer queues.",
-        URI.create("https://example.invalid/apps/queue-manager.zip"),
+        QUEUE_MANAGER_SUMMARY,
+        URI.create(QUEUE_MANAGER_BUNDLE_URI),
         "0".repeat(64),
         0L,
         AppCatalogEntry.ZIP_BUNDLE_TYPE,
-        List.of("queue.read"));
+        List.of(QUEUE_READ_PERMISSION));
   }
 
   private AppCatalogEntry catalogEntryWithMinimumCryptaVersion(String minimumCryptaVersion) {
     return new AppCatalogEntry(
         APP_ID,
-        "Queue Manager",
-        "1.2.0",
-        "Manage local Crypta transfer queues.",
+        QUEUE_MANAGER_NAME,
+        CATALOG_VERSION,
+        QUEUE_MANAGER_SUMMARY,
         null,
         null,
         null,
@@ -1654,16 +2079,16 @@ class AppCatalogsApiHandlerTest {
         AppCatalogReviewMetadata.EMPTY,
         AppCatalogChangelog.EMPTY,
         List.of(),
-        URI.create("https://example.invalid/apps/queue-manager.zip"),
+        URI.create(QUEUE_MANAGER_BUNDLE_URI),
         "0".repeat(64),
         0L,
         AppCatalogEntry.ZIP_BUNDLE_TYPE,
-        List.of("queue.read"),
+        List.of(QUEUE_READ_PERMISSION),
         Map.of());
   }
 
   private InstalledAppSnapshot installedSnapshot() {
-    return installedSnapshot("1.1.0", List.of("queue.read", "network.access"));
+    return installedSnapshot(INSTALLED_VERSION, List.of(QUEUE_READ_PERMISSION, "network.access"));
   }
 
   private InstalledAppSnapshot installedSnapshot(String version, List<String> permissions) {
@@ -1671,7 +2096,7 @@ class AppCatalogsApiHandlerTest {
         new AppManifest(
             1,
             APP_ID,
-            "Queue Manager",
+            QUEUE_MANAGER_NAME,
             version,
             "bin/launch.sh",
             AppUiMode.STATIC,
@@ -1682,7 +2107,7 @@ class AppCatalogsApiHandlerTest {
     InstalledAppPaths paths =
         new InstalledAppPaths(
             APP_ID,
-            tempDir.resolve("installed").resolve(APP_ID),
+            tempDir.resolve(INSTALLED_TEXT).resolve(APP_ID),
             tempDir.resolve("data").resolve(APP_ID),
             tempDir.resolve("cache").resolve(APP_ID),
             tempDir.resolve("run").resolve(APP_ID));
