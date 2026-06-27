@@ -3926,7 +3926,8 @@ def collect_catalog_operations_and_mirrors_evidence(settings: Settings) -> Evide
             and "fetchAndVerifyEndpoint" in catalog_operations_text
             and "AppCatalogVerifier.verify" in catalog_operations_text
             and "CATALOG_ID_MISMATCH" in catalog_operations_text
-            and "candidate.generatedAt().isBefore" in catalog_operations_text
+            and "generatedAtComparison" in catalog_operations_text
+            and "catalogContentDigest" in catalog_operations_text
         ),
         "revisionHistoryAndRollbackPresent": (
             "HISTORY_DIRECTORY_NAME" in store_text
@@ -19153,7 +19154,8 @@ def make_self_test_workspace(workspace: Path) -> None:
     )
     (appcatalog_dir / "AppCatalogRefreshCoordinator.java").write_text(
         "final class AppCatalogRefreshCoordinator { String s = \"fetchAndVerifyEndpoint "
-        "AppCatalogVerifier.verify CATALOG_ID_MISMATCH candidate.generatedAt().isBefore\"; }\n",
+        "AppCatalogVerifier.verify CATALOG_ID_MISMATCH generatedAtComparison "
+        "catalogContentDigest\"; }\n",
         encoding="utf-8",
     )
     (appcatalog_dir / "AppCatalogSourceStore.java").write_text(

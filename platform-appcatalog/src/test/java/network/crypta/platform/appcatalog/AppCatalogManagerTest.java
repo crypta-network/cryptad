@@ -956,6 +956,38 @@ class AppCatalogManagerTest {
   }
 
   @Test
+  void writeMirrorHealth_whenHealthMetadataWouldExceedReadBound_expectPreviousHealthPreserved()
+      throws Exception {
+    KeyPair keyPair = keyPair();
+    Path bundle = signedBundle(keyPair);
+    Path artifact = zipDirectory(bundle, tempDir.resolve(ARTIFACT_ZIP));
+    Path catalog = signedCatalog(artifact, keyPair, sha256(artifact), Files.size(artifact));
+    AppCatalogSourceStore sourceStore =
+        new AppCatalogSourceStore(tempDir.resolve(CATALOG_SOURCE_STORE_DIRECTORY));
+    AppCatalogManager manager = new AppCatalogManager(sourceStore, () -> trustedKeys(keyPair));
+    AppCatalogMirrorHealth retainedHealth =
+        failedPrimaryHealth("https://mirror.example.invalid/cryptad-app-catalog.properties");
+
+    manager.addSource(catalog.toString());
+    sourceStore.writeMirrorHealth(CATALOG_ID, Map.of(AppCatalogMirrorId.PRIMARY, retainedHealth));
+    AppCatalogException exception =
+        assertThrows(
+            AppCatalogException.class,
+            () ->
+                sourceStore.writeMirrorHealth(
+                    CATALOG_ID,
+                    Map.of(
+                        AppCatalogMirrorId.PRIMARY, failedPrimaryHealth(oversizedMirrorSource()))));
+    AppCatalogMirrorHealth storedHealth =
+        sourceStore.read(CATALOG_ID).mirrorHealth().get(AppCatalogMirrorId.PRIMARY);
+
+    assertEquals(AppCatalogSidecars.INVALID_CATALOG_SOURCE, exception.errorCode());
+    assertEquals(retainedHealth.lastResolvedUri(), storedHealth.lastResolvedUri());
+    assertEquals(retainedHealth.lastFetchErrorMessage(), storedHealth.lastFetchErrorMessage());
+    assertEquals(APP_ID, manager.listApps(CATALOG_ID).getFirst().appId());
+  }
+
+  @Test
   void refresh_whenMirrorReturnsOlderVerifiedRevision_expectCurrentCatalogPreserved()
       throws Exception {
     KeyPair keyPair = keyPair();
@@ -1949,6 +1981,21 @@ class AppCatalogManagerTest {
     return "https://mirror.example.invalid/"
         + "a".repeat((int) AppCatalogSidecars.MAX_SIGNATURE_BYTES)
         + "/cryptad-app-catalog.properties";
+  }
+
+  private static AppCatalogMirrorHealth failedPrimaryHealth(String resolvedUri) {
+    return new AppCatalogMirrorHealth(
+        AppCatalogMirrorId.PRIMARY,
+        AppCatalogSourceRole.PRIMARY,
+        AppCatalogFetchStatus.FAILED,
+        Optional.of(GENERATED_AT),
+        Optional.empty(),
+        Optional.of(AppCatalogSidecars.CATALOG_FETCH_FAILED),
+        Optional.of("fetch failed"),
+        Optional.of(resolvedUri),
+        Optional.empty(),
+        Optional.empty(),
+        Optional.empty());
   }
 
   private Path signedBundle(KeyPair keyPair) throws IOException {

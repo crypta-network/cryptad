@@ -239,6 +239,8 @@ public final class AppCatalogSourceStore {
     AppCatalogMirror selectedEndpoint = endpointState.selectedEndpoint();
     String resolvedUri = endpointState.resolvedCatalogUri(fetchedCatalog);
     String rollbackReason = endpointState.selectedRollbackReason();
+    String endpointsContent = serializeEndpoints(endpointState.mirrors());
+    String healthContent = serializeHealth(endpointState.mirrorHealth());
     Files.createDirectories(rootDirectory);
     Path directory = catalogDirectory(catalog.catalogId());
     Path sourceFile = directory.resolve(SOURCE_FILE_NAME);
@@ -253,8 +255,8 @@ public final class AppCatalogSourceStore {
       Files.write(
           directory.resolve(AppCatalogSignature.SIGNATURE_FILE_NAME),
           fetchedCatalog.signatureBytes());
-      writeEndpoints(directory, endpointState.mirrors());
-      writeHealth(directory, endpointState.mirrorHealth());
+      writeEndpoints(directory, endpointsContent);
+      writeHealth(directory, healthContent);
       recordRevision(
           directory,
           catalog,
@@ -337,7 +339,7 @@ public final class AppCatalogSourceStore {
       throw new AppCatalogException(
           AppCatalogSidecars.CATALOG_NOT_FOUND, "Catalog not found: " + catalogId);
     }
-    writeEndpoints(directory, mirrors);
+    writeEndpoints(directory, serializeEndpoints(mirrors));
   }
 
   List<AppCatalogVerifiedRevision> listRevisions(String catalogId, String currentDigest)
@@ -957,8 +959,7 @@ public final class AppCatalogSourceStore {
     builder.append(key).append('=').append(value).append('\n');
   }
 
-  private static void writeEndpoints(Path directory, List<AppCatalogMirror> mirrors)
-      throws IOException {
+  private static String serializeEndpoints(List<AppCatalogMirror> mirrors) {
     List<AppCatalogMirror> ordered =
         mirrors.stream().sorted(AppCatalogSourceStore::compareMirrors).toList();
     StringBuilder builder =
@@ -978,21 +979,29 @@ public final class AppCatalogSourceStore {
       appendProperty(builder, prefix + ADDED_AT_KEY, mirror.addedAt().toString());
     }
     String content = builder.toString();
-    rejectOversizedEndpointSidecar(content);
+    rejectOversizedSourceMetadataSidecar(content, "catalog source endpoints");
+    return content;
+  }
+
+  private static void writeEndpoints(Path directory, String content) throws IOException {
     writeStringAtomic(directory, directory.resolve(ENDPOINTS_FILE_NAME), content);
   }
 
-  private static void rejectOversizedEndpointSidecar(String content) {
+  private static void rejectOversizedSourceMetadataSidecar(String content, String description) {
     if (content.getBytes(StandardCharsets.UTF_8).length > MAX_SOURCE_METADATA_BYTES) {
       throw new AppCatalogException(
-          AppCatalogSidecars.INVALID_CATALOG_SOURCE,
-          "catalog source endpoints exceed the allowed size");
+          AppCatalogSidecars.INVALID_CATALOG_SOURCE, description + " exceed the allowed size");
     }
   }
 
   private static void writeHealth(
       Path directory, Map<AppCatalogMirrorId, AppCatalogMirrorHealth> mirrorHealth)
       throws IOException {
+    writeHealth(directory, serializeHealth(mirrorHealth));
+  }
+
+  private static String serializeHealth(
+      Map<AppCatalogMirrorId, AppCatalogMirrorHealth> mirrorHealth) {
     List<AppCatalogMirrorHealth> ordered =
         mirrorHealth.values().stream()
             .sorted(Comparator.comparing(health -> health.id().value()))
@@ -1046,7 +1055,13 @@ public final class AppCatalogSourceStore {
           .ifPresent(
               value -> appendProperty(builder, prefix + HEALTH_LAST_ROLLBACK_REASON_KEY, value));
     }
-    writeStringAtomic(directory, directory.resolve(HEALTH_FILE_NAME), builder.toString());
+    String content = builder.toString();
+    rejectOversizedSourceMetadataSidecar(content, "catalog source health");
+    return content;
+  }
+
+  private static void writeHealth(Path directory, String content) throws IOException {
+    writeStringAtomic(directory, directory.resolve(HEALTH_FILE_NAME), content);
   }
 
   private static void writeStringAtomic(Path directory, Path target, String content)
