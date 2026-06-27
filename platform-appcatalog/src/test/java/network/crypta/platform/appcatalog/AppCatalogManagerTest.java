@@ -980,6 +980,91 @@ class AppCatalogManagerTest {
   }
 
   @Test
+  void rollback_whenMirrorRevisionSourceWasRemoved_expectRollbackProvenancePreserved()
+      throws Exception {
+    KeyPair keyPair = keyPair();
+    Path bundle = signedBundle(keyPair);
+    Path artifact = zipDirectory(bundle, tempDir.resolve(ARTIFACT_ZIP));
+    Path initialCatalog =
+        signedCatalog(
+            CATALOG_ID,
+            artifact.toUri(),
+            keyPair,
+            KEY_ID,
+            sha256(artifact),
+            Files.size(artifact),
+            GENERATED_AT);
+    FakeContentFetchPort contentFetchPort =
+        new FakeContentFetchPort(
+            Map.of(
+                CRYPTA_CATALOG_KEY,
+                Files.readAllBytes(initialCatalog),
+                CRYPTA_SIGNATURE_KEY,
+                Files.readAllBytes(
+                    initialCatalog.resolveSibling(AppCatalogSignature.SIGNATURE_FILE_NAME))));
+    AppCatalogManager manager = manager(trustedKeys(keyPair), contentFetchPort);
+    manager.addSource(CRYPTA_CATALOG_SOURCE);
+    Path mirrorCatalog =
+        signedCatalog(
+            CATALOG_ID,
+            artifact.toUri(),
+            keyPair,
+            KEY_ID,
+            sha256(artifact),
+            Files.size(artifact),
+            GENERATED_AT.plusSeconds(3600));
+    String mirrorResolvedUri =
+        AppCatalogSource.parse(mirrorCatalog.toString()).resolvedCatalogFetchUri();
+    manager.addMirror(CATALOG_ID, "backup", mirrorCatalog.toString(), 1, true);
+    contentFetchPort.failWith(new IOException("primary unavailable"));
+    AppCatalogSourceSnapshot mirrorRefresh = manager.refresh(CATALOG_ID);
+    Path primaryCatalog =
+        signedCatalog(
+            CATALOG_ID,
+            artifact.toUri(),
+            keyPair,
+            KEY_ID,
+            sha256(artifact),
+            Files.size(artifact),
+            GENERATED_AT.plusSeconds(7200));
+    contentFetchPort.replaceContent(
+        Map.of(
+            CRYPTA_CATALOG_KEY,
+            Files.readAllBytes(primaryCatalog),
+            CRYPTA_SIGNATURE_KEY,
+            Files.readAllBytes(
+                primaryCatalog.resolveSibling(AppCatalogSignature.SIGNATURE_FILE_NAME))),
+        Map.of());
+    AppCatalogSourceSnapshot primaryRefresh = manager.refresh(CATALOG_ID);
+    manager.removeMirror(CATALOG_ID, "backup");
+
+    AppCatalogRollbackCandidate mirrorCandidate =
+        manager.rollbackCandidates(CATALOG_ID).stream()
+            .filter(candidate -> "backup".equals(candidate.revision().sourceId().value()))
+            .findFirst()
+            .orElseThrow();
+    AppCatalogSourceSnapshot rolledBack =
+        manager.rollback(
+            CATALOG_ID, mirrorCandidate.revision().revisionDigest(), "bad publication");
+    List<AppCatalogMirrorHealth> health = manager.sourceHealth(CATALOG_ID);
+    AppCatalogMirrorHealth mirrorHealth = healthFor(health, "backup");
+
+    assertEquals(GENERATED_AT.plusSeconds(3600), mirrorRefresh.generatedAt());
+    assertEquals(GENERATED_AT.plusSeconds(7200), primaryRefresh.generatedAt());
+    assertTrue(mirrorCandidate.eligible());
+    assertEquals(GENERATED_AT.plusSeconds(3600), rolledBack.generatedAt());
+    assertEquals(Optional.of(mirrorResolvedUri), rolledBack.lastResolvedUri());
+    assertEquals(AppCatalogSourceRole.MIRROR, mirrorHealth.role());
+    assertEquals(AppCatalogFetchStatus.SUCCESS, mirrorHealth.lastFetchStatus());
+    assertEquals(Optional.of(mirrorResolvedUri), mirrorHealth.lastResolvedUri());
+    assertEquals(
+        Optional.of(mirrorCandidate.revision().revisionDigest()), mirrorHealth.lastCatalogDigest());
+    assertTrue(
+        manager.listMirrors(CATALOG_ID).stream()
+            .noneMatch(mirror -> "backup".equals(mirror.id().value())));
+  }
+
+  @Test
   void rollback_whenRevisionDigestContainsPathTraversal_expectInvalidRevisionDigest()
       throws Exception {
     KeyPair keyPair = keyPair();

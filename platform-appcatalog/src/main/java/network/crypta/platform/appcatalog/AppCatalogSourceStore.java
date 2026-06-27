@@ -233,7 +233,7 @@ public final class AppCatalogSourceStore {
     Instant addedAt = catalogWrite.addedAt();
     Instant refreshedAt = catalogWrite.refreshedAt();
     AppCatalogMirror selectedEndpoint = endpointState.selectedEndpoint();
-    String resolvedUri = resolvedCatalogUri(fetchedCatalog, selectedEndpoint.source());
+    String resolvedUri = endpointState.resolvedCatalogUri(fetchedCatalog);
     Files.createDirectories(rootDirectory);
     Path directory = catalogDirectory(catalog.catalogId());
     Path sourceFile = directory.resolve(SOURCE_FILE_NAME);
@@ -633,7 +633,25 @@ public final class AppCatalogSourceStore {
   record EndpointWriteState(
       AppCatalogMirror selectedEndpoint,
       List<AppCatalogMirror> mirrors,
-      Map<AppCatalogMirrorId, AppCatalogMirrorHealth> mirrorHealth) {}
+      Map<AppCatalogMirrorId, AppCatalogMirrorHealth> mirrorHealth,
+      String selectedResolvedUri) {
+    EndpointWriteState(
+        AppCatalogMirror selectedEndpoint,
+        List<AppCatalogMirror> mirrors,
+        Map<AppCatalogMirrorId, AppCatalogMirrorHealth> mirrorHealth) {
+      this(selectedEndpoint, mirrors, mirrorHealth, null);
+    }
+
+    String resolvedCatalogUri(FetchedCatalog fetchedCatalog) {
+      return fetchedCatalog
+          .resolvedCatalogUri()
+          .orElseGet(
+              () ->
+                  selectedResolvedUri == null
+                      ? selectedEndpoint.source().resolvedCatalogFetchUri()
+                      : selectedResolvedUri);
+    }
+  }
 
   private static final class SourceStoreSnapshot {
     private final FetchedCatalog fetchedCatalog;
@@ -1151,9 +1169,5 @@ public final class AppCatalogSourceStore {
           "unsupported catalog revision property: " + properties.keySet().iterator().next());
     }
     return revision;
-  }
-
-  private static String resolvedCatalogUri(FetchedCatalog fetchedCatalog, AppCatalogSource source) {
-    return fetchedCatalog.resolvedCatalogUri().orElseGet(source::resolvedCatalogFetchUri);
   }
 }

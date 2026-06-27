@@ -174,14 +174,18 @@ final class AppCatalogOperations {
       throw new AppCatalogException(
           AppCatalogSidecars.CATALOG_ID_MISMATCH, "rollback catalog id does not match source");
     }
+    AppCatalogVerifiedRevision revision = revisionForRollback(stored, revisionDigest);
     Instant now = Instant.now();
-    AppCatalogMirror endpoint =
-        mirrorForRevision(stored, revisionDigest).orElse(stored.mirrors().getFirst());
+    AppCatalogMirror endpoint = endpointForRevision(stored, revision);
+    String resolvedUri = resolvedUriForRevision(revision, endpoint);
     sourceStore.write(
         new AppCatalogSourceStore.VerifiedCatalogWrite(
             catalog, stored.source(), fetched, stored.addedAt(), now),
         new AppCatalogSourceStore.EndpointWriteState(
-            endpoint, stored.mirrors(), rollbackHealth(stored, endpoint, fetched, catalog, now)));
+            endpoint,
+            stored.mirrors(),
+            rollbackHealth(stored, endpoint, fetched, catalog, now, resolvedUri),
+            resolvedUri));
     return AppCatalogManager.snapshot(sourceStore.read(normalizedCatalogId), trustedKeys);
   }
 
@@ -497,17 +501,44 @@ final class AppCatalogOperations {
     }
   }
 
-  private Optional<AppCatalogMirror> mirrorForRevision(
+  private AppCatalogVerifiedRevision revisionForRollback(
       StoredCatalogSource stored, String revisionDigest) throws IOException {
     String currentDigest = AppCatalogRevisions.catalogDigest(stored.fetchedCatalog());
     return sourceStore.listRevisions(stored.catalogId(), currentDigest).stream()
         .filter(revision -> revision.revisionDigest().equals(revisionDigest))
         .findFirst()
-        .flatMap(
-            revision ->
-                stored.mirrors().stream()
-                    .filter(mirror -> mirror.id().equals(revision.sourceId()))
-                    .findFirst());
+        .orElseThrow(
+            () ->
+                new AppCatalogException(
+                    AppCatalogSidecars.CATALOG_NOT_FOUND, "Catalog revision metadata not found."));
+  }
+
+  private static AppCatalogMirror endpointForRevision(
+      StoredCatalogSource stored, AppCatalogVerifiedRevision revision) {
+    return stored.mirrors().stream()
+        .filter(mirror -> mirror.id().equals(revision.sourceId()))
+        .findFirst()
+        .orElseGet(() -> retainedRevisionEndpoint(stored, revision));
+  }
+
+  private static AppCatalogMirror retainedRevisionEndpoint(
+      StoredCatalogSource stored, AppCatalogVerifiedRevision revision) {
+    return new AppCatalogMirror(
+        revision.sourceId(),
+        revision.sourceRole(),
+        stored.source(),
+        retainedRevisionPriority(revision.sourceRole()),
+        revision.sourceRole() == AppCatalogSourceRole.PRIMARY,
+        revision.verifiedAt());
+  }
+
+  private static int retainedRevisionPriority(AppCatalogSourceRole role) {
+    return role == AppCatalogSourceRole.PRIMARY ? AppCatalogMirror.PRIMARY_PRIORITY : 1;
+  }
+
+  private static String resolvedUriForRevision(
+      AppCatalogVerifiedRevision revision, AppCatalogMirror endpoint) {
+    return revision.resolvedUri().orElseGet(() -> endpoint.source().resolvedCatalogFetchUri());
   }
 
   private static Map<AppCatalogMirrorId, AppCatalogMirrorHealth> rollbackHealth(
@@ -515,8 +546,8 @@ final class AppCatalogOperations {
       AppCatalogMirror endpoint,
       FetchedCatalog fetched,
       AppCatalog catalog,
-      Instant now) {
-    String resolvedUri = endpoint.source().resolvedCatalogFetchUri();
+      Instant now,
+      String resolvedUri) {
     String digest = AppCatalogRevisions.catalogDigest(fetched);
     String signatureKeyId = AppCatalogVerifier.readSignature(fetched.signatureBytes()).keyId();
     LinkedHashMap<AppCatalogMirrorId, AppCatalogMirrorHealth> health =
