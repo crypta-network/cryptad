@@ -22,7 +22,8 @@ public record AppCatalogMirrorHealth(
     Optional<String> lastResolvedUri,
     Optional<String> lastCatalogDigest,
     Optional<String> lastSignatureKeyId,
-    Optional<Instant> lastGeneratedAt) {
+    Optional<Instant> lastGeneratedAt,
+    Optional<String> lastRollbackReason) {
   /** Maximum persisted characters for endpoint error messages. */
   static final int MAX_ERROR_MESSAGE_CHARS = 512;
 
@@ -41,6 +42,36 @@ public record AppCatalogMirrorHealth(
     Objects.requireNonNull(lastCatalogDigest, "lastCatalogDigest");
     Objects.requireNonNull(lastSignatureKeyId, "lastSignatureKeyId");
     Objects.requireNonNull(lastGeneratedAt, "lastGeneratedAt");
+    lastRollbackReason =
+        Objects.requireNonNull(lastRollbackReason, "lastRollbackReason")
+            .map(AppCatalogMirrorHealth::normalizeRollbackReason);
+  }
+
+  public AppCatalogMirrorHealth(
+      AppCatalogMirrorId id,
+      AppCatalogSourceRole role,
+      AppCatalogFetchStatus lastFetchStatus,
+      Optional<Instant> lastAttemptAt,
+      Optional<Instant> lastSuccessfulRefreshAt,
+      Optional<String> lastFetchErrorCode,
+      Optional<String> lastFetchErrorMessage,
+      Optional<String> lastResolvedUri,
+      Optional<String> lastCatalogDigest,
+      Optional<String> lastSignatureKeyId,
+      Optional<Instant> lastGeneratedAt) {
+    this(
+        id,
+        role,
+        lastFetchStatus,
+        lastAttemptAt,
+        lastSuccessfulRefreshAt,
+        lastFetchErrorCode,
+        lastFetchErrorMessage,
+        lastResolvedUri,
+        lastCatalogDigest,
+        lastSignatureKeyId,
+        lastGeneratedAt,
+        Optional.empty());
   }
 
   /**
@@ -111,7 +142,8 @@ public record AppCatalogMirrorHealth(
         Optional.ofNullable(resolvedUri),
         lastCatalogDigest,
         lastSignatureKeyId,
-        lastGeneratedAt);
+        lastGeneratedAt,
+        lastRollbackReason);
   }
 
   /**
@@ -141,7 +173,8 @@ public record AppCatalogMirrorHealth(
         Optional.ofNullable(resolvedUri),
         Optional.of(digest),
         Optional.of(signatureKeyId),
-        Optional.of(generatedAt));
+        Optional.of(generatedAt),
+        lastRollbackReason);
   }
 
   /**
@@ -174,11 +207,52 @@ public record AppCatalogMirrorHealth(
         Optional.of(generatedAt));
   }
 
+  /**
+   * Returns health for an explicit rollback to a verified retained revision.
+   *
+   * @param refreshedAt rollback timestamp
+   * @param resolvedUri resolved transport URI or fetch key stored with the retained revision
+   * @param digest verified catalog digest
+   * @param signatureKeyId verified signing key id
+   * @param generatedAt signed catalog generated timestamp
+   * @param rollbackReason operator-entered rollback reason, when supplied
+   * @return updated rollback health
+   */
+  AppCatalogMirrorHealth successfulRollback(
+      Instant refreshedAt,
+      String resolvedUri,
+      String digest,
+      String signatureKeyId,
+      Instant generatedAt,
+      String rollbackReason) {
+    return new AppCatalogMirrorHealth(
+        id,
+        role,
+        AppCatalogFetchStatus.SUCCESS,
+        Optional.of(refreshedAt),
+        Optional.of(refreshedAt),
+        Optional.empty(),
+        Optional.empty(),
+        Optional.ofNullable(resolvedUri),
+        Optional.of(digest),
+        Optional.of(signatureKeyId),
+        Optional.of(generatedAt),
+        Optional.ofNullable(rollbackReason));
+  }
+
   private static String normalizeErrorMessage(String value) {
     String singleLine = value.replace('\n', ' ').replace('\r', ' ').replace('\t', ' ').trim();
     if (singleLine.length() <= MAX_ERROR_MESSAGE_CHARS) {
       return singleLine;
     }
     return singleLine.substring(0, MAX_ERROR_MESSAGE_CHARS);
+  }
+
+  private static String normalizeRollbackReason(String value) {
+    return AppCatalogSidecars.requireBoundedSingleLine(
+        value,
+        "lastRollbackReason",
+        AppCatalogSidecars.INVALID_CATALOG_SOURCE,
+        AppCatalogSidecars.MAX_OPERATOR_REASON_CHARS);
   }
 }

@@ -261,7 +261,8 @@ class AppCatalogsApiHandlerTest {
                 Optional.of(privateSource.resolvedCatalogFetchUri()),
                 Optional.of("sha256:active"),
                 Optional.of(CORE_CATALOG_KEY_ID),
-                Optional.of(generatedAt)),
+                Optional.of(generatedAt),
+                Optional.of("rollback after incident")),
             new AppCatalogMirrorHealth(
                 mirror.id(),
                 mirror.role(),
@@ -286,6 +287,9 @@ class AppCatalogsApiHandlerTest {
     assertEquals("core", response.get(CATALOG_ID_FIELD));
     assertEquals("sha256:active", response.get("catalogDigest"));
     assertEquals(true, response.get("redacted"));
+    List<Map<String, Object>> sourceHealth =
+        (List<Map<String, Object>>) response.get("sourceHealth");
+    assertEquals("rollback after incident", sourceHealth.getFirst().get("lastRollbackReason"));
     assertFalse(rendered.contains(tempDir.toString()));
     assertFalse(rendered.contains("secret"));
     assertFalse(rendered.contains("token="));
@@ -407,6 +411,29 @@ class AppCatalogsApiHandlerTest {
 
     assertEquals("core", response.get(CATALOG_ID_FIELD));
     verify(catalogManager, never()).listCatalogs();
+  }
+
+  @Test
+  void rollback_whenReasonSupplied_expectReasonReturnedAndDelegated() throws Exception {
+    AppCatalogsApiHandler handler = new AppCatalogsApiHandler(catalogManager, appHost, () -> null);
+    AppCatalogSourceSnapshot snapshot = firstPartyCatalogSnapshot();
+    String rollbackReason = " operator rollback after bad publication ";
+    when(catalogManager.rollback("core", PRIMARY_CATALOG_DIGEST, rollbackReason))
+        .thenReturn(snapshot);
+
+    Map<String, Object> response =
+        handler.rollback(
+            "core",
+            Map.of(
+                "revisionDigest",
+                List.of(PRIMARY_CATALOG_DIGEST),
+                "reason",
+                List.of(rollbackReason)));
+
+    assertEquals("core", response.get(CATALOG_ID_FIELD));
+    assertEquals(true, response.get("rolledBack"));
+    assertEquals("operator rollback after bad publication", response.get("reason"));
+    verify(catalogManager).rollback("core", PRIMARY_CATALOG_DIGEST, rollbackReason);
   }
 
   @Test

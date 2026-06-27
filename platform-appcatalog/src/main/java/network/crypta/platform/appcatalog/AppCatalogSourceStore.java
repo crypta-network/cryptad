@@ -63,12 +63,14 @@ public final class AppCatalogSourceStore {
   private static final String REVISION_SOURCE_ROLE_KEY = "revision.source.role";
   private static final String REVISION_SOURCE_RESOLVED_URI_KEY = "revision.source.resolvedUri";
   private static final String REVISION_SIGNATURE_KEY_ID_KEY = "revision.signatureKeyId";
+  private static final String REVISION_ROLLBACK_REASON_KEY = "revision.rollbackReason";
   private static final String REVISION_APP_COUNT_KEY = "revision.appCount";
   private static final String REVISION_ADVISORY_COUNT_KEY = "revision.advisoryCount";
   private static final String REVISION_DENYLIST_COUNT_KEY = "revision.denylistCount";
   private static final String REVISION_CHANNELS_KEY = "revision.channels";
   private static final String ENDPOINT_PRIORITY_KEY = "priority";
   private static final String HEALTH_LAST_GENERATED_AT_KEY = "lastGeneratedAt";
+  private static final String HEALTH_LAST_ROLLBACK_REASON_KEY = "lastRollbackReason";
   private static final int REVISION_RETENTION_COUNT = 5;
 
   private final Path rootDirectory;
@@ -234,6 +236,7 @@ public final class AppCatalogSourceStore {
     Instant refreshedAt = catalogWrite.refreshedAt();
     AppCatalogMirror selectedEndpoint = endpointState.selectedEndpoint();
     String resolvedUri = endpointState.resolvedCatalogUri(fetchedCatalog);
+    String rollbackReason = endpointState.selectedRollbackReason();
     Files.createDirectories(rootDirectory);
     Path directory = catalogDirectory(catalog.catalogId());
     Path sourceFile = directory.resolve(SOURCE_FILE_NAME);
@@ -251,7 +254,13 @@ public final class AppCatalogSourceStore {
       writeEndpoints(directory, endpointState.mirrors());
       writeHealth(directory, endpointState.mirrorHealth());
       recordRevision(
-          directory, catalog, fetchedCatalog, refreshedAt, selectedEndpoint, resolvedUri);
+          directory,
+          catalog,
+          fetchedCatalog,
+          refreshedAt,
+          selectedEndpoint,
+          resolvedUri,
+          rollbackReason);
       sourceMetadataWriter.write(
           directory,
           sourceFile,
@@ -489,7 +498,8 @@ public final class AppCatalogSourceStore {
               removeOptional(properties, prefix + "lastCatalogDigest"),
               removeOptional(properties, prefix + "lastSignatureKeyId"),
               removeOptional(properties, prefix + HEALTH_LAST_GENERATED_AT_KEY)
-                  .map(value -> parseInstant(value, prefix + HEALTH_LAST_GENERATED_AT_KEY))));
+                  .map(value -> parseInstant(value, prefix + HEALTH_LAST_GENERATED_AT_KEY)),
+              removeOptional(properties, prefix + HEALTH_LAST_ROLLBACK_REASON_KEY)));
     }
     if (!properties.isEmpty()) {
       throw new AppCatalogException(
@@ -634,12 +644,21 @@ public final class AppCatalogSourceStore {
       AppCatalogMirror selectedEndpoint,
       List<AppCatalogMirror> mirrors,
       Map<AppCatalogMirrorId, AppCatalogMirrorHealth> mirrorHealth,
-      String selectedResolvedUri) {
+      String selectedResolvedUri,
+      String selectedRollbackReason) {
     EndpointWriteState(
         AppCatalogMirror selectedEndpoint,
         List<AppCatalogMirror> mirrors,
         Map<AppCatalogMirrorId, AppCatalogMirrorHealth> mirrorHealth) {
-      this(selectedEndpoint, mirrors, mirrorHealth, null);
+      this(selectedEndpoint, mirrors, mirrorHealth, null, null);
+    }
+
+    EndpointWriteState(
+        AppCatalogMirror selectedEndpoint,
+        List<AppCatalogMirror> mirrors,
+        Map<AppCatalogMirrorId, AppCatalogMirrorHealth> mirrorHealth,
+        String selectedResolvedUri) {
+      this(selectedEndpoint, mirrors, mirrorHealth, selectedResolvedUri, null);
     }
 
     String resolvedCatalogUri(FetchedCatalog fetchedCatalog) {
@@ -1010,6 +1029,10 @@ public final class AppCatalogSourceStore {
           .ifPresent(
               value ->
                   appendProperty(builder, prefix + HEALTH_LAST_GENERATED_AT_KEY, value.toString()));
+      health
+          .lastRollbackReason()
+          .ifPresent(
+              value -> appendProperty(builder, prefix + HEALTH_LAST_ROLLBACK_REASON_KEY, value));
     }
     writeStringAtomic(directory, directory.resolve(HEALTH_FILE_NAME), builder.toString());
   }
@@ -1046,7 +1069,8 @@ public final class AppCatalogSourceStore {
       FetchedCatalog fetchedCatalog,
       Instant verifiedAt,
       AppCatalogMirror selectedEndpoint,
-      String resolvedUri)
+      String resolvedUri,
+      String rollbackReason)
       throws IOException {
     String digest = AppCatalogRevisions.catalogDigest(fetchedCatalog);
     Path revisionDirectory =
@@ -1063,7 +1087,8 @@ public final class AppCatalogSourceStore {
     writeStringAtomic(
         revisionDirectory,
         revisionDirectory.resolve(REVISION_FILE_NAME),
-        serializeRevision(catalog, fetchedCatalog, verifiedAt, selectedEndpoint, resolvedUri));
+        serializeRevision(
+            catalog, fetchedCatalog, verifiedAt, selectedEndpoint, resolvedUri, rollbackReason));
     pruneRevisions(directory, digest);
   }
 
@@ -1087,7 +1112,8 @@ public final class AppCatalogSourceStore {
       FetchedCatalog fetchedCatalog,
       Instant verifiedAt,
       AppCatalogMirror selectedEndpoint,
-      String resolvedUri) {
+      String resolvedUri,
+      String rollbackReason) {
     StringBuilder builder =
         new StringBuilder()
             .append(REVISION_VERSION_KEY)
@@ -1103,6 +1129,9 @@ public final class AppCatalogSourceStore {
     appendProperty(builder, REVISION_SOURCE_ID_KEY, selectedEndpoint.id().value());
     appendProperty(builder, REVISION_SOURCE_ROLE_KEY, selectedEndpoint.role().metadataValue());
     appendProperty(builder, REVISION_SOURCE_RESOLVED_URI_KEY, resolvedUri);
+    if (rollbackReason != null) {
+      appendProperty(builder, REVISION_ROLLBACK_REASON_KEY, rollbackReason);
+    }
     appendProperty(builder, REVISION_SIGNATURE_KEY_ID_KEY, revisionSignatureKeyId(fetchedCatalog));
     appendProperty(
         builder,
@@ -1162,7 +1191,8 @@ public final class AppCatalogSourceStore {
             Integer.parseInt(removeRequired(properties, REVISION_DENYLIST_COUNT_KEY)),
             parseCommaList(removeRequired(properties, REVISION_CHANNELS_KEY)),
             digest.equals(currentDigest),
-            removeOptional(properties, REVISION_SIGNATURE_DIGEST_KEY));
+            removeOptional(properties, REVISION_SIGNATURE_DIGEST_KEY),
+            removeOptional(properties, REVISION_ROLLBACK_REASON_KEY));
     if (!properties.isEmpty()) {
       throw new AppCatalogException(
           AppCatalogSidecars.INVALID_CATALOG_SOURCE,

@@ -82,6 +82,9 @@ final class AppCatalogSidecars {
   /** Maximum accepted ZIP artifact and extracted payload size, in bytes. */
   static final long MAX_ARTIFACT_BYTES = 512L * 1024L * 1024L;
 
+  /** Maximum accepted operator-entered rollback or incident reason length. */
+  static final int MAX_OPERATOR_REASON_CHARS = 512;
+
   /** Optional UTF-8 byte-order mark accepted only at the start of text sidecars. */
   private static final char UTF_8_BOM = '\uFEFF';
 

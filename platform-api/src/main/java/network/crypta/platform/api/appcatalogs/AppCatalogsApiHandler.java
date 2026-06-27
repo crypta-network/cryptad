@@ -774,12 +774,14 @@ public final class AppCatalogsApiHandler {
     String revisionDigest =
         PlatformApiParameters.requireString(queryParameters, REVISION_DIGEST_FIELD);
     String reason = PlatformApiParameters.readOptionalString(queryParameters, REASON_FIELD);
+    String normalizedReason = normalizedRollbackReason(reason);
     try {
-      LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(4);
+      LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(5);
       json.put(CATALOG_ID_FIELD, catalogId);
       json.put("rolledBack", true);
       json.put(
           "catalog", summarizeCatalog(catalogManager.rollback(catalogId, revisionDigest, reason)));
+      json.put(REASON_FIELD, normalizedReason);
       json.put(REDACTED_FIELD, true);
       return json;
     } catch (AppCatalogException exception) {
@@ -1757,7 +1759,7 @@ public final class AppCatalogsApiHandler {
   }
 
   private Map<String, Object> sourceHealthEntry(AppCatalogMirrorHealth health) {
-    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(13);
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(14);
     json.put("sourceId", health.id().value());
     json.put("role", health.role().metadataValue());
     json.put(LAST_FETCH_STATUS_FIELD, health.lastFetchStatus().metadataValue());
@@ -1772,6 +1774,7 @@ public final class AppCatalogsApiHandler {
     json.put("lastCatalogDigest", health.lastCatalogDigest().orElse(null));
     json.put("lastSignatureKeyId", health.lastSignatureKeyId().orElse(null));
     json.put("lastGeneratedAt", health.lastGeneratedAt().map(Instant::toString).orElse(null));
+    json.put("lastRollbackReason", health.lastRollbackReason().orElse(null));
     json.put(REDACTED_FIELD, true);
     return json;
   }
@@ -1787,7 +1790,7 @@ public final class AppCatalogsApiHandler {
   }
 
   private Map<String, Object> summarizeRevision(AppCatalogVerifiedRevision revision) {
-    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(15);
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(16);
     json.put(REVISION_DIGEST_FIELD, revision.revisionDigest());
     json.put(CATALOG_ID_FIELD, revision.catalogId());
     json.put("catalogName", revision.catalogName());
@@ -1802,6 +1805,7 @@ public final class AppCatalogsApiHandler {
     json.put("denylistCount", revision.denylistCount());
     json.put("channels", revision.channels());
     json.put(VERSION_STATUS_CURRENT, revision.current());
+    json.put("rollbackReason", revision.rollbackReason().orElse(null));
     json.put(REDACTED_FIELD, true);
     return json;
   }
@@ -1878,6 +1882,13 @@ public final class AppCatalogsApiHandler {
           400, "invalid_query_parameter", PRIORITY_FIELD + " must be positive.");
     }
     return value;
+  }
+
+  private static String normalizedRollbackReason(String reason) {
+    if (reason == null || reason.isBlank()) {
+      return null;
+    }
+    return reason.trim();
   }
 
   private static String redactedResolvedHealthSource(AppCatalogMirrorHealth health) {

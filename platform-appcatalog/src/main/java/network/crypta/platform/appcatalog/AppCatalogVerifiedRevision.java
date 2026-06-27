@@ -28,7 +28,8 @@ public record AppCatalogVerifiedRevision(
     int denylistCount,
     List<String> channels,
     boolean current,
-    Optional<String> signatureDigest) {
+    Optional<String> signatureDigest,
+    Optional<String> rollbackReason) {
   /** Creates validated revision metadata. */
   public AppCatalogVerifiedRevision {
     revisionDigest =
@@ -52,5 +53,16 @@ public record AppCatalogVerifiedRevision(
     }
     channels = List.copyOf(Objects.requireNonNull(channels, "channels"));
     Objects.requireNonNull(signatureDigest, "signatureDigest");
+    rollbackReason =
+        Objects.requireNonNull(rollbackReason, "rollbackReason")
+            .map(AppCatalogVerifiedRevision::normalizeRollbackReason);
+  }
+
+  private static String normalizeRollbackReason(String reason) {
+    return AppCatalogSidecars.requireBoundedSingleLine(
+        reason,
+        "rollbackReason",
+        AppCatalogSidecars.INVALID_CATALOG_SOURCE,
+        AppCatalogSidecars.MAX_OPERATOR_REASON_CHARS);
   }
 }

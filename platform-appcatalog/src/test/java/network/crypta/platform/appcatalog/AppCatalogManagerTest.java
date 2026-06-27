@@ -971,12 +971,24 @@ class AppCatalogManagerTest {
             .filter(AppCatalogRollbackCandidate::eligible)
             .findFirst()
             .orElseThrow();
+    String rollbackReason = " operator rollback after bad publication ";
     AppCatalogSourceSnapshot rolledBack =
-        manager.rollback(CATALOG_ID, candidate.revision().revisionDigest(), "bad publication");
+        manager.rollback(CATALOG_ID, candidate.revision().revisionDigest(), rollbackReason);
+    AppCatalogRollbackCandidate currentRevision =
+        manager.rollbackCandidates(CATALOG_ID).stream()
+            .filter(current -> current.revision().current())
+            .findFirst()
+            .orElseThrow();
+    AppCatalogMirrorHealth primaryHealth = healthFor(manager.sourceHealth(CATALOG_ID), "primary");
 
     assertEquals(GENERATED_AT.plusSeconds(3600), refreshed.generatedAt());
     assertEquals(GENERATED_AT, rolledBack.generatedAt());
     assertEquals(AppCatalogFetchStatus.SUCCESS, rolledBack.lastFetchStatus());
+    assertEquals(
+        Optional.of("operator rollback after bad publication"),
+        currentRevision.revision().rollbackReason());
+    assertEquals(
+        Optional.of("operator rollback after bad publication"), primaryHealth.lastRollbackReason());
   }
 
   @Test

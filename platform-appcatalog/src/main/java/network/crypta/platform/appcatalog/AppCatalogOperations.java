@@ -24,8 +24,6 @@ import network.crypta.platform.appdist.TrustedAppKeys;
  * private insert URIs, local scratch paths, staged bundle paths, or trusted-key material.
  */
 final class AppCatalogOperations {
-  private static final int MAX_ROLLBACK_REASON_CHARS = 512;
-
   private final AppCatalogSourceStore sourceStore;
   private final AppCatalogManager.TrustedKeyProvider trustedKeyProvider;
   private final AppCatalogFetcher fetcher;
@@ -163,7 +161,7 @@ final class AppCatalogOperations {
 
   AppCatalogSourceSnapshot rollback(String catalogId, String revisionDigest, String reason)
       throws IOException {
-    validateRollbackReason(reason);
+    String rollbackReason = normalizedRollbackReason(reason);
     String normalizedCatalogId = AppCatalogManager.normalizeCatalogIdForLookup(catalogId);
     StoredCatalogSource stored = sourceStore.read(normalizedCatalogId);
     FetchedCatalog fetched = sourceStore.readRevision(normalizedCatalogId, revisionDigest);
@@ -184,8 +182,9 @@ final class AppCatalogOperations {
         new AppCatalogSourceStore.EndpointWriteState(
             endpoint,
             stored.mirrors(),
-            rollbackHealth(stored, endpoint, fetched, catalog, now, resolvedUri),
-            resolvedUri));
+            rollbackHealth(stored, endpoint, fetched, catalog, now, resolvedUri, rollbackReason),
+            resolvedUri,
+            rollbackReason));
     return AppCatalogManager.snapshot(sourceStore.read(normalizedCatalogId), trustedKeys);
   }
 
@@ -300,7 +299,8 @@ final class AppCatalogOperations {
         revision.resolvedUri(),
         Optional.of(revision.revisionDigest()),
         Optional.of(revision.signatureKeyId()),
-        Optional.of(revision.generatedAt()));
+        Optional.of(revision.generatedAt()),
+        revision.rollbackReason());
   }
 
   private Optional<AppCatalogVerifiedRevision> currentRevision(
@@ -547,7 +547,8 @@ final class AppCatalogOperations {
       FetchedCatalog fetched,
       AppCatalog catalog,
       Instant now,
-      String resolvedUri) {
+      String resolvedUri,
+      String rollbackReason) {
     String digest = AppCatalogRevisions.catalogDigest(fetched);
     String signatureKeyId = AppCatalogVerifier.readSignature(fetched.signatureBytes()).keyId();
     LinkedHashMap<AppCatalogMirrorId, AppCatalogMirrorHealth> health =
@@ -556,8 +557,8 @@ final class AppCatalogOperations {
         health.getOrDefault(endpoint.id(), AppCatalogMirrorHealth.skipped(endpoint));
     health.put(
         endpoint.id(),
-        previous.successfulAttempt(
-            now, resolvedUri, digest, signatureKeyId, catalog.generatedAt()));
+        previous.successfulRollback(
+            now, resolvedUri, digest, signatureKeyId, catalog.generatedAt(), rollbackReason));
     return health;
   }
 
@@ -582,15 +583,15 @@ final class AppCatalogOperations {
     return "configured";
   }
 
-  private static void validateRollbackReason(String reason) {
+  private static String normalizedRollbackReason(String reason) {
     if (reason == null || reason.isBlank()) {
-      return;
+      return null;
     }
-    AppCatalogSidecars.requireBoundedSingleLine(
+    return AppCatalogSidecars.requireBoundedSingleLine(
         reason,
         "rollback reason",
         AppCatalogSidecars.INVALID_CATALOG_SOURCE,
-        MAX_ROLLBACK_REASON_CHARS);
+        AppCatalogSidecars.MAX_OPERATOR_REASON_CHARS);
   }
 
   private static String resolvedCatalogUri(FetchedCatalog fetched, AppCatalogSource source) {
