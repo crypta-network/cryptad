@@ -4980,7 +4980,17 @@ def passing_multi_node_beta_soak_summary() -> dict[str, Any]:
         )
         write_json(
             base_dir / "current-summary.json",
-            {"schemaVersion": 1, "status": "pass", "promotionReady": True},
+            {
+                "schemaVersion": 1,
+                "status": "pass",
+                "promotionReady": True,
+                "previousCandidateMetadata": {
+                    "catalog": {
+                        "stableChannelEdition": 124,
+                        "betaChannelEdition": 125,
+                    },
+                },
+            },
         )
         config = multi_node_beta_soak.validate_config(
             {

@@ -1255,7 +1255,40 @@ def validate_current_candidate_summary(summary: dict[str, Any] | None) -> list[s
     promotion_ready = summary.get("promotionReady")
     if promotion_ready is False:
         errors.append("current production beta promotionReady is false")
+    catalog = current_candidate_catalog_metadata(summary)
+    if not catalog:
+        errors.append("current production beta summary catalog metadata is missing")
+    else:
+        require_int(
+            catalog,
+            "stableChannelEdition",
+            errors,
+            "current production beta summary catalog",
+            minimum=0,
+        )
+        require_int(
+            catalog,
+            "betaChannelEdition",
+            errors,
+            "current production beta summary catalog",
+            minimum=0,
+        )
     return errors
+
+
+def current_candidate_catalog_metadata(summary: dict[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(summary, dict):
+        return {}
+    for container_field in PREVIOUS_CANDIDATE_SOURCE_METADATA_CONTAINERS:
+        container = summary.get(container_field)
+        if isinstance(container, dict):
+            catalog = container.get("catalog")
+            if isinstance(catalog, dict):
+                return catalog
+    catalog = summary.get("catalog")
+    if isinstance(catalog, dict):
+        return catalog
+    return {}
 
 
 def synthetic_digest(label: str, *values: Any) -> str:
@@ -1361,6 +1394,7 @@ def previous_candidate_upgrade_summary(
     current_summary: dict[str, Any] | None,
     config: dict[str, Any],
     previous_validation_errors: list[str],
+    current_summary_configured: bool,
 ) -> dict[str, Any]:
     previous = config["previousCandidate"]
     current = config["currentCandidate"]
@@ -1379,9 +1413,7 @@ def previous_candidate_upgrade_summary(
     support_bundle = previous_summary.get("supportBundle") if isinstance(previous_summary, dict) else {}
     if not isinstance(support_bundle, dict):
         support_bundle = {}
-    current_catalog = current_summary.get("catalog") if isinstance(current_summary, dict) else {}
-    if not isinstance(current_catalog, dict):
-        current_catalog = {}
+    current_catalog = current_candidate_catalog_metadata(current_summary)
 
     previous_stable_edition = catalog.get("stableChannelEdition", 0)
     previous_beta_edition = catalog.get("betaChannelEdition", 0)
@@ -1393,7 +1425,10 @@ def previous_candidate_upgrade_summary(
         previous_stable_edition if current["catalogChannel"] == "stable" else previous_beta_edition
     )
     if not isinstance(current_catalog_edition, int) or isinstance(current_catalog_edition, bool):
-        current_catalog_edition = previous_channel_edition + 1 if isinstance(previous_channel_edition, int) else 1
+        if current_summary_configured:
+            current_catalog_edition = None
+        else:
+            current_catalog_edition = previous_channel_edition + 1 if isinstance(previous_channel_edition, int) else 1
     social_schema = social_inbox.get("schemaVersion", 1)
     trust_schema = trust_graph.get("storeSchemaVersion", 1)
     app_migrations = app_migration_upgrade_evidence(previous_summary, config)
@@ -2104,6 +2139,7 @@ def upgrade_from_previous_candidate(config: dict[str, Any], base_dir: Path, stri
         current_summary,
         config,
         previous_validation_errors,
+        current_configured,
     )
     if previous_validation_errors or current_validation_errors:
         status = "fail"
@@ -3947,10 +3983,42 @@ def run_self_test() -> None:
             for error in failed_current_upgrade["evidence"]["currentProductionBetaValidationErrors"]
         ), failed_current_upgrade
 
+        no_catalog_current_config = json.loads(json.dumps(valid_previous_config, sort_keys=True))
+        write_json(
+            out_dir / "current-no-catalog.json",
+            {"schemaVersion": SCHEMA_VERSION, "status": "pass", "promotionReady": True},
+        )
+        no_catalog_current_config["currentCandidate"]["productionBetaSummaryPath"] = "current-no-catalog.json"
+        no_catalog_current_summary = build_summary(
+            no_catalog_current_config,
+            out_dir=out_dir,
+            strict=True,
+            base_dir=out_dir,
+        )
+        no_catalog_current_upgrade = scenario_map(no_catalog_current_summary)["upgrade-from-previous-candidate"]
+        assert no_catalog_current_summary["status"] == "fail", no_catalog_current_summary
+        assert no_catalog_current_upgrade["evidence"]["currentCatalogEdition"] is None, (
+            no_catalog_current_upgrade
+        )
+        assert any(
+            "catalog metadata is missing" in error
+            for error in no_catalog_current_upgrade["evidence"]["currentProductionBetaValidationErrors"]
+        ), no_catalog_current_upgrade
+
         valid_current_config = json.loads(json.dumps(valid_previous_config, sort_keys=True))
         write_json(
             out_dir / "current-valid.json",
-            {"schemaVersion": SCHEMA_VERSION, "status": "pass", "promotionReady": True},
+            {
+                "schemaVersion": SCHEMA_VERSION,
+                "status": "pass",
+                "promotionReady": True,
+                "previousCandidateMetadata": {
+                    "catalog": {
+                        "stableChannelEdition": 100,
+                        "betaChannelEdition": 200,
+                    },
+                },
+            },
         )
         valid_current_config["currentCandidate"]["productionBetaSummaryPath"] = "current-valid.json"
         valid_current_summary = build_summary(valid_current_config, out_dir=out_dir, strict=True, base_dir=out_dir)
@@ -3964,9 +4032,11 @@ def run_self_test() -> None:
                 "schemaVersion": SCHEMA_VERSION,
                 "status": "pass",
                 "promotionReady": True,
-                "catalog": {
-                    "stableChannelEdition": 501,
-                    "betaChannelEdition": 777,
+                "previousCandidateMetadata": {
+                    "catalog": {
+                        "stableChannelEdition": 501,
+                        "betaChannelEdition": 777,
+                    },
                 },
             },
         )
