@@ -66,6 +66,7 @@ PRIVATE_ARTIFACT_HOST_SUFFIXES = (
     ".test",
     ".example",
 )
+DNS_ARTIFACT_LABEL_RE = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?")
 ZIP_ARCHIVE_SUFFIXES = {".zip", ".jar"}
 TAR_GZ_ARCHIVE_SUFFIXES = (".tar.gz", ".tgz")
 MAX_NESTED_ARCHIVE_DEPTH = 4
@@ -4445,6 +4446,33 @@ def normalized_artifact_hostname(hostname: str) -> str:
     return hostname.rstrip(".").lower()
 
 
+def artifact_hostname_is_well_formed(hostname: str) -> bool:
+    normalized_host = normalized_artifact_hostname(hostname)
+    if not normalized_host or any(char.isspace() for char in normalized_host):
+        return False
+    try:
+        ipaddress.ip_address(normalized_host)
+        return True
+    except ValueError:
+        labels = normalized_host.split(".")
+        return all(DNS_ARTIFACT_LABEL_RE.fullmatch(label) for label in labels)
+
+
+def artifact_uri_authority_is_well_formed(parsed: urllib.parse.ParseResult) -> bool:
+    try:
+        port = parsed.port
+    except ValueError:
+        return False
+    if port == 0:
+        return False
+    if any(char.isspace() for char in parsed.netloc):
+        return False
+    host_port = parsed.netloc.rsplit("@", 1)[-1]
+    if not host_port or host_port.endswith(":"):
+        return False
+    return artifact_hostname_is_well_formed(parsed.hostname or "")
+
+
 def is_numeric_dotted_host(hostname: str) -> bool:
     labels = hostname.split(".")
     return len(labels) > 1 and all(label.isdigit() for label in labels)
@@ -4452,7 +4480,7 @@ def is_numeric_dotted_host(hostname: str) -> bool:
 
 def artifact_hostname_is_public(hostname: str) -> bool:
     normalized_host = normalized_artifact_hostname(hostname)
-    if not normalized_host or "%" in normalized_host:
+    if not artifact_hostname_is_well_formed(normalized_host) or "%" in normalized_host:
         return False
     if normalized_host in LOCAL_ARTIFACT_HOSTS or normalized_host in PLACEHOLDER_ARTIFACT_HOSTS:
         return False
@@ -4470,10 +4498,15 @@ def artifact_hostname_is_public(hostname: str) -> bool:
 def validate_artifact_base_uri(mode: str, artifact_base_uri: str) -> None:
     if mode == "developer-dry-run":
         return
-    parsed = urllib.parse.urlparse(artifact_base_uri)
+    try:
+        parsed = urllib.parse.urlparse(artifact_base_uri)
+    except ValueError as exc:
+        raise SystemExit("release-candidate and production-beta artifact base URIs must use a valid https URI.") from exc
     hostname = parsed.hostname or ""
     if parsed.scheme != "https" or not hostname:
         raise SystemExit("release-candidate and production-beta artifact base URIs must use https.")
+    if not artifact_uri_authority_is_well_formed(parsed):
+        raise SystemExit("artifact base URI must include a valid host and optional port.")
     if parsed.username or parsed.password:
         raise SystemExit("artifact base URI must not contain credentials.")
     if parsed.query or parsed.fragment:
@@ -8350,6 +8383,32 @@ def run_self_test() -> None:
                 assert "public HTTPS" in str(exc), exc
             else:
                 raise AssertionError(f"release-candidate mode accepted private artifact base URI {private_uri}")
+        for malformed_uri in (
+            "https://downloads.crypta.network:99999/production-beta/self-test",
+            "https://bad host.com/production-beta/self-test",
+            "https://bad_host.com/production-beta/self-test",
+            "https://downloads.crypta.network:/production-beta/self-test",
+            "https://downloads.crypta.network:0/production-beta/self-test",
+        ):
+            try:
+                settings_from_args(
+                    parser.parse_args(
+                        [
+                            "--workspace-root",
+                            str(workspace),
+                            "--out-dir",
+                            "build/production-beta",
+                            "--mode",
+                            "release-candidate",
+                            "--artifact-base-uri",
+                            malformed_uri,
+                        ]
+                    )
+                )
+            except SystemExit as exc:
+                assert "valid host" in str(exc), exc
+            else:
+                raise AssertionError(f"release-candidate mode accepted malformed artifact base URI {malformed_uri}")
         try:
             settings_from_args(
                 parser.parse_args(

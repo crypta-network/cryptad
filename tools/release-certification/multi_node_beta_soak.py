@@ -272,6 +272,7 @@ PRIVATE_ARTIFACT_HOST_SUFFIXES = (
     ".test",
     ".example",
 )
+DNS_ARTIFACT_LABEL_RE = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?")
 
 PRIVATE_INSERT_URI_RE = re.compile(
     r"(?:"
@@ -961,6 +962,33 @@ def normalized_artifact_hostname(hostname: str) -> str:
     return hostname.rstrip(".").lower()
 
 
+def artifact_hostname_is_well_formed(hostname: str) -> bool:
+    normalized_host = normalized_artifact_hostname(hostname)
+    if not normalized_host or any(char.isspace() for char in normalized_host):
+        return False
+    try:
+        ipaddress.ip_address(normalized_host)
+        return True
+    except ValueError:
+        labels = normalized_host.split(".")
+        return all(DNS_ARTIFACT_LABEL_RE.fullmatch(label) for label in labels)
+
+
+def artifact_uri_authority_is_well_formed(parsed: urllib.parse.ParseResult) -> bool:
+    try:
+        port = parsed.port
+    except ValueError:
+        return False
+    if port == 0:
+        return False
+    if any(char.isspace() for char in parsed.netloc):
+        return False
+    host_port = parsed.netloc.rsplit("@", 1)[-1]
+    if not host_port or host_port.endswith(":"):
+        return False
+    return artifact_hostname_is_well_formed(parsed.hostname or "")
+
+
 def is_numeric_dotted_host(hostname: str) -> bool:
     labels = hostname.split(".")
     return len(labels) > 1 and all(label.isdigit() for label in labels)
@@ -968,7 +996,7 @@ def is_numeric_dotted_host(hostname: str) -> bool:
 
 def artifact_hostname_is_public(hostname: str) -> bool:
     normalized_host = normalized_artifact_hostname(hostname)
-    if not normalized_host or "%" in normalized_host:
+    if not artifact_hostname_is_well_formed(normalized_host) or "%" in normalized_host:
         return False
     if normalized_host in LOCAL_ARTIFACT_HOSTS or normalized_host in PLACEHOLDER_ARTIFACT_HOSTS:
         return False
@@ -985,10 +1013,17 @@ def artifact_hostname_is_public(hostname: str) -> bool:
 
 def validate_previous_artifact_base_uri(artifact_base_uri: str, *, production: bool) -> list[str]:
     errors: list[str] = []
-    parsed = urllib.parse.urlparse(artifact_base_uri)
+    try:
+        parsed = urllib.parse.urlparse(artifact_base_uri)
+    except ValueError:
+        errors.append("previous candidate summary source.artifactBaseUri must use a valid https URI")
+        return errors
     hostname = parsed.hostname or ""
     if parsed.scheme != "https" or not hostname:
         errors.append("previous candidate summary source.artifactBaseUri must use https")
+        return errors
+    if not artifact_uri_authority_is_well_formed(parsed):
+        errors.append("previous candidate summary source.artifactBaseUri must include a valid host and optional port")
         return errors
     if not production:
         return errors
@@ -3637,6 +3672,23 @@ def run_self_test() -> None:
         assert any("public HTTPS" in error for error in private_artifact_errors), (
             private_artifact_uri,
             private_artifact_errors,
+        )
+    for malformed_artifact_uri in (
+        "https://downloads.crypta.network:99999/production-beta/269",
+        "https://bad host.com/production-beta/269",
+        "https://bad_host.com/production-beta/269",
+        "https://downloads.crypta.network:/production-beta/269",
+        "https://downloads.crypta.network:0/production-beta/269",
+    ):
+        malformed_artifact_fixture = json.loads(json.dumps(public_previous_fixture, sort_keys=True))
+        malformed_artifact_fixture["source"]["artifactBaseUri"] = malformed_artifact_uri
+        malformed_artifact_errors = validate_previous_beta_candidate_summary(
+            malformed_artifact_fixture,
+            production=True,
+        )
+        assert any("valid host" in error for error in malformed_artifact_errors), (
+            malformed_artifact_uri,
+            malformed_artifact_errors,
         )
     unsupported_secret_key = "privateInsertUri=USK@AQECAAEPRIVATEINSERTKEY,fixture/name/1"
     unsupported_secret_previous = json.loads(json.dumps(previous_fixture, sort_keys=True))
