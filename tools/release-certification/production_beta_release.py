@@ -1231,6 +1231,26 @@ def catalog_channel_editions(version: str) -> dict[str, int]:
     }
 
 
+def catalog_edition_field(catalog_channel: str) -> str:
+    return "stableChannelEdition" if catalog_channel == "stable" else "betaChannelEdition"
+
+
+def current_catalog_channel_and_edition(settings: Settings, version: str) -> tuple[str, int]:
+    channel_metadata = read_json(settings.out_dir / "catalog/channel-metadata.json")
+    if not isinstance(channel_metadata, dict):
+        channel_metadata = {}
+    editions = catalog_channel_editions(version)
+    edition_field = catalog_edition_field(settings.catalog_channel)
+    return (
+        settings.catalog_channel,
+        parse_int_field(
+            channel_metadata.get(edition_field),
+            editions[edition_field],
+            minimum=0,
+        ),
+    )
+
+
 def normalized_sha256_digest(value: Any) -> str | None:
     if not isinstance(value, str):
         return None
@@ -2472,6 +2492,8 @@ def previous_candidate_upgrade_binding_errors(
     compact: dict[str, Any],
     previous_summary: dict[str, Any] | None,
     current_version: str | None = None,
+    current_catalog_channel: str | None = None,
+    current_catalog_edition: int | None = None,
 ) -> list[str]:
     upgrade = compact.get("previousCandidateUpgrade")
     if not isinstance(upgrade, dict):
@@ -2493,6 +2515,17 @@ def previous_candidate_upgrade_binding_errors(
     if isinstance(current_version, str) and current_version.strip():
         if upgrade.get("currentVersion") != current_version.strip():
             errors.append("upgrade currentVersion does not match current release version")
+    if isinstance(current_catalog_channel, str) and current_catalog_channel.strip():
+        if upgrade.get("currentCatalogChannel") != current_catalog_channel.strip():
+            errors.append("upgrade currentCatalogChannel does not match current catalog channel")
+    if isinstance(current_catalog_edition, int) and not isinstance(current_catalog_edition, bool):
+        upgrade_catalog_edition = upgrade.get("currentCatalogEdition")
+        if (
+            not isinstance(upgrade_catalog_edition, int)
+            or isinstance(upgrade_catalog_edition, bool)
+            or upgrade_catalog_edition != current_catalog_edition
+        ):
+            errors.append("upgrade currentCatalogEdition does not match current catalog edition")
     return errors
 
 
@@ -2500,13 +2533,21 @@ def previous_candidate_upgrade_ready(
     compact: dict[str, Any],
     previous_summary: dict[str, Any] | None,
     current_version: str | None = None,
+    current_catalog_channel: str | None = None,
+    current_catalog_edition: int | None = None,
 ) -> bool:
     upgrade = compact.get("previousCandidateUpgrade")
     if not isinstance(upgrade, dict):
         return False
     if upgrade.get("status") != "pass":
         return False
-    if previous_candidate_upgrade_binding_errors(compact, previous_summary, current_version):
+    if previous_candidate_upgrade_binding_errors(
+        compact,
+        previous_summary,
+        current_version,
+        current_catalog_channel,
+        current_catalog_edition,
+    ):
         return False
     expected = {
         "previousSummaryConfigured": True,
@@ -2883,17 +2924,29 @@ def evaluate_promotion(state: PipelineState, summaries: dict[str, Any]) -> dict[
         if settings.mode == "production-beta":
             previous_summary_value = read_json(settings.previous_summary) if settings.previous_summary else None
             previous_summary_errors = previous_candidate_summary_validation_errors(settings)
+            current_catalog_channel, current_catalog_edition = current_catalog_channel_and_edition(
+                settings,
+                state.version,
+            )
             previous_binding_errors = previous_candidate_upgrade_binding_errors(
                 multi_node_compact,
                 previous_summary_value,
                 state.version,
+                current_catalog_channel,
+                current_catalog_edition,
             )
             add_gate(
                 "multi-node-beta.previous-candidate-summary",
                 not previous_summary_errors
                 and not previous_binding_errors
                 and scenario_statuses.get("upgrade-from-previous-candidate") == "pass"
-                and previous_candidate_upgrade_ready(multi_node_compact, previous_summary_value, state.version),
+                and previous_candidate_upgrade_ready(
+                    multi_node_compact,
+                    previous_summary_value,
+                    state.version,
+                    current_catalog_channel,
+                    current_catalog_edition,
+                ),
                 (
                     "Production beta promotion requires a valid previous beta candidate summary, "
                     "passing previous-candidate upgrade drill evidence, app-data migration, "
@@ -2914,7 +2967,7 @@ def evaluate_promotion(state: PipelineState, summaries: dict[str, Any]) -> dict[
                 add_gate(
                     "multi-node-beta.previous-candidate-upgrade-binding",
                     False,
-                    "Previous beta candidate upgrade evidence does not match supplied previous summary: "
+                    "Previous beta candidate upgrade evidence does not match supplied previous summary or current catalog: "
                     + "; ".join(previous_binding_errors[:5]),
                     "multi-node-beta-soak",
                 )
@@ -5053,6 +5106,7 @@ def write_valid_previous_candidate_history_pair(previous_summary: Path, history_
 def passing_multi_node_beta_soak_summary(current_version: str = "self-test") -> dict[str, Any]:
     with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-multi-node-summary-") as temp_name:
         base_dir = Path(temp_name)
+        current_editions = catalog_channel_editions(current_version)
         write_json(
             base_dir / "previous-summary.json",
             multi_node_beta_soak.build_previous_candidate_summary(
@@ -5089,10 +5143,7 @@ def passing_multi_node_beta_soak_summary(current_version: str = "self-test") -> 
                 "status": "pass",
                 "promotionReady": True,
                 "previousCandidateMetadata": {
-                    "catalog": {
-                        "stableChannelEdition": 124,
-                        "betaChannelEdition": 125,
-                    },
+                    "catalog": current_editions,
                 },
             },
         )
@@ -6627,6 +6678,66 @@ def assert_mismatched_current_version_blocks_production_multi_node_promotion() -
         assert promotion["promotionReady"] is False, promotion
 
 
+def assert_mismatched_current_catalog_blocks_production_multi_node_promotion() -> None:
+    with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-mismatched-current-catalog-") as temp_name:
+        workspace = Path(temp_name) / "repo"
+        workspace.mkdir(parents=True)
+        out_dir = workspace / "build/production-beta"
+        previous_summary = workspace / "previous-beta-candidate-summary.json"
+        write_valid_previous_candidate_summary(previous_summary)
+        settings = dataclasses.replace(
+            cleanup_test_settings(workspace, out_dir),
+            mode="production-beta",
+            artifact_base_uri="https://downloads.crypta.network/production-beta/self-test",
+            require_live_network=True,
+            require_sandbox_provider_tests=True,
+            skip_gradle=False,
+            skip_full_build=False,
+            allow_dirty_workspace=False,
+            require_multi_node_soak=True,
+            previous_summary=previous_summary,
+        )
+        write_minimal_promotion_artifacts(out_dir)
+        write_json(
+            out_dir / "catalog/channel-metadata.json",
+            {
+                "schemaVersion": 1,
+                "channel": "stable",
+                "stableChannelEdition": 501,
+                "betaChannelEdition": 777,
+            },
+        )
+        state = PipelineState(settings, "self-test", utc_now(), [], [], [])
+        state.signing_profile = production_signing_profile()
+        mark_required_pipeline_stages_passed(state)
+
+        def promotion_summaries_with_upgrade_evidence(**updates: Any) -> dict[str, Any]:
+            summaries = passing_promotion_summaries()
+            for scenario in summaries["multiNodeBetaSoak"]["scenarios"]:
+                if scenario.get("id") == "upgrade-from-previous-candidate":
+                    evidence = scenario["evidence"]
+                    evidence["currentCatalogChannel"] = "stable"
+                    evidence["currentCatalogEdition"] = 501
+                    evidence.update(updates)
+                    return summaries
+            raise AssertionError("previous-candidate upgrade scenario is missing")
+
+        promotion = evaluate_promotion(state, promotion_summaries_with_upgrade_evidence())
+        failed_ids = {gate["id"] for gate in promotion["gates"] if gate["status"] == "fail"}
+        assert "multi-node-beta.previous-candidate-upgrade-binding" not in failed_ids, promotion
+
+        for updates in (
+            {"currentCatalogChannel": "beta", "currentCatalogEdition": 777},
+            {"currentCatalogEdition": 500},
+        ):
+            promotion = evaluate_promotion(state, promotion_summaries_with_upgrade_evidence(**updates))
+            failed_ids = {gate["id"] for gate in promotion["gates"] if gate["status"] == "fail"}
+
+            assert "multi-node-beta.previous-candidate-summary" in failed_ids, promotion
+            assert "multi-node-beta.previous-candidate-upgrade-binding" in failed_ids, promotion
+            assert promotion["promotionReady"] is False, promotion
+
+
 def assert_multi_node_mode_is_only_forwarded_when_overridden() -> None:
     with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-multi-node-mode-") as temp_name:
         workspace = Path(temp_name) / "repo"
@@ -7822,6 +7933,7 @@ def run_self_test() -> None:
     assert_missing_previous_summary_blocks_production_multi_node_promotion()
     assert_mismatched_previous_summary_blocks_production_multi_node_promotion()
     assert_mismatched_current_version_blocks_production_multi_node_promotion()
+    assert_mismatched_current_catalog_blocks_production_multi_node_promotion()
     assert_multi_node_mode_is_only_forwarded_when_overridden()
     assert_previous_candidate_summary_is_not_forwarded_as_cert_history()
     assert_multi_node_paths_resolve_from_workspace()
