@@ -4921,7 +4921,7 @@ def write_valid_previous_candidate_summary(path: Path) -> None:
                 "version": "previous-beta",
                 "status": "pass",
                 "promotionReady": True,
-                "artifactBaseUri": "https://downloads.crypta.invalid/production-beta/previous-beta",
+                "artifactBaseUri": "https://downloads.crypta.network/production-beta/previous-beta",
                 **previous_candidate_source_metadata("previous-beta"),
             },
             release_certification_digest=multi_node_beta_soak.synthetic_full_digest(
@@ -4967,7 +4967,7 @@ def passing_multi_node_beta_soak_summary() -> dict[str, Any]:
                     "version": "previous-beta",
                     "status": "pass",
                     "promotionReady": True,
-                    "artifactBaseUri": "https://downloads.crypta.invalid/production-beta/previous-beta",
+                    "artifactBaseUri": "https://downloads.crypta.network/production-beta/previous-beta",
                     **previous_candidate_source_metadata("previous-beta"),
                 },
                 release_certification_digest=multi_node_beta_soak.synthetic_full_digest(

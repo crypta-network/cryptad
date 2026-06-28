@@ -12,6 +12,7 @@ import argparse
 import contextlib
 import datetime as dt
 import hashlib
+import ipaddress
 import io
 import json
 import re
@@ -257,6 +258,20 @@ REDACTION_KEYS = (
 STRICT_KEYS = ("requirePreviousSummary", "requireAllScenarios")
 SAFE_SUMMARY_ARTIFACT_KEYS = ("markdownReport", "rawSummary")
 DETERMINISTIC_GENERATED_AT = "1970-01-01T00:00:00Z"
+PLACEHOLDER_ARTIFACT_HOSTS = {"downloads.crypta.invalid"}
+LOCAL_ARTIFACT_HOSTS = {"127.0.0.1", "localhost", "::1", "0:0:0:0:0:0:0:1"}
+PRIVATE_ARTIFACT_HOST_SUFFIXES = (
+    ".invalid",
+    ".localhost",
+    ".local",
+    ".localdomain",
+    ".lan",
+    ".home",
+    ".corp",
+    ".internal",
+    ".test",
+    ".example",
+)
 
 PRIVATE_INSERT_URI_RE = re.compile(
     r"(?:"
@@ -937,7 +952,56 @@ def require_int(value: dict[str, Any], field: str, errors: list[str], prefix: st
 def reject_unexpected_fields(value: dict[str, Any], allowed: set[str], errors: list[str], prefix: str) -> None:
     unexpected = sorted(str(key) for key in value if str(key) not in allowed)
     if unexpected:
-        errors.append(f"{prefix} contains unsupported fields: {', '.join(unexpected)}")
+        count = len(unexpected)
+        suffix = "" if count == 1 else "s"
+        errors.append(f"{prefix} contains {count} unsupported field{suffix}")
+
+
+def normalized_artifact_hostname(hostname: str) -> str:
+    return hostname.rstrip(".").lower()
+
+
+def is_numeric_dotted_host(hostname: str) -> bool:
+    labels = hostname.split(".")
+    return len(labels) > 1 and all(label.isdigit() for label in labels)
+
+
+def artifact_hostname_is_public(hostname: str) -> bool:
+    normalized_host = normalized_artifact_hostname(hostname)
+    if not normalized_host or "%" in normalized_host:
+        return False
+    if normalized_host in LOCAL_ARTIFACT_HOSTS or normalized_host in PLACEHOLDER_ARTIFACT_HOSTS:
+        return False
+    if any(normalized_host.endswith(suffix) for suffix in PRIVATE_ARTIFACT_HOST_SUFFIXES):
+        return False
+    try:
+        address = ipaddress.ip_address(normalized_host)
+    except ValueError:
+        if is_numeric_dotted_host(normalized_host):
+            return False
+        return "." in normalized_host
+    return address.is_global and not address.is_multicast
+
+
+def validate_previous_artifact_base_uri(artifact_base_uri: str, *, production: bool) -> list[str]:
+    errors: list[str] = []
+    parsed = urllib.parse.urlparse(artifact_base_uri)
+    hostname = parsed.hostname or ""
+    if parsed.scheme != "https" or not hostname:
+        errors.append("previous candidate summary source.artifactBaseUri must use https")
+        return errors
+    if not production:
+        return errors
+    if parsed.username or parsed.password:
+        errors.append("previous candidate summary source.artifactBaseUri must not contain credentials")
+    if parsed.query or parsed.fragment:
+        errors.append("previous candidate summary source.artifactBaseUri must not contain query strings or fragments")
+    normalized_host = normalized_artifact_hostname(hostname)
+    if normalized_host in PLACEHOLDER_ARTIFACT_HOSTS or normalized_host.endswith(".invalid"):
+        errors.append("previous candidate summary source.artifactBaseUri must not use a placeholder .invalid host")
+    elif not artifact_hostname_is_public(hostname):
+        errors.append("previous candidate summary source.artifactBaseUri must use a public HTTPS release artifact host")
+    return errors
 
 
 def validate_previous_app_metadata(apps: Any, errors: list[str]) -> None:
@@ -1088,8 +1152,8 @@ def validate_previous_beta_candidate_summary(
         artifact_base_uri = require_non_empty_string(
             source, "artifactBaseUri", errors, "previous candidate summary source"
         )
-        if artifact_base_uri and not artifact_base_uri.startswith("https://"):
-            errors.append("previous candidate summary source.artifactBaseUri must use https")
+        if artifact_base_uri:
+            errors.extend(validate_previous_artifact_base_uri(artifact_base_uri, production=production))
         require_digest(
             source,
             "releaseCertificationSummaryDigest",
@@ -3419,6 +3483,39 @@ def run_self_test() -> None:
     previous_fixture = read_json(previous_candidate_fixture_path())
     assert previous_fixture is not None, previous_candidate_fixture_path()
     assert validate_previous_beta_candidate_summary(previous_fixture) == [], previous_fixture
+    public_previous_fixture = json.loads(json.dumps(previous_fixture, sort_keys=True))
+    public_previous_fixture["source"]["artifactBaseUri"] = "https://downloads.crypta.network/production-beta/269"
+    assert validate_previous_beta_candidate_summary(public_previous_fixture, production=True) == [], (
+        public_previous_fixture
+    )
+    strict_fixture_errors = validate_previous_beta_candidate_summary(previous_fixture, production=True)
+    assert any(".invalid host" in error for error in strict_fixture_errors), strict_fixture_errors
+    for private_artifact_uri in (
+        "https://localhost./production-beta/269",
+        "https://127.1/production-beta/269",
+        "https://10.0.0.5/production-beta/269",
+        "https://192.168.1/production-beta/269",
+        "https://[::ffff:127.0.0.1]/production-beta/269",
+        "https://artifacts.localdomain/production-beta/269",
+    ):
+        private_artifact_fixture = json.loads(json.dumps(previous_fixture, sort_keys=True))
+        private_artifact_fixture["source"]["artifactBaseUri"] = private_artifact_uri
+        private_artifact_errors = validate_previous_beta_candidate_summary(
+            private_artifact_fixture,
+            production=True,
+        )
+        assert any("public HTTPS" in error for error in private_artifact_errors), (
+            private_artifact_uri,
+            private_artifact_errors,
+        )
+    unsupported_secret_key = "privateInsertUri=USK@AQECAAEPRIVATEINSERTKEY,fixture/name/1"
+    unsupported_secret_previous = json.loads(json.dumps(previous_fixture, sort_keys=True))
+    unsupported_secret_previous[unsupported_secret_key] = "redacted"
+    unsupported_secret_errors = validate_previous_beta_candidate_summary(unsupported_secret_previous)
+    unsupported_secret_text = "\n".join(unsupported_secret_errors)
+    assert "contains 1 unsupported field" in unsupported_secret_text, unsupported_secret_errors
+    assert unsupported_secret_key not in unsupported_secret_text, unsupported_secret_errors
+    assert "AQECAAEPRIVATEINSERTKEY" not in unsupported_secret_text, unsupported_secret_errors
     schema = previous_candidate_summary_schema()
     schema_properties = schema["properties"]
     for field in ("catalog", "platformApi", "appData", "trustGraph", "socialInbox", "supportBundle", "redaction"):
@@ -3707,7 +3804,7 @@ def run_self_test() -> None:
                 "version": "previous-cli-beta",
                 "status": "pass",
                 "promotionReady": True,
-                "artifactBaseUri": "https://downloads.crypta.invalid/production-beta/previous-cli-beta",
+                "artifactBaseUri": "https://downloads.crypta.network/production-beta/previous-cli-beta",
                 **previous_cli_source_metadata,
             },
         )
