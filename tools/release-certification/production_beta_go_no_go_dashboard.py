@@ -340,6 +340,8 @@ PRODUCTION_BETA_NON_WAIVABLE_EVIDENCE_IDS = {
     "multi-node-beta.soak",
     "multi-node-beta.redaction",
     "multi-node-beta.previous-candidate-summary",
+    "multi-node-beta.previous-candidate-summary-validation",
+    "multi-node-beta.previous-candidate-upgrade-binding",
     "multi-node-beta.production-evidence-mode",
     "multi-node-beta.upgrade-drill",
     "multi-node-beta.catalog-channel-update",
@@ -1909,6 +1911,63 @@ def multi_node_issues(summary: dict[str, Any] | None, mode: str) -> list[Issue]:
                         category="multi-node",
                     )
                 )
+    upgrade = summary.get("previousCandidateUpgrade")
+    if mode == "production-beta":
+        if not isinstance(upgrade, dict):
+            issues.append(
+                Issue(
+                    id="multi-node-beta-soak.previous-candidate-summary",
+                    evidence_id="multi-node-beta.previous-candidate-summary",
+                    domain_id="multi-node-beta-soak",
+                    severity="blocker",
+                    title="Previous beta candidate upgrade evidence is missing",
+                    summary="Production beta requires compact previous-candidate upgrade evidence in the multi-node summary.",
+                    source="multi-node-beta-soak-summary",
+                    waivable=False,
+                    category="multi-node",
+                )
+            )
+        else:
+            expected = {
+                "status": "pass",
+                "previousSummaryConfigured": True,
+                "previousSummaryProvided": True,
+                "previousSummaryValid": True,
+                "currentUpgradePathRepresented": True,
+                "firstPartyAppMigrationStatus": "pass",
+                "backupBeforeUpdateStatus": "pass",
+                "restoreIntoCleanNodeStatus": "pass",
+                "socialInboxMigrationStatus": "pass",
+                "trustGraphMigrationStatus": "pass",
+                "supportBundleRedactionStatus": "pass",
+                "rollbackStatus": "pass",
+                "rawDataIncluded": False,
+            }
+            failed_fields = [
+                field
+                for field, expected_value in expected.items()
+                if upgrade.get(field) != expected_value
+            ]
+            validation_errors = upgrade.get("previousSummaryValidationErrors")
+            if not isinstance(validation_errors, list):
+                validation_errors = ["previousSummaryValidationErrors missing"]
+            if failed_fields or validation_errors:
+                issues.append(
+                    Issue(
+                        id="multi-node-beta-soak.previous-candidate-summary",
+                        evidence_id="multi-node-beta.previous-candidate-summary",
+                        domain_id="multi-node-beta-soak",
+                        severity="blocker",
+                        title="Previous beta candidate upgrade evidence is not production-ready",
+                        summary=(
+                            "Previous-candidate upgrade evidence has failing fields: "
+                            + ", ".join(failed_fields or ["validation"])
+                        ),
+                        source="multi-node-beta-soak-summary",
+                        waivable=False,
+                        category="multi-node",
+                    )
+                )
     return issues
 
 
@@ -2501,6 +2560,16 @@ def build_dashboard(
     warnings = [issue for issue in issues if issue.severity == "warning" or issue.waived_by]
     decision = decision_from_issues(issues)
     production_summary = inputs.get("productionBetaSummary") if isinstance(inputs.get("productionBetaSummary"), dict) else {}
+    multi_node_summary = (
+        inputs.get("multiNodeBetaSoakSummary")
+        if isinstance(inputs.get("multiNodeBetaSoakSummary"), dict)
+        else {}
+    )
+    previous_upgrade = (
+        multi_node_summary.get("previousCandidateUpgrade")
+        if isinstance(multi_node_summary.get("previousCandidateUpgrade"), dict)
+        else {"status": "missing"}
+    )
     artifact_refs = {
         "dashboardJson": OUTPUT_JSON,
         "dashboardMarkdown": OUTPUT_MARKDOWN,
@@ -2529,6 +2598,7 @@ def build_dashboard(
         "blockers": [issue.to_json() for issue in blockers],
         "warnings": [issue.to_json() for issue in warnings],
         "waivers": [waiver.to_json() for waiver in waivers],
+        "previousCandidateUpgrade": previous_upgrade,
         "redaction": redaction,
         "recommendation": recommendation_for(decision, blockers, warnings),
         "artifactRefs": artifact_refs,
@@ -2571,6 +2641,26 @@ def render_markdown(dashboard: dict[str, Any]) -> str:
             if isinstance(issue, dict):
                 waived = f" Waiver: `{issue.get('waivedBy')}`." if issue.get("waivedBy") else ""
                 lines.append(f"- `{issue.get('evidenceId', '')}`: {issue.get('summary', '')}{waived}")
+    upgrade = dashboard.get("previousCandidateUpgrade")
+    if isinstance(upgrade, dict) and upgrade:
+        lines.extend(
+            [
+                "",
+                "## Previous Candidate Upgrade",
+                "",
+                f"- Previous release: `{upgrade.get('previousReleaseId', 'missing')}`",
+                f"- Previous version: `{upgrade.get('previousVersion', 'missing')}`",
+                f"- Current version: `{upgrade.get('currentVersion', 'missing')}`",
+                f"- Previous summary: `{upgrade.get('previousSummaryStatus', 'missing')}`",
+                f"- Upgrade drill: `{upgrade.get('status', 'missing')}`",
+                f"- App migrations: `{upgrade.get('firstPartyAppMigrationStatus', 'missing')}`",
+                f"- Backup before update: `{upgrade.get('backupBeforeUpdateStatus', 'missing')}`",
+                f"- Restore into clean node: `{upgrade.get('restoreIntoCleanNodeStatus', 'missing')}`",
+                f"- Social Inbox migration: `{upgrade.get('socialInboxMigrationStatus', 'missing')}`",
+                f"- Trust Graph migration: `{upgrade.get('trustGraphMigrationStatus', 'missing')}`",
+                f"- Support bundle redaction: `{upgrade.get('supportBundleRedactionStatus', 'missing')}`",
+            ]
+        )
     lines.extend(["", "## Waivers Used", ""])
     waivers = [waiver for waiver in dashboard.get("waivers", []) if isinstance(waiver, dict) and waiver.get("usedBy")]
     if not waivers:
@@ -2720,6 +2810,11 @@ def run_self_test(quiet: bool = False) -> None:
             raise AssertionError(f"production critical evidence gate is waivable in production-beta: {gate_id}")
     if evidence_id_is_non_waivable_in_mode("app-store.submission-cli", "release-candidate"):
         raise AssertionError("release-candidate app-store evidence should remain waiverable")
+    if not evidence_id_is_non_waivable_in_mode(
+        "multi-node-beta.previous-candidate-upgrade-binding",
+        "production-beta",
+    ):
+        raise AssertionError("previous-candidate binding failures must be non-waivable in production-beta")
 
     fixture_expectations = {
         "go-no-go-pass.json": "go",
@@ -2743,6 +2838,8 @@ def run_self_test(quiet: bool = False) -> None:
         "go-no-go-warning-redaction-findings.json": "no-go",
         "go-no-go-multi-node-upgrade-waiver.json": "go-with-waivers",
         "go-no-go-network-scale-redaction-waiver.json": "no-go",
+        "go-no-go-previous-candidate-warning.json": "no-go",
+        "go-no-go-previous-candidate-binding-waiver.json": "no-go",
         "go-no-go-secret-value-redaction.json": "no-go",
         "go-no-go-underseverity-waiver.json": "no-go",
         "go-no-go-live-evidence-waiver-alias.json": "no-go",
@@ -2806,6 +2903,13 @@ def run_self_test(quiet: bool = False) -> None:
                     raise AssertionError("skipped production summary did not block production beta")
                 if int(dashboard.get("summary", {}).get("waiversUsed", 0)) != 0:
                     raise AssertionError("non-passing production summary hard blocker was incorrectly waived")
+            if fixture_name == "go-no-go-previous-candidate-binding-waiver.json":
+                if int(dashboard.get("summary", {}).get("waiversUsed", 0)) != 0:
+                    raise AssertionError("previous-candidate binding waiver was incorrectly used")
+                if "multi-node-beta.previous-candidate-upgrade-binding" not in blocker_ids:
+                    raise AssertionError("previous-candidate binding failure did not remain blocked")
+                if "production-beta.waiver-validation" not in blocker_ids:
+                    raise AssertionError("previous-candidate binding waiver did not fail waiver validation")
             if fixture_name == "go-no-go-live-evidence-waiver-alias.json":
                 if int(dashboard.get("summary", {}).get("waiversUsed", 0)) != 0:
                     raise AssertionError("live evidence alias waiver was incorrectly used")

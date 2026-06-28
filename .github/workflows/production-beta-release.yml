@@ -48,7 +48,12 @@ on:
         default: ''
         type: string
       previous_summary:
-        description: Previous release-certification summary path, HTTPS JSON URL, or actions-artifact://run/artifact/path reference for production history and upgrade evidence.
+        description: Previous beta candidate summary path, HTTPS JSON URL, or actions-artifact://run/artifact/path reference for upgrade evidence.
+        required: false
+        default: ''
+        type: string
+      previous_release_certification_summary:
+        description: Previous release-certification summary path, HTTPS JSON URL, or actions-artifact://run/artifact/path reference for history comparison.
         required: false
         default: ''
         type: string
@@ -106,6 +111,7 @@ jobs:
           INPUT_MULTI_NODE_SOAK_CONFIG: ${{ inputs.multi_node_soak_config || 'tools/release-certification/fixtures/self-test-multi-node-beta-soak.json' }}
           INPUT_MULTI_NODE_SOAK_SUMMARY: ${{ inputs.multi_node_soak_summary || '' }}
           INPUT_PREVIOUS_SUMMARY: ${{ inputs.previous_summary || '' }}
+          INPUT_PREVIOUS_RELEASE_CERTIFICATION_SUMMARY: ${{ inputs.previous_release_certification_summary || '' }}
           INPUT_WAIVER_FILE: ${{ inputs.waiver_file || '' }}
           INPUT_REQUIRE_MULTI_NODE_SOAK: ${{ inputs.require_multi_node_soak || 'false' }}
           INPUT_ARTIFACT_BASE_URI: ${{ inputs.artifact_base_uri || vars.CRYPTAD_PRODUCTION_BETA_ARTIFACT_BASE_URI || (github.event_name != 'pull_request' && secrets.CRYPTAD_PRODUCTION_BETA_ARTIFACT_BASE_URI) || '' }}
@@ -207,7 +213,8 @@ jobs:
             export "$env_name=$path"
           }
 
-          materialize_input_file "$INPUT_PREVIOUS_SUMMARY" INPUT_PREVIOUS_SUMMARY previous-release-certification-summary.json "Previous release-certification summary"
+          materialize_input_file "$INPUT_PREVIOUS_SUMMARY" INPUT_PREVIOUS_SUMMARY previous-beta-candidate-summary.json "Previous beta candidate summary"
+          materialize_input_file "$INPUT_PREVIOUS_RELEASE_CERTIFICATION_SUMMARY" INPUT_PREVIOUS_RELEASE_CERTIFICATION_SUMMARY previous-release-certification-summary.json "Previous release-certification summary"
           materialize_input_file "$INPUT_MULTI_NODE_SOAK_SUMMARY" INPUT_MULTI_NODE_SOAK_SUMMARY multi-node-beta-soak-summary.json "Multi-node soak summary"
           materialize_input_file "$INPUT_WAIVER_FILE" INPUT_WAIVER_FILE go-no-go-waivers.json "Go/no-go waiver file"
 
@@ -248,6 +255,9 @@ jobs:
           fi
           if [[ -n "$INPUT_PREVIOUS_SUMMARY" ]]; then
             args+=(--previous-summary "$INPUT_PREVIOUS_SUMMARY")
+          fi
+          if [[ -n "$INPUT_PREVIOUS_RELEASE_CERTIFICATION_SUMMARY" ]]; then
+            args+=(--previous-release-certification-summary "$INPUT_PREVIOUS_RELEASE_CERTIFICATION_SUMMARY")
           fi
           if [[ -n "$INPUT_WAIVER_FILE" ]]; then
             args+=(--waiver-file "$INPUT_WAIVER_FILE")
@@ -379,6 +389,7 @@ jobs:
           INPUT_MULTI_NODE_SOAK_CONFIG: ${{ inputs.multi_node_soak_config || '' }}
           INPUT_MULTI_NODE_SOAK_SUMMARY: ${{ inputs.multi_node_soak_summary || '' }}
           INPUT_PREVIOUS_SUMMARY: ${{ inputs.previous_summary || '' }}
+          INPUT_PREVIOUS_RELEASE_CERTIFICATION_SUMMARY: ${{ inputs.previous_release_certification_summary || '' }}
           INPUT_WAIVER_FILE: ${{ inputs.waiver_file || '' }}
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -486,7 +497,8 @@ jobs:
           materialize_secret_file "${CRYPTAD_APP_SIGNING_PUBLIC_KEY_BASE64:-}" CRYPTAD_APP_SIGNING_PUBLIC_KEY_FILE app-signing-public.der
           materialize_secret_file "${CRYPTAD_APP_REVIEWER_PRIVATE_KEY_BASE64:-}" CRYPTAD_APP_REVIEWER_PRIVATE_KEY_FILE reviewer-private.der
           materialize_secret_file "${CRYPTAD_APP_REVIEWER_PUBLIC_KEY_BASE64:-}" CRYPTAD_APP_REVIEWER_PUBLIC_KEY_FILE reviewer-public.der
-          materialize_input_file "$INPUT_PREVIOUS_SUMMARY" INPUT_PREVIOUS_SUMMARY previous-release-certification-summary.json "Previous release-certification summary"
+          materialize_input_file "$INPUT_PREVIOUS_SUMMARY" INPUT_PREVIOUS_SUMMARY previous-beta-candidate-summary.json "Previous beta candidate summary"
+          materialize_input_file "$INPUT_PREVIOUS_RELEASE_CERTIFICATION_SUMMARY" INPUT_PREVIOUS_RELEASE_CERTIFICATION_SUMMARY previous-release-certification-summary.json "Previous release-certification summary"
           materialize_input_file "$INPUT_MULTI_NODE_SOAK_SUMMARY" INPUT_MULTI_NODE_SOAK_SUMMARY multi-node-beta-soak-summary.json "Multi-node soak summary"
           materialize_input_file "$INPUT_WAIVER_FILE" INPUT_WAIVER_FILE go-no-go-waivers.json "Go/no-go waiver file"
 
@@ -522,10 +534,19 @@ jobs:
 
           self_test_multi_node_config="tools/release-certification/fixtures/self-test-multi-node-beta-soak.json"
           if [[ -z "$INPUT_PREVIOUS_SUMMARY" ]]; then
-            echo "::error::production-beta requires previous_summary pointing to the previous release-certification summary."
+            echo "::error::production-beta requires previous_summary pointing to the previous beta candidate summary."
             exit 1
           fi
-          require_file "$INPUT_PREVIOUS_SUMMARY" "Previous release-certification summary"
+          require_file "$INPUT_PREVIOUS_SUMMARY" "Previous beta candidate summary"
+          python3 tools/release-certification/multi_node_beta_soak.py verify-previous-summary \
+            --summary "$INPUT_PREVIOUS_SUMMARY" \
+            --strict \
+            --max-age-days 90
+          if [[ -z "$INPUT_PREVIOUS_RELEASE_CERTIFICATION_SUMMARY" ]]; then
+            echo "::error::production-beta requires previous_release_certification_summary for release history comparison."
+            exit 1
+          fi
+          require_file "$INPUT_PREVIOUS_RELEASE_CERTIFICATION_SUMMARY" "Previous release-certification summary"
           if [[ -z "$INPUT_MULTI_NODE_SOAK_SUMMARY" && -z "$INPUT_MULTI_NODE_SOAK_CONFIG" ]]; then
             echo "::error::production-beta requires multi_node_soak_summary or a production multi_node_soak_config."
             exit 1
@@ -559,6 +580,7 @@ jobs:
             --require-live-network
             --require-sandbox-provider-tests
             --previous-summary "$INPUT_PREVIOUS_SUMMARY"
+            --previous-release-certification-summary "$INPUT_PREVIOUS_RELEASE_CERTIFICATION_SUMMARY"
           )
           if [[ -n "$INPUT_MULTI_NODE_SOAK_SUMMARY" ]]; then
             args+=(--multi-node-soak-summary "$INPUT_MULTI_NODE_SOAK_SUMMARY")

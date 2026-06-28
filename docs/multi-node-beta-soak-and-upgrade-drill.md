@@ -99,6 +99,44 @@ python3 tools/release-certification/multi_node_beta_soak.py verify \
   --summary build/multi-node-beta-soak/multi-node-beta-soak-summary.json
 ```
 
+Write the previous beta candidate summary schema:
+
+```bash
+python3 tools/release-certification/multi_node_beta_soak.py previous-summary-schema \
+  --out build/previous/previous-beta-candidate-summary.schema.json
+```
+
+Normalize the previous release's public certification summaries into the production-beta input
+contract:
+
+```bash
+python3 tools/release-certification/multi_node_beta_soak.py previous-summary \
+  --release-certification-summary build/previous/release-certification-summary.json \
+  --production-beta-summary build/previous/production-beta-summary.json \
+  --out build/previous/previous-beta-candidate-summary.json \
+  --report build/previous/previous-beta-candidate-summary.md
+```
+
+Both source summaries must already be passing and promotable. The normalizer rejects a failing
+release-certification summary, a failing production-beta summary, `promotionReady=false`, or
+`nonRelease=true`; it does not convert failed source evidence into a passing previous-candidate
+summary. By default the generated summary uses the current UTC time for `generatedAt`; reserve
+`--generated-at` for deterministic fixture generation and reproducible tests.
+The source summaries must also contain the sanitized previous-candidate metadata blocks listed
+below, either as top-level fields or under an explicit previous-candidate metadata container. The
+normalizer copies those values into the previous-candidate summary and rejects missing or
+conflicting source metadata; it does not synthesize catalog editions, app digests, app-data
+migration state, Trust Graph state, Social Inbox state, or support-bundle evidence.
+
+Verify that summary before attaching it to a production run:
+
+```bash
+python3 tools/release-certification/multi_node_beta_soak.py verify-previous-summary \
+  --summary build/previous/previous-beta-candidate-summary.json \
+  --strict \
+  --max-age-days 90
+```
+
 Use a topology config:
 
 ```bash
@@ -165,7 +203,8 @@ tools/release-certification/run-production-beta-release.sh \
   --require-live-network \
   --require-multi-node-soak \
   --require-sandbox-provider-tests \
-  --previous-summary "$PREVIOUS_RELEASE_CERTIFICATION_SUMMARY" \
+  --previous-summary "$PREVIOUS_BETA_CANDIDATE_SUMMARY" \
+  --previous-release-certification-summary "$PREVIOUS_RELEASE_CERTIFICATION_SUMMARY" \
   --multi-node-soak-summary "$MULTI_NODE_BETA_SOAK_SUMMARY"
 ```
 
@@ -180,10 +219,14 @@ Useful flags are:
 | `--require-multi-node-soak` | Require passing multi-node evidence for production beta promotion gates. |
 
 Production beta mode requires multi-node soak evidence by default. It also requires
-`--previous-summary`, passing `upgrade-from-previous-candidate` evidence, and a real attached summary
-or explicit non-self-test `hybrid`/`live` topology. The final `reports/production-beta-summary.json`
-includes a compact `multiNodeBetaSoak` object with status, mode, scenario statuses, blockers,
-warnings, and the evidence artifact path.
+`--previous-summary`, a schema-valid previous beta candidate summary, passing
+`upgrade-from-previous-candidate` evidence, and a real attached summary or explicit non-self-test
+`hybrid`/`live` topology. The final `reports/production-beta-summary.json` includes a compact
+`multiNodeBetaSoak` object with status, mode, scenario statuses, blockers, warnings, a
+`previousCandidateUpgrade` status block, and the evidence artifact path. The compact upgrade block
+includes `previousSummaryDrillDigest`, a stable digest of the previous-candidate metadata used by
+the drill, so production-beta can reject upgrade evidence generated from a different previous
+summary even when release id and version strings match.
 
 The checked-in self-test topology is suitable for developer dry-runs and PR-safe validation only.
 Protected production-beta workflow dispatches must use an attached passing summary or a production
@@ -193,8 +236,9 @@ redaction findings are production blockers and cannot be waived into a launchabl
 decision.
 
 When the manual GitHub Actions workflow consumes prior evidence from another run, the
-`previous_summary` and `multi_node_soak_summary` dispatch inputs may be a checked-out local path, an
-HTTPS JSON URL, or an Actions artifact reference:
+`previous_summary`, `previous_release_certification_summary`, and `multi_node_soak_summary`
+dispatch inputs may be a checked-out local path, an HTTPS JSON URL, or an Actions artifact
+reference:
 
 ```text
 actions-artifact://<run-id>/<artifact-name>/<path-inside-artifact>
@@ -204,21 +248,59 @@ The workflow downloads or restores those sources into a private runner temp dire
 the production-beta file checks, so the release manager does not need to commit previous-candidate
 summaries into the repository.
 
-## Previous candidate summaries
+## Previous beta candidate summary schema
 
-Set `previousCandidate.summaryPath` in the topology config to consume a previous production beta or
-release-certification summary. In simulated and release-candidate contexts, a missing previous
-summary is recorded as a warning so the rest of the drill can still prove the gates. In
-production-beta promotion, missing previous-candidate evidence is blocking even if the topology
-would otherwise pass.
+Production-beta promotion consumes a dedicated previous-candidate summary with
+`kind=cryptad-previous-beta-candidate-summary` and `schemaVersion=1`. It is generated from the last
+candidate's sanitized release-certification and production-beta summaries with the
+`previous-summary` command above. It is intentionally metadata-only; it records digests, counts,
+schema versions, and pass/fail states, never raw app data or message content.
 
-When a previous summary path is supplied, the file must be a `schemaVersion=1` summary with passing
-or warning status, or a release-certification summary with `releaseCandidatePassed=true`. Empty,
-malformed, or explicitly failing previous summaries fail the upgrade drill.
+Required top-level fields are:
+
+| Field | Required production meaning |
+| --- | --- |
+| `releaseId`, `version`, `generatedAt` | Identify the previous candidate and when the normalized evidence was produced. |
+| `source` | Git commit, HTTPS artifact base URI, release-certification summary digest, and production-beta summary digest. |
+| `status`, `promotionReady` | Must be `pass` and `true` for production-beta promotion. |
+| `catalog` | Previous stable and beta channel editions, catalog digest, signing key id, and mirror health status. |
+| `platformApi` | Stable baseline name, contract version, and snapshot digest used by the previous candidate. |
+| `firstPartyApps` | At least `feed-reader`, `profile-publisher`, `trust-graph`, and `social-inbox`, each with bundle digest, data schema version, migration contract digest, backup support, and rollback support. |
+| `appData` | Backup manifest digest, restore drill status, migration coverage for Feed Reader, Social Inbox, and Trust Graph, and `rawValuesIncluded=false`. |
+| `trustGraph` | Store schema version, anchor and statement counts, state digest, and `rawStatementsIncluded=false`. |
+| `socialInbox` | Schema version, thread and source counts, state digest, and `rawMessageBodiesIncluded=false`. |
+| `supportBundle` | Format version, redaction status, and support-bundle digest. |
+| `redaction` | `status=pass` with no unsafe findings. |
+
+Strict verification rejects malformed summaries, failing summaries, `promotionReady=false`, stale
+production summaries when `--max-age-days` is supplied, missing required app or migration metadata,
+missing Trust Graph or Social Inbox state metadata, missing support-bundle redaction metadata, raw
+app data, raw social message bodies, raw trust statements, private insert URIs, private keys,
+tokens, absolute local paths, AppleDouble names, or `__MACOSX` references.
+
+Set `previousCandidate.summaryPath` in the topology config to the verified
+`previous-beta-candidate-summary.json`. In simulated and release-candidate contexts, a missing
+previous summary is recorded as a warning so the rest of the drill can still prove the gates. In
+production-beta promotion, missing, malformed, failing, stale, non-promotable, or redaction-unsafe
+previous-candidate evidence is blocking even if the topology would otherwise pass.
 
 When `currentCandidate.productionBetaSummaryPath` is supplied, that current production beta summary
-must meet the same schema and non-failing status requirements. Missing, malformed, explicitly
-failing, or explicitly non-promotable current summaries fail the upgrade drill.
+must be a non-failing, promotable production beta summary. Missing, malformed, explicitly failing,
+or explicitly non-promotable current summaries fail the upgrade drill.
+
+The `multi-node-beta.upgrade-drill` evidence includes:
+
+- previous and current versions;
+- previous and current catalog channels;
+- previous stable and beta catalog editions plus the current edition;
+- daemon upgrade representation;
+- first-party app install, update, migration, and rollback status;
+- backup-before-update and restore-into-clean-node status;
+- failed migration block/rollback status;
+- Social Inbox schema migration status and state digest;
+- Trust Graph state migration status and state digest;
+- support bundle generated after a failed upgrade path with redaction status;
+- `rawDataIncluded=false` and release-report fields that are digest/count/status only.
 
 ## Status policy
 

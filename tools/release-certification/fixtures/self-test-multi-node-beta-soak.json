@@ -47,8 +47,8 @@
   ],
   "previousCandidate": {
     "catalogChannel": "stable",
-    "summaryPath": "",
-    "version": "previous-beta"
+    "summaryPath": "previous-beta-candidate-summary-valid.json",
+    "version": "269"
   },
   "redaction": {
     "failOnAbsoluteLocalPaths": true,

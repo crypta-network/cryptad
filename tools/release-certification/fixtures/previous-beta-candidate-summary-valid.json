@@ -1,0 +1,123 @@
+{
+  "appData": {
+    "backupManifestDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "migrationCoverage": [
+      {
+        "appId": "feed-reader",
+        "backupBeforeUpdate": true,
+        "fromSchema": 1,
+        "rawAppDataIncluded": false,
+        "status": "pass",
+        "toSchema": 2
+      },
+      {
+        "appId": "social-inbox",
+        "backupBeforeUpdate": true,
+        "fromSchema": 1,
+        "rawAppDataIncluded": false,
+        "status": "pass",
+        "toSchema": 2
+      },
+      {
+        "appId": "trust-graph",
+        "backupBeforeUpdate": true,
+        "fromSchema": 1,
+        "rawAppDataIncluded": false,
+        "status": "pass",
+        "toSchema": 2
+      }
+    ],
+    "rawValuesIncluded": false,
+    "restoreDrillStatus": "pass"
+  },
+  "catalog": {
+    "betaChannelEdition": 124,
+    "catalogDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+    "catalogSigningKeyId": "crypta-first-party-production-beta",
+    "mirrorHealthStatus": "pass",
+    "stableChannelEdition": 123
+  },
+  "firstPartyApps": [
+    {
+      "appId": "feed-reader",
+      "backupSupported": true,
+      "bundleDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+      "channel": "stable",
+      "dataSchemaVersion": 1,
+      "migrationContractDigest": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+      "rollbackSupported": true,
+      "version": "269"
+    },
+    {
+      "appId": "profile-publisher",
+      "backupSupported": true,
+      "bundleDigest": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+      "channel": "stable",
+      "dataSchemaVersion": 1,
+      "migrationContractDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+      "rollbackSupported": true,
+      "version": "269"
+    },
+    {
+      "appId": "trust-graph",
+      "backupSupported": true,
+      "bundleDigest": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+      "channel": "stable",
+      "dataSchemaVersion": 1,
+      "migrationContractDigest": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+      "rollbackSupported": true,
+      "version": "269"
+    },
+    {
+      "appId": "social-inbox",
+      "backupSupported": true,
+      "bundleDigest": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+      "channel": "stable",
+      "dataSchemaVersion": 1,
+      "migrationContractDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "rollbackSupported": true,
+      "version": "269"
+    }
+  ],
+  "generatedAt": "1970-01-01T00:00:00Z",
+  "kind": "cryptad-previous-beta-candidate-summary",
+  "platformApi": {
+    "contractVersion": 1,
+    "snapshotDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "stableBaseline": "1.0"
+  },
+  "promotionReady": true,
+  "redaction": {
+    "findings": [],
+    "status": "pass"
+  },
+  "releaseId": "cryptad-beta-269",
+  "schemaVersion": 1,
+  "socialInbox": {
+    "rawMessageBodiesIncluded": false,
+    "schemaVersion": 1,
+    "sourceCount": 0,
+    "stateDigest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "threadCount": 0
+  },
+  "source": {
+    "artifactBaseUri": "https://downloads.crypta.invalid/production-beta/269",
+    "gitCommit": "self-test-git-commit",
+    "productionBetaSummaryDigest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "releaseCertificationSummaryDigest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+  },
+  "status": "pass",
+  "supportBundle": {
+    "digest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "formatVersion": 1,
+    "redactionStatus": "pass"
+  },
+  "trustGraph": {
+    "anchorCount": 0,
+    "rawStatementsIncluded": false,
+    "statementCount": 0,
+    "stateDigest": "sha256:abababababababababababababababababababababababababababababababab",
+    "storeSchemaVersion": 1
+  },
+  "version": "269"
+}

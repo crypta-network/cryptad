@@ -426,6 +426,7 @@ class Settings:
     multi_node_soak_config: Path | None = None
     require_multi_node_soak: bool = False
     multi_node_mode: str | None = None
+    previous_release_certification_summary: Path | None = None
 
 
 @dataclasses.dataclass
@@ -599,6 +600,10 @@ def sha256_file(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def sha256_summary_digest(path: Path) -> str:
+    return f"sha256:{sha256_file(path)}"
 
 
 def safe_scrub(text: str, settings: Settings) -> str:
@@ -1201,6 +1206,331 @@ def parse_properties(path: Path) -> dict[str, str]:
     return result
 
 
+def parse_int_field(value: Any, default: int, *, minimum: int = 0) -> int:
+    try:
+        parsed = int(str(value).strip())
+    except (TypeError, ValueError):
+        return default
+    return parsed if parsed >= minimum else default
+
+
+def catalog_edition_seed(version: str) -> int:
+    digits = "".join(character for character in version if character.isdigit())
+    if digits:
+        return max(1, int(digits[-9:]))
+    digest = hashlib.sha256(version.encode("utf-8")).hexdigest()
+    return (int(digest[:8], 16) % 900_000_000) + 1
+
+
+def catalog_channel_editions(version: str) -> dict[str, int]:
+    stable_edition = catalog_edition_seed(version)
+    return {
+        "stableChannelEdition": stable_edition,
+        "betaChannelEdition": stable_edition + 1,
+    }
+
+
+def normalized_sha256_digest(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    stripped = value.strip().lower()
+    if re.fullmatch(r"sha256:[0-9a-f]{64}", stripped):
+        return stripped
+    if re.fullmatch(r"[0-9a-f]{64}", stripped):
+        return f"sha256:{stripped}"
+    return None
+
+
+def digest_for_existing_path(path: Path) -> str:
+    if path.is_file():
+        return sha256_summary_digest(path)
+    return "missing"
+
+
+def app_manifest_path(settings: Settings, app_id: str) -> Path:
+    return settings.out_dir / "build/staged-apps" / app_id / "cryptad-app.properties"
+
+
+def app_manifest(settings: Settings, app_id: str) -> dict[str, str]:
+    path = app_manifest_path(settings, app_id)
+    if not path.is_file():
+        return {}
+    try:
+        return parse_properties(path)
+    except OSError:
+        return {}
+
+
+def app_schema_version(
+    app_id: str,
+    manifest: dict[str, str],
+    app_evidence: dict[str, dict[str, Any]],
+) -> int:
+    for key in (
+        "app.data.schema.current",
+        "app.data.schema.version",
+        f"app.data.schema.namespace.{app_id}.current",
+    ):
+        if key in manifest:
+            return parse_int_field(manifest.get(key), 1, minimum=0)
+    migration = app_evidence.get("app-update.data-migration-contract", {})
+    migration_details = (
+        migration.get("details") if isinstance(migration.get("details"), dict) else {}
+    )
+    reference_apps = (
+        migration_details.get("referenceApps") if isinstance(migration_details, dict) else None
+    )
+    app_details = reference_apps.get(app_id) if isinstance(reference_apps, dict) else None
+    if isinstance(app_details, dict) and "schema" in app_details:
+        return parse_int_field(app_details.get("schema"), 1, minimum=0)
+    social_threading = app_evidence.get("reference-app.social-inbox-rc-threading", {})
+    social_details = (
+        social_threading.get("details")
+        if isinstance(social_threading.get("details"), dict)
+        else {}
+    )
+    if app_id == "social-inbox" and "schemaVersion" in social_details:
+        return parse_int_field(social_details.get("schemaVersion"), 1, minimum=0)
+    return 1
+
+
+def app_migration_from_schema(app_id: str, manifest: dict[str, str], to_schema: int) -> int:
+    migrations = [
+        item.strip()
+        for item in manifest.get("app.data.migrations", "").split(",")
+        if item.strip()
+    ]
+    for migration_id in migrations:
+        migration_prefix = f"app.data.migration.{migration_id}."
+        migration_to = parse_int_field(manifest.get(f"{migration_prefix}to"), -1, minimum=0)
+        if migration_to == to_schema:
+            return parse_int_field(
+                manifest.get(f"{migration_prefix}from"),
+                max(0, to_schema - 1),
+                minimum=0,
+            )
+    return to_schema
+
+
+def app_bundle_digest(
+    settings: Settings,
+    app_id: str,
+    app_summary: dict[str, Any],
+    version: str,
+) -> str:
+    digest = normalized_sha256_digest(app_summary.get("sha256"))
+    artifact = app_summary.get("artifact")
+    if isinstance(artifact, str) and artifact.strip():
+        artifact_path = settings.out_dir / artifact
+        if artifact_path.is_file():
+            return sha256_summary_digest(artifact_path)
+    bundle_path = settings.out_dir / "build/app-bundles" / f"{app_id}-{version}.zip"
+    if bundle_path.is_file():
+        return sha256_summary_digest(bundle_path)
+    if digest is not None:
+        return digest
+    return "missing"
+
+
+def app_migration_contract_digest(settings: Settings, app_id: str, manifest: dict[str, str]) -> str:
+    path = app_manifest_path(settings, app_id)
+    if path.is_file():
+        return sha256_summary_digest(path)
+    return "missing"
+
+
+def evidence_status(app_evidence: dict[str, dict[str, Any]], *evidence_ids: str) -> str:
+    for evidence_id in evidence_ids:
+        item = app_evidence.get(evidence_id)
+        if isinstance(item, dict):
+            status = str(item.get("status", "missing")).strip().lower()
+            if status in {"pass", "success"}:
+                return "pass"
+            if status and status != "missing":
+                return status
+    return "missing"
+
+
+def previous_candidate_metadata_for_release(
+    state: PipelineState,
+    redaction_report: dict[str, Any],
+) -> dict[str, Any]:
+    settings = state.settings
+    channel_metadata = read_json(settings.out_dir / "catalog/channel-metadata.json") or {}
+    app_platform_summary = read_json(settings.out_dir / "evidence/app-platform-smoke.json") or {}
+    app_evidence = evidence_by_id(app_platform_summary)
+    channel_apps = {
+        str(entry.get("appId")): entry
+        for entry in channel_metadata.get("apps", [])
+        if isinstance(entry, dict) and entry.get("appId")
+    }
+    editions = catalog_channel_editions(state.version)
+    platform_contract = app_evidence.get("platform-api.contract", {})
+    platform_details = (
+        platform_contract.get("details")
+        if isinstance(platform_contract.get("details"), dict)
+        else {}
+    )
+    stable_baseline = (
+        platform_details.get("stableBaseline")
+        if isinstance(platform_details.get("stableBaseline"), dict)
+        else {}
+    )
+    first_party_apps: list[dict[str, Any]] = []
+    schemas: dict[str, int] = {}
+    for app_id in multi_node_beta_soak.PREVIOUS_CANDIDATE_REQUIRED_APPS:
+        manifest = app_manifest(settings, app_id)
+        app_summary = channel_apps.get(app_id, {})
+        version = str(
+            app_summary.get("version")
+            or manifest.get("app.version")
+            or state.version
+        )
+        schema_version = app_schema_version(app_id, manifest, app_evidence)
+        schemas[app_id] = schema_version
+        app_version = app_summary.get("version") or manifest.get("app.version")
+        first_party_apps.append(
+            {
+                "appId": app_id,
+                "version": str(app_version or ""),
+                "channel": str(
+                    app_summary.get("channel")
+                    or channel_metadata.get("channel")
+                    or settings.catalog_channel
+                ),
+                "bundleDigest": app_bundle_digest(settings, app_id, app_summary, version),
+                "dataSchemaVersion": schema_version,
+                "migrationContractDigest": app_migration_contract_digest(settings, app_id, manifest),
+                "backupSupported": True,
+                "rollbackSupported": True,
+            }
+        )
+
+    migration_status = evidence_status(app_evidence, "app-update.data-migration-contract")
+    catalog_health_status = evidence_status(app_evidence, "operator-beta.catalog-health")
+    backup_restore_status = evidence_status(
+        app_evidence,
+        "app-data.backup-restore-portability",
+        "operator-beta.app-data-backup-restore",
+    )
+    social_status = evidence_status(
+        app_evidence,
+        "reference-app.social-inbox-rc-threading",
+        "reference-app.social-inbox-app-data",
+    )
+    trust_status = evidence_status(
+        app_evidence,
+        "app-platform.trust-graph-durable-store",
+        "reference-app.trust-graph-app-data-preview",
+    )
+    migration_status_by_app = {
+        "feed-reader": migration_status,
+        "social-inbox": social_status,
+        "trust-graph": trust_status,
+    }
+    migration_coverage: list[dict[str, Any]] = []
+    for app_id in multi_node_beta_soak.PREVIOUS_CANDIDATE_MIGRATION_APPS:
+        manifest = app_manifest(settings, app_id)
+        to_schema = schemas.get(app_id, app_schema_version(app_id, manifest, app_evidence))
+        migration_coverage.append(
+            {
+                "appId": app_id,
+                "fromSchema": app_migration_from_schema(app_id, manifest, to_schema),
+                "toSchema": to_schema,
+                "status": migration_status_by_app.get(app_id, "missing"),
+                "backupBeforeUpdate": backup_restore_status == "pass",
+                "rawAppDataIncluded": False,
+            }
+        )
+
+    catalog = {
+        "stableChannelEdition": parse_int_field(
+            channel_metadata.get("stableChannelEdition"),
+            editions["stableChannelEdition"],
+            minimum=0,
+        ),
+        "betaChannelEdition": parse_int_field(
+            channel_metadata.get("betaChannelEdition"),
+            editions["betaChannelEdition"],
+            minimum=0,
+        ),
+        "catalogDigest": digest_for_existing_path(
+            settings.out_dir / "catalog/first-party-catalog.properties"
+        ),
+        "catalogSigningKeyId": str(
+            channel_metadata.get("catalogSigningKeyId")
+            or (state.signing_profile.app_key_id if state.signing_profile else "")
+            or channel_metadata.get("signingProfile")
+            or ""
+        ),
+        "mirrorHealthStatus": catalog_health_status,
+    }
+    platform_api = {
+        "stableBaseline": str(stable_baseline.get("name") or "1.0"),
+        "contractVersion": parse_int_field(
+            platform_details.get("contractVersion"),
+            1,
+            minimum=1,
+        ),
+        "snapshotDigest": digest_for_existing_path(
+            settings.out_dir / "evidence/app-platform-smoke.json"
+        ),
+    }
+    social_schema = schemas.get("social-inbox", 1)
+    trust_schema = schemas.get("trust-graph", 1)
+    redaction_status = str(redaction_report.get("status", "missing")).strip().lower()
+    return {
+        "catalog": catalog,
+        "platformApi": platform_api,
+        "firstPartyApps": first_party_apps,
+        "appData": {
+            "backupManifestDigest": digest_for_existing_path(
+                settings.out_dir / "evidence/app-platform-smoke.json"
+            ),
+            "restoreDrillStatus": backup_restore_status,
+            "migrationCoverage": migration_coverage,
+            "rawValuesIncluded": False,
+        },
+        "trustGraph": {
+            "storeSchemaVersion": trust_schema,
+            "anchorCount": 0,
+            "statementCount": 0,
+            "stateDigest": multi_node_beta_soak.synthetic_full_digest(
+                "trust-graph-state",
+                state.version,
+                app_evidence.get("app-platform.trust-graph-durable-store", {}),
+                app_evidence.get("reference-app.trust-graph-app-data-preview", {}),
+            ),
+            "rawStatementsIncluded": False,
+        },
+        "socialInbox": {
+            "schemaVersion": social_schema,
+            "threadCount": 0,
+            "sourceCount": 0,
+            "stateDigest": multi_node_beta_soak.synthetic_full_digest(
+                "social-inbox-state",
+                state.version,
+                app_evidence.get("reference-app.social-inbox-rc-threading", {}),
+                app_evidence.get("reference-app.social-inbox-app-data", {}),
+            ),
+            "rawMessageBodiesIncluded": False,
+        },
+        "supportBundle": {
+            "formatVersion": 1,
+            "redactionStatus": redaction_status,
+            "digest": multi_node_beta_soak.synthetic_full_digest(
+                "support-bundle-redaction",
+                state.version,
+                redaction_report,
+            ),
+        },
+        "redaction": {
+            "status": redaction_status,
+            "findings": [],
+        },
+    }
+
+
 def copy_staged_apps(state: PipelineState) -> dict[str, Path]:
     settings = state.settings
     copied: dict[str, Path] = {}
@@ -1772,6 +2102,8 @@ def package_catalog_and_reviews(
             "defaultAutomationChannel": "stable",
             "nonProduction": profile.kind != "production",
             "signingProfile": profile.kind,
+            "catalogSigningKeyId": profile.app_key_id,
+            **catalog_channel_editions(state.version),
             "artifactBaseUri": state.settings.artifact_base_uri,
             "firstPartyMaintenancePolicy": "inputs/first-party-app-maintenance-policy.json",
             "requiredMaintenanceApps": list(APP_IDS),
@@ -1806,7 +2138,10 @@ def create_fixture_artifacts(state: PipelineState) -> None:
     for directory in (staged_root, bundle_root, catalog_root, review_root):
         directory.mkdir(parents=True, exist_ok=True)
     maintenance_policies = load_first_party_maintenance_policy(state)
+    app_summaries: list[dict[str, Any]] = []
     for app_id in APP_IDS:
+        app_version = "0.0.0-test"
+        schema_version = "2" if app_id in {"feed-reader", "trust-graph"} else "1"
         staged = staged_root / app_id
         write_text(
             staged / "cryptad-app.properties",
@@ -1814,10 +2149,11 @@ def create_fixture_artifacts(state: PipelineState) -> None:
                 [
                     f"app.id={app_id}",
                     f"app.name={app_id}",
-                    "app.version=0.0.0-test",
+                    f"app.version={app_version}",
                     "app.permissions=queue.read",
                     "app.ui.mode=static",
                     "app.ui.entry=static/index.html",
+                    f"app.data.schema.current={schema_version}",
                     "signature.test-mode=true",
                     "",
                 ]
@@ -1826,13 +2162,31 @@ def create_fixture_artifacts(state: PipelineState) -> None:
         write_text(staged / "static/index.html", "<!doctype html><title>fixture</title>\n")
         write_text(staged / "cryptad-app.digests", "digest.version=1\n")
         write_text(staged / "cryptad-app.signature", "signature.test-mode=true\n")
-        zip_path = bundle_root / f"{app_id}-0.0.0-test.zip"
+        zip_path = bundle_root / f"{app_id}-{app_version}.zip"
         with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
             archive.write(staged / "cryptad-app.properties", "cryptad-app.properties")
             archive.write(staged / "static/index.html", "static/index.html")
         write_text(
             review_root / f"{app_id}-review-receipt.properties",
             f"review.receipt.app.id={app_id}\nreview.receipt.status=reviewed\n",
+        )
+        app_summaries.append(
+            {
+                "appId": app_id,
+                "version": app_version,
+                "artifact": relative_artifact_path(zip_path, state.settings.out_dir),
+                "sha256": sha256_file(zip_path),
+                "sizeBytes": zip_path.stat().st_size,
+                "channel": state.settings.catalog_channel,
+                "supportStatus": policy_value(
+                    maintenance_policies.get(app_id, {}), "supportStatus", "supported"
+                ),
+                "deprecationStatus": policy_value(
+                    maintenance_policies.get(app_id, {}), "deprecationStatus", "none"
+                ),
+                "maintenance": maintenance_summary(maintenance_policies.get(app_id, {})),
+                "nonProduction": True,
+            }
         )
     catalog_lines = [
         "catalog.version=5",
@@ -1854,23 +2208,12 @@ def create_fixture_artifacts(state: PipelineState) -> None:
             "channel": state.settings.catalog_channel,
             "nonProduction": True,
             "signingProfile": "test-fixture",
+            "catalogSigningKeyId": "test-fixture-app-key",
+            **catalog_channel_editions(state.version),
             "firstPartyMaintenancePolicy": "inputs/first-party-app-maintenance-policy.json",
             "requiredMaintenanceApps": list(APP_IDS),
             "maintenancePolicyComplete": len(maintenance_policies) == len(APP_IDS),
-            "apps": [
-                {
-                    "appId": app_id,
-                    "supportStatus": policy_value(
-                        maintenance_policies.get(app_id, {}), "supportStatus", "supported"
-                    ),
-                    "deprecationStatus": policy_value(
-                        maintenance_policies.get(app_id, {}), "deprecationStatus", "none"
-                    ),
-                    "maintenance": maintenance_summary(maintenance_policies.get(app_id, {})),
-                    "nonProduction": True,
-                }
-                for app_id in APP_IDS
-            ],
+            "apps": app_summaries,
         },
     )
     write_json(
@@ -2010,8 +2353,9 @@ def run_release_certification(state: PipelineState, env: dict[str, str], cert_ou
         args.append("--require-multi-node-soak")
     if state.settings.mode != "developer-dry-run":
         args.append("--require-history")
-    if state.settings.previous_summary:
-        args.extend(["--previous-summary", str(state.settings.previous_summary)])
+    history_summary = previous_release_certification_summary_for_certification(state.settings)
+    if history_summary is not None:
+        args.extend(["--previous-summary", str(history_summary)])
     if state.settings.waiver_file:
         args.extend(["--waiver-file", str(state.settings.waiver_file)])
     cert_env = dict(env)
@@ -2061,6 +2405,78 @@ def uses_self_test_multi_node_topology(settings: Settings) -> bool:
     except ValueError:
         rel = config.name
     return rel == "tools/release-certification/fixtures/self-test-multi-node-beta-soak.json"
+
+
+def is_release_certification_history_summary(path: Path) -> bool:
+    value = read_json(path)
+    return isinstance(value, dict) and release_certification.previous_summary_contract_error(value) == ""
+
+
+def previous_release_certification_summary_for_certification(settings: Settings) -> Path | None:
+    if settings.previous_release_certification_summary is not None:
+        return settings.previous_release_certification_summary
+    if settings.previous_summary is not None and is_release_certification_history_summary(settings.previous_summary):
+        return settings.previous_summary
+    return None
+
+
+def previous_candidate_summary_validation_errors(settings: Settings) -> list[str]:
+    if settings.previous_summary is None:
+        return ["previous beta candidate summary path is missing"]
+    return multi_node_beta_soak.validate_previous_beta_candidate_summary(
+        read_json(settings.previous_summary),
+        production=settings.mode == "production-beta",
+        max_age_days=90 if settings.mode == "production-beta" else None,
+    )
+
+
+def previous_candidate_upgrade_binding_errors(
+    compact: dict[str, Any],
+    previous_summary: dict[str, Any] | None,
+) -> list[str]:
+    upgrade = compact.get("previousCandidateUpgrade")
+    if not isinstance(upgrade, dict):
+        return ["previousCandidateUpgrade is missing"]
+    if not isinstance(previous_summary, dict):
+        return ["previous beta candidate summary is missing or malformed"]
+    errors: list[str] = []
+    expected_release_id = previous_summary.get("releaseId")
+    expected_version = previous_summary.get("version")
+    if upgrade.get("previousReleaseId") != expected_release_id:
+        errors.append("upgrade previousReleaseId does not match supplied previous summary releaseId")
+    if upgrade.get("previousVersion") != expected_version:
+        errors.append("upgrade previousVersion does not match supplied previous summary version")
+    expected_drill_digest = multi_node_beta_soak.previous_candidate_drill_digest(previous_summary)
+    if upgrade.get("previousSummaryDrillDigest") != expected_drill_digest:
+        errors.append(
+            "upgrade previousSummaryDrillDigest does not match supplied previous summary drill metadata"
+        )
+    return errors
+
+
+def previous_candidate_upgrade_ready(compact: dict[str, Any], previous_summary: dict[str, Any] | None) -> bool:
+    upgrade = compact.get("previousCandidateUpgrade")
+    if not isinstance(upgrade, dict):
+        return False
+    if upgrade.get("status") != "pass":
+        return False
+    if previous_candidate_upgrade_binding_errors(compact, previous_summary):
+        return False
+    expected = {
+        "previousSummaryConfigured": True,
+        "previousSummaryProvided": True,
+        "previousSummaryValid": True,
+        "currentUpgradePathRepresented": True,
+        "rawDataIncluded": False,
+        "firstPartyAppMigrationStatus": "pass",
+        "backupBeforeUpdateStatus": "pass",
+        "restoreIntoCleanNodeStatus": "pass",
+        "socialInboxMigrationStatus": "pass",
+        "trustGraphMigrationStatus": "pass",
+        "supportBundleRedactionStatus": "pass",
+        "rollbackStatus": "pass",
+    }
+    return all(upgrade.get(field) == expected_value for field, expected_value in expected.items())
 
 
 def compact_multi_node_summary_for_release(summary: dict[str, Any] | None, *, strict: bool = False) -> dict[str, Any]:
@@ -2419,14 +2835,42 @@ def evaluate_promotion(state: PipelineState, summaries: dict[str, Any]) -> dict[
             "multi-node-beta-soak",
         )
         if settings.mode == "production-beta":
+            previous_summary_value = read_json(settings.previous_summary) if settings.previous_summary else None
+            previous_summary_errors = previous_candidate_summary_validation_errors(settings)
+            previous_binding_errors = previous_candidate_upgrade_binding_errors(
+                multi_node_compact,
+                previous_summary_value,
+            )
             add_gate(
                 "multi-node-beta.previous-candidate-summary",
-                settings.previous_summary is not None
-                and settings.previous_summary.is_file()
-                and scenario_statuses.get("upgrade-from-previous-candidate") == "pass",
-                "Production beta promotion requires a previous release-certification summary and passing previous-candidate upgrade drill evidence.",
+                not previous_summary_errors
+                and not previous_binding_errors
+                and scenario_statuses.get("upgrade-from-previous-candidate") == "pass"
+                and previous_candidate_upgrade_ready(multi_node_compact, previous_summary_value),
+                (
+                    "Production beta promotion requires a valid previous beta candidate summary, "
+                    "passing previous-candidate upgrade drill evidence, app-data migration, "
+                    "backup/restore, Social Inbox and Trust Graph migration, rollback, and "
+                    "redacted support-bundle proof."
+                ),
                 "multi-node-beta-soak",
             )
+            if previous_summary_errors:
+                add_gate(
+                    "multi-node-beta.previous-candidate-summary-validation",
+                    False,
+                    "Previous beta candidate summary validation failed: "
+                    + "; ".join(previous_summary_errors[:5]),
+                    "multi-node-beta-soak",
+                )
+            if previous_binding_errors:
+                add_gate(
+                    "multi-node-beta.previous-candidate-upgrade-binding",
+                    False,
+                    "Previous beta candidate upgrade evidence does not match supplied previous summary: "
+                    + "; ".join(previous_binding_errors[:5]),
+                    "multi-node-beta-soak",
+                )
             multi_node_mode = str(multi_node_compact.get("mode", "missing"))
             add_gate(
                 "multi-node-beta.production-evidence-mode",
@@ -3216,6 +3660,7 @@ def build_final_summary(
     summary_promotion_ready = bool(command_and_redaction_ok and status == "pass" and promotion["promotionReady"])
     final_promotion = dict(promotion)
     final_promotion["promotionReady"] = summary_promotion_ready
+    previous_candidate_metadata = previous_candidate_metadata_for_release(state, redaction_report)
     multi_node_compact = dict(final_promotion.get("multiNodeBetaSoak", {}))
     if not multi_node_compact:
         multi_node_compact = {
@@ -3233,7 +3678,9 @@ def build_final_summary(
         "generatedAt": utc_now(),
         "startedAt": state.started_at,
         "mode": settings.mode,
+        "releaseId": f"cryptad-beta-{state.version}",
         "version": state.version,
+        "artifactBaseUri": settings.artifact_base_uri,
         "status": status,
         "promotionReady": summary_promotion_ready,
         "nonRelease": promotion["nonRelease"],
@@ -3260,6 +3707,7 @@ def build_final_summary(
         ),
         "promotion": final_promotion,
         "redaction": redaction_report,
+        "previousCandidateMetadata": previous_candidate_metadata,
         "commands": [dataclasses.asdict(command) for command in state.commands],
         "artifacts": artifacts,
         "goNoGo": {
@@ -3796,7 +4244,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--emergency-skip-live-network", action="store_true", help="Production-beta emergency/test escape hatch for live evidence.")
     parser.add_argument("--emergency-skip-build", action="store_true", help="Production-beta emergency/test escape hatch for skipped Gradle stages.")
     parser.add_argument("--allow-test-signing-in-production", action="store_true", help="Explicit test escape hatch; artifacts remain non-release.")
-    parser.add_argument("--previous-summary", type=Path, help="Previous release-certification summary for history comparison.")
+    parser.add_argument(
+        "--previous-summary",
+        type=Path,
+        help="Previous beta candidate summary for production upgrade gating.",
+    )
+    parser.add_argument(
+        "--previous-release-certification-summary",
+        type=Path,
+        help="Previous release-certification summary for strict history comparison.",
+    )
     parser.add_argument("--waiver-file", type=Path, help="Structured release or go/no-go dashboard waiver JSON file.")
     parser.add_argument("--timeout-seconds", type=int, default=1800)
     parser.add_argument("--no-clean-out-dir", action="store_true", help="Do not remove an existing output directory before running.")
@@ -3808,6 +4265,20 @@ def settings_from_args(args: argparse.Namespace) -> Settings:
     out_dir = (workspace / args.out_dir).resolve() if not args.out_dir.is_absolute() else args.out_dir.resolve()
     if args.run_multi_node_soak and args.multi_node_soak_summary is not None:
         raise SystemExit("--run-multi-node-soak cannot be combined with --multi-node-soak-summary.")
+    previous_summary = resolve_workspace_path_arg(args.previous_summary, workspace)
+    previous_release_certification_summary = resolve_workspace_path_arg(
+        args.previous_release_certification_summary,
+        workspace,
+    )
+    if previous_release_certification_summary is not None and not is_release_certification_history_summary(
+        previous_release_certification_summary
+    ):
+        raise SystemExit(
+            "previous release-certification history summary is invalid: "
+            + release_certification.previous_summary_contract_error(
+                read_json(previous_release_certification_summary) or {}
+            )
+        )
     multi_node_soak_summary = None
     if not args.run_multi_node_soak:
         multi_node_soak_summary = (
@@ -3836,6 +4307,30 @@ def settings_from_args(args: argparse.Namespace) -> Settings:
     run_multi_node_soak = args.run_multi_node_soak or multi_node_soak_summary is None
     require_sandbox = args.require_sandbox_provider_tests or args.mode == "production-beta"
     if args.mode == "production-beta":
+        if previous_summary is None:
+            raise SystemExit(
+                "production-beta mode requires --previous-summary with a validated previous beta candidate summary."
+            )
+        previous_summary_errors = multi_node_beta_soak.validate_previous_beta_candidate_summary(
+            read_json(previous_summary),
+            production=True,
+            max_age_days=90,
+        )
+        if previous_summary_errors:
+            raise SystemExit(
+                "production-beta previous beta candidate summary is invalid: "
+                + "; ".join(previous_summary_errors[:5])
+            )
+        default_history_summary = workspace / release_certification.DEFAULT_HISTORY_DIR / "latest-summary.json"
+        if (
+            previous_release_certification_summary is None
+            and not default_history_summary.is_file()
+            and not is_release_certification_history_summary(previous_summary)
+        ):
+            raise SystemExit(
+                "production-beta mode requires --previous-release-certification-summary or "
+                f"{release_certification.DEFAULT_HISTORY_DIR.as_posix()}/latest-summary.json for release history."
+            )
         if (args.skip_gradle or args.skip_full_build) and not args.emergency_skip_build:
             raise SystemExit(
                 "production-beta mode cannot use --skip-gradle or --skip-full-build without --emergency-skip-build; "
@@ -3876,7 +4371,7 @@ def settings_from_args(args: argparse.Namespace) -> Settings:
         emergency_skip_live_network=args.emergency_skip_live_network,
         emergency_skip_build=args.emergency_skip_build,
         allow_test_signing_in_production=args.allow_test_signing_in_production,
-        previous_summary=resolve_workspace_path_arg(args.previous_summary, workspace),
+        previous_summary=previous_summary,
         waiver_file=resolve_workspace_path_arg(args.waiver_file, workspace),
         timeout_seconds=args.timeout_seconds,
         clean_out_dir=not args.no_clean_out_dir,
@@ -3885,6 +4380,7 @@ def settings_from_args(args: argparse.Namespace) -> Settings:
         multi_node_soak_config=multi_node_soak_config,
         require_multi_node_soak=require_multi_node_soak,
         multi_node_mode=args.multi_node_mode,
+        previous_release_certification_summary=previous_release_certification_summary,
     )
 
 
@@ -4393,12 +4889,94 @@ def write_minimal_promotion_artifacts(out_dir: Path) -> None:
     write_text(out_dir / "catalog" / CANONICAL_CATALOG_SIGNATURE, "signature=ok\n")
 
 
+def previous_candidate_source_metadata(version: str) -> dict[str, Any]:
+    fixture = read_json(multi_node_beta_soak.previous_candidate_fixture_path()) or {}
+    metadata = {
+        field: json.loads(json.dumps(fixture[field], sort_keys=True))
+        for field in multi_node_beta_soak.PREVIOUS_CANDIDATE_SOURCE_METADATA_FIELDS
+        if field in fixture
+    }
+    for app in metadata.get("firstPartyApps", []):
+        if isinstance(app, dict):
+            app["version"] = version
+    return metadata
+
+
+def write_valid_previous_candidate_summary(path: Path) -> None:
+    write_json(
+        path,
+        multi_node_beta_soak.build_previous_candidate_summary(
+            {
+                "schemaVersion": 1,
+                "tool": "release-certification",
+                "version": "previous-beta",
+                "status": "pass",
+                "releaseCandidatePassed": True,
+                "metadata": {"gitCommit": "self-test-previous-git"},
+                "evidence": [{"id": "self-test.previous", "status": "pass"}],
+            },
+            {
+                "schemaVersion": 1,
+                "tool": "production-beta-release",
+                "version": "previous-beta",
+                "status": "pass",
+                "promotionReady": True,
+                "artifactBaseUri": "https://downloads.crypta.invalid/production-beta/previous-beta",
+                **previous_candidate_source_metadata("previous-beta"),
+            },
+            release_certification_digest=multi_node_beta_soak.synthetic_full_digest(
+                "self-test-release-certification"
+            ),
+            production_beta_digest=multi_node_beta_soak.synthetic_full_digest("self-test-production-beta"),
+            generated_at=utc_now(),
+        ),
+    )
+
+
+def write_valid_release_certification_history_summary(path: Path) -> None:
+    write_json(
+        path,
+        {
+            "schemaVersion": 1,
+            "tool": release_certification.TOOL_NAME,
+            "status": "pass",
+            "releaseCandidatePassed": True,
+            "evidence": [{"id": "interop.smoke", "status": "pass"}],
+        },
+    )
+
+
 def passing_multi_node_beta_soak_summary() -> dict[str, Any]:
     with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-multi-node-summary-") as temp_name:
         base_dir = Path(temp_name)
         write_json(
             base_dir / "previous-summary.json",
-            {"schemaVersion": 1, "status": "pass", "promotionReady": True},
+            multi_node_beta_soak.build_previous_candidate_summary(
+                {
+                    "schemaVersion": 1,
+                    "tool": "release-certification",
+                    "version": "previous-beta",
+                    "status": "pass",
+                    "releaseCandidatePassed": True,
+                    "metadata": {"gitCommit": "self-test-previous-git"},
+                    "evidence": [{"id": "self-test.previous", "status": "pass"}],
+                },
+                {
+                    "schemaVersion": 1,
+                    "tool": "production-beta-release",
+                    "version": "previous-beta",
+                    "status": "pass",
+                    "promotionReady": True,
+                    "artifactBaseUri": "https://downloads.crypta.invalid/production-beta/previous-beta",
+                    **previous_candidate_source_metadata("previous-beta"),
+                },
+                release_certification_digest=multi_node_beta_soak.synthetic_full_digest(
+                    "self-test-release-certification"
+                ),
+                production_beta_digest=multi_node_beta_soak.synthetic_full_digest(
+                    "self-test-production-beta"
+                ),
+            ),
         )
         write_json(
             base_dir / "current-summary.json",
@@ -5533,7 +6111,11 @@ def assert_attached_multi_node_summary_is_not_marked_generated() -> None:
         workspace.mkdir(parents=True)
         out_dir = workspace / "build/production-beta"
         attached_summary = workspace / "attached/multi-node-summary.json"
+        previous_summary = workspace / "attached/previous-beta-candidate-summary.json"
+        history_summary = workspace / "attached/previous-release-certification-summary.json"
         write_json(attached_summary, passing_promotion_summaries()["multiNodeBetaSoak"])
+        write_valid_previous_candidate_summary(previous_summary)
+        write_valid_release_certification_history_summary(history_summary)
         parser = build_parser()
         settings = settings_from_args(
             parser.parse_args(
@@ -5548,6 +6130,10 @@ def assert_attached_multi_node_summary_is_not_marked_generated() -> None:
                     "https://downloads.crypta.org/self-test",
                     "--multi-node-soak-summary",
                     str(attached_summary.relative_to(workspace)),
+                    "--previous-summary",
+                    str(previous_summary.relative_to(workspace)),
+                    "--previous-release-certification-summary",
+                    str(history_summary.relative_to(workspace)),
                 ]
             )
         )
@@ -5784,6 +6370,56 @@ def assert_missing_previous_summary_blocks_production_multi_node_promotion() -> 
         assert promotion["promotionReady"] is False, promotion
 
 
+def assert_mismatched_previous_summary_blocks_production_multi_node_promotion() -> None:
+    with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-mismatched-previous-") as temp_name:
+        workspace = Path(temp_name) / "repo"
+        workspace.mkdir(parents=True)
+        out_dir = workspace / "build/production-beta"
+        previous_summary = workspace / "previous-beta-candidate-summary.json"
+        write_valid_previous_candidate_summary(previous_summary)
+        settings = dataclasses.replace(
+            cleanup_test_settings(workspace, out_dir),
+            mode="production-beta",
+            artifact_base_uri="https://downloads.crypta.network/production-beta/self-test",
+            require_live_network=True,
+            require_sandbox_provider_tests=True,
+            skip_gradle=False,
+            skip_full_build=False,
+            allow_dirty_workspace=False,
+            require_multi_node_soak=True,
+            previous_summary=previous_summary,
+        )
+        write_minimal_promotion_artifacts(out_dir)
+        state = PipelineState(settings, "self-test", utc_now(), [], [], [])
+        state.signing_profile = production_signing_profile()
+        mark_required_pipeline_stages_passed(state)
+        summaries = passing_promotion_summaries()
+        for scenario in summaries["multiNodeBetaSoak"]["scenarios"]:
+            if scenario.get("id") == "upgrade-from-previous-candidate":
+                scenario["evidence"]["previousVersion"] = "different-beta"
+                break
+
+        promotion = evaluate_promotion(state, summaries)
+        failed_ids = {gate["id"] for gate in promotion["gates"] if gate["status"] == "fail"}
+
+        assert "multi-node-beta.previous-candidate-summary" in failed_ids, promotion
+        assert "multi-node-beta.previous-candidate-upgrade-binding" in failed_ids, promotion
+        assert promotion["promotionReady"] is False, promotion
+
+        write_valid_previous_candidate_summary(previous_summary)
+        supplied_previous_summary = read_json(previous_summary) or {}
+        catalog = supplied_previous_summary.get("catalog")
+        if isinstance(catalog, dict):
+            catalog["stableChannelEdition"] = int(catalog.get("stableChannelEdition", 0)) + 10
+        write_json(previous_summary, supplied_previous_summary)
+
+        promotion = evaluate_promotion(state, passing_promotion_summaries())
+        failed_ids = {gate["id"] for gate in promotion["gates"] if gate["status"] == "fail"}
+
+        assert "multi-node-beta.previous-candidate-upgrade-binding" in failed_ids, promotion
+        assert promotion["promotionReady"] is False, promotion
+
+
 def assert_multi_node_mode_is_only_forwarded_when_overridden() -> None:
     with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-multi-node-mode-") as temp_name:
         workspace = Path(temp_name) / "repo"
@@ -5826,6 +6462,71 @@ def assert_multi_node_mode_is_only_forwarded_when_overridden() -> None:
             assert "--multi-node-mode" in captured_args[-1], captured_args[-1]
             mode_index = captured_args[-1].index("--multi-node-mode")
             assert captured_args[-1][mode_index + 1] == "hybrid", captured_args[-1]
+        finally:
+            globals()["run_command"] = original_run_command
+
+
+def assert_previous_candidate_summary_is_not_forwarded_as_cert_history() -> None:
+    with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-previous-history-") as temp_name:
+        workspace = Path(temp_name) / "repo"
+        workspace.mkdir(parents=True)
+        out_dir = workspace / "build/production-beta"
+        cert_out = workspace / "build/certification"
+        previous_candidate = workspace / "previous-beta-candidate-summary.json"
+        release_history = workspace / "previous-release-certification-summary.json"
+        write_valid_previous_candidate_summary(previous_candidate)
+        write_json(
+            release_history,
+            {
+                "schemaVersion": 1,
+                "tool": release_certification.TOOL_NAME,
+                "status": "pass",
+                "evidence": [{"id": "interop.smoke", "status": "pass"}],
+            },
+        )
+        captured_args: list[list[str]] = []
+
+        def fake_run_command(
+            state: PipelineState,
+            name: str,
+            args: list[str],
+            env: dict[str, str] | None = None,
+            timeout_seconds: int = 0,
+            allow_failure: bool = False,
+        ) -> CommandResult:
+            del state, env, timeout_seconds, allow_failure
+            captured_args.append(list(args))
+            return CommandResult(name, list(args), 0, 1, "", "")
+
+        original_run_command = globals()["run_command"]
+        try:
+            globals()["run_command"] = fake_run_command
+            candidate_settings = dataclasses.replace(
+                cleanup_test_settings(workspace, out_dir),
+                mode="release-candidate",
+                previous_summary=previous_candidate,
+            )
+            run_release_certification(
+                PipelineState(candidate_settings, "self-test", utc_now(), [], [], []),
+                {},
+                cert_out,
+            )
+            assert "--require-history" in captured_args[-1], captured_args[-1]
+            assert "--previous-summary" not in captured_args[-1], captured_args[-1]
+
+            history_settings = dataclasses.replace(
+                cleanup_test_settings(workspace, out_dir),
+                mode="release-candidate",
+                previous_summary=release_history,
+            )
+            run_release_certification(
+                PipelineState(history_settings, "self-test", utc_now(), [], [], []),
+                {},
+                cert_out,
+            )
+            assert "--previous-summary" in captured_args[-1], captured_args[-1]
+            previous_index = captured_args[-1].index("--previous-summary")
+            assert captured_args[-1][previous_index + 1] == str(release_history), captured_args[-1]
         finally:
             globals()["run_command"] = original_run_command
 
@@ -5875,7 +6576,11 @@ def assert_production_beta_cli_rejects_unsafe_strict_inputs() -> None:
         make_self_test_workspace(workspace)
         parser = build_parser()
         summary_path = workspace / "multi-node-summary.json"
+        previous_summary_path = workspace / "previous-beta-candidate-summary.json"
+        history_summary_path = workspace / "previous-release-certification-summary.json"
         write_json(summary_path, passing_promotion_summaries()["multiNodeBetaSoak"])
+        write_valid_previous_candidate_summary(previous_summary_path)
+        write_valid_release_certification_history_summary(history_summary_path)
         base_args = [
             "--workspace-root",
             str(workspace),
@@ -5885,7 +6590,34 @@ def assert_production_beta_cli_rejects_unsafe_strict_inputs() -> None:
             "production-beta",
             "--artifact-base-uri",
             "https://downloads.crypta.network/production-beta/self-test",
+            "--previous-summary",
+            str(previous_summary_path.relative_to(workspace)),
+            "--previous-release-certification-summary",
+            str(history_summary_path.relative_to(workspace)),
         ]
+        try:
+            settings_from_args(
+                parser.parse_args(
+                    [
+                        "--workspace-root",
+                        str(workspace),
+                        "--out-dir",
+                        "build/production-beta",
+                        "--mode",
+                        "production-beta",
+                        "--artifact-base-uri",
+                        "https://downloads.crypta.network/production-beta/self-test",
+                        "--multi-node-soak-summary",
+                        str(summary_path.relative_to(workspace)),
+                        "--previous-release-certification-summary",
+                        str(history_summary_path.relative_to(workspace)),
+                    ]
+                )
+            )
+        except SystemExit as exc:
+            assert "requires --previous-summary" in str(exc), exc
+        else:
+            raise AssertionError("production-beta accepted missing previous beta candidate summary")
 
         for extra_args, expected in (
             (
@@ -6720,6 +7452,79 @@ def assert_maintenance_policy_input_copy_redacts_invalid_values() -> None:
             assert forbidden not in warning_text, f"maintenance warning leaked {forbidden}"
 
 
+def assert_final_summary_emits_previous_candidate_metadata() -> None:
+    with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-previous-metadata-") as temp_name:
+        workspace = Path(temp_name) / "repo"
+        make_self_test_workspace(workspace)
+        settings = dataclasses.replace(
+            cleanup_test_settings(workspace, workspace / "build/production-beta"),
+            mode="production-beta",
+            artifact_base_uri="https://downloads.crypta.network/production-beta/self-test",
+            require_live_network=True,
+            require_sandbox_provider_tests=True,
+            allow_dirty_workspace=False,
+        )
+        state = PipelineState(settings, "270", utc_now(), [], [], [])
+        state.signing_profile = production_signing_profile()
+        copy_first_party_maintenance_policy_input(state)
+        create_fixture_artifacts(state)
+        fixtures = workspace / "tools/release-certification/fixtures"
+        app_platform_summary = read_json(fixtures / "self-test-app-platform-smoke.json")
+        assert app_platform_summary is not None
+        write_json(settings.out_dir / "evidence/app-platform-smoke.json", app_platform_summary)
+        promotion = {
+            "status": "pass",
+            "promotionReady": True,
+            "nonRelease": False,
+            "failedGateCount": 0,
+            "gates": [],
+            "multiNodeBetaSoak": passing_promotion_summaries()["multiNodeBetaSoak"],
+        }
+        redaction_report = {
+            "schemaVersion": 1,
+            "status": "pass",
+            "scannedRoot": "<release-out>",
+            "findingCount": 0,
+            "findings": [],
+        }
+
+        summary = build_final_summary(state, promotion, redaction_report, archive=None)
+        metadata = summary.get("previousCandidateMetadata")
+        assert isinstance(metadata, dict), summary
+        assert set(multi_node_beta_soak.PREVIOUS_CANDIDATE_SOURCE_METADATA_FIELDS).issubset(
+            metadata
+        ), metadata
+        assert metadata["catalog"]["catalogDigest"].startswith("sha256:"), metadata
+        assert metadata["firstPartyApps"], metadata
+
+        previous_summary = multi_node_beta_soak.build_previous_candidate_summary(
+            {
+                "schemaVersion": 1,
+                "tool": "release-certification",
+                "version": state.version,
+                "status": "pass",
+                "releaseCandidatePassed": True,
+                "metadata": {"gitCommit": "self-test-git-commit"},
+                "evidence": [{"id": "self-test.previous", "status": "pass"}],
+            },
+            summary,
+            release_certification_digest=multi_node_beta_soak.synthetic_full_digest(
+                "self-test-release-certification",
+                state.version,
+            ),
+            production_beta_digest=multi_node_beta_soak.synthetic_full_digest(
+                "self-test-production-beta",
+                state.version,
+            ),
+            generated_at=utc_now(),
+        )
+        errors = multi_node_beta_soak.validate_previous_beta_candidate_summary(
+            previous_summary,
+            production=True,
+        )
+        assert errors == [], errors
+
+
 def run_self_test() -> None:
     assert_safe_copy_tree_rejects_symlink()
     assert_safe_copy_tree_rejects_symlinked_root()
@@ -6750,7 +7555,9 @@ def run_self_test() -> None:
     assert_attached_multi_node_non_promotable_summary_blocks_promotion()
     assert_attached_multi_node_blockers_and_warnings_block_promotion()
     assert_missing_previous_summary_blocks_production_multi_node_promotion()
+    assert_mismatched_previous_summary_blocks_production_multi_node_promotion()
     assert_multi_node_mode_is_only_forwarded_when_overridden()
+    assert_previous_candidate_summary_is_not_forwarded_as_cert_history()
     assert_multi_node_paths_resolve_from_workspace()
     assert_production_beta_cli_rejects_unsafe_strict_inputs()
     assert_cleanup_refuses_protected_workspace_paths()
@@ -6775,6 +7582,7 @@ def run_self_test() -> None:
     assert_missing_maintenance_policy_warns_in_dry_run_and_fails_strict_modes()
     assert_incomplete_maintenance_policy_warns_in_dry_run_and_fails_strict_modes()
     assert_maintenance_policy_input_copy_redacts_invalid_values()
+    assert_final_summary_emits_previous_candidate_metadata()
 
     with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-self-test-") as temp_name:
         workspace = Path(temp_name) / "repo"

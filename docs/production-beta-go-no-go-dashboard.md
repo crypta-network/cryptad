@@ -68,7 +68,7 @@ Production beta mode fails closed when these critical inputs are missing or malf
 | `app-platform-smoke/summary.json` | Platform API freeze, app signing, catalog/review, consent, legacy admin, third-party developer beta, and security response evidence. |
 | `live-network-beta-smoke/summary.json` | Required production beta live-network smoke evidence. |
 | `network-scale-soak/summary.json` | Network-scale budget, pressure, and redaction evidence. |
-| `multi-node-beta-soak/summary.json` | Multi-node soak, upgrade drill, scenario, and redaction evidence. |
+| `multi-node-beta-soak/summary.json` | Multi-node soak, previous-candidate upgrade drill, scenario, app migration, backup/restore, Social Inbox, Trust Graph, support-bundle, and redaction evidence. |
 
 Developer dry-runs tolerate missing production-only inputs so PR and local runs remain CI-safe. A
 dry-run can complete successfully, but the dashboard still marks non-release artifacts as
@@ -97,6 +97,11 @@ production launch set.
 - production beta mode using test-only or generated signing material;
 - production beta artifact marked `nonRelease=true`;
 - production beta summary with failed promotion gates or `promotionReady=false`.
+
+Previous-candidate upgrade evidence is a production-beta launch blocker. Missing, failing, warning,
+or redaction-unsafe previous-candidate evidence makes the dashboard decision `no-go` in
+production-beta mode. A warning is allowed only in developer or PR-safe contexts where the
+candidate remains non-release.
 
 ## Waiver format
 
@@ -151,8 +156,8 @@ These findings always produce `no-go`:
 - fixture evidence, skipped Gradle build/stage/sign/verify stages, or dirty/unknown workspace in
   production beta;
 - missing or failing live-network beta evidence, sandbox provider evidence, production signing,
-  previous-candidate multi-node upgrade evidence, multi-node redaction, or ecosystem RC gates in
-  production beta;
+  previous-candidate summary validation, previous-candidate multi-node upgrade evidence,
+  multi-node redaction, or ecosystem RC gates in production beta;
 - malformed or expired waiver records.
 
 The scanner allows deterministic placeholders such as `<redacted-private-insert-uri>`,
@@ -174,9 +179,31 @@ Then review:
 - top warnings;
 - waivers used;
 - domain table;
+- previous candidate upgrade section;
 - redaction status;
 - required follow-ups;
 - redacted artifact references.
+
+The previous candidate upgrade section reports:
+
+| Field | Meaning |
+| --- | --- |
+| Previous release | `releaseId` from the verified previous beta candidate summary. |
+| Previous version | Version upgraded from. |
+| Current version | Version upgraded to. |
+| Previous summary | Whether the configured previous summary was provided, schema-valid, passing, and promotable. |
+| Evidence binding | Whether `previousSummaryDrillDigest` in the multi-node upgrade evidence matches the supplied previous summary metadata. |
+| Upgrade drill | `multi-node-beta.upgrade-drill` status. |
+| App migrations | Feed Reader, Social Inbox, and Trust Graph app-data migration status. |
+| Backup before update | Whether backup-before-update coverage passed. |
+| Restore into clean node | Whether restore portability passed. |
+| Social Inbox | Social Inbox schema migration status without raw message bodies. |
+| Trust Graph | Trust Graph state migration status without raw trust statements. |
+| Support bundle | Redaction status for the support bundle generated after the failed upgrade path. |
+
+The dashboard treats waiver attempts for critical previous-candidate redaction or security findings
+as invalid. Waivers can document release-manager context, but they cannot convert raw/private
+material or missing production upgrade evidence into a launchable `go`.
 
 The Markdown report only links or names redacted artifacts. It must not include raw JSON dumps,
 raw command output, local absolute paths, or secret-bearing values.

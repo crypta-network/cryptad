@@ -669,6 +669,15 @@ back, app-data backup and restore paths stay metadata-only, subscription and Tru
 stay bounded, Social Inbox multi-source behavior is represented, and support bundle artifacts pass
 redaction checks.
 
+The `previous-candidate-upgrade-path` row records PR-272 production-beta coverage. It uses the
+multi-node evidence above, but treats the previous-candidate path as its own release-operations
+coverage area: previous beta candidate summary validation, the `multi-node-beta.upgrade-drill`
+transition, app-data migrations, backup/restore, Social Inbox schema migration, Trust Graph state
+migration, rollback after failed migration, support bundle generation after the failed path, and
+redaction pass. In production-beta mode, missing, malformed, failing, stale, simulated,
+self-test-derived, non-promotable, or redaction-unsafe previous-candidate evidence remains a
+blocker.
+
 The `ecosystem-rc-certification-gate` row records PR-258 final ecosystem release-candidate
 certification. It is the release-manager summary row for the `ecosystem.rc-certification` gate and
 is documented in [ecosystem-rc-certification-gate.md](ecosystem-rc-certification-gate.md). The row
@@ -733,6 +742,34 @@ backup/restore, subscription pressure, Trust Graph import, Social Inbox multi-so
 support bundle drill, and redaction. Simulated and release-candidate modes may warn when no
 previous beta candidate summary is supplied. Strict production promotion can require the previous
 summary and fail closed when it is absent.
+
+The previous beta candidate summary consumed by the upgrade drill is a separate schema:
+`kind=cryptad-previous-beta-candidate-summary`, `schemaVersion=1`. Generate it from the previous
+candidate's sanitized release-certification and production-beta summaries:
+
+```bash
+python3 tools/release-certification/multi_node_beta_soak.py previous-summary \
+  --release-certification-summary build/previous/release-certification-summary.json \
+  --production-beta-summary build/previous/production-beta-summary.json \
+  --out build/previous/previous-beta-candidate-summary.json
+```
+
+Then verify it before using it for promotion:
+
+```bash
+python3 tools/release-certification/multi_node_beta_soak.py verify-previous-summary \
+  --summary build/previous/previous-beta-candidate-summary.json \
+  --strict \
+  --max-age-days 90
+```
+
+The schema requires source digests, catalog channel editions, Platform API baseline metadata,
+first-party app bundle and migration metadata for `feed-reader`, `profile-publisher`,
+`trust-graph`, and `social-inbox`, app-data backup/restore metadata, Trust Graph state metadata,
+Social Inbox state metadata, support-bundle redaction metadata, and a passing redaction block. It
+forbids raw app data, raw fetched content, raw social message bodies, raw trust statements, private
+insert URIs, private keys, tokens, local absolute paths, AppleDouble sidecars, and `__MACOSX`
+references.
 
 See [multi-node-beta-soak-and-upgrade-drill.md](multi-node-beta-soak-and-upgrade-drill.md) for the
 topology schema, mode behavior, redaction rules, and production beta integration.

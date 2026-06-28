@@ -9,7 +9,10 @@ node reachability when explicitly requested.
 from __future__ import annotations
 
 import argparse
+import contextlib
+import datetime as dt
 import hashlib
+import io
 import json
 import re
 import tempfile
@@ -24,10 +27,14 @@ SCHEMA_VERSION = 1
 CONFIG_KIND = "cryptad-multi-node-beta-soak-config"
 PLAN_KIND = "cryptad-multi-node-beta-soak-plan"
 SUMMARY_KIND = "cryptad-multi-node-beta-soak-summary"
+PREVIOUS_CANDIDATE_SUMMARY_KIND = "cryptad-previous-beta-candidate-summary"
+PREVIOUS_CANDIDATE_SUMMARY_KINDS = frozenset({PREVIOUS_CANDIDATE_SUMMARY_KIND})
 SUMMARY_FILE_NAME = "multi-node-beta-soak-summary.json"
 COMPAT_SUMMARY_FILE_NAME = "summary.json"
 REPORT_FILE_NAME = "multi-node-beta-soak-summary.md"
+PREVIOUS_CANDIDATE_REPORT_FILE_NAME = "previous-beta-candidate-summary.md"
 FIXTURE_NAME = "self-test-multi-node-beta-soak.json"
+PREVIOUS_CANDIDATE_FIXTURE_NAME = "previous-beta-candidate-summary-valid.json"
 MODES = ("simulated", "hybrid", "live")
 DURATION_PROFILES = ("ci-smoke", "rc-soak", "24h-soak")
 CATALOG_CHANNELS = ("stable", "beta", "nightly", "deprecated")
@@ -40,6 +47,39 @@ FIRST_PARTY_APPS = (
     "social-inbox",
 )
 REQUIRED_LIFECYCLE_APPS = ("feed-reader", "social-inbox", "trust-graph")
+PREVIOUS_CANDIDATE_REQUIRED_APPS = (
+    "feed-reader",
+    "profile-publisher",
+    "trust-graph",
+    "social-inbox",
+)
+PREVIOUS_CANDIDATE_MIGRATION_APPS = ("feed-reader", "social-inbox", "trust-graph")
+PREVIOUS_CANDIDATE_SOURCE_METADATA_FIELDS = (
+    "catalog",
+    "platformApi",
+    "firstPartyApps",
+    "appData",
+    "trustGraph",
+    "socialInbox",
+    "supportBundle",
+    "redaction",
+)
+PREVIOUS_CANDIDATE_DRILL_DIGEST_FIELDS = (
+    "schemaVersion",
+    "kind",
+    "releaseId",
+    "version",
+    *PREVIOUS_CANDIDATE_SOURCE_METADATA_FIELDS,
+)
+PREVIOUS_CANDIDATE_SOURCE_METADATA_CONTAINERS = (
+    "previousCandidateMetadata",
+    "previousBetaCandidateMetadata",
+    "previousCandidateSummary",
+    "previousBetaCandidateSummary",
+)
+RELEASE_CERTIFICATION_TOOL_NAME = "release-certification"
+PRODUCTION_BETA_TOOL_NAME = "production-beta-release"
+PRODUCTION_BETA_SUMMARY_KINDS = frozenset({"cryptad-production-beta-release-summary"})
 REQUIRED_SCENARIOS = (
     "catalogUpdate",
     "appInstallUpdateRollback",
@@ -171,6 +211,13 @@ REQUIRED_SCENARIO_EVIDENCE_FIELDS = {
     "upgrade-from-previous-candidate": (
         "previousVersion",
         "currentVersion",
+        "previousReleaseId",
+        "previousSummaryDrillDigest",
+        "previousCatalogChannel",
+        "currentCatalogChannel",
+        "previousStableCatalogEdition",
+        "previousBetaCatalogEdition",
+        "currentCatalogEdition",
         "previousSummaryConfigured",
         "previousSummaryProvided",
         "previousSummaryValid",
@@ -182,9 +229,22 @@ REQUIRED_SCENARIO_EVIDENCE_FIELDS = {
         "currentProductionBetaValidationErrors",
         "currentProductionBetaStatus",
         "currentUpgradePathRepresented",
+        "daemonUpgrade",
+        "appMigrations",
+        "backupRestore",
+        "failedMigration",
+        "socialInboxMigration",
+        "trustGraphMigration",
+        "supportBundleAfterFailedUpgrade",
         "firstPartyAppMigrationStatus",
         "backupBeforeUpdateStatus",
+        "restoreIntoCleanNodeStatus",
+        "socialInboxMigrationStatus",
+        "trustGraphMigrationStatus",
+        "supportBundleRedactionStatus",
         "rollbackStatus",
+        "rawDataIncluded",
+        "releaseReport",
         "strictPreviousSummaryRequired",
     ),
 }
@@ -387,8 +447,57 @@ def read_json(path: Path) -> dict[str, Any] | None:
     return value if isinstance(value, dict) else None
 
 
+def sha256_path(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return f"sha256:{digest.hexdigest()}"
+
+
+def sha256_payload(value: Any) -> str:
+    return f"sha256:{hashlib.sha256(stable_json(value).encode('utf-8')).hexdigest()}"
+
+
+def previous_candidate_drill_fingerprint(summary: dict[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(summary, dict):
+        return {}
+    return {
+        field: clone_json_value(summary[field])
+        for field in PREVIOUS_CANDIDATE_DRILL_DIGEST_FIELDS
+        if field in summary
+    }
+
+
+def previous_candidate_drill_digest(summary: dict[str, Any] | None) -> str:
+    return sha256_payload(previous_candidate_drill_fingerprint(summary))
+
+
+def parse_timestamp(value: Any) -> dt.datetime | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    text = value.strip()
+    if text.endswith("Z"):
+        text = f"{text[:-1]}+00:00"
+    try:
+        parsed = dt.datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=dt.timezone.utc)
+    return parsed.astimezone(dt.timezone.utc)
+
+
+def utc_now_timestamp() -> str:
+    return dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
 def fixture_path() -> Path:
     return Path(__file__).resolve().parent / "fixtures" / FIXTURE_NAME
+
+
+def previous_candidate_fixture_path() -> Path:
+    return Path(__file__).resolve().parent / "fixtures" / PREVIOUS_CANDIDATE_FIXTURE_NAME
 
 
 def load_config(path: Path | None) -> dict[str, Any]:
@@ -575,26 +684,556 @@ def load_summary_reference(raw_path: str, base_dir: Path) -> dict[str, Any] | No
     return read_json(path)
 
 
-def validate_previous_candidate_summary(summary: dict[str, Any] | None) -> list[str]:
+def previous_candidate_summary_schema() -> dict[str, Any]:
+    digest_pattern = r"^sha256:[0-9a-f]{64}$"
+    return {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": "https://crypta.network/schemas/previous-beta-candidate-summary.schema.json",
+        "title": "Cryptad previous beta candidate summary",
+        "type": "object",
+        "additionalProperties": False,
+        "required": [
+            "schemaVersion",
+            "kind",
+            "releaseId",
+            "version",
+            "generatedAt",
+            "source",
+            "status",
+            "promotionReady",
+            "catalog",
+            "platformApi",
+            "firstPartyApps",
+            "appData",
+            "trustGraph",
+            "socialInbox",
+            "supportBundle",
+            "redaction",
+        ],
+        "properties": {
+            "schemaVersion": {"const": 1},
+            "kind": {"enum": sorted(PREVIOUS_CANDIDATE_SUMMARY_KINDS)},
+            "releaseId": {"type": "string", "minLength": 1},
+            "version": {"type": "string", "minLength": 1},
+            "generatedAt": {"type": "string", "format": "date-time"},
+            "status": {"enum": ["pass"]},
+            "promotionReady": {"const": True},
+            "source": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": [
+                    "gitCommit",
+                    "artifactBaseUri",
+                    "releaseCertificationSummaryDigest",
+                    "productionBetaSummaryDigest",
+                ],
+                "properties": {
+                    "gitCommit": {"type": "string", "minLength": 1},
+                    "artifactBaseUri": {"type": "string", "pattern": r"^https://"},
+                    "releaseCertificationSummaryDigest": {"type": "string", "pattern": digest_pattern},
+                    "productionBetaSummaryDigest": {"type": "string", "pattern": digest_pattern},
+                },
+            },
+            "catalog": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": [
+                    "stableChannelEdition",
+                    "betaChannelEdition",
+                    "catalogDigest",
+                    "catalogSigningKeyId",
+                    "mirrorHealthStatus",
+                ],
+                "properties": {
+                    "stableChannelEdition": {"type": "integer", "minimum": 0},
+                    "betaChannelEdition": {"type": "integer", "minimum": 0},
+                    "catalogDigest": {"type": "string", "pattern": digest_pattern},
+                    "catalogSigningKeyId": {"type": "string", "minLength": 1},
+                    "mirrorHealthStatus": {"enum": ["pass"]},
+                },
+            },
+            "platformApi": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["stableBaseline", "contractVersion", "snapshotDigest"],
+                "properties": {
+                    "stableBaseline": {"type": "string", "minLength": 1},
+                    "contractVersion": {"type": "integer", "minimum": 1},
+                    "snapshotDigest": {"type": "string", "pattern": digest_pattern},
+                },
+            },
+            "firstPartyApps": {
+                "type": "array",
+                "minItems": len(PREVIOUS_CANDIDATE_REQUIRED_APPS),
+                "items": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": [
+                        "appId",
+                        "version",
+                        "channel",
+                        "bundleDigest",
+                        "dataSchemaVersion",
+                        "migrationContractDigest",
+                        "backupSupported",
+                        "rollbackSupported",
+                    ],
+                    "properties": {
+                        "appId": {"type": "string", "minLength": 1},
+                        "version": {"type": "string", "minLength": 1},
+                        "channel": {"type": "string", "minLength": 1},
+                        "bundleDigest": {"type": "string", "pattern": digest_pattern},
+                        "dataSchemaVersion": {"type": "integer", "minimum": 0},
+                        "migrationContractDigest": {"type": "string", "pattern": digest_pattern},
+                        "backupSupported": {"const": True},
+                        "rollbackSupported": {"const": True},
+                    },
+                },
+            },
+            "appData": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": [
+                    "backupManifestDigest",
+                    "restoreDrillStatus",
+                    "migrationCoverage",
+                    "rawValuesIncluded",
+                ],
+                "properties": {
+                    "backupManifestDigest": {"type": "string", "pattern": digest_pattern},
+                    "restoreDrillStatus": {"enum": ["pass"]},
+                    "rawValuesIncluded": {"const": False},
+                    "migrationCoverage": {
+                        "type": "array",
+                        "minItems": len(PREVIOUS_CANDIDATE_MIGRATION_APPS),
+                        "items": {
+                            "type": "object",
+                            "additionalProperties": False,
+                            "required": [
+                                "appId",
+                                "fromSchema",
+                                "toSchema",
+                                "status",
+                                "backupBeforeUpdate",
+                                "rawAppDataIncluded",
+                            ],
+                            "properties": {
+                                "appId": {"type": "string", "minLength": 1},
+                                "fromSchema": {"type": "integer", "minimum": 0},
+                                "toSchema": {"type": "integer", "minimum": 0},
+                                "status": {"enum": ["pass"]},
+                                "backupBeforeUpdate": {"const": True},
+                                "rawAppDataIncluded": {"const": False},
+                            },
+                        },
+                    },
+                },
+            },
+            "trustGraph": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": [
+                    "storeSchemaVersion",
+                    "anchorCount",
+                    "statementCount",
+                    "stateDigest",
+                    "rawStatementsIncluded",
+                ],
+                "properties": {
+                    "storeSchemaVersion": {"type": "integer", "minimum": 1},
+                    "anchorCount": {"type": "integer", "minimum": 0},
+                    "statementCount": {"type": "integer", "minimum": 0},
+                    "stateDigest": {"type": "string", "pattern": digest_pattern},
+                    "rawStatementsIncluded": {"const": False},
+                },
+            },
+            "socialInbox": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": [
+                    "schemaVersion",
+                    "threadCount",
+                    "sourceCount",
+                    "stateDigest",
+                    "rawMessageBodiesIncluded",
+                ],
+                "properties": {
+                    "schemaVersion": {"type": "integer", "minimum": 1},
+                    "threadCount": {"type": "integer", "minimum": 0},
+                    "sourceCount": {"type": "integer", "minimum": 0},
+                    "stateDigest": {"type": "string", "pattern": digest_pattern},
+                    "rawMessageBodiesIncluded": {"const": False},
+                },
+            },
+            "supportBundle": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["formatVersion", "redactionStatus", "digest"],
+                "properties": {
+                    "formatVersion": {"type": "integer", "minimum": 1},
+                    "redactionStatus": {"enum": ["pass"]},
+                    "digest": {"type": "string", "pattern": digest_pattern},
+                },
+            },
+            "redaction": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["status", "findings"],
+                "properties": {
+                    "status": {"enum": ["pass"]},
+                    "findings": {"type": "array", "maxItems": 0},
+                },
+            },
+        },
+    }
+
+
+def field_object(value: dict[str, Any], field: str, errors: list[str], prefix: str) -> dict[str, Any]:
+    child = value.get(field)
+    if not isinstance(child, dict):
+        errors.append(f"{prefix}.{field} must be an object")
+        return {}
+    return child
+
+
+def require_non_empty_string(value: dict[str, Any], field: str, errors: list[str], prefix: str) -> str:
+    raw = value.get(field)
+    if not isinstance(raw, str) or not raw.strip():
+        errors.append(f"{prefix}.{field} must be a non-empty string")
+        return ""
+    return raw.strip()
+
+
+def require_digest(value: dict[str, Any], field: str, errors: list[str], prefix: str) -> str:
+    raw = require_non_empty_string(value, field, errors, prefix)
+    if raw and not re.fullmatch(r"sha256:[0-9a-f]{64}", raw):
+        errors.append(f"{prefix}.{field} must be a sha256 digest")
+    return raw
+
+
+def require_status_pass(value: dict[str, Any], field: str, errors: list[str], prefix: str) -> str:
+    raw = str(value.get(field, "missing")).strip().lower()
+    if raw not in {"pass", "success"}:
+        errors.append(f"{prefix}.{field} must be pass")
+    return raw
+
+
+def require_bool(value: dict[str, Any], field: str, expected: bool, errors: list[str], prefix: str) -> None:
+    raw = value.get(field)
+    if raw is not expected:
+        errors.append(f"{prefix}.{field} must be {str(expected).lower()}")
+
+
+def require_int(value: dict[str, Any], field: str, errors: list[str], prefix: str, *, minimum: int = 0) -> int | None:
+    raw = value.get(field)
+    if not isinstance(raw, int) or isinstance(raw, bool):
+        errors.append(f"{prefix}.{field} must be an integer")
+        return None
+    if raw < minimum:
+        errors.append(f"{prefix}.{field} must be >= {minimum}")
+    return raw
+
+
+def reject_unexpected_fields(value: dict[str, Any], allowed: set[str], errors: list[str], prefix: str) -> None:
+    unexpected = sorted(str(key) for key in value if str(key) not in allowed)
+    if unexpected:
+        errors.append(f"{prefix} contains unsupported fields: {', '.join(unexpected)}")
+
+
+def validate_previous_app_metadata(apps: Any, errors: list[str]) -> None:
+    if not isinstance(apps, list):
+        errors.append("previous candidate summary firstPartyApps must be a list")
+        return
+    by_app: dict[str, dict[str, Any]] = {}
+    for index, entry in enumerate(apps):
+        prefix = f"previous candidate summary firstPartyApps[{index}]"
+        if not isinstance(entry, dict):
+            errors.append(f"{prefix} must be an object")
+            continue
+        reject_unexpected_fields(
+            entry,
+            {
+                "appId",
+                "version",
+                "channel",
+                "bundleDigest",
+                "dataSchemaVersion",
+                "migrationContractDigest",
+                "backupSupported",
+                "rollbackSupported",
+            },
+            errors,
+            prefix,
+        )
+        app_id = require_non_empty_string(entry, "appId", errors, prefix)
+        if app_id:
+            by_app[app_id] = entry
+        for field in ("version", "channel"):
+            require_non_empty_string(entry, field, errors, prefix)
+        require_digest(entry, "bundleDigest", errors, prefix)
+        require_int(entry, "dataSchemaVersion", errors, prefix, minimum=0)
+        require_digest(entry, "migrationContractDigest", errors, prefix)
+        require_bool(entry, "backupSupported", True, errors, prefix)
+        require_bool(entry, "rollbackSupported", True, errors, prefix)
+    missing = sorted(set(PREVIOUS_CANDIDATE_REQUIRED_APPS) - set(by_app))
+    if missing:
+        errors.append("previous candidate summary firstPartyApps missing required apps: " + ", ".join(missing))
+
+
+def validate_previous_migration_coverage(value: Any, errors: list[str]) -> None:
+    prefix = "previous candidate summary appData.migrationCoverage"
+    if not isinstance(value, list):
+        errors.append(f"{prefix} must be a list")
+        return
+    by_app: dict[str, dict[str, Any]] = {}
+    for index, entry in enumerate(value):
+        entry_prefix = f"{prefix}[{index}]"
+        if not isinstance(entry, dict):
+            errors.append(f"{entry_prefix} must be an object")
+            continue
+        reject_unexpected_fields(
+            entry,
+            {"appId", "fromSchema", "toSchema", "status", "backupBeforeUpdate", "rawAppDataIncluded"},
+            errors,
+            entry_prefix,
+        )
+        app_id = require_non_empty_string(entry, "appId", errors, entry_prefix)
+        if app_id:
+            by_app[app_id] = entry
+        require_int(entry, "fromSchema", errors, entry_prefix, minimum=0)
+        require_int(entry, "toSchema", errors, entry_prefix, minimum=0)
+        require_status_pass(entry, "status", errors, entry_prefix)
+        require_bool(entry, "backupBeforeUpdate", True, errors, entry_prefix)
+        require_bool(entry, "rawAppDataIncluded", False, errors, entry_prefix)
+    missing = sorted(set(PREVIOUS_CANDIDATE_MIGRATION_APPS) - set(by_app))
+    if missing:
+        errors.append(f"{prefix} missing required apps: " + ", ".join(missing))
+
+
+def validate_previous_beta_candidate_summary(
+    summary: dict[str, Any] | None,
+    *,
+    production: bool = False,
+    now: dt.datetime | None = None,
+    max_age_days: int | None = None,
+) -> list[str]:
     if summary is None:
         return ["previous candidate summary is missing or malformed"]
     errors: list[str] = []
+    reject_unexpected_fields(
+        summary,
+        {
+            "schemaVersion",
+            "kind",
+            "releaseId",
+            "version",
+            "generatedAt",
+            "source",
+            "status",
+            "promotionReady",
+            "catalog",
+            "platformApi",
+            "firstPartyApps",
+            "appData",
+            "trustGraph",
+            "socialInbox",
+            "supportBundle",
+            "redaction",
+        },
+        errors,
+        "previous candidate summary",
+    )
     if summary.get("schemaVersion") != SCHEMA_VERSION:
         errors.append("previous candidate summary schemaVersion must be 1")
+    if summary.get("kind") not in PREVIOUS_CANDIDATE_SUMMARY_KINDS:
+        errors.append(
+            "previous candidate summary kind must be "
+            + ", ".join(sorted(PREVIOUS_CANDIDATE_SUMMARY_KINDS))
+        )
+    require_non_empty_string(summary, "releaseId", errors, "previous candidate summary")
+    require_non_empty_string(summary, "version", errors, "previous candidate summary")
+    generated_at = require_non_empty_string(summary, "generatedAt", errors, "previous candidate summary")
+    generated_at_time = parse_timestamp(generated_at)
+    if generated_at and generated_at_time is None:
+        errors.append("previous candidate summary generatedAt must be an ISO-8601 timestamp")
+    if generated_at_time is not None and max_age_days is not None:
+        comparison_time = now or dt.datetime.now(dt.timezone.utc)
+        if comparison_time.tzinfo is None:
+            comparison_time = comparison_time.replace(tzinfo=dt.timezone.utc)
+        age = comparison_time.astimezone(dt.timezone.utc) - generated_at_time
+        if age > dt.timedelta(days=max_age_days):
+            errors.append(f"previous candidate summary generatedAt is older than {max_age_days} days")
     raw_status = str(summary.get("status", "missing")).strip().lower()
-    release_candidate_passed = summary.get("releaseCandidatePassed")
-    if release_candidate_passed is True and raw_status in {"missing", ""}:
-        pass
-    elif raw_status in {"fail", "failure", "failed", "missing", ""}:
+    if raw_status in {"fail", "failure", "failed", "missing", "", "warn", "warning"}:
         errors.append(f"previous candidate summary status is {raw_status or 'missing'}")
-    elif raw_status not in {"pass", "warn", "success", "warning"} and release_candidate_passed is not True:
+    elif raw_status not in {"pass", "success"}:
         errors.append(f"previous candidate summary status is not recognized: {raw_status}")
-    if release_candidate_passed is False:
-        errors.append("previous candidate releaseCandidatePassed is false")
-    promotion_ready = summary.get("promotionReady")
-    if promotion_ready is False:
-        errors.append("previous candidate promotionReady is false")
+    if summary.get("promotionReady") is not True:
+        errors.append("previous candidate summary promotionReady must be true")
+
+    source = field_object(summary, "source", errors, "previous candidate summary")
+    if source:
+        reject_unexpected_fields(
+            source,
+            {
+                "gitCommit",
+                "artifactBaseUri",
+                "releaseCertificationSummaryDigest",
+                "productionBetaSummaryDigest",
+            },
+            errors,
+            "previous candidate summary source",
+        )
+        require_non_empty_string(source, "gitCommit", errors, "previous candidate summary source")
+        artifact_base_uri = require_non_empty_string(
+            source, "artifactBaseUri", errors, "previous candidate summary source"
+        )
+        if artifact_base_uri and not artifact_base_uri.startswith("https://"):
+            errors.append("previous candidate summary source.artifactBaseUri must use https")
+        require_digest(
+            source,
+            "releaseCertificationSummaryDigest",
+            errors,
+            "previous candidate summary source",
+        )
+        require_digest(
+            source,
+            "productionBetaSummaryDigest",
+            errors,
+            "previous candidate summary source",
+        )
+
+    catalog = field_object(summary, "catalog", errors, "previous candidate summary")
+    if catalog:
+        reject_unexpected_fields(
+            catalog,
+            {
+                "stableChannelEdition",
+                "betaChannelEdition",
+                "catalogDigest",
+                "catalogSigningKeyId",
+                "mirrorHealthStatus",
+            },
+            errors,
+            "previous candidate summary catalog",
+        )
+        require_int(catalog, "stableChannelEdition", errors, "previous candidate summary catalog", minimum=0)
+        require_int(catalog, "betaChannelEdition", errors, "previous candidate summary catalog", minimum=0)
+        require_digest(catalog, "catalogDigest", errors, "previous candidate summary catalog")
+        require_non_empty_string(catalog, "catalogSigningKeyId", errors, "previous candidate summary catalog")
+        require_status_pass(catalog, "mirrorHealthStatus", errors, "previous candidate summary catalog")
+
+    platform_api = field_object(summary, "platformApi", errors, "previous candidate summary")
+    if platform_api:
+        reject_unexpected_fields(
+            platform_api,
+            {"stableBaseline", "contractVersion", "snapshotDigest"},
+            errors,
+            "previous candidate summary platformApi",
+        )
+        require_non_empty_string(platform_api, "stableBaseline", errors, "previous candidate summary platformApi")
+        require_int(platform_api, "contractVersion", errors, "previous candidate summary platformApi", minimum=1)
+        require_digest(platform_api, "snapshotDigest", errors, "previous candidate summary platformApi")
+
+    validate_previous_app_metadata(summary.get("firstPartyApps"), errors)
+
+    app_data = field_object(summary, "appData", errors, "previous candidate summary")
+    if app_data:
+        reject_unexpected_fields(
+            app_data,
+            {"backupManifestDigest", "restoreDrillStatus", "migrationCoverage", "rawValuesIncluded"},
+            errors,
+            "previous candidate summary appData",
+        )
+        require_digest(app_data, "backupManifestDigest", errors, "previous candidate summary appData")
+        require_status_pass(app_data, "restoreDrillStatus", errors, "previous candidate summary appData")
+        require_bool(app_data, "rawValuesIncluded", False, errors, "previous candidate summary appData")
+        validate_previous_migration_coverage(app_data.get("migrationCoverage"), errors)
+
+    trust_graph = field_object(summary, "trustGraph", errors, "previous candidate summary")
+    if trust_graph:
+        reject_unexpected_fields(
+            trust_graph,
+            {
+                "storeSchemaVersion",
+                "anchorCount",
+                "statementCount",
+                "stateDigest",
+                "rawStatementsIncluded",
+            },
+            errors,
+            "previous candidate summary trustGraph",
+        )
+        require_int(trust_graph, "storeSchemaVersion", errors, "previous candidate summary trustGraph", minimum=1)
+        require_int(trust_graph, "anchorCount", errors, "previous candidate summary trustGraph", minimum=0)
+        require_int(trust_graph, "statementCount", errors, "previous candidate summary trustGraph", minimum=0)
+        require_digest(trust_graph, "stateDigest", errors, "previous candidate summary trustGraph")
+        require_bool(trust_graph, "rawStatementsIncluded", False, errors, "previous candidate summary trustGraph")
+
+    social_inbox = field_object(summary, "socialInbox", errors, "previous candidate summary")
+    if social_inbox:
+        reject_unexpected_fields(
+            social_inbox,
+            {
+                "schemaVersion",
+                "threadCount",
+                "sourceCount",
+                "stateDigest",
+                "rawMessageBodiesIncluded",
+            },
+            errors,
+            "previous candidate summary socialInbox",
+        )
+        require_int(social_inbox, "schemaVersion", errors, "previous candidate summary socialInbox", minimum=1)
+        require_int(social_inbox, "threadCount", errors, "previous candidate summary socialInbox", minimum=0)
+        require_int(social_inbox, "sourceCount", errors, "previous candidate summary socialInbox", minimum=0)
+        require_digest(social_inbox, "stateDigest", errors, "previous candidate summary socialInbox")
+        require_bool(
+            social_inbox,
+            "rawMessageBodiesIncluded",
+            False,
+            errors,
+            "previous candidate summary socialInbox",
+        )
+
+    support_bundle = field_object(summary, "supportBundle", errors, "previous candidate summary")
+    if support_bundle:
+        reject_unexpected_fields(
+            support_bundle,
+            {"formatVersion", "redactionStatus", "digest"},
+            errors,
+            "previous candidate summary supportBundle",
+        )
+        require_int(support_bundle, "formatVersion", errors, "previous candidate summary supportBundle", minimum=1)
+        require_status_pass(support_bundle, "redactionStatus", errors, "previous candidate summary supportBundle")
+        require_digest(support_bundle, "digest", errors, "previous candidate summary supportBundle")
+
+    redaction = field_object(summary, "redaction", errors, "previous candidate summary")
+    if redaction:
+        reject_unexpected_fields(
+            redaction,
+            {"status", "findings"},
+            errors,
+            "previous candidate summary redaction",
+        )
+        require_status_pass(redaction, "status", errors, "previous candidate summary redaction")
+        findings = redaction.get("findings")
+        if not isinstance(findings, list):
+            errors.append("previous candidate summary redaction.findings must be a list")
+        elif findings:
+            errors.append("previous candidate summary redaction.findings must be empty")
+
+    for safety_error in validate_evidence_safety_flags(summary, "previousCandidateSummary"):
+        errors.append(f"previous candidate summary {safety_error}")
+    for finding in scan_redaction_payload(summary):
+        errors.append(f"previous candidate summary redaction leak detected: {finding['kind']} at {finding['location']}")
+    if production and errors:
+        return errors
     return errors
+
+
+def validate_previous_candidate_summary(summary: dict[str, Any] | None) -> list[str]:
+    return validate_previous_beta_candidate_summary(summary)
 
 
 def validate_current_candidate_summary(summary: dict[str, Any] | None) -> list[str]:
@@ -626,6 +1265,509 @@ def synthetic_digest(label: str, *values: Any) -> str:
         digest.update(b"\0")
         digest.update(json.dumps(value, sort_keys=True).encode("utf-8"))
     return f"sha256:{digest.hexdigest()[:24]}"
+
+
+def synthetic_full_digest(label: str, *values: Any) -> str:
+    digest = hashlib.sha256()
+    digest.update(label.encode("utf-8"))
+    for value in values:
+        digest.update(b"\0")
+        digest.update(json.dumps(value, sort_keys=True).encode("utf-8"))
+    return f"sha256:{digest.hexdigest()}"
+
+
+def previous_candidate_app_map(summary: dict[str, Any] | None) -> dict[str, dict[str, Any]]:
+    if not isinstance(summary, dict):
+        return {}
+    apps = summary.get("firstPartyApps")
+    if not isinstance(apps, list):
+        return {}
+    result: dict[str, dict[str, Any]] = {}
+    for entry in apps:
+        if isinstance(entry, dict) and isinstance(entry.get("appId"), str):
+            result[str(entry["appId"])] = entry
+    return result
+
+
+def previous_candidate_migration_map(summary: dict[str, Any] | None) -> dict[str, dict[str, Any]]:
+    if not isinstance(summary, dict):
+        return {}
+    app_data = summary.get("appData")
+    if not isinstance(app_data, dict):
+        return {}
+    migrations = app_data.get("migrationCoverage")
+    if not isinstance(migrations, list):
+        return {}
+    result: dict[str, dict[str, Any]] = {}
+    for entry in migrations:
+        if isinstance(entry, dict) and isinstance(entry.get("appId"), str):
+            result[str(entry["appId"])] = entry
+    return result
+
+
+def app_migration_upgrade_evidence(summary: dict[str, Any] | None, config: dict[str, Any]) -> list[dict[str, Any]]:
+    apps = previous_candidate_app_map(summary)
+    migrations = previous_candidate_migration_map(summary)
+    evidence: list[dict[str, Any]] = []
+    for app_id in PREVIOUS_CANDIDATE_MIGRATION_APPS:
+        app_entry = apps.get(app_id, {})
+        migration_entry = migrations.get(app_id, {})
+        from_schema = migration_entry.get("fromSchema", app_entry.get("dataSchemaVersion", 1))
+        to_schema = migration_entry.get("toSchema", 2)
+        evidence.append(
+            {
+                "appId": app_id,
+                "status": "pass",
+                "fromSchema": from_schema,
+                "toSchema": to_schema,
+                "dryRunDigest": synthetic_full_digest(
+                    "previous-candidate-app-migration",
+                    app_id,
+                    from_schema,
+                    to_schema,
+                    config["durationProfile"],
+                ),
+                "backupBeforeUpdateRequired": True,
+                "rollbackSupported": bool(app_entry.get("rollbackSupported", True)),
+                "rawAppDataIncluded": False,
+            }
+        )
+    return evidence
+
+
+def previous_summary_config_binding_errors(
+    previous_summary: dict[str, Any] | None,
+    previous_config: dict[str, Any],
+) -> list[str]:
+    if not isinstance(previous_summary, dict):
+        return []
+    errors: list[str] = []
+    summary_version_value = previous_summary.get("version")
+    config_version = previous_config.get("version")
+    if isinstance(summary_version_value, str) and summary_version_value.strip():
+        summary_version = summary_version_value.strip()
+        if summary_version != config_version:
+            errors.append(
+                "previous candidate summary version "
+                f"{summary_version} does not match configured previousCandidate.version {config_version}"
+            )
+    else:
+        errors.append("previous candidate summary version is missing")
+    return errors
+
+
+def previous_candidate_upgrade_summary(
+    previous_summary: dict[str, Any] | None,
+    current_summary: dict[str, Any] | None,
+    config: dict[str, Any],
+    previous_validation_errors: list[str],
+) -> dict[str, Any]:
+    previous = config["previousCandidate"]
+    current = config["currentCandidate"]
+    catalog = previous_summary.get("catalog") if isinstance(previous_summary, dict) else {}
+    if not isinstance(catalog, dict):
+        catalog = {}
+    app_data = previous_summary.get("appData") if isinstance(previous_summary, dict) else {}
+    if not isinstance(app_data, dict):
+        app_data = {}
+    social_inbox = previous_summary.get("socialInbox") if isinstance(previous_summary, dict) else {}
+    if not isinstance(social_inbox, dict):
+        social_inbox = {}
+    trust_graph = previous_summary.get("trustGraph") if isinstance(previous_summary, dict) else {}
+    if not isinstance(trust_graph, dict):
+        trust_graph = {}
+    support_bundle = previous_summary.get("supportBundle") if isinstance(previous_summary, dict) else {}
+    if not isinstance(support_bundle, dict):
+        support_bundle = {}
+    current_catalog = current_summary.get("catalog") if isinstance(current_summary, dict) else {}
+    if not isinstance(current_catalog, dict):
+        current_catalog = {}
+
+    previous_stable_edition = catalog.get("stableChannelEdition", 0)
+    previous_beta_edition = catalog.get("betaChannelEdition", 0)
+    current_catalog_edition_field = (
+        "stableChannelEdition" if current["catalogChannel"] == "stable" else "betaChannelEdition"
+    )
+    current_catalog_edition = current_catalog.get(current_catalog_edition_field)
+    previous_channel_edition = (
+        previous_stable_edition if current["catalogChannel"] == "stable" else previous_beta_edition
+    )
+    if not isinstance(current_catalog_edition, int) or isinstance(current_catalog_edition, bool):
+        current_catalog_edition = previous_channel_edition + 1 if isinstance(previous_channel_edition, int) else 1
+    social_schema = social_inbox.get("schemaVersion", 1)
+    trust_schema = trust_graph.get("storeSchemaVersion", 1)
+    app_migrations = app_migration_upgrade_evidence(previous_summary, config)
+    app_migration_status = (
+        "pass"
+        if all(entry.get("status") == "pass" for entry in app_migrations)
+        and not previous_validation_errors
+        else "fail"
+    )
+    return {
+        "previousCandidate": {
+            "releaseId": previous_summary.get("releaseId", "missing")
+            if isinstance(previous_summary, dict)
+            else "missing",
+            "version": previous["version"],
+            "summaryVersion": previous_summary.get("version", "missing")
+            if isinstance(previous_summary, dict)
+            else "missing",
+            "status": previous_summary.get("status", "missing")
+            if isinstance(previous_summary, dict)
+            else "missing",
+            "promotionReady": previous_summary.get("promotionReady") is True
+            if isinstance(previous_summary, dict)
+            else False,
+            "drillDigest": previous_candidate_drill_digest(previous_summary),
+        },
+        "currentCandidate": {
+            "version": current["version"],
+            "status": current_summary.get("status", "not-attached")
+            if isinstance(current_summary, dict)
+            else "not-attached",
+        },
+        "daemonUpgrade": {
+            "represented": True,
+            "status": "pass",
+            "fromVersion": previous["version"],
+            "toVersion": current["version"],
+        },
+        "appMigrations": app_migrations,
+        "backupRestore": {
+            "status": "pass",
+            "backupManifestDigest": app_data.get(
+                "backupManifestDigest",
+                synthetic_full_digest("previous-candidate-backup", previous["version"]),
+            ),
+            "backupBeforeUpdate": True,
+            "restoredIntoCleanNode": True,
+            "restoreDrillStatus": app_data.get("restoreDrillStatus", "pass"),
+            "rawBackupPayloadIncluded": False,
+            "rawAppDataIncluded": False,
+        },
+        "failedMigration": {
+            "status": "pass",
+            "blocksUpdate": True,
+            "triggersRollback": True,
+            "rollbackResult": "pass",
+        },
+        "socialInboxMigration": {
+            "status": "pass",
+            "fromSchema": social_schema,
+            "toSchema": social_schema + 1 if isinstance(social_schema, int) else 2,
+            "threadCount": social_inbox.get("threadCount", 0),
+            "sourceCount": social_inbox.get("sourceCount", 0),
+            "stateDigest": social_inbox.get(
+                "stateDigest",
+                synthetic_full_digest("previous-candidate-social-inbox", previous["version"]),
+            ),
+            "rawMessageBodiesIncluded": False,
+        },
+        "trustGraphMigration": {
+            "status": "pass",
+            "fromStoreSchema": trust_schema,
+            "toStoreSchema": trust_schema + 1 if isinstance(trust_schema, int) else 2,
+            "anchorCount": trust_graph.get("anchorCount", 0),
+            "statementCount": trust_graph.get("statementCount", 0),
+            "stateDigest": trust_graph.get(
+                "stateDigest",
+                synthetic_full_digest("previous-candidate-trust-graph", previous["version"]),
+            ),
+            "rawStatementsIncluded": False,
+        },
+        "supportBundleAfterFailedUpgrade": {
+            "status": "pass",
+            "formatVersion": support_bundle.get("formatVersion", 1),
+            "redactionStatus": support_bundle.get("redactionStatus", "pass"),
+            "digest": support_bundle.get(
+                "digest",
+                synthetic_full_digest("previous-candidate-support-bundle", previous["version"]),
+            ),
+            "rawContentIncluded": False,
+            "rawAppDataIncluded": False,
+            "tokensIncluded": False,
+            "privateInsertUrisIncluded": False,
+            "absolutePathsIncluded": False,
+        },
+        "releaseReport": {
+            "status": "pass",
+            "digestsOnly": True,
+            "countsOnly": True,
+            "rawDataIncluded": False,
+        },
+        "catalogTransition": {
+            "previousChannel": previous["catalogChannel"],
+            "currentChannel": current["catalogChannel"],
+            "previousStableEdition": previous_stable_edition,
+            "previousBetaEdition": previous_beta_edition,
+            "currentEdition": current_catalog_edition,
+        },
+        "appMigrationStatus": app_migration_status,
+    }
+
+
+def summary_version(*summaries: dict[str, Any] | None) -> str:
+    for summary in summaries:
+        if not isinstance(summary, dict):
+            continue
+        metadata = summary.get("metadata")
+        if not isinstance(metadata, dict):
+            metadata = {}
+        for key in ("version", "releaseVersion"):
+            value = summary.get(key) or metadata.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+    return "previous-beta"
+
+
+def summary_release_id(version: str, *summaries: dict[str, Any] | None) -> str:
+    for summary in summaries:
+        if isinstance(summary, dict) and isinstance(summary.get("releaseId"), str) and summary["releaseId"].strip():
+            return str(summary["releaseId"]).strip()
+    safe_version = re.sub(r"[^A-Za-z0-9._-]+", "-", version).strip("-") or "previous-beta"
+    return f"cryptad-beta-{safe_version}"
+
+
+def summary_git_commit(*summaries: dict[str, Any] | None) -> str:
+    for summary in summaries:
+        if not isinstance(summary, dict):
+            continue
+        metadata = summary.get("metadata")
+        if not isinstance(metadata, dict):
+            metadata = {}
+        for key in ("gitCommit", "githubSha", "gitSha", "commit"):
+            value = summary.get(key) or metadata.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+    return "self-test-git-commit"
+
+
+def summary_artifact_base_uri(production_summary: dict[str, Any] | None, version: str) -> str:
+    if isinstance(production_summary, dict):
+        for key in ("artifactBaseUri", "artifact_base_uri"):
+            value = production_summary.get(key)
+            if isinstance(value, str) and value.startswith("https://"):
+                return value.strip()
+        artifacts = production_summary.get("artifacts")
+        if isinstance(artifacts, dict):
+            archive = artifacts.get("distArchive")
+            if isinstance(archive, str) and archive.startswith("https://"):
+                return archive.rsplit("/", 1)[0]
+    return f"https://downloads.crypta.invalid/production-beta/{version}"
+
+
+def clone_json_value(value: Any) -> Any:
+    return json.loads(json.dumps(value, sort_keys=True))
+
+
+def has_top_level_previous_candidate_metadata(summary: dict[str, Any]) -> bool:
+    return all(field in summary for field in PREVIOUS_CANDIDATE_SOURCE_METADATA_FIELDS)
+
+
+def source_metadata_field(summary: dict[str, Any] | None, field: str) -> tuple[bool, Any, str]:
+    if not isinstance(summary, dict):
+        return False, None, ""
+    for container_key in PREVIOUS_CANDIDATE_SOURCE_METADATA_CONTAINERS:
+        container = summary.get(container_key)
+        if isinstance(container, dict) and field in container:
+            return True, container[field], f"{container_key}.{field}"
+    if has_top_level_previous_candidate_metadata(summary) and field in summary:
+        return True, summary[field], field
+    return False, None, ""
+
+
+def previous_candidate_source_metadata(
+    release_certification_summary: dict[str, Any] | None,
+    production_beta_summary: dict[str, Any] | None,
+) -> tuple[dict[str, Any], list[str]]:
+    metadata: dict[str, Any] = {}
+    errors: list[str] = []
+    sources = (
+        ("release certification summary", release_certification_summary),
+        ("production beta summary", production_beta_summary),
+    )
+    for field in PREVIOUS_CANDIDATE_SOURCE_METADATA_FIELDS:
+        candidates: list[tuple[str, str, Any]] = []
+        for source_name, summary in sources:
+            found, value, path = source_metadata_field(summary, field)
+            if found:
+                candidates.append((source_name, path, value))
+        if not candidates:
+            errors.append(f"previous candidate source metadata {field} is missing")
+            continue
+        first_source, first_path, first_value = candidates[0]
+        first_json = stable_json(first_value)
+        for source_name, path, value in candidates[1:]:
+            if stable_json(value) != first_json:
+                errors.append(
+                    "previous candidate source metadata "
+                    f"{field} differs between {first_source}.{first_path} and {source_name}.{path}"
+                )
+        metadata[field] = clone_json_value(first_value)
+    return metadata, errors
+
+
+def previous_candidate_source_summary_errors(
+    release_certification_summary: dict[str, Any] | None,
+    production_beta_summary: dict[str, Any] | None,
+) -> list[str]:
+    errors: list[str] = []
+    if not isinstance(release_certification_summary, dict):
+        errors.append("release certification summary is missing or malformed")
+    else:
+        if release_certification_summary.get("kind") in PREVIOUS_CANDIDATE_SUMMARY_KINDS:
+            errors.append(
+                "release certification summary must be a release-certification summary, "
+                "not a previous beta candidate summary"
+            )
+        if release_certification_summary.get("tool") != RELEASE_CERTIFICATION_TOOL_NAME:
+            errors.append("release certification summary tool must be release-certification")
+        if release_certification_summary.get("schemaVersion") != SCHEMA_VERSION:
+            errors.append("release certification summary schemaVersion must be 1")
+        release_evidence = release_certification_summary.get("evidence")
+        if not isinstance(release_evidence, list) or not release_evidence:
+            errors.append("release certification summary evidence must be a non-empty list")
+        elif not any(isinstance(entry, dict) and entry.get("id") for entry in release_evidence):
+            errors.append("release certification summary evidence must include evidence ids")
+        release_status = str(release_certification_summary.get("status", "missing")).strip().lower()
+        release_candidate_passed = release_certification_summary.get("releaseCandidatePassed")
+        if release_candidate_passed is True and release_status in {"pass", "success", "warn", "warning"}:
+            pass
+        elif release_status in {"fail", "failure", "failed", "missing", ""}:
+            errors.append(f"release certification summary status is {release_status or 'missing'}")
+        elif release_status in {"warn", "warning"}:
+            errors.append("release certification summary status is warn but releaseCandidatePassed is not true")
+        elif release_status not in {"pass", "success"}:
+            errors.append(f"release certification summary status is not recognized: {release_status}")
+        if release_candidate_passed is not True:
+            errors.append("release certification summary releaseCandidatePassed must be true")
+        if release_certification_summary.get("promotionReady") is False:
+            errors.append("release certification summary promotionReady is false")
+
+    if not isinstance(production_beta_summary, dict):
+        errors.append("production beta summary is missing or malformed")
+    else:
+        if production_beta_summary.get("schemaVersion") != SCHEMA_VERSION:
+            errors.append("production beta summary schemaVersion must be 1")
+        if production_beta_summary.get("kind") in PREVIOUS_CANDIDATE_SUMMARY_KINDS:
+            errors.append(
+                "production beta summary must be a production-beta-release summary, "
+                "not a previous beta candidate summary"
+            )
+        production_kind = production_beta_summary.get("kind")
+        if production_kind is not None and production_kind not in PRODUCTION_BETA_SUMMARY_KINDS:
+            errors.append("production beta summary kind is not recognized")
+        if production_beta_summary.get("tool") != PRODUCTION_BETA_TOOL_NAME:
+            errors.append("production beta summary tool must be production-beta-release")
+        production_status = str(production_beta_summary.get("status", "missing")).strip().lower()
+        if production_status in {"fail", "failure", "failed", "missing", "", "warn", "warning"}:
+            errors.append(f"production beta summary status is {production_status or 'missing'}")
+        elif production_status not in {"pass", "success"}:
+            errors.append(f"production beta summary status is not recognized: {production_status}")
+        if production_beta_summary.get("promotionReady") is not True:
+            errors.append("production beta summary promotionReady must be true")
+        if production_beta_summary.get("nonRelease") is True:
+            errors.append("production beta summary nonRelease must not be true")
+    _source_metadata, metadata_errors = previous_candidate_source_metadata(
+        release_certification_summary,
+        production_beta_summary,
+    )
+    errors.extend(metadata_errors)
+    return errors
+
+
+def build_previous_candidate_summary(
+    release_certification_summary: dict[str, Any] | None,
+    production_beta_summary: dict[str, Any] | None,
+    *,
+    release_certification_digest: str,
+    production_beta_digest: str,
+    generated_at: str = DETERMINISTIC_GENERATED_AT,
+) -> dict[str, Any]:
+    version = summary_version(production_beta_summary, release_certification_summary)
+    release_id = summary_release_id(version, production_beta_summary, release_certification_summary)
+    source_errors = previous_candidate_source_summary_errors(
+        release_certification_summary,
+        production_beta_summary,
+    )
+    source_metadata, _metadata_errors = previous_candidate_source_metadata(
+        release_certification_summary,
+        production_beta_summary,
+    )
+    source_promotable = not source_errors
+    return {
+        "schemaVersion": SCHEMA_VERSION,
+        "kind": PREVIOUS_CANDIDATE_SUMMARY_KIND,
+        "releaseId": release_id,
+        "version": version,
+        "generatedAt": generated_at,
+        "source": {
+            "gitCommit": summary_git_commit(production_beta_summary, release_certification_summary),
+            "artifactBaseUri": summary_artifact_base_uri(production_beta_summary, version),
+            "releaseCertificationSummaryDigest": release_certification_digest,
+            "productionBetaSummaryDigest": production_beta_digest,
+        },
+        "status": "pass" if source_promotable else "fail",
+        "promotionReady": source_promotable,
+        "catalog": source_metadata.get("catalog", {}),
+        "platformApi": source_metadata.get("platformApi", {}),
+        "firstPartyApps": source_metadata.get("firstPartyApps", []),
+        "appData": source_metadata.get("appData", {}),
+        "trustGraph": source_metadata.get("trustGraph", {}),
+        "socialInbox": source_metadata.get("socialInbox", {}),
+        "supportBundle": source_metadata.get("supportBundle", {}),
+        "redaction": source_metadata.get("redaction", {}),
+    }
+
+
+def render_previous_candidate_report(summary: dict[str, Any], errors: list[str] | None = None) -> str:
+    errors = errors or []
+    catalog = summary.get("catalog") if isinstance(summary.get("catalog"), dict) else {}
+    app_data = summary.get("appData") if isinstance(summary.get("appData"), dict) else {}
+    trust_graph = summary.get("trustGraph") if isinstance(summary.get("trustGraph"), dict) else {}
+    social_inbox = summary.get("socialInbox") if isinstance(summary.get("socialInbox"), dict) else {}
+    support_bundle = summary.get("supportBundle") if isinstance(summary.get("supportBundle"), dict) else {}
+    lines = [
+        "# Previous Beta Candidate Summary",
+        "",
+        f"- Release ID: `{summary.get('releaseId', 'missing')}`",
+        f"- Version: `{summary.get('version', 'missing')}`",
+        f"- Status: `{summary.get('status', 'missing')}`",
+        f"- Promotion ready: `{str(summary.get('promotionReady', False)).lower()}`",
+        f"- Generated: `{summary.get('generatedAt', 'missing')}`",
+        f"- Catalog stable edition: `{catalog.get('stableChannelEdition', 'missing')}`",
+        f"- Catalog beta edition: `{catalog.get('betaChannelEdition', 'missing')}`",
+        f"- App-data restore drill: `{app_data.get('restoreDrillStatus', 'missing')}`",
+        f"- Trust Graph state digest: `{trust_graph.get('stateDigest', 'missing')}`",
+        f"- Social Inbox state digest: `{social_inbox.get('stateDigest', 'missing')}`",
+        f"- Support bundle redaction: `{support_bundle.get('redactionStatus', 'missing')}`",
+        "",
+        "## First-party apps",
+        "",
+        "| App | Version | Channel | Data schema | Backup | Rollback |",
+        "| --- | --- | --- | --- | --- | --- |",
+    ]
+    apps = summary.get("firstPartyApps")
+    for app in apps if isinstance(apps, list) else []:
+        if not isinstance(app, dict):
+            continue
+        lines.append(
+            "| `{}` | `{}` | `{}` | `{}` | `{}` | `{}` |".format(
+                app.get("appId", "missing"),
+                app.get("version", "missing"),
+                app.get("channel", "missing"),
+                app.get("dataSchemaVersion", "missing"),
+                str(app.get("backupSupported", False)).lower(),
+                str(app.get("rollbackSupported", False)).lower(),
+            )
+        )
+    lines.extend(["", "## Validation", ""])
+    if not errors:
+        lines.append("Previous beta candidate summary validation passed.")
+    else:
+        for error in errors:
+            lines.append(f"- {error}")
+    return "\n".join(lines) + "\n"
 
 
 def node_app_ids(nodes: list[dict[str, Any]]) -> set[str]:
@@ -951,7 +2093,18 @@ def upgrade_from_previous_candidate(config: dict[str, Any], base_dir: Path, stri
     previous_validation_errors = (
         validate_previous_candidate_summary(previous_summary) if previous_configured else []
     )
+    previous_validation_errors.extend(
+        previous_summary_config_binding_errors(previous_summary, previous)
+        if previous_configured
+        else []
+    )
     current_validation_errors = validate_current_candidate_summary(current_summary) if current_configured else []
+    upgrade = previous_candidate_upgrade_summary(
+        previous_summary,
+        current_summary,
+        config,
+        previous_validation_errors,
+    )
     if previous_validation_errors or current_validation_errors:
         status = "fail"
         summary = "Configured candidate summary evidence failed validation."
@@ -964,10 +2117,19 @@ def upgrade_from_previous_candidate(config: dict[str, Any], base_dir: Path, stri
     else:
         status = "pass"
         summary = "Previous beta candidate summary was consumed and current upgrade evidence was represented."
+    catalog_transition = upgrade["catalogTransition"]
+    support_bundle = upgrade["supportBundleAfterFailedUpgrade"]
     evidence = {
         "evidenceId": "multi-node-beta.upgrade-drill",
         "previousVersion": previous["version"],
         "currentVersion": current["version"],
+        "previousReleaseId": upgrade["previousCandidate"]["releaseId"],
+        "previousSummaryDrillDigest": upgrade["previousCandidate"]["drillDigest"],
+        "previousCatalogChannel": previous["catalogChannel"],
+        "currentCatalogChannel": current["catalogChannel"],
+        "previousStableCatalogEdition": catalog_transition["previousStableEdition"],
+        "previousBetaCatalogEdition": catalog_transition["previousBetaEdition"],
+        "currentCatalogEdition": catalog_transition["currentEdition"],
         "previousSummaryConfigured": previous_configured,
         "previousSummaryProvided": previous_present,
         "previousSummaryValid": previous_present and not previous_validation_errors,
@@ -979,9 +2141,22 @@ def upgrade_from_previous_candidate(config: dict[str, Any], base_dir: Path, stri
         "currentProductionBetaValidationErrors": current_validation_errors,
         "currentProductionBetaStatus": str(current_summary.get("status", "missing")) if current_summary else "missing",
         "currentUpgradePathRepresented": True,
-        "firstPartyAppMigrationStatus": "pass",
+        "daemonUpgrade": upgrade["daemonUpgrade"],
+        "appMigrations": upgrade["appMigrations"],
+        "backupRestore": upgrade["backupRestore"],
+        "failedMigration": upgrade["failedMigration"],
+        "socialInboxMigration": upgrade["socialInboxMigration"],
+        "trustGraphMigration": upgrade["trustGraphMigration"],
+        "supportBundleAfterFailedUpgrade": support_bundle,
+        "firstPartyAppMigrationStatus": upgrade["appMigrationStatus"],
         "backupBeforeUpdateStatus": "pass",
-        "rollbackStatus": "pass",
+        "restoreIntoCleanNodeStatus": "pass",
+        "socialInboxMigrationStatus": upgrade["socialInboxMigration"]["status"],
+        "trustGraphMigrationStatus": upgrade["trustGraphMigration"]["status"],
+        "supportBundleRedactionStatus": support_bundle["redactionStatus"],
+        "rollbackStatus": upgrade["failedMigration"]["rollbackResult"],
+        "rawDataIncluded": False,
+        "releaseReport": upgrade["releaseReport"],
         "strictPreviousSummaryRequired": require_previous,
     }
     return scenario_result("upgrade-from-previous-candidate", status, summary, evidence)
@@ -1622,6 +2797,9 @@ def validate_required_evidence_fields(
             errors.append(
                 "scenario upgrade-from-previous-candidate currentProductionBetaValidationErrors must be a list"
             )
+        drill_digest = evidence.get("previousSummaryDrillDigest")
+        if not isinstance(drill_digest, str) or not re.fullmatch(r"sha256:[0-9a-f]{64}", drill_digest):
+            errors.append("scenario upgrade-from-previous-candidate previousSummaryDrillDigest must be a sha256 digest")
         if isinstance(previous, dict):
             if evidence.get("previousVersion") != previous.get("version"):
                 errors.append("scenario upgrade-from-previous-candidate previousVersion must match previousCandidate")
@@ -1671,6 +2849,119 @@ def validate_required_evidence_fields(
                     "scenario upgrade-from-previous-candidate currentProductionBetaSummaryValid requires empty "
                     "currentProductionBetaValidationErrors"
                 )
+        daemon_upgrade = evidence.get("daemonUpgrade")
+        if not isinstance(daemon_upgrade, dict):
+            errors.append("scenario upgrade-from-previous-candidate daemonUpgrade must be an object")
+        else:
+            if daemon_upgrade.get("represented") is not True:
+                errors.append("scenario upgrade-from-previous-candidate daemonUpgrade.represented must be true")
+            if daemon_upgrade.get("status") != "pass":
+                errors.append("scenario upgrade-from-previous-candidate daemonUpgrade.status must be pass")
+        app_migrations = evidence.get("appMigrations")
+        if not isinstance(app_migrations, list):
+            errors.append("scenario upgrade-from-previous-candidate appMigrations must be a list")
+            app_migration_apps: set[str] = set()
+        else:
+            app_migration_apps = {
+                str(entry.get("appId"))
+                for entry in app_migrations
+                if isinstance(entry, dict) and isinstance(entry.get("appId"), str)
+            }
+            missing_migration_apps = sorted(set(PREVIOUS_CANDIDATE_MIGRATION_APPS) - app_migration_apps)
+            if missing_migration_apps:
+                errors.append(
+                    "scenario upgrade-from-previous-candidate appMigrations missing required apps: "
+                    + ", ".join(missing_migration_apps)
+                )
+            for index, migration in enumerate(app_migrations):
+                if not isinstance(migration, dict):
+                    errors.append(f"scenario upgrade-from-previous-candidate appMigrations[{index}] must be an object")
+                    continue
+                if migration.get("status") != "pass":
+                    errors.append(
+                        f"scenario upgrade-from-previous-candidate appMigrations[{index}].status must be pass"
+                    )
+                if migration.get("backupBeforeUpdateRequired") is not True:
+                    errors.append(
+                        "scenario upgrade-from-previous-candidate "
+                        f"appMigrations[{index}].backupBeforeUpdateRequired must be true"
+                    )
+                if migration.get("rawAppDataIncluded") is not False:
+                    errors.append(
+                        "scenario upgrade-from-previous-candidate "
+                        f"appMigrations[{index}].rawAppDataIncluded must be false"
+                    )
+        backup_restore_evidence = evidence.get("backupRestore")
+        if not isinstance(backup_restore_evidence, dict):
+            errors.append("scenario upgrade-from-previous-candidate backupRestore must be an object")
+        else:
+            for field, expected in (
+                ("status", "pass"),
+                ("backupBeforeUpdate", True),
+                ("restoredIntoCleanNode", True),
+                ("rawBackupPayloadIncluded", False),
+                ("rawAppDataIncluded", False),
+            ):
+                if backup_restore_evidence.get(field) != expected:
+                    errors.append(f"scenario upgrade-from-previous-candidate backupRestore.{field} must be {expected}")
+        failed_migration = evidence.get("failedMigration")
+        if not isinstance(failed_migration, dict):
+            errors.append("scenario upgrade-from-previous-candidate failedMigration must be an object")
+        else:
+            for field, expected in (
+                ("status", "pass"),
+                ("blocksUpdate", True),
+                ("triggersRollback", True),
+                ("rollbackResult", "pass"),
+            ):
+                if failed_migration.get(field) != expected:
+                    errors.append(f"scenario upgrade-from-previous-candidate failedMigration.{field} must be {expected}")
+        social_migration = evidence.get("socialInboxMigration")
+        if not isinstance(social_migration, dict):
+            errors.append("scenario upgrade-from-previous-candidate socialInboxMigration must be an object")
+        elif social_migration.get("status") != "pass" or social_migration.get("rawMessageBodiesIncluded") is not False:
+            errors.append(
+                "scenario upgrade-from-previous-candidate socialInboxMigration must pass without raw message bodies"
+            )
+        trust_migration = evidence.get("trustGraphMigration")
+        if not isinstance(trust_migration, dict):
+            errors.append("scenario upgrade-from-previous-candidate trustGraphMigration must be an object")
+        elif trust_migration.get("status") != "pass" or trust_migration.get("rawStatementsIncluded") is not False:
+            errors.append(
+                "scenario upgrade-from-previous-candidate trustGraphMigration must pass without raw statements"
+            )
+        failed_support = evidence.get("supportBundleAfterFailedUpgrade")
+        if not isinstance(failed_support, dict):
+            errors.append("scenario upgrade-from-previous-candidate supportBundleAfterFailedUpgrade must be an object")
+        else:
+            for field, expected in (
+                ("status", "pass"),
+                ("redactionStatus", "pass"),
+                ("rawContentIncluded", False),
+                ("rawAppDataIncluded", False),
+                ("tokensIncluded", False),
+                ("privateInsertUrisIncluded", False),
+                ("absolutePathsIncluded", False),
+            ):
+                if failed_support.get(field) != expected:
+                    errors.append(
+                        "scenario upgrade-from-previous-candidate "
+                        f"supportBundleAfterFailedUpgrade.{field} must be {expected}"
+                    )
+        release_report = evidence.get("releaseReport")
+        if not isinstance(release_report, dict):
+            errors.append("scenario upgrade-from-previous-candidate releaseReport must be an object")
+        else:
+            for field, expected in (
+                ("status", "pass"),
+                ("digestsOnly", True),
+                ("countsOnly", True),
+                ("rawDataIncluded", False),
+            ):
+                if release_report.get(field) != expected:
+                    errors.append(f"scenario upgrade-from-previous-candidate releaseReport.{field} must be {expected}")
+        if evidence.get("rawDataIncluded") is not False:
+            errors.append("scenario upgrade-from-previous-candidate rawDataIncluded must be false")
         if entry.get("status") == "pass":
             if evidence.get("previousSummaryConfigured") is not True:
                 errors.append(
@@ -1704,6 +2995,10 @@ def validate_required_evidence_fields(
                 "currentUpgradePathRepresented",
                 "firstPartyAppMigrationStatus",
                 "backupBeforeUpdateStatus",
+                "restoreIntoCleanNodeStatus",
+                "socialInboxMigrationStatus",
+                "trustGraphMigrationStatus",
+                "supportBundleRedactionStatus",
                 "rollbackStatus",
             ):
                 expected = True if field == "currentUpgradePathRepresented" else "pass"
@@ -1917,6 +3212,52 @@ def compact_redaction(redaction: Any) -> dict[str, Any]:
     }
 
 
+def compact_previous_candidate_upgrade(summary: dict[str, Any]) -> dict[str, Any]:
+    scenario = scenario_map(summary).get("upgrade-from-previous-candidate", {})
+    evidence = scenario.get("evidence") if isinstance(scenario, dict) else {}
+    if not isinstance(evidence, dict):
+        return {"status": "missing"}
+    fields = (
+        "previousReleaseId",
+        "previousSummaryDrillDigest",
+        "previousVersion",
+        "currentVersion",
+        "previousCatalogChannel",
+        "currentCatalogChannel",
+        "previousStableCatalogEdition",
+        "previousBetaCatalogEdition",
+        "currentCatalogEdition",
+        "previousSummaryConfigured",
+        "previousSummaryProvided",
+        "previousSummaryValid",
+        "previousSummaryStatus",
+        "currentProductionBetaSummaryConfigured",
+        "currentProductionBetaSummaryProvided",
+        "currentProductionBetaSummaryValid",
+        "currentProductionBetaStatus",
+        "currentUpgradePathRepresented",
+        "firstPartyAppMigrationStatus",
+        "backupBeforeUpdateStatus",
+        "restoreIntoCleanNodeStatus",
+        "socialInboxMigrationStatus",
+        "trustGraphMigrationStatus",
+        "supportBundleRedactionStatus",
+        "rollbackStatus",
+        "rawDataIncluded",
+        "strictPreviousSummaryRequired",
+    )
+    compact: dict[str, Any] = {
+        "status": compact_status(scenario.get("status", "missing")),
+        "evidenceId": "multi-node-beta.upgrade-drill",
+    }
+    for field in fields:
+        if field in evidence:
+            compact[field] = evidence[field]
+    for field in ("previousSummaryValidationErrors", "currentProductionBetaValidationErrors"):
+        compact[field] = compact_public_text_list(evidence.get(field), f"upgradeDrill.{field}")
+    return compact
+
+
 def compact_for_release(summary: dict[str, Any]) -> dict[str, Any]:
     return {
         "status": compact_status(summary.get("status", "missing")),
@@ -1924,6 +3265,7 @@ def compact_for_release(summary: dict[str, Any]) -> dict[str, Any]:
         "mode": compact_mode(summary.get("mode", "missing")),
         "durationProfile": compact_duration_profile(summary.get("durationProfile", "missing")),
         "scenarioStatuses": scenario_statuses(summary),
+        "previousCandidateUpgrade": compact_previous_candidate_upgrade(summary),
         "blockers": compact_public_text_list(summary.get("blockers"), "blockers"),
         "warnings": compact_public_text_list(summary.get("warnings"), "warnings"),
         "redaction": compact_redaction(summary.get("redaction")),
@@ -1977,9 +3319,109 @@ def run_verify(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_previous_summary(args: argparse.Namespace) -> int:
+    release_summary = read_json(args.release_certification_summary)
+    production_summary = read_json(args.production_beta_summary)
+    if release_summary is None:
+        print("release certification summary is missing or malformed")
+        return 1
+    if production_summary is None:
+        print("production beta summary is missing or malformed")
+        return 1
+    source_errors = previous_candidate_source_summary_errors(release_summary, production_summary)
+    if source_errors:
+        for error in source_errors:
+            print(error)
+        return 1
+    summary = build_previous_candidate_summary(
+        release_summary,
+        production_summary,
+        release_certification_digest=sha256_path(args.release_certification_summary),
+        production_beta_digest=sha256_path(args.production_beta_summary),
+        generated_at=args.generated_at or utc_now_timestamp(),
+    )
+    errors = validate_previous_beta_candidate_summary(summary)
+    if errors:
+        for error in errors:
+            print(error)
+        return 1
+    write_json(args.out, summary)
+    report_path = args.report or args.out.with_suffix(".md")
+    write_text(report_path, render_previous_candidate_report(summary))
+    return 0
+
+
+def run_verify_previous_summary(args: argparse.Namespace) -> int:
+    summary = read_json(args.summary)
+    errors = validate_previous_beta_candidate_summary(
+        summary,
+        production=args.strict,
+        max_age_days=args.max_age_days,
+    )
+    if args.report:
+        write_text(args.report, render_previous_candidate_report(summary or {}, errors))
+    if errors:
+        for error in errors:
+            print(error)
+        return 1
+    print("previous beta candidate summary valid")
+    return 0
+
+
+def run_previous_summary_schema(args: argparse.Namespace) -> int:
+    schema = previous_candidate_summary_schema()
+    if args.out:
+        write_json(args.out, schema)
+    else:
+        print(stable_json(schema), end="")
+    return 0
+
+
 def run_self_test() -> None:
     fixture = fixture_path()
     config = validate_config(load_config(fixture if fixture.is_file() else None))
+    previous_fixture = read_json(previous_candidate_fixture_path())
+    assert previous_fixture is not None, previous_candidate_fixture_path()
+    assert validate_previous_beta_candidate_summary(previous_fixture) == [], previous_fixture
+    schema = previous_candidate_summary_schema()
+    schema_properties = schema["properties"]
+    for field in ("catalog", "platformApi", "appData", "trustGraph", "socialInbox", "supportBundle", "redaction"):
+        assert "properties" in schema_properties[field], (field, schema_properties[field])
+    assert "properties" in schema_properties["firstPartyApps"]["items"], schema_properties["firstPartyApps"]
+    assert "properties" in schema_properties["appData"]["properties"]["migrationCoverage"]["items"], (
+        schema_properties["appData"]
+    )
+    previous_fixture_missing_app = json.loads(json.dumps(previous_fixture, sort_keys=True))
+    previous_fixture_missing_app["firstPartyApps"] = [
+        app
+        for app in previous_fixture_missing_app["firstPartyApps"]
+        if app.get("appId") != "social-inbox"
+    ]
+    assert any(
+        "firstPartyApps missing required apps" in error
+        for error in validate_previous_beta_candidate_summary(previous_fixture_missing_app)
+    ), previous_fixture_missing_app
+    previous_fixture_not_ready = json.loads(json.dumps(previous_fixture, sort_keys=True))
+    previous_fixture_not_ready["promotionReady"] = False
+    assert "previous candidate summary promotionReady must be true" in (
+        validate_previous_beta_candidate_summary(previous_fixture_not_ready)
+    ), previous_fixture_not_ready
+    for field, value, expected_kind in (
+        ("rawAppData", "rawAppDataValue=fixture-raw-app-data", "raw-app-data"),
+        ("rawSocialMessage", "rawMessageBody=fixture-raw-social-message", "raw-social-message"),
+        ("rawTrustStatement", "rawTrustStatement=fixture-raw-trust-statement", "raw-trust-statement"),
+        ("privateInsertUri", "privateInsertUri=USK@AQECAAEPRIVATEINSERTKEY,fixture/name/1", "private-insert-uri"),
+        ("token", "CRYPTAD_APP_TOKEN=abcdefghijklmnop", "app-or-session-token"),
+        (
+            "privateKey",
+            "-----BEGIN PRIVATE KEY-----\nfixture-private-key\n-----END PRIVATE KEY-----",
+            "private-key",
+        ),
+    ):
+        unsafe_previous = json.loads(json.dumps(previous_fixture, sort_keys=True))
+        unsafe_previous[field] = value
+        unsafe_errors = validate_previous_beta_candidate_summary(unsafe_previous)
+        assert any(expected_kind in error for error in unsafe_errors), (expected_kind, unsafe_errors)
     disabled_redaction_config = json.loads(json.dumps(config, sort_keys=True))
     disabled_redaction_config["redaction"]["failOnTokens"] = False
     try:
@@ -1993,10 +3435,10 @@ def run_self_test() -> None:
         summary = build_summary(config, out_dir=out_dir, base_dir=fixture.parent)
         report = render_report(summary)
         assert summary["kind"] == SUMMARY_KIND, summary
-        assert summary["status"] == "warn", summary
+        assert summary["status"] == "pass", summary
         assert summary["promotionReady"] is True, summary
         assert summary["redaction"]["status"] == "pass", summary
-        assert scenario_statuses(summary)["upgrade-from-previous-candidate"] == "warn", summary
+        assert scenario_statuses(summary)["upgrade-from-previous-candidate"] == "pass", summary
         write_json(out_dir / SUMMARY_FILE_NAME, summary)
         write_text(out_dir / REPORT_FILE_NAME, report)
         assert validate_summary(read_json(out_dir / SUMMARY_FILE_NAME)) == [], summary
@@ -2006,7 +3448,7 @@ def run_self_test() -> None:
         path_plan_current["productionBetaSummaryPath"] = "/home/runner/work/cryptad/current-summary.json"
         path_plan = render_plan(validate_config(path_plan_config))
         assert path_plan["previousCandidate"] == {
-            "version": "previous-beta",
+            "version": "269",
             "catalogChannel": "stable",
             "summaryConfigured": True,
         }, path_plan
@@ -2094,6 +3536,7 @@ def run_self_test() -> None:
 
         strict_config = json.loads(json.dumps(config, sort_keys=True))
         strict_config["strict"]["requirePreviousSummary"] = True
+        strict_config["previousCandidate"]["summaryPath"] = ""
         strict_summary = build_summary(strict_config, out_dir=out_dir, strict=True, base_dir=fixture.parent)
         assert strict_summary["status"] == "fail", strict_summary
         assert validate_summary(strict_summary, strict=True), strict_summary
@@ -2147,15 +3590,304 @@ def run_self_test() -> None:
         )
 
         valid_previous_config = json.loads(json.dumps(config, sort_keys=True))
+        valid_previous_config["previousCandidate"]["version"] = "previous-beta"
+        previous_source_metadata = {
+            field: clone_json_value(previous_fixture[field])
+            for field in PREVIOUS_CANDIDATE_SOURCE_METADATA_FIELDS
+        }
+        for app in previous_source_metadata["firstPartyApps"]:
+            app["version"] = "previous-beta"
+        valid_previous_candidate = build_previous_candidate_summary(
+            {
+                "schemaVersion": SCHEMA_VERSION,
+                "tool": "release-certification",
+                "version": "previous-beta",
+                "status": "pass",
+                "releaseCandidatePassed": True,
+                "metadata": {"gitCommit": "self-test-previous-git"},
+                "evidence": [{"id": "self-test.previous", "status": "pass"}],
+            },
+            {
+                "schemaVersion": SCHEMA_VERSION,
+                "tool": "production-beta-release",
+                "version": "previous-beta",
+                "status": "pass",
+                "promotionReady": True,
+                "artifactBaseUri": "https://downloads.crypta.invalid/production-beta/previous-beta",
+                **previous_source_metadata,
+            },
+            release_certification_digest=synthetic_full_digest("self-test-release-certification"),
+            production_beta_digest=synthetic_full_digest("self-test-production-beta"),
+        )
         write_json(
             out_dir / "previous-valid.json",
-            {"schemaVersion": SCHEMA_VERSION, "status": "pass", "promotionReady": True},
+            valid_previous_candidate,
         )
+        assert validate_previous_beta_candidate_summary(valid_previous_candidate) == [], valid_previous_candidate
+        mismatched_previous_version_config = json.loads(json.dumps(valid_previous_config, sort_keys=True))
+        mismatched_previous_version_config["previousCandidate"]["summaryPath"] = "previous-valid.json"
+        mismatched_previous_version_config["previousCandidate"]["version"] = "wrong-version"
+        mismatched_previous_version_summary = build_summary(
+            mismatched_previous_version_config,
+            out_dir=out_dir,
+            strict=True,
+            base_dir=out_dir,
+        )
+        mismatched_previous_version_upgrade = scenario_map(mismatched_previous_version_summary)[
+            "upgrade-from-previous-candidate"
+        ]
+        assert mismatched_previous_version_summary["status"] == "fail", mismatched_previous_version_summary
+        assert mismatched_previous_version_upgrade["status"] == "fail", mismatched_previous_version_upgrade
+        assert any(
+            "does not match configured previousCandidate.version" in error
+            for error in mismatched_previous_version_upgrade["evidence"]["previousSummaryValidationErrors"]
+        ), mismatched_previous_version_upgrade
+        previous_summary_cli_out = out_dir / "previous-cli-summary.json"
+        release_summary_cli_in = out_dir / "previous-cli-release-certification.json"
+        production_summary_cli_in = out_dir / "previous-cli-production-beta.json"
+        previous_cli_source_metadata = {
+            field: clone_json_value(previous_fixture[field])
+            for field in PREVIOUS_CANDIDATE_SOURCE_METADATA_FIELDS
+        }
+        for app in previous_cli_source_metadata["firstPartyApps"]:
+            app["version"] = "previous-cli-beta"
+        write_json(
+            release_summary_cli_in,
+            {
+                "schemaVersion": SCHEMA_VERSION,
+                "tool": "release-certification",
+                "version": "previous-cli-beta",
+                "status": "warn",
+                "releaseCandidatePassed": True,
+                "metadata": {"gitCommit": "self-test-previous-cli-git"},
+                "evidence": [{"id": "self-test.previous-cli", "status": "pass"}],
+            },
+        )
+        write_json(
+            production_summary_cli_in,
+            {
+                "schemaVersion": SCHEMA_VERSION,
+                "tool": "production-beta-release",
+                "version": "previous-cli-beta",
+                "status": "pass",
+                "promotionReady": True,
+                "artifactBaseUri": "https://downloads.crypta.invalid/production-beta/previous-cli-beta",
+                **previous_cli_source_metadata,
+            },
+        )
+        assert (
+            run_previous_summary(
+                argparse.Namespace(
+                    release_certification_summary=release_summary_cli_in,
+                    production_beta_summary=production_summary_cli_in,
+                    out=previous_summary_cli_out,
+                    report=None,
+                    generated_at=DETERMINISTIC_GENERATED_AT,
+                )
+            )
+            == 0
+        )
+        minimal_production_summary_cli_in = out_dir / "previous-cli-production-beta-minimal.json"
+        write_json(
+            minimal_production_summary_cli_in,
+            {
+                "schemaVersion": SCHEMA_VERSION,
+                "tool": "production-beta-release",
+                "version": "previous-cli-beta",
+                "status": "pass",
+                "promotionReady": True,
+                "artifactBaseUri": "https://downloads.crypta.invalid/production-beta/previous-cli-beta",
+            },
+        )
+        minimal_stdout = io.StringIO()
+        with contextlib.redirect_stdout(minimal_stdout):
+            minimal_exit = run_previous_summary(
+                argparse.Namespace(
+                    release_certification_summary=release_summary_cli_in,
+                    production_beta_summary=minimal_production_summary_cli_in,
+                    out=out_dir / "previous-cli-minimal-summary.json",
+                    report=None,
+                    generated_at=DETERMINISTIC_GENERATED_AT,
+                )
+            )
+        assert minimal_exit == 1
+        assert "previous candidate source metadata catalog is missing" in minimal_stdout.getvalue(), (
+            minimal_stdout.getvalue()
+        )
+        previous_candidate_as_release_summary_cli_in = (
+            out_dir / "previous-cli-release-certification-is-previous-candidate.json"
+        )
+        write_json(previous_candidate_as_release_summary_cli_in, valid_previous_candidate)
+        previous_candidate_source_stdout = io.StringIO()
+        with contextlib.redirect_stdout(previous_candidate_source_stdout):
+            previous_candidate_source_exit = run_previous_summary(
+                argparse.Namespace(
+                    release_certification_summary=previous_candidate_as_release_summary_cli_in,
+                    production_beta_summary=production_summary_cli_in,
+                    out=out_dir / "previous-cli-previous-candidate-as-release-summary.json",
+                    report=None,
+                    generated_at=DETERMINISTIC_GENERATED_AT,
+                )
+            )
+        assert previous_candidate_source_exit == 1
+        assert "not a previous beta candidate summary" in previous_candidate_source_stdout.getvalue(), (
+            previous_candidate_source_stdout.getvalue()
+        )
+        previous_candidate_as_production_summary_cli_in = (
+            out_dir / "previous-cli-production-beta-is-previous-candidate.json"
+        )
+        write_json(previous_candidate_as_production_summary_cli_in, valid_previous_candidate)
+        previous_candidate_production_stdout = io.StringIO()
+        with contextlib.redirect_stdout(previous_candidate_production_stdout):
+            previous_candidate_production_exit = run_previous_summary(
+                argparse.Namespace(
+                    release_certification_summary=release_summary_cli_in,
+                    production_beta_summary=previous_candidate_as_production_summary_cli_in,
+                    out=out_dir / "previous-cli-previous-candidate-as-production-summary.json",
+                    report=None,
+                    generated_at=DETERMINISTIC_GENERATED_AT,
+                )
+            )
+        assert previous_candidate_production_exit == 1
+        assert "production beta summary must be a production-beta-release summary" in (
+            previous_candidate_production_stdout.getvalue()
+        ), previous_candidate_production_stdout.getvalue()
+        unrelated_release_summary_cli_in = out_dir / "previous-cli-release-certification-unrelated.json"
+        write_json(
+            unrelated_release_summary_cli_in,
+            {
+                "schemaVersion": SCHEMA_VERSION,
+                "tool": "unrelated-release-tool",
+                "version": "previous-cli-beta",
+                "status": "pass",
+                "releaseCandidatePassed": True,
+                "evidence": [{"id": "self-test.previous-cli", "status": "pass"}],
+                **previous_cli_source_metadata,
+            },
+        )
+        unrelated_source_stdout = io.StringIO()
+        with contextlib.redirect_stdout(unrelated_source_stdout):
+            unrelated_source_exit = run_previous_summary(
+                argparse.Namespace(
+                    release_certification_summary=unrelated_release_summary_cli_in,
+                    production_beta_summary=production_summary_cli_in,
+                    out=out_dir / "previous-cli-unrelated-release-summary.json",
+                    report=None,
+                    generated_at=DETERMINISTIC_GENERATED_AT,
+                )
+            )
+        assert unrelated_source_exit == 1
+        assert "tool must be release-certification" in unrelated_source_stdout.getvalue(), (
+            unrelated_source_stdout.getvalue()
+        )
+        mismatched_release_summary_cli_in = out_dir / "previous-cli-release-certification-metadata-mismatch.json"
+        mismatched_release_metadata = {
+            field: clone_json_value(previous_cli_source_metadata[field])
+            for field in PREVIOUS_CANDIDATE_SOURCE_METADATA_FIELDS
+        }
+        mismatched_release_metadata["catalog"]["stableChannelEdition"] = 999
+        write_json(
+            mismatched_release_summary_cli_in,
+            {
+                "schemaVersion": SCHEMA_VERSION,
+                "tool": "release-certification",
+                "version": "previous-cli-beta",
+                "status": "pass",
+                "releaseCandidatePassed": True,
+                "metadata": {"gitCommit": "self-test-previous-cli-git"},
+                "evidence": [{"id": "self-test.previous-cli", "status": "pass"}],
+                **mismatched_release_metadata,
+            },
+        )
+        mismatch_stdout = io.StringIO()
+        with contextlib.redirect_stdout(mismatch_stdout):
+            mismatch_exit = run_previous_summary(
+                argparse.Namespace(
+                    release_certification_summary=mismatched_release_summary_cli_in,
+                    production_beta_summary=production_summary_cli_in,
+                    out=out_dir / "previous-cli-mismatched-summary.json",
+                    report=None,
+                    generated_at=DETERMINISTIC_GENERATED_AT,
+                )
+            )
+        assert mismatch_exit == 1
+        assert "previous candidate source metadata catalog differs" in mismatch_stdout.getvalue(), (
+            mismatch_stdout.getvalue()
+        )
+        assert (
+            run_verify_previous_summary(
+                argparse.Namespace(
+                    summary=previous_summary_cli_out,
+                    report=out_dir / "previous-cli-summary.md",
+                    strict=True,
+                    max_age_days=None,
+                )
+            )
+            == 0
+        )
+        failing_production_summary_cli_in = out_dir / "previous-cli-production-beta-failing.json"
+        write_json(
+            failing_production_summary_cli_in,
+            {
+                "schemaVersion": SCHEMA_VERSION,
+                "tool": "production-beta-release",
+                "version": "previous-cli-beta",
+                "status": "fail",
+                "promotionReady": False,
+                "artifactBaseUri": "https://downloads.crypta.invalid/production-beta/previous-cli-beta",
+            },
+        )
+        with contextlib.redirect_stdout(io.StringIO()):
+            failing_production_exit = run_previous_summary(
+                argparse.Namespace(
+                    release_certification_summary=release_summary_cli_in,
+                    production_beta_summary=failing_production_summary_cli_in,
+                    out=out_dir / "previous-cli-failing-production-summary.json",
+                    report=None,
+                    generated_at=DETERMINISTIC_GENERATED_AT,
+                )
+            )
+        assert failing_production_exit == 1
+        failing_release_summary_cli_in = out_dir / "previous-cli-release-certification-failing.json"
+        write_json(
+            failing_release_summary_cli_in,
+            {
+                "schemaVersion": SCHEMA_VERSION,
+                "tool": "release-certification",
+                "version": "previous-cli-beta",
+                "status": "fail",
+                "releaseCandidatePassed": False,
+                "metadata": {"gitCommit": "self-test-previous-cli-git"},
+                "evidence": [{"id": "self-test.previous-cli", "status": "fail"}],
+            },
+        )
+        with contextlib.redirect_stdout(io.StringIO()):
+            failing_release_exit = run_previous_summary(
+                argparse.Namespace(
+                    release_certification_summary=failing_release_summary_cli_in,
+                    production_beta_summary=production_summary_cli_in,
+                    out=out_dir / "previous-cli-failing-release-summary.json",
+                    report=None,
+                    generated_at=DETERMINISTIC_GENERATED_AT,
+                )
+            )
+        assert failing_release_exit == 1
+        failing_source_previous_candidate = build_previous_candidate_summary(
+            read_json(failing_release_summary_cli_in),
+            read_json(production_summary_cli_in),
+            release_certification_digest=synthetic_full_digest("self-test-failing-release"),
+            production_beta_digest=synthetic_full_digest("self-test-production-beta"),
+        )
+        assert failing_source_previous_candidate["status"] == "fail", failing_source_previous_candidate
+        assert failing_source_previous_candidate["promotionReady"] is False, failing_source_previous_candidate
         valid_previous_config["previousCandidate"]["summaryPath"] = "previous-valid.json"
         valid_previous_summary = build_summary(valid_previous_config, out_dir=out_dir, strict=True, base_dir=out_dir)
         valid_upgrade = scenario_map(valid_previous_summary)["upgrade-from-previous-candidate"]
         assert valid_upgrade["status"] == "pass", valid_previous_summary
         assert valid_upgrade["evidence"]["previousSummaryValid"] is True, valid_upgrade
+        assert valid_upgrade["evidence"]["supportBundleAfterFailedUpgrade"]["redactionStatus"] == "pass", (
+            valid_upgrade
+        )
 
         warning_only_strict_config = json.loads(json.dumps(valid_previous_config, sort_keys=True))
         for node in warning_only_strict_config["nodes"]:
@@ -2225,6 +3957,32 @@ def run_self_test() -> None:
         valid_current_upgrade = scenario_map(valid_current_summary)["upgrade-from-previous-candidate"]
         assert valid_current_upgrade["status"] == "pass", valid_current_summary
         assert valid_current_upgrade["evidence"]["currentProductionBetaSummaryValid"] is True, valid_current_upgrade
+
+        write_json(
+            out_dir / "current-channel-editions.json",
+            {
+                "schemaVersion": SCHEMA_VERSION,
+                "status": "pass",
+                "promotionReady": True,
+                "catalog": {
+                    "stableChannelEdition": 501,
+                    "betaChannelEdition": 777,
+                },
+            },
+        )
+        stable_channel_config = json.loads(json.dumps(valid_previous_config, sort_keys=True))
+        stable_channel_config["currentCandidate"]["productionBetaSummaryPath"] = "current-channel-editions.json"
+        stable_channel_config["currentCandidate"]["catalogChannel"] = "stable"
+        stable_channel_summary = build_summary(stable_channel_config, out_dir=out_dir, strict=True, base_dir=out_dir)
+        stable_channel_upgrade = scenario_map(stable_channel_summary)["upgrade-from-previous-candidate"]
+        assert stable_channel_upgrade["evidence"]["currentCatalogEdition"] == 501, stable_channel_upgrade
+
+        beta_channel_config = json.loads(json.dumps(stable_channel_config, sort_keys=True))
+        beta_channel_config["currentCandidate"]["catalogChannel"] = "beta"
+        beta_channel_summary = build_summary(beta_channel_config, out_dir=out_dir, strict=True, base_dir=out_dir)
+        beta_channel_upgrade = scenario_map(beta_channel_summary)["upgrade-from-previous-candidate"]
+        assert beta_channel_upgrade["evidence"]["currentCatalogEdition"] == 777, beta_channel_upgrade
+
         pass_with_warn_scenario_summary = json.loads(json.dumps(valid_current_summary, sort_keys=True))
         scenario_map(pass_with_warn_scenario_summary)["backup-restore"]["status"] = "warn"
         pass_with_warn_scenario_summary["scenarioStatuses"]["backup-restore"] = "warn"
@@ -2687,6 +4445,34 @@ def build_parser() -> argparse.ArgumentParser:
     verify_parser.add_argument("--summary", type=Path, required=True)
     verify_parser.add_argument("--strict", action="store_true")
     verify_parser.set_defaults(func=run_verify)
+
+    previous_parser = subparsers.add_parser(
+        "previous-summary",
+        help="Normalize release outputs into a previous beta candidate summary.",
+    )
+    previous_parser.add_argument("--release-certification-summary", type=Path, required=True)
+    previous_parser.add_argument("--production-beta-summary", type=Path, required=True)
+    previous_parser.add_argument("--out", type=Path, required=True)
+    previous_parser.add_argument("--report", type=Path)
+    previous_parser.add_argument("--generated-at")
+    previous_parser.set_defaults(func=run_previous_summary)
+
+    previous_verify_parser = subparsers.add_parser(
+        "verify-previous-summary",
+        help="Validate a previous beta candidate summary.",
+    )
+    previous_verify_parser.add_argument("--summary", type=Path, required=True)
+    previous_verify_parser.add_argument("--report", type=Path)
+    previous_verify_parser.add_argument("--strict", action="store_true")
+    previous_verify_parser.add_argument("--max-age-days", type=int)
+    previous_verify_parser.set_defaults(func=run_verify_previous_summary)
+
+    previous_schema_parser = subparsers.add_parser(
+        "previous-summary-schema",
+        help="Write the JSON schema for previous beta candidate summaries.",
+    )
+    previous_schema_parser.add_argument("--out", type=Path)
+    previous_schema_parser.set_defaults(func=run_previous_summary_schema)
     return parser
 
 
