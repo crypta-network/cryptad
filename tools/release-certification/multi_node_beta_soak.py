@@ -928,7 +928,7 @@ def require_digest(value: dict[str, Any], field: str, errors: list[str], prefix:
 
 def require_status_pass(value: dict[str, Any], field: str, errors: list[str], prefix: str) -> str:
     raw = str(value.get(field, "missing")).strip().lower()
-    if raw not in {"pass", "success"}:
+    if raw != "pass":
         errors.append(f"{prefix}.{field} must be pass")
     return raw
 
@@ -1130,8 +1130,8 @@ def validate_previous_beta_candidate_summary(
     raw_status = str(summary.get("status", "missing")).strip().lower()
     if raw_status in {"fail", "failure", "failed", "missing", "", "warn", "warning"}:
         errors.append(f"previous candidate summary status is {raw_status or 'missing'}")
-    elif raw_status not in {"pass", "success"}:
-        errors.append(f"previous candidate summary status is not recognized: {raw_status}")
+    elif raw_status != "pass":
+        errors.append("previous candidate summary status must be pass")
     if summary.get("promotionReady") is not True:
         errors.append("previous candidate summary promotionReady must be true")
 
@@ -3844,6 +3844,23 @@ def run_self_test() -> None:
             valid_previous_candidate,
         )
         assert validate_previous_beta_candidate_summary(valid_previous_candidate) == [], valid_previous_candidate
+        schema_mismatched_status_candidate = clone_json_value(valid_previous_candidate)
+        schema_mismatched_status_candidate["status"] = "success"
+        schema_mismatched_status_candidate["catalog"]["mirrorHealthStatus"] = "success"
+        schema_mismatched_status_candidate["appData"]["restoreDrillStatus"] = "success"
+        schema_mismatched_status_candidate["appData"]["migrationCoverage"][0]["status"] = "success"
+        schema_mismatched_status_candidate["supportBundle"]["redactionStatus"] = "success"
+        schema_mismatched_status_candidate["redaction"]["status"] = "success"
+        schema_status_errors = validate_previous_beta_candidate_summary(schema_mismatched_status_candidate)
+        for expected_error in (
+            "previous candidate summary status must be pass",
+            "previous candidate summary catalog.mirrorHealthStatus must be pass",
+            "previous candidate summary appData.restoreDrillStatus must be pass",
+            "previous candidate summary appData.migrationCoverage[0].status must be pass",
+            "previous candidate summary supportBundle.redactionStatus must be pass",
+            "previous candidate summary redaction.status must be pass",
+        ):
+            assert expected_error in schema_status_errors, schema_status_errors
         mismatched_previous_version_config = json.loads(json.dumps(valid_previous_config, sort_keys=True))
         mismatched_previous_version_config["previousCandidate"]["summaryPath"] = "previous-valid.json"
         mismatched_previous_version_config["previousCandidate"]["version"] = "wrong-version"
