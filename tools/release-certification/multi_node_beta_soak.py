@@ -1124,8 +1124,10 @@ def validate_previous_beta_candidate_summary(
         comparison_time = now or dt.datetime.now(dt.timezone.utc)
         if comparison_time.tzinfo is None:
             comparison_time = comparison_time.replace(tzinfo=dt.timezone.utc)
-        age = comparison_time.astimezone(dt.timezone.utc) - generated_at_time
-        if age > dt.timedelta(days=max_age_days):
+        comparison_time = comparison_time.astimezone(dt.timezone.utc)
+        if generated_at_time > comparison_time:
+            errors.append("previous candidate summary generatedAt is in the future")
+        elif comparison_time - generated_at_time > dt.timedelta(days=max_age_days):
             errors.append(f"previous candidate summary generatedAt is older than {max_age_days} days")
     raw_status = str(summary.get("status", "missing")).strip().lower()
     if raw_status in {"fail", "failure", "failed", "missing", "", "warn", "warning"}:
@@ -1603,6 +1605,41 @@ def previous_candidate_upgrade_summary(
         },
         "appMigrationStatus": app_migration_status,
     }
+
+
+def current_catalog_upgrade_binding_errors(
+    upgrade: dict[str, Any],
+    *,
+    current_summary_configured: bool,
+) -> list[str]:
+    if not current_summary_configured:
+        return []
+    transition = upgrade.get("catalogTransition")
+    if not isinstance(transition, dict):
+        return []
+    current_channel = transition.get("currentChannel")
+    if current_channel == "stable":
+        previous_field = "previousStableEdition"
+        catalog_field = "stableChannelEdition"
+    elif current_channel == "beta":
+        previous_field = "previousBetaEdition"
+        catalog_field = "betaChannelEdition"
+    else:
+        return []
+    previous_edition = transition.get(previous_field)
+    current_edition = transition.get("currentEdition")
+    if (
+        isinstance(previous_edition, int)
+        and not isinstance(previous_edition, bool)
+        and isinstance(current_edition, int)
+        and not isinstance(current_edition, bool)
+        and current_edition <= previous_edition
+    ):
+        return [
+            "current production beta summary catalog."
+            f"{catalog_field} must be greater than previous candidate {current_channel} catalog edition"
+        ]
+    return []
 
 
 def summary_string_value(summary: dict[str, Any] | None, keys: tuple[str, ...]) -> str | None:
@@ -2291,6 +2328,12 @@ def upgrade_from_previous_candidate(config: dict[str, Any], base_dir: Path, stri
         config,
         previous_validation_errors,
         current_configured,
+    )
+    current_validation_errors.extend(
+        current_catalog_upgrade_binding_errors(
+            upgrade,
+            current_summary_configured=current_configured,
+        )
     )
     if previous_validation_errors or current_validation_errors:
         status = "fail"
@@ -3861,6 +3904,16 @@ def run_self_test() -> None:
             "previous candidate summary redaction.status must be pass",
         ):
             assert expected_error in schema_status_errors, schema_status_errors
+        future_dated_candidate = clone_json_value(valid_previous_candidate)
+        future_dated_candidate["generatedAt"] = "2999-01-01T00:00:00Z"
+        future_dated_errors = validate_previous_beta_candidate_summary(
+            future_dated_candidate,
+            now=dt.datetime(2026, 1, 1, tzinfo=dt.timezone.utc),
+            max_age_days=90,
+        )
+        assert "previous candidate summary generatedAt is in the future" in future_dated_errors, (
+            future_dated_errors
+        )
         mismatched_previous_version_config = json.loads(json.dumps(valid_previous_config, sort_keys=True))
         mismatched_previous_version_config["previousCandidate"]["summaryPath"] = "previous-valid.json"
         mismatched_previous_version_config["previousCandidate"]["version"] = "wrong-version"
@@ -4236,6 +4289,43 @@ def run_self_test() -> None:
             for error in no_catalog_current_upgrade["evidence"]["currentProductionBetaValidationErrors"]
         ), no_catalog_current_upgrade
 
+        previous_stable_edition = valid_previous_candidate["catalog"]["stableChannelEdition"]
+        previous_beta_edition = valid_previous_candidate["catalog"]["betaChannelEdition"]
+        downgraded_current_config = json.loads(json.dumps(valid_previous_config, sort_keys=True))
+        write_json(
+            out_dir / "current-downgraded-catalog.json",
+            {
+                "schemaVersion": SCHEMA_VERSION,
+                "status": "pass",
+                "promotionReady": True,
+                "previousCandidateMetadata": {
+                    "catalog": {
+                        "stableChannelEdition": previous_stable_edition,
+                        "betaChannelEdition": previous_beta_edition + 1,
+                    },
+                },
+            },
+        )
+        downgraded_current_config["currentCandidate"]["productionBetaSummaryPath"] = (
+            "current-downgraded-catalog.json"
+        )
+        downgraded_current_summary = build_summary(
+            downgraded_current_config,
+            out_dir=out_dir,
+            strict=True,
+            base_dir=out_dir,
+        )
+        downgraded_current_upgrade = scenario_map(downgraded_current_summary)["upgrade-from-previous-candidate"]
+        assert downgraded_current_summary["status"] == "fail", downgraded_current_summary
+        assert downgraded_current_upgrade["status"] == "fail", downgraded_current_upgrade
+        assert downgraded_current_upgrade["evidence"]["currentProductionBetaSummaryValid"] is False, (
+            downgraded_current_upgrade
+        )
+        assert any(
+            "catalog.stableChannelEdition must be greater" in error
+            for error in downgraded_current_upgrade["evidence"]["currentProductionBetaValidationErrors"]
+        ), downgraded_current_upgrade
+
         valid_current_config = json.loads(json.dumps(valid_previous_config, sort_keys=True))
         write_json(
             out_dir / "current-valid.json",
@@ -4245,8 +4335,8 @@ def run_self_test() -> None:
                 "promotionReady": True,
                 "previousCandidateMetadata": {
                     "catalog": {
-                        "stableChannelEdition": 100,
-                        "betaChannelEdition": 200,
+                        "stableChannelEdition": previous_stable_edition + 1,
+                        "betaChannelEdition": previous_beta_edition + 1,
                     },
                 },
             },
