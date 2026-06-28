@@ -99,6 +99,9 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@f29f5a9d7b09a7c6b29859002d29d24e1674c884 # v5
 
+      - name: Install Gradle properties
+        uses: ./.github/actions/setup-gradle-properties
+
       - name: Run production beta pipeline self-test
         run: python3 tools/release-certification/production_beta_release.py --self-test
 
@@ -356,6 +359,9 @@ jobs:
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@f29f5a9d7b09a7c6b29859002d29d24e1674c884 # v5
+
+      - name: Install Gradle properties
+        uses: ./.github/actions/setup-gradle-properties
 
       - name: Run production beta pipeline self-test
         run: python3 tools/release-certification/production_beta_release.py --self-test

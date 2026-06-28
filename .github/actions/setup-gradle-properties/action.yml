@@ -1,0 +1,14 @@
+name: 'Setup Gradle Properties'
+description: 'Install repository Gradle defaults into Gradle User Home.'
+
+runs:
+  using: composite
+  steps:
+    - name: Install Gradle properties
+      shell: bash
+      run: |
+        set -euo pipefail
+        gradle_user_home="${GRADLE_USER_HOME:-$HOME/.gradle}"
+        install -d -m 0755 "$gradle_user_home"
+        cp gradle.properties.example "$gradle_user_home/gradle.properties"
+        chmod 0644 "$gradle_user_home/gradle.properties"
