@@ -2430,6 +2430,14 @@ def previous_candidate_summary_validation_errors(settings: Settings) -> list[str
     )
 
 
+def previous_release_history_binding_errors(previous_summary: Path, history_summary: Path) -> list[str]:
+    return multi_node_beta_soak.previous_release_certification_history_binding_errors(
+        read_json(previous_summary),
+        read_json(history_summary),
+        release_certification_digest=multi_node_beta_soak.sha256_path(history_summary),
+    )
+
+
 def previous_candidate_upgrade_binding_errors(
     compact: dict[str, Any],
     previous_summary: dict[str, Any] | None,
@@ -4331,6 +4339,17 @@ def settings_from_args(args: argparse.Namespace) -> Settings:
                 "production-beta mode requires --previous-release-certification-summary or "
                 f"{release_certification.DEFAULT_HISTORY_DIR.as_posix()}/latest-summary.json for release history."
             )
+        previous_history_for_binding = previous_release_certification_summary
+        if previous_history_for_binding is None and default_history_summary.is_file():
+            previous_history_for_binding = default_history_summary
+        if previous_history_for_binding is not None:
+            binding_errors = previous_release_history_binding_errors(previous_summary, previous_history_for_binding)
+            if binding_errors:
+                raise SystemExit(
+                    "production-beta previous release-certification history does not match "
+                    "previous beta candidate summary: "
+                    + "; ".join(binding_errors[:5])
+                )
         if (args.skip_gradle or args.skip_full_build) and not args.emergency_skip_build:
             raise SystemExit(
                 "production-beta mode cannot use --skip-gradle or --skip-full-build without --emergency-skip-build; "
@@ -4902,7 +4921,11 @@ def previous_candidate_source_metadata(version: str) -> dict[str, Any]:
     return metadata
 
 
-def write_valid_previous_candidate_summary(path: Path) -> None:
+def write_valid_previous_candidate_summary(
+    path: Path,
+    *,
+    release_certification_digest: str | None = None,
+) -> None:
     write_json(
         path,
         multi_node_beta_soak.build_previous_candidate_summary(
@@ -4924,9 +4947,8 @@ def write_valid_previous_candidate_summary(path: Path) -> None:
                 "artifactBaseUri": "https://downloads.crypta.network/production-beta/previous-beta",
                 **previous_candidate_source_metadata("previous-beta"),
             },
-            release_certification_digest=multi_node_beta_soak.synthetic_full_digest(
-                "self-test-release-certification"
-            ),
+            release_certification_digest=release_certification_digest
+            or multi_node_beta_soak.synthetic_full_digest("self-test-release-certification"),
             production_beta_digest=multi_node_beta_soak.synthetic_full_digest("self-test-production-beta"),
             generated_at=utc_now(),
         ),
@@ -4939,10 +4961,21 @@ def write_valid_release_certification_history_summary(path: Path) -> None:
         {
             "schemaVersion": 1,
             "tool": release_certification.TOOL_NAME,
+            "releaseId": "cryptad-beta-previous-beta",
+            "version": "previous-beta",
             "status": "pass",
             "releaseCandidatePassed": True,
+            "metadata": {"gitCommit": "self-test-previous-git"},
             "evidence": [{"id": "interop.smoke", "status": "pass"}],
         },
+    )
+
+
+def write_valid_previous_candidate_history_pair(previous_summary: Path, history_summary: Path) -> None:
+    write_valid_release_certification_history_summary(history_summary)
+    write_valid_previous_candidate_summary(
+        previous_summary,
+        release_certification_digest=multi_node_beta_soak.sha256_path(history_summary),
     )
 
 
@@ -6124,8 +6157,7 @@ def assert_attached_multi_node_summary_is_not_marked_generated() -> None:
         previous_summary = workspace / "attached/previous-beta-candidate-summary.json"
         history_summary = workspace / "attached/previous-release-certification-summary.json"
         write_json(attached_summary, passing_promotion_summaries()["multiNodeBetaSoak"])
-        write_valid_previous_candidate_summary(previous_summary)
-        write_valid_release_certification_history_summary(history_summary)
+        write_valid_previous_candidate_history_pair(previous_summary, history_summary)
         parser = build_parser()
         settings = settings_from_args(
             parser.parse_args(
@@ -6589,8 +6621,7 @@ def assert_production_beta_cli_rejects_unsafe_strict_inputs() -> None:
         previous_summary_path = workspace / "previous-beta-candidate-summary.json"
         history_summary_path = workspace / "previous-release-certification-summary.json"
         write_json(summary_path, passing_promotion_summaries()["multiNodeBetaSoak"])
-        write_valid_previous_candidate_summary(previous_summary_path)
-        write_valid_release_certification_history_summary(history_summary_path)
+        write_valid_previous_candidate_history_pair(previous_summary_path, history_summary_path)
         base_args = [
             "--workspace-root",
             str(workspace),
@@ -6605,6 +6636,64 @@ def assert_production_beta_cli_rejects_unsafe_strict_inputs() -> None:
             "--previous-release-certification-summary",
             str(history_summary_path.relative_to(workspace)),
         ]
+        stale_history_summary_path = workspace / "stale-previous-release-certification-summary.json"
+        write_valid_release_certification_history_summary(stale_history_summary_path)
+        stale_history_summary = read_json(stale_history_summary_path) or {}
+        stale_history_summary["version"] = "stale-previous-beta"
+        write_json(stale_history_summary_path, stale_history_summary)
+        try:
+            settings_from_args(
+                parser.parse_args(
+                    [
+                        "--workspace-root",
+                        str(workspace),
+                        "--out-dir",
+                        "build/production-beta",
+                        "--mode",
+                        "production-beta",
+                        "--artifact-base-uri",
+                        "https://downloads.crypta.network/production-beta/self-test",
+                        "--multi-node-soak-summary",
+                        str(summary_path.relative_to(workspace)),
+                        "--previous-summary",
+                        str(previous_summary_path.relative_to(workspace)),
+                        "--previous-release-certification-summary",
+                        str(stale_history_summary_path.relative_to(workspace)),
+                    ]
+                )
+            )
+        except SystemExit as exc:
+            assert "source.releaseCertificationSummaryDigest" in str(exc), exc
+        else:
+            raise AssertionError("production-beta accepted stale previous release-certification history")
+        default_history_summary_path = workspace / release_certification.DEFAULT_HISTORY_DIR / "latest-summary.json"
+        write_valid_release_certification_history_summary(default_history_summary_path)
+        default_history_summary = read_json(default_history_summary_path) or {}
+        default_history_summary["version"] = "stale-default-previous-beta"
+        write_json(default_history_summary_path, default_history_summary)
+        try:
+            settings_from_args(
+                parser.parse_args(
+                    [
+                        "--workspace-root",
+                        str(workspace),
+                        "--out-dir",
+                        "build/production-beta",
+                        "--mode",
+                        "production-beta",
+                        "--artifact-base-uri",
+                        "https://downloads.crypta.network/production-beta/self-test",
+                        "--multi-node-soak-summary",
+                        str(summary_path.relative_to(workspace)),
+                        "--previous-summary",
+                        str(previous_summary_path.relative_to(workspace)),
+                    ]
+                )
+            )
+        except SystemExit as exc:
+            assert "source.releaseCertificationSummaryDigest" in str(exc), exc
+        else:
+            raise AssertionError("production-beta accepted stale default previous release-certification history")
         try:
             settings_from_args(
                 parser.parse_args(

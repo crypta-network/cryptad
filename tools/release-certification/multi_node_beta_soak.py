@@ -1605,39 +1605,55 @@ def previous_candidate_upgrade_summary(
     }
 
 
+def summary_string_value(summary: dict[str, Any] | None, keys: tuple[str, ...]) -> str | None:
+    if not isinstance(summary, dict):
+        return None
+    metadata = summary.get("metadata")
+    if not isinstance(metadata, dict):
+        metadata = {}
+    for key in keys:
+        value = summary.get(key) or metadata.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
+def summary_version_value(summary: dict[str, Any] | None) -> str | None:
+    return summary_string_value(summary, ("version", "releaseVersion"))
+
+
 def summary_version(*summaries: dict[str, Any] | None) -> str:
     for summary in summaries:
-        if not isinstance(summary, dict):
-            continue
-        metadata = summary.get("metadata")
-        if not isinstance(metadata, dict):
-            metadata = {}
-        for key in ("version", "releaseVersion"):
-            value = summary.get(key) or metadata.get(key)
-            if isinstance(value, str) and value.strip():
-                return value.strip()
+        value = summary_version_value(summary)
+        if value is not None:
+            return value
     return "previous-beta"
+
+
+def summary_release_id_value(summary: dict[str, Any] | None) -> str | None:
+    if isinstance(summary, dict) and isinstance(summary.get("releaseId"), str) and summary["releaseId"].strip():
+        return str(summary["releaseId"]).strip()
+    return None
 
 
 def summary_release_id(version: str, *summaries: dict[str, Any] | None) -> str:
     for summary in summaries:
-        if isinstance(summary, dict) and isinstance(summary.get("releaseId"), str) and summary["releaseId"].strip():
-            return str(summary["releaseId"]).strip()
+        value = summary_release_id_value(summary)
+        if value is not None:
+            return value
     safe_version = re.sub(r"[^A-Za-z0-9._-]+", "-", version).strip("-") or "previous-beta"
     return f"cryptad-beta-{safe_version}"
 
 
+def summary_git_commit_value(summary: dict[str, Any] | None) -> str | None:
+    return summary_string_value(summary, ("gitCommit", "githubSha", "gitSha", "commit"))
+
+
 def summary_git_commit(*summaries: dict[str, Any] | None) -> str:
     for summary in summaries:
-        if not isinstance(summary, dict):
-            continue
-        metadata = summary.get("metadata")
-        if not isinstance(metadata, dict):
-            metadata = {}
-        for key in ("gitCommit", "githubSha", "gitSha", "commit"):
-            value = summary.get(key) or metadata.get(key)
-            if isinstance(value, str) and value.strip():
-                return value.strip()
+        value = summary_git_commit_value(summary)
+        if value is not None:
+            return value
     return "self-test-git-commit"
 
 
@@ -1706,6 +1722,76 @@ def previous_candidate_source_metadata(
     return metadata, errors
 
 
+def previous_candidate_source_identity_errors(
+    release_certification_summary: dict[str, Any] | None,
+    production_beta_summary: dict[str, Any] | None,
+) -> list[str]:
+    errors: list[str] = []
+    checks = (
+        (summary_version_value, "version"),
+        (summary_release_id_value, "releaseId"),
+        (summary_git_commit_value, "git identity"),
+    )
+    for reader, description in checks:
+        release_value = reader(release_certification_summary)
+        production_value = reader(production_beta_summary)
+        if release_value is not None and production_value is not None and release_value != production_value:
+            errors.append(
+                "previous candidate source "
+                f"{description} differs between release certification summary and production beta summary"
+            )
+    return errors
+
+
+def previous_release_certification_history_binding_errors(
+    previous_candidate_summary: dict[str, Any] | None,
+    release_certification_summary: dict[str, Any] | None,
+    *,
+    release_certification_digest: str | None = None,
+) -> list[str]:
+    errors: list[str] = []
+    if not isinstance(previous_candidate_summary, dict):
+        return ["previous beta candidate summary is missing or malformed"]
+    if not isinstance(release_certification_summary, dict):
+        return ["previous release-certification summary is missing or malformed"]
+
+    source = previous_candidate_summary.get("source")
+    if not isinstance(source, dict):
+        source = {}
+    if release_certification_digest is not None:
+        expected_digest = source.get("releaseCertificationSummaryDigest")
+        if not isinstance(expected_digest, str) or not expected_digest.strip():
+            errors.append("previous beta candidate summary source.releaseCertificationSummaryDigest is missing")
+        elif expected_digest != release_certification_digest:
+            errors.append(
+                "previous release-certification summary digest does not match "
+                "previous summary source.releaseCertificationSummaryDigest"
+            )
+
+    previous_version = summary_version_value(previous_candidate_summary)
+    history_version = summary_version_value(release_certification_summary)
+    if previous_version is not None and history_version is not None and previous_version != history_version:
+        errors.append("previous release-certification summary version does not match previous summary version")
+
+    previous_release_id = summary_release_id_value(previous_candidate_summary)
+    history_release_id = summary_release_id_value(release_certification_summary)
+    if (
+        previous_release_id is not None
+        and history_release_id is not None
+        and previous_release_id != history_release_id
+    ):
+        errors.append("previous release-certification summary releaseId does not match previous summary releaseId")
+
+    previous_git = source.get("gitCommit")
+    history_git = summary_git_commit_value(release_certification_summary)
+    if isinstance(previous_git, str) and previous_git.strip() and history_git is not None:
+        if previous_git.strip() != history_git:
+            errors.append(
+                "previous release-certification summary git identity does not match previous summary source.gitCommit"
+            )
+    return errors
+
+
 def previous_candidate_source_summary_errors(
     release_certification_summary: dict[str, Any] | None,
     production_beta_summary: dict[str, Any] | None,
@@ -1771,6 +1857,7 @@ def previous_candidate_source_summary_errors(
         release_certification_summary,
         production_beta_summary,
     )
+    errors.extend(previous_candidate_source_identity_errors(release_certification_summary, production_beta_summary))
     errors.extend(metadata_errors)
     return errors
 
@@ -3819,6 +3906,36 @@ def run_self_test() -> None:
                 )
             )
             == 0
+        )
+        mismatched_identity_release_summary_cli_in = (
+            out_dir / "previous-cli-release-certification-identity-mismatch.json"
+        )
+        write_json(
+            mismatched_identity_release_summary_cli_in,
+            {
+                "schemaVersion": SCHEMA_VERSION,
+                "tool": "release-certification",
+                "version": "different-previous-cli-beta",
+                "status": "pass",
+                "releaseCandidatePassed": True,
+                "metadata": {"gitCommit": "self-test-previous-cli-git"},
+                "evidence": [{"id": "self-test.previous-cli", "status": "pass"}],
+            },
+        )
+        identity_mismatch_stdout = io.StringIO()
+        with contextlib.redirect_stdout(identity_mismatch_stdout):
+            identity_mismatch_exit = run_previous_summary(
+                argparse.Namespace(
+                    release_certification_summary=mismatched_identity_release_summary_cli_in,
+                    production_beta_summary=production_summary_cli_in,
+                    out=out_dir / "previous-cli-identity-mismatch-summary.json",
+                    report=None,
+                    generated_at=DETERMINISTIC_GENERATED_AT,
+                )
+            )
+        assert identity_mismatch_exit == 1
+        assert "previous candidate source version differs" in identity_mismatch_stdout.getvalue(), (
+            identity_mismatch_stdout.getvalue()
         )
         minimal_production_summary_cli_in = out_dir / "previous-cli-production-beta-minimal.json"
         write_json(
