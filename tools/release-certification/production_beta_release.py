@@ -2328,10 +2328,39 @@ def record_certification_result(state: PipelineState, result: CommandResult) -> 
         state.failures.append(f"{result.name} failed with exit code {result.exit_code}")
 
 
+def generated_multi_node_soak_config(state: PipelineState, cert_out: Path) -> Path | None:
+    config_path = state.settings.multi_node_soak_config
+    previous_summary = state.settings.previous_summary
+    if not state.settings.run_multi_node_soak or config_path is None or previous_summary is None:
+        return config_path
+    raw_config = read_json(config_path)
+    if raw_config is None:
+        return config_path
+    config = json.loads(json.dumps(raw_config, sort_keys=True))
+    previous = config.get("previousCandidate")
+    current = config.get("currentCandidate")
+    if not isinstance(previous, dict) or not isinstance(current, dict):
+        return config_path
+
+    previous["summaryPath"] = str(previous_summary)
+    previous_value = read_json(previous_summary)
+    if multi_node_beta_soak.validate_previous_beta_candidate_summary(previous_value):
+        return config_path
+    previous_version = previous_value.get("version") if isinstance(previous_value, dict) else None
+    if isinstance(previous_version, str) and previous_version.strip():
+        previous["version"] = previous_version.strip()
+    current["version"] = state.version
+
+    generated_config = cert_out / "multi-node-beta-soak/production-beta-soak-config.json"
+    write_json(generated_config, config)
+    return generated_config
+
+
 def run_release_certification(state: PipelineState, env: dict[str, str], cert_out: Path) -> None:
     if state.settings.use_fixture_evidence:
         run_fixture_certification(state, cert_out)
         return
+    multi_node_soak_config = generated_multi_node_soak_config(state, cert_out)
     args = [
         str(state.settings.workspace_root / "tools/release-certification/run-release-certification.sh"),
         "--mode",
@@ -2345,8 +2374,8 @@ def run_release_certification(state: PipelineState, env: dict[str, str], cert_ou
         args.append("--require-live-network-beta")
     if state.settings.multi_node_soak_summary and not state.settings.run_multi_node_soak:
         args.extend(["--multi-node-soak-summary", str(state.settings.multi_node_soak_summary)])
-    if state.settings.multi_node_soak_config:
-        args.extend(["--multi-node-soak-config", str(state.settings.multi_node_soak_config)])
+    if multi_node_soak_config:
+        args.extend(["--multi-node-soak-config", str(multi_node_soak_config)])
     if state.settings.multi_node_mode is not None:
         args.extend(["--multi-node-mode", state.settings.multi_node_mode])
     if state.settings.require_multi_node_soak:
@@ -2441,6 +2470,7 @@ def previous_release_history_binding_errors(previous_summary: Path, history_summ
 def previous_candidate_upgrade_binding_errors(
     compact: dict[str, Any],
     previous_summary: dict[str, Any] | None,
+    current_version: str | None = None,
 ) -> list[str]:
     upgrade = compact.get("previousCandidateUpgrade")
     if not isinstance(upgrade, dict):
@@ -2459,16 +2489,23 @@ def previous_candidate_upgrade_binding_errors(
         errors.append(
             "upgrade previousSummaryDrillDigest does not match supplied previous summary drill metadata"
         )
+    if isinstance(current_version, str) and current_version.strip():
+        if upgrade.get("currentVersion") != current_version.strip():
+            errors.append("upgrade currentVersion does not match current release version")
     return errors
 
 
-def previous_candidate_upgrade_ready(compact: dict[str, Any], previous_summary: dict[str, Any] | None) -> bool:
+def previous_candidate_upgrade_ready(
+    compact: dict[str, Any],
+    previous_summary: dict[str, Any] | None,
+    current_version: str | None = None,
+) -> bool:
     upgrade = compact.get("previousCandidateUpgrade")
     if not isinstance(upgrade, dict):
         return False
     if upgrade.get("status") != "pass":
         return False
-    if previous_candidate_upgrade_binding_errors(compact, previous_summary):
+    if previous_candidate_upgrade_binding_errors(compact, previous_summary, current_version):
         return False
     expected = {
         "previousSummaryConfigured": True,
@@ -2848,13 +2885,14 @@ def evaluate_promotion(state: PipelineState, summaries: dict[str, Any]) -> dict[
             previous_binding_errors = previous_candidate_upgrade_binding_errors(
                 multi_node_compact,
                 previous_summary_value,
+                state.version,
             )
             add_gate(
                 "multi-node-beta.previous-candidate-summary",
                 not previous_summary_errors
                 and not previous_binding_errors
                 and scenario_statuses.get("upgrade-from-previous-candidate") == "pass"
-                and previous_candidate_upgrade_ready(multi_node_compact, previous_summary_value),
+                and previous_candidate_upgrade_ready(multi_node_compact, previous_summary_value, state.version),
                 (
                     "Production beta promotion requires a valid previous beta candidate summary, "
                     "passing previous-candidate upgrade drill evidence, app-data migration, "
@@ -4979,7 +5017,7 @@ def write_valid_previous_candidate_history_pair(previous_summary: Path, history_
     )
 
 
-def passing_multi_node_beta_soak_summary() -> dict[str, Any]:
+def passing_multi_node_beta_soak_summary(current_version: str = "self-test") -> dict[str, Any]:
     with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-multi-node-summary-") as temp_name:
         base_dir = Path(temp_name)
         write_json(
@@ -5037,7 +5075,7 @@ def passing_multi_node_beta_soak_summary() -> dict[str, Any]:
                     "catalogChannel": "stable",
                 },
                 "currentCandidate": {
-                    "version": "current-beta",
+                    "version": current_version,
                     "productionBetaSummaryPath": "current-summary.json",
                     "catalogChannel": "stable",
                 },
@@ -6253,6 +6291,63 @@ def assert_run_multi_node_soak_overrides_attached_env_summary() -> None:
         assert multi_node_summary_path(settings, cert_out) == cert_out / "multi-node-beta-soak/summary.json"
 
 
+def assert_generated_multi_node_soak_uses_previous_candidate_summary() -> None:
+    with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-generated-multi-node-") as temp_name:
+        workspace = Path(temp_name) / "repo"
+        workspace.mkdir(parents=True)
+        out_dir = workspace / "build/production-beta"
+        cert_out = workspace / "build/certification"
+        previous_summary = workspace / "previous-beta-candidate-summary.json"
+        config_path = workspace / "topology.json"
+        write_valid_previous_candidate_summary(previous_summary)
+        config = multi_node_beta_soak.load_config(multi_node_beta_soak.fixture_path())
+        config["previousCandidate"]["summaryPath"] = "stale-previous-summary.json"
+        config["previousCandidate"]["version"] = "stale-previous"
+        config["currentCandidate"]["version"] = "stale-current"
+        write_json(config_path, config)
+        captured_args: list[list[str]] = []
+
+        def fake_run_command(
+            state: PipelineState,
+            name: str,
+            args: list[str],
+            env: dict[str, str] | None = None,
+            timeout_seconds: int = 0,
+            allow_failure: bool = False,
+        ) -> CommandResult:
+            del state, env, timeout_seconds, allow_failure
+            captured_args.append(list(args))
+            return CommandResult(name, list(args), 0, 1, "", "")
+
+        original_run_command = globals()["run_command"]
+        try:
+            globals()["run_command"] = fake_run_command
+            settings = dataclasses.replace(
+                cleanup_test_settings(workspace, out_dir),
+                mode="production-beta",
+                run_multi_node_soak=True,
+                multi_node_soak_config=config_path,
+                require_multi_node_soak=True,
+                previous_summary=previous_summary,
+            )
+            run_release_certification(PipelineState(settings, "self-test", utc_now(), [], [], []), {}, cert_out)
+        finally:
+            globals()["run_command"] = original_run_command
+
+        assert "--multi-node-soak-config" in captured_args[-1], captured_args[-1]
+        config_index = captured_args[-1].index("--multi-node-soak-config")
+        generated_config_path = Path(captured_args[-1][config_index + 1])
+        assert generated_config_path != config_path, captured_args[-1]
+        generated_config = read_json(generated_config_path)
+        assert isinstance(generated_config, dict), generated_config_path
+        assert generated_config["previousCandidate"]["summaryPath"] == str(previous_summary), generated_config
+        assert generated_config["previousCandidate"]["version"] == "previous-beta", generated_config
+        assert generated_config["currentCandidate"]["version"] == "self-test", generated_config
+        original_config = read_json(config_path)
+        assert original_config["previousCandidate"]["summaryPath"] == "stale-previous-summary.json", original_config
+        assert original_config["currentCandidate"]["version"] == "stale-current", original_config
+
+
 def assert_run_multi_node_soak_rejects_cli_summary() -> None:
     with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-run-multi-node-conflict-") as temp_name:
         workspace = Path(temp_name) / "repo"
@@ -6458,6 +6553,43 @@ def assert_mismatched_previous_summary_blocks_production_multi_node_promotion() 
         promotion = evaluate_promotion(state, passing_promotion_summaries())
         failed_ids = {gate["id"] for gate in promotion["gates"] if gate["status"] == "fail"}
 
+        assert "multi-node-beta.previous-candidate-upgrade-binding" in failed_ids, promotion
+        assert promotion["promotionReady"] is False, promotion
+
+
+def assert_mismatched_current_version_blocks_production_multi_node_promotion() -> None:
+    with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-mismatched-current-") as temp_name:
+        workspace = Path(temp_name) / "repo"
+        workspace.mkdir(parents=True)
+        out_dir = workspace / "build/production-beta"
+        previous_summary = workspace / "previous-beta-candidate-summary.json"
+        write_valid_previous_candidate_summary(previous_summary)
+        settings = dataclasses.replace(
+            cleanup_test_settings(workspace, out_dir),
+            mode="production-beta",
+            artifact_base_uri="https://downloads.crypta.network/production-beta/self-test",
+            require_live_network=True,
+            require_sandbox_provider_tests=True,
+            skip_gradle=False,
+            skip_full_build=False,
+            allow_dirty_workspace=False,
+            require_multi_node_soak=True,
+            previous_summary=previous_summary,
+        )
+        write_minimal_promotion_artifacts(out_dir)
+        state = PipelineState(settings, "self-test", utc_now(), [], [], [])
+        state.signing_profile = production_signing_profile()
+        mark_required_pipeline_stages_passed(state)
+        summaries = passing_promotion_summaries()
+        for scenario in summaries["multiNodeBetaSoak"]["scenarios"]:
+            if scenario.get("id") == "upgrade-from-previous-candidate":
+                scenario["evidence"]["currentVersion"] = "different-current"
+                break
+
+        promotion = evaluate_promotion(state, summaries)
+        failed_ids = {gate["id"] for gate in promotion["gates"] if gate["status"] == "fail"}
+
+        assert "multi-node-beta.previous-candidate-summary" in failed_ids, promotion
         assert "multi-node-beta.previous-candidate-upgrade-binding" in failed_ids, promotion
         assert promotion["promotionReady"] is False, promotion
 
@@ -7649,12 +7781,14 @@ def run_self_test() -> None:
     assert_env_attached_multi_node_summary_is_extracted()
     assert_attached_multi_node_summary_is_not_marked_generated()
     assert_run_multi_node_soak_overrides_attached_env_summary()
+    assert_generated_multi_node_soak_uses_previous_candidate_summary()
     assert_run_multi_node_soak_rejects_cli_summary()
     assert_attached_multi_node_safety_flags_block_promotion()
     assert_attached_multi_node_non_promotable_summary_blocks_promotion()
     assert_attached_multi_node_blockers_and_warnings_block_promotion()
     assert_missing_previous_summary_blocks_production_multi_node_promotion()
     assert_mismatched_previous_summary_blocks_production_multi_node_promotion()
+    assert_mismatched_current_version_blocks_production_multi_node_promotion()
     assert_multi_node_mode_is_only_forwarded_when_overridden()
     assert_previous_candidate_summary_is_not_forwarded_as_cert_history()
     assert_multi_node_paths_resolve_from_workspace()
