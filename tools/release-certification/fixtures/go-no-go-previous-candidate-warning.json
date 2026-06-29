@@ -1,0 +1,18 @@
+{
+  "extends": "go-no-go-pass.json",
+  "inputs": {
+    "multiNodeBetaSoakSummary": {
+      "previousCandidateUpgrade": {
+        "firstPartyAppMigrationStatus": "warn",
+        "previousSummaryValidationErrors": [
+          "previous candidate summary appData.migrationCoverage missing required apps: social-inbox"
+        ],
+        "status": "warn"
+      },
+      "scenarioStatuses": {
+        "upgrade-from-previous-candidate": "warn"
+      }
+    }
+  },
+  "releaseId": "crypta-production-beta-269-previous-candidate-warning"
+}

@@ -1914,6 +1914,7 @@ def multi_node_beta_soak_evidence(
         "durationProfile": compact.get("durationProfile", "missing"),
         "promotionReady": promotion_ready,
         "scenarioStatuses": scenario_statuses,
+        "previousCandidateUpgrade": compact.get("previousCandidateUpgrade", {}),
         "blockers": compact.get("blockers", []),
         "warnings": compact.get("warnings", []),
         "validationErrors": validation_errors,
@@ -2838,6 +2839,33 @@ def ecosystem_matrix_row_specs() -> list[MatrixRowSpec]:
                 "docs/production-beta-release-pipeline.md",
                 "tools/release-certification/README.md",
                 "docs/operator-rc-recovery-and-support-workflow.md",
+            ),
+            phase="phase-10",
+            first_party_apps=("feed-reader", "social-inbox", "trust-graph", "profile-publisher"),
+        ),
+        MatrixRowSpec(
+            id="previous-candidate-upgrade-path",
+            category="release-operations",
+            title="Previous beta candidate upgrade path",
+            required_evidence_ids=(
+                "multi-node-beta.upgrade-drill",
+                "multi-node-beta.app-install-update-rollback",
+                "multi-node-beta.app-data-migration",
+                "multi-node-beta.backup-restore",
+                "multi-node-beta.social-inbox-multi-source",
+                "multi-node-beta.trust-graph-import",
+                "multi-node-beta.support-bundle-drill",
+                "multi-node-beta.redaction",
+            ),
+            gate_ids=("ecosystem.multi-node-beta",),
+            docs=(
+                "docs/multi-node-beta-soak-and-upgrade-drill.md",
+                "docs/production-beta-release-pipeline.md",
+                "docs/production-beta-go-no-go-dashboard.md",
+                "docs/app-upgrade-data-migrations.md",
+                "docs/app-data-backup-restore-portability.md",
+                "docs/operator-rc-recovery-and-support-workflow.md",
+                "tools/release-certification/README.md",
             ),
             phase="phase-10",
             first_party_apps=("feed-reader", "social-inbox", "trust-graph", "profile-publisher"),
@@ -4351,6 +4379,8 @@ def load_previous_summary(settings: Settings) -> tuple[dict[str, Any] | None, st
 
 
 def previous_summary_contract_error(value: dict[str, Any]) -> str:
+    if value.get("kind") == multi_node_beta_soak.PREVIOUS_CANDIDATE_SUMMARY_KIND:
+        return "previous beta candidate summaries are upgrade evidence, not release-certification history baselines"
     if value.get("tool") != TOOL_NAME:
         return "not a release-certification summary"
     if value.get("schemaVersion") != SCHEMA_VERSION:
@@ -8537,11 +8567,45 @@ def run_self_test(repo_root: Path) -> None:
             "tool": TOOL_NAME,
             "mode": "release-candidate",
             "status": "pass",
+            "releaseCandidatePassed": True,
             "generatedAt": "2026-05-01T00:00:00Z",
             "metadata": {"gitCommit": "previous-sha", "releaseVersion": "2026.05.0"},
             "evidence": summary["evidence"],
         }
         write_json(previous_good_path, previous_good)
+        previous_production_beta_path = workspace / "build/previous-good/production-beta-summary.json"
+        previous_production_beta = {
+            "schemaVersion": 1,
+            "kind": "cryptad-production-beta-release-summary",
+            "tool": "production-beta-release",
+            "releaseId": "cryptad-beta-2026.05.0",
+            "version": "2026.05.0",
+            "generatedAt": "2026-05-01T00:00:00Z",
+            "status": "pass",
+            "promotionReady": True,
+            "artifactBaseUri": "https://downloads.crypta.invalid/production-beta/2026.05.0",
+            "metadata": {"gitCommit": "previous-sha", "releaseVersion": "2026.05.0"},
+        }
+        previous_candidate_fixture = read_json(multi_node_beta_soak.previous_candidate_fixture_path()) or {}
+        previous_candidate_source_metadata = {
+            field: json.loads(json.dumps(previous_candidate_fixture[field], sort_keys=True))
+            for field in multi_node_beta_soak.PREVIOUS_CANDIDATE_SOURCE_METADATA_FIELDS
+            if field in previous_candidate_fixture
+        }
+        for app in previous_candidate_source_metadata.get("firstPartyApps", []):
+            if isinstance(app, dict):
+                app["version"] = "2026.05.0"
+        previous_production_beta.update(previous_candidate_source_metadata)
+        write_json(previous_production_beta_path, previous_production_beta)
+        previous_candidate_good_path = workspace / "build/previous-good/previous-beta-candidate-summary.json"
+        previous_candidate_good = multi_node_beta_soak.build_previous_candidate_summary(
+            previous_good,
+            previous_production_beta,
+            release_certification_digest=multi_node_beta_soak.sha256_path(previous_good_path),
+            production_beta_digest=multi_node_beta_soak.sha256_path(previous_production_beta_path),
+            generated_at="2026-05-01T00:00:00Z",
+        )
+        write_json(previous_candidate_good_path, previous_candidate_good)
         previous_matrix_good_path = workspace / "build/previous-matrix-good/release-certification-summary.json"
         previous_matrix_good = dict(previous_good)
         previous_matrix_good["evidence"] = [
@@ -8565,7 +8629,8 @@ def run_self_test(repo_root: Path) -> None:
         multi_node_pass_config = multi_node_beta_soak.validate_config(
             multi_node_beta_soak.load_config(fixture_dir / "self-test-multi-node-beta-soak.json")
         )
-        multi_node_pass_config["previousCandidate"]["summaryPath"] = str(previous_good_path)
+        multi_node_pass_config["previousCandidate"]["summaryPath"] = str(previous_candidate_good_path)
+        multi_node_pass_config["previousCandidate"]["version"] = previous_candidate_good["version"]
         multi_node_pass_path = workspace / "build/multi-node-pass/summary.json"
         multi_node_pass_summary = multi_node_beta_soak.build_summary(
             multi_node_pass_config,
@@ -9768,6 +9833,23 @@ def run_self_test(repo_root: Path) -> None:
         invalid_previous_summary, invalid_previous_exit_code = run(invalid_previous_settings)
         assert invalid_previous_exit_code == 1, invalid_previous_summary
         assert invalid_previous_summary["historyComparison"]["status"] == "fail", invalid_previous_summary
+
+        previous_candidate_as_history_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/previous-candidate-as-history-cert").resolve(),
+            previous_summary=previous_candidate_good_path,
+            require_history=True,
+        )
+        previous_candidate_as_history_summary, previous_candidate_as_history_exit_code = run(
+            previous_candidate_as_history_settings
+        )
+        assert previous_candidate_as_history_exit_code == 1, previous_candidate_as_history_summary
+        assert previous_candidate_as_history_summary["historyComparison"]["status"] == "fail", (
+            previous_candidate_as_history_summary
+        )
+        assert "not release-certification history baselines" in previous_candidate_as_history_summary[
+            "historyComparison"
+        ]["summary"], previous_candidate_as_history_summary
 
         app_smoke_as_previous_settings = dataclasses.replace(
             settings,

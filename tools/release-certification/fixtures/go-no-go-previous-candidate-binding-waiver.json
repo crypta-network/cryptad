@@ -1,0 +1,41 @@
+{
+  "extends": "go-no-go-pass.json",
+  "inputs": {
+    "productionBetaSummary": {
+      "promotion": {
+        "failedGateCount": 1,
+        "gates": [
+          {
+            "id": "multi-node-beta.previous-candidate-upgrade-binding",
+            "source": "multi-node-beta-soak",
+            "status": "fail",
+            "summary": "Previous beta candidate upgrade evidence does not match the supplied previous summary."
+          }
+        ],
+        "promotionReady": false,
+        "status": "fail"
+      }
+    }
+  },
+  "releaseId": "crypta-production-beta-269-previous-candidate-binding-waiver",
+  "waivers": {
+    "releaseId": "crypta-production-beta-269-previous-candidate-binding-waiver",
+    "schemaVersion": 1,
+    "waivers": [
+      {
+        "approvedBy": "release-manager@example.invalid",
+        "createdAt": "2026-06-24T00:00:00Z",
+        "evidenceId": "multi-node-beta.previous-candidate-upgrade-binding",
+        "expiresAt": "2099-06-30T00:00:00Z",
+        "id": "waiver-previous-candidate-binding-001",
+        "owner": "release-engineering",
+        "rationale": "Attempted waiver for mismatched previous-candidate upgrade evidence.",
+        "references": [
+          "internal-ticket-previous-candidate-binding"
+        ],
+        "scope": "production-beta",
+        "severity": "blocker"
+      }
+    ]
+  }
+}

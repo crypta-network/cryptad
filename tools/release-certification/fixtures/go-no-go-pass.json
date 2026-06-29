@@ -448,6 +448,39 @@
     "multiNodeBetaSoakSummary": {
       "mode": "hybrid",
       "promotionReady": true,
+      "previousCandidateUpgrade": {
+        "backupBeforeUpdateStatus": "pass",
+        "currentCatalogChannel": "stable",
+        "currentCatalogEdition": 124,
+        "currentProductionBetaStatus": "not-attached",
+        "currentProductionBetaSummaryConfigured": false,
+        "currentProductionBetaSummaryProvided": false,
+        "currentProductionBetaSummaryValid": false,
+        "currentVersion": "270",
+        "currentUpgradePathRepresented": true,
+        "evidenceId": "multi-node-beta.upgrade-drill",
+        "firstPartyAppMigrationStatus": "pass",
+        "previousBetaCatalogEdition": 124,
+        "previousCatalogChannel": "stable",
+        "previousReleaseId": "cryptad-beta-269",
+        "previousSummaryDrillDigest": "sha256:639dfbee8342617f5203e0994662f8c7717a729680e945a399201743b0b5fb5f",
+        "previousStableCatalogEdition": 123,
+        "previousSummaryConfigured": true,
+        "previousSummaryProvided": true,
+        "previousSummaryStatus": "pass",
+        "previousSummaryValid": true,
+        "previousVersion": "269",
+        "rawDataIncluded": false,
+        "restoreIntoCleanNodeStatus": "pass",
+        "rollbackStatus": "pass",
+        "socialInboxMigrationStatus": "pass",
+        "status": "pass",
+        "strictPreviousSummaryRequired": true,
+        "supportBundleRedactionStatus": "pass",
+        "trustGraphMigrationStatus": "pass",
+        "currentProductionBetaValidationErrors": [],
+        "previousSummaryValidationErrors": []
+      },
       "redaction": {
         "findings": [],
         "status": "pass"
@@ -484,11 +517,18 @@
     "productionBetaSummary": {
       "artifacts": {
         "checksums": "dist/checksums.txt",
-        "distArchive": "dist/crypta-production-beta-269.tar.gz",
+        "distArchive": "dist/crypta-production-beta-270.tar.gz",
         "redactionReport": "reports/redaction-report.json"
       },
+      "catalogChannel": "stable",
       "mode": "production-beta",
       "nonRelease": false,
+      "previousCandidateMetadata": {
+        "catalog": {
+          "betaChannelEdition": 125,
+          "stableChannelEdition": 124
+        }
+      },
       "promotion": {
         "failedGateCount": 0,
         "gates": [],
@@ -508,7 +548,7 @@
       },
       "status": "pass",
       "tool": "production-beta-release",
-      "version": "269"
+      "version": "270"
     },
     "releaseCertificationSummary": {
       "ecosystemGates": [],
@@ -525,5 +565,5 @@
     }
   },
   "mode": "production-beta",
-  "releaseId": "crypta-production-beta-269"
+  "releaseId": "crypta-production-beta-270"
 }

@@ -24,7 +24,8 @@ tools/release-certification/run-production-beta-release.sh \
   --require-live-network \
   --require-multi-node-soak \
   --require-sandbox-provider-tests \
-  --previous-summary "$PREVIOUS_RELEASE_CERTIFICATION_SUMMARY" \
+  --previous-summary "$PREVIOUS_BETA_CANDIDATE_SUMMARY" \
+  --previous-release-certification-summary "$PREVIOUS_RELEASE_CERTIFICATION_SUMMARY" \
   --multi-node-soak-summary "$MULTI_NODE_BETA_SOAK_SUMMARY"
 ```
 
@@ -46,10 +47,11 @@ Use `--multi-node-soak-config <path>` for a topology config, `--multi-node-soak-
 attach existing evidence, and `--require-multi-node-soak` to make the promotion gate fail closed
 outside production beta mode.
 
-Protected `production-beta` workflow dispatches must provide `--previous-summary` and either a
-passing attached multi-node summary or an explicit production `hybrid`/`live` multi-node topology
-config. The checked-in self-test topology and `--multi-node-mode simulated` are only for developer
-dry-runs and PR-safe validation; they cannot satisfy production promotion evidence.
+Protected `production-beta` workflow dispatches must provide `previous_summary`,
+`previous_release_certification_summary`, and either a passing attached multi-node summary or an
+explicit production `hybrid`/`live` multi-node topology config. The checked-in self-test topology
+and `--multi-node-mode simulated` are only for developer dry-runs and PR-safe validation; they
+cannot satisfy production promotion evidence.
 
 Relative `--out-dir` values are resolved under the workspace root. The command cleans that output
 directory by default only when it is under the dedicated `build/production-beta*` prefix or already
@@ -98,8 +100,20 @@ not require live mirror infrastructure or production signing keys.
 
 Production beta mode requires multi-node beta soak evidence by default. Missing soak,
 previous-candidate summary, upgrade-drill, scenario, real `hybrid`/`live` mode, or redaction
-evidence keeps `promotionReady=false`. Developer dry-runs may run the deterministic simulated drill
+evidence keeps `promotionReady=false`. The previous-candidate summary must use the formal
+`cryptad-previous-beta-candidate-summary` schema and pass strict verification before the production
+pipeline uploads promotion artifacts. Developer dry-runs may run the deterministic simulated drill
 without live nodes and may show warnings for missing previous-candidate summaries.
+
+The previous beta candidate summary is upgrade evidence, not the release-certification history
+baseline. Production-beta runs also require a previous `release-certification-summary.json`, either
+through `--previous-release-certification-summary` or a restored
+`build/release-certification-history/latest-summary.json`, so release certification can compare
+against evidence-bearing history.
+The `previous-summary` normalizer copies catalog, Platform API, first-party app, app-data,
+Trust Graph, Social Inbox, support-bundle, and redaction metadata from the previous source
+summaries. If those source summaries omit the metadata or report conflicting values, normalization
+fails and the candidate cannot be promoted.
 
 ## Required inputs
 
@@ -121,7 +135,8 @@ inputs through environment variables or protected files:
 | `CRYPTAD_CERT_FORM_PASSWORD` | Local node form password for live collectors. Pass it through the environment only. |
 | Live fixture variables from `live_network_beta_smoke.py` | Catalog source, expected catalog key id, content/feed/profile/trust fixtures, and protected private insert URI indirection for required live evidence. |
 | `CRYPTAD_CERT_LIVE_TEST_INSERT_URI_ENV=CRYPTAD_CERT_LIVE_TEST_INSERT_URI` plus `CRYPTAD_CERT_LIVE_TEST_INSERT_URI` | GitHub Actions production-beta runs use this environment-name indirection for the private insert URI fixture. The raw URI lives only in the secret-valued `CRYPTAD_CERT_LIVE_TEST_INSERT_URI` variable. |
-| `--previous-summary "$PREVIOUS_RELEASE_CERTIFICATION_SUMMARY"` | Previous release-certification summary used for history comparison and previous-candidate upgrade evidence. Required for protected production-beta promotion. CLI runs pass a local JSON path. Manual workflow dispatches may pass a local checked-out path, an HTTPS JSON URL, or `actions-artifact://<run-id>/<artifact-name>/<path-inside-artifact>`. |
+| `--previous-summary "$PREVIOUS_BETA_CANDIDATE_SUMMARY"` | Formal previous beta candidate summary used for production previous-candidate upgrade gating. It must have `kind=cryptad-previous-beta-candidate-summary`, `schemaVersion=1`, passing status, `promotionReady=true`, source digests, catalog/API/app/app-data/Trust Graph/Social Inbox/support-bundle metadata, and a passing redaction block. Required for protected production-beta promotion. CLI runs pass a local JSON path. Manual workflow dispatches may pass a local checked-out path, an HTTPS JSON URL, or `actions-artifact://<run-id>/<artifact-name>/<path-inside-artifact>`. |
+| `--previous-release-certification-summary "$PREVIOUS_RELEASE_CERTIFICATION_SUMMARY"` | Previous release-certification summary used only for release history comparison. Required for protected production-beta promotion unless `build/release-certification-history/latest-summary.json` has already been restored in the workspace. Manual workflow dispatches may pass a local checked-out path, an HTTPS JSON URL, or `actions-artifact://<run-id>/<artifact-name>/<path-inside-artifact>`. |
 | `--multi-node-soak-summary "$MULTI_NODE_BETA_SOAK_SUMMARY"` or `--run-multi-node-soak --multi-node-soak-config <production topology>` | Passing multi-node soak and upgrade evidence. CLI runs pass a local summary path. Manual workflow dispatches may pass a local checked-out path, an HTTPS JSON URL, or `actions-artifact://<run-id>/<artifact-name>/<path-inside-artifact>` for `multi_node_soak_summary`. Production-beta rejects the self-test topology and simulated mode as required promotion evidence. |
 
 Do not pass private keys, private insert URIs, form passwords, app tokens, or browser session tokens
@@ -194,8 +209,9 @@ content, raw app data, and host-local absolute paths.
 | `pipelineStages` | Per-stage proof for launcher installation, full Gradle build, first-party app staging, signing, and verification. Production-beta promotion requires all required stages to be `pass` from this pipeline execution. |
 | `promotion.gates` | Per-gate pass/fail records for signed artifacts, evidence ids, live-network evidence, ecosystem certification, and signing profile checks. |
 | `promotion.securityResponse` | Compact status for the production security response runbook, advisory lifecycle, reviewer compromise drill, catalog key rotation drill, app signing key compromise drill, emergency catalog update drill, support redaction, security release notes template, blockers, and warnings. |
-| `multiNodeBetaSoak` | Compact status for multi-node soak and upgrade evidence, including mode, scenario statuses, blockers, warnings, promotion readiness, and the `evidence/multi-node-beta-soak.json` artifact path. |
+| `multiNodeBetaSoak` | Compact status for multi-node soak and upgrade evidence, including mode, scenario statuses, blockers, warnings, promotion readiness, previous-candidate upgrade status, and the `evidence/multi-node-beta-soak.json` artifact path. |
 | `catalogOperations` | Compact source-level evidence for mirror health, fallback, rollback, key-rotation status, emergency advisory refresh, and redaction when present in the app-platform smoke summary. |
+| `previousCandidateMetadata` | Sanitized release, catalog, Platform API, first-party app, app-data, Social Inbox, Trust Graph, support-bundle, and redaction metadata copied by the next cycle's previous-summary normalizer. It contains digests, counts, schema versions, and statuses only. |
 | `artifacts.firstPartyMaintenancePolicy` | Redacted copy of the checked-in first-party maintenance policy source used to generate signed catalog descriptors. |
 | `redaction` | Final artifact scanner result and findings. |
 | `goNoGo` | Compact pointer to the final production beta go/no-go decision, dashboard JSON, dashboard Markdown, redaction report, failed gate count, waiver count, and non-release state. |
@@ -240,6 +256,32 @@ migration, backup/restore, subscription pressure, Trust Graph import, Social Inb
 behavior, support bundle redaction, previous-candidate upgrade handling, and artifact redaction.
 Use [multi-node-beta-soak-and-upgrade-drill.md](multi-node-beta-soak-and-upgrade-drill.md) for the
 topology schema and local commands.
+
+The previous-candidate part of that evidence is split into two files:
+
+- `previous-beta-candidate-summary.json`, passed as `--previous-summary`, proves the previous
+  candidate was promotable and records only digests, schema versions, counts, and redaction-safe
+  statuses for catalog, Platform API, first-party apps, app-data migration and backup/restore,
+  Trust Graph state, Social Inbox state, and support bundles.
+- `multi-node-beta-soak-summary.json`, passed as `--multi-node-soak-summary` or generated from a
+  production topology, proves the current candidate can upgrade from that previous candidate,
+  update catalogs and the daemon, migrate Feed Reader, Social Inbox, and Trust Graph app data,
+  backup before update, restore into a clean node, block or roll back a failed migration, and
+  generate a redacted support bundle after the failed path. Its compact
+  `previousCandidateUpgrade.previousSummaryDrillDigest` must match the supplied previous summary's
+  drill metadata, not just its release id and version.
+- `previous-release-certification-summary.json`, passed as
+  `--previous-release-certification-summary`, keeps historical release-certification regression
+  checks tied to evidence-bearing previous release history.
+
+Production-beta gating fails closed when required previous-candidate, history, or multi-node
+evidence is absent, malformed, failing, stale,
+simulated, self-test-derived, non-promotable, missing required app/migration state, or
+redaction-unsafe. The multi-node upgrade evidence must also match the supplied previous beta
+candidate summary by release id, version, and `previousSummaryDrillDigest`; that binding failure is
+mandatory launch evidence and cannot be waived into a launchable dashboard decision. Developer
+dry-runs and PR-safe runs may emit warnings for those gaps, but they remain `nonRelease=true` and
+`promotionReady=false`.
 
 `reports/production-beta-summary.md` is the human-readable companion. It lists failed gates, artifact
 paths, the security response summary, known limitations, and the production beta readiness decision.
@@ -296,7 +338,7 @@ The pipeline classifies failures into these groups:
 | Build and staging | Gradle toolchain failure, `stageFirstPartyApps` failure, missing `crypta-app` launcher. | Fails release-candidate and production-beta. |
 | Signing and catalog | Missing production keys in production-beta, bundle verification failure, catalog signature failure, review receipt verification failure. | Fails release-candidate and production-beta. |
 | Evidence | Missing Platform API, UI lint, sandbox, app-platform smoke, first-party maintenance policy, network-scale soak, or ecosystem certification evidence. | Fails release-candidate and production-beta when critical. |
-| Multi-node beta soak | Missing required multi-node soak, upgrade-drill, scenario, previous-candidate, or redaction evidence. | Fails production-beta promotion when `--require-multi-node-soak` is set or production-beta mode is used. |
+| Multi-node beta soak | Missing required multi-node soak, upgrade-drill, scenario, previous-candidate summary, app-data migration, backup/restore, Trust Graph, Social Inbox, support-bundle, or redaction evidence. | Fails production-beta promotion when `--require-multi-node-soak` is set or production-beta mode is used. |
 | Live network | Required live-network beta evidence missing, stale, wrong mode, failed, or explicitly skipped. | Blocks production-beta promotion. `--emergency-skip-live-network` records an explicit failed skip gate instead of silently treating missing live evidence as acceptable. |
 | Redaction | Private insert URI, private key, bearer token, app/browser session token, raw fetched content, raw app data, host path, AppleDouble, `__MACOSX`, `.DS_Store`, or CI secret value found. | Always fails. Redaction findings are not waivable. |
 
@@ -376,18 +418,32 @@ output on the runner and do not publish rejected artifacts or the dashboard Mark
 GitHub Actions.
 
 Manual workflow dispatch file inputs are materialized before strict validation. For
-`previous_summary`, `multi_node_soak_summary`, and `waiver_file`, use one of these forms:
+`previous_summary`, `previous_release_certification_summary`, `multi_node_soak_summary`, and
+`waiver_file`, use one of these forms:
 
 ```text
-build/release-certification-history/latest-summary.json
-https://release-artifacts.example.org/release-certification-summary.json
-actions-artifact://1234567890/release-certification-history/release-certification-summary.json
+build/previous/previous-beta-candidate-summary.json
+https://release-artifacts.example.org/previous-beta-candidate-summary.json
+actions-artifact://1234567890/production-beta-history/previous-beta-candidate-summary.json
 ```
 
 The workflow downloads HTTPS sources with `curl` and restores `actions-artifact://` references with
 `gh run download` using the protected run token, then passes the resulting private `$RUNNER_TEMP`
 path to the release tool. HTTP URLs, missing artifact paths, absolute artifact paths, and artifact
 paths containing `..` fail before the pipeline starts.
+
+For `previous_summary`, the workflow also runs:
+
+```bash
+python3 tools/release-certification/multi_node_beta_soak.py verify-previous-summary \
+  --summary "$INPUT_PREVIOUS_SUMMARY" \
+  --strict \
+  --max-age-days 90
+```
+
+The verification output is limited to status and validation errors. The workflow must not print
+the raw summary body, private insert URIs, tokens, private keys, raw app data, raw social message
+bodies, or raw Trust Graph statements into logs.
 
 ## Known limitations
 

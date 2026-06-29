@@ -340,6 +340,8 @@ PRODUCTION_BETA_NON_WAIVABLE_EVIDENCE_IDS = {
     "multi-node-beta.soak",
     "multi-node-beta.redaction",
     "multi-node-beta.previous-candidate-summary",
+    "multi-node-beta.previous-candidate-summary-validation",
+    "multi-node-beta.previous-candidate-upgrade-binding",
     "multi-node-beta.production-evidence-mode",
     "multi-node-beta.upgrade-drill",
     "multi-node-beta.catalog-channel-update",
@@ -1854,7 +1856,60 @@ def network_scale_issues(summary: dict[str, Any] | None, mode: str) -> list[Issu
     return issues
 
 
-def multi_node_issues(summary: dict[str, Any] | None, mode: str) -> list[Issue]:
+def non_bool_int(value: Any) -> int | None:
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    return None
+
+
+def compact_text(value: Any) -> str:
+    return str(value).strip() if value is not None and not isinstance(value, bool) else ""
+
+
+def catalog_edition_field(catalog_channel: str) -> str:
+    return "stableChannelEdition" if catalog_channel == "stable" else "betaChannelEdition"
+
+
+def previous_candidate_upgrade_current_binding_failures(
+    upgrade: dict[str, Any],
+    production_summary: dict[str, Any] | None,
+) -> list[str]:
+    if not isinstance(production_summary, dict):
+        return ["productionBetaSummary"]
+    failures: list[str] = []
+    expected_version = compact_text(production_summary.get("version"))
+    if not expected_version:
+        failures.append("productionBetaSummary.version")
+    elif compact_text(upgrade.get("currentVersion")) != expected_version:
+        failures.append("currentVersion")
+
+    expected_channel = compact_text(production_summary.get("catalogChannel"))
+    if not expected_channel:
+        failures.append("productionBetaSummary.catalogChannel")
+        return failures
+    if expected_channel not in {"stable", "beta"}:
+        failures.append("productionBetaSummary.catalogChannel")
+        return failures
+    if compact_text(upgrade.get("currentCatalogChannel")) != expected_channel:
+        failures.append("currentCatalogChannel")
+
+    metadata = production_summary.get("previousCandidateMetadata")
+    catalog = metadata.get("catalog") if isinstance(metadata, dict) else None
+    edition_field = catalog_edition_field(expected_channel)
+    expected_edition = non_bool_int(catalog.get(edition_field)) if isinstance(catalog, dict) else None
+    if expected_edition is None:
+        failures.append(f"productionBetaSummary.previousCandidateMetadata.catalog.{edition_field}")
+        return failures
+    if non_bool_int(upgrade.get("currentCatalogEdition")) != expected_edition:
+        failures.append("currentCatalogEdition")
+    return failures
+
+
+def multi_node_issues(
+    summary: dict[str, Any] | None,
+    mode: str,
+    production_summary: dict[str, Any] | None = None,
+) -> list[Issue]:
     if not isinstance(summary, dict):
         return []
     issues: list[Issue] = []
@@ -1906,6 +1961,84 @@ def multi_node_issues(summary: dict[str, Any] | None, mode: str) -> list[Issue]:
                         summary=f"{scenario_id} status is {scenario_status}.",
                         source="multi-node-beta-soak-summary",
                         waivable=mode != "production-beta",
+                        category="multi-node",
+                    )
+                )
+    upgrade = summary.get("previousCandidateUpgrade")
+    if mode == "production-beta":
+        if not isinstance(upgrade, dict):
+            issues.append(
+                Issue(
+                    id="multi-node-beta-soak.previous-candidate-summary",
+                    evidence_id="multi-node-beta.previous-candidate-summary",
+                    domain_id="multi-node-beta-soak",
+                    severity="blocker",
+                    title="Previous beta candidate upgrade evidence is missing",
+                    summary="Production beta requires compact previous-candidate upgrade evidence in the multi-node summary.",
+                    source="multi-node-beta-soak-summary",
+                    waivable=False,
+                    category="multi-node",
+                )
+            )
+        else:
+            expected = {
+                "status": "pass",
+                "previousSummaryConfigured": True,
+                "previousSummaryProvided": True,
+                "previousSummaryValid": True,
+                "currentUpgradePathRepresented": True,
+                "firstPartyAppMigrationStatus": "pass",
+                "backupBeforeUpdateStatus": "pass",
+                "restoreIntoCleanNodeStatus": "pass",
+                "socialInboxMigrationStatus": "pass",
+                "trustGraphMigrationStatus": "pass",
+                "supportBundleRedactionStatus": "pass",
+                "rollbackStatus": "pass",
+                "rawDataIncluded": False,
+            }
+            failed_fields = [
+                field
+                for field, expected_value in expected.items()
+                if upgrade.get(field) != expected_value
+            ]
+            validation_errors = upgrade.get("previousSummaryValidationErrors")
+            if not isinstance(validation_errors, list):
+                validation_errors = ["previousSummaryValidationErrors missing"]
+            if failed_fields or validation_errors:
+                issues.append(
+                    Issue(
+                        id="multi-node-beta-soak.previous-candidate-summary",
+                        evidence_id="multi-node-beta.previous-candidate-summary",
+                        domain_id="multi-node-beta-soak",
+                        severity="blocker",
+                        title="Previous beta candidate upgrade evidence is not production-ready",
+                        summary=(
+                            "Previous-candidate upgrade evidence has failing fields: "
+                            + ", ".join(failed_fields or ["validation"])
+                        ),
+                        source="multi-node-beta-soak-summary",
+                        waivable=False,
+                        category="multi-node",
+                    )
+                )
+            binding_failures = previous_candidate_upgrade_current_binding_failures(
+                upgrade,
+                production_summary,
+            )
+            if binding_failures:
+                issues.append(
+                    Issue(
+                        id="multi-node-beta-soak.previous-candidate-current-binding",
+                        evidence_id="multi-node-beta.previous-candidate-upgrade-binding",
+                        domain_id="multi-node-beta-soak",
+                        severity="blocker",
+                        title="Previous beta candidate upgrade evidence is bound to a different current candidate",
+                        summary=(
+                            "Previous-candidate upgrade evidence does not match the production summary fields: "
+                            + ", ".join(binding_failures)
+                        ),
+                        source="multi-node-beta-soak-summary",
+                        waivable=False,
                         category="multi-node",
                     )
                 )
@@ -2379,7 +2512,13 @@ def collect_issues(
     issues.extend(release_certification_issues(inputs.get("releaseCertificationSummary"), mode))
     issues.extend(ecosystem_matrix_issues(inputs.get("ecosystemMatrix")))
     issues.extend(network_scale_issues(inputs.get("networkScaleSoakSummary"), mode))
-    issues.extend(multi_node_issues(inputs.get("multiNodeBetaSoakSummary"), mode))
+    issues.extend(
+        multi_node_issues(
+            inputs.get("multiNodeBetaSoakSummary"),
+            mode,
+            inputs.get("productionBetaSummary") if isinstance(inputs.get("productionBetaSummary"), dict) else None,
+        )
+    )
     issues.extend(security_response_issues(inputs.get("securityResponseSummary")))
     for spec in DOMAIN_SPECS:
         domain_id = str(spec["id"])
@@ -2501,6 +2640,16 @@ def build_dashboard(
     warnings = [issue for issue in issues if issue.severity == "warning" or issue.waived_by]
     decision = decision_from_issues(issues)
     production_summary = inputs.get("productionBetaSummary") if isinstance(inputs.get("productionBetaSummary"), dict) else {}
+    multi_node_summary = (
+        inputs.get("multiNodeBetaSoakSummary")
+        if isinstance(inputs.get("multiNodeBetaSoakSummary"), dict)
+        else {}
+    )
+    previous_upgrade = (
+        multi_node_summary.get("previousCandidateUpgrade")
+        if isinstance(multi_node_summary.get("previousCandidateUpgrade"), dict)
+        else {"status": "missing"}
+    )
     artifact_refs = {
         "dashboardJson": OUTPUT_JSON,
         "dashboardMarkdown": OUTPUT_MARKDOWN,
@@ -2529,6 +2678,7 @@ def build_dashboard(
         "blockers": [issue.to_json() for issue in blockers],
         "warnings": [issue.to_json() for issue in warnings],
         "waivers": [waiver.to_json() for waiver in waivers],
+        "previousCandidateUpgrade": previous_upgrade,
         "redaction": redaction,
         "recommendation": recommendation_for(decision, blockers, warnings),
         "artifactRefs": artifact_refs,
@@ -2571,6 +2721,26 @@ def render_markdown(dashboard: dict[str, Any]) -> str:
             if isinstance(issue, dict):
                 waived = f" Waiver: `{issue.get('waivedBy')}`." if issue.get("waivedBy") else ""
                 lines.append(f"- `{issue.get('evidenceId', '')}`: {issue.get('summary', '')}{waived}")
+    upgrade = dashboard.get("previousCandidateUpgrade")
+    if isinstance(upgrade, dict) and upgrade:
+        lines.extend(
+            [
+                "",
+                "## Previous Candidate Upgrade",
+                "",
+                f"- Previous release: `{upgrade.get('previousReleaseId', 'missing')}`",
+                f"- Previous version: `{upgrade.get('previousVersion', 'missing')}`",
+                f"- Current version: `{upgrade.get('currentVersion', 'missing')}`",
+                f"- Previous summary: `{upgrade.get('previousSummaryStatus', 'missing')}`",
+                f"- Upgrade drill: `{upgrade.get('status', 'missing')}`",
+                f"- App migrations: `{upgrade.get('firstPartyAppMigrationStatus', 'missing')}`",
+                f"- Backup before update: `{upgrade.get('backupBeforeUpdateStatus', 'missing')}`",
+                f"- Restore into clean node: `{upgrade.get('restoreIntoCleanNodeStatus', 'missing')}`",
+                f"- Social Inbox migration: `{upgrade.get('socialInboxMigrationStatus', 'missing')}`",
+                f"- Trust Graph migration: `{upgrade.get('trustGraphMigrationStatus', 'missing')}`",
+                f"- Support bundle redaction: `{upgrade.get('supportBundleRedactionStatus', 'missing')}`",
+            ]
+        )
     lines.extend(["", "## Waivers Used", ""])
     waivers = [waiver for waiver in dashboard.get("waivers", []) if isinstance(waiver, dict) and waiver.get("usedBy")]
     if not waivers:
@@ -2720,6 +2890,11 @@ def run_self_test(quiet: bool = False) -> None:
             raise AssertionError(f"production critical evidence gate is waivable in production-beta: {gate_id}")
     if evidence_id_is_non_waivable_in_mode("app-store.submission-cli", "release-candidate"):
         raise AssertionError("release-candidate app-store evidence should remain waiverable")
+    if not evidence_id_is_non_waivable_in_mode(
+        "multi-node-beta.previous-candidate-upgrade-binding",
+        "production-beta",
+    ):
+        raise AssertionError("previous-candidate binding failures must be non-waivable in production-beta")
 
     fixture_expectations = {
         "go-no-go-pass.json": "go",
@@ -2743,6 +2918,8 @@ def run_self_test(quiet: bool = False) -> None:
         "go-no-go-warning-redaction-findings.json": "no-go",
         "go-no-go-multi-node-upgrade-waiver.json": "go-with-waivers",
         "go-no-go-network-scale-redaction-waiver.json": "no-go",
+        "go-no-go-previous-candidate-warning.json": "no-go",
+        "go-no-go-previous-candidate-binding-waiver.json": "no-go",
         "go-no-go-secret-value-redaction.json": "no-go",
         "go-no-go-underseverity-waiver.json": "no-go",
         "go-no-go-live-evidence-waiver-alias.json": "no-go",
@@ -2806,6 +2983,13 @@ def run_self_test(quiet: bool = False) -> None:
                     raise AssertionError("skipped production summary did not block production beta")
                 if int(dashboard.get("summary", {}).get("waiversUsed", 0)) != 0:
                     raise AssertionError("non-passing production summary hard blocker was incorrectly waived")
+            if fixture_name == "go-no-go-previous-candidate-binding-waiver.json":
+                if int(dashboard.get("summary", {}).get("waiversUsed", 0)) != 0:
+                    raise AssertionError("previous-candidate binding waiver was incorrectly used")
+                if "multi-node-beta.previous-candidate-upgrade-binding" not in blocker_ids:
+                    raise AssertionError("previous-candidate binding failure did not remain blocked")
+                if "production-beta.waiver-validation" not in blocker_ids:
+                    raise AssertionError("previous-candidate binding waiver did not fail waiver validation")
             if fixture_name == "go-no-go-live-evidence-waiver-alias.json":
                 if int(dashboard.get("summary", {}).get("waiversUsed", 0)) != 0:
                     raise AssertionError("live evidence alias waiver was incorrectly used")
@@ -2966,8 +3150,44 @@ def run_self_test(quiet: bool = False) -> None:
         assert_protected_secret_values_are_scanned_and_redacted(root)
         assert_symlink_inputs_are_rejected(root)
         assert_standalone_security_response_summary_is_honored(root)
+        assert_previous_candidate_upgrade_current_binding_is_enforced(root)
     if not quiet:
         print("production beta go/no-go dashboard self-test passed")
+
+
+def assert_previous_candidate_upgrade_current_binding_is_enforced(root: Path) -> None:
+    pass_fixture = load_fixture(FIXTURE_DIR / "go-no-go-pass.json")
+    mutations = (
+        ("current-version", "currentVersion", "269"),
+        ("current-catalog-channel", "currentCatalogChannel", "beta"),
+        ("current-catalog-edition", "currentCatalogEdition", 123),
+    )
+    for label, field, value in mutations:
+        inputs = json.loads(json.dumps(pass_fixture["inputs"]))
+        upgrade = inputs["multiNodeBetaSoakSummary"]["previousCandidateUpgrade"]
+        upgrade[field] = value
+        generated_at, now = parse_generated_at(DEFAULT_GENERATED_AT)
+        dashboard = build_dashboard(
+            inputs,
+            {},
+            [FIXTURE_DIR / "go-no-go-pass.json"],
+            None,
+            Path(__file__).resolve().parents[2],
+            root / f"previous-candidate-current-binding-{label}",
+            "production-beta",
+            f"crypta-production-beta-270-{label}",
+            generated_at,
+            now,
+        )
+        if dashboard.get("decision") != "no-go":
+            raise AssertionError(f"mismatched previous-candidate upgrade {field} did not block: {dashboard}")
+        blocker_ids = {
+            str(blocker.get("evidenceId"))
+            for blocker in dashboard.get("blockers", [])
+            if isinstance(blocker, dict)
+        }
+        if "multi-node-beta.previous-candidate-upgrade-binding" not in blocker_ids:
+            raise AssertionError(f"mismatched previous-candidate upgrade {field} used wrong blocker: {dashboard}")
 
 
 def assert_standalone_security_response_summary_is_honored(root: Path) -> None:
@@ -2991,7 +3211,7 @@ def assert_standalone_security_response_summary_is_honored(root: Path) -> None:
         Path(__file__).resolve().parents[2],
         root / "standalone-security-response",
         "production-beta",
-        "crypta-production-beta-269-standalone-security-response",
+        "crypta-production-beta-270-standalone-security-response",
         generated_at,
         now,
     )

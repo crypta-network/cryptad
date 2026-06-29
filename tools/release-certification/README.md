@@ -56,6 +56,32 @@ summary. Use `--multi-node-mode simulated|hybrid|live`, `--multi-node-soak-confi
 promotion behavior. See
 [docs/multi-node-beta-soak-and-upgrade-drill.md](../../docs/multi-node-beta-soak-and-upgrade-drill.md).
 
+Previous beta candidate summaries are normalized with the same tool:
+
+```bash
+python3 tools/release-certification/multi_node_beta_soak.py previous-summary \
+  --release-certification-summary build/previous/release-certification-summary.json \
+  --production-beta-summary build/previous/production-beta-summary.json \
+  --out build/previous/previous-beta-candidate-summary.json \
+  --report build/previous/previous-beta-candidate-summary.md
+
+python3 tools/release-certification/multi_node_beta_soak.py verify-previous-summary \
+  --summary build/previous/previous-beta-candidate-summary.json \
+  --strict \
+  --max-age-days 90
+```
+
+The generated summary has `kind=cryptad-previous-beta-candidate-summary`. Production-beta promotion
+requires this formal summary rather than a raw previous release-certification summary.
+It is upgrade evidence only. Release-certification history comparison still requires a previous
+`release-certification-summary.json` through `run-release-certification.sh --previous-summary` or
+the configured release-certification history store. The normalizer writes the current UTC time to
+`generatedAt` unless `--generated-at` is supplied for deterministic fixture generation. Source
+summaries must carry the sanitized previous-candidate catalog, Platform API, first-party app,
+app-data, Trust Graph, Social Inbox, support-bundle, and redaction metadata; the normalizer copies
+that metadata and rejects missing or conflicting source values instead of fabricating release
+state.
+
 Build a production beta app-ecosystem candidate:
 
 ```bash
@@ -68,7 +94,8 @@ tools/release-certification/run-production-beta-release.sh \
   --require-live-network \
   --require-multi-node-soak \
   --require-sandbox-provider-tests \
-  --previous-summary "$PREVIOUS_RELEASE_CERTIFICATION_SUMMARY" \
+  --previous-summary "$PREVIOUS_BETA_CANDIDATE_SUMMARY" \
+  --previous-release-certification-summary "$PREVIOUS_RELEASE_CERTIFICATION_SUMMARY" \
   --multi-node-soak-summary "$MULTI_NODE_BETA_SOAK_SUMMARY"
 ```
 
@@ -82,10 +109,12 @@ URI. Catalog bundle URLs are signed under the published layout root, for example
 `<base>/build/app-bundles/<app>-<version>.zip`. `--use-fixture-evidence` is accepted only for
 `developer-dry-run` and internal self-tests. Use
 `developer-dry-run` for PR-safe local runs without release keys or live-network access. Protected
-`production-beta` also requires previous release-certification history and passing multi-node
-upgrade evidence through `--previous-summary` plus either `--multi-node-soak-summary` or an explicit
-non-self-test `hybrid`/`live` topology config. Simulated multi-node mode, fixture evidence, test
-signing, skipped build stages, missing sandbox evidence, and missing live-network evidence remain
+`production-beta` also requires a schema-valid previous beta candidate summary through
+`--previous-summary`, a previous release-certification history summary through
+`--previous-release-certification-summary` or the restored history store, and passing multi-node
+upgrade evidence through either `--multi-node-soak-summary` or an explicit non-self-test
+`hybrid`/`live` topology config. Simulated multi-node mode, fixture evidence, test signing,
+skipped build stages, missing sandbox evidence, and missing live-network evidence remain
 non-release/no-go in production-beta. See
 [docs/production-beta-release-pipeline.md](../../docs/production-beta-release-pipeline.md) for
 mode semantics, required environment variables, artifact layout, failure classes, redaction rules,
@@ -526,6 +555,10 @@ portal, tutorials, beta program, issue-template, link, and redaction readiness.
 The `multi-node-beta-soak-and-upgrade-drill` row records PR-267 evidence for multi-node topology,
 previous-candidate upgrade, app lifecycle, migration, backup, subscription pressure, Trust Graph,
 Social Inbox, support bundle, and redaction checks.
+The `previous-candidate-upgrade-path` row records PR-272 evidence for formal previous beta
+candidate summary validation, previous-to-current upgrade drill status, app-data migration,
+backup/restore, Social Inbox schema migration, Trust Graph state migration, rollback, failed-path
+support bundle evidence, and redaction pass.
 The `ecosystem-rc-certification-gate` row records final release-candidate readiness for
 `ecosystem.rc-certification`: required evidence, emitted ecosystem gates, matrix coverage,
 network-scale RC soak status, multi-node beta soak status, required live-network beta status,
@@ -599,9 +632,9 @@ the previous release's sanitized certification artifact into the local workspace
 running certification, then pass its path with `--previous-summary`.
 
 Manual production beta pipeline GitHub Actions dispatches can also materialize prior JSON evidence
-before the pipeline starts. For the `previous_summary`, `multi_node_soak_summary`, and `waiver_file`
-workflow inputs, pass a local checked-out path, an HTTPS JSON URL, or a GitHub Actions artifact
-reference:
+before the pipeline starts. For the `previous_summary`,
+`previous_release_certification_summary`, `multi_node_soak_summary`, and `waiver_file` workflow
+inputs, pass a local checked-out path, an HTTPS JSON URL, or a GitHub Actions artifact reference:
 
 ```text
 actions-artifact://<run-id>/<artifact-name>/<path-inside-artifact>
@@ -610,6 +643,10 @@ actions-artifact://<run-id>/<artifact-name>/<path-inside-artifact>
 The workflow restores these inputs into `$RUNNER_TEMP` and then passes the restored local path to
 the release tool. Plain `http://` URLs, missing artifact paths, absolute artifact paths, and
 artifact paths containing `..` are rejected before strict production-beta validation runs.
+For `previous_summary`, strict validation runs
+`multi_node_beta_soak.py verify-previous-summary --strict --max-age-days 90` before uploadable
+production artifacts are accepted. The workflow must not print raw summary bodies, private insert
+URIs, private keys, tokens, raw app data, raw social message bodies, or raw trust statements.
 
 ## Structured waiver files
 
