@@ -33,6 +33,14 @@ public enum AppReviewTransparencyEventKind {
   SUBMISSION_CREATED("submission_created"),
 
   /**
+   * A reviewer key was assigned to a third-party submission in the local beta intake queue.
+   *
+   * <p>The record should contain the reviewer key id and reason digest only, never reviewer private
+   * key material, registry file paths, or raw assignment rationale text.
+   */
+  REVIEWER_ASSIGNED("reviewer_assigned"),
+
+  /**
    * Automated pre-review completed for a submission package.
    *
    * <p>The record may reference the pre-review report digest and status in redacted warning fields.

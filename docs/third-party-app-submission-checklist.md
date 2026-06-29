@@ -111,6 +111,24 @@ review decision. Keep the headings stable so release certification can detect th
       ../artifacts/<app>-pre-review.json` passes or returns an understood warning/failure.
 - [ ] Pre-review digests match the submission package and bundle digests.
 
+## Public beta intake
+
+- [ ] Reviewers can run `crypta-app submission intake import --queue-dir <queue>
+      --submission ../artifacts/<app>-submission.zip`.
+- [ ] Reviewer assignment uses `crypta-app submission intake assign` with a trusted reviewer key id
+      and an assignment reason file.
+- [ ] Queue pre-review uses `crypta-app submission intake pre-review` and writes
+      `pre-review.json`, `submission-verification.json`, API compatibility, UI lint,
+      redaction-scan, and artifact-manifest outputs.
+- [ ] Reviewers record `reviewed`, `caution`, `rejected`, or `resubmission_requested` with
+      `crypta-app submission intake decide`.
+- [ ] Reviewed submissions can run `crypta-app submission intake stage-candidate`; caution
+      submissions require explicit allowance and operator-visible warnings.
+- [ ] Rejected submissions cannot stage catalog candidates or install from the beta catalog.
+- [ ] Public evidence includes `third-party-intake.queue-schema` through
+      `third-party-intake.redaction` and is marked non-production when fixture/test material is
+      used.
+
 ## Resubmission requirements
 
 - [ ] Rejected or cautionary findings are addressed in the app bundle and review notes.

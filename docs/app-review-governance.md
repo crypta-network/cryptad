@@ -154,6 +154,30 @@ explicit catalog policy and must preserve warning metadata.
 Resubmissions use `submissionType=resubmission` and `resubmissionOf=<submission-id>` in
 `crypta-app-submission.json` so reviewers and operators can follow the audit chain.
 
+## Public Beta Intake Governance
+
+The public beta intake queue adds operational states for `submitted`, `triaged`,
+`reviewer_assigned`, `pre_review_running`, `pre_review_passed`, `pre_review_failed`,
+`review_in_progress`, `reviewed`, `caution`, `rejected`, `resubmission_requested`,
+`catalog_candidate_created`, `staged_to_beta_catalog`, `beta_install_smoke_passed`, and `closed`.
+State transitions fail closed when they would skip reviewer assignment, bypass pre-review blockers,
+stage a rejected submission, or stage a caution decision without explicit caution allowance.
+
+Reviewer assignment is audit material, not a signature operation. `crypta-app submission intake
+assign` validates the reviewer key id against the trusted reviewer registry when one is supplied,
+records a public display name and assignment reason digest, and never loads reviewer private key
+material. Reassignment requires a new reason and produces another audit event.
+
+Queue pre-review artifacts are redacted before they become public evidence. The artifact manifest
+stores relative paths and SHA-256 digests for `pre-review.json`, `submission-verification.json`,
+API compatibility, UI lint, redaction-scan, and artifact-manifest outputs. Internal/operator-only
+Platform API capabilities fail third-party pre-review.
+
+Reviewed and caution decisions can issue receipts. Rejected and resubmission-requested decisions
+write decision metadata and transparency events but do not create installable beta candidates.
+Caution candidates require explicit allowance and preserve operator-visible warnings. Rejected
+submissions cannot be staged to a beta catalog or installed from beta catalog evidence.
+
 See [app-store-submission-and-review-workflow.md](app-store-submission-and-review-workflow.md) for
 the full package layout, required rationale files, pre-review report format, CLI commands, and
 redaction rules.

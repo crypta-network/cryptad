@@ -137,6 +137,9 @@ inputs through environment variables or protected files:
 | `CRYPTAD_CERT_LIVE_TEST_INSERT_URI_ENV=CRYPTAD_CERT_LIVE_TEST_INSERT_URI` plus `CRYPTAD_CERT_LIVE_TEST_INSERT_URI` | GitHub Actions production-beta runs use this environment-name indirection for the private insert URI fixture. The raw URI lives only in the secret-valued `CRYPTAD_CERT_LIVE_TEST_INSERT_URI` variable. |
 | `--previous-summary "$PREVIOUS_BETA_CANDIDATE_SUMMARY"` | Formal previous beta candidate summary used for production previous-candidate upgrade gating. It must have `kind=cryptad-previous-beta-candidate-summary`, `schemaVersion=1`, passing status, `promotionReady=true`, source digests, catalog/API/app/app-data/Trust Graph/Social Inbox/support-bundle metadata, and a passing redaction block. Required for protected production-beta promotion. CLI runs pass a local JSON path. Manual workflow dispatches may pass a local checked-out path, an HTTPS JSON URL, or `actions-artifact://<run-id>/<artifact-name>/<path-inside-artifact>`. |
 | `--previous-release-certification-summary "$PREVIOUS_RELEASE_CERTIFICATION_SUMMARY"` | Previous release-certification summary used only for release history comparison. Required for protected production-beta promotion unless `build/release-certification-history/latest-summary.json` has already been restored in the workspace. Manual workflow dispatches may pass a local checked-out path, an HTTPS JSON URL, or `actions-artifact://<run-id>/<artifact-name>/<path-inside-artifact>`. |
+| `--third-party-intake-summary "$THIRD_PARTY_INTAKE_SUMMARY"` | Optional redacted public-beta third-party intake summary. When `--require-third-party-intake` is also set, the summary must pass, include the `third-party-intake.*` evidence rows, and have passing redaction. |
+| `--require-third-party-intake` | Makes third-party app intake evidence a promotion gate. Missing or failed sample flow, failed redaction, or non-production fixture evidence fails closed. |
+| `--run-third-party-intake-sample-flow` | Generates deterministic non-production sample intake evidence for dry-runs. It must not be used as production promotion evidence because the generated summary is marked `nonRelease=true` and `nonProduction=true`. |
 | `--multi-node-soak-summary "$MULTI_NODE_BETA_SOAK_SUMMARY"` or `--run-multi-node-soak --multi-node-soak-config <production topology>` | Passing multi-node soak and upgrade evidence. CLI runs pass a local summary path. Manual workflow dispatches may pass a local checked-out path, an HTTPS JSON URL, or `actions-artifact://<run-id>/<artifact-name>/<path-inside-artifact>` for `multi_node_soak_summary`. Production-beta rejects the self-test topology and simulated mode as required promotion evidence. |
 
 Do not pass private keys, private insert URIs, form passwords, app tokens, or browser session tokens
@@ -309,6 +312,30 @@ metadata, fixture sample flow, and redaction checks:
 
 The evidence uses fixture/test inputs and must remain marked non-production. It does not require
 production reviewer private keys, a hosted submission portal, or live network access.
+
+PR-273 adds public-beta intake rows for the queue-backed reviewer flow:
+
+- `third-party-intake.queue-schema`
+- `third-party-intake.import`
+- `third-party-intake.reviewer-assignment`
+- `third-party-intake.pre-review-artifacts`
+- `third-party-intake.review-decision`
+- `third-party-intake.resubmission-flow`
+- `third-party-intake.catalog-candidate-staging`
+- `third-party-intake.beta-catalog-install-smoke`
+- `third-party-intake.transparency-export`
+- `third-party-intake.rejected-candidate-blocked`
+- `third-party-intake.caution-warning`
+- `third-party-intake.redaction`
+
+Missing third-party intake evidence is a warning when the beta launch does not include third-party
+app intake. Release managers can make it mandatory with `--require-third-party-intake` and a
+redacted `--third-party-intake-summary`. Required intake evidence fails closed when import,
+reviewer assignment, pre-review artifacts, reviewed/caution/rejected/resubmission decisions,
+catalog candidate staging, install-from-beta-catalog smoke, transparency export, rejected-candidate
+blocking, caution warnings, or redaction are missing or failed. Fixture/test intake summaries must
+set `nonRelease=true` or `nonProduction=true` and cannot make a production-beta candidate
+promotion-ready.
 
 Production beta summaries also include a compact `developerBetaProgram` object with status fields
 for docs, template, sample app flow, submission checklist, compatibility window, feedback workflow,

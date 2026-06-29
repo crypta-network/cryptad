@@ -235,6 +235,20 @@ THIRD_PARTY_DEVELOPER_BETA_EVIDENCE_IDS = (
     "third-party-developer.plugin-author-migration",
     "third-party-developer.redaction",
 )
+THIRD_PARTY_INTAKE_EVIDENCE_IDS = (
+    "third-party-intake.queue-schema",
+    "third-party-intake.import",
+    "third-party-intake.reviewer-assignment",
+    "third-party-intake.pre-review-artifacts",
+    "third-party-intake.review-decision",
+    "third-party-intake.resubmission-flow",
+    "third-party-intake.catalog-candidate-staging",
+    "third-party-intake.beta-catalog-install-smoke",
+    "third-party-intake.transparency-export",
+    "third-party-intake.rejected-candidate-blocked",
+    "third-party-intake.caution-warning",
+    "third-party-intake.redaction",
+)
 CRITICAL_PRODUCTION_BETA_EVIDENCE_IDS = (
     "app-platform.signed-bundles",
     "app-catalog.first-party-maintenance-policy",
@@ -428,6 +442,9 @@ class Settings:
     require_multi_node_soak: bool = False
     multi_node_mode: str | None = None
     previous_release_certification_summary: Path | None = None
+    third_party_intake_summary: Path | None = None
+    require_third_party_intake: bool = False
+    run_third_party_intake_sample_flow: bool = False
 
 
 @dataclasses.dataclass
@@ -2440,6 +2457,56 @@ def evidence_by_id(summary: dict[str, Any] | None) -> dict[str, dict[str, Any]]:
     return {str(item.get("id")): item for item in evidence if isinstance(item, dict)}
 
 
+def third_party_intake_evidence(
+    app_evidence: dict[str, dict[str, Any]],
+    cert_evidence: dict[str, dict[str, Any]],
+    intake_summary: dict[str, Any] | None,
+) -> dict[str, dict[str, Any]]:
+    evidence = {
+        evidence_id: item
+        for evidence_id in THIRD_PARTY_INTAKE_EVIDENCE_IDS
+        if (item := app_evidence.get(evidence_id) or cert_evidence.get(evidence_id)) is not None
+    }
+    evidence.update(evidence_by_id(intake_summary))
+    return evidence
+
+
+def third_party_intake_required_evidence(
+    intake_summary: dict[str, Any] | None,
+) -> dict[str, dict[str, Any]]:
+    """Return only evidence rows attached to the third-party intake summary.
+
+    Required production promotion evidence must come from the attached intake summary, not from
+    source-level smoke evidence with the same ids. Source-level rows are useful diagnostics, but
+    they cannot fill omitted public-beta intake rows when --require-third-party-intake is active.
+    """
+
+    return evidence_by_id(intake_summary)
+
+
+def summary_status(summary: dict[str, Any] | None) -> str:
+    if not isinstance(summary, dict):
+        return "missing"
+    return str(summary.get("status", "missing")).strip().lower()
+
+
+def third_party_intake_redaction_status(
+    intake_summary: dict[str, Any] | None,
+    evidence: dict[str, dict[str, Any]],
+) -> str:
+    redaction = intake_summary.get("redaction") if isinstance(intake_summary, dict) else None
+    if isinstance(redaction, dict):
+        return str(redaction.get("status", "missing")).strip().lower()
+    item = evidence.get("third-party-intake.redaction")
+    return str(item.get("status", "missing")).strip().lower() if isinstance(item, dict) else "missing"
+
+
+def third_party_intake_summary_is_non_release(intake_summary: dict[str, Any] | None) -> bool:
+    if not isinstance(intake_summary, dict):
+        return False
+    return intake_summary.get("nonRelease") is True or intake_summary.get("nonProduction") is True
+
+
 def multi_node_summary_path(settings: Settings, cert_out: Path) -> Path:
     if settings.multi_node_soak_summary is not None and not settings.run_multi_node_soak:
         return settings.multi_node_soak_summary
@@ -2596,6 +2663,38 @@ def compact_multi_node_summary_for_release(summary: dict[str, Any] | None, *, st
     return compact
 
 
+def third_party_intake_sample_summary() -> dict[str, Any]:
+    """Return non-release deterministic evidence for exercising the intake release gates."""
+    return {
+        "schemaVersion": 1,
+        "kind": "cryptad-third-party-intake-summary",
+        "status": "pass",
+        "required": True,
+        "nonRelease": True,
+        "nonProduction": True,
+        "summary": "Deterministic third-party intake sample flow passed; not production promotion evidence.",
+        "redaction": {"status": "pass", "findingCount": 0, "findings": []},
+        "evidence": [
+            {
+                "id": evidence_id,
+                "status": "pass",
+                "summary": f"{evidence_id} passed in the non-production intake sample flow.",
+                "details": {"nonRelease": True},
+            }
+            for evidence_id in THIRD_PARTY_INTAKE_EVIDENCE_IDS
+        ],
+    }
+
+
+def read_third_party_intake_summary(settings: Settings) -> dict[str, Any] | None:
+    if settings.third_party_intake_summary is not None:
+        value = read_json(settings.third_party_intake_summary)
+        return value if isinstance(value, dict) else {"status": "fail", "error": "summary is not a JSON object"}
+    if settings.run_third_party_intake_sample_flow:
+        return third_party_intake_sample_summary()
+    return None
+
+
 def write_evidence_extracts(settings: Settings, cert_out: Path) -> dict[str, Any]:
     app_summary_path = cert_out / "app-platform-smoke/summary.json"
     live_summary_path = cert_out / "live-network-beta-smoke/summary.json"
@@ -2609,6 +2708,7 @@ def write_evidence_extracts(settings: Settings, cert_out: Path) -> dict[str, Any
     multi_node_summary = read_json(resolved_multi_node_summary_path)
     cert_summary = read_json(cert_summary_path)
     matrix_summary = read_json(matrix_path)
+    third_party_intake_summary = read_third_party_intake_summary(settings)
 
     evidence_dir = settings.out_dir / "evidence"
     write_json(evidence_dir / "app-platform-smoke.json", app_summary or {"status": "missing"})
@@ -2623,6 +2723,10 @@ def write_evidence_extracts(settings: Settings, cert_out: Path) -> dict[str, Any
     )
     write_json(evidence_dir / "ecosystem-rc-certification.json", cert_summary or {"status": "missing"})
     write_json(evidence_dir / "ecosystem-certification-matrix.json", matrix_summary or {"status": "missing"})
+    write_json(
+        evidence_dir / "third-party-intake-summary.json",
+        third_party_intake_summary or {"status": "missing", "required": settings.require_third_party_intake},
+    )
 
     app_evidence = evidence_by_id(app_summary)
     write_json(evidence_dir / "api-compatibility.json", app_evidence.get("platform-api.contract", {"status": "missing"}))
@@ -2635,6 +2739,7 @@ def write_evidence_extracts(settings: Settings, cert_out: Path) -> dict[str, Any
         "multiNodeBetaSoak": multi_node_summary,
         "certification": cert_summary,
         "matrix": matrix_summary,
+        "thirdPartyIntake": third_party_intake_summary,
     }
 
 
@@ -2802,9 +2907,18 @@ def evaluate_promotion(state: PipelineState, summaries: dict[str, Any]) -> dict[
         summaries.get("multiNodeBetaSoak") if isinstance(summaries.get("multiNodeBetaSoak"), dict) else None
     )
     matrix_summary = summaries.get("matrix") if isinstance(summaries.get("matrix"), dict) else None
+    third_party_intake_summary = (
+        summaries.get("thirdPartyIntake") if isinstance(summaries.get("thirdPartyIntake"), dict) else None
+    )
     app_evidence = evidence_by_id(app_summary)
     cert_evidence = evidence_by_id(cert_summary)
     all_evidence = {**app_evidence, **cert_evidence}
+    intake_evidence = third_party_intake_evidence(app_evidence, cert_evidence, third_party_intake_summary)
+    required_intake_evidence = (
+        third_party_intake_required_evidence(third_party_intake_summary)
+        if settings.require_third_party_intake
+        else intake_evidence
+    )
     gates: list[dict[str, Any]] = []
 
     def add_gate(gate_id: str, ok: bool, summary: str, source: str = "pipeline") -> None:
@@ -2842,6 +2956,50 @@ def evaluate_promotion(state: PipelineState, summaries: dict[str, Any]) -> dict[
             ok,
             str(item.get("summary", "Required evidence is missing.")) if isinstance(item, dict) else "Required evidence is missing.",
             "release-certification",
+        )
+
+    missing_or_failed_intake = [
+        evidence_id
+        for evidence_id in THIRD_PARTY_INTAKE_EVIDENCE_IDS
+        if not evidence_status_ok(required_intake_evidence.get(evidence_id))
+    ]
+    redaction_status = third_party_intake_redaction_status(
+        third_party_intake_summary,
+        required_intake_evidence,
+    )
+    has_intake_material = third_party_intake_summary is not None or bool(intake_evidence)
+    add_gate(
+        "third-party-intake.required-evidence",
+        (
+            not settings.require_third_party_intake
+            or (
+                third_party_intake_summary is not None
+                and summary_status(third_party_intake_summary) == "pass"
+                and not missing_or_failed_intake
+            )
+        ),
+        (
+            "Third-party app intake evidence is passing."
+            if settings.require_third_party_intake
+            else "Third-party app intake evidence is optional for this run."
+        ),
+        "third-party-intake",
+    )
+    add_gate(
+        "third-party-intake.redaction",
+        redaction_status == "pass" if has_intake_material or settings.require_third_party_intake else True,
+        f"Third-party intake redaction status is {redaction_status}.",
+        "third-party-intake",
+    )
+    if settings.mode in {"release-candidate", "production-beta"} and (
+        settings.require_third_party_intake or third_party_intake_summary is not None
+    ):
+        add_gate(
+            "third-party-intake.production-evidence",
+            third_party_intake_summary is not None
+            and not third_party_intake_summary_is_non_release(third_party_intake_summary),
+            "Attached or required third-party intake evidence must not be marked non-release or non-production.",
+            "third-party-intake",
         )
 
     if settings.require_sandbox_provider_tests:
@@ -3048,6 +3206,14 @@ def evaluate_promotion(state: PipelineState, summaries: dict[str, Any]) -> dict[
         "legacyAdminFinalSurface": legacy_admin_final_surface_summary(all_evidence),
         "securityResponse": production_security_response_summary(all_evidence),
         "developerBetaProgram": developer_beta_program_summary(all_evidence),
+        "thirdPartyIntake": {
+            "status": summary_status(third_party_intake_summary),
+            "required": settings.require_third_party_intake,
+            "summaryPath": "evidence/third-party-intake-summary.json",
+            "redaction": redaction_status,
+            "missingOrFailedEvidence": missing_or_failed_intake,
+            "nonRelease": third_party_intake_summary_is_non_release(third_party_intake_summary),
+        },
         "knownLimitations": [],
     }
 
@@ -3592,6 +3758,13 @@ def render_markdown_summary(summary: dict[str, Any]) -> str:
         blockers = developer_beta.get("blockers", [])
         if isinstance(blockers, list):
             lines.append(f"- Blocker count: `{len(blockers)}`")
+    third_party_intake = summary.get("thirdPartyIntake", {})
+    if isinstance(third_party_intake, dict) and third_party_intake:
+        lines.extend(["", "## Third-Party Intake", ""])
+        lines.append(f"- Required: `{str(third_party_intake.get('required', False)).lower()}`")
+        lines.append(f"- Status: `{third_party_intake.get('status', 'missing')}`")
+        lines.append(f"- Redaction: `{third_party_intake.get('redaction', 'missing')}`")
+        lines.append(f"- Non-release: `{str(third_party_intake.get('nonRelease', False)).lower()}`")
     lines.extend(["", "## Failed Gates", ""])
     failed = [gate for gate in summary["promotion"]["gates"] if gate["status"] != "pass"]
     if not failed:
@@ -3744,6 +3917,7 @@ def build_final_summary(
         "appPlatformSmoke": "evidence/app-platform-smoke.json",
         "multiNodeBetaSoak": "evidence/multi-node-beta-soak.json",
         "ecosystemCertification": "evidence/ecosystem-rc-certification.json",
+        "thirdPartyIntake": "evidence/third-party-intake-summary.json",
         "redactionReport": "reports/redaction-report.json",
         "goNoGoDashboard": GO_NO_GO_DASHBOARD_JSON,
         "goNoGoDashboardReport": GO_NO_GO_DASHBOARD_MARKDOWN,
@@ -3804,6 +3978,10 @@ def build_final_summary(
         "developerBetaProgram": final_promotion.get(
             "developerBetaProgram",
             {"status": "missing"},
+        ),
+        "thirdPartyIntake": final_promotion.get(
+            "thirdPartyIntake",
+            {"status": "missing", "required": settings.require_third_party_intake},
         ),
         "promotion": final_promotion,
         "redaction": redaction_report,
@@ -4332,6 +4510,21 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Override the topology config mode for generated multi-node beta soak evidence.",
     )
+    parser.add_argument(
+        "--third-party-intake-summary",
+        type=Path,
+        help="Attach a redacted third-party app intake summary for optional or required production-beta evidence.",
+    )
+    parser.add_argument(
+        "--require-third-party-intake",
+        action="store_true",
+        help="Require third-party intake evidence for promotion gates.",
+    )
+    parser.add_argument(
+        "--run-third-party-intake-sample-flow",
+        action="store_true",
+        help="Generate deterministic non-release third-party intake sample evidence.",
+    )
     parser.add_argument("--require-sandbox-provider-tests", action="store_true", help="Require sandbox evidence.")
     parser.add_argument("--skip-gradle", action="store_true", help="Skip Gradle stages. Use only for fixture/self-test dry-runs.")
     parser.add_argument("--skip-full-build", action="store_true", help="Skip buildJar and assembleCryptadDist.")
@@ -4387,6 +4580,9 @@ def settings_from_args(args: argparse.Namespace) -> Settings:
             else resolve_workspace_path_text(os.environ.get("CRYPTAD_CERT_MULTI_NODE_SOAK_SUMMARY"), workspace)
         )
     multi_node_soak_config = resolve_workspace_path_arg(args.multi_node_soak_config, workspace)
+    third_party_intake_summary = resolve_workspace_path_arg(args.third_party_intake_summary, workspace)
+    if args.third_party_intake_summary is not None and args.run_third_party_intake_sample_flow:
+        raise SystemExit("--run-third-party-intake-sample-flow cannot be combined with --third-party-intake-summary.")
     artifact_base_uri = args.artifact_base_uri.strip() or os.environ.get(
         "CRYPTAD_PRODUCTION_BETA_ARTIFACT_BASE_URI", ""
     ).strip()
@@ -4492,6 +4688,9 @@ def settings_from_args(args: argparse.Namespace) -> Settings:
         require_multi_node_soak=require_multi_node_soak,
         multi_node_mode=args.multi_node_mode,
         previous_release_certification_summary=previous_release_certification_summary,
+        third_party_intake_summary=third_party_intake_summary,
+        require_third_party_intake=args.require_third_party_intake,
+        run_third_party_intake_sample_flow=args.run_third_party_intake_sample_flow,
     )
 
 
@@ -5499,6 +5698,136 @@ def promotion_gate_by_id(promotion: dict[str, Any], gate_id: str) -> dict[str, A
         if gate["id"] == gate_id:
             return gate
     raise AssertionError(f"missing promotion gate {gate_id}")
+
+
+def assert_required_third_party_intake_requires_summary() -> None:
+    with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-intake-required-") as temp_name:
+        workspace = Path(temp_name) / "repo"
+        workspace.mkdir(parents=True)
+        out_dir = workspace / "build/production-beta"
+        settings = dataclasses.replace(
+            cleanup_test_settings(workspace, out_dir),
+            require_third_party_intake=True,
+        )
+        state = PipelineState(settings, "self-test", utc_now(), [], [], [])
+        promotion = evaluate_promotion(state, passing_promotion_summaries())
+        assert promotion_gate_by_id(promotion, "third-party-intake.required-evidence")["status"] == "fail", promotion
+        assert promotion_gate_by_id(promotion, "third-party-intake.redaction")["status"] == "fail", promotion
+
+
+def assert_required_third_party_intake_uses_attached_summary_rows() -> None:
+    with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-intake-attached-rows-") as temp_name:
+        workspace = Path(temp_name) / "repo"
+        workspace.mkdir(parents=True)
+        out_dir = workspace / "build/production-beta"
+        settings = dataclasses.replace(
+            cleanup_test_settings(workspace, out_dir),
+            require_third_party_intake=True,
+        )
+        source_evidence = [
+            {
+                "id": evidence_id,
+                "status": "pass",
+                "summary": f"{evidence_id} passed in source-level smoke evidence.",
+                "details": {},
+            }
+            for evidence_id in THIRD_PARTY_INTAKE_EVIDENCE_IDS
+        ]
+        attached_summary = third_party_intake_sample_summary()
+        attached_summary["evidence"] = [
+            item
+            for item in attached_summary["evidence"]
+            if item["id"] != "third-party-intake.catalog-candidate-staging"
+        ]
+        summaries = passing_promotion_summaries()
+        summaries["appPlatform"] = {"status": "pass", "evidence": source_evidence}
+        summaries["thirdPartyIntake"] = attached_summary
+        state = PipelineState(settings, "self-test", utc_now(), [], [], [])
+
+        promotion = evaluate_promotion(state, summaries)
+
+        assert promotion_gate_by_id(promotion, "third-party-intake.required-evidence")["status"] == "fail", promotion
+        assert "third-party-intake.catalog-candidate-staging" in promotion["thirdPartyIntake"][
+            "missingOrFailedEvidence"
+        ], promotion
+
+
+def assert_production_third_party_intake_rejects_non_release_summary() -> None:
+    with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-intake-nonrelease-") as temp_name:
+        workspace = Path(temp_name) / "repo"
+        workspace.mkdir(parents=True)
+        out_dir = workspace / "build/production-beta"
+        settings = dataclasses.replace(
+            cleanup_test_settings(workspace, out_dir),
+            mode="production-beta",
+            require_live_network=True,
+            require_multi_node_soak=True,
+            require_third_party_intake=True,
+            skip_gradle=False,
+            skip_full_build=False,
+        )
+        write_minimal_promotion_artifacts(out_dir)
+        state = PipelineState(settings, "self-test", utc_now(), [], [], [])
+        state.signing_profile = production_signing_profile()
+        for stage_id in PRODUCTION_BETA_REQUIRED_PIPELINE_STAGES:
+            state.pipeline_stages[stage_id] = {"status": "pass"}
+        summaries = passing_promotion_summaries()
+        summaries["thirdPartyIntake"] = third_party_intake_sample_summary()
+        promotion = evaluate_promotion(state, summaries)
+        gate = promotion_gate_by_id(promotion, "third-party-intake.production-evidence")
+        assert gate["status"] == "fail", promotion
+        assert promotion["thirdPartyIntake"]["nonRelease"] is True, promotion
+
+
+def assert_production_third_party_intake_rejects_optional_non_release_summary() -> None:
+    with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-intake-optional-nonrelease-") as temp_name:
+        workspace = Path(temp_name) / "repo"
+        workspace.mkdir(parents=True)
+        out_dir = workspace / "build/production-beta"
+        settings = dataclasses.replace(
+            cleanup_test_settings(workspace, out_dir),
+            mode="production-beta",
+            require_live_network=True,
+            require_multi_node_soak=True,
+            require_third_party_intake=False,
+            skip_gradle=False,
+            skip_full_build=False,
+        )
+        write_minimal_promotion_artifacts(out_dir)
+        state = PipelineState(settings, "self-test", utc_now(), [], [], [])
+        state.signing_profile = production_signing_profile()
+        for stage_id in PRODUCTION_BETA_REQUIRED_PIPELINE_STAGES:
+            state.pipeline_stages[stage_id] = {"status": "pass"}
+        summaries = passing_promotion_summaries()
+        summaries["thirdPartyIntake"] = third_party_intake_sample_summary()
+
+        promotion = evaluate_promotion(state, summaries)
+
+        gate = promotion_gate_by_id(promotion, "third-party-intake.production-evidence")
+        assert gate["status"] == "fail", promotion
+        assert promotion["thirdPartyIntake"]["required"] is False, promotion
+        assert promotion["thirdPartyIntake"]["nonRelease"] is True, promotion
+
+
+def assert_release_candidate_third_party_intake_rejects_non_release_summary() -> None:
+    with tempfile.TemporaryDirectory(prefix="cryptad-rc-intake-nonrelease-") as temp_name:
+        workspace = Path(temp_name) / "repo"
+        workspace.mkdir(parents=True)
+        out_dir = workspace / "build/production-beta"
+        settings = dataclasses.replace(
+            cleanup_test_settings(workspace, out_dir),
+            mode="release-candidate",
+            require_third_party_intake=True,
+        )
+        state = PipelineState(settings, "self-test", utc_now(), [], [], [])
+        summaries = passing_promotion_summaries()
+        summaries["thirdPartyIntake"] = third_party_intake_sample_summary()
+
+        promotion = evaluate_promotion(state, summaries)
+
+        gate = promotion_gate_by_id(promotion, "third-party-intake.production-evidence")
+        assert gate["status"] == "fail", promotion
+        assert promotion["thirdPartyIntake"]["nonRelease"] is True, promotion
 
 
 def assert_waived_critical_evidence_is_accepted_without_redaction_findings() -> None:
@@ -7912,6 +8241,11 @@ def run_self_test() -> None:
     assert_allow_test_signing_env_profile_is_non_release()
     assert_test_key_ids_without_escape_hatch_are_rejected()
     assert_failed_final_summary_clears_promotion_ready()
+    assert_required_third_party_intake_requires_summary()
+    assert_required_third_party_intake_uses_attached_summary_rows()
+    assert_production_third_party_intake_rejects_non_release_summary()
+    assert_production_third_party_intake_rejects_optional_non_release_summary()
+    assert_release_candidate_third_party_intake_rejects_non_release_summary()
     assert_waived_critical_evidence_is_accepted_without_redaction_findings()
     assert_developer_dry_run_exit_code_fails_on_recorded_failures()
     assert_certification_failure_marks_dry_run_failed()

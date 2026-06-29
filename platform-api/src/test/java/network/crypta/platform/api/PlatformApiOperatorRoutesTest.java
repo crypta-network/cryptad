@@ -1,6 +1,8 @@
 package network.crypta.platform.api;
 
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Duration;
@@ -28,6 +30,7 @@ import network.crypta.runtime.spi.DiagnosticReportSnapshot;
 import network.crypta.runtime.spi.DiagnosticSectionSnapshot;
 import network.crypta.runtime.spi.RuntimePorts;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.mockito.Answers;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -41,6 +44,7 @@ class PlatformApiOperatorRoutesTest {
   private static final String APP_ID = "feed-reader";
   private static final String BETA_DASHBOARD_SEGMENT = "beta-dashboard";
   private static final String FORM_FIELD_ASSIGNMENT = "form" + "Pass" + "word=secret-value";
+  private static final String INTAKE_QUEUE_PROPERTY = "cryptad.appSubmissionIntakeDir";
   private static final String OPERATOR_SEGMENT = "operator";
   private static final String PARAM_PLAN_TOKEN = "planToken";
   private static final String SOURCE = "USK@example/feed/7/feed.json";
@@ -74,6 +78,113 @@ class PlatformApiOperatorRoutesTest {
     assertTrue(response.body().contains("\"operatorRcRecovery\""));
     assertTrue(response.body().contains("\"closedActionDispatch\":true"));
     assertTrue(response.body().contains("\"operatorRoutesInAppContract\":false"));
+  }
+
+  @Test
+  void route_whenAppSubmissionIntakeQueueConfigured_expectSafeOperatorSummary(@TempDir Path tempDir)
+      throws Exception {
+    Path records = tempDir.resolve("records");
+    Files.createDirectories(records);
+    Files.writeString(
+        records.resolve("sub-hello.json"), intakeRecordJson(), StandardCharsets.UTF_8);
+    Files.writeString(
+        records.resolve("transparency-log.json"),
+        intakeRecordJson("transparency-log", "1".repeat(64)),
+        StandardCharsets.UTF_8);
+    String previous = System.getProperty(INTAKE_QUEUE_PROPERTY);
+    System.setProperty(INTAKE_QUEUE_PROPERTY, tempDir.toString());
+    try {
+      PlatformApiRouter router = new PlatformApiRouter(runtimePorts());
+
+      PlatformApiResponse list =
+          router.route(request("GET", List.of(OPERATOR_SEGMENT, "app-submissions"), Map.of()));
+      PlatformApiResponse detail =
+          router.route(
+              request("GET", List.of(OPERATOR_SEGMENT, "app-submissions", "sub-hello"), Map.of()));
+      PlatformApiResponse transparencyLogDetail =
+          router.route(
+              request(
+                  "GET",
+                  List.of(OPERATOR_SEGMENT, "app-submissions", "transparency-log"),
+                  Map.of()));
+      PlatformApiResponse transparencySummary =
+          router.route(
+              request(
+                  "GET",
+                  List.of(OPERATOR_SEGMENT, "app-submissions", "transparency", "summary"),
+                  Map.of()));
+
+      assertEquals(200, list.statusCode());
+      assertTrue(list.body().contains("\"kind\":\"crypta-operator-app-submission-intake\""));
+      assertTrue(list.body().contains("\"queueCount\":2"));
+      assertTrue(list.body().contains("\"submissionId\":\"sub-hello\""));
+      assertTrue(list.body().contains("\"operatorRoutesInAppContract\":false"));
+      assertFalse(list.body().contains(tempDir.toString()));
+      assertFalse(list.body().contains("raw-submission"));
+      assertEquals(200, detail.statusCode());
+      assertTrue(detail.body().contains("\"submission\""));
+      assertTrue(detail.body().contains("\"appId\":\"hello-stable\""));
+      assertFalse(detail.body().contains(tempDir.toString()));
+      assertEquals(200, transparencyLogDetail.statusCode());
+      assertTrue(transparencyLogDetail.body().contains("\"submission\""));
+      assertTrue(transparencyLogDetail.body().contains("\"submissionId\":\"transparency-log\""));
+      assertFalse(
+          transparencyLogDetail
+              .body()
+              .contains("crypta-operator-app-submission-transparency-summary"));
+      assertEquals(200, transparencySummary.statusCode());
+      assertTrue(
+          transparencySummary
+              .body()
+              .contains("\"kind\":\"crypta-operator-app-submission-transparency-summary\""));
+      assertTrue(transparencySummary.body().contains("\"recordsWithTransparencyDigest\":1"));
+      assertTrue(transparencySummary.body().contains("\"submissionIds\":[\"transparency-log\"]"));
+    } finally {
+      if (previous == null) {
+        System.clearProperty(INTAKE_QUEUE_PROPERTY);
+      } else {
+        System.setProperty(INTAKE_QUEUE_PROPERTY, previous);
+      }
+    }
+  }
+
+  @Test
+  void route_whenAppSubmissionIntakeRecordMalformed_expectUnavailable(@TempDir Path tempDir)
+      throws Exception {
+    Path records = tempDir.resolve("records");
+    Files.createDirectories(records);
+    Files.writeString(records.resolve("bad.json"), "{", StandardCharsets.UTF_8);
+    String previous = System.getProperty(INTAKE_QUEUE_PROPERTY);
+    System.setProperty(INTAKE_QUEUE_PROPERTY, tempDir.toString());
+    try {
+      PlatformApiRouter router = new PlatformApiRouter(runtimePorts());
+
+      PlatformApiResponse list =
+          router.route(request("GET", List.of(OPERATOR_SEGMENT, "app-submissions"), Map.of()));
+      PlatformApiResponse transparencySummary =
+          router.route(
+              request(
+                  "GET",
+                  List.of(OPERATOR_SEGMENT, "app-submissions", "transparency", "summary"),
+                  Map.of()));
+      PlatformApiResponse detail =
+          router.route(
+              request("GET", List.of(OPERATOR_SEGMENT, "app-submissions", "bad"), Map.of()));
+
+      assertEquals(503, list.statusCode());
+      assertEquals(503, transparencySummary.statusCode());
+      assertEquals(503, detail.statusCode());
+      assertTrue(list.body().contains("\"code\":\"app_submission_intake_unavailable\""));
+      assertTrue(
+          transparencySummary.body().contains("\"code\":\"app_submission_intake_unavailable\""));
+      assertTrue(detail.body().contains("\"code\":\"app_submission_intake_unavailable\""));
+    } finally {
+      if (previous == null) {
+        System.clearProperty(INTAKE_QUEUE_PROPERTY);
+      } else {
+        System.setProperty(INTAKE_QUEUE_PROPERTY, previous);
+      }
+    }
   }
 
   @Test
@@ -689,6 +800,46 @@ class PlatformApiOperatorRoutesTest {
         List.of("1"),
         "valueText",
         List.of(value));
+  }
+
+  private static String intakeRecordJson() {
+    return intakeRecordJson("sub-hello", null);
+  }
+
+  private static String intakeRecordJson(String submissionId, String transparencyLogDigest) {
+    String sha256 = "0".repeat(64);
+    String transparency =
+        transparencyLogDigest == null
+            ? ""
+            : """
+              "transparencyLogDigest":"%s",
+            """
+                .formatted(transparencyLogDigest);
+    return """
+    {
+      "schemaVersion":1,
+      "status":"submitted",
+      "submissionId":"%s",
+      "submissionDigest":"%s",
+      "submissionType":"new_app",
+      "appId":"hello-stable",
+      "appVersion":"1.0.0",
+      "bundleDigest":"%s",
+      "manifestDigest":"%s",
+      "apiTargetStability":"stable",
+      "requestedPermissions":["queue.read"],
+      "maintainerName":"Example Maintainer",
+      "maintainerContactPublic":"https://example.invalid/contact",
+      "sourceUrl":"https://example.invalid/source",
+      "submittedAt":"2026-06-01T12:00:00Z",
+      %s
+      "nonProduction":false,
+      "redactionStatus":"pass",
+      "warnings":[],
+      "auditEvents":[]
+    }
+    """
+        .formatted(submissionId, sha256, sha256, sha256, transparency);
   }
 
   private static RuntimePorts runtimePorts() {

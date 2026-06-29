@@ -4109,6 +4109,138 @@
     },
     {
       "details": {
+        "fixtureBacked": true,
+        "metadataOnly": true
+      },
+      "id": "third-party-intake.queue-schema",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Third-party intake queue schema evidence passed."
+    },
+    {
+      "details": {
+        "fixtureBacked": true,
+        "metadataOnly": true
+      },
+      "id": "third-party-intake.import",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Third-party intake import evidence passed."
+    },
+    {
+      "details": {
+        "fixtureBacked": true,
+        "metadataOnly": true
+      },
+      "id": "third-party-intake.reviewer-assignment",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Third-party intake reviewer assignment evidence passed."
+    },
+    {
+      "details": {
+        "fixtureBacked": true,
+        "metadataOnly": true
+      },
+      "id": "third-party-intake.pre-review-artifacts",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Third-party intake pre-review artifact evidence passed."
+    },
+    {
+      "details": {
+        "fixtureBacked": true,
+        "metadataOnly": true
+      },
+      "id": "third-party-intake.review-decision",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Third-party intake reviewer decision evidence passed."
+    },
+    {
+      "details": {
+        "fixtureBacked": true,
+        "metadataOnly": true
+      },
+      "id": "third-party-intake.resubmission-flow",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Third-party intake resubmission linkage evidence passed."
+    },
+    {
+      "details": {
+        "fixtureBacked": true,
+        "metadataOnly": true
+      },
+      "id": "third-party-intake.catalog-candidate-staging",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Third-party intake beta catalog candidate staging evidence passed."
+    },
+    {
+      "details": {
+        "fixtureBacked": true,
+        "metadataOnly": true
+      },
+      "id": "third-party-intake.beta-catalog-install-smoke",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Third-party intake install-from-beta-catalog smoke evidence passed."
+    },
+    {
+      "details": {
+        "fixtureBacked": true,
+        "metadataOnly": true
+      },
+      "id": "third-party-intake.transparency-export",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Third-party intake transparency export evidence passed."
+    },
+    {
+      "details": {
+        "fixtureBacked": true,
+        "metadataOnly": true
+      },
+      "id": "third-party-intake.rejected-candidate-blocked",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Third-party intake rejected candidate blocking evidence passed."
+    },
+    {
+      "details": {
+        "fixtureBacked": true,
+        "metadataOnly": true
+      },
+      "id": "third-party-intake.caution-warning",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Third-party intake caution warning evidence passed."
+    },
+    {
+      "details": {
+        "fixtureBacked": true,
+        "metadataOnly": true
+      },
+      "id": "third-party-intake.redaction",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Third-party intake redaction evidence passed."
+    },
+    {
+      "details": {
         "enabled": false
       },
       "id": "apphost.live",

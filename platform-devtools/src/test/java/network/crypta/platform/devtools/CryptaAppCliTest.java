@@ -3100,6 +3100,419 @@ class CryptaAppCliTest {
     assertTrue(Files.notExists(transparencyLog));
   }
 
+  @Test
+  void submissionIntake_whenReviewedSubmissionStaged_expectBetaCandidateArtifacts()
+      throws Exception {
+    Path appDir = createSubmissionBundle("intake-reviewed-app", "Intake Reviewed App", "1.0.0");
+    Path submission = tempDir.resolve("intake-reviewed-submission.zip");
+    CliResult create =
+        runCli(
+            "submission",
+            "create",
+            "--bundle-dir",
+            appDir.toString(),
+            "--output",
+            submission.toString(),
+            "--submission-type",
+            "new_app",
+            "--submission-id",
+            "sub.intake-reviewed",
+            "--maintainer-name",
+            "Example Maintainer",
+            "--maintainer-contact",
+            "mailto:maintainer@example.invalid",
+            "--source-url",
+            "https://example.invalid/intake-reviewed-app",
+            "--non-production");
+    Path queueDir = tempDir.resolve("app-intake");
+    Path transparencyLog = queueDir.resolve("review-transparency.jsonl");
+    CliResult importResult =
+        runCli(
+            "submission",
+            "intake",
+            "import",
+            "--queue-dir",
+            queueDir.toString(),
+            "--submission",
+            submission.toString(),
+            "--imported-at",
+            "2026-06-18T00:00:00Z",
+            "--transparency-log",
+            transparencyLog.toString());
+    CliResult listResult =
+        runCli("submission", "intake", "list", "--queue-dir", queueDir.toString(), "--json");
+    KeyPair keyPair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
+    Path privateKey = tempDir.resolve("intake-review-private.der");
+    Files.write(privateKey, keyPair.getPrivate().getEncoded());
+    Path trustedReviewers = tempDir.resolve("intake-trusted-reviewers.properties");
+    writeTrustedReviewers(trustedReviewers, keyPair);
+    Path reason = tempDir.resolve("intake-review-reason.md");
+    Files.writeString(reason, "Reviewed intake submission.\n", StandardCharsets.UTF_8);
+    Path decisionDir = queueDir.resolve("custom-decisions").resolve("sub.intake-reviewed");
+    CliResult assign =
+        runCli(
+            "submission",
+            "intake",
+            "assign",
+            "--queue-dir",
+            queueDir.toString(),
+            "--submission-id",
+            "sub.intake-reviewed",
+            "--reviewer-key-id",
+            "reviewer-dev",
+            "--trusted-reviewer-keys",
+            trustedReviewers.toString(),
+            "--reason",
+            reason.toString(),
+            "--assigned-at",
+            "2026-06-18T00:01:00Z",
+            "--transparency-log",
+            transparencyLog.toString());
+    Path artifactsDir = queueDir.resolve("artifacts").resolve("sub.intake-reviewed");
+    CliResult preReview =
+        runCli(
+            "submission",
+            "intake",
+            "pre-review",
+            "--queue-dir",
+            queueDir.toString(),
+            "--submission-id",
+            "sub.intake-reviewed",
+            "--artifacts-dir",
+            artifactsDir.toString(),
+            "--completed-at",
+            "2026-06-18T00:02:00Z",
+            "--transparency-log",
+            transparencyLog.toString());
+    CliResult decide =
+        runCli(
+            "submission",
+            "intake",
+            "decide",
+            "--queue-dir",
+            queueDir.toString(),
+            "--submission-id",
+            "sub.intake-reviewed",
+            "--decision",
+            "reviewed",
+            "--reviewer-key-id",
+            "reviewer-dev",
+            "--reviewer-private-key",
+            privateKey.toString(),
+            "--trusted-reviewer-keys",
+            trustedReviewers.toString(),
+            "--reason",
+            reason.toString(),
+            "--artifacts-dir",
+            artifactsDir.toString(),
+            "--decision-dir",
+            decisionDir.toString(),
+            "--reviewed-at",
+            "2026-06-18T00:03:00Z",
+            "--allow-non-production",
+            "--transparency-log",
+            transparencyLog.toString());
+    Path mismatchedDecisionDir =
+        queueDir.resolve("mismatched-decisions").resolve("sub.intake-reviewed");
+    Files.createDirectories(mismatchedDecisionDir);
+    CliResult mismatchedReceipt =
+        runCli(
+            "submission",
+            "decide",
+            "--submission",
+            submission.toString(),
+            "--pre-review",
+            artifactsDir.resolve("pre-review.json").toString(),
+            "--decision",
+            "reviewed",
+            "--reviewer-key-id",
+            "reviewer-dev",
+            "--reviewer-private-key",
+            privateKey.toString(),
+            "--reason",
+            reason.toString(),
+            "--receipt-output",
+            mismatchedDecisionDir.resolve("review-receipt.properties").toString(),
+            "--reviewed-at",
+            "2026-06-18T00:03:30Z",
+            "--allow-non-production");
+    Path rejectedBetaCandidates = tempDir.resolve("beta-candidates-mismatched-receipt");
+    CliResult rejectedStage =
+        runCli(
+            "submission",
+            "intake",
+            "stage-candidate",
+            "--queue-dir",
+            queueDir.toString(),
+            "--submission-id",
+            "sub.intake-reviewed",
+            "--trusted-reviewer-keys",
+            trustedReviewers.toString(),
+            "--beta-candidate-dir",
+            rejectedBetaCandidates.toString(),
+            "--bundle-uri",
+            "https://example.invalid/crypta-apps/intake-reviewed-app.zip",
+            "--decision-dir",
+            mismatchedDecisionDir.toString(),
+            "--staged-at",
+            "2026-06-18T00:03:45Z");
+    Path betaCandidates = tempDir.resolve("beta-candidates");
+    CliResult stage =
+        runCli(
+            "submission",
+            "intake",
+            "stage-candidate",
+            "--queue-dir",
+            queueDir.toString(),
+            "--submission-id",
+            "sub.intake-reviewed",
+            "--trusted-reviewer-keys",
+            trustedReviewers.toString(),
+            "--beta-candidate-dir",
+            betaCandidates.toString(),
+            "--bundle-uri",
+            "https://example.invalid/crypta-apps/intake-reviewed-app.zip",
+            "--decision-dir",
+            decisionDir.toString(),
+            "--staged-at",
+            "2026-06-18T00:04:00Z",
+            "--transparency-log",
+            transparencyLog.toString());
+
+    assertReviewedIntakeSetupSucceeded(create, importResult, listResult, assign);
+    assertPreReviewAndDecisionArtifactsCreated(preReview, artifactsDir, decide, decisionDir);
+    assertMismatchedReceiptCandidateRejected(
+        mismatchedReceipt, rejectedStage, rejectedBetaCandidates);
+    Path candidateDir = assertCandidateArtifactsCreated(stage, betaCandidates);
+    String descriptorBefore =
+        Files.readString(
+            candidateDir.resolve("catalog-candidate.properties"), StandardCharsets.UTF_8);
+    String transparencyLogBefore = Files.readString(transparencyLog, StandardCharsets.UTF_8);
+    String exportedTransparencyBefore =
+        Files.readString(
+            candidateDir.resolve("candidate-transparency-log.jsonl"), StandardCharsets.UTF_8);
+    CliResult rerunStage =
+        runCli(
+            "submission",
+            "intake",
+            "stage-candidate",
+            "--queue-dir",
+            queueDir.toString(),
+            "--submission-id",
+            "sub.intake-reviewed",
+            "--trusted-reviewer-keys",
+            trustedReviewers.toString(),
+            "--beta-candidate-dir",
+            betaCandidates.toString(),
+            "--bundle-uri",
+            "https://example.invalid/crypta-apps/mutated-intake-reviewed-app.zip",
+            "--summary",
+            "Mutated summary must not be written.",
+            "--decision-dir",
+            decisionDir.toString(),
+            "--staged-at",
+            "2026-06-18T00:05:00Z",
+            "--overwrite",
+            "--transparency-log",
+            transparencyLog.toString());
+    assertRerunCandidateStageDidNotMutateArtifacts(
+        rerunStage,
+        queueDir,
+        candidateDir,
+        transparencyLog,
+        descriptorBefore,
+        transparencyLogBefore,
+        exportedTransparencyBefore);
+  }
+
+  @Test
+  void submissionIntakeDecide_whenQueuePreReviewMissing_expectNoDecisionArtifacts()
+      throws Exception {
+    Path appDir =
+        createSubmissionBundle(
+            "intake-missing-pre-review-app", "Intake Missing Pre Review", "1.0.0");
+    Path submission = tempDir.resolve("intake-missing-pre-review-submission.zip");
+    CliResult create =
+        runCli(
+            "submission",
+            "create",
+            "--bundle-dir",
+            appDir.toString(),
+            "--output",
+            submission.toString(),
+            "--submission-type",
+            "new_app",
+            "--submission-id",
+            "sub-intake-missing-pre-review",
+            "--maintainer-name",
+            "Example Maintainer",
+            "--maintainer-contact",
+            "mailto:maintainer@example.invalid",
+            "--source-url",
+            "https://example.invalid/intake-missing-pre-review-app",
+            "--non-production");
+    Path artifactsDir = tempDir.resolve("external-pre-review-artifacts");
+    Files.createDirectories(artifactsDir);
+    CliResult externalPreReview =
+        runCli(
+            "submission",
+            "pre-review",
+            "--submission",
+            submission.toString(),
+            "--output",
+            artifactsDir.resolve("pre-review.json").toString());
+    Path queueDir = tempDir.resolve("missing-pre-review-intake");
+    CliResult importResult =
+        runCli(
+            "submission",
+            "intake",
+            "import",
+            "--queue-dir",
+            queueDir.toString(),
+            "--submission",
+            submission.toString(),
+            "--imported-at",
+            "2026-06-18T00:00:00Z");
+    KeyPair keyPair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
+    Path privateKey = tempDir.resolve("missing-pre-review-private.der");
+    Files.write(privateKey, keyPair.getPrivate().getEncoded());
+    Path trustedReviewers = tempDir.resolve("missing-pre-review-trusted.properties");
+    writeTrustedReviewers(trustedReviewers, keyPair);
+    Path reason = tempDir.resolve("missing-pre-review-reason.md");
+    Files.writeString(
+        reason, "Attempted decision before queue pre-review.\n", StandardCharsets.UTF_8);
+    CliResult assign =
+        runCli(
+            "submission",
+            "intake",
+            "assign",
+            "--queue-dir",
+            queueDir.toString(),
+            "--submission-id",
+            "sub-intake-missing-pre-review",
+            "--reviewer-key-id",
+            "reviewer-dev",
+            "--trusted-reviewer-keys",
+            trustedReviewers.toString(),
+            "--reason",
+            reason.toString(),
+            "--assigned-at",
+            "2026-06-18T00:01:00Z");
+    Path decisionDir = queueDir.resolve("decisions").resolve("sub-intake-missing-pre-review");
+    CliResult decide =
+        runCli(
+            "submission",
+            "intake",
+            "decide",
+            "--queue-dir",
+            queueDir.toString(),
+            "--submission-id",
+            "sub-intake-missing-pre-review",
+            "--decision",
+            "reviewed",
+            "--reviewer-key-id",
+            "reviewer-dev",
+            "--reviewer-private-key",
+            privateKey.toString(),
+            "--trusted-reviewer-keys",
+            trustedReviewers.toString(),
+            "--reason",
+            reason.toString(),
+            "--artifacts-dir",
+            artifactsDir.toString(),
+            "--decision-dir",
+            decisionDir.toString(),
+            "--reviewed-at",
+            "2026-06-18T00:02:00Z",
+            "--allow-non-production");
+
+    assertEquals(CommandLine.ExitCode.OK, create.exitCode(), create.err());
+    assertEquals(CommandLine.ExitCode.OK, externalPreReview.exitCode(), externalPreReview.err());
+    assertEquals(CommandLine.ExitCode.OK, importResult.exitCode(), importResult.err());
+    assertEquals(CommandLine.ExitCode.OK, assign.exitCode(), assign.err());
+    assertEquals(CommandLine.ExitCode.SOFTWARE, decide.exitCode());
+    assertTrue(decide.err().contains("intake decision requires recorded pre-review"));
+    assertTrue(Files.notExists(decisionDir.resolve("review-receipt.properties")));
+  }
+
+  private static void assertReviewedIntakeSetupSucceeded(
+      CliResult create, CliResult importResult, CliResult listResult, CliResult assign) {
+    assertEquals(CommandLine.ExitCode.OK, create.exitCode(), create.err());
+    assertEquals(CommandLine.ExitCode.OK, importResult.exitCode(), importResult.err());
+    assertEquals(CommandLine.ExitCode.OK, listResult.exitCode(), listResult.err());
+    assertTrue(listResult.out().contains("\"submissionId\":\"sub.intake-reviewed\""));
+    assertEquals(CommandLine.ExitCode.OK, assign.exitCode(), assign.err());
+  }
+
+  private static void assertPreReviewAndDecisionArtifactsCreated(
+      CliResult preReview, Path artifactsDir, CliResult decide, Path decisionDir) {
+    assertEquals(CommandLine.ExitCode.OK, preReview.exitCode(), preReview.err());
+    assertTrue(Files.isRegularFile(artifactsDir.resolve("artifact-manifest.json")));
+    assertTrue(Files.isRegularFile(artifactsDir.resolve("redaction-scan.json")));
+    assertEquals(CommandLine.ExitCode.OK, decide.exitCode(), decide.err());
+    assertTrue(Files.isRegularFile(decisionDir.resolve("review-receipt.properties")));
+  }
+
+  private static void assertMismatchedReceiptCandidateRejected(
+      CliResult mismatchedReceipt, CliResult rejectedStage, Path rejectedBetaCandidates) {
+    assertEquals(CommandLine.ExitCode.OK, mismatchedReceipt.exitCode(), mismatchedReceipt.err());
+    assertEquals(CommandLine.ExitCode.SOFTWARE, rejectedStage.exitCode());
+    assertTrue(
+        rejectedStage
+            .err()
+            .contains("review receipt fingerprint does not match recorded intake decision"));
+    assertTrue(
+        Files.notExists(
+            rejectedBetaCandidates
+                .resolve("sub.intake-reviewed")
+                .resolve("catalog-candidate.properties")));
+  }
+
+  private static Path assertCandidateArtifactsCreated(CliResult stage, Path betaCandidates) {
+    assertEquals(CommandLine.ExitCode.OK, stage.exitCode(), stage.err());
+    Path candidateDir = betaCandidates.resolve("sub.intake-reviewed");
+    assertTrue(Files.isRegularFile(candidateDir.resolve("catalog-candidate.properties")));
+    assertTrue(Files.isRegularFile(candidateDir.resolve("candidate-manifest.json")));
+    assertTrue(Files.isRegularFile(candidateDir.resolve("candidate-review-receipt.properties")));
+    assertTrue(Files.isRegularFile(candidateDir.resolve("candidate-transparency-log.jsonl")));
+    return candidateDir;
+  }
+
+  private void assertRerunCandidateStageDidNotMutateArtifacts(
+      CliResult rerunStage,
+      Path queueDir,
+      Path candidateDir,
+      Path transparencyLog,
+      String descriptorBefore,
+      String transparencyLogBefore,
+      String exportedTransparencyBefore)
+      throws Exception {
+    String intakeRecordJson =
+        Files.readString(
+            queueDir.resolve("records").resolve("sub.intake-reviewed.json"),
+            StandardCharsets.UTF_8);
+    assertTrue(intakeRecordJson.contains("\"status\":\"beta_install_smoke_passed\""));
+    assertTrue(
+        intakeRecordJson.contains(
+            "\"betaCatalogCandidateReference\":\"beta-candidate:sub.intake-reviewed/"));
+    assertFalse(intakeRecordJson.contains(tempDir.toString()));
+    assertEquals(CommandLine.ExitCode.SOFTWARE, rerunStage.exitCode());
+    assertTrue(rerunStage.err().contains("invalid intake status transition"));
+    assertEquals(
+        descriptorBefore,
+        Files.readString(
+            candidateDir.resolve("catalog-candidate.properties"), StandardCharsets.UTF_8));
+    assertEquals(transparencyLogBefore, Files.readString(transparencyLog, StandardCharsets.UTF_8));
+    assertEquals(
+        exportedTransparencyBefore,
+        Files.readString(
+            candidateDir.resolve("candidate-transparency-log.jsonl"), StandardCharsets.UTF_8));
+    assertFalse(
+        Files.readString(
+                candidateDir.resolve("catalog-candidate.properties"), StandardCharsets.UTF_8)
+            .contains("Mutated summary must not be written."));
+  }
+
   private static void writeZipWithReplacements(
       Path source, Path target, Map<String, byte[]> replacements) throws Exception {
     LinkedHashMap<String, byte[]> entries = new LinkedHashMap<>();
