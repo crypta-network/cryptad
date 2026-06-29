@@ -143,12 +143,20 @@ Third-party submissions inherit the Platform API 1.0 rules from
 
 Stable-target apps must set `api.targetStability=stable` and use only stable app-facing
 capabilities. They must not request experimental capabilities unless a reviewer policy explicitly
-allows the app to target experimental APIs.
+allows the app to target experimental APIs and the manifest changes to
+`api.targetStability=experimental`.
 
 Experimental app-facing APIs require `api.targetStability=experimental` and
 `api.experimentalCapabilitiesAccepted=true`.
 
 Internal or host/operator-only capabilities always fail third-party submission pre-review.
+
+The pre-review API compatibility artifact must include the current contract snapshot and the
+support-window result from `crypta-app api policy` or equivalent release evidence. Stable
+submission review relies on the same Platform API 1.0 compatibility-window policy that production
+beta release certification enforces: previous contract snapshots are required for production
+promotion, stable deprecation/removal windows must meet policy, and critical stable removals are
+not waiverable.
 
 ## Automated Pre-Review
 
@@ -159,6 +167,21 @@ crypta-app submission pre-review \
   --submission build/submissions/example-submission.zip \
   --contract platform-api-contract.json \
   --output build/submissions/example-pre-review.json
+```
+
+Before pre-review, reviewers can reproduce the API-only check:
+
+```bash
+crypta-app api snapshot --output build/submissions/platform-api-contract.json
+crypta-app api policy \
+  --contract build/submissions/platform-api-contract.json \
+  --output build/submissions/platform-api-policy.json
+crypta-app compat verify \
+  --bundle-dir apps/example/build/cryptad-app/example \
+  --contract build/submissions/platform-api-contract.json \
+  --target-stability stable \
+  --strict \
+  --json build/submissions/example-api-compatibility.json
 ```
 
 The report is deterministic JSON:

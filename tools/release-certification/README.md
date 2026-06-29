@@ -287,6 +287,10 @@ production-security.response-runbook
 platform-api.contract
 platform-api.stable-baseline
 platform-api.stable-breaking-change-check
+platform-api.compatibility-window
+platform-api.previous-contract-snapshot
+platform-api.deprecation-window-policy
+platform-api.experimental-graduation-policy
 platform-api.manifest-target-stability
 platform-api.first-party-stability-declarations
 platform-api.stable-reference-docs
@@ -408,9 +412,14 @@ coverage, issue templates, internal Markdown links, README/portal links, and obv
 The `platform-api.stable-baseline` and `platform-api.stable-breaking-change-check` rows prove the
 Platform API 1.0 baseline is present and compare stable capability names, stable endpoint
 identities, stable endpoint required-capability sets, and stable endpoint app-process/app-browser
-access flags against release history. Production history mode fails closed when previous baseline
-or endpoint metadata is missing; developer dry runs warn instead of claiming production comparison
-coverage.
+access flags against release history. `platform-api.compatibility-window`,
+`platform-api.previous-contract-snapshot`, `platform-api.deprecation-window-policy`, and
+`platform-api.experimental-graduation-policy` make the support-window metadata, previous snapshot
+requirement, minimum removal windows, waiver boundaries, and future-baseline graduation process
+release evidence. Production history mode fails closed when previous baseline, compatibility
+window, or endpoint metadata is missing; developer dry runs warn instead of claiming production
+comparison coverage. Critical stable removals, undeclared stable-baseline mutations, current
+metadata gaps, production-beta history gaps, and redaction/security blockers are not waiverable.
 `app-catalog.first-party-beta` reports source/key configuration readiness but does not fetch the
 public Crypta catalog. `catalog.production-channels` verifies schema v3 stable/beta/nightly/
 deprecated metadata, stable-only default update automation, deprecated replacement metadata, API

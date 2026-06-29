@@ -775,6 +775,19 @@ def previous_candidate_summary_schema() -> dict[str, Any]:
                 "properties": {
                     "stableBaseline": {"type": "string", "minLength": 1},
                     "contractVersion": {"type": "integer", "minimum": 1},
+                    "compatibilityWindow": {
+                        "type": "object",
+                        "additionalProperties": True,
+                        "properties": {
+                            "schemaVersion": {"type": "integer", "minimum": 1},
+                            "baselineName": {"type": "string", "minLength": 1},
+                            "baselineContractVersion": {"type": "integer", "minimum": 1},
+                            "currentContractVersion": {"type": "integer", "minimum": 1},
+                            "supportPhase": {"type": "string", "minLength": 1},
+                            "criticalStableRemovalWaiverAllowed": {"type": "boolean"},
+                            "previousSnapshotRequiredInProductionBeta": {"type": "boolean"},
+                        },
+                    },
                     "snapshotDigest": {"type": "string", "pattern": digest_pattern},
                 },
             },
@@ -1228,12 +1241,42 @@ def validate_previous_beta_candidate_summary(
     if platform_api:
         reject_unexpected_fields(
             platform_api,
-            {"stableBaseline", "contractVersion", "snapshotDigest"},
+            {"stableBaseline", "contractVersion", "compatibilityWindow", "snapshotDigest"},
             errors,
             "previous candidate summary platformApi",
         )
         require_non_empty_string(platform_api, "stableBaseline", errors, "previous candidate summary platformApi")
         require_int(platform_api, "contractVersion", errors, "previous candidate summary platformApi", minimum=1)
+        compatibility_window = platform_api.get("compatibilityWindow")
+        if compatibility_window is not None:
+            if not isinstance(compatibility_window, dict):
+                errors.append("previous candidate summary platformApi compatibilityWindow must be an object")
+            else:
+                require_non_empty_string(
+                    compatibility_window,
+                    "baselineName",
+                    errors,
+                    "previous candidate summary platformApi compatibilityWindow",
+                )
+                require_int(
+                    compatibility_window,
+                    "baselineContractVersion",
+                    errors,
+                    "previous candidate summary platformApi compatibilityWindow",
+                    minimum=1,
+                )
+                require_int(
+                    compatibility_window,
+                    "currentContractVersion",
+                    errors,
+                    "previous candidate summary platformApi compatibilityWindow",
+                    minimum=1,
+                )
+                if compatibility_window.get("criticalStableRemovalWaiverAllowed") is not False:
+                    errors.append(
+                        "previous candidate summary platformApi compatibilityWindow must reject "
+                        "critical stable removal waivers"
+                    )
         require_digest(platform_api, "snapshotDigest", errors, "previous candidate summary platformApi")
 
     validate_previous_app_metadata(summary.get("firstPartyApps"), errors)

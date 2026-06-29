@@ -8,9 +8,10 @@ contract snapshot remains available through `crypta-app api snapshot` and
 The stable baseline is separate from the integer compatibility contract version. The current
 contract version records when descriptors were added or changed. The stable baseline name records
 which descriptors are part of the Platform API 1.0 app-facing compatibility promise.
-Platform API 1.0 membership is frozen at contract version 19. Later contract versions may add
-experimental or future baseline surface, but they must not change `stableBaseline.name=1.0`
-membership unless the project intentionally defines a new stable baseline.
+Platform API 1.0 membership is frozen at contract version 19. The current snapshot contract
+version is 23. Later contract versions may add experimental or future baseline surface, but they
+must not change `stableBaseline.name=1.0` membership unless the project intentionally defines a
+new stable baseline.
 
 ## Stability Terms
 
@@ -26,9 +27,11 @@ use experimental capabilities only when they declare `api.targetStability=experi
 `operator-only` means host or Web Shell operator API. Third-party apps cannot declare operator-only
 capabilities, even when `api.targetStability=experimental`.
 
-`deprecated` remains available but should warn during compatibility verification.
-`scheduled-for-removal` remains available during its migration window but is excluded from new
-stable target use.
+`deprecated` remains available and remains part of the stable compatibility promise while warning
+during compatibility verification.
+
+`scheduled-for-removal` remains available during its migration window and remains part of the
+stable compatibility promise until an approved future baseline and release policy allow removal.
 
 ## Manifest Choice
 
@@ -36,7 +39,7 @@ A stable-only third-party app should declare:
 
 ```properties
 api.minimumVersion=1
-api.maximumTestedVersion=19
+api.maximumTestedVersion=23
 api.targetStability=stable
 api.experimentalCapabilitiesAccepted=false
 ```
@@ -45,7 +48,7 @@ An app that knowingly uses experimental app-facing API should declare:
 
 ```properties
 api.minimumVersion=1
-api.maximumTestedVersion=19
+api.maximumTestedVersion=23
 api.targetStability=experimental
 api.experimentalCapabilitiesAccepted=true
 ```
@@ -57,6 +60,10 @@ treats the effective target as `experimental`, records that the field was not de
 ## Stable Baseline Counts
 
 The Platform API 1.0 stable baseline contains 9 capabilities and 32 endpoints.
+
+Release certification also checks the stable endpoint required-capability sets and app-principal
+access flags. A stable endpoint that changes required capabilities, drops app process/browser
+access, or changes method/route identity is treated as a stable breaking change.
 
 ## Stable Capabilities
 
@@ -128,3 +135,23 @@ the submission package format, automated pre-review report, and reviewer decisio
 [platform-api-compatibility-support-window.md](platform-api-compatibility-support-window.md) for
 the beta support-window policy, experimental opt-in consequences, deprecation windows, and release
 certification behavior for stable baseline regressions.
+
+## Previous Snapshot Comparison
+
+Release managers compare the current contract against the previous production beta contract
+snapshot before promotion. The canonical baseline snapshot lives under
+`docs/platform-api/contracts/platform-api-1.0-baseline.json`; production release artifacts also
+write `platform-api-contract-current.json`, `platform-api-contract-previous.json`, and
+`platform-api-stable-diff.json`. Those artifacts are redacted metadata only.
+
+Stable apps can reproduce the app-author side of the check with:
+
+```bash
+crypta-app api snapshot --output build/platform-api-contract.json
+crypta-app api policy --contract build/platform-api-contract.json
+crypta-app compat verify \
+  --bundle-dir . \
+  --contract build/platform-api-contract.json \
+  --target-stability stable \
+  --strict
+```

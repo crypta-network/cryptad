@@ -203,6 +203,10 @@ APP_SERVICE_DISCOVERY_AND_GRANT_EVIDENCE_IDS = (
 PLATFORM_API_STABLE_FREEZE_EVIDENCE_IDS = (
     "platform-api.stable-baseline",
     "platform-api.stable-breaking-change-check",
+    "platform-api.compatibility-window",
+    "platform-api.previous-contract-snapshot",
+    "platform-api.deprecation-window-policy",
+    "platform-api.experimental-graduation-policy",
     "platform-api.manifest-target-stability",
     "platform-api.first-party-stability-declarations",
     "platform-api.stable-reference-docs",
@@ -2761,6 +2765,7 @@ def ecosystem_matrix_row_specs() -> list[MatrixRowSpec]:
             docs=(
                 "docs/platform-api-contract.md",
                 "docs/platform-api-1.0-stable-reference.md",
+                "docs/platform-api-compatibility-support-window.md",
                 "docs/platform-api-surface.md",
             ),
         ),
@@ -4601,10 +4606,61 @@ def evaluate_platform_api_gate(
     previous_details = evidence_details(previous_item)
     current_baseline_reported = stable_baseline_reported(current_details)
     previous_baseline_reported = stable_baseline_reported(previous_details)
+    current_window = current_details.get("compatibilityWindow")
+    previous_window = previous_details.get("compatibilityWindow")
+    if not isinstance(current_window, dict):
+        failures.append("Current Platform API compatibility-window metadata is unavailable")
+        add_evidence_issue(details, "failureEvidenceIds", "platform-api.compatibility-window")
+        add_evidence_issue(
+            details, "unwaivableFailureEvidenceIds", "platform-api.compatibility-window"
+        )
+        current_window = {}
+    if current_window.get("criticalStableRemovalWaiverAllowed") is not False:
+        failures.append("Critical stable API removal waiver policy is not explicitly rejected")
+        add_evidence_issue(details, "failureEvidenceIds", "platform-api.deprecation-window-policy")
+        add_evidence_issue(
+            details, "unwaivableFailureEvidenceIds", "platform-api.deprecation-window-policy"
+        )
+    if previous_details and not isinstance(previous_window, dict):
+        message = "Previous Platform API compatibility-window metadata is unavailable"
+        if mode == "release-candidate" and require_history:
+            failures.append(message)
+            add_evidence_issue(
+                details, "failureEvidenceIds", "platform-api.previous-contract-snapshot"
+            )
+            add_evidence_issue(
+                details,
+                "unwaivableFailureEvidenceIds",
+                "platform-api.previous-contract-snapshot",
+            )
+        else:
+            warnings.append(message)
+            add_evidence_issue(
+                details, "warningEvidenceIds", "platform-api.previous-contract-snapshot"
+            )
+    elif isinstance(previous_window, dict):
+        previous_baseline_name = previous_window.get("baselineName")
+        current_baseline_name = current_window.get("baselineName")
+        previous_baseline_contract = previous_window.get("baselineContractVersion")
+        current_baseline_contract = current_window.get("baselineContractVersion")
+        if (
+            previous_baseline_name != current_baseline_name
+            or previous_baseline_contract != current_baseline_contract
+        ):
+            failures.append("Platform API compatibility-window baseline identity changed")
+            add_evidence_issue(
+                details, "failureEvidenceIds", "platform-api.stable-breaking-change-check"
+            )
+            add_evidence_issue(
+                details,
+                "unwaivableFailureEvidenceIds",
+                "platform-api.stable-breaking-change-check",
+            )
     details["current"] = {
         "contractVersion": current_details.get("contractVersion"),
         "endpointCount": current_details.get("endpointCount"),
         "capabilityCount": current_details.get("capabilityCount"),
+        "compatibilityWindow": current_window,
         "stableDescriptorCount": stable_descriptor_count(current_details),
         "stableBaselineCapabilityCount": stable_baseline_count(
             current_details,
@@ -4629,6 +4685,7 @@ def evaluate_platform_api_gate(
             "contractVersion": previous_details.get("contractVersion"),
             "endpointCount": previous_details.get("endpointCount"),
             "capabilityCount": previous_details.get("capabilityCount"),
+            "compatibilityWindow": previous_window if isinstance(previous_window, dict) else None,
             "stableDescriptorCount": stable_descriptor_count(previous_details),
             "stableBaselineCapabilityCount": stable_baseline_count(
                 previous_details,
@@ -4684,6 +4741,14 @@ def evaluate_platform_api_gate(
                 failures.append(
                     f"Stable baseline {label} count decreased from {previous_count} to {current_count}"
                 )
+                add_evidence_issue(
+                    details, "failureEvidenceIds", "platform-api.stable-breaking-change-check"
+                )
+                add_evidence_issue(
+                    details,
+                    "unwaivableFailureEvidenceIds",
+                    "platform-api.stable-breaking-change-check",
+                )
     if (
         not compared_stable_baseline_counts
         and not current_baseline_reported
@@ -4734,6 +4799,9 @@ def evaluate_platform_api_gate(
     if removed_endpoints:
         failures.append(f"Stable endpoints were removed: {', '.join(removed_endpoints)}")
         add_evidence_issue(details, "failureEvidenceIds", "platform-api.stable-breaking-change-check")
+        add_evidence_issue(
+            details, "unwaivableFailureEvidenceIds", "platform-api.stable-breaking-change-check"
+        )
     previous_endpoint_capabilities = stable_endpoint_capability_map(previous_details)
     current_endpoint_capabilities = stable_endpoint_capability_map(current_details)
     previous_endpoint_capabilities_reported = stable_endpoint_capability_map_reported(previous_details)
@@ -4850,12 +4918,20 @@ def evaluate_platform_api_gate(
     if removed_capabilities:
         failures.append(f"Stable capabilities were removed: {', '.join(removed_capabilities)}")
         add_evidence_issue(details, "failureEvidenceIds", "platform-api.stable-breaking-change-check")
+        add_evidence_issue(
+            details, "unwaivableFailureEvidenceIds", "platform-api.stable-breaking-change-check"
+        )
     if current_details.get("flaggedStability"):
         warnings.append("Contract evidence contains stability warnings")
     if not previous_details:
         if mode == "release-candidate" and require_history:
             failures.append("Previous Platform API contract details were unavailable; stable baseline comparison is required")
             add_evidence_issue(details, "failureEvidenceIds", "platform-api.stable-breaking-change-check")
+            add_evidence_issue(
+                details,
+                "unwaivableFailureEvidenceIds",
+                "platform-api.stable-breaking-change-check",
+            )
         else:
             warnings.append("Previous Platform API contract details were unavailable; comparison is status-limited")
             add_evidence_issue(details, "warningEvidenceIds", "platform-api.stable-breaking-change-check")

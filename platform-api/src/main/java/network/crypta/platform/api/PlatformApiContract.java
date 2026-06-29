@@ -33,6 +33,7 @@ import java.util.stream.Collectors;
  * @param generatedBy stable producer label for snapshots
  * @param stabilityPolicy short human-readable stability policy
  * @param stableBaseline deterministic Platform API 1.0 stable app-facing baseline metadata
+ * @param compatibilityWindow deterministic Platform API 1.0 compatibility-window policy metadata
  * @param capabilities deterministic public capability descriptors
  * @param endpoints deterministic public endpoint descriptors
  */
@@ -42,6 +43,7 @@ public record PlatformApiContract(
     String generatedBy,
     String stabilityPolicy,
     StableBaseline stableBaseline,
+    PlatformApiCompatibilityWindow compatibilityWindow,
     List<PlatformApiCapabilityDescriptor> capabilities,
     List<PlatformApiEndpointDescriptor> endpoints) {
   /**
@@ -179,6 +181,7 @@ public record PlatformApiContract(
           GENERATED_BY,
           STABILITY_POLICY,
           null,
+          null,
           capabilityDescriptors(),
           endpointDescriptors());
 
@@ -204,6 +207,10 @@ public record PlatformApiContract(
     StableBaseline derivedBaseline = StableBaseline.fromDescriptors(capabilities, endpoints);
     stableBaseline = stableBaseline == null ? derivedBaseline : stableBaseline;
     stableBaseline.requireMatches(derivedBaseline);
+    PlatformApiCompatibilityWindow defaultWindow =
+        PlatformApiCompatibilityWindow.current(contractVersion);
+    compatibilityWindow = compatibilityWindow == null ? defaultWindow : compatibilityWindow;
+    requireCompatibilityWindowMatches(compatibilityWindow, contractVersion, stableBaseline);
   }
 
   /**
@@ -227,7 +234,49 @@ public record PlatformApiContract(
       String stabilityPolicy,
       List<PlatformApiCapabilityDescriptor> capabilities,
       List<PlatformApiEndpointDescriptor> endpoints) {
-    this(apiVersion, contractVersion, generatedBy, stabilityPolicy, null, capabilities, endpoints);
+    this(
+        apiVersion,
+        contractVersion,
+        generatedBy,
+        stabilityPolicy,
+        null,
+        null,
+        capabilities,
+        endpoints);
+  }
+
+  /**
+   * Creates a normalized contract model with explicit stable-baseline metadata.
+   *
+   * <p>This overload preserves the stable-freeze constructor shape used by tests and tooling before
+   * compatibility-window policy metadata became first-class. The window policy is derived from the
+   * contract version and current Platform API 1.0 defaults.
+   *
+   * @param apiVersion URL API version such as {@code v1}
+   * @param contractVersion integer app compatibility contract version
+   * @param generatedBy stable producer label for snapshots
+   * @param stabilityPolicy short human-readable stability policy
+   * @param stableBaseline deterministic Platform API 1.0 stable app-facing baseline metadata
+   * @param capabilities deterministic public capability descriptors
+   * @param endpoints deterministic public endpoint descriptors
+   */
+  public PlatformApiContract(
+      String apiVersion,
+      int contractVersion,
+      String generatedBy,
+      String stabilityPolicy,
+      StableBaseline stableBaseline,
+      List<PlatformApiCapabilityDescriptor> capabilities,
+      List<PlatformApiEndpointDescriptor> endpoints) {
+    this(
+        apiVersion,
+        contractVersion,
+        generatedBy,
+        stabilityPolicy,
+        stableBaseline,
+        null,
+        capabilities,
+        endpoints);
   }
 
   /**
@@ -328,16 +377,33 @@ public record PlatformApiContract(
   }
 
   static boolean isStableBaselineCapability(PlatformApiCapabilityDescriptor descriptor) {
-    return descriptor.stability().isStableAppFacing()
+    return descriptor.stability().isStableCompatibilityCovered()
         && descriptor.sinceContractVersion() <= PLATFORM_API_STABLE_BASELINE_CONTRACT_VERSION
         && PLATFORM_API_STABLE_BASELINE_CAPABILITIES.contains(descriptor.name());
   }
 
   static boolean isStableBaselineEndpoint(PlatformApiEndpointDescriptor descriptor) {
-    return descriptor.stability().isStableAppFacing()
+    return descriptor.stability().isStableCompatibilityCovered()
         && descriptor.sinceContractVersion() <= PLATFORM_API_STABLE_BASELINE_CONTRACT_VERSION
         && (descriptor.appProcessAllowed() || descriptor.appBrowserAllowed())
         && PLATFORM_API_STABLE_BASELINE_CAPABILITIES.containsAll(descriptor.requiredCapabilities());
+  }
+
+  private static void requireCompatibilityWindowMatches(
+      PlatformApiCompatibilityWindow window, int contractVersion, StableBaseline stableBaseline) {
+    if (!window.baselineName().equals(stableBaseline.name())
+        || window.baselineContractVersion() != stableBaseline.contractVersion()) {
+      throw new IllegalArgumentException(
+          "compatibilityWindow baseline identity must match stableBaseline");
+    }
+    if (window.currentContractVersion() != contractVersion) {
+      throw new IllegalArgumentException(
+          "compatibilityWindow.currentContractVersion must match contractVersion");
+    }
+    if (!window.equals(PlatformApiCompatibilityWindow.current(contractVersion))) {
+      throw new IllegalArgumentException(
+          "compatibilityWindow must match the canonical Platform API 1.0 support policy");
+    }
   }
 
   static String endpointIdentity(PlatformApiEndpointDescriptor endpoint) {

@@ -261,6 +261,10 @@ CRITICAL_PRODUCTION_BETA_EVIDENCE_IDS = (
     "platform-api.contract",
     "platform-api.stable-baseline",
     "platform-api.stable-breaking-change-check",
+    "platform-api.compatibility-window",
+    "platform-api.previous-contract-snapshot",
+    "platform-api.deprecation-window-policy",
+    "platform-api.experimental-graduation-policy",
     "platform-api.manifest-target-stability",
     "platform-api.first-party-stability-declarations",
     "platform-api.stable-reference-docs",
@@ -1414,6 +1418,11 @@ def previous_candidate_metadata_for_release(
         if isinstance(platform_details.get("stableBaseline"), dict)
         else {}
     )
+    compatibility_window = (
+        platform_details.get("compatibilityWindow")
+        if isinstance(platform_details.get("compatibilityWindow"), dict)
+        else {}
+    )
     first_party_apps: list[dict[str, Any]] = []
     schemas: dict[str, int] = {}
     for app_id in multi_node_beta_soak.PREVIOUS_CANDIDATE_REQUIRED_APPS:
@@ -1510,6 +1519,7 @@ def previous_candidate_metadata_for_release(
             1,
             minimum=1,
         ),
+        "compatibilityWindow": compatibility_window,
         "snapshotDigest": digest_for_existing_path(
             settings.out_dir / "evidence/app-platform-smoke.json"
         ),
@@ -2457,6 +2467,250 @@ def evidence_by_id(summary: dict[str, Any] | None) -> dict[str, dict[str, Any]]:
     return {str(item.get("id")): item for item in evidence if isinstance(item, dict)}
 
 
+def contract_snapshot_payload_from_file(path: Path) -> dict[str, Any] | None:
+    payload = read_json(path)
+    if not isinstance(payload, dict):
+        return None
+    contract = contract_snapshot_contract(payload)
+    if not is_platform_api_contract_snapshot_shape(contract):
+        return None
+    return {"contract": contract}
+
+
+def contract_snapshot_contract(payload: dict[str, Any]) -> dict[str, Any] | None:
+    contract = payload.get("contract")
+    if isinstance(contract, dict):
+        return contract
+    return payload if "apiVersion" in payload and "contractVersion" in payload else None
+
+
+def is_platform_api_contract_snapshot_shape(contract: dict[str, Any] | None) -> bool:
+    if not isinstance(contract, dict):
+        return False
+    return (
+        isinstance(contract.get("apiVersion"), str)
+        and isinstance(contract.get("contractVersion"), int)
+        and isinstance(contract.get("capabilities"), list)
+        and isinstance(contract.get("endpoints"), list)
+    )
+
+
+def platform_api_contract_details(summary: dict[str, Any] | None) -> dict[str, Any]:
+    item = evidence_by_id(summary).get("platform-api.contract")
+    details = item.get("details") if isinstance(item, dict) else None
+    return details if isinstance(details, dict) else {}
+
+
+def platform_api_snapshot_from_evidence_details(
+    details: dict[str, Any],
+    fallback_endpoint_action_labels: dict[str, str] | None = None,
+) -> dict[str, Any] | None:
+    stable_baseline = details.get("stableBaseline")
+    if not isinstance(stable_baseline, dict):
+        return None
+    baseline_contract_version = parse_int_field(
+        stable_baseline.get("contractVersion"),
+        0,
+        minimum=1,
+    )
+    contract_version = parse_int_field(
+        details.get("contractVersion"),
+        baseline_contract_version,
+        minimum=1,
+    )
+    capabilities = sorted_unique_strings(stable_baseline.get("capabilities"))
+    endpoints = sorted_unique_strings(stable_baseline.get("endpoints"))
+    endpoint_capabilities = details.get("stableEndpointRequiredCapabilities")
+    endpoint_access = details.get("stableEndpointAppAccess")
+    endpoint_action_labels = stable_endpoint_action_label_map(
+        details.get("stableEndpointActionLabels"),
+        fallback_endpoint_action_labels,
+    )
+    if (
+        baseline_contract_version <= 0
+        or contract_version <= 0
+        or not capabilities
+        or not endpoints
+        or not isinstance(endpoint_capabilities, dict)
+        or not isinstance(endpoint_access, dict)
+    ):
+        return None
+
+    capability_descriptors = [
+        {
+            "name": capability,
+            "stability": "stable",
+            "sinceContractVersion": baseline_contract_version,
+            "deprecation": None,
+            "description": f"Stable Platform API 1.0 capability {capability}.",
+        }
+        for capability in capabilities
+    ]
+    endpoint_descriptors: list[dict[str, Any]] = []
+    for identity in endpoints:
+        descriptor = stable_endpoint_descriptor_from_evidence(
+            identity,
+            capabilities,
+            endpoint_capabilities,
+            endpoint_access,
+            endpoint_action_labels,
+            baseline_contract_version,
+        )
+        if descriptor is None:
+            return None
+        endpoint_descriptors.append(descriptor)
+
+    contract: dict[str, Any] = {
+        "apiVersion": str(details.get("apiVersion") or "v1"),
+        "contractVersion": contract_version,
+        "generatedBy": str(details.get("generatedBy") or "cryptad"),
+        "stabilityPolicy": str(
+            details.get("stabilityPolicy")
+            or "Platform API 1.0 stable compatibility snapshot."
+        ),
+        "stableBaseline": {
+            "name": str(stable_baseline.get("name") or "1.0"),
+            "contractVersion": baseline_contract_version,
+            "capabilityCount": len(capabilities),
+            "endpointCount": len(endpoints),
+            "capabilities": capabilities,
+            "endpoints": endpoints,
+        },
+        "capabilities": capability_descriptors,
+        "endpoints": endpoint_descriptors,
+    }
+    compatibility_window = details.get("compatibilityWindow")
+    if isinstance(compatibility_window, dict):
+        window_contract_version = parse_int_field(
+            compatibility_window.get("currentContractVersion"),
+            0,
+            minimum=1,
+        )
+        if window_contract_version != contract_version:
+            return None
+        contract["compatibilityWindow"] = compatibility_window
+    return {"contract": contract}
+
+
+def sorted_unique_strings(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return sorted({str(item).strip() for item in value if str(item).strip()})
+
+
+def stable_endpoint_descriptor_from_evidence(
+    identity: str,
+    capabilities: list[str],
+    endpoint_capabilities: dict[str, Any],
+    endpoint_access: dict[str, Any],
+    endpoint_action_labels: dict[str, str],
+    baseline_contract_version: int,
+) -> dict[str, Any] | None:
+    method_route = method_route_from_stable_endpoint_identity(identity)
+    if method_route is None:
+        return None
+    method, route_template = method_route
+    required_capabilities = sorted_unique_strings(endpoint_capabilities.get(identity))
+    if not required_capabilities or any(
+        capability not in capabilities for capability in required_capabilities
+    ):
+        return None
+    access = endpoint_access.get(identity)
+    if not isinstance(access, dict):
+        return None
+    app_process_allowed = access.get("appProcessPrincipalsAllowed")
+    app_browser_allowed = access.get("appBrowserPrincipalsAllowed")
+    if not isinstance(app_process_allowed, bool) or not isinstance(app_browser_allowed, bool):
+        return None
+    if not app_process_allowed and not app_browser_allowed:
+        return None
+    route_family = route_template.strip("/").split("/", 1)[0] or "platform"
+    action_label = endpoint_action_labels.get(identity) or f"{route_family}.stable-baseline"
+    return {
+        "routeFamily": route_family,
+        "method": method,
+        "routeTemplate": route_template,
+        "actionLabel": action_label,
+        "requiredCapabilities": required_capabilities,
+        "hostOperatorBypassAllowed": True,
+        "appProcessPrincipalsAllowed": app_process_allowed,
+        "appBrowserPrincipalsAllowed": app_browser_allowed,
+        "stability": "stable",
+        "sinceContractVersion": baseline_contract_version,
+        "deprecation": None,
+        "description": f"Stable Platform API 1.0 endpoint {identity}.",
+    }
+
+
+def method_route_from_stable_endpoint_identity(identity: str) -> tuple[str, str] | None:
+    parts = str(identity).strip().split(" ", 1)
+    if len(parts) != 2:
+        return None
+    method = parts[0].strip().upper()
+    route_template = parts[1].strip()
+    if not method or not route_template.startswith("/"):
+        return None
+    return method, route_template
+
+
+def stable_endpoint_action_label_map(
+    value: Any,
+    fallback: dict[str, str] | None,
+) -> dict[str, str]:
+    labels: dict[str, str] = {}
+    if isinstance(fallback, dict):
+        labels.update(
+            {
+                str(identity): str(label).strip()
+                for identity, label in fallback.items()
+                if str(identity).strip() and str(label).strip()
+            }
+        )
+    if isinstance(value, dict):
+        labels.update(
+            {
+                str(identity): str(label).strip()
+                for identity, label in value.items()
+                if str(identity).strip() and str(label).strip()
+            }
+        )
+    return labels
+
+
+def platform_api_snapshot_action_labels(snapshot: dict[str, Any] | None) -> dict[str, str]:
+    if not isinstance(snapshot, dict):
+        return {}
+    contract = contract_snapshot_contract(snapshot)
+    if not isinstance(contract, dict):
+        return {}
+    stable_baseline = contract.get("stableBaseline")
+    baseline_endpoints = (
+        set(sorted_unique_strings(stable_baseline.get("endpoints")))
+        if isinstance(stable_baseline, dict)
+        else set()
+    )
+    labels: dict[str, str] = {}
+    endpoints = contract.get("endpoints")
+    if not isinstance(endpoints, list):
+        return labels
+    for endpoint in endpoints:
+        if not isinstance(endpoint, dict):
+            continue
+        identity = endpoint_identity_from_snapshot(endpoint)
+        if not identity or (baseline_endpoints and identity not in baseline_endpoints):
+            continue
+        label = str(endpoint.get("actionLabel") or "").strip()
+        if label:
+            labels[identity] = label
+    return labels
+
+
+def endpoint_identity_from_snapshot(endpoint: dict[str, Any]) -> str:
+    method = str(endpoint.get("method") or "").strip().upper()
+    route_template = str(endpoint.get("routeTemplate") or "").strip()
+    return f"{method} {route_template}" if method and route_template else ""
+
+
 def third_party_intake_evidence(
     app_evidence: dict[str, dict[str, Any]],
     cert_evidence: dict[str, dict[str, Any]],
@@ -2534,7 +2788,21 @@ def previous_release_certification_summary_for_certification(settings: Settings)
         return settings.previous_release_certification_summary
     if settings.previous_summary is not None and is_release_certification_history_summary(settings.previous_summary):
         return settings.previous_summary
+    if settings.mode != "developer-dry-run":
+        return default_release_certification_history_summary(settings)
     return None
+
+
+def previous_release_certification_summary_for_artifacts(settings: Settings) -> Path | None:
+    summary = previous_release_certification_summary_for_certification(settings)
+    if summary is not None:
+        return summary
+    return default_release_certification_history_summary(settings)
+
+
+def default_release_certification_history_summary(settings: Settings) -> Path | None:
+    default_history_summary = settings.workspace_root / release_certification.DEFAULT_HISTORY_DIR / "latest-summary.json"
+    return default_history_summary if default_history_summary.is_file() else None
 
 
 def previous_candidate_summary_validation_errors(settings: Settings) -> list[str]:
@@ -2695,6 +2963,52 @@ def read_third_party_intake_summary(settings: Settings) -> dict[str, Any] | None
     return None
 
 
+def write_platform_api_contract_snapshot_artifacts(
+    settings: Settings,
+    cert_out: Path,
+    app_summary: dict[str, Any] | None,
+    evidence_dir: Path,
+) -> None:
+    current_snapshot = contract_snapshot_payload_from_file(
+        cert_out / "app-platform-smoke/artifacts/platform-api-contract.json"
+    )
+    if current_snapshot is None:
+        current_snapshot = platform_api_snapshot_from_evidence_details(
+            platform_api_contract_details(app_summary)
+        )
+    if current_snapshot is None:
+        current_snapshot = missing_platform_api_snapshot(
+            "current",
+            "Current Platform API contract snapshot was not generated by app-platform smoke.",
+        )
+    write_json(evidence_dir / "platform-api-contract-current.json", current_snapshot)
+    current_action_labels = platform_api_snapshot_action_labels(current_snapshot)
+
+    previous_summary_path = previous_release_certification_summary_for_artifacts(settings)
+    previous_summary = read_json(previous_summary_path) if previous_summary_path is not None else None
+    previous_snapshot = platform_api_snapshot_from_evidence_details(
+        platform_api_contract_details(previous_summary),
+        current_action_labels,
+    )
+    if previous_snapshot is None:
+        previous_snapshot = missing_platform_api_snapshot(
+            "previous",
+            "Previous Platform API contract snapshot requires release-certification history "
+            "with platform-api.contract details.",
+        )
+    write_json(evidence_dir / "platform-api-contract-previous.json", previous_snapshot)
+
+
+def missing_platform_api_snapshot(which: str, summary: str) -> dict[str, Any]:
+    return {
+        "schemaVersion": 1,
+        "redacted": True,
+        "status": "missing",
+        "snapshot": which,
+        "summary": summary,
+    }
+
+
 def write_evidence_extracts(settings: Settings, cert_out: Path) -> dict[str, Any]:
     app_summary_path = cert_out / "app-platform-smoke/summary.json"
     live_summary_path = cert_out / "live-network-beta-smoke/summary.json"
@@ -2729,7 +3043,65 @@ def write_evidence_extracts(settings: Settings, cert_out: Path) -> dict[str, Any
     )
 
     app_evidence = evidence_by_id(app_summary)
-    write_json(evidence_dir / "api-compatibility.json", app_evidence.get("platform-api.contract", {"status": "missing"}))
+    platform_api_evidence_ids = (
+        "platform-api.contract",
+        "platform-api.stable-baseline",
+        "platform-api.stable-breaking-change-check",
+        "platform-api.compatibility-window",
+        "platform-api.previous-contract-snapshot",
+        "platform-api.deprecation-window-policy",
+        "platform-api.experimental-graduation-policy",
+        "platform-api.manifest-target-stability",
+        "platform-api.first-party-stability-declarations",
+        "platform-api.stable-reference-docs",
+        "third-party-developer.compatibility-window",
+    )
+    platform_api_evidence = [
+        app_evidence.get(evidence_id, {"id": evidence_id, "status": "missing"})
+        for evidence_id in platform_api_evidence_ids
+    ]
+    write_json(
+        evidence_dir / "api-compatibility.json",
+        {
+            "schemaVersion": 1,
+            "redacted": True,
+            "evidence": platform_api_evidence,
+        },
+    )
+    write_platform_api_contract_snapshot_artifacts(
+        settings,
+        cert_out,
+        app_summary,
+        evidence_dir,
+    )
+    history_comparison = (
+        cert_summary.get("historyComparison", {})
+        if isinstance(cert_summary, dict) and isinstance(cert_summary.get("historyComparison"), dict)
+        else {}
+    )
+    ecosystem_gates = (
+        cert_summary.get("ecosystemGates", []) if isinstance(cert_summary, dict) else []
+    )
+    if not isinstance(ecosystem_gates, list):
+        ecosystem_gates = []
+    platform_api_gate = next(
+        (
+            gate
+            for gate in ecosystem_gates
+            if isinstance(gate, dict)
+            and gate.get("id") == "ecosystem.platform-api-compatibility"
+        ),
+        {"status": "missing"},
+    )
+    write_json(
+        evidence_dir / "platform-api-stable-diff.json",
+        {
+            "schemaVersion": 1,
+            "redacted": True,
+            "gate": platform_api_gate,
+            "historyComparisonStatus": history_comparison.get("status", "missing"),
+        },
+    )
     write_json(evidence_dir / "app-ui-lint.json", app_evidence.get("app-ui.lint", {"status": "missing"}))
     write_json(evidence_dir / "sandbox-provider-tests.json", app_evidence.get("apphost.sandbox-provider", {"status": "missing"}))
     return {
@@ -5289,9 +5661,66 @@ def write_valid_release_certification_history_summary(path: Path) -> None:
             "status": "pass",
             "releaseCandidatePassed": True,
             "metadata": {"gitCommit": "self-test-previous-git"},
-            "evidence": [{"id": "interop.smoke", "status": "pass"}],
+            "evidence": [
+                {"id": "interop.smoke", "status": "pass"},
+                {
+                    "id": "platform-api.contract",
+                    "status": "pass",
+                    "summary": "Previous Platform API contract snapshot was generated.",
+                    "details": previous_platform_api_contract_details(),
+                },
+            ],
         },
     )
+
+
+def previous_platform_api_contract_details() -> dict[str, Any]:
+    capabilities = ["queue.read"]
+    endpoints = ["GET /queue"]
+    return {
+        "contractVersion": 23,
+        "apiVersion": "v1",
+        "stableBaseline": {
+            "name": "1.0",
+            "contractVersion": 19,
+            "capabilityCount": len(capabilities),
+            "endpointCount": len(endpoints),
+            "capabilities": capabilities,
+            "endpoints": endpoints,
+        },
+        "compatibilityWindow": {
+            "schemaVersion": 1,
+            "baselineName": "1.0",
+            "baselineContractVersion": 19,
+            "currentContractVersion": 23,
+            "supportPhase": "beta",
+            "supportWindowStartedRelease": "production-beta",
+            "minimumDeprecationWindowContractVersions": 2,
+            "minimumScheduledRemovalWindowContractVersions": 2,
+            "stableRemovalRequiresNewBaseline": True,
+            "stableRemovalRequiresPreviousSnapshot": True,
+            "stableRemovalRequiresExplicitWaiver": True,
+            "criticalStableRemovalWaiverAllowed": False,
+            "experimentalGraduationRequiresReview": True,
+            "experimentalGraduationRequiresStableReferenceUpdate": True,
+            "previousSnapshotRequiredInProductionBeta": True,
+            "policyDocument": "docs/platform-api-compatibility-support-window.md",
+        },
+        "stableBaselineCapabilities": capabilities,
+        "stableBaselineEndpoints": endpoints,
+        "stableBaselineCapabilityCount": len(capabilities),
+        "stableBaselineEndpointCount": len(endpoints),
+        "stableCapabilities": capabilities,
+        "stableEndpoints": endpoints,
+        "stableEndpointRequiredCapabilities": {"GET /queue": capabilities},
+        "stableEndpointActionLabels": {"GET /queue": "queue.read"},
+        "stableEndpointAppAccess": {
+            "GET /queue": {
+                "appProcessPrincipalsAllowed": True,
+                "appBrowserPrincipalsAllowed": True,
+            }
+        },
+    }
 
 
 def write_valid_previous_candidate_history_pair(previous_summary: Path, history_summary: Path) -> None:
@@ -6557,6 +6986,76 @@ def assert_attached_multi_node_summary_is_extracted() -> None:
         assert isinstance(extracted, dict), extracted
         assert extracted["status"] == "pass", extracted
         assert extracted["promotionReady"] is True, extracted
+
+
+def assert_platform_api_contract_snapshots_are_written_as_envelopes() -> None:
+    with tempfile.TemporaryDirectory(
+        prefix="cryptad-production-beta-api-contract-snapshots-"
+    ) as temp_name:
+        workspace = Path(temp_name) / "repo"
+        workspace.mkdir(parents=True)
+        out_dir = workspace / "build/production-beta"
+        cert_out = workspace / "external-certification"
+        previous_history = workspace / release_certification.DEFAULT_HISTORY_DIR / "latest-summary.json"
+        settings = cleanup_test_settings(workspace, out_dir)
+        write_valid_release_certification_history_summary(previous_history)
+        details = previous_platform_api_contract_details()
+        current_snapshot = platform_api_snapshot_from_evidence_details(details)
+        assert current_snapshot is not None, details
+        write_json(
+            cert_out / "app-platform-smoke/artifacts/platform-api-contract.json",
+            current_snapshot,
+        )
+        write_json(
+            cert_out / "app-platform-smoke/summary.json",
+            {
+                "status": "pass",
+                "evidence": [
+                    {
+                        "id": "platform-api.contract",
+                        "status": "pass",
+                        "summary": "Current Platform API contract snapshot was generated.",
+                        "details": details,
+                    }
+                ],
+            },
+        )
+        write_json(
+            cert_out / "live-network-beta-smoke/summary.json",
+            {"status": "pass", "evidence": []},
+        )
+        write_json(
+            cert_out / "network-scale-soak/summary.json",
+            {"status": "pass", "evidence": []},
+        )
+        write_json(
+            cert_out / "multi-node-beta-soak/summary.json",
+            passing_promotion_summaries()["multiNodeBetaSoak"],
+        )
+        write_json(
+            cert_out / release_certification.SUMMARY_FILE_NAME,
+            {
+                "status": "pass",
+                "historyComparison": {"status": "pass"},
+                "ecosystemGates": [
+                    {"id": "ecosystem.platform-api-compatibility", "status": "pass"}
+                ],
+                "evidence": [],
+            },
+        )
+        write_json(
+            cert_out / release_certification.ECOSYSTEM_MATRIX_FILE_NAME,
+            {"status": "pass"},
+        )
+
+        write_evidence_extracts(settings, cert_out)
+
+        current = read_json(out_dir / "evidence/platform-api-contract-current.json")
+        previous = read_json(out_dir / "evidence/platform-api-contract-previous.json")
+        assert isinstance(current, dict) and isinstance(current.get("contract"), dict), current
+        assert isinstance(previous, dict) and isinstance(previous.get("contract"), dict), previous
+        assert current["contract"]["apiVersion"] == "v1", current
+        assert previous["contract"]["stableBaseline"]["endpoints"] == ["GET /queue"], previous
 
 
 def assert_env_attached_multi_node_summary_is_extracted() -> None:
@@ -8256,6 +8755,7 @@ def run_self_test() -> None:
     assert_incomplete_go_no_go_dashboard_outputs_fail_summary_and_exit()
     assert_failed_go_no_go_redaction_fails_summary_and_exit()
     assert_attached_multi_node_summary_is_extracted()
+    assert_platform_api_contract_snapshots_are_written_as_envelopes()
     assert_env_attached_multi_node_summary_is_extracted()
     assert_attached_multi_node_summary_is_not_marked_generated()
     assert_run_multi_node_soak_overrides_attached_env_summary()
@@ -8331,6 +8831,9 @@ def run_self_test() -> None:
             f"catalog/{RELEASE_CATALOG_SIGNATURE_ALIAS}",
             "reviews/review-receipts/queue-manager-review-receipt.properties",
             "evidence/api-compatibility.json",
+            "evidence/platform-api-contract-current.json",
+            "evidence/platform-api-contract-previous.json",
+            "evidence/platform-api-stable-diff.json",
             "evidence/app-ui-lint.json",
             "evidence/sandbox-provider-tests.json",
             "reports/production-beta-summary.json",

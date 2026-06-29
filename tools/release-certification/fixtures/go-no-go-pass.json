@@ -57,7 +57,27 @@
           "requiredForReleaseCandidate": true,
           "source": "fixture-app-platform",
           "status": "pass",
-          "summary": "Platform API contract passed."
+          "summary": "Platform API contract passed.",
+          "details": {
+            "compatibilityWindow": {
+              "schemaVersion": 1,
+              "baselineName": "1.0",
+              "baselineContractVersion": 19,
+              "currentContractVersion": 23,
+              "supportPhase": "beta",
+              "supportWindowStartedRelease": "production-beta",
+              "minimumDeprecationWindowContractVersions": 2,
+              "minimumScheduledRemovalWindowContractVersions": 2,
+              "stableRemovalRequiresNewBaseline": true,
+              "stableRemovalRequiresPreviousSnapshot": true,
+              "stableRemovalRequiresExplicitWaiver": true,
+              "criticalStableRemovalWaiverAllowed": false,
+              "experimentalGraduationRequiresReview": true,
+              "experimentalGraduationRequiresStableReferenceUpdate": true,
+              "previousSnapshotRequiredInProductionBeta": true,
+              "policyDocument": "docs/platform-api-compatibility-support-window.md"
+            }
+          }
         },
         {
           "id": "platform-api.stable-baseline",
@@ -72,6 +92,87 @@
           "source": "fixture-app-platform",
           "status": "pass",
           "summary": "Stable breaking-change check passed."
+        },
+        {
+          "details": {
+            "compatibilityWindow": {
+              "schemaVersion": 1,
+              "baselineName": "1.0",
+              "baselineContractVersion": 19,
+              "currentContractVersion": 23,
+              "supportPhase": "beta",
+              "supportWindowStartedRelease": "production-beta",
+              "minimumDeprecationWindowContractVersions": 2,
+              "minimumScheduledRemovalWindowContractVersions": 2,
+              "stableRemovalRequiresNewBaseline": true,
+              "stableRemovalRequiresPreviousSnapshot": true,
+              "stableRemovalRequiresExplicitWaiver": true,
+              "criticalStableRemovalWaiverAllowed": false,
+              "experimentalGraduationRequiresReview": true,
+              "experimentalGraduationRequiresStableReferenceUpdate": true,
+              "previousSnapshotRequiredInProductionBeta": true,
+              "policyDocument": "docs/platform-api-compatibility-support-window.md"
+            },
+            "errors": []
+          },
+          "id": "platform-api.compatibility-window",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture:go-no-go-pass",
+          "status": "pass",
+          "summary": "Platform API 1.0 compatibility-window metadata is present."
+        },
+        {
+          "details": {
+            "canonicalLocations": [
+              "docs/platform-api/contracts/platform-api-1.0-baseline.json",
+              "docs/platform-api/contracts/previous-production-beta-contract.json",
+              "build/production-beta-release/evidence/platform-api-contract-current.json",
+              "build/production-beta-release/evidence/platform-api-contract-previous.json",
+              "build/production-beta-release/evidence/platform-api-stable-diff.json"
+            ],
+            "errors": [],
+            "productionMode": "release_certification.py fails closed without previous contract history"
+          },
+          "id": "platform-api.previous-contract-snapshot",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture:go-no-go-pass",
+          "status": "pass",
+          "summary": "Previous Platform API contract snapshot history is enforced by release certification."
+        },
+        {
+          "details": {
+            "criticalStableRemovalWaiverAllowed": false,
+            "errors": [],
+            "minimumDeprecationWindowContractVersions": 2,
+            "minimumScheduledRemovalWindowContractVersions": 2
+          },
+          "id": "platform-api.deprecation-window-policy",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture:go-no-go-pass",
+          "status": "pass",
+          "summary": "Stable Platform API deprecation/removal windows are policy-backed."
+        },
+        {
+          "details": {
+            "checks": {
+              "reviewRequired": true,
+              "stableReferenceUpdateRequired": true,
+              "supportWindowDocExplainsGraduation": true,
+              "stableReferenceDocNamesFrozenBaseline": true,
+              "verifierTestsCoverStableIdentity": true
+            },
+            "errors": [],
+            "sources": {
+              "stableReference": "docs/platform-api-1.0-stable-reference.md",
+              "supportWindow": "docs/platform-api-compatibility-support-window.md",
+              "verifierTest": "platform-api/src/test/java/network/crypta/platform/api/PlatformApiContractVerifierTest.java"
+            }
+          },
+          "id": "platform-api.experimental-graduation-policy",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture:go-no-go-pass",
+          "status": "pass",
+          "summary": "Experimental-to-stable graduation requires review, docs, and verifier coverage."
         },
         {
           "id": "platform-api.manifest-target-stability",

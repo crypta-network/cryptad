@@ -242,6 +242,30 @@ Generate the current offline Platform API compatibility snapshot:
 crypta-app api snapshot --output build/platform-api-contract.json
 ```
 
+Print the Platform API 1.0 compatibility-window policy embedded in a snapshot:
+
+```bash
+crypta-app api policy --contract build/platform-api-contract.json
+crypta-app api policy \
+  --contract build/platform-api-contract.json \
+  --output build/platform-api-policy.json
+```
+
+Compare a previous snapshot with the current snapshot before a release or submission update:
+
+```bash
+crypta-app api diff \
+  --previous docs/platform-api/contracts/platform-api-1.0-baseline.json \
+  --current build/platform-api-contract.json \
+  --output build/platform-api-stable-diff.json
+```
+
+Use `--production-beta` on `crypta-app api diff` only for release-manager checks where missing
+previous stable-baseline metadata must fail closed. Diff reports are redacted metadata and use
+stable finding codes such as `stable_api_endpoint_removed`,
+`stable_api_endpoint_required_capabilities_changed`, and
+`stable_baseline_metadata_missing`.
+
 Verify a staged bundle against the built-in current contract:
 
 ```bash
@@ -254,6 +278,17 @@ Verify against an explicit target contract, such as a release-candidate snapshot
 crypta-app compat verify \
   --bundle-dir build/dev-apps/hello-queue \
   --contract build/platform-api-contract.json
+```
+
+For stable third-party apps, pin the verifier target explicitly and write a path-free JSON report:
+
+```bash
+crypta-app compat verify \
+  --bundle-dir build/dev-apps/hello-stable \
+  --contract build/platform-api-contract.json \
+  --target-stability stable \
+  --strict \
+  --json build/hello-stable-api-compatibility.json
 ```
 
 The verifier checks unknown manifest permissions, unknown optional capabilities, malformed

@@ -18,6 +18,7 @@ import java.util.zip.ZipFile;
 import java.util.zip.ZipOutputStream;
 import network.crypta.platform.api.PlatformApiContract;
 import network.crypta.platform.api.PlatformApiContractJson;
+import network.crypta.platform.api.json.PlatformApiJsonWriter;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -1275,6 +1276,128 @@ class CryptaAppCliTest {
   }
 
   @Test
+  void apiPolicy_whenRequested_expectCompatibilityWindowSummary() {
+    CliResult result = runCli("api", "policy");
+
+    assertEquals(CommandLine.ExitCode.OK, result.exitCode());
+    assertTrue(result.out().contains("Platform API 1.0 compatibility window"));
+    assertTrue(result.out().contains("contract=" + currentContractVersion()));
+    assertTrue(
+        result
+            .out()
+            .contains(
+                "baselineContract="
+                    + PlatformApiContract.PLATFORM_API_STABLE_BASELINE_CONTRACT_VERSION));
+    assertEquals("", result.err());
+  }
+
+  @Test
+  void apiPolicy_whenOutputRequested_expectPathFreeJsonReport() throws Exception {
+    Path output = tempDir.resolve("reports").resolve("platform-api-policy.json");
+
+    CliResult result = runCli("api", "policy", "--output", output.toString());
+
+    assertEquals(CommandLine.ExitCode.OK, result.exitCode());
+    String json = Files.readString(output, StandardCharsets.UTF_8);
+    assertTrue(json.contains("\"compatibilityWindow\""));
+    assertTrue(json.contains("\"previousSnapshotRequiredInProductionBeta\":true"));
+    assertTrue(json.contains("\"criticalStableRemovalWaiverAllowed\":false"));
+    assertTrue(json.contains("\"graduationPolicy\""));
+    assertFalse(json.contains(tempDir.toString()));
+  }
+
+  @Test
+  void apiDiff_whenSameSnapshotCompared_expectSuccessAndJsonReport() throws Exception {
+    Path previous = tempDir.resolve("previous.json");
+    Path current = tempDir.resolve("current.json");
+    Path report = tempDir.resolve("stable-diff.json");
+    String snapshot = PlatformApiContractJson.writeEnvelope(PlatformApiContract.current());
+    Files.writeString(previous, snapshot, StandardCharsets.UTF_8);
+    Files.writeString(current, snapshot, StandardCharsets.UTF_8);
+
+    CliResult result =
+        runCli(
+            "api",
+            "diff",
+            "--previous",
+            previous.toString(),
+            "--current",
+            current.toString(),
+            "--output",
+            report.toString());
+
+    assertEquals(CommandLine.ExitCode.OK, result.exitCode(), result.err());
+    assertTrue(result.out().contains("Platform API stable diff passed."));
+    assertEquals("", result.err());
+    String json = Files.readString(report, StandardCharsets.UTF_8);
+    assertTrue(json.contains("\"ok\":true"));
+    assertTrue(json.contains("\"errors\":0"));
+    assertTrue(json.contains("\"findings\":[]"));
+    assertFalse(json.contains(tempDir.toString()));
+  }
+
+  @Test
+  void apiDiff_whenStableEndpointRemoved_expectSoftwareExitAndFinding() throws Exception {
+    Path previous = tempDir.resolve("previous.json");
+    Path current = tempDir.resolve("current.json");
+    Files.writeString(
+        previous,
+        PlatformApiContractJson.writeEnvelope(PlatformApiContract.current()),
+        StandardCharsets.UTF_8);
+    PlatformApiContract base = PlatformApiContract.current();
+    PlatformApiContract removedQueueEndpoint =
+        new PlatformApiContract(
+            base.apiVersion(),
+            base.contractVersion(),
+            base.generatedBy(),
+            base.stabilityPolicy(),
+            base.capabilities(),
+            base.endpoints().stream()
+                .filter(
+                    endpoint ->
+                        !(endpoint.method().equals("POST")
+                            && endpoint.routeTemplate().equals("/queue/downloads")))
+                .toList());
+    Files.writeString(
+        current,
+        PlatformApiContractJson.writeEnvelope(removedQueueEndpoint),
+        StandardCharsets.UTF_8);
+
+    CliResult result =
+        runCli("api", "diff", "--previous", previous.toString(), "--current", current.toString());
+
+    assertEquals(CommandLine.ExitCode.SOFTWARE, result.exitCode());
+    assertTrue(result.err().contains("stable diff failed"));
+    assertTrue(result.err().contains("Stable endpoint was removed: POST /queue/downloads"));
+  }
+
+  @Test
+  void apiDiff_whenPreviousCompatibilityWindowMissingInProduction_expectSoftwareExit()
+      throws Exception {
+    Path previous = tempDir.resolve("previous.json");
+    Path current = tempDir.resolve("current.json");
+    Files.writeString(previous, snapshotWithoutCompatibilityWindow(), StandardCharsets.UTF_8);
+    Files.writeString(
+        current,
+        PlatformApiContractJson.writeEnvelope(PlatformApiContract.current()),
+        StandardCharsets.UTF_8);
+
+    CliResult result =
+        runCli(
+            "api",
+            "diff",
+            "--previous",
+            previous.toString(),
+            "--current",
+            current.toString(),
+            "--production-beta");
+
+    assertEquals(CommandLine.ExitCode.SOFTWARE, result.exitCode());
+    assertTrue(result.err().contains("compatibility-window metadata"));
+    assertTrue(result.err().contains("stable diff failed"));
+  }
+
+  @Test
   void compatVerify_whenBundleTargetsCurrentContract_expectSuccess() {
     Path appDir = tempDir.resolve("sample-app");
     runCli(
@@ -1295,6 +1418,64 @@ class CryptaAppCliTest {
     assertEquals(CommandLine.ExitCode.OK, result.exitCode());
     assertTrue(result.out().contains("Compatibility verified."));
     assertEquals("", result.err());
+  }
+
+  @Test
+  void compatVerify_whenJsonRequested_expectPathFreeCompatibilityReport() throws Exception {
+    Path appDir = tempDir.resolve("sample-app");
+    Path report = tempDir.resolve("compat-report.json");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "sample-app",
+        "--name",
+        "Sample App",
+        "--version",
+        "0.1.0",
+        "--permission",
+        "queue.read");
+
+    CliResult result =
+        runCli("compat", "verify", "--bundle-dir", appDir.toString(), "--json", report.toString());
+
+    assertEquals(CommandLine.ExitCode.OK, result.exitCode());
+    String json = Files.readString(report, StandardCharsets.UTF_8);
+    assertTrue(json.contains("\"ok\":true"));
+    assertTrue(json.contains("\"targetKind\":\"bundle\""));
+    assertTrue(json.contains("\"findings\":[]"));
+    assertFalse(json.contains(tempDir.toString()));
+  }
+
+  @Test
+  void compatVerify_whenTargetStabilityOverrideRejectsExperimentalUse_expectFailure() {
+    Path appDir = tempDir.resolve("experimental-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "experimental-app",
+        "--name",
+        "Experimental App",
+        "--version",
+        "0.1.0",
+        "--permission",
+        "vault.identities.read");
+
+    CliResult result =
+        runCli(
+            "compat",
+            "verify",
+            "--bundle-dir",
+            appDir.toString(),
+            "--target-stability",
+            "stable",
+            "--strict");
+
+    assertEquals(CommandLine.ExitCode.SOFTWARE, result.exitCode());
+    assertTrue(result.err().contains("Stable Platform API target must not declare experimental"));
   }
 
   @Test
@@ -3640,6 +3821,15 @@ class CryptaAppCliTest {
 
   private static String lines(String... values) {
     return String.join("\n", values) + "\n";
+  }
+
+  private static String snapshotWithoutCompatibilityWindow() {
+    LinkedHashMap<String, Object> contract =
+        new LinkedHashMap<>(PlatformApiContractJson.toJsonValue(PlatformApiContract.current()));
+    contract.remove("compatibilityWindow");
+    LinkedHashMap<String, Object> envelope = new LinkedHashMap<>();
+    envelope.put("contract", contract);
+    return PlatformApiJsonWriter.write(envelope);
   }
 
   private static void writeTrustedReviewers(Path output, KeyPair keyPair) throws IOException {
