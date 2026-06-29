@@ -51,6 +51,7 @@ class PlatformApiAppsIntegrationTest {
   private static final String TRUSTED_KEY_ID = "local-dev";
   private static final String UI_ENTRY = "/";
   private static final String CATALOG_ID = "core";
+  private static final Instant CATALOG_GENERATED_AT = Instant.parse("2026-04-21T18:22:40Z");
 
   @TempDir private Path tempDir;
 
@@ -309,7 +310,7 @@ class PlatformApiAppsIntegrationTest {
 
     Path stagedV2 = stageSignedApp("catalog-v2", "9.9.9", keyPair);
     Path artifactV2 = zipDirectory(stagedV2, tempDir.resolve("catalog-v2.zip"));
-    writeSignedCatalog(artifactV2, "9.9.9", keyPair);
+    writeSignedCatalog(artifactV2, "9.9.9", keyPair, CATALOG_GENERATED_AT.plusSeconds(3600));
 
     PlatformApiResponse refreshResponse =
         productionRouter.route(
@@ -463,6 +464,11 @@ class PlatformApiAppsIntegrationTest {
 
   private Path writeSignedCatalog(Path artifact, String appVersion, KeyPair keyPair)
       throws Exception {
+    return writeSignedCatalog(artifact, appVersion, keyPair, CATALOG_GENERATED_AT);
+  }
+
+  private Path writeSignedCatalog(
+      Path artifact, String appVersion, KeyPair keyPair, Instant generatedAt) throws Exception {
     Path catalogDir = Files.createDirectories(tempDir.resolve("catalog"));
     Path catalog = catalogDir.resolve(AppCatalogSignature.CATALOG_FILE_NAME);
     Files.writeString(
@@ -485,7 +491,7 @@ class PlatformApiAppsIntegrationTest {
         """
             .formatted(
                 CATALOG_ID,
-                Instant.parse("2026-04-21T18:22:40Z"),
+                generatedAt,
                 APP_ID,
                 APP_ID,
                 APP_ID,
