@@ -1856,7 +1856,60 @@ def network_scale_issues(summary: dict[str, Any] | None, mode: str) -> list[Issu
     return issues
 
 
-def multi_node_issues(summary: dict[str, Any] | None, mode: str) -> list[Issue]:
+def non_bool_int(value: Any) -> int | None:
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    return None
+
+
+def compact_text(value: Any) -> str:
+    return str(value).strip() if value is not None and not isinstance(value, bool) else ""
+
+
+def catalog_edition_field(catalog_channel: str) -> str:
+    return "stableChannelEdition" if catalog_channel == "stable" else "betaChannelEdition"
+
+
+def previous_candidate_upgrade_current_binding_failures(
+    upgrade: dict[str, Any],
+    production_summary: dict[str, Any] | None,
+) -> list[str]:
+    if not isinstance(production_summary, dict):
+        return ["productionBetaSummary"]
+    failures: list[str] = []
+    expected_version = compact_text(production_summary.get("version"))
+    if not expected_version:
+        failures.append("productionBetaSummary.version")
+    elif compact_text(upgrade.get("currentVersion")) != expected_version:
+        failures.append("currentVersion")
+
+    expected_channel = compact_text(production_summary.get("catalogChannel"))
+    if not expected_channel:
+        failures.append("productionBetaSummary.catalogChannel")
+        return failures
+    if expected_channel not in {"stable", "beta"}:
+        failures.append("productionBetaSummary.catalogChannel")
+        return failures
+    if compact_text(upgrade.get("currentCatalogChannel")) != expected_channel:
+        failures.append("currentCatalogChannel")
+
+    metadata = production_summary.get("previousCandidateMetadata")
+    catalog = metadata.get("catalog") if isinstance(metadata, dict) else None
+    edition_field = catalog_edition_field(expected_channel)
+    expected_edition = non_bool_int(catalog.get(edition_field)) if isinstance(catalog, dict) else None
+    if expected_edition is None:
+        failures.append(f"productionBetaSummary.previousCandidateMetadata.catalog.{edition_field}")
+        return failures
+    if non_bool_int(upgrade.get("currentCatalogEdition")) != expected_edition:
+        failures.append("currentCatalogEdition")
+    return failures
+
+
+def multi_node_issues(
+    summary: dict[str, Any] | None,
+    mode: str,
+    production_summary: dict[str, Any] | None = None,
+) -> list[Issue]:
     if not isinstance(summary, dict):
         return []
     issues: list[Issue] = []
@@ -1962,6 +2015,27 @@ def multi_node_issues(summary: dict[str, Any] | None, mode: str) -> list[Issue]:
                         summary=(
                             "Previous-candidate upgrade evidence has failing fields: "
                             + ", ".join(failed_fields or ["validation"])
+                        ),
+                        source="multi-node-beta-soak-summary",
+                        waivable=False,
+                        category="multi-node",
+                    )
+                )
+            binding_failures = previous_candidate_upgrade_current_binding_failures(
+                upgrade,
+                production_summary,
+            )
+            if binding_failures:
+                issues.append(
+                    Issue(
+                        id="multi-node-beta-soak.previous-candidate-current-binding",
+                        evidence_id="multi-node-beta.previous-candidate-upgrade-binding",
+                        domain_id="multi-node-beta-soak",
+                        severity="blocker",
+                        title="Previous beta candidate upgrade evidence is bound to a different current candidate",
+                        summary=(
+                            "Previous-candidate upgrade evidence does not match the production summary fields: "
+                            + ", ".join(binding_failures)
                         ),
                         source="multi-node-beta-soak-summary",
                         waivable=False,
@@ -2438,7 +2512,13 @@ def collect_issues(
     issues.extend(release_certification_issues(inputs.get("releaseCertificationSummary"), mode))
     issues.extend(ecosystem_matrix_issues(inputs.get("ecosystemMatrix")))
     issues.extend(network_scale_issues(inputs.get("networkScaleSoakSummary"), mode))
-    issues.extend(multi_node_issues(inputs.get("multiNodeBetaSoakSummary"), mode))
+    issues.extend(
+        multi_node_issues(
+            inputs.get("multiNodeBetaSoakSummary"),
+            mode,
+            inputs.get("productionBetaSummary") if isinstance(inputs.get("productionBetaSummary"), dict) else None,
+        )
+    )
     issues.extend(security_response_issues(inputs.get("securityResponseSummary")))
     for spec in DOMAIN_SPECS:
         domain_id = str(spec["id"])
@@ -3070,8 +3150,44 @@ def run_self_test(quiet: bool = False) -> None:
         assert_protected_secret_values_are_scanned_and_redacted(root)
         assert_symlink_inputs_are_rejected(root)
         assert_standalone_security_response_summary_is_honored(root)
+        assert_previous_candidate_upgrade_current_binding_is_enforced(root)
     if not quiet:
         print("production beta go/no-go dashboard self-test passed")
+
+
+def assert_previous_candidate_upgrade_current_binding_is_enforced(root: Path) -> None:
+    pass_fixture = load_fixture(FIXTURE_DIR / "go-no-go-pass.json")
+    mutations = (
+        ("current-version", "currentVersion", "269"),
+        ("current-catalog-channel", "currentCatalogChannel", "beta"),
+        ("current-catalog-edition", "currentCatalogEdition", 123),
+    )
+    for label, field, value in mutations:
+        inputs = json.loads(json.dumps(pass_fixture["inputs"]))
+        upgrade = inputs["multiNodeBetaSoakSummary"]["previousCandidateUpgrade"]
+        upgrade[field] = value
+        generated_at, now = parse_generated_at(DEFAULT_GENERATED_AT)
+        dashboard = build_dashboard(
+            inputs,
+            {},
+            [FIXTURE_DIR / "go-no-go-pass.json"],
+            None,
+            Path(__file__).resolve().parents[2],
+            root / f"previous-candidate-current-binding-{label}",
+            "production-beta",
+            f"crypta-production-beta-270-{label}",
+            generated_at,
+            now,
+        )
+        if dashboard.get("decision") != "no-go":
+            raise AssertionError(f"mismatched previous-candidate upgrade {field} did not block: {dashboard}")
+        blocker_ids = {
+            str(blocker.get("evidenceId"))
+            for blocker in dashboard.get("blockers", [])
+            if isinstance(blocker, dict)
+        }
+        if "multi-node-beta.previous-candidate-upgrade-binding" not in blocker_ids:
+            raise AssertionError(f"mismatched previous-candidate upgrade {field} used wrong blocker: {dashboard}")
 
 
 def assert_standalone_security_response_summary_is_honored(root: Path) -> None:
@@ -3095,7 +3211,7 @@ def assert_standalone_security_response_summary_is_honored(root: Path) -> None:
         Path(__file__).resolve().parents[2],
         root / "standalone-security-response",
         "production-beta",
-        "crypta-production-beta-269-standalone-security-response",
+        "crypta-production-beta-270-standalone-security-response",
         generated_at,
         now,
     )

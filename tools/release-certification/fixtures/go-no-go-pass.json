@@ -517,11 +517,18 @@
     "productionBetaSummary": {
       "artifacts": {
         "checksums": "dist/checksums.txt",
-        "distArchive": "dist/crypta-production-beta-269.tar.gz",
+        "distArchive": "dist/crypta-production-beta-270.tar.gz",
         "redactionReport": "reports/redaction-report.json"
       },
+      "catalogChannel": "stable",
       "mode": "production-beta",
       "nonRelease": false,
+      "previousCandidateMetadata": {
+        "catalog": {
+          "betaChannelEdition": 125,
+          "stableChannelEdition": 124
+        }
+      },
       "promotion": {
         "failedGateCount": 0,
         "gates": [],
@@ -541,7 +548,7 @@
       },
       "status": "pass",
       "tool": "production-beta-release",
-      "version": "269"
+      "version": "270"
     },
     "releaseCertificationSummary": {
       "ecosystemGates": [],
@@ -558,5 +565,5 @@
     }
   },
   "mode": "production-beta",
-  "releaseId": "crypta-production-beta-269"
+  "releaseId": "crypta-production-beta-270"
 }
