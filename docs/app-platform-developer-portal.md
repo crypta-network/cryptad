@@ -139,7 +139,8 @@ Then follow this path:
 | Sign and verify the staged bundle | `crypta-app sign`, then `crypta-app verify` |
 | Pack a deterministic ZIP artifact | `crypta-app pack` |
 | Create and verify a submission package | [third-party-app-submission-checklist.md](third-party-app-submission-checklist.md), `crypta-app submission create`, `crypta-app submission verify`, and `crypta-app submission pre-review` |
-| Produce a reviewed catalog candidate | `crypta-app submission catalog-candidate` in [app-store-submission-and-review-workflow.md](app-store-submission-and-review-workflow.md) |
+| Enter public beta intake | `crypta-app submission intake import`, `crypta-app submission intake assign`, `crypta-app submission intake pre-review`, and `crypta-app submission intake decide` in [app-store-submission-and-review-workflow.md](app-store-submission-and-review-workflow.md) |
+| Produce a reviewed beta catalog candidate | `crypta-app submission intake stage-candidate` and `crypta-app submission catalog-candidate` in [app-store-submission-and-review-workflow.md](app-store-submission-and-review-workflow.md) |
 | Create a catalog entry descriptor | `crypta-app catalog entry` |
 | Create, sign, and verify a catalog | `crypta-app catalog create`, `crypta-app catalog sign`, `crypta-app catalog verify` |
 | Produce an offline USK publication plan | `crypta-app publish-usk --dry-run` |
@@ -158,6 +159,7 @@ Public beta readiness treats these workstreams as one ecosystem beta release sto
 | First-party catalog | [first-party-beta-catalog.md](first-party-beta-catalog.md), [production-first-party-catalog-channels.md](production-first-party-catalog-channels.md), [catalog-operations-and-mirrors.md](catalog-operations-and-mirrors.md), `app-catalog.first-party-beta`, `catalog.production-channels`, `catalog.operations-and-mirrors`, `catalog.smoke` |
 | Developer toolkit | [developer-beta-toolkit.md](developer-beta-toolkit.md), `app-platform.devtools-cli`, `app-platform.developer-beta-toolkit` |
 | Third-party developer beta | [third-party-developer-beta-program.md](third-party-developer-beta-program.md), [third-party-app-submission-checklist.md](third-party-app-submission-checklist.md), [platform-api-compatibility-support-window.md](platform-api-compatibility-support-window.md), `third-party-developer.*` evidence |
+| Third-party public beta intake | [app-store-submission-and-review-workflow.md](app-store-submission-and-review-workflow.md), `/api/v1/operator/app-submissions`, Web Shell beta dashboard intake cards, and `third-party-intake.queue-schema` through `third-party-intake.redaction` evidence |
 | Reference apps | [social-inbox-reference-app.md](social-inbox-reference-app.md), [feed-reader-reference-app.md](feed-reader-reference-app.md), [trust-graph-preview.md](trust-graph-preview.md), `reference-app.*` evidence, `app-platform.trust-graph-rc-scope-and-safety` |
 | Network-scale budgets and soak | [network-scale-soak-and-subscription-budget.md](network-scale-soak-and-subscription-budget.md), [release-certification.md](release-certification.md), `network-scale.*` evidence, `network-scale-soak-and-subscription-budget` matrix row |
 | Multi-node beta soak and upgrade drill | [multi-node-beta-soak-and-upgrade-drill.md](multi-node-beta-soak-and-upgrade-drill.md), `multi-node-beta.*` evidence, `multi-node-beta-soak-and-upgrade-drill` matrix row |

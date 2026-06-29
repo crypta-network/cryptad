@@ -28,6 +28,7 @@
     alertsSnapshot: null,
     appCatalogsSnapshot: null,
     appsSnapshot: null,
+    appSubmissionIntakeSnapshot: null,
     betaDashboardSnapshot: null,
     identityVaultSnapshot: null,
     recommendedCatalogsSnapshot: null,
@@ -746,6 +747,7 @@
     const operatorRcRecovery = recordValue(data.operatorRcRecovery);
     const networkBudgets = recordValue(data.networkBudgets);
     const securityResponse = recordValue(data.securityResponse);
+    const thirdPartyIntake = recordValue(data.thirdPartyIntake);
 
     const summaryCards = document.createElement("div");
     summaryCards.className = "app-card-list";
@@ -804,6 +806,7 @@
 
     sections.betaDashboard.append(
       renderSecurityResponseSummary(securityResponse),
+      renderThirdPartyIntake(thirdPartyIntake),
       renderBetaCatalogs(catalogs),
       renderBetaApps(apps),
       renderBetaSubscriptions(subscriptions),
@@ -826,6 +829,88 @@
     });
     card.append(list);
     return card;
+  }
+
+  function renderThirdPartyIntake(intake) {
+    const group = document.createElement("section");
+    group.className = "diagnostics-section";
+    group.append(text("h3", "diagnostics-section-title", "Third-party app intake"));
+    if (!intake || Object.keys(intake).length === 0) {
+      group.append(text("p", "empty-state", "Submission intake status is unavailable."));
+      return group;
+    }
+    const submissions = arrayValue(intake.submissions).map(recordValue);
+    const warnings = stringList(intake.warnings);
+    const list = document.createElement("div");
+    list.className = "app-card-list";
+    list.append(
+      summaryCard(
+        intake.configured === true ? "Queue configured" : "Queue not configured",
+        [
+          ["Submissions", scalar(intake.queueCount ?? submissions.length)],
+          ["Operator route", scalar(intake.route)],
+          ["Operator-only", yesNoText(intake.operatorOnly, true)],
+          ["App contract", intake.operatorRoutesInAppContract === false ? "Internal" : "Unknown"],
+        ],
+        intake.configured === true ? "" : "is-warning",
+      ),
+    );
+    submissions.slice(0, 8).forEach((submission) => {
+      const submissionWarnings = stringList(submission.warnings);
+      const tone = intakeSubmissionTone(submission);
+      const card = document.createElement("article");
+      card.className = tone ? `app-card ${tone}` : "app-card";
+      card.append(
+        betaCardHeader(
+          submission.appId || submission.submissionId || "Submission",
+          normalizedStatus(submission.status, "Unknown"),
+          tone,
+        ),
+        definitionList([
+          ["Submission ID", submission.submissionId],
+          ["Version", submission.appVersion],
+          ["Reviewer", submission.reviewerDisplayName || submission.reviewerKeyId],
+          ["Pre-review", normalizedStatus(submission.preReviewStatus, "Not run")],
+          ["Decision", normalizedStatus(submission.decision, "Pending")],
+          ["Catalog candidate", submission.catalogCandidateCreated ? "Created" : "None"],
+          ["Beta channel", submission.betaCatalogChannel],
+          ["Install smoke", normalizedStatus(submission.installSmokeStatus, "Pending")],
+          ["Transparency digest", submission.transparencyLogDigest],
+          ["Redaction", normalizedStatus(submission.redactionStatus, "Unknown")],
+          ["Non-production", yesNoText(submission.nonProduction, false)],
+        ]),
+      );
+      if (submissionWarnings.length) {
+        card.append(renderCompactWarningText(submissionWarnings));
+      }
+      list.append(card);
+    });
+    group.append(list);
+    if (warnings.length) {
+      group.append(renderCompactWarningText(warnings));
+    }
+    return group;
+  }
+
+  function intakeSubmissionTone(submission) {
+    const status = typeof submission.status === "string" ? submission.status : "";
+    const redaction = typeof submission.redactionStatus === "string" ? submission.redactionStatus : "";
+    const decision = typeof submission.decision === "string" ? submission.decision : "";
+    if (redaction === "fail" || status === "rejected" || decision === "rejected") {
+      return "is-error";
+    }
+    if (
+      status === "caution" ||
+      decision === "caution" ||
+      status === "resubmission_requested" ||
+      status === "pre_review_failed"
+    ) {
+      return "is-warning";
+    }
+    if (status === "beta_install_smoke_passed" || submission.installSmokeStatus === "pass") {
+      return "is-success";
+    }
+    return "";
   }
 
   function renderSecurityResponseSummary(response) {
@@ -6673,9 +6758,12 @@
 
     try {
       const snapshot = await loadJson(apiUrl("operator/rc-dashboard"));
+      const thirdPartyIntake = await loadOptionalJson(apiUrl("operator/app-submissions"), [404, 503]);
       if (loadGeneration !== betaDashboardLoadGeneration) {
         return;
       }
+      snapshot.thirdPartyIntake = thirdPartyIntake;
+      shellState.appSubmissionIntakeSnapshot = thirdPartyIntake;
       renderBetaDashboard(snapshot);
       setBetaDashboardStatus("Operator RC Recovery refreshed.", "is-success");
     } catch (error) {
@@ -6684,10 +6772,13 @@
       }
       try {
         const fallback = await loadJson(apiUrl("operator/beta-dashboard"));
+        const thirdPartyIntake = await loadOptionalJson(apiUrl("operator/app-submissions"), [404, 503]);
         if (loadGeneration !== betaDashboardLoadGeneration) {
           return;
         }
         fallback.rcCompatibilityFallback = true;
+        fallback.thirdPartyIntake = thirdPartyIntake;
+        shellState.appSubmissionIntakeSnapshot = thirdPartyIntake;
         renderBetaDashboard(fallback);
         setBetaDashboardStatus("Operator RC Recovery fallback loaded from beta dashboard.", "is-warning");
       } catch (fallbackError) {

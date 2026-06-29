@@ -115,6 +115,20 @@ THIRD_PARTY_DEVELOPER_BETA_EVIDENCE_IDS = (
     "third-party-developer.plugin-author-migration",
     "third-party-developer.redaction",
 )
+THIRD_PARTY_INTAKE_EVIDENCE_IDS = (
+    "third-party-intake.queue-schema",
+    "third-party-intake.import",
+    "third-party-intake.reviewer-assignment",
+    "third-party-intake.pre-review-artifacts",
+    "third-party-intake.review-decision",
+    "third-party-intake.resubmission-flow",
+    "third-party-intake.catalog-candidate-staging",
+    "third-party-intake.beta-catalog-install-smoke",
+    "third-party-intake.transparency-export",
+    "third-party-intake.rejected-candidate-blocked",
+    "third-party-intake.caution-warning",
+    "third-party-intake.redaction",
+)
 LIVE_NETWORK_BETA_EVIDENCE_IDS = (
     "live-network-beta.preflight",
     "live-network-beta.catalog-usk-fetch",
@@ -237,6 +251,7 @@ ECOSYSTEM_RC_REQUIRED_EVIDENCE_IDS = (
     "app-review.first-party-catalog",
     "app-review.first-party-review-chain",
     *APP_STORE_SUBMISSION_EVIDENCE_IDS,
+    *THIRD_PARTY_INTAKE_EVIDENCE_IDS,
     *THIRD_PARTY_DEVELOPER_BETA_EVIDENCE_IDS,
     "app-platform.user-consent-flow",
     "app-update.lifecycle",
@@ -1323,6 +1338,7 @@ def app_platform_evidence(
         "app-review.first-party-catalog",
         "app-review.first-party-review-chain",
         *APP_STORE_SUBMISSION_EVIDENCE_IDS,
+        *THIRD_PARTY_INTAKE_EVIDENCE_IDS,
         *THIRD_PARTY_DEVELOPER_BETA_EVIDENCE_IDS,
         "app-platform.user-consent-flow",
         "app-ui.design-system",
@@ -3142,7 +3158,10 @@ def ecosystem_matrix_row_specs() -> list[MatrixRowSpec]:
             id="app-store-submission-and-review",
             category="review-governance",
             title="Third-party app submission and review workflow",
-            required_evidence_ids=APP_STORE_SUBMISSION_EVIDENCE_IDS,
+            required_evidence_ids=(
+                *APP_STORE_SUBMISSION_EVIDENCE_IDS,
+                *THIRD_PARTY_INTAKE_EVIDENCE_IDS,
+            ),
             gate_ids=("ecosystem.app-review-trust",),
             docs=(
                 "docs/app-store-submission-and-review-workflow.md",
@@ -8230,6 +8249,9 @@ def run_self_test(repo_root: Path) -> None:
         app_services_row = matrix_rows_by_id["app-service-discovery-and-grants"]
         for evidence_id in pr253_app_service_evidence_ids:
             assert evidence_id in app_services_row["requiredEvidenceIds"], app_services_row
+        app_store_row = matrix_rows_by_id["app-store-submission-and-review"]
+        for evidence_id in THIRD_PARTY_INTAKE_EVIDENCE_IDS:
+            assert evidence_id in app_store_row["requiredEvidenceIds"], app_store_row
         disabled_live_row = matrix_rows_by_id["live-network-beta-certification"]
         assert disabled_live_row["status"] == "pass", disabled_live_row
         assert disabled_live_row["releaseBlocker"] is False, disabled_live_row

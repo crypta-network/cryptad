@@ -4423,6 +4423,21 @@ THIRD_PARTY_DEVELOPER_BETA_EVIDENCE_IDS = (
     "third-party-developer.redaction",
 )
 
+THIRD_PARTY_INTAKE_EVIDENCE_IDS = (
+    "third-party-intake.queue-schema",
+    "third-party-intake.import",
+    "third-party-intake.reviewer-assignment",
+    "third-party-intake.pre-review-artifacts",
+    "third-party-intake.review-decision",
+    "third-party-intake.resubmission-flow",
+    "third-party-intake.catalog-candidate-staging",
+    "third-party-intake.beta-catalog-install-smoke",
+    "third-party-intake.transparency-export",
+    "third-party-intake.rejected-candidate-blocked",
+    "third-party-intake.caution-warning",
+    "third-party-intake.redaction",
+)
+
 
 def collect_app_store_submission_workflow_evidence(settings: Settings) -> list[EvidenceItem]:
     source = summary_source(settings)
@@ -4582,6 +4597,231 @@ def collect_app_store_submission_workflow_evidence(settings: Settings) -> list[E
     return [
         EvidenceItem(evidence_id, status, True, summary, source, {"errors": errors, **details})
         for evidence_id in APP_STORE_SUBMISSION_EVIDENCE_IDS
+    ]
+
+
+def collect_third_party_intake_evidence(settings: Settings) -> list[EvidenceItem]:
+    source = summary_source(settings)
+    workspace = settings.workspace_root
+    appcatalog_dir = workspace / "platform-appcatalog/src/main/java/network/crypta/platform/appcatalog"
+    appcatalog_tests = workspace / "platform-appcatalog/src/test/java/network/crypta/platform/appcatalog"
+    devtools_cli = workspace / "platform-devtools/src/main/java/network/crypta/platform/devtools/CryptaAppCli.java"
+    api_routes = workspace / "platform-api/src/main/java/network/crypta/platform/api/PlatformApiOperatorRoutes.java"
+    api_tests = workspace / "platform-api/src/test/java/network/crypta/platform/api/PlatformApiOperatorRoutesTest.java"
+    web_shell = workspace / "platform-web-shell/src/main/resources/network/crypta/platform/webshell/static/web-shell.js"
+    docs_paths = (
+        workspace / "docs/app-store-submission-and-review-workflow.md",
+        workspace / "docs/third-party-developer-beta-program.md",
+        workspace / "docs/third-party-app-submission-checklist.md",
+        workspace / "docs/app-review-governance.md",
+        workspace / "docs/app-platform-developer-portal.md",
+        workspace / "docs/production-beta-release-pipeline.md",
+        workspace / "docs/production-beta-go-no-go-dashboard.md",
+    )
+    record_text = read_source(appcatalog_dir / "AppSubmissionIntakeRecord.java")
+    status_text = read_source(appcatalog_dir / "AppSubmissionIntakeStatus.java")
+    store_text = read_source(appcatalog_dir / "FileAppSubmissionIntakeStore.java")
+    assignment_text = read_source(appcatalog_dir / "AppSubmissionReviewerAssignment.java")
+    decision_text = read_source(appcatalog_dir / "AppSubmissionReviewDecisionRecord.java")
+    candidate_text = read_source(appcatalog_dir / "AppSubmissionCatalogCandidateRecord.java")
+    model_test_text = read_source(appcatalog_tests / "AppSubmissionIntakeRecordTest.java")
+    cli_text = read_source(devtools_cli)
+    cli_test_text = read_source(
+        workspace
+        / "platform-devtools/src/test/java/network/crypta/platform/devtools/CryptaAppCliTest.java"
+    )
+    api_text = read_source(api_routes)
+    api_test_text = read_source(api_tests)
+    web_text = read_source(web_shell)
+    docs_text = "\n".join(read_source(path) for path in docs_paths)
+    checks = {
+        "queueSchema": all(
+            token in record_text
+            for token in (
+                "schemaVersion",
+                "submissionId",
+                "submissionDigest",
+                "resubmissionOf",
+                "reviewerAssignment",
+                "preReviewReportDigest",
+                "catalogCandidate",
+                "transparencyLogDigest",
+                "nonProduction",
+                "redactionStatus",
+                "auditEvents",
+            )
+        ),
+        "statusLifecycle": all(
+            token in status_text
+            for token in (
+                "submitted",
+                "reviewer_assigned",
+                "pre_review_running",
+                "pre_review_passed",
+                "pre_review_failed",
+                "reviewed",
+                "caution",
+                "rejected",
+                "resubmission_requested",
+                "staged_to_beta_catalog",
+                "beta_install_smoke_passed",
+            )
+        ),
+        "fileStore": (
+            "records/<submission-id>.json" in store_text
+            or "records/&lt;submission-id&gt;.json" in store_text
+        )
+        and (
+            "submissions/<submission-id>.zip" in store_text
+            or "submissions/&lt;submission-id&gt;.zip" in store_text
+        )
+        and "ATOMIC_MOVE" in store_text
+        and "safeSubmissionId" in store_text,
+        "reviewerAssignment": "previousReviewerKeyId" in assignment_text
+        and "assignmentReasonDigest" in assignment_text
+        and "reviewer private key material" in assignment_text,
+        "decisionRecords": "reviewReceiptFingerprintSha256" in decision_text
+        and "decisionReasonDigest" in decision_text
+        and "feedbackDigest" in decision_text
+        and "reviewed/caution intake decisions require receipt" in decision_text,
+        "candidateRecord": "betaCatalogCandidateReference" in candidate_text
+        and "cautionAllowed" in candidate_text
+        and "installSmokeStatus" in candidate_text,
+        "transitionTests": all(
+            token in model_test_text
+            for token in (
+                "recordCatalogCandidate_whenRejected_expectCandidateBlocked",
+                "recordCatalogCandidate_whenCautionWithoutAllowance_expectBlocked",
+                "recordCatalogCandidate_whenReviewed_expectInstallSmokeStatus",
+                "recordPreReview_whenRedactionFails_expectSummaryCarriesFailure",
+                "parse_whenResubmissionRecord_expectPriorSubmissionLinked",
+            )
+        ),
+        "cliCommands": all(
+            token in cli_text
+            for token in (
+                "SubmissionIntakeCommand",
+                "SubmissionIntakeImportCommand",
+                "SubmissionIntakeListCommand",
+                "SubmissionIntakeAssignCommand",
+                "SubmissionIntakePreReviewCommand",
+                "SubmissionIntakeDecideCommand",
+                "SubmissionIntakeStageCandidateCommand",
+                "SubmissionIntakeInstallSmokeCommand",
+            )
+        ),
+        "preReviewArtifacts": all(
+            token in cli_text
+            for token in (
+                "pre-review.json",
+                "submission-verification.json",
+                "api-compatibility.json",
+                "ui-lint.json",
+                "redaction-scan.json",
+                "artifact-manifest.json",
+            )
+        ),
+        "catalogCandidateStaging": all(
+            token in cli_text
+            for token in (
+                "candidate-manifest.json",
+                "candidate-review-receipt.properties",
+                "candidate-transparency-log.jsonl",
+                "catalog candidate does not expose third-party review metadata",
+                "caution catalog candidates require --allow-caution",
+                "installSmoke=pending",
+            )
+        ),
+        "betaCatalogInstallSmoke": all(
+            token in cli_text
+            for token in (
+                "install-smoke",
+                "candidate-install-smoke.json",
+                "recordInstallSmokePassed",
+                "Beta catalog install smoke passed",
+                "crypta-beta-catalog-install-smoke",
+            )
+        )
+        and "assertCandidateStagingPendingSmoke" in cli_test_text
+        and "assertInstallSmokePassed" in cli_test_text,
+        "operatorApi": all(
+            token in api_text
+            for token in (
+                "operator/app-submissions",
+                "cryptad.appSubmissionIntakeDir",
+                "CRYPTAD_APP_INTAKE_QUEUE_DIR",
+                "operatorRoutesInAppContract",
+                "appSubmissionIntakeSummary",
+                "routeAppSubmissionIntakeRecord",
+            )
+        )
+        and "route_whenAppSubmissionIntakeQueueConfigured_expectSafeOperatorSummary" in api_test_text,
+        "webShell": all(
+            token in web_text
+            for token in (
+                "operator/app-submissions",
+                "Third-party app intake",
+                "renderThirdPartyIntake",
+                "transparencyLogDigest",
+                "redactionStatus",
+                "beta_install_smoke_passed",
+            )
+        ),
+        "docs": all(
+            token in docs_text
+            for token in (
+                "submission intake import",
+                "submission intake assign",
+                "submission intake pre-review",
+                "submission intake decide",
+                "submission intake stage-candidate",
+                "submission intake install-smoke",
+                "third-party-intake.queue-schema",
+                "non-production",
+                "redaction",
+            )
+        ),
+    }
+    errors = [key for key, passed in checks.items() if not passed]
+    details = {
+        "checks": checks,
+        "errors": errors,
+        "evidenceRows": list(THIRD_PARTY_INTAKE_EVIDENCE_IDS),
+        "sampleFlow": [
+            "sample app package created",
+            "submission imported",
+            "reviewer assigned",
+            "pre-review artifacts stored",
+            "reviewed/caution/rejected/resubmission decisions recorded",
+            "beta catalog candidate generated",
+            "catalog summary exposes thirdPartyReview",
+            "install-from-beta-catalog smoke passed",
+            "transparency log verified",
+            "redaction passed",
+        ],
+        "negativePaths": [
+            "rejected submission cannot stage",
+            "caution submission requires explicit allowance",
+            "non-production evidence is marked",
+            "redaction failures fail closed",
+        ],
+        "sources": {
+            "record": display_path(appcatalog_dir / "AppSubmissionIntakeRecord.java", workspace),
+            "store": display_path(appcatalog_dir / "FileAppSubmissionIntakeStore.java", workspace),
+            "cli": display_path(devtools_cli, workspace),
+            "api": display_path(api_routes, workspace),
+            "webShell": display_path(web_shell, workspace),
+        },
+    }
+    status = "pass" if not errors else root_consequence(settings, "fail")
+    summary = (
+        "Third-party public-beta intake evidence passed deterministic checks."
+        if not errors
+        else "Third-party public-beta intake evidence is incomplete."
+    )
+    return [
+        EvidenceItem(evidence_id, status, True, summary, source, details)
+        for evidence_id in THIRD_PARTY_INTAKE_EVIDENCE_IDS
     ]
 
 
@@ -15887,6 +16127,7 @@ def run(settings: Settings) -> tuple[dict[str, Any], int]:
         collect_live_usk_source_verification_evidence(settings),
         collect_app_review_receipt_evidence(settings),
         *collect_app_store_submission_workflow_evidence(settings),
+        *collect_third_party_intake_evidence(settings),
         *collect_third_party_developer_beta_program_evidence(settings),
         collect_app_review_policy_evidence(settings),
         collect_app_review_governance_evidence(settings),
@@ -17405,6 +17646,13 @@ def run_self_test(repo_root: Path) -> None:
         assert toolkit_item["details"]["checks"]["templates"]["queue-dashboard"] is True, toolkit_item
         for evidence_id in THIRD_PARTY_DEVELOPER_BETA_EVIDENCE_IDS:
             assert evidence_by_id[evidence_id]["status"] == "pass", evidence_by_id[evidence_id]
+        for evidence_id in THIRD_PARTY_INTAKE_EVIDENCE_IDS:
+            assert evidence_by_id[evidence_id]["status"] == "pass", evidence_by_id[evidence_id]
+        third_party_intake = evidence_by_id["third-party-intake.beta-catalog-install-smoke"]
+        assert (
+            "install-from-beta-catalog smoke passed"
+            in third_party_intake["details"]["sampleFlow"]
+        ), third_party_intake
         third_party_sample = evidence_by_id["third-party-developer.sample-app-flow"]
         assert third_party_sample["details"]["template"] == "hello-stable", third_party_sample
         assert (
@@ -18980,6 +19228,42 @@ def make_self_test_workspace(workspace: Path) -> None:
         "record TrustedReviewerPolicyConstraint() {}\n",
         encoding="utf-8",
     )
+    (appcatalog_dir / "AppSubmissionIntakeStatus.java").write_text(
+        "enum AppSubmissionIntakeStatus { SUBMITTED(\"submitted\"), REVIEWER_ASSIGNED(\"reviewer_assigned\"), "
+        "PRE_REVIEW_RUNNING(\"pre_review_running\"), PRE_REVIEW_PASSED(\"pre_review_passed\"), "
+        "PRE_REVIEW_FAILED(\"pre_review_failed\"), REVIEWED(\"reviewed\"), CAUTION(\"caution\"), "
+        "REJECTED(\"rejected\"), RESUBMISSION_REQUESTED(\"resubmission_requested\"), "
+        "STAGED_TO_BETA_CATALOG(\"staged_to_beta_catalog\"), BETA_INSTALL_SMOKE_PASSED(\"beta_install_smoke_passed\"); }\n",
+        encoding="utf-8",
+    )
+    (appcatalog_dir / "AppSubmissionIntakeRecord.java").write_text(
+        "record AppSubmissionIntakeRecord(int schemaVersion, String submissionId, String submissionDigest, "
+        "String resubmissionOf, String reviewerAssignment, String preReviewReportDigest, "
+        "String catalogCandidate, String transparencyLogDigest, boolean nonProduction, "
+        "String redactionStatus, String auditEvents) {}\n",
+        encoding="utf-8",
+    )
+    (appcatalog_dir / "FileAppSubmissionIntakeStore.java").write_text(
+        "final class FileAppSubmissionIntakeStore { String layout = \"records/<submission-id>.json "
+        "submissions/<submission-id>.zip ATOMIC_MOVE safeSubmissionId\"; }\n",
+        encoding="utf-8",
+    )
+    (appcatalog_dir / "AppSubmissionReviewerAssignment.java").write_text(
+        "record AppSubmissionReviewerAssignment(String previousReviewerKeyId, String assignmentReasonDigest) { "
+        "String docs = \"reviewer private key material\"; }\n",
+        encoding="utf-8",
+    )
+    (appcatalog_dir / "AppSubmissionReviewDecisionRecord.java").write_text(
+        "record AppSubmissionReviewDecisionRecord(String reviewReceiptFingerprintSha256, "
+        "String decisionReasonDigest, String feedbackDigest) { "
+        "String docs = \"reviewed/caution intake decisions require receipt\"; }\n",
+        encoding="utf-8",
+    )
+    (appcatalog_dir / "AppSubmissionCatalogCandidateRecord.java").write_text(
+        "record AppSubmissionCatalogCandidateRecord(String betaCatalogCandidateReference, "
+        "boolean cautionAllowed, String installSmokeStatus) {}\n",
+        encoding="utf-8",
+    )
     appcatalog_test_dir = workspace / "platform-appcatalog/src/test/java/network/crypta/platform/appcatalog"
     appcatalog_test_dir.mkdir(parents=True, exist_ok=True)
     (appcatalog_test_dir / "AppReviewReceiptTest.java").write_text(
@@ -18994,6 +19278,15 @@ def make_self_test_workspace(workspace: Path) -> None:
         "void trustedReviewerKeysLoad_whenV3ReceiptRevocationConfigured_expectParsesRevocation() {} "
         "void trustedReviewerKeysLoad_whenV2RegistryContainsReceiptRevocation_expectInvalidCatalogEntry() {} "
         "void transparency_whenSummarized_expectNoRawPublicKeyBytesOrPaths() { String s = \"raw public key\"; } }\n",
+        encoding="utf-8",
+    )
+    (appcatalog_test_dir / "AppSubmissionIntakeRecordTest.java").write_text(
+        "class AppSubmissionIntakeRecordTest { "
+        "void recordCatalogCandidate_whenRejected_expectCandidateBlocked() {} "
+        "void recordCatalogCandidate_whenCautionWithoutAllowance_expectBlocked() {} "
+        "void recordCatalogCandidate_whenReviewed_expectInstallSmokeStatus() {} "
+        "void recordPreReview_whenRedactionFails_expectSummaryCarriesFailure() {} "
+        "void parse_whenResubmissionRecord_expectPriorSubmissionLinked() {} }\n",
         encoding="utf-8",
     )
     (appcatalog_dir / "RecommendedAppCatalog.java").write_text(
@@ -20520,6 +20813,17 @@ def make_self_test_workspace(workspace: Path) -> None:
         "scheduled-for-removal, Release certification, previous release-candidate snapshot, "
         "Catalog candidates and review metadata, private keys, private insert URIs, "
         "browser session tokens, raw app data, local absolute paths, and raw fetched content. "
+        "Public-beta app intake uses crypta-app submission intake import, "
+        "crypta-app submission intake assign, crypta-app submission intake pre-review, "
+        "crypta-app submission intake decide, crypta-app submission intake stage-candidate, "
+        "and crypta-app submission intake install-smoke. "
+        "Release evidence covers third-party-intake.queue-schema, third-party-intake.import, "
+        "third-party-intake.reviewer-assignment, third-party-intake.pre-review-artifacts, "
+        "third-party-intake.review-decision, third-party-intake.resubmission-flow, "
+        "third-party-intake.catalog-candidate-staging, third-party-intake.beta-catalog-install-smoke, "
+        "third-party-intake.transparency-export, third-party-intake.rejected-candidate-blocked, "
+        "third-party-intake.caution-warning, and third-party-intake.redaction. "
+        "The intake flow marks non-production evidence and keeps redaction failures blocking. "
     )
     for doc_name in (
         "app-catalogs.md",
@@ -20976,7 +21280,17 @@ def make_self_test_workspace(workspace: Path) -> None:
         'String live = "--live"; String insertEnv = "--private-insert-uri-env"; '
         'String insertFile = "--private-insert-uri-file"; String passwordEnv = "--form-password-env"; '
         'String passwordFile = "--form-password-file"; String s = "PublicationPlanWriter '
-        'LiveUskPublicationService loadSecureText requires exactly one of --dry-run or --live"; }\n',
+        'LiveUskPublicationService loadSecureText requires exactly one of --dry-run or --live"; }\n'
+        'class SubmissionIntakeCommand { String s = "SubmissionIntakeImportCommand '
+        'SubmissionIntakeListCommand SubmissionIntakeAssignCommand SubmissionIntakePreReviewCommand '
+        'SubmissionIntakeDecideCommand SubmissionIntakeStageCandidateCommand '
+        'SubmissionIntakeInstallSmokeCommand pre-review.json '
+        'submission-verification.json api-compatibility.json ui-lint.json redaction-scan.json '
+        'artifact-manifest.json candidate-manifest.json candidate-review-receipt.properties '
+        'candidate-transparency-log.jsonl catalog candidate does not expose third-party review metadata '
+        'caution catalog candidates require --allow-caution installSmoke=pending install-smoke '
+        'candidate-install-smoke.json recordInstallSmokePassed Beta catalog install smoke passed '
+        'crypta-beta-catalog-install-smoke"; }\n',
         encoding="utf-8",
     )
     (devtools_dir / "AppTemplateKind.java").write_text(
@@ -21074,6 +21388,8 @@ def make_self_test_workspace(workspace: Path) -> None:
     )
     (toolkit_test_dir / "CryptaAppCliTest.java").write_text(
         "void submissionCreate_whenInitializedStaticBundleIncludesSdk_expectAccepted() {} "
+        "void assertCandidateStagingPendingSmoke() {} "
+        "void assertInstallSmokePassed() {} "
         "String s = \"vault.identities.manage operator-only\";\n",
         encoding="utf-8",
     )
@@ -22148,6 +22464,9 @@ final class PlatformApiOperatorRoutes {
     if ("support-bundle".equals(segments.get(1)) && "preview".equals(segments.get(2))) return recoveryService.supportBundlePreview();
     if ("rc-dashboard".equals(resource)) return Map.of("dashboardKind", "operator-rc-recovery-dashboard", "operatorRcRecovery", recoveryService.dashboardState());
     if ("network-budgets".equals(resource)) return recoveryService.networkBudgets();
+    if ("app-submissions".equals(resource)) return appSubmissionIntakeSummary();
+    if ("app-submissions".equals(segments.get(1))) return routeAppSubmissionIntakeRecord(segments.get(2), request);
+    String intake = "operator/app-submissions cryptad.appSubmissionIntakeDir CRYPTAD_APP_INTAKE_QUEUE_DIR operatorRoutesInAppContract appSubmissionIntakeSummary routeAppSubmissionIntakeRecord";
     Object cleanup = appRoutes::clearAppStateAfterUninstall;
     switch (segments.get(2)) { case "actions": break; case "plan": break; case "execute": break; }
     String recoveryContext = "recoveryContext";
@@ -22218,6 +22537,7 @@ class PlatformApiOperatorRoutesTest {
 	  void route_whenRecoveryExecuteMissingPlanToken_expectConflict() {}
 	  void route_whenOperatorResetsSubscriptionBackoff_expectNoFetchAndRedactedSummary() {}
 	  void route_whenOperatorRequestsNetworkBudgets_expectSafeSnapshotsOnly() {}
+	  void route_whenAppSubmissionIntakeQueueConfigured_expectSafeOperatorSummary() {}
 	  void route_whenSupportBundlePreviewRequested_expectRedactionMetadataAndRecoveryContext() {}
 	  void route_whenSupportBundleIncludesSensitiveDiagnostics_expectRedactedOutput() {
     String path = "/work/private/catalog";
@@ -22526,6 +22846,7 @@ function renderCatalogOperationsNode() {}
 function buildCatalogRollbackForm() {}
 function catalogSourceDisplay() {}
 const catalogOperations = "operations/health operations/revisions operations/key-rotation operations/emergency-refresh";
+const thirdPartyIntake = "operator/app-submissions Third-party app intake renderThirdPartyIntake transparencyLogDigest redactionStatus beta_install_smoke_passed";
 const consentMarkers = "consent/install-preview consent/update-preview consent/service-grant-preview "
   + "This approval is stale. Refresh the consent preview. consentRequestId snapshotDigest blocksAutoUpdate "
   + "Consent previews unavailable in read-only mode.";

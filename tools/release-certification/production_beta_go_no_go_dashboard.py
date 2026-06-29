@@ -66,6 +66,20 @@ THIRD_PARTY_DEVELOPER_BETA_EVIDENCE_IDS = (
     "third-party-developer.plugin-author-migration",
     "third-party-developer.redaction",
 )
+THIRD_PARTY_INTAKE_EVIDENCE_IDS = (
+    "third-party-intake.queue-schema",
+    "third-party-intake.import",
+    "third-party-intake.reviewer-assignment",
+    "third-party-intake.pre-review-artifacts",
+    "third-party-intake.review-decision",
+    "third-party-intake.resubmission-flow",
+    "third-party-intake.catalog-candidate-staging",
+    "third-party-intake.beta-catalog-install-smoke",
+    "third-party-intake.transparency-export",
+    "third-party-intake.rejected-candidate-blocked",
+    "third-party-intake.caution-warning",
+    "third-party-intake.redaction",
+)
 PLATFORM_API_STABLE_FREEZE_EVIDENCE_IDS = (
     "platform-api.contract",
     "platform-api.stable-baseline",
@@ -213,7 +227,7 @@ DOMAIN_SPECS = (
     {
         "id": "app-submission-review-workflow",
         "title": "App submission and review workflow",
-        "evidenceIds": APP_STORE_SUBMISSION_EVIDENCE_IDS,
+        "evidenceIds": (*APP_STORE_SUBMISSION_EVIDENCE_IDS, *THIRD_PARTY_INTAKE_EVIDENCE_IDS),
         "artifactInputs": ("appPlatformSummary",),
     },
     {
@@ -983,6 +997,18 @@ def is_redaction_evidence(evidence_id: str, domain_id: str = "") -> bool:
 def issue_for_evidence(domain_id: str, evidence_id: str, entry: dict[str, Any] | None, mode: str) -> Issue | None:
     if status_ok(entry):
         return None
+    if evidence_id.startswith("third-party-intake.") and not isinstance(entry, dict):
+        return Issue(
+            id=issue_id(domain_id, evidence_id, "optional-missing"),
+            evidence_id=evidence_id,
+            domain_id=domain_id,
+            severity="warning",
+            title=f"{evidence_id} is not attached",
+            summary="Third-party intake evidence is not required for this dashboard unless the release wrapper requires it.",
+            source=domain_id,
+            waivable=True,
+            category="optional-evidence",
+        )
     waiver_id = "" if entry_has_redaction_findings(entry) else entry_waiver_id(entry)
     if waiver_id and status_warn(entry):
         return Issue(

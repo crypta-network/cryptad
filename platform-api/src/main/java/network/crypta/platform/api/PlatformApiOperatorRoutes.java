@@ -1,8 +1,11 @@
 package network.crypta.platform.api;
 
+import java.io.IOException;
+import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.Supplier;
 import network.crypta.platform.api.appcatalogs.AppCatalogsApiHandler;
 import network.crypta.platform.api.appdata.AppDataService;
@@ -12,7 +15,11 @@ import network.crypta.platform.api.diagnostics.DiagnosticsApiHandler;
 import network.crypta.platform.api.operator.OperatorBetaDashboardService;
 import network.crypta.platform.api.operator.recovery.OperatorRecoveryService;
 import network.crypta.platform.api.trust.TrustGraphApiHandler;
+import network.crypta.platform.appcatalog.AppCatalogException;
 import network.crypta.platform.appcatalog.AppCatalogManager;
+import network.crypta.platform.appcatalog.AppSubmissionIntakeRecord;
+import network.crypta.platform.appcatalog.AppSubmissionIntakeSummary;
+import network.crypta.platform.appcatalog.FileAppSubmissionIntakeStore;
 import network.crypta.platform.apphost.AppHost;
 import network.crypta.platform.appui.AppUiOriginRegistry;
 import network.crypta.platform.appvault.AppVaultService;
@@ -56,6 +63,24 @@ final class PlatformApiOperatorRoutes {
 
   /** Path segment that identifies typed RC recovery routes. */
   private static final String RECOVERY_SEGMENT = "recovery";
+
+  /** Path segment that identifies local public-beta app submission intake diagnostics. */
+  private static final String APP_SUBMISSIONS_SEGMENT = "app-submissions";
+
+  /** Non-colliding sub-resource for local intake transparency-log summaries. */
+  private static final String TRANSPARENCY_SEGMENT = "transparency";
+
+  /** Leaf segment used by metadata-only operator summaries. */
+  private static final String SUMMARY_SEGMENT = "summary";
+
+  /** Shared JSON field for operator-visible warning summaries. */
+  private static final String FIELD_WARNINGS = "warnings";
+
+  /** System property used to point operator routes at a local intake queue. */
+  private static final String APP_SUBMISSION_INTAKE_DIR_PROPERTY = "cryptad.appSubmissionIntakeDir";
+
+  /** Environment fallback used to point operator routes at a local intake queue. */
+  private static final String APP_SUBMISSION_INTAKE_DIR_ENV = "CRYPTAD_APP_INTAKE_QUEUE_DIR";
 
   /** Builds redacted dashboard and support-bundle payloads from shared app-platform services. */
   private final OperatorBetaDashboardService dashboardService;
@@ -187,7 +212,7 @@ final class PlatformApiOperatorRoutes {
     return switch (segments.size()) {
       case 2 -> routeCollection(segments.get(1), request);
       case 3 -> routeThreeSegmentResource(segments, request);
-      case 4 -> routeAppDataRestore(segments, request);
+      case 4 -> routeFourSegmentResource(segments, request);
       case 5 -> routeSubscriptionAction(segments, request);
       default -> throw notFound();
     };
@@ -225,6 +250,12 @@ final class PlatformApiOperatorRoutes {
       }
       return PlatformApiResponse.ok(recoveryService.networkBudgets());
     }
+    if (APP_SUBMISSIONS_SEGMENT.equals(resource)) {
+      if (!METHOD_GET.equals(request.method())) {
+        return methodNotAllowed(METHOD_GET, GET_ONLY_MESSAGE);
+      }
+      return PlatformApiResponse.ok(appSubmissionIntakeSummary());
+    }
     throw notFound();
   }
 
@@ -242,7 +273,51 @@ final class PlatformApiOperatorRoutes {
     if (RECOVERY_SEGMENT.equals(segments.get(1))) {
       return routeRecovery(segments.get(2), request);
     }
+    if (APP_SUBMISSIONS_SEGMENT.equals(segments.get(1))) {
+      return routeAppSubmissionIntakeRecord(segments.get(2), request);
+    }
     throw notFound();
+  }
+
+  private PlatformApiResponse routeFourSegmentResource(
+      List<String> segments, PlatformApiRequest request) {
+    if (APP_SUBMISSIONS_SEGMENT.equals(segments.get(1))
+        && TRANSPARENCY_SEGMENT.equals(segments.get(2))
+        && SUMMARY_SEGMENT.equals(segments.get(3))) {
+      if (!METHOD_GET.equals(request.method())) {
+        return methodNotAllowed(METHOD_GET, GET_ONLY_MESSAGE);
+      }
+      return PlatformApiResponse.ok(appSubmissionTransparencySummary());
+    }
+    return routeAppDataRestore(segments, request);
+  }
+
+  private PlatformApiResponse routeAppSubmissionIntakeRecord(
+      String submissionId, PlatformApiRequest request) {
+    if (!METHOD_GET.equals(request.method())) {
+      return methodNotAllowed(METHOD_GET, GET_ONLY_MESSAGE);
+    }
+    FileAppSubmissionIntakeStore store =
+        appSubmissionIntakeStore()
+            .orElseThrow(
+                () ->
+                    new PlatformApiException(
+                        503,
+                        "app_submission_intake_unconfigured",
+                        "App submission intake queue is not configured."));
+    AppSubmissionIntakeRecord intakeRecord;
+    try {
+      intakeRecord =
+          store
+              .load(submissionId)
+              .orElseThrow(
+                  () ->
+                      new PlatformApiException(
+                          404, "app_submission_not_found", "Submission intake record not found."));
+    } catch (IOException | AppCatalogException _) {
+      throw appSubmissionIntakeUnavailable();
+    }
+    return PlatformApiResponse.ok(envelope("submission", intakeRecord.toJsonValue()));
   }
 
   private PlatformApiResponse routeRecovery(String action, PlatformApiRequest request) {
@@ -296,6 +371,83 @@ final class PlatformApiOperatorRoutes {
     bundle.put("supportBundleVersion", bundle.get("schemaVersion"));
     bundle.put("recoveryContext", recoveryService.supportContext());
     return bundle;
+  }
+
+  private Map<String, Object> appSubmissionIntakeSummary() {
+    Optional<FileAppSubmissionIntakeStore> maybeStore = appSubmissionIntakeStore();
+    Map<String, Object> summary = appSubmissionIntakeBaseEnvelope(maybeStore.isPresent());
+    if (maybeStore.isEmpty()) {
+      summary.put("queueCount", 0);
+      summary.put("submissions", List.of());
+      summary.put(FIELD_WARNINGS, List.of("appSubmissionIntakeQueueNotConfigured"));
+      return summary;
+    }
+    List<AppSubmissionIntakeSummary> submissions;
+    try {
+      submissions = maybeStore.orElseThrow().listSummaries();
+    } catch (IOException | AppCatalogException _) {
+      throw appSubmissionIntakeUnavailable();
+    }
+    summary.put("queueCount", submissions.size());
+    summary.put(
+        "submissions", submissions.stream().map(AppSubmissionIntakeSummary::toJsonValue).toList());
+    summary.put(FIELD_WARNINGS, List.of());
+    return summary;
+  }
+
+  private Map<String, Object> appSubmissionTransparencySummary() {
+    Optional<FileAppSubmissionIntakeStore> maybeStore = appSubmissionIntakeStore();
+    Map<String, Object> summary = appSubmissionIntakeBaseEnvelope(maybeStore.isPresent());
+    summary.put("kind", "crypta-operator-app-submission-transparency-summary");
+    if (maybeStore.isEmpty()) {
+      summary.put("recordsWithTransparencyDigest", 0);
+      summary.put(FIELD_WARNINGS, List.of("appSubmissionIntakeQueueNotConfigured"));
+      return summary;
+    }
+    List<AppSubmissionIntakeSummary> submissions;
+    try {
+      submissions = maybeStore.orElseThrow().listSummaries();
+    } catch (IOException | AppCatalogException _) {
+      throw appSubmissionIntakeUnavailable();
+    }
+    summary.put(
+        "recordsWithTransparencyDigest",
+        submissions.stream().filter(item -> item.transparencyLogDigest() != null).count());
+    summary.put(
+        "submissionIds",
+        submissions.stream()
+            .filter(item -> item.transparencyLogDigest() != null)
+            .map(AppSubmissionIntakeSummary::submissionId)
+            .toList());
+    summary.put(FIELD_WARNINGS, List.of());
+    return summary;
+  }
+
+  private static Map<String, Object> appSubmissionIntakeBaseEnvelope(boolean configured) {
+    LinkedHashMap<String, Object> envelope = LinkedHashMap.newLinkedHashMap(8);
+    envelope.put("schemaVersion", 1);
+    envelope.put("kind", "crypta-operator-app-submission-intake");
+    envelope.put("configured", configured);
+    envelope.put("route", "operator/app-submissions");
+    envelope.put("operatorOnly", true);
+    envelope.put("operatorRoutesInAppContract", false);
+    return envelope;
+  }
+
+  private static Optional<FileAppSubmissionIntakeStore> appSubmissionIntakeStore() {
+    String configured = System.getProperty(APP_SUBMISSION_INTAKE_DIR_PROPERTY);
+    if (configured == null || configured.isBlank()) {
+      configured = System.getenv(APP_SUBMISSION_INTAKE_DIR_ENV);
+    }
+    if (configured == null || configured.isBlank()) {
+      return Optional.empty();
+    }
+    return Optional.of(new FileAppSubmissionIntakeStore(Path.of(configured)));
+  }
+
+  private static PlatformApiException appSubmissionIntakeUnavailable() {
+    return new PlatformApiException(
+        503, "app_submission_intake_unavailable", "App submission intake queue is unavailable.");
   }
 
   /**

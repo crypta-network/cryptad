@@ -69,6 +69,7 @@ Production beta mode fails closed when these critical inputs are missing or malf
 | `live-network-beta-smoke/summary.json` | Required production beta live-network smoke evidence. |
 | `network-scale-soak/summary.json` | Network-scale budget, pressure, and redaction evidence. |
 | `multi-node-beta-soak/summary.json` | Multi-node soak, previous-candidate upgrade drill, scenario, app migration, backup/restore, Social Inbox, Trust Graph, support-bundle, and redaction evidence. |
+| `third-party-intake-summary.json` | Optional third-party app intake summary copied by the release wrapper when `--third-party-intake-summary` or `--run-third-party-intake-sample-flow` is used. |
 
 Developer dry-runs tolerate missing production-only inputs so PR and local runs remain CI-safe. A
 dry-run can complete successfully, but the dashboard still marks non-release artifacts as
@@ -102,6 +103,16 @@ Previous-candidate upgrade evidence is a production-beta launch blocker. Missing
 or redaction-unsafe previous-candidate evidence makes the dashboard decision `no-go` in
 production-beta mode. A warning is allowed only in developer or PR-safe contexts where the
 candidate remains non-release.
+
+Third-party app intake rows are shown in the app submission and review workflow domain as
+`third-party-intake.queue-schema` through `third-party-intake.redaction`. Missing rows are warnings
+unless the production beta release wrapper was run with `--require-third-party-intake`. When intake
+is required, the production summary includes failed `third-party-intake.*` promotion gates for
+missing sample flow, failed reviewer assignment, failed pre-review artifacts, failed
+install-from-beta-catalog smoke, rejected-candidate bypass, missing caution warning, non-production
+fixture evidence, or failed redaction. Redaction findings remain critical because the dashboard
+must not publish raw submission contents, private insert URIs, private keys, tokens, raw app data,
+or absolute local paths.
 
 ## Waiver format
 

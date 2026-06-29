@@ -168,6 +168,30 @@ crypta-app submission decide \
 The deterministic beta flow may use test-only reviewer keys with `--allow-non-production`. That
 flow proves command wiring; it is not production reviewer trust.
 
+## Public beta intake queue
+
+Public beta reviewers import submitted packages into a local intake queue with
+`crypta-app submission intake import`. Developers do not need account credentials or a hosted
+portal; the submitted ZIP, public maintainer contact, source URL, source revision, and rationale
+files are enough for local beta intake. Reviewers then run:
+
+- `crypta-app submission intake assign` to bind a trusted reviewer key id, display name, timestamp,
+  and reason digest to the submission.
+- `crypta-app submission intake pre-review` to generate `pre-review.json`,
+  `submission-verification.json`, API compatibility, UI lint, redaction-scan, and artifact-manifest
+  outputs from queue state.
+- `crypta-app submission intake decide` to record `reviewed`, `caution`, `rejected`, or
+  `resubmission_requested`.
+- `crypta-app submission intake stage-candidate` to stage a reviewed or explicitly allowed caution
+  submission into a beta catalog candidate area.
+
+Caution decisions are visible to operators and install consent surfaces. Rejected decisions cannot
+create beta catalog candidates. A resubmission must link back to the earlier submission id with
+`--resubmission-of`, and the reviewer feedback should be summarized without embedding raw private
+material. The queue, transparency export, and release evidence store digests and status values only;
+raw ZIP contents, private insert URIs, app tokens, browser session tokens, raw fetched content,
+raw app data, and absolute local paths are blocked by redaction.
+
 ## Catalog candidates
 
 After a reviewed or caution receipt exists, create a catalog candidate descriptor with:

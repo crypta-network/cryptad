@@ -255,6 +255,123 @@ artifact.
 The Web Shell and local catalog API expose this workflow metadata as `thirdPartyReview`, separate
 from publisher advisory `review` metadata and independent trusted receipt `reviewTrust` evaluation.
 
+## Public Beta Intake Queue
+
+Public beta intake wraps the existing submission package, pre-review, decision, transparency-log,
+and catalog-candidate commands in a file-backed local queue. The queue is operated by beta
+reviewers or release managers, not by third-party apps. Queue records store safe metadata only:
+submission ids, SHA-256 digests, app identity, requested permissions, reviewer assignment state,
+pre-review status, decision status, receipt fingerprints, candidate digests, beta channel status,
+redaction status, and warnings. They do not contain raw ZIP contents, raw rationale text, private
+keys, private insert URIs, app tokens, browser session tokens, raw fetched content, raw app data,
+or absolute local paths.
+
+An end-to-end beta intake run uses the `crypta-app submission intake` commands:
+
+```bash
+CRYPTA_APP=build/install/platform-devtools/bin/crypta-app
+
+"$CRYPTA_APP" submission create \
+  --bundle-dir samples/third-party/hello-stable-app \
+  --output build/submissions/hello-stable-submission.zip \
+  --submission-type new_app \
+  --maintainer-name "Example Maintainer" \
+  --maintainer-contact "https://example.invalid/contact" \
+  --source-url "https://example.invalid/hello-stable" \
+  --permission-rationale samples/third-party/hello-stable-app/review/permission-rationale.md \
+  --sandbox-rationale samples/third-party/hello-stable-app/review/sandbox-rationale.md \
+  --data-schema samples/third-party/hello-stable-app/review/data-schema.md \
+  --backup-restore samples/third-party/hello-stable-app/review/backup-restore.md \
+  --security-notes samples/third-party/hello-stable-app/review/security-notes.md \
+  --changelog samples/third-party/hello-stable-app/review/changelog.md
+
+"$CRYPTA_APP" submission intake import \
+  --queue-dir build/app-intake \
+  --submission build/submissions/hello-stable-submission.zip \
+  --transparency-log build/app-intake/review-transparency.jsonl
+
+"$CRYPTA_APP" submission intake assign \
+  --queue-dir build/app-intake \
+  --submission-id sub-... \
+  --reviewer-key-id reviewer-prod-1 \
+  --trusted-reviewer-keys config/trusted-reviewers.properties \
+  --reason docs/review-assignment-reason.md \
+  --transparency-log build/app-intake/review-transparency.jsonl
+
+"$CRYPTA_APP" submission intake pre-review \
+  --queue-dir build/app-intake \
+  --submission-id sub-... \
+  --artifacts-dir build/app-intake/artifacts/sub-... \
+  --transparency-log build/app-intake/review-transparency.jsonl
+
+"$CRYPTA_APP" submission intake decide \
+  --queue-dir build/app-intake \
+  --submission-id sub-... \
+  --decision reviewed \
+  --reviewer-key-id reviewer-prod-1 \
+  --reviewer-private-key-env CRYPTAD_APP_REVIEWER_PRIVATE_KEY \
+  --trusted-reviewer-keys config/trusted-reviewers.properties \
+  --reason docs/review-decision-reason.md \
+  --decision-dir build/app-intake/decisions/sub-... \
+  --transparency-log build/app-intake/review-transparency.jsonl
+
+"$CRYPTA_APP" submission intake stage-candidate \
+  --queue-dir build/app-intake \
+  --submission-id sub-... \
+  --trusted-reviewer-keys config/trusted-reviewers.properties \
+  --beta-candidate-dir build/beta-catalog-candidates \
+  --bundle-uri https://example.invalid/crypta-apps/hello-stable.zip \
+  --decision-dir build/app-intake/decisions/sub-... \
+  --transparency-log build/app-intake/review-transparency.jsonl
+
+"$CRYPTA_APP" submission intake install-smoke \
+  --queue-dir build/app-intake \
+  --submission-id sub-... \
+  --beta-candidate-dir build/beta-catalog-candidates \
+  --transparency-log build/app-intake/review-transparency.jsonl
+
+"$CRYPTA_APP" review transparency verify \
+  --log-file build/app-intake/review-transparency.jsonl
+```
+
+`submission intake list --queue-dir build/app-intake --json` exports redacted summaries for Web
+Shell diagnostics, release certification, and audit review. Reviewer assignment validates a trusted
+reviewer key id when a registry is supplied, records the display name and assignment reason digest,
+and appends an audit event. Reassignment requires a new reason and creates a second assignment
+event.
+
+`submission intake pre-review` writes `pre-review.json`, `submission-verification.json`,
+`api-compatibility.json`, `ui-lint.json`, `redaction-scan.json`, and `artifact-manifest.json`
+under the requested artifacts directory. The artifact manifest records relative paths and SHA-256
+digests. Third-party packages that request internal/operator-only capabilities fail pre-review.
+Findings with blockers prevent `reviewed` and `caution` decisions; reviewers can still record
+`rejected` or `resubmission_requested`.
+
+`submission intake decide` records one of `reviewed`, `caution`, `rejected`, or
+`resubmission_requested`. Reviewed and caution decisions issue review receipts. Rejected and
+resubmission-requested decisions store decision reason digests and transparency events but do not
+produce installable candidates. Production decisions fail closed for non-production submissions or
+test reviewer keys unless the caller explicitly uses the developer/test escape hatch.
+
+`submission intake stage-candidate` writes a beta candidate directory with
+`catalog-candidate.properties`, `app-bundle.zip`, `candidate-manifest.json`,
+`candidate-review-receipt.properties`, and a candidate transparency export when a log path is
+supplied. It verifies the receipt against trusted reviewer keys before writing the candidate.
+Reviewed submissions can be staged directly. Caution submissions require `--allow-caution` and keep
+operator-visible warnings in the candidate metadata. Rejected submissions cannot be staged. Staging
+leaves the queue record at `staged_to_beta_catalog` with `installSmokeStatus=pending`; it does not
+claim install-from-beta-catalog smoke success.
+
+`submission intake install-smoke` is the local structural install-from-beta-catalog proof. It
+re-inspects the staged catalog descriptor, the referenced bundle ZIP, the candidate review receipt,
+the third-party review metadata, and the candidate manifest before writing
+`candidate-install-smoke.json` and updating the queue record to `beta_install_smoke_passed`.
+
+The local operator API exposes safe diagnostics under `/api/v1/operator/app-submissions` when the
+queue directory is configured with `cryptad.appSubmissionIntakeDir` or
+`CRYPTAD_APP_INTAKE_QUEUE_DIR`. These routes are operator/internal diagnostics, not part of the
+stable third-party app-facing Platform API 1.0 surface.
+
 ## Transparency Log
 
 Submission tooling can append local hash-chained transparency log events:
@@ -320,6 +437,27 @@ Release certification includes deterministic PR-262 evidence:
 The sample flow is fixture-safe and non-production. It covers submission creation, offline
 verification, pre-review, reviewed receipt issuance, transparency-log verification, catalog
 candidate generation, rejected-decision metadata, and resubmission linkage.
+
+PR-273 adds deterministic public-beta intake evidence:
+
+- `third-party-intake.queue-schema`
+- `third-party-intake.import`
+- `third-party-intake.reviewer-assignment`
+- `third-party-intake.pre-review-artifacts`
+- `third-party-intake.review-decision`
+- `third-party-intake.resubmission-flow`
+- `third-party-intake.catalog-candidate-staging`
+- `third-party-intake.beta-catalog-install-smoke`
+- `third-party-intake.transparency-export`
+- `third-party-intake.rejected-candidate-blocked`
+- `third-party-intake.caution-warning`
+- `third-party-intake.redaction`
+
+These rows prove sample app package creation, intake import, reviewer assignment, pre-review
+artifacts, reviewed/caution/rejected/resubmission decisions, beta catalog candidate staging,
+install-from-beta-catalog smoke status, transparency export verification, rejected-candidate
+blocking, caution warnings, and redaction. Fixture evidence remains non-production and must not be
+used as production promotion evidence.
 
 ## Out Of Scope
 
