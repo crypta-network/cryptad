@@ -1521,7 +1521,8 @@ public final class CryptaAppCli implements Runnable {
         SubmissionIntakeAssignCommand.class,
         SubmissionIntakePreReviewCommand.class,
         SubmissionIntakeDecideCommand.class,
-        SubmissionIntakeStageCandidateCommand.class
+        SubmissionIntakeStageCandidateCommand.class,
+        SubmissionIntakeInstallSmokeCommand.class
       })
   static final class SubmissionIntakeCommand extends SpecAwareCommand implements Runnable {
     @Override
@@ -2504,7 +2505,6 @@ public final class CryptaAppCli implements Runnable {
               "pending");
       AppSubmissionIntakeRecord stagedRecord =
           intakeRecord.recordCatalogCandidate(candidateRecord, effectiveStagedAt);
-      stagedRecord.recordInstallSmokePassed(null, effectiveStagedAt);
 
       Files.createDirectories(candidateDirectory);
       SubmissionCatalogCandidateCommand.writeBytes(
@@ -2546,11 +2546,7 @@ public final class CryptaAppCli implements Runnable {
           receipt,
           status,
           overwrite);
-      String transparencyDigest =
-          transparencyLog == null ? null : sha256Hex(Files.readAllBytes(transparencyLog));
-      AppSubmissionIntakeRecord updated =
-          stagedRecord.recordInstallSmokePassed(transparencyDigest, effectiveStagedAt);
-      intakeStore.save(updated);
+      intakeStore.save(stagedRecord);
       super.commandLine()
           .getOut()
           .println(
@@ -2558,7 +2554,7 @@ public final class CryptaAppCli implements Runnable {
                   + submissionId
                   + " review="
                   + status.catalogValue()
-                  + " installSmoke=pass");
+                  + " installSmoke=pending");
       return CommandLine.ExitCode.OK;
     }
 
@@ -2594,8 +2590,193 @@ public final class CryptaAppCli implements Runnable {
       manifest.put("receiptFingerprintSha256", receipt.fingerprintSha256());
       manifest.put("cautionAllowed", status == AppReviewReceiptStatus.CAUTION);
       manifest.put("nonProduction", verified.metadata().nonProduction());
-      manifest.put("installSmokeStatus", "pass");
+      manifest.put("installSmokeStatus", "pending");
       writeText(output, SubmissionVerifyCommand.writeJson(manifest), overwriteManifest);
+    }
+  }
+
+  /** Implements {@code crypta-app submission intake install-smoke}. */
+  @Command(
+      name = "install-smoke",
+      description = "Verify staged beta candidate artifacts before marking install smoke passed.")
+  static final class SubmissionIntakeInstallSmokeCommand extends SubmissionIntakeBaseCommand
+      implements Callable<Integer> {
+    @Option(names = "--submission-id", required = true, description = "Submission id.")
+    private String submissionId;
+
+    @Option(names = "--beta-candidate-dir", required = true, description = "Beta candidate root.")
+    private Path betaCandidateDir;
+
+    @Option(names = "--transparency-log", description = "Review transparency JSONL log.")
+    private Path transparencyLog;
+
+    @Option(names = "--smoked-at", description = "Install-smoke completion instant.")
+    private Instant smokedAt;
+
+    @Option(names = "--overwrite", description = "Replace existing smoke report.")
+    private boolean overwrite;
+
+    @Override
+    public Integer call() throws Exception {
+      FileAppSubmissionIntakeStore intakeStore = store();
+      AppSubmissionIntakeRecord intakeRecord = loadRecord(submissionId);
+      AppSubmissionCatalogCandidateRecord candidateRecord =
+          intakeRecord
+              .catalogCandidate()
+              .orElseThrow(
+                  () -> new AppDistributionException("install smoke requires staged candidate"));
+      Path candidateDirectory = candidateDirectory();
+      Path descriptorOutput = candidateDirectory.resolve("catalog-candidate.properties");
+      Path bundleOutput = candidateDirectory.resolve("app-bundle.zip");
+      Path receiptOutput = candidateDirectory.resolve("candidate-review-receipt.properties");
+      Path manifestOutput = candidateDirectory.resolve("candidate-manifest.json");
+      requireRegularCandidateFile(descriptorOutput, "catalog candidate descriptor");
+      requireRegularCandidateFile(bundleOutput, "candidate app bundle");
+      requireRegularCandidateFile(receiptOutput, "candidate review receipt");
+      requireRegularCandidateFile(manifestOutput, "candidate manifest");
+
+      AppCatalogWriter.CatalogEntryInspection inspection =
+          AppCatalogWriter.inspectEntryDescriptor(descriptorOutput);
+      Path inspectedArtifact = inspection.descriptor().artifactPath().toAbsolutePath().normalize();
+      if (!bundleOutput.toAbsolutePath().normalize().equals(inspectedArtifact)) {
+        throw new AppDistributionException(
+            "candidate descriptor artifact does not match staged app bundle");
+      }
+      AppCatalogEntry entry = inspection.entry();
+      AppReviewReceipt receipt = AppReviewReceiptIO.read(receiptOutput);
+      requireInstallSmokeMatchesRecord(intakeRecord, candidateRecord, entry, receipt);
+      requireCandidateManifestMatchesRecord(manifestOutput, intakeRecord, candidateRecord, entry);
+
+      String descriptorDigest = sha256Hex(Files.readAllBytes(descriptorOutput));
+      if (!candidateRecord.catalogCandidateDigest().equals(descriptorDigest)) {
+        throw new AppDistributionException(
+            "candidate descriptor digest does not match intake record");
+      }
+
+      String transparencyDigest =
+          transparencyLog == null ? null : sha256Hex(Files.readAllBytes(transparencyLog));
+      Instant effectiveSmokedAt = smokedAt == null ? Instant.now() : smokedAt;
+      AppSubmissionIntakeRecord updated =
+          intakeRecord.recordInstallSmokePassed(transparencyDigest, effectiveSmokedAt);
+      Path smokeReport = candidateDirectory.resolve("candidate-install-smoke.json");
+      writeInstallSmokeReport(
+          smokeReport, intakeRecord, entry, receipt, descriptorDigest, overwrite);
+      intakeStore.save(updated);
+      super.commandLine()
+          .getOut()
+          .println(
+              "Beta catalog install smoke passed: submissionId="
+                  + submissionId
+                  + OUTPUT_APP_ID
+                  + entry.appId()
+                  + OUTPUT_STATUS
+                  + updated.status().jsonValue());
+      return CommandLine.ExitCode.OK;
+    }
+
+    private Path candidateDirectory() {
+      return betaCandidateDir.toAbsolutePath().normalize().resolve(candidateDirectoryName());
+    }
+
+    private String candidateDirectoryName() {
+      return FileAppSubmissionIntakeStore.safeSubmissionIdComponent(submissionId);
+    }
+
+    private static void requireRegularCandidateFile(Path path, String description)
+        throws AppDistributionException {
+      if (!Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) {
+        throw new AppDistributionException(description + " is missing");
+      }
+    }
+
+    private static void requireInstallSmokeMatchesRecord(
+        AppSubmissionIntakeRecord intakeRecord,
+        AppSubmissionCatalogCandidateRecord candidateRecord,
+        AppCatalogEntry entry,
+        AppReviewReceipt receipt)
+        throws AppDistributionException {
+      if (!intakeRecord.appId().equals(entry.appId())) {
+        throw new AppDistributionException("candidate app id does not match intake record");
+      }
+      if (!intakeRecord.appVersion().equals(entry.version())) {
+        throw new AppDistributionException("candidate version does not match intake record");
+      }
+      if (!intakeRecord.bundleDigest().equals(entry.bundleSha256())) {
+        throw new AppDistributionException("candidate bundle digest does not match intake record");
+      }
+      if (!entry.review().hasSubmissionReviewFields()
+          || entry.review().preReviewSha256().isEmpty()) {
+        throw new AppDistributionException(
+            "candidate catalog entry does not expose third-party review metadata");
+      }
+      if (!candidateRecord.reviewReceiptFingerprintSha256().equals(receipt.fingerprintSha256())) {
+        throw new AppDistributionException(
+            "candidate receipt fingerprint does not match intake record");
+      }
+      String recordedReceiptFingerprint =
+          intakeRecord
+              .decision()
+              .flatMap(AppSubmissionReviewDecisionRecord::reviewReceiptFingerprintSha256)
+              .orElseThrow(
+                  () ->
+                      new AppDistributionException(
+                          "install smoke requires recorded review receipt"));
+      if (!recordedReceiptFingerprint.equals(receipt.fingerprintSha256())) {
+        throw new AppDistributionException(
+            "candidate receipt fingerprint does not match decision record");
+      }
+      if (receipt.payload().status() == AppReviewReceiptStatus.REJECTED) {
+        throw new AppDistributionException("rejected submissions cannot pass install smoke");
+      }
+    }
+
+    private static void requireCandidateManifestMatchesRecord(
+        Path manifestOutput,
+        AppSubmissionIntakeRecord intakeRecord,
+        AppSubmissionCatalogCandidateRecord candidateRecord,
+        AppCatalogEntry entry)
+        throws IOException {
+      String manifestText = Files.readString(manifestOutput, StandardCharsets.UTF_8);
+      requireManifestContains(
+          manifestText, "\"submissionId\":\"" + intakeRecord.submissionId() + "\"");
+      requireManifestContains(manifestText, "\"appId\":\"" + entry.appId() + "\"");
+      requireManifestContains(manifestText, "\"appVersion\":\"" + entry.version() + "\"");
+      requireManifestContains(
+          manifestText,
+          "\"catalogCandidateSha256\":\"" + candidateRecord.catalogCandidateDigest() + "\"");
+      requireManifestContains(manifestText, "\"bundleSha256\":\"" + entry.bundleSha256() + "\"");
+      requireManifestContains(manifestText, "\"installSmokeStatus\":\"pending\"");
+    }
+
+    private static void requireManifestContains(String manifestText, String expected)
+        throws AppDistributionException {
+      if (!manifestText.contains(expected)) {
+        throw new AppDistributionException("candidate manifest does not match staged candidate");
+      }
+    }
+
+    private static void writeInstallSmokeReport(
+        Path output,
+        AppSubmissionIntakeRecord intakeRecord,
+        AppCatalogEntry entry,
+        AppReviewReceipt receipt,
+        String descriptorDigest,
+        boolean overwriteReport)
+        throws IOException {
+      Map<String, Object> report = new LinkedHashMap<>();
+      report.put(FIELD_SCHEMA_VERSION, 1);
+      report.put("kind", "crypta-beta-catalog-install-smoke");
+      report.put(FIELD_STATUS, "pass");
+      report.put("submissionId", intakeRecord.submissionId());
+      report.put(FIELD_APP_ID, entry.appId());
+      report.put("appVersion", entry.version());
+      report.put("catalogCandidateSha256", descriptorDigest);
+      report.put("bundleSha256", entry.bundleSha256());
+      report.put("reviewStatus", receipt.payload().status().catalogValue());
+      report.put("thirdPartyReview", entry.review().hasSubmissionReviewFields());
+      report.put("receiptFingerprintSha256", receipt.fingerprintSha256());
+      report.put("nonProduction", intakeRecord.nonProduction());
+      writeText(output, SubmissionVerifyCommand.writeJson(report), overwriteReport);
     }
   }
 

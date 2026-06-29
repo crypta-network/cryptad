@@ -3284,6 +3284,23 @@ class CryptaAppCliTest {
     assertMismatchedReceiptCandidateRejected(
         mismatchedReceipt, rejectedStage, rejectedBetaCandidates);
     Path candidateDir = assertCandidateArtifactsCreated(stage, betaCandidates);
+    assertCandidateStagingPendingSmoke(queueDir, candidateDir);
+    CliResult installSmoke =
+        runCli(
+            "submission",
+            "intake",
+            "install-smoke",
+            "--queue-dir",
+            queueDir.toString(),
+            "--submission-id",
+            "sub.intake-reviewed",
+            "--beta-candidate-dir",
+            betaCandidates.toString(),
+            "--smoked-at",
+            "2026-06-18T00:04:30Z",
+            "--transparency-log",
+            transparencyLog.toString());
+    assertInstallSmokePassed(installSmoke, queueDir, candidateDir);
     String descriptorBefore =
         Files.readString(
             candidateDir.resolve("catalog-candidate.properties"), StandardCharsets.UTF_8);
@@ -3470,12 +3487,44 @@ class CryptaAppCliTest {
 
   private static Path assertCandidateArtifactsCreated(CliResult stage, Path betaCandidates) {
     assertEquals(CommandLine.ExitCode.OK, stage.exitCode(), stage.err());
+    assertTrue(stage.out().contains("installSmoke=pending"));
     Path candidateDir = betaCandidates.resolve("sub.intake-reviewed");
     assertTrue(Files.isRegularFile(candidateDir.resolve("catalog-candidate.properties")));
     assertTrue(Files.isRegularFile(candidateDir.resolve("candidate-manifest.json")));
     assertTrue(Files.isRegularFile(candidateDir.resolve("candidate-review-receipt.properties")));
     assertTrue(Files.isRegularFile(candidateDir.resolve("candidate-transparency-log.jsonl")));
     return candidateDir;
+  }
+
+  private static void assertCandidateStagingPendingSmoke(Path queueDir, Path candidateDir)
+      throws IOException {
+    String intakeRecordJson =
+        Files.readString(
+            queueDir.resolve("records").resolve("sub.intake-reviewed.json"),
+            StandardCharsets.UTF_8);
+    assertTrue(intakeRecordJson.contains("\"status\":\"staged_to_beta_catalog\""));
+    assertTrue(intakeRecordJson.contains("\"installSmokeStatus\":\"pending\""));
+    assertFalse(intakeRecordJson.contains("\"status\":\"beta_install_smoke_passed\""));
+    assertTrue(
+        Files.readString(candidateDir.resolve("candidate-manifest.json"), StandardCharsets.UTF_8)
+            .contains("\"installSmokeStatus\":\"pending\""));
+  }
+
+  private static void assertInstallSmokePassed(
+      CliResult installSmoke, Path queueDir, Path candidateDir) throws IOException {
+    assertEquals(CommandLine.ExitCode.OK, installSmoke.exitCode(), installSmoke.err());
+    assertTrue(installSmoke.out().contains("Beta catalog install smoke passed"));
+    assertTrue(Files.isRegularFile(candidateDir.resolve("candidate-install-smoke.json")));
+    assertTrue(
+        Files.readString(
+                candidateDir.resolve("candidate-install-smoke.json"), StandardCharsets.UTF_8)
+            .contains("\"status\":\"pass\""));
+    String intakeRecordJson =
+        Files.readString(
+            queueDir.resolve("records").resolve("sub.intake-reviewed.json"),
+            StandardCharsets.UTF_8);
+    assertTrue(intakeRecordJson.contains("\"status\":\"beta_install_smoke_passed\""));
+    assertTrue(intakeRecordJson.contains("\"installSmokeStatus\":\"pass\""));
   }
 
   private void assertRerunCandidateStageDidNotMutateArtifacts(

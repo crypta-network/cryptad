@@ -4626,6 +4626,10 @@ def collect_third_party_intake_evidence(settings: Settings) -> list[EvidenceItem
     candidate_text = read_source(appcatalog_dir / "AppSubmissionCatalogCandidateRecord.java")
     model_test_text = read_source(appcatalog_tests / "AppSubmissionIntakeRecordTest.java")
     cli_text = read_source(devtools_cli)
+    cli_test_text = read_source(
+        workspace
+        / "platform-devtools/src/test/java/network/crypta/platform/devtools/CryptaAppCliTest.java"
+    )
     api_text = read_source(api_routes)
     api_test_text = read_source(api_tests)
     web_text = read_source(web_shell)
@@ -4703,6 +4707,7 @@ def collect_third_party_intake_evidence(settings: Settings) -> list[EvidenceItem
                 "SubmissionIntakePreReviewCommand",
                 "SubmissionIntakeDecideCommand",
                 "SubmissionIntakeStageCandidateCommand",
+                "SubmissionIntakeInstallSmokeCommand",
             )
         ),
         "preReviewArtifacts": all(
@@ -4724,8 +4729,21 @@ def collect_third_party_intake_evidence(settings: Settings) -> list[EvidenceItem
                 "candidate-transparency-log.jsonl",
                 "catalog candidate does not expose third-party review metadata",
                 "caution catalog candidates require --allow-caution",
+                "installSmoke=pending",
             )
         ),
+        "betaCatalogInstallSmoke": all(
+            token in cli_text
+            for token in (
+                "install-smoke",
+                "candidate-install-smoke.json",
+                "recordInstallSmokePassed",
+                "Beta catalog install smoke passed",
+                "crypta-beta-catalog-install-smoke",
+            )
+        )
+        and "assertCandidateStagingPendingSmoke" in cli_test_text
+        and "assertInstallSmokePassed" in cli_test_text,
         "operatorApi": all(
             token in api_text
             for token in (
@@ -4757,6 +4775,7 @@ def collect_third_party_intake_evidence(settings: Settings) -> list[EvidenceItem
                 "submission intake pre-review",
                 "submission intake decide",
                 "submission intake stage-candidate",
+                "submission intake install-smoke",
                 "third-party-intake.queue-schema",
                 "non-production",
                 "redaction",
@@ -20796,7 +20815,8 @@ def make_self_test_workspace(workspace: Path) -> None:
         "browser session tokens, raw app data, local absolute paths, and raw fetched content. "
         "Public-beta app intake uses crypta-app submission intake import, "
         "crypta-app submission intake assign, crypta-app submission intake pre-review, "
-        "crypta-app submission intake decide, and crypta-app submission intake stage-candidate. "
+        "crypta-app submission intake decide, crypta-app submission intake stage-candidate, "
+        "and crypta-app submission intake install-smoke. "
         "Release evidence covers third-party-intake.queue-schema, third-party-intake.import, "
         "third-party-intake.reviewer-assignment, third-party-intake.pre-review-artifacts, "
         "third-party-intake.review-decision, third-party-intake.resubmission-flow, "
@@ -21263,11 +21283,14 @@ def make_self_test_workspace(workspace: Path) -> None:
         'LiveUskPublicationService loadSecureText requires exactly one of --dry-run or --live"; }\n'
         'class SubmissionIntakeCommand { String s = "SubmissionIntakeImportCommand '
         'SubmissionIntakeListCommand SubmissionIntakeAssignCommand SubmissionIntakePreReviewCommand '
-        'SubmissionIntakeDecideCommand SubmissionIntakeStageCandidateCommand pre-review.json '
+        'SubmissionIntakeDecideCommand SubmissionIntakeStageCandidateCommand '
+        'SubmissionIntakeInstallSmokeCommand pre-review.json '
         'submission-verification.json api-compatibility.json ui-lint.json redaction-scan.json '
         'artifact-manifest.json candidate-manifest.json candidate-review-receipt.properties '
         'candidate-transparency-log.jsonl catalog candidate does not expose third-party review metadata '
-        'caution catalog candidates require --allow-caution"; }\n',
+        'caution catalog candidates require --allow-caution installSmoke=pending install-smoke '
+        'candidate-install-smoke.json recordInstallSmokePassed Beta catalog install smoke passed '
+        'crypta-beta-catalog-install-smoke"; }\n',
         encoding="utf-8",
     )
     (devtools_dir / "AppTemplateKind.java").write_text(
@@ -21365,6 +21388,8 @@ def make_self_test_workspace(workspace: Path) -> None:
     )
     (toolkit_test_dir / "CryptaAppCliTest.java").write_text(
         "void submissionCreate_whenInitializedStaticBundleIncludesSdk_expectAccepted() {} "
+        "void assertCandidateStagingPendingSmoke() {} "
+        "void assertInstallSmokePassed() {} "
         "String s = \"vault.identities.manage operator-only\";\n",
         encoding="utf-8",
     )

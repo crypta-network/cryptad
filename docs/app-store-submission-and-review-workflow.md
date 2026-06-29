@@ -324,6 +324,12 @@ CRYPTA_APP=build/install/platform-devtools/bin/crypta-app
   --decision-dir build/app-intake/decisions/sub-... \
   --transparency-log build/app-intake/review-transparency.jsonl
 
+"$CRYPTA_APP" submission intake install-smoke \
+  --queue-dir build/app-intake \
+  --submission-id sub-... \
+  --beta-candidate-dir build/beta-catalog-candidates \
+  --transparency-log build/app-intake/review-transparency.jsonl
+
 "$CRYPTA_APP" review transparency verify \
   --log-file build/app-intake/review-transparency.jsonl
 ```
@@ -352,7 +358,14 @@ test reviewer keys unless the caller explicitly uses the developer/test escape h
 `candidate-review-receipt.properties`, and a candidate transparency export when a log path is
 supplied. It verifies the receipt against trusted reviewer keys before writing the candidate.
 Reviewed submissions can be staged directly. Caution submissions require `--allow-caution` and keep
-operator-visible warnings in the candidate metadata. Rejected submissions cannot be staged.
+operator-visible warnings in the candidate metadata. Rejected submissions cannot be staged. Staging
+leaves the queue record at `staged_to_beta_catalog` with `installSmokeStatus=pending`; it does not
+claim install-from-beta-catalog smoke success.
+
+`submission intake install-smoke` is the local structural install-from-beta-catalog proof. It
+re-inspects the staged catalog descriptor, the referenced bundle ZIP, the candidate review receipt,
+the third-party review metadata, and the candidate manifest before writing
+`candidate-install-smoke.json` and updating the queue record to `beta_install_smoke_passed`.
 
 The local operator API exposes safe diagnostics under `/api/v1/operator/app-submissions` when the
 queue directory is configured with `cryptad.appSubmissionIntakeDir` or
