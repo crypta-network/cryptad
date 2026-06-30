@@ -4757,11 +4757,35 @@ def evaluate_platform_api_gate(
     if previous_version is not None and current_version is not None and current_version < previous_version:
         failures.append(f"Contract version moved backward from {previous_version} to {current_version}")
     if current_baseline_reported and previous_details and not previous_baseline_reported:
-        warnings.append(
-            "Previous Platform API stable baseline metadata is unavailable; "
-            "stable baseline comparison is status-limited"
-        )
-        add_evidence_issue(details, "warningEvidenceIds", "platform-api.stable-breaking-change-check")
+        if mode == "release-candidate" and require_history:
+            failures.append(
+                "Previous Platform API stable baseline metadata is unavailable; "
+                "stable baseline comparison is required"
+            )
+            add_evidence_issue(
+                details, "failureEvidenceIds", "platform-api.previous-contract-snapshot"
+            )
+            add_evidence_issue(
+                details, "failureEvidenceIds", "platform-api.stable-breaking-change-check"
+            )
+            add_evidence_issue(
+                details,
+                "unwaivableFailureEvidenceIds",
+                "platform-api.previous-contract-snapshot",
+            )
+            add_evidence_issue(
+                details,
+                "unwaivableFailureEvidenceIds",
+                "platform-api.stable-breaking-change-check",
+            )
+        else:
+            warnings.append(
+                "Previous Platform API stable baseline metadata is unavailable; "
+                "stable baseline comparison is status-limited"
+            )
+            add_evidence_issue(
+                details, "warningEvidenceIds", "platform-api.stable-breaking-change-check"
+            )
     compared_stable_baseline_counts = False
     if current_baseline_reported and previous_baseline_reported:
         for baseline_count_key, explicit_count_key, label in (
@@ -10305,27 +10329,67 @@ def run_self_test(repo_root: Path) -> None:
                 contract_details["stableEndpointCount"] = 3
         previous_pre_freeze_path = workspace / "build/previous-pre-freeze/summary.json"
         write_json(previous_pre_freeze_path, previous_pre_freeze_summary)
-        pre_freeze_history_settings = dataclasses.replace(
-            settings,
-            out_dir=(workspace / "build/pre-freeze-history-cert").resolve(),
+        pre_freeze_warning_summary, pre_freeze_warning_exit_code = run_with_previous(
+            "pre-freeze-history-warning-cert",
             previous_summary=previous_pre_freeze_path,
-            require_history=True,
         )
-        pre_freeze_history_summary, pre_freeze_history_exit_code = run(
-            pre_freeze_history_settings
+        assert pre_freeze_warning_exit_code == 0, pre_freeze_warning_summary
+        pre_freeze_warning_platform_gate = gate_by_id(
+            pre_freeze_warning_summary, "ecosystem.platform-api-compatibility"
         )
-        assert pre_freeze_history_exit_code == 0, pre_freeze_history_summary
-        pre_freeze_platform_gate = gate_by_id(
-            pre_freeze_history_summary, "ecosystem.platform-api-compatibility"
-        )
-        assert pre_freeze_platform_gate["status"] == "warn", pre_freeze_platform_gate
-        assert "failureEvidenceIds" not in pre_freeze_platform_gate["details"], (
-            pre_freeze_platform_gate
+        assert pre_freeze_warning_platform_gate["status"] == "warn", pre_freeze_warning_platform_gate
+        assert "failureEvidenceIds" not in pre_freeze_warning_platform_gate["details"], (
+            pre_freeze_warning_platform_gate
         )
         assert any(
             "stable baseline comparison is status-limited" in warning
-            for warning in pre_freeze_platform_gate["details"].get("warnings", [])
-        ), pre_freeze_platform_gate
+            for warning in pre_freeze_warning_platform_gate["details"].get("warnings", [])
+        ), pre_freeze_warning_platform_gate
+
+        pre_freeze_required_history_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/pre-freeze-required-history-cert").resolve(),
+            previous_summary=previous_pre_freeze_path,
+            require_history=True,
+        )
+        pre_freeze_required_history_summary, pre_freeze_required_history_exit_code = run(
+            pre_freeze_required_history_settings
+        )
+        assert pre_freeze_required_history_exit_code == 1, pre_freeze_required_history_summary
+        pre_freeze_required_platform_gate = gate_by_id(
+            pre_freeze_required_history_summary, "ecosystem.platform-api-compatibility"
+        )
+        assert (
+            pre_freeze_required_platform_gate["status"] == "fail"
+        ), pre_freeze_required_platform_gate
+        assert pre_freeze_required_platform_gate["details"]["failureEvidenceIds"] == [
+            "platform-api.previous-contract-snapshot",
+            "platform-api.stable-breaking-change-check",
+            "platform-api.contract",
+        ], pre_freeze_required_platform_gate
+        assert pre_freeze_required_platform_gate["details"]["unwaivableFailureEvidenceIds"] == [
+            "platform-api.previous-contract-snapshot",
+            "platform-api.stable-breaking-change-check",
+        ], pre_freeze_required_platform_gate
+        assert any(
+            "stable baseline comparison is required" in failure
+            for failure in pre_freeze_required_platform_gate["details"].get("failures", [])
+        ), pre_freeze_required_platform_gate
+        assert (
+            "warningEvidenceIds" not in pre_freeze_required_platform_gate["details"]
+            or "platform-api.stable-breaking-change-check"
+            not in pre_freeze_required_platform_gate["details"].get("warningEvidenceIds", [])
+        ), pre_freeze_required_platform_gate
+        pre_freeze_required_matrix_row = matrix_row_by_id(
+            workspace / "build/pre-freeze-required-history-cert",
+            "platform-api-contract",
+        )
+        assert pre_freeze_required_matrix_row["status"] == "fail", (
+            pre_freeze_required_matrix_row
+        )
+        assert pre_freeze_required_matrix_row["releaseBlocker"] is True, (
+            pre_freeze_required_matrix_row
+        )
 
         previous_contract_v3 = json.loads(json.dumps(previous_good))
         for entry in previous_contract_v3["evidence"]:
