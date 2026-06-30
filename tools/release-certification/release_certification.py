@@ -4893,6 +4893,9 @@ def evaluate_platform_api_gate(
         if mode == "release-candidate" and require_history:
             failures.append(message)
             add_evidence_issue(details, "failureEvidenceIds", "platform-api.stable-breaking-change-check")
+            add_evidence_issue(
+                details, "unwaivableFailureEvidenceIds", "platform-api.stable-breaking-change-check"
+            )
         else:
             warnings.append(message)
             add_evidence_issue(details, "warningEvidenceIds", "platform-api.stable-breaking-change-check")
@@ -4938,6 +4941,9 @@ def evaluate_platform_api_gate(
         if mode == "release-candidate" and require_history:
             failures.append(message)
             add_evidence_issue(details, "failureEvidenceIds", "platform-api.stable-breaking-change-check")
+            add_evidence_issue(
+                details, "unwaivableFailureEvidenceIds", "platform-api.stable-breaking-change-check"
+            )
         else:
             warnings.append(message)
             add_evidence_issue(details, "warningEvidenceIds", "platform-api.stable-breaking-change-check")
@@ -4991,6 +4997,9 @@ def evaluate_platform_api_gate(
         if mode == "release-candidate" and require_history:
             failures.append(message)
             add_evidence_issue(details, "failureEvidenceIds", "platform-api.stable-breaking-change-check")
+            add_evidence_issue(
+                details, "unwaivableFailureEvidenceIds", "platform-api.stable-breaking-change-check"
+            )
         else:
             warnings.append(message)
             add_evidence_issue(details, "warningEvidenceIds", "platform-api.stable-breaking-change-check")
@@ -10873,6 +10882,54 @@ def run_self_test(repo_root: Path) -> None:
             "action-label metadata is unavailable" in failure
             for failure in endpoint_label_unavailable_gate["details"].get("failures", [])
         ), endpoint_label_unavailable_gate
+
+        previous_contract_endpoint_labels_unavailable = json.loads(
+            json.dumps(previous_contract_endpoint_labels)
+        )
+        for entry in previous_contract_endpoint_labels_unavailable["evidence"]:
+            if entry["id"] == "platform-api.contract":
+                entry["details"].pop("stableEndpointActionLabels", None)
+        previous_contract_endpoint_labels_unavailable_path = (
+            workspace / "build/previous-contract-endpoint-labels-unavailable/summary.json"
+        )
+        write_json(
+            previous_contract_endpoint_labels_unavailable_path,
+            previous_contract_endpoint_labels_unavailable,
+        )
+        previous_label_unavailable_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/previous-endpoint-label-unavailable-cert").resolve(),
+            previous_summary=previous_contract_endpoint_labels_unavailable_path,
+            require_history=True,
+            waivers={
+                "ecosystem.platform-api-compatibility": (
+                    "Release manager attempted to waive missing previous action-label metadata."
+                ),
+                "platform-api.stable-breaking-change-check": (
+                    "Release manager attempted to waive missing previous action-label metadata."
+                ),
+            },
+        )
+        previous_label_unavailable_summary, previous_label_unavailable_exit_code = run(
+            previous_label_unavailable_settings
+        )
+        assert previous_label_unavailable_exit_code == 1, previous_label_unavailable_summary
+        previous_label_unavailable_gate = gate_by_id(
+            previous_label_unavailable_summary, "ecosystem.platform-api-compatibility"
+        )
+        assert previous_label_unavailable_gate["status"] == "fail", (
+            previous_label_unavailable_gate
+        )
+        assert "waived" not in previous_label_unavailable_gate["details"], (
+            previous_label_unavailable_gate
+        )
+        assert previous_label_unavailable_gate["details"]["unwaivableFailureEvidenceIds"] == [
+            "platform-api.stable-breaking-change-check"
+        ], previous_label_unavailable_gate
+        assert any(
+            "Previous stable endpoint action-label metadata is unavailable" in failure
+            for failure in previous_label_unavailable_gate["details"].get("failures", [])
+        ), previous_label_unavailable_gate
 
         def set_contract_raw_endpoint_details(
             entry: dict[str, Any], routes: list[str], stable_count: int
