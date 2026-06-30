@@ -35,27 +35,53 @@ public final class PlatformApiContractJson {
   private static final String FIELD_APP_PROCESS_PRINCIPALS_ALLOWED = "appProcessPrincipalsAllowed";
   private static final String FIELD_CAPABILITIES = "capabilities";
   private static final String FIELD_CAPABILITY_COUNT = "capabilityCount";
+  private static final String FIELD_COMPATIBILITY_WINDOW = "compatibilityWindow";
   private static final String FIELD_CONTRACT = "contract";
   private static final String FIELD_CONTRACT_VERSION = "contractVersion";
+  private static final String FIELD_BASELINE_CONTRACT_VERSION = "baselineContractVersion";
+  private static final String FIELD_BASELINE_NAME = "baselineName";
+  private static final String FIELD_CRITICAL_STABLE_REMOVAL_WAIVER_ALLOWED =
+      "criticalStableRemovalWaiverAllowed";
   private static final String FIELD_DEPRECATED_SINCE_CONTRACT_VERSION =
       "deprecatedSinceContractVersion";
   private static final String FIELD_DEPRECATION = "deprecation";
   private static final String FIELD_DESCRIPTION = "description";
   private static final String FIELD_ENDPOINTS = "endpoints";
+  private static final String FIELD_EXPERIMENTAL_GRADUATION_REQUIRES_REVIEW =
+      "experimentalGraduationRequiresReview";
+  private static final String FIELD_EXPERIMENTAL_GRADUATION_REQUIRES_STABLE_REFERENCE_UPDATE =
+      "experimentalGraduationRequiresStableReferenceUpdate";
   private static final String FIELD_GENERATED_BY = "generatedBy";
   private static final String FIELD_HOST_OPERATOR_BYPASS_ALLOWED = "hostOperatorBypassAllowed";
   private static final String FIELD_METHOD = "method";
+  private static final String FIELD_MINIMUM_DEPRECATION_WINDOW_CONTRACT_VERSIONS =
+      "minimumDeprecationWindowContractVersions";
+  private static final String FIELD_MINIMUM_SCHEDULED_REMOVAL_WINDOW_CONTRACT_VERSIONS =
+      "minimumScheduledRemovalWindowContractVersions";
   private static final String FIELD_NAME = "name";
   private static final String FIELD_NOTE = "note";
+  private static final String FIELD_POLICY_DOCUMENT = "policyDocument";
+  private static final String FIELD_PREVIOUS_SNAPSHOT_REQUIRED_IN_PRODUCTION_BETA =
+      "previousSnapshotRequiredInProductionBeta";
   private static final String FIELD_REMOVAL_CONTRACT_VERSION = "removalContractVersion";
   private static final String FIELD_REQUIRED_CAPABILITIES = "requiredCapabilities";
   private static final String FIELD_ROUTE_FAMILY = "routeFamily";
   private static final String FIELD_ROUTE_TEMPLATE = "routeTemplate";
+  private static final String FIELD_SCHEMA_VERSION = "schemaVersion";
   private static final String FIELD_SINCE_CONTRACT_VERSION = "sinceContractVersion";
   private static final String FIELD_STABLE_BASELINE = "stableBaseline";
   private static final String FIELD_STABLE_BASELINE_MEMBER = "stableBaselineMember";
+  private static final String FIELD_STABLE_REMOVAL_REQUIRES_EXPLICIT_WAIVER =
+      "stableRemovalRequiresExplicitWaiver";
+  private static final String FIELD_STABLE_REMOVAL_REQUIRES_NEW_BASELINE =
+      "stableRemovalRequiresNewBaseline";
+  private static final String FIELD_STABLE_REMOVAL_REQUIRES_PREVIOUS_SNAPSHOT =
+      "stableRemovalRequiresPreviousSnapshot";
   private static final String FIELD_STABILITY = "stability";
   private static final String FIELD_STABILITY_POLICY = "stabilityPolicy";
+  private static final String FIELD_SUPPORT_PHASE = "supportPhase";
+  private static final String FIELD_SUPPORT_WINDOW_STARTED_RELEASE = "supportWindowStartedRelease";
+  private static final String FIELD_CURRENT_CONTRACT_VERSION = "currentContractVersion";
   private static final String FIELD_ENDPOINT_COUNT = "endpointCount";
 
   private PlatformApiContractJson() {}
@@ -102,12 +128,14 @@ public final class PlatformApiContractJson {
    */
   public static Map<String, Object> toJsonValue(PlatformApiContract contract) {
     PlatformApiContract checkedContract = Objects.requireNonNull(contract, FIELD_CONTRACT);
-    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(7);
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(8);
     json.put(FIELD_API_VERSION, checkedContract.apiVersion());
     json.put(FIELD_CONTRACT_VERSION, checkedContract.contractVersion());
     json.put(FIELD_GENERATED_BY, checkedContract.generatedBy());
     json.put(FIELD_STABILITY_POLICY, checkedContract.stabilityPolicy());
     json.put(FIELD_STABLE_BASELINE, stableBaselineJson(checkedContract.stableBaseline()));
+    json.put(
+        FIELD_COMPATIBILITY_WINDOW, compatibilityWindowJson(checkedContract.compatibilityWindow()));
     Set<String> stableBaselineCapabilities =
         Set.copyOf(checkedContract.stableBaseline().capabilities());
     json.put(
@@ -151,6 +179,7 @@ public final class PlatformApiContractJson {
         string(contract, FIELD_GENERATED_BY),
         string(contract, FIELD_STABILITY_POLICY),
         parseStableBaseline(contract, contractVersion),
+        parseCompatibilityWindow(contract, contractVersion),
         parseCapabilities(contract.get(FIELD_CAPABILITIES)),
         parseEndpoints(contract.get(FIELD_ENDPOINTS)));
   }
@@ -206,6 +235,43 @@ public final class PlatformApiContractJson {
     json.put(FIELD_ENDPOINT_COUNT, stableBaseline.endpointCount());
     json.put(FIELD_CAPABILITIES, stableBaseline.capabilities());
     json.put(FIELD_ENDPOINTS, stableBaseline.endpoints());
+    return json;
+  }
+
+  private static Map<String, Object> compatibilityWindowJson(
+      PlatformApiCompatibilityWindow window) {
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(16);
+    json.put(FIELD_SCHEMA_VERSION, window.schemaVersion());
+    json.put(FIELD_BASELINE_NAME, window.baselineName());
+    json.put(FIELD_BASELINE_CONTRACT_VERSION, window.baselineContractVersion());
+    json.put(FIELD_CURRENT_CONTRACT_VERSION, window.currentContractVersion());
+    json.put(FIELD_SUPPORT_PHASE, window.supportPhase().jsonValue());
+    json.put(FIELD_SUPPORT_WINDOW_STARTED_RELEASE, window.supportWindowStartedRelease());
+    json.put(
+        FIELD_MINIMUM_DEPRECATION_WINDOW_CONTRACT_VERSIONS,
+        window.minimumDeprecationWindowContractVersions());
+    json.put(
+        FIELD_MINIMUM_SCHEDULED_REMOVAL_WINDOW_CONTRACT_VERSIONS,
+        window.minimumScheduledRemovalWindowContractVersions());
+    json.put(FIELD_STABLE_REMOVAL_REQUIRES_NEW_BASELINE, window.stableRemovalRequiresNewBaseline());
+    json.put(
+        FIELD_STABLE_REMOVAL_REQUIRES_PREVIOUS_SNAPSHOT,
+        window.stableRemovalRequiresPreviousSnapshot());
+    json.put(
+        FIELD_STABLE_REMOVAL_REQUIRES_EXPLICIT_WAIVER,
+        window.stableRemovalRequiresExplicitWaiver());
+    json.put(
+        FIELD_CRITICAL_STABLE_REMOVAL_WAIVER_ALLOWED, window.criticalStableRemovalWaiverAllowed());
+    json.put(
+        FIELD_EXPERIMENTAL_GRADUATION_REQUIRES_REVIEW,
+        window.experimentalGraduationRequiresReview());
+    json.put(
+        FIELD_EXPERIMENTAL_GRADUATION_REQUIRES_STABLE_REFERENCE_UPDATE,
+        window.experimentalGraduationRequiresStableReferenceUpdate());
+    json.put(
+        FIELD_PREVIOUS_SNAPSHOT_REQUIRED_IN_PRODUCTION_BETA,
+        window.previousSnapshotRequiredInProductionBeta());
+    json.put(FIELD_POLICY_DOCUMENT, window.policyDocument());
     return json;
   }
 
@@ -297,6 +363,32 @@ public final class PlatformApiContractJson {
         integer(json, FIELD_ENDPOINT_COUNT),
         stringArray(json.get(FIELD_CAPABILITIES), FIELD_STABLE_BASELINE + "." + FIELD_CAPABILITIES),
         stringArray(json.get(FIELD_ENDPOINTS), FIELD_STABLE_BASELINE + "." + FIELD_ENDPOINTS));
+  }
+
+  private static PlatformApiCompatibilityWindow parseCompatibilityWindow(
+      Map<String, Object> contract, int contractVersion) {
+    Object value = contract.get(FIELD_COMPATIBILITY_WINDOW);
+    if (value == null) {
+      return PlatformApiCompatibilityWindow.current(contractVersion);
+    }
+    Map<String, Object> json = asObject(value, FIELD_COMPATIBILITY_WINDOW);
+    return new PlatformApiCompatibilityWindow(
+        integer(json, FIELD_SCHEMA_VERSION),
+        string(json, FIELD_BASELINE_NAME),
+        integer(json, FIELD_BASELINE_CONTRACT_VERSION),
+        integer(json, FIELD_CURRENT_CONTRACT_VERSION),
+        PlatformApiCompatibilityWindowStatus.parse(string(json, FIELD_SUPPORT_PHASE)),
+        string(json, FIELD_SUPPORT_WINDOW_STARTED_RELEASE),
+        integer(json, FIELD_MINIMUM_DEPRECATION_WINDOW_CONTRACT_VERSIONS),
+        integer(json, FIELD_MINIMUM_SCHEDULED_REMOVAL_WINDOW_CONTRACT_VERSIONS),
+        bool(json, FIELD_STABLE_REMOVAL_REQUIRES_NEW_BASELINE),
+        bool(json, FIELD_STABLE_REMOVAL_REQUIRES_PREVIOUS_SNAPSHOT),
+        bool(json, FIELD_STABLE_REMOVAL_REQUIRES_EXPLICIT_WAIVER),
+        bool(json, FIELD_CRITICAL_STABLE_REMOVAL_WAIVER_ALLOWED),
+        bool(json, FIELD_EXPERIMENTAL_GRADUATION_REQUIRES_REVIEW),
+        bool(json, FIELD_EXPERIMENTAL_GRADUATION_REQUIRES_STABLE_REFERENCE_UPDATE),
+        bool(json, FIELD_PREVIOUS_SNAPSHOT_REQUIRED_IN_PRODUCTION_BETA),
+        string(json, FIELD_POLICY_DOCUMENT));
   }
 
   private static PlatformApiDeprecation parseDeprecation(Object value) {

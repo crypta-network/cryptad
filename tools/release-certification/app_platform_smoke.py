@@ -154,6 +154,11 @@ FIRST_PARTY_MAINTENANCE_ENUMS = {
 }
 CURRENT_PLATFORM_API_CONTRACT_VERSION = 23
 CURRENT_PLATFORM_API_STABLE_BASELINE_CONTRACT_VERSION = 19
+PLATFORM_API_MINIMUM_DEPRECATION_WINDOW_CONTRACT_VERSIONS = 2
+PLATFORM_API_MINIMUM_SCHEDULED_REMOVAL_WINDOW_CONTRACT_VERSIONS = 2
+PLATFORM_API_DEPRECATION_STABILITY_VALUES = {"deprecated", "scheduled-for-removal"}
+FIELD_DEPRECATED_SINCE_CONTRACT_VERSION = "deprecatedSinceContractVersion"
+FIELD_REMOVAL_CONTRACT_VERSION = "removalContractVersion"
 FIRST_PARTY_CERTIFIED_MAX_CONTRACT_VERSION = CURRENT_PLATFORM_API_CONTRACT_VERSION
 NETWORK_SCALE_EVIDENCE_IDS = (
     "network-scale.app-network-budget",
@@ -2011,6 +2016,10 @@ def boolean_field(value: Any) -> bool:
     return value if isinstance(value, bool) else False
 
 
+def plain_int(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
 def stable_endpoint_app_access(
     endpoints: list[Any], baseline_endpoint_identities: list[str]
 ) -> dict[str, dict[str, bool]]:
@@ -2040,6 +2049,183 @@ def stable_endpoint_app_access(
             },
         )
     return {identity: access_by_endpoint[identity] for identity in sorted(access_by_endpoint)}
+
+
+def stable_endpoint_action_labels(
+    endpoints: list[Any], baseline_endpoint_identities: list[str]
+) -> dict[str, str]:
+    baseline = set(baseline_endpoint_identities)
+    labels_by_endpoint: dict[str, str] = {}
+    for entry in endpoints:
+        if not isinstance(entry, dict):
+            continue
+        identity = endpoint_identity(entry)
+        if not identity:
+            continue
+        if baseline:
+            if identity not in baseline:
+                continue
+        elif str(entry.get("stability", "unknown")).lower() != "stable":
+            continue
+        label = str(entry.get("actionLabel") or "").strip()
+        if label:
+            labels_by_endpoint[identity] = label
+    return {identity: labels_by_endpoint[identity] for identity in sorted(labels_by_endpoint)}
+
+
+def stable_descriptor_deprecation_entry(
+    kind: str, identity: str, entry: dict[str, Any]
+) -> dict[str, Any] | None:
+    stability = str(entry.get("stability", "unknown")).strip().lower()
+    deprecation = entry.get("deprecation")
+    has_deprecation_metadata = isinstance(deprecation, dict)
+    if stability not in PLATFORM_API_DEPRECATION_STABILITY_VALUES and not has_deprecation_metadata:
+        return None
+    descriptor: dict[str, Any] = {
+        "kind": kind,
+        "identity": identity,
+        "stability": stability,
+        "hasDeprecationMetadata": has_deprecation_metadata,
+    }
+    if has_deprecation_metadata:
+        descriptor[FIELD_DEPRECATED_SINCE_CONTRACT_VERSION] = deprecation.get(
+            FIELD_DEPRECATED_SINCE_CONTRACT_VERSION
+        )
+        if FIELD_REMOVAL_CONTRACT_VERSION in deprecation:
+            descriptor[FIELD_REMOVAL_CONTRACT_VERSION] = deprecation.get(
+                FIELD_REMOVAL_CONTRACT_VERSION
+            )
+    return descriptor
+
+
+def stable_descriptor_deprecations(
+    capabilities: list[Any],
+    endpoints: list[Any],
+    baseline_capabilities: list[str],
+    baseline_endpoints: list[str],
+) -> list[dict[str, Any]]:
+    baseline_capability_names = set(baseline_capabilities)
+    baseline_endpoint_identities = set(baseline_endpoints)
+    deprecations: list[dict[str, Any]] = []
+    for entry in capabilities:
+        if not isinstance(entry, dict):
+            continue
+        name = str(entry.get("name") or entry.get("id") or "").strip()
+        if not name or name not in baseline_capability_names:
+            continue
+        descriptor = stable_descriptor_deprecation_entry("capability", name, entry)
+        if descriptor:
+            deprecations.append(descriptor)
+    for entry in endpoints:
+        if not isinstance(entry, dict):
+            continue
+        identity = endpoint_identity(entry)
+        if not identity or identity not in baseline_endpoint_identities:
+            continue
+        descriptor = stable_descriptor_deprecation_entry("endpoint", identity, entry)
+        if descriptor:
+            deprecations.append(descriptor)
+    return sorted(deprecations, key=lambda value: (value["kind"], value["identity"]))
+
+
+def stable_deprecation_label(descriptor: dict[str, Any]) -> str:
+    kind = str(descriptor.get("kind") or "descriptor").strip()
+    identity = str(descriptor.get("identity") or "<unknown>").strip()
+    return f"stable {kind} {identity}"
+
+
+def stable_deprecation_version_errors(
+    descriptor: dict[str, Any],
+    current_contract_version: int,
+    minimum_deprecation_window: int,
+    minimum_scheduled_removal_window: int,
+) -> list[str]:
+    label = stable_deprecation_label(descriptor)
+    stability = str(descriptor.get("stability") or "unknown").strip().lower()
+    deprecated_since = descriptor.get(FIELD_DEPRECATED_SINCE_CONTRACT_VERSION)
+    if not plain_int(deprecated_since):
+        return [f"{label} is {stability} without deprecatedSinceContractVersion metadata"]
+    if deprecated_since > current_contract_version:
+        return [
+            f"{label} deprecatedSinceContractVersion {deprecated_since} is after current "
+            f"contractVersion {current_contract_version}"
+        ]
+    removal_version = descriptor.get(FIELD_REMOVAL_CONTRACT_VERSION)
+    if stability == "deprecated" and removal_version is None:
+        return []
+    if not plain_int(removal_version):
+        return [f"{label} is scheduled for removal without removalContractVersion metadata"]
+    errors: list[str] = []
+    if removal_version <= deprecated_since:
+        errors.append(
+            f"{label} removalContractVersion must be greater than "
+            "deprecatedSinceContractVersion"
+        )
+    if removal_version - deprecated_since < minimum_deprecation_window:
+        errors.append(
+            f"{label} deprecation window is shorter than "
+            f"{minimum_deprecation_window} contract versions"
+        )
+    if removal_version - current_contract_version < minimum_scheduled_removal_window:
+        errors.append(
+            f"{label} scheduled-removal runway is shorter than "
+            f"{minimum_scheduled_removal_window} contract versions"
+        )
+    return errors
+
+
+def stable_deprecation_policy_findings(
+    contract_details: dict[str, Any], compatibility_window: dict[str, Any]
+) -> tuple[list[str], list[str]]:
+    errors: list[str] = []
+    warnings: list[str] = []
+    current_contract_version = contract_details.get("contractVersion")
+    minimum_deprecation_window = compatibility_window.get(
+        "minimumDeprecationWindowContractVersions"
+    )
+    minimum_scheduled_removal_window = compatibility_window.get(
+        "minimumScheduledRemovalWindowContractVersions"
+    )
+    if not plain_int(current_contract_version):
+        errors.append("contractVersion must be an integer for stable deprecation policy checks")
+    if not plain_int(minimum_deprecation_window):
+        errors.append("minimum deprecation window must be an integer")
+    if not plain_int(minimum_scheduled_removal_window):
+        errors.append("minimum scheduled-removal window must be an integer")
+    descriptors = contract_details.get("stableDescriptorDeprecations")
+    if not isinstance(descriptors, list):
+        errors.append("stable descriptor deprecation metadata is missing")
+        descriptors = []
+    if errors:
+        return errors, warnings
+    for descriptor in descriptors:
+        if not isinstance(descriptor, dict):
+            errors.append("stable descriptor deprecation entry is malformed")
+            continue
+        stability = str(descriptor.get("stability") or "unknown").strip().lower()
+        label = stable_deprecation_label(descriptor)
+        if stability not in PLATFORM_API_DEPRECATION_STABILITY_VALUES:
+            warnings.append(f"{label} has deprecation metadata but stability is {stability}")
+            continue
+        descriptor_errors = stable_deprecation_version_errors(
+            descriptor,
+            current_contract_version,
+            minimum_deprecation_window,
+            minimum_scheduled_removal_window,
+        )
+        if descriptor_errors:
+            errors.extend(descriptor_errors)
+        elif descriptor.get(FIELD_REMOVAL_CONTRACT_VERSION) is None:
+            warnings.append(
+                f"{label} is deprecated since contract "
+                f"{descriptor.get(FIELD_DEPRECATED_SINCE_CONTRACT_VERSION)}"
+            )
+        else:
+            warnings.append(
+                f"{label} is scheduled for removal in contract "
+                f"{descriptor.get(FIELD_REMOVAL_CONTRACT_VERSION)}"
+            )
+    return errors, warnings
 
 
 def capability_names(capabilities: list[Any]) -> list[str]:
@@ -2132,6 +2318,9 @@ def collect_platform_api_contract_evidence(
     stable_capabilities = stable_capability_names(capabilities)
     stable_endpoints = stable_endpoint_identities(endpoints)
     stable_baseline = contract.get("stableBaseline") if isinstance(contract, dict) else None
+    compatibility_window = (
+        contract.get("compatibilityWindow") if isinstance(contract, dict) else None
+    )
     if isinstance(stable_baseline, dict):
         baseline_capabilities = stable_baseline.get("capabilities", [])
         baseline_endpoints = stable_baseline.get("endpoints", [])
@@ -2150,6 +2339,9 @@ def collect_platform_api_contract_evidence(
         details["stableBaseline"] = None
         details["stableBaselineCapabilities"] = stable_capabilities
         details["stableBaselineEndpoints"] = stable_endpoints
+    details["compatibilityWindow"] = (
+        compatibility_window if isinstance(compatibility_window, dict) else None
+    )
     details["stableCapabilities"] = stable_capabilities
     details["stableEndpoints"] = stable_endpoints
     details["stableEndpointRequiredCapabilities"] = stable_endpoint_required_capabilities(
@@ -2157,6 +2349,15 @@ def collect_platform_api_contract_evidence(
     )
     details["stableEndpointAppAccess"] = stable_endpoint_app_access(
         endpoints, details["stableBaselineEndpoints"]
+    )
+    details["stableEndpointActionLabels"] = stable_endpoint_action_labels(
+        endpoints, details["stableBaselineEndpoints"]
+    )
+    details["stableDescriptorDeprecations"] = stable_descriptor_deprecations(
+        capabilities,
+        endpoints,
+        details["stableBaselineCapabilities"],
+        details["stableBaselineEndpoints"],
     )
     details["stableCapabilityCount"] = len(details["stableCapabilities"])
     details["stableEndpointCount"] = len(details["stableEndpoints"])
@@ -2290,6 +2491,83 @@ def collect_platform_api_contract_evidence(
                 errors.append("stableBaseline.capabilityCount does not match capabilities")
             if stable_baseline.get("endpointCount") != details["stableBaselineEndpointCount"]:
                 errors.append("stableBaseline.endpointCount does not match endpoints")
+        if not isinstance(compatibility_window, dict):
+            errors.append("contract compatibilityWindow metadata is missing")
+        else:
+            if compatibility_window.get("schemaVersion") != 1:
+                errors.append("compatibilityWindow.schemaVersion must be 1")
+            if compatibility_window.get("baselineName") != "1.0":
+                errors.append("compatibilityWindow.baselineName must be 1.0")
+            if (
+                compatibility_window.get("baselineContractVersion")
+                != CURRENT_PLATFORM_API_STABLE_BASELINE_CONTRACT_VERSION
+            ):
+                errors.append(
+                    "compatibilityWindow.baselineContractVersion must match the Platform API"
+                    " 1.0 baseline contract version"
+                )
+            if compatibility_window.get("currentContractVersion") != contract_version:
+                errors.append(
+                    "compatibilityWindow.currentContractVersion must match contractVersion"
+                )
+            if compatibility_window.get("supportPhase") != "beta":
+                errors.append("compatibilityWindow.supportPhase must be beta")
+            deprecation_window = compatibility_window.get(
+                "minimumDeprecationWindowContractVersions"
+            )
+            if (
+                not isinstance(deprecation_window, int)
+                or isinstance(deprecation_window, bool)
+                or deprecation_window
+                < PLATFORM_API_MINIMUM_DEPRECATION_WINDOW_CONTRACT_VERSIONS
+            ):
+                errors.append("compatibilityWindow deprecation window is below policy minimum")
+            removal_window = compatibility_window.get(
+                "minimumScheduledRemovalWindowContractVersions"
+            )
+            if (
+                not isinstance(removal_window, int)
+                or isinstance(removal_window, bool)
+                or removal_window
+                < PLATFORM_API_MINIMUM_SCHEDULED_REMOVAL_WINDOW_CONTRACT_VERSIONS
+            ):
+                errors.append(
+                    "compatibilityWindow scheduled-removal window is below policy minimum"
+                )
+            if compatibility_window.get("stableRemovalRequiresNewBaseline") is not True:
+                errors.append("compatibilityWindow must require a future stable baseline")
+            if compatibility_window.get("stableRemovalRequiresPreviousSnapshot") is not True:
+                errors.append("compatibilityWindow must require previous snapshot history")
+            if compatibility_window.get("stableRemovalRequiresExplicitWaiver") is not True:
+                errors.append("compatibilityWindow must require explicit waiver metadata")
+            if compatibility_window.get("criticalStableRemovalWaiverAllowed") is not False:
+                errors.append("critical stable removals must not be waiverable")
+            if (
+                compatibility_window.get("experimentalGraduationRequiresReview")
+                is not True
+            ):
+                errors.append("experimental graduation must require review evidence")
+            if (
+                compatibility_window.get(
+                    "experimentalGraduationRequiresStableReferenceUpdate"
+                )
+                is not True
+            ):
+                errors.append(
+                    "experimental graduation must require stable reference documentation"
+                )
+            if (
+                compatibility_window.get("previousSnapshotRequiredInProductionBeta")
+                is not True
+            ):
+                errors.append(
+                    "production beta must require previous Platform API contract history"
+                )
+            if (
+                compatibility_window.get("policyDocument")
+                != "docs/platform-api-compatibility-support-window.md"
+            ):
+                errors.append("compatibilityWindow.policyDocument is not canonical")
     if not capabilities:
         errors.append("contract has no capability descriptors")
     if not endpoints:
@@ -2405,6 +2683,7 @@ def collect_platform_api_stable_freeze_evidence(
         "stableBaselineEndpointCount": contract_details.get("stableBaselineEndpointCount"),
         "stableEndpointRequiredCapabilities": stable_endpoint_capabilities,
         "stableEndpointAppAccess": stable_endpoint_access,
+        "stableEndpointActionLabels": contract_details.get("stableEndpointActionLabels", {}),
         "historyGate": "release_certification.py compares previous stable baseline summaries",
         "productionMode": "requires previous release summary through release certification history",
     }
@@ -2419,6 +2698,181 @@ def collect_platform_api_stable_freeze_evidence(
         ),
         source,
         {"errors": stable_errors, **breaking_check_details},
+    )
+
+    compatibility_window = contract_details.get("compatibilityWindow")
+    window_errors: list[str] = []
+    if not isinstance(compatibility_window, dict):
+        window_errors.append("compatibilityWindow metadata is missing")
+        compatibility_window = {}
+    else:
+        expected_window_values = {
+            "schemaVersion": 1,
+            "baselineName": "1.0",
+            "baselineContractVersion": CURRENT_PLATFORM_API_STABLE_BASELINE_CONTRACT_VERSION,
+            "currentContractVersion": contract_details.get("contractVersion"),
+            "supportPhase": "beta",
+            "stableRemovalRequiresNewBaseline": True,
+            "stableRemovalRequiresPreviousSnapshot": True,
+            "stableRemovalRequiresExplicitWaiver": True,
+            "criticalStableRemovalWaiverAllowed": False,
+            "experimentalGraduationRequiresReview": True,
+            "experimentalGraduationRequiresStableReferenceUpdate": True,
+            "previousSnapshotRequiredInProductionBeta": True,
+            "policyDocument": "docs/platform-api-compatibility-support-window.md",
+        }
+        for key, expected in expected_window_values.items():
+            if compatibility_window.get(key) != expected:
+                window_errors.append(f"compatibilityWindow.{key} must be {expected!r}")
+        if (
+            compatibility_window.get("minimumDeprecationWindowContractVersions")
+            != PLATFORM_API_MINIMUM_DEPRECATION_WINDOW_CONTRACT_VERSIONS
+        ):
+            window_errors.append("compatibilityWindow deprecation window policy mismatch")
+        if (
+            compatibility_window.get("minimumScheduledRemovalWindowContractVersions")
+            != PLATFORM_API_MINIMUM_SCHEDULED_REMOVAL_WINDOW_CONTRACT_VERSIONS
+        ):
+            window_errors.append("compatibilityWindow scheduled-removal policy mismatch")
+        if not compatibility_window.get("supportWindowStartedRelease"):
+            window_errors.append("compatibilityWindow.supportWindowStartedRelease is missing")
+    compatibility_window_item = EvidenceItem(
+        "platform-api.compatibility-window",
+        root_consequence(settings, "fail") if window_errors else "pass",
+        True,
+        (
+            "Platform API compatibility-window metadata is incomplete."
+            if window_errors
+            else "Platform API 1.0 compatibility-window metadata is present."
+        ),
+        source,
+        {
+            "errors": window_errors,
+            "compatibilityWindow": compatibility_window,
+        },
+    )
+
+    previous_snapshot_errors: list[str] = []
+    if compatibility_window.get("previousSnapshotRequiredInProductionBeta") is not True:
+        previous_snapshot_errors.append("production beta previous snapshot policy is disabled")
+    if compatibility_window.get("stableRemovalRequiresPreviousSnapshot") is not True:
+        previous_snapshot_errors.append("stable removal previous snapshot policy is disabled")
+    previous_snapshot_item = EvidenceItem(
+        "platform-api.previous-contract-snapshot",
+        root_consequence(settings, "fail") if previous_snapshot_errors else "pass",
+        True,
+        (
+            "Previous Platform API contract snapshot policy is incomplete."
+            if previous_snapshot_errors
+            else "Previous Platform API contract snapshot history is enforced by release certification."
+        ),
+        source,
+        {
+            "errors": previous_snapshot_errors,
+            "canonicalLocations": [
+                "docs/platform-api/contracts/platform-api-1.0-baseline.json",
+                "docs/platform-api/contracts/previous-production-beta-contract.json",
+                "build/production-beta-release/evidence/platform-api-contract-current.json",
+                "build/production-beta-release/evidence/platform-api-contract-previous.json",
+                "build/production-beta-release/evidence/platform-api-stable-diff.json",
+            ],
+            "productionMode": "release_certification.py fails closed without previous contract history",
+        },
+    )
+
+    deprecation_policy_errors: list[str] = []
+    if (
+        compatibility_window.get("minimumDeprecationWindowContractVersions")
+        != PLATFORM_API_MINIMUM_DEPRECATION_WINDOW_CONTRACT_VERSIONS
+    ):
+        deprecation_policy_errors.append("minimum deprecation window mismatch")
+    if (
+        compatibility_window.get("minimumScheduledRemovalWindowContractVersions")
+        != PLATFORM_API_MINIMUM_SCHEDULED_REMOVAL_WINDOW_CONTRACT_VERSIONS
+    ):
+        deprecation_policy_errors.append("minimum scheduled-removal window mismatch")
+    if compatibility_window.get("stableRemovalRequiresNewBaseline") is not True:
+        deprecation_policy_errors.append("stable removals must require a future baseline")
+    if compatibility_window.get("criticalStableRemovalWaiverAllowed") is not False:
+        deprecation_policy_errors.append("critical stable removal waiver must be rejected")
+    descriptor_policy_errors, descriptor_policy_warnings = stable_deprecation_policy_findings(
+        contract_details, compatibility_window
+    )
+    deprecation_policy_errors.extend(descriptor_policy_errors)
+    deprecation_policy_item = EvidenceItem(
+        "platform-api.deprecation-window-policy",
+        root_consequence(settings, "fail") if deprecation_policy_errors else "pass",
+        True,
+        (
+            "Stable Platform API deprecation/removal policy is incomplete."
+            if deprecation_policy_errors
+            else "Stable Platform API deprecation/removal windows are policy-backed."
+        ),
+        source,
+        {
+            "errors": deprecation_policy_errors,
+            "minimumDeprecationWindowContractVersions": compatibility_window.get(
+                "minimumDeprecationWindowContractVersions"
+            ),
+            "minimumScheduledRemovalWindowContractVersions": compatibility_window.get(
+                "minimumScheduledRemovalWindowContractVersions"
+            ),
+            "criticalStableRemovalWaiverAllowed": compatibility_window.get(
+                "criticalStableRemovalWaiverAllowed"
+            ),
+            "stableDescriptorDeprecations": contract_details.get(
+                "stableDescriptorDeprecations", []
+            ),
+            "descriptorErrors": descriptor_policy_errors,
+            "descriptorWarnings": descriptor_policy_warnings,
+        },
+    )
+
+    support_window_doc = (
+        settings.workspace_root / "docs/platform-api-compatibility-support-window.md"
+    )
+    stable_reference_doc = settings.workspace_root / "docs/platform-api-1.0-stable-reference.md"
+    verifier_test = (
+        settings.workspace_root
+        / "platform-api/src/test/java/network/crypta/platform/api/PlatformApiContractVerifierTest.java"
+    )
+    support_window_text = read_source(support_window_doc)
+    stable_reference_text_for_graduation = read_source(stable_reference_doc)
+    verifier_test_text = read_source(verifier_test)
+    graduation_checks = {
+        "reviewRequired": compatibility_window.get("experimentalGraduationRequiresReview")
+        is True,
+        "stableReferenceUpdateRequired": compatibility_window.get(
+            "experimentalGraduationRequiresStableReferenceUpdate"
+        )
+        is True,
+        "supportWindowDocExplainsGraduation": "experimental-to-stable graduation"
+        in support_window_text,
+        "stableReferenceDocNamesFrozenBaseline": "Platform API 1.0 stable baseline"
+        in stable_reference_text_for_graduation,
+        "verifierTestsCoverStableIdentity": "compareStableBaseline_whenStableEndpointIdentityChanges"
+        in verifier_test_text,
+    }
+    graduation_errors = [name for name, passed in graduation_checks.items() if not passed]
+    graduation_policy_item = EvidenceItem(
+        "platform-api.experimental-graduation-policy",
+        root_consequence(settings, "fail") if graduation_errors else "pass",
+        True,
+        (
+            "Experimental-to-stable graduation policy evidence is incomplete."
+            if graduation_errors
+            else "Experimental-to-stable graduation requires review, docs, and verifier coverage."
+        ),
+        source,
+        {
+            "errors": graduation_errors,
+            "checks": graduation_checks,
+            "sources": {
+                "supportWindow": display_path(support_window_doc, settings.workspace_root),
+                "stableReference": display_path(stable_reference_doc, settings.workspace_root),
+                "verifierTest": display_path(verifier_test, settings.workspace_root),
+            },
+        },
     )
 
     manifest_sources = {
@@ -2493,13 +2947,20 @@ def collect_platform_api_stable_freeze_evidence(
 
     stable_reference = settings.workspace_root / "docs/platform-api-1.0-stable-reference.md"
     contract_doc = settings.workspace_root / "docs/platform-api-contract.md"
+    support_window_doc = (
+        settings.workspace_root / "docs/platform-api-compatibility-support-window.md"
+    )
     stable_reference_text = read_source(stable_reference)
     contract_doc_text = read_source(contract_doc)
+    support_window_text = read_source(support_window_doc)
     docs_checks = {
         "stableReferenceDocExists": stable_reference.is_file(),
         "stableReferenceNamesBaseline": "Platform API 1.0 stable baseline" in stable_reference_text,
         "contractDocMentionsTargetStability": "api.targetStability" in contract_doc_text,
         "contractDocMentionsOperatorOnly": "operator-only" in contract_doc_text,
+        "supportWindowDocMentionsPreviousSnapshots": "previous contract snapshot"
+        in support_window_text,
+        "supportWindowDocMentionsWaivers": "waiver" in support_window_text.lower(),
     }
     docs_errors = [name for name, passed in docs_checks.items() if not passed]
     docs_item = EvidenceItem(
@@ -2518,12 +2979,17 @@ def collect_platform_api_stable_freeze_evidence(
             "sources": {
                 "stableReference": display_path(stable_reference, settings.workspace_root),
                 "contractDoc": display_path(contract_doc, settings.workspace_root),
+                "supportWindowDoc": display_path(support_window_doc, settings.workspace_root),
             },
         },
     )
     return [
         stable_baseline_item,
         stable_breaking_item,
+        compatibility_window_item,
+        previous_snapshot_item,
+        deprecation_policy_item,
+        graduation_policy_item,
         manifest_item,
         first_party_item,
         docs_item,
@@ -17724,6 +18190,11 @@ def run_self_test(repo_root: Path) -> None:
         assert contract_item["status"] == "pass", contract_item
         assert evidence_by_id["platform-api.stable-baseline"]["status"] == "pass"
         assert evidence_by_id["platform-api.stable-breaking-change-check"]["status"] == "pass"
+        assert evidence_by_id["platform-api.compatibility-window"]["status"] == "pass"
+        assert evidence_by_id["platform-api.previous-contract-snapshot"]["status"] == "pass"
+        deprecation_policy_item = evidence_by_id["platform-api.deprecation-window-policy"]
+        assert deprecation_policy_item["status"] == "pass"
+        assert evidence_by_id["platform-api.experimental-graduation-policy"]["status"] == "pass"
         assert evidence_by_id["platform-api.manifest-target-stability"]["status"] == "pass"
         assert evidence_by_id["platform-api.first-party-stability-declarations"]["status"] == "pass"
         assert evidence_by_id["platform-api.stable-reference-docs"]["status"] == "pass"
@@ -17762,9 +18233,62 @@ def run_self_test(repo_root: Path) -> None:
             "replaceApp",
         ], backup_restore_item
         contract_details = contract_item["details"]
+        assert contract_details["stableDescriptorDeprecations"] == [], contract_item
+        assert deprecation_policy_item["details"]["stableDescriptorDeprecations"] == []
+        assert deprecation_policy_item["details"]["descriptorErrors"] == []
+        bad_contract_details = dict(contract_details)
+        bad_contract_details["stableDescriptorDeprecations"] = [
+            {
+                "kind": "capability",
+                "identity": "queue.read",
+                "stability": "scheduled-for-removal",
+                "hasDeprecationMetadata": False,
+            },
+            {
+                "kind": "endpoint",
+                "identity": "GET /queue",
+                "stability": "deprecated",
+                "hasDeprecationMetadata": True,
+                FIELD_DEPRECATED_SINCE_CONTRACT_VERSION: CURRENT_PLATFORM_API_CONTRACT_VERSION,
+                FIELD_REMOVAL_CONTRACT_VERSION: CURRENT_PLATFORM_API_CONTRACT_VERSION + 1,
+            },
+        ]
+        bad_deprecation_evidence = {
+            item.id: item.to_json()
+            for item in collect_platform_api_stable_freeze_evidence(
+                dataclasses.replace(settings, mode="release-candidate"),
+                EvidenceItem(
+                    "platform-api.contract",
+                    "pass",
+                    True,
+                    "self-test contract",
+                    summary_source(settings),
+                    bad_contract_details,
+                ),
+            )
+        }
+        bad_deprecation_policy = bad_deprecation_evidence[
+            "platform-api.deprecation-window-policy"
+        ]
+        assert bad_deprecation_policy["status"] == "fail", bad_deprecation_policy
+        bad_deprecation_errors = bad_deprecation_policy["details"]["descriptorErrors"]
+        assert any(
+            "without deprecatedSinceContractVersion" in error
+            for error in bad_deprecation_errors
+        ), bad_deprecation_policy
+        assert any(
+            "deprecation window is shorter" in error for error in bad_deprecation_errors
+        ), bad_deprecation_policy
         assert (
             contract_details["contractVersion"] == CURRENT_PLATFORM_API_CONTRACT_VERSION
         ), contract_item
+        assert contract_details["compatibilityWindow"]["baselineName"] == "1.0", contract_item
+        assert contract_details["compatibilityWindow"][
+            "previousSnapshotRequiredInProductionBeta"
+        ] is True, contract_item
+        assert contract_details["compatibilityWindow"][
+            "criticalStableRemovalWaiverAllowed"
+        ] is False, contract_item
         assert contract_details["capabilityCount"] == 17, contract_item
         assert contract_details["endpointCount"] == 65, contract_item
         assert contract_details["appServicesContract"]["missingCapabilities"] == [], contract_item
@@ -17827,6 +18351,10 @@ def run_self_test(repo_root: Path) -> None:
             "appBrowserPrincipalsAllowed": True,
             "appProcessPrincipalsAllowed": True,
         }, contract_item
+        assert set(contract_details["stableEndpointActionLabels"]) == set(
+            contract_details["stableBaselineEndpoints"]
+        ), contract_item
+        assert contract_details["stableEndpointActionLabels"]["GET /queue"], contract_item
         assert contract_details["snapshotCommand"]["exitCode"] == 0, contract_item
         assert contract_details["verifier"]["cert-smoke"]["exitCode"] == 0, contract_item
         assert evidence_by_id["catalog.smoke"]["status"] in {"warn", "pass"}
@@ -20437,6 +20965,11 @@ def make_self_test_workspace(workspace: Path) -> None:
         "String route = \"app-document\"; }\n",
         encoding="utf-8",
     )
+    (platform_api_tests / "PlatformApiContractVerifierTest.java").write_text(
+        "class PlatformApiContractVerifierTest { "
+        "void compareStableBaseline_whenStableEndpointIdentityChanges_expectSpecificFinding() {} }\n",
+        encoding="utf-8",
+    )
     (platform_api_tests / "ContentFetchApiTest.java").write_text(
         "void contentFetch_whenFeedFetched_expectNoRawFeedBodyOrRequestBodyEvidence() { "
         "String route = \"content/fetch\"; String capability = \"content.fetch\"; "
@@ -20798,7 +21331,8 @@ def make_self_test_workspace(workspace: Path) -> None:
         "production-security.response-runbook evidence for reviewer key compromise, catalog key rotation, "
         "app signing key compromise, emergency catalog update drills, support redaction, and security release notes. "
         "Third-party developer beta program docs cover crypta-app init --template hello-stable, "
-        "crypta-app test, crypta-app ui lint, crypta-app compat verify, crypta-app pack, "
+        "crypta-app test, crypta-app ui lint, crypta-app api policy, crypta-app api diff, "
+        "crypta-app compat verify, crypta-app pack, "
         "crypta-app submission create, crypta-app submission verify, crypta-app submission pre-review, "
         "crypta-app submission decide, crypta-app submission catalog-candidate, reviewed, caution, "
         "rejected, resubmission, resubmitted, api.targetStability=stable, "
@@ -20811,6 +21345,10 @@ def make_self_test_workspace(workspace: Path) -> None:
         "third-party-developer.plugin-author-migration, third-party-developer.redaction, "
         "Platform API 1.0 stable baseline, api.experimentalCapabilitiesAccepted=true, "
         "scheduled-for-removal, Release certification, previous release-candidate snapshot, "
+        "previous contract snapshot, experimental-to-stable graduation, stable reference update, "
+        "platform-api.compatibility-window, platform-api.previous-contract-snapshot, "
+        "platform-api.deprecation-window-policy, platform-api.experimental-graduation-policy, "
+        "compatibility waiver policy and non-waiverable stable removal blockers, "
         "Catalog candidates and review metadata, private keys, private insert URIs, "
         "browser session tokens, raw app data, local absolute paths, and raw fetched content. "
         "Public-beta app intake uses crypta-app submission intake import, "
@@ -23247,6 +23785,24 @@ def api_snapshot(args):
             "capabilities": stable_capabilities,
             "endpoints": [f"{method} {route}" for method, route, _capabilities, _since, _description in stable_endpoint_specs],
         },
+        "compatibilityWindow": {
+            "schemaVersion": 1,
+            "baselineName": "1.0",
+            "baselineContractVersion": STABLE_BASELINE_CONTRACT_VERSION,
+            "currentContractVersion": CURRENT_PLATFORM_API_CONTRACT_VERSION,
+            "supportPhase": "beta",
+            "supportWindowStartedRelease": "production-beta",
+            "minimumDeprecationWindowContractVersions": 2,
+            "minimumScheduledRemovalWindowContractVersions": 2,
+            "stableRemovalRequiresNewBaseline": True,
+            "stableRemovalRequiresPreviousSnapshot": True,
+            "stableRemovalRequiresExplicitWaiver": True,
+            "criticalStableRemovalWaiverAllowed": False,
+            "experimentalGraduationRequiresReview": True,
+            "experimentalGraduationRequiresStableReferenceUpdate": True,
+            "previousSnapshotRequiredInProductionBeta": True,
+            "policyDocument": "docs/platform-api-compatibility-support-window.md",
+        },
         "capabilities": [
             capability("queue.read", "stable", 1, "Read queue state."),
             capability("queue.write", "stable", 1, "Create and mutate queue requests."),
@@ -23340,7 +23896,7 @@ case "$cmd" in
       if [ "$1" = "--dir" ]; then dir="$2"; shift 2; else shift; fi
     done
     mkdir -p "$dir/bin" "$dir/static/crypta-ui"
-    printf '%s\n' 'manifest.version=1' 'app.id=cert-smoke' 'app.name=Certification Smoke' 'app.version=0.1.0' 'app.exec=bin/start.sh' 'api.minimumVersion=1' 'api.maximumTestedVersion=22' 'api.targetStability=stable' 'api.experimentalCapabilitiesAccepted=false' 'app.ui.mode=static' 'app.ui.entry=static/index.html' 'app.permissions=queue.read' > "$dir/cryptad-app.properties"
+    printf '%s\n' 'manifest.version=1' 'app.id=cert-smoke' 'app.name=Certification Smoke' 'app.version=0.1.0' 'app.exec=bin/start.sh' 'api.minimumVersion=1' 'api.maximumTestedVersion=23' 'api.targetStability=stable' 'api.experimentalCapabilitiesAccepted=false' 'app.ui.mode=static' 'app.ui.entry=static/index.html' 'app.permissions=queue.read' > "$dir/cryptad-app.properties"
     printf '%s\n' '#!/usr/bin/env sh' 'exit 0' > "$dir/bin/start.sh"
     printf '%s\n' '<!doctype html><html lang="en"><head><meta name="viewport" content="width=device-width, initial-scale=1"><title>Certification Smoke</title><link rel="stylesheet" href="./crypta-ui/crypta-ui-tokens.css"><link rel="stylesheet" href="./crypta-ui/crypta-ui.css"><link rel="stylesheet" href="./app.css"></head><body class="cr-app"><main class="cr-shell"><section class="cr-permission-summary" data-crypta-permission-summary><code>queue.read</code></section><h1>Certification Smoke</h1></main><script src="./crypta-platform.js"></script><script src="./app.js"></script></body></html>' > "$dir/static/index.html"
     printf '%s\n' 'CryptaPlatform.bootstrap.load({ appId: "cert-smoke" });' > "$dir/static/app.js"

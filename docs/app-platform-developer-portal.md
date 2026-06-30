@@ -31,6 +31,7 @@ Use this portal first, then follow the detailed source-of-truth pages for the ar
 | Production beta release pipeline | [production-beta-release-pipeline.md](production-beta-release-pipeline.md) |
 | Multi-node beta soak and upgrade drill | [multi-node-beta-soak-and-upgrade-drill.md](multi-node-beta-soak-and-upgrade-drill.md) |
 | Platform API contract | [platform-api-contract.md](platform-api-contract.md) |
+| Platform API 1.0 stable reference | [platform-api-1.0-stable-reference.md](platform-api-1.0-stable-reference.md) |
 | Platform API route surface | [platform-api-surface.md](platform-api-surface.md) |
 | Browser SDK | [platform-sdk-js.md](platform-sdk-js.md) |
 | App-service dependencies, bundles, and grants | [app-service-discovery-and-grants.md](app-service-discovery-and-grants.md) |
@@ -84,6 +85,29 @@ In docs, manifests, and catalog descriptors:
 Use [platform-api-contract.md](platform-api-contract.md) for compatibility rules and
 [platform-api-1.0-stable-reference.md](platform-api-1.0-stable-reference.md) for the frozen
 stable baseline. Use [platform-api-surface.md](platform-api-surface.md) for route families.
+
+The active Platform API 1.0 support-window policy is machine-readable in contract snapshots as
+`compatibilityWindow`. It requires previous contract snapshot history in production beta, rejects
+critical stable-removal waivers, and keeps experimental-to-stable graduation out of baseline 1.0
+unless a future stable baseline is documented. Use
+[platform-api-compatibility-support-window.md](platform-api-compatibility-support-window.md) for
+the full policy.
+
+Common author commands:
+
+```bash
+crypta-app api snapshot --output build/platform-api-contract.json
+crypta-app api policy --contract build/platform-api-contract.json
+crypta-app api diff \
+  --previous docs/platform-api/contracts/platform-api-1.0-baseline.json \
+  --current build/platform-api-contract.json \
+  --output build/platform-api-stable-diff.json
+crypta-app compat verify \
+  --bundle-dir build/dev-apps/hello-stable \
+  --contract build/platform-api-contract.json \
+  --target-stability stable \
+  --strict
+```
 
 ## First-party app set
 

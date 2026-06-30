@@ -27,6 +27,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.Callable;
@@ -39,6 +40,7 @@ import network.crypta.platform.api.PlatformApiContractVerifier.CompatibilityFind
 import network.crypta.platform.api.PlatformApiContractVerifier.CompatibilityFindingSeverity;
 import network.crypta.platform.api.PlatformApiContractVerifier.CompatibilityVerificationResult;
 import network.crypta.platform.api.PlatformApiContractVerifier;
+import network.crypta.platform.api.json.PlatformApiJsonWriter;
 import network.crypta.platform.appcatalog.AppCatalog;
 import network.crypta.platform.appcatalog.AppCatalogBuildRequest;
 import network.crypta.platform.appcatalog.AppCatalogChangelog;
@@ -89,6 +91,7 @@ import network.crypta.platform.appcatalog.FileAppReviewTransparencyStore;
 import network.crypta.platform.appcatalog.FileAppSubmissionIntakeStore;
 import network.crypta.platform.appcatalog.TrustedReviewerKey;
 import network.crypta.platform.appcatalog.TrustedReviewerKeys;
+import network.crypta.platform.appdist.AppApiCompatibilityMetadata.TargetStability;
 import network.crypta.platform.appdist.AppApiCompatibilityMetadata;
 import network.crypta.platform.appdist.AppBundlePackager;
 import network.crypta.platform.appdist.AppDistributionException;
@@ -151,8 +154,13 @@ public final class CryptaAppCli implements Runnable {
   private static final String FIELD_VERSION = "version";
   private static final String FIELD_APP_ID = "appId";
   private static final String FIELD_BUNDLE_DIGEST = "bundleDigest";
+  private static final String FINDINGS_FIELD = "findings";
+  private static final String FIELD_COMPATIBILITY_WINDOW = "compatibilityWindow";
+  private static final String FIELD_CONTRACT_VERSION = "contractVersion";
   private static final String FIELD_MANIFEST_DIGEST = "manifestDigest";
+  private static final String FIELD_REDACTED = "redacted";
   private static final String FIELD_SCHEMA_VERSION = "schemaVersion";
+  private static final String FIELD_STABLE_BASELINE = "stableBaseline";
   private static final String FIELD_SUBMISSION_DIGEST = "submissionDigest";
   private static final String OPTION_SECURITY_ADVISORY_RECORD = "--security-advisory-record";
   private static final String OPTION_SECURITY_DENYLIST_ENTRY = "--security-denylist-entry";
@@ -171,6 +179,7 @@ public final class CryptaAppCli implements Runnable {
   private static final String PROPERTY_SUBMISSION_DECISION_VERSION =
       "submission.decision.version=1\n";
   private static final String PROPERTY_SUBMISSION_ID = "submission.id=";
+  private static final String FILE_CATALOG_CANDIDATE_PROPERTIES = "catalog-candidate.properties";
   private static final String FILE_PRE_REVIEW_JSON = "pre-review.json";
   private static final String FINDING_PREFIX_REDACTION = "redaction.";
   private static final String WARNING_DECISION_REJECTED = "decision=rejected";
@@ -626,7 +635,7 @@ public final class CryptaAppCli implements Runnable {
   @Command(
       name = "api",
       description = "Inspect the Platform API compatibility contract.",
-      subcommands = {ApiSnapshotCommand.class})
+      subcommands = {ApiSnapshotCommand.class, ApiPolicyCommand.class, ApiDiffCommand.class})
   static final class ApiCommand extends SpecAwareCommand implements Runnable {
     @Override
     public void run() {
@@ -653,6 +662,152 @@ public final class CryptaAppCli implements Runnable {
           StandardCharsets.UTF_8);
       super.commandLine().getOut().println("Wrote Platform API contract: " + normalizedOutput);
       return CommandLine.ExitCode.OK;
+    }
+  }
+
+  /** Implements {@code crypta-app api policy}. */
+  @Command(name = "policy", description = "Print Platform API compatibility-window policy.")
+  static final class ApiPolicyCommand extends SpecAwareCommand implements Callable<Integer> {
+    @Option(names = "--contract", description = "Platform API contract JSON snapshot.")
+    private Path contractFile;
+
+    @Option(names = "--output", description = "Policy JSON file to write.")
+    private Path output;
+
+    @Override
+    public Integer call() throws Exception {
+      PlatformApiContract contract =
+          contractFile == null
+              ? PlatformApiContract.current()
+              : loadPlatformApiContract(contractFile);
+      Map<String, Object> report = policyReport(contract);
+      if (output != null) {
+        writeJsonOutput(output, report);
+      }
+      PlatformApiContract.StableBaseline baseline = contract.stableBaseline();
+      super.commandLine()
+          .getOut()
+          .println(
+              "Platform API "
+                  + baseline.name()
+                  + " compatibility window: contract="
+                  + contract.contractVersion()
+                  + " baselineContract="
+                  + baseline.contractVersion()
+                  + " capabilities="
+                  + baseline.capabilityCount()
+                  + " endpoints="
+                  + baseline.endpointCount());
+      return CommandLine.ExitCode.OK;
+    }
+
+    private static PlatformApiContract loadPlatformApiContract(Path contractFile)
+        throws IOException {
+      return PlatformApiContractJson.parse(
+          Files.readString(contractFile.toAbsolutePath().normalize(), StandardCharsets.UTF_8));
+    }
+
+    private static Map<String, Object> policyReport(PlatformApiContract contract) {
+      Map<String, Object> contractJson = PlatformApiContractJson.toJsonValue(contract);
+      LinkedHashMap<String, Object> report = LinkedHashMap.newLinkedHashMap(6);
+      report.put(FIELD_SCHEMA_VERSION, 1);
+      report.put(FIELD_CONTRACT_VERSION, contract.contractVersion());
+      report.put(FIELD_STABLE_BASELINE, contractJson.get(FIELD_STABLE_BASELINE));
+      report.put(FIELD_COMPATIBILITY_WINDOW, contractJson.get(FIELD_COMPATIBILITY_WINDOW));
+      LinkedHashMap<String, Object> graduationPolicy = LinkedHashMap.newLinkedHashMap(4);
+      graduationPolicy.put("currentBaselineFrozen", true);
+      graduationPolicy.put("targetBaselineRequired", true);
+      graduationPolicy.put(
+          "experimentalGraduationRequiresReview",
+          contract.compatibilityWindow().experimentalGraduationRequiresReview());
+      graduationPolicy.put(
+          "experimentalGraduationRequiresStableReferenceUpdate",
+          contract.compatibilityWindow().experimentalGraduationRequiresStableReferenceUpdate());
+      report.put("graduationPolicy", graduationPolicy);
+      report.put("policyDocument", contract.compatibilityWindow().policyDocument());
+      return report;
+    }
+  }
+
+  /** Implements {@code crypta-app api diff}. */
+  @Command(name = "diff", description = "Compare Platform API stable-baseline snapshots.")
+  static final class ApiDiffCommand extends SpecAwareCommand implements Callable<Integer> {
+    @Option(names = "--previous", required = true, description = "Previous contract JSON snapshot.")
+    private Path previous;
+
+    @Option(names = "--current", required = true, description = "Current contract JSON snapshot.")
+    private Path current;
+
+    @Option(names = "--output", description = "Stable diff JSON file to write.")
+    private Path output;
+
+    @Option(
+        names = "--production-beta",
+        description =
+            "Fail closed for missing production stable-baseline and compatibility-window metadata.")
+    private boolean productionBeta;
+
+    @Override
+    public Integer call() throws Exception {
+      String previousJson =
+          Files.readString(previous.toAbsolutePath().normalize(), StandardCharsets.UTF_8);
+      String currentJson =
+          Files.readString(current.toAbsolutePath().normalize(), StandardCharsets.UTF_8);
+      PlatformApiContract previousContract = PlatformApiContractJson.parse(previousJson);
+      PlatformApiContract currentContract = PlatformApiContractJson.parse(currentJson);
+      CompatibilityVerificationResult result =
+          PlatformApiContractVerifier.compareStableBaseline(
+              previousContract,
+              currentContract,
+              productionBeta,
+              contractObjectFieldPresent(previousJson, FIELD_STABLE_BASELINE),
+              contractObjectFieldPresent(currentJson, FIELD_STABLE_BASELINE),
+              contractObjectFieldPresent(previousJson, FIELD_COMPATIBILITY_WINDOW),
+              contractObjectFieldPresent(currentJson, FIELD_COMPATIBILITY_WINDOW));
+      Map<String, Object> report = diffReport(previousContract, currentContract, result);
+      if (output != null) {
+        writeJsonOutput(output, report);
+      }
+      printCompatibilityFindings(super.commandLine(), result);
+      if (result.hasErrors()) {
+        throw new AppDistributionException("Platform API stable diff failed");
+      }
+      super.commandLine().getOut().println("Platform API stable diff passed.");
+      return CommandLine.ExitCode.OK;
+    }
+
+    private static Map<String, Object> diffReport(
+        PlatformApiContract previous,
+        PlatformApiContract current,
+        CompatibilityVerificationResult result) {
+      Map<String, Object> previousJson = PlatformApiContractJson.toJsonValue(previous);
+      Map<String, Object> currentJson = PlatformApiContractJson.toJsonValue(current);
+      LinkedHashMap<String, Object> report = LinkedHashMap.newLinkedHashMap(8);
+      report.put(FIELD_SCHEMA_VERSION, 1);
+      report.put(FIELD_REDACTED, true);
+      report.put("previous", contractDiffSide(previous, previousJson));
+      report.put("current", contractDiffSide(current, currentJson));
+      report.put(FIELD_COMPATIBILITY_WINDOW, currentJson.get(FIELD_COMPATIBILITY_WINDOW));
+      report.put("ok", !result.hasErrors());
+      report.put("errors", result.toJsonValue().get("errors"));
+      report.put(
+          FINDINGS_FIELD,
+          result.findings().stream().map(CompatibilityFinding::toJsonValue).toList());
+      return report;
+    }
+
+    private static Map<String, Object> contractDiffSide(
+        PlatformApiContract contract, Map<String, Object> contractJson) {
+      LinkedHashMap<String, Object> side = LinkedHashMap.newLinkedHashMap(3);
+      side.put(FIELD_CONTRACT_VERSION, contract.contractVersion());
+      side.put("apiVersion", contract.apiVersion());
+      side.put(FIELD_STABLE_BASELINE, contractJson.get(FIELD_STABLE_BASELINE));
+      return side;
+    }
+
+    private static boolean contractObjectFieldPresent(String json, String fieldName) {
+      Pattern pattern = Pattern.compile("\"" + Pattern.quote(fieldName) + "\"\\s*:\\s*\\{");
+      return pattern.matcher(json).find();
     }
   }
 
@@ -688,14 +843,33 @@ public final class CryptaAppCli implements Runnable {
     @Option(names = "--strict", description = "Treat compatibility warnings as failures.")
     private boolean strict;
 
+    @Option(
+        names = "--target-stability",
+        description = "Override target stability: stable or experimental.")
+    private String targetStability;
+
+    @Option(names = "--json", description = "Compatibility JSON report to write.")
+    private Path jsonOutput;
+
     @Override
     public Integer call() throws Exception {
       requireExactlyOneCompatTarget();
       PlatformApiContract contract = loadContract(contractFile);
+      TargetStability override =
+          targetStability == null ? null : TargetStability.parse(targetStability);
       CompatibilityVerificationResult result =
           bundleDir == null
-              ? verifyCatalogEntry(catalogEntry, contract, strict)
-              : verifyBundle(bundleDir, contract, strict);
+              ? verifyCatalogEntry(catalogEntry, contract, strict, override)
+              : verifyBundle(bundleDir, contract, strict, override);
+      if (jsonOutput != null) {
+        writeJsonOutput(
+            jsonOutput,
+            compatibilityReport(
+                bundleDir == null ? "catalog-entry" : "bundle",
+                contract.contractVersion(),
+                override,
+                result));
+      }
       printCompatibilityFindings(super.commandLine(), result);
       if (result.hasErrors()) {
         throw new AppDistributionException("compatibility verification failed");
@@ -719,23 +893,25 @@ public final class CryptaAppCli implements Runnable {
     }
 
     private static CompatibilityVerificationResult verifyBundle(
-        Path bundleDir, PlatformApiContract contract, boolean strict) throws java.io.IOException {
+        Path bundleDir, PlatformApiContract contract, boolean strict, TargetStability override)
+        throws java.io.IOException {
       BundleValidation validation = BundleValidator.validate(bundleDir, false);
       return PlatformApiContractVerifier.verify(
-          validation.manifest().apiCompatibility(),
+          compatibilityWithTargetOverride(validation.manifest().apiCompatibility(), override),
           validation.manifest().permissions(),
           contract,
           strict);
     }
 
     private static CompatibilityVerificationResult verifyCatalogEntry(
-        Path descriptorFile, PlatformApiContract contract, boolean strict)
+        Path descriptorFile, PlatformApiContract contract, boolean strict, TargetStability override)
         throws java.io.IOException {
       AppCatalogWriter.CatalogEntryInspection inspection =
           AppCatalogWriter.inspectEntryDescriptor(descriptorFile);
       CompatibilityVerificationResult result =
           PlatformApiContractVerifier.verify(
-              inspection.entry().compatibility().apiCompatibility(),
+              compatibilityWithTargetOverride(
+                  inspection.entry().compatibility().apiCompatibility(), override),
               inspection.entry().permissions(),
               contract,
               strict);
@@ -783,6 +959,41 @@ public final class CryptaAppCli implements Runnable {
           code,
           strict ? CompatibilityFindingSeverity.ERROR : CompatibilityFindingSeverity.WARNING,
           message);
+    }
+
+    private static Map<String, Object> compatibilityReport(
+        String targetKind,
+        int contractVersion,
+        TargetStability override,
+        CompatibilityVerificationResult result) {
+      LinkedHashMap<String, Object> report = LinkedHashMap.newLinkedHashMap(7);
+      report.put(FIELD_SCHEMA_VERSION, 1);
+      report.put(FIELD_REDACTED, true);
+      report.put("targetKind", targetKind);
+      report.put(FIELD_CONTRACT_VERSION, contractVersion);
+      report.put("targetStabilityOverride", override == null ? null : override.manifestValue());
+      report.put("ok", !result.hasErrors());
+      report.put(
+          FINDINGS_FIELD,
+          result.findings().stream().map(CompatibilityFinding::toJsonValue).toList());
+      return report;
+    }
+
+    private static AppApiCompatibilityMetadata compatibilityWithTargetOverride(
+        AppApiCompatibilityMetadata metadata, TargetStability override) {
+      AppApiCompatibilityMetadata source =
+          Objects.requireNonNullElse(metadata, AppApiCompatibilityMetadata.undeclared());
+      if (override == null) {
+        return source;
+      }
+      return new AppApiCompatibilityMetadata(
+          source.minimumVersion(),
+          source.maximumTestedVersion(),
+          source.optionalCapabilities(),
+          override,
+          true,
+          source.experimentalCapabilitiesAccepted(),
+          source.experimentalCapabilitiesAcceptedDeclared());
     }
   }
 
@@ -1417,11 +1628,11 @@ public final class CryptaAppCli implements Runnable {
     private static String redactedVerificationJson(AppSubmissionVerification verification) {
       Map<String, Object> value = new LinkedHashMap<>();
       value.put(FIELD_SCHEMA_VERSION, 1);
-      value.put("redacted", true);
+      value.put(FIELD_REDACTED, true);
       value.put(FIELD_STATUS, verification.hasBlockers() ? "fail" : "pass");
       value.put("findingCount", verification.findings().size());
       value.put(
-          "findings",
+          FINDINGS_FIELD,
           verification.findings().stream()
               .map(SubmissionVerifyCommand::redactedFindingJsonValue)
               .toList());
@@ -1912,7 +2123,7 @@ public final class CryptaAppCli implements Runnable {
       root.put("kind", kind);
       root.put(FIELD_STATUS, values.isEmpty() ? "pass" : "review");
       root.put("findingCount", values.size());
-      root.put("findings", values);
+      root.put(FINDINGS_FIELD, values);
       return SubmissionVerifyCommand.writeJson(root);
     }
 
@@ -2479,7 +2690,7 @@ public final class CryptaAppCli implements Runnable {
         throw new AppDistributionException("caution catalog candidates require --allow-caution");
       }
       SubmissionCatalogCandidateCommand helper = new SubmissionCatalogCandidateCommand();
-      helper.output = candidateDirectory().resolve("catalog-candidate.properties");
+      helper.output = candidateDirectory().resolve(FILE_CATALOG_CANDIDATE_PROPERTIES);
       helper.bundleUri = bundleUri;
       helper.summary = summary;
       helper.requireReceiptMatchesSubmission(verified, receipt);
@@ -2492,7 +2703,7 @@ public final class CryptaAppCli implements Runnable {
               verified, receipt, bundleOutput, intakeRecord.preReviewStatus().orElse(null));
       String descriptorDigest = sha256Hex(descriptor.getBytes(StandardCharsets.UTF_8));
       String candidateReference =
-          "beta-candidate:" + candidateDirectoryName() + "/catalog-candidate.properties";
+          "beta-candidate:" + candidateDirectoryName() + "/" + FILE_CATALOG_CANDIDATE_PROPERTIES;
       Instant effectiveStagedAt = stagedAt == null ? Instant.now() : stagedAt;
       AppSubmissionCatalogCandidateRecord candidateRecord =
           new AppSubmissionCatalogCandidateRecord(
@@ -2509,7 +2720,7 @@ public final class CryptaAppCli implements Runnable {
       Files.createDirectories(candidateDirectory);
       SubmissionCatalogCandidateCommand.writeBytes(
           bundleOutput, verifiedArtifact.bytes(), overwrite);
-      Path descriptorOutput = candidateDirectory.resolve("catalog-candidate.properties");
+      Path descriptorOutput = candidateDirectory.resolve(FILE_CATALOG_CANDIDATE_PROPERTIES);
       writeText(descriptorOutput, descriptor, overwrite);
       AppCatalogWriter.CatalogEntryInspection inspection =
           AppCatalogWriter.inspectEntryDescriptor(descriptorOutput);
@@ -2626,7 +2837,7 @@ public final class CryptaAppCli implements Runnable {
               .orElseThrow(
                   () -> new AppDistributionException("install smoke requires staged candidate"));
       Path candidateDirectory = candidateDirectory();
-      Path descriptorOutput = candidateDirectory.resolve("catalog-candidate.properties");
+      Path descriptorOutput = candidateDirectory.resolve(FILE_CATALOG_CANDIDATE_PROPERTIES);
       Path bundleOutput = candidateDirectory.resolve("app-bundle.zip");
       Path receiptOutput = candidateDirectory.resolve("candidate-review-receipt.properties");
       Path manifestOutput = candidateDirectory.resolve("candidate-manifest.json");
@@ -4416,6 +4627,15 @@ public final class CryptaAppCli implements Runnable {
     final CommandLine commandLine() {
       return spec.commandLine();
     }
+  }
+
+  private static void writeJsonOutput(Path output, Map<String, Object> value) throws IOException {
+    Path normalizedOutput = output.toAbsolutePath().normalize();
+    Path parent = normalizedOutput.getParent();
+    if (parent != null) {
+      Files.createDirectories(parent);
+    }
+    Files.writeString(normalizedOutput, PlatformApiJsonWriter.write(value), StandardCharsets.UTF_8);
   }
 
   private static void printCompatibilityFindings(

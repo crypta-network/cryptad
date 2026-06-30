@@ -35,6 +35,7 @@ REQUIRED_DOCS = (
     "docs/catalog-operations-and-mirrors.md",
     "docs/app-dev-cli.md",
     "docs/platform-api-contract.md",
+    "docs/platform-api-1.0-stable-reference.md",
     "docs/platform-api-surface.md",
     "docs/app-service-discovery-and-grants.md",
     "docs/platform-sdk-js.md",
@@ -96,6 +97,8 @@ REQUIRED_CONCEPTS = (
     "crypta-app catalog create",
     "crypta-app catalog sign",
     "crypta-app catalog verify",
+    "crypta-app api policy",
+    "crypta-app api diff",
     "crypta-app submission create",
     "crypta-app submission verify",
     "crypta-app submission pre-review",
@@ -130,12 +133,17 @@ REQUIRED_CONCEPTS = (
     "network-content.subscription-scheduler",
     "rollback",
     "ecosystem certification matrix",
+    "platform-api.compatibility-window",
+    "platform-api.previous-contract-snapshot",
+    "platform-api.deprecation-window-policy",
+    "platform-api.experimental-graduation-policy",
     "FProxy browse remains retained",
 )
 
 REDACTION_ALLOWLIST_PATH_PREFIXES = (
     "/abs/path/",
     "/api/",
+    "/app-data/",
     "/app/node/",
     "/apps/",
     "/downloads/",
@@ -163,6 +171,8 @@ REDACTION_ALLOWLIST_PATH_PREFIXES = (
     "/src/",
     "/app-catalogs/",
     "/operator/",
+    "/platform/",
+    "/queue/",
 )
 
 REDACTION_ALLOWLIST_EXACT_PATHS = (

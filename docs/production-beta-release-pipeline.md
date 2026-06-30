@@ -115,6 +115,12 @@ Trust Graph, Social Inbox, support-bundle, and redaction metadata from the previ
 summaries. If those source summaries omit the metadata or report conflicting values, normalization
 fails and the candidate cannot be promoted.
 
+Platform API 1.0 compatibility history is part of that release-certification history baseline.
+Production beta fails closed when the current contract lacks `compatibilityWindow`, when previous
+contract history is missing, when stable API deprecation/removal windows are too short, or when a
+stable capability/endpoint is removed, reclassified, changes required capabilities, or loses
+app-principal access. Critical stable removals and redaction/security failures are not waiverable.
+
 ## Required inputs
 
 Dry-runs do not require release secrets. Production beta requires configured signing and review
@@ -168,6 +174,9 @@ build/production-beta-release/
     review-transparency-log.json
   evidence/
     api-compatibility.json
+    platform-api-contract-current.json
+    platform-api-contract-previous.json
+    platform-api-stable-diff.json
     app-ui-lint.json
     sandbox-provider-tests.json
     app-platform-smoke.json
@@ -190,6 +199,12 @@ build/production-beta-release/
 
 Temporary descriptors, generated test private keys, trusted-key scratch files, and raw command work
 directories are kept outside the public artifact tree.
+
+The Platform API files under `evidence/` are redacted, parseable contract artifacts. The current
+file is the candidate snapshot, the previous file is loaded from previous release-summary or
+release-artifact history, and `platform-api-stable-diff.json` contains deterministic stable
+baseline findings. They are safe previous-history inputs for later `crypta-app api diff` runs and
+must not contain local paths, private insert URIs, tokens, raw fetched content, or raw app data.
 
 The public `dist/` archive is created only after the main artifact redaction report and the
 go/no-go dashboard redaction report both pass. Archive creation rejects AppleDouble files,

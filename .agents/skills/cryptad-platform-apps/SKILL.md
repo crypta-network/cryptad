@@ -350,9 +350,15 @@ Load only the docs needed for the change:
 - `release-candidate` mode treats missing required signed bundle/catalog/app-platform evidence as
   failing unless a release-manager waiver is recorded by the aggregator.
 - Stable API release evidence must include stable capability names, stable endpoint identities,
-  stable endpoint required-capability sets, and stable endpoint app-process/app-browser access
-  flags. Production history checks fail closed on stable removals, required-capability changes,
-  access regressions, missing current metadata, or missing previous metadata when history is
+  stable endpoint required-capability sets, stable endpoint action labels, and stable endpoint
+  app-process/app-browser access flags, compatibility-window metadata, and descriptor-level stable
+  deprecation/removal metadata.
+  `platform-api.contract` details should include `stableDescriptorDeprecations`, and
+  `platform-api.deprecation-window-policy` should expose descriptor-level errors/warnings for
+  missing `deprecatedSinceContractVersion`, future deprecation starts, invalid
+  `removalContractVersion`, and too-short removal windows. Production history checks fail closed on
+  stable removals, required-capability changes, access regressions, missing current metadata,
+  malformed stable descriptor deprecation metadata, or missing previous metadata when history is
   required.
 - Keep app smoke self-tests Python-only and deterministic. Use fixtures or fake CLI helpers instead
   of network or Java dependencies for regression coverage where possible.

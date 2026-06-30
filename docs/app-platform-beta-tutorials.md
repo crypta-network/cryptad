@@ -315,6 +315,22 @@ feedback with `docs/third-party-app-submission-checklist.md` and
 `third-party-developer.sample-app-flow` and redaction checks without raw app data, private insert
 URIs, browser session tokens, private keys, or local absolute paths.
 
+Stable app authors can inspect the active support-window policy and compare contract snapshots
+offline before submitting:
+
+```bash
+"$CRYPTA_APP" api policy --contract dist/platform-api-contract.json
+"$CRYPTA_APP" api diff \
+  --previous docs/platform-api/contracts/previous-production-beta-contract.json \
+  --current dist/platform-api-contract.json \
+  --output dist/platform-api-stable-diff.json
+```
+
+Release evidence records `platform-api.compatibility-window`,
+`platform-api.previous-contract-snapshot`, `platform-api.deprecation-window-policy`, and
+`platform-api.experimental-graduation-policy`. The policy keeps stable apps on Platform API 1.0
+unless a future reviewed baseline is introduced with stable reference updates.
+
 Write an offline Crypta USK publication plan:
 
 ```bash

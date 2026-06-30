@@ -75,6 +75,14 @@ Use `api.targetStability=stable` when the app uses only the Platform API 1.0 sta
 in [platform-api-1.0-stable-reference.md](platform-api-1.0-stable-reference.md). Stable-only apps
 must set `api.experimentalCapabilitiesAccepted=false`.
 
+Stable-only apps get the active beta compatibility guarantee documented in
+[platform-api-compatibility-support-window.md](platform-api-compatibility-support-window.md):
+Platform API 1.0 stable capabilities, stable endpoint identities, required capability sets, and
+audit/authorization action labels, and app-principal access flags remain available across production
+beta releases unless a future stable baseline and release policy explicitly allow migration. This
+is not an indefinite support promise and it does not cover experimental, operator-only, internal,
+AppVault, app-service, Trust Graph, Web Shell, or legacy plugin APIs.
+
 Use `api.targetStability=experimental` only when the app knowingly uses app-facing experimental
 capabilities and sets `api.experimentalCapabilitiesAccepted=true`. Experimental apps may be
 accepted for beta review, but release certification and reviewers treat them as outside the stable
@@ -92,11 +100,21 @@ mkdir -p ../artifacts
 crypta-app test --bundle-dir . --strict --json ../artifacts/app-test.json
 crypta-app ui lint --bundle-dir . --strict --json ../artifacts/ui-lint.json
 crypta-app api snapshot --output ../artifacts/platform-api-contract.json
-crypta-app compat verify --bundle-dir . --contract ../artifacts/platform-api-contract.json --strict
+crypta-app api policy \
+  --contract ../artifacts/platform-api-contract.json \
+  --output ../artifacts/platform-api-policy.json
+crypta-app compat verify \
+  --bundle-dir . \
+  --contract ../artifacts/platform-api-contract.json \
+  --target-stability stable \
+  --strict \
+  --json ../artifacts/api-compatibility.json
 ```
 
 `crypta-app test` combines bundle validation, API compatibility verification, and static UI lint
 where applicable. The direct commands are useful when a reviewer needs a narrower report.
+Reviewers and release managers may also ask for `crypta-app api diff --previous ... --current ...`
+when comparing a submitted app against a previous production beta Platform API contract snapshot.
 
 ## Package and submit
 

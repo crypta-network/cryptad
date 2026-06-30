@@ -104,8 +104,10 @@ build/release-certification/live-network-beta-smoke/live-network-beta-smoke-repo
   signing, non-release summaries, dirty workspaces, and redaction findings.
 - `tools/release-certification/app_platform_smoke.py` produces the app-platform summary consumed by
   the aggregator. It keeps `--self-test` offline and Python-only, including source/test evidence
-  for the Platform API contract, Platform API 1.0 stable baseline, manifest/catalog target
-  stability, first-party stability declarations, stable reference docs, app-vault capability docs,
+  for the Platform API contract, Platform API 1.0 stable baseline, compatibility-window metadata,
+  previous contract snapshot policy, stable descriptor deprecation/removal windows,
+  experimental-graduation policy, manifest/catalog target stability, first-party stability
+  declarations, stable reference docs, app-vault capability docs,
   signed catalogs, first-party maintenance metadata, app-store submission package and pre-review
   evidence, catalog security advisory/denylist evidence, catalog operations and mirrors evidence,
   trusted app-review receipt/revocation evidence, unified user-consent snapshot/digest/audit
@@ -184,6 +186,8 @@ tools/release-certification/run-production-beta-release.sh --mode developer-dry-
   `ecosystem-security.advisory-revocation-redaction`, `production-security.response-runbook`,
   `platform-api.contract`,
   `platform-api.stable-baseline`, `platform-api.stable-breaking-change-check`,
+  `platform-api.compatibility-window`, `platform-api.previous-contract-snapshot`,
+  `platform-api.deprecation-window-policy`, `platform-api.experimental-graduation-policy`,
   `platform-api.manifest-target-stability`,
   `platform-api.first-party-stability-declarations`, `platform-api.stable-reference-docs`,
   `app-vault.capabilities`,
@@ -234,9 +238,13 @@ tools/release-certification/run-production-beta-release.sh --mode developer-dry-
   `production-beta.go-no-go-decision`, `production-beta.waiver-validation`,
   `production-beta.dashboard-redaction`, and `production-beta.launch-artifact-hygiene`.
 - Platform API stable-history checks compare the stable baseline name/counts/lists, stable endpoint
-  required-capability sets, and stable endpoint app-process/app-browser access flags. In production
-  history mode, missing previous baseline or endpoint metadata is a blocker; developer dry runs may
-  warn when no production history is available.
+  required-capability sets, stable endpoint action labels, stable endpoint app-process/app-browser
+  access flags, and compatibility-window metadata. App-platform smoke evidence must also inspect
+  `stableDescriptorDeprecations` and fail `platform-api.deprecation-window-policy` when a stable
+  descriptor is deprecated or scheduled for removal without valid metadata, has a future
+  `deprecatedSinceContractVersion`, or publishes a too-short `removalContractVersion` window. In
+  production history mode, missing previous baseline, compatibility-window, or endpoint metadata is
+  a blocker; developer dry runs may warn when no production history is available.
 - `catalog.operations-and-mirrors` is deterministic source-level evidence. It must verify the
   primary-plus-mirrors model, mirror fallback with signed verification, stale/downgrade
   prevention, bounded verified revision history, explicit rollback re-verification, key-rotation

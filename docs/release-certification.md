@@ -175,6 +175,10 @@ Release-candidate mode requires these evidence ids:
 | `platform-api.contract` | App-platform smoke summary. | The deterministic Platform API compatibility contract snapshot was generated, parsed, and used for offline compatibility verification of first-party/sample apps. |
 | `platform-api.stable-baseline` | App-platform smoke summary. | The Platform API 1.0 stable baseline metadata is present with deterministic capability and endpoint counts. |
 | `platform-api.stable-breaking-change-check` | App-platform smoke summary and release history. | Release certification compares the current stable baseline against previous production release evidence and blocks stable API breaking changes. |
+| `platform-api.compatibility-window` | App-platform smoke summary. | The current contract publishes `compatibilityWindow` metadata for baseline `1.0`, beta support phase, minimum deprecation/removal windows, previous-snapshot requirements, critical-waiver rejection, and the policy document path. |
+| `platform-api.previous-contract-snapshot` | App-platform smoke summary and release history. | Production beta requires previous Platform API contract history from a release-certification summary or release artifact; fixture/self-test snapshots are not promotion-ready evidence. |
+| `platform-api.deprecation-window-policy` | App-platform smoke summary. | Stable deprecation and scheduled-removal windows meet the minimum contract-version runway, stable removals require a future baseline, and descriptor-level `deprecatedSinceContractVersion` / `removalContractVersion` metadata is validated for every affected Platform API 1.0 stable capability or endpoint. |
+| `platform-api.experimental-graduation-policy` | App-platform smoke summary. | Experimental-to-stable graduation requires review evidence, verifier tests, and stable reference documentation for a future baseline instead of mutating Platform API 1.0. |
 | `platform-api.manifest-target-stability` | App-platform smoke summary. | Manifest, catalog, and CLI metadata preserve `api.targetStability`. |
 | `platform-api.first-party-stability-declarations` | App-platform smoke summary. | First-party staged manifests declare stable or experimental API targets and matching experimental acceptance flags. |
 | `platform-api.stable-reference-docs` | App-platform smoke summary. | The stable API 1.0 reference and contract docs describe baseline membership and operator-only exclusions. |
@@ -420,16 +424,29 @@ records an explicit waiver for a docs-only gap; redaction failures should not be
 
 `platform-api.contract` is generated offline with `crypta-app api snapshot`. The companion
 `platform-api.stable-baseline` evidence records the Platform API 1.0 baseline name, capability
-count/list, endpoint count/list, stable endpoint required-capability sets, and stable endpoint
-app-principal access flags. `platform-api.stable-breaking-change-check` is required evidence and
-the ecosystem gate compares current stable capabilities, endpoint identities, endpoint
-required-capability sets, and app-process/app-browser access flags against the previous production
-release summary. In `--require-history` release-candidate runs, missing previous stable-baseline or
-stable endpoint metadata is a blocker. Stable baseline removals, stability demotions,
-required-permission breaks, app-principal access regressions, snapshot generation failure, contract
-parse failure, missing contract evidence, or strict compatibility verifier failure are blockers
-unless a release-manager waiver is recorded. Developer dry runs without previous history warn
-instead of claiming production comparison coverage.
+count/list, endpoint count/list, stable endpoint required-capability sets, stable endpoint action
+labels, and stable endpoint app-principal access flags. `platform-api.stable-breaking-change-check`
+is required evidence and the ecosystem gate compares current stable capabilities, endpoint
+identities, endpoint required-capability sets, action labels, and app-process/app-browser access
+flags against the previous production release summary.
+
+`platform-api.compatibility-window`, `platform-api.previous-contract-snapshot`,
+`platform-api.deprecation-window-policy`, and `platform-api.experimental-graduation-policy` make the
+stable baseline support window explicit. In `--require-history` release-candidate and production
+beta runs, missing previous stable-baseline, compatibility-window, or stable endpoint metadata is a
+blocker. Stable baseline removals, stability demotions, required-permission breaks,
+app-principal access regressions, deprecation/removal window violations, current metadata gaps,
+snapshot generation failure, contract parse failure, missing contract evidence, or strict
+compatibility verifier failure are blockers. Critical stable removals, undeclared baseline
+mutation, current metadata gaps, production-beta history gaps, and redaction/security failures are
+not waiverable. Developer dry runs without previous history warn instead of claiming production
+comparison coverage.
+
+The app-platform smoke summary also records `platform-api.contract` details named
+`stableDescriptorDeprecations`. The deprecation-window evidence row reports descriptor-level
+`descriptorErrors` and `descriptorWarnings`; a stable descriptor that is deprecated or scheduled for
+removal without valid `deprecatedSinceContractVersion`, with a future deprecation start, or with a
+too-short `removalContractVersion` runway fails release-candidate and production beta evidence.
 
 `app-vault.capabilities` is deterministic offline evidence. The app-platform smoke runner checks
 that [app-secret-and-identity-vault.md](app-secret-and-identity-vault.md) documents the six vault

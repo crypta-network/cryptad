@@ -14,6 +14,14 @@ from the integer compatibility contract version described in
 The API is a local/internal control plane for the daemon and first-party shell. It is not yet a
 declared stable remote public API.
 
+The app-facing Platform API 1.0 stable promise is narrower than this full route surface. Stable
+membership is defined by `stableBaseline.name=1.0` in the contract snapshot and summarized in
+[platform-api-1.0-stable-reference.md](platform-api-1.0-stable-reference.md). Experimental,
+operator-only, internal, app-vault, app-service, Trust Graph, Web Shell-only, and legacy plugin
+surfaces remain outside that promise unless an individual descriptor is already a stable baseline
+member. The active support-window policy is in
+[platform-api-compatibility-support-window.md](platform-api-compatibility-support-window.md).
+
 Web Shell v1 is mounted separately at `/app/node/`. Its static assets are served beneath
 `/app/node/static/`, and its bootstrap payload points the browser at the Platform API root.
 

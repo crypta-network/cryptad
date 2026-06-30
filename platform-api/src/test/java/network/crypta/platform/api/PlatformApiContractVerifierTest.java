@@ -284,8 +284,6 @@ class PlatformApiContractVerifierTest {
             "test policy",
             List.of(
                 capability(
-                    PlatformApiCapabilities.APP_DATA_READ, PlatformApiStabilityLevel.EXPERIMENTAL),
-                capability(
                     PlatformApiCapabilities.APP_DATA_WRITE, PlatformApiStabilityLevel.STABLE)),
             List.of(appDataEndpoint("POST", PlatformApiCapabilities.APP_DATA_WRITE)));
 
@@ -294,7 +292,54 @@ class PlatformApiContractVerifierTest {
 
     assertTrue(result.hasErrors());
     assertEquals(
-        List.of("stable_api_breaking_change", "stable_api_breaking_change"),
+        List.of("stable_api_capability_removed", "stable_api_endpoint_removed"),
+        result.findings().stream()
+            .map(PlatformApiContractVerifier.CompatibilityFinding::code)
+            .toList());
+    assertEquals(false, result.findings().get(1).details().get("waiverAllowed"));
+  }
+
+  @Test
+  void compareStableBaseline_whenStableCapabilityIsReclassified_expectSpecificFinding() {
+    PlatformApiContract previous =
+        new PlatformApiContract(
+            "v1",
+            1,
+            "test",
+            "test policy",
+            List.of(
+                capability(PlatformApiCapabilities.APP_DATA_READ, PlatformApiStabilityLevel.STABLE),
+                capability(PlatformApiCapabilities.QUEUE_READ, PlatformApiStabilityLevel.STABLE)),
+            List.of(
+                appDataEndpoint("GET", PlatformApiCapabilities.APP_DATA_READ),
+                endpoint("GET", "/queue", PlatformApiCapabilities.QUEUE_READ, true)));
+    PlatformApiContract current =
+        new PlatformApiContract(
+            "v1",
+            2,
+            "test",
+            "test policy",
+            List.of(
+                capability(
+                    PlatformApiCapabilities.APP_DATA_READ, PlatformApiStabilityLevel.EXPERIMENTAL),
+                capability(PlatformApiCapabilities.QUEUE_READ, PlatformApiStabilityLevel.STABLE)),
+            List.of(
+                endpoint(
+                    "GET",
+                    "/app-data/records",
+                    PlatformApiCapabilities.APP_DATA_READ,
+                    PlatformApiCapabilities.APP_DATA_READ,
+                    true,
+                    PlatformApiStabilityLevel.EXPERIMENTAL,
+                    null),
+                endpoint("GET", "/queue", PlatformApiCapabilities.QUEUE_READ, true)));
+
+    CompatibilityVerificationResult result =
+        PlatformApiContractVerifier.compareStableBaseline(previous, current);
+
+    assertTrue(result.hasErrors());
+    assertEquals(
+        List.of("stable_api_capability_reclassified", "stable_api_endpoint_reclassified"),
         result.findings().stream()
             .map(PlatformApiContractVerifier.CompatibilityFinding::code)
             .toList());
@@ -326,9 +371,359 @@ class PlatformApiContractVerifierTest {
 
     assertTrue(result.hasErrors());
     assertEquals(
-        List.of("stable_api_breaking_change"),
+        List.of("stable_api_endpoint_app_principal_changed"),
         result.findings().stream()
             .map(PlatformApiContractVerifier.CompatibilityFinding::code)
+            .toList());
+  }
+
+  @Test
+  void compareStableBaseline_whenStableEndpointRequiredCapabilitiesChange_expectSpecificFinding() {
+    PlatformApiContract previous =
+        new PlatformApiContract(
+            "v1",
+            1,
+            "test",
+            "test policy",
+            List.of(
+                capability(PlatformApiCapabilities.QUEUE_READ, PlatformApiStabilityLevel.STABLE),
+                capability(PlatformApiCapabilities.QUEUE_WRITE, PlatformApiStabilityLevel.STABLE)),
+            List.of(
+                endpoint(
+                    "GET", "/queue", "queue.snapshot", PlatformApiCapabilities.QUEUE_READ, true)));
+    PlatformApiContract current =
+        new PlatformApiContract(
+            "v1",
+            2,
+            "test",
+            "test policy",
+            List.of(
+                capability(PlatformApiCapabilities.QUEUE_READ, PlatformApiStabilityLevel.STABLE),
+                capability(PlatformApiCapabilities.QUEUE_WRITE, PlatformApiStabilityLevel.STABLE)),
+            List.of(
+                endpoint(
+                    "GET", "/queue", "queue.snapshot", PlatformApiCapabilities.QUEUE_WRITE, true)));
+
+    CompatibilityVerificationResult result =
+        PlatformApiContractVerifier.compareStableBaseline(previous, current);
+
+    assertTrue(result.hasErrors());
+    assertEquals(
+        List.of("stable_api_endpoint_required_capabilities_changed"),
+        result.findings().stream()
+            .map(PlatformApiContractVerifier.CompatibilityFinding::code)
+            .toList());
+  }
+
+  @Test
+  void compareStableBaseline_whenStableEndpointIdentityChanges_expectSpecificFinding() {
+    PlatformApiContract previous =
+        new PlatformApiContract(
+            "v1",
+            1,
+            "test",
+            "test policy",
+            List.of(
+                capability(PlatformApiCapabilities.QUEUE_READ, PlatformApiStabilityLevel.STABLE)),
+            List.of(
+                endpoint(
+                    "GET", "/queue", "queue.snapshot", PlatformApiCapabilities.QUEUE_READ, true)));
+    PlatformApiContract current =
+        new PlatformApiContract(
+            "v1",
+            2,
+            "test",
+            "test policy",
+            List.of(
+                capability(PlatformApiCapabilities.QUEUE_READ, PlatformApiStabilityLevel.STABLE)),
+            List.of(
+                endpoint(
+                    "GET",
+                    "/queue-v2",
+                    "queue.snapshot",
+                    PlatformApiCapabilities.QUEUE_READ,
+                    true)));
+
+    CompatibilityVerificationResult result =
+        PlatformApiContractVerifier.compareStableBaseline(previous, current);
+
+    assertTrue(result.hasErrors());
+    assertEquals(
+        List.of("stable_api_endpoint_identity_changed"),
+        result.findings().stream()
+            .map(PlatformApiContractVerifier.CompatibilityFinding::code)
+            .toList());
+  }
+
+  @Test
+  void compareStableBaseline_whenStableEndpointRemovedWithSharedActionLabel_expectRemovedFinding() {
+    PlatformApiContract previous =
+        new PlatformApiContract(
+            "v1",
+            1,
+            "test",
+            "test policy",
+            List.of(
+                capability(PlatformApiCapabilities.QUEUE_READ, PlatformApiStabilityLevel.STABLE)),
+            List.of(
+                endpoint("GET", "/queue", "queue.read", PlatformApiCapabilities.QUEUE_READ, true),
+                endpoint(
+                    "GET",
+                    "/queue/count",
+                    "queue.read",
+                    PlatformApiCapabilities.QUEUE_READ,
+                    true)));
+    PlatformApiContract current =
+        new PlatformApiContract(
+            "v1",
+            2,
+            "test",
+            "test policy",
+            List.of(
+                capability(PlatformApiCapabilities.QUEUE_READ, PlatformApiStabilityLevel.STABLE)),
+            List.of(
+                endpoint(
+                    "GET",
+                    "/queue/count",
+                    "queue.read",
+                    PlatformApiCapabilities.QUEUE_READ,
+                    true)));
+
+    CompatibilityVerificationResult result =
+        PlatformApiContractVerifier.compareStableBaseline(previous, current);
+
+    assertTrue(result.hasErrors());
+    assertEquals(
+        List.of("stable_api_endpoint_removed"),
+        result.findings().stream()
+            .map(PlatformApiContractVerifier.CompatibilityFinding::code)
+            .toList());
+    assertEquals(false, result.findings().getFirst().details().get("waiverAllowed"));
+  }
+
+  @Test
+  void compareStableBaseline_whenPreviousMetadataMissingInProduction_expectErrorFinding() {
+    CompatibilityVerificationResult result =
+        PlatformApiContractVerifier.compareStableBaseline(
+            PlatformApiContract.current(), PlatformApiContract.current(), true, false, true);
+
+    assertTrue(result.hasErrors());
+    assertEquals(
+        List.of("stable_baseline_metadata_missing"),
+        result.findings().stream()
+            .map(PlatformApiContractVerifier.CompatibilityFinding::code)
+            .toList());
+    assertEquals(CompatibilityFindingSeverity.ERROR, result.findings().getFirst().severity());
+  }
+
+  @Test
+  void compareStableBaseline_whenPreviousMetadataMissingOutsideProduction_expectWarningFinding() {
+    CompatibilityVerificationResult result =
+        PlatformApiContractVerifier.compareStableBaseline(
+            PlatformApiContract.current(), PlatformApiContract.current(), false, false, true);
+
+    assertFalse(result.hasErrors());
+    assertEquals(
+        List.of("stable_baseline_metadata_missing"),
+        result.findings().stream()
+            .map(PlatformApiContractVerifier.CompatibilityFinding::code)
+            .toList());
+    assertEquals(CompatibilityFindingSeverity.WARNING, result.findings().getFirst().severity());
+  }
+
+  @Test
+  void
+      compareStableBaseline_whenPreviousCompatibilityWindowMissingInProduction_expectErrorFinding() {
+    CompatibilityVerificationResult result =
+        PlatformApiContractVerifier.compareStableBaseline(
+            PlatformApiContract.current(),
+            PlatformApiContract.current(),
+            true,
+            true,
+            true,
+            false,
+            true);
+
+    assertTrue(result.hasErrors());
+    assertEquals(
+        List.of("compatibility_window_metadata_missing"),
+        result.findings().stream()
+            .map(PlatformApiContractVerifier.CompatibilityFinding::code)
+            .toList());
+    assertEquals(CompatibilityFindingSeverity.ERROR, result.findings().getFirst().severity());
+  }
+
+  @Test
+  void
+      compareStableBaseline_whenPreviousCompatibilityWindowMissingOutsideProduction_expectWarning() {
+    CompatibilityVerificationResult result =
+        PlatformApiContractVerifier.compareStableBaseline(
+            PlatformApiContract.current(),
+            PlatformApiContract.current(),
+            false,
+            true,
+            true,
+            false,
+            true);
+
+    assertFalse(result.hasErrors());
+    assertEquals(
+        List.of("compatibility_window_metadata_missing"),
+        result.findings().stream()
+            .map(PlatformApiContractVerifier.CompatibilityFinding::code)
+            .toList());
+    assertEquals(CompatibilityFindingSeverity.WARNING, result.findings().getFirst().severity());
+  }
+
+  @Test
+  void compareStableBaseline_whenStableCapabilityScheduledWithoutMetadata_expectPolicyBlocker() {
+    PlatformApiContract previous = queueContract(1, PlatformApiStabilityLevel.STABLE, null);
+    PlatformApiContract current =
+        queueContract(2, PlatformApiStabilityLevel.SCHEDULED_FOR_REMOVAL, null);
+
+    CompatibilityVerificationResult result =
+        PlatformApiContractVerifier.compareStableBaseline(previous, current);
+
+    assertTrue(result.hasErrors());
+    assertEquals(
+        List.of(
+            "stable_api_deprecation_window_too_short", "stable_api_deprecation_window_too_short"),
+        result.findings().stream()
+            .map(PlatformApiContractVerifier.CompatibilityFinding::code)
+            .toList());
+  }
+
+  @Test
+  void compareStableBaseline_whenStableRemovalWindowIsTooShort_expectPolicyBlockers() {
+    PlatformApiContract previous = queueContract(23, PlatformApiStabilityLevel.STABLE, null);
+    PlatformApiContract current =
+        queueContract(
+            23,
+            PlatformApiStabilityLevel.SCHEDULED_FOR_REMOVAL,
+            new PlatformApiDeprecation(22, 23, "Use a future baseline."));
+
+    CompatibilityVerificationResult result =
+        PlatformApiContractVerifier.compareStableBaseline(previous, current);
+
+    assertTrue(result.hasErrors());
+    assertEquals(
+        List.of(
+            "stable_api_deprecation_window_too_short",
+            "stable_api_removal_window_too_short",
+            "stable_api_deprecation_window_too_short",
+            "stable_api_removal_window_too_short"),
+        result.findings().stream()
+            .map(PlatformApiContractVerifier.CompatibilityFinding::code)
+            .toList());
+  }
+
+  @Test
+  void compareStableBaseline_whenStableApiIsDeprecatedWithMetadata_expectWarning() {
+    PlatformApiContract previous = queueContract(23, PlatformApiStabilityLevel.STABLE, null);
+    PlatformApiContract current =
+        queueContract(
+            23,
+            PlatformApiStabilityLevel.DEPRECATED,
+            new PlatformApiDeprecation(23, null, "Use a future baseline."));
+
+    CompatibilityVerificationResult result =
+        PlatformApiContractVerifier.compareStableBaseline(previous, current);
+
+    assertFalse(result.hasErrors());
+    assertEquals(
+        List.of("stable_api_deprecation_warning", "stable_api_deprecation_warning"),
+        result.findings().stream()
+            .map(PlatformApiContractVerifier.CompatibilityFinding::code)
+            .toList());
+    assertEquals(
+        List.of(CompatibilityFindingSeverity.WARNING, CompatibilityFindingSeverity.WARNING),
+        result.findings().stream()
+            .map(PlatformApiContractVerifier.CompatibilityFinding::severity)
+            .toList());
+  }
+
+  @Test
+  void compareStableBaseline_whenDeprecatedStableApiNamesTooSoonRemoval_expectPolicyBlockers() {
+    PlatformApiContract previous = queueContract(23, PlatformApiStabilityLevel.STABLE, null);
+    PlatformApiContract current =
+        queueContract(
+            23,
+            PlatformApiStabilityLevel.DEPRECATED,
+            new PlatformApiDeprecation(23, 24, "Use a future baseline."));
+
+    CompatibilityVerificationResult result =
+        PlatformApiContractVerifier.compareStableBaseline(previous, current);
+
+    assertTrue(result.hasErrors());
+    assertEquals(
+        List.of(
+            "stable_api_deprecation_window_too_short",
+            "stable_api_removal_window_too_short",
+            "stable_api_deprecation_window_too_short",
+            "stable_api_removal_window_too_short"),
+        result.findings().stream()
+            .map(PlatformApiContractVerifier.CompatibilityFinding::code)
+            .toList());
+    assertEquals(
+        List.of(
+            CompatibilityFindingSeverity.ERROR,
+            CompatibilityFindingSeverity.ERROR,
+            CompatibilityFindingSeverity.ERROR,
+            CompatibilityFindingSeverity.ERROR),
+        result.findings().stream()
+            .map(PlatformApiContractVerifier.CompatibilityFinding::severity)
+            .toList());
+  }
+
+  @Test
+  void compareStableBaseline_whenStableApiDeprecationStartsInFuture_expectPolicyBlockers() {
+    PlatformApiContract previous = queueContract(23, PlatformApiStabilityLevel.STABLE, null);
+    PlatformApiContract current =
+        queueContract(
+            23,
+            PlatformApiStabilityLevel.DEPRECATED,
+            new PlatformApiDeprecation(24, null, "Use a future baseline."));
+
+    CompatibilityVerificationResult result =
+        PlatformApiContractVerifier.compareStableBaseline(previous, current);
+
+    assertTrue(result.hasErrors());
+    assertEquals(
+        List.of(
+            "stable_api_deprecation_window_too_short", "stable_api_deprecation_window_too_short"),
+        result.findings().stream()
+            .map(PlatformApiContractVerifier.CompatibilityFinding::code)
+            .toList());
+    assertEquals(
+        List.of(CompatibilityFindingSeverity.ERROR, CompatibilityFindingSeverity.ERROR),
+        result.findings().stream()
+            .map(PlatformApiContractVerifier.CompatibilityFinding::severity)
+            .toList());
+  }
+
+  @Test
+  void compareStableBaseline_whenScheduledRemovalStartsInFuture_expectPolicyBlockers() {
+    PlatformApiContract previous = queueContract(23, PlatformApiStabilityLevel.STABLE, null);
+    PlatformApiContract current =
+        queueContract(
+            23,
+            PlatformApiStabilityLevel.SCHEDULED_FOR_REMOVAL,
+            new PlatformApiDeprecation(24, 27, "Use a future baseline."));
+
+    CompatibilityVerificationResult result =
+        PlatformApiContractVerifier.compareStableBaseline(previous, current);
+
+    assertTrue(result.hasErrors());
+    assertEquals(
+        List.of(
+            "stable_api_deprecation_window_too_short", "stable_api_deprecation_window_too_short"),
+        result.findings().stream()
+            .map(PlatformApiContractVerifier.CompatibilityFinding::code)
+            .toList());
+    assertEquals(
+        List.of(CompatibilityFindingSeverity.ERROR, CompatibilityFindingSeverity.ERROR),
+        result.findings().stream()
+            .map(PlatformApiContractVerifier.CompatibilityFinding::severity)
             .toList());
   }
 
@@ -337,24 +732,79 @@ class PlatformApiContractVerifierTest {
     return new PlatformApiCapabilityDescriptor(name, stability, 1, null, name + " description");
   }
 
+  private static PlatformApiCapabilityDescriptor queueReadCapability(
+      PlatformApiStabilityLevel stability, PlatformApiDeprecation deprecation) {
+    String name = PlatformApiCapabilities.QUEUE_READ;
+    return new PlatformApiCapabilityDescriptor(
+        name, stability, 1, deprecation, name + " description");
+  }
+
+  private static PlatformApiContract queueContract(
+      int contractVersion,
+      PlatformApiStabilityLevel stability,
+      PlatformApiDeprecation deprecation) {
+    return new PlatformApiContract(
+        "v1",
+        contractVersion,
+        "test",
+        "test policy",
+        List.of(queueReadCapability(stability, deprecation)),
+        List.of(
+            endpoint(
+                "GET",
+                "/queue",
+                PlatformApiCapabilities.QUEUE_READ,
+                PlatformApiCapabilities.QUEUE_READ,
+                true,
+                stability,
+                deprecation)));
+  }
+
   private static PlatformApiEndpointDescriptor appDataEndpoint(String method, String capability) {
     return endpoint(method, "/app-data/records", capability, true);
   }
 
   private static PlatformApiEndpointDescriptor endpoint(
       String method, String routeTemplate, String capability, boolean appProcess) {
+    return endpoint(method, routeTemplate, capability, capability, appProcess);
+  }
+
+  private static PlatformApiEndpointDescriptor endpoint(
+      String method,
+      String routeTemplate,
+      String actionLabel,
+      String capability,
+      boolean appProcess) {
+    return endpoint(
+        method,
+        routeTemplate,
+        actionLabel,
+        capability,
+        appProcess,
+        PlatformApiStabilityLevel.STABLE,
+        null);
+  }
+
+  private static PlatformApiEndpointDescriptor endpoint(
+      String method,
+      String routeTemplate,
+      String actionLabel,
+      String capability,
+      boolean appProcess,
+      PlatformApiStabilityLevel stability,
+      PlatformApiDeprecation deprecation) {
     return new PlatformApiEndpointDescriptor(
         "test",
         method,
         routeTemplate,
-        capability,
+        actionLabel,
         List.of(capability),
         true,
         appProcess,
         true,
-        PlatformApiStabilityLevel.STABLE,
+        stability,
         1,
-        null,
+        deprecation,
         capability + " endpoint");
   }
 }

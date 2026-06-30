@@ -90,8 +90,21 @@ public enum PlatformApiStabilityLevel {
    *
    * @return {@code true} only for stable entries
    */
+  @SuppressWarnings("unused")
   public boolean isStableAppFacing() {
     return this == STABLE;
+  }
+
+  /**
+   * Returns whether this level is still covered by the stable compatibility-window policy.
+   *
+   * <p>Deprecated and scheduled-for-removal entries remain in the stable baseline while they are
+   * still present, but they require deprecation-window metadata and produce verifier findings.
+   *
+   * @return {@code true} for stable, deprecated, and scheduled-for-removal entries
+   */
+  public boolean isStableCompatibilityCovered() {
+    return this == STABLE || this == DEPRECATED || this == SCHEDULED_FOR_REMOVAL;
   }
 
   /**

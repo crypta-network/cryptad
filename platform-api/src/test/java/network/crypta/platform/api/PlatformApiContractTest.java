@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -25,6 +26,7 @@ class PlatformApiContractTest {
   private static final String CAP_CONTENT_SUBSCRIBE = PlatformApiCapabilities.CONTENT_SUBSCRIBE;
   private static final String CAP_TRUST_READ = PlatformApiCapabilities.TRUST_READ;
   private static final String CAP_TRUST_WRITE = PlatformApiCapabilities.TRUST_WRITE;
+  private static final String FIELD_COMPATIBILITY_WINDOW = "compatibilityWindow";
   private static final String FIELD_STABLE_BASELINE = "stableBaseline";
   private static final String ROUTE_FAMILY_CONSENT = "consent";
   private static final String ROUTE_FAMILY_APP_SERVICES = "app-services";
@@ -79,6 +81,9 @@ class PlatformApiContractTest {
     assertFalse(first.contains("browserSessionToken"));
     assertFalse(first.contains("password"));
     assertFalse(first.contains("privateKey"));
+    assertTrue(first.contains("\"compatibilityWindow\""));
+    assertTrue(first.contains("\"previousSnapshotRequiredInProductionBeta\":true"));
+    assertTrue(first.contains("\"criticalStableRemovalWaiverAllowed\":false"));
   }
 
   @Test
@@ -108,6 +113,34 @@ class PlatformApiContractTest {
             IllegalArgumentException.class, () -> PlatformApiContractJson.parse(staleJson));
 
     assertTrue(thrown.getMessage().contains(FIELD_STABLE_BASELINE), thrown.getMessage());
+  }
+
+  @Test
+  void parse_whenCompatibilityWindowMetadataChanges_expectSnapshotRejected() {
+    String json = PlatformApiContractJson.writeEnvelope(PlatformApiContract.current());
+    String currentWindowVersion =
+        "\"currentContractVersion\":" + PlatformApiContract.CURRENT_CONTRACT_VERSION;
+    assertTrue(json.contains(currentWindowVersion));
+    String staleJson = json.replace(currentWindowVersion, "\"currentContractVersion\":1");
+
+    IllegalArgumentException thrown =
+        assertThrows(
+            IllegalArgumentException.class, () -> PlatformApiContractJson.parse(staleJson));
+
+    assertTrue(thrown.getMessage().contains(FIELD_COMPATIBILITY_WINDOW), thrown.getMessage());
+  }
+
+  @Test
+  void parse_whenCompatibilityWindowMissing_expectSnapshotRemainsReadable() {
+    String json = PlatformApiContractJson.writeEnvelope(PlatformApiContract.current());
+    String legacyJson = json.replaceFirst(",\"compatibilityWindow\":\\{[^}]+}", "");
+
+    PlatformApiContract parsed = PlatformApiContractJson.parse(legacyJson);
+
+    assertEquals(PlatformApiContract.CURRENT_CONTRACT_VERSION, parsed.contractVersion());
+    assertEquals(
+        PlatformApiCompatibilityWindow.POLICY_DOCUMENT,
+        parsed.compatibilityWindow().policyDocument());
   }
 
   @Test
@@ -192,6 +225,46 @@ class PlatformApiContractTest {
         baseline.endpoints().stream()
             .anyMatch(endpoint -> endpoint.contains(ROUTE_FAMILY_CONSENT)));
     assertFalse(baseline.endpoints().stream().anyMatch(endpoint -> endpoint.contains("operator")));
+  }
+
+  @Test
+  void current_whenInspectingCompatibilityWindow_expectBetaSupportPolicyMetadata() {
+    PlatformApiCompatibilityWindow window = PlatformApiContract.current().compatibilityWindow();
+
+    assertEquals(PlatformApiCompatibilityWindow.CURRENT_SCHEMA_VERSION, window.schemaVersion());
+    assertEquals(PlatformApiContract.PLATFORM_API_STABLE_BASELINE_NAME, window.baselineName());
+    assertEquals(
+        PlatformApiContract.PLATFORM_API_STABLE_BASELINE_CONTRACT_VERSION,
+        window.baselineContractVersion());
+    assertEquals(PlatformApiContract.CURRENT_CONTRACT_VERSION, window.currentContractVersion());
+    assertEquals(PlatformApiCompatibilityWindowStatus.BETA, window.supportPhase());
+    assertEquals(2, window.minimumDeprecationWindowContractVersions());
+    assertEquals(2, window.minimumScheduledRemovalWindowContractVersions());
+    assertTrue(window.stableRemovalRequiresNewBaseline());
+    assertTrue(window.stableRemovalRequiresPreviousSnapshot());
+    assertTrue(window.stableRemovalRequiresExplicitWaiver());
+    assertFalse(window.criticalStableRemovalWaiverAllowed());
+    assertTrue(window.experimentalGraduationRequiresReview());
+    assertTrue(window.experimentalGraduationRequiresStableReferenceUpdate());
+    assertTrue(window.previousSnapshotRequiredInProductionBeta());
+    assertEquals("docs/platform-api-compatibility-support-window.md", window.policyDocument());
+  }
+
+  @Test
+  void parse_whenCompatibilityWindowWeakensPolicy_expectRejected() {
+    LinkedHashMap<String, Object> contract =
+        new LinkedHashMap<>(PlatformApiContractJson.toJsonValue(PlatformApiContract.current()));
+    Map<String, Object> window = compatibilityWindowField(contract);
+    window.put("minimumDeprecationWindowContractVersions", 0);
+    contract.put(FIELD_COMPATIBILITY_WINDOW, window);
+    LinkedHashMap<String, Object> envelope = LinkedHashMap.newLinkedHashMap(1);
+    envelope.put("contract", contract);
+    String json = PlatformApiJsonWriter.write(envelope);
+
+    IllegalArgumentException thrown =
+        assertThrows(IllegalArgumentException.class, () -> PlatformApiContractJson.parse(json));
+
+    assertTrue(thrown.getMessage().contains("canonical Platform API 1.0 support policy"));
   }
 
   @Test
@@ -884,11 +957,22 @@ class PlatformApiContractTest {
     return endpoints;
   }
 
+  private static Map<String, Object> compatibilityWindowField(Map<String, Object> source) {
+    Object value = source.get(FIELD_COMPATIBILITY_WINDOW);
+    Map<?, ?> field = assertInstanceOf(Map.class, value);
+    LinkedHashMap<String, Object> copy = new LinkedHashMap<>();
+    for (Map.Entry<?, ?> entry : field.entrySet()) {
+      copy.put((String) entry.getKey(), entry.getValue());
+    }
+    return copy;
+  }
+
   private static String contractJsonWithoutStableBaseline(int contractVersion) {
     LinkedHashMap<String, Object> contract =
         new LinkedHashMap<>(PlatformApiContractJson.toJsonValue(PlatformApiContract.current()));
     contract.put("contractVersion", contractVersion);
     contract.remove(FIELD_STABLE_BASELINE);
+    contract.remove(FIELD_COMPATIBILITY_WINDOW);
     LinkedHashMap<String, Object> envelope = LinkedHashMap.newLinkedHashMap(1);
     envelope.put("contract", contract);
     return PlatformApiJsonWriter.write(envelope);

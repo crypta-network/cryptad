@@ -40,6 +40,26 @@ The response shape is:
     "contractVersion": 23,
     "generatedBy": "cryptad",
     "stabilityPolicy": "...",
+    "stableBaseline": {
+      "name": "1.0",
+      "contractVersion": 19,
+      "capabilityCount": 9,
+      "endpointCount": 32,
+      "capabilities": ["platform.contract.read"],
+      "endpoints": ["GET /platform/contract"]
+    },
+    "compatibilityWindow": {
+      "schemaVersion": 1,
+      "baselineName": "1.0",
+      "baselineContractVersion": 19,
+      "currentContractVersion": 23,
+      "supportPhase": "beta",
+      "minimumDeprecationWindowContractVersions": 2,
+      "minimumScheduledRemovalWindowContractVersions": 2,
+      "criticalStableRemovalWaiverAllowed": false,
+      "previousSnapshotRequiredInProductionBeta": true,
+      "policyDocument": "docs/platform-api-compatibility-support-window.md"
+    },
     "capabilities": [],
     "endpoints": []
   }
@@ -51,7 +71,9 @@ bootstrap nonces, form passwords, request bodies, query strings, filesystem path
 lines, environment variables, private keys, and private insert URIs.
 
 The developer beta toolkit uses the same contract metadata in `crypta-app test` and
-`crypta-app compat verify`. Scaffolded beta templates declare conservative `api.minimumVersion` and
+`crypta-app compat verify`. `crypta-app api policy` prints the stable support-window policy from a
+snapshot, and `crypta-app api diff` compares two snapshots for Platform API 1.0 stable breaking
+changes. Scaffolded beta templates declare conservative `api.minimumVersion` and
 `api.maximumTestedVersion` values, and catalog entry generation copies the manifest compatibility
 metadata into descriptor output. See [developer-beta-toolkit.md](developer-beta-toolkit.md).
 
@@ -471,6 +493,42 @@ keeps those artifacts readable and derives the same version-19 baseline from des
 versions after 19 must include `stableBaseline`, and parsed baseline metadata must match descriptor
 membership instead of being silently recomputed.
 
+Current snapshots also include a deterministic `compatibilityWindow` object. It binds baseline
+`1.0` to baseline contract version `19`, identifies the current contract version, records the
+active `beta` support phase, and publishes the support policy used by release certification:
+
+- minimum deprecation window: 2 contract versions;
+- minimum scheduled-removal runway: 2 contract versions;
+- stable removal requires a future stable baseline;
+- stable removal requires previous contract snapshot comparison;
+- critical stable removal waivers are rejected;
+- production beta requires previous snapshot history;
+- experimental-to-stable graduation requires review evidence and stable reference updates.
+
+Release artifacts store redacted snapshots at
+`build/production-beta-release/evidence/platform-api-contract-current.json`,
+`build/production-beta-release/evidence/platform-api-contract-previous.json`, and
+`build/production-beta-release/evidence/platform-api-stable-diff.json`. The checked-in baseline
+reference is `docs/platform-api/contracts/platform-api-1.0-baseline.json`. The current and previous
+files are parseable contract snapshot JSON, not only evidence-row summaries, so later
+`crypta-app api diff` runs can use them as previous-history inputs.
+
+The stable-baseline diff emits deterministic finding codes including
+`stable_api_capability_removed`, `stable_api_endpoint_removed`,
+`stable_api_capability_reclassified`, `stable_api_endpoint_reclassified`,
+`stable_api_endpoint_required_capabilities_changed`,
+`stable_api_endpoint_app_principal_changed`, `stable_api_deprecation_window_too_short`,
+`stable_api_removal_window_too_short`, `stable_baseline_metadata_missing`, and
+`stable_baseline_identity_changed`. Stable removal, undeclared stable-baseline mutation, current
+metadata gaps, redaction/security blockers, and production-beta history gaps are not waiverable.
+
+Release certification records descriptor-level stable deprecation metadata under
+`platform-api.contract.details.stableDescriptorDeprecations`. The
+`platform-api.deprecation-window-policy` evidence row exposes `descriptorErrors` and
+`descriptorWarnings`; missing deprecation metadata, future `deprecatedSinceContractVersion`, and
+too-short `removalContractVersion` windows are release blockers for Platform API 1.0 stable
+descriptors.
+
 Stability and audience terms are:
 
 - `stable`: app-facing Platform API 1.0 surface with compatibility guarantees.
@@ -601,15 +659,17 @@ maximum-tested version, optional capabilities, and warnings in app/catalog revie
 
 `tools/release-certification/app_platform_smoke.py` now emits required
 `platform-api.contract`, `platform-api.stable-baseline`,
-`platform-api.stable-breaking-change-check`, `platform-api.manifest-target-stability`,
+`platform-api.stable-breaking-change-check`, `platform-api.compatibility-window`,
+`platform-api.previous-contract-snapshot`, `platform-api.deprecation-window-policy`,
+`platform-api.experimental-graduation-policy`, `platform-api.manifest-target-stability`,
 `platform-api.first-party-stability-declarations`, and `platform-api.stable-reference-docs`
 evidence. It generates a contract snapshot with `crypta-app api snapshot`, records descriptor
-counts, stable baseline counts, and non-stable entries, and runs offline
-`crypta-app compat verify` checks for first-party staged apps and the generated sample app. Release
-certification compares the current stable baseline against previous production release evidence;
-production beta runs pass `--require-history`, so missing previous stable-baseline evidence is a
-release blocker unless the existing release waiver mechanism records an approved waiver. Profile
-publishing also has
+counts, stable baseline counts, non-stable entries, stable descriptor deprecation metadata, and
+runs offline `crypta-app compat verify` checks for first-party staged apps and the generated sample
+app. Release certification compares the current stable baseline against previous production
+release evidence; production beta runs pass `--require-history`, so missing previous
+stable-baseline or compatibility-window evidence is a release blocker unless the existing release
+waiver mechanism records an approved waiver. Profile publishing also has
 separate release evidence: `app-platform.identity-profile-publish` for the profile-document route,
 `app-platform.generated-document-insert` for the app-generated document insert route, and
 `reference-app.profile-publisher` for the first-party Profile Publisher bundle. Networked content

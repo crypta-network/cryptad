@@ -203,6 +203,10 @@ APP_SERVICE_DISCOVERY_AND_GRANT_EVIDENCE_IDS = (
 PLATFORM_API_STABLE_FREEZE_EVIDENCE_IDS = (
     "platform-api.stable-baseline",
     "platform-api.stable-breaking-change-check",
+    "platform-api.compatibility-window",
+    "platform-api.previous-contract-snapshot",
+    "platform-api.deprecation-window-policy",
+    "platform-api.experimental-graduation-policy",
     "platform-api.manifest-target-stability",
     "platform-api.first-party-stability-declarations",
     "platform-api.stable-reference-docs",
@@ -2554,6 +2558,16 @@ def endpoint_identity_from_detail(value: dict[str, Any]) -> str:
     return str(value.get("id") or value.get("name") or value.get("path") or value.get("route") or "")
 
 
+def concrete_endpoint_identity(value: Any) -> str:
+    text = str(value).strip()
+    if not text or "<" in text or ">" in text:
+        return ""
+    if text.startswith("/"):
+        return text
+    _method, separator, route = text.partition(" ")
+    return text if separator and route.startswith("/") else ""
+
+
 def stable_endpoint_capability_map(details: dict[str, Any]) -> dict[str, tuple[str, ...]]:
     direct = details.get("stableEndpointRequiredCapabilities")
     if isinstance(direct, dict):
@@ -2585,6 +2599,50 @@ def stable_endpoint_capability_map_reported(details: dict[str, Any]) -> bool:
     if not isinstance(endpoints, list):
         return False
     return any(isinstance(value, dict) and "requiredCapabilities" in value for value in endpoints)
+
+
+def stable_endpoint_action_label_map(details: dict[str, Any]) -> dict[str, str]:
+    direct = details.get("stableEndpointActionLabels")
+    if isinstance(direct, dict):
+        return {
+            str(endpoint): str(label).strip()
+            for endpoint, label in direct.items()
+            if str(endpoint) and str(label).strip()
+        }
+    result: dict[str, str] = {}
+    endpoints = details.get("endpoints")
+    if not isinstance(endpoints, list):
+        return result
+    for value in endpoints:
+        if not isinstance(value, dict):
+            continue
+        stability = str(value.get("stability", value.get("lifecycle", ""))).lower()
+        if stability and stability != "stable":
+            continue
+        identity = endpoint_identity_from_detail(value)
+        label = str(value.get("actionLabel") or "").strip()
+        if identity and label:
+            result[identity] = label
+    return result
+
+
+def stable_endpoint_action_label_map_reported(details: dict[str, Any]) -> bool:
+    if isinstance(details.get("stableEndpointActionLabels"), dict):
+        return bool(stable_endpoint_action_label_map(details))
+    endpoints = details.get("endpoints")
+    if not isinstance(endpoints, list):
+        return False
+    stable_endpoints = []
+    for value in endpoints:
+        if not isinstance(value, dict):
+            continue
+        stability = str(value.get("stability", value.get("lifecycle", ""))).lower()
+        if stability and stability != "stable":
+            continue
+        stable_endpoints.append(value)
+    if not stable_endpoints:
+        return False
+    return all("actionLabel" in value for value in stable_endpoints)
 
 
 def endpoint_access_tuple(value: Any) -> tuple[bool, bool]:
@@ -2648,6 +2706,58 @@ def stable_endpoint_access_map_reported(details: dict[str, Any]) -> bool:
         "appProcessPrincipalsAllowed" in value and "appBrowserPrincipalsAllowed" in value
         for value in stable_endpoints
     )
+
+
+def stable_endpoint_metadata_keys(details: dict[str, Any]) -> set[str]:
+    result: set[str] = {
+        identity
+        for endpoint in stable_baseline_named_set(
+            details,
+            "endpoints",
+            "stableBaselineEndpoints",
+            "stableEndpoints",
+            "endpoints",
+        )
+        if (identity := concrete_endpoint_identity(endpoint))
+    }
+    endpoints = details.get("endpoints")
+    if isinstance(endpoints, list):
+        for value in endpoints:
+            if not isinstance(value, dict):
+                continue
+            stability = str(value.get("stability", value.get("lifecycle", ""))).lower()
+            if stability and stability != "stable":
+                continue
+            identity = endpoint_identity_from_detail(value)
+            if identity:
+                result.add(identity)
+    result.update(stable_endpoint_capability_map(details))
+    result.update(stable_endpoint_access_map(details))
+    result.update(stable_endpoint_action_label_map(details))
+    return result
+
+
+def stable_endpoint_expected_count(details: dict[str, Any]) -> int | None:
+    count = stable_baseline_count(
+        details,
+        "endpointCount",
+        "stableBaselineEndpointCount",
+        "endpoints",
+        "stableBaselineEndpoints",
+    )
+    if count is not None:
+        return count
+    return detail_int(details, "stableEndpointCount")
+
+
+def stable_endpoint_metadata_count_gap(
+    details: dict[str, Any], metadata: dict[str, Any]
+) -> dict[str, int]:
+    expected = stable_endpoint_expected_count(details)
+    actual = len(metadata)
+    if expected is not None and actual < expected:
+        return {"expected": expected, "actual": actual}
+    return {}
 
 
 MATRIX_CATEGORY_TITLES = {
@@ -2761,6 +2871,7 @@ def ecosystem_matrix_row_specs() -> list[MatrixRowSpec]:
             docs=(
                 "docs/platform-api-contract.md",
                 "docs/platform-api-1.0-stable-reference.md",
+                "docs/platform-api-compatibility-support-window.md",
                 "docs/platform-api-surface.md",
             ),
         ),
@@ -4601,10 +4712,61 @@ def evaluate_platform_api_gate(
     previous_details = evidence_details(previous_item)
     current_baseline_reported = stable_baseline_reported(current_details)
     previous_baseline_reported = stable_baseline_reported(previous_details)
+    current_window = current_details.get("compatibilityWindow")
+    previous_window = previous_details.get("compatibilityWindow")
+    if not isinstance(current_window, dict):
+        failures.append("Current Platform API compatibility-window metadata is unavailable")
+        add_evidence_issue(details, "failureEvidenceIds", "platform-api.compatibility-window")
+        add_evidence_issue(
+            details, "unwaivableFailureEvidenceIds", "platform-api.compatibility-window"
+        )
+        current_window = {}
+    if current_window.get("criticalStableRemovalWaiverAllowed") is not False:
+        failures.append("Critical stable API removal waiver policy is not explicitly rejected")
+        add_evidence_issue(details, "failureEvidenceIds", "platform-api.deprecation-window-policy")
+        add_evidence_issue(
+            details, "unwaivableFailureEvidenceIds", "platform-api.deprecation-window-policy"
+        )
+    if previous_details and not isinstance(previous_window, dict):
+        message = "Previous Platform API compatibility-window metadata is unavailable"
+        if mode == "release-candidate" and require_history:
+            failures.append(message)
+            add_evidence_issue(
+                details, "failureEvidenceIds", "platform-api.previous-contract-snapshot"
+            )
+            add_evidence_issue(
+                details,
+                "unwaivableFailureEvidenceIds",
+                "platform-api.previous-contract-snapshot",
+            )
+        else:
+            warnings.append(message)
+            add_evidence_issue(
+                details, "warningEvidenceIds", "platform-api.previous-contract-snapshot"
+            )
+    elif isinstance(previous_window, dict):
+        previous_baseline_name = previous_window.get("baselineName")
+        current_baseline_name = current_window.get("baselineName")
+        previous_baseline_contract = previous_window.get("baselineContractVersion")
+        current_baseline_contract = current_window.get("baselineContractVersion")
+        if (
+            previous_baseline_name != current_baseline_name
+            or previous_baseline_contract != current_baseline_contract
+        ):
+            failures.append("Platform API compatibility-window baseline identity changed")
+            add_evidence_issue(
+                details, "failureEvidenceIds", "platform-api.stable-breaking-change-check"
+            )
+            add_evidence_issue(
+                details,
+                "unwaivableFailureEvidenceIds",
+                "platform-api.stable-breaking-change-check",
+            )
     details["current"] = {
         "contractVersion": current_details.get("contractVersion"),
         "endpointCount": current_details.get("endpointCount"),
         "capabilityCount": current_details.get("capabilityCount"),
+        "compatibilityWindow": current_window,
         "stableDescriptorCount": stable_descriptor_count(current_details),
         "stableBaselineCapabilityCount": stable_baseline_count(
             current_details,
@@ -4621,6 +4783,7 @@ def evaluate_platform_api_gate(
             "stableBaselineEndpoints",
         ),
         "stableEndpointCapabilitySetCount": len(stable_endpoint_capability_map(current_details)),
+        "stableEndpointActionLabelSetCount": len(stable_endpoint_action_label_map(current_details)),
         "stableEndpointAppAccessSetCount": len(stable_endpoint_access_map(current_details)),
         "flaggedStability": current_details.get("flaggedStability", []),
     }
@@ -4629,6 +4792,7 @@ def evaluate_platform_api_gate(
             "contractVersion": previous_details.get("contractVersion"),
             "endpointCount": previous_details.get("endpointCount"),
             "capabilityCount": previous_details.get("capabilityCount"),
+            "compatibilityWindow": previous_window if isinstance(previous_window, dict) else None,
             "stableDescriptorCount": stable_descriptor_count(previous_details),
             "stableBaselineCapabilityCount": stable_baseline_count(
                 previous_details,
@@ -4645,6 +4809,9 @@ def evaluate_platform_api_gate(
                 "stableBaselineEndpoints",
             ),
             "stableEndpointCapabilitySetCount": len(stable_endpoint_capability_map(previous_details)),
+            "stableEndpointActionLabelSetCount": len(
+                stable_endpoint_action_label_map(previous_details)
+            ),
             "stableEndpointAppAccessSetCount": len(stable_endpoint_access_map(previous_details)),
         }
     previous_version = detail_int(previous_details, "contractVersion")
@@ -4652,11 +4819,35 @@ def evaluate_platform_api_gate(
     if previous_version is not None and current_version is not None and current_version < previous_version:
         failures.append(f"Contract version moved backward from {previous_version} to {current_version}")
     if current_baseline_reported and previous_details and not previous_baseline_reported:
-        warnings.append(
-            "Previous Platform API stable baseline metadata is unavailable; "
-            "stable baseline comparison is status-limited"
-        )
-        add_evidence_issue(details, "warningEvidenceIds", "platform-api.stable-breaking-change-check")
+        if mode == "release-candidate" and require_history:
+            failures.append(
+                "Previous Platform API stable baseline metadata is unavailable; "
+                "stable baseline comparison is required"
+            )
+            add_evidence_issue(
+                details, "failureEvidenceIds", "platform-api.previous-contract-snapshot"
+            )
+            add_evidence_issue(
+                details, "failureEvidenceIds", "platform-api.stable-breaking-change-check"
+            )
+            add_evidence_issue(
+                details,
+                "unwaivableFailureEvidenceIds",
+                "platform-api.previous-contract-snapshot",
+            )
+            add_evidence_issue(
+                details,
+                "unwaivableFailureEvidenceIds",
+                "platform-api.stable-breaking-change-check",
+            )
+        else:
+            warnings.append(
+                "Previous Platform API stable baseline metadata is unavailable; "
+                "stable baseline comparison is status-limited"
+            )
+            add_evidence_issue(
+                details, "warningEvidenceIds", "platform-api.stable-breaking-change-check"
+            )
     compared_stable_baseline_counts = False
     if current_baseline_reported and previous_baseline_reported:
         for baseline_count_key, explicit_count_key, label in (
@@ -4683,6 +4874,14 @@ def evaluate_platform_api_gate(
             if current_count < previous_count:
                 failures.append(
                     f"Stable baseline {label} count decreased from {previous_count} to {current_count}"
+                )
+                add_evidence_issue(
+                    details, "failureEvidenceIds", "platform-api.stable-breaking-change-check"
+                )
+                add_evidence_issue(
+                    details,
+                    "unwaivableFailureEvidenceIds",
+                    "platform-api.stable-breaking-change-check",
                 )
     if (
         not compared_stable_baseline_counts
@@ -4734,22 +4933,92 @@ def evaluate_platform_api_gate(
     if removed_endpoints:
         failures.append(f"Stable endpoints were removed: {', '.join(removed_endpoints)}")
         add_evidence_issue(details, "failureEvidenceIds", "platform-api.stable-breaking-change-check")
+        add_evidence_issue(
+            details, "unwaivableFailureEvidenceIds", "platform-api.stable-breaking-change-check"
+        )
+    previous_endpoint_metadata_keys = stable_endpoint_metadata_keys(previous_details)
+    current_endpoint_metadata_keys = stable_endpoint_metadata_keys(current_details)
     previous_endpoint_capabilities = stable_endpoint_capability_map(previous_details)
     current_endpoint_capabilities = stable_endpoint_capability_map(current_details)
     previous_endpoint_capabilities_reported = stable_endpoint_capability_map_reported(previous_details)
     current_endpoint_capabilities_reported = stable_endpoint_capability_map_reported(current_details)
+    missing_current_endpoint_capabilities = sorted(
+        current_endpoint_metadata_keys - set(current_endpoint_capabilities)
+    )
+    missing_previous_endpoint_capabilities = sorted(
+        previous_endpoint_metadata_keys - set(previous_endpoint_capabilities)
+    )
+    current_endpoint_capability_count_gap = stable_endpoint_metadata_count_gap(
+        current_details, current_endpoint_capabilities
+    )
+    previous_endpoint_capability_count_gap = stable_endpoint_metadata_count_gap(
+        previous_details, previous_endpoint_capabilities
+    )
     if current_endpoints and not current_endpoint_capabilities_reported:
         failures.append("Current stable endpoint required-capability metadata is unavailable")
         add_evidence_issue(details, "failureEvidenceIds", "platform-api.stable-breaking-change-check")
-    elif (
-        previous_endpoints
-        and previous_baseline_reported
-        and not previous_endpoint_capabilities_reported
+        add_evidence_issue(
+            details, "unwaivableFailureEvidenceIds", "platform-api.stable-breaking-change-check"
+        )
+    elif missing_current_endpoint_capabilities or current_endpoint_capability_count_gap:
+        if missing_current_endpoint_capabilities:
+            failures.append(
+                "Current stable endpoint required-capability metadata is incomplete: "
+                + ", ".join(missing_current_endpoint_capabilities)
+            )
+            details["stableEndpointRequiredCapabilitiesMissing"] = (
+                missing_current_endpoint_capabilities
+            )
+        else:
+            failures.append(
+                "Current stable endpoint required-capability metadata is incomplete: "
+                f"expected {current_endpoint_capability_count_gap['expected']} entries, "
+                f"found {current_endpoint_capability_count_gap['actual']}"
+            )
+            details["stableEndpointRequiredCapabilitiesExpectedCount"] = (
+                current_endpoint_capability_count_gap["expected"]
+            )
+            details["stableEndpointRequiredCapabilitiesSetCount"] = (
+                current_endpoint_capability_count_gap["actual"]
+            )
+        add_evidence_issue(details, "failureEvidenceIds", "platform-api.stable-breaking-change-check")
+        add_evidence_issue(
+            details, "unwaivableFailureEvidenceIds", "platform-api.stable-breaking-change-check"
+        )
+    elif previous_endpoints and previous_baseline_reported and (
+        not previous_endpoint_capabilities_reported
+        or missing_previous_endpoint_capabilities
+        or previous_endpoint_capability_count_gap
     ):
-        message = "Previous stable endpoint required-capability metadata is unavailable"
+        if previous_endpoint_capabilities_reported:
+            if missing_previous_endpoint_capabilities:
+                message = (
+                    "Previous stable endpoint required-capability metadata is incomplete: "
+                    + ", ".join(missing_previous_endpoint_capabilities)
+                )
+                details["previousStableEndpointRequiredCapabilitiesMissing"] = (
+                    missing_previous_endpoint_capabilities
+                )
+            else:
+                message = (
+                    "Previous stable endpoint required-capability metadata is incomplete: "
+                    f"expected {previous_endpoint_capability_count_gap['expected']} entries, "
+                    f"found {previous_endpoint_capability_count_gap['actual']}"
+                )
+                details["previousStableEndpointRequiredCapabilitiesExpectedCount"] = (
+                    previous_endpoint_capability_count_gap["expected"]
+                )
+                details["previousStableEndpointRequiredCapabilitiesSetCount"] = (
+                    previous_endpoint_capability_count_gap["actual"]
+                )
+        else:
+            message = "Previous stable endpoint required-capability metadata is unavailable"
         if mode == "release-candidate" and require_history:
             failures.append(message)
             add_evidence_issue(details, "failureEvidenceIds", "platform-api.stable-breaking-change-check")
+            add_evidence_issue(
+                details, "unwaivableFailureEvidenceIds", "platform-api.stable-breaking-change-check"
+            )
         else:
             warnings.append(message)
             add_evidence_issue(details, "warningEvidenceIds", "platform-api.stable-breaking-change-check")
@@ -4776,19 +5045,83 @@ def evaluate_platform_api_gate(
                 + ", ".join(change["endpoint"] for change in changed_endpoint_capabilities)
             )
             add_evidence_issue(details, "failureEvidenceIds", "platform-api.stable-breaking-change-check")
+            add_evidence_issue(
+                details, "unwaivableFailureEvidenceIds", "platform-api.stable-breaking-change-check"
+            )
             details["stableEndpointCapabilityChanges"] = changed_endpoint_capabilities
     previous_endpoint_access = stable_endpoint_access_map(previous_details)
     current_endpoint_access = stable_endpoint_access_map(current_details)
     previous_endpoint_access_reported = stable_endpoint_access_map_reported(previous_details)
     current_endpoint_access_reported = stable_endpoint_access_map_reported(current_details)
+    missing_current_endpoint_access = sorted(current_endpoint_metadata_keys - set(current_endpoint_access))
+    missing_previous_endpoint_access = sorted(previous_endpoint_metadata_keys - set(previous_endpoint_access))
+    current_endpoint_access_count_gap = stable_endpoint_metadata_count_gap(
+        current_details, current_endpoint_access
+    )
+    previous_endpoint_access_count_gap = stable_endpoint_metadata_count_gap(
+        previous_details, previous_endpoint_access
+    )
     if current_endpoints and not current_endpoint_access_reported:
         failures.append("Current stable endpoint app-principal access metadata is unavailable")
         add_evidence_issue(details, "failureEvidenceIds", "platform-api.stable-breaking-change-check")
-    elif previous_endpoints and previous_baseline_reported and not previous_endpoint_access_reported:
-        message = "Previous stable endpoint app-principal access metadata is unavailable"
+        add_evidence_issue(
+            details, "unwaivableFailureEvidenceIds", "platform-api.stable-breaking-change-check"
+        )
+    elif missing_current_endpoint_access or current_endpoint_access_count_gap:
+        if missing_current_endpoint_access:
+            failures.append(
+                "Current stable endpoint app-principal access metadata is incomplete: "
+                + ", ".join(missing_current_endpoint_access)
+            )
+            details["stableEndpointAppAccessMissing"] = missing_current_endpoint_access
+        else:
+            failures.append(
+                "Current stable endpoint app-principal access metadata is incomplete: "
+                f"expected {current_endpoint_access_count_gap['expected']} entries, "
+                f"found {current_endpoint_access_count_gap['actual']}"
+            )
+            details["stableEndpointAppAccessExpectedCount"] = (
+                current_endpoint_access_count_gap["expected"]
+            )
+            details["stableEndpointAppAccessSetCount"] = current_endpoint_access_count_gap[
+                "actual"
+            ]
+        add_evidence_issue(details, "failureEvidenceIds", "platform-api.stable-breaking-change-check")
+        add_evidence_issue(
+            details, "unwaivableFailureEvidenceIds", "platform-api.stable-breaking-change-check"
+        )
+    elif previous_endpoints and previous_baseline_reported and (
+        not previous_endpoint_access_reported
+        or missing_previous_endpoint_access
+        or previous_endpoint_access_count_gap
+    ):
+        if previous_endpoint_access_reported:
+            if missing_previous_endpoint_access:
+                message = (
+                    "Previous stable endpoint app-principal access metadata is incomplete: "
+                    + ", ".join(missing_previous_endpoint_access)
+                )
+                details["previousStableEndpointAppAccessMissing"] = missing_previous_endpoint_access
+            else:
+                message = (
+                    "Previous stable endpoint app-principal access metadata is incomplete: "
+                    f"expected {previous_endpoint_access_count_gap['expected']} entries, "
+                    f"found {previous_endpoint_access_count_gap['actual']}"
+                )
+                details["previousStableEndpointAppAccessExpectedCount"] = (
+                    previous_endpoint_access_count_gap["expected"]
+                )
+                details["previousStableEndpointAppAccessSetCount"] = (
+                    previous_endpoint_access_count_gap["actual"]
+                )
+        else:
+            message = "Previous stable endpoint app-principal access metadata is unavailable"
         if mode == "release-candidate" and require_history:
             failures.append(message)
             add_evidence_issue(details, "failureEvidenceIds", "platform-api.stable-breaking-change-check")
+            add_evidence_issue(
+                details, "unwaivableFailureEvidenceIds", "platform-api.stable-breaking-change-check"
+            )
         else:
             warnings.append(message)
             add_evidence_issue(details, "warningEvidenceIds", "platform-api.stable-breaking-change-check")
@@ -4815,7 +5148,140 @@ def evaluate_platform_api_gate(
                 + ", ".join(change["endpoint"] for change in changed_endpoint_access)
             )
             add_evidence_issue(details, "failureEvidenceIds", "platform-api.stable-breaking-change-check")
+            add_evidence_issue(
+                details, "unwaivableFailureEvidenceIds", "platform-api.stable-breaking-change-check"
+            )
             details["stableEndpointAccessChanges"] = changed_endpoint_access
+    previous_endpoint_action_labels = stable_endpoint_action_label_map(previous_details)
+    current_endpoint_action_labels = stable_endpoint_action_label_map(current_details)
+    previous_endpoint_action_labels_reported = stable_endpoint_action_label_map_reported(
+        previous_details
+    )
+    current_endpoint_action_labels_reported = stable_endpoint_action_label_map_reported(
+        current_details
+    )
+    missing_current_endpoint_action_labels = sorted(
+        current_endpoint_metadata_keys - set(current_endpoint_action_labels)
+    )
+    missing_previous_endpoint_action_labels = sorted(
+        previous_endpoint_metadata_keys - set(previous_endpoint_action_labels)
+    )
+    current_endpoint_action_label_count_gap = stable_endpoint_metadata_count_gap(
+        current_details, current_endpoint_action_labels
+    )
+    previous_endpoint_action_label_count_gap = stable_endpoint_metadata_count_gap(
+        previous_details, previous_endpoint_action_labels
+    )
+    if current_endpoints and not current_endpoint_action_labels_reported:
+        failures.append("Current stable endpoint action-label metadata is unavailable")
+        add_evidence_issue(details, "failureEvidenceIds", "platform-api.stable-breaking-change-check")
+        add_evidence_issue(
+            details, "unwaivableFailureEvidenceIds", "platform-api.stable-breaking-change-check"
+        )
+    elif missing_current_endpoint_action_labels or current_endpoint_action_label_count_gap:
+        if missing_current_endpoint_action_labels:
+            failures.append(
+                "Current stable endpoint action-label metadata is incomplete: "
+                + ", ".join(missing_current_endpoint_action_labels)
+            )
+            details["stableEndpointActionLabelsMissing"] = (
+                missing_current_endpoint_action_labels
+            )
+        else:
+            failures.append(
+                "Current stable endpoint action-label metadata is incomplete: "
+                f"expected {current_endpoint_action_label_count_gap['expected']} entries, "
+                f"found {current_endpoint_action_label_count_gap['actual']}"
+            )
+            details["stableEndpointActionLabelsExpectedCount"] = (
+                current_endpoint_action_label_count_gap["expected"]
+            )
+            details["stableEndpointActionLabelsSetCount"] = (
+                current_endpoint_action_label_count_gap["actual"]
+            )
+        add_evidence_issue(details, "failureEvidenceIds", "platform-api.stable-breaking-change-check")
+        add_evidence_issue(
+            details, "unwaivableFailureEvidenceIds", "platform-api.stable-breaking-change-check"
+        )
+    elif previous_endpoints and previous_baseline_reported and (
+        not previous_endpoint_action_labels_reported
+        or missing_previous_endpoint_action_labels
+        or previous_endpoint_action_label_count_gap
+    ):
+        if previous_endpoint_action_labels_reported:
+            if missing_previous_endpoint_action_labels:
+                message = (
+                    "Previous stable endpoint action-label metadata is incomplete: "
+                    + ", ".join(missing_previous_endpoint_action_labels)
+                )
+                details["previousStableEndpointActionLabelsMissing"] = (
+                    missing_previous_endpoint_action_labels
+                )
+            else:
+                message = (
+                    "Previous stable endpoint action-label metadata is incomplete: "
+                    f"expected {previous_endpoint_action_label_count_gap['expected']} entries, "
+                    f"found {previous_endpoint_action_label_count_gap['actual']}"
+                )
+                details["previousStableEndpointActionLabelsExpectedCount"] = (
+                    previous_endpoint_action_label_count_gap["expected"]
+                )
+                details["previousStableEndpointActionLabelsSetCount"] = (
+                    previous_endpoint_action_label_count_gap["actual"]
+                )
+        else:
+            message = "Previous stable endpoint action-label metadata is unavailable"
+        if mode == "release-candidate" and require_history:
+            failures.append(message)
+            add_evidence_issue(details, "failureEvidenceIds", "platform-api.stable-breaking-change-check")
+            add_evidence_issue(
+                details, "unwaivableFailureEvidenceIds", "platform-api.stable-breaking-change-check"
+            )
+        else:
+            warnings.append(message)
+            add_evidence_issue(details, "warningEvidenceIds", "platform-api.stable-breaking-change-check")
+    elif (
+        previous_endpoint_action_labels
+        and current_endpoint_action_labels_reported
+        and (previous_baseline_reported or not current_baseline_reported)
+    ):
+        missing_endpoint_action_labels = sorted(
+            set(previous_endpoint_action_labels) - set(current_endpoint_action_labels)
+        )
+        if missing_endpoint_action_labels:
+            failures.append(
+                "Current stable endpoint action-label metadata is incomplete: "
+                + ", ".join(missing_endpoint_action_labels)
+            )
+            add_evidence_issue(details, "failureEvidenceIds", "platform-api.stable-breaking-change-check")
+            add_evidence_issue(
+                details, "unwaivableFailureEvidenceIds", "platform-api.stable-breaking-change-check"
+            )
+            details["stableEndpointActionLabelsMissing"] = missing_endpoint_action_labels
+        changed_endpoint_action_labels = []
+        for endpoint in sorted(
+            set(previous_endpoint_action_labels) & set(current_endpoint_action_labels)
+        ):
+            previous_label = previous_endpoint_action_labels[endpoint]
+            current_label = current_endpoint_action_labels[endpoint]
+            if previous_label != current_label:
+                changed_endpoint_action_labels.append(
+                    {
+                        "endpoint": endpoint,
+                        "previous": previous_label,
+                        "current": current_label,
+                    }
+                )
+        if changed_endpoint_action_labels:
+            failures.append(
+                "Stable endpoint action labels changed: "
+                + ", ".join(change["endpoint"] for change in changed_endpoint_action_labels)
+            )
+            add_evidence_issue(details, "failureEvidenceIds", "platform-api.stable-breaking-change-check")
+            add_evidence_issue(
+                details, "unwaivableFailureEvidenceIds", "platform-api.stable-breaking-change-check"
+            )
+            details["stableEndpointActionLabelChanges"] = changed_endpoint_action_labels
     if current_baseline_reported or previous_baseline_reported:
         previous_capabilities = stable_baseline_named_set(
             previous_details,
@@ -4850,12 +5316,20 @@ def evaluate_platform_api_gate(
     if removed_capabilities:
         failures.append(f"Stable capabilities were removed: {', '.join(removed_capabilities)}")
         add_evidence_issue(details, "failureEvidenceIds", "platform-api.stable-breaking-change-check")
+        add_evidence_issue(
+            details, "unwaivableFailureEvidenceIds", "platform-api.stable-breaking-change-check"
+        )
     if current_details.get("flaggedStability"):
         warnings.append("Contract evidence contains stability warnings")
     if not previous_details:
         if mode == "release-candidate" and require_history:
             failures.append("Previous Platform API contract details were unavailable; stable baseline comparison is required")
             add_evidence_issue(details, "failureEvidenceIds", "platform-api.stable-breaking-change-check")
+            add_evidence_issue(
+                details,
+                "unwaivableFailureEvidenceIds",
+                "platform-api.stable-breaking-change-check",
+            )
         else:
             warnings.append("Previous Platform API contract details were unavailable; comparison is status-limited")
             add_evidence_issue(details, "warningEvidenceIds", "platform-api.stable-breaking-change-check")
@@ -10054,6 +10528,7 @@ def run_self_test(repo_root: Path) -> None:
             endpoints: list[str],
             endpoint_capabilities: dict[str, list[str]] | None = None,
             endpoint_access: dict[str, dict[str, bool]] | None = None,
+            endpoint_action_labels: dict[str, str] | None = None,
         ) -> None:
             contract_details = entry.setdefault("details", {})
             contract_details["stableBaseline"] = {
@@ -10074,6 +10549,11 @@ def run_self_test(repo_root: Path) -> None:
                 contract_details["stableEndpointRequiredCapabilities"] = endpoint_capabilities
             if endpoint_access is not None:
                 contract_details["stableEndpointAppAccess"] = endpoint_access
+            contract_details["stableEndpointActionLabels"] = (
+                endpoint_action_labels
+                if endpoint_action_labels is not None
+                else {endpoint: endpoint for endpoint in endpoints}
+            )
 
         previous_pre_freeze_summary = json.loads(json.dumps(previous_good))
         for entry in previous_pre_freeze_summary["evidence"]:
@@ -10087,6 +10567,7 @@ def run_self_test(repo_root: Path) -> None:
                     "stableBaselineEndpointCount",
                     "stableEndpointRequiredCapabilities",
                     "stableEndpointAppAccess",
+                    "stableEndpointActionLabels",
                 ):
                     contract_details.pop(key, None)
                 contract_details["stableCapabilities"] = [
@@ -10103,27 +10584,67 @@ def run_self_test(repo_root: Path) -> None:
                 contract_details["stableEndpointCount"] = 3
         previous_pre_freeze_path = workspace / "build/previous-pre-freeze/summary.json"
         write_json(previous_pre_freeze_path, previous_pre_freeze_summary)
-        pre_freeze_history_settings = dataclasses.replace(
-            settings,
-            out_dir=(workspace / "build/pre-freeze-history-cert").resolve(),
+        pre_freeze_warning_summary, pre_freeze_warning_exit_code = run_with_previous(
+            "pre-freeze-history-warning-cert",
             previous_summary=previous_pre_freeze_path,
-            require_history=True,
         )
-        pre_freeze_history_summary, pre_freeze_history_exit_code = run(
-            pre_freeze_history_settings
+        assert pre_freeze_warning_exit_code == 0, pre_freeze_warning_summary
+        pre_freeze_warning_platform_gate = gate_by_id(
+            pre_freeze_warning_summary, "ecosystem.platform-api-compatibility"
         )
-        assert pre_freeze_history_exit_code == 0, pre_freeze_history_summary
-        pre_freeze_platform_gate = gate_by_id(
-            pre_freeze_history_summary, "ecosystem.platform-api-compatibility"
-        )
-        assert pre_freeze_platform_gate["status"] == "warn", pre_freeze_platform_gate
-        assert "failureEvidenceIds" not in pre_freeze_platform_gate["details"], (
-            pre_freeze_platform_gate
+        assert pre_freeze_warning_platform_gate["status"] == "warn", pre_freeze_warning_platform_gate
+        assert "failureEvidenceIds" not in pre_freeze_warning_platform_gate["details"], (
+            pre_freeze_warning_platform_gate
         )
         assert any(
             "stable baseline comparison is status-limited" in warning
-            for warning in pre_freeze_platform_gate["details"].get("warnings", [])
-        ), pre_freeze_platform_gate
+            for warning in pre_freeze_warning_platform_gate["details"].get("warnings", [])
+        ), pre_freeze_warning_platform_gate
+
+        pre_freeze_required_history_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/pre-freeze-required-history-cert").resolve(),
+            previous_summary=previous_pre_freeze_path,
+            require_history=True,
+        )
+        pre_freeze_required_history_summary, pre_freeze_required_history_exit_code = run(
+            pre_freeze_required_history_settings
+        )
+        assert pre_freeze_required_history_exit_code == 1, pre_freeze_required_history_summary
+        pre_freeze_required_platform_gate = gate_by_id(
+            pre_freeze_required_history_summary, "ecosystem.platform-api-compatibility"
+        )
+        assert (
+            pre_freeze_required_platform_gate["status"] == "fail"
+        ), pre_freeze_required_platform_gate
+        assert pre_freeze_required_platform_gate["details"]["failureEvidenceIds"] == [
+            "platform-api.previous-contract-snapshot",
+            "platform-api.stable-breaking-change-check",
+            "platform-api.contract",
+        ], pre_freeze_required_platform_gate
+        assert pre_freeze_required_platform_gate["details"]["unwaivableFailureEvidenceIds"] == [
+            "platform-api.previous-contract-snapshot",
+            "platform-api.stable-breaking-change-check",
+        ], pre_freeze_required_platform_gate
+        assert any(
+            "stable baseline comparison is required" in failure
+            for failure in pre_freeze_required_platform_gate["details"].get("failures", [])
+        ), pre_freeze_required_platform_gate
+        assert (
+            "warningEvidenceIds" not in pre_freeze_required_platform_gate["details"]
+            or "platform-api.stable-breaking-change-check"
+            not in pre_freeze_required_platform_gate["details"].get("warningEvidenceIds", [])
+        ), pre_freeze_required_platform_gate
+        pre_freeze_required_matrix_row = matrix_row_by_id(
+            workspace / "build/pre-freeze-required-history-cert",
+            "platform-api-contract",
+        )
+        assert pre_freeze_required_matrix_row["status"] == "fail", (
+            pre_freeze_required_matrix_row
+        )
+        assert pre_freeze_required_matrix_row["releaseBlocker"] is True, (
+            pre_freeze_required_matrix_row
+        )
 
         previous_contract_v3 = json.loads(json.dumps(previous_good))
         for entry in previous_contract_v3["evidence"]:
@@ -10181,6 +10702,9 @@ def run_self_test(repo_root: Path) -> None:
                                 "appBrowserPrincipalsAllowed": True,
                             }
                         },
+                        "stableEndpointActionLabels": {
+                            "/api/v1/apps/current": "apps.current"
+                        },
                     }
                 ),
             ),
@@ -10237,6 +10761,7 @@ def run_self_test(repo_root: Path) -> None:
                         "stableBaselineEndpointCount": 0,
                         "stableEndpointRequiredCapabilities": {},
                         "stableEndpointAppAccess": {},
+                        "stableEndpointActionLabels": {},
                     }
                 ),
             ),
@@ -10271,6 +10796,7 @@ def run_self_test(repo_root: Path) -> None:
             contract_details.pop("stableEndpoints", None)
             contract_details.pop("stableEndpointRequiredCapabilities", None)
             contract_details.pop("stableEndpointAppAccess", None)
+            contract_details.pop("stableEndpointActionLabels", None)
             contract_details.pop("stableCapabilityCount", None)
             contract_details.pop("stableEndpointCount", None)
             contract_details.update(
@@ -10336,10 +10862,12 @@ def run_self_test(repo_root: Path) -> None:
         for entry in previous_contract_endpoint_caps["evidence"]:
             if entry["id"] == "platform-api.contract":
                 entry["details"]["contractVersion"] = 2
-                entry["details"]["stableEndpointRequiredCapabilities"] = {
-                    "GET /queue": ["queue.read"]
-                }
-                entry["details"]["stableEndpointAppAccess"] = {
+                entry["details"]["stableEndpointRequiredCapabilities"] = entry["details"].get(
+                    "stableEndpointRequiredCapabilities", {}
+                ) | {"GET /queue": ["queue.read"]}
+                entry["details"]["stableEndpointAppAccess"] = entry["details"].get(
+                    "stableEndpointAppAccess", {}
+                ) | {
                     "GET /queue": {
                         "appProcessPrincipalsAllowed": True,
                         "appBrowserPrincipalsAllowed": True,
@@ -10355,10 +10883,13 @@ def run_self_test(repo_root: Path) -> None:
                 lambda entry: entry.setdefault("details", {}).update(
                     {
                         "contractVersion": 2,
-                        "stableEndpointRequiredCapabilities": {
-                            "GET /queue": ["queue.write"]
-                        },
-                        "stableEndpointAppAccess": {
+                        "stableEndpointRequiredCapabilities": entry.setdefault("details", {})
+                        .get("stableEndpointRequiredCapabilities", {})
+                        | {"GET /queue": ["queue.write"]},
+                        "stableEndpointAppAccess": entry.setdefault("details", {}).get(
+                            "stableEndpointAppAccess", {}
+                        )
+                        | {
                             "GET /queue": {
                                 "appProcessPrincipalsAllowed": True,
                                 "appBrowserPrincipalsAllowed": True,
@@ -10386,15 +10917,62 @@ def run_self_test(repo_root: Path) -> None:
             "GET /queue"
             in endpoint_capability_regression_gate["details"]["stableEndpointCapabilityChanges"][0]["endpoint"]
         ), endpoint_capability_regression_gate
+        assert endpoint_capability_regression_gate["details"]["unwaivableFailureEvidenceIds"] == [
+            "platform-api.stable-breaking-change-check"
+        ], endpoint_capability_regression_gate
+
+        current_contract_endpoint_caps_missing_path = write_app_summary_variant(
+            "current-contract-endpoint-caps-missing",
+            lambda value: update_evidence(
+                value,
+                "platform-api.contract",
+                lambda entry: entry.setdefault("details", {}).update(
+                    {
+                        "contractVersion": 2,
+                        "stableEndpointRequiredCapabilities": {
+                            endpoint: capabilities
+                            for endpoint, capabilities in entry.setdefault("details", {})
+                            .get("stableEndpointRequiredCapabilities", {})
+                            .items()
+                            if endpoint != "GET /queue"
+                        },
+                    }
+                ),
+            ),
+        )
+        endpoint_capability_missing_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/contract-endpoint-capability-missing-cert").resolve(),
+            previous_summary=previous_contract_endpoint_caps_path,
+            app_platform_summary=current_contract_endpoint_caps_missing_path,
+        )
+        endpoint_capability_missing_summary, endpoint_capability_missing_exit_code = run(
+            endpoint_capability_missing_settings
+        )
+        assert endpoint_capability_missing_exit_code == 1, endpoint_capability_missing_summary
+        endpoint_capability_missing_gate = gate_by_id(
+            endpoint_capability_missing_summary, "ecosystem.platform-api-compatibility"
+        )
+        assert endpoint_capability_missing_gate["status"] == "fail", (
+            endpoint_capability_missing_gate
+        )
+        assert endpoint_capability_missing_gate["details"][
+            "stableEndpointRequiredCapabilitiesMissing"
+        ] == ["GET /queue"], endpoint_capability_missing_gate
+        assert endpoint_capability_missing_gate["details"]["unwaivableFailureEvidenceIds"] == [
+            "platform-api.stable-breaking-change-check"
+        ], endpoint_capability_missing_gate
 
         previous_contract_endpoint_access = json.loads(json.dumps(previous_good))
         for entry in previous_contract_endpoint_access["evidence"]:
             if entry["id"] == "platform-api.contract":
                 entry["details"]["contractVersion"] = 2
-                entry["details"]["stableEndpointRequiredCapabilities"] = {
-                    "GET /queue": ["queue.read"]
-                }
-                entry["details"]["stableEndpointAppAccess"] = {
+                entry["details"]["stableEndpointRequiredCapabilities"] = entry["details"].get(
+                    "stableEndpointRequiredCapabilities", {}
+                ) | {"GET /queue": ["queue.read"]}
+                entry["details"]["stableEndpointAppAccess"] = entry["details"].get(
+                    "stableEndpointAppAccess", {}
+                ) | {
                     "GET /queue": {
                         "appProcessPrincipalsAllowed": True,
                         "appBrowserPrincipalsAllowed": True,
@@ -10410,10 +10988,13 @@ def run_self_test(repo_root: Path) -> None:
                 lambda entry: entry.setdefault("details", {}).update(
                     {
                         "contractVersion": 2,
-                        "stableEndpointRequiredCapabilities": {
-                            "GET /queue": ["queue.read"]
-                        },
-                        "stableEndpointAppAccess": {
+                        "stableEndpointRequiredCapabilities": entry.setdefault("details", {})
+                        .get("stableEndpointRequiredCapabilities", {})
+                        | {"GET /queue": ["queue.read"]},
+                        "stableEndpointAppAccess": entry.setdefault("details", {}).get(
+                            "stableEndpointAppAccess", {}
+                        )
+                        | {
                             "GET /queue": {
                                 "appProcessPrincipalsAllowed": False,
                                 "appBrowserPrincipalsAllowed": True,
@@ -10447,6 +11028,387 @@ def run_self_test(repo_root: Path) -> None:
             ]
             is False
         ), endpoint_access_regression_gate
+        assert endpoint_access_regression_gate["details"]["unwaivableFailureEvidenceIds"] == [
+            "platform-api.stable-breaking-change-check"
+        ], endpoint_access_regression_gate
+
+        current_contract_endpoint_access_missing_path = write_app_summary_variant(
+            "current-contract-endpoint-access-missing",
+            lambda value: update_evidence(
+                value,
+                "platform-api.contract",
+                lambda entry: entry.setdefault("details", {}).update(
+                    {
+                        "contractVersion": 2,
+                        "stableEndpointAppAccess": {
+                            endpoint: access
+                            for endpoint, access in entry.setdefault("details", {})
+                            .get("stableEndpointAppAccess", {})
+                            .items()
+                            if endpoint != "GET /queue"
+                        },
+                    }
+                ),
+            ),
+        )
+        endpoint_access_missing_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/contract-endpoint-access-missing-cert").resolve(),
+            previous_summary=previous_contract_endpoint_access_path,
+            app_platform_summary=current_contract_endpoint_access_missing_path,
+        )
+        endpoint_access_missing_summary, endpoint_access_missing_exit_code = run(
+            endpoint_access_missing_settings
+        )
+        assert endpoint_access_missing_exit_code == 1, endpoint_access_missing_summary
+        endpoint_access_missing_gate = gate_by_id(
+            endpoint_access_missing_summary, "ecosystem.platform-api-compatibility"
+        )
+        assert endpoint_access_missing_gate["status"] == "fail", endpoint_access_missing_gate
+        assert endpoint_access_missing_gate["details"]["stableEndpointAppAccessMissing"] == [
+            "GET /queue"
+        ], endpoint_access_missing_gate
+        assert endpoint_access_missing_gate["details"]["unwaivableFailureEvidenceIds"] == [
+            "platform-api.stable-breaking-change-check"
+        ], endpoint_access_missing_gate
+
+        previous_contract_endpoint_labels = json.loads(json.dumps(previous_good))
+        for entry in previous_contract_endpoint_labels["evidence"]:
+            if entry["id"] == "platform-api.contract":
+                entry["details"]["contractVersion"] = 2
+                entry["details"]["stableEndpointActionLabels"]["GET /queue"] = "queue.read"
+        previous_contract_endpoint_labels_path = (
+            workspace / "build/previous-contract-endpoint-labels/summary.json"
+        )
+        write_json(previous_contract_endpoint_labels_path, previous_contract_endpoint_labels)
+        current_contract_endpoint_labels_path = write_app_summary_variant(
+            "current-contract-endpoint-labels",
+            lambda value: update_evidence(
+                value,
+                "platform-api.contract",
+                lambda entry: entry.setdefault("details", {}).update(
+                    {
+                        "contractVersion": 2,
+                        "stableEndpointActionLabels": (
+                            entry.setdefault("details", {}).get("stableEndpointActionLabels", {})
+                            | {"GET /queue": "queue.read.changed"}
+                        ),
+                    }
+                ),
+            ),
+        )
+        endpoint_label_regression_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/contract-endpoint-label-regression-cert").resolve(),
+            previous_summary=previous_contract_endpoint_labels_path,
+            app_platform_summary=current_contract_endpoint_labels_path,
+        )
+        endpoint_label_regression_summary, endpoint_label_regression_exit_code = run(
+            endpoint_label_regression_settings
+        )
+        assert endpoint_label_regression_exit_code == 1, endpoint_label_regression_summary
+        endpoint_label_regression_gate = gate_by_id(
+            endpoint_label_regression_summary, "ecosystem.platform-api-compatibility"
+        )
+        assert endpoint_label_regression_gate["status"] == "fail", endpoint_label_regression_gate
+        assert (
+            "GET /queue"
+            in endpoint_label_regression_gate["details"]["stableEndpointActionLabelChanges"][0][
+                "endpoint"
+            ]
+        ), endpoint_label_regression_gate
+        assert (
+            endpoint_label_regression_gate["details"]["stableEndpointActionLabelChanges"][0][
+                "current"
+            ]
+            == "queue.read.changed"
+        ), endpoint_label_regression_gate
+        assert endpoint_label_regression_gate["details"]["unwaivableFailureEvidenceIds"] == [
+            "platform-api.stable-breaking-change-check"
+        ], endpoint_label_regression_gate
+
+        current_contract_endpoint_labels_missing_path = write_app_summary_variant(
+            "current-contract-endpoint-labels-missing",
+            lambda value: update_evidence(
+                value,
+                "platform-api.contract",
+                lambda entry: entry.setdefault("details", {}).update(
+                    {
+                        "contractVersion": 2,
+                        "stableEndpointActionLabels": {
+                            endpoint: label
+                            for endpoint, label in entry.setdefault("details", {})
+                            .get("stableEndpointActionLabels", {})
+                            .items()
+                            if endpoint != "GET /queue"
+                        },
+                    }
+                ),
+            ),
+        )
+        endpoint_label_missing_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/contract-endpoint-label-missing-cert").resolve(),
+            previous_summary=previous_contract_endpoint_labels_path,
+            app_platform_summary=current_contract_endpoint_labels_missing_path,
+        )
+        endpoint_label_missing_summary, endpoint_label_missing_exit_code = run(
+            endpoint_label_missing_settings
+        )
+        assert endpoint_label_missing_exit_code == 1, endpoint_label_missing_summary
+        endpoint_label_missing_gate = gate_by_id(
+            endpoint_label_missing_summary, "ecosystem.platform-api-compatibility"
+        )
+        assert endpoint_label_missing_gate["status"] == "fail", endpoint_label_missing_gate
+        assert endpoint_label_missing_gate["details"]["stableEndpointActionLabelsMissing"] == [
+            "GET /queue"
+        ], endpoint_label_missing_gate
+        assert endpoint_label_missing_gate["details"]["unwaivableFailureEvidenceIds"] == [
+            "platform-api.stable-breaking-change-check"
+        ], endpoint_label_missing_gate
+
+        concrete_baseline_endpoints = ["GET /apps/current", "GET /apps/old"]
+        concrete_endpoint_capabilities = {
+            "GET /apps/current": ["queue.read"],
+            "GET /apps/old": ["queue.read"],
+        }
+        concrete_endpoint_access = {
+            "GET /apps/current": {
+                "appProcessPrincipalsAllowed": True,
+                "appBrowserPrincipalsAllowed": True,
+            },
+            "GET /apps/old": {
+                "appProcessPrincipalsAllowed": True,
+                "appBrowserPrincipalsAllowed": True,
+            },
+        }
+        concrete_endpoint_labels = {
+            "GET /apps/current": "apps.current",
+            "GET /apps/old": "apps.old",
+        }
+
+        previous_concrete_endpoint_metadata = json.loads(json.dumps(previous_good))
+        for entry in previous_concrete_endpoint_metadata["evidence"]:
+            if entry["id"] == "platform-api.contract":
+                entry["details"]["contractVersion"] = 2
+                set_stable_baseline_details(
+                    entry,
+                    ["queue.read"],
+                    concrete_baseline_endpoints,
+                    concrete_endpoint_capabilities,
+                    concrete_endpoint_access,
+                    concrete_endpoint_labels,
+                )
+        previous_concrete_endpoint_metadata_path = (
+            workspace / "build/previous-concrete-endpoint-metadata/summary.json"
+        )
+        write_json(previous_concrete_endpoint_metadata_path, previous_concrete_endpoint_metadata)
+
+        def write_current_concrete_endpoint_metadata(
+            name: str,
+            endpoint_capabilities: dict[str, list[str]],
+            endpoint_access: dict[str, dict[str, bool]],
+            endpoint_labels: dict[str, str],
+        ) -> Path:
+            def update_contract(entry: dict[str, Any]) -> None:
+                entry.setdefault("details", {})["contractVersion"] = 2
+                set_stable_baseline_details(
+                    entry,
+                    ["queue.read"],
+                    concrete_baseline_endpoints,
+                    endpoint_capabilities,
+                    endpoint_access,
+                    endpoint_labels,
+                )
+
+            return write_app_summary_variant(
+                name,
+                lambda value: update_evidence(
+                    value, "platform-api.contract", update_contract
+                ),
+            )
+
+        padded_endpoint_capability_path = write_current_concrete_endpoint_metadata(
+            "current-padded-endpoint-capabilities",
+            {
+                "GET /apps/current": ["queue.read"],
+                "GET /apps/extra": ["queue.read"],
+            },
+            concrete_endpoint_access,
+            concrete_endpoint_labels,
+        )
+        padded_endpoint_capability_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/padded-endpoint-capability-cert").resolve(),
+            previous_summary=previous_concrete_endpoint_metadata_path,
+            app_platform_summary=padded_endpoint_capability_path,
+        )
+        padded_endpoint_capability_summary, padded_endpoint_capability_exit_code = run(
+            padded_endpoint_capability_settings
+        )
+        assert padded_endpoint_capability_exit_code == 1, padded_endpoint_capability_summary
+        padded_endpoint_capability_gate = gate_by_id(
+            padded_endpoint_capability_summary, "ecosystem.platform-api-compatibility"
+        )
+        assert padded_endpoint_capability_gate["status"] == "fail", (
+            padded_endpoint_capability_gate
+        )
+        assert padded_endpoint_capability_gate["details"][
+            "stableEndpointRequiredCapabilitiesMissing"
+        ] == ["GET /apps/old"], padded_endpoint_capability_gate
+
+        padded_endpoint_access_path = write_current_concrete_endpoint_metadata(
+            "current-padded-endpoint-access",
+            concrete_endpoint_capabilities,
+            {
+                "GET /apps/current": {
+                    "appProcessPrincipalsAllowed": True,
+                    "appBrowserPrincipalsAllowed": True,
+                },
+                "GET /apps/extra": {
+                    "appProcessPrincipalsAllowed": True,
+                    "appBrowserPrincipalsAllowed": True,
+                },
+            },
+            concrete_endpoint_labels,
+        )
+        padded_endpoint_access_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/padded-endpoint-access-cert").resolve(),
+            previous_summary=previous_concrete_endpoint_metadata_path,
+            app_platform_summary=padded_endpoint_access_path,
+        )
+        padded_endpoint_access_summary, padded_endpoint_access_exit_code = run(
+            padded_endpoint_access_settings
+        )
+        assert padded_endpoint_access_exit_code == 1, padded_endpoint_access_summary
+        padded_endpoint_access_gate = gate_by_id(
+            padded_endpoint_access_summary, "ecosystem.platform-api-compatibility"
+        )
+        assert padded_endpoint_access_gate["status"] == "fail", padded_endpoint_access_gate
+        assert padded_endpoint_access_gate["details"]["stableEndpointAppAccessMissing"] == [
+            "GET /apps/old"
+        ], padded_endpoint_access_gate
+
+        padded_endpoint_labels_path = write_current_concrete_endpoint_metadata(
+            "current-padded-endpoint-labels",
+            concrete_endpoint_capabilities,
+            concrete_endpoint_access,
+            {
+                "GET /apps/current": "apps.current",
+                "GET /apps/extra": "apps.extra",
+            },
+        )
+        padded_endpoint_label_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/padded-endpoint-label-cert").resolve(),
+            previous_summary=previous_concrete_endpoint_metadata_path,
+            app_platform_summary=padded_endpoint_labels_path,
+        )
+        padded_endpoint_label_summary, padded_endpoint_label_exit_code = run(
+            padded_endpoint_label_settings
+        )
+        assert padded_endpoint_label_exit_code == 1, padded_endpoint_label_summary
+        padded_endpoint_label_gate = gate_by_id(
+            padded_endpoint_label_summary, "ecosystem.platform-api-compatibility"
+        )
+        assert padded_endpoint_label_gate["status"] == "fail", padded_endpoint_label_gate
+        assert padded_endpoint_label_gate["details"]["stableEndpointActionLabelsMissing"] == [
+            "GET /apps/old"
+        ], padded_endpoint_label_gate
+
+        current_contract_endpoint_labels_unavailable_path = write_app_summary_variant(
+            "current-contract-endpoint-labels-unavailable",
+            lambda value: update_evidence(
+                value,
+                "platform-api.contract",
+                lambda entry: entry.setdefault("details", {}).pop(
+                    "stableEndpointActionLabels", None
+                ),
+            ),
+        )
+        endpoint_label_unavailable_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/contract-endpoint-label-unavailable-cert").resolve(),
+            previous_summary=previous_contract_endpoint_labels_path,
+            app_platform_summary=current_contract_endpoint_labels_unavailable_path,
+            waivers={
+                "ecosystem.platform-api-compatibility": (
+                    "Release manager attempted to waive missing current action-label metadata."
+                ),
+                "platform-api.stable-breaking-change-check": (
+                    "Release manager attempted to waive missing current action-label metadata."
+                ),
+            },
+        )
+        endpoint_label_unavailable_summary, endpoint_label_unavailable_exit_code = run(
+            endpoint_label_unavailable_settings
+        )
+        assert endpoint_label_unavailable_exit_code == 1, endpoint_label_unavailable_summary
+        endpoint_label_unavailable_gate = gate_by_id(
+            endpoint_label_unavailable_summary, "ecosystem.platform-api-compatibility"
+        )
+        assert endpoint_label_unavailable_gate["status"] == "fail", (
+            endpoint_label_unavailable_gate
+        )
+        assert "waived" not in endpoint_label_unavailable_gate["details"], (
+            endpoint_label_unavailable_gate
+        )
+        assert endpoint_label_unavailable_gate["details"]["unwaivableFailureEvidenceIds"] == [
+            "platform-api.stable-breaking-change-check"
+        ], endpoint_label_unavailable_gate
+        assert any(
+            "action-label metadata is unavailable" in failure
+            for failure in endpoint_label_unavailable_gate["details"].get("failures", [])
+        ), endpoint_label_unavailable_gate
+
+        previous_contract_endpoint_labels_unavailable = json.loads(
+            json.dumps(previous_contract_endpoint_labels)
+        )
+        for entry in previous_contract_endpoint_labels_unavailable["evidence"]:
+            if entry["id"] == "platform-api.contract":
+                entry["details"].pop("stableEndpointActionLabels", None)
+        previous_contract_endpoint_labels_unavailable_path = (
+            workspace / "build/previous-contract-endpoint-labels-unavailable/summary.json"
+        )
+        write_json(
+            previous_contract_endpoint_labels_unavailable_path,
+            previous_contract_endpoint_labels_unavailable,
+        )
+        previous_label_unavailable_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/previous-endpoint-label-unavailable-cert").resolve(),
+            previous_summary=previous_contract_endpoint_labels_unavailable_path,
+            require_history=True,
+            waivers={
+                "ecosystem.platform-api-compatibility": (
+                    "Release manager attempted to waive missing previous action-label metadata."
+                ),
+                "platform-api.stable-breaking-change-check": (
+                    "Release manager attempted to waive missing previous action-label metadata."
+                ),
+            },
+        )
+        previous_label_unavailable_summary, previous_label_unavailable_exit_code = run(
+            previous_label_unavailable_settings
+        )
+        assert previous_label_unavailable_exit_code == 1, previous_label_unavailable_summary
+        previous_label_unavailable_gate = gate_by_id(
+            previous_label_unavailable_summary, "ecosystem.platform-api-compatibility"
+        )
+        assert previous_label_unavailable_gate["status"] == "fail", (
+            previous_label_unavailable_gate
+        )
+        assert "waived" not in previous_label_unavailable_gate["details"], (
+            previous_label_unavailable_gate
+        )
+        assert previous_label_unavailable_gate["details"]["unwaivableFailureEvidenceIds"] == [
+            "platform-api.stable-breaking-change-check"
+        ], previous_label_unavailable_gate
+        assert any(
+            "Previous stable endpoint action-label metadata is unavailable" in failure
+            for failure in previous_label_unavailable_gate["details"].get("failures", [])
+        ), previous_label_unavailable_gate
 
         def set_contract_raw_endpoint_details(
             entry: dict[str, Any], routes: list[str], stable_count: int
@@ -10460,6 +11422,7 @@ def run_self_test(repo_root: Path) -> None:
             contract_details.pop("stableEndpoints", None)
             contract_details.pop("stableEndpointRequiredCapabilities", None)
             contract_details.pop("stableEndpointAppAccess", None)
+            contract_details.pop("stableEndpointActionLabels", None)
             contract_details.update(
                 {
                     "contractVersion": 2,
@@ -10469,6 +11432,7 @@ def run_self_test(repo_root: Path) -> None:
                         {
                             "method": "GET",
                             "routeTemplate": route,
+                            "actionLabel": route,
                             "stability": "stable",
                             "appProcessPrincipalsAllowed": True,
                             "appBrowserPrincipalsAllowed": True,
