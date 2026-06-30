@@ -156,6 +156,9 @@ CURRENT_PLATFORM_API_CONTRACT_VERSION = 23
 CURRENT_PLATFORM_API_STABLE_BASELINE_CONTRACT_VERSION = 19
 PLATFORM_API_MINIMUM_DEPRECATION_WINDOW_CONTRACT_VERSIONS = 2
 PLATFORM_API_MINIMUM_SCHEDULED_REMOVAL_WINDOW_CONTRACT_VERSIONS = 2
+PLATFORM_API_DEPRECATION_STABILITY_VALUES = {"deprecated", "scheduled-for-removal"}
+FIELD_DEPRECATED_SINCE_CONTRACT_VERSION = "deprecatedSinceContractVersion"
+FIELD_REMOVAL_CONTRACT_VERSION = "removalContractVersion"
 FIRST_PARTY_CERTIFIED_MAX_CONTRACT_VERSION = CURRENT_PLATFORM_API_CONTRACT_VERSION
 NETWORK_SCALE_EVIDENCE_IDS = (
     "network-scale.app-network-budget",
@@ -2013,6 +2016,10 @@ def boolean_field(value: Any) -> bool:
     return value if isinstance(value, bool) else False
 
 
+def plain_int(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
 def stable_endpoint_app_access(
     endpoints: list[Any], baseline_endpoint_identities: list[str]
 ) -> dict[str, dict[str, bool]]:
@@ -2064,6 +2071,161 @@ def stable_endpoint_action_labels(
         if label:
             labels_by_endpoint[identity] = label
     return {identity: labels_by_endpoint[identity] for identity in sorted(labels_by_endpoint)}
+
+
+def stable_descriptor_deprecation_entry(
+    kind: str, identity: str, entry: dict[str, Any]
+) -> dict[str, Any] | None:
+    stability = str(entry.get("stability", "unknown")).strip().lower()
+    deprecation = entry.get("deprecation")
+    has_deprecation_metadata = isinstance(deprecation, dict)
+    if stability not in PLATFORM_API_DEPRECATION_STABILITY_VALUES and not has_deprecation_metadata:
+        return None
+    descriptor: dict[str, Any] = {
+        "kind": kind,
+        "identity": identity,
+        "stability": stability,
+        "hasDeprecationMetadata": has_deprecation_metadata,
+    }
+    if has_deprecation_metadata:
+        descriptor[FIELD_DEPRECATED_SINCE_CONTRACT_VERSION] = deprecation.get(
+            FIELD_DEPRECATED_SINCE_CONTRACT_VERSION
+        )
+        if FIELD_REMOVAL_CONTRACT_VERSION in deprecation:
+            descriptor[FIELD_REMOVAL_CONTRACT_VERSION] = deprecation.get(
+                FIELD_REMOVAL_CONTRACT_VERSION
+            )
+    return descriptor
+
+
+def stable_descriptor_deprecations(
+    capabilities: list[Any],
+    endpoints: list[Any],
+    baseline_capabilities: list[str],
+    baseline_endpoints: list[str],
+) -> list[dict[str, Any]]:
+    baseline_capability_names = set(baseline_capabilities)
+    baseline_endpoint_identities = set(baseline_endpoints)
+    deprecations: list[dict[str, Any]] = []
+    for entry in capabilities:
+        if not isinstance(entry, dict):
+            continue
+        name = str(entry.get("name") or entry.get("id") or "").strip()
+        if not name or name not in baseline_capability_names:
+            continue
+        descriptor = stable_descriptor_deprecation_entry("capability", name, entry)
+        if descriptor:
+            deprecations.append(descriptor)
+    for entry in endpoints:
+        if not isinstance(entry, dict):
+            continue
+        identity = endpoint_identity(entry)
+        if not identity or identity not in baseline_endpoint_identities:
+            continue
+        descriptor = stable_descriptor_deprecation_entry("endpoint", identity, entry)
+        if descriptor:
+            deprecations.append(descriptor)
+    return sorted(deprecations, key=lambda value: (value["kind"], value["identity"]))
+
+
+def stable_deprecation_label(descriptor: dict[str, Any]) -> str:
+    kind = str(descriptor.get("kind") or "descriptor").strip()
+    identity = str(descriptor.get("identity") or "<unknown>").strip()
+    return f"stable {kind} {identity}"
+
+
+def stable_deprecation_version_errors(
+    descriptor: dict[str, Any],
+    current_contract_version: int,
+    minimum_deprecation_window: int,
+    minimum_scheduled_removal_window: int,
+) -> list[str]:
+    label = stable_deprecation_label(descriptor)
+    stability = str(descriptor.get("stability") or "unknown").strip().lower()
+    deprecated_since = descriptor.get(FIELD_DEPRECATED_SINCE_CONTRACT_VERSION)
+    if not plain_int(deprecated_since):
+        return [f"{label} is {stability} without deprecatedSinceContractVersion metadata"]
+    if deprecated_since > current_contract_version:
+        return [
+            f"{label} deprecatedSinceContractVersion {deprecated_since} is after current "
+            f"contractVersion {current_contract_version}"
+        ]
+    removal_version = descriptor.get(FIELD_REMOVAL_CONTRACT_VERSION)
+    if stability == "deprecated" and removal_version is None:
+        return []
+    if not plain_int(removal_version):
+        return [f"{label} is scheduled for removal without removalContractVersion metadata"]
+    errors: list[str] = []
+    if removal_version <= deprecated_since:
+        errors.append(
+            f"{label} removalContractVersion must be greater than "
+            "deprecatedSinceContractVersion"
+        )
+    if removal_version - deprecated_since < minimum_deprecation_window:
+        errors.append(
+            f"{label} deprecation window is shorter than "
+            f"{minimum_deprecation_window} contract versions"
+        )
+    if removal_version - current_contract_version < minimum_scheduled_removal_window:
+        errors.append(
+            f"{label} scheduled-removal runway is shorter than "
+            f"{minimum_scheduled_removal_window} contract versions"
+        )
+    return errors
+
+
+def stable_deprecation_policy_findings(
+    contract_details: dict[str, Any], compatibility_window: dict[str, Any]
+) -> tuple[list[str], list[str]]:
+    errors: list[str] = []
+    warnings: list[str] = []
+    current_contract_version = contract_details.get("contractVersion")
+    minimum_deprecation_window = compatibility_window.get(
+        "minimumDeprecationWindowContractVersions"
+    )
+    minimum_scheduled_removal_window = compatibility_window.get(
+        "minimumScheduledRemovalWindowContractVersions"
+    )
+    if not plain_int(current_contract_version):
+        errors.append("contractVersion must be an integer for stable deprecation policy checks")
+    if not plain_int(minimum_deprecation_window):
+        errors.append("minimum deprecation window must be an integer")
+    if not plain_int(minimum_scheduled_removal_window):
+        errors.append("minimum scheduled-removal window must be an integer")
+    descriptors = contract_details.get("stableDescriptorDeprecations")
+    if not isinstance(descriptors, list):
+        errors.append("stable descriptor deprecation metadata is missing")
+        descriptors = []
+    if errors:
+        return errors, warnings
+    for descriptor in descriptors:
+        if not isinstance(descriptor, dict):
+            errors.append("stable descriptor deprecation entry is malformed")
+            continue
+        stability = str(descriptor.get("stability") or "unknown").strip().lower()
+        label = stable_deprecation_label(descriptor)
+        if stability not in PLATFORM_API_DEPRECATION_STABILITY_VALUES:
+            warnings.append(f"{label} has deprecation metadata but stability is {stability}")
+            continue
+        descriptor_errors = stable_deprecation_version_errors(
+            descriptor,
+            current_contract_version,
+            minimum_deprecation_window,
+            minimum_scheduled_removal_window,
+        )
+        if descriptor_errors:
+            errors.extend(descriptor_errors)
+        elif descriptor.get(FIELD_REMOVAL_CONTRACT_VERSION) is None:
+            warnings.append(
+                f"{label} is deprecated since contract "
+                f"{descriptor.get(FIELD_DEPRECATED_SINCE_CONTRACT_VERSION)}"
+            )
+        else:
+            warnings.append(
+                f"{label} is scheduled for removal in contract "
+                f"{descriptor.get(FIELD_REMOVAL_CONTRACT_VERSION)}"
+            )
+    return errors, warnings
 
 
 def capability_names(capabilities: list[Any]) -> list[str]:
@@ -2190,6 +2352,12 @@ def collect_platform_api_contract_evidence(
     )
     details["stableEndpointActionLabels"] = stable_endpoint_action_labels(
         endpoints, details["stableBaselineEndpoints"]
+    )
+    details["stableDescriptorDeprecations"] = stable_descriptor_deprecations(
+        capabilities,
+        endpoints,
+        details["stableBaselineCapabilities"],
+        details["stableBaselineEndpoints"],
     )
     details["stableCapabilityCount"] = len(details["stableCapabilities"])
     details["stableEndpointCount"] = len(details["stableEndpoints"])
@@ -2627,6 +2795,10 @@ def collect_platform_api_stable_freeze_evidence(
         deprecation_policy_errors.append("stable removals must require a future baseline")
     if compatibility_window.get("criticalStableRemovalWaiverAllowed") is not False:
         deprecation_policy_errors.append("critical stable removal waiver must be rejected")
+    descriptor_policy_errors, descriptor_policy_warnings = stable_deprecation_policy_findings(
+        contract_details, compatibility_window
+    )
+    deprecation_policy_errors.extend(descriptor_policy_errors)
     deprecation_policy_item = EvidenceItem(
         "platform-api.deprecation-window-policy",
         root_consequence(settings, "fail") if deprecation_policy_errors else "pass",
@@ -2648,6 +2820,11 @@ def collect_platform_api_stable_freeze_evidence(
             "criticalStableRemovalWaiverAllowed": compatibility_window.get(
                 "criticalStableRemovalWaiverAllowed"
             ),
+            "stableDescriptorDeprecations": contract_details.get(
+                "stableDescriptorDeprecations", []
+            ),
+            "descriptorErrors": descriptor_policy_errors,
+            "descriptorWarnings": descriptor_policy_warnings,
         },
     )
 
@@ -18015,7 +18192,8 @@ def run_self_test(repo_root: Path) -> None:
         assert evidence_by_id["platform-api.stable-breaking-change-check"]["status"] == "pass"
         assert evidence_by_id["platform-api.compatibility-window"]["status"] == "pass"
         assert evidence_by_id["platform-api.previous-contract-snapshot"]["status"] == "pass"
-        assert evidence_by_id["platform-api.deprecation-window-policy"]["status"] == "pass"
+        deprecation_policy_item = evidence_by_id["platform-api.deprecation-window-policy"]
+        assert deprecation_policy_item["status"] == "pass"
         assert evidence_by_id["platform-api.experimental-graduation-policy"]["status"] == "pass"
         assert evidence_by_id["platform-api.manifest-target-stability"]["status"] == "pass"
         assert evidence_by_id["platform-api.first-party-stability-declarations"]["status"] == "pass"
@@ -18055,6 +18233,52 @@ def run_self_test(repo_root: Path) -> None:
             "replaceApp",
         ], backup_restore_item
         contract_details = contract_item["details"]
+        assert contract_details["stableDescriptorDeprecations"] == [], contract_item
+        assert deprecation_policy_item["details"]["stableDescriptorDeprecations"] == []
+        assert deprecation_policy_item["details"]["descriptorErrors"] == []
+        bad_contract_details = dict(contract_details)
+        bad_contract_details["stableDescriptorDeprecations"] = [
+            {
+                "kind": "capability",
+                "identity": "queue.read",
+                "stability": "scheduled-for-removal",
+                "hasDeprecationMetadata": False,
+            },
+            {
+                "kind": "endpoint",
+                "identity": "GET /queue",
+                "stability": "deprecated",
+                "hasDeprecationMetadata": True,
+                FIELD_DEPRECATED_SINCE_CONTRACT_VERSION: CURRENT_PLATFORM_API_CONTRACT_VERSION,
+                FIELD_REMOVAL_CONTRACT_VERSION: CURRENT_PLATFORM_API_CONTRACT_VERSION + 1,
+            },
+        ]
+        bad_deprecation_evidence = {
+            item.id: item.to_json()
+            for item in collect_platform_api_stable_freeze_evidence(
+                dataclasses.replace(settings, mode="release-candidate"),
+                EvidenceItem(
+                    "platform-api.contract",
+                    "pass",
+                    True,
+                    "self-test contract",
+                    summary_source(settings),
+                    bad_contract_details,
+                ),
+            )
+        }
+        bad_deprecation_policy = bad_deprecation_evidence[
+            "platform-api.deprecation-window-policy"
+        ]
+        assert bad_deprecation_policy["status"] == "fail", bad_deprecation_policy
+        bad_deprecation_errors = bad_deprecation_policy["details"]["descriptorErrors"]
+        assert any(
+            "without deprecatedSinceContractVersion" in error
+            for error in bad_deprecation_errors
+        ), bad_deprecation_policy
+        assert any(
+            "deprecation window is shorter" in error for error in bad_deprecation_errors
+        ), bad_deprecation_policy
         assert (
             contract_details["contractVersion"] == CURRENT_PLATFORM_API_CONTRACT_VERSION
         ), contract_item
