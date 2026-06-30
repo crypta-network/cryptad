@@ -2558,6 +2558,16 @@ def endpoint_identity_from_detail(value: dict[str, Any]) -> str:
     return str(value.get("id") or value.get("name") or value.get("path") or value.get("route") or "")
 
 
+def concrete_endpoint_identity(value: Any) -> str:
+    text = str(value).strip()
+    if not text or "<" in text or ">" in text:
+        return ""
+    if text.startswith("/"):
+        return text
+    _method, separator, route = text.partition(" ")
+    return text if separator and route.startswith("/") else ""
+
+
 def stable_endpoint_capability_map(details: dict[str, Any]) -> dict[str, tuple[str, ...]]:
     direct = details.get("stableEndpointRequiredCapabilities")
     if isinstance(direct, dict):
@@ -2699,7 +2709,17 @@ def stable_endpoint_access_map_reported(details: dict[str, Any]) -> bool:
 
 
 def stable_endpoint_metadata_keys(details: dict[str, Any]) -> set[str]:
-    result: set[str] = set()
+    result: set[str] = {
+        identity
+        for endpoint in stable_baseline_named_set(
+            details,
+            "endpoints",
+            "stableBaselineEndpoints",
+            "stableEndpoints",
+            "endpoints",
+        )
+        if (identity := concrete_endpoint_identity(endpoint))
+    }
     endpoints = details.get("endpoints")
     if isinstance(endpoints, list):
         for value in endpoints:
@@ -11146,6 +11166,156 @@ def run_self_test(repo_root: Path) -> None:
         assert endpoint_label_missing_gate["details"]["unwaivableFailureEvidenceIds"] == [
             "platform-api.stable-breaking-change-check"
         ], endpoint_label_missing_gate
+
+        concrete_baseline_endpoints = ["GET /apps/current", "GET /apps/old"]
+        concrete_endpoint_capabilities = {
+            "GET /apps/current": ["queue.read"],
+            "GET /apps/old": ["queue.read"],
+        }
+        concrete_endpoint_access = {
+            "GET /apps/current": {
+                "appProcessPrincipalsAllowed": True,
+                "appBrowserPrincipalsAllowed": True,
+            },
+            "GET /apps/old": {
+                "appProcessPrincipalsAllowed": True,
+                "appBrowserPrincipalsAllowed": True,
+            },
+        }
+        concrete_endpoint_labels = {
+            "GET /apps/current": "apps.current",
+            "GET /apps/old": "apps.old",
+        }
+
+        previous_concrete_endpoint_metadata = json.loads(json.dumps(previous_good))
+        for entry in previous_concrete_endpoint_metadata["evidence"]:
+            if entry["id"] == "platform-api.contract":
+                entry["details"]["contractVersion"] = 2
+                set_stable_baseline_details(
+                    entry,
+                    ["queue.read"],
+                    concrete_baseline_endpoints,
+                    concrete_endpoint_capabilities,
+                    concrete_endpoint_access,
+                    concrete_endpoint_labels,
+                )
+        previous_concrete_endpoint_metadata_path = (
+            workspace / "build/previous-concrete-endpoint-metadata/summary.json"
+        )
+        write_json(previous_concrete_endpoint_metadata_path, previous_concrete_endpoint_metadata)
+
+        def write_current_concrete_endpoint_metadata(
+            name: str,
+            endpoint_capabilities: dict[str, list[str]],
+            endpoint_access: dict[str, dict[str, bool]],
+            endpoint_labels: dict[str, str],
+        ) -> Path:
+            def update_contract(entry: dict[str, Any]) -> None:
+                entry.setdefault("details", {})["contractVersion"] = 2
+                set_stable_baseline_details(
+                    entry,
+                    ["queue.read"],
+                    concrete_baseline_endpoints,
+                    endpoint_capabilities,
+                    endpoint_access,
+                    endpoint_labels,
+                )
+
+            return write_app_summary_variant(
+                name,
+                lambda value: update_evidence(
+                    value, "platform-api.contract", update_contract
+                ),
+            )
+
+        padded_endpoint_capability_path = write_current_concrete_endpoint_metadata(
+            "current-padded-endpoint-capabilities",
+            {
+                "GET /apps/current": ["queue.read"],
+                "GET /apps/extra": ["queue.read"],
+            },
+            concrete_endpoint_access,
+            concrete_endpoint_labels,
+        )
+        padded_endpoint_capability_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/padded-endpoint-capability-cert").resolve(),
+            previous_summary=previous_concrete_endpoint_metadata_path,
+            app_platform_summary=padded_endpoint_capability_path,
+        )
+        padded_endpoint_capability_summary, padded_endpoint_capability_exit_code = run(
+            padded_endpoint_capability_settings
+        )
+        assert padded_endpoint_capability_exit_code == 1, padded_endpoint_capability_summary
+        padded_endpoint_capability_gate = gate_by_id(
+            padded_endpoint_capability_summary, "ecosystem.platform-api-compatibility"
+        )
+        assert padded_endpoint_capability_gate["status"] == "fail", (
+            padded_endpoint_capability_gate
+        )
+        assert padded_endpoint_capability_gate["details"][
+            "stableEndpointRequiredCapabilitiesMissing"
+        ] == ["GET /apps/old"], padded_endpoint_capability_gate
+
+        padded_endpoint_access_path = write_current_concrete_endpoint_metadata(
+            "current-padded-endpoint-access",
+            concrete_endpoint_capabilities,
+            {
+                "GET /apps/current": {
+                    "appProcessPrincipalsAllowed": True,
+                    "appBrowserPrincipalsAllowed": True,
+                },
+                "GET /apps/extra": {
+                    "appProcessPrincipalsAllowed": True,
+                    "appBrowserPrincipalsAllowed": True,
+                },
+            },
+            concrete_endpoint_labels,
+        )
+        padded_endpoint_access_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/padded-endpoint-access-cert").resolve(),
+            previous_summary=previous_concrete_endpoint_metadata_path,
+            app_platform_summary=padded_endpoint_access_path,
+        )
+        padded_endpoint_access_summary, padded_endpoint_access_exit_code = run(
+            padded_endpoint_access_settings
+        )
+        assert padded_endpoint_access_exit_code == 1, padded_endpoint_access_summary
+        padded_endpoint_access_gate = gate_by_id(
+            padded_endpoint_access_summary, "ecosystem.platform-api-compatibility"
+        )
+        assert padded_endpoint_access_gate["status"] == "fail", padded_endpoint_access_gate
+        assert padded_endpoint_access_gate["details"]["stableEndpointAppAccessMissing"] == [
+            "GET /apps/old"
+        ], padded_endpoint_access_gate
+
+        padded_endpoint_labels_path = write_current_concrete_endpoint_metadata(
+            "current-padded-endpoint-labels",
+            concrete_endpoint_capabilities,
+            concrete_endpoint_access,
+            {
+                "GET /apps/current": "apps.current",
+                "GET /apps/extra": "apps.extra",
+            },
+        )
+        padded_endpoint_label_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/padded-endpoint-label-cert").resolve(),
+            previous_summary=previous_concrete_endpoint_metadata_path,
+            app_platform_summary=padded_endpoint_labels_path,
+        )
+        padded_endpoint_label_summary, padded_endpoint_label_exit_code = run(
+            padded_endpoint_label_settings
+        )
+        assert padded_endpoint_label_exit_code == 1, padded_endpoint_label_summary
+        padded_endpoint_label_gate = gate_by_id(
+            padded_endpoint_label_summary, "ecosystem.platform-api-compatibility"
+        )
+        assert padded_endpoint_label_gate["status"] == "fail", padded_endpoint_label_gate
+        assert padded_endpoint_label_gate["details"]["stableEndpointActionLabelsMissing"] == [
+            "GET /apps/old"
+        ], padded_endpoint_label_gate
 
         current_contract_endpoint_labels_unavailable_path = write_app_summary_variant(
             "current-contract-endpoint-labels-unavailable",
