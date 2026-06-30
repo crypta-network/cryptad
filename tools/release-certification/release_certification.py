@@ -2698,6 +2698,48 @@ def stable_endpoint_access_map_reported(details: dict[str, Any]) -> bool:
     )
 
 
+def stable_endpoint_metadata_keys(details: dict[str, Any]) -> set[str]:
+    result: set[str] = set()
+    endpoints = details.get("endpoints")
+    if isinstance(endpoints, list):
+        for value in endpoints:
+            if not isinstance(value, dict):
+                continue
+            stability = str(value.get("stability", value.get("lifecycle", ""))).lower()
+            if stability and stability != "stable":
+                continue
+            identity = endpoint_identity_from_detail(value)
+            if identity:
+                result.add(identity)
+    result.update(stable_endpoint_capability_map(details))
+    result.update(stable_endpoint_access_map(details))
+    result.update(stable_endpoint_action_label_map(details))
+    return result
+
+
+def stable_endpoint_expected_count(details: dict[str, Any]) -> int | None:
+    count = stable_baseline_count(
+        details,
+        "endpointCount",
+        "stableBaselineEndpointCount",
+        "endpoints",
+        "stableBaselineEndpoints",
+    )
+    if count is not None:
+        return count
+    return detail_int(details, "stableEndpointCount")
+
+
+def stable_endpoint_metadata_count_gap(
+    details: dict[str, Any], metadata: dict[str, Any]
+) -> dict[str, int]:
+    expected = stable_endpoint_expected_count(details)
+    actual = len(metadata)
+    if expected is not None and actual < expected:
+        return {"expected": expected, "actual": actual}
+    return {}
+
+
 MATRIX_CATEGORY_TITLES = {
     "release-operations": "Release operations",
     "network-compatibility": "Network compatibility",
@@ -4874,22 +4916,83 @@ def evaluate_platform_api_gate(
         add_evidence_issue(
             details, "unwaivableFailureEvidenceIds", "platform-api.stable-breaking-change-check"
         )
+    previous_endpoint_metadata_keys = stable_endpoint_metadata_keys(previous_details)
+    current_endpoint_metadata_keys = stable_endpoint_metadata_keys(current_details)
     previous_endpoint_capabilities = stable_endpoint_capability_map(previous_details)
     current_endpoint_capabilities = stable_endpoint_capability_map(current_details)
     previous_endpoint_capabilities_reported = stable_endpoint_capability_map_reported(previous_details)
     current_endpoint_capabilities_reported = stable_endpoint_capability_map_reported(current_details)
+    missing_current_endpoint_capabilities = sorted(
+        current_endpoint_metadata_keys - set(current_endpoint_capabilities)
+    )
+    missing_previous_endpoint_capabilities = sorted(
+        previous_endpoint_metadata_keys - set(previous_endpoint_capabilities)
+    )
+    current_endpoint_capability_count_gap = stable_endpoint_metadata_count_gap(
+        current_details, current_endpoint_capabilities
+    )
+    previous_endpoint_capability_count_gap = stable_endpoint_metadata_count_gap(
+        previous_details, previous_endpoint_capabilities
+    )
     if current_endpoints and not current_endpoint_capabilities_reported:
         failures.append("Current stable endpoint required-capability metadata is unavailable")
         add_evidence_issue(details, "failureEvidenceIds", "platform-api.stable-breaking-change-check")
         add_evidence_issue(
             details, "unwaivableFailureEvidenceIds", "platform-api.stable-breaking-change-check"
         )
-    elif (
-        previous_endpoints
-        and previous_baseline_reported
-        and not previous_endpoint_capabilities_reported
+    elif missing_current_endpoint_capabilities or current_endpoint_capability_count_gap:
+        if missing_current_endpoint_capabilities:
+            failures.append(
+                "Current stable endpoint required-capability metadata is incomplete: "
+                + ", ".join(missing_current_endpoint_capabilities)
+            )
+            details["stableEndpointRequiredCapabilitiesMissing"] = (
+                missing_current_endpoint_capabilities
+            )
+        else:
+            failures.append(
+                "Current stable endpoint required-capability metadata is incomplete: "
+                f"expected {current_endpoint_capability_count_gap['expected']} entries, "
+                f"found {current_endpoint_capability_count_gap['actual']}"
+            )
+            details["stableEndpointRequiredCapabilitiesExpectedCount"] = (
+                current_endpoint_capability_count_gap["expected"]
+            )
+            details["stableEndpointRequiredCapabilitiesSetCount"] = (
+                current_endpoint_capability_count_gap["actual"]
+            )
+        add_evidence_issue(details, "failureEvidenceIds", "platform-api.stable-breaking-change-check")
+        add_evidence_issue(
+            details, "unwaivableFailureEvidenceIds", "platform-api.stable-breaking-change-check"
+        )
+    elif previous_endpoints and previous_baseline_reported and (
+        not previous_endpoint_capabilities_reported
+        or missing_previous_endpoint_capabilities
+        or previous_endpoint_capability_count_gap
     ):
-        message = "Previous stable endpoint required-capability metadata is unavailable"
+        if previous_endpoint_capabilities_reported:
+            if missing_previous_endpoint_capabilities:
+                message = (
+                    "Previous stable endpoint required-capability metadata is incomplete: "
+                    + ", ".join(missing_previous_endpoint_capabilities)
+                )
+                details["previousStableEndpointRequiredCapabilitiesMissing"] = (
+                    missing_previous_endpoint_capabilities
+                )
+            else:
+                message = (
+                    "Previous stable endpoint required-capability metadata is incomplete: "
+                    f"expected {previous_endpoint_capability_count_gap['expected']} entries, "
+                    f"found {previous_endpoint_capability_count_gap['actual']}"
+                )
+                details["previousStableEndpointRequiredCapabilitiesExpectedCount"] = (
+                    previous_endpoint_capability_count_gap["expected"]
+                )
+                details["previousStableEndpointRequiredCapabilitiesSetCount"] = (
+                    previous_endpoint_capability_count_gap["actual"]
+                )
+        else:
+            message = "Previous stable endpoint required-capability metadata is unavailable"
         if mode == "release-candidate" and require_history:
             failures.append(message)
             add_evidence_issue(details, "failureEvidenceIds", "platform-api.stable-breaking-change-check")
@@ -4930,14 +5033,69 @@ def evaluate_platform_api_gate(
     current_endpoint_access = stable_endpoint_access_map(current_details)
     previous_endpoint_access_reported = stable_endpoint_access_map_reported(previous_details)
     current_endpoint_access_reported = stable_endpoint_access_map_reported(current_details)
+    missing_current_endpoint_access = sorted(current_endpoint_metadata_keys - set(current_endpoint_access))
+    missing_previous_endpoint_access = sorted(previous_endpoint_metadata_keys - set(previous_endpoint_access))
+    current_endpoint_access_count_gap = stable_endpoint_metadata_count_gap(
+        current_details, current_endpoint_access
+    )
+    previous_endpoint_access_count_gap = stable_endpoint_metadata_count_gap(
+        previous_details, previous_endpoint_access
+    )
     if current_endpoints and not current_endpoint_access_reported:
         failures.append("Current stable endpoint app-principal access metadata is unavailable")
         add_evidence_issue(details, "failureEvidenceIds", "platform-api.stable-breaking-change-check")
         add_evidence_issue(
             details, "unwaivableFailureEvidenceIds", "platform-api.stable-breaking-change-check"
         )
-    elif previous_endpoints and previous_baseline_reported and not previous_endpoint_access_reported:
-        message = "Previous stable endpoint app-principal access metadata is unavailable"
+    elif missing_current_endpoint_access or current_endpoint_access_count_gap:
+        if missing_current_endpoint_access:
+            failures.append(
+                "Current stable endpoint app-principal access metadata is incomplete: "
+                + ", ".join(missing_current_endpoint_access)
+            )
+            details["stableEndpointAppAccessMissing"] = missing_current_endpoint_access
+        else:
+            failures.append(
+                "Current stable endpoint app-principal access metadata is incomplete: "
+                f"expected {current_endpoint_access_count_gap['expected']} entries, "
+                f"found {current_endpoint_access_count_gap['actual']}"
+            )
+            details["stableEndpointAppAccessExpectedCount"] = (
+                current_endpoint_access_count_gap["expected"]
+            )
+            details["stableEndpointAppAccessSetCount"] = current_endpoint_access_count_gap[
+                "actual"
+            ]
+        add_evidence_issue(details, "failureEvidenceIds", "platform-api.stable-breaking-change-check")
+        add_evidence_issue(
+            details, "unwaivableFailureEvidenceIds", "platform-api.stable-breaking-change-check"
+        )
+    elif previous_endpoints and previous_baseline_reported and (
+        not previous_endpoint_access_reported
+        or missing_previous_endpoint_access
+        or previous_endpoint_access_count_gap
+    ):
+        if previous_endpoint_access_reported:
+            if missing_previous_endpoint_access:
+                message = (
+                    "Previous stable endpoint app-principal access metadata is incomplete: "
+                    + ", ".join(missing_previous_endpoint_access)
+                )
+                details["previousStableEndpointAppAccessMissing"] = missing_previous_endpoint_access
+            else:
+                message = (
+                    "Previous stable endpoint app-principal access metadata is incomplete: "
+                    f"expected {previous_endpoint_access_count_gap['expected']} entries, "
+                    f"found {previous_endpoint_access_count_gap['actual']}"
+                )
+                details["previousStableEndpointAppAccessExpectedCount"] = (
+                    previous_endpoint_access_count_gap["expected"]
+                )
+                details["previousStableEndpointAppAccessSetCount"] = (
+                    previous_endpoint_access_count_gap["actual"]
+                )
+        else:
+            message = "Previous stable endpoint app-principal access metadata is unavailable"
         if mode == "release-candidate" and require_history:
             failures.append(message)
             add_evidence_issue(details, "failureEvidenceIds", "platform-api.stable-breaking-change-check")
@@ -4982,18 +5140,77 @@ def evaluate_platform_api_gate(
     current_endpoint_action_labels_reported = stable_endpoint_action_label_map_reported(
         current_details
     )
+    missing_current_endpoint_action_labels = sorted(
+        current_endpoint_metadata_keys - set(current_endpoint_action_labels)
+    )
+    missing_previous_endpoint_action_labels = sorted(
+        previous_endpoint_metadata_keys - set(previous_endpoint_action_labels)
+    )
+    current_endpoint_action_label_count_gap = stable_endpoint_metadata_count_gap(
+        current_details, current_endpoint_action_labels
+    )
+    previous_endpoint_action_label_count_gap = stable_endpoint_metadata_count_gap(
+        previous_details, previous_endpoint_action_labels
+    )
     if current_endpoints and not current_endpoint_action_labels_reported:
         failures.append("Current stable endpoint action-label metadata is unavailable")
         add_evidence_issue(details, "failureEvidenceIds", "platform-api.stable-breaking-change-check")
         add_evidence_issue(
             details, "unwaivableFailureEvidenceIds", "platform-api.stable-breaking-change-check"
         )
-    elif (
-        previous_endpoints
-        and previous_baseline_reported
-        and not previous_endpoint_action_labels_reported
+    elif missing_current_endpoint_action_labels or current_endpoint_action_label_count_gap:
+        if missing_current_endpoint_action_labels:
+            failures.append(
+                "Current stable endpoint action-label metadata is incomplete: "
+                + ", ".join(missing_current_endpoint_action_labels)
+            )
+            details["stableEndpointActionLabelsMissing"] = (
+                missing_current_endpoint_action_labels
+            )
+        else:
+            failures.append(
+                "Current stable endpoint action-label metadata is incomplete: "
+                f"expected {current_endpoint_action_label_count_gap['expected']} entries, "
+                f"found {current_endpoint_action_label_count_gap['actual']}"
+            )
+            details["stableEndpointActionLabelsExpectedCount"] = (
+                current_endpoint_action_label_count_gap["expected"]
+            )
+            details["stableEndpointActionLabelsSetCount"] = (
+                current_endpoint_action_label_count_gap["actual"]
+            )
+        add_evidence_issue(details, "failureEvidenceIds", "platform-api.stable-breaking-change-check")
+        add_evidence_issue(
+            details, "unwaivableFailureEvidenceIds", "platform-api.stable-breaking-change-check"
+        )
+    elif previous_endpoints and previous_baseline_reported and (
+        not previous_endpoint_action_labels_reported
+        or missing_previous_endpoint_action_labels
+        or previous_endpoint_action_label_count_gap
     ):
-        message = "Previous stable endpoint action-label metadata is unavailable"
+        if previous_endpoint_action_labels_reported:
+            if missing_previous_endpoint_action_labels:
+                message = (
+                    "Previous stable endpoint action-label metadata is incomplete: "
+                    + ", ".join(missing_previous_endpoint_action_labels)
+                )
+                details["previousStableEndpointActionLabelsMissing"] = (
+                    missing_previous_endpoint_action_labels
+                )
+            else:
+                message = (
+                    "Previous stable endpoint action-label metadata is incomplete: "
+                    f"expected {previous_endpoint_action_label_count_gap['expected']} entries, "
+                    f"found {previous_endpoint_action_label_count_gap['actual']}"
+                )
+                details["previousStableEndpointActionLabelsExpectedCount"] = (
+                    previous_endpoint_action_label_count_gap["expected"]
+                )
+                details["previousStableEndpointActionLabelsSetCount"] = (
+                    previous_endpoint_action_label_count_gap["actual"]
+                )
+        else:
+            message = "Previous stable endpoint action-label metadata is unavailable"
         if mode == "release-candidate" and require_history:
             failures.append(message)
             add_evidence_issue(details, "failureEvidenceIds", "platform-api.stable-breaking-change-check")
@@ -10625,10 +10842,12 @@ def run_self_test(repo_root: Path) -> None:
         for entry in previous_contract_endpoint_caps["evidence"]:
             if entry["id"] == "platform-api.contract":
                 entry["details"]["contractVersion"] = 2
-                entry["details"]["stableEndpointRequiredCapabilities"] = {
-                    "GET /queue": ["queue.read"]
-                }
-                entry["details"]["stableEndpointAppAccess"] = {
+                entry["details"]["stableEndpointRequiredCapabilities"] = entry["details"].get(
+                    "stableEndpointRequiredCapabilities", {}
+                ) | {"GET /queue": ["queue.read"]}
+                entry["details"]["stableEndpointAppAccess"] = entry["details"].get(
+                    "stableEndpointAppAccess", {}
+                ) | {
                     "GET /queue": {
                         "appProcessPrincipalsAllowed": True,
                         "appBrowserPrincipalsAllowed": True,
@@ -10644,10 +10863,13 @@ def run_self_test(repo_root: Path) -> None:
                 lambda entry: entry.setdefault("details", {}).update(
                     {
                         "contractVersion": 2,
-                        "stableEndpointRequiredCapabilities": {
-                            "GET /queue": ["queue.write"]
-                        },
-                        "stableEndpointAppAccess": {
+                        "stableEndpointRequiredCapabilities": entry.setdefault("details", {})
+                        .get("stableEndpointRequiredCapabilities", {})
+                        | {"GET /queue": ["queue.write"]},
+                        "stableEndpointAppAccess": entry.setdefault("details", {}).get(
+                            "stableEndpointAppAccess", {}
+                        )
+                        | {
                             "GET /queue": {
                                 "appProcessPrincipalsAllowed": True,
                                 "appBrowserPrincipalsAllowed": True,
@@ -10679,14 +10901,58 @@ def run_self_test(repo_root: Path) -> None:
             "platform-api.stable-breaking-change-check"
         ], endpoint_capability_regression_gate
 
+        current_contract_endpoint_caps_missing_path = write_app_summary_variant(
+            "current-contract-endpoint-caps-missing",
+            lambda value: update_evidence(
+                value,
+                "platform-api.contract",
+                lambda entry: entry.setdefault("details", {}).update(
+                    {
+                        "contractVersion": 2,
+                        "stableEndpointRequiredCapabilities": {
+                            endpoint: capabilities
+                            for endpoint, capabilities in entry.setdefault("details", {})
+                            .get("stableEndpointRequiredCapabilities", {})
+                            .items()
+                            if endpoint != "GET /queue"
+                        },
+                    }
+                ),
+            ),
+        )
+        endpoint_capability_missing_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/contract-endpoint-capability-missing-cert").resolve(),
+            previous_summary=previous_contract_endpoint_caps_path,
+            app_platform_summary=current_contract_endpoint_caps_missing_path,
+        )
+        endpoint_capability_missing_summary, endpoint_capability_missing_exit_code = run(
+            endpoint_capability_missing_settings
+        )
+        assert endpoint_capability_missing_exit_code == 1, endpoint_capability_missing_summary
+        endpoint_capability_missing_gate = gate_by_id(
+            endpoint_capability_missing_summary, "ecosystem.platform-api-compatibility"
+        )
+        assert endpoint_capability_missing_gate["status"] == "fail", (
+            endpoint_capability_missing_gate
+        )
+        assert endpoint_capability_missing_gate["details"][
+            "stableEndpointRequiredCapabilitiesMissing"
+        ] == ["GET /queue"], endpoint_capability_missing_gate
+        assert endpoint_capability_missing_gate["details"]["unwaivableFailureEvidenceIds"] == [
+            "platform-api.stable-breaking-change-check"
+        ], endpoint_capability_missing_gate
+
         previous_contract_endpoint_access = json.loads(json.dumps(previous_good))
         for entry in previous_contract_endpoint_access["evidence"]:
             if entry["id"] == "platform-api.contract":
                 entry["details"]["contractVersion"] = 2
-                entry["details"]["stableEndpointRequiredCapabilities"] = {
-                    "GET /queue": ["queue.read"]
-                }
-                entry["details"]["stableEndpointAppAccess"] = {
+                entry["details"]["stableEndpointRequiredCapabilities"] = entry["details"].get(
+                    "stableEndpointRequiredCapabilities", {}
+                ) | {"GET /queue": ["queue.read"]}
+                entry["details"]["stableEndpointAppAccess"] = entry["details"].get(
+                    "stableEndpointAppAccess", {}
+                ) | {
                     "GET /queue": {
                         "appProcessPrincipalsAllowed": True,
                         "appBrowserPrincipalsAllowed": True,
@@ -10702,10 +10968,13 @@ def run_self_test(repo_root: Path) -> None:
                 lambda entry: entry.setdefault("details", {}).update(
                     {
                         "contractVersion": 2,
-                        "stableEndpointRequiredCapabilities": {
-                            "GET /queue": ["queue.read"]
-                        },
-                        "stableEndpointAppAccess": {
+                        "stableEndpointRequiredCapabilities": entry.setdefault("details", {})
+                        .get("stableEndpointRequiredCapabilities", {})
+                        | {"GET /queue": ["queue.read"]},
+                        "stableEndpointAppAccess": entry.setdefault("details", {}).get(
+                            "stableEndpointAppAccess", {}
+                        )
+                        | {
                             "GET /queue": {
                                 "appProcessPrincipalsAllowed": False,
                                 "appBrowserPrincipalsAllowed": True,
@@ -10742,6 +11011,46 @@ def run_self_test(repo_root: Path) -> None:
         assert endpoint_access_regression_gate["details"]["unwaivableFailureEvidenceIds"] == [
             "platform-api.stable-breaking-change-check"
         ], endpoint_access_regression_gate
+
+        current_contract_endpoint_access_missing_path = write_app_summary_variant(
+            "current-contract-endpoint-access-missing",
+            lambda value: update_evidence(
+                value,
+                "platform-api.contract",
+                lambda entry: entry.setdefault("details", {}).update(
+                    {
+                        "contractVersion": 2,
+                        "stableEndpointAppAccess": {
+                            endpoint: access
+                            for endpoint, access in entry.setdefault("details", {})
+                            .get("stableEndpointAppAccess", {})
+                            .items()
+                            if endpoint != "GET /queue"
+                        },
+                    }
+                ),
+            ),
+        )
+        endpoint_access_missing_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/contract-endpoint-access-missing-cert").resolve(),
+            previous_summary=previous_contract_endpoint_access_path,
+            app_platform_summary=current_contract_endpoint_access_missing_path,
+        )
+        endpoint_access_missing_summary, endpoint_access_missing_exit_code = run(
+            endpoint_access_missing_settings
+        )
+        assert endpoint_access_missing_exit_code == 1, endpoint_access_missing_summary
+        endpoint_access_missing_gate = gate_by_id(
+            endpoint_access_missing_summary, "ecosystem.platform-api-compatibility"
+        )
+        assert endpoint_access_missing_gate["status"] == "fail", endpoint_access_missing_gate
+        assert endpoint_access_missing_gate["details"]["stableEndpointAppAccessMissing"] == [
+            "GET /queue"
+        ], endpoint_access_missing_gate
+        assert endpoint_access_missing_gate["details"]["unwaivableFailureEvidenceIds"] == [
+            "platform-api.stable-breaking-change-check"
+        ], endpoint_access_missing_gate
 
         previous_contract_endpoint_labels = json.loads(json.dumps(previous_good))
         for entry in previous_contract_endpoint_labels["evidence"]:
