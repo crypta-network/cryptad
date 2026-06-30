@@ -4980,6 +4980,9 @@ def evaluate_platform_api_gate(
                 + ", ".join(change["endpoint"] for change in changed_endpoint_action_labels)
             )
             add_evidence_issue(details, "failureEvidenceIds", "platform-api.stable-breaking-change-check")
+            add_evidence_issue(
+                details, "unwaivableFailureEvidenceIds", "platform-api.stable-breaking-change-check"
+            )
             details["stableEndpointActionLabelChanges"] = changed_endpoint_action_labels
     if current_baseline_reported or previous_baseline_reported:
         previous_capabilities = stable_baseline_named_set(
@@ -10684,6 +10687,9 @@ def run_self_test(repo_root: Path) -> None:
             ]
             == "queue.read.changed"
         ), endpoint_label_regression_gate
+        assert endpoint_label_regression_gate["details"]["unwaivableFailureEvidenceIds"] == [
+            "platform-api.stable-breaking-change-check"
+        ], endpoint_label_regression_gate
 
         def set_contract_raw_endpoint_details(
             entry: dict[str, Any], routes: list[str], stable_count: int
