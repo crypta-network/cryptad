@@ -17,6 +17,7 @@ The Platform API 1.0 stable promise covers only descriptors that are members of
   [platform-api-1.0-stable-reference.md](platform-api-1.0-stable-reference.md);
 - the 32 app-facing stable endpoint identities listed in the same reference;
 - each stable endpoint's required capability set;
+- each stable endpoint's audit/authorization action label;
 - each stable endpoint's app-process and app-browser principal access flags;
 - the stable baseline identity: name `1.0` and baseline contract version `19`.
 
@@ -127,6 +128,7 @@ these stable API 1.0 regressions:
 - stable capability or endpoint reclassified as experimental, internal, or operator-only;
 - stable endpoint method or route identity changed;
 - stable endpoint required capabilities changed;
+- stable endpoint audit/authorization action label changed;
 - stable endpoint app-principal access changed;
 - stable deprecation or scheduled-removal metadata missing;
 - stable deprecation or removal windows shorter than policy;

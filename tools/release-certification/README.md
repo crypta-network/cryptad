@@ -411,8 +411,8 @@ URIs, private keys, live fetched bodies, raw trust statements, or app/session to
 coverage, issue templates, internal Markdown links, README/portal links, and obvious secret leaks.
 The `platform-api.stable-baseline` and `platform-api.stable-breaking-change-check` rows prove the
 Platform API 1.0 baseline is present and compare stable capability names, stable endpoint
-identities, stable endpoint required-capability sets, and stable endpoint app-process/app-browser
-access flags against release history. `platform-api.compatibility-window`,
+identities, stable endpoint required-capability sets, stable endpoint action labels, and stable
+endpoint app-process/app-browser access flags against release history. `platform-api.compatibility-window`,
 `platform-api.previous-contract-snapshot`, `platform-api.deprecation-window-policy`, and
 `platform-api.experimental-graduation-policy` make the support-window metadata, previous snapshot
 requirement, minimum removal windows, waiver boundaries, and future-baseline graduation process
@@ -610,8 +610,9 @@ the primary destination, the exact safe-read plaintext export fallback, retained
 FProxy/content-filter/startup/security fallback scope, and evidence redaction without a live node.
 Platform API contract version rollback, missing stable baseline metadata, stable
 endpoint/capability removal, stable endpoint required-capability changes, stable endpoint
-app-principal access regressions, first-party app disappearance, missing Site Publisher evidence,
-strict first-party UI lint failure, review receipt regression, update rollback regression, vault
+action-label changes, stable endpoint app-principal access regressions, first-party app
+disappearance, missing Site Publisher evidence, strict first-party UI lint failure, review receipt
+regression, update rollback regression, vault
 capability/redaction regression, required enforced sandbox evidence loss, and missing legacy
 removal-wave evidence are reported as ecosystem gate blockers.
 

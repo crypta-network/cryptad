@@ -424,11 +424,11 @@ records an explicit waiver for a docs-only gap; redaction failures should not be
 
 `platform-api.contract` is generated offline with `crypta-app api snapshot`. The companion
 `platform-api.stable-baseline` evidence records the Platform API 1.0 baseline name, capability
-count/list, endpoint count/list, stable endpoint required-capability sets, and stable endpoint
-app-principal access flags. `platform-api.stable-breaking-change-check` is required evidence and
-the ecosystem gate compares current stable capabilities, endpoint identities, endpoint
-required-capability sets, and app-process/app-browser access flags against the previous production
-release summary.
+count/list, endpoint count/list, stable endpoint required-capability sets, stable endpoint action
+labels, and stable endpoint app-principal access flags. `platform-api.stable-breaking-change-check`
+is required evidence and the ecosystem gate compares current stable capabilities, endpoint
+identities, endpoint required-capability sets, action labels, and app-process/app-browser access
+flags against the previous production release summary.
 
 `platform-api.compatibility-window`, `platform-api.previous-contract-snapshot`,
 `platform-api.deprecation-window-policy`, and `platform-api.experimental-graduation-policy` make the

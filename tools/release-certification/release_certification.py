@@ -2591,6 +2591,50 @@ def stable_endpoint_capability_map_reported(details: dict[str, Any]) -> bool:
     return any(isinstance(value, dict) and "requiredCapabilities" in value for value in endpoints)
 
 
+def stable_endpoint_action_label_map(details: dict[str, Any]) -> dict[str, str]:
+    direct = details.get("stableEndpointActionLabels")
+    if isinstance(direct, dict):
+        return {
+            str(endpoint): str(label).strip()
+            for endpoint, label in direct.items()
+            if str(endpoint) and str(label).strip()
+        }
+    result: dict[str, str] = {}
+    endpoints = details.get("endpoints")
+    if not isinstance(endpoints, list):
+        return result
+    for value in endpoints:
+        if not isinstance(value, dict):
+            continue
+        stability = str(value.get("stability", value.get("lifecycle", ""))).lower()
+        if stability and stability != "stable":
+            continue
+        identity = endpoint_identity_from_detail(value)
+        label = str(value.get("actionLabel") or "").strip()
+        if identity and label:
+            result[identity] = label
+    return result
+
+
+def stable_endpoint_action_label_map_reported(details: dict[str, Any]) -> bool:
+    if isinstance(details.get("stableEndpointActionLabels"), dict):
+        return True
+    endpoints = details.get("endpoints")
+    if not isinstance(endpoints, list):
+        return False
+    stable_endpoints = []
+    for value in endpoints:
+        if not isinstance(value, dict):
+            continue
+        stability = str(value.get("stability", value.get("lifecycle", ""))).lower()
+        if stability and stability != "stable":
+            continue
+        stable_endpoints.append(value)
+    if not stable_endpoints:
+        return False
+    return all("actionLabel" in value for value in stable_endpoints)
+
+
 def endpoint_access_tuple(value: Any) -> tuple[bool, bool]:
     if not isinstance(value, dict):
         return (False, False)
@@ -4677,6 +4721,7 @@ def evaluate_platform_api_gate(
             "stableBaselineEndpoints",
         ),
         "stableEndpointCapabilitySetCount": len(stable_endpoint_capability_map(current_details)),
+        "stableEndpointActionLabelSetCount": len(stable_endpoint_action_label_map(current_details)),
         "stableEndpointAppAccessSetCount": len(stable_endpoint_access_map(current_details)),
         "flaggedStability": current_details.get("flaggedStability", []),
     }
@@ -4702,6 +4747,9 @@ def evaluate_platform_api_gate(
                 "stableBaselineEndpoints",
             ),
             "stableEndpointCapabilitySetCount": len(stable_endpoint_capability_map(previous_details)),
+            "stableEndpointActionLabelSetCount": len(
+                stable_endpoint_action_label_map(previous_details)
+            ),
             "stableEndpointAppAccessSetCount": len(stable_endpoint_access_map(previous_details)),
         }
     previous_version = detail_int(previous_details, "contractVersion")
@@ -4884,6 +4932,55 @@ def evaluate_platform_api_gate(
             )
             add_evidence_issue(details, "failureEvidenceIds", "platform-api.stable-breaking-change-check")
             details["stableEndpointAccessChanges"] = changed_endpoint_access
+    previous_endpoint_action_labels = stable_endpoint_action_label_map(previous_details)
+    current_endpoint_action_labels = stable_endpoint_action_label_map(current_details)
+    previous_endpoint_action_labels_reported = stable_endpoint_action_label_map_reported(
+        previous_details
+    )
+    current_endpoint_action_labels_reported = stable_endpoint_action_label_map_reported(
+        current_details
+    )
+    if current_endpoints and not current_endpoint_action_labels_reported:
+        failures.append("Current stable endpoint action-label metadata is unavailable")
+        add_evidence_issue(details, "failureEvidenceIds", "platform-api.stable-breaking-change-check")
+    elif (
+        previous_endpoints
+        and previous_baseline_reported
+        and not previous_endpoint_action_labels_reported
+    ):
+        message = "Previous stable endpoint action-label metadata is unavailable"
+        if mode == "release-candidate" and require_history:
+            failures.append(message)
+            add_evidence_issue(details, "failureEvidenceIds", "platform-api.stable-breaking-change-check")
+        else:
+            warnings.append(message)
+            add_evidence_issue(details, "warningEvidenceIds", "platform-api.stable-breaking-change-check")
+    elif (
+        previous_endpoint_action_labels
+        and current_endpoint_action_labels_reported
+        and (previous_baseline_reported or not current_baseline_reported)
+    ):
+        changed_endpoint_action_labels = []
+        for endpoint in sorted(
+            set(previous_endpoint_action_labels) & set(current_endpoint_action_labels)
+        ):
+            previous_label = previous_endpoint_action_labels[endpoint]
+            current_label = current_endpoint_action_labels[endpoint]
+            if previous_label != current_label:
+                changed_endpoint_action_labels.append(
+                    {
+                        "endpoint": endpoint,
+                        "previous": previous_label,
+                        "current": current_label,
+                    }
+                )
+        if changed_endpoint_action_labels:
+            failures.append(
+                "Stable endpoint action labels changed: "
+                + ", ".join(change["endpoint"] for change in changed_endpoint_action_labels)
+            )
+            add_evidence_issue(details, "failureEvidenceIds", "platform-api.stable-breaking-change-check")
+            details["stableEndpointActionLabelChanges"] = changed_endpoint_action_labels
     if current_baseline_reported or previous_baseline_reported:
         previous_capabilities = stable_baseline_named_set(
             previous_details,
@@ -10130,6 +10227,7 @@ def run_self_test(repo_root: Path) -> None:
             endpoints: list[str],
             endpoint_capabilities: dict[str, list[str]] | None = None,
             endpoint_access: dict[str, dict[str, bool]] | None = None,
+            endpoint_action_labels: dict[str, str] | None = None,
         ) -> None:
             contract_details = entry.setdefault("details", {})
             contract_details["stableBaseline"] = {
@@ -10150,6 +10248,11 @@ def run_self_test(repo_root: Path) -> None:
                 contract_details["stableEndpointRequiredCapabilities"] = endpoint_capabilities
             if endpoint_access is not None:
                 contract_details["stableEndpointAppAccess"] = endpoint_access
+            contract_details["stableEndpointActionLabels"] = (
+                endpoint_action_labels
+                if endpoint_action_labels is not None
+                else {endpoint: endpoint for endpoint in endpoints}
+            )
 
         previous_pre_freeze_summary = json.loads(json.dumps(previous_good))
         for entry in previous_pre_freeze_summary["evidence"]:
@@ -10163,6 +10266,7 @@ def run_self_test(repo_root: Path) -> None:
                     "stableBaselineEndpointCount",
                     "stableEndpointRequiredCapabilities",
                     "stableEndpointAppAccess",
+                    "stableEndpointActionLabels",
                 ):
                     contract_details.pop(key, None)
                 contract_details["stableCapabilities"] = [
@@ -10257,6 +10361,9 @@ def run_self_test(repo_root: Path) -> None:
                                 "appBrowserPrincipalsAllowed": True,
                             }
                         },
+                        "stableEndpointActionLabels": {
+                            "/api/v1/apps/current": "apps.current"
+                        },
                     }
                 ),
             ),
@@ -10313,6 +10420,7 @@ def run_self_test(repo_root: Path) -> None:
                         "stableBaselineEndpointCount": 0,
                         "stableEndpointRequiredCapabilities": {},
                         "stableEndpointAppAccess": {},
+                        "stableEndpointActionLabels": {},
                     }
                 ),
             ),
@@ -10347,6 +10455,7 @@ def run_self_test(repo_root: Path) -> None:
             contract_details.pop("stableEndpoints", None)
             contract_details.pop("stableEndpointRequiredCapabilities", None)
             contract_details.pop("stableEndpointAppAccess", None)
+            contract_details.pop("stableEndpointActionLabels", None)
             contract_details.pop("stableCapabilityCount", None)
             contract_details.pop("stableEndpointCount", None)
             contract_details.update(
@@ -10524,6 +10633,58 @@ def run_self_test(repo_root: Path) -> None:
             is False
         ), endpoint_access_regression_gate
 
+        previous_contract_endpoint_labels = json.loads(json.dumps(previous_good))
+        for entry in previous_contract_endpoint_labels["evidence"]:
+            if entry["id"] == "platform-api.contract":
+                entry["details"]["contractVersion"] = 2
+                entry["details"]["stableEndpointActionLabels"]["GET /queue"] = "queue.read"
+        previous_contract_endpoint_labels_path = (
+            workspace / "build/previous-contract-endpoint-labels/summary.json"
+        )
+        write_json(previous_contract_endpoint_labels_path, previous_contract_endpoint_labels)
+        current_contract_endpoint_labels_path = write_app_summary_variant(
+            "current-contract-endpoint-labels",
+            lambda value: update_evidence(
+                value,
+                "platform-api.contract",
+                lambda entry: entry.setdefault("details", {}).update(
+                    {
+                        "contractVersion": 2,
+                        "stableEndpointActionLabels": (
+                            entry.setdefault("details", {}).get("stableEndpointActionLabels", {})
+                            | {"GET /queue": "queue.read.changed"}
+                        ),
+                    }
+                ),
+            ),
+        )
+        endpoint_label_regression_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/contract-endpoint-label-regression-cert").resolve(),
+            previous_summary=previous_contract_endpoint_labels_path,
+            app_platform_summary=current_contract_endpoint_labels_path,
+        )
+        endpoint_label_regression_summary, endpoint_label_regression_exit_code = run(
+            endpoint_label_regression_settings
+        )
+        assert endpoint_label_regression_exit_code == 1, endpoint_label_regression_summary
+        endpoint_label_regression_gate = gate_by_id(
+            endpoint_label_regression_summary, "ecosystem.platform-api-compatibility"
+        )
+        assert endpoint_label_regression_gate["status"] == "fail", endpoint_label_regression_gate
+        assert (
+            "GET /queue"
+            in endpoint_label_regression_gate["details"]["stableEndpointActionLabelChanges"][0][
+                "endpoint"
+            ]
+        ), endpoint_label_regression_gate
+        assert (
+            endpoint_label_regression_gate["details"]["stableEndpointActionLabelChanges"][0][
+                "current"
+            ]
+            == "queue.read.changed"
+        ), endpoint_label_regression_gate
+
         def set_contract_raw_endpoint_details(
             entry: dict[str, Any], routes: list[str], stable_count: int
         ) -> None:
@@ -10536,6 +10697,7 @@ def run_self_test(repo_root: Path) -> None:
             contract_details.pop("stableEndpoints", None)
             contract_details.pop("stableEndpointRequiredCapabilities", None)
             contract_details.pop("stableEndpointAppAccess", None)
+            contract_details.pop("stableEndpointActionLabels", None)
             contract_details.update(
                 {
                     "contractVersion": 2,
@@ -10545,6 +10707,7 @@ def run_self_test(repo_root: Path) -> None:
                         {
                             "method": "GET",
                             "routeTemplate": route,
+                            "actionLabel": route,
                             "stability": "stable",
                             "appProcessPrincipalsAllowed": True,
                             "appBrowserPrincipalsAllowed": True,

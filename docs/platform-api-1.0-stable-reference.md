@@ -61,9 +61,10 @@ treats the effective target as `experimental`, records that the field was not de
 
 The Platform API 1.0 stable baseline contains 9 capabilities and 32 endpoints.
 
-Release certification also checks the stable endpoint required-capability sets and app-principal
-access flags. A stable endpoint that changes required capabilities, drops app process/browser
-access, or changes method/route identity is treated as a stable breaking change.
+Release certification also checks the stable endpoint required-capability sets, action labels, and
+app-principal access flags. A stable endpoint that changes required capabilities, changes the
+authorization/audit action label, drops app process/browser access, or changes method/route
+identity is treated as a stable breaking change.
 
 ## Stable Capabilities
 

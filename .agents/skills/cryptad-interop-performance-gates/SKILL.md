@@ -238,8 +238,8 @@ tools/release-certification/run-production-beta-release.sh --mode developer-dry-
   `production-beta.go-no-go-decision`, `production-beta.waiver-validation`,
   `production-beta.dashboard-redaction`, and `production-beta.launch-artifact-hygiene`.
 - Platform API stable-history checks compare the stable baseline name/counts/lists, stable endpoint
-  required-capability sets, stable endpoint app-process/app-browser access flags, and
-  compatibility-window metadata. App-platform smoke evidence must also inspect
+  required-capability sets, stable endpoint action labels, stable endpoint app-process/app-browser
+  access flags, and compatibility-window metadata. App-platform smoke evidence must also inspect
   `stableDescriptorDeprecations` and fail `platform-api.deprecation-window-policy` when a stable
   descriptor is deprecated or scheduled for removal without valid metadata, has a future
   `deprecatedSinceContractVersion`, or publishes a too-short `removalContractVersion` window. In
