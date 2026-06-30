@@ -4881,6 +4881,9 @@ def evaluate_platform_api_gate(
     if current_endpoints and not current_endpoint_capabilities_reported:
         failures.append("Current stable endpoint required-capability metadata is unavailable")
         add_evidence_issue(details, "failureEvidenceIds", "platform-api.stable-breaking-change-check")
+        add_evidence_issue(
+            details, "unwaivableFailureEvidenceIds", "platform-api.stable-breaking-change-check"
+        )
     elif (
         previous_endpoints
         and previous_baseline_reported
@@ -4927,6 +4930,9 @@ def evaluate_platform_api_gate(
     if current_endpoints and not current_endpoint_access_reported:
         failures.append("Current stable endpoint app-principal access metadata is unavailable")
         add_evidence_issue(details, "failureEvidenceIds", "platform-api.stable-breaking-change-check")
+        add_evidence_issue(
+            details, "unwaivableFailureEvidenceIds", "platform-api.stable-breaking-change-check"
+        )
     elif previous_endpoints and previous_baseline_reported and not previous_endpoint_access_reported:
         message = "Previous stable endpoint app-principal access metadata is unavailable"
         if mode == "release-candidate" and require_history:
@@ -4973,6 +4979,9 @@ def evaluate_platform_api_gate(
     if current_endpoints and not current_endpoint_action_labels_reported:
         failures.append("Current stable endpoint action-label metadata is unavailable")
         add_evidence_issue(details, "failureEvidenceIds", "platform-api.stable-breaking-change-check")
+        add_evidence_issue(
+            details, "unwaivableFailureEvidenceIds", "platform-api.stable-breaking-change-check"
+        )
     elif (
         previous_endpoints
         and previous_baseline_reported
@@ -10819,6 +10828,51 @@ def run_self_test(repo_root: Path) -> None:
         assert endpoint_label_missing_gate["details"]["unwaivableFailureEvidenceIds"] == [
             "platform-api.stable-breaking-change-check"
         ], endpoint_label_missing_gate
+
+        current_contract_endpoint_labels_unavailable_path = write_app_summary_variant(
+            "current-contract-endpoint-labels-unavailable",
+            lambda value: update_evidence(
+                value,
+                "platform-api.contract",
+                lambda entry: entry.setdefault("details", {}).pop(
+                    "stableEndpointActionLabels", None
+                ),
+            ),
+        )
+        endpoint_label_unavailable_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/contract-endpoint-label-unavailable-cert").resolve(),
+            previous_summary=previous_contract_endpoint_labels_path,
+            app_platform_summary=current_contract_endpoint_labels_unavailable_path,
+            waivers={
+                "ecosystem.platform-api-compatibility": (
+                    "Release manager attempted to waive missing current action-label metadata."
+                ),
+                "platform-api.stable-breaking-change-check": (
+                    "Release manager attempted to waive missing current action-label metadata."
+                ),
+            },
+        )
+        endpoint_label_unavailable_summary, endpoint_label_unavailable_exit_code = run(
+            endpoint_label_unavailable_settings
+        )
+        assert endpoint_label_unavailable_exit_code == 1, endpoint_label_unavailable_summary
+        endpoint_label_unavailable_gate = gate_by_id(
+            endpoint_label_unavailable_summary, "ecosystem.platform-api-compatibility"
+        )
+        assert endpoint_label_unavailable_gate["status"] == "fail", (
+            endpoint_label_unavailable_gate
+        )
+        assert "waived" not in endpoint_label_unavailable_gate["details"], (
+            endpoint_label_unavailable_gate
+        )
+        assert endpoint_label_unavailable_gate["details"]["unwaivableFailureEvidenceIds"] == [
+            "platform-api.stable-breaking-change-check"
+        ], endpoint_label_unavailable_gate
+        assert any(
+            "action-label metadata is unavailable" in failure
+            for failure in endpoint_label_unavailable_gate["details"].get("failures", [])
+        ), endpoint_label_unavailable_gate
 
         def set_contract_raw_endpoint_details(
             entry: dict[str, Any], routes: list[str], stable_count: int
