@@ -200,6 +200,12 @@ build/production-beta-release/
 Temporary descriptors, generated test private keys, trusted-key scratch files, and raw command work
 directories are kept outside the public artifact tree.
 
+The Platform API files under `evidence/` are redacted, parseable contract artifacts. The current
+file is the candidate snapshot, the previous file is loaded from previous release-summary or
+release-artifact history, and `platform-api-stable-diff.json` contains deterministic stable
+baseline findings. They are safe previous-history inputs for later `crypta-app api diff` runs and
+must not contain local paths, private insert URIs, tokens, raw fetched content, or raw app data.
+
 The public `dist/` archive is created only after the main artifact redaction report and the
 go/no-go dashboard redaction report both pass. Archive creation rejects AppleDouble files,
 `.DS_Store`, `__MACOSX/`, secret-looking filenames, symlinks, hard links, device nodes, nested

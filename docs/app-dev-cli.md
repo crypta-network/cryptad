@@ -261,8 +261,8 @@ crypta-app api diff \
 ```
 
 Use `--production-beta` on `crypta-app api diff` only for release-manager checks where missing
-previous stable-baseline metadata must fail closed. Diff reports are redacted metadata and use
-stable finding codes such as `stable_api_endpoint_removed`,
+previous stable-baseline or compatibility-window metadata must fail closed. Diff reports are
+redacted metadata and use stable finding codes such as `stable_api_endpoint_removed`,
 `stable_api_endpoint_required_capabilities_changed`, and
 `stable_baseline_metadata_missing`.
 

@@ -84,6 +84,12 @@ both windows must meet policy:
 - `removalContractVersion - deprecatedSinceContractVersion >= 2`
 - `removalContractVersion - currentContractVersion >= 2`
 
+The current snapshot must not mark a stable descriptor as deprecated before the deprecation window
+starts. `deprecatedSinceContractVersion` greater than the current contract version is a release
+blocker. Release certification also applies the removal-window checks whenever a stable descriptor
+publishes `removalContractVersion`, even if its stability label is still `deprecated` rather than
+`scheduled-for-removal`.
+
 Concrete examples:
 
 - Current contract `23`, deprecated since `23`, removal `25`: acceptable scheduled-removal runway.
@@ -91,7 +97,16 @@ Concrete examples:
   version.
 - Current contract `23`, deprecated since `22`, removal `23`: blocked because there is no future
   removal runway.
+- Current contract `23`, deprecated since `24`: blocked because the deprecation window has not
+  started.
 - Scheduled for removal with no deprecation object: blocked.
+
+The `platform-api.contract` release evidence records stable descriptor deprecation metadata in
+`details.stableDescriptorDeprecations`. The `platform-api.deprecation-window-policy` row reports
+descriptor-level `descriptorErrors` and `descriptorWarnings` so release managers can identify the
+exact stable capability or endpoint that violates the window policy. These fields contain only
+descriptor identities and contract-version numbers; they must not contain local paths, tokens, raw
+app data, raw fetched content, or private insert URIs.
 
 During the active Platform API 1.0 support window, actual removal of a stable baseline member is a
 release blocker unless a future documented stable baseline exists and the release policy explicitly

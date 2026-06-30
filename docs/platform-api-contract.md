@@ -509,7 +509,9 @@ Release artifacts store redacted snapshots at
 `build/production-beta-release/evidence/platform-api-contract-current.json`,
 `build/production-beta-release/evidence/platform-api-contract-previous.json`, and
 `build/production-beta-release/evidence/platform-api-stable-diff.json`. The checked-in baseline
-reference is `docs/platform-api/contracts/platform-api-1.0-baseline.json`.
+reference is `docs/platform-api/contracts/platform-api-1.0-baseline.json`. The current and previous
+files are parseable contract snapshot JSON, not only evidence-row summaries, so later
+`crypta-app api diff` runs can use them as previous-history inputs.
 
 The stable-baseline diff emits deterministic finding codes including
 `stable_api_capability_removed`, `stable_api_endpoint_removed`,
@@ -519,6 +521,13 @@ The stable-baseline diff emits deterministic finding codes including
 `stable_api_removal_window_too_short`, `stable_baseline_metadata_missing`, and
 `stable_baseline_identity_changed`. Stable removal, undeclared stable-baseline mutation, current
 metadata gaps, redaction/security blockers, and production-beta history gaps are not waiverable.
+
+Release certification records descriptor-level stable deprecation metadata under
+`platform-api.contract.details.stableDescriptorDeprecations`. The
+`platform-api.deprecation-window-policy` evidence row exposes `descriptorErrors` and
+`descriptorWarnings`; missing deprecation metadata, future `deprecatedSinceContractVersion`, and
+too-short `removalContractVersion` windows are release blockers for Platform API 1.0 stable
+descriptors.
 
 Stability and audience terms are:
 
@@ -650,15 +659,17 @@ maximum-tested version, optional capabilities, and warnings in app/catalog revie
 
 `tools/release-certification/app_platform_smoke.py` now emits required
 `platform-api.contract`, `platform-api.stable-baseline`,
-`platform-api.stable-breaking-change-check`, `platform-api.manifest-target-stability`,
+`platform-api.stable-breaking-change-check`, `platform-api.compatibility-window`,
+`platform-api.previous-contract-snapshot`, `platform-api.deprecation-window-policy`,
+`platform-api.experimental-graduation-policy`, `platform-api.manifest-target-stability`,
 `platform-api.first-party-stability-declarations`, and `platform-api.stable-reference-docs`
 evidence. It generates a contract snapshot with `crypta-app api snapshot`, records descriptor
-counts, stable baseline counts, and non-stable entries, and runs offline
-`crypta-app compat verify` checks for first-party staged apps and the generated sample app. Release
-certification compares the current stable baseline against previous production release evidence;
-production beta runs pass `--require-history`, so missing previous stable-baseline evidence is a
-release blocker unless the existing release waiver mechanism records an approved waiver. Profile
-publishing also has
+counts, stable baseline counts, non-stable entries, stable descriptor deprecation metadata, and
+runs offline `crypta-app compat verify` checks for first-party staged apps and the generated sample
+app. Release certification compares the current stable baseline against previous production
+release evidence; production beta runs pass `--require-history`, so missing previous
+stable-baseline or compatibility-window evidence is a release blocker unless the existing release
+waiver mechanism records an approved waiver. Profile publishing also has
 separate release evidence: `app-platform.identity-profile-publish` for the profile-document route,
 `app-platform.generated-document-insert` for the app-generated document insert route, and
 `reference-app.profile-publisher` for the first-party Profile Publisher bundle. Networked content

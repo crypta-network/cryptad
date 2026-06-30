@@ -420,6 +420,11 @@ release evidence. Production history mode fails closed when previous baseline, c
 window, or endpoint metadata is missing; developer dry runs warn instead of claiming production
 comparison coverage. Critical stable removals, undeclared stable-baseline mutations, current
 metadata gaps, production-beta history gaps, and redaction/security blockers are not waiverable.
+The app-platform summary includes `stableDescriptorDeprecations` in `platform-api.contract`
+details, and the deprecation-window row reports descriptor-level `descriptorErrors` and
+`descriptorWarnings`. Stable descriptors with missing deprecation metadata, future
+`deprecatedSinceContractVersion`, or too-short `removalContractVersion` windows fail the release
+evidence before the go/no-go dashboard is generated.
 `app-catalog.first-party-beta` reports source/key configuration readiness but does not fetch the
 public Crypta catalog. `catalog.production-channels` verifies schema v3 stable/beta/nightly/
 deprecated metadata, stable-only default update automation, deprecated replacement metadata, API
