@@ -4892,6 +4892,9 @@ def evaluate_platform_api_gate(
                 + ", ".join(change["endpoint"] for change in changed_endpoint_capabilities)
             )
             add_evidence_issue(details, "failureEvidenceIds", "platform-api.stable-breaking-change-check")
+            add_evidence_issue(
+                details, "unwaivableFailureEvidenceIds", "platform-api.stable-breaking-change-check"
+            )
             details["stableEndpointCapabilityChanges"] = changed_endpoint_capabilities
     previous_endpoint_access = stable_endpoint_access_map(previous_details)
     current_endpoint_access = stable_endpoint_access_map(current_details)
@@ -4931,6 +4934,9 @@ def evaluate_platform_api_gate(
                 + ", ".join(change["endpoint"] for change in changed_endpoint_access)
             )
             add_evidence_issue(details, "failureEvidenceIds", "platform-api.stable-breaking-change-check")
+            add_evidence_issue(
+                details, "unwaivableFailureEvidenceIds", "platform-api.stable-breaking-change-check"
+            )
             details["stableEndpointAccessChanges"] = changed_endpoint_access
     previous_endpoint_action_labels = stable_endpoint_action_label_map(previous_details)
     current_endpoint_action_labels = stable_endpoint_action_label_map(current_details)
@@ -10574,6 +10580,9 @@ def run_self_test(repo_root: Path) -> None:
             "GET /queue"
             in endpoint_capability_regression_gate["details"]["stableEndpointCapabilityChanges"][0]["endpoint"]
         ), endpoint_capability_regression_gate
+        assert endpoint_capability_regression_gate["details"]["unwaivableFailureEvidenceIds"] == [
+            "platform-api.stable-breaking-change-check"
+        ], endpoint_capability_regression_gate
 
         previous_contract_endpoint_access = json.loads(json.dumps(previous_good))
         for entry in previous_contract_endpoint_access["evidence"]:
@@ -10635,6 +10644,9 @@ def run_self_test(repo_root: Path) -> None:
             ]
             is False
         ), endpoint_access_regression_gate
+        assert endpoint_access_regression_gate["details"]["unwaivableFailureEvidenceIds"] == [
+            "platform-api.stable-breaking-change-check"
+        ], endpoint_access_regression_gate
 
         previous_contract_endpoint_labels = json.loads(json.dumps(previous_good))
         for entry in previous_contract_endpoint_labels["evidence"]:
