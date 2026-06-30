@@ -2618,7 +2618,7 @@ def stable_endpoint_action_label_map(details: dict[str, Any]) -> dict[str, str]:
 
 def stable_endpoint_action_label_map_reported(details: dict[str, Any]) -> bool:
     if isinstance(details.get("stableEndpointActionLabels"), dict):
-        return True
+        return bool(stable_endpoint_action_label_map(details))
     endpoints = details.get("endpoints")
     if not isinstance(endpoints, list):
         return False
@@ -4966,6 +4966,19 @@ def evaluate_platform_api_gate(
         and current_endpoint_action_labels_reported
         and (previous_baseline_reported or not current_baseline_reported)
     ):
+        missing_endpoint_action_labels = sorted(
+            set(previous_endpoint_action_labels) - set(current_endpoint_action_labels)
+        )
+        if missing_endpoint_action_labels:
+            failures.append(
+                "Current stable endpoint action-label metadata is incomplete: "
+                + ", ".join(missing_endpoint_action_labels)
+            )
+            add_evidence_issue(details, "failureEvidenceIds", "platform-api.stable-breaking-change-check")
+            add_evidence_issue(
+                details, "unwaivableFailureEvidenceIds", "platform-api.stable-breaking-change-check"
+            )
+            details["stableEndpointActionLabelsMissing"] = missing_endpoint_action_labels
         changed_endpoint_action_labels = []
         for endpoint in sorted(
             set(previous_endpoint_action_labels) & set(current_endpoint_action_labels)
@@ -10702,6 +10715,46 @@ def run_self_test(repo_root: Path) -> None:
         assert endpoint_label_regression_gate["details"]["unwaivableFailureEvidenceIds"] == [
             "platform-api.stable-breaking-change-check"
         ], endpoint_label_regression_gate
+
+        current_contract_endpoint_labels_missing_path = write_app_summary_variant(
+            "current-contract-endpoint-labels-missing",
+            lambda value: update_evidence(
+                value,
+                "platform-api.contract",
+                lambda entry: entry.setdefault("details", {}).update(
+                    {
+                        "contractVersion": 2,
+                        "stableEndpointActionLabels": {
+                            endpoint: label
+                            for endpoint, label in entry.setdefault("details", {})
+                            .get("stableEndpointActionLabels", {})
+                            .items()
+                            if endpoint != "GET /queue"
+                        },
+                    }
+                ),
+            ),
+        )
+        endpoint_label_missing_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/contract-endpoint-label-missing-cert").resolve(),
+            previous_summary=previous_contract_endpoint_labels_path,
+            app_platform_summary=current_contract_endpoint_labels_missing_path,
+        )
+        endpoint_label_missing_summary, endpoint_label_missing_exit_code = run(
+            endpoint_label_missing_settings
+        )
+        assert endpoint_label_missing_exit_code == 1, endpoint_label_missing_summary
+        endpoint_label_missing_gate = gate_by_id(
+            endpoint_label_missing_summary, "ecosystem.platform-api-compatibility"
+        )
+        assert endpoint_label_missing_gate["status"] == "fail", endpoint_label_missing_gate
+        assert endpoint_label_missing_gate["details"]["stableEndpointActionLabelsMissing"] == [
+            "GET /queue"
+        ], endpoint_label_missing_gate
+        assert endpoint_label_missing_gate["details"]["unwaivableFailureEvidenceIds"] == [
+            "platform-api.stable-breaking-change-check"
+        ], endpoint_label_missing_gate
 
         def set_contract_raw_endpoint_details(
             entry: dict[str, Any], routes: list[str], stable_count: int
