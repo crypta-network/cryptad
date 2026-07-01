@@ -362,6 +362,68 @@ class CryptaAppCliTest {
   }
 
   @Test
+  void uiLint_whenFirstPartyPermissionRationaleMissing_expectStrictFailure() throws Exception {
+    Path appDir = tempDir.resolve("first-party-missing-rationale-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "first-party-missing-rationale-app",
+        "--name",
+        "First-party Missing Rationale App",
+        "--version",
+        "0.1.0",
+        "--permission",
+        "queue.read");
+    addFirstPartyBetaReadinessFixture(appDir);
+    Path manifest = appDir.resolve("cryptad-app.properties");
+    Files.writeString(
+        manifest,
+        Files.readString(manifest, StandardCharsets.UTF_8)
+            .replace(
+                "permissions.rationale.queue.read=Display bounded local queue state for beta"
+                    + " support.\n",
+                ""),
+        StandardCharsets.UTF_8);
+
+    CliResult result = runCli("ui", "lint", "--bundle-dir", appDir.toString(), "--strict");
+
+    assertEquals(CommandLine.ExitCode.SOFTWARE, result.exitCode());
+    assertTrue(result.err().contains("first_party_permission_rationale_manifest_missing"));
+  }
+
+  @Test
+  void uiLint_whenFirstPartyStatelessAppClaimsBackup_expectStrictFailure() throws Exception {
+    Path appDir = tempDir.resolve("first-party-backup-overclaim-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "first-party-backup-overclaim-app",
+        "--name",
+        "First-party Backup Overclaim App",
+        "--version",
+        "0.1.0",
+        "--permission",
+        "queue.read");
+    addFirstPartyBetaReadinessFixture(appDir);
+    Path manifest = appDir.resolve("cryptad-app.properties");
+    Files.writeString(
+        manifest,
+        Files.readString(manifest, StandardCharsets.UTF_8)
+            .replace(
+                "app.beta.backupRestore=not-applicable\n", "app.beta.backupRestore=supported\n"),
+        StandardCharsets.UTF_8);
+
+    CliResult result = runCli("ui", "lint", "--bundle-dir", appDir.toString(), "--strict");
+
+    assertEquals(CommandLine.ExitCode.SOFTWARE, result.exitCode());
+    assertTrue(result.err().contains("first_party_stateless_backup_overclaim"));
+  }
+
+  @Test
   void uiLint_whenStaticEntryIsNotHtml_expectFailure() throws Exception {
     Path appDir = tempDir.resolve("sample-app");
     runCli(
@@ -1319,6 +1381,35 @@ class CryptaAppCliTest {
 
     assertEquals(CommandLine.ExitCode.OK, result.exitCode());
     assertTrue(result.out().contains("UI lint not applicable for app.ui.mode=none"));
+    assertEquals("", result.err());
+  }
+
+  @Test
+  void uiLint_whenStaticBundleHasLiteralWindowsExecPath_expectStrictSuccess() throws Exception {
+    Path appDir = tempDir.resolve("static-windows-exec-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "static-windows-exec-app",
+        "--name",
+        "Static Windows Exec App",
+        "--version",
+        "0.1.0",
+        "--permission",
+        "queue.read");
+    Path manifest = appDir.resolve("cryptad-app.properties");
+    Files.writeString(
+        manifest,
+        Files.readString(manifest, StandardCharsets.UTF_8)
+            .replace("app.exec=bin/start.sh\n", "app.exec=bin" + '\\' + "update.exe\n"),
+        StandardCharsets.UTF_8);
+
+    CliResult result = runCli("ui", "lint", "--bundle-dir", appDir.toString(), "--strict");
+
+    assertEquals(CommandLine.ExitCode.OK, result.exitCode());
+    assertTrue(result.out().contains("UI lint passed: 0 error(s)"));
     assertEquals("", result.err());
   }
 

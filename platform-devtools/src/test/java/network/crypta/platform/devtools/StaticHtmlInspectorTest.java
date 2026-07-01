@@ -87,6 +87,34 @@ class StaticHtmlInspectorTest {
   }
 
   @Test
+  void lacksMarker_whenMarkerOnlyAppearsInComment_expectTrue() {
+    StaticHtmlInspector inspector =
+        StaticHtmlInspector.inspect(
+            """
+            <!-- data-beta-empty-state -->
+            <section data-beta-error-state></section>
+            """,
+            "static/index.html",
+            Path.of("static"));
+
+    assertTrue(inspector.lacksMarker("data-beta-empty-state"));
+    assertFalse(inspector.lacksMarker("data-beta-error-state"));
+  }
+
+  @Test
+  void lacksMarker_whenLiveMarkerUsesDifferentCase_expectFalse() {
+    StaticHtmlInspector inspector =
+        StaticHtmlInspector.inspect(
+            """
+            <section DATA-BETA-EMPTY-STATE></section>
+            """,
+            "static/index.html",
+            Path.of("static"));
+
+    assertFalse(inspector.lacksMarker("data-beta-empty-state"));
+  }
+
+  @Test
   void sdkFindings_whenLocalAppScriptPrecedesSdk_expectStrictOrderError() {
     StaticHtmlInspector inspector =
         StaticHtmlInspector.inspect(
