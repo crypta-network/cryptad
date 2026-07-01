@@ -3070,14 +3070,15 @@ def collect_platform_api_stable_freeze_evidence(
     stable_reference_text = read_source(stable_reference)
     contract_doc_text = read_source(contract_doc)
     support_window_text = read_source(support_window_doc)
+    support_window_lower = support_window_text.lower()
     docs_checks = {
         "stableReferenceDocExists": stable_reference.is_file(),
         "stableReferenceNamesBaseline": "Platform API 1.0 stable baseline" in stable_reference_text,
         "contractDocMentionsTargetStability": "api.targetStability" in contract_doc_text,
         "contractDocMentionsOperatorOnly": "operator-only" in contract_doc_text,
         "supportWindowDocMentionsPreviousSnapshots": "previous contract snapshot"
-        in support_window_text,
-        "supportWindowDocMentionsWaivers": "waiver" in support_window_text.lower(),
+        in support_window_lower,
+        "supportWindowDocMentionsWaivers": "waiver" in support_window_lower,
     }
     docs_errors = [name for name, passed in docs_checks.items() if not passed]
     docs_item = EvidenceItem(
@@ -22144,7 +22145,7 @@ def make_self_test_workspace(workspace: Path) -> None:
         "third-party-developer.plugin-author-migration, third-party-developer.redaction, "
         "Platform API 1.0 stable baseline, api.experimentalCapabilitiesAccepted=true, "
         "scheduled-for-removal, Release certification, previous release-candidate snapshot, "
-        "previous contract snapshot, experimental-to-stable graduation, stable reference update, "
+        "Previous Contract Snapshot, experimental-to-stable graduation, stable reference update, "
         "platform-api.compatibility-window, platform-api.previous-contract-snapshot, "
         "platform-api.deprecation-window-policy, platform-api.experimental-graduation-policy, "
         "compatibility waiver policy and non-waiverable stable removal blockers, "
