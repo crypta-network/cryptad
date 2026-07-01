@@ -72,3 +72,21 @@ Run focused validation with:
 See [docs/app-distribution.md](../../docs/app-distribution.md) for signing inputs and the shared
 first-party app workflow, and [docs/app-catalogs.md](../../docs/app-catalogs.md) for local signed
 catalog metadata.
+
+## Beta readiness
+
+- Current beta support level: `maintained`, owned by `crypta-core`, with
+  `app.beta.readiness=ready`.
+- Empty/error/retry states: the staged UI shows an empty site-source state, bounded invalid
+  bundle/path/metadata errors, and retry validation/publish actions.
+- App-data backup/export/import status: stateless. Backup, export, import, and migration dry-run
+  are `not-applicable` because Site Publisher stores no durable local app state.
+- Migration dry-run status: `not-applicable`.
+- Permission rationale summary: content insert and queue permissions explain site publication,
+  insert queue creation, and progress display.
+- Support/recovery path: the recovery action points operators to failed site insert support and
+  the RC recovery workflow.
+- Diagnostic redaction promise: diagnostics are `redacted-summary-only` and do not include raw
+  bundle paths, private insert URIs, tokens, raw content, or local paths.
+- Known limitations: identity-backed site publishing remains out of scope until the app can use
+  bounded operator grants without exposing private identity material.

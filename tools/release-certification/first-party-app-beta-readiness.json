@@ -1,0 +1,159 @@
+{
+  "evidenceId": "first-party-app.beta-quality-pass",
+  "schemaVersion": 1,
+  "apps": {
+    "queue-manager": {
+      "betaReadiness": {
+        "status": "ready",
+        "owner": "crypta-core",
+        "qualityLevel": "beta",
+        "emptyState": "required",
+        "errorState": "bounded-required",
+        "retryAction": "required",
+        "recoveryAction": "operator-recovery-link",
+        "appData": "stateless",
+        "backupRestore": "not-applicable",
+        "exportSupported": "not-applicable",
+        "importSupported": "not-applicable",
+        "migrationDryRun": "not-applicable",
+        "permissionRationale": "required",
+        "supportMetadata": "required",
+        "accessibility": "basic-pass",
+        "uiConsistency": "design-system-pass",
+        "diagnostics": "redacted-summary-only"
+      }
+    },
+    "publisher": {
+      "betaReadiness": {
+        "status": "ready",
+        "owner": "crypta-core",
+        "qualityLevel": "beta",
+        "emptyState": "required",
+        "errorState": "bounded-required",
+        "retryAction": "required",
+        "recoveryAction": "operator-recovery-link",
+        "appData": "stateless",
+        "backupRestore": "not-applicable",
+        "exportSupported": "not-applicable",
+        "importSupported": "not-applicable",
+        "migrationDryRun": "not-applicable",
+        "permissionRationale": "required",
+        "supportMetadata": "required",
+        "accessibility": "basic-pass",
+        "uiConsistency": "design-system-pass",
+        "diagnostics": "redacted-summary-only"
+      }
+    },
+    "site-publisher": {
+      "betaReadiness": {
+        "status": "ready",
+        "owner": "crypta-core",
+        "qualityLevel": "beta",
+        "emptyState": "required",
+        "errorState": "bounded-required",
+        "retryAction": "required",
+        "recoveryAction": "operator-recovery-link",
+        "appData": "stateless",
+        "backupRestore": "not-applicable",
+        "exportSupported": "not-applicable",
+        "importSupported": "not-applicable",
+        "migrationDryRun": "not-applicable",
+        "permissionRationale": "required",
+        "supportMetadata": "required",
+        "accessibility": "basic-pass",
+        "uiConsistency": "design-system-pass",
+        "diagnostics": "redacted-summary-only"
+      }
+    },
+    "profile-publisher": {
+      "betaReadiness": {
+        "status": "ready",
+        "owner": "crypta-core",
+        "qualityLevel": "beta",
+        "emptyState": "required",
+        "errorState": "bounded-required",
+        "retryAction": "required",
+        "recoveryAction": "operator-recovery-link",
+        "appData": "durable-limited",
+        "backupRestore": "operator-supported",
+        "exportSupported": "supported",
+        "importSupported": "supported",
+        "migrationDryRun": "not-applicable",
+        "permissionRationale": "required",
+        "supportMetadata": "required",
+        "accessibility": "basic-pass",
+        "uiConsistency": "design-system-pass",
+        "diagnostics": "redacted-summary-only",
+        "schemaVersion": 1
+      }
+    },
+    "social-inbox": {
+      "betaReadiness": {
+        "status": "ready",
+        "owner": "crypta-core",
+        "qualityLevel": "beta",
+        "emptyState": "required",
+        "errorState": "bounded-required",
+        "retryAction": "required",
+        "recoveryAction": "operator-recovery-link",
+        "appData": "durable",
+        "backupRestore": "operator-supported",
+        "exportSupported": "supported",
+        "importSupported": "supported",
+        "migrationDryRun": "additive-not-required",
+        "permissionRationale": "required",
+        "supportMetadata": "required",
+        "accessibility": "basic-pass",
+        "uiConsistency": "design-system-pass",
+        "diagnostics": "redacted-summary-only",
+        "schemaVersion": 1
+      }
+    },
+    "feed-reader": {
+      "betaReadiness": {
+        "status": "ready",
+        "owner": "crypta-core",
+        "qualityLevel": "beta",
+        "emptyState": "required",
+        "errorState": "bounded-required",
+        "retryAction": "required",
+        "recoveryAction": "operator-recovery-link",
+        "appData": "durable",
+        "backupRestore": "export-import",
+        "exportSupported": "supported",
+        "importSupported": "supported",
+        "migrationDryRun": "supported",
+        "permissionRationale": "required",
+        "supportMetadata": "required",
+        "accessibility": "basic-pass",
+        "uiConsistency": "design-system-pass",
+        "diagnostics": "redacted-summary-only",
+        "schemaVersion": 2,
+        "migrationStep": "ui-state-v1-v2"
+      }
+    },
+    "trust-graph": {
+      "betaReadiness": {
+        "status": "ready",
+        "owner": "crypta-core",
+        "qualityLevel": "beta",
+        "emptyState": "required",
+        "errorState": "bounded-required",
+        "retryAction": "required",
+        "recoveryAction": "operator-recovery-link",
+        "appData": "durable",
+        "backupRestore": "operator-supported",
+        "exportSupported": "supported",
+        "importSupported": "supported",
+        "migrationDryRun": "supported",
+        "permissionRationale": "required",
+        "supportMetadata": "required",
+        "accessibility": "basic-pass",
+        "uiConsistency": "design-system-pass",
+        "diagnostics": "redacted-summary-only",
+        "schemaVersion": 2,
+        "migrationStep": "ui-state-v1-v2"
+      }
+    }
+  }
+}

@@ -140,7 +140,7 @@
       renderAll();
       await refreshUploadQueue({ silent: true });
     } catch (error) {
-      setStatus(CryptaPlatform.api.errorMessage(error), "error");
+      setStatus(safeErrorMessage(error), "error");
     }
   }
 
@@ -180,7 +180,7 @@
       await refreshIdentities({ silent: true });
       setStatus("Preview identity created.");
     } catch (error) {
-      setStatus(CryptaPlatform.api.errorMessage(error), "error");
+      setStatus(safeErrorMessage(error), "error");
     }
   }
 
@@ -198,7 +198,7 @@
       }
     } catch (error) {
       if (!(options && options.silent)) {
-        setStatus(CryptaPlatform.api.errorMessage(error), "error");
+        setStatus(safeErrorMessage(error), "error");
       }
     }
   }
@@ -238,7 +238,7 @@
         }
       );
       elements.profilePreview.textContent = boundedPreview(
-        JSON.stringify(profileDocument, null, 2),
+        JSON.stringify(profileDocumentPreviewSummary(profileDocument), null, 2),
         maxFetchedDocumentChars,
       );
       state.drafts.profileUri = profileUri;
@@ -246,7 +246,7 @@
       await persistDrafts();
       setStatus("Signed profile document prepared.");
     } catch (error) {
-      setStatus(CryptaPlatform.api.errorMessage(error), "error");
+      setStatus(safeErrorMessage(error), "error");
     }
   }
 
@@ -290,7 +290,7 @@
       renderAll();
       setStatus("Message signed and added to the local outbox.");
     } catch (error) {
-      setStatus(CryptaPlatform.api.errorMessage(error), "error");
+      setStatus(safeErrorMessage(error), "error");
     }
   }
 
@@ -350,7 +350,7 @@
       await refreshUploadQueue({ silent: true });
       setStatus("Outbox snapshot queued without storing the private insert URI.");
     } catch (error) {
-      setStatus(CryptaPlatform.api.errorMessage(error), "error");
+      setStatus(safeErrorMessage(error), "error");
     }
   }
 
@@ -405,7 +405,7 @@
       renderSubscriptions();
       setStatus("Social source subscribed.");
     } catch (error) {
-      setStatus(CryptaPlatform.api.errorMessage(error), "error");
+      setStatus(safeErrorMessage(error), "error");
     }
   }
 
@@ -422,7 +422,7 @@
       }
     } catch (error) {
       if (!(options && options.silent)) {
-        setStatus(CryptaPlatform.api.errorMessage(error), "error");
+        setStatus(safeErrorMessage(error), "error");
       }
     }
   }
@@ -436,7 +436,7 @@
       }
     } catch (error) {
       if (!(options && options.silent)) {
-        setStatus(CryptaPlatform.api.errorMessage(error), "error");
+        setStatus(safeErrorMessage(error), "error");
       }
     }
   }
@@ -481,7 +481,7 @@
       setStatus("Social source imported.");
     } catch (error) {
       source.lastStatus = "Error";
-      source.lastError = CryptaPlatform.api.errorMessage(error);
+      source.lastError = safeErrorMessage(error);
       await persistSources();
       renderSources();
       setStatus(source.lastError, "error");
@@ -516,7 +516,7 @@
         source.lastError = "";
       } catch (error) {
         source.lastStatus = "Error";
-        source.lastError = CryptaPlatform.api.errorMessage(error);
+        source.lastError = safeErrorMessage(error);
       }
     }
     await persistSources();
@@ -562,7 +562,7 @@
       await refreshSubscriptions({ silent: true });
       setStatus("Subscription updated.");
     } catch (error) {
-      setStatus(CryptaPlatform.api.errorMessage(error), "error");
+      setStatus(safeErrorMessage(error), "error");
     }
   }
 
@@ -1135,7 +1135,7 @@
       state.trustServiceDescriptor = null;
       state.trustServiceGrants = [];
       state.trustServiceBundles = [];
-      state.trustServiceError = CryptaPlatform.api.errorMessage(error);
+      state.trustServiceError = safeErrorMessage(error);
       renderTrustServiceStatus();
       if (!(options && options.silent)) {
         setStatus(state.trustServiceError, "warning");
@@ -1155,7 +1155,7 @@
       await refreshTrustServiceStatus({ silent: true });
       setStatus("Trust Score Service grant bundle requested; an operator must approve it.");
     } catch (error) {
-      setStatus(CryptaPlatform.api.errorMessage(error), "error");
+      setStatus(safeErrorMessage(error), "error");
     }
   }
 
@@ -2569,13 +2569,13 @@
 
   function updateChannelFilter() {
     state.channelFilter = normalizeChannelFilter(elements.channelFilter.value);
-    persistUiState().catch((error) => setStatus(CryptaPlatform.api.errorMessage(error), "error"));
+    persistUiState().catch((error) => setStatus(safeErrorMessage(error), "error"));
     renderInbox();
   }
 
   function updateReadFilter() {
     state.readFilter = normalizeReadFilter(elements.readFilter.value);
-    persistUiState().catch((error) => setStatus(CryptaPlatform.api.errorMessage(error), "error"));
+    persistUiState().catch((error) => setStatus(safeErrorMessage(error), "error"));
     renderInbox();
   }
 
@@ -3356,6 +3356,51 @@
       return text;
     }
     return text.slice(0, Math.max(0, maxLength - 3)) + "...";
+  }
+
+  function profileDocumentPreviewSummary(documentValue) {
+    const profile = documentValue && typeof documentValue === "object" ? documentValue.profile || {} : {};
+    const identity = documentValue && typeof documentValue === "object" ? documentValue.identity : null;
+    return {
+      schema: "crypta.profile.v1",
+      displayName: boundedPreview(profile.displayName || "", maxAuthorLabelLength),
+      hasWebsite: Boolean(profile.website),
+      hasContact: Boolean(profile.contactUri),
+      tagCount: Array.isArray(profile.tags) ? profile.tags.length : 0,
+      identitySummary: summarizeIdentityForPreview(identity),
+      signature: documentValue && documentValue.signature ? "present" : "not present",
+      redaction: "profile summary only; raw signature and identity material omitted",
+    };
+  }
+
+  function summarizeIdentityForPreview(identity) {
+    if (!identity || typeof identity !== "object") {
+      return "not selected";
+    }
+    const identifier = identityId(identity);
+    return identifier ? `${identifier.slice(0, 12)}...` : "selected";
+  }
+
+  function safeErrorMessage(error) {
+    const fallback = "Social Inbox request failed. Retry refresh, resubscribe, or use Operator RC Recovery.";
+    let message = "";
+    try {
+      message =
+        CryptaPlatform.api && typeof CryptaPlatform.api.errorMessage === "function"
+          ? CryptaPlatform.api.errorMessage(error)
+          : error && error.message;
+    } catch (_) {
+      message = "";
+    }
+    message = stringValue(message).replace(/\s+/g, " ").trim();
+    if (!message || sensitiveDiagnosticPattern().test(message)) {
+      return fallback;
+    }
+    return boundedPreview(message, maxDisplayTextLength);
+  }
+
+  function sensitiveDiagnosticPattern() {
+    return /(crypta:(?:ssk|usk)@|(?:ssk|usk)@|authorization|bearer|token|private key|identity material|browser session|form password|raw (?:content|message|app data)|signatureBase64|publicKeyBase64|[A-Za-z]:\\|\/(?:home|Users|work|tmp|var)\/)/i;
   }
 
   function unsafeControlPattern() {

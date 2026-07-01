@@ -15,16 +15,44 @@
         <p class="cr-label">Crypta app</p>
         <h1>Queue Manager</h1>
       </div>
-      <button class="cr-button cr-button--secondary" id="refresh-button" type="button">
+      <button
+        class="cr-button cr-button--secondary"
+        id="refresh-button"
+        type="button"
+        data-beta-retry-action>
         Refresh
       </button>
     </header>
 
-    <section class="cr-permission-summary" data-crypta-permission-summary>
+    <section class="cr-permission-summary" data-crypta-permission-summary data-beta-permission-rationale>
       <p><strong>Declared permissions</strong></p>
       <ul>
         <li><code>queue.read</code> reads local transfer queue snapshots.</li>
         <li><code>queue.write</code> queues downloads and updates queue requests.</li>
+      </ul>
+    </section>
+
+    <section
+      class="cr-card beta-readiness-panel"
+      aria-labelledby="beta-readiness-title"
+      data-first-party-beta-readiness
+      data-beta-empty-state
+      data-beta-error-state
+      data-beta-retry-action
+      data-beta-recovery-action
+      data-beta-app-data-status
+      data-beta-support-metadata
+      data-beta-diagnostics-redaction
+      data-beta-ui-consistency>
+      <div>
+        <p class="cr-label">Beta readiness</p>
+        <h2 id="beta-readiness-title">Queue operations for beta operators</h2>
+      </div>
+      <ul class="beta-readiness-list">
+        <li>No queue entries show a bounded empty state; queue fetch failures show a bounded error state.</li>
+        <li>Retry uses Refresh. Stuck transfers should use the Operator RC Recovery queue workflow.</li>
+        <li>App data is stateless; backup, export, import, and migrations are not applicable.</li>
+        <li>Support metadata comes from the first-party catalog policy and diagnostics are redacted-summary-only.</li>
       </ul>
     </section>
 
@@ -35,6 +63,7 @@
           id="downloads-tab"
           type="button"
           role="tab"
+          aria-controls="queue-content"
           aria-selected="true">
           Downloads
         </button>
@@ -43,13 +72,14 @@
           id="uploads-tab"
           type="button"
           role="tab"
+          aria-controls="queue-content"
           aria-selected="false">
           Uploads
         </button>
       </div>
     </section>
 
-    <section class="cr-card queue-download-panel" id="download-panel">
+    <section class="cr-card queue-download-panel" id="download-panel" role="region" aria-label="Direct download queue action">
       <form class="queue-direct-download" id="direct-download-form">
         <label class="cr-field">
           <span class="cr-label">Fetch URI</span>
@@ -78,8 +108,8 @@
       </form>
     </section>
 
-    <p class="cr-status" id="status" role="status" aria-live="polite"></p>
-    <section class="cr-card queue-content" id="queue-content">
+    <p class="cr-status" id="status" role="status" aria-live="polite" data-beta-accessibility-status></p>
+    <section class="cr-card queue-content" id="queue-content" role="tabpanel" aria-labelledby="downloads-tab">
       <p class="cr-empty">Loading queue snapshot...</p>
     </section>
   </main>

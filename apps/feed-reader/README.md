@@ -91,3 +91,24 @@ Run focused validation with:
 
 See [docs/app-distribution.md](../../docs/app-distribution.md) for signing inputs and the shared
 first-party app workflow.
+
+## Beta readiness
+
+- Current beta support level: `maintained`, owned by `crypta-core`, with
+  `app.beta.readiness=ready`.
+- Empty/error/retry states: the staged UI shows an empty feed-source/subscription state, bounded
+  fetch/subscription failure states, and retry refresh/resubscribe actions.
+- App-data backup/export/import status: supported for durable `ui-state` feed source, selected
+  subscription, read-state, fetch-summary, and draft metadata. Exported backups remain sensitive
+  user data.
+- Migration dry-run status: supported for the `ui-state-v1-v2` migration command before applying
+  an update.
+- Permission rationale summary: content fetch, content subscription, generated app-document
+  insert, queue, and app-data permissions each have manifest rationale and visible disclosure.
+- Support/recovery path: the recovery action points operators to resubscribe, refresh, app-data
+  export/import, and RC recovery support guidance.
+- Diagnostic redaction promise: diagnostics are `redacted-summary-only` and do not include raw
+  fetched content, raw feed bodies, private insert URIs, tokens, raw app-data values, or local
+  paths.
+- Known limitations: platform subscription records may need to be recreated or reconciled after
+  restoring app data onto another node.

@@ -47,6 +47,7 @@ REQUIRED_DOCS = (
     "docs/app-update-lifecycle.md",
     "docs/app-data-backup-restore-portability.md",
     "docs/first-party-beta-catalog.md",
+    "docs/first-party-app-beta-quality-pass.md",
     "docs/production-first-party-catalog-channels.md",
     "docs/production-beta-release-pipeline.md",
     "docs/multi-node-beta-soak-and-upgrade-drill.md",

@@ -26,6 +26,7 @@ Use this portal first, then follow the detailed source-of-truth pages for the ar
 | Signed app bundles | [app-distribution.md](app-distribution.md) |
 | Signed catalogs and catalog sources | [app-catalogs.md](app-catalogs.md) |
 | First-party beta catalog | [first-party-beta-catalog.md](first-party-beta-catalog.md) |
+| First-party app beta quality pass | [first-party-app-beta-quality-pass.md](first-party-app-beta-quality-pass.md) |
 | Production catalog channels | [production-first-party-catalog-channels.md](production-first-party-catalog-channels.md) |
 | Catalog operations and mirrors | [catalog-operations-and-mirrors.md](catalog-operations-and-mirrors.md) |
 | Production beta release pipeline | [production-beta-release-pipeline.md](production-beta-release-pipeline.md) |

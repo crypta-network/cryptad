@@ -167,3 +167,26 @@ Run the staged bundle test with:
 ```bash
 ./gradlew :apps:trust-graph:test
 ```
+
+## Beta readiness
+
+- Current beta support level: `local-rc`, owned by `crypta-core`, with
+  `app.beta.readiness=ready`.
+- Empty/error/retry states: the staged UI shows an empty anchors/imported-statements state,
+  bounded malformed/oversized/revoked/deprecated statement states, and retry import/reload
+  actions.
+- App-data backup/export/import status: operator-supported for durable UI-local `ui-state`
+  records, filters, draft choices, and redacted import summaries. Platform trust graph backend
+  state and AppVault identity material are outside this app-data backup.
+- Migration dry-run status: supported for the `ui-state-v1-v2` migration command before applying
+  an update.
+- Permission rationale summary: trust APIs, content fetch/import, generated statement insert,
+  queue, AppVault identity, app-service score provider, and app-data permissions each have manifest
+  rationale and visible disclosure.
+- Support/recovery path: the recovery action points operators to import reload, migration dry-run,
+  app-data export/import, and RC recovery support guidance.
+- Diagnostic redaction promise: diagnostics are `redacted-summary-only` and do not expose raw
+  trust signatures, private identity material, private insert URIs, app-service tokens, raw
+  app-data values, or local paths.
+- Known limitations: Trust Graph Local RC is local trust only, not global truth, not global WoT,
+  not moderation, not a crawler, and not legacy WebOfTrust compatibility.

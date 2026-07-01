@@ -125,7 +125,35 @@ Static app pages should include:
 - at least one visible heading;
 - labels or ARIA labels for inputs;
 - visible text or ARIA labels for icon-only buttons;
+- an ARIA live status region for async refresh, retry, migration, and support actions;
 - focus-visible styling. The canonical `crypta-ui.css` provides this by default.
+
+## First-party beta readiness markers
+
+First-party apps that declare `app.beta.readiness=ready` opt into extra strict UI lint checks. The
+checks are deterministic and local to the staged static bundle. They require visible markers for
+operator usability:
+
+```html
+<section
+  class="cr-card"
+  data-first-party-beta-readiness
+  data-beta-empty-state
+  data-beta-error-state
+  data-beta-retry-action
+  data-beta-recovery-action
+  data-beta-app-data-status
+  data-beta-support-metadata
+  data-beta-diagnostics-redaction>
+  <h2>Beta readiness</h2>
+</section>
+```
+
+First-party permission summaries also carry `data-beta-permission-rationale`, and async status
+regions carry `data-beta-accessibility-status`. Diagnostics copy must include the
+`redacted-summary-only` marker. These checks support
+`first-party-app.beta-quality-pass`; they are not third-party submission queue states and do not
+weaken the existing remote asset, CSP, or token redaction rules.
 
 ## UI lint
 

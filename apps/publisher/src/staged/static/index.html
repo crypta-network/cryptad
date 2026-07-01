@@ -15,17 +15,45 @@
         <p class="cr-label">Crypta app</p>
         <h1>Publisher</h1>
       </div>
-      <button class="cr-button cr-button--secondary" id="upload-queue-button" type="button">
+      <button
+        class="cr-button cr-button--secondary"
+        id="upload-queue-button"
+        type="button"
+        data-beta-retry-action>
         Upload queue
       </button>
     </header>
 
-    <section class="cr-permission-summary" data-crypta-permission-summary>
+    <section class="cr-permission-summary" data-crypta-permission-summary data-beta-permission-rationale>
       <p><strong>Declared permissions</strong></p>
       <ul>
         <li><code>queue.read</code> reads local upload queue snapshots.</li>
         <li><code>queue.write</code> exports upload queue keys.</li>
         <li><code>content.insert</code> queues local file and directory inserts.</li>
+      </ul>
+    </section>
+
+    <section
+      class="cr-card beta-readiness-panel"
+      aria-labelledby="beta-readiness-title"
+      data-first-party-beta-readiness
+      data-beta-empty-state
+      data-beta-error-state
+      data-beta-retry-action
+      data-beta-recovery-action
+      data-beta-app-data-status
+      data-beta-support-metadata
+      data-beta-diagnostics-redaction
+      data-beta-ui-consistency>
+      <div>
+        <p class="cr-label">Beta readiness</p>
+        <h2 id="beta-readiness-title">File and directory inserts</h2>
+      </div>
+      <ul class="beta-readiness-list">
+        <li>Before staging content, the result panel stays in an empty state; publish failures use bounded copy.</li>
+        <li>Retry by re-submitting the form or refreshing the Upload queue panel.</li>
+        <li>App data is stateless; backup, export, import, and migrations are not applicable.</li>
+        <li>Support uses catalog metadata, publish status categories, and redacted-summary-only diagnostics.</li>
       </ul>
     </section>
 
@@ -151,7 +179,7 @@
       </form>
     </section>
 
-    <p class="cr-status" id="status" role="status" aria-live="polite"></p>
+    <p class="cr-status" id="status" role="status" aria-live="polite" data-beta-accessibility-status></p>
     <section class="cr-card result-panel" id="result">
       <p class="cr-empty">Submit a local file or directory insert to queue a persistent upload.</p>
     </section>

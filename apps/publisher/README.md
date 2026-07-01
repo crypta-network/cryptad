@@ -77,3 +77,20 @@ The bundle intentionally stays narrow in PR-198:
 - The launcher is a POSIX shell script; Windows-specific first-party app launch packaging remains deferred.
 
 See [docs/app-distribution.md](../../docs/app-distribution.md) for the exact signing inputs and the shared first-party app workflow.
+
+## Beta readiness
+
+- Current beta support level: `core`, owned by `crypta-core`, with `app.beta.readiness=ready`.
+- Empty/error/retry states: the staged UI shows an empty document-staging state, a bounded publish
+  failure state, and retry/re-stage actions.
+- App-data backup/export/import status: stateless. Backup, export, import, and migration dry-run
+  are `not-applicable` because Publisher stores no durable local app state.
+- Migration dry-run status: `not-applicable`.
+- Permission rationale summary: content insert and queue permissions explain document publication,
+  insert queue creation, and queue progress display.
+- Support/recovery path: the recovery action points operators to failed publish job support and
+  the RC recovery workflow.
+- Diagnostic redaction promise: diagnostics are `redacted-summary-only` and summarize local paths
+  and insert results without exposing private insert URIs, tokens, raw content, or local paths.
+- Known limitations: this app remains a narrow insert workflow and does not persist drafts or
+  publish history.

@@ -7,8 +7,8 @@ dashboard.
 
 The dashboard is a final review surface over existing sanitized release outputs. It consumes the
 production beta summary, release-certification summary, ecosystem matrix, app-platform smoke
-summary, live-network evidence when required, network-scale soak evidence, multi-node beta soak
-evidence, security response evidence, and optional waiver records.
+summary, first-party beta quality evidence, live-network evidence when required, network-scale soak
+evidence, multi-node beta soak evidence, security response evidence, and optional waiver records.
 
 The dashboard does not sign artifacts, collect live-node evidence, approve third-party apps, or
 replace release certification. It records one release-manager decision:
@@ -74,6 +74,11 @@ Production beta mode fails closed when these critical inputs are missing or malf
 Developer dry-runs tolerate missing production-only inputs so PR and local runs remain CI-safe. A
 dry-run can complete successfully, but the dashboard still marks non-release artifacts as
 `no-go` for publication.
+
+The dashboard has a dedicated `first-party-app-beta-quality` domain for
+`first-party-app.beta-quality-pass`. Missing beta-quality evidence is a blocker in production beta,
+and diagnostics redaction findings in that evidence are non-waiverable. Copy or accessibility
+warnings may be displayed as risk, but they do not hide the domain from the go/no-go summary.
 
 ## Decision states
 

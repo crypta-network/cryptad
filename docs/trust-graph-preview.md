@@ -353,6 +353,16 @@ statements, source budget warnings, and approximate score impact. The UI also ex
 anchor lifecycle controls, audit summaries, app-data backup/export/import controls, and a local
 scope warning that local anchors are operator choices for this node only.
 
+## Beta readiness
+
+Trust Graph Local RC participates in `first-party-app.beta-quality-pass`. The staged UI must show
+an empty anchors/imported-statements state, bounded malformed/oversized/revoked/deprecated
+statement errors, retry import/reload actions, visible permission rationales, app-data
+export/import status, `ui-state-v1-v2` migration dry-run status, support metadata, an ARIA live
+status region, design-system classes, and `redacted-summary-only` diagnostics. The UI and docs must
+keep the local-only scope visible: local trust only, not global truth, not global WoT, not
+moderation, not a crawler, and not legacy WebOfTrust compatibility.
+
 The app uses SDK helpers rather than hard-coded `/api/v1/` URLs. URI previews call
 `CryptaPlatform.trust.previewImport({ uri, ... })`, which fetches through the Trust Graph import
 budget and discards the fetched body server-side after producing a redacted candidate summary. The

@@ -26,7 +26,7 @@
       await CryptaPlatform.bootstrap.load({ appId });
       await loadQueue();
     } catch (error) {
-      setStatus(CryptaPlatform.api.errorMessage(error), "error");
+      setStatus(safeErrorMessage(error), "error");
       renderText("Queue Manager is not ready.");
     }
   }
@@ -51,6 +51,7 @@
   }
 
   async function loadQueue() {
+    updateTabs();
     renderText("Loading queue snapshot...");
     setStatus("");
     try {
@@ -62,7 +63,7 @@
       renderQueue(snapshot.contentHtml);
       setStatus(queueStatusMessage());
     } catch (error) {
-      setStatus(CryptaPlatform.api.errorMessage(error), "error");
+      setStatus(safeErrorMessage(error), "error");
       renderText("Queue snapshot unavailable.");
     }
   }
@@ -151,7 +152,7 @@
       setStatus(`Completed ${String(operation).replaceAll("_", " ")}.`, "success");
       await loadQueue();
     } catch (error) {
-      setStatus(CryptaPlatform.api.errorMessage(error), "error");
+      setStatus(safeErrorMessage(error), "error");
     }
   }
 
@@ -224,7 +225,7 @@
       updateTabs();
       await loadQueue();
     } catch (error) {
-      setStatus(CryptaPlatform.api.errorMessage(error), "error");
+      setStatus(safeErrorMessage(error), "error");
     }
   }
 
@@ -241,7 +242,7 @@
       downloadTextFile(`${state.page}-keys.txt`, textBody);
       setStatus(`Exported ${keys.length} ${state.page} queue keys.`, "success");
     } catch (error) {
-      setStatus(CryptaPlatform.api.errorMessage(error), "error");
+      setStatus(safeErrorMessage(error), "error");
     }
   }
 
@@ -297,6 +298,7 @@
     elements.downloadsTab.setAttribute("aria-selected", downloads ? "true" : "false");
     elements.uploadsTab.setAttribute("aria-selected", downloads ? "false" : "true");
     elements.downloadPanel.hidden = !downloads;
+    elements.content.setAttribute("aria-labelledby", downloads ? "downloads-tab" : "uploads-tab");
   }
 
   function queueStatusMessage() {
@@ -308,6 +310,28 @@
 
   function renderText(value) {
     elements.content.replaceChildren(text("p", "cr-empty", value));
+  }
+
+  function safeErrorMessage(error) {
+    const fallback = "Queue request failed. Retry the action or use Operator RC Recovery.";
+    let message = "";
+    try {
+      message =
+        CryptaPlatform.api && typeof CryptaPlatform.api.errorMessage === "function"
+          ? CryptaPlatform.api.errorMessage(error)
+          : error && error.message;
+    } catch (_) {
+      message = "";
+    }
+    message = String(message || "").replace(/\s+/g, " ").trim();
+    if (!message || sensitiveDiagnosticPattern().test(message)) {
+      return fallback;
+    }
+    return message.slice(0, 240);
+  }
+
+  function sensitiveDiagnosticPattern() {
+    return /(crypta:(?:ssk|usk)@|(?:ssk|usk)@|authorization|bearer|token|private key|identity material|browser session|form password|raw (?:content|message|app data)|[A-Za-z]:\\|\/(?:home|Users|work|tmp|var)\/)/i;
   }
 
   function setStatus(message, tone) {

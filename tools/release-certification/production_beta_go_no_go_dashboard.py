@@ -155,9 +155,11 @@ CATALOG_AND_SIGNING_EVIDENCE_IDS = (
 CONSENT_EVIDENCE_IDS = ("app-platform.user-consent-flow",)
 SECURITY_RESPONSE_EVIDENCE_IDS = ("production-security.response-runbook",)
 FIRST_PARTY_MAINTENANCE_EVIDENCE_IDS = ("app-catalog.first-party-maintenance-policy",)
+FIRST_PARTY_BETA_QUALITY_EVIDENCE_IDS = ("first-party-app.beta-quality-pass",)
 CRITICAL_PRODUCTION_BETA_EVIDENCE_IDS = (
     "app-platform.signed-bundles",
     "app-catalog.first-party-maintenance-policy",
+    "first-party-app.beta-quality-pass",
     "catalog.smoke",
     "app-review.trusted-receipts",
     "app-review.first-party-catalog",
@@ -220,6 +222,12 @@ DOMAIN_SPECS = (
         "id": "first-party-app-maintenance-policy",
         "title": "First-party app maintenance policy",
         "evidenceIds": FIRST_PARTY_MAINTENANCE_EVIDENCE_IDS,
+        "artifactInputs": ("appPlatformSummary",),
+    },
+    {
+        "id": "first-party-app-beta-quality",
+        "title": "First-party app beta quality",
+        "evidenceIds": FIRST_PARTY_BETA_QUALITY_EVIDENCE_IDS,
         "artifactInputs": ("appPlatformSummary",),
     },
     {

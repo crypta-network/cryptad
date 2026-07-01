@@ -56,7 +56,7 @@
       renderReader();
       await refreshUploadQueue({ silent: true });
     } catch (error) {
-      setStatus(CryptaPlatform.api.errorMessage(error), "error");
+      setStatus(safeErrorMessage(error), "error");
     }
   }
 
@@ -132,7 +132,7 @@
       renderReader();
       setStatus("Feed snapshot fetched.", "success");
     } catch (error) {
-      source.lastStatus = CryptaPlatform.api.errorMessage(error);
+      source.lastStatus = safeErrorMessage(error);
       renderSources();
       setStatus(source.lastStatus, "error");
     }
@@ -193,7 +193,7 @@
       await persistDurableState();
     } catch (error) {
       if (!loadOptions.silent) {
-        setStatus(CryptaPlatform.api.errorMessage(error), "error");
+        setStatus(safeErrorMessage(error), "error");
       }
       renderSubscriptions();
       setFollowStatus("Subscription metadata could not be loaded.");
@@ -226,7 +226,7 @@
       setFollowStatus("Platform subscription created.");
       await persistDurableState();
     } catch (error) {
-      source.lastStatus = CryptaPlatform.api.errorMessage(error);
+      source.lastStatus = safeErrorMessage(error);
       setFollowStatus(source.lastStatus);
     }
   }
@@ -250,7 +250,7 @@
       renderSubscriptions();
       setStatus("Subscription refresh requested.", "success");
     } catch (error) {
-      setStatus(CryptaPlatform.api.errorMessage(error), "error");
+      setStatus(safeErrorMessage(error), "error");
     }
   }
 
@@ -290,7 +290,7 @@
       );
       await persistDurableState();
     } catch (error) {
-      setStatus(CryptaPlatform.api.errorMessage(error), "error");
+      setStatus(safeErrorMessage(error), "error");
     }
   }
 
@@ -307,7 +307,7 @@
       renderSubscriptions();
       setStatus(message, "success");
     } catch (error) {
-      setStatus(CryptaPlatform.api.errorMessage(error), "error");
+      setStatus(safeErrorMessage(error), "error");
     }
   }
 
@@ -414,7 +414,7 @@
       await refreshUploadQueue({ silent: true });
       setStatus("Feed snapshot publish queued.", "success");
     } catch (error) {
-      setStatus(CryptaPlatform.api.errorMessage(error), "error");
+      setStatus(safeErrorMessage(error), "error");
     }
   }
 
@@ -435,7 +435,7 @@
       }
     } catch (error) {
       if (!refreshOptions.silent) {
-        setStatus(CryptaPlatform.api.errorMessage(error), "error");
+        setStatus(safeErrorMessage(error), "error");
       }
       renderQueue(null);
     }
@@ -1346,6 +1346,28 @@
 
   function setFollowStatus(message) {
     elements.followStatus.textContent = stringValue(message);
+  }
+
+  function safeErrorMessage(error) {
+    const fallback = "Feed request failed. Retry refresh, resubscribe, or use Operator RC Recovery.";
+    let message = "";
+    try {
+      message =
+        CryptaPlatform.api && typeof CryptaPlatform.api.errorMessage === "function"
+          ? CryptaPlatform.api.errorMessage(error)
+          : error && error.message;
+    } catch (_) {
+      message = "";
+    }
+    message = stringValue(message).replace(/\s+/g, " ").trim();
+    if (!message || sensitiveDiagnosticPattern().test(message)) {
+      return fallback;
+    }
+    return boundedText(message, 240);
+  }
+
+  function sensitiveDiagnosticPattern() {
+    return /(crypta:(?:ssk|usk)@|(?:ssk|usk)@|authorization|bearer|token|private key|identity material|browser session|form password|raw\s+(?:(?:fetched|feed|request|response|trust\s+statement|social\s+message|profile|app[-\s]data)\s+)?(?:content|document|body|message|payload|value|app[-\s]data)|[A-Za-z]:\\|\/(?:home|Users|work|tmp|var)\/)/i;
   }
 
   function statusClass(kind) {

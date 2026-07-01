@@ -1639,13 +1639,25 @@
   }
 
   function errorMessage(error) {
+    const fallback = "Trust Graph request failed. Retry import, reload state, or use Operator RC Recovery.";
+    let message = "";
     if (
       CryptaPlatform.api &&
       typeof CryptaPlatform.api.errorMessage === "function"
     ) {
-      return CryptaPlatform.api.errorMessage(error);
+      message = CryptaPlatform.api.errorMessage(error);
+    } else {
+      message = error && error.message ? error.message : "";
     }
-    return error && error.message ? error.message : "Trust graph request failed.";
+    message = String(message || "").replace(/\s+/g, " ").trim();
+    if (!message || sensitiveDiagnosticPattern().test(message)) {
+      return fallback;
+    }
+    return message.slice(0, 240);
+  }
+
+  function sensitiveDiagnosticPattern() {
+    return /(crypta:(?:ssk|usk)@|(?:ssk|usk)@|authorization|bearer|token|private key|identity material|browser session|form password|raw (?:content|message|app data)|signatureBase64|publicKeyBase64|[A-Za-z]:\\|\/(?:home|Users|work|tmp|var)\/)/i;
   }
 
   function setStatus(message) {

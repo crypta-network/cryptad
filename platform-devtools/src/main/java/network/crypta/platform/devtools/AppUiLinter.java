@@ -11,9 +11,11 @@ import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HexFormat;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
 import network.crypta.platform.appdist.AppBundleManifest;
@@ -62,6 +64,9 @@ final class AppUiLinter {
   /** Finding category for permission-disclosure consistency checks. */
   private static final String CATEGORY_PERMISSIONS = "permissions";
 
+  /** Finding category for first-party beta-readiness checks. */
+  private static final String CATEGORY_FIRST_PARTY_READINESS = "first-party-readiness";
+
   /** Content-type prefix required for the manifest-declared static UI document. */
   private static final String HTML_CONTENT_TYPE_PREFIX = "text/html";
 
@@ -93,6 +98,9 @@ final class AppUiLinter {
 
   /** Percent-encoding marker used by app-owned UI route paths. */
   private static final char PERCENT = '%';
+
+  /** Optional UTF-8 byte-order mark accepted at the start of manifest files. */
+  private static final char UTF_8_BOM = '\uFEFF';
 
   /** Pattern for direct Platform API calls that should normally go through the browser SDK. */
   private static final Pattern DIRECT_API_REFERENCE =
@@ -160,9 +168,8 @@ final class AppUiLinter {
    */
   static AppUiLintResult lint(Path bundleDir, boolean strict) throws IOException {
     Path bundleRoot = bundleDir.toAbsolutePath().normalize();
-    AppBundleManifest manifest =
-        AppBundleManifestParser.parse(
-            bundleRoot.resolve(AppBundleManifestParser.MANIFEST_FILE_NAME));
+    Path manifestPath = bundleRoot.resolve(AppBundleManifestParser.MANIFEST_FILE_NAME);
+    AppBundleManifest manifest = AppBundleManifestParser.parse(manifestPath);
     List<AppUiLintFinding> findings = new ArrayList<>();
     if (manifest.uiMode() != AppUiMode.STATIC) {
       findings.add(
@@ -216,6 +223,9 @@ final class AppUiLinter {
     addLocalReferenceFindings(bundleRoot, scriptSources, "script", "text/javascript", findings);
     addLocalReferenceFindings(bundleRoot, stylesheetHrefs, "stylesheet", "text/css", findings);
     addPermissionFindings(manifest, html, entryBundlePath, strict, findings);
+    Map<String, String> rawManifestProperties = rawManifestProperties(manifestPath);
+    addFirstPartyReadinessFindings(
+        manifest, rawManifestProperties, html, entryBundlePath, strict, findings);
     Path scanRoot =
         entryDirectory.toString().isBlank() ? bundleRoot : bundleRoot.resolve(entryDirectory);
     addTextFileFindings(bundleRoot, scanRoot, scriptSources, strict, findings);
@@ -393,6 +403,534 @@ final class AppUiLinter {
                 entryBundlePath));
       }
     }
+  }
+
+  /**
+   * Adds opt-in first-party beta-readiness findings.
+   *
+   * <p>The check is activated only when a bundle manifest declares {@code
+   * app.beta.readiness=ready}. That keeps ordinary third-party strict UI lint compatible while
+   * allowing first-party release gates to make beta quality markers blocking. The check remains
+   * offline and deterministic: it reads raw manifest properties and marker attributes in the static
+   * entry, and it does not inspect live app data or a running node.
+   *
+   * @param manifest parsed bundle manifest for permission declarations and app identity
+   * @param rawManifestProperties raw manifest properties, including beta metadata ignored by the
+   *     bundle parser
+   * @param html inspected static UI entry point
+   * @param entryBundlePath bundle-relative path to the inspected entry file
+   * @param strict whether advisory findings should become errors
+   * @param findings mutable finding list that receives readiness findings
+   */
+  private static void addFirstPartyReadinessFindings(
+      AppBundleManifest manifest,
+      Map<String, String> rawManifestProperties,
+      StaticHtmlInspector html,
+      String entryBundlePath,
+      boolean strict,
+      List<AppUiLintFinding> findings) {
+    if (!"ready".equals(property(rawManifestProperties, "app.beta.readiness"))) {
+      return;
+    }
+    requireManifestValue(
+        rawManifestProperties, "app.beta.readiness", "ready", entryBundlePath, strict, findings);
+    requireManifestValue(
+        rawManifestProperties, "app.beta.qualityLevel", "beta", entryBundlePath, strict, findings);
+    requireManifestValue(
+        rawManifestProperties,
+        "app.beta.support.owner",
+        "crypta-core",
+        entryBundlePath,
+        strict,
+        findings);
+    requireManifestPresent(
+        rawManifestProperties, "app.beta.support.uri", entryBundlePath, strict, findings);
+    requireManifestValue(
+        rawManifestProperties,
+        "app.beta.support.diagnostics",
+        "redacted-summary-only",
+        entryBundlePath,
+        strict,
+        findings);
+    for (String key :
+        List.of(
+            "app.beta.ui.emptyState",
+            "app.beta.ui.errorState",
+            "app.beta.ui.retryAction",
+            "app.beta.ui.recoveryAction")) {
+      requireManifestValue(rawManifestProperties, key, "true", entryBundlePath, strict, findings);
+    }
+    for (String key :
+        List.of(
+            "app.beta.appData",
+            "app.beta.backupRestore",
+            "app.beta.exportSupported",
+            "app.beta.importSupported",
+            "app.beta.migrationDryRunSupported")) {
+      requireManifestPresent(rawManifestProperties, key, entryBundlePath, strict, findings);
+    }
+    requireManifestValue(
+        rawManifestProperties,
+        "app.beta.accessibility",
+        "basic-pass",
+        entryBundlePath,
+        strict,
+        findings);
+    requireManifestValue(
+        rawManifestProperties,
+        "app.beta.uiConsistency",
+        "design-system-pass",
+        entryBundlePath,
+        strict,
+        findings);
+    requireManifestValue(
+        rawManifestProperties,
+        "app.beta.diagnostics",
+        "redacted-summary-only",
+        entryBundlePath,
+        strict,
+        findings);
+    addFirstPartyPermissionRationaleManifestFindings(
+        manifest, rawManifestProperties, entryBundlePath, strict, findings);
+    addFirstPartyStatelessDataFindings(rawManifestProperties, entryBundlePath, strict, findings);
+    addFirstPartyHtmlMarkerFindings(manifest, html, entryBundlePath, strict, findings);
+  }
+
+  /**
+   * Adds findings for missing manifest permission-rationale entries.
+   *
+   * @param manifest parsed bundle manifest
+   * @param rawManifestProperties raw manifest properties
+   * @param entryBundlePath bundle-relative HTML entry path used for the finding
+   * @param strict whether advisory findings should be promoted
+   * @param findings mutable finding list
+   */
+  private static void addFirstPartyPermissionRationaleManifestFindings(
+      AppBundleManifest manifest,
+      Map<String, String> rawManifestProperties,
+      String entryBundlePath,
+      boolean strict,
+      List<AppUiLintFinding> findings) {
+    for (String permission : manifest.permissions()) {
+      if (property(rawManifestProperties, "permissions.rationale." + permission).isBlank()) {
+        findings.add(
+            strictFinding(
+                strict,
+                "first_party_permission_rationale_manifest_missing",
+                CATEGORY_FIRST_PARTY_READINESS,
+                "First-party beta readiness requires a manifest permission rationale for "
+                    + permission
+                    + ".",
+                entryBundlePath));
+      }
+    }
+  }
+
+  /**
+   * Adds findings when a stateless app overclaims backup/export/import support.
+   *
+   * @param rawManifestProperties raw manifest properties
+   * @param entryBundlePath bundle-relative HTML entry path used for the finding
+   * @param strict whether advisory findings should be promoted
+   * @param findings mutable finding list
+   */
+  private static void addFirstPartyStatelessDataFindings(
+      Map<String, String> rawManifestProperties,
+      String entryBundlePath,
+      boolean strict,
+      List<AppUiLintFinding> findings) {
+    if (!"stateless".equals(property(rawManifestProperties, "app.beta.appData"))) {
+      return;
+    }
+    for (String key :
+        List.of(
+            "app.beta.backupRestore",
+            "app.beta.exportSupported",
+            "app.beta.importSupported",
+            "app.beta.migrationDryRunSupported")) {
+      if (!"not-applicable".equals(property(rawManifestProperties, key))) {
+        findings.add(
+            strictFinding(
+                strict,
+                "first_party_stateless_backup_overclaim",
+                CATEGORY_FIRST_PARTY_READINESS,
+                "Stateless first-party apps must mark backup, export, import, and migration support"
+                    + " as not-applicable.",
+                entryBundlePath));
+      }
+    }
+  }
+
+  /**
+   * Adds findings for missing first-party beta-readiness HTML markers.
+   *
+   * @param manifest parsed bundle manifest
+   * @param html inspected static UI entry point
+   * @param entryBundlePath bundle-relative path to the inspected entry file
+   * @param strict whether advisory findings should become errors
+   * @param findings mutable finding list that receives marker findings
+   */
+  private static void addFirstPartyHtmlMarkerFindings(
+      AppBundleManifest manifest,
+      StaticHtmlInspector html,
+      String entryBundlePath,
+      boolean strict,
+      List<AppUiLintFinding> findings) {
+    for (ReadinessMarker marker :
+        List.of(
+            new ReadinessMarker(
+                "data-first-party-beta-readiness",
+                "first_party_readiness_panel_missing",
+                "First-party beta readiness panel marker is missing."),
+            new ReadinessMarker(
+                "data-beta-empty-state",
+                "first_party_empty_state_missing",
+                "First-party beta empty-state marker is missing."),
+            new ReadinessMarker(
+                "data-beta-error-state",
+                "first_party_error_state_missing",
+                "First-party beta bounded-error-state marker is missing."),
+            new ReadinessMarker(
+                "data-beta-retry-action",
+                "first_party_retry_action_missing",
+                "First-party beta retry-action marker is missing."),
+            new ReadinessMarker(
+                "data-beta-recovery-action",
+                "first_party_recovery_action_missing",
+                "First-party beta recovery-action marker is missing."),
+            new ReadinessMarker(
+                "data-beta-app-data-status",
+                "first_party_app_data_status_missing",
+                "First-party beta app-data status marker is missing."),
+            new ReadinessMarker(
+                "data-beta-support-metadata",
+                "first_party_support_metadata_missing",
+                "First-party beta support metadata marker is missing."),
+            new ReadinessMarker(
+                "data-beta-diagnostics-redaction",
+                "first_party_diagnostics_redaction_marker_missing",
+                "First-party beta diagnostics redaction marker is missing."),
+            new ReadinessMarker(
+                "data-beta-accessibility-status",
+                "first_party_accessibility_status_region_missing",
+                "First-party beta ARIA live status marker is missing."))) {
+      if (html.lacksMarker(marker.marker())) {
+        findings.add(
+            strictFinding(
+                strict,
+                marker.findingId(),
+                CATEGORY_FIRST_PARTY_READINESS,
+                marker.message(),
+                entryBundlePath));
+      }
+    }
+    if (html.lacksMarker("data-beta-permission-rationale") || !html.hasPermissionDisclosure()) {
+      findings.add(
+          strictFinding(
+              strict,
+              "first_party_permission_rationale_missing",
+              CATEGORY_FIRST_PARTY_READINESS,
+              "First-party beta permission rationale disclosure is missing.",
+              entryBundlePath));
+    }
+    if (html.lacksMarker("redacted-summary-only")) {
+      findings.add(
+          strictFinding(
+              strict,
+              "first_party_diagnostics_redaction_marker_missing",
+              CATEGORY_FIRST_PARTY_READINESS,
+              "First-party beta diagnostics copy must include redacted-summary-only.",
+              entryBundlePath));
+    }
+    addFirstPartyScopeGuardrailFindings(manifest, html, entryBundlePath, strict, findings);
+  }
+
+  /**
+   * Adds findings for reference apps that lose required scope/non-goal copy.
+   *
+   * @param manifest parsed bundle manifest
+   * @param html inspected static UI entry point
+   * @param entryBundlePath bundle-relative path to the inspected entry file
+   * @param strict whether advisory findings should become errors
+   * @param findings mutable finding list
+   */
+  private static void addFirstPartyScopeGuardrailFindings(
+      AppBundleManifest manifest,
+      StaticHtmlInspector html,
+      String entryBundlePath,
+      boolean strict,
+      List<AppUiLintFinding> findings) {
+    if ("trust-graph".equals(manifest.appId())
+        && (html.lacksMarker("local trust only") || html.lacksMarker("not global truth"))) {
+      findings.add(
+          strictFinding(
+              strict,
+              "first_party_local_rc_scope_missing",
+              CATEGORY_FIRST_PARTY_READINESS,
+              "Trust Graph Local RC must keep visible local-only and not-global-truth scope copy.",
+              entryBundlePath));
+    }
+    if ("social-inbox".equals(manifest.appId())
+        && (html.lacksMarker("not freetalk")
+            || html.lacksMarker("sone")
+            || html.lacksMarker("freemail"))) {
+      findings.add(
+          strictFinding(
+              strict,
+              "first_party_legacy_protocol_non_goal_missing",
+              CATEGORY_FIRST_PARTY_READINESS,
+              "Social Inbox RC must keep visible non-goal copy for Freetalk, Sone, and Freemail.",
+              entryBundlePath));
+    }
+  }
+
+  /**
+   * Requires a manifest property to match an expected value.
+   *
+   * @param properties raw manifest properties
+   * @param key manifest key
+   * @param expected expected value
+   * @param entryBundlePath bundle-relative HTML entry path used for the finding
+   * @param strict whether advisory findings should be promoted
+   * @param findings mutable finding list
+   */
+  private static void requireManifestValue(
+      Map<String, String> properties,
+      String key,
+      String expected,
+      String entryBundlePath,
+      boolean strict,
+      List<AppUiLintFinding> findings) {
+    if (!expected.equals(property(properties, key))) {
+      findings.add(
+          strictFinding(
+              strict,
+              "first_party_manifest_field_missing",
+              CATEGORY_FIRST_PARTY_READINESS,
+              "First-party beta readiness requires " + key + "=" + expected + ".",
+              entryBundlePath));
+    }
+  }
+
+  /**
+   * Requires a manifest property to have a non-empty value.
+   *
+   * @param properties raw manifest properties
+   * @param key manifest key
+   * @param entryBundlePath bundle-relative HTML entry path used for the finding
+   * @param strict whether advisory findings should be promoted
+   * @param findings mutable finding list
+   */
+  private static void requireManifestPresent(
+      Map<String, String> properties,
+      String key,
+      String entryBundlePath,
+      boolean strict,
+      List<AppUiLintFinding> findings) {
+    if (property(properties, key).isBlank()) {
+      findings.add(
+          strictFinding(
+              strict,
+              "first_party_manifest_field_missing",
+              CATEGORY_FIRST_PARTY_READINESS,
+              "First-party beta readiness requires manifest field " + key + ".",
+              entryBundlePath));
+    }
+  }
+
+  /**
+   * Reads manifest properties that are intentionally ignored by the bundle parser.
+   *
+   * <p>This mirrors the manifest parser's line, separator, comment, and escape handling instead of
+   * delegating to {@link java.util.Properties#load}. That matters for otherwise valid manifests
+   * with literal Windows-style {@code app.exec} values containing backslashes, where the general
+   * JDK properties reader can treat an executable segment as a malformed unicode escape before the
+   * appdist parser can apply its app-exec-specific compatibility rules.
+   *
+   * @param manifestPath staged manifest path
+   * @return raw property map
+   * @throws IOException if the manifest cannot be read
+   */
+  private static Map<String, String> rawManifestProperties(Path manifestPath) throws IOException {
+    Map<String, String> properties = new LinkedHashMap<>();
+    String content = stripLeadingBom(Files.readString(manifestPath, StandardCharsets.UTF_8));
+    String[] lines = content.split("\\R", -1);
+    for (int index = 0; index < lines.length; index++) {
+      readManifestProperty(properties, lines[index], index + 1);
+    }
+    return properties;
+  }
+
+  private static String stripLeadingBom(String content) {
+    if (!content.isEmpty() && content.charAt(0) == UTF_8_BOM) {
+      return content.substring(1);
+    }
+    return content;
+  }
+
+  private static void readManifestProperty(
+      Map<String, String> properties, String line, int lineNumber) throws IOException {
+    String trimmedLine = line.trim();
+    if (trimmedLine.isEmpty() || trimmedLine.startsWith("#") || trimmedLine.startsWith("!")) {
+      return;
+    }
+    int separatorIndex = findManifestSeparatorIndex(line);
+    if (separatorIndex < 0) {
+      throw new IOException("invalid manifest line " + lineNumber + ": " + line);
+    }
+    String key =
+        decodeManifestComponent(line.substring(0, separatorIndex).trim(), lineNumber, true, true);
+    if (key.isEmpty()) {
+      throw new IOException("invalid manifest line " + lineNumber + ": " + line);
+    }
+    String rawValue = line.substring(separatorIndex + 1).trim();
+    String value =
+        decodeManifestComponent(
+            rawValue, lineNumber, false, shouldDecodeUnicodeEscapesInManifestValue(key, rawValue));
+    properties.put(key, value);
+  }
+
+  private static int findManifestSeparatorIndex(String line) {
+    int equalsIndex = line.indexOf('=');
+    int colonIndex = line.indexOf(':');
+    if (equalsIndex < 0) {
+      return colonIndex;
+    }
+    if (colonIndex < 0) {
+      return equalsIndex;
+    }
+    return Math.min(equalsIndex, colonIndex);
+  }
+
+  private static boolean shouldDecodeUnicodeEscapesInManifestValue(String key, String rawValue) {
+    if (!key.equals("app.exec")) {
+      return true;
+    }
+    return rawValue.contains("/")
+        || rawValue.contains("\\\\")
+        || rawValue.startsWith("\\u")
+        || rawValue.startsWith("\\U")
+        || (containsUnicodeEscape(rawValue) && !containsPlainBackslash(rawValue));
+  }
+
+  private static boolean containsUnicodeEscape(String rawValue) {
+    for (int index = 0; index + 5 < rawValue.length(); index++) {
+      if (rawValue.charAt(index) == '\\'
+          && (rawValue.charAt(index + 1) == 'u' || rawValue.charAt(index + 1) == 'U')
+          && isHexSequence(rawValue, index + 2)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private static boolean containsPlainBackslash(String rawValue) {
+    for (int index = 0; index < rawValue.length() - 1; index++) {
+      if (rawValue.charAt(index) == '\\'
+          && rawValue.charAt(index + 1) != 'u'
+          && rawValue.charAt(index + 1) != 'U') {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private static boolean isHexSequence(String rawValue, int startIndex) {
+    if (startIndex + 4 > rawValue.length()) {
+      return false;
+    }
+    for (int offset = 0; offset < 4; offset++) {
+      if (Character.digit(rawValue.charAt(startIndex + offset), 16) < 0) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private static String decodeManifestComponent(
+      String text, int lineNumber, boolean decodeControlEscapes, boolean decodeUnicodeEscapes)
+      throws IOException {
+    StringBuilder decoded = new StringBuilder(text.length());
+    int index = 0;
+    while (index < text.length()) {
+      char character = text.charAt(index);
+      if (character != '\\' || index + 1 >= text.length()) {
+        decoded.append(character);
+        index++;
+      } else {
+        index =
+            appendManifestEscapedCharacter(
+                decoded, text, index, lineNumber, decodeControlEscapes, decodeUnicodeEscapes);
+      }
+    }
+    return decoded.toString();
+  }
+
+  private static int appendManifestEscapedCharacter(
+      StringBuilder decoded,
+      String text,
+      int escapeIndex,
+      int lineNumber,
+      boolean decodeControlEscapes,
+      boolean decodeUnicodeEscapes)
+      throws IOException {
+    int nextIndex = escapeIndex + 1;
+    char escaped = text.charAt(nextIndex);
+    switch (escaped) {
+      case 't' -> appendManifestControlEscape(decoded, escaped, '\t', decodeControlEscapes);
+      case 'n' -> appendManifestControlEscape(decoded, escaped, '\n', decodeControlEscapes);
+      case 'r' -> appendManifestControlEscape(decoded, escaped, '\r', decodeControlEscapes);
+      case 'f' -> appendManifestControlEscape(decoded, escaped, '\f', decodeControlEscapes);
+      case '\\' -> decoded.append('\\');
+      case ' ' -> decoded.append(' ');
+      case ':', '=', '#', '!' -> decoded.append(escaped);
+      case 'u' -> {
+        if (decodeUnicodeEscapes) {
+          decoded.append(decodeManifestUnicodeEscape(text, nextIndex, lineNumber));
+          nextIndex += 4;
+        } else {
+          decoded.append('\\').append(escaped);
+        }
+      }
+      default -> decoded.append('\\').append(escaped);
+    }
+    return nextIndex + 1;
+  }
+
+  private static void appendManifestControlEscape(
+      StringBuilder decoded, char escaped, char decodedValue, boolean decodeControlEscapes) {
+    if (decodeControlEscapes) {
+      decoded.append(decodedValue);
+    } else {
+      decoded.append('\\').append(escaped);
+    }
+  }
+
+  private static char decodeManifestUnicodeEscape(String text, int escapeStartIndex, int lineNumber)
+      throws IOException {
+    if (escapeStartIndex + 4 >= text.length()) {
+      throw new IOException("invalid unicode escape in manifest line " + lineNumber);
+    }
+    int codePoint = 0;
+    for (int offset = 1; offset <= 4; offset++) {
+      int digit = Character.digit(text.charAt(escapeStartIndex + offset), 16);
+      if (digit < 0) {
+        throw new IOException("invalid unicode escape in manifest line " + lineNumber);
+      }
+      codePoint = (codePoint << 4) + digit;
+    }
+    return (char) codePoint;
+  }
+
+  /**
+   * Returns a trimmed raw property value.
+   *
+   * @param properties raw property map
+   * @param key property key
+   * @return trimmed property value, or an empty string when absent
+   */
+  private static String property(Map<String, String> properties, String key) {
+    return properties.getOrDefault(key, "").trim();
   }
 
   /**
@@ -1571,4 +2109,13 @@ final class AppUiLinter {
           bootstrapUsageFound || other.bootstrapUsageFound);
     }
   }
+
+  /**
+   * Required first-party readiness marker mapped to a stable lint finding id.
+   *
+   * @param marker literal HTML marker to search for
+   * @param findingId stable lint finding id
+   * @param message user-facing finding summary
+   */
+  private record ReadinessMarker(String marker, String findingId, String message) {}
 }

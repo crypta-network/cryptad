@@ -16,16 +16,24 @@
         <h1>Profile Publisher</h1>
       </div>
       <div class="header-actions">
-        <button class="cr-button cr-button--secondary" id="refresh-identities-button" type="button">
+        <button
+          class="cr-button cr-button--secondary"
+          id="refresh-identities-button"
+          type="button"
+          data-beta-retry-action>
           Refresh identities
         </button>
-        <button class="cr-button cr-button--secondary" id="refresh-queue-button" type="button">
+        <button
+          class="cr-button cr-button--secondary"
+          id="refresh-queue-button"
+          type="button"
+          data-beta-retry-action>
           Refresh queue
         </button>
       </div>
     </header>
 
-    <section class="cr-permission-summary" data-crypta-permission-summary>
+    <section class="cr-permission-summary" data-crypta-permission-summary data-beta-permission-rationale>
       <p><strong>Declared permissions</strong></p>
       <ul>
         <li><code>queue.read</code> reads upload queue progress for profile publishes.</li>
@@ -36,6 +44,30 @@
         <li><code>vault.identities.use</code> requests domain-separated signatures without exporting private material.</li>
         <li><code>app.data.read</code> restores the app-owned profile draft and publish summaries.</li>
         <li><code>app.data.write</code> saves bounded drafts and publish history summaries.</li>
+      </ul>
+    </section>
+
+    <section
+      class="cr-card beta-readiness-panel"
+      aria-labelledby="beta-readiness-title"
+      data-first-party-beta-readiness
+      data-beta-empty-state
+      data-beta-error-state
+      data-beta-retry-action
+      data-beta-recovery-action
+      data-beta-app-data-status
+      data-beta-support-metadata
+      data-beta-diagnostics-redaction
+      data-beta-ui-consistency>
+      <div>
+        <p class="cr-label">Beta readiness</p>
+        <h2 id="beta-readiness-title">Profile drafts and vault-scoped identity grants</h2>
+      </div>
+      <ul class="beta-readiness-list">
+        <li>No draft or no grant shows an empty state; vault grant and publish failures use bounded copy.</li>
+        <li>Retry identity metadata, request the grant again, or refresh upload queue progress.</li>
+        <li>App-data export/import covers profile drafts and summaries. Vault private identity material is not exported.</li>
+        <li>Support uses catalog metadata, grant state, operation categories, and redacted-summary-only diagnostics.</li>
       </ul>
     </section>
 
@@ -67,7 +99,11 @@
             <p class="cr-label">Granted metadata</p>
             <h2 id="available-identities-title">Available identities</h2>
           </div>
-          <button class="cr-button cr-button--secondary" id="request-grant-button" type="button">
+          <button
+            class="cr-button cr-button--secondary"
+            id="request-grant-button"
+            type="button"
+            data-beta-retry-action>
             Request grant
           </button>
         </div>
@@ -219,7 +255,7 @@
       </form>
     </section>
 
-    <p class="cr-status" id="status" role="status" aria-live="polite"></p>
+    <p class="cr-status" id="status" role="status" aria-live="polite" data-beta-accessibility-status></p>
 
     <section class="cr-card queue-panel" aria-labelledby="queue-title">
       <div class="panel-heading panel-heading--split">
@@ -227,7 +263,11 @@
           <p class="cr-label">Queue progress</p>
           <h2 id="queue-title">Upload queue progress</h2>
         </div>
-        <button class="cr-button cr-button--secondary" id="secondary-refresh-queue-button" type="button">
+        <button
+          class="cr-button cr-button--secondary"
+          id="secondary-refresh-queue-button"
+          type="button"
+          data-beta-retry-action>
           Refresh
         </button>
       </div>

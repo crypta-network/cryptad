@@ -77,3 +77,20 @@ The bundle intentionally stays narrow in PR-198:
 - The launcher is a POSIX shell script; Windows-specific first-party app launch packaging remains deferred.
 
 See [docs/app-distribution.md](../../docs/app-distribution.md) for the exact signing inputs and the shared first-party app workflow.
+
+## Beta readiness
+
+- Current beta support level: `core`, owned by `crypta-core`, with `app.beta.readiness=ready`.
+- Empty/error/retry states: the staged UI shows an empty queue state, a bounded queue-fetch error
+  state, and a retry refresh action.
+- App-data backup/export/import status: stateless. Backup, export, import, and migration dry-run
+  are `not-applicable` because Queue Manager stores no durable local app state.
+- Migration dry-run status: `not-applicable`.
+- Permission rationale summary: `queue.read` explains queue status display and `queue.write`
+  explains queue control operations.
+- Support/recovery path: the recovery action points operators to the RC recovery workflow for
+  stuck queue or app support cases.
+- Diagnostic redaction promise: diagnostics are `redacted-summary-only` and omit queue HTML,
+  private insert URIs, tokens, raw app data, and local paths.
+- Known limitations: this app manages queue visibility and control only; it does not add new
+  publishing formats or durable app state.

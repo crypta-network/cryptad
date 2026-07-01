@@ -310,6 +310,58 @@ class CryptaAppCliTest {
   }
 
   @Test
+  void uiLint_whenFirstPartyBetaReadinessMarkersPresent_expectStrictSuccess() throws Exception {
+    Path appDir = tempDir.resolve("first-party-ready-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "first-party-ready-app",
+        "--name",
+        "First-party Ready App",
+        "--version",
+        "0.1.0",
+        "--permission",
+        "queue.read");
+    addFirstPartyBetaReadinessFixture(appDir);
+
+    CliResult result = runCli("ui", "lint", "--bundle-dir", appDir.toString(), "--strict");
+
+    assertEquals(CommandLine.ExitCode.OK, result.exitCode());
+    assertTrue(result.out().contains("UI lint passed: 0 error(s)"));
+    assertFalse(result.err().contains("first_party_"));
+  }
+
+  @Test
+  void uiLint_whenFirstPartyBetaReadinessMarkerMissing_expectStrictFailure() throws Exception {
+    Path appDir = tempDir.resolve("first-party-missing-marker-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "first-party-missing-marker-app",
+        "--name",
+        "First-party Missing Marker App",
+        "--version",
+        "0.1.0",
+        "--permission",
+        "queue.read");
+    addFirstPartyBetaReadinessFixture(appDir);
+    Path index = appDir.resolve("static").resolve("index.html");
+    Files.writeString(
+        index,
+        Files.readString(index, StandardCharsets.UTF_8).replace(" data-beta-empty-state", ""),
+        StandardCharsets.UTF_8);
+
+    CliResult result = runCli("ui", "lint", "--bundle-dir", appDir.toString(), "--strict");
+
+    assertEquals(CommandLine.ExitCode.SOFTWARE, result.exitCode());
+    assertTrue(result.err().contains("first_party_empty_state_missing"));
+  }
+
+  @Test
   void uiLint_whenStaticEntryIsNotHtml_expectFailure() throws Exception {
     Path appDir = tempDir.resolve("sample-app");
     runCli(
@@ -1238,6 +1290,36 @@ class CryptaAppCliTest {
 
     assertEquals(CommandLine.ExitCode.OK, result.exitCode());
     assertTrue(result.out().contains("UI lint not applicable for app.ui.mode=none"));
+  }
+
+  @Test
+  void uiLint_whenNoUiBundleHasLiteralWindowsExecPath_expectNotApplicableSuccess()
+      throws Exception {
+    Path appDir = tempDir.resolve("sample-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "sample-app",
+        "--name",
+        "Sample App",
+        "--version",
+        "0.1.0",
+        "--ui-mode",
+        "none");
+    Path manifest = appDir.resolve("cryptad-app.properties");
+    Files.writeString(
+        manifest,
+        Files.readString(manifest, StandardCharsets.UTF_8)
+            .replace("app.exec=bin/start.sh\n", "app.exec=bin" + '\\' + "update.exe\n"),
+        StandardCharsets.UTF_8);
+
+    CliResult result = runCli("ui", "lint", "--bundle-dir", appDir.toString(), "--strict");
+
+    assertEquals(CommandLine.ExitCode.OK, result.exitCode());
+    assertTrue(result.out().contains("UI lint not applicable for app.ui.mode=none"));
+    assertEquals("", result.err());
   }
 
   @Test
@@ -3805,6 +3887,63 @@ class CryptaAppCliTest {
     Files.writeString(
         bundle.resolve("bin/start.sh"), "#!/bin/sh\necho reviewed\n", StandardCharsets.UTF_8);
     return bundle;
+  }
+
+  private static void addFirstPartyBetaReadinessFixture(Path appDir) throws IOException {
+    Path manifest = appDir.resolve("cryptad-app.properties");
+    Files.writeString(
+        manifest,
+        Files.readString(manifest, StandardCharsets.UTF_8)
+            + lines(
+                "app.beta.readiness=ready",
+                "app.beta.qualityLevel=beta",
+                "app.beta.support.owner=crypta-core",
+                "app.beta.support.uri=https://example.invalid/crypta/apps/first-party-ready-app/support",
+                "app.beta.support.diagnostics=redacted-summary-only",
+                "app.beta.ui.emptyState=true",
+                "app.beta.ui.errorState=true",
+                "app.beta.ui.retryAction=true",
+                "app.beta.ui.recoveryAction=true",
+                "app.beta.appData=stateless",
+                "app.beta.backupRestore=not-applicable",
+                "app.beta.exportSupported=not-applicable",
+                "app.beta.importSupported=not-applicable",
+                "app.beta.migrationDryRunSupported=not-applicable",
+                "app.beta.accessibility=basic-pass",
+                "app.beta.uiConsistency=design-system-pass",
+                "app.beta.diagnostics=redacted-summary-only",
+                "permissions.rationale.queue.read=Display bounded local queue state for beta"
+                    + " support."),
+        StandardCharsets.UTF_8);
+    Path index = appDir.resolve("static").resolve("index.html");
+    String html =
+        Files.readString(index, StandardCharsets.UTF_8)
+            .replace(
+                "data-crypta-permission-summary",
+                "data-crypta-permission-summary data-beta-permission-rationale")
+            .replace(
+                "role=\"status\" aria-live=\"polite\"",
+                "role=\"status\" aria-live=\"polite\" data-beta-accessibility-status");
+    html =
+        html.replace(
+            "</main>",
+            """
+              <section
+                class="cr-card"
+                data-first-party-beta-readiness
+                data-beta-empty-state
+                data-beta-error-state
+                data-beta-retry-action
+                data-beta-recovery-action
+                data-beta-app-data-status
+                data-beta-support-metadata
+                data-beta-diagnostics-redaction
+                data-beta-ui-consistency>
+                <p>Empty state, bounded error state, retry action, operator recovery, stateless app data, support metadata, and redacted-summary-only diagnostics.</p>
+              </section>
+            </main>\
+            """);
+    Files.writeString(index, html, StandardCharsets.UTF_8);
   }
 
   private static String sha256Hex(Path file) throws Exception {

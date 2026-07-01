@@ -200,6 +200,12 @@ modes, validate the fixed environment variables, and print only generic status t
 first-party steps are rollback-incompatible because the updated apps may persist schema-v2 state
 that older bundles do not accept after a bundle rollback.
 
+The first-party beta readiness evidence `first-party-app.beta-quality-pass` also checks that Feed
+Reader and Trust Graph expose their migration dry-run status in the UI and manifest metadata.
+Social Inbox RC remains schema 1 with additive beta records, so its readiness metadata says
+`additive-not-required` instead of claiming an executable dry-run migration. Stateless first-party
+apps mark migration dry-run as `not-applicable`.
+
 ## Redaction guarantees
 
 Update summaries, Web Shell text, update history, app-platform smoke evidence, and release

@@ -128,3 +128,26 @@ access still depends on the target node's current operator-approved grant state.
 ```bash
 ./gradlew :apps:social-inbox:test
 ```
+
+## Beta readiness
+
+- Current beta support level: `local-rc`, owned by `crypta-core`, with
+  `app.beta.readiness=ready`.
+- Empty/error/retry states: the staged UI shows an empty sources/messages state, bounded
+  subscription/message/import/trust-score failure states, and retry refresh/resubscribe/reload
+  score actions.
+- App-data backup/export/import status: operator-supported for durable source summaries, imported
+  message indexes, read state, filters, outbox summaries, and explicitly saved drafts. Trust Graph
+  service grants and AppVault identity material are outside this app-data backup.
+- Migration dry-run status: `additive-not-required` for schema 1 social records; future
+  non-additive schema changes must add migration metadata before update.
+- Permission rationale summary: vault identity, content subscription/fetch/insert, queue,
+  app-data, and optional Trust Graph score grant permissions each have manifest rationale and
+  visible disclosure.
+- Support/recovery path: the recovery action points operators to resubscribe, refresh Trust Graph
+  score grants, export/import app data, and RC recovery support guidance.
+- Diagnostic redaction promise: diagnostics are `redacted-summary-only` and do not expose raw
+  messages, identity material, private insert URIs, app-service tokens, browser-session tokens, raw
+  app-data values, or local paths.
+- Known limitations: Social Inbox RC is not Freemail/Freetalk/Sone protocol compatibility, not
+  encrypted mail transport, not a full WoT, and not a daemon-core social or mail protocol.
