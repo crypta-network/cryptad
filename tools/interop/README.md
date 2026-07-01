@@ -49,10 +49,13 @@ replay belongs to the Tier 2 soak profile because it needs a request that intent
 restart unfinished, plus enough runtime to prove that the restarted node resumes it instead of
 starting a new one.
 
-For the post-restart USK check, the harness refetches the deterministic edition through its
-equivalent edition SSK with `IgnoreDS=true`. The earlier USK smoke still exercises FCP USK request
-URIs directly; restart recovery uses the SSK form to prove the restarted node can serve the edition
-without spending the rest of the CI budget in USK polling.
+Tier 1 keeps USK coverage in the pre-restart USK smoke, where both nodes publish and fetch
+deterministic editions. The restart flow does not refetch USK editions because the pinned two-node
+baseline can spend the rest of the CI budget polling for a post-restart USK result even after FCP,
+peer reconnect, CHK refetch, and SSK refetch have succeeded. The summary records the post-restart
+USK refetch as a deferred check so release evidence shows the boundary explicitly. The CHK and SSK
+restart checks still use `IgnoreDS=true` so local datastore hits do not mask their network refetch
+assertions.
 
 `SubscribeUSK` is also Tier 2. The CI smoke proves deterministic edition fetches, but it does not
 hold a subscription open while a later edition is published. Extended mode inserts an initial USK
@@ -330,6 +333,7 @@ even if a source summary references it.
 | `payload_seed` | Deterministic seed used to generate test payloads. |
 | `restart_recovery_level` | Current Tier 1 level, `restart-and-refetch`. |
 | `restart_recovery_checks` | Restart checks completed by the Tier 1 flow. |
+| `restart_recovery_deferred_checks` | Restart checks intentionally deferred from Tier 1 with machine-readable reasons. |
 | `elapsed_seconds` | Wall-clock duration until success or failure handling. |
 | `processes` | PID, exit code, stdout path, and stderr path for launched nodes. |
 

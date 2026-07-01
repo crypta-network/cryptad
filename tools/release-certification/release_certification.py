@@ -1211,6 +1211,9 @@ def interop_evidence(
         "missingRequiredFlows": missing_flows,
         "restartRecoveryLevel": sanitized.get("restart_recovery_level"),
         "restartRecoveryChecks": sanitized.get("restart_recovery_checks", []),
+        "restartRecoveryDeferredChecks": sanitized.get(
+            "restart_recovery_deferred_checks", []
+        ),
         "baseline": sanitized.get("baseline", sanitized.get("hyphanet", {})),
         "artifacts": sanitized_artifact_refs(summary, workspace_root, out_dir),
     }

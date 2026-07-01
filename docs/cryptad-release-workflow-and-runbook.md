@@ -429,7 +429,7 @@ Treat these as release blockers, in order:
   gate with `INTEROP_SKIP_BUILD=1`. The expected diagnostics root is `build/interop-smoke/`.
 - Inspect `build/interop-smoke/summary.json` for `status=success`, `mode=smoke`, all Tier 1
   `flows` marked `passed`, `restart_recovery_level=restart-and-refetch`,
-  recorded `restart_recovery_checks`,
+  recorded `restart_recovery_checks`, recorded `restart_recovery_deferred_checks`,
   Hyphanet baseline metadata, public URI records, and process statuses.
 - Preserve `build/interop-smoke/` for the release record when the run fails.
 - For Tier 2, run or verify `interop-extended` and preserve `build/interop-extended/` when it fails
