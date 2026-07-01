@@ -310,6 +310,337 @@ class CryptaAppCliTest {
   }
 
   @Test
+  void uiLint_whenFirstPartyBetaReadinessMarkersPresent_expectStrictSuccess() throws Exception {
+    Path appDir = tempDir.resolve("first-party-ready-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "first-party-ready-app",
+        "--name",
+        "First-party Ready App",
+        "--version",
+        "0.1.0",
+        "--permission",
+        "queue.read");
+    addFirstPartyBetaReadinessFixture(appDir);
+
+    CliResult result = runCli("ui", "lint", "--bundle-dir", appDir.toString(), "--strict");
+
+    assertEquals(CommandLine.ExitCode.OK, result.exitCode());
+    assertTrue(result.out().contains("UI lint passed: 0 error(s)"));
+    assertFalse(result.err().contains("first_party_"));
+  }
+
+  @Test
+  void uiLint_whenFirstPartyBetaReadinessMarkerMissing_expectStrictFailure() throws Exception {
+    Path appDir = tempDir.resolve("first-party-missing-marker-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "first-party-missing-marker-app",
+        "--name",
+        "First-party Missing Marker App",
+        "--version",
+        "0.1.0",
+        "--permission",
+        "queue.read");
+    addFirstPartyBetaReadinessFixture(appDir);
+    Path index = appDir.resolve("static").resolve("index.html");
+    Files.writeString(
+        index,
+        Files.readString(index, StandardCharsets.UTF_8).replace(" data-beta-empty-state", ""),
+        StandardCharsets.UTF_8);
+
+    CliResult result = runCli("ui", "lint", "--bundle-dir", appDir.toString(), "--strict");
+
+    assertEquals(CommandLine.ExitCode.SOFTWARE, result.exitCode());
+    assertTrue(result.err().contains("first_party_empty_state_missing"));
+  }
+
+  @Test
+  void uiLint_whenFirstPartyPermissionRationaleMissing_expectStrictFailure() throws Exception {
+    Path appDir = tempDir.resolve("first-party-missing-rationale-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "first-party-missing-rationale-app",
+        "--name",
+        "First-party Missing Rationale App",
+        "--version",
+        "0.1.0",
+        "--permission",
+        "queue.read");
+    addFirstPartyBetaReadinessFixture(appDir);
+    Path manifest = appDir.resolve("cryptad-app.properties");
+    Files.writeString(
+        manifest,
+        Files.readString(manifest, StandardCharsets.UTF_8)
+            .replace(
+                "permissions.rationale.queue.read=Display bounded local queue state for beta"
+                    + " support.\n",
+                ""),
+        StandardCharsets.UTF_8);
+
+    CliResult result = runCli("ui", "lint", "--bundle-dir", appDir.toString(), "--strict");
+
+    assertEquals(CommandLine.ExitCode.SOFTWARE, result.exitCode());
+    assertTrue(result.err().contains("first_party_permission_rationale_manifest_missing"));
+  }
+
+  @Test
+  void uiLint_whenFirstPartyManifestReadinessFieldMissing_expectStrictFailure() throws Exception {
+    Path appDir = tempDir.resolve("first-party-missing-manifest-field-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "first-party-missing-manifest-field-app",
+        "--name",
+        "First-party Missing Manifest Field App",
+        "--version",
+        "0.1.0",
+        "--permission",
+        "queue.read");
+    addFirstPartyBetaReadinessFixture(appDir);
+    Path manifest = appDir.resolve("cryptad-app.properties");
+    Files.writeString(
+        manifest,
+        Files.readString(manifest, StandardCharsets.UTF_8)
+            .replace("app.beta.qualityLevel=beta\n", "app.beta.qualityLevel=release\n")
+            .replace(
+                "app.beta.support.uri=https://example.invalid/crypta/apps/first-party-ready-app/support\n",
+                ""),
+        StandardCharsets.UTF_8);
+
+    CliResult result = runCli("ui", "lint", "--bundle-dir", appDir.toString(), "--strict");
+
+    assertEquals(CommandLine.ExitCode.SOFTWARE, result.exitCode());
+    assertTrue(result.err().contains("first_party_manifest_field_missing"));
+    assertTrue(result.err().contains("app.beta.qualityLevel=beta"));
+    assertTrue(result.err().contains("manifest field app.beta.support.uri"));
+  }
+
+  @Test
+  void uiLint_whenFirstPartyManifestUsesBomColonAndEscapes_expectStrictSuccess() throws Exception {
+    Path appDir = tempDir.resolve("first-party-escaped-manifest-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "first-party-escaped-manifest-app",
+        "--name",
+        "First-party Escaped Manifest App",
+        "--version",
+        "0.1.0",
+        "--permission",
+        "queue.read");
+    addFirstPartyBetaReadinessFixture(appDir);
+    Path manifest = appDir.resolve("cryptad-app.properties");
+    String escapedOwner = "app.beta.support.owner: crypta" + '\\' + "u002dcore\n";
+    String escapedRationale =
+        "permissions.rationale.queue"
+            + '\\'
+            + "u002eread: Display bounded local queue state for beta support.\n";
+    String manifestText =
+        Files.readString(manifest, StandardCharsets.UTF_8)
+            .replace("app.beta.support.owner=crypta-core\n", escapedOwner)
+            .replace(
+                "permissions.rationale.queue.read=Display bounded local queue state for beta"
+                    + " support.\n",
+                escapedRationale);
+    Files.writeString(
+        manifest,
+        "\uFEFF# first-party beta metadata\n! generated test fixture\n" + manifestText,
+        StandardCharsets.UTF_8);
+
+    CliResult result = runCli("ui", "lint", "--bundle-dir", appDir.toString(), "--strict");
+
+    assertEquals(CommandLine.ExitCode.OK, result.exitCode());
+    assertTrue(result.out().contains("UI lint passed: 0 error(s)"));
+    assertEquals("", result.err());
+  }
+
+  @Test
+  void uiLint_whenFirstPartyDurableAppClaimsExportSupport_expectNoStatelessOverclaim()
+      throws Exception {
+    Path appDir = tempDir.resolve("first-party-durable-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "first-party-durable-app",
+        "--name",
+        "First-party Durable App",
+        "--version",
+        "0.1.0",
+        "--permission",
+        "queue.read");
+    addFirstPartyBetaReadinessFixture(appDir);
+    Path manifest = appDir.resolve("cryptad-app.properties");
+    Files.writeString(
+        manifest,
+        Files.readString(manifest, StandardCharsets.UTF_8)
+            .replace("app.beta.appData=stateless\n", "app.beta.appData=durable\n")
+            .replace(
+                "app.beta.backupRestore=not-applicable\n", "app.beta.backupRestore=supported\n")
+            .replace("app.beta.exportSupported=not-applicable\n", "app.beta.exportSupported=true\n")
+            .replace("app.beta.importSupported=not-applicable\n", "app.beta.importSupported=true\n")
+            .replace(
+                "app.beta.migrationDryRunSupported=not-applicable\n",
+                "app.beta.migrationDryRunSupported=false\n"),
+        StandardCharsets.UTF_8);
+
+    CliResult result = runCli("ui", "lint", "--bundle-dir", appDir.toString(), "--strict");
+
+    assertEquals(CommandLine.ExitCode.OK, result.exitCode());
+    assertFalse(result.err().contains("first_party_stateless_backup_overclaim"));
+  }
+
+  @Test
+  void uiLint_whenFirstPartyStatelessAppClaimsBackup_expectStrictFailure() throws Exception {
+    Path appDir = tempDir.resolve("first-party-backup-overclaim-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "first-party-backup-overclaim-app",
+        "--name",
+        "First-party Backup Overclaim App",
+        "--version",
+        "0.1.0",
+        "--permission",
+        "queue.read");
+    addFirstPartyBetaReadinessFixture(appDir);
+    Path manifest = appDir.resolve("cryptad-app.properties");
+    Files.writeString(
+        manifest,
+        Files.readString(manifest, StandardCharsets.UTF_8)
+            .replace(
+                "app.beta.backupRestore=not-applicable\n", "app.beta.backupRestore=supported\n"),
+        StandardCharsets.UTF_8);
+
+    CliResult result = runCli("ui", "lint", "--bundle-dir", appDir.toString(), "--strict");
+
+    assertEquals(CommandLine.ExitCode.SOFTWARE, result.exitCode());
+    assertTrue(result.err().contains("first_party_stateless_backup_overclaim"));
+  }
+
+  @Test
+  void uiLint_whenFirstPartyPermissionRationaleMarkerMissing_expectStrictFailure()
+      throws Exception {
+    Path appDir = tempDir.resolve("first-party-missing-ui-rationale-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "first-party-missing-ui-rationale-app",
+        "--name",
+        "First-party Missing UI Rationale App",
+        "--version",
+        "0.1.0",
+        "--permission",
+        "queue.read");
+    addFirstPartyBetaReadinessFixture(appDir);
+    Path index = appDir.resolve("static").resolve("index.html");
+    Files.writeString(
+        index,
+        Files.readString(index, StandardCharsets.UTF_8)
+            .replace(" data-beta-permission-rationale", ""),
+        StandardCharsets.UTF_8);
+
+    CliResult result = runCli("ui", "lint", "--bundle-dir", appDir.toString(), "--strict");
+
+    assertEquals(CommandLine.ExitCode.SOFTWARE, result.exitCode());
+    assertTrue(result.err().contains("first_party_permission_rationale_missing"));
+  }
+
+  @Test
+  void uiLint_whenFirstPartyDiagnosticsCopyMissing_expectStrictFailure() throws Exception {
+    Path appDir = tempDir.resolve("first-party-missing-diagnostics-copy-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "first-party-missing-diagnostics-copy-app",
+        "--name",
+        "First-party Missing Diagnostics Copy App",
+        "--version",
+        "0.1.0",
+        "--permission",
+        "queue.read");
+    addFirstPartyBetaReadinessFixture(appDir);
+    Path index = appDir.resolve("static").resolve("index.html");
+    Files.writeString(
+        index,
+        Files.readString(index, StandardCharsets.UTF_8)
+            .replace("redacted-summary-only diagnostics", "bounded diagnostics"),
+        StandardCharsets.UTF_8);
+
+    CliResult result = runCli("ui", "lint", "--bundle-dir", appDir.toString(), "--strict");
+
+    assertEquals(CommandLine.ExitCode.SOFTWARE, result.exitCode());
+    assertTrue(result.err().contains("first_party_diagnostics_redaction_marker_missing"));
+  }
+
+  @Test
+  void uiLint_whenTrustGraphScopeCopyMissing_expectStrictFailure() throws Exception {
+    Path appDir = tempDir.resolve("trust-graph");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "trust-graph",
+        "--name",
+        "Trust Graph Local RC",
+        "--version",
+        "0.1.0",
+        "--permission",
+        "queue.read");
+    addFirstPartyBetaReadinessFixture(appDir);
+
+    CliResult result = runCli("ui", "lint", "--bundle-dir", appDir.toString(), "--strict");
+
+    assertEquals(CommandLine.ExitCode.SOFTWARE, result.exitCode());
+    assertTrue(result.err().contains("first_party_local_rc_scope_missing"));
+  }
+
+  @Test
+  void uiLint_whenSocialInboxLegacyProtocolCopyMissing_expectStrictFailure() throws Exception {
+    Path appDir = tempDir.resolve("social-inbox");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "social-inbox",
+        "--name",
+        "Social Inbox RC",
+        "--version",
+        "0.1.0",
+        "--permission",
+        "queue.read");
+    addFirstPartyBetaReadinessFixture(appDir);
+
+    CliResult result = runCli("ui", "lint", "--bundle-dir", appDir.toString(), "--strict");
+
+    assertEquals(CommandLine.ExitCode.SOFTWARE, result.exitCode());
+    assertTrue(result.err().contains("first_party_legacy_protocol_non_goal_missing"));
+  }
+
+  @Test
   void uiLint_whenStaticEntryIsNotHtml_expectFailure() throws Exception {
     Path appDir = tempDir.resolve("sample-app");
     runCli(
@@ -1238,6 +1569,94 @@ class CryptaAppCliTest {
 
     assertEquals(CommandLine.ExitCode.OK, result.exitCode());
     assertTrue(result.out().contains("UI lint not applicable for app.ui.mode=none"));
+  }
+
+  @Test
+  void uiLint_whenNoUiBundleHasLiteralWindowsExecPath_expectNotApplicableSuccess()
+      throws Exception {
+    Path appDir = tempDir.resolve("sample-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "sample-app",
+        "--name",
+        "Sample App",
+        "--version",
+        "0.1.0",
+        "--ui-mode",
+        "none");
+    Path manifest = appDir.resolve("cryptad-app.properties");
+    Files.writeString(
+        manifest,
+        Files.readString(manifest, StandardCharsets.UTF_8)
+            .replace("app.exec=bin/start.sh\n", "app.exec=bin" + '\\' + "update.exe\n"),
+        StandardCharsets.UTF_8);
+
+    CliResult result = runCli("ui", "lint", "--bundle-dir", appDir.toString(), "--strict");
+
+    assertEquals(CommandLine.ExitCode.OK, result.exitCode());
+    assertTrue(result.out().contains("UI lint not applicable for app.ui.mode=none"));
+    assertEquals("", result.err());
+  }
+
+  @Test
+  void uiLint_whenStaticBundleHasLiteralWindowsExecPath_expectStrictSuccess() throws Exception {
+    Path appDir = tempDir.resolve("static-windows-exec-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "static-windows-exec-app",
+        "--name",
+        "Static Windows Exec App",
+        "--version",
+        "0.1.0",
+        "--permission",
+        "queue.read");
+    Path manifest = appDir.resolve("cryptad-app.properties");
+    Files.writeString(
+        manifest,
+        Files.readString(manifest, StandardCharsets.UTF_8)
+            .replace("app.exec=bin/start.sh\n", "app.exec=bin" + '\\' + "update.exe\n"),
+        StandardCharsets.UTF_8);
+
+    CliResult result = runCli("ui", "lint", "--bundle-dir", appDir.toString(), "--strict");
+
+    assertEquals(CommandLine.ExitCode.OK, result.exitCode());
+    assertTrue(result.out().contains("UI lint passed: 0 error(s)"));
+    assertEquals("", result.err());
+  }
+
+  @Test
+  void uiLint_whenStaticBundleHasEscapedWindowsExecPath_expectStrictSuccess() throws Exception {
+    Path appDir = tempDir.resolve("static-escaped-windows-exec-app");
+    runCli(
+        "init",
+        "--dir",
+        appDir.toString(),
+        "--app-id",
+        "static-escaped-windows-exec-app",
+        "--name",
+        "Static Escaped Windows Exec App",
+        "--version",
+        "0.1.0",
+        "--permission",
+        "queue.read");
+    Path manifest = appDir.resolve("cryptad-app.properties");
+    Files.writeString(
+        manifest,
+        Files.readString(manifest, StandardCharsets.UTF_8)
+            .replace("app.exec=bin/start.sh\n", "app.exec=bin" + "\\\\" + "update.exe\n"),
+        StandardCharsets.UTF_8);
+
+    CliResult result = runCli("ui", "lint", "--bundle-dir", appDir.toString(), "--strict");
+
+    assertEquals(CommandLine.ExitCode.OK, result.exitCode());
+    assertTrue(result.out().contains("UI lint passed: 0 error(s)"));
+    assertEquals("", result.err());
   }
 
   @Test
@@ -3805,6 +4224,63 @@ class CryptaAppCliTest {
     Files.writeString(
         bundle.resolve("bin/start.sh"), "#!/bin/sh\necho reviewed\n", StandardCharsets.UTF_8);
     return bundle;
+  }
+
+  private static void addFirstPartyBetaReadinessFixture(Path appDir) throws IOException {
+    Path manifest = appDir.resolve("cryptad-app.properties");
+    Files.writeString(
+        manifest,
+        Files.readString(manifest, StandardCharsets.UTF_8)
+            + lines(
+                "app.beta.readiness=ready",
+                "app.beta.qualityLevel=beta",
+                "app.beta.support.owner=crypta-core",
+                "app.beta.support.uri=https://example.invalid/crypta/apps/first-party-ready-app/support",
+                "app.beta.support.diagnostics=redacted-summary-only",
+                "app.beta.ui.emptyState=true",
+                "app.beta.ui.errorState=true",
+                "app.beta.ui.retryAction=true",
+                "app.beta.ui.recoveryAction=true",
+                "app.beta.appData=stateless",
+                "app.beta.backupRestore=not-applicable",
+                "app.beta.exportSupported=not-applicable",
+                "app.beta.importSupported=not-applicable",
+                "app.beta.migrationDryRunSupported=not-applicable",
+                "app.beta.accessibility=basic-pass",
+                "app.beta.uiConsistency=design-system-pass",
+                "app.beta.diagnostics=redacted-summary-only",
+                "permissions.rationale.queue.read=Display bounded local queue state for beta"
+                    + " support."),
+        StandardCharsets.UTF_8);
+    Path index = appDir.resolve("static").resolve("index.html");
+    String html =
+        Files.readString(index, StandardCharsets.UTF_8)
+            .replace(
+                "data-crypta-permission-summary",
+                "data-crypta-permission-summary data-beta-permission-rationale")
+            .replace(
+                "role=\"status\" aria-live=\"polite\"",
+                "role=\"status\" aria-live=\"polite\" data-beta-accessibility-status");
+    html =
+        html.replace(
+            "</main>",
+            """
+              <section
+                class="cr-card"
+                data-first-party-beta-readiness
+                data-beta-empty-state
+                data-beta-error-state
+                data-beta-retry-action
+                data-beta-recovery-action
+                data-beta-app-data-status
+                data-beta-support-metadata
+                data-beta-diagnostics-redaction
+                data-beta-ui-consistency>
+                <p>Empty state, bounded error state, retry action, operator recovery, stateless app data, support metadata, and redacted-summary-only diagnostics.</p>
+              </section>
+            </main>\
+            """);
+    Files.writeString(index, html, StandardCharsets.UTF_8);
   }
 
   private static String sha256Hex(Path file) throws Exception {

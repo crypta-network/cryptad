@@ -50,6 +50,21 @@ APP_IDS = (
 FIRST_PARTY_MAINTENANCE_POLICY_PATH = Path(
     "tools/release-certification/first-party-app-maintenance-policy.json"
 )
+FIRST_PARTY_BETA_READINESS_PATH = Path(
+    "tools/release-certification/first-party-app-beta-readiness.json"
+)
+FIRST_PARTY_BETA_QUALITY_EVIDENCE_ID = "first-party-app.beta-quality-pass"
+FIRST_PARTY_BETA_STATIC_TEXT_EXTENSIONS = {
+    ".css",
+    ".htm",
+    ".html",
+    ".js",
+    ".json",
+    ".mjs",
+    ".svg",
+    ".txt",
+    ".xml",
+}
 FIRST_PARTY_MAINTENANCE_REQUIRED_FIELDS = (
     "owner",
     "ownerUri",
@@ -123,6 +138,108 @@ FIRST_PARTY_MAINTENANCE_EXPECTATIONS = {
         **FIRST_PARTY_MAINTENANCE_COMMON_EXPECTATIONS,
     },
 }
+FIRST_PARTY_BETA_EXPECTATIONS = {
+    "queue-manager": {
+        "appData": "stateless",
+        "backupRestore": "not-applicable",
+        "exportSupported": "not-applicable",
+        "importSupported": "not-applicable",
+        "migrationDryRun": "not-applicable",
+    },
+    "publisher": {
+        "appData": "stateless",
+        "backupRestore": "not-applicable",
+        "exportSupported": "not-applicable",
+        "importSupported": "not-applicable",
+        "migrationDryRun": "not-applicable",
+    },
+    "site-publisher": {
+        "appData": "stateless",
+        "backupRestore": "not-applicable",
+        "exportSupported": "not-applicable",
+        "importSupported": "not-applicable",
+        "migrationDryRun": "not-applicable",
+    },
+    "profile-publisher": {
+        "appData": "durable-limited",
+        "backupRestore": "operator-supported",
+        "exportSupported": "supported",
+        "importSupported": "supported",
+        "migrationDryRun": "not-applicable",
+        "schemaVersion": 1,
+    },
+    "social-inbox": {
+        "appData": "durable",
+        "backupRestore": "operator-supported",
+        "exportSupported": "supported",
+        "importSupported": "supported",
+        "migrationDryRun": "additive-not-required",
+        "schemaVersion": 1,
+    },
+    "feed-reader": {
+        "appData": "durable",
+        "backupRestore": "export-import",
+        "exportSupported": "supported",
+        "importSupported": "supported",
+        "migrationDryRun": "supported",
+        "schemaVersion": 2,
+        "migrationStep": "ui-state-v1-v2",
+    },
+    "trust-graph": {
+        "appData": "durable",
+        "backupRestore": "operator-supported",
+        "exportSupported": "supported",
+        "importSupported": "supported",
+        "migrationDryRun": "supported",
+        "schemaVersion": 2,
+        "migrationStep": "ui-state-v1-v2",
+    },
+}
+FIRST_PARTY_BETA_COMMON_EXPECTED_VALUES = {
+    "status": "ready",
+    "owner": FIRST_PARTY_MAINTENANCE_OWNER,
+    "qualityLevel": "beta",
+    "emptyState": "required",
+    "errorState": "bounded-required",
+    "retryAction": "required",
+    "recoveryAction": "operator-recovery-link",
+    "permissionRationale": "required",
+    "supportMetadata": "required",
+    "accessibility": "basic-pass",
+    "uiConsistency": "design-system-pass",
+    "diagnostics": "redacted-summary-only",
+}
+FIRST_PARTY_BETA_MANIFEST_REQUIRED_VALUES = {
+    "app.beta.readiness": "ready",
+    "app.beta.qualityLevel": "beta",
+    "app.beta.support.owner": "crypta-core",
+    "app.beta.support.diagnostics": "redacted-summary-only",
+    "app.beta.ui.emptyState": "true",
+    "app.beta.ui.errorState": "true",
+    "app.beta.ui.retryAction": "true",
+    "app.beta.ui.recoveryAction": "true",
+    "app.beta.accessibility": "basic-pass",
+    "app.beta.uiConsistency": "design-system-pass",
+    "app.beta.diagnostics": "redacted-summary-only",
+}
+FIRST_PARTY_BETA_UI_MARKERS = (
+    "data-first-party-beta-readiness",
+    "data-beta-empty-state",
+    "data-beta-error-state",
+    "data-beta-retry-action",
+    "data-beta-recovery-action",
+    "data-beta-app-data-status",
+    "data-beta-support-metadata",
+    "data-beta-diagnostics-redaction",
+    "data-beta-permission-rationale",
+    "data-beta-accessibility-status",
+    "redacted-summary-only",
+)
+FIRST_PARTY_BETA_COMMON_LOCAL_PATH_RE = re.compile(
+    r"(?<![A-Za-z0-9_:/.\->])/(?:"
+    r"etc|home|Users|work|tmp|var|opt|root|srv|mnt|private|Volumes"
+    r")(?:/[^\s\])},;\"']+)+"
+)
 FIRST_PARTY_MAINTENANCE_ENUMS = {
     "supportLevel": {
         "core",
@@ -2953,14 +3070,15 @@ def collect_platform_api_stable_freeze_evidence(
     stable_reference_text = read_source(stable_reference)
     contract_doc_text = read_source(contract_doc)
     support_window_text = read_source(support_window_doc)
+    support_window_lower = support_window_text.lower()
     docs_checks = {
         "stableReferenceDocExists": stable_reference.is_file(),
         "stableReferenceNamesBaseline": "Platform API 1.0 stable baseline" in stable_reference_text,
         "contractDocMentionsTargetStability": "api.targetStability" in contract_doc_text,
         "contractDocMentionsOperatorOnly": "operator-only" in contract_doc_text,
         "supportWindowDocMentionsPreviousSnapshots": "previous contract snapshot"
-        in support_window_text,
-        "supportWindowDocMentionsWaivers": "waiver" in support_window_text.lower(),
+        in support_window_lower,
+        "supportWindowDocMentionsWaivers": "waiver" in support_window_lower,
     }
     docs_errors = [name for name, passed in docs_checks.items() if not passed]
     docs_item = EvidenceItem(
@@ -4782,6 +4900,424 @@ def collect_first_party_maintenance_policy_evidence(settings: Settings) -> Evide
         source,
         details,
     )
+
+
+def first_party_beta_expected_values(app_id: str) -> dict[str, Any]:
+    return {
+        **FIRST_PARTY_BETA_COMMON_EXPECTED_VALUES,
+        **FIRST_PARTY_BETA_EXPECTATIONS[app_id],
+    }
+
+
+def safe_first_party_beta_readiness_details(
+    beta_readiness: Any, expected_values: dict[str, Any]
+) -> dict[str, Any]:
+    if not isinstance(beta_readiness, dict):
+        return {}
+    details: dict[str, Any] = {}
+    for field, expected_value in expected_values.items():
+        if field not in beta_readiness:
+            details[field] = "<missing>"
+        elif beta_readiness.get(field) == expected_value:
+            details[field] = expected_value
+        else:
+            details[field] = "<invalid>"
+    return details
+
+
+def collect_first_party_beta_quality_evidence(settings: Settings) -> EvidenceItem:
+    source = summary_source(settings)
+    workspace = settings.workspace_root
+    readiness_path = workspace / FIRST_PARTY_BETA_READINESS_PATH
+    maintenance_path = workspace / FIRST_PARTY_MAINTENANCE_POLICY_PATH
+    readiness = read_json_file(readiness_path)
+    maintenance_policy = read_json_file(maintenance_path)
+    errors: list[str] = []
+    redaction_findings: list[dict[str, Any]] = []
+    checks: dict[str, Any] = {
+        "readinessFilePresent": readiness is not None,
+        "schemaVersion": isinstance(readiness, dict) and readiness.get("schemaVersion") == 1,
+        "evidenceId": (
+            isinstance(readiness, dict)
+            and readiness.get("evidenceId") == FIRST_PARTY_BETA_QUALITY_EVIDENCE_ID
+        ),
+    }
+    readiness_apps = readiness.get("apps") if isinstance(readiness, dict) else None
+    policy_apps = maintenance_policy.get("apps") if isinstance(maintenance_policy, dict) else None
+    checks["readinessAppsMapPresent"] = isinstance(readiness_apps, dict)
+    checks["maintenanceAppsMapPresent"] = isinstance(policy_apps, dict)
+    if isinstance(readiness_apps, dict):
+        checks["allFirstPartyAppsCovered"] = sorted(readiness_apps) == sorted(APP_IDS)
+    else:
+        checks["allFirstPartyAppsCovered"] = False
+    errors.extend(name for name, passed in checks.items() if passed is not True)
+    docs_text = "\n".join(
+        read_source(workspace / path)
+        for path in (
+            "docs/first-party-app-beta-quality-pass.md",
+            "docs/first-party-app-maintenance-policy.md",
+            "docs/production-beta-release-pipeline.md",
+            "docs/production-beta-go-no-go-dashboard.md",
+            "docs/app-ui-design-system.md",
+            "docs/app-data-backup-restore-portability.md",
+            "docs/app-upgrade-data-migrations.md",
+            "docs/operator-rc-recovery-and-support-workflow.md",
+            "docs/feed-reader-reference-app.md",
+            "docs/trust-graph-preview.md",
+            "docs/social-inbox-reference-app.md",
+        )
+    )
+    docs_checks = {
+        "readinessDocPresent": (workspace / "docs/first-party-app-beta-quality-pass.md").is_file(),
+        "evidenceIdDocumented": FIRST_PARTY_BETA_QUALITY_EVIDENCE_ID in docs_text,
+        "vaultBoundaryDocumented": "vault private identity material" in docs_text,
+        "trustGraphScopeDocumented": "not global truth" in docs_text,
+        "socialInboxNonGoalsDocumented": "not Freemail/Freetalk/Sone" in docs_text
+        or "not Freetalk, Sone, Freemail" in docs_text,
+    }
+    errors.extend(f"docs: {name}" for name, passed in docs_checks.items() if passed is not True)
+    app_details: dict[str, Any] = {}
+    for spec in first_party_app_specs(settings):
+        app_id = spec["appId"]
+        source_dir = spec["sourceDir"]
+        app_errors: list[str] = []
+        app_checks: dict[str, Any] = {}
+        readiness_entry = (
+            readiness_apps.get(app_id) if isinstance(readiness_apps, dict) else None
+        )
+        beta_readiness = (
+            readiness_entry.get("betaReadiness") if isinstance(readiness_entry, dict) else None
+        )
+        expected = FIRST_PARTY_BETA_EXPECTATIONS[app_id]
+        expected_values = first_party_beta_expected_values(app_id)
+        app_checks["readinessEntryPresent"] = isinstance(beta_readiness, dict)
+        if isinstance(beta_readiness, dict):
+            app_checks["readinessFieldsClosed"] = set(beta_readiness) <= set(expected_values)
+            app_checks["readinessValuesMatchExpected"] = all(
+                beta_readiness.get(field) == value for field, value in expected_values.items()
+            )
+        else:
+            app_checks["readinessFieldsClosed"] = False
+            app_checks["readinessValuesMatchExpected"] = False
+        maintenance = (
+            policy_apps.get(app_id, {}).get("maintenance")
+            if isinstance(policy_apps, dict) and isinstance(policy_apps.get(app_id), dict)
+            else None
+        )
+        app_checks["maintenancePolicyLinked"] = (
+            isinstance(maintenance, dict)
+            and maintenance.get("owner") == FIRST_PARTY_MAINTENANCE_OWNER
+            and maintenance.get("supportUri")
+            == f"https://example.invalid/crypta/apps/{app_id}/support"
+            and (not isinstance(beta_readiness, dict)
+                 or maintenance.get("backupRestore") == beta_readiness.get("backupRestore"))
+        )
+        manifest_path = source_dir / "cryptad-app.properties.template"
+        index_path = source_dir / "static/index.html"
+        css_path = source_dir / "static/app.css"
+        js_path = source_dir / "static/app.js"
+        readme_path = workspace / f"apps/{app_id}/README.md"
+        app_checks["staticAssetsPresent"] = all(
+            path.is_file() for path in (manifest_path, index_path, css_path, js_path)
+        )
+        manifest: dict[str, str] = {}
+        try:
+            manifest = parse_properties(manifest_path)
+        except (OSError, UnicodeDecodeError, ValueError):
+            app_checks["manifestParseable"] = False
+        else:
+            app_checks["manifestParseable"] = True
+        if manifest:
+            manifest_expected = dict(FIRST_PARTY_BETA_MANIFEST_REQUIRED_VALUES)
+            if isinstance(beta_readiness, dict):
+                manifest_expected.update(
+                    {
+                        "app.beta.appData": str(beta_readiness.get("appData", "")),
+                        "app.beta.backupRestore": str(beta_readiness.get("backupRestore", "")),
+                        "app.beta.exportSupported": str(beta_readiness.get("exportSupported", "")),
+                        "app.beta.importSupported": str(beta_readiness.get("importSupported", "")),
+                        "app.beta.migrationDryRunSupported": str(
+                            beta_readiness.get("migrationDryRun", "")
+                        ),
+                    }
+                )
+            app_checks["manifestBetaFieldsMatch"] = all(
+                manifest.get(key) == value for key, value in manifest_expected.items()
+            )
+            app_checks["supportUriMatchesPolicy"] = (
+                manifest.get("app.beta.support.uri")
+                == f"https://example.invalid/crypta/apps/{app_id}/support"
+            )
+            permissions = {part.strip() for part in manifest.get("app.permissions", "").split(",") if part.strip()}
+            app_checks["permissionRationalesPresent"] = all(
+                manifest.get(f"permissions.rationale.{permission}") for permission in permissions
+            )
+            if expected.get("appData") == "stateless":
+                app_checks["statelessDoesNotOverclaimBackup"] = all(
+                    manifest.get(key) == "not-applicable"
+                    for key in (
+                        "app.beta.backupRestore",
+                        "app.beta.exportSupported",
+                        "app.beta.importSupported",
+                        "app.beta.migrationDryRunSupported",
+                    )
+                )
+            else:
+                app_checks["statelessDoesNotOverclaimBackup"] = True
+            schema_version = expected.get("schemaVersion")
+            app_checks["schemaVersionMatches"] = (
+                schema_version is None
+                or manifest.get("app.data.schema.current") == str(schema_version)
+            )
+            migration_step = expected.get("migrationStep")
+            app_checks["migrationDryRunMatches"] = (
+                migration_step is None
+                or (
+                    manifest.get("app.data.migrations") == migration_step
+                    and bool(manifest.get(f"app.data.migration.{migration_step}.command"))
+                )
+            )
+        index_text = read_source(index_path)
+        app_checks["uiReadinessMarkersPresent"] = all(
+            marker in index_text for marker in FIRST_PARTY_BETA_UI_MARKERS
+        )
+        app_checks["permissionRationaleVisible"] = (
+            "data-beta-permission-rationale" in index_text
+            and "data-crypta-permission-summary" in index_text
+        )
+        app_checks["designSystemClassesPresent"] = "cr-card" in index_text and "cr-button" in index_text
+        if app_id == "trust-graph":
+            lowered = index_text.lower()
+            app_checks["localRcScopeRetained"] = (
+                "local trust only" in lowered
+                and "not global truth" in lowered
+                and "network crawling" in lowered
+            )
+        else:
+            app_checks["localRcScopeRetained"] = True
+        if app_id == "social-inbox":
+            lowered = index_text.lower()
+            app_checks["legacyProtocolNonGoalsRetained"] = (
+                "not freetalk" in lowered and "sone" in lowered and "freemail" in lowered
+            )
+        else:
+            app_checks["legacyProtocolNonGoalsRetained"] = True
+        readme_text = read_source(readme_path)
+        app_checks["readmeBetaReadinessPresent"] = (
+            "Beta readiness" in readme_text
+            and "Diagnostic redaction" in readme_text
+            and "Permission rationale" in readme_text
+        )
+        app_checks["diagnosticsRedactionCopyPresent"] = (
+            "redacted-summary-only" in index_text
+            or "redacted-summary-only" in readme_text
+        )
+        redaction_findings.extend(
+            first_party_beta_redaction_findings(
+                app_id,
+                workspace,
+                first_party_beta_redaction_scan_paths(source_dir, manifest_path, readme_path),
+            )
+        )
+        for check_name, passed in app_checks.items():
+            if passed is not True:
+                app_errors.append(check_name)
+                errors.append(f"{app_id}: {check_name}")
+        app_details[app_id] = {
+            "checks": app_checks,
+            "readiness": safe_first_party_beta_readiness_details(
+                beta_readiness, expected_values
+            ),
+            "sources": {
+                "manifest": display_path(manifest_path, workspace),
+                "index": display_path(index_path, workspace),
+                "css": display_path(css_path, workspace),
+                "js": display_path(js_path, workspace),
+                "readme": display_path(readme_path, workspace),
+            },
+        }
+        if app_errors:
+            app_details[app_id]["errors"] = app_errors
+    details = {
+        "readinessMetadata": display_path(readiness_path, workspace),
+        "maintenancePolicy": display_path(maintenance_path, workspace),
+        "requiredFirstPartyApps": list(APP_IDS),
+        "expectedReadiness": FIRST_PARTY_BETA_EXPECTATIONS,
+        "checks": checks,
+        "docs": docs_checks,
+        "apps": app_details,
+        "redactionPolicy": {
+            "diagnostics": "redacted-summary-only",
+            "rawFetchedContentExcluded": True,
+            "rawMessagesExcluded": True,
+            "privateInsertUrisExcluded": True,
+            "tokensExcluded": True,
+            "absolutePathsExcluded": True,
+        },
+    }
+    if redaction_findings:
+        return EvidenceItem(
+            FIRST_PARTY_BETA_QUALITY_EVIDENCE_ID,
+            "fail",
+            True,
+            "First-party beta-quality evidence has unwaivable redaction findings.",
+            source,
+            {"errors": errors, "redactionFindings": redaction_findings, **details},
+        )
+    if errors:
+        return EvidenceItem(
+            FIRST_PARTY_BETA_QUALITY_EVIDENCE_ID,
+            root_consequence(settings, "fail"),
+            True,
+            "First-party beta-quality evidence is incomplete.",
+            source,
+            {"errors": errors, **details},
+        )
+    return EvidenceItem(
+        FIRST_PARTY_BETA_QUALITY_EVIDENCE_ID,
+        "pass",
+        True,
+        "First-party app beta-quality readiness passed deterministic checks.",
+        source,
+        details,
+    )
+
+
+def first_party_beta_redaction_findings(
+    app_id: str, workspace: Path, paths: tuple[Path, ...]
+) -> list[dict[str, Any]]:
+    findings: list[dict[str, Any]] = []
+    patterns: tuple[tuple[str, re.Pattern[str]], ...] = (
+        ("private-key-block", re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----")),
+        (
+            "private-insert-uri",
+            re.compile(
+                r"(?:"
+                r"\b(?:crypta:|freenet:)?(?:SSK|USK)@"
+                r"[^/,\s\"'<>)]*(?:PRIVATE|INSERT|AQECAAE)[^\s\"'<>)]*"
+                r"|"
+                r"(?<![\w-])[\"']?(?:private[-_ ]*)?insert(?:[-_ ]*uri)?[\"']?(?![\w-])"
+                r"\s*(?::|(?<![=!<>])=(?!=))\s*['\"]?"
+                r"(?:crypta:|freenet:)?(?:SSK|USK)@"
+                r"(?=[A-Za-z0-9~_-]{8,},)[A-Za-z0-9~_,=-]+(?:/[^\s`'\"<>)]*)?"
+                r"|"
+                r"(?<![\w-])[\"']?privateInsertUri[\"']?(?![\w-])"
+                r"\s*(?::|(?<![=!<>])=(?!=))\s*['\"]?"
+                r"(?:crypta:|freenet:)?(?:SSK|USK)@"
+                r"(?=[A-Za-z0-9~_-]{8,},)[A-Za-z0-9~_,=-]+(?:/[^\s`'\"<>)]*)?"
+                r")",
+                re.IGNORECASE,
+            ),
+        ),
+        ("sensitive-header", SENSITIVE_HEADER_RE),
+        ("raw-sensitive-label", SENSITIVE_TEXT_LABEL_RE),
+        ("file-uri-path", FILE_URI_PATH_RE),
+    )
+    for path in paths:
+        text = read_source(path)
+        if not text:
+            continue
+        for kind, pattern in patterns:
+            if pattern.search(text):
+                findings.append(
+                    {
+                        "appId": app_id,
+                        "kind": kind,
+                        "source": display_path(path, workspace),
+                    }
+                )
+        if first_party_beta_sensitive_assignment_present(text):
+            findings.append(
+                {
+                    "appId": app_id,
+                    "kind": "sensitive-assignment",
+                    "source": display_path(path, workspace),
+                }
+            )
+        if first_party_beta_windows_path_present(text):
+            findings.append(
+                {
+                    "appId": app_id,
+                    "kind": "windows-local-path",
+                    "source": display_path(path, workspace),
+                }
+            )
+        path_scan_text, _ = protect_route_paths(text)
+        if first_party_beta_absolute_path_present(path_scan_text, workspace):
+            findings.append(
+                {
+                    "appId": app_id,
+                    "kind": "absolute-local-path",
+                    "source": display_path(path, workspace),
+                }
+            )
+    return findings
+
+
+def first_party_beta_sensitive_assignment_present(text: str) -> bool:
+    return any(
+        should_redact_key_name(match.group("key"))
+        and first_party_beta_assignment_value_is_sensitive(match)
+        for match in SENSITIVE_ASSIGNMENT_RE.finditer(text)
+    )
+
+
+def first_party_beta_assignment_value_is_sensitive(match: re.Match[str]) -> bool:
+    value = match.group("quoted_value") or match.group("value") or ""
+    value = value.strip().strip(",;\"'")
+    if not value:
+        return False
+    if value.startswith("<") and value.endswith(">"):
+        return False
+    if value.startswith("/abs/path"):
+        return False
+    lowered = value.lower()
+    if lowered in {"true", "false", "null", "undefined"}:
+        return False
+    if re.fullmatch(r"\d+(?:\.\d+)?", value):
+        return False
+    if "(" in value or ")" in value:
+        return False
+    return True
+
+
+def first_party_beta_windows_path_present(text: str) -> bool:
+    for pattern in (WINDOWS_DRIVE_PATH_RE, WINDOWS_UNC_PATH_RE):
+        for match in pattern.finditer(text):
+            value = match.group(0)
+            if re.search(r"\\u[0-9a-fA-F]{4}", value):
+                continue
+            return True
+    return False
+
+
+def first_party_beta_absolute_path_present(text: str, workspace: Path) -> bool:
+    for root_text in path_prefix_variants(workspace):
+        if replace_absolute_path_prefix(text, root_text, "<repo>") != text:
+            return True
+    home = str(Path.home())
+    if home and home != "/" and replace_absolute_path_prefix(text, home, "<home>") != text:
+        return True
+    if replace_absolute_path_prefix(text, tempfile.gettempdir(), "<workdir>") != text:
+        return True
+    return FIRST_PARTY_BETA_COMMON_LOCAL_PATH_RE.search(text) is not None
+
+
+def first_party_beta_redaction_scan_paths(
+    source_dir: Path, manifest_path: Path, readme_path: Path
+) -> tuple[Path, ...]:
+    paths: list[Path] = []
+    if manifest_path.is_file():
+        paths.append(manifest_path)
+    static_dir = source_dir / "static"
+    if static_dir.is_dir():
+        paths.extend(
+            path
+            for path in sorted(static_dir.rglob("*"))
+            if path.is_file() and path.suffix.lower() in FIRST_PARTY_BETA_STATIC_TEXT_EXTENSIONS
+        )
+    paths.append(readme_path)
+    return tuple(paths)
 
 
 def collect_app_review_receipt_evidence(settings: Settings) -> EvidenceItem:
@@ -16590,6 +17126,7 @@ def run(settings: Settings) -> tuple[dict[str, Any], int]:
         collect_production_catalog_channels_evidence(settings),
         collect_catalog_operations_and_mirrors_evidence(settings),
         collect_first_party_maintenance_policy_evidence(settings),
+        collect_first_party_beta_quality_evidence(settings),
         collect_live_usk_source_verification_evidence(settings),
         collect_app_review_receipt_evidence(settings),
         *collect_app_store_submission_workflow_evidence(settings),
@@ -16809,6 +17346,191 @@ def assert_maintenance_policy_evidence_rejects_allowed_policy_drift() -> None:
         assert "queue-manager: policyMatchesExpectedAppClass" in encoded, encoded
         assert '"securityPolicy": "unsupported"' in encoded, encoded
         assert '"deprecationPolicy": "security-only"' in encoded, encoded
+
+
+def first_party_beta_quality_settings(workspace: Path) -> Settings:
+    return Settings(
+        workspace_root=workspace.resolve(),
+        out_dir=(workspace / DEFAULT_OUT_DIR).resolve(),
+        mode="release-candidate",
+        skip_gradle=True,
+        cli_path=None,
+        live=False,
+        live_base_url="",
+        live_form_password="",
+        timeout_seconds=60,
+    )
+
+
+def assert_first_party_beta_quality_rejects_missing_metadata() -> None:
+    with tempfile.TemporaryDirectory(prefix="cryptad-beta-quality-metadata-") as temp_name:
+        workspace = Path(temp_name) / "repo"
+        make_self_test_workspace(workspace)
+        readiness_path = workspace / FIRST_PARTY_BETA_READINESS_PATH
+        readiness = json.loads(readiness_path.read_text(encoding="utf-8"))
+        del readiness["apps"]["queue-manager"]
+        write_json(readiness_path, readiness)
+
+        item = collect_first_party_beta_quality_evidence(
+            first_party_beta_quality_settings(workspace)
+        )
+        encoded = json.dumps(item.to_json(), sort_keys=True)
+
+        assert item.status == "fail", item
+        assert "allFirstPartyAppsCovered" in encoded, encoded
+        assert "queue-manager: readinessEntryPresent" in encoded, encoded
+
+
+def assert_first_party_beta_quality_rejects_unknown_readiness_metadata_without_leak() -> None:
+    with tempfile.TemporaryDirectory(prefix="cryptad-beta-quality-readiness-redaction-") as temp_name:
+        workspace = Path(temp_name) / "repo"
+        make_self_test_workspace(workspace)
+        readiness_path = workspace / FIRST_PARTY_BETA_READINESS_PATH
+        readiness = json.loads(readiness_path.read_text(encoding="utf-8"))
+        beta_readiness = readiness["apps"]["feed-reader"]["betaReadiness"]
+        beta_readiness["supportNote"] = "tainted-readiness-token-123456789012"
+        beta_readiness["diagnostics"] = "tainted-readiness-token-123456789012"
+        write_json(readiness_path, readiness)
+
+        item = collect_first_party_beta_quality_evidence(
+            first_party_beta_quality_settings(workspace)
+        )
+        encoded = json.dumps(item.to_json(), sort_keys=True)
+
+        assert item.status == "fail", item
+        assert "feed-reader: readinessFieldsClosed" in encoded, encoded
+        assert "feed-reader: readinessValuesMatchExpected" in encoded, encoded
+        assert "supportNote" not in encoded, encoded
+        assert "tainted-readiness-token" not in encoded, encoded
+        assert '"diagnostics": "<invalid>"' in encoded, encoded
+
+
+def assert_first_party_beta_quality_rejects_missing_empty_state_marker() -> None:
+    with tempfile.TemporaryDirectory(prefix="cryptad-beta-quality-ui-marker-") as temp_name:
+        workspace = Path(temp_name) / "repo"
+        make_self_test_workspace(workspace)
+        index_path = workspace / "apps/queue-manager/src/staged/static/index.html"
+        index_path.write_text(
+            index_path.read_text(encoding="utf-8").replace("data-beta-empty-state ", ""),
+            encoding="utf-8",
+        )
+
+        item = collect_first_party_beta_quality_evidence(
+            first_party_beta_quality_settings(workspace)
+        )
+        encoded = json.dumps(item.to_json(), sort_keys=True)
+
+        assert item.status == "fail", item
+        assert "queue-manager: uiReadinessMarkersPresent" in encoded, encoded
+
+
+def assert_first_party_beta_quality_rejects_sensitive_diagnostics() -> None:
+    with tempfile.TemporaryDirectory(prefix="cryptad-beta-quality-redaction-") as temp_name:
+        workspace = Path(temp_name) / "repo"
+        make_self_test_workspace(workspace)
+        readme_path = workspace / "apps/feed-reader/README.md"
+        readme_path.write_text(
+            readme_path.read_text(encoding="utf-8")
+            + "\nSupport authorization: Bearer tainted-support-token-123456789012\n",
+            encoding="utf-8",
+        )
+
+        item = collect_first_party_beta_quality_evidence(
+            first_party_beta_quality_settings(workspace)
+        )
+        encoded = json.dumps(item.to_json(), sort_keys=True)
+
+        assert item.status == "fail", item
+        assert "redactionFindings" in encoded, encoded
+        assert "tainted-support-token" not in encoded, encoded
+
+
+def assert_first_party_beta_quality_rejects_sensitive_static_assets() -> None:
+    with tempfile.TemporaryDirectory(prefix="cryptad-beta-quality-static-redaction-") as temp_name:
+        workspace = Path(temp_name) / "repo"
+        make_self_test_workspace(workspace)
+        app_js_path = workspace / "apps/feed-reader/src/staged/static/app.js"
+        app_js_path.write_text(
+            app_js_path.read_text(encoding="utf-8")
+            + "\nconst supportHeader = 'Bearer tainted-static-token-123456789012';\n"
+            + "const launchSecret = 'CRYPTAD_APP_TOKEN=tainted-static-token-123456789012';\n",
+            encoding="utf-8",
+        )
+        app_css_path = workspace / "apps/feed-reader/src/staged/static/app.css"
+        app_css_path.write_text(
+            app_css_path.read_text(encoding="utf-8")
+            + "\n/* support bundle path: /etc/cryptad/node.conf */\n",
+            encoding="utf-8",
+        )
+
+        item = collect_first_party_beta_quality_evidence(
+            first_party_beta_quality_settings(workspace)
+        )
+        encoded = json.dumps(item.to_json(), sort_keys=True)
+
+        assert item.status == "fail", item
+        assert "redactionFindings" in encoded, encoded
+        assert "static/app.js" in encoded, encoded
+        assert "static/app.css" in encoded, encoded
+        assert "tainted-static-token" not in encoded, encoded
+        assert "/etc/cryptad/node.conf" not in encoded, encoded
+
+
+def assert_first_party_beta_quality_rejects_sensitive_manifest_metadata() -> None:
+    with tempfile.TemporaryDirectory(prefix="cryptad-beta-quality-manifest-redaction-") as temp_name:
+        workspace = Path(temp_name) / "repo"
+        make_self_test_workspace(workspace)
+        manifest_path = workspace / "apps/feed-reader/src/staged/cryptad-app.properties.template"
+        manifest_path.write_text(
+            manifest_path.read_text(encoding="utf-8")
+            + "\npermissions.rationale.support=Authorization: Basic tainted-basic-token\n"
+            + "app.beta.support.note=formPassword=hunter2\n",
+            encoding="utf-8",
+        )
+
+        item = collect_first_party_beta_quality_evidence(
+            first_party_beta_quality_settings(workspace)
+        )
+        encoded = json.dumps(item.to_json(), sort_keys=True)
+
+        assert item.status == "fail", item
+        assert "redactionFindings" in encoded, encoded
+        assert "cryptad-app.properties.template" in encoded, encoded
+        assert "tainted-basic-token" not in encoded, encoded
+        assert "hunter2" not in encoded, encoded
+
+
+def assert_first_party_beta_quality_redaction_handles_insert_uri_examples() -> None:
+    with tempfile.TemporaryDirectory(prefix="cryptad-beta-quality-uri-redaction-") as temp_name:
+        workspace = Path(temp_name) / "repo"
+        source = workspace / "apps/trust-graph/src/staged/static/index.html"
+        source.parent.mkdir(parents=True, exist_ok=True)
+        source.write_text(
+            "\n".join(
+                (
+                    'placeholder="USK@publisher/trust/0/trust.json"',
+                    'placeholder="crypta:USK@source-key/social/0/social-outbox.json"',
+                    "",
+                )
+            ),
+            encoding="utf-8",
+        )
+
+        assert first_party_beta_redaction_findings("trust-graph", workspace, (source,)) == []
+
+        source.write_text(
+            '{"privateInsertUri":"USK@abcdefghijklmno,qrstuvwxyz0123456789ABCDEFG/name/0"}\n',
+            encoding="utf-8",
+        )
+        findings = first_party_beta_redaction_findings("trust-graph", workspace, (source,))
+
+        assert findings == [
+            {
+                "appId": "trust-graph",
+                "kind": "private-insert-uri",
+                "source": "<repo>/apps/trust-graph/src/staged/static/index.html",
+            }
+        ], findings
 
 
 def assert_security_response_drill_verify_rejects_sensitive_artifacts(repo_root: Path) -> None:
@@ -17476,6 +18198,13 @@ def run_self_test(repo_root: Path) -> None:
     assert_maintenance_policy_evidence_redacts_invalid_values()
     assert_maintenance_policy_evidence_rejects_redacted_uri_values()
     assert_maintenance_policy_evidence_rejects_allowed_policy_drift()
+    assert_first_party_beta_quality_rejects_missing_metadata()
+    assert_first_party_beta_quality_rejects_unknown_readiness_metadata_without_leak()
+    assert_first_party_beta_quality_rejects_missing_empty_state_marker()
+    assert_first_party_beta_quality_rejects_sensitive_diagnostics()
+    assert_first_party_beta_quality_rejects_sensitive_static_assets()
+    assert_first_party_beta_quality_rejects_sensitive_manifest_metadata()
+    assert_first_party_beta_quality_redaction_handles_insert_uri_examples()
     assert_security_response_drill_verify_rejects_sensitive_artifacts(repo_root)
     assert_security_response_drill_verify_rejects_sensitive_json_keys(repo_root)
     assert_security_response_drill_verify_allows_boolean_redaction_metadata(repo_root)
@@ -18104,6 +18833,7 @@ def run_self_test(repo_root: Path) -> None:
         assert summary["status"] in {"pass", "warn"}, summary
         evidence_by_id = {item["id"]: item for item in summary["evidence"]}
         assert evidence_by_id["app-platform.first-party"]["status"] == "pass"
+        assert evidence_by_id[FIRST_PARTY_BETA_QUALITY_EVIDENCE_ID]["status"] == "pass"
         devtools_item = evidence_by_id["app-platform.devtools-cli"]
         assert devtools_item["status"] == "pass", devtools_item
         toolkit_item = evidence_by_id["app-platform.developer-beta-toolkit"]
@@ -19448,9 +20178,16 @@ def make_self_test_workspace(workspace: Path) -> None:
                 "<link rel=\"stylesheet\" href=\"./crypta-ui/crypta-ui.css\">"
                 "<link rel=\"stylesheet\" href=\"./app.css\">"
                 "</head><body class=\"cr-app\"><main class=\"cr-shell\">"
-                f"<section class=\"cr-permission-summary\" data-crypta-permission-summary><ul>{permission_items}</ul></section>"
+                f"<section class=\"cr-permission-summary\" data-crypta-permission-summary data-beta-permission-rationale><ul>{permission_items}</ul></section>"
                 f"<h1>{display_name}</h1>"
                 f"{extra_ui}"
+                "<section class=\"cr-card\" data-first-party-beta-readiness data-beta-empty-state "
+                "data-beta-error-state data-beta-retry-action data-beta-recovery-action "
+                "data-beta-app-data-status data-beta-support-metadata data-beta-diagnostics-redaction "
+                "data-beta-ui-consistency><h2>Beta readiness</h2><button class=\"cr-button\" type=\"button\" "
+                "data-beta-retry-action>Retry</button><p>Empty state, bounded error state, retry action, "
+                "operator recovery, app-data status, support metadata, and redacted-summary-only diagnostics.</p></section>"
+                "<p class=\"cr-status\" role=\"status\" aria-live=\"polite\" data-beta-accessibility-status></p>"
                 "</main><script src=\"./crypta-platform.js\"></script><script src=\"./app.js\"></script></body></html>",
                 encoding="utf-8",
             )
@@ -19567,6 +20304,37 @@ def make_self_test_workspace(workspace: Path) -> None:
                 "app.data.migration.ui-state-v1-v2.requiresStopped=true",
                 "app.data.migration.ui-state-v1-v2.description=Validate Feed Reader UI state schema v2.",
             ]
+        elif is_profile_publisher:
+            migration_lines = [
+                "app.data.schema.current=1",
+                "app.data.schema.namespaces=profile-draft",
+                "app.data.schema.namespace.profile-draft.current=1",
+            ]
+        beta_expectation = FIRST_PARTY_BETA_EXPECTATIONS[app_id]
+        beta_lines = [
+            "app.beta.readiness=ready",
+            "app.beta.qualityLevel=beta",
+            "app.beta.support.owner=crypta-core",
+            f"app.beta.support.uri=https://example.invalid/crypta/apps/{app_id}/support",
+            "app.beta.support.diagnostics=redacted-summary-only",
+            "app.beta.ui.emptyState=true",
+            "app.beta.ui.errorState=true",
+            "app.beta.ui.retryAction=true",
+            "app.beta.ui.recoveryAction=true",
+            f"app.beta.appData={beta_expectation['appData']}",
+            f"app.beta.backupRestore={beta_expectation['backupRestore']}",
+            f"app.beta.exportSupported={beta_expectation['exportSupported']}",
+            f"app.beta.importSupported={beta_expectation['importSupported']}",
+            f"app.beta.migrationDryRunSupported={beta_expectation['migrationDryRun']}",
+            "app.beta.accessibility=basic-pass",
+            "app.beta.uiConsistency=design-system-pass",
+            "app.beta.diagnostics=redacted-summary-only",
+            *[
+                f"permissions.rationale.{permission.strip()}=Required by the first-party beta readiness fixture."
+                for permission in permissions.split(",")
+                if permission.strip()
+            ],
+        ]
         manifest_text = (
             "\n".join(
                 [
@@ -19582,6 +20350,7 @@ def make_self_test_workspace(workspace: Path) -> None:
                     "app.ui.mode=static",
                     "app.ui.entry=static/index.html",
                     f"app.permissions={permissions}",
+                    *beta_lines,
                     *service_lines,
                     *migration_lines,
                     "quota.data.bytes=0",
@@ -19644,6 +20413,32 @@ def make_self_test_workspace(workspace: Path) -> None:
                 "Backups exclude vault private identity material and app-service tokens.\n",
                 encoding="utf-8",
             )
+    for app_id, expectation in FIRST_PARTY_BETA_EXPECTATIONS.items():
+        readme_path = workspace / f"apps/{app_id}/README.md"
+        readme_path.parent.mkdir(parents=True, exist_ok=True)
+        existing_readme = read_source(readme_path)
+        readme_path.write_text(
+            existing_readme
+            + "\n## Beta readiness\n"
+            "Current beta support level: ready for beta operators under the first-party "
+            "maintenance policy.\n"
+            "Empty/error/retry states: staged static UI declares empty states, bounded error "
+            "states, retry actions, and operator recovery actions.\n"
+            f"App-data backup/export/import status: app data is {expectation['appData']}; "
+            f"backup/restore is {expectation['backupRestore']}; export is "
+            f"{expectation['exportSupported']}; import is {expectation['importSupported']}.\n"
+            f"Migration dry-run status: {expectation['migrationDryRun']}.\n"
+            "Permission rationale summary: every requested Platform API permission has a "
+            "manifest rationale and visible permission disclosure.\n"
+            "Support/recovery path: use the first-party app support URI and the operator RC "
+            "recovery workflow.\n"
+            "Diagnostic redaction promise: diagnostics are redacted-summary-only and exclude "
+            "private insert URIs, tokens, raw content, raw app data, local paths, and vault "
+            "private identity material.\n"
+            "Known limitations: beta readiness does not convert Local RC apps into global "
+            "truth systems or legacy protocol compatibility layers.\n",
+            encoding="utf-8",
+        )
     adversarial_markup_test_text = "\n".join(PUBLIC_BETA_SECURITY_MARKUP_FIXTURES)
     feed_test_dir = workspace / "apps/feed-reader/src/test/java/network/crypta/apps/feedreader"
     feed_test_dir.mkdir(parents=True, exist_ok=True)
@@ -21254,6 +22049,11 @@ def make_self_test_workspace(workspace: Path) -> None:
         "maintenance.owner, maintenance.supportLevel, maintenance.dataSchemaPolicy, "
         "maintenance.migrationPolicy, maintenance.backupRestore, maintenance.securityPolicy, "
         "maintenance.deprecationPolicy, and app-catalog.first-party-maintenance-policy evidence. "
+        "PR-275 adds first-party beta readiness metadata, first-party-app.beta-quality-pass "
+        "evidence, redacted-summary-only diagnostics, empty/error/retry/recovery UI checks, "
+        "permission rationale checks, app-data backup/export/import status checks, migration "
+        "dry-run status checks, support metadata checks, and design-system/accessibility markers. "
+        "Backup/export does not export vault private identity material. "
         "Trust Graph Local RC is not global WoT. "
         "Social Inbox RC is not legacy Freemail/Freetalk/Sone protocol compatibility. "
         "PR-264 adds app-platform.trust-social-beta-hardening for Trust Graph import preview, "
@@ -21345,7 +22145,7 @@ def make_self_test_workspace(workspace: Path) -> None:
         "third-party-developer.plugin-author-migration, third-party-developer.redaction, "
         "Platform API 1.0 stable baseline, api.experimentalCapabilitiesAccepted=true, "
         "scheduled-for-removal, Release certification, previous release-candidate snapshot, "
-        "previous contract snapshot, experimental-to-stable graduation, stable reference update, "
+        "Previous Contract Snapshot, experimental-to-stable graduation, stable reference update, "
         "platform-api.compatibility-window, platform-api.previous-contract-snapshot, "
         "platform-api.deprecation-window-policy, platform-api.experimental-graduation-policy, "
         "compatibility waiver policy and non-waiverable stable removal blockers, "
@@ -21384,6 +22184,7 @@ def make_self_test_workspace(workspace: Path) -> None:
         "platform-sdk-js.md",
         "production-first-party-catalog-channels.md",
         "first-party-app-maintenance-policy.md",
+        "first-party-app-beta-quality-pass.md",
         "ecosystem-security-advisories.md",
         "SECURITY.md",
         "operator-rc-recovery-and-support-workflow.md",
@@ -21543,7 +22344,8 @@ def make_self_test_workspace(workspace: Path) -> None:
         "FIRST_PARTY_MAINTENANCE_POLICY_FILE = 'first-party-app-maintenance-policy.json'\n"
         "def maintenance_policy_args(policy):\n"
         "    return ['--maintenance-owner', policy['maintenance']['owner']]\n"
-        "CRITICAL_PRODUCTION_BETA_EVIDENCE_IDS = ('app-catalog.first-party-maintenance-policy',)\n",
+        "CRITICAL_PRODUCTION_BETA_EVIDENCE_IDS = "
+        "('app-catalog.first-party-maintenance-policy', 'first-party-app.beta-quality-pass')\n",
         encoding="utf-8",
     )
     policy_apps = {}
@@ -21569,6 +22371,33 @@ def make_self_test_workspace(workspace: Path) -> None:
     write_json(
         workspace / FIRST_PARTY_MAINTENANCE_POLICY_PATH,
         {"schemaVersion": 1, "owner": "crypta-core", "apps": policy_apps},
+    )
+    readiness_apps: dict[str, Any] = {}
+    for app_id, expected_readiness in FIRST_PARTY_BETA_EXPECTATIONS.items():
+        readiness_apps[app_id] = {
+            "betaReadiness": {
+                "status": "ready",
+                "owner": FIRST_PARTY_MAINTENANCE_OWNER,
+                "qualityLevel": "beta",
+                "emptyState": "required",
+                "errorState": "bounded-required",
+                "retryAction": "required",
+                "recoveryAction": "operator-recovery-link",
+                "permissionRationale": "required",
+                "supportMetadata": "required",
+                "accessibility": "basic-pass",
+                "uiConsistency": "design-system-pass",
+                "diagnostics": "redacted-summary-only",
+                **expected_readiness,
+            }
+        }
+    write_json(
+        workspace / FIRST_PARTY_BETA_READINESS_PATH,
+        {
+            "schemaVersion": 1,
+            "evidenceId": FIRST_PARTY_BETA_QUALITY_EVIDENCE_ID,
+            "apps": readiness_apps,
+        },
     )
     (docs / "legacy-plugin-freeze-policy.md").write_text(
         "This policy defines the production RC freeze boundary for the removed legacy plugin system. "

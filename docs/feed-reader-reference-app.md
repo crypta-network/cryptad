@@ -128,6 +128,15 @@ app.data.migration.ui-state-v1-v2.requiresStopped=true
 The signed bundle manifest remains authoritative for permissions. Catalog permission rationales
 are operator review metadata; they do not grant capabilities.
 
+## Beta readiness
+
+Feed Reader participates in `first-party-app.beta-quality-pass`. The staged UI must show an empty
+feed-source/subscription state, bounded fetch/subscription errors, retry refresh/resubscribe
+actions, visible permission rationales, app-data export/import status, `ui-state-v1-v2` migration
+dry-run status, support metadata, an ARIA live status region, design-system classes, and
+`redacted-summary-only` diagnostics. Diagnostics and support summaries must not include raw fetched
+content, raw feed bodies, raw app-data values, private insert URIs, tokens, or local paths.
+
 ## Release evidence
 
 Release certification records these required evidence ids for this workflow:

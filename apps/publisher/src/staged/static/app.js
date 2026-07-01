@@ -25,7 +25,7 @@
       initializeForm(elements.fileForm);
       initializeForm(elements.directoryForm);
     } catch (error) {
-      setStatus(CryptaPlatform.api.errorMessage(error), "error");
+      setStatus(safeErrorMessage(error), "error");
     }
   }
 
@@ -64,7 +64,7 @@
       form.reset();
       initializeForm(form);
     } catch (error) {
-      setStatus(CryptaPlatform.api.errorMessage(error), "error");
+      setStatus(safeErrorMessage(error), "error");
     }
   }
 
@@ -109,7 +109,7 @@
       renderQueue(snapshot.contentHtml);
       setStatus(uploadQueueStatusMessage());
     } catch (error) {
-      setStatus(CryptaPlatform.api.errorMessage(error), "error");
+      setStatus(safeErrorMessage(error), "error");
     }
   }
 
@@ -119,8 +119,8 @@
     panel.append(
       summaryRow("Operation", data.operation),
       summaryRow("Source type", data.sourceType),
-      summaryRow("Source path", data.sourcePath),
-      summaryRow("Insert URI", data.insertUri),
+      summaryRow("Source path", summarizeLocalPath(data.sourcePath)),
+      summaryRow("Insert URI", summarizeInsertUri(data.insertUri)),
       summaryRow("Identifier", data.identifier),
       summaryRow("Outcome", data.outcome),
     );
@@ -208,7 +208,7 @@
       downloadTextFile("uploads-keys.txt", textBody);
       setStatus(`Exported ${keys.length} upload queue keys.`, "success");
     } catch (error) {
-      setStatus(CryptaPlatform.api.errorMessage(error), "error");
+      setStatus(safeErrorMessage(error), "error");
     }
   }
 
@@ -280,6 +280,25 @@
     }.`;
   }
 
+  function summarizeLocalPath(value) {
+    const path = stringValue(value);
+    if (!path) {
+      return "Operator-provided path accepted.";
+    }
+    const parts = path.split(/[\\/]/).filter(Boolean);
+    const leaf = parts.length > 0 ? parts[parts.length - 1] : "";
+    return leaf ? `Operator-provided path ending in "${leaf}" accepted.` : "Operator-provided path accepted.";
+  }
+
+  function summarizeInsertUri(value) {
+    const uri = stringValue(value);
+    const match = uri.match(/^\s*([A-Za-z]+)@/);
+    if (match) {
+      return `${match[1].toUpperCase()} insert URI submitted.`;
+    }
+    return "Operator-provided insert URI submitted.";
+  }
+
   function summaryRow(label, value) {
     const row = document.createElement("p");
     const key = document.createElement("strong");
@@ -293,6 +312,32 @@
     node.className = className;
     node.textContent = value;
     return node;
+  }
+
+  function stringValue(value) {
+    return value == null ? "" : String(value);
+  }
+
+  function safeErrorMessage(error) {
+    const fallback = "Publish request failed. Retry the action or use Operator RC Recovery.";
+    let message = "";
+    try {
+      message =
+        CryptaPlatform.api && typeof CryptaPlatform.api.errorMessage === "function"
+          ? CryptaPlatform.api.errorMessage(error)
+          : error && error.message;
+    } catch (_) {
+      message = "";
+    }
+    message = String(message || "").replace(/\s+/g, " ").trim();
+    if (!message || sensitiveDiagnosticPattern().test(message)) {
+      return fallback;
+    }
+    return message.slice(0, 240);
+  }
+
+  function sensitiveDiagnosticPattern() {
+    return /(crypta:(?:ssk|usk)@|(?:ssk|usk)@|authorization|bearer|token|private key|identity material|browser session|form password|raw (?:content|message|app data)|[A-Za-z]:\\|\/(?:home|Users|work|tmp|var)\/)/i;
   }
 
   function setStatus(message, tone) {

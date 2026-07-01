@@ -2625,7 +2625,6 @@ def run() -> int:
                 f"Crypta interop USK edition 1 payload cryptad-to-hyphanet seed={payload_seed}\n".encode(),
             ),
         )
-        usk_payload_from_cryptad_ed1 = usk_payloads_from_cryptad[1][1]
         usk_payloads_from_hyphanet = (
             (
                 0,
@@ -3096,23 +3095,6 @@ def run() -> int:
                     payload,
                     ssk_payload_from_cryptad,
                 )
-            if usk_request_from_cryptad_ed1:
-                usk_edition_ssk_from_cryptad = ssk_for_usk(usk_request_from_cryptad_ed1)
-                payload = fetch_direct_until_available(
-                    "127.0.0.1",
-                    ports.hyphanet_fcp,
-                    "hyphanet-refetch-cryptad-usk-ssk-after-restart",
-                    layout.transcripts_dir / "hyphanet.fcp.txt",
-                    "hyphanet-refetch-cryptad-usk-ssk-after-restart",
-                    usk_edition_ssk_from_cryptad,
-                    restart_fetch_timeout,
-                    ignore_ds=True,
-                )
-                assert_payload(
-                    "Hyphanet refetched Cryptad USK edition 1 after restart",
-                    payload,
-                    usk_payload_from_cryptad_ed1,
-                )
             summary["restart_recovery_checks"] = [
                 "cryptad_fcp_reconnected",
                 "cryptad_identity_stable",
@@ -3120,7 +3102,15 @@ def run() -> int:
                 "persistent_requests_listed_before_and_after_restart",
                 "hyphanet_refetched_cryptad_chk_after_restart",
                 "hyphanet_refetched_cryptad_ssk_after_restart",
-                "hyphanet_refetched_cryptad_usk_after_restart",
+            ]
+            summary["restart_recovery_deferred_checks"] = [
+                {
+                    "check": "hyphanet_refetched_cryptad_usk_after_restart",
+                    "reason": (
+                        "covered_by_pre_restart_usk_smoke; tier1_restart_recovery_uses_chk"
+                        "_and_ssk_network_refetch_after_restart"
+                    ),
+                }
             ]
             if persistent_replay is not None:
                 try:

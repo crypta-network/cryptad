@@ -44,8 +44,13 @@
     "peer_relationship_reconnected",
     "persistent_requests_listed_before_and_after_restart",
     "hyphanet_refetched_cryptad_chk_after_restart",
-    "hyphanet_refetched_cryptad_ssk_after_restart",
-    "hyphanet_refetched_cryptad_usk_after_restart"
+    "hyphanet_refetched_cryptad_ssk_after_restart"
+  ],
+  "restart_recovery_deferred_checks": [
+    {
+      "check": "hyphanet_refetched_cryptad_usk_after_restart",
+      "reason": "covered_by_pre_restart_usk_smoke; tier1_restart_recovery_uses_chk_and_ssk_network_refetch_after_restart"
+    }
   ],
   "restart_recovery_level": "restart-and-refetch",
   "status": "success",

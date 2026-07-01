@@ -84,6 +84,15 @@ final class StaticHtmlInspector {
   /** Attribute name that selects JavaScript module scripts. */
   private static final String ATTRIBUTE_TYPE = "type";
 
+  /** Design-system class that marks a first-party permission disclosure summary. */
+  private static final String CLASS_PERMISSION_SUMMARY = "cr-permission-summary";
+
+  /** Data attribute marker for permission disclosure summaries. */
+  private static final String ATTRIBUTE_PERMISSION_SUMMARY = "data-crypta-permission-summary";
+
+  /** Custom element marker for permission disclosure summaries. */
+  private static final String ELEMENT_PERMISSION_SUMMARY = "<crypta-permission-summary";
+
   /** Stable Crypta UI class names documented for app-owned static UI. */
   private static final Set<String> DESIGN_SYSTEM_CLASSES =
       Set.of(
@@ -107,7 +116,7 @@ final class StaticHtmlInspector {
           "cr-empty",
           "cr-kv-list",
           "cr-kv-row",
-          "cr-permission-summary",
+          CLASS_PERMISSION_SUMMARY,
           "cr-sr-only");
 
   /** Raw HTML text from the manifest-declared static UI entry. */
@@ -277,9 +286,23 @@ final class StaticHtmlInspector {
    */
   boolean hasPermissionDisclosure() {
     String lower = uncommentedHtml.toLowerCase(Locale.ROOT);
-    return lower.contains("cr-permission-summary")
-        || lower.contains("data-crypta-permission-summary")
-        || lower.contains("<crypta-permission-summary");
+    return lower.contains(CLASS_PERMISSION_SUMMARY)
+        || lower.contains(ATTRIBUTE_PERMISSION_SUMMARY)
+        || lower.contains(ELEMENT_PERMISSION_SUMMARY);
+  }
+
+  /**
+   * Checks whether a literal marker is absent from live, uncommented HTML.
+   *
+   * <p>This is used for opt-in first-party readiness markers that are expressed as data attributes.
+   * The method intentionally does not parse values; the surrounding linter owns policy semantics
+   * and this class remains a lightweight static HTML scanner.
+   *
+   * @param marker case-insensitive marker text to find
+   * @return {@code true} when the marker does not appear outside HTML comments
+   */
+  boolean lacksMarker(String marker) {
+    return !uncommentedHtml.toLowerCase(Locale.ROOT).contains(marker.toLowerCase(Locale.ROOT));
   }
 
   /**
@@ -294,12 +317,12 @@ final class StaticHtmlInspector {
   Set<String> mentionedPermissionsInDisclosure() {
     Set<String> permissions = new LinkedHashSet<>();
     String lower = uncommentedHtml.toLowerCase(Locale.ROOT);
-    int start = lower.indexOf("cr-permission-summary");
+    int start = lower.indexOf(CLASS_PERMISSION_SUMMARY);
     if (start < 0) {
-      start = lower.indexOf("data-crypta-permission-summary");
+      start = lower.indexOf(ATTRIBUTE_PERMISSION_SUMMARY);
     }
     if (start < 0) {
-      start = lower.indexOf("<crypta-permission-summary");
+      start = lower.indexOf(ELEMENT_PERMISSION_SUMMARY);
     }
     if (start < 0) {
       return permissions;

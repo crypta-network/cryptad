@@ -1783,6 +1783,33 @@
     },
     {
       "details": {
+        "readinessMetadata": "<repo>/tools/release-certification/first-party-app-beta-readiness.json",
+        "redactionPolicy": {
+          "absolutePathsExcluded": true,
+          "diagnostics": "redacted-summary-only",
+          "privateInsertUrisExcluded": true,
+          "rawFetchedContentExcluded": true,
+          "rawMessagesExcluded": true,
+          "tokensExcluded": true
+        },
+        "requiredFirstPartyApps": [
+          "queue-manager",
+          "publisher",
+          "site-publisher",
+          "profile-publisher",
+          "social-inbox",
+          "feed-reader",
+          "trust-graph"
+        ]
+      },
+      "id": "first-party-app.beta-quality-pass",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "First-party app beta-quality readiness passed deterministic checks."
+    },
+    {
+      "details": {
         "fixtureBacked": true,
         "workflow": "third-party app submission package schema"
       },

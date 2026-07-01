@@ -126,6 +126,20 @@ The multi-node beta soak support-bundle drill records the same constraints after
 subscription-pressure, and advisory scenarios; see
 [multi-node-beta-soak-and-upgrade-drill.md](multi-node-beta-soak-and-upgrade-drill.md).
 
+## First-party app support actions
+
+First-party app UI recovery actions should point operators back to this workflow instead of
+inventing app-specific diagnostic exports. The PR-275 readiness evidence
+`first-party-app.beta-quality-pass` checks that each first-party app exposes a support/recovery
+action, support metadata, and `redacted-summary-only` diagnostic copy.
+
+Safe first-party app support metadata includes app id, app version, catalog channel, API target
+stability, app-data schema version when declared, last operation status category, retry/backoff
+category, support action id, and the redaction policy marker. It must not include raw fetched
+content, raw messages, raw profile documents, raw trust signatures, vault private identity
+material, app-service tokens, browser-session tokens, private insert URIs, raw app-data values, or
+local paths.
+
 ## Trust Graph Scope
 
 Trust Graph Local RC recovery is local operator-curated trust only. It is not global truth, not

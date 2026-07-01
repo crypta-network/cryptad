@@ -234,6 +234,7 @@ ECOSYSTEM_RC_REQUIRED_EVIDENCE_IDS = (
     "platform-api.contract",
     *PLATFORM_API_STABLE_FREEZE_EVIDENCE_IDS,
     "app-platform.first-party",
+    "first-party-app.beta-quality-pass",
     "app-platform.devtools-cli",
     "app-platform.developer-beta-toolkit",
     *app_platform_docs_check.EVIDENCE_IDS,
@@ -1210,6 +1211,9 @@ def interop_evidence(
         "missingRequiredFlows": missing_flows,
         "restartRecoveryLevel": sanitized.get("restart_recovery_level"),
         "restartRecoveryChecks": sanitized.get("restart_recovery_checks", []),
+        "restartRecoveryDeferredChecks": sanitized.get(
+            "restart_recovery_deferred_checks", []
+        ),
         "baseline": sanitized.get("baseline", sanitized.get("hyphanet", {})),
         "artifacts": sanitized_artifact_refs(summary, workspace_root, out_dir),
     }
@@ -1304,6 +1308,7 @@ def app_platform_evidence(
     summary = read_json(path)
     expected_ids = [
         "app-platform.first-party",
+        "first-party-app.beta-quality-pass",
         "app-platform.devtools-cli",
         "app-platform.developer-beta-toolkit",
         "platform-api.contract",
@@ -2284,6 +2289,7 @@ EXPECTED_FIRST_PARTY_APPS = (
     "social-inbox",
     "trust-graph",
 )
+FIRST_PARTY_BETA_QUALITY_EVIDENCE_ID = "first-party-app.beta-quality-pass"
 EXPECTED_VAULT_CAPABILITIES = (
     "vault.secrets.read",
     "vault.secrets.write",
@@ -3315,10 +3321,17 @@ def ecosystem_matrix_row_specs() -> list[MatrixRowSpec]:
         MatrixRowSpec(
             id="first-party-app-bundles",
             category="first-party-apps",
-            title="First-party app bundle set",
-            required_evidence_ids=("app-platform.first-party",),
+            title="First-party app bundle set and beta quality",
+            required_evidence_ids=(
+                "app-platform.first-party",
+                FIRST_PARTY_BETA_QUALITY_EVIDENCE_ID,
+            ),
             gate_ids=("ecosystem.first-party-apps",),
-            docs=("docs/first-party-beta-catalog.md", "docs/app-distribution.md"),
+            docs=(
+                "docs/first-party-beta-catalog.md",
+                "docs/first-party-app-beta-quality-pass.md",
+                "docs/app-distribution.md",
+            ),
             first_party_apps=EXPECTED_FIRST_PARTY_APPS,
         ),
         MatrixRowSpec(
@@ -5351,6 +5364,8 @@ def evaluate_first_party_apps_gate(
 ) -> GateResult:
     current_item = current.get("app-platform.first-party")
     previous_item = previous.get("app-platform.first-party")
+    beta_quality_item = current.get(FIRST_PARTY_BETA_QUALITY_EVIDENCE_ID)
+    beta_quality_details = evidence_details(beta_quality_item)
     current_details = evidence_details(current_item)
     previous_details = evidence_details(previous_item)
     current_apps = app_ids_from_details(current_details)
@@ -5363,6 +5378,11 @@ def evaluate_first_party_apps_gate(
         failures.append("First-party app evidence is not passing")
     elif status == "warn":
         warnings.append("First-party app evidence is warning")
+    beta_quality_status = evidence_status(beta_quality_item)
+    if beta_quality_status in {"fail", "missing", "skip"}:
+        failures.append("First-party beta-quality evidence is not passing")
+    elif beta_quality_status == "warn":
+        warnings.append("First-party beta-quality evidence is warning")
     missing_required = sorted(required_apps - current_apps)
     if missing_required:
         failures.append(f"Required first-party apps are absent: {', '.join(missing_required)}")
@@ -5373,11 +5393,24 @@ def evaluate_first_party_apps_gate(
         "currentApps": sorted(current_apps),
         "previousApps": sorted(previous_apps),
         "requiredApps": sorted(required_apps),
+        "betaQualityStatus": beta_quality_status,
     }
-    if failures:
+    if status in {"fail", "missing", "skip"} or missing_required or disappeared:
         add_evidence_issue(gate_details, "failureEvidenceIds", "app-platform.first-party")
-    if warnings:
+    if beta_quality_status in {"fail", "missing", "skip"}:
+        add_evidence_issue(
+            gate_details, "failureEvidenceIds", FIRST_PARTY_BETA_QUALITY_EVIDENCE_ID
+        )
+    if status == "warn":
         add_evidence_issue(gate_details, "warningEvidenceIds", "app-platform.first-party")
+    if beta_quality_status == "warn":
+        add_evidence_issue(
+            gate_details, "warningEvidenceIds", FIRST_PARTY_BETA_QUALITY_EVIDENCE_ID
+        )
+    if beta_quality_details.get("redactionFindings"):
+        add_evidence_issue(
+            gate_details, "unwaivableFailureEvidenceIds", FIRST_PARTY_BETA_QUALITY_EVIDENCE_ID
+        )
     return gate_from_issues(
         "ecosystem.first-party-apps",
         "First-party app evidence covers required apps.",
@@ -7761,6 +7794,7 @@ def render_report(summary: dict[str, Any]) -> str:
     lines.extend(["", "## App Platform", ""])
     for evidence_id in (
         "app-platform.first-party",
+        FIRST_PARTY_BETA_QUALITY_EVIDENCE_ID,
         "app-platform.devtools-cli",
         "app-platform.developer-beta-toolkit",
         "app-platform.docs-portal",

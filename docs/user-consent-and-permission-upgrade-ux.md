@@ -105,6 +105,13 @@ they do not normally block automatic policy by themselves.
 Permission rationales are display text, not grants. Runtime authorization still comes from the
 signed manifest and the authenticated app principal.
 
+For first-party apps, `first-party-app.beta-quality-pass` verifies that every non-trivial
+permission has manifest rationale metadata and visible UI copy before production beta. Install and
+update consent should surface changed first-party rationale text alongside permission deltas,
+support metadata, app-data backup/export/import status, migration dry-run status, and
+`redacted-summary-only` diagnostics posture. Backup/export consent must still say that vault
+private identity material is not exported.
+
 ## API Stability Change
 
 Platform API stability changes are material when an update moves from the stable baseline to

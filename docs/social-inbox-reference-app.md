@@ -319,6 +319,16 @@ shows unscored and untrusted messages; Trust Graph annotations are not a moderat
 content hiding, and not daemon routing policy. Trust score values do not hide, archive, sort by
 policy, block replies, trigger network fetches, or change subscription behavior.
 
+## Beta readiness
+
+Social Inbox RC participates in `first-party-app.beta-quality-pass`. The staged UI must show an
+empty sources/messages state, bounded subscription/message/import/trust-score errors, retry
+refresh/resubscribe/reload-score actions, visible permission rationales, app-data export/import
+status, additive schema-1 migration status, support metadata, an ARIA live status region,
+design-system classes, and `redacted-summary-only` diagnostics. The UI and docs must keep the
+scope visible: Social Inbox RC is not Freemail/Freetalk/Sone protocol compatibility, not encrypted
+mail transport, not a full WoT, and not a daemon-core social or mail protocol.
+
 ## Release evidence
 
 Deterministic offline evidence for Social Inbox includes these ids:

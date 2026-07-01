@@ -11,6 +11,14 @@ catalog then carries the same policy under `app.<id>.maintenance.*` signed catal
 
 Release certification evidence id: `app-catalog.first-party-maintenance-policy`.
 
+Beta usability readiness is tracked separately by
+[first-party-app-beta-quality-pass.md](first-party-app-beta-quality-pass.md) and release
+certification evidence id `first-party-app.beta-quality-pass`. The maintenance policy remains the
+owner/support/data-policy source of truth; the beta-quality metadata proves that each app exposes
+empty states, bounded error states, retry and recovery actions, permission rationales,
+app-data backup/export/import status, support metadata, accessibility markers, design-system
+classes, and `redacted-summary-only` diagnostics.
+
 ## First-party policy table
 
 | App | Catalog channel | `support.status` | Maintenance support | Data schema | Migration | Backup/restore | Security | Deprecation |

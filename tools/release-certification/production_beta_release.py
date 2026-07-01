@@ -163,6 +163,10 @@ APP_PROJECT_DIRS = {
 FIRST_PARTY_MAINTENANCE_POLICY_FILE = Path(
     "tools/release-certification/first-party-app-maintenance-policy.json"
 )
+FIRST_PARTY_BETA_READINESS_FILE = Path(
+    "tools/release-certification/first-party-app-beta-readiness.json"
+)
+FIRST_PARTY_BETA_QUALITY_EVIDENCE_ID = "first-party-app.beta-quality-pass"
 MAINTENANCE_REQUIRED_FIELDS = (
     "owner",
     "ownerUri",
@@ -211,6 +215,49 @@ FIRST_PARTY_POLICY_ALLOWED_VALUES = {
     "deprecationStatus": {"none", "deprecated", "retired"},
 }
 MAINTENANCE_VERSION_BOUND_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]{0,63}")
+BETA_READINESS_FIELDS = (
+    "status",
+    "owner",
+    "qualityLevel",
+    "emptyState",
+    "errorState",
+    "retryAction",
+    "recoveryAction",
+    "appData",
+    "backupRestore",
+    "exportSupported",
+    "importSupported",
+    "migrationDryRun",
+    "permissionRationale",
+    "supportMetadata",
+    "accessibility",
+    "uiConsistency",
+    "diagnostics",
+    "schemaVersion",
+    "migrationStep",
+)
+BETA_READINESS_ALLOWED_VALUES = {
+    "ready",
+    "crypta-core",
+    "beta",
+    "required",
+    "bounded-required",
+    "operator-recovery-link",
+    "stateless",
+    "durable",
+    "durable-limited",
+    "not-applicable",
+    "operator-supported",
+    "export-import",
+    "supported",
+    "additive-not-required",
+    "basic-pass",
+    "design-system-pass",
+    "redacted-summary-only",
+    "ui-state-v1-v2",
+    1,
+    2,
+}
 APP_STORE_SUBMISSION_EVIDENCE_IDS = (
     "app-store.submission-package-schema",
     "app-store.submission-cli",
@@ -252,6 +299,7 @@ THIRD_PARTY_INTAKE_EVIDENCE_IDS = (
 CRITICAL_PRODUCTION_BETA_EVIDENCE_IDS = (
     "app-platform.signed-bundles",
     "app-catalog.first-party-maintenance-policy",
+    FIRST_PARTY_BETA_QUALITY_EVIDENCE_ID,
     "catalog.smoke",
     "app-review.trusted-receipts",
     "app-review.first-party-catalog",
@@ -1673,6 +1721,10 @@ def first_party_maintenance_policy_file(state: PipelineState) -> Path:
     return state.settings.workspace_root / FIRST_PARTY_MAINTENANCE_POLICY_FILE
 
 
+def first_party_beta_readiness_file(state: PipelineState) -> Path:
+    return state.settings.workspace_root / FIRST_PARTY_BETA_READINESS_FILE
+
+
 def expected_first_party_maintenance_uri(app_id: str, field: str) -> str | None:
     if field == "ownerUri":
         return FIRST_PARTY_MAINTENANCE_OWNER_URI
@@ -1927,6 +1979,55 @@ def sanitized_first_party_maintenance_policy_input(raw_policy: Any) -> dict[str,
     return sanitized
 
 
+def sanitized_beta_readiness_value(value: Any) -> Any:
+    if isinstance(value, bool):
+        return "<redacted>"
+    if isinstance(value, int) and value in BETA_READINESS_ALLOWED_VALUES:
+        return value
+    if isinstance(value, str) and value in BETA_READINESS_ALLOWED_VALUES:
+        return value
+    stripped = safe_single_line(value)
+    return stripped if stripped in BETA_READINESS_ALLOWED_VALUES else "<redacted>"
+
+
+def sanitized_first_party_beta_readiness_input(raw_readiness: Any) -> dict[str, Any]:
+    raw_apps = raw_readiness.get("apps") if isinstance(raw_readiness, dict) else None
+    sanitized: dict[str, Any] = {
+        "schemaVersion": (
+            1
+            if isinstance(raw_readiness, dict) and raw_readiness.get("schemaVersion") == 1
+            else "<redacted>"
+        ),
+        "evidenceId": (
+            FIRST_PARTY_BETA_QUALITY_EVIDENCE_ID
+            if isinstance(raw_readiness, dict)
+            and raw_readiness.get("evidenceId") == FIRST_PARTY_BETA_QUALITY_EVIDENCE_ID
+            else "<redacted>"
+        ),
+        "apps": {},
+    }
+    if not isinstance(raw_apps, dict):
+        return sanitized
+    sanitized_apps = sanitized["apps"]
+    for app_id in APP_IDS:
+        app_readiness = raw_apps.get(app_id)
+        beta = (
+            app_readiness.get("betaReadiness")
+            if isinstance(app_readiness, dict)
+            else None
+        )
+        if not isinstance(beta, dict):
+            continue
+        sanitized_apps[app_id] = {
+            "betaReadiness": {
+                field: sanitized_beta_readiness_value(beta.get(field))
+                for field in BETA_READINESS_FIELDS
+                if field in beta
+            }
+        }
+    return sanitized
+
+
 def copy_first_party_maintenance_policy_input(state: PipelineState) -> None:
     policy_file = first_party_maintenance_policy_file(state)
     if not policy_file.is_file():
@@ -1938,6 +2039,19 @@ def copy_first_party_maintenance_policy_input(state: PipelineState) -> None:
         return
     target = state.settings.out_dir / "inputs/first-party-app-maintenance-policy.json"
     write_json(target, sanitized_first_party_maintenance_policy_input(raw_policy))
+
+
+def copy_first_party_beta_readiness_input(state: PipelineState) -> None:
+    readiness_file = first_party_beta_readiness_file(state)
+    if not readiness_file.is_file():
+        return
+    try:
+        with readiness_file.open("r", encoding="utf-8") as handle:
+            raw_readiness = json.load(handle)
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        return
+    target = state.settings.out_dir / "inputs/first-party-app-beta-readiness.json"
+    write_json(target, sanitized_first_party_beta_readiness_input(raw_readiness))
 
 
 def package_catalog_and_reviews(
@@ -2154,6 +2268,7 @@ def package_catalog_and_reviews(
             **catalog_channel_editions(state.version),
             "artifactBaseUri": state.settings.artifact_base_uri,
             "firstPartyMaintenancePolicy": "inputs/first-party-app-maintenance-policy.json",
+            "firstPartyBetaReadiness": "inputs/first-party-app-beta-readiness.json",
             "requiredMaintenanceApps": list(APP_IDS),
             "maintenancePolicyComplete": len(maintenance_policies) == len(APP_IDS),
             "apps": app_summaries,
@@ -2259,6 +2374,7 @@ def create_fixture_artifacts(state: PipelineState) -> None:
             "catalogSigningKeyId": "test-fixture-app-key",
             **catalog_channel_editions(state.version),
             "firstPartyMaintenancePolicy": "inputs/first-party-app-maintenance-policy.json",
+            "firstPartyBetaReadiness": "inputs/first-party-app-beta-readiness.json",
             "requiredMaintenanceApps": list(APP_IDS),
             "maintenancePolicyComplete": len(maintenance_policies) == len(APP_IDS),
             "apps": app_summaries,
@@ -4232,6 +4348,7 @@ def build_final_summary(
     artifacts = {
         "releaseConfig": "inputs/release-config.json",
         "firstPartyMaintenancePolicy": "inputs/first-party-app-maintenance-policy.json",
+        "firstPartyBetaReadiness": "inputs/first-party-app-beta-readiness.json",
         "catalog": "catalog/first-party-catalog.properties",
         "catalogSignature": f"catalog/{CANONICAL_CATALOG_SIGNATURE}",
         "catalogSignatureAlias": f"catalog/{RELEASE_CATALOG_SIGNATURE_ALIAS}",
@@ -4656,6 +4773,7 @@ def run_pipeline(settings: Settings) -> tuple[dict[str, Any], int]:
         if settings.use_fixture_evidence:
             state.signing_profile = prepare_signing_profile(state, key_dir)
             copy_first_party_maintenance_policy_input(state)
+            copy_first_party_beta_readiness_input(state)
             create_fixture_artifacts(state)
         else:
             clear_workspace_generated_release_outputs(state)
@@ -4668,6 +4786,7 @@ def run_pipeline(settings: Settings) -> tuple[dict[str, Any], int]:
             )
             state.signing_profile = prepare_signing_profile(state, key_dir)
             copy_first_party_maintenance_policy_input(state)
+            copy_first_party_beta_readiness_input(state)
             write_json(settings.out_dir / "inputs/release-config.json", release_config(state))
             if not settings.skip_full_build:
                 build_tasks = ["build"] if settings.mode == "production-beta" else ["buildJar", "assembleCryptadDist"]
@@ -8482,6 +8601,7 @@ def assert_maintenance_policy_resolves_from_workspace() -> None:
 
         loaded = load_first_party_maintenance_policy(state)
         copy_first_party_maintenance_policy_input(state)
+        copy_first_party_beta_readiness_input(state)
         copied_policy = json.loads(
             (settings.out_dir / "inputs/first-party-app-maintenance-policy.json").read_text(
                 encoding="utf-8"
@@ -8596,6 +8716,7 @@ def assert_maintenance_policy_input_copy_redacts_invalid_values() -> None:
         settings = cleanup_test_settings(workspace, workspace / "build/redacted-policy-copy")
         state = PipelineState(settings, "self-test", utc_now(), [], [], [])
         copy_first_party_maintenance_policy_input(state)
+        copy_first_party_beta_readiness_input(state)
         copied_text = (
             settings.out_dir / "inputs/first-party-app-maintenance-policy.json"
         ).read_text(encoding="utf-8")
@@ -8624,6 +8745,46 @@ def assert_maintenance_policy_input_copy_redacts_invalid_values() -> None:
             assert forbidden not in warning_text, f"maintenance warning leaked {forbidden}"
 
 
+def assert_beta_readiness_input_copy_redacts_invalid_values() -> None:
+    with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-readiness-redaction-") as temp_name:
+        workspace = Path(temp_name) / "repo"
+        make_self_test_workspace(workspace)
+        readiness_file = workspace / FIRST_PARTY_BETA_READINESS_FILE
+        readiness = json.loads(readiness_file.read_text(encoding="utf-8"))
+        readiness["evidenceId"] = "first-party-app.beta-quality-pass token=evidence-secret"
+        readiness["apps"][str(workspace / "private-readiness-app-token-secret")] = {
+            "betaReadiness": {"status": "ready"}
+        }
+        beta = readiness["apps"]["queue-manager"]["betaReadiness"]
+        beta["status"] = "ready token=readiness-status-secret"
+        beta["diagnostics"] = "Bearer readiness-diagnostic-secret"
+        beta["schemaVersion"] = str(workspace / "schema-secret")
+        beta["exportSupported"] = ["array-secret-supported"]
+        beta["supportMetadata"] = {"value": "object-secret-required"}
+        beta["accessibility"] = True
+        write_json(readiness_file, readiness)
+
+        settings = cleanup_test_settings(workspace, workspace / "build/redacted-readiness-copy")
+        state = PipelineState(settings, "self-test", utc_now(), [], [], [])
+        copy_first_party_beta_readiness_input(state)
+        copied_text = (
+            settings.out_dir / "inputs/first-party-app-beta-readiness.json"
+        ).read_text(encoding="utf-8")
+
+        assert "<redacted>" in copied_text, copied_text
+        for forbidden in (
+            "evidence-secret",
+            "private-readiness-app-token-secret",
+            "readiness-status-secret",
+            "readiness-diagnostic-secret",
+            "schema-secret",
+            "array-secret-supported",
+            "object-secret-required",
+            str(workspace),
+        ):
+            assert forbidden not in copied_text, f"readiness input copy leaked {forbidden}"
+
+
 def assert_final_summary_emits_previous_candidate_metadata() -> None:
     with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-previous-metadata-") as temp_name:
         workspace = Path(temp_name) / "repo"
@@ -8639,6 +8800,7 @@ def assert_final_summary_emits_previous_candidate_metadata() -> None:
         state = PipelineState(settings, "270", utc_now(), [], [], [])
         state.signing_profile = production_signing_profile()
         copy_first_party_maintenance_policy_input(state)
+        copy_first_party_beta_readiness_input(state)
         create_fixture_artifacts(state)
         fixtures = workspace / "tools/release-certification/fixtures"
         app_platform_summary = read_json(fixtures / "self-test-app-platform-smoke.json")
@@ -8668,6 +8830,10 @@ def assert_final_summary_emits_previous_candidate_metadata() -> None:
         ), metadata
         assert metadata["catalog"]["catalogDigest"].startswith("sha256:"), metadata
         assert metadata["firstPartyApps"], metadata
+        assert (
+            summary["artifacts"]["firstPartyBetaReadiness"]
+            == "inputs/first-party-app-beta-readiness.json"
+        ), summary["artifacts"]
 
         previous_summary = multi_node_beta_soak.build_previous_candidate_summary(
             {
@@ -8763,6 +8929,7 @@ def run_self_test() -> None:
     assert_missing_maintenance_policy_warns_in_dry_run_and_fails_strict_modes()
     assert_incomplete_maintenance_policy_warns_in_dry_run_and_fails_strict_modes()
     assert_maintenance_policy_input_copy_redacts_invalid_values()
+    assert_beta_readiness_input_copy_redacts_invalid_values()
     assert_final_summary_emits_previous_candidate_metadata()
 
     with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-self-test-") as temp_name:

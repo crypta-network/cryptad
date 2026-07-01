@@ -16,16 +16,24 @@
         <h1>Trust Graph Local RC</h1>
       </div>
       <div class="header-actions">
-        <button class="cr-button cr-button--secondary" id="refresh-status-button" type="button">
+        <button
+          class="cr-button cr-button--secondary"
+          id="refresh-status-button"
+          type="button"
+          data-beta-retry-action>
           Refresh status
         </button>
-        <button class="cr-button cr-button--secondary" id="refresh-queue-button" type="button">
+        <button
+          class="cr-button cr-button--secondary"
+          id="refresh-queue-button"
+          type="button"
+          data-beta-retry-action>
           Refresh queue
         </button>
       </div>
     </header>
 
-    <section class="cr-permission-summary" data-crypta-permission-summary>
+    <section class="cr-permission-summary" data-crypta-permission-summary data-beta-permission-rationale>
       <p><strong>Declared permissions</strong></p>
       <ul>
         <li><code>trust.read</code> reads local RC scope, anchors, statement lifecycle, and bounded scores.</li>
@@ -63,6 +71,30 @@
       </ul>
     </section>
 
+    <section
+      class="cr-card beta-readiness-panel"
+      aria-labelledby="beta-readiness-title"
+      data-first-party-beta-readiness
+      data-beta-empty-state
+      data-beta-error-state
+      data-beta-retry-action
+      data-beta-recovery-action
+      data-beta-app-data-status
+      data-beta-support-metadata
+      data-beta-diagnostics-redaction
+      data-beta-ui-consistency>
+      <div>
+        <p class="cr-label">Beta readiness</p>
+        <h2 id="beta-readiness-title">Local Trust Graph RC evidence</h2>
+      </div>
+      <ul class="beta-readiness-list">
+        <li>No anchors or statements show empty states; malformed, oversized, revoked, and deprecated statements use bounded errors.</li>
+        <li>Retry import, reload anchors/statements, refresh audit, or refresh queue from the controls on this page.</li>
+        <li>App-data export/import covers UI-local state. Schema <code>2</code> has dry-run migration <code>ui-state-v1-v2</code>.</li>
+        <li>Support uses local-only scope, operation categories, and redacted-summary-only diagnostics without raw signatures.</li>
+      </ul>
+    </section>
+
     <section class="workspace-grid" aria-label="Trust graph workspace">
       <section class="cr-card status-panel" aria-labelledby="status-title">
         <div class="panel-heading">
@@ -70,7 +102,11 @@
             <p class="cr-label">Graph health</p>
             <h2 id="status-title">Scope and status</h2>
           </div>
-          <button class="cr-button cr-button--secondary" id="load-identities-button" type="button">
+          <button
+            class="cr-button cr-button--secondary"
+            id="load-identities-button"
+            type="button"
+            data-beta-retry-action>
             Identities
           </button>
         </div>
@@ -95,7 +131,11 @@
             <p class="cr-label">Trust roots</p>
             <h2 id="anchors-title">Anchors</h2>
           </div>
-          <button class="cr-button cr-button--secondary" id="refresh-anchors-button" type="button">
+          <button
+            class="cr-button cr-button--secondary"
+            id="refresh-anchors-button"
+            type="button"
+            data-beta-retry-action>
             Refresh
           </button>
         </div>
@@ -222,7 +262,11 @@
           <p class="cr-label">Imported public statements</p>
           <h2 id="statements-title">Statement lifecycle</h2>
         </div>
-        <button class="cr-button cr-button--secondary" id="refresh-statements-button" type="button">
+        <button
+          class="cr-button cr-button--secondary"
+          id="refresh-statements-button"
+          type="button"
+          data-beta-retry-action>
           Refresh statements
         </button>
       </div>
@@ -245,7 +289,8 @@
           <button
             class="cr-button cr-button--secondary"
             id="refresh-subscriptions-button"
-            type="button">
+            type="button"
+            data-beta-retry-action>
             Refresh
           </button>
         </div>
@@ -277,7 +322,11 @@
             <p class="cr-label">Redacted local history</p>
             <h2 id="audit-title">Audit</h2>
           </div>
-          <button class="cr-button cr-button--secondary" id="refresh-audit-button" type="button">
+          <button
+            class="cr-button cr-button--secondary"
+            id="refresh-audit-button"
+            type="button"
+            data-beta-retry-action>
             Refresh
           </button>
         </div>
@@ -371,7 +420,8 @@
           <button
             class="cr-button cr-button--secondary"
             id="secondary-refresh-queue-button"
-            type="button">
+            type="button"
+            data-beta-retry-action>
             Refresh
           </button>
         </div>
@@ -381,7 +431,7 @@
       </section>
     </section>
 
-    <p class="cr-status" id="status" role="status" aria-live="polite"></p>
+    <p class="cr-status" id="status" role="status" aria-live="polite" data-beta-accessibility-status></p>
   </main>
   <script src="./crypta-ui/crypta-ui-components.js" defer></script>
   <script src="./crypta-platform.js" defer></script>

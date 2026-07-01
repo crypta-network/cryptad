@@ -22,6 +22,25 @@ content-subscription scheduler internals, or arbitrary filesystem paths. Content
 draft, read-state, or import-summary data is included only when an app already stores it as durable
 app-data records.
 
+## First-party beta readiness status
+
+`first-party-app.beta-quality-pass` distinguishes three app-data outcomes:
+
+| App | App-data status | Backup/export/import status | Migration dry-run |
+| --- | --- | --- | --- |
+| `queue-manager` | Stateless | `not-applicable` | `not-applicable` |
+| `publisher` | Stateless | `not-applicable` | `not-applicable` |
+| `site-publisher` | Stateless | `not-applicable` | `not-applicable` |
+| `profile-publisher` | Durable limited profile draft/history state | `operator-supported` | `not-applicable` |
+| `feed-reader` | Durable feed list, subscriptions, read state, and drafts | `export-import` | `supported` |
+| `trust-graph` | Durable UI-local RC state | `operator-supported` | `supported` |
+| `social-inbox` | Durable sources, read state, social summaries, and drafts | `operator-supported` | `additive-not-required` |
+
+Stateless means there is no durable app-owned record to back up. It is not an unsupported backup
+claim. Durable app-data export/import remains separate from vault secret export and never exports
+vault private identity material, private keys, seeds, app-service tokens, browser-session tokens,
+private insert URIs, raw fetched content, raw messages, or local paths.
+
 ## Backup bundle format
 
 The current backup envelope is versioned as `backupVersion = 1` and identified with

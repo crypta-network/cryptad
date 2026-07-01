@@ -9,8 +9,9 @@ The production beta pipeline is a release-manager workflow for first-party app e
 It does not rewrite the app platform, change peer protocols, or publish a public app store by
 itself. It combines the existing Gradle build, first-party app staging tasks, `crypta-app` signing
 and catalog tools, app-platform smoke checks, live-network beta evidence, network-scale soak
-evidence, first-party app maintenance policy metadata, user-consent flow evidence, ecosystem RC
-certification, multi-node beta soak and upgrade evidence, and final artifact redaction.
+evidence, first-party app maintenance policy metadata, first-party beta readiness evidence,
+user-consent flow evidence, ecosystem RC certification, multi-node beta soak and upgrade evidence,
+and final artifact redaction.
 
 The entrypoint is:
 
@@ -72,6 +73,12 @@ upload.
 
 `--use-fixture-evidence` is accepted only with `developer-dry-run` and internal self-tests. Strict
 `release-candidate` and `production-beta` runs reject fixture evidence before certification.
+
+First-party beta readiness is required evidence in strict modes. The pipeline copies sanitized
+`inputs/first-party-app-beta-readiness.json` and requires
+`first-party-app.beta-quality-pass` alongside the first-party maintenance policy. Missing
+readiness metadata blocks promotion, and any redaction finding from first-party app diagnostics is
+non-waiverable.
 
 Production beta supports three explicit test/emergency escape hatches:
 

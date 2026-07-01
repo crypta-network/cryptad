@@ -62,7 +62,7 @@
       renderDocumentPreview(buildUnsignedProfilePreview());
       setStatus("Profile Publisher is ready.");
     } catch (error) {
-      setStatus(CryptaPlatform.api.errorMessage(error), "error");
+      setStatus(safeErrorMessage(error), "error");
     }
   }
 
@@ -105,7 +105,7 @@
       renderIdentities();
       renderGrants();
       if (!refreshOptions.silent) {
-        setStatus(CryptaPlatform.api.errorMessage(error), "error");
+        setStatus(safeErrorMessage(error), "error");
       }
     }
   }
@@ -124,7 +124,7 @@
       await refreshIdentities({ silent: true });
       setStatus("Profile identity created.", "success");
     } catch (error) {
-      setStatus(CryptaPlatform.api.errorMessage(error), "error");
+      setStatus(safeErrorMessage(error), "error");
     }
   }
 
@@ -144,7 +144,7 @@
       recordRecentAction("Grant", identityIdValue, "operator review requested");
       setStatus("Identity grant request prepared for operator review.", "success");
     } catch (error) {
-      setStatus(CryptaPlatform.api.errorMessage(error), "error");
+      setStatus(safeErrorMessage(error), "error");
     }
   }
 
@@ -182,7 +182,7 @@
       setStatus("Profile preview signed.", "success");
     } catch (error) {
       renderDocumentPreview(buildUnsignedProfilePreview());
-      setStatus(CryptaPlatform.api.errorMessage(error), "error");
+      setStatus(safeErrorMessage(error), "error");
     }
   }
 
@@ -203,7 +203,7 @@
       await refreshUploadQueue({ silent: true });
       setStatus("Profile app-document publish queued.", "success");
     } catch (error) {
-      setStatus(CryptaPlatform.api.errorMessage(error), "error");
+      setStatus(safeErrorMessage(error), "error");
     }
   }
 
@@ -261,7 +261,7 @@
       if (refreshOptions.silent) {
         renderQueue("");
       } else {
-        setStatus(CryptaPlatform.api.errorMessage(error), "error");
+        setStatus(safeErrorMessage(error), "error");
       }
     }
   }
@@ -547,9 +547,37 @@
 
   function renderDocumentPreview(documentData) {
     elements.documentPreview.textContent = boundedText(
-      JSON.stringify(documentData, null, 2),
+      JSON.stringify(profileDocumentPreviewSummary(documentData), null, 2),
       maxDocumentPreviewLength,
     );
+  }
+
+  function profileDocumentPreviewSummary(documentData) {
+    const profile = documentData && typeof documentData === "object" ? documentData.profile || {} : {};
+    const identity = documentData && typeof documentData === "object" ? documentData.identity : null;
+    return {
+      schema: "crypta.profile.v1",
+      displayName: boundedText(profile.displayName || "", maxDisplayTextLength),
+      hasBio: Boolean(profile.bio),
+      hasWebsite: Boolean(profile.website),
+      hasAvatar: Boolean(profile.avatarUri),
+      hasContact: Boolean(profile.contactUri),
+      tagCount: Array.isArray(profile.tags) ? profile.tags.length : 0,
+      identitySummary: summarizeIdentityForPreview(identity),
+      signature: documentData && documentData.signature ? "present" : "not present",
+      redaction: "profile summary only; raw signature and vault identity material omitted",
+    };
+  }
+
+  function summarizeIdentityForPreview(identity) {
+    if (!identity || typeof identity !== "object") {
+      return "not selected";
+    }
+    const identifier = identityId(identity);
+    if (!identifier) {
+      return "selected";
+    }
+    return `${identifier.slice(0, 12)}...`;
   }
 
   function renderPublishResult(data) {
@@ -990,6 +1018,28 @@
 
   function unsafePublishUriPattern() {
     return /[\s\\\u0000-\u001f\u007f]/;
+  }
+
+  function safeErrorMessage(error) {
+    const fallback = "Profile request failed. Retry the grant or publish action, then use Operator RC Recovery if needed.";
+    let message = "";
+    try {
+      message =
+        CryptaPlatform.api && typeof CryptaPlatform.api.errorMessage === "function"
+          ? CryptaPlatform.api.errorMessage(error)
+          : error && error.message;
+    } catch (_) {
+      message = "";
+    }
+    message = stringValue(message).replace(/\s+/g, " ").trim();
+    if (!message || sensitiveDiagnosticPattern().test(message)) {
+      return fallback;
+    }
+    return boundedText(message, maxDisplayTextLength);
+  }
+
+  function sensitiveDiagnosticPattern() {
+    return /(crypta:(?:ssk|usk)@|(?:ssk|usk)@|authorization|bearer|token|private key|identity material|browser session|form password|raw (?:content|message|app data)|signatureBase64|publicKeyBase64|[A-Za-z]:\\|\/(?:home|Users|work|tmp|var)\/)/i;
   }
 
   function setStatus(message, tone) {

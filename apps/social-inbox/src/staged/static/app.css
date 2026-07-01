@@ -231,6 +231,26 @@
   padding: var(--cr-space-3);
 }
 
+.beta-readiness-panel {
+  display: grid;
+  gap: var(--cr-space-3);
+}
+
+.beta-readiness-panel h2 {
+  margin: 0;
+}
+
+.beta-readiness-list {
+  display: grid;
+  gap: var(--cr-space-2);
+  margin: 0;
+  padding-left: 1.2rem;
+}
+
+.beta-readiness-list li {
+  overflow-wrap: anywhere;
+}
+
 @media (max-width: 1000px) {
   .identity-grid,
   .compose-publish-grid,

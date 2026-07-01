@@ -6,6 +6,10 @@ This page records conservative limits and safety boundaries for the Crypta app e
 
 - This is an app ecosystem beta, not a public production app store.
 - First-party beta catalog support does not imply automatic app installation.
+- First-party beta readiness means the staged first-party app has empty/error/retry/recovery UI,
+  permission rationale, support metadata, app-data status, accessibility markers, and
+  `redacted-summary-only` diagnostics. It does not make Local RC apps globally authoritative or
+  turn stateless apps into durable app-data apps.
 - Recommended catalog metadata is an onboarding hint, not ranking, endorsement, or trust by itself.
 - Developer tooling supports offline and dry-run publication planning. Explicit live USK
   publication depends on existing content and queue mechanisms plus the operator's localhost node

@@ -31,7 +31,7 @@
       initializeForm(elements.fileForm);
       await refreshUploadQueue({ silent: true });
     } catch (error) {
-      setStatus(CryptaPlatform.api.errorMessage(error), "error");
+      setStatus(safeErrorMessage(error), "error");
     }
   }
 
@@ -73,7 +73,7 @@
       initializeForm(form);
       await refreshUploadQueue({ silent: true });
     } catch (error) {
-      setStatus(CryptaPlatform.api.errorMessage(error), "error");
+      setStatus(safeErrorMessage(error), "error");
     }
   }
 
@@ -124,7 +124,7 @@
       }
     } catch (error) {
       if (!refreshOptions.silent) {
-        setStatus(CryptaPlatform.api.errorMessage(error), "error");
+        setStatus(safeErrorMessage(error), "error");
       } else {
         renderQueue("");
       }
@@ -290,6 +290,28 @@
 
   function stringValue(value) {
     return value == null ? "" : String(value);
+  }
+
+  function safeErrorMessage(error) {
+    const fallback = "Site publish request failed. Retry validation or use Operator RC Recovery.";
+    let message = "";
+    try {
+      message =
+        CryptaPlatform.api && typeof CryptaPlatform.api.errorMessage === "function"
+          ? CryptaPlatform.api.errorMessage(error)
+          : error && error.message;
+    } catch (_) {
+      message = "";
+    }
+    message = String(message || "").replace(/\s+/g, " ").trim();
+    if (!message || sensitiveDiagnosticPattern().test(message)) {
+      return fallback;
+    }
+    return message.slice(0, 240);
+  }
+
+  function sensitiveDiagnosticPattern() {
+    return /(crypta:(?:ssk|usk)@|(?:ssk|usk)@|authorization|bearer|token|private key|identity material|browser session|form password|raw (?:content|message|app data)|[A-Za-z]:\\|\/(?:home|Users|work|tmp|var)\/)/i;
   }
 
   function setStatus(message, tone) {

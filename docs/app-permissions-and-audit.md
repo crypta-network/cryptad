@@ -160,6 +160,13 @@ Capability descriptors, endpoint descriptors, and stability levels are described
 [platform-api-contract.md](platform-api-contract.md). `app.permissions` remains the authoritative
 grant request; manifest `api.*` compatibility metadata is advisory verifier and review input.
 
+First-party apps that declare `app.beta.readiness=ready` must also declare
+`permissions.rationale.<permission>` for every requested permission and show a visible
+permission-rationale disclosure in the static UI. `first-party-app.beta-quality-pass` verifies that
+the manifest rationale and UI disclosure exist before production beta. Rationale text is
+operator-facing explanation, not extra authority, and it must not include private insert URIs,
+tokens, vault private identity material, raw app-data values, raw fetched content, or local paths.
+
 The app secret and identity vault has additional lifecycle and redaction rules because it handles
 local secret values and identity private material. See
 [app-secret-and-identity-vault.md](app-secret-and-identity-vault.md) for app-owned versus shared

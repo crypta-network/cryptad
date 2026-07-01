@@ -53,6 +53,13 @@
           "summary": "Maintenance policy passed."
         },
         {
+          "id": "first-party-app.beta-quality-pass",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-app-platform",
+          "status": "pass",
+          "summary": "First-party beta-quality readiness passed."
+        },
+        {
           "id": "platform-api.contract",
           "requiredForReleaseCandidate": true,
           "source": "fixture-app-platform",

@@ -100,3 +100,24 @@ See [docs/app-distribution.md](../../docs/app-distribution.md) for signing input
 first-party app workflow, [docs/app-ui-design-system.md](../../docs/app-ui-design-system.md) for
 static UI rules, and [docs/app-secret-and-identity-vault.md](../../docs/app-secret-and-identity-vault.md)
 for app-vault identity boundaries.
+
+## Beta readiness
+
+- Current beta support level: `maintained`, owned by `crypta-core`, with
+  `app.beta.readiness=ready`.
+- Empty/error/retry states: the staged UI shows an empty profile draft/identity grant state,
+  bounded vault grant and publish failure states, and retry/re-request-grant actions.
+- App-data backup/export/import status: supported for bounded `profile-draft` records such as
+  draft fields, selected identity id, last published URI summary, and publish-history summaries.
+  Backup/export does not export AppVault secrets.
+- Migration dry-run status: `not-applicable` for schema 1 profile draft state.
+- Permission rationale summary: AppVault identity, generated app-document insert, queue, and
+  app-data permissions each have manifest rationale and visible disclosure.
+- Support/recovery path: the recovery action points operators to grant refresh, publish retry,
+  app-data export/import, and RC recovery support guidance.
+- Diagnostic redaction promise: diagnostics are `redacted-summary-only` and do not expose identity
+  material, private keys, signed profile bodies, private insert URIs, tokens, raw app-data values,
+  or local paths.
+- Known limitations: restoring app data rehydrates drafts and summaries only; identity signing
+  authority still depends on the target node's AppVault state and vault private identity material
+  remains non-exportable.
