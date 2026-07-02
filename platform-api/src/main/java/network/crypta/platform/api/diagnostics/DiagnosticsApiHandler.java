@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.regex.Pattern;
 import network.crypta.platform.api.operator.OperatorSupportRedactor;
 import network.crypta.runtime.spi.DiagnosticPort;
@@ -35,17 +36,15 @@ import network.crypta.runtime.spi.LegacyAdminUsageSnapshot;
  */
 public final class DiagnosticsApiHandler {
   private static final HexFormat HEX = HexFormat.of();
-  private static final Pattern ERROR_WORD_PATTERN =
-      Pattern.compile("\\b(?:errors?|failed|failures?|exceptions?)\\b");
-  private static final Pattern NON_ZERO_ERROR_COUNT_PATTERN =
-      Pattern.compile(
-          "\\b(?:errors?|failed|failures?|exceptions?)(?:\\s+count)?\\b\\s*[:=]\\s*[1-9]\\d*\\b"
-              + "|\\b[1-9]\\d*\\s+(?:errors?|failed|failures?|exceptions?)\\b");
-  private static final Pattern ZERO_OR_NEGATED_ERROR_COUNT_PATTERN =
-      Pattern.compile(
-          "\\b(?:no|zero)\\s+(?:errors?|failed|failures?|exceptions?)\\b"
-              + "|\\b(?:errors?|failed|failures?|exceptions?)(?:\\s+count)?\\b\\s*[:=]\\s*0\\b"
-              + "|\\b0\\s+(?:errors?|failed|failures?|exceptions?)\\b");
+  private static final Pattern DIAGNOSTIC_TOKEN_SEPARATOR_PATTERN = Pattern.compile("[^a-z0-9]+");
+  private static final Set<String> ERROR_WORDS =
+      Set.of("error", "errors", "failed", "failure", "failures", "exception", "exceptions");
+
+  private enum CountSignal {
+    NONE,
+    ZERO,
+    NON_ZERO
+  }
 
   /** Detached runtime diagnostic-report port. */
   private final DiagnosticPort diagnosticPort;
@@ -234,12 +233,59 @@ public final class DiagnosticsApiHandler {
   }
 
   private static boolean hasErrorSignal(String line) {
-    if (NON_ZERO_ERROR_COUNT_PATTERN.matcher(line).find()) {
-      return true;
+    List<String> tokens = diagnosticTokens(line);
+    boolean hasUnqualifiedErrorWord = false;
+    for (int index = 0; index < tokens.size(); index++) {
+      if (!ERROR_WORDS.contains(tokens.get(index))) {
+        continue;
+      }
+      CountSignal countSignal = countSignal(tokens, index);
+      if (countSignal == CountSignal.NON_ZERO) {
+        return true;
+      }
+      if (countSignal != CountSignal.ZERO && !isNegatedErrorWord(tokens, index)) {
+        hasUnqualifiedErrorWord = true;
+      }
     }
-    String lineWithoutZeroSummaries =
-        ZERO_OR_NEGATED_ERROR_COUNT_PATTERN.matcher(line).replaceAll(" ");
-    return ERROR_WORD_PATTERN.matcher(lineWithoutZeroSummaries).find();
+    return hasUnqualifiedErrorWord;
+  }
+
+  private static List<String> diagnosticTokens(String line) {
+    return DIAGNOSTIC_TOKEN_SEPARATOR_PATTERN
+        .splitAsStream(line)
+        .filter(token -> !token.isBlank())
+        .toList();
+  }
+
+  private static boolean isNegatedErrorWord(List<String> tokens, int errorWordIndex) {
+    if (errorWordIndex == 0) {
+      return false;
+    }
+    String previous = tokens.get(errorWordIndex - 1);
+    return "no".equals(previous) || "zero".equals(previous);
+  }
+
+  private static CountSignal countSignal(List<String> tokens, int errorWordIndex) {
+    CountSignal previous = numericCountSignal(tokens, errorWordIndex - 1);
+    if (previous != CountSignal.NONE) {
+      return previous;
+    }
+    int nextIndex = errorWordIndex + 1;
+    if (nextIndex < tokens.size() && "count".equals(tokens.get(nextIndex))) {
+      nextIndex++;
+    }
+    return numericCountSignal(tokens, nextIndex);
+  }
+
+  private static CountSignal numericCountSignal(List<String> tokens, int index) {
+    if (index < 0 || index >= tokens.size()) {
+      return CountSignal.NONE;
+    }
+    try {
+      return Long.parseLong(tokens.get(index)) == 0L ? CountSignal.ZERO : CountSignal.NON_ZERO;
+    } catch (NumberFormatException _) {
+      return CountSignal.NONE;
+    }
   }
 
   private static long boundedWarningCount(List<String> lines) {

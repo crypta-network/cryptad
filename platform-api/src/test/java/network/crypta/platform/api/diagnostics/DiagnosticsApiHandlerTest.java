@@ -130,6 +130,23 @@ class DiagnosticsApiHandlerTest {
     assertEquals(0L, section.get("errorCount"));
   }
 
+  @Test
+  void supportSummary_whenNonZeroErrorSummaryLinesPresent_expectErrorSection() {
+    DiagnosticsApiHandler handler =
+        new DiagnosticsApiHandler(
+            () ->
+                new DiagnosticReportSnapshot(
+                    List.of(
+                        new DiagnosticSectionSnapshot(
+                            "Health:", List.of("Errors: 2", "1 failure", "Exception count: 3")))));
+
+    Map<String, Object> response = handler.supportSummary();
+
+    Map<String, Object> section = firstSection(response);
+    assertEquals("error", section.get("status"));
+    assertEquals(3L, section.get("errorCount"));
+  }
+
   private static Map<String, Object> sensitiveSupportSummaryResponse() {
     DiagnosticsApiHandler handler =
         new DiagnosticsApiHandler(
