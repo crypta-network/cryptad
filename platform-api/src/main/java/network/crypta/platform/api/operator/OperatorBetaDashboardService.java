@@ -54,6 +54,7 @@ public final class OperatorBetaDashboardService {
   private static final Pattern CONTENT_URI =
       Pattern.compile("(?i)^(?:crypta:)?(?:CHK|SSK|USK|KSK)@.*");
   private static final String ACTION_REQUIRED = "action_required";
+  private static final String ERROR_STATUS = "error";
   private static final String WARNING = "warning";
   private static final String UNAVAILABLE = "unavailable";
   private static final String HEALTHY = "healthy";
@@ -1008,7 +1009,7 @@ public final class OperatorBetaDashboardService {
     json.put(PENDING_UPDATE_COUNT_FIELD, pending);
     json.put(STAGED_UPDATE_COUNT_FIELD, staged);
     json.put("blockedUpdateCount", blocked);
-    json.put(LAST_ERROR_CODE_FIELD, firstNestedLastErrorCode(apps, UPDATE_FIELD));
+    json.put(LAST_ERROR_CODE_FIELD, firstUpdateLastErrorCode(apps));
     json.put(LAST_SAFE_STATUS_MESSAGE_FIELD, firstNestedWarning(apps, UPDATE_FIELD));
     json.put(SAFE_IDS_FIELD, safeIds(apps, APP_ID_FIELD));
     json.put(RECOVERY_ACTION_IDS_FIELD, recoveryActionIds(apps));
@@ -1063,7 +1064,7 @@ public final class OperatorBetaDashboardService {
   private static Map<String, Object> consentLifecycleSummary(List<Map<String, Object>> apps) {
     Map<String, Object> json = baseLifecycleSummary(CONSENT_FIELD, METADATA_ONLY_STATUS);
     json.put(BOUNDED_COUNT_FIELD, apps.size());
-    json.put("pendingOrRejectedCount", countNestedWarning(apps, CONSENT_FIELD));
+    json.put("pendingOrRejectedCount", countConsentWarnings(apps));
     json.put(LAST_SAFE_STATUS_MESSAGE_FIELD, "Consent details are summarized only when present.");
     json.put("rawConsentBodiesExcluded", true);
     json.put(DIGEST_FIELD, digestOrNull(PlatformApiJsonWriter.write(json)));
@@ -1167,9 +1168,8 @@ public final class OperatorBetaDashboardService {
 
   private static Map<String, Object> diagnosticsLifecycleSummary(Map<String, Object> diagnostics) {
     Map<String, Object> json =
-        baseLifecycleSummary(
-            DIAGNOSTICS_FIELD,
-            booleanValue(diagnostics.get(AVAILABLE_FIELD)) ? AVAILABLE_STATUS : UNAVAILABLE);
+        baseLifecycleSummary(DIAGNOSTICS_FIELD, diagnosticsLifecycleStatus(diagnostics));
+    List<Map<String, Object>> sections = listOfMaps(diagnostics.get(SECTIONS_FIELD));
     json.put(BOUNDED_COUNT_FIELD, longValue(diagnostics.get(SECTION_COUNT_FIELD)));
     json.put(
         LEGACY_FALLBACK_AVAILABLE_FIELD,
@@ -1178,9 +1178,42 @@ public final class OperatorBetaDashboardService {
         PLAIN_TEXT_EXPORT_AVAILABLE_FIELD,
         booleanValue(diagnostics.get(PLAIN_TEXT_EXPORT_AVAILABLE_FIELD)));
     json.put("rawDiagnosticBodiesExcluded", true);
-    json.put(SECTIONS_FIELD, diagnostics.getOrDefault(SECTIONS_FIELD, List.of()));
+    json.put("diagnosticErrorCount", diagnosticSectionErrorCount(sections));
+    json.put("diagnosticWarningCount", diagnosticSectionWarningCount(sections));
+    json.put(SECTIONS_FIELD, sections);
     json.put(DIGEST_FIELD, digestOrNull(PlatformApiJsonWriter.write(json)));
     return json;
+  }
+
+  private static String diagnosticsLifecycleStatus(Map<String, Object> diagnostics) {
+    if (!booleanValue(diagnostics.get(AVAILABLE_FIELD))) {
+      return UNAVAILABLE;
+    }
+    List<Map<String, Object>> sections = listOfMaps(diagnostics.get(SECTIONS_FIELD));
+    if (sections.stream().anyMatch(OperatorBetaDashboardService::hasDiagnosticError)) {
+      return ERROR_STATUS;
+    }
+    if (sections.stream().anyMatch(OperatorBetaDashboardService::hasDiagnosticWarning)) {
+      return WARNING;
+    }
+    return AVAILABLE_STATUS;
+  }
+
+  private static long diagnosticSectionErrorCount(List<Map<String, Object>> sections) {
+    return sections.stream().filter(OperatorBetaDashboardService::hasDiagnosticError).count();
+  }
+
+  private static long diagnosticSectionWarningCount(List<Map<String, Object>> sections) {
+    return sections.stream().filter(OperatorBetaDashboardService::hasDiagnosticWarning).count();
+  }
+
+  private static boolean hasDiagnosticError(Map<String, Object> section) {
+    return ERROR_STATUS.equals(section.get(STATUS_FIELD))
+        || longValue(section.get("errorCount")) > 0L;
+  }
+
+  private static boolean hasDiagnosticWarning(Map<String, Object> section) {
+    return WARNING.equals(section.get(STATUS_FIELD)) || longValue(section.get("warningCount")) > 0L;
   }
 
   private static Map<String, Object> legacyFallbackLifecycleSummary(
@@ -1420,10 +1453,9 @@ public final class OperatorBetaDashboardService {
         .orElse(null);
   }
 
-  private static String firstNestedLastErrorCode(
-      List<Map<String, Object>> items, String nestedField) {
+  private static String firstUpdateLastErrorCode(List<Map<String, Object>> items) {
     return items.stream()
-        .map(item -> stringValue(mapValue(item.get(nestedField)).get(LAST_ERROR_CODE_FIELD)))
+        .map(item -> stringValue(mapValue(item.get(UPDATE_FIELD)).get(LAST_ERROR_CODE_FIELD)))
         .filter(Objects::nonNull)
         .findFirst()
         .orElse(null);
@@ -1433,11 +1465,10 @@ public final class OperatorBetaDashboardService {
     return items.stream().filter(item -> booleanValue(item.get(AVAILABLE_FIELD))).count();
   }
 
-  private static long countNestedWarning(List<Map<String, Object>> apps, String fieldFragment) {
-    String normalized = fieldFragment.toLowerCase(Locale.ROOT);
+  private static long countConsentWarnings(List<Map<String, Object>> apps) {
     return apps.stream()
         .flatMap(app -> stringList(app.get(WARNINGS_FIELD)).stream())
-        .filter(warning -> warning.toLowerCase(Locale.ROOT).contains(normalized))
+        .filter(warning -> warning.toLowerCase(Locale.ROOT).contains(CONSENT_FIELD))
         .count();
   }
 

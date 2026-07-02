@@ -38,6 +38,7 @@ class OperatorBetaDashboardServiceTest {
       "App " + APP_ID + " update state is unavailable.";
   private static final String APPLY_APP_UPDATE_ACTION = "apply-app-update";
   private static final String AVAILABLE = "available";
+  private static final String ERROR = "error";
   private static final String MANUAL_SOURCE_KIND = "manual";
   private static final String QUOTA_FIELD = "quota";
   private static final String ROLLBACK_APP_ACTION = "rollback-app";
@@ -425,6 +426,28 @@ class OperatorBetaDashboardServiceTest {
     assertEquals(List.of(APP_ID), migrations.get("safeIds"));
   }
 
+  @Test
+  void supportBundle_whenDiagnosticSectionReportsError_expectDiagnosticsLifecycleError() {
+    Map<String, Object> bundle =
+        serviceWithDiagnosticLines(List.of("Errors: 2", "Warnings: 0")).supportBundle();
+
+    Map<String, Object> diagnostics = mapValue(mapValue(bundle.get("sections")).get("diagnostics"));
+    assertEquals(ERROR, diagnostics.get("status"));
+    assertEquals(1L, diagnostics.get("diagnosticErrorCount"));
+    assertEquals(0L, diagnostics.get("diagnosticWarningCount"));
+  }
+
+  @Test
+  void supportBundle_whenDiagnosticSectionReportsWarning_expectDiagnosticsLifecycleWarning() {
+    Map<String, Object> bundle =
+        serviceWithDiagnosticLines(List.of("Errors: 0", "Warnings: 1")).supportBundle();
+
+    Map<String, Object> diagnostics = mapValue(mapValue(bundle.get("sections")).get("diagnostics"));
+    assertEquals(WARNING, diagnostics.get("status"));
+    assertEquals(0L, diagnostics.get("diagnosticErrorCount"));
+    assertEquals(1L, diagnostics.get("diagnosticWarningCount"));
+  }
+
   private static OperatorBetaDashboardService service(
       AppsApiHandler appsApiHandler, AppUpdateService appUpdateService) {
     return service(appsApiHandler, null, appUpdateService);
@@ -520,6 +543,24 @@ class OperatorBetaDashboardServiceTest {
             availableAppDataService(),
             availableTrustGraphApiHandler(),
             appServiceCoordinator),
+        CLOCK);
+  }
+
+  private static OperatorBetaDashboardService serviceWithDiagnosticLines(List<String> lines) {
+    DiagnosticsApiHandler diagnosticsApiHandler =
+        new DiagnosticsApiHandler(
+            () ->
+                new DiagnosticReportSnapshot(
+                    List.of(new DiagnosticSectionSnapshot("Health:", lines))),
+            () -> new LegacyAdminUsageSnapshot(List.of()));
+    return new OperatorBetaDashboardService(
+        new OperatorBetaDashboardService.HandlerSources(
+            emptyAppsHandler(), emptyCatalogsApiHandler(), null, diagnosticsApiHandler),
+        new OperatorBetaDashboardService.AppStateSources(
+            emptyContentSubscriptionService(),
+            availableAppDataService(),
+            availableTrustGraphApiHandler(),
+            emptyAppServiceCoordinator()),
         CLOCK);
   }
 
