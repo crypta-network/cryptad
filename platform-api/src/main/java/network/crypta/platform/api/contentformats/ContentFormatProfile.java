@@ -8,19 +8,27 @@ import java.util.Objects;
  * <p>A profile descriptor names the canonical document identifier, MIME type, filename, status,
  * size limits, signing domain, canonicalization behavior, and version policy used by first-party
  * apps and release certification. It is metadata only; parser-specific validation stays with the
- * route or app that owns the document body.
+ * route or app that owns the document body. Callers should treat instances as read-only registry
+ * values and pass them around instead of duplicating string constants in routes, staged apps, or
+ * release evidence probes.
+ *
+ * <p>The descriptor enforces the cross-field invariants that matter before a document body is
+ * parsed: signed profiles must declare a signing domain and signed-payload limit, unsigned profiles
+ * must not, and every profile must define a positive document-size limit. It is safe to share
+ * across threads because records are immutable and the contained policy objects are immutable as
+ * well.
  *
  * @param id canonical type or schema identifier, such as {@code crypta.profile.v1}
- * @param majorVersion major version number extracted from the profile id
+ * @param majorVersion positive major version number extracted from the profile id
  * @param contentType MIME type used for app-generated inserts or fetched documents
  * @param defaultFilename default target filename, or {@code null} when the profile has none
- * @param status app ecosystem profile lifecycle status
+ * @param status app ecosystem profile lifecycle status used by validation warnings
  * @param maxDocumentBytes maximum accepted full document size in UTF-8 bytes
  * @param maxSignedPayloadBytes maximum signed payload size, or {@code null} for unsigned profiles
- * @param signed whether the profile has a fixed signing contract
+ * @param signed whether the profile has a fixed signing and verification contract
  * @param signingDomain fixed signing domain or purpose, or {@code null} for unsigned profiles
  * @param canonicalizationKind short label for the canonical byte contract
- * @param versionPolicy conservative version/deprecation behavior for the profile
+ * @param versionPolicy conservative version and deprecation behavior for the profile
  * @param replacementProfileId replacement profile id when deprecated, or {@code null}
  */
 public record ContentFormatProfile(
@@ -36,7 +44,14 @@ public record ContentFormatProfile(
     String canonicalizationKind,
     ContentFormatVersionPolicy versionPolicy,
     String replacementProfileId) {
-  /** Creates one validated immutable profile descriptor. */
+  /**
+   * Creates one validated immutable profile descriptor.
+   *
+   * <p>The compact constructor normalizes nullable text fields by trimming blanks to {@code null}
+   * and rejects inconsistent signing metadata before a descriptor can enter the registry. These
+   * checks keep route validation and release evidence simple because every registered profile has
+   * already passed the same invariant checks.
+   */
   public ContentFormatProfile {
     id = requireText("id", id);
     if (majorVersion <= 0) {
@@ -71,11 +86,13 @@ public record ContentFormatProfile(
    * Validates basic metadata for a document claimed to match this profile.
    *
    * <p>This method intentionally checks only redaction-safe metadata: claimed type, byte count, and
-   * profile lifecycle status. It does not parse or retain raw document content.
+   * profile lifecycle status. It does not parse or retain raw document content, inspect signatures,
+   * or canonicalize payloads. Route-specific parsers should call this before deeper validation and
+   * then enforce their own required fields, unknown-field policy, and signed-byte checks.
    *
-   * @param claimedId type or schema read by a caller-specific parser
-   * @param documentBytes UTF-8 byte count of the document
-   * @return accepted, warning, or rejected profile validation result
+   * @param claimedId type or schema read by a caller-specific parser from redaction-safe metadata
+   * @param documentBytes UTF-8 byte count of the document before body retention or logging
+   * @return accepted, warning, or rejected profile validation result with safe diagnostic text
    */
   public ContentFormatValidationResult validateMetadata(String claimedId, long documentBytes) {
     if (documentBytes > maxDocumentBytes) {
