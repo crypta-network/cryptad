@@ -2,6 +2,8 @@
   "use strict";
 
   const appId = "feed-reader";
+  const feedSnapshotFormat = CryptaPlatform.contentFormats.feedSnapshot;
+  const rawFeedFetchMaxBytes = 262144;
   const maxSources = 12;
   const maxEntriesPerSnapshot = 20;
   const maxRememberedSnapshots = 12;
@@ -149,7 +151,7 @@
     }
     const request = {
       uri: fetchUri,
-      maxBytes: 262144,
+      maxBytes: rawFeedFetchMaxBytes,
       timeoutMillis: 30000,
       purpose: options.follow && isUskUri(source.uri) ? "feed-subscription" : "feed-preview",
     };
@@ -216,7 +218,7 @@
         uri: source.uri,
         label: source.label,
         pollIntervalSeconds: subscriptionPollIntervalSeconds,
-        maxBytes: 262144,
+        maxBytes: rawFeedFetchMaxBytes,
         timeoutMillis: 30000,
       });
       const subscription = subscriptionFromResponse(response);
@@ -405,8 +407,8 @@
         insertUri: fieldValue(elements.publisherForm, "insertUri"),
         identifier: fieldValue(elements.publisherForm, "identifier") || generatedId("feed-publish"),
         snapshot,
-        contentType: "application/vnd.crypta.feed+json",
-        targetFilename: "feed.json",
+        contentType: feedSnapshotFormat.contentType,
+        targetFilename: feedSnapshotFormat.defaultFilename,
       });
       rememberPublishResult(result);
       elements.publisherForm.reset();
@@ -939,7 +941,7 @@
     return {
       response,
       snapshot: {
-        type: "crypta.feed.snapshot.v1",
+        type: feedSnapshotFormat.type,
         title: source.label,
         updatedAt: new Date().toISOString(),
         source: {
@@ -961,10 +963,28 @@
     ) {
       return null;
     }
+    const profileType = feedSnapshotProfileType(sourceText);
     try {
       return CryptaPlatform.feed.parseSnapshot(sourceText);
     } catch (error) {
+      if (
+        profileType === feedSnapshotFormat.type ||
+        profileType.startsWith("crypta.feed.snapshot.")
+      ) {
+        throw error;
+      }
       return null;
+    }
+  }
+
+  function feedSnapshotProfileType(textValue) {
+    try {
+      const parsed = JSON.parse(textValue);
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+        ? stringValue(parsed.type)
+        : "";
+    } catch (error) {
+      return "";
     }
   }
 
@@ -1101,7 +1121,7 @@
     const source = selectedSource();
     const snapshot = selectedSnapshot();
     return {
-      type: "crypta.feed.snapshot.v1",
+      type: feedSnapshotFormat.type,
       title:
         boundedText(fieldValue(form, "feedTitle"), maxFeedTitleLength) ||
         (source ? source.label : "Feed snapshot"),

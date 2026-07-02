@@ -13,13 +13,92 @@
     "script, style, template, iframe, frame, frameset, object, embed, link, meta, base";
   const urlAttributeNames = new Set(["href", "src", "action", "formaction"]);
   const appIdPattern = /^[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?$/;
-  const feedSnapshotType = "crypta.feed.snapshot.v1";
-  const feedSnapshotContentType = "application/vnd.crypta.feed+json";
-  const feedSnapshotTargetFilename = "feed.json";
+  const contentFormats = Object.freeze({
+    profileDocument: Object.freeze({
+      id: "crypta.profile.v1",
+      schema: "crypta.profile.v1",
+      majorVersion: 1,
+      status: "experimental",
+      contentType: "application/vnd.crypta.profile+json",
+      defaultFilename: "profile.json",
+      maxDocumentBytes: 65536,
+      maxSignedPayloadBytes: 32768,
+      signed: true,
+      signingDomain: "profile.publish.v1",
+      signingPurpose: "profile.publish.v1",
+      canonicalization: "profile_payload_json",
+      unknownFieldPolicy: "reject_unknown_fields",
+      futureVersionPolicy: "reject_unknown_major_accept_known_minor_only",
+      deprecationPolicy: "explicit_warning_or_reject",
+    }),
+    feedSnapshot: Object.freeze({
+      id: "crypta.feed.snapshot.v1",
+      type: "crypta.feed.snapshot.v1",
+      majorVersion: 1,
+      status: "stable",
+      contentType: "application/vnd.crypta.feed+json",
+      defaultFilename: "feed.json",
+      maxDocumentBytes: 65536,
+      signed: false,
+      canonicalization: "deterministic_snapshot_json",
+      unknownFieldPolicy: "reject_unknown_fields",
+      futureVersionPolicy: "reject_unknown_major_accept_known_minor_only",
+      deprecationPolicy: "explicit_warning_or_reject",
+    }),
+    trustStatement: Object.freeze({
+      id: "crypta.trust.statement.v1",
+      type: "crypta.trust.statement.v1",
+      majorVersion: 1,
+      status: "experimental",
+      contentType: "application/vnd.crypta.trust+json",
+      defaultFilename: "trust.json",
+      maxDocumentBytes: 65536,
+      maxSignedPayloadBytes: 32768,
+      signed: true,
+      signingDomain: "crypta.trust.statement.v1",
+      canonicalization: "domain_separator_newline_canonical_payload_json",
+      unknownFieldPolicy: "reject_unknown_fields",
+      futureVersionPolicy: "reject_unknown_major_accept_known_minor_only",
+      deprecationPolicy: "explicit_warning_or_reject",
+    }),
+    socialMessage: Object.freeze({
+      id: "crypta.social.message.v1",
+      type: "crypta.social.message.v1",
+      majorVersion: 1,
+      status: "experimental",
+      contentType: "application/json",
+      maxDocumentBytes: 65536,
+      maxSignedPayloadBytes: 32768,
+      signed: true,
+      signingDomain: "crypta.social.message.v1",
+      canonicalization: "domain_separator_newline_canonical_message_json",
+      unknownFieldPolicy: "reject_unknown_fields",
+      futureVersionPolicy: "reject_unknown_major_accept_known_minor_only",
+      deprecationPolicy: "explicit_warning_or_reject",
+    }),
+    socialOutbox: Object.freeze({
+      id: "crypta.social.outbox.v1",
+      type: "crypta.social.outbox.v1",
+      majorVersion: 1,
+      status: "experimental",
+      contentType: "application/vnd.crypta.social.outbox+json",
+      defaultFilename: "social-outbox.json",
+      maxDocumentBytes: 65536,
+      signed: false,
+      canonicalization: "deterministic_outbox_json_with_signed_message_entries",
+      unknownFieldPolicy: "reject_unknown_fields",
+      futureVersionPolicy: "reject_unknown_major_accept_known_minor_only",
+      deprecationPolicy: "explicit_warning_or_reject",
+    }),
+  });
+  const feedSnapshotType = contentFormats.feedSnapshot.type;
+  const feedSnapshotContentType = contentFormats.feedSnapshot.contentType;
+  const feedSnapshotTargetFilename = contentFormats.feedSnapshot.defaultFilename;
+  const feedSnapshotMaxDocumentBytes = contentFormats.feedSnapshot.maxDocumentBytes;
   const feedSnapshotMaxEntries = 100;
-  const trustStatementType = "crypta.trust.statement.v1";
-  const trustStatementContentType = "application/vnd.crypta.trust+json";
-  const trustStatementTargetFilename = "trust.json";
+  const trustStatementType = contentFormats.trustStatement.type;
+  const trustStatementContentType = contentFormats.trustStatement.contentType;
+  const trustStatementTargetFilename = contentFormats.trustStatement.defaultFilename;
 
   let currentBootstrap = null;
   let currentAppId = null;
@@ -945,7 +1024,15 @@
   });
 
   function parseFeedSnapshot(value) {
+    if (jsonDocumentByteLength(value, "Feed snapshot") > feedSnapshotMaxDocumentBytes) {
+      throw new Error("Feed snapshot document is too large.");
+    }
     const source = parseJsonObject(value, "Feed snapshot");
+    rejectUnexpectedFields(
+      source,
+      ["type", "source", "author", "title", "updatedAt", "items", "entries"],
+      "Feed snapshot"
+    );
     const type = trimmedString(source.type);
     if (type !== feedSnapshotType) {
       throw new Error(`Feed snapshot type must be ${feedSnapshotType}.`);
@@ -1640,10 +1727,10 @@
       options.identifier = `profile-${vaultPathSegment(source.identityId)}`;
     }
     if (!nonBlankString(options.targetFilename)) {
-      options.targetFilename = "profile.json";
+      options.targetFilename = contentFormats.profileDocument.defaultFilename;
     }
     if (!nonBlankString(options.contentType)) {
-      options.contentType = "application/vnd.crypta.profile+json";
+      options.contentType = contentFormats.profileDocument.contentType;
     }
     return options;
   }
@@ -1992,6 +2079,7 @@
 
   function normalizeFeedSource(source) {
     const value = source && typeof source === "object" && !Array.isArray(source) ? source : {};
+    rejectUnexpectedFields(value, ["uri", "resolvedUri"], "Feed snapshot source");
     const normalized = {};
     copyFeedStringField(value, normalized, "uri");
     copyFeedStringField(value, normalized, "resolvedUri");
@@ -2000,6 +2088,7 @@
 
   function normalizeFeedAuthor(author) {
     const value = author && typeof author === "object" && !Array.isArray(author) ? author : {};
+    rejectUnexpectedFields(value, ["name", "profileUri"], "Feed snapshot author");
     const normalized = {};
     copyFeedStringField(value, normalized, "name");
     copyFeedStringField(value, normalized, "profileUri");
@@ -2008,6 +2097,11 @@
 
   function normalizeFeedItem(item) {
     const source = parseJsonObject(item, "Feed item");
+    rejectUnexpectedFields(
+      source,
+      ["id", "title", "summary", "uri", "publishedAt", "tags"],
+      "Feed item"
+    );
     const normalized = {};
     copyFeedStringField(source, normalized, "id");
     copyFeedStringField(source, normalized, "title");
@@ -2043,6 +2137,42 @@
     if (value) {
       target[name] = value;
     }
+  }
+
+  function rejectUnexpectedFields(object, allowedFields, description) {
+    const allowed = new Set(allowedFields);
+    for (const field of Object.keys(object)) {
+      if (!allowed.has(field)) {
+        throw new Error(`${description} field ${field} is not supported.`);
+      }
+    }
+  }
+
+  function jsonDocumentByteLength(value, description) {
+    if (typeof value === "string") {
+      return utf8ByteLength(value);
+    }
+    let json;
+    try {
+      json = JSON.stringify(value);
+    } catch (error) {
+      throw new Error(`${description} must be JSON-serializable.`);
+    }
+    if (typeof json !== "string") {
+      throw new Error(`${description} must be JSON-serializable.`);
+    }
+    return utf8ByteLength(json);
+  }
+
+  function utf8ByteLength(value) {
+    const text = typeof value === "string" ? value : String(value || "");
+    if (typeof TextEncoder !== "undefined") {
+      return new TextEncoder().encode(text).length;
+    }
+    if (typeof Blob !== "undefined") {
+      return new Blob([text]).size;
+    }
+    return text.length;
   }
 
   function trimmedString(value) {
@@ -2421,6 +2551,7 @@
     app: Object.freeze({
       currentId,
     }),
+    contentFormats,
     api: Object.freeze({
       url: apiUrl,
       get: apiGet,

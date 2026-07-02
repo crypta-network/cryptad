@@ -80,6 +80,22 @@ approve access by itself; Web Shell must approve the grant before score annotati
 grant is missing, pending, revoked, or inactive, the UI keeps messages visible and shows a neutral
 trust-score unavailable state.
 
+## Content format profiles
+
+Social Inbox uses `CryptaPlatform.contentFormats.profileDocument`,
+`CryptaPlatform.contentFormats.socialMessage`, and `CryptaPlatform.contentFormats.socialOutbox`.
+Social messages use `crypta.social.message.v1` and signed bytes consisting of the signing domain,
+one newline, and canonical message JSON. Outbox snapshots use `crypta.social.outbox.v1`,
+`application/vnd.crypta.social.outbox+json`, `social-outbox.json`, and bounded signed-message
+entries. Imports reject malformed documents, unsupported versions, deprecated versions according
+to profile policy, oversized documents, unsupported message formats, and
+signature/canonicalization mismatches without persisting raw fetched documents, raw message bodies,
+raw profile documents, raw signatures, private insert URIs, tokens, raw app-data values, or local
+paths.
+
+These content profiles are Crypta app ecosystem profiles. They are not compatibility promises for
+legacy WoT, Freetalk, Sone, Freemail, or any old plugin ABI/protocol.
+
 ## Durable State
 
 Social Inbox RC stores bounded app-owned records through the app data API:

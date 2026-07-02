@@ -80,6 +80,17 @@ The dashboard has a dedicated `first-party-app-beta-quality` domain for
 and diagnostics redaction findings in that evidence are non-waiverable. Copy or accessibility
 warnings may be displayed as risk, but they do not hide the domain from the go/no-go summary.
 
+The dashboard also has a dedicated `trust-social-content-format-risk` domain for
+`app-platform.trust-social-content-format-profiles`. Missing or failing content-format evidence is
+a blocker when it indicates registry, SDK, route, trust graph, canonical signing, parser, app UI,
+or docs drift. Dashboard inputs and outputs may include profile ids, status, failed check names,
+digests, and redaction booleans, but they must not include raw fetched content, raw document
+bodies, raw social message bodies, raw trust statements, raw feed bodies, raw signatures, private
+insert URIs, private keys, tokens, browser sessions, raw app-data values, or absolute local paths.
+
+These content profiles are Crypta app ecosystem profiles. They are not compatibility promises for
+legacy WoT, Freetalk, Sone, Freemail, or any old plugin ABI/protocol.
+
 ## Decision states
 
 `go` means all required production beta gates pass, the production summary is promotion-ready,

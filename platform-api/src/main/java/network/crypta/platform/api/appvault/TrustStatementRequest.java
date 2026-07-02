@@ -8,7 +8,7 @@ import java.util.Map;
 import java.util.Set;
 import network.crypta.platform.api.PlatformApiException;
 import network.crypta.platform.api.PlatformApiParameters;
-import network.crypta.platform.trustgraph.TrustDocumentTypes;
+import network.crypta.platform.api.contentformats.ContentFormatProfileRegistry;
 import network.crypta.platform.trustgraph.TrustIssuer;
 import network.crypta.platform.trustgraph.TrustStatementCanonicalizer;
 import network.crypta.platform.trustgraph.TrustStatementPayload;
@@ -35,7 +35,7 @@ import network.crypta.platform.trustgraph.TrustSubjectKind;
  */
 record TrustStatementRequest(String appId, String identityId, TrustStatementPayload payload) {
   /** Fixed signing purpose and document domain used for Trust Graph Preview statements. */
-  static final String SIGNING_PURPOSE = TrustDocumentTypes.TRUST_STATEMENT_V1;
+  static final String SIGNING_PURPOSE = ContentFormatProfileRegistry.TRUST_STATEMENT_ID;
 
   private static final String PARAM_CONFIDENCE = "confidence";
   private static final String PARAM_CONTEXT = "context";
@@ -47,7 +47,8 @@ record TrustStatementRequest(String appId, String identityId, TrustStatementPayl
   private static final String PARAM_SUBJECT_KIND = "subjectKind";
   private static final String PARAM_SUBJECT_URI = "subjectUri";
   private static final String PARAM_TAGS = "tags";
-  private static final int MAX_UNSIGNED_PAYLOAD_BYTES = 32 * 1024;
+  private static final int MAX_UNSIGNED_PAYLOAD_BYTES =
+      ContentFormatProfileRegistry.DEFAULT_SIGNED_PAYLOAD_MAX_BYTES;
   private static final Set<String> SUPPORTED_PARAMETERS =
       Set.of(
           PARAM_CONFIDENCE,

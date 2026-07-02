@@ -80,6 +80,17 @@ First-party beta readiness is required evidence in strict modes. The pipeline co
 readiness metadata blocks promotion, and any redaction finding from first-party app diagnostics is
 non-waiverable.
 
+Production beta also requires `app-platform.trust-social-content-format-profiles` evidence. The
+pipeline treats missing or failing content-profile evidence as content-format risk and blocks
+promotion when registry, SDK, route, trust graph, canonical signing, parser, app UI, or docs
+checks drift. The production summary records the content-format risk status, failed check names,
+profile ids, and redaction booleans only. It does not include raw fetched content, raw profile
+documents, raw trust statements, raw social message bodies, raw feed bodies, raw signatures,
+private insert URIs, private keys, tokens, browser sessions, raw app-data values, or local paths.
+
+These content profiles are Crypta app ecosystem profiles. They are not compatibility promises for
+legacy WoT, Freetalk, Sone, Freemail, or any old plugin ABI/protocol.
+
 Production beta supports three explicit test/emergency escape hatches:
 
 - `--emergency-skip-live-network` records that live-network evidence was skipped. The run still

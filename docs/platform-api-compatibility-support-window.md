@@ -25,6 +25,17 @@ The URL namespace remains `/api/v1`. The integer contract version may advance as
 experimental APIs, or future baseline candidates are added. That does not change the Platform API
 1.0 stable baseline.
 
+Content profiles such as `crypta.profile.v1`, `crypta.feed.snapshot.v1`,
+`crypta.trust.statement.v1`, `crypta.social.message.v1`, and `crypta.social.outbox.v1` are
+Crypta app ecosystem document profiles, not Platform API 1.0 stable baseline route guarantees.
+They are versioned and release-certified in
+[trust-social-content-format-profiles.md](trust-social-content-format-profiles.md), but their
+profile status does not add app-facing endpoint or capability membership to the 1.0 stable
+baseline.
+
+These content profiles are Crypta app ecosystem profiles. They are not compatibility promises for
+legacy WoT, Freetalk, Sone, Freemail, or any old plugin ABI/protocol.
+
 The stable promise explicitly excludes experimental, operator-only, internal, app-vault,
 identity-vault, app-service, Trust Graph Local RC, Web Shell-only, legacy plugin, and FProxy browse
 surfaces unless a descriptor is already a Platform API 1.0 stable baseline member. Stable-target

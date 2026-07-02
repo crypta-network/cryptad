@@ -30,6 +30,15 @@ These checks are first-party release readiness checks. They do not replace the t
 submission queue, reviewer assignment, caution/rejected states, or third-party developer beta
 program requirements.
 
+Content-format profile checks are separate PR-276 evidence. Apps that publish, fetch, or import
+profile, feed, trust, social message, or social outbox documents should display concise
+format-profile metadata from `CryptaPlatform.contentFormats`, but the detailed profile table,
+canonicalization rules, version policy, and release evidence live in
+[trust-social-content-format-profiles.md](trust-social-content-format-profiles.md).
+
+These content profiles are Crypta app ecosystem profiles. They are not compatibility promises for
+legacy WoT, Freetalk, Sone, Freemail, or any old plugin ABI/protocol.
+
 ## App coverage
 
 | App | Beta support level | App-data and backup status | Migration dry-run | Scope notes |

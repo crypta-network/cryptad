@@ -30,6 +30,9 @@ RC threading, network-scale soak, operator RC recovery, and the
 [ecosystem-rc-certification-gate.md](ecosystem-rc-certification-gate.md), and Trust Graph remains
 limited to the local RC trust-service scope described here.
 
+These content profiles are Crypta app ecosystem profiles. They are not compatibility promises for
+legacy WoT, Freetalk, Sone, Freemail, or any old plugin ABI/protocol.
+
 ## Components
 
 - `:platform-trustgraph` owns the bounded statement model, strict JSON parser, deterministic
@@ -81,6 +84,12 @@ not guaranteed to be readable by the previous UI bundle. This migration example 
 Trust Graph scope into global Web of Trust behavior.
 
 ## Trust statement format
+
+Trust statement documents use the `crypta.trust.statement.v1` content format profile,
+`application/vnd.crypta.trust+json`, and default filename `trust.json`. The shared content-format
+registry defines the identifier, content type, signing domain, byte bounds, unknown-field policy,
+and deprecation behavior; see
+[trust-social-content-format-profiles.md](trust-social-content-format-profiles.md).
 
 Trust statements are public JSON documents with this root type:
 

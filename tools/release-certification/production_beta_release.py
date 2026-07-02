@@ -167,6 +167,9 @@ FIRST_PARTY_BETA_READINESS_FILE = Path(
     "tools/release-certification/first-party-app-beta-readiness.json"
 )
 FIRST_PARTY_BETA_QUALITY_EVIDENCE_ID = "first-party-app.beta-quality-pass"
+TRUST_SOCIAL_CONTENT_FORMAT_PROFILES_EVIDENCE_ID = (
+    "app-platform.trust-social-content-format-profiles"
+)
 MAINTENANCE_REQUIRED_FIELDS = (
     "owner",
     "ownerUri",
@@ -318,6 +321,7 @@ CRITICAL_PRODUCTION_BETA_EVIDENCE_IDS = (
     "platform-api.stable-reference-docs",
     "app-ui.lint",
     "apphost.sandbox-provider",
+    TRUST_SOCIAL_CONTENT_FORMAT_PROFILES_EVIDENCE_ID,
     "app-update.data-migration-contract",
     "app-data.backup-restore-portability",
     "catalog.security-advisories",
@@ -1441,6 +1445,49 @@ def evidence_status(app_evidence: dict[str, dict[str, Any]], *evidence_ids: str)
     return "missing"
 
 
+def content_format_risk_summary(app_evidence: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    item = app_evidence.get(TRUST_SOCIAL_CONTENT_FORMAT_PROFILES_EVIDENCE_ID, {})
+    details = item.get("details") if isinstance(item.get("details"), dict) else {}
+    profiles_value = details.get("profiles")
+    if isinstance(profiles_value, dict):
+        profile_ids = sorted(str(profile_id) for profile_id in profiles_value)
+    elif isinstance(profiles_value, list):
+        profile_ids = sorted(str(profile_id) for profile_id in profiles_value)
+    else:
+        profile_ids = []
+    checks = details.get("checks") if isinstance(details.get("checks"), dict) else {}
+    redaction = details.get("redaction") if isinstance(details.get("redaction"), dict) else {}
+    status = evidence_status(app_evidence, TRUST_SOCIAL_CONTENT_FORMAT_PROFILES_EVIDENCE_ID)
+    failed_checks = [
+        str(name)
+        for name, passed in sorted(checks.items())
+        if passed is not True
+    ]
+    return {
+        "evidenceId": TRUST_SOCIAL_CONTENT_FORMAT_PROFILES_EVIDENCE_ID,
+        "status": status,
+        "severity": "info" if status == "pass" and not failed_checks else "blocker",
+        "profileIds": profile_ids,
+        "failedChecks": failed_checks,
+        "rawContentIncluded": False,
+        "rawSignaturesIncluded": False,
+        "rawAppDataIncluded": False,
+        "privateMaterialIncluded": False,
+        "redaction": {
+            "rawFetchedContentExcluded": redaction.get("rawFetchedContentExcluded") is True,
+            "rawSocialMessageBodiesExcluded": (
+                redaction.get("rawMessageBodiesExcluded") is True
+                or redaction.get("rawSocialMessageBodiesExcluded") is True
+            ),
+            "rawTrustStatementBodiesExcluded": (
+                redaction.get("rawTrustStatementsExcluded") is True
+                or redaction.get("rawTrustStatementBodiesExcluded") is True
+            ),
+            "rawSignaturesExcluded": redaction.get("rawSignaturesExcluded") is True,
+        },
+    }
+
+
 def previous_candidate_metadata_for_release(
     state: PipelineState,
     redaction_report: dict[str, Any],
@@ -1575,6 +1622,7 @@ def previous_candidate_metadata_for_release(
     social_schema = schemas.get("social-inbox", 1)
     trust_schema = schemas.get("trust-graph", 1)
     redaction_status = str(redaction_report.get("status", "missing")).strip().lower()
+    content_format_risk = content_format_risk_summary(app_evidence)
     return {
         "catalog": catalog,
         "platformApi": platform_api,
@@ -1624,6 +1672,7 @@ def previous_candidate_metadata_for_release(
             "status": redaction_status,
             "findings": [],
         },
+        "contentFormatProfiles": content_format_risk,
     }
 
 
@@ -3645,6 +3694,7 @@ def evaluate_promotion(state: PipelineState, summaries: dict[str, Any]) -> dict[
         "legacyAdminFinalSurface": legacy_admin_final_surface_summary(all_evidence),
         "securityResponse": production_security_response_summary(all_evidence),
         "developerBetaProgram": developer_beta_program_summary(all_evidence),
+        "contentFormatRisk": content_format_risk_summary(app_evidence),
         "thirdPartyIntake": {
             "status": summary_status(third_party_intake_summary),
             "required": settings.require_third_party_intake,
@@ -4204,6 +4254,26 @@ def render_markdown_summary(summary: dict[str, Any]) -> str:
         lines.append(f"- Status: `{third_party_intake.get('status', 'missing')}`")
         lines.append(f"- Redaction: `{third_party_intake.get('redaction', 'missing')}`")
         lines.append(f"- Non-release: `{str(third_party_intake.get('nonRelease', False)).lower()}`")
+    content_format_risk = summary.get("contentFormatRisk", {})
+    if isinstance(content_format_risk, dict) and content_format_risk:
+        lines.extend(["", "## Content-Format Risk", ""])
+        lines.append(f"- Evidence: `{content_format_risk.get('evidenceId', 'missing')}`")
+        lines.append(f"- Status: `{content_format_risk.get('status', 'missing')}`")
+        lines.append(f"- Severity: `{content_format_risk.get('severity', 'missing')}`")
+        profiles = content_format_risk.get("profileIds", [])
+        if isinstance(profiles, list):
+            lines.append(f"- Profiles: `{','.join(str(profile) for profile in profiles)}`")
+        failed_checks = content_format_risk.get("failedChecks", [])
+        if isinstance(failed_checks, list):
+            lines.append(f"- Failed checks: `{','.join(str(check) for check in failed_checks) or 'none'}`")
+        lines.append(
+            "- Raw content included: "
+            f"`{str(content_format_risk.get('rawContentIncluded', True)).lower()}`"
+        )
+        lines.append(
+            "- Raw signatures included: "
+            f"`{str(content_format_risk.get('rawSignaturesIncluded', True)).lower()}`"
+        )
     lines.extend(["", "## Failed Gates", ""])
     failed = [gate for gate in summary["promotion"]["gates"] if gate["status"] != "pass"]
     if not failed:
@@ -4375,6 +4445,10 @@ def build_final_summary(
     final_promotion = dict(promotion)
     final_promotion["promotionReady"] = summary_promotion_ready
     previous_candidate_metadata = previous_candidate_metadata_for_release(state, redaction_report)
+    content_format_risk = final_promotion.get(
+        "contentFormatRisk",
+        content_format_risk_summary({}),
+    )
     multi_node_compact = dict(final_promotion.get("multiNodeBetaSoak", {}))
     if not multi_node_compact:
         multi_node_compact = {
@@ -4423,6 +4497,7 @@ def build_final_summary(
             "thirdPartyIntake",
             {"status": "missing", "required": settings.require_third_party_intake},
         ),
+        "contentFormatRisk": content_format_risk,
         "promotion": final_promotion,
         "redaction": redaction_report,
         "previousCandidateMetadata": previous_candidate_metadata,

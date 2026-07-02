@@ -236,6 +236,10 @@ class ProfilePublisherBundleStagingTest {
         "Profile composition",
         "Signing preview",
         "App-document publish",
+        "Format profile",
+        "<code>crypta.profile.v1</code>",
+        "<code>application/vnd.crypta.profile+json</code>",
+        "<code>profile.publish.v1</code>",
         "Upload queue progress");
     verifyContainsNone(indexHtml, "vault.secrets", "vault.identities.manage");
   }
@@ -286,6 +290,7 @@ class ProfilePublisherBundleStagingTest {
     verifyContainsAll(
         appScript,
         "const appId = \"profile-publisher\";",
+        "const profileDocumentFormat = CryptaPlatform.contentFormats.profileDocument;",
         "CryptaPlatform.bootstrap.load({ appId })",
         "CryptaPlatform.vault.identities.list",
         "CryptaPlatform.vault.identities.create",
@@ -323,7 +328,11 @@ class ProfilePublisherBundleStagingTest {
         "identityId(documentData.identity) === selectedIdentityId()",
         "return elements.identitySelect.disabled ? \"\" : state.selectedIdentityId;",
         "document: documentData",
-        "application/vnd.crypta.profile+json",
+        "profileDocumentFormat.contentType",
+        "profileDocumentFormat.defaultFilename",
+        "schema: profileDocumentFormat.schema",
+        "profileVersion: profileDocumentFormat.majorVersion",
+        "signingDomain: profileDocumentFormat.signingDomain",
         "recentActions",
         "sortBy: state.uploadQueueSortBy",
         "reversed: state.uploadQueueReversed",

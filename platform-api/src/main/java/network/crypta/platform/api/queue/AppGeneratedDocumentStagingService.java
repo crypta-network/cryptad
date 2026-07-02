@@ -3,6 +3,7 @@ package network.crypta.platform.api.queue;
 import java.io.ByteArrayInputStream;
 import java.util.Objects;
 import network.crypta.platform.api.PlatformApiException;
+import network.crypta.platform.api.contentformats.ContentFormatProfileRegistry;
 import network.crypta.platform.apphost.InstalledAppPaths;
 import network.crypta.runtime.spi.QueueUploadedFile;
 
@@ -87,7 +88,10 @@ public final class AppGeneratedDocumentStagingService {
    * @throws PlatformApiException when the filename is too long or path-like
    */
   private static String sanitizeTargetFilename(String value) {
-    String filename = value == null || value.isBlank() ? "profile.json" : value.trim();
+    String filename =
+        value == null || value.isBlank()
+            ? ContentFormatProfileRegistry.PROFILE_DOCUMENT_DEFAULT_FILENAME
+            : value.trim();
     if (filename.length() > 128) {
       throw new PlatformApiException(
           400, "invalid_query_parameter", "Query parameter 'targetFilename' is too long.");

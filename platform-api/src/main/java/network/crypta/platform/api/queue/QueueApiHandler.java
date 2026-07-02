@@ -16,6 +16,7 @@ import java.util.Objects;
 import network.crypta.keys.FreenetURI;
 import network.crypta.platform.api.PlatformApiException;
 import network.crypta.platform.api.PlatformApiParameters;
+import network.crypta.platform.api.contentformats.ContentFormatProfileRegistry;
 import network.crypta.runtime.spi.QueueBrowserUploadInsertRequest;
 import network.crypta.runtime.spi.QueueCompletionPort;
 import network.crypta.runtime.spi.QueueDownloadPort;
@@ -79,10 +80,12 @@ public final class QueueApiHandler {
   private static final String PARAMETER_TARGET_FILENAME = "targetFilename";
   private static final short MINIMUM_PRIORITY_CLASS = 0;
   private static final short MAXIMUM_PRIORITY_CLASS = 6;
-  private static final int MAX_APP_DOCUMENT_BYTES = 64 * 1024;
+  private static final int MAX_APP_DOCUMENT_BYTES =
+      ContentFormatProfileRegistry.DEFAULT_APP_DOCUMENT_MAX_BYTES;
   private static final String DEFAULT_APP_DOCUMENT_CONTENT_TYPE =
-      "application/vnd.crypta.profile+json";
-  private static final String DEFAULT_APP_DOCUMENT_TARGET_FILENAME = "profile.json";
+      ContentFormatProfileRegistry.PROFILE_DOCUMENT_CONTENT_TYPE;
+  private static final String DEFAULT_APP_DOCUMENT_TARGET_FILENAME =
+      ContentFormatProfileRegistry.PROFILE_DOCUMENT_DEFAULT_FILENAME;
   private static final String OPERATION_APP_DOCUMENT_INSERT = "create_app_document_insert";
   private static final String OPERATION_LOCAL_DIRECTORY_INSERT = "create_local_directory_insert";
   private static final String OPERATION_LOCAL_FILE_INSERT = "create_local_file_insert";
@@ -129,7 +132,8 @@ public final class QueueApiHandler {
    *     document inserts
    * @param queueSupportPort detached queue support port used for backend availability checks
    * @param queueCompletionPort detached completion-tracker startup hook for rendered queue sides
-   * @throws NullPointerException if any required detached runtime port reference is {@code null}
+   * @throws NullPointerException if any required to be detached runtime port reference is {@code
+   *     null}
    */
   public QueueApiHandler(
       QueuePagePort queuePagePort,
@@ -159,7 +163,8 @@ public final class QueueApiHandler {
    * @param queueSupportPort detached queue support port used for backend availability checks
    * @param queueCompletionPort detached completion-tracker startup hook for rendered queue sides
    * @param appDocumentStagingService upload service for browser/app-generated document bytes
-   * @throws NullPointerException if any required detached runtime port reference is {@code null}
+   * @throws NullPointerException if any required to be detached runtime port reference is {@code
+   *     null}
    */
   public QueueApiHandler(
       QueuePagePort queuePagePort,

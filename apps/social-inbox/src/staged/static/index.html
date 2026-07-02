@@ -66,6 +66,16 @@
       </ul>
     </section>
 
+    <section class="cr-card format-profile-panel" aria-labelledby="format-profile-title">
+      <h2 id="format-profile-title">Format profiles</h2>
+      <dl class="summary-list">
+        <div><dt>Message type</dt><dd><code>crypta.social.message.v1</code></dd></div>
+        <div><dt>Outbox type</dt><dd><code>crypta.social.outbox.v1</code></dd></div>
+        <div><dt>Outbox content type</dt><dd><code>application/vnd.crypta.social.outbox+json</code></dd></div>
+        <div><dt>Import behavior</dt><dd>Unsupported, malformed, oversized, and signature-mismatched entries are rejected without storing raw bodies or signatures.</dd></div>
+      </dl>
+    </section>
+
     <section
       class="cr-card beta-readiness-panel"
       aria-labelledby="beta-readiness-title"

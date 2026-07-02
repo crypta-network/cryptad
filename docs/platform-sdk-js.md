@@ -280,7 +280,7 @@ const binary = await CryptaPlatform.content.fetchBase64({
 
 const fetched = await CryptaPlatform.feed.fetchSnapshot({
   uri: feedUri,
-  maxBytes: 262144,
+  maxBytes: CryptaPlatform.contentFormats.feedSnapshot.maxDocumentBytes,
   timeoutMillis: 30000,
 });
 
@@ -309,7 +309,10 @@ await CryptaPlatform.content.subscriptions.remove(subscriptionId);
 ```
 
 `CryptaPlatform.feed.fetchSnapshot` wraps `POST /api/v1/content/fetch`, requires
-`content.fetch`, and returns both the raw fetch response and the parsed snapshot.
+`content.fetch`, and returns both the raw fetch response and the parsed snapshot. The Feed Reader
+reference app uses `content.fetchText` with the broader 262144-byte route bound for raw RSS, Atom,
+and plain text sources, then applies the 65536-byte profile cap only when the fetched body declares
+a `crypta.feed.snapshot.*` profile type.
 `CryptaPlatform.content.fetchText` and `CryptaPlatform.content.fetchBase64` call the same route
 with the app browser session header and return the JSON fetch response. Feed apps should pass
 Crypta content keys only, including `CHK@`, `SSK@`, `USK@`, `KSK@`, and matching `crypta:` forms;

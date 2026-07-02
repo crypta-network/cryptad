@@ -31,6 +31,7 @@ class CryptaPlatformSdkResourceTest {
     assertTrue(script.contains("api:"));
     assertTrue(script.contains("queue:"));
     assertTrue(script.contains("content:"));
+    assertTrue(script.contains("contentFormats,"));
     assertTrue(script.contains("subscriptions: Object.freeze({"));
     assertTrue(script.contains("data:"));
     assertTrue(script.contains("records: Object.freeze({"));
@@ -137,10 +138,9 @@ class CryptaPlatformSdkResourceTest {
       throws IOException {
     String script = readSdkScript();
 
+    assertTrue(script.contains("const trustStatementContentType = contentFormats.trustStatement"));
     assertTrue(
-        script.contains(
-            "const trustStatementContentType = \"application/vnd.crypta.trust+json\";"));
-    assertTrue(script.contains("const trustStatementTargetFilename = \"trust.json\";"));
+        script.contains("const trustStatementTargetFilename = contentFormats.trustStatement"));
     assertTrue(script.contains("function trustStatus(options)"));
     assertTrue(script.contains("function listTrustAnchors(options)"));
     assertTrue(script.contains("function addTrustAnchor(request, options)"));
@@ -162,6 +162,44 @@ class CryptaPlatformSdkResourceTest {
     assertTrue(script.contains("\"trust-graph/import-uri\""));
     assertTrue(script.contains("\"trust-graph/audit\""));
     assertTrue(script.contains("/trust-statement`"));
+  }
+
+  @Test
+  void classpathResource_whenContentFormatsRequested_expectVersionedProfileMetadata()
+      throws Exception {
+    String script = readSdkScript();
+
+    assertTrue(script.contains("const contentFormats = Object.freeze({"));
+    assertTrue(script.contains("profileDocument: Object.freeze({"));
+    assertTrue(script.contains("feedSnapshot: Object.freeze({"));
+    assertTrue(script.contains("trustStatement: Object.freeze({"));
+    assertTrue(script.contains("socialMessage: Object.freeze({"));
+    assertTrue(script.contains("socialOutbox: Object.freeze({"));
+    assertTrue(script.contains("unknownFieldPolicy: \"reject_unknown_fields\""));
+
+    runSdkNode(
+        """
+        assert.equal(CryptaPlatform.contentFormats.profileDocument.schema, "crypta.profile.v1");
+        assert.equal(
+          CryptaPlatform.contentFormats.profileDocument.contentType,
+          "application/vnd.crypta.profile+json");
+        assert.equal(CryptaPlatform.contentFormats.profileDocument.signingDomain, "profile.publish.v1");
+        assert.equal(CryptaPlatform.contentFormats.feedSnapshot.type, "crypta.feed.snapshot.v1");
+        assert.equal(
+          CryptaPlatform.contentFormats.feedSnapshot.contentType,
+          "application/vnd.crypta.feed+json");
+        assert.equal(
+          CryptaPlatform.contentFormats.trustStatement.signingDomain,
+          "crypta.trust.statement.v1");
+        assert.equal(CryptaPlatform.contentFormats.socialMessage.type, "crypta.social.message.v1");
+        assert.equal(
+          CryptaPlatform.contentFormats.socialOutbox.defaultFilename,
+          "social-outbox.json");
+        assert.equal(CryptaPlatform.contentFormats.feedSnapshot.maxDocumentBytes, 65536);
+        assert.equal(CryptaPlatform.contentFormats.socialOutbox.maxDocumentBytes, 65536);
+        CryptaPlatform.contentFormats.feedSnapshot.type = "drift";
+        assert.equal(CryptaPlatform.contentFormats.feedSnapshot.type, "crypta.feed.snapshot.v1");
+        """);
   }
 
   @Test
@@ -650,7 +688,6 @@ class CryptaPlatformSdkResourceTest {
             title: " Hello ",
             summary: " <script>globalThis.executed = true;</script> ",
             uri: " CHK@entry ",
-            contentHtml: "<img src=x onerror=globalThis.executed=true>",
             tags: [" beta ", "alpha", "alpha", ""]
           }]
         }));
@@ -697,6 +734,30 @@ class CryptaPlatformSdkResourceTest {
             items: Array.from({ length: 101 }, () => ({}))
           })),
           /at most 100 items/);
+
+        assert.throws(
+          () => CryptaPlatform.feed.parseSnapshot(JSON.stringify({
+            type: "crypta.feed.snapshot.v1",
+            title: "Feed",
+            unsupported: "field",
+            items: []
+          })),
+          /Feed snapshot field unsupported is not supported/);
+
+        assert.throws(
+          () => CryptaPlatform.feed.parseSnapshot(JSON.stringify({
+            type: "crypta.feed.snapshot.v1",
+            items: [{ title: "Entry", contentHtml: "<b>unsafe</b>" }]
+          })),
+          /Feed item field contentHtml is not supported/);
+
+        assert.throws(
+          () => CryptaPlatform.feed.parseSnapshot(JSON.stringify({
+            type: "crypta.feed.snapshot.v1",
+            title: "x".repeat(70000),
+            items: []
+          })),
+          /Feed snapshot document is too large/);
         """);
   }
 
@@ -1543,8 +1604,8 @@ class CryptaPlatformSdkResourceTest {
       "const profileDocumentResponse = await createProfileDocument(",
       "function profilePublishInsertOptions(source, document)",
       "options.identifier = `profile-${vaultPathSegment(source.identityId)}`;",
-      "options.targetFilename = \"profile.json\";",
-      "application/vnd.crypta.profile+json",
+      "options.targetFilename = contentFormats.profileDocument.defaultFilename;",
+      "options.contentType = contentFormats.profileDocument.contentType;",
       "insertAppDocument(",
       "profile: Object.freeze({",
       "publish: publishProfile"

@@ -1,13 +1,14 @@
 package network.crypta.platform.api.appvault;
 
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import network.crypta.platform.api.PlatformApiException;
 import network.crypta.platform.api.PlatformApiParameters;
-import network.crypta.platform.api.json.PlatformApiJsonWriter;
+import network.crypta.platform.api.contentformats.CanonicalJson;
+import network.crypta.platform.api.contentformats.ContentFormatProfileRegistry;
 
 /**
  * Validated unsigned Crypta profile document payload supplied by one app.
@@ -43,15 +44,17 @@ record ProfileDocumentRequest(
     String avatarUri,
     String contactUri,
     List<String> tags) {
-  static final String SCHEMA = "crypta.profile.v1";
-  static final String SIGNING_PURPOSE = "profile.publish.v1";
+  static final String SCHEMA = ContentFormatProfileRegistry.PROFILE_DOCUMENT_ID;
+  static final String SIGNING_PURPOSE =
+      ContentFormatProfileRegistry.PROFILE_DOCUMENT_SIGNING_PURPOSE;
 
   private static final int MAX_DISPLAY_NAME_LENGTH = 80;
   private static final int MAX_BIO_LENGTH = 512;
   private static final int MAX_URI_LENGTH = 512;
   private static final int MAX_TAG_COUNT = 16;
   private static final int MAX_TAG_LENGTH = 32;
-  private static final int MAX_UNSIGNED_PAYLOAD_BYTES = 32 * 1024;
+  private static final int MAX_UNSIGNED_PAYLOAD_BYTES =
+      ContentFormatProfileRegistry.DEFAULT_SIGNED_PAYLOAD_MAX_BYTES;
   private static final String PARAM_AVATAR_URI = "avatarUri";
   private static final String PARAM_BIO = "bio";
   private static final String PARAM_CONTACT_URI = "contactUri";
@@ -59,6 +62,14 @@ record ProfileDocumentRequest(
   private static final String PARAM_TAGS = "tags";
   private static final String PARAM_WEBSITE = "website";
   private static final String QUERY_PARAMETER_PREFIX = "Query parameter '";
+  private static final Set<String> ALLOWED_PARAMETERS =
+      Set.of(
+          PARAM_AVATAR_URI,
+          PARAM_BIO,
+          PARAM_CONTACT_URI,
+          PARAM_DISPLAY_NAME,
+          PARAM_TAGS,
+          PARAM_WEBSITE);
 
   /** Defensively copies tag state so later caller mutations cannot affect canonical bytes. */
   ProfileDocumentRequest {
@@ -82,6 +93,7 @@ record ProfileDocumentRequest(
    */
   static ProfileDocumentRequest fromQuery(
       String appId, String identityId, Map<String, List<String>> queryParameters) {
+    rejectUnsupportedParameters(queryParameters);
     ProfileDocumentRequest request =
         new ProfileDocumentRequest(
             appId,
@@ -142,7 +154,7 @@ record ProfileDocumentRequest(
    * @return canonical UTF-8 JSON payload bytes for domain-separated signing
    */
   byte[] canonicalBytes() {
-    return PlatformApiJsonWriter.write(payload()).getBytes(StandardCharsets.UTF_8);
+    return CanonicalJson.bytes(payload());
   }
 
   /**
@@ -274,6 +286,24 @@ record ProfileDocumentRequest(
       throw invalidQuery(QUERY_PARAMETER_PREFIX + PARAM_TAGS + "' contains too many tags.");
     }
     return List.copyOf(tags);
+  }
+
+  /**
+   * Rejects caller-supplied fields outside the profile v1 schema before signing.
+   *
+   * <p>The app-vault profile route signs a fixed public profile payload. Unknown request parameters
+   * fail closed so callers cannot smuggle alternate signing inputs, future fields, raw payloads, or
+   * caller-selected purposes into the canonical bytes.
+   *
+   * @param queryParameters decoded profile-document request parameters
+   * @throws PlatformApiException when any unsupported parameter name is present
+   */
+  private static void rejectUnsupportedParameters(Map<String, List<String>> queryParameters) {
+    for (String parameter : queryParameters.keySet()) {
+      if (!ALLOWED_PARAMETERS.contains(parameter)) {
+        throw invalidQuery(QUERY_PARAMETER_PREFIX + parameter + "' is not supported.");
+      }
+    }
   }
 
   /**

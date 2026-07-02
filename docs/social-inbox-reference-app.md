@@ -24,6 +24,26 @@ daemon-core message protocol, crawler, or network protocol change.
 For broader legacy plugin categories and migration recipes, see
 [legacy-plugin-migration-guide.md](legacy-plugin-migration-guide.md).
 
+These content profiles are Crypta app ecosystem profiles. They are not compatibility promises for
+legacy WoT, Freetalk, Sone, Freemail, or any old plugin ABI/protocol.
+
+## Content format profiles
+
+Social Inbox uses `CryptaPlatform.contentFormats` for three profile descriptors:
+
+| Profile | Identifier | Content type or transport | Filename |
+| --- | --- | --- | --- |
+| Profile metadata | `crypta.profile.v1` | `application/vnd.crypta.profile+json` | `profile.json` |
+| Social message | `crypta.social.message.v1` | `application/json` signed message entry | n/a |
+| Social outbox | `crypta.social.outbox.v1` | `application/vnd.crypta.social.outbox+json` | `social-outbox.json` |
+
+Message imports validate bounded signed `crypta.social.message.v1` entries before Trust Graph
+score annotations are queried. Outbox imports reject malformed documents, unsupported future
+versions, deprecated versions according to profile policy, oversized documents, unsupported message
+formats, and signature/canonicalization mismatches without displaying raw fetched bodies or raw
+signatures. The full profile policy is in
+[trust-social-content-format-profiles.md](trust-social-content-format-profiles.md).
+
 ## App metadata
 
 ```text

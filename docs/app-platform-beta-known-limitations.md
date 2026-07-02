@@ -29,6 +29,12 @@ This page records conservative limits and safety boundaries for the Crypta app e
 - The beta does not modify FNP, FCP, wire protocol, or Hyphanet/Freenet network compatibility
   behavior.
 - FProxy browse remains retained.
+- The trust/social content format profiles are app ecosystem document profiles for first-party
+  apps and future third-party apps. They are not Platform API 1.0 stable baseline route guarantees,
+  not legacy plugin compatibility, and not a generic content signing or crawling framework.
+
+These content profiles are Crypta app ecosystem profiles. They are not compatibility promises for
+legacy WoT, Freetalk, Sone, Freemail, or any old plugin ABI/protocol.
 
 ## Security boundaries
 

@@ -10940,7 +10940,7 @@ def collect_social_inbox_subscriptions_evidence(settings: Settings) -> EvidenceI
     )
     checks["manualFetchUsesBoundedContentFetch"] = (
         "CryptaPlatform.content.fetchText" in app_js
-        and "maxFetchedDocumentChars" in app_js
+        and "maxFetchedDocumentBytes" in app_js
         and "parseJsonObject" in app_js
     )
     checks["docsDescribeDurableUskSources"] = (
@@ -11715,6 +11715,261 @@ def collect_trust_social_beta_hardening_evidence(settings: Settings) -> Evidence
         "pass",
         True,
         "Trust Graph and Social Inbox beta hardening evidence passed.",
+        source,
+        details,
+    )
+
+
+def collect_trust_social_content_format_profiles_evidence(settings: Settings) -> EvidenceItem:
+    source = summary_source(settings)
+    workspace = settings.workspace_root
+    details: dict[str, Any] = {
+        "checks": {},
+        "sourceFiles": [
+            "platform-api/src/main/java/network/crypta/platform/api/contentformats/ContentFormatProfileRegistry.java",
+            "platform-api/src/main/java/network/crypta/platform/api/contentformats/ContentFormatProfile.java",
+            "platform-api/src/main/java/network/crypta/platform/api/contentformats/ContentFormatVersionPolicy.java",
+            "platform-api/src/main/java/network/crypta/platform/api/appvault/ProfileDocumentRequest.java",
+            "platform-api/src/main/java/network/crypta/platform/api/appvault/SocialMessageRequest.java",
+            "platform-api/src/main/java/network/crypta/platform/api/appvault/TrustStatementRequest.java",
+            "platform-trustgraph/src/main/java/network/crypta/platform/trustgraph/TrustDocumentTypes.java",
+            "platform-sdk-js/src/main/resources/network/crypta/platform/sdk/js/crypta-platform.js",
+            "apps/profile-publisher/src/staged/static/app.js",
+            "apps/feed-reader/src/staged/static/app.js",
+            "apps/trust-graph/src/staged/static/app.js",
+            "apps/social-inbox/src/staged/static/app.js",
+            "docs/trust-social-content-format-profiles.md",
+        ],
+        "redaction": {
+            "rawProfileDocumentsExcluded": True,
+            "rawMessageBodiesExcluded": True,
+            "rawTrustStatementsExcluded": True,
+            "rawFetchedContentExcluded": True,
+            "rawSignaturesExcluded": True,
+            "rawAppDataExcluded": True,
+            "privateInsertUrisExcluded": True,
+            "tokensExcluded": True,
+            "absolutePathsExcluded": True,
+        },
+    }
+    registry = read_source(
+        workspace
+        / "platform-api/src/main/java/network/crypta/platform/api/contentformats/ContentFormatProfileRegistry.java"
+    )
+    version_policy = read_source(
+        workspace
+        / "platform-api/src/main/java/network/crypta/platform/api/contentformats/ContentFormatVersionPolicy.java"
+    )
+    profile_request = read_source(
+        workspace
+        / "platform-api/src/main/java/network/crypta/platform/api/appvault/ProfileDocumentRequest.java"
+    )
+    social_request = read_source(
+        workspace
+        / "platform-api/src/main/java/network/crypta/platform/api/appvault/SocialMessageRequest.java"
+    )
+    trust_request = read_source(
+        workspace
+        / "platform-api/src/main/java/network/crypta/platform/api/appvault/TrustStatementRequest.java"
+    )
+    queue_handler = read_source(
+        workspace / "platform-api/src/main/java/network/crypta/platform/api/queue/QueueApiHandler.java"
+    )
+    content_policy = read_source(
+        workspace
+        / "platform-api/src/main/java/network/crypta/platform/api/content/ContentFetchPolicy.java"
+    )
+    trust_types = read_source(
+        workspace
+        / "platform-trustgraph/src/main/java/network/crypta/platform/trustgraph/TrustDocumentTypes.java"
+    )
+    trust_canonicalizer = read_source(
+        workspace
+        / "platform-trustgraph/src/main/java/network/crypta/platform/trustgraph/TrustStatementCanonicalizer.java"
+    )
+    sdk = read_source(
+        workspace
+        / "platform-sdk-js/src/main/resources/network/crypta/platform/sdk/js/crypta-platform.js"
+    )
+    app_sources = {
+        "profile-publisher": read_source(
+            workspace / "apps/profile-publisher/src/staged/static/app.js"
+        ),
+        "feed-reader": read_source(workspace / "apps/feed-reader/src/staged/static/app.js"),
+        "trust-graph": read_source(workspace / "apps/trust-graph/src/staged/static/app.js"),
+        "social-inbox": read_source(workspace / "apps/social-inbox/src/staged/static/app.js"),
+    }
+    app_indexes = {
+        "profile-publisher": read_source(
+            workspace / "apps/profile-publisher/src/staged/static/index.html"
+        ),
+        "feed-reader": read_source(workspace / "apps/feed-reader/src/staged/static/index.html"),
+        "trust-graph": read_source(workspace / "apps/trust-graph/src/staged/static/index.html"),
+        "social-inbox": read_source(workspace / "apps/social-inbox/src/staged/static/index.html"),
+    }
+    test_text = "\n".join(
+        read_source(workspace / path)
+        for path in (
+            "platform-api/src/test/java/network/crypta/platform/api/contentformats/ContentFormatProfileRegistryTest.java",
+            "platform-api/src/test/java/network/crypta/platform/api/appvault/ProfileDocumentRequestTest.java",
+            "platform-api/src/test/java/network/crypta/platform/api/appvault/SocialMessageRequestTest.java",
+            "platform-api/src/test/java/network/crypta/platform/api/appvault/SignedProfileDocumentBuilderTest.java",
+            "platform-api/src/test/java/network/crypta/platform/api/appvault/SignedSocialMessageDocumentBuilderTest.java",
+            "platform-trustgraph/src/test/java/network/crypta/platform/trustgraph/TrustStatementCanonicalizerTest.java",
+            "platform-trustgraph/src/test/java/network/crypta/platform/trustgraph/TrustStatementParserTest.java",
+            "platform-trustgraph/src/test/java/network/crypta/platform/trustgraph/TrustStatementVerifierTest.java",
+            "platform-sdk-js/src/test/java/network/crypta/platform/sdk/js/CryptaPlatformSdkResourceTest.java",
+            "apps/profile-publisher/src/test/java/network/crypta/apps/profilepublisher/ProfilePublisherBundleStagingTest.java",
+            "apps/feed-reader/src/test/java/network/crypta/apps/feedreader/FeedReaderBundleStagingTest.java",
+            "apps/trust-graph/src/test/java/network/crypta/apps/trustgraph/TrustGraphBundleStagingTest.java",
+            "apps/social-inbox/src/test/java/network/crypta/apps/socialinbox/SocialInboxBundleStagingTest.java",
+        )
+    )
+    docs_text = "\n".join(
+        read_source(workspace / path)
+        for path in (
+            "docs/trust-social-content-format-profiles.md",
+            "docs/feed-reader-reference-app.md",
+            "docs/trust-graph-preview.md",
+            "docs/social-inbox-reference-app.md",
+            "docs/profile-publisher-reference-app.md",
+            "docs/platform-api-compatibility-support-window.md",
+            "docs/production-beta-release-pipeline.md",
+            "docs/production-beta-go-no-go-dashboard.md",
+            "docs/app-platform-beta-known-limitations.md",
+            "docs/release-certification.md",
+            "tools/release-certification/README.md",
+        )
+    )
+    docs_lower = normalized_source_text(docs_text)
+    policy_text = registry + "\n" + version_policy
+    test_lower = normalized_source_text(test_text)
+    checks = details["checks"]
+    profile_ids = (
+        "crypta.profile.v1",
+        "crypta.feed.snapshot.v1",
+        "crypta.trust.statement.v1",
+        "crypta.social.message.v1",
+        "crypta.social.outbox.v1",
+    )
+    checks["registryProfilesExist"] = (
+        all(profile_id in registry for profile_id in profile_ids)
+        and all(
+            fragment in registry
+            for fragment in (
+                "ContentFormatProfile PROFILE_DOCUMENT",
+                "ContentFormatProfile FEED_SNAPSHOT",
+                "ContentFormatProfile TRUST_STATEMENT",
+                "ContentFormatProfile SOCIAL_MESSAGE",
+                "ContentFormatProfile SOCIAL_OUTBOX",
+                "ContentFormatVersionPolicy.CONSERVATIVE_V1",
+                "FETCHED_DOCUMENT_MAX_BYTES",
+                "DEFAULT_SIGNED_PAYLOAD_MAX_BYTES",
+            )
+        )
+        and "reject_unknown_fields" in policy_text
+    )
+    checks["javaRoutesUseRegistry"] = all(
+        "ContentFormatProfileRegistry" in source_text
+        for source_text in (
+            profile_request,
+            social_request,
+            trust_request,
+            queue_handler,
+            content_policy,
+        )
+    )
+    checks["trustgraphDriftIsTested"] = (
+        "TrustDocumentTypes.TRUST_STATEMENT_V1" in test_text
+        and "TrustDocumentTypes.TRUST_STATEMENT_CONTENT_TYPE" in test_text
+        and "TrustStatementCanonicalizer.canonicalPayloadBytes" in test_text
+        and "crypta.trust.statement.v1\\n" in test_text
+        and "TrustDocumentTypes.TRUST_STATEMENT_V1" in trust_canonicalizer
+        and "application/vnd.crypta.trust+json" in trust_types
+    )
+    checks["sdkMirrorAndHelpersUseProfiles"] = (
+        all(
+            fragment in sdk
+            for fragment in (
+                "const contentFormats = Object.freeze",
+                "profileDocument: Object.freeze",
+                "feedSnapshot: Object.freeze",
+                "trustStatement: Object.freeze",
+                "socialMessage: Object.freeze",
+                "socialOutbox: Object.freeze",
+                "application/vnd.crypta.profile+json",
+                "application/vnd.crypta.feed+json",
+                "application/vnd.crypta.trust+json",
+                "application/vnd.crypta.social.outbox+json",
+                "profile.publish.v1",
+                "crypta.social.message.v1",
+                "contentFormats.profileDocument.contentType",
+                "contentFormats.feedSnapshot.contentType",
+                "contentFormats.trustStatement.contentType",
+                "contentFormats.feedSnapshot.maxDocumentBytes",
+            )
+        )
+        and "contentFormats," in sdk
+    )
+    checks["referenceAppsUseSdkProfiles"] = all(
+        "CryptaPlatform.contentFormats" in text for text in app_sources.values()
+    ) and all("Format profile" in text for text in app_indexes.values())
+    checks["validationCoversMalformedOversizedVersionDeprecatedAndSignature"] = (
+        (
+            "unknown field" in test_lower
+            or "field unsupported is not supported" in test_lower
+            or "query parameter 'purpose' is not supported" in test_lower
+        )
+        and "oversized_document" in test_text
+        and "feed snapshot document is too large" in test_lower
+        and "unsupported_version" in test_text
+        and "deprecated_version" in test_text
+        and "payloadchangesaftersigning" in test_lower
+        and "signaturebase64" in test_lower
+        and (
+            'assertfalse(deprecatedresult.tostring().contains("signaturebase64"))'
+            in compact_source_text(test_text).lower()
+        )
+    )
+    checks["docsExistWithLegacyNonGoals"] = (
+        "these content profiles are crypta app ecosystem profiles. they are not compatibility promises for legacy wot, freetalk, sone, freemail, or any old plugin abi/protocol."
+        in docs_lower
+        and all(term in docs_lower for term in ("wot", "freetalk", "sone", "freemail"))
+        and all(term in docs_lower for term in ("malformed", "oversized", "unsupported", "deprecated"))
+    )
+    checks["releaseEvidenceDocumented"] = all(
+        fragment in docs_text
+        for fragment in (
+            "app-platform.trust-social-content-format-profiles",
+            "content-format risk",
+            "raw signatures",
+            "raw fetched content",
+        )
+    )
+    checks["platformApiStableBaselineNotExpanded"] = (
+        "content profiles are not Platform API 1.0 stable baseline route guarantees" in docs_text
+        or "not Platform API 1.0 stable baseline route guarantees" in docs_text
+    )
+    details["profiles"] = list(profile_ids)
+    errors = [
+        f"content format profile check failed: {name}"
+        for name, passed in checks.items()
+        if passed is not True
+    ]
+    if errors:
+        return EvidenceItem(
+            "app-platform.trust-social-content-format-profiles",
+            root_consequence(settings, "fail"),
+            True,
+            "Trust/social content format profile evidence found problems.",
+            source,
+            {"errors": errors, **details},
+        )
+    return EvidenceItem(
+        "app-platform.trust-social-content-format-profiles",
+        "pass",
+        True,
+        "Trust/social content format profile evidence passed.",
         source,
         details,
     )
@@ -17153,6 +17408,7 @@ def run(settings: Settings) -> tuple[dict[str, Any], int]:
         collect_social_inbox_trust_annotation_evidence(settings),
         collect_social_inbox_rc_threading_evidence(settings),
         collect_trust_social_beta_hardening_evidence(settings),
+        collect_trust_social_content_format_profiles_evidence(settings),
         collect_social_mail_migration_preview_evidence(settings),
         collect_legacy_plugin_migration_evidence(settings),
         collect_legacy_plugin_social_inbox_spike_evidence(settings),
@@ -19137,6 +19393,15 @@ def run_self_test(repo_root: Path) -> None:
             ]
             is True
         )
+        assert (
+            evidence_by_id["app-platform.trust-social-content-format-profiles"]["status"] == "pass"
+        )
+        assert (
+            evidence_by_id["app-platform.trust-social-content-format-profiles"][
+                "requiredForReleaseCandidate"
+            ]
+            is True
+        )
         assert evidence_by_id["migration.social-mail-preview"]["status"] == "pass"
         assert evidence_by_id["legacy-plugin.migration-guide"]["status"] == "pass"
         assert evidence_by_id["legacy-plugin.social-inbox-spike"]["status"] == "pass"
@@ -19840,7 +20105,28 @@ def make_self_test_workspace(workspace: Path) -> None:
     sdk = workspace / "platform-sdk-js/src/main/resources/network/crypta/platform/sdk/js/crypta-platform.js"
     sdk.parent.mkdir(parents=True, exist_ok=True)
     sdk.write_text(
-        "window.CryptaPlatform = { data: Object.freeze({ records: Object.freeze({ getJson(){}, putJson(){} }), "
+        "const contentFormats = Object.freeze({ "
+        "profileDocument: Object.freeze({ id: 'crypta.profile.v1', schema: 'crypta.profile.v1', "
+        "contentType: 'application/vnd.crypta.profile+json', defaultFilename: 'profile.json', "
+        "majorVersion: 1, status: 'experimental', signed: true, signingDomain: 'profile.publish.v1', "
+        "unknownFieldPolicy: 'reject_unknown_fields', futureVersionPolicy: 'reject_unknown_major_accept_known_minor_only', "
+        "deprecationPolicy: 'explicit_warning_or_reject' }), "
+        "feedSnapshot: Object.freeze({ id: 'crypta.feed.snapshot.v1', type: 'crypta.feed.snapshot.v1', "
+        "contentType: 'application/vnd.crypta.feed+json', defaultFilename: 'feed.json', maxDocumentBytes: 65536, signed: false }), "
+        "trustStatement: Object.freeze({ id: 'crypta.trust.statement.v1', type: 'crypta.trust.statement.v1', "
+        "contentType: 'application/vnd.crypta.trust+json', defaultFilename: 'trust.json', signed: true, "
+        "signingDomain: 'crypta.trust.statement.v1' }), "
+        "socialMessage: Object.freeze({ id: 'crypta.social.message.v1', type: 'crypta.social.message.v1', "
+        "contentType: 'application/json', signed: true, signingDomain: 'crypta.social.message.v1' }), "
+        "socialOutbox: Object.freeze({ id: 'crypta.social.outbox.v1', type: 'crypta.social.outbox.v1', "
+        "contentType: 'application/vnd.crypta.social.outbox+json', defaultFilename: 'social-outbox.json', "
+        "maxDocumentBytes: 65536, signed: false }) }); "
+        "const profileContentType = contentFormats.profileDocument.contentType; "
+        "const feedSnapshotContentType = contentFormats.feedSnapshot.contentType; "
+        "const feedSnapshotMaxDocumentBytes = contentFormats.feedSnapshot.maxDocumentBytes; "
+        "const trustContentType = contentFormats.trustStatement.contentType; "
+        "const socialOutboxContentType = contentFormats.socialOutbox.contentType; "
+        "window.CryptaPlatform = { contentFormats, data: Object.freeze({ records: Object.freeze({ getJson(){}, putJson(){} }), "
         "export(){}, import(){} }), queue: { snapshot(){} }, trust: { score(){} }, "
         "services: Object.freeze({ list: listAppServices, get: getAppService, "
         "dependencies: Object.freeze({ list: listAppServiceDependencies, get: getAppServiceDependencies }), "
@@ -19979,8 +20265,9 @@ def make_self_test_workspace(workspace: Path) -> None:
             "content.insert.app-document,queue.read,queue.write,app.data.read,app.data.write,"
             "app.services.read,app.services.call",
             "const appId = 'social-inbox';\n"
-            "const socialMessageType = 'crypta.social.message.v1';\n"
-            "const socialOutboxType = 'crypta.social.outbox.v1';\n"
+            "const socialMessageType = CryptaPlatform.contentFormats.socialMessage.type;\n"
+            "const socialOutboxFormat = CryptaPlatform.contentFormats.socialOutbox;\n"
+            "const socialOutboxType = socialOutboxFormat.type;\n"
             "const maxSources = 16;\n"
             "const maxImportedMessages = 160;\n"
             "const maxDraftBodyLength = 4096; const maxImportedSubjectLength = 160; const maxAuthorLabelLength = 120; const maxImportedChannelLength = 64;\n"
@@ -19989,7 +20276,7 @@ def make_self_test_workspace(workspace: Path) -> None:
             "const maxMutedAuthors = 160;\n"
             "const maxBlockedSources = 80;\n"
             "const maxExportedMessages = 120;\n"
-            "const maxFetchedDocumentChars = 131072;\n"
+            "const maxFetchedDocumentBytes = socialOutboxFormat.maxDocumentBytes;\n"
             "const maxThreadDepth = 12;\n"
             "const maxRenderedThreadMessages = 160;\n"
             "const maxSearchQueryLength = 80;\n"
@@ -20048,7 +20335,7 @@ def make_self_test_workspace(workspace: Path) -> None:
             "async function expectedSocialMessageId(value) { return 'msg-' + await sha256Hex(canonicalSocialMessageIdPayload(value)); }\n"
             "function requireIsoTimestamp(value) { return value; }\n"
             "CryptaPlatform.content.insertAppDocument({ document: { type: socialOutboxType }, contentType: 'application/vnd.crypta.social.outbox+json', targetFilename: 'social-outbox.json' });\n"
-            "CryptaPlatform.content.fetchText({ uri: 'USK@redacted/social/0/social-outbox.json', maxBytes: maxFetchedDocumentChars });\n"
+            "CryptaPlatform.content.fetchText({ uri: 'USK@redacted/social/0/social-outbox.json', maxBytes: maxFetchedDocumentBytes });\n"
             "CryptaPlatform.content.subscriptions.list();\n"
             "CryptaPlatform.content.subscriptions.create({ uri: 'USK@redacted/social/0/social-outbox.json' });\n"
             "CryptaPlatform.content.subscriptions.refresh('sub-redacted');\n"
@@ -20181,6 +20468,15 @@ def make_self_test_workspace(workspace: Path) -> None:
                 f"<section class=\"cr-permission-summary\" data-crypta-permission-summary data-beta-permission-rationale><ul>{permission_items}</ul></section>"
                 f"<h1>{display_name}</h1>"
                 f"{extra_ui}"
+                "<section class=\"cr-card\"><h2>Format profile</h2>"
+                "<code>crypta.profile.v1</code><code>crypta.feed.snapshot.v1</code>"
+                "<code>crypta.trust.statement.v1</code><code>crypta.social.message.v1</code>"
+                "<code>crypta.social.outbox.v1</code>"
+                "<code>application/vnd.crypta.profile+json</code>"
+                "<code>application/vnd.crypta.feed+json</code>"
+                "<code>application/vnd.crypta.trust+json</code>"
+                "<code>application/vnd.crypta.social.outbox+json</code>"
+                "</section>"
                 "<section class=\"cr-card\" data-first-party-beta-readiness data-beta-empty-state "
                 "data-beta-error-state data-beta-retry-action data-beta-recovery-action "
                 "data-beta-app-data-status data-beta-support-metadata data-beta-diagnostics-redaction "
@@ -20192,7 +20488,7 @@ def make_self_test_workspace(workspace: Path) -> None:
                 encoding="utf-8",
             )
             (root / "static/app.js").write_text(
-                app_js,
+                app_js + "\nconst formatProfileMarker = CryptaPlatform.contentFormats;\n",
                 encoding="utf-8",
             )
             (root / "static/app.css").write_text("body { color: #111; }\n", encoding="utf-8")
@@ -20462,6 +20758,120 @@ def make_self_test_workspace(workspace: Path) -> None:
     profile_test_dir.mkdir(parents=True, exist_ok=True)
     (profile_test_dir / "ProfilePublisherBundleStagingTest.java").write_text(
         "class ProfilePublisherBundleStagingTest { String rendering = \"textContent innerHTML insertAdjacentHTML\"; }\n",
+        encoding="utf-8",
+    )
+    content_formats_dir = (
+        workspace / "platform-api/src/main/java/network/crypta/platform/api/contentformats"
+    )
+    content_formats_dir.mkdir(parents=True, exist_ok=True)
+    (content_formats_dir / "ContentFormatProfile.java").write_text(
+        "record ContentFormatProfile(String id, String contentType) {}\n",
+        encoding="utf-8",
+    )
+    (content_formats_dir / "ContentFormatVersionPolicy.java").write_text(
+        "final class ContentFormatVersionPolicy { "
+        "static final String CONSERVATIVE_V1 = \"reject_unknown_fields\"; }\n",
+        encoding="utf-8",
+    )
+    (content_formats_dir / "ContentFormatProfileRegistry.java").write_text(
+        "final class ContentFormatProfileRegistry { "
+        "static final String PROFILE_DOCUMENT_ID = \"crypta.profile.v1\"; "
+        "static final String FEED_SNAPSHOT_ID = \"crypta.feed.snapshot.v1\"; "
+        "static final String TRUST_STATEMENT_ID = \"crypta.trust.statement.v1\"; "
+        "static final String SOCIAL_MESSAGE_ID = \"crypta.social.message.v1\"; "
+        "static final String SOCIAL_OUTBOX_ID = \"crypta.social.outbox.v1\"; "
+        "static final String PROFILE_DOCUMENT_CONTENT_TYPE = \"application/vnd.crypta.profile+json\"; "
+        "static final String FEED_SNAPSHOT_CONTENT_TYPE = \"application/vnd.crypta.feed+json\"; "
+        "static final String TRUST_STATEMENT_CONTENT_TYPE = \"application/vnd.crypta.trust+json\"; "
+        "static final String SOCIAL_OUTBOX_CONTENT_TYPE = \"application/vnd.crypta.social.outbox+json\"; "
+        "static final int FETCHED_DOCUMENT_MAX_BYTES = 262144; "
+        "static final int DEFAULT_SIGNED_PAYLOAD_MAX_BYTES = 32768; "
+        "static final ContentFormatProfile PROFILE_DOCUMENT = new ContentFormatProfile(PROFILE_DOCUMENT_ID, PROFILE_DOCUMENT_CONTENT_TYPE); "
+        "static final ContentFormatProfile FEED_SNAPSHOT = new ContentFormatProfile(FEED_SNAPSHOT_ID, FEED_SNAPSHOT_CONTENT_TYPE); "
+        "static final ContentFormatProfile TRUST_STATEMENT = new ContentFormatProfile(TRUST_STATEMENT_ID, TRUST_STATEMENT_CONTENT_TYPE); "
+        "static final ContentFormatProfile SOCIAL_MESSAGE = new ContentFormatProfile(SOCIAL_MESSAGE_ID, \"application/json\"); "
+        "static final ContentFormatProfile SOCIAL_OUTBOX = new ContentFormatProfile(SOCIAL_OUTBOX_ID, SOCIAL_OUTBOX_CONTENT_TYPE); "
+        "String policy = ContentFormatVersionPolicy.CONSERVATIVE_V1; }\n",
+        encoding="utf-8",
+    )
+    appvault_dir = workspace / "platform-api/src/main/java/network/crypta/platform/api/appvault"
+    appvault_dir.mkdir(parents=True, exist_ok=True)
+    for filename, marker in (
+        ("ProfileDocumentRequest.java", "PROFILE_DOCUMENT_ID PROFILE_DOCUMENT_SIGNING_PURPOSE"),
+        ("SocialMessageRequest.java", "SOCIAL_MESSAGE_ID DEFAULT_SIGNED_PAYLOAD_MAX_BYTES"),
+        ("TrustStatementRequest.java", "TRUST_STATEMENT_ID DEFAULT_SIGNED_PAYLOAD_MAX_BYTES"),
+    ):
+        (appvault_dir / filename).write_text(
+            "import network.crypta.platform.api.contentformats.ContentFormatProfileRegistry; "
+            f"class {filename.removesuffix('.java')} {{ String marker = \"{marker}\"; }}\n",
+            encoding="utf-8",
+        )
+    queue_dir = workspace / "platform-api/src/main/java/network/crypta/platform/api/queue"
+    queue_dir.mkdir(parents=True, exist_ok=True)
+    (queue_dir / "QueueApiHandler.java").write_text(
+        "import network.crypta.platform.api.contentformats.ContentFormatProfileRegistry; "
+        "class QueueApiHandler { int max = ContentFormatProfileRegistry.DEFAULT_SIGNED_PAYLOAD_MAX_BYTES; }\n",
+        encoding="utf-8",
+    )
+    content_dir = workspace / "platform-api/src/main/java/network/crypta/platform/api/content"
+    content_dir.mkdir(parents=True, exist_ok=True)
+    (content_dir / "ContentFetchPolicy.java").write_text(
+        "import network.crypta.platform.api.contentformats.ContentFormatProfileRegistry; "
+        "class ContentFetchPolicy { long max = ContentFormatProfileRegistry.FETCHED_DOCUMENT_MAX_BYTES; }\n",
+        encoding="utf-8",
+    )
+    trustgraph_dir = workspace / "platform-trustgraph/src/main/java/network/crypta/platform/trustgraph"
+    trustgraph_dir.mkdir(parents=True, exist_ok=True)
+    (trustgraph_dir / "TrustDocumentTypes.java").write_text(
+        "final class TrustDocumentTypes { static final String TRUST_STATEMENT_V1 = \"crypta.trust.statement.v1\"; "
+        "static final String TRUST_STATEMENT_CONTENT_TYPE = \"application/vnd.crypta.trust+json\"; "
+        "static final String TRUST_STATEMENT_FILENAME = \"trust.json\"; }\n",
+        encoding="utf-8",
+    )
+    (trustgraph_dir / "TrustStatementCanonicalizer.java").write_text(
+        "final class TrustStatementCanonicalizer { byte[] canonicalPayloadBytes() { "
+        "return (TrustDocumentTypes.TRUST_STATEMENT_V1 + \"\\n{}\").getBytes(); } }\n",
+        encoding="utf-8",
+    )
+    content_format_test_dir = (
+        workspace / "platform-api/src/test/java/network/crypta/platform/api/contentformats"
+    )
+    content_format_test_dir.mkdir(parents=True, exist_ok=True)
+    (content_format_test_dir / "ContentFormatProfileRegistryTest.java").write_text(
+        "class ContentFormatProfileRegistryTest { String drift = "
+        "\"TrustDocumentTypes.TRUST_STATEMENT_V1 TrustDocumentTypes.TRUST_STATEMENT_CONTENT_TYPE "
+        "oversized_document unsupported_version deprecated_version Feed snapshot document is too large\"; "
+        "void redaction() { assertFalse(deprecatedResult.toString().contains(\"signatureBase64\")); } }\n",
+        encoding="utf-8",
+    )
+    appvault_test_dir = workspace / "platform-api/src/test/java/network/crypta/platform/api/appvault"
+    appvault_test_dir.mkdir(parents=True, exist_ok=True)
+    for filename, text in (
+        ("ProfileDocumentRequestTest.java", "Unknown field raw signature"),
+        ("SocialMessageRequestTest.java", "signatureBase64 unsupported_version"),
+        ("SignedProfileDocumentBuilderTest.java", "signatureBase64 raw signature"),
+        ("SignedSocialMessageDocumentBuilderTest.java", "signatureBase64 raw signature"),
+    ):
+        (appvault_test_dir / filename).write_text(f"class T {{ String t = \"{text}\"; }}\n", encoding="utf-8")
+    trustgraph_test_dir = (
+        workspace / "platform-trustgraph/src/test/java/network/crypta/platform/trustgraph"
+    )
+    trustgraph_test_dir.mkdir(parents=True, exist_ok=True)
+    for filename, text in (
+        (
+            "TrustStatementCanonicalizerTest.java",
+            "TrustStatementCanonicalizer.canonicalPayloadBytes crypta.trust.statement.v1\\n",
+        ),
+        ("TrustStatementParserTest.java", "Unknown field oversized_document unsupported_version"),
+        ("TrustStatementVerifierTest.java", "PayloadChangesAfterSigning signatureBase64"),
+    ):
+        (trustgraph_test_dir / filename).write_text(
+            f"class T {{ String t = \"{text}\"; }}\n", encoding="utf-8"
+        )
+    sdk_test_dir = workspace / "platform-sdk-js/src/test/java/network/crypta/platform/sdk/js"
+    sdk_test_dir.mkdir(parents=True, exist_ok=True)
+    (sdk_test_dir / "CryptaPlatformSdkResourceTest.java").write_text(
+        "class CryptaPlatformSdkResourceTest { String t = \"contentFormats profileDocument feedSnapshot trustStatement socialMessage socialOutbox\"; }\n",
         encoding="utf-8",
     )
     appcatalog_dir = workspace / "platform-appcatalog/src/main/java/network/crypta/platform/appcatalog"
@@ -21478,16 +21888,21 @@ def make_self_test_workspace(workspace: Path) -> None:
         encoding="utf-8",
     )
     (app_vault_api_dir / "TrustStatementRequest.java").write_text(
+        "import network.crypta.platform.api.contentformats.ContentFormatProfileRegistry; "
         "final class TrustStatementRequest { // not an arbitrary signing API\n"
         "Object SUPPORTED_PARAMETERS; "
+        "String profile = ContentFormatProfileRegistry.TRUST_STATEMENT_ID; "
         "byte[] canonicalBytes() { return TrustStatementCanonicalizer.canonicalPayloadBytes(null); } }\n",
         encoding="utf-8",
     )
     (app_vault_api_dir / "SocialMessageRequest.java").write_text(
+        "import network.crypta.platform.api.contentformats.ContentFormatProfileRegistry; "
         "final class SocialMessageRequest { static final int MAX_BODY_LENGTH = 4096; "
         "static final int MAX_SUBJECT_LENGTH = 160; static final int MAX_TAG_COUNT = 12; "
-        "static final int MAX_SIGNED_PAYLOAD_BYTES = 32768; static final String FORMAT_TEXT_PLAIN = \"text/plain\"; "
-        "static final String SIGNING_PURPOSE = \"crypta.social.message.v1\"; "
+        "static final int MAX_SIGNED_PAYLOAD_BYTES = ContentFormatProfileRegistry.DEFAULT_SIGNED_PAYLOAD_MAX_BYTES; "
+        "static final String FORMAT_TEXT_PLAIN = \"text/plain\"; "
+        "static final String SIGNING_PURPOSE = ContentFormatProfileRegistry.SOCIAL_MESSAGE_ID; "
+        "String domainMarker = \"crypta.social.message.v1\"; "
         "Object ALLOWED_PARAMETERS; Object fromQuery(Object query) { return null; } }\n",
         encoding="utf-8",
     )
@@ -21649,21 +22064,25 @@ def make_self_test_workspace(workspace: Path) -> None:
         encoding="utf-8",
     )
     (trustgraph_test_dir / "TrustStatementParserTest.java").write_text(
-        "final class TrustStatementParserTest { String malicious = \"\\\\u0000 \\\\u0085 50.5 token=secret uri:redacted\"; }\n",
+        "final class TrustStatementParserTest { String malicious = \"\\\\u0000 \\\\u0085 50.5 token=secret uri:redacted\"; "
+        "String profiles = \"Unknown field oversized_document unsupported_version crypta.trust.statement.v1\\n\"; }\n",
         encoding="utf-8",
     )
     queue_api_dir = api_dir / "queue"
     queue_api_dir.mkdir(parents=True, exist_ok=True)
     (queue_api_dir / "QueueApiHandler.java").write_text(
+        "import network.crypta.platform.api.contentformats.ContentFormatProfileRegistry; "
         "final class QueueApiHandler { void createAppGeneratedDocumentInsert() { "
-        "String route = \"app-document\"; } }\n",
+        "String route = \"app-document\"; int max = ContentFormatProfileRegistry.DEFAULT_SIGNED_PAYLOAD_MAX_BYTES; } }\n",
         encoding="utf-8",
     )
     content_api_dir = api_dir / "content"
     content_api_dir.mkdir(parents=True, exist_ok=True)
     (content_api_dir / "ContentFetchPolicy.java").write_text(
+        "import network.crypta.platform.api.contentformats.ContentFormatProfileRegistry; "
         "final class ContentFetchPolicy { static final long HARD_APP_FETCH_MAX_BYTES = 1048576; "
         "static final long HARD_APP_FETCH_TIMEOUT_MILLIS = 60000; "
+        "static final long DEFAULT_APP_FETCH_MAX_BYTES = ContentFormatProfileRegistry.FETCHED_DOCUMENT_MAX_BYTES; "
         "String families = \"CHK@ SSK@ USK@ KSK@ crypta:\"; "
         "boolean unsafe(String uri) { return uri.contains(\"http://\") || uri.contains(\"https://\") || uri.contains(\"file://\"); } }\n",
         encoding="utf-8",
@@ -22061,6 +22480,17 @@ def make_self_test_workspace(workspace: Path) -> None:
         "source pause/resume, local mute/block, redacted message export, service-grant annotations, "
         "additive schema-1 Social Inbox beta data readiness, consent snapshot digest checks, stale approval "
         "rejection, backup-before-update, and provider revalidation. "
+        "PR-276 adds docs/trust-social-content-format-profiles.md and "
+        "app-platform.trust-social-content-format-profiles for crypta.profile.v1, "
+        "crypta.feed.snapshot.v1, crypta.trust.statement.v1, crypta.social.message.v1, "
+        "and crypta.social.outbox.v1. Production beta reports content-format risk without raw "
+        "content. These content profiles are Crypta app ecosystem profiles. "
+        "They are not compatibility promises for legacy WoT, Freetalk, Sone, Freemail, or any old "
+        "plugin ABI/protocol. The content profiles are not Platform API 1.0 stable baseline route "
+        "guarantees. Content-format risk covers malformed, oversized, unsupported-version, "
+        "deprecated-version, and signature/canonicalization mismatch handling without raw profile "
+        "documents, raw fetched content, raw message bodies, raw trust statements, raw signatures, "
+        "raw app data, private insert URIs, tokens, or absolute local paths in evidence. "
         "Contract v14 adds app-update.data-migration-contract for signed app-data schema migration declarations. "
         "Contract v15 adds app-platform.trust-graph-rc-scope-and-safety for Trust Graph Local RC scope, lifecycle, source metadata, and score safety. "
         "The app-data migration lifecycle runs a dry-run before bundle replacement, creates an internal rollback snapshot, "
@@ -22100,6 +22530,7 @@ def make_self_test_workspace(workspace: Path) -> None:
         "reference-app.trust-graph, reference-app.trust-graph-durable-exchange, "
         "app-platform.trust-graph-preview, app-platform.trust-graph-durable-store, "
         "app-platform.trust-graph-exchange, app-platform.trust-social-beta-hardening, "
+        "app-platform.trust-social-content-format-profiles, "
         "app-update.data-migration-contract, catalog.production-channels, "
         "app-platform.trust-statement-signing, app-platform.social-message-signing, "
         "app-platform.identity-profile-publish, and app-platform.generated-document-insert. "
@@ -22178,6 +22609,8 @@ def make_self_test_workspace(workspace: Path) -> None:
         "app-upgrade-data-migrations.md",
         "app-permissions-and-audit.md",
         "feed-reader-reference-app.md",
+        "profile-publisher-reference-app.md",
+        "trust-social-content-format-profiles.md",
         "platform-api-contract.md",
         "platform-api-1.0-stable-reference.md",
         "platform-api-surface.md",

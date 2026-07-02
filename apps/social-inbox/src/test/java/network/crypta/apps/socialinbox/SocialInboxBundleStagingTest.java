@@ -306,6 +306,10 @@ class SocialInboxBundleStagingTest {
         "not Freetalk, Sone, Freemail",
         "not encrypted mail",
         "does not add a daemon-core message store",
+        "Format profiles",
+        "<code>crypta.social.message.v1</code>",
+        "<code>crypta.social.outbox.v1</code>",
+        "<code>application/vnd.crypta.social.outbox+json</code>",
         "Identity",
         "Compose",
         "Publish outbox",
@@ -376,8 +380,11 @@ class SocialInboxBundleStagingTest {
     verifyContainsAll(
         appScript,
         "const appId = \"social-inbox\";",
-        "const socialMessageType = \"crypta.social.message.v1\";",
-        "const socialOutboxType = \"crypta.social.outbox.v1\";",
+        "const profileDocumentFormat = CryptaPlatform.contentFormats.profileDocument;",
+        "const socialMessageFormat = CryptaPlatform.contentFormats.socialMessage;",
+        "const socialOutboxFormat = CryptaPlatform.contentFormats.socialOutbox;",
+        "const socialMessageType = socialMessageFormat.type;",
+        "const socialOutboxType = socialOutboxFormat.type;",
         "CryptaPlatform.bootstrap.load({ appId })",
         "CryptaPlatform.vault.identities.list",
         "CryptaPlatform.vault.identities.create",
@@ -523,11 +530,14 @@ class SocialInboxBundleStagingTest {
         "boundedImportedMessage",
         "maxImportedBodyPreviewLength",
         "maxSourceLabelLength",
+        "rejectUnexpectedFields(",
+        "[\"type\", \"appId\", \"generatedAt\", \"profileUri\", \"sourceLabel\", \"messages\"]",
         "textContent",
         "replaceChildren",
         "FormData",
-        "application/vnd.crypta.social.outbox+json",
-        "social-outbox.json");
+        "const socialOutboxContentType = socialOutboxFormat.contentType;",
+        "const socialOutboxTargetFilename = socialOutboxFormat.defaultFilename;",
+        "const maxFetchedDocumentBytes = socialOutboxFormat.maxDocumentBytes;");
     verifyBoundedRefreshAll(appScript);
     verifyAdversarialMarkupFixturesCovered(appScript);
     verifyContainsNone(

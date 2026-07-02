@@ -77,6 +77,18 @@ document insert route without exposing launch tokens, browser-session tokens, pr
 material, or server-side staging paths. The app-data record stores drafts and publish summaries
 only; secrets, seeds, private keys, and identity material remain in AppVault.
 
+## Content format profile
+
+Profile Publisher uses `CryptaPlatform.contentFormats.profileDocument` for the
+`crypta.profile.v1` schema, `application/vnd.crypta.profile+json` content type, `profile.json`
+default filename, `profile.publish.v1` signing purpose, and profile byte bounds. Unknown profile
+request fields are rejected before signing, and release evidence must not include raw signed
+profile documents, raw signatures, private insert URIs, private keys, tokens, raw app-data values,
+or local paths.
+
+These content profiles are Crypta app ecosystem profiles. They are not compatibility promises for
+legacy WoT, Freetalk, Sone, Freemail, or any old plugin ABI/protocol.
+
 ## App-data backup scope
 
 Operator app-data backups for `profile-publisher` include only the app's durable app-data record in

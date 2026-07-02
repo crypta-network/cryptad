@@ -4,6 +4,7 @@ import java.util.EnumSet;
 import java.util.Objects;
 import java.util.Set;
 import network.crypta.platform.api.PlatformApiException;
+import network.crypta.platform.api.contentformats.ContentFormatProfileRegistry;
 
 /**
  * Shared app-facing policy for bounded content fetch sources.
@@ -30,7 +31,8 @@ public final class ContentFetchPolicy {
    * callers may ask for a lower value per request, but this is the bound used when the request
    * omits {@code maxBytes}.
    */
-  public static final long DEFAULT_APP_FETCH_MAX_BYTES = 262_144L;
+  public static final long DEFAULT_APP_FETCH_MAX_BYTES =
+      ContentFormatProfileRegistry.FETCHED_DOCUMENT_MAX_BYTES;
 
   /**
    * Hard app-facing foreground fetch byte bound.

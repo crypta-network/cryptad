@@ -278,6 +278,7 @@ ECOSYSTEM_RC_REQUIRED_EVIDENCE_IDS = (
     "app-platform.trust-graph-durable-store",
     "app-platform.trust-graph-exchange",
     "app-platform.trust-social-beta-hardening",
+    "app-platform.trust-social-content-format-profiles",
     "app-platform.trust-statement-signing",
     "reference-app.trust-graph",
     "reference-app.trust-graph-durable-exchange",
@@ -1327,6 +1328,7 @@ def app_platform_evidence(
         "app-platform.trust-graph-durable-store",
         "app-platform.trust-graph-exchange",
         "app-platform.trust-social-beta-hardening",
+        "app-platform.trust-social-content-format-profiles",
         "app-platform.trust-statement-signing",
         "app-platform.social-message-signing",
         *APP_SERVICE_DISCOVERY_AND_GRANT_EVIDENCE_IDS,
@@ -3394,6 +3396,7 @@ def ecosystem_matrix_row_specs() -> list[MatrixRowSpec]:
                 "reference-app.social-inbox-trust-annotations",
                 "reference-app.social-inbox-rc-threading",
                 "app-platform.trust-social-beta-hardening",
+                "app-platform.trust-social-content-format-profiles",
                 "reference-app.social-inbox-service-grant",
                 "reference-app.social-inbox-service-dependency",
                 "migration.social-mail-preview",
@@ -5971,6 +5974,12 @@ def evaluate_reference_content_gate(
     previous_trust_social_beta_hardening_item = previous.get(
         "app-platform.trust-social-beta-hardening"
     )
+    trust_social_content_format_profiles_item = current.get(
+        "app-platform.trust-social-content-format-profiles"
+    )
+    previous_trust_social_content_format_profiles_item = previous.get(
+        "app-platform.trust-social-content-format-profiles"
+    )
     social_mail_migration_item = current.get("migration.social-mail-preview")
     previous_social_mail_migration_item = previous.get("migration.social-mail-preview")
     generated_document_item = current.get("app-platform.generated-document-insert")
@@ -6159,6 +6168,12 @@ def evaluate_reference_content_gate(
     previous_trust_social_beta_hardening_status = evidence_status(
         previous_trust_social_beta_hardening_item
     )
+    trust_social_content_format_profiles_status = evidence_status(
+        trust_social_content_format_profiles_item
+    )
+    previous_trust_social_content_format_profiles_status = evidence_status(
+        previous_trust_social_content_format_profiles_item
+    )
     social_mail_migration_status = evidence_status(social_mail_migration_item)
     previous_social_mail_migration_status = evidence_status(previous_social_mail_migration_item)
     generated_document_status = evidence_status(generated_document_item)
@@ -6314,6 +6329,11 @@ def evaluate_reference_content_gate(
             "app-platform.trust-social-beta-hardening",
             trust_social_beta_hardening_status,
             previous_trust_social_beta_hardening_status,
+        ),
+        (
+            "app-platform.trust-social-content-format-profiles",
+            trust_social_content_format_profiles_status,
+            previous_trust_social_content_format_profiles_status,
         ),
         (
             "migration.social-mail-preview",
@@ -6966,6 +6986,12 @@ def evaluate_reference_content_gate(
             "previousSocialInboxRcThreadingStatus": previous_social_inbox_rc_threading_status,
             "trustSocialBetaHardeningStatus": trust_social_beta_hardening_status,
             "previousTrustSocialBetaHardeningStatus": previous_trust_social_beta_hardening_status,
+            "trustSocialContentFormatProfilesStatus": (
+                trust_social_content_format_profiles_status
+            ),
+            "previousTrustSocialContentFormatProfilesStatus": (
+                previous_trust_social_content_format_profiles_status
+            ),
             "socialMailMigrationStatus": social_mail_migration_status,
             "previousSocialMailMigrationStatus": previous_social_mail_migration_status,
             "generatedDocumentInsertStatus": generated_document_status,
@@ -7816,6 +7842,7 @@ def render_report(summary: dict[str, Any]) -> str:
         "app-platform.trust-graph-durable-store",
         "app-platform.trust-graph-exchange",
         "app-platform.trust-social-beta-hardening",
+        "app-platform.trust-social-content-format-profiles",
         "app-platform.trust-statement-signing",
         "app-platform.social-message-signing",
         "app-platform.signed-bundles",
@@ -7854,6 +7881,7 @@ def render_report(summary: dict[str, Any]) -> str:
         "reference-app.social-inbox-trust-annotations",
         "reference-app.social-inbox-rc-threading",
         "app-platform.trust-social-beta-hardening",
+        "app-platform.trust-social-content-format-profiles",
         "migration.social-mail-preview",
         *APP_SERVICE_DISCOVERY_AND_GRANT_EVIDENCE_IDS,
         "legacy-plugin.migration-guide",
@@ -8793,6 +8821,7 @@ def run_self_test(repo_root: Path) -> None:
             "reference-app.social-inbox",
             "reference-app.social-inbox-rc-threading",
             "app-platform.trust-social-beta-hardening",
+            "app-platform.trust-social-content-format-profiles",
             "migration.social-mail-preview",
             "legacy-plugin.freeze-policy",
             "legacy-plugin.migration-guide",
@@ -8949,6 +8978,7 @@ def run_self_test(repo_root: Path) -> None:
             "reference-app.social-inbox-trust-annotations",
             "reference-app.social-inbox-rc-threading",
             "app-platform.trust-social-beta-hardening",
+            "app-platform.trust-social-content-format-profiles",
             "reference-app.social-inbox-service-grant",
             "migration.social-mail-preview",
             "legacy-plugin.freeze-policy",

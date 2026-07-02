@@ -90,6 +90,18 @@ loads only local design-system assets and the staged `crypta-platform.js` SDK.
 The bounded AppVault route is `app-vault/identities/{identityId}/trust-statement`; it signs only
 the trust statement payload and does not export private key material.
 
+## Content format profile
+
+Trust Graph Local RC uses `CryptaPlatform.contentFormats.trustStatement` for the
+`crypta.trust.statement.v1` type, `application/vnd.crypta.trust+json` content type, `trust.json`
+default filename, `crypta.trust.statement.v1` signing domain, and profile byte bounds. The signed
+bytes are the domain line, one newline, and canonical payload JSON. Parser, validator, and verifier
+code reject unknown fields, unsupported versions, malformed statements, oversized statements, and
+signature/canonicalization mismatches with redacted diagnostics.
+
+These content profiles are Crypta app ecosystem profiles. They are not compatibility promises for
+legacy WoT, Freetalk, Sone, Freemail, or any old plugin ABI/protocol.
+
 ## Trust Score Service
 
 Trust Graph Local RC advertises this service metadata in `cryptad-app.properties`:
