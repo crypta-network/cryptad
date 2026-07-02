@@ -386,6 +386,24 @@ class OperatorBetaDashboardServiceTest {
   }
 
   @Test
+  void supportBundle_whenUpdateSummaryFails_expectUpdateSectionUnavailable() {
+    AppUpdateService updateService = mock(AppUpdateService.class);
+    when(updateService.summary(APP_ID)).thenThrow(new IllegalStateException("backend offline"));
+
+    Map<String, Object> bundle = service(appsHandler(), updateService).supportBundle();
+
+    Map<String, Object> appUpdates = appUpdatesSection(bundle);
+    assertEquals(UNAVAILABLE, appUpdates.get("status"));
+    assertEquals(1, appUpdates.get("boundedCount"));
+    assertEquals(0L, appUpdates.get(PENDING_UPDATE_COUNT_FIELD));
+    assertEquals(0L, appUpdates.get(STAGED_UPDATE_COUNT_FIELD));
+    assertEquals(0L, appUpdates.get(BLOCKED_UPDATE_COUNT_FIELD));
+    assertEquals(
+        "App-update state could not be inspected: IllegalStateException",
+        appUpdates.get("lastSafeStatusMessage"));
+  }
+
+  @Test
   void supportBundle_whenLegacyAdminUsageAvailable_expectLegacyFallbackSurfaceCount() {
     Map<String, Object> bundle = serviceWithLegacyAdminUsage().supportBundle();
 

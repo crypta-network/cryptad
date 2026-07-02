@@ -1338,6 +1338,9 @@ public final class OperatorBetaDashboardService {
     if (apps.isEmpty()) {
       return EMPTY_STATUS;
     }
+    if (hasUnavailableUpdate(apps)) {
+      return UNAVAILABLE;
+    }
     if (blocked > 0L) {
       return ACTION_REQUIRED;
     }
@@ -1351,6 +1354,12 @@ public final class OperatorBetaDashboardService {
                     isUnavailable(update) || !stringList(update.get(WARNINGS_FIELD)).isEmpty())
         ? WARNING
         : AVAILABLE_STATUS;
+  }
+
+  private static boolean hasUnavailableUpdate(List<Map<String, Object>> apps) {
+    return apps.stream()
+        .map(app -> mapValue(app.get(UPDATE_FIELD)))
+        .anyMatch(OperatorBetaDashboardService::isUnavailable);
   }
 
   private static String appDataLifecycleStatus(
