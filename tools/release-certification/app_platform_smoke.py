@@ -17176,7 +17176,7 @@ def support_bundle_fixture_findings(value: Any, path: str = "$") -> list[str]:
             normalized = re.sub(r"[^A-Za-z0-9]", "", key).lower()
             child_path = f"{path}.{key}"
             if normalized in sensitive_keys:
-                findings.append(f"{child_path}:sensitive-key")
+                findings.append("sensitive-key")
             findings.extend(support_bundle_fixture_findings(child, child_path))
         return findings
     if isinstance(value, list):
@@ -17185,15 +17185,15 @@ def support_bundle_fixture_findings(value: Any, path: str = "$") -> list[str]:
         return findings
     if isinstance(value, str):
         if re.search(r"(?i)\b(?:crypta:)?(?:CHK|SSK|USK|KSK)@", value):
-            findings.append(f"{path}:content-uri")
+            findings.append("content-uri")
         if re.search(r"(?i)\bBearer\s+[A-Za-z0-9._~-]+", value):
-            findings.append(f"{path}:bearer-token")
+            findings.append("bearer-token")
         if "-----BEGIN PRIVATE KEY-----" in value or "-----BEGIN OPENSSH PRIVATE KEY-----" in value:
-            findings.append(f"{path}:private-key")
+            findings.append("private-key")
         if re.search(r"(?i)(?:/work/|/home/|/Users/|C:\\\\|file:/)", value):
-            findings.append(f"{path}:local-path")
+            findings.append("local-path")
         if "crypta-app-data-backup" in value:
-            findings.append(f"{path}:app-data-backup")
+            findings.append("app-data-backup")
     return findings
 
 
@@ -20136,6 +20136,16 @@ def run_self_test(repo_root: Path) -> None:
         encoded = json.dumps(summary, sort_keys=True)
         for forbidden in ("CRYPTAD_APP_TOKEN=secret", "formPassword=hunter2", str(workspace)):
             assert forbidden not in encoded, f"self-test leaked {forbidden}"
+        for forbidden in (
+            "$.privateInsertUri",
+            "$.rawProfileDocument",
+            "$.rawFeedSnapshot",
+            "$.rawTrustStatement",
+            "$.rawSocialMessage",
+            "$.rawAppDataValue",
+            "$.appServiceInvocationBody",
+        ):
+            assert forbidden not in encoded, f"self-test exported raw fixture finding path {forbidden}"
         stale_log = settings.out_dir / "artifacts/logs/stale-from-previous-run.log"
         stale_log.parent.mkdir(parents=True, exist_ok=True)
         stale_log.write_text("old command output\n", encoding="utf-8")
