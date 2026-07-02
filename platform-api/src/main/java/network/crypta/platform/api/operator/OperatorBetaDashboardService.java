@@ -1165,7 +1165,7 @@ public final class OperatorBetaDashboardService {
             socialInboxLifecycleStatus(socialApps, socialSubscriptions, pausedSources));
     json.put(BOUNDED_COUNT_FIELD, socialApps.size());
     json.put(SOURCE_PAUSED_COUNT_FIELD, pausedSources);
-    json.put("malformedMessageRejectedCount", countWarningContaining(socialApps, "malformed"));
+    json.put("malformedMessageRejectedCount", countMalformedWarnings(socialApps));
     json.put("rawMessagesExcluded", true);
     json.put("rawOutboxesExcluded", true);
     json.put(SAFE_IDS_FIELD, safeIds(socialApps, APP_ID_FIELD));
@@ -1548,11 +1548,10 @@ public final class OperatorBetaDashboardService {
         || booleanValue(consent.get(OPERATOR_ACTION_REQUIRED_FIELD));
   }
 
-  private static long countWarningContaining(List<Map<String, Object>> items, String needle) {
-    String normalized = needle.toLowerCase(Locale.ROOT);
+  private static long countMalformedWarnings(List<Map<String, Object>> items) {
     return items.stream()
         .flatMap(item -> stringList(item.get(WARNINGS_FIELD)).stream())
-        .filter(warning -> warning.toLowerCase(Locale.ROOT).contains(normalized))
+        .filter(warning -> warning.toLowerCase(Locale.ROOT).contains("malformed"))
         .count();
   }
 
