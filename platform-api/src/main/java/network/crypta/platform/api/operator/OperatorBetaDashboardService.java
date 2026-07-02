@@ -1006,7 +1006,8 @@ public final class OperatorBetaDashboardService {
       }
     }
     Map<String, Object> json =
-        baseLifecycleSummary("appUpdates", appUpdateLifecycleStatus(apps, blocked));
+        baseLifecycleSummary(
+            "appUpdates", appUpdateLifecycleStatus(apps, pending, staged, blocked));
     json.put(BOUNDED_COUNT_FIELD, apps.size());
     json.put(PENDING_UPDATE_COUNT_FIELD, pending);
     json.put(STAGED_UPDATE_COUNT_FIELD, staged);
@@ -1277,12 +1278,16 @@ public final class OperatorBetaDashboardService {
     return AVAILABLE_STATUS;
   }
 
-  private static String appUpdateLifecycleStatus(List<Map<String, Object>> apps, long blocked) {
+  private static String appUpdateLifecycleStatus(
+      List<Map<String, Object>> apps, long pending, long staged, long blocked) {
     if (apps.isEmpty()) {
       return EMPTY_STATUS;
     }
     if (blocked > 0L) {
       return ACTION_REQUIRED;
+    }
+    if (pending > 0L || staged > 0L) {
+      return WARNING;
     }
     return apps.stream()
             .map(app -> mapValue(app.get(UPDATE_FIELD)))

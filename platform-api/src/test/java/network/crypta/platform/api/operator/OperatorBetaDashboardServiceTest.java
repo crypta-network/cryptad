@@ -32,19 +32,23 @@ class OperatorBetaDashboardServiceTest {
   private static final String APP_ID = "feed-reader";
   private static final String APP_NEEDS_REVIEW_WARNING =
       "App " + APP_ID + " needs operator review.";
+  private static final String APP_UPDATES_SECTION = "appUpdates";
   private static final String APP_UPDATE_UNAVAILABLE =
       "App-update lifecycle service is unavailable.";
   private static final String APP_UPDATE_UNAVAILABLE_DASHBOARD_WARNING =
       "App " + APP_ID + " update state is unavailable.";
   private static final String APPLY_APP_UPDATE_ACTION = "apply-app-update";
   private static final String AVAILABLE = "available";
+  private static final String BLOCKED_UPDATE_COUNT_FIELD = "blockedUpdateCount";
   private static final String ERROR = "error";
   private static final String MANUAL_SOURCE_KIND = "manual";
   private static final String PENDING = "pending";
+  private static final String PENDING_UPDATE_COUNT_FIELD = "pendingUpdateCount";
   private static final String QUOTA_FIELD = "quota";
   private static final String ROLLBACK_APP_ACTION = "rollback-app";
   private static final String SOURCE_KIND_FIELD = "sourceKind";
   private static final String STAGE_APP_UPDATE_ACTION = "stage-app-update";
+  private static final String STAGED_UPDATE_COUNT_FIELD = "stagedUpdateCount";
   private static final String SUMMARY_FIELD = "summary";
   private static final String UNAVAILABLE = "unavailable";
   private static final String UPPERCASE_FILE_CATALOG_SOURCE =
@@ -63,7 +67,7 @@ class OperatorBetaDashboardServiceTest {
 
     Map<String, Object> summary = mapValue(dashboard.get(SUMMARY_FIELD));
     List<Map<String, Object>> actions = recoveryActionsForFirstApp(dashboard);
-    assertEquals(1L, summary.get("pendingUpdateCount"));
+    assertEquals(1L, summary.get(PENDING_UPDATE_COUNT_FIELD));
     assertTrue(actionAvailable(actions, "check-app-update"));
     assertTrue(actionAvailable(actions, STAGE_APP_UPDATE_ACTION));
   }
@@ -78,7 +82,7 @@ class OperatorBetaDashboardServiceTest {
 
     Map<String, Object> summary = mapValue(dashboard.get(SUMMARY_FIELD));
     List<Map<String, Object>> actions = recoveryActionsForFirstApp(dashboard);
-    assertEquals(1L, summary.get("pendingUpdateCount"));
+    assertEquals(1L, summary.get(PENDING_UPDATE_COUNT_FIELD));
     assertFalse(actionAvailable(actions, STAGE_APP_UPDATE_ACTION));
   }
 
@@ -95,7 +99,7 @@ class OperatorBetaDashboardServiceTest {
 
     Map<String, Object> summary = mapValue(dashboard.get(SUMMARY_FIELD));
     List<Map<String, Object>> actions = recoveryActionsForFirstApp(dashboard);
-    assertEquals(1L, summary.get("pendingUpdateCount"));
+    assertEquals(1L, summary.get(PENDING_UPDATE_COUNT_FIELD));
     assertFalse(actionAvailable(actions, STAGE_APP_UPDATE_ACTION));
     assertTrue(warningsForFirstApp(dashboard).contains("app_update_security_advisory"));
   }
@@ -377,21 +381,49 @@ class OperatorBetaDashboardServiceTest {
     Map<String, Object> bundle =
         service(appsHandler(installedAppWithQuotaWarning()), updateService).supportBundle();
 
-    Map<String, Object> appUpdates = mapValue(mapValue(bundle.get("sections")).get("appUpdates"));
+    Map<String, Object> appUpdates = appUpdatesSection(bundle);
     Map<String, Object> sandbox = mapValue(mapValue(bundle.get("sections")).get("sandbox"));
     assertEquals(AVAILABLE, appUpdates.get("status"));
-    assertEquals(0L, appUpdates.get("pendingUpdateCount"));
-    assertEquals(0L, appUpdates.get("stagedUpdateCount"));
-    assertEquals(0L, appUpdates.get("blockedUpdateCount"));
+    assertEquals(0L, appUpdates.get(PENDING_UPDATE_COUNT_FIELD));
+    assertEquals(0L, appUpdates.get(STAGED_UPDATE_COUNT_FIELD));
+    assertEquals(0L, appUpdates.get(BLOCKED_UPDATE_COUNT_FIELD));
     assertEquals(AVAILABLE, sandbox.get("status"));
     assertEquals(0L, sandbox.get("warningCount"));
   }
 
   @Test
+  void supportBundle_whenUpdateCandidateAvailable_expectAppUpdatesSectionWarning() {
+    AppUpdateService updateService = mock(AppUpdateService.class);
+    when(updateService.summary(APP_ID)).thenReturn(updateSummary(availableCandidate()));
+
+    Map<String, Object> bundle = service(appsHandler(), updateService).supportBundle();
+
+    Map<String, Object> appUpdates = appUpdatesSection(bundle);
+    assertEquals(WARNING, appUpdates.get("status"));
+    assertEquals(1L, appUpdates.get(PENDING_UPDATE_COUNT_FIELD));
+    assertEquals(0L, appUpdates.get(STAGED_UPDATE_COUNT_FIELD));
+    assertEquals(0L, appUpdates.get(BLOCKED_UPDATE_COUNT_FIELD));
+  }
+
+  @Test
+  void supportBundle_whenUpdateStaged_expectAppUpdatesSectionWarning() {
+    AppUpdateService updateService = mock(AppUpdateService.class);
+    when(updateService.summary(APP_ID))
+        .thenReturn(updateSummary(Map.of(AVAILABLE, false), stagedUpdate(), rollbackAvailable()));
+
+    Map<String, Object> bundle = service(appsHandler(), updateService).supportBundle();
+
+    Map<String, Object> appUpdates = appUpdatesSection(bundle);
+    assertEquals(WARNING, appUpdates.get("status"));
+    assertEquals(0L, appUpdates.get(PENDING_UPDATE_COUNT_FIELD));
+    assertEquals(1L, appUpdates.get(STAGED_UPDATE_COUNT_FIELD));
+    assertEquals(0L, appUpdates.get(BLOCKED_UPDATE_COUNT_FIELD));
+  }
+
+  @Test
   void supportBundle_whenAppServiceGrantPending_expectAppServiceLifecycleWarning() {
     Map<String, Object> bundle =
-        serviceWithAppServiceCoordinator(appServiceCoordinatorWithGrantStatus(PENDING))
-            .supportBundle();
+        serviceWithAppServiceCoordinator(appServiceCoordinatorWithPendingGrant()).supportBundle();
 
     Map<String, Object> appServiceGrants =
         mapValue(mapValue(bundle.get("sections")).get("appServiceGrants"));
@@ -682,9 +714,9 @@ class OperatorBetaDashboardServiceTest {
     return appServiceCoordinator;
   }
 
-  private static AppServiceCoordinator appServiceCoordinatorWithGrantStatus(String status) {
+  private static AppServiceCoordinator appServiceCoordinatorWithPendingGrant() {
     AppServiceCoordinator appServiceCoordinator = emptyAppServiceCoordinator();
-    when(appServiceCoordinator.listGrants(any())).thenReturn(List.of(Map.of("status", status)));
+    when(appServiceCoordinator.listGrants(any())).thenReturn(List.of(Map.of("status", PENDING)));
     return appServiceCoordinator;
   }
 
@@ -952,6 +984,10 @@ class OperatorBetaDashboardServiceTest {
 
   private static boolean actionAvailable(List<Map<String, Object>> actions, String actionId) {
     return Boolean.TRUE.equals(action(actions, actionId).get(AVAILABLE));
+  }
+
+  private static Map<String, Object> appUpdatesSection(Map<String, Object> bundle) {
+    return mapValue(mapValue(bundle.get("sections")).get(APP_UPDATES_SECTION));
   }
 
   private static void assertSafeDiagnosticsSummary(Map<String, Object> bundle) {
