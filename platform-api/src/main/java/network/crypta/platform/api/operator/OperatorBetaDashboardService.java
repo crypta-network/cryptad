@@ -143,6 +143,7 @@ public final class OperatorBetaDashboardService {
   private static final String APPS_UNAVAILABLE = "AppHost service is unavailable.";
   private static final String APP_UPDATE_UNAVAILABLE =
       "App-update lifecycle service is unavailable.";
+  private static final String APP_DATA_UNAVAILABLE = "App-data service is unavailable.";
   private static final String CONTENT_SUBSCRIPTIONS_UNAVAILABLE =
       "Content subscription service is unavailable.";
   private static final int SUPPORT_BUNDLE_SCHEMA_VERSION = 2;
@@ -290,7 +291,7 @@ public final class OperatorBetaDashboardService {
     List<Map<String, Object>> recentAudit = supportAppServiceAudit();
     Map<String, Object> legacyAdmin = legacyAdminFromDiagnostics(diagnostics);
     Map<String, Object> sections =
-        supportSections(dashboard, diagnostics, recentAudit, legacyAdmin);
+        supportSections(dashboard, diagnostics, recentAudit, legacyAdmin, appDataService != null);
 
     OperatorSupportRedactor.RedactionResult redactedDashboard =
         OperatorSupportRedactor.redact(dashboard);
@@ -522,7 +523,7 @@ public final class OperatorBetaDashboardService {
 
   private Map<String, Object> appDataSummary(String appId) {
     if (appId == null || appDataService == null) {
-      return unavailableBlock("App-data service is unavailable.");
+      return unavailableBlock(APP_DATA_UNAVAILABLE);
     }
     try {
       return appDataService.status(appId);
@@ -915,7 +916,8 @@ public final class OperatorBetaDashboardService {
       Map<String, Object> dashboard,
       Map<String, Object> diagnostics,
       List<Map<String, Object>> recentAudit,
-      Map<String, Object> legacyAdmin) {
+      Map<String, Object> legacyAdmin,
+      boolean appDataServiceAvailable) {
     List<Map<String, Object>> catalogs = listOfMaps(dashboard.get("catalogs"));
     List<Map<String, Object>> apps = listOfMaps(dashboard.get("apps"));
     List<Map<String, Object>> subscriptions = listOfMaps(dashboard.get(SUBSCRIPTIONS_FIELD));
@@ -960,7 +962,7 @@ public final class OperatorBetaDashboardService {
                 dashboardWarnings,
                 CONTENT_SUBSCRIPTIONS_UNAVAILABLE,
                 "Content subscriptions could not")));
-    sections.put(APP_DATA_FIELD, appDataLifecycleSummary(apps));
+    sections.put(APP_DATA_FIELD, appDataLifecycleSummary(apps, appDataServiceAvailable));
     sections.put(APP_SERVICE_GRANTS_FIELD, appServiceLifecycleSummary(appServices, recentAudit));
     sections.put(CONSENT_FIELD, consentLifecycleSummary(apps));
     sections.put("migrations", migrationLifecycleSummary(apps));
@@ -1023,7 +1025,8 @@ public final class OperatorBetaDashboardService {
     return json;
   }
 
-  private static Map<String, Object> appDataLifecycleSummary(List<Map<String, Object>> apps) {
+  private static Map<String, Object> appDataLifecycleSummary(
+      List<Map<String, Object>> apps, boolean appDataServiceAvailable) {
     long unavailable = 0L;
     long quotaWarnings = 0L;
     for (Map<String, Object> app : apps) {
@@ -1036,11 +1039,16 @@ public final class OperatorBetaDashboardService {
       }
     }
     Map<String, Object> json =
-        baseLifecycleSummary(APP_DATA_FIELD, appDataLifecycleStatus(apps, unavailable));
+        baseLifecycleSummary(
+            APP_DATA_FIELD, appDataLifecycleStatus(apps, unavailable, appDataServiceAvailable));
     json.put(BOUNDED_COUNT_FIELD, apps.size());
     json.put("unavailableCount", unavailable);
     json.put(QUOTA_WARNING_COUNT_FIELD, quotaWarnings);
-    json.put(LAST_SAFE_STATUS_MESSAGE_FIELD, firstNestedWarning(apps, APP_DATA_FIELD));
+    json.put(
+        LAST_SAFE_STATUS_MESSAGE_FIELD,
+        firstNonNull(
+            appDataServiceAvailable ? null : APP_DATA_UNAVAILABLE,
+            firstNestedWarning(apps, APP_DATA_FIELD)));
     json.put("rawAppDataExcluded", true);
     json.put("backupPayloadsExcluded", true);
     json.put(SAFE_IDS_FIELD, safeIds(apps, APP_ID_FIELD));
@@ -1324,7 +1332,11 @@ public final class OperatorBetaDashboardService {
         : AVAILABLE_STATUS;
   }
 
-  private static String appDataLifecycleStatus(List<Map<String, Object>> apps, long unavailable) {
+  private static String appDataLifecycleStatus(
+      List<Map<String, Object>> apps, long unavailable, boolean appDataServiceAvailable) {
+    if (!appDataServiceAvailable) {
+      return UNAVAILABLE;
+    }
     if (apps.isEmpty()) {
       return EMPTY_STATUS;
     }

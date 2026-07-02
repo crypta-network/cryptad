@@ -349,6 +349,7 @@ class OperatorBetaDashboardServiceTest {
     Map<String, Object> sections = mapValue(bundle.get("sections"));
     Map<String, Object> catalog = mapValue(sections.get("catalog"));
     Map<String, Object> subscriptions = mapValue(sections.get("subscriptions"));
+    Map<String, Object> appData = mapValue(sections.get("appData"));
     Map<String, Object> nodeSummary = mapValue(bundle.get("nodeSummary"));
 
     assertEquals(UNAVAILABLE, catalog.get("status"));
@@ -358,6 +359,9 @@ class OperatorBetaDashboardServiceTest {
     assertEquals(
         "Content subscription service is unavailable.", subscriptions.get("lastSafeStatusMessage"));
     assertEquals(0, subscriptions.get("boundedCount"));
+    assertEquals(UNAVAILABLE, appData.get("status"));
+    assertEquals("App-data service is unavailable.", appData.get("lastSafeStatusMessage"));
+    assertEquals(0, appData.get("boundedCount"));
     assertTrue(
         nodeSummary.get("architecture") instanceof String architecture
             && List.of("amd64", "arm64").contains(architecture));
@@ -479,6 +483,17 @@ class OperatorBetaDashboardServiceTest {
   }
 
   @Test
+  void supportBundle_whenAppDataServiceUnavailableAndNoApps_expectAppDataSectionUnavailable() {
+    Map<String, Object> bundle = serviceWithNoAppsAndMissingAppDataService().supportBundle();
+
+    Map<String, Object> appData = mapValue(mapValue(bundle.get("sections")).get("appData"));
+    assertEquals(UNAVAILABLE, appData.get("status"));
+    assertEquals(0, appData.get("boundedCount"));
+    assertEquals(0L, appData.get("unavailableCount"));
+    assertEquals("App-data service is unavailable.", appData.get("lastSafeStatusMessage"));
+  }
+
+  @Test
   void supportBundle_whenUpdateDataMigrationBlocked_expectMigrationSectionWarning() {
     AppUpdateService updateService = mock(AppUpdateService.class);
     when(updateService.summary(APP_ID))
@@ -591,6 +606,18 @@ class OperatorBetaDashboardServiceTest {
         new OperatorBetaDashboardService.AppStateSources(
             emptyContentSubscriptionService(),
             availableAppDataService(),
+            availableTrustGraphApiHandler(),
+            emptyAppServiceCoordinator()),
+        CLOCK);
+  }
+
+  private static OperatorBetaDashboardService serviceWithNoAppsAndMissingAppDataService() {
+    return new OperatorBetaDashboardService(
+        new OperatorBetaDashboardService.HandlerSources(
+            emptyAppsHandler(), emptyCatalogsApiHandler(), null, diagnosticsWithLegacyAdmin()),
+        new OperatorBetaDashboardService.AppStateSources(
+            emptyContentSubscriptionService(),
+            null,
             availableTrustGraphApiHandler(),
             emptyAppServiceCoordinator()),
         CLOCK);

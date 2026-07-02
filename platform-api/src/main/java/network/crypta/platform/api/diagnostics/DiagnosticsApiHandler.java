@@ -249,7 +249,7 @@ public final class DiagnosticsApiHandler {
       if (!signalWords.contains(tokens.get(index))) {
         continue;
       }
-      CountSignal countSignal = countSignal(tokens, index);
+      CountSignal countSignal = countSignal(tokens, index, signalWords);
       if (countSignal == CountSignal.NON_ZERO) {
         return true;
       }
@@ -275,31 +275,35 @@ public final class DiagnosticsApiHandler {
     return "no".equals(previous) || "zero".equals(previous);
   }
 
-  private static CountSignal countSignal(List<String> tokens, int errorWordIndex) {
-    CountSignal previous = numericCountSignal(tokens, errorWordIndex - 1);
+  private static CountSignal countSignal(
+      List<String> tokens, int signalWordIndex, Set<String> signalWords) {
+    CountSignal previous = numericCountSignal(tokens, signalWordIndex - 1);
     if (previous != CountSignal.NONE) {
       return previous;
     }
-    int nextIndex = errorWordIndex + 1;
+    int nextIndex = signalWordIndex + 1;
     boolean explicitCount = false;
     if (nextIndex < tokens.size() && "count".equals(tokens.get(nextIndex))) {
       explicitCount = true;
       nextIndex++;
     }
     return countValueSignal(
-        tokens, nextIndex, explicitCount || isPluralCountSummaryWord(tokens.get(errorWordIndex)));
+        tokens,
+        nextIndex,
+        explicitCount || isPluralCountSummaryWord(tokens.get(signalWordIndex)),
+        signalWords);
   }
 
   private static CountSignal numericCountSignal(List<String> tokens, int index) {
-    return countValueSignal(tokens, index, false);
+    return countValueSignal(tokens, index, false, Set.of());
   }
 
   private static CountSignal countValueSignal(
-      List<String> tokens, int index, boolean allowTextualZero) {
+      List<String> tokens, int index, boolean allowCountProse, Set<String> signalWords) {
     if (index < 0 || index >= tokens.size()) {
       return CountSignal.NONE;
     }
-    if (allowTextualZero && TEXTUAL_ZERO_COUNT_WORDS.contains(tokens.get(index))) {
+    if (isTextualZeroCountValue(tokens, index, allowCountProse, signalWords)) {
       return CountSignal.ZERO;
     }
     try {
@@ -307,6 +311,20 @@ public final class DiagnosticsApiHandler {
     } catch (NumberFormatException _) {
       return CountSignal.NONE;
     }
+  }
+
+  private static boolean isTextualZeroCountValue(
+      List<String> tokens, int index, boolean allowCountProse, Set<String> signalWords) {
+    String token = tokens.get(index);
+    if (!TEXTUAL_ZERO_COUNT_WORDS.contains(token)) {
+      return false;
+    }
+    if ("none".equals(token)) {
+      return true;
+    }
+    return allowCountProse
+        || index + 1 == tokens.size()
+        || signalWords.contains(tokens.get(index + 1));
   }
 
   private static boolean isPluralCountSummaryWord(String signalWord) {
