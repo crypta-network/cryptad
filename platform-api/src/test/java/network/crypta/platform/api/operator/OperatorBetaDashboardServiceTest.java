@@ -348,6 +348,7 @@ class OperatorBetaDashboardServiceTest {
 
     Map<String, Object> sections = mapValue(bundle.get("sections"));
     Map<String, Object> catalog = mapValue(sections.get("catalog"));
+    Map<String, Object> appUpdates = mapValue(sections.get(APP_UPDATES_SECTION));
     Map<String, Object> subscriptions = mapValue(sections.get("subscriptions"));
     Map<String, Object> appData = mapValue(sections.get("appData"));
     Map<String, Object> nodeSummary = mapValue(bundle.get("nodeSummary"));
@@ -355,6 +356,9 @@ class OperatorBetaDashboardServiceTest {
     assertEquals(UNAVAILABLE, catalog.get("status"));
     assertEquals("Catalog service is unavailable.", catalog.get("lastSafeStatusMessage"));
     assertEquals(0, catalog.get("boundedCount"));
+    assertEquals(UNAVAILABLE, appUpdates.get("status"));
+    assertEquals(APP_UPDATE_UNAVAILABLE, appUpdates.get("lastSafeStatusMessage"));
+    assertEquals(0, appUpdates.get("boundedCount"));
     assertEquals(UNAVAILABLE, subscriptions.get("status"));
     assertEquals(
         "Content subscription service is unavailable.", subscriptions.get("lastSafeStatusMessage"));
@@ -366,6 +370,19 @@ class OperatorBetaDashboardServiceTest {
         nodeSummary.get("architecture") instanceof String architecture
             && List.of("amd64", "arm64").contains(architecture));
     assertTrue(nodeSummary.get("operatingSystem") instanceof String os && !os.isBlank());
+  }
+
+  @Test
+  void supportBundle_whenUpdateServiceUnavailableAndNoApps_expectUpdateSectionUnavailable() {
+    Map<String, Object> bundle = serviceWithNoAppsAndMissingUpdateService().supportBundle();
+
+    Map<String, Object> appUpdates = appUpdatesSection(bundle);
+    assertEquals(UNAVAILABLE, appUpdates.get("status"));
+    assertEquals(0, appUpdates.get("boundedCount"));
+    assertEquals(0L, appUpdates.get(PENDING_UPDATE_COUNT_FIELD));
+    assertEquals(0L, appUpdates.get(STAGED_UPDATE_COUNT_FIELD));
+    assertEquals(0L, appUpdates.get(BLOCKED_UPDATE_COUNT_FIELD));
+    assertEquals(APP_UPDATE_UNAVAILABLE, appUpdates.get("lastSafeStatusMessage"));
   }
 
   @Test
@@ -603,6 +620,18 @@ class OperatorBetaDashboardServiceTest {
     return new OperatorBetaDashboardService(
         new OperatorBetaDashboardService.HandlerSources(
             appsHandler(), emptyCatalogsApiHandler(), null, diagnosticsWithLegacyAdmin()),
+        new OperatorBetaDashboardService.AppStateSources(
+            emptyContentSubscriptionService(),
+            availableAppDataService(),
+            availableTrustGraphApiHandler(),
+            emptyAppServiceCoordinator()),
+        CLOCK);
+  }
+
+  private static OperatorBetaDashboardService serviceWithNoAppsAndMissingUpdateService() {
+    return new OperatorBetaDashboardService(
+        new OperatorBetaDashboardService.HandlerSources(
+            emptyAppsHandler(), emptyCatalogsApiHandler(), null, diagnosticsWithLegacyAdmin()),
         new OperatorBetaDashboardService.AppStateSources(
             emptyContentSubscriptionService(),
             availableAppDataService(),

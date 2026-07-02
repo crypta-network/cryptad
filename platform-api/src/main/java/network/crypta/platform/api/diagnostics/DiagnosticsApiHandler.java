@@ -41,6 +41,8 @@ public final class DiagnosticsApiHandler {
       Set.of("error", "errors", "failed", "failure", "failures", "exception", "exceptions");
   private static final Set<String> WARNING_WORDS = Set.of("warn", "warns", "warning", "warnings");
   private static final Set<String> TEXTUAL_ZERO_COUNT_WORDS = Set.of("no", "none", "zero");
+  private static final Set<String> COUNT_VALUE_QUALIFIER_WORDS =
+      Set.of("code", "reason", "status", "message", "messages", "value", "values");
 
   private enum CountSignal {
     NONE,
@@ -281,6 +283,10 @@ public final class DiagnosticsApiHandler {
     boolean explicitCount = false;
     if (nextIndex < tokens.size() && "count".equals(tokens.get(nextIndex))) {
       explicitCount = true;
+      nextIndex++;
+    }
+    while (nextIndex < tokens.size()
+        && COUNT_VALUE_QUALIFIER_WORDS.contains(tokens.get(nextIndex))) {
       nextIndex++;
     }
     CountSignal next =

@@ -64,6 +64,7 @@ public final class OperatorBetaDashboardService {
   private static final String BACKOFF = "backoff";
   private static final String APP_DATA_FIELD = "appData";
   private static final String APP_SERVICE_GRANTS_FIELD = "appServiceGrants";
+  private static final String APP_UPDATES_FIELD = "appUpdates";
   private static final String ANCHOR_COUNT_FIELD = "anchorCount";
   private static final String AUDIT_COUNT_FIELD = "auditCount";
   private static final String BOUNDED_COUNT_FIELD = "boundedCount";
@@ -291,7 +292,13 @@ public final class OperatorBetaDashboardService {
     List<Map<String, Object>> recentAudit = supportAppServiceAudit();
     Map<String, Object> legacyAdmin = legacyAdminFromDiagnostics(diagnostics);
     Map<String, Object> sections =
-        supportSections(dashboard, diagnostics, recentAudit, legacyAdmin, appDataService != null);
+        supportSections(
+            dashboard,
+            diagnostics,
+            recentAudit,
+            legacyAdmin,
+            appUpdateService != null,
+            appDataService != null);
 
     OperatorSupportRedactor.RedactionResult redactedDashboard =
         OperatorSupportRedactor.redact(dashboard);
@@ -917,6 +924,7 @@ public final class OperatorBetaDashboardService {
       Map<String, Object> diagnostics,
       List<Map<String, Object>> recentAudit,
       Map<String, Object> legacyAdmin,
+      boolean appUpdateServiceAvailable,
       boolean appDataServiceAvailable) {
     List<Map<String, Object>> catalogs = listOfMaps(dashboard.get("catalogs"));
     List<Map<String, Object>> apps = listOfMaps(dashboard.get("apps"));
@@ -946,7 +954,7 @@ public final class OperatorBetaDashboardService {
                 "Catalog health could not be inspected",
                 RECOMMENDED_FIRST_PARTY_CATALOG_MISSING,
                 "Recommended catalog state could not be inspected")));
-    sections.put("appUpdates", appUpdateLifecycleSummary(apps));
+    sections.put(APP_UPDATES_FIELD, appUpdateLifecycleSummary(apps, appUpdateServiceAvailable));
     sections.put(
         SUBSCRIPTIONS_FIELD,
         lifecycleSummary(
@@ -994,7 +1002,8 @@ public final class OperatorBetaDashboardService {
     return json;
   }
 
-  private static Map<String, Object> appUpdateLifecycleSummary(List<Map<String, Object>> apps) {
+  private static Map<String, Object> appUpdateLifecycleSummary(
+      List<Map<String, Object>> apps, boolean appUpdateServiceAvailable) {
     long pending = 0L;
     long staged = 0L;
     long blocked = 0L;
@@ -1012,13 +1021,18 @@ public final class OperatorBetaDashboardService {
     }
     Map<String, Object> json =
         baseLifecycleSummary(
-            "appUpdates", appUpdateLifecycleStatus(apps, pending, staged, blocked));
+            APP_UPDATES_FIELD,
+            appUpdateLifecycleStatus(apps, pending, staged, blocked, appUpdateServiceAvailable));
     json.put(BOUNDED_COUNT_FIELD, apps.size());
     json.put(PENDING_UPDATE_COUNT_FIELD, pending);
     json.put(STAGED_UPDATE_COUNT_FIELD, staged);
     json.put("blockedUpdateCount", blocked);
     json.put(LAST_ERROR_CODE_FIELD, firstUpdateLastErrorCode(apps));
-    json.put(LAST_SAFE_STATUS_MESSAGE_FIELD, firstNestedWarning(apps, UPDATE_FIELD));
+    json.put(
+        LAST_SAFE_STATUS_MESSAGE_FIELD,
+        firstNonNull(
+            appUpdateServiceAvailable ? null : APP_UPDATE_UNAVAILABLE,
+            firstNestedWarning(apps, UPDATE_FIELD)));
     json.put(SAFE_IDS_FIELD, safeIds(apps, APP_ID_FIELD));
     json.put(RECOVERY_ACTION_IDS_FIELD, recoveryActionIds(apps));
     json.put(DIGEST_FIELD, digestOrNull(PlatformApiJsonWriter.write(json)));
@@ -1313,7 +1327,14 @@ public final class OperatorBetaDashboardService {
   }
 
   private static String appUpdateLifecycleStatus(
-      List<Map<String, Object>> apps, long pending, long staged, long blocked) {
+      List<Map<String, Object>> apps,
+      long pending,
+      long staged,
+      long blocked,
+      boolean appUpdateServiceAvailable) {
+    if (!appUpdateServiceAvailable) {
+      return UNAVAILABLE;
+    }
     if (apps.isEmpty()) {
       return EMPTY_STATUS;
     }
