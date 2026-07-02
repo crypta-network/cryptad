@@ -50,6 +50,8 @@ class OperatorBetaDashboardServiceTest {
   private static final String STAGE_APP_UPDATE_ACTION = "stage-app-update";
   private static final String STAGED_UPDATE_COUNT_FIELD = "stagedUpdateCount";
   private static final String SUMMARY_FIELD = "summary";
+  private static final String SOCIAL_INBOX_APP_ID = "social-inbox";
+  private static final String SOCIAL_INBOX_SECTION = "socialInbox";
   private static final String UNAVAILABLE = "unavailable";
   private static final String UPPERCASE_FILE_CATALOG_SOURCE =
       "FILE:///home/operator/private/cryptad-app-catalog.properties";
@@ -433,6 +435,22 @@ class OperatorBetaDashboardServiceTest {
   }
 
   @Test
+  void supportBundle_whenSocialInboxSourcePaused_expectSocialInboxLifecycleWarning() {
+    Map<String, Object> bundle =
+        serviceWithContentSubscriptions(
+                appsHandler(installedSocialInboxApp()),
+                contentSubscriptionServiceWithPausedSocialInbox())
+            .supportBundle();
+
+    Map<String, Object> socialInbox =
+        mapValue(mapValue(bundle.get("sections")).get(SOCIAL_INBOX_SECTION));
+    assertEquals(WARNING, socialInbox.get("status"));
+    assertEquals(1L, socialInbox.get("sourcePausedCount"));
+    assertEquals(0L, socialInbox.get("malformedMessageRejectedCount"));
+    assertEquals(List.of(SOCIAL_INBOX_APP_ID), socialInbox.get("safeIds"));
+  }
+
+  @Test
   void supportBundle_whenUpdateConsentRequired_expectConsentLifecycleWarning() {
     AppUpdateService updateService = mock(AppUpdateService.class);
     when(updateService.summary(APP_ID)).thenReturn(updateSummary(consentRequiredCandidate()));
@@ -590,6 +608,21 @@ class OperatorBetaDashboardServiceTest {
         CLOCK);
   }
 
+  private static OperatorBetaDashboardService serviceWithContentSubscriptions(
+      AppsApiHandler appsApiHandler, ContentSubscriptionService contentSubscriptionService) {
+    AppUpdateService updateService = mock(AppUpdateService.class);
+    when(updateService.summary(SOCIAL_INBOX_APP_ID)).thenReturn(updateSummary(Map.of()));
+    return new OperatorBetaDashboardService(
+        new OperatorBetaDashboardService.HandlerSources(
+            appsApiHandler, emptyCatalogsApiHandler(), updateService, diagnosticsWithLegacyAdmin()),
+        new OperatorBetaDashboardService.AppStateSources(
+            contentSubscriptionService,
+            availableAppDataService(SOCIAL_INBOX_APP_ID),
+            availableTrustGraphApiHandler(),
+            emptyAppServiceCoordinator()),
+        CLOCK);
+  }
+
   private static OperatorBetaDashboardService serviceWithSensitiveSupportMaterial() {
     AppServiceCoordinator appServiceCoordinator = emptyAppServiceCoordinator();
     when(appServiceCoordinator.audit(any(), any()))
@@ -652,6 +685,13 @@ class OperatorBetaDashboardServiceTest {
   private static ContentSubscriptionService emptyContentSubscriptionService() {
     ContentSubscriptionService contentSubscriptionService = mock(ContentSubscriptionService.class);
     when(contentSubscriptionService.listAllForOperator()).thenReturn(List.of());
+    return contentSubscriptionService;
+  }
+
+  private static ContentSubscriptionService contentSubscriptionServiceWithPausedSocialInbox() {
+    ContentSubscriptionService contentSubscriptionService = mock(ContentSubscriptionService.class);
+    when(contentSubscriptionService.listAllForOperator())
+        .thenReturn(List.of(pausedSocialInboxSubscription()));
     return contentSubscriptionService;
   }
 
@@ -721,8 +761,12 @@ class OperatorBetaDashboardServiceTest {
   }
 
   private static AppDataService availableAppDataService() {
+    return availableAppDataService(APP_ID);
+  }
+
+  private static AppDataService availableAppDataService(String appId) {
     AppDataService appDataService = mock(AppDataService.class);
-    when(appDataService.status(APP_ID))
+    when(appDataService.status(appId))
         .thenReturn(
             Map.of(QUOTA_FIELD, Map.of("dataQuotaAvailable", true), WARNINGS_FIELD, List.of()));
     return appDataService;
@@ -801,6 +845,27 @@ class OperatorBetaDashboardServiceTest {
             "cacheOverLimit",
             false));
     return app;
+  }
+
+  private static Map<String, Object> installedSocialInboxApp() {
+    Map<String, Object> app = installedApp(false);
+    app.put("appId", SOCIAL_INBOX_APP_ID);
+    app.put("name", "Social Inbox");
+    return app;
+  }
+
+  private static Map<String, Object> pausedSocialInboxSubscription() {
+    LinkedHashMap<String, Object> subscription = new LinkedHashMap<>();
+    subscription.put("appId", SOCIAL_INBOX_APP_ID);
+    subscription.put("subscriptionId", "social-source-1");
+    subscription.put("label", "Social source");
+    subscription.put("sourceUri", "crypta:USK@fake-social-source/messages/0");
+    subscription.put("normalizedSourceKind", "usk");
+    subscription.put("paused", true);
+    subscription.put("status", "scheduled");
+    subscription.put("failureCount", 0);
+    subscription.put("lastErrorCode", null);
+    return subscription;
   }
 
   private static Map<String, Object> catalog() {
@@ -1018,7 +1083,7 @@ class OperatorBetaDashboardServiceTest {
             "sandbox",
             "contentFormats",
             "trustGraph",
-            "socialInbox",
+            SOCIAL_INBOX_SECTION,
             "recovery",
             "diagnostics",
             "legacyFallbacks",

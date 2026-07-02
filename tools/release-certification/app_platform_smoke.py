@@ -16381,6 +16381,32 @@ SUPPORT_BUNDLE_REDACTION_FIXTURES = (
     "support-bundle-redaction-app-service-body.json",
     "support-bundle-redaction-nested-backup.json",
 )
+SUPPORT_BUNDLE_SENSITIVE_KEYS = frozenset(
+    {
+        "authorization",
+        "cookie",
+        "token",
+        "privateinserturi",
+        "privatekey",
+        "identitymaterial",
+        "vaultidentitymaterial",
+        "rawprofiledocument",
+        "rawfeedsnapshot",
+        "rawtruststatement",
+        "rawsocialmessage",
+        "rawappdata",
+        "rawappdatavalue",
+        "appserviceinvocationbody",
+        "backuppayload",
+        "backuppayloadbase64",
+        "payloadbase64",
+        "localpath",
+        "path",
+    }
+)
+SUPPORT_BUNDLE_CONTENT_URI_RE = re.compile(r"(?i)\b(?:crypta:)?(?:CHK|SSK|USK|KSK)@[^\s\"'<>)}\]]+")
+SUPPORT_BUNDLE_BEARER_TOKEN_RE = re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._~-]+")
+SUPPORT_BUNDLE_LOCAL_PATH_RE = re.compile(r"(?i)(?:/work/|/home/|/Users/|C:\\\\|file:/)[^\s\"'<>)}\]]*")
 
 
 def operator_beta_evidence_item(
@@ -17149,33 +17175,12 @@ def collect_operator_beta_evidence(settings: Settings) -> list[EvidenceItem]:
 
 def support_bundle_fixture_findings(value: Any, path: str = "$") -> list[str]:
     findings: list[str] = []
-    sensitive_keys = {
-        "authorization",
-        "cookie",
-        "token",
-        "privateinserturi",
-        "privatekey",
-        "identitymaterial",
-        "vaultidentitymaterial",
-        "rawprofiledocument",
-        "rawfeedsnapshot",
-        "rawtruststatement",
-        "rawsocialmessage",
-        "rawappdata",
-        "rawappdatavalue",
-        "appserviceinvocationbody",
-        "backuppayload",
-        "backuppayloadbase64",
-        "payloadbase64",
-        "localpath",
-        "path",
-    }
     if isinstance(value, dict):
         for raw_key, child in value.items():
             key = str(raw_key)
             normalized = re.sub(r"[^A-Za-z0-9]", "", key).lower()
             child_path = f"{path}.{key}"
-            if normalized in sensitive_keys:
+            if normalized in SUPPORT_BUNDLE_SENSITIVE_KEYS:
                 findings.append("sensitive-key")
             findings.extend(support_bundle_fixture_findings(child, child_path))
         return findings
@@ -17197,6 +17202,28 @@ def support_bundle_fixture_findings(value: Any, path: str = "$") -> list[str]:
     return findings
 
 
+def support_bundle_redacted_fixture_output(value: Any) -> Any:
+    if isinstance(value, dict):
+        redacted: dict[str, Any] = {}
+        for raw_key, child in value.items():
+            key = str(raw_key)
+            normalized = re.sub(r"[^A-Za-z0-9]", "", key).lower()
+            if normalized in SUPPORT_BUNDLE_SENSITIVE_KEYS:
+                continue
+            redacted[key] = support_bundle_redacted_fixture_output(child)
+        return redacted
+    if isinstance(value, list):
+        return [support_bundle_redacted_fixture_output(child) for child in value]
+    if isinstance(value, str):
+        if "-----BEGIN PRIVATE KEY-----" in value or "-----BEGIN OPENSSH PRIVATE KEY-----" in value:
+            return "<redacted-private-key>"
+        redacted = SUPPORT_BUNDLE_CONTENT_URI_RE.sub("<redacted-content-uri>", value)
+        redacted = SUPPORT_BUNDLE_BEARER_TOKEN_RE.sub("Bearer <redacted-token>", redacted)
+        redacted = SUPPORT_BUNDLE_LOCAL_PATH_RE.sub("<redacted-local-path>", redacted)
+        return "<redacted-app-data-backup>" if "crypta-app-data-backup" in redacted else redacted
+    return value
+
+
 def support_bundle_fixture_report(fixtures_dir: Path) -> dict[str, Any]:
     entries: list[dict[str, Any]] = []
     missing: list[str] = []
@@ -17205,18 +17232,37 @@ def support_bundle_fixture_report(fixtures_dir: Path) -> dict[str, Any]:
         value = read_json_file(path)
         if value is None:
             missing.append(fixture_name)
-            entries.append({"fixture": fixture_name, "status": "missing", "findings": []})
+            entries.append(
+                {
+                    "fixture": fixture_name,
+                    "status": "missing",
+                    "expectedSafe": fixture_name.endswith("-safe.json"),
+                    "rawFindingCount": 0,
+                    "redactedFindingCount": 0,
+                    "findings": [],
+                    "redactedFindings": [],
+                }
+            )
             continue
         findings = support_bundle_fixture_findings(value)
+        redacted_output = support_bundle_redacted_fixture_output(value)
+        redacted_findings = support_bundle_fixture_findings(redacted_output)
         expected_safe = fixture_name.endswith("-safe.json")
-        status = "pass" if (expected_safe and not findings) or (not expected_safe and findings) else "fail"
+        status = (
+            "pass"
+            if (expected_safe and not findings and not redacted_findings)
+            or (not expected_safe and findings and not redacted_findings)
+            else "fail"
+        )
         entries.append(
             {
                 "fixture": fixture_name,
                 "status": status,
                 "expectedSafe": expected_safe,
-                "findingCount": len(findings),
+                "rawFindingCount": len(findings),
+                "redactedFindingCount": len(redacted_findings),
                 "findings": findings[:8],
+                "redactedFindings": redacted_findings[:8],
             }
         )
     return {
@@ -20133,6 +20179,15 @@ def run_self_test(repo_root: Path) -> None:
         privacy_diagnostics_checks = privacy_diagnostics_item["details"]["checks"]
         assert privacy_diagnostics_checks["redactionFixtures"] is True, privacy_diagnostics_checks
         assert privacy_diagnostics_checks["productionBlockers"] is True, privacy_diagnostics_checks
+        privacy_fixture_entries = privacy_diagnostics_item["details"]["fixtures"]["entries"]
+        assert all(entry["redactedFindingCount"] == 0 for entry in privacy_fixture_entries), (
+            privacy_fixture_entries
+        )
+        assert all(
+            entry["rawFindingCount"] > 0
+            for entry in privacy_fixture_entries
+            if not entry["expectedSafe"]
+        ), privacy_fixture_entries
         encoded = json.dumps(summary, sort_keys=True)
         for forbidden in ("CRYPTAD_APP_TOKEN=secret", "formPassword=hunter2", str(workspace)):
             assert forbidden not in encoded, f"self-test leaked {forbidden}"
