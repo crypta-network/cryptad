@@ -116,7 +116,7 @@ class DiagnosticsApiHandlerTest {
                 new DiagnosticReportSnapshot(
                     List.of(
                         new DiagnosticSectionSnapshot(
-                            "Sensitive:",
+                            "!!! Sensitive:",
                             List.of(
                                 "path /work/private/catalog",
                                 "uri USK@example/private/0",
