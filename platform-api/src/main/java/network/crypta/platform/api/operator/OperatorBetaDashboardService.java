@@ -57,6 +57,7 @@ public final class OperatorBetaDashboardService {
   private static final String WARNING = "warning";
   private static final String UNAVAILABLE = "unavailable";
   private static final String HEALTHY = "healthy";
+  private static final String EMPTY_STATUS = "empty";
   private static final String ACTIVE = "active";
   private static final String ACTIVE_GRANT_COUNT_FIELD = "activeGrantCount";
   private static final String BACKOFF = "backoff";
@@ -1222,7 +1223,7 @@ public final class OperatorBetaDashboardService {
 
   private static String lifecycleStatus(List<Map<String, Object>> items) {
     if (items.isEmpty()) {
-      return "empty";
+      return EMPTY_STATUS;
     }
     if (items.stream()
         .anyMatch(item -> isUnavailable(item) || !stringList(item.get(WARNINGS_FIELD)).isEmpty())) {
@@ -1233,7 +1234,7 @@ public final class OperatorBetaDashboardService {
 
   private static String appUpdateLifecycleStatus(List<Map<String, Object>> apps, long blocked) {
     if (apps.isEmpty()) {
-      return "empty";
+      return EMPTY_STATUS;
     }
     if (blocked > 0L) {
       return ACTION_REQUIRED;
@@ -1249,7 +1250,7 @@ public final class OperatorBetaDashboardService {
 
   private static String appDataLifecycleStatus(List<Map<String, Object>> apps, long unavailable) {
     if (apps.isEmpty()) {
-      return "empty";
+      return EMPTY_STATUS;
     }
     if (unavailable > 0L) {
       return UNAVAILABLE;
