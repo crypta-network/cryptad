@@ -1,0 +1,6 @@
+{
+  "kind": "cryptad-operator-support-bundle",
+  "appServiceInvocationBody": {
+    "request": "fake-private-service-request"
+  }
+}

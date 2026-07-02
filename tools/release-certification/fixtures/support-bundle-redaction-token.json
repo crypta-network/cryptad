@@ -1,0 +1,4 @@
+{
+  "kind": "cryptad-operator-support-bundle",
+  "authorization": "Bearer fake-support-token"
+}

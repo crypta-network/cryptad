@@ -4201,6 +4201,24 @@
     },
     {
       "details": {
+        "checks": {
+          "lifecycleSummaries": true,
+          "productionBlockers": true,
+          "redactionFixtures": true,
+          "safeDiagnosticsSummary": true,
+          "schemaV2": true,
+          "webShellExportBoundary": true
+        },
+        "fixtureBacked": true
+      },
+      "id": "app-platform.privacy-preserving-beta-diagnostics",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Privacy-preserving beta diagnostics evidence passed deterministic checks."
+    },
+    {
+      "details": {
         "fixtureBacked": true
       },
       "id": "operator-rc.dashboard",

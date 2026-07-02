@@ -1,0 +1,7 @@
+{
+  "kind": "cryptad-operator-support-bundle",
+  "rawTrustStatement": {
+    "type": "crypta.trust.statement.v1",
+    "subject": "fake-private-subject"
+  }
+}

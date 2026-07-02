@@ -9,7 +9,9 @@ import network.crypta.runtime.spi.LegacyAdminUsageSnapshot;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SuppressWarnings("java:S100")
 class DiagnosticsApiHandlerTest {
@@ -79,6 +81,48 @@ class DiagnosticsApiHandlerTest {
             Map.entry("retainedOrPendingRenderCount", 0L),
             Map.entry("lastSeenEpochMillis", 1_770_000_000_000L)),
         surfaces.getFirst());
+  }
+
+  @Test
+  void supportSummary_whenReportContainsSensitiveLines_expectSummaryOnlyAndRedactedDigest() {
+    Map<String, Object> response = sensitiveSupportSummaryResponse();
+
+    assertEquals(true, response.get("available"));
+    assertEquals(1, response.get("sectionCount"));
+    assertEquals(true, response.get("plainTextExportAvailable"));
+    assertEquals(true, response.get("legacyFallbackAvailable"));
+    assertFalse(response.containsKey("plainTextExport"));
+    @SuppressWarnings("unchecked")
+    List<Map<String, Object>> sections = (List<Map<String, Object>>) response.get("sections");
+    Map<String, Object> section = sections.getFirst();
+    assertFalse(section.containsKey("lines"));
+    assertEquals("sensitive", section.get("id"));
+    assertEquals("error", section.get("status"));
+    assertEquals(4, section.get("lineCount"));
+    assertEquals(3L, section.get("redactedLineCount"));
+    assertEquals(1L, section.get("warningCount"));
+    assertEquals(1L, section.get("errorCount"));
+    assertTrue(section.get("digest") instanceof String digest && digest.matches("[a-f0-9]{64}"));
+    String rendered = response.toString();
+    assertFalse(rendered.contains("/work/private/catalog"));
+    assertFalse(rendered.contains("USK@example/private/0"));
+    assertFalse(rendered.contains("token=secret"));
+  }
+
+  private static Map<String, Object> sensitiveSupportSummaryResponse() {
+    DiagnosticsApiHandler handler =
+        new DiagnosticsApiHandler(
+            () ->
+                new DiagnosticReportSnapshot(
+                    List.of(
+                        new DiagnosticSectionSnapshot(
+                            "Sensitive:",
+                            List.of(
+                                "path /work/private/catalog",
+                                "uri USK@example/private/0",
+                                "warn token=secret",
+                                "error failed")))));
+    return handler.supportSummary();
   }
 
   private static Map<String, Object> legacyAdminUsageResponse() {

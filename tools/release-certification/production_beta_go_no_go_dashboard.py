@@ -169,6 +169,7 @@ CRITICAL_PRODUCTION_BETA_EVIDENCE_IDS = (
     *THIRD_PARTY_DEVELOPER_BETA_EVIDENCE_IDS,
     *PLATFORM_API_STABLE_FREEZE_EVIDENCE_IDS,
     "app-platform.trust-social-content-format-profiles",
+    "app-platform.privacy-preserving-beta-diagnostics",
     "app-ui.lint",
     "apphost.sandbox-provider",
     "app-update.data-migration-contract",
@@ -261,6 +262,17 @@ DOMAIN_SPECS = (
         "title": "Trust/social content-format risk",
         "evidenceIds": ("app-platform.trust-social-content-format-profiles",),
         "artifactInputs": ("appPlatformSummary",),
+    },
+    {
+        "id": "privacy-preserving-diagnostics-risk",
+        "title": "Privacy-preserving diagnostics risk",
+        "evidenceIds": (
+            "app-platform.privacy-preserving-beta-diagnostics",
+            "operator-beta.support-bundle-redaction",
+            "operator-rc.support-bundle-wizard",
+            "multi-node-beta.support-bundle-drill",
+        ),
+        "artifactInputs": ("appPlatformSummary", "multiNodeBetaSoakSummary"),
     },
     {
         "id": "legacy-admin-final-surface",
@@ -972,6 +984,28 @@ def evidence_map(*summaries: dict[str, Any] | None) -> dict[str, dict[str, Any]]
         for entry in entries:
             if isinstance(entry, dict) and entry.get("id"):
                 result[str(entry["id"])] = entry
+    return result
+
+
+def multi_node_scenario_evidence(summary: dict[str, Any] | None) -> dict[str, dict[str, Any]]:
+    if not isinstance(summary, dict):
+        return {}
+    scenario_statuses = summary.get("scenarioStatuses")
+    if not isinstance(scenario_statuses, dict):
+        return {}
+    result: dict[str, dict[str, Any]] = {}
+    for scenario_id, scenario_status in scenario_statuses.items():
+        evidence_id = multi_node_beta_soak.SCENARIO_EVIDENCE_IDS.get(
+            str(scenario_id),
+            f"multi-node-beta.{scenario_id}",
+        )
+        status = normalize_status(scenario_status)
+        result[evidence_id] = {
+            "id": evidence_id,
+            "status": status,
+            "summary": f"Multi-node beta scenario {scenario_id} status is {status}.",
+            "source": "multi-node-beta-soak-summary",
+        }
     return result
 
 
@@ -2544,6 +2578,10 @@ def collect_issues(
         inputs.get("liveNetworkSummary"),
         inputs.get("securityResponseSummary"),
     )
+    for evidence_id, entry in multi_node_scenario_evidence(
+        inputs.get("multiNodeBetaSoakSummary")
+    ).items():
+        all_evidence.setdefault(evidence_id, entry)
     standalone_security_evidence = security_response_evidence(inputs.get("securityResponseSummary"))
     if standalone_security_evidence is not None:
         all_evidence.setdefault("production-security.response-runbook", standalone_security_evidence)
@@ -2929,8 +2967,11 @@ def build_command(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
 
 def run_self_test(quiet: bool = False) -> None:
     content_format_evidence_id = "app-platform.trust-social-content-format-profiles"
+    privacy_diagnostics_evidence_id = "app-platform.privacy-preserving-beta-diagnostics"
     if content_format_evidence_id not in CRITICAL_PRODUCTION_BETA_EVIDENCE_IDS:
         raise AssertionError("content-format profile evidence must be production-critical")
+    if privacy_diagnostics_evidence_id not in CRITICAL_PRODUCTION_BETA_EVIDENCE_IDS:
+        raise AssertionError("privacy-preserving diagnostics evidence must be production-critical")
     if not evidence_id_is_non_waivable_in_mode(content_format_evidence_id, "production-beta"):
         raise AssertionError(
             "content-format profile evidence must be non-waivable in production-beta"
@@ -2941,6 +2982,18 @@ def run_self_test(quiet: bool = False) -> None:
     ):
         raise AssertionError(
             "content-format profile promotion gate must be non-waivable in production-beta"
+        )
+    if not evidence_id_is_non_waivable_in_mode(
+        privacy_diagnostics_evidence_id,
+        "production-beta",
+    ):
+        raise AssertionError("privacy-preserving diagnostics evidence must be non-waivable")
+    if not evidence_id_is_non_waivable_in_mode(
+        f"evidence.{privacy_diagnostics_evidence_id}",
+        "production-beta",
+    ):
+        raise AssertionError(
+            "privacy-preserving diagnostics promotion gate must be non-waivable"
         )
     for evidence_id in CRITICAL_PRODUCTION_BETA_EVIDENCE_IDS:
         if not evidence_id_is_non_waivable_in_mode(evidence_id, "production-beta"):
@@ -3211,8 +3264,52 @@ def run_self_test(quiet: bool = False) -> None:
         assert_symlink_inputs_are_rejected(root)
         assert_standalone_security_response_summary_is_honored(root)
         assert_previous_candidate_upgrade_current_binding_is_enforced(root)
+        assert_multi_node_release_evidence_is_not_overwritten(root)
     if not quiet:
         print("production beta go/no-go dashboard self-test passed")
+
+
+def assert_multi_node_release_evidence_is_not_overwritten(root: Path) -> None:
+    pass_fixture = load_fixture(FIXTURE_DIR / "go-no-go-pass.json")
+    inputs = json.loads(json.dumps(pass_fixture["inputs"]))
+    release_certification = inputs["releaseCertificationSummary"]
+    release_certification.setdefault("evidence", []).append(
+        {
+            "id": "multi-node-beta.support-bundle-drill",
+            "status": "fail",
+            "summary": "Release certification found support-bundle redaction findings.",
+            "source": "release-certification-summary",
+            "details": {"redactionFindings": ["support bundle leaked unsafe material"]},
+        }
+    )
+    generated_at, now = parse_generated_at(DEFAULT_GENERATED_AT)
+    dashboard = build_dashboard(
+        inputs,
+        {},
+        [FIXTURE_DIR / "go-no-go-pass.json"],
+        None,
+        Path(__file__).resolve().parents[2],
+        root / "multi-node-release-evidence-preserved",
+        "production-beta",
+        "crypta-production-beta-270-multi-node-release-evidence-preserved",
+        generated_at,
+        now,
+    )
+    if dashboard.get("decision") != "no-go":
+        raise AssertionError(
+            "failing release-certification multi-node evidence was overwritten: "
+            f"{dashboard}"
+        )
+    blocker_ids = {
+        str(blocker.get("evidenceId"))
+        for blocker in dashboard.get("blockers", [])
+        if isinstance(blocker, dict)
+    }
+    if "multi-node-beta.support-bundle-drill" not in blocker_ids:
+        raise AssertionError(
+            "failing release-certification support-bundle drill evidence did not block: "
+            f"{dashboard}"
+        )
 
 
 def assert_previous_candidate_upgrade_current_binding_is_enforced(root: Path) -> None:

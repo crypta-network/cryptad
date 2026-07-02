@@ -111,6 +111,13 @@ a {
   color: var(--shell-muted);
 }
 
+.support-bundle-notice {
+  margin: 0;
+  padding-left: 14px;
+  border-left: 3px solid var(--shell-accent);
+  color: var(--shell-muted);
+}
+
 .hero-actions {
   display: flex;
   flex-wrap: wrap;

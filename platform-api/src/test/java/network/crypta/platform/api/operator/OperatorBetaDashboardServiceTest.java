@@ -15,6 +15,8 @@ import network.crypta.platform.api.content.subscriptions.ContentSubscriptionServ
 import network.crypta.platform.api.diagnostics.DiagnosticsApiHandler;
 import network.crypta.platform.api.trust.TrustGraphApiHandler;
 import network.crypta.runtime.spi.DiagnosticReportSnapshot;
+import network.crypta.runtime.spi.DiagnosticSectionSnapshot;
+import network.crypta.runtime.spi.LegacyAdminSurfaceUsage;
 import network.crypta.runtime.spi.LegacyAdminUsageSnapshot;
 import org.junit.jupiter.api.Test;
 
@@ -292,6 +294,78 @@ class OperatorBetaDashboardServiceTest {
         stringList(dashboard.get(WARNINGS_FIELD)));
   }
 
+  @Test
+  void supportBundle_whenSensitiveDiagnosticsPresent_expectSchemaV2SafeSummariesAndDigest() {
+    OperatorBetaDashboardService service = serviceWithSensitiveSupportMaterial();
+
+    Map<String, Object> bundle = service.supportBundle();
+    Map<String, Object> secondBundle = service.supportBundle();
+
+    assertEquals("cryptad-operator-support-bundle", bundle.get("kind"));
+    assertEquals(2, bundle.get("schemaVersion"));
+    assertEquals("2026-05-24T12:00:00Z", bundle.get("generatedAt"));
+    assertEquals("2026-05-24T12:00:00Z", bundle.get("createdAt"));
+    assertEquals("pass", mapValue(bundle.get("redaction")).get("status"));
+    assertEquals(false, mapValue(bundle.get("privacy")).get("includesRawContent"));
+    assertEquals(false, mapValue(bundle.get("privacy")).get("includesRawAppData"));
+    assertEquals(false, mapValue(bundle.get("privacy")).get("includesPrivateInsertUris"));
+    assertEquals(false, mapValue(bundle.get("privacy")).get("includesTokens"));
+    assertEquals(false, mapValue(bundle.get("privacy")).get("includesIdentityMaterial"));
+    assertEquals(false, mapValue(bundle.get("privacy")).get("includesLocalPaths"));
+    assertTrue((Boolean) mapValue(bundle.get("redaction")).get("rawSensitiveMaterialExcluded"));
+    assertTrue((Boolean) mapValue(bundle.get("redaction")).get("localOnlyUntilExported"));
+    assertTrue(
+        stringList(mapValue(bundle.get("redaction")).get("omittedFieldNames"))
+            .contains("appServiceInvocationBody"));
+    assertSafeDiagnosticsSummary(bundle);
+    assertLifecycleSectionsPresent(bundle);
+    Map<String, Object> supportDigest = mapValue(bundle.get("supportDigest"));
+    Map<String, Object> secondSupportDigest = mapValue(secondBundle.get("supportDigest"));
+    assertEquals("SHA-256", supportDigest.get("algorithm"));
+    assertTrue(
+        supportDigest.get("digest") instanceof String digest && digest.matches("[a-f0-9]{64}"));
+    assertEquals(supportDigest.get("digest"), secondSupportDigest.get("digest"));
+    String rendered = bundle.toString();
+    assertFalse(rendered.contains("/work/private/catalog"));
+    assertFalse(rendered.contains("USK@example/private/0"));
+    assertFalse(rendered.contains("Bearer diagnostic-secret"));
+    assertFalse(rendered.contains("Private App Service Body"));
+    assertFalse(rendered.contains("lines="));
+  }
+
+  @Test
+  void supportBundle_whenOptionalServicesUnavailable_expectLifecycleSectionsUnavailable() {
+    Map<String, Object> bundle = serviceWithUnavailableOptionalServices().supportBundle();
+
+    Map<String, Object> sections = mapValue(bundle.get("sections"));
+    Map<String, Object> catalog = mapValue(sections.get("catalog"));
+    Map<String, Object> subscriptions = mapValue(sections.get("subscriptions"));
+    Map<String, Object> nodeSummary = mapValue(bundle.get("nodeSummary"));
+
+    assertEquals(UNAVAILABLE, catalog.get("status"));
+    assertEquals("Catalog service is unavailable.", catalog.get("lastSafeStatusMessage"));
+    assertEquals(0, catalog.get("boundedCount"));
+    assertEquals(UNAVAILABLE, subscriptions.get("status"));
+    assertEquals(
+        "Content subscription service is unavailable.", subscriptions.get("lastSafeStatusMessage"));
+    assertEquals(0, subscriptions.get("boundedCount"));
+    assertTrue(
+        nodeSummary.get("architecture") instanceof String architecture
+            && List.of("amd64", "arm64").contains(architecture));
+    assertTrue(nodeSummary.get("operatingSystem") instanceof String os && !os.isBlank());
+  }
+
+  @Test
+  void supportBundle_whenLegacyAdminUsageAvailable_expectLegacyFallbackSurfaceCount() {
+    Map<String, Object> bundle = serviceWithLegacyAdminUsage().supportBundle();
+
+    Map<String, Object> legacyFallbacks =
+        mapValue(mapValue(bundle.get("sections")).get("legacyFallbacks"));
+
+    assertEquals(1L, legacyFallbacks.get("boundedCount"));
+    assertEquals(true, legacyFallbacks.get("legacyFallbackAvailable"));
+  }
+
   private static OperatorBetaDashboardService service(
       AppsApiHandler appsApiHandler, AppUpdateService appUpdateService) {
     return service(appsApiHandler, null, appUpdateService);
@@ -322,6 +396,29 @@ class OperatorBetaDashboardServiceTest {
         CLOCK);
   }
 
+  private static OperatorBetaDashboardService serviceWithUnavailableOptionalServices() {
+    return new OperatorBetaDashboardService(
+        new OperatorBetaDashboardService.HandlerSources(null, null, null, null),
+        new OperatorBetaDashboardService.AppStateSources(null, null, null, null),
+        CLOCK);
+  }
+
+  private static OperatorBetaDashboardService serviceWithLegacyAdminUsage() {
+    DiagnosticsApiHandler diagnosticsApiHandler =
+        new DiagnosticsApiHandler(
+            () -> new DiagnosticReportSnapshot(List.of()),
+            () -> new LegacyAdminUsageSnapshot(List.of(legacyAdminSurfaceUsage())));
+    return new OperatorBetaDashboardService(
+        new OperatorBetaDashboardService.HandlerSources(
+            emptyAppsHandler(), emptyCatalogsApiHandler(), null, diagnosticsApiHandler),
+        new OperatorBetaDashboardService.AppStateSources(
+            emptyContentSubscriptionService(),
+            availableAppDataService(),
+            availableTrustGraphApiHandler(),
+            emptyAppServiceCoordinator()),
+        CLOCK);
+  }
+
   private static OperatorBetaDashboardService serviceWithMissingUpdateServiceOnly() {
     return new OperatorBetaDashboardService(
         new OperatorBetaDashboardService.HandlerSources(
@@ -331,6 +428,39 @@ class OperatorBetaDashboardServiceTest {
             availableAppDataService(),
             availableTrustGraphApiHandler(),
             emptyAppServiceCoordinator()),
+        CLOCK);
+  }
+
+  private static OperatorBetaDashboardService serviceWithSensitiveSupportMaterial() {
+    AppServiceCoordinator appServiceCoordinator = emptyAppServiceCoordinator();
+    when(appServiceCoordinator.audit(any(), any()))
+        .thenReturn(
+            List.of(
+                Map.of(
+                    "eventId",
+                    "audit-1",
+                    "appServiceInvocationBody",
+                    "{\"request\":\"Private App Service Body\"}")));
+    DiagnosticsApiHandler diagnosticsApiHandler =
+        new DiagnosticsApiHandler(
+            () ->
+                new DiagnosticReportSnapshot(
+                    List.of(
+                        new DiagnosticSectionSnapshot(
+                            "Sensitive:",
+                            List.of(
+                                "path /work/private/catalog",
+                                "uri USK@example/private/0",
+                                "Authorization: Bearer diagnostic-secret")))),
+            () -> new LegacyAdminUsageSnapshot(List.of()));
+    return new OperatorBetaDashboardService(
+        new OperatorBetaDashboardService.HandlerSources(
+            emptyAppsHandler(), emptyCatalogsApiHandler(), null, diagnosticsApiHandler),
+        new OperatorBetaDashboardService.AppStateSources(
+            emptyContentSubscriptionService(),
+            availableAppDataService(),
+            availableTrustGraphApiHandler(),
+            appServiceCoordinator),
         CLOCK);
   }
 
@@ -419,6 +549,27 @@ class OperatorBetaDashboardServiceTest {
     return new DiagnosticsApiHandler(
         () -> new DiagnosticReportSnapshot(List.of()),
         () -> new LegacyAdminUsageSnapshot(List.of()));
+  }
+
+  private static LegacyAdminSurfaceUsage legacyAdminSurfaceUsage() {
+    return new LegacyAdminSurfaceUsage(
+        "queue-downloads",
+        "Download queue",
+        "/downloads/",
+        "PRIMARY_REPLACED",
+        "/apps/queue-manager/",
+        "REDIRECT_TO_REPLACEMENT",
+        1,
+        "phase-6-pr-8",
+        "none",
+        "CANONICAL_AND_SLASHLESS_ALIAS",
+        0,
+        12L,
+        4L,
+        1L,
+        0L,
+        0L,
+        1_770_000_000_000L);
   }
 
   private static AppsApiHandler appsHandler() {
@@ -629,6 +780,49 @@ class OperatorBetaDashboardServiceTest {
 
   private static boolean actionAvailable(List<Map<String, Object>> actions, String actionId) {
     return Boolean.TRUE.equals(action(actions, actionId).get(AVAILABLE));
+  }
+
+  private static void assertSafeDiagnosticsSummary(Map<String, Object> bundle) {
+    Map<String, Object> diagnostics = mapValue(bundle.get("diagnostics"));
+    assertEquals(true, diagnostics.get(AVAILABLE));
+    assertEquals(1, diagnostics.get("sectionCount"));
+    assertEquals(true, diagnostics.get("plainTextExportAvailable"));
+    assertFalse(diagnostics.containsKey("plainTextExport"));
+    List<Map<String, Object>> sections = listOfMaps(diagnostics.get("sections"));
+    Map<String, Object> section = sections.getFirst();
+    assertFalse(section.containsKey("lines"));
+    assertEquals(3, section.get("lineCount"));
+    assertEquals(3L, section.get("redactedLineCount"));
+    assertTrue(section.get("digest") instanceof String digest && digest.matches("[a-f0-9]{64}"));
+  }
+
+  private static void assertLifecycleSectionsPresent(Map<String, Object> bundle) {
+    Map<String, Object> sections = mapValue(bundle.get("sections"));
+    List<String> expectedSections =
+        List.of(
+            "catalog",
+            "appUpdates",
+            "subscriptions",
+            "appData",
+            "appServiceGrants",
+            "consent",
+            "migrations",
+            "sandbox",
+            "contentFormats",
+            "trustGraph",
+            "socialInbox",
+            "recovery",
+            "diagnostics",
+            "legacyFallbacks",
+            "releaseCertification");
+    assertTrue(sections.keySet().containsAll(expectedSections));
+    assertEquals(
+        "app-platform.privacy-preserving-beta-diagnostics",
+        mapValue(sections.get("releaseCertification")).get("evidenceId"));
+    assertEquals(true, mapValue(sections.get("diagnostics")).get("rawDiagnosticBodiesExcluded"));
+    assertEquals(
+        false,
+        mapValue(sections.get("legacyFallbacks")).get("plainTextExportEmbeddedInDefaultBundle"));
   }
 
   private static Map<String, Object> action(List<Map<String, Object>> actions, String actionId) {

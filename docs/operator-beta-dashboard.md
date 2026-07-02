@@ -30,6 +30,11 @@ actions require the normal local form-password bridge when they are reached thro
 App-data backup export is also a `POST` route, not a `GET`, so the bridge applies the same
 form-password guard before returning a raw user backup payload.
 
+Default support-bundle exports use the versioned privacy-preserving diagnostics schema documented
+in [privacy-preserving-beta-diagnostics.md](privacy-preserving-beta-diagnostics.md). The bundle is
+generated locally, is not uploaded automatically, and excludes raw content, raw app data, private
+insert URIs, tokens, identity material, local paths, and legacy plaintext diagnostics bodies.
+
 ## Dashboard Contents
 
 The dashboard is intentionally a summary and recovery surface, not a replacement for the app
@@ -138,6 +143,9 @@ The bundle must exclude or redact:
 Safe support-bundle content includes route names, app ids, catalog ids, evidence ids, capability
 names, status labels, booleans, counts, byte sizes, timestamps, warning codes, digests, and redacted
 source displays.
+
+PR-277 records this boundary under `app-platform.privacy-preserving-beta-diagnostics`. The Web
+Shell shows redaction status, omitted-field count, and support-bundle digest before copy/download.
 
 ## Certification Boundary
 

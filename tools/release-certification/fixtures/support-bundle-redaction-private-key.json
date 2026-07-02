@@ -1,0 +1,4 @@
+{
+  "kind": "cryptad-operator-support-bundle",
+  "privateKey": "-----BEGIN PRIVATE KEY-----\nfake-private-key-body\n-----END PRIVATE KEY-----"
+}

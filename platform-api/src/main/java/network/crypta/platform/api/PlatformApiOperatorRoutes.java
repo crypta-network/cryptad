@@ -366,10 +366,17 @@ final class PlatformApiOperatorRoutes {
   }
 
   private Map<String, Object> supportBundle() {
+    return supportBundleForExport(
+        dashboardService.supportBundle(), recoveryService.supportContext());
+  }
+
+  static Map<String, Object> supportBundleForExport(
+      Map<String, Object> supportBundle, Map<String, Object> recoveryContext) {
     LinkedHashMap<String, Object> bundle = LinkedHashMap.newLinkedHashMap(12);
-    bundle.putAll(dashboardService.supportBundle());
+    bundle.putAll(supportBundle);
     bundle.put("supportBundleVersion", bundle.get("schemaVersion"));
-    bundle.put("recoveryContext", recoveryService.supportContext());
+    bundle.put("recoveryContext", recoveryContext);
+    bundle.put("supportDigest", OperatorBetaDashboardService.supportDigestForPayload(bundle));
     return bundle;
   }
 

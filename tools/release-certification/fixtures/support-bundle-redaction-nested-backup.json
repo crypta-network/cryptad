@@ -1,0 +1,12 @@
+{
+  "kind": "cryptad-operator-support-bundle",
+  "backupPayload": {
+    "kind": "crypta-app-data-backup",
+    "apps": [
+      {
+        "appId": "feed-reader",
+        "records": []
+      }
+    ]
+  }
+}

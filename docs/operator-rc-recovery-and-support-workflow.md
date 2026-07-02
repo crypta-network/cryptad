@@ -24,7 +24,7 @@ The RC surface uses these internal operator routes:
 | `POST /api/v1/operator/recovery/execute` | Executes only a previously planned known action shape when the request echoes the matching `planToken`. Destructive actions also require `confirm=true` and the action-specific confirmation phrase. |
 | `GET /api/v1/operator/network-budgets` | Safe app-network budget snapshots: app id, operation, window, usage, limit, active leases, and next availability. |
 | `GET /api/v1/operator/support-bundle/preview` | Support-bundle wizard metadata: kind, included sections, omitted fields, redaction checks, and recent recovery context. |
-| `GET /api/v1/operator/support-bundle` | Redacted support bundle. It includes recovery plan/result summaries, not raw backup payloads or raw Trust Graph statements. |
+| `GET /api/v1/operator/support-bundle` | Privacy-preserving support bundle. It includes safe recovery plan/result summaries, lifecycle counts, redaction metadata, and digest fields, not raw backup payloads, raw Trust Graph statements, raw app data, private insert URIs, tokens, identity material, local paths, or legacy plaintext diagnostics. |
 | `POST /api/v1/operator/subscriptions/{appId}/{subscriptionId}/reset-backoff` | Metadata-only stuck-subscription recovery wrapper. It does not fetch content. |
 | `POST /api/v1/operator/subscriptions/{appId}/{subscriptionId}/reschedule-now` | Metadata-only due-time recovery wrapper. It does not fetch content. |
 
@@ -51,6 +51,11 @@ The plan token is scoped to the exact action id and typed target that produced i
 changes the target, omits the token, or reuses a consumed token, execution fails before dispatch.
 The token is an operator request credential for this local workflow and must not be copied into
 support bundles, release evidence, audit events, or ordinary dashboard panels.
+
+The default support bundle follows
+[privacy-preserving-beta-diagnostics.md](privacy-preserving-beta-diagnostics.md). It remains local
+until the operator explicitly copies or downloads the JSON, and Web Shell disables export when the
+bundle reports redaction failure.
 
 `operator-rc.recovery-plan-execute` release evidence checks this plan-before-execute behavior,
 unknown-action rejection, destructive confirmation, form-password coverage, and route-proxy
@@ -172,3 +177,6 @@ behavior, and redaction.
 
 The older `operator-beta.*` evidence and `operator-beta-ux-and-recovery` row remain as
 compatibility evidence for the beta route and dashboard fallback.
+PR-277 adds `app-platform.privacy-preserving-beta-diagnostics` and the
+`privacy-preserving-diagnostics-risk` row so release certification can block production beta when
+support-bundle schema, preview/export, safe lifecycle summaries, or redaction fixtures regress.

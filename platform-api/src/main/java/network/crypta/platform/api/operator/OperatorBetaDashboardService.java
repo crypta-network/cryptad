@@ -8,6 +8,7 @@ import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
@@ -17,6 +18,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.regex.Pattern;
+import network.crypta.fs.AppEnv;
+import network.crypta.platform.api.PlatformApiContract;
 import network.crypta.platform.api.PlatformApiException;
 import network.crypta.platform.api.PlatformApiPrincipal;
 import network.crypta.platform.api.appcatalogs.AppCatalogsApiHandler;
@@ -26,6 +29,7 @@ import network.crypta.platform.api.appservices.AppServiceCoordinator;
 import network.crypta.platform.api.appupdates.AppUpdateService;
 import network.crypta.platform.api.content.subscriptions.ContentSubscriptionService;
 import network.crypta.platform.api.diagnostics.DiagnosticsApiHandler;
+import network.crypta.platform.api.json.PlatformApiJsonWriter;
 import network.crypta.platform.api.trust.TrustGraphApiHandler;
 
 /**
@@ -54,19 +58,42 @@ public final class OperatorBetaDashboardService {
   private static final String UNAVAILABLE = "unavailable";
   private static final String HEALTHY = "healthy";
   private static final String ACTIVE = "active";
+  private static final String ACTIVE_GRANT_COUNT_FIELD = "activeGrantCount";
   private static final String BACKOFF = "backoff";
+  private static final String APP_DATA_FIELD = "appData";
+  private static final String APP_SERVICE_GRANTS_FIELD = "appServiceGrants";
+  private static final String ANCHOR_COUNT_FIELD = "anchorCount";
+  private static final String AUDIT_COUNT_FIELD = "auditCount";
+  private static final String BOUNDED_COUNT_FIELD = "boundedCount";
   private static final String CANDIDATE_FIELD = "candidate";
   private static final String CATALOG_ID_FIELD = "catalogId";
+  private static final String CONSENT_FIELD = "consent";
   private static final String DIAGNOSTICS_UNAVAILABLE = "Diagnostics service is unavailable.";
+  private static final String DIAGNOSTICS_FIELD = "diagnostics";
+  private static final String DIGEST_FIELD = "digest";
   private static final String FIRST_PARTY = "first-party";
+  private static final String LAST_ERROR_CODE_FIELD = "lastErrorCode";
+  private static final String LAST_SAFE_STATUS_MESSAGE_FIELD = "lastSafeStatusMessage";
+  private static final String LEGACY_FALLBACK_AVAILABLE_FIELD = "legacyFallbackAvailable";
   private static final String LIVE_USK = "live-usk";
+  private static final String METADATA_ONLY_STATUS = "metadata_only";
   private static final String PENDING = "pending";
+  private static final String PAUSED_STATUS = "paused";
+  private static final String PLAIN_TEXT_EXPORT_AVAILABLE_FIELD = "plainTextExportAvailable";
+  private static final String RECOMMENDED_FIRST_PARTY_CATALOG_MISSING =
+      "Recommended first-party beta catalog is not configured.";
+  private static final String RECOVERY_ACTION_IDS_FIELD = "recoveryActionIds";
+  private static final String REVOKED_OR_INACTIVE_GRANT_COUNT_FIELD = "revokedOrInactiveGrantCount";
+  private static final String SAFE_IDS_FIELD = "safeIds";
+  private static final String SECTIONS_FIELD = "sections";
   private static final String STAGED_FIELD = "staged";
   private static final String STALE = "stale";
+  private static final String STATEMENT_COUNT_FIELD = "statementCount";
   private static final String LEGACY_ADMIN_USAGE_UNAVAILABLE =
       "Legacy-admin usage counters are unavailable.";
   private static final String UNKNOWN = "unknown";
   private static final String STATUS_FIELD = "status";
+  private static final String PASS = "pass";
   private static final String AVAILABLE_FIELD = "available";
   private static final String AVAILABLE_STATUS = "available";
   private static final String WARNINGS_FIELD = "warnings";
@@ -80,7 +107,9 @@ public final class OperatorBetaDashboardService {
   private static final String LEGACY_ADMIN_FIELD = "legacyAdmin";
   private static final String NEXT_CHECK_AT_FIELD = "nextCheckAt";
   private static final String PENDING_GRANT_COUNT_FIELD = "pendingGrantCount";
+  private static final String PENDING_UPDATE_COUNT_FIELD = "pendingUpdateCount";
   private static final String QUOTA_FIELD = "quota";
+  private static final String QUOTA_WARNING_COUNT_FIELD = "quotaWarningCount";
   private static final String RECOVERY_ACTIONS_FIELD = "recoveryActions";
   private static final String RETAINED_OR_PENDING_RENDER_COUNT_FIELD =
       "retainedOrPendingRenderCount";
@@ -92,12 +121,22 @@ public final class OperatorBetaDashboardService {
   private static final String SANDBOX_FIELD = "sandbox";
   private static final String SECTION_COUNT_FIELD = "sectionCount";
   private static final String SOURCE_KIND_FIELD = "sourceKind";
+  private static final String STAGED_UPDATE_COUNT_FIELD = "stagedUpdateCount";
+  private static final String SUBSCRIPTION_ID_FIELD = "subscriptionId";
+  private static final String SUBSCRIPTIONS_FIELD = "subscriptions";
+  private static final String SUPPORT_DIGEST_FIELD = "supportDigest";
   private static final String STATE_FIELD = "state";
+  private static final String SURFACES_FIELD = "surfaces";
+  private static final String TRUST_GRAPH_FIELD = "trustGraph";
   private static final String UPDATE_FIELD = "update";
+  private static final String VERSION_FIELD = "version";
   private static final String CATALOGS_UNAVAILABLE = "Catalog service is unavailable.";
   private static final String APPS_UNAVAILABLE = "AppHost service is unavailable.";
   private static final String APP_UPDATE_UNAVAILABLE =
       "App-update lifecycle service is unavailable.";
+  private static final String CONTENT_SUBSCRIPTIONS_UNAVAILABLE =
+      "Content subscription service is unavailable.";
+  private static final int SUPPORT_BUNDLE_SCHEMA_VERSION = 2;
   private static final HexFormat HEX = HexFormat.of();
 
   /**
@@ -214,12 +253,12 @@ public final class OperatorBetaDashboardService {
     dashboard.put("summary", summary);
     dashboard.put("catalogs", catalogs);
     dashboard.put("apps", apps);
-    dashboard.put("subscriptions", subscriptions);
-    dashboard.put("trustGraph", trustGraph);
+    dashboard.put(SUBSCRIPTIONS_FIELD, subscriptions);
+    dashboard.put(TRUST_GRAPH_FIELD, trustGraph);
     dashboard.put("appServices", appServices);
     dashboard.put("securityResponse", securityResponse);
     dashboard.put(LEGACY_ADMIN_FIELD, legacyAdmin);
-    dashboard.put("diagnostics", diagnostics);
+    dashboard.put(DIAGNOSTICS_FIELD, diagnostics);
     dashboard.put(RECOVERY_ACTIONS_FIELD, topLevelRecoveryActions(catalogs, apps, subscriptions));
     dashboard.put(WARNINGS_FIELD, List.copyOf(warnings));
     return dashboard;
@@ -241,6 +280,8 @@ public final class OperatorBetaDashboardService {
     Map<String, Object> diagnostics = supportDiagnostics();
     List<Map<String, Object>> recentAudit = supportAppServiceAudit();
     Map<String, Object> legacyAdmin = legacyAdminFromDiagnostics(diagnostics);
+    Map<String, Object> sections =
+        supportSections(dashboard, diagnostics, recentAudit, legacyAdmin);
 
     OperatorSupportRedactor.RedactionResult redactedDashboard =
         OperatorSupportRedactor.redact(dashboard);
@@ -250,28 +291,43 @@ public final class OperatorBetaDashboardService {
         OperatorSupportRedactor.redact(recentAudit);
     OperatorSupportRedactor.RedactionResult redactedLegacyAdmin =
         OperatorSupportRedactor.redact(legacyAdmin);
+    OperatorSupportRedactor.RedactionResult redactedSections =
+        OperatorSupportRedactor.redact(sections);
 
     LinkedHashSet<String> omittedFields = new LinkedHashSet<>();
     omittedFields.addAll(redactedDashboard.omittedFields());
     omittedFields.addAll(redactedDiagnostics.omittedFields());
     omittedFields.addAll(redactedAudit.omittedFields());
     omittedFields.addAll(redactedLegacyAdmin.omittedFields());
+    omittedFields.addAll(redactedSections.omittedFields());
 
-    LinkedHashMap<String, Object> redaction = LinkedHashMap.newLinkedHashMap(3);
-    redaction.put(STATUS_FIELD, "pass");
+    LinkedHashMap<String, Object> redaction = LinkedHashMap.newLinkedHashMap(8);
+    redaction.put(STATUS_FIELD, PASS);
     redaction.put("patternsChecked", OperatorSupportRedactor.patternsChecked());
+    redaction.put("omittedFieldNames", List.copyOf(omittedFields));
     redaction.put("omittedFields", List.copyOf(omittedFields));
+    redaction.put("omittedFieldCount", omittedFields.size());
+    redaction.put("redactionFindings", List.of());
+    redaction.put("rawSensitiveMaterialExcluded", true);
+    redaction.put("localOnlyUntilExported", true);
 
-    LinkedHashMap<String, Object> bundle = LinkedHashMap.newLinkedHashMap(8);
+    LinkedHashMap<String, Object> bundle = LinkedHashMap.newLinkedHashMap(18);
     bundle.put("kind", "cryptad-operator-support-bundle");
     bundle.put(GENERATED_AT_FIELD, clock.millis());
-    bundle.put("schemaVersion", 1);
+    bundle.put("generatedAt", boundedGeneratedAt());
+    bundle.put("createdAt", boundedGeneratedAt());
+    bundle.put("schemaVersion", SUPPORT_BUNDLE_SCHEMA_VERSION);
+    bundle.put("nodeSummary", nodeSummary());
+    bundle.put("releaseSummary", releaseSummary());
+    bundle.put("privacy", privacyMetadata());
+    bundle.put("redaction", redaction);
+    bundle.put(SECTIONS_FIELD, redactedSections.value());
     bundle.put("dashboard", redactedDashboard.value());
-    bundle.put("diagnostics", redactedDiagnostics.value());
+    bundle.put(DIAGNOSTICS_FIELD, redactedDiagnostics.value());
     bundle.put("recentAppServiceAudit", redactedAudit.value());
     bundle.put(LEGACY_ADMIN_FIELD, redactedLegacyAdmin.value());
-    bundle.put("redaction", redaction);
     bundle.put(WARNINGS_FIELD, supportWarnings(redaction));
+    bundle.put(SUPPORT_DIGEST_FIELD, supportDigestForPayload(bundle));
     return bundle;
   }
 
@@ -344,7 +400,7 @@ public final class OperatorBetaDashboardService {
               .filter(this::isFirstPartyCatalog)
               .anyMatch(recommended -> !booleanValue(recommended.get("configured")));
       if (missingRecommended) {
-        warnings.add("Recommended first-party beta catalog is not configured.");
+        warnings.add(RECOMMENDED_FIRST_PARTY_CATALOG_MISSING);
       }
     } catch (RuntimeException exception) {
       warnings.add("Recommended catalog state could not be inspected: " + safeReason(exception));
@@ -425,7 +481,7 @@ public final class OperatorBetaDashboardService {
     LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(17);
     json.put(APP_ID_FIELD, appId);
     json.put("name", app.get("name"));
-    json.put("version", app.get("version"));
+    json.put(VERSION_FIELD, app.get(VERSION_FIELD));
     json.put(STATE_FIELD, booleanValue(app.get(RUNNING_FIELD)) ? RUNNING_FIELD : "stopped");
     json.put(RUNNING_FIELD, app.get(RUNNING_FIELD));
     json.put("signedBundleStatus", "verified-by-apphost");
@@ -433,9 +489,9 @@ public final class OperatorBetaDashboardService {
     json.put(SANDBOX_FIELD, app.get(SANDBOX_FIELD));
     json.put("apiCompatibility", app.get("apiCompatibility"));
     json.put(UPDATE_FIELD, update);
-    json.put("appData", appData);
+    json.put(APP_DATA_FIELD, appData);
     json.put(QUOTA_FIELD, app.get(QUOTA_FIELD));
-    json.put("appServiceGrants", grantSummary);
+    json.put(APP_SERVICE_GRANTS_FIELD, grantSummary);
     json.put(WARNINGS_FIELD, List.copyOf(new LinkedHashSet<>(warnings)));
     json.put(
         RECOVERY_ACTIONS_FIELD,
@@ -469,7 +525,7 @@ public final class OperatorBetaDashboardService {
 
   private List<Map<String, Object>> subscriptionSummaries(List<String> warnings) {
     if (contentSubscriptionService == null) {
-      warnings.add("Content subscription service is unavailable.");
+      warnings.add(CONTENT_SUBSCRIPTIONS_UNAVAILABLE);
       return List.of();
     }
     try {
@@ -497,12 +553,12 @@ public final class OperatorBetaDashboardService {
    */
   public Map<String, Object> operatorSubscriptionSummary(Map<String, Object> subscription) {
     String appId = stringValue(subscription.get(APP_ID_FIELD));
-    String subscriptionId = stringValue(subscription.get("subscriptionId"));
+    String subscriptionId = stringValue(subscription.get(SUBSCRIPTION_ID_FIELD));
     String sourceUri = stringValue(subscription.get("sourceUri"));
     String operatorStatus = operatorSubscriptionStatus(subscription);
     LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(17);
     json.put(APP_ID_FIELD, appId);
-    json.put("subscriptionId", subscriptionId);
+    json.put(SUBSCRIPTION_ID_FIELD, subscriptionId);
     json.put(LABEL_FIELD, subscription.get(LABEL_FIELD));
     json.put(SOURCE_KIND_FIELD, subscription.get("normalizedSourceKind"));
     json.put("sourceDisplay", safeSourceDisplay(sourceUri, "crypta"));
@@ -515,7 +571,7 @@ public final class OperatorBetaDashboardService {
     json.put("lastFailureAt", subscription.get("lastFailureAt"));
     json.put(NEXT_CHECK_AT_FIELD, subscription.get(NEXT_CHECK_AT_FIELD));
     json.put(FAILURE_COUNT_FIELD, subscription.get(FAILURE_COUNT_FIELD));
-    json.put("lastErrorCode", subscription.get("lastErrorCode"));
+    json.put(LAST_ERROR_CODE_FIELD, subscription.get(LAST_ERROR_CODE_FIELD));
     json.put(WARNINGS_FIELD, subscriptionWarnings(subscription, operatorStatus));
     json.put(RECOVERY_ACTIONS_FIELD, subscriptionRecoveryActions(appId, subscriptionId));
     return json;
@@ -540,9 +596,9 @@ public final class OperatorBetaDashboardService {
       json.put("limits", status.get("limits"));
       json.put("durable", status.get("durable"));
       json.put("storeType", status.get("storeType"));
-      json.put("anchorCount", status.get("anchorCount"));
-      json.put("statementCount", status.get("statementCount"));
-      json.put("auditCount", status.get("auditCount"));
+      json.put(ANCHOR_COUNT_FIELD, status.get(ANCHOR_COUNT_FIELD));
+      json.put(STATEMENT_COUNT_FIELD, status.get(STATEMENT_COUNT_FIELD));
+      json.put(AUDIT_COUNT_FIELD, status.get(AUDIT_COUNT_FIELD));
       json.put(
           WARNINGS_FIELD,
           List.of(
@@ -576,8 +632,8 @@ public final class OperatorBetaDashboardService {
           "requestCount",
           appServiceCoordinator.listRequests(PlatformApiPrincipal.hostOperator()).size());
       json.put(PENDING_GRANT_COUNT_FIELD, pending);
-      json.put("activeGrantCount", active);
-      json.put("revokedOrInactiveGrantCount", revoked);
+      json.put(ACTIVE_GRANT_COUNT_FIELD, active);
+      json.put(REVOKED_OR_INACTIVE_GRANT_COUNT_FIELD, revoked);
       json.put("recentAudit", audit);
       json.put("grantsUrl", "#apps");
       json.put(WARNINGS_FIELD, pending > 0 ? List.of("pending_app_service_grants") : List.of());
@@ -599,7 +655,7 @@ public final class OperatorBetaDashboardService {
       json.put(AVAILABLE_FIELD, true);
       json.put(SECTION_COUNT_FIELD, snapshot.get(SECTION_COUNT_FIELD));
       json.put(
-          "plainTextExportAvailable",
+          PLAIN_TEXT_EXPORT_AVAILABLE_FIELD,
           snapshot.get("plainTextExport") instanceof String text && !text.isBlank());
       json.put(LEGACY_ADMIN_FIELD, snapshot.get(LEGACY_ADMIN_FIELD));
       json.put(WARNINGS_FIELD, List.of());
@@ -619,7 +675,7 @@ public final class OperatorBetaDashboardService {
       }
       return unavailableBlock(LEGACY_ADMIN_USAGE_UNAVAILABLE);
     }
-    List<Map<String, Object>> surfaces = listOfMaps(legacy.get("surfaces"));
+    List<Map<String, Object>> surfaces = listOfMaps(legacy.get(SURFACES_FIELD));
     long retained =
         surfaces.stream()
             .mapToLong(surface -> longValue(surface.get(RETAINED_OR_PENDING_RENDER_COUNT_FIELD)))
@@ -637,7 +693,7 @@ public final class OperatorBetaDashboardService {
     json.put(RETAINED_OR_PENDING_RENDER_COUNT_FIELD, retained);
     json.put(BLOCKED_MUTATING_REQUEST_COUNT_FIELD, blocked);
     json.put(
-        "surfaces",
+        SURFACES_FIELD,
         surfaces.stream().map(OperatorBetaDashboardService::legacySurfaceSummary).toList());
     return json;
   }
@@ -681,19 +737,19 @@ public final class OperatorBetaDashboardService {
     json.put("catalogCount", catalogs.size());
     json.put("installedAppCount", apps.size());
     json.put("runningAppCount", runningApps);
-    json.put("pendingUpdateCount", pendingUpdates);
-    json.put("stagedUpdateCount", stagedUpdates);
+    json.put(PENDING_UPDATE_COUNT_FIELD, pendingUpdates);
+    json.put(STAGED_UPDATE_COUNT_FIELD, stagedUpdates);
     json.put("rollbackAvailableCount", rollbackAvailable);
     json.put("staleSubscriptionCount", staleSubscriptions);
     json.put(PENDING_GRANT_COUNT_FIELD, longValue(appServices.get(PENDING_GRANT_COUNT_FIELD)));
-    json.put("quotaWarningCount", quotaWarnings);
+    json.put(QUOTA_WARNING_COUNT_FIELD, quotaWarnings);
     json.put("supportWarningCount", supportWarningCount);
     return json;
   }
 
   private static boolean hasQuotaWarning(Map<String, Object> app) {
     Map<String, Object> appHostQuota = mapValue(app.get(QUOTA_FIELD));
-    Map<String, Object> appData = mapValue(app.get("appData"));
+    Map<String, Object> appData = mapValue(app.get(APP_DATA_FIELD));
     return !stringList(appHostQuota.get(WARNINGS_FIELD)).isEmpty()
         || booleanValue(appHostQuota.get("dataOverLimit"))
         || booleanValue(appHostQuota.get("cacheOverLimit"))
@@ -712,13 +768,13 @@ public final class OperatorBetaDashboardService {
         && warnings.stream().anyMatch(warning -> warning.contains(UNAVAILABLE))) {
       return UNAVAILABLE;
     }
-    if (longValue(summary.get("quotaWarningCount")) > 0L
+    if (longValue(summary.get(QUOTA_WARNING_COUNT_FIELD)) > 0L
         || longValue(summary.get("staleSubscriptionCount")) > 0L) {
       return ACTION_REQUIRED;
     }
     if (!warnings.isEmpty()
-        || longValue(summary.get("pendingUpdateCount")) > 0L
-        || longValue(summary.get("stagedUpdateCount")) > 0L
+        || longValue(summary.get(PENDING_UPDATE_COUNT_FIELD)) > 0L
+        || longValue(summary.get(STAGED_UPDATE_COUNT_FIELD)) > 0L
         || longValue(summary.get(PENDING_GRANT_COUNT_FIELD)) > 0L) {
       return WARNING;
     }
@@ -757,12 +813,7 @@ public final class OperatorBetaDashboardService {
       return unavailableBlock(DIAGNOSTICS_UNAVAILABLE);
     }
     try {
-      Map<String, Object> snapshot = diagnosticsApiHandler.snapshot();
-      LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(3);
-      json.put(SECTION_COUNT_FIELD, snapshot.get(SECTION_COUNT_FIELD));
-      json.put("sections", snapshot.get("sections"));
-      json.put(LEGACY_ADMIN_FIELD, snapshot.get(LEGACY_ADMIN_FIELD));
-      return json;
+      return diagnosticsApiHandler.supportSummary();
     } catch (RuntimeException exception) {
       return unavailableBlock("Diagnostics could not be collected: " + safeReason(exception));
     }
@@ -782,10 +833,509 @@ public final class OperatorBetaDashboardService {
 
   private static List<String> supportWarnings(Map<String, Object> redaction) {
     return List.of(
+        "This support bundle is generated locally and is not uploaded automatically.",
         "Support bundles are redacted but should be reviewed by the operator before sharing.",
+        "Raw content, raw app data, private insert URIs, tokens, identity material, and local paths"
+            + " are excluded from the default support bundle.",
         "Trust Graph Local RC entries describe local operator-curated state only, not global truth,"
             + " moderation, blocking, routing policy, or legacy Web of Trust compatibility.",
         "Redaction status: " + redaction.get(STATUS_FIELD));
+  }
+
+  private String boundedGeneratedAt() {
+    return clock.instant().truncatedTo(ChronoUnit.SECONDS).toString();
+  }
+
+  private static Map<String, Object> nodeSummary() {
+    AppEnv appEnv = new AppEnv();
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(5);
+    json.put(VERSION_FIELD, UNKNOWN);
+    json.put("build", UNKNOWN);
+    json.put("javaVersion", System.getProperty("java.version", UNKNOWN));
+    json.put("operatingSystem", unknownIfBlank(appEnv.osNameRaw()));
+    json.put("architecture", appEnv.arch());
+    return json;
+  }
+
+  private static Map<String, Object> releaseSummary() {
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(4);
+    json.put("releaseId", UNKNOWN);
+    json.put("channel", UNKNOWN);
+    json.put("platformApiVersion", PlatformApiContract.CURRENT_API_VERSION);
+    json.put("platformApiContractVersion", PlatformApiContract.CURRENT_CONTRACT_VERSION);
+    return json;
+  }
+
+  private static Map<String, Object> privacyMetadata() {
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(7);
+    json.put("includesRawContent", false);
+    json.put("includesRawAppData", false);
+    json.put("includesPrivateInsertUris", false);
+    json.put("includesTokens", false);
+    json.put("includesIdentityMaterial", false);
+    json.put("includesLocalPaths", false);
+    json.put("localOnlyUntilExported", true);
+    return json;
+  }
+
+  /**
+   * Computes the support-bundle digest for an already assembled payload.
+   *
+   * <p>The digest input is a shallow copy of the supplied payload with any existing {@code
+   * supportDigest} field removed. Route layers that append export metadata such as recovery context
+   * must call this after the final export shape is assembled so the advertised digest identifies
+   * the JSON operators actually download or copy.
+   *
+   * @param supportBundlePayload JSON-compatible support-bundle payload
+   * @return JSON-compatible digest metadata
+   */
+  public static Map<String, Object> supportDigestForPayload(
+      Map<String, Object> supportBundlePayload) {
+    LinkedHashMap<String, Object> digestInput =
+        LinkedHashMap.newLinkedHashMap(supportBundlePayload.size());
+    digestInput.putAll(Objects.requireNonNull(supportBundlePayload, "supportBundlePayload"));
+    digestInput.remove(SUPPORT_DIGEST_FIELD);
+    String json = PlatformApiJsonWriter.write(digestInput);
+    LinkedHashMap<String, Object> digest = LinkedHashMap.newLinkedHashMap(2);
+    digest.put("algorithm", "SHA-256");
+    digest.put(DIGEST_FIELD, digestOrNull(json));
+    return digest;
+  }
+
+  private static Map<String, Object> supportSections(
+      Map<String, Object> dashboard,
+      Map<String, Object> diagnostics,
+      List<Map<String, Object>> recentAudit,
+      Map<String, Object> legacyAdmin) {
+    List<Map<String, Object>> catalogs = listOfMaps(dashboard.get("catalogs"));
+    List<Map<String, Object>> apps = listOfMaps(dashboard.get("apps"));
+    List<Map<String, Object>> subscriptions = listOfMaps(dashboard.get(SUBSCRIPTIONS_FIELD));
+    Map<String, Object> appServices = mapValue(dashboard.get("appServices"));
+    Map<String, Object> trustGraph = mapValue(dashboard.get(TRUST_GRAPH_FIELD));
+    List<Map<String, Object>> recoveryActions = listOfMaps(dashboard.get(RECOVERY_ACTIONS_FIELD));
+    List<String> dashboardWarnings = stringList(dashboard.get(WARNINGS_FIELD));
+
+    LinkedHashMap<String, Object> sections = LinkedHashMap.newLinkedHashMap(15);
+    sections.put(
+        "catalog",
+        lifecycleSummary(
+            "catalog",
+            catalogs,
+            CATALOG_ID_FIELD,
+            dashboardDerivedLifecycleStatus(
+                catalogs,
+                dashboardWarnings,
+                List.of(CATALOGS_UNAVAILABLE, "Catalog health could not be inspected"),
+                List.of(
+                    RECOMMENDED_FIRST_PARTY_CATALOG_MISSING,
+                    "Recommended catalog state could not be inspected")),
+            firstMatchingWarning(
+                dashboardWarnings,
+                CATALOGS_UNAVAILABLE,
+                "Catalog health could not be inspected",
+                RECOMMENDED_FIRST_PARTY_CATALOG_MISSING,
+                "Recommended catalog state could not be inspected")));
+    sections.put("appUpdates", appUpdateLifecycleSummary(apps));
+    sections.put(
+        SUBSCRIPTIONS_FIELD,
+        lifecycleSummary(
+            SUBSCRIPTIONS_FIELD,
+            subscriptions,
+            SUBSCRIPTION_ID_FIELD,
+            dashboardDerivedLifecycleStatus(
+                subscriptions,
+                dashboardWarnings,
+                List.of(CONTENT_SUBSCRIPTIONS_UNAVAILABLE, "Content subscriptions could not"),
+                List.of()),
+            firstMatchingWarning(
+                dashboardWarnings,
+                CONTENT_SUBSCRIPTIONS_UNAVAILABLE,
+                "Content subscriptions could not")));
+    sections.put(APP_DATA_FIELD, appDataLifecycleSummary(apps));
+    sections.put(APP_SERVICE_GRANTS_FIELD, appServiceLifecycleSummary(appServices, recentAudit));
+    sections.put(CONSENT_FIELD, consentLifecycleSummary(apps));
+    sections.put("migrations", migrationLifecycleSummary(apps));
+    sections.put(SANDBOX_FIELD, sandboxLifecycleSummary(apps));
+    sections.put("contentFormats", contentFormatLifecycleSummary());
+    sections.put(TRUST_GRAPH_FIELD, trustGraphLifecycleSummary(trustGraph));
+    sections.put("socialInbox", socialInboxLifecycleSummary(apps));
+    sections.put("recovery", recoveryLifecycleSummary(recoveryActions));
+    sections.put(DIAGNOSTICS_FIELD, diagnosticsLifecycleSummary(diagnostics));
+    sections.put("legacyFallbacks", legacyFallbackLifecycleSummary(diagnostics, legacyAdmin));
+    sections.put("releaseCertification", releaseCertificationLifecycleSummary());
+    return sections;
+  }
+
+  private static Map<String, Object> lifecycleSummary(
+      String category,
+      List<Map<String, Object>> items,
+      String safeIdField,
+      String status,
+      String lastSafeStatusMessage) {
+    Map<String, Object> json = baseLifecycleSummary(category, status);
+    json.put(BOUNDED_COUNT_FIELD, items.size());
+    json.put(LAST_ERROR_CODE_FIELD, firstLastErrorCode(items));
+    json.put(
+        LAST_SAFE_STATUS_MESSAGE_FIELD, firstNonNull(lastSafeStatusMessage, firstWarning(items)));
+    json.put(SAFE_IDS_FIELD, safeIds(items, safeIdField));
+    json.put(RECOVERY_ACTION_IDS_FIELD, recoveryActionIds(items));
+    json.put(DIGEST_FIELD, digestOrNull(PlatformApiJsonWriter.write(json)));
+    return json;
+  }
+
+  private static Map<String, Object> appUpdateLifecycleSummary(List<Map<String, Object>> apps) {
+    long pending = 0L;
+    long staged = 0L;
+    long blocked = 0L;
+    for (Map<String, Object> app : apps) {
+      Map<String, Object> update = mapValue(app.get(UPDATE_FIELD));
+      if (hasAvailableUpdateCandidate(update)) {
+        pending++;
+      }
+      if (booleanValue(mapValue(update.get(STAGED_FIELD)).get(AVAILABLE_FIELD))) {
+        staged++;
+      }
+      if (isUpdateBlocked(update) || isSecurityUpdateBlocked(update)) {
+        blocked++;
+      }
+    }
+    Map<String, Object> json =
+        baseLifecycleSummary("appUpdates", blocked > 0L ? ACTION_REQUIRED : lifecycleStatus(apps));
+    json.put(BOUNDED_COUNT_FIELD, apps.size());
+    json.put(PENDING_UPDATE_COUNT_FIELD, pending);
+    json.put(STAGED_UPDATE_COUNT_FIELD, staged);
+    json.put("blockedUpdateCount", blocked);
+    json.put(LAST_ERROR_CODE_FIELD, firstNestedLastErrorCode(apps, UPDATE_FIELD));
+    json.put(SAFE_IDS_FIELD, safeIds(apps, APP_ID_FIELD));
+    json.put(RECOVERY_ACTION_IDS_FIELD, recoveryActionIds(apps));
+    json.put(DIGEST_FIELD, digestOrNull(PlatformApiJsonWriter.write(json)));
+    return json;
+  }
+
+  private static Map<String, Object> appDataLifecycleSummary(List<Map<String, Object>> apps) {
+    long unavailable = 0L;
+    long quotaWarnings = 0L;
+    for (Map<String, Object> app : apps) {
+      Map<String, Object> appData = mapValue(app.get(APP_DATA_FIELD));
+      if (isUnavailable(appData)) {
+        unavailable++;
+      }
+      if (hasAppDataQuotaWarning(appData)) {
+        quotaWarnings++;
+      }
+    }
+    Map<String, Object> json =
+        baseLifecycleSummary(APP_DATA_FIELD, unavailable > 0L ? WARNING : lifecycleStatus(apps));
+    json.put(BOUNDED_COUNT_FIELD, apps.size());
+    json.put("unavailableCount", unavailable);
+    json.put(QUOTA_WARNING_COUNT_FIELD, quotaWarnings);
+    json.put("rawAppDataExcluded", true);
+    json.put("backupPayloadsExcluded", true);
+    json.put(SAFE_IDS_FIELD, safeIds(apps, APP_ID_FIELD));
+    json.put(DIGEST_FIELD, digestOrNull(PlatformApiJsonWriter.write(json)));
+    return json;
+  }
+
+  private static Map<String, Object> appServiceLifecycleSummary(
+      Map<String, Object> appServices, List<Map<String, Object>> recentAudit) {
+    Map<String, Object> json =
+        baseLifecycleSummary(
+            APP_SERVICE_GRANTS_FIELD,
+            booleanValue(appServices.get(AVAILABLE_FIELD)) ? AVAILABLE_STATUS : UNAVAILABLE);
+    json.put(BOUNDED_COUNT_FIELD, longValue(appServices.get("serviceCount")));
+    json.put(PENDING_GRANT_COUNT_FIELD, longValue(appServices.get(PENDING_GRANT_COUNT_FIELD)));
+    json.put(ACTIVE_GRANT_COUNT_FIELD, longValue(appServices.get(ACTIVE_GRANT_COUNT_FIELD)));
+    json.put(
+        REVOKED_OR_INACTIVE_GRANT_COUNT_FIELD,
+        longValue(appServices.get(REVOKED_OR_INACTIVE_GRANT_COUNT_FIELD)));
+    json.put("recentAuditCount", recentAudit.size());
+    json.put("rawInvocationBodiesExcluded", true);
+    json.put(LAST_SAFE_STATUS_MESSAGE_FIELD, firstWarning(appServices));
+    json.put(DIGEST_FIELD, digestOrNull(PlatformApiJsonWriter.write(json)));
+    return json;
+  }
+
+  private static Map<String, Object> consentLifecycleSummary(List<Map<String, Object>> apps) {
+    Map<String, Object> json = baseLifecycleSummary(CONSENT_FIELD, METADATA_ONLY_STATUS);
+    json.put(BOUNDED_COUNT_FIELD, apps.size());
+    json.put("pendingOrRejectedCount", countNestedWarning(apps, CONSENT_FIELD));
+    json.put(LAST_SAFE_STATUS_MESSAGE_FIELD, "Consent details are summarized only when present.");
+    json.put("rawConsentBodiesExcluded", true);
+    json.put(DIGEST_FIELD, digestOrNull(PlatformApiJsonWriter.write(json)));
+    return json;
+  }
+
+  private static Map<String, Object> migrationLifecycleSummary(List<Map<String, Object>> apps) {
+    long migrationWarnings = countNestedWarning(apps, "migration");
+    Map<String, Object> json =
+        baseLifecycleSummary("migrations", migrationWarnings > 0L ? WARNING : METADATA_ONLY_STATUS);
+    json.put(BOUNDED_COUNT_FIELD, apps.size());
+    json.put("migrationWarningCount", migrationWarnings);
+    json.put(LAST_ERROR_CODE_FIELD, firstNestedLastErrorCode(apps, "migration"));
+    json.put("rawMigrationLogsExcluded", true);
+    json.put("rawAppDataValuesExcluded", true);
+    json.put(SAFE_IDS_FIELD, safeIds(apps, APP_ID_FIELD));
+    json.put(DIGEST_FIELD, digestOrNull(PlatformApiJsonWriter.write(json)));
+    return json;
+  }
+
+  private static Map<String, Object> sandboxLifecycleSummary(List<Map<String, Object>> apps) {
+    long unavailable = 0L;
+    for (Map<String, Object> app : apps) {
+      Map<String, Object> sandbox = mapValue(app.get(SANDBOX_FIELD));
+      if (isUnavailable(sandbox) || !stringList(sandbox.get(WARNINGS_FIELD)).isEmpty()) {
+        unavailable++;
+      }
+    }
+    Map<String, Object> json =
+        baseLifecycleSummary(SANDBOX_FIELD, unavailable > 0L ? WARNING : lifecycleStatus(apps));
+    json.put(BOUNDED_COUNT_FIELD, apps.size());
+    json.put("warningCount", unavailable);
+    json.put("providerPathsExcluded", true);
+    json.put(SAFE_IDS_FIELD, safeIds(apps, APP_ID_FIELD));
+    json.put(DIGEST_FIELD, digestOrNull(PlatformApiJsonWriter.write(json)));
+    return json;
+  }
+
+  private static Map<String, Object> contentFormatLifecycleSummary() {
+    Map<String, Object> json = baseLifecycleSummary("contentFormats", METADATA_ONLY_STATUS);
+    json.put(BOUNDED_COUNT_FIELD, 5);
+    json.put(
+        "formatIds",
+        List.of(
+            "crypta.profile.v1",
+            "crypta.feed.snapshot.v1",
+            "crypta.trust.statement.v1",
+            "crypta.social.message.v1",
+            "crypta.social.outbox.v1"));
+    json.put("validationFailureCount", 0L);
+    json.put("rawDocumentBodiesExcluded", true);
+    json.put("rawSignaturesExcluded", true);
+    json.put(DIGEST_FIELD, digestOrNull(PlatformApiJsonWriter.write(json)));
+    return json;
+  }
+
+  private static Map<String, Object> trustGraphLifecycleSummary(Map<String, Object> trustGraph) {
+    Map<String, Object> json =
+        baseLifecycleSummary(
+            TRUST_GRAPH_FIELD,
+            booleanValue(trustGraph.get(AVAILABLE_FIELD)) ? AVAILABLE_STATUS : UNAVAILABLE);
+    json.put(BOUNDED_COUNT_FIELD, longValue(trustGraph.get(STATEMENT_COUNT_FIELD)));
+    json.put(ANCHOR_COUNT_FIELD, longValue(trustGraph.get(ANCHOR_COUNT_FIELD)));
+    json.put(AUDIT_COUNT_FIELD, longValue(trustGraph.get(AUDIT_COUNT_FIELD)));
+    json.put("rawTrustStatementsExcluded", true);
+    json.put("rawSignaturesExcluded", true);
+    json.put(LAST_SAFE_STATUS_MESSAGE_FIELD, firstWarning(trustGraph));
+    json.put(DIGEST_FIELD, digestOrNull(PlatformApiJsonWriter.write(json)));
+    return json;
+  }
+
+  private static Map<String, Object> socialInboxLifecycleSummary(List<Map<String, Object>> apps) {
+    List<Map<String, Object>> socialApps =
+        apps.stream().filter(app -> "social-inbox".equals(app.get(APP_ID_FIELD))).toList();
+    Map<String, Object> json =
+        baseLifecycleSummary(
+            "socialInbox", socialApps.isEmpty() ? "not_installed" : lifecycleStatus(socialApps));
+    json.put(BOUNDED_COUNT_FIELD, socialApps.size());
+    json.put("sourcePausedCount", countWarningContaining(socialApps, PAUSED_STATUS));
+    json.put("malformedMessageRejectedCount", countWarningContaining(socialApps, "malformed"));
+    json.put("rawMessagesExcluded", true);
+    json.put("rawOutboxesExcluded", true);
+    json.put(SAFE_IDS_FIELD, safeIds(socialApps, APP_ID_FIELD));
+    json.put(DIGEST_FIELD, digestOrNull(PlatformApiJsonWriter.write(json)));
+    return json;
+  }
+
+  private static Map<String, Object> recoveryLifecycleSummary(
+      List<Map<String, Object>> recoveryActions) {
+    Map<String, Object> json = baseLifecycleSummary("recovery", AVAILABLE_STATUS);
+    json.put(BOUNDED_COUNT_FIELD, recoveryActions.size());
+    json.put("availableActionCount", countAvailable(recoveryActions));
+    json.put(RECOVERY_ACTION_IDS_FIELD, recoveryActionIdsFromActions(recoveryActions));
+    json.put("planTokensExcluded", true);
+    json.put(DIGEST_FIELD, digestOrNull(PlatformApiJsonWriter.write(json)));
+    return json;
+  }
+
+  private static Map<String, Object> diagnosticsLifecycleSummary(Map<String, Object> diagnostics) {
+    Map<String, Object> json =
+        baseLifecycleSummary(
+            DIAGNOSTICS_FIELD,
+            booleanValue(diagnostics.get(AVAILABLE_FIELD)) ? AVAILABLE_STATUS : UNAVAILABLE);
+    json.put(BOUNDED_COUNT_FIELD, longValue(diagnostics.get(SECTION_COUNT_FIELD)));
+    json.put(
+        LEGACY_FALLBACK_AVAILABLE_FIELD,
+        booleanValue(diagnostics.get(LEGACY_FALLBACK_AVAILABLE_FIELD)));
+    json.put(
+        PLAIN_TEXT_EXPORT_AVAILABLE_FIELD,
+        booleanValue(diagnostics.get(PLAIN_TEXT_EXPORT_AVAILABLE_FIELD)));
+    json.put("rawDiagnosticBodiesExcluded", true);
+    json.put(SECTIONS_FIELD, diagnostics.getOrDefault(SECTIONS_FIELD, List.of()));
+    json.put(DIGEST_FIELD, digestOrNull(PlatformApiJsonWriter.write(json)));
+    return json;
+  }
+
+  private static Map<String, Object> legacyFallbackLifecycleSummary(
+      Map<String, Object> diagnostics, Map<String, Object> legacyAdmin) {
+    Map<String, Object> json = baseLifecycleSummary("legacyFallbacks", "retained");
+    json.put(BOUNDED_COUNT_FIELD, legacySurfaceCount(legacyAdmin));
+    json.put("plaintextDiagnosticsFallbackRetained", true);
+    json.put("plainTextExportEmbeddedInDefaultBundle", false);
+    json.put(
+        LEGACY_FALLBACK_AVAILABLE_FIELD,
+        booleanValue(diagnostics.get(LEGACY_FALLBACK_AVAILABLE_FIELD)));
+    json.put("rawLegacyDiagnosticsExcluded", true);
+    json.put(DIGEST_FIELD, digestOrNull(PlatformApiJsonWriter.write(json)));
+    return json;
+  }
+
+  private static long legacySurfaceCount(Map<String, Object> legacyAdmin) {
+    List<Map<String, Object>> surfaces = listOfMaps(legacyAdmin.get(SURFACES_FIELD));
+    if (!surfaces.isEmpty()) {
+      return surfaces.size();
+    }
+    return longValue(legacyAdmin.get("surfaceCount"));
+  }
+
+  private static Map<String, Object> releaseCertificationLifecycleSummary() {
+    Map<String, Object> json =
+        baseLifecycleSummary("releaseCertification", "deterministic_source_check");
+    json.put(BOUNDED_COUNT_FIELD, 1);
+    json.put("evidenceId", "app-platform.privacy-preserving-beta-diagnostics");
+    json.put("redactionFailuresAreProductionBlockers", true);
+    json.put("rawCertificationArtifactsExcluded", true);
+    json.put(DIGEST_FIELD, digestOrNull(PlatformApiJsonWriter.write(json)));
+    return json;
+  }
+
+  private static Map<String, Object> baseLifecycleSummary(String category, String status) {
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(8);
+    json.put("category", category);
+    json.put(STATUS_FIELD, status);
+    json.put(LAST_ERROR_CODE_FIELD, null);
+    json.put(LAST_SAFE_STATUS_MESSAGE_FIELD, null);
+    json.put("redactedSourceDigest", null);
+    return json;
+  }
+
+  private static String lifecycleStatus(List<Map<String, Object>> items) {
+    if (items.isEmpty()) {
+      return "empty";
+    }
+    if (items.stream()
+        .anyMatch(item -> isUnavailable(item) || !stringList(item.get(WARNINGS_FIELD)).isEmpty())) {
+      return WARNING;
+    }
+    return AVAILABLE_STATUS;
+  }
+
+  private static String dashboardDerivedLifecycleStatus(
+      List<Map<String, Object>> items,
+      List<String> dashboardWarnings,
+      List<String> unavailableWarningMarkers,
+      List<String> warningMarkers) {
+    if (containsWarning(dashboardWarnings, unavailableWarningMarkers)) {
+      return UNAVAILABLE;
+    }
+    if (containsWarning(dashboardWarnings, warningMarkers)) {
+      return WARNING;
+    }
+    return lifecycleStatus(items);
+  }
+
+  private static boolean containsWarning(List<String> warnings, List<String> markers) {
+    return markers.stream().anyMatch(marker -> firstMatchingWarning(warnings, marker) != null);
+  }
+
+  private static List<String> safeIds(List<Map<String, Object>> items, String fieldName) {
+    return items.stream()
+        .map(item -> stringValue(item.get(fieldName)))
+        .filter(Objects::nonNull)
+        .distinct()
+        .limit(12)
+        .toList();
+  }
+
+  private static List<String> recoveryActionIds(List<Map<String, Object>> items) {
+    return items.stream()
+        .flatMap(item -> listOfMaps(item.get(RECOVERY_ACTIONS_FIELD)).stream())
+        .map(action -> stringValue(action.get("id")))
+        .filter(Objects::nonNull)
+        .distinct()
+        .limit(16)
+        .toList();
+  }
+
+  private static List<String> recoveryActionIdsFromActions(List<Map<String, Object>> actions) {
+    return actions.stream()
+        .map(action -> stringValue(action.get("id")))
+        .filter(Objects::nonNull)
+        .distinct()
+        .limit(24)
+        .toList();
+  }
+
+  private static String firstWarning(List<Map<String, Object>> items) {
+    return items.stream()
+        .flatMap(item -> stringList(item.get(WARNINGS_FIELD)).stream())
+        .findFirst()
+        .orElse(null);
+  }
+
+  private static String firstWarning(Map<String, Object> item) {
+    return stringList(item.get(WARNINGS_FIELD)).stream().findFirst().orElse(null);
+  }
+
+  private static String firstMatchingWarning(List<String> warnings, String... markers) {
+    for (String marker : markers) {
+      for (String warning : warnings) {
+        if (warning.contains(marker)) {
+          return warning;
+        }
+      }
+    }
+    return null;
+  }
+
+  private static String firstNonNull(String first, String second) {
+    return first != null ? first : second;
+  }
+
+  private static String firstLastErrorCode(List<Map<String, Object>> items) {
+    return items.stream()
+        .map(item -> stringValue(item.get(LAST_ERROR_CODE_FIELD)))
+        .filter(Objects::nonNull)
+        .findFirst()
+        .orElse(null);
+  }
+
+  private static String firstNestedLastErrorCode(
+      List<Map<String, Object>> items, String nestedField) {
+    return items.stream()
+        .map(item -> stringValue(mapValue(item.get(nestedField)).get(LAST_ERROR_CODE_FIELD)))
+        .filter(Objects::nonNull)
+        .findFirst()
+        .orElse(null);
+  }
+
+  private static long countAvailable(List<Map<String, Object>> items) {
+    return items.stream().filter(item -> booleanValue(item.get(AVAILABLE_FIELD))).count();
+  }
+
+  private static long countNestedWarning(List<Map<String, Object>> apps, String fieldFragment) {
+    String normalized = fieldFragment.toLowerCase(Locale.ROOT);
+    return apps.stream()
+        .flatMap(app -> stringList(app.get(WARNINGS_FIELD)).stream())
+        .filter(warning -> warning.toLowerCase(Locale.ROOT).contains(normalized))
+        .count();
+  }
+
+  private static long countWarningContaining(List<Map<String, Object>> items, String needle) {
+    String normalized = needle.toLowerCase(Locale.ROOT);
+    return items.stream()
+        .flatMap(item -> stringList(item.get(WARNINGS_FIELD)).stream())
+        .filter(warning -> warning.toLowerCase(Locale.ROOT).contains(normalized))
+        .count();
   }
 
   private List<Map<String, Object>> allAppServiceGrants(List<String> warnings) {
@@ -943,8 +1493,8 @@ public final class OperatorBetaDashboardService {
   }
 
   private String operatorSubscriptionStatus(Map<String, Object> subscription) {
-    if (booleanValue(subscription.get("paused"))) {
-      return "paused";
+    if (booleanValue(subscription.get(PAUSED_STATUS))) {
+      return PAUSED_STATUS;
     }
     String raw = stringValue(subscription.get(STATUS_FIELD));
     if (BACKOFF.equals(raw) || "queue_pressure".equals(raw) || "runtime_unavailable".equals(raw)) {
@@ -1174,6 +1724,10 @@ public final class OperatorBetaDashboardService {
 
   private static String stringValue(Object value) {
     return value instanceof String text && !text.isBlank() ? text : null;
+  }
+
+  private static String unknownIfBlank(String value) {
+    return value == null || value.isBlank() ? UNKNOWN : value;
   }
 
   private static boolean booleanValue(Object value) {

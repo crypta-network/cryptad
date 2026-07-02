@@ -34,6 +34,7 @@
     recommendedCatalogsSnapshot: null,
     configSnapshot: null,
     diagnosticsSnapshot: null,
+    supportBundlePreviewSnapshot: null,
     securitySnapshot: null,
     supportBundleSnapshot: null,
     updatesSnapshot: null,
@@ -776,8 +777,24 @@
               ? formatTimestampMillis(shellState.supportBundleSnapshot.generatedAtEpochMillis)
               : "Not generated",
           ],
+          [
+            "Redaction status",
+            supportBundleRedactionStatus(
+              shellState.supportBundleSnapshot || shellState.supportBundlePreviewSnapshot,
+            ),
+          ],
+          ["Support bundle digest", supportBundleDigestShort(shellState.supportBundleSnapshot)],
+          [
+            "Omitted fields",
+            scalar(supportBundleOmittedFieldCount(shellState.supportBundleSnapshot)),
+          ],
+          ["Export model", "Local only until copied or downloaded"],
         ],
-        warnings.length ? "is-warning" : "",
+        supportBundleRedactionFailed(shellState.supportBundleSnapshot)
+          ? "is-error"
+          : warnings.length
+            ? "is-warning"
+            : "",
       ),
       summaryCard(
         "App-data backups",
@@ -6017,8 +6034,10 @@
       betaDashboardControls.appDataRestoreForm.hidden = !formPassword;
     }
     const hasSupportBundle = !!shellState.supportBundleSnapshot;
-    betaDashboardControls.supportDownloadButton.disabled = !hasSupportBundle;
-    betaDashboardControls.supportCopyButton.disabled = !hasSupportBundle;
+    const supportExportBlocked = supportBundleExportBlocked(shellState.supportBundleSnapshot);
+    betaDashboardControls.supportDownloadButton.disabled =
+      !hasSupportBundle || supportExportBlocked;
+    betaDashboardControls.supportCopyButton.disabled = !hasSupportBundle || supportExportBlocked;
     if (betaDashboardControls.allAppDataBackupButton) {
       betaDashboardControls.allAppDataBackupButton.disabled = !formPassword;
     }
@@ -7286,8 +7305,9 @@
 
   async function loadSupportBundle() {
     try {
-      shellState.supportBundlePreviewSnapshot = await loadJson(apiUrl("operator/support-bundle/preview"))
-        .catch(() => null);
+      shellState.supportBundlePreviewSnapshot = await loadJson(
+        apiUrl("operator/support-bundle/preview"),
+      ).catch(() => null);
       const bundle = await loadJson(apiUrl("operator/support-bundle"));
       shellState.supportBundleSnapshot = bundle;
       updateBetaDashboardToolbar();
@@ -7300,27 +7320,56 @@
     }
   }
 
-  function supportSummaryText(bundle) {
-    const dashboard = recordValue(bundle && bundle.dashboard);
-    const summary = recordValue(dashboard.summary);
-    const redaction = recordValue(bundle && bundle.redaction);
-    const warnings = stringList(bundle && bundle.warnings);
-    const lines = [
-      "Cryptad operator support summary",
-      `Generated: ${formatTimestampMillis(bundle && bundle.generatedAtEpochMillis)}`,
-      `Overall status: ${normalizedStatus(dashboard.overallStatus, "Unavailable")}`,
-      `Catalogs: ${scalar(summary.catalogCount)}`,
-      `Apps: ${scalar(summary.installedAppCount)} installed / ${scalar(summary.runningAppCount)} running`,
-      `Updates: ${scalar(summary.pendingUpdateCount)} pending / ${scalar(summary.stagedUpdateCount)} staged`,
-      `Stale subscriptions: ${scalar(summary.staleSubscriptionCount)}`,
-      `Pending app-service grants: ${scalar(summary.pendingGrantCount)}`,
-      `Quota warnings: ${scalar(summary.quotaWarningCount)}`,
-      `Redaction: ${scalar(redaction.status)}`,
-    ];
-    if (warnings.length) {
-      lines.push("Warnings:", ...warnings.map((warning) => `- ${warning}`));
+  function supportBundleRedaction(bundle) {
+    return recordValue(bundle && bundle.redaction);
+  }
+
+  function supportBundleRedactionStatus(bundle) {
+    if (!bundle) {
+      return "Not generated";
     }
-    return lines.join("\n");
+    const redaction = recordValue(bundle && bundle.redaction);
+    return typeof redaction.status === "string" && redaction.status
+      ? redaction.status
+      : "Missing redaction status";
+  }
+
+  function supportBundleRedactionFailed(bundle) {
+    const status = supportBundleRedactionStatus(bundle).toLowerCase();
+    return status !== "not generated" && status !== "pass";
+  }
+
+  function supportBundleExportBlocked(bundle) {
+    return supportBundleRedactionFailed(bundle);
+  }
+
+  function supportBundleOmittedFieldCount(bundle) {
+    const redaction = supportBundleRedaction(bundle);
+    if (typeof redaction.omittedFieldCount === "number") {
+      return redaction.omittedFieldCount;
+    }
+    return arrayValue(redaction.omittedFieldNames || redaction.omittedFields).length;
+  }
+
+  function supportBundleDigest(bundle) {
+    const supportDigest = recordValue(bundle && bundle.supportDigest);
+    return typeof supportDigest.digest === "string" ? supportDigest.digest : "";
+  }
+
+  function supportBundleDigestShort(bundle) {
+    const digest = supportBundleDigest(bundle);
+    if (!digest) {
+      return "Unavailable";
+    }
+    return digest.length > 16 ? `${digest.slice(0, 16)}...` : digest;
+  }
+
+  function supportBundleExportBlockedMessage() {
+    return "Support bundle redaction failed; copy and download are disabled.";
+  }
+
+  function supportJsonText(bundle) {
+    return `${formatJson(bundle)}\n`;
   }
 
   function supportBundleFileName(bundle) {
@@ -7340,6 +7389,10 @@
       setBetaDashboardStatus("Generate a support bundle before downloading it.", "is-error");
       return;
     }
+    if (supportBundleExportBlocked(bundle)) {
+      setBetaDashboardStatus(supportBundleExportBlockedMessage(), "is-error");
+      return;
+    }
     downloadJsonBlob(bundle, supportBundleFileName(bundle));
     setBetaDashboardStatus("Support bundle download prepared.", "is-success");
   }
@@ -7347,17 +7400,21 @@
   async function copySupportSummary() {
     const bundle = shellState.supportBundleSnapshot;
     if (!bundle) {
-      setBetaDashboardStatus("Generate a support bundle before copying its summary.", "is-error");
+      setBetaDashboardStatus("Generate a support bundle before copying its JSON.", "is-error");
       return;
     }
-    const summary = supportSummaryText(bundle);
+    if (supportBundleExportBlocked(bundle)) {
+      setBetaDashboardStatus(supportBundleExportBlockedMessage(), "is-error");
+      return;
+    }
+    const supportJson = supportJsonText(bundle);
     if (!navigator.clipboard || typeof navigator.clipboard.writeText !== "function") {
       setBetaDashboardStatus("Clipboard access is unavailable in this browser.", "is-error");
       return;
     }
     try {
-      await navigator.clipboard.writeText(summary);
-      setBetaDashboardStatus("Support summary copied.", "is-success");
+      await navigator.clipboard.writeText(supportJson);
+      setBetaDashboardStatus("Support JSON copied.", "is-success");
     } catch (error) {
       setBetaDashboardStatus(error instanceof Error ? error.message : String(error), "is-error");
     }
@@ -7901,7 +7958,9 @@
       text(
         "p",
         "app-card-subtitle",
-        "A redacted support bundle was returned. Review it before sharing.",
+        `A local-only support bundle was returned. Redaction status: `
+          + `${supportBundleRedactionStatus(supportBundle)}. Digest: `
+          + `${supportBundleDigestShort(supportBundle)}. Review it before sharing.`,
       ),
     );
     const actions = document.createElement("div");
@@ -7910,7 +7969,12 @@
     download.type = "button";
     download.className = "button button-secondary";
     download.textContent = "Download support bundle";
+    download.disabled = supportBundleExportBlocked(supportBundle);
     download.addEventListener("click", () => {
+      if (supportBundleExportBlocked(supportBundle)) {
+        setBetaDashboardStatus(supportBundleExportBlockedMessage(), "is-error");
+        return;
+      }
       downloadJsonBlob(supportBundle, supportBundleFileName(supportBundle));
       setBetaDashboardStatus("Support bundle download prepared.", "is-success");
     });

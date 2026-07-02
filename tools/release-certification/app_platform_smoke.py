@@ -16366,6 +16366,21 @@ OPERATOR_RC_EVIDENCE_IDS = (
     "operator-rc.support-bundle-wizard",
     "operator-rc.redaction",
 )
+PRIVACY_BETA_DIAGNOSTICS_EVIDENCE_ID = "app-platform.privacy-preserving-beta-diagnostics"
+SUPPORT_BUNDLE_REDACTION_FIXTURES = (
+    "support-bundle-redaction-safe.json",
+    "support-bundle-redaction-private-insert-uri.json",
+    "support-bundle-redaction-token.json",
+    "support-bundle-redaction-raw-profile.json",
+    "support-bundle-redaction-raw-feed.json",
+    "support-bundle-redaction-raw-trust-statement.json",
+    "support-bundle-redaction-raw-social-message.json",
+    "support-bundle-redaction-raw-app-data.json",
+    "support-bundle-redaction-local-path.json",
+    "support-bundle-redaction-private-key.json",
+    "support-bundle-redaction-app-service-body.json",
+    "support-bundle-redaction-nested-backup.json",
+)
 
 
 def operator_beta_evidence_item(
@@ -17051,7 +17066,10 @@ def collect_operator_beta_evidence(settings: Settings) -> list[EvidenceItem]:
                     in recovery_service_test_text
                 ),
                 "webShellPreview": (
-                    'loadJson(apiUrl("operator/support-bundle/preview"))' in web_shell_text
+                    (
+                        'loadJson(apiUrl("operator/support-bundle/preview"))' in web_shell_text
+                        or 'apiUrl("operator/support-bundle/preview")' in web_shell_text
+                    )
                     and "supportBundlePreviewSnapshot" in web_shell_text
                     and "appendOperatorRcSupportBundleArtifact(container, result)"
                     in web_shell_text
@@ -17060,8 +17078,12 @@ def collect_operator_beta_evidence(settings: Settings) -> list[EvidenceItem]:
                     and "operatorRcResultPreservesVisibleArtifact(result)" in web_shell_text
                 ),
                 "resourceTests": (
-                    'loadJson(apiUrl("operator/support-bundle/preview"))'
-                    in web_shell_test_search_text
+                    (
+                        'loadJson(apiUrl("operator/support-bundle/preview"))'
+                        in web_shell_test_search_text
+                        or 'apiUrl("operator/support-bundle/preview")'
+                        in web_shell_test_search_text
+                    )
                     and "Operator RC recovery actions unavailable in read-only mode."
                     in web_shell_test_text
                 ),
@@ -17123,6 +17145,270 @@ def collect_operator_beta_evidence(settings: Settings) -> list[EvidenceItem]:
         )
         for evidence_id, checks, pass_summary in evidence_specs
     ]
+
+
+def support_bundle_fixture_findings(value: Any, path: str = "$") -> list[str]:
+    findings: list[str] = []
+    sensitive_keys = {
+        "authorization",
+        "cookie",
+        "token",
+        "privateinserturi",
+        "privatekey",
+        "identitymaterial",
+        "vaultidentitymaterial",
+        "rawprofiledocument",
+        "rawfeedsnapshot",
+        "rawtruststatement",
+        "rawsocialmessage",
+        "rawappdata",
+        "rawappdatavalue",
+        "appserviceinvocationbody",
+        "backuppayload",
+        "backuppayloadbase64",
+        "payloadbase64",
+        "localpath",
+        "path",
+    }
+    if isinstance(value, dict):
+        for raw_key, child in value.items():
+            key = str(raw_key)
+            normalized = re.sub(r"[^A-Za-z0-9]", "", key).lower()
+            child_path = f"{path}.{key}"
+            if normalized in sensitive_keys:
+                findings.append(f"{child_path}:sensitive-key")
+            findings.extend(support_bundle_fixture_findings(child, child_path))
+        return findings
+    if isinstance(value, list):
+        for index, child in enumerate(value):
+            findings.extend(support_bundle_fixture_findings(child, f"{path}[{index}]"))
+        return findings
+    if isinstance(value, str):
+        if re.search(r"(?i)\b(?:crypta:)?(?:CHK|SSK|USK|KSK)@", value):
+            findings.append(f"{path}:content-uri")
+        if re.search(r"(?i)\bBearer\s+[A-Za-z0-9._~-]+", value):
+            findings.append(f"{path}:bearer-token")
+        if "-----BEGIN PRIVATE KEY-----" in value or "-----BEGIN OPENSSH PRIVATE KEY-----" in value:
+            findings.append(f"{path}:private-key")
+        if re.search(r"(?i)(?:/work/|/home/|/Users/|C:\\\\|file:/)", value):
+            findings.append(f"{path}:local-path")
+        if "crypta-app-data-backup" in value:
+            findings.append(f"{path}:app-data-backup")
+    return findings
+
+
+def support_bundle_fixture_report(fixtures_dir: Path) -> dict[str, Any]:
+    entries: list[dict[str, Any]] = []
+    missing: list[str] = []
+    for fixture_name in SUPPORT_BUNDLE_REDACTION_FIXTURES:
+        path = fixtures_dir / fixture_name
+        value = read_json_file(path)
+        if value is None:
+            missing.append(fixture_name)
+            entries.append({"fixture": fixture_name, "status": "missing", "findings": []})
+            continue
+        findings = support_bundle_fixture_findings(value)
+        expected_safe = fixture_name.endswith("-safe.json")
+        status = "pass" if (expected_safe and not findings) or (not expected_safe and findings) else "fail"
+        entries.append(
+            {
+                "fixture": fixture_name,
+                "status": status,
+                "expectedSafe": expected_safe,
+                "findingCount": len(findings),
+                "findings": findings[:8],
+            }
+        )
+    return {
+        "missing": missing,
+        "entries": entries,
+        "passed": not missing and all(entry["status"] == "pass" for entry in entries),
+    }
+
+
+def collect_privacy_preserving_beta_diagnostics_evidence(settings: Settings) -> EvidenceItem:
+    workspace = settings.workspace_root
+    service_source = (
+        workspace
+        / "platform-api/src/main/java/network/crypta/platform/api/operator/OperatorBetaDashboardService.java"
+    )
+    diagnostics_source = (
+        workspace
+        / "platform-api/src/main/java/network/crypta/platform/api/diagnostics/DiagnosticsApiHandler.java"
+    )
+    routes_source = workspace / "platform-api/src/main/java/network/crypta/platform/api/PlatformApiOperatorRoutes.java"
+    redactor_source = (
+        workspace
+        / "platform-api/src/main/java/network/crypta/platform/api/operator/OperatorSupportRedactor.java"
+    )
+    web_shell_source = (
+        workspace
+        / "platform-web-shell/src/main/resources/network/crypta/platform/webshell/static/web-shell.js"
+    )
+    web_shell_index_source = (
+        workspace
+        / "platform-web-shell/src/main/resources/network/crypta/platform/webshell/static/index.html"
+    )
+    operator_docs_source = workspace / "docs/privacy-preserving-beta-diagnostics.md"
+    go_no_go_source = workspace / "tools/release-certification/production_beta_go_no_go_dashboard.py"
+    release_cert_source = workspace / "tools/release-certification/release_certification.py"
+    production_release_source = workspace / "tools/release-certification/production_beta_release.py"
+    operator_routes_test_source = (
+        workspace / "platform-api/src/test/java/network/crypta/platform/api/PlatformApiOperatorRoutesTest.java"
+    )
+    redactor_test_source = (
+        workspace
+        / "platform-api/src/test/java/network/crypta/platform/api/operator/OperatorSupportRedactorTest.java"
+    )
+    service_test_source = (
+        workspace
+        / "platform-api/src/test/java/network/crypta/platform/api/operator/OperatorBetaDashboardServiceTest.java"
+    )
+
+    service_text = read_source(service_source)
+    diagnostics_text = read_source(diagnostics_source)
+    routes_text = read_source(routes_source)
+    redactor_text = read_source(redactor_source)
+    web_shell_text = read_source(web_shell_source)
+    web_shell_index_text = read_source(web_shell_index_source)
+    docs_text = read_source(operator_docs_source)
+    go_no_go_text = read_source(go_no_go_source)
+    release_cert_text = read_source(release_cert_source)
+    production_release_text = read_source(production_release_source)
+    operator_routes_test_text = read_source(operator_routes_test_source)
+    redactor_test_text = read_source(redactor_test_source)
+    service_test_text = read_source(service_test_source)
+    fixture_report = support_bundle_fixture_report(workspace / "tools/release-certification/fixtures")
+
+    lifecycle_sections = (
+        '"catalog"',
+        '"appUpdates"',
+        '"subscriptions"',
+        '"appData"',
+        '"appServiceGrants"',
+        '"consent"',
+        '"migrations"',
+        '"sandbox"',
+        '"contentFormats"',
+        '"trustGraph"',
+        '"socialInbox"',
+        '"recovery"',
+        '"diagnostics"',
+        '"legacyFallbacks"',
+        '"releaseCertification"',
+    )
+    checks = {
+        "schemaV2": (
+            "SUPPORT_BUNDLE_SCHEMA_VERSION = 2" in service_text
+            and '"cryptad-operator-support-bundle"' in service_text
+            and '"supportDigest"' in service_text
+            and "supportDigestForPayload(" in service_text
+        ),
+        "privacyMetadata": all(
+            fragment in service_text
+            for fragment in (
+                '"includesRawContent"',
+                '"includesRawAppData"',
+                '"includesPrivateInsertUris"',
+                '"includesTokens"',
+                '"includesIdentityMaterial"',
+                '"includesLocalPaths"',
+                '"localOnlyUntilExported"',
+            )
+        ),
+        "safeDiagnosticsSummary": (
+            "supportSummary()" in diagnostics_text
+            and "diagnosticsApiHandler.supportSummary()" in service_text
+            and '"plainTextExportAvailable"' in diagnostics_text
+            and '"rawDiagnosticBodiesExcluded"' in service_text
+            and '"plainTextExportEmbeddedInDefaultBundle"' in service_text
+        ),
+        "supportRoutes": (
+            '"support-bundle".equals(resource)' in routes_text
+            and '"support-bundle".equals(segments.get(1)) && "preview".equals(segments.get(2))'
+            in routes_text
+        ),
+        "redactionMetadata": all(
+            fragment in service_text
+            for fragment in (
+                '"omittedFieldNames"',
+                '"omittedFieldCount"',
+                '"redactionFindings"',
+                '"rawSensitiveMaterialExcluded"',
+                '"patternsChecked"',
+            )
+        ),
+        "redactionPatterns": all(
+            fragment in redactor_text
+            for fragment in (
+                '"private_insert_uri"',
+                '"public_content_uri"',
+                '"raw_profile_document"',
+                '"raw_feed_snapshot"',
+                '"raw_trust_statement"',
+                '"raw_social_message"',
+                '"app_service_invocation_body"',
+                '"vault_identity_material"',
+                '"nested_archive_or_base64_backup_payload"',
+            )
+        ),
+        "redactionFixtures": fixture_report["passed"],
+        "lifecycleSummaries": all(fragment in service_text for fragment in lifecycle_sections),
+        "webShellExportBoundary": all(
+            fragment in web_shell_text + "\n" + web_shell_index_text
+            for fragment in (
+                "This support bundle is generated locally and is not uploaded automatically.",
+                "Copy support JSON",
+                "supportBundleRedactionStatus",
+                "supportBundleDigestShort",
+                "Support bundle redaction failed; copy and download are disabled.",
+                "Support JSON copied.",
+            )
+        ),
+        "tests": all(
+            fragment in operator_routes_test_text + "\n" + redactor_test_text + "\n" + service_test_text
+            for fragment in (
+                "route_whenSupportBundleIncludesSensitiveDiagnostics_expectRedactedOutput",
+                "redact_whenPrivacyPreservingDiagnosticsFieldsPresent_expectUnsafeFieldsOmitted",
+                "supportBundle_whenSensitiveDiagnosticsPresent_expectSchemaV2SafeSummariesAndDigest",
+                '"plainTextExport"',
+                '"redactedLineCount"',
+            )
+        ),
+        "docs": (
+            operator_docs_source.is_file()
+            and "local-only" in docs_text
+            and "raw content" in docs_text
+            and "legacy plaintext diagnostics" in docs_text
+        ),
+        "productionBlockers": (
+            PRIVACY_BETA_DIAGNOSTICS_EVIDENCE_ID in go_no_go_text
+            and PRIVACY_BETA_DIAGNOSTICS_EVIDENCE_ID in release_cert_text
+            and PRIVACY_BETA_DIAGNOSTICS_EVIDENCE_ID in production_release_text
+            and "privacy-preserving-diagnostics-risk" in go_no_go_text
+            and "privacy-preserving-diagnostics-risk" in release_cert_text
+        ),
+    }
+    details = {
+        "checks": checks,
+        "fixtures": fixture_report,
+        "sources": {
+            "service": display_path(service_source, workspace),
+            "diagnostics": display_path(diagnostics_source, workspace),
+            "routes": display_path(routes_source, workspace),
+            "redactor": display_path(redactor_source, workspace),
+            "webShell": display_path(web_shell_source, workspace),
+            "webShellIndex": display_path(web_shell_index_source, workspace),
+            "docs": display_path(operator_docs_source, workspace),
+        },
+    }
+    return operator_beta_evidence_item(
+        settings,
+        PRIVACY_BETA_DIAGNOSTICS_EVIDENCE_ID,
+        checks,
+        "Privacy-preserving beta diagnostics evidence passed deterministic checks.",
+        details,
+    )
 
 
 def build_http_request(
@@ -17338,6 +17624,13 @@ def build_summary(settings: Settings, evidence: list[EvidenceItem]) -> dict[str,
             "reviewTransparencyPathsExcluded": True,
             "rawUpdateRollbackOutputsExcluded": True,
             "rawAppDataBackupsExcluded": True,
+            "rawProfileDocumentsExcluded": True,
+            "rawFeedSnapshotsExcluded": True,
+            "rawTrustStatementsExcluded": True,
+            "rawSocialMessagesExcluded": True,
+            "appServiceInvocationBodiesExcluded": True,
+            "identityMaterialExcluded": True,
+            "supportBundleRedactionFailuresBlockProductionBeta": True,
             "absolutePathsSanitized": True,
         },
     }
@@ -17439,6 +17732,7 @@ def run(settings: Settings) -> tuple[dict[str, Any], int]:
         collect_app_update_rollback_evidence(settings),
         collect_app_update_data_migration_contract_evidence(settings),
         *collect_operator_beta_evidence(settings),
+        collect_privacy_preserving_beta_diagnostics_evidence(settings),
         collect_live_evidence(settings, sample_paths),
     ]
     sanitized_evidence = [
@@ -19833,6 +20127,12 @@ def run_self_test(repo_root: Path) -> None:
             evidence_by_id["operator-beta.web-shell"]["details"]["checks"]["loadsOperatorEndpoints"]
             is True
         )
+        privacy_diagnostics_item = evidence_by_id[PRIVACY_BETA_DIAGNOSTICS_EVIDENCE_ID]
+        assert privacy_diagnostics_item["status"] == "pass", privacy_diagnostics_item
+        assert privacy_diagnostics_item["requiredForReleaseCandidate"] is True
+        privacy_diagnostics_checks = privacy_diagnostics_item["details"]["checks"]
+        assert privacy_diagnostics_checks["redactionFixtures"] is True, privacy_diagnostics_checks
+        assert privacy_diagnostics_checks["productionBlockers"] is True, privacy_diagnostics_checks
         encoded = json.dumps(summary, sort_keys=True)
         for forbidden in ("CRYPTAD_APP_TOKEN=secret", "formPassword=hunter2", str(workspace)):
             assert forbidden not in encoded, f"self-test leaked {forbidden}"
@@ -22778,7 +23078,24 @@ def make_self_test_workspace(workspace: Path) -> None:
         "def maintenance_policy_args(policy):\n"
         "    return ['--maintenance-owner', policy['maintenance']['owner']]\n"
         "CRITICAL_PRODUCTION_BETA_EVIDENCE_IDS = "
-        "('app-catalog.first-party-maintenance-policy', 'first-party-app.beta-quality-pass')\n",
+        "('app-catalog.first-party-maintenance-policy', 'first-party-app.beta-quality-pass', "
+        "'app-platform.privacy-preserving-beta-diagnostics')\n",
+        encoding="utf-8",
+    )
+    (workspace / "tools/release-certification/release_certification.py").write_text(
+        "ECOSYSTEM_RC_REQUIRED_EVIDENCE_IDS = "
+        "('app-platform.privacy-preserving-beta-diagnostics',)\n"
+        "ECOSYSTEM_RC_REDACTION_EVIDENCE_IDS = "
+        "('app-platform.privacy-preserving-beta-diagnostics',)\n"
+        "MatrixRowSpec(id='privacy-preserving-diagnostics-risk', "
+        "required_evidence_ids=('app-platform.privacy-preserving-beta-diagnostics',))\n",
+        encoding="utf-8",
+    )
+    (workspace / "tools/release-certification/production_beta_go_no_go_dashboard.py").write_text(
+        "CRITICAL_PRODUCTION_BETA_EVIDENCE_IDS = "
+        "('app-platform.privacy-preserving-beta-diagnostics',)\n"
+        "DOMAIN_SPECS = ({'id': 'privacy-preserving-diagnostics-risk', "
+        "'evidenceIds': ('app-platform.privacy-preserving-beta-diagnostics',)},)\n",
         encoding="utf-8",
     )
     policy_apps = {}
@@ -23035,7 +23352,8 @@ def make_self_test_workspace(workspace: Path) -> None:
     diagnostics_handler.write_text(
         "class DiagnosticsApiHandler { String a = \"replacementResponseCount "
         "blockedMutatingRequestCount fallbackRenderCount retainedOrPendingRenderCount "
-        "removalScope scopeExpandedInWave\"; }\n",
+        "removalScope scopeExpandedInWave plainTextExportAvailable\"; "
+        "Map<String, Object> supportSummary() { return Map.of(\"plainTextExportAvailable\", true); } }\n",
         encoding="utf-8",
     )
     app_vault_doc = workspace / APP_VAULT_DOC
@@ -23947,6 +24265,7 @@ const appDataRestoreFields = "payloadBase64 replaceNamespace replaceApp backupPa
         + """
 let betaDashboardLoadGeneration = 0;
 let supportBundleSnapshot = null;
+let supportBundlePreviewSnapshot = null;
 function renderBetaDashboard(data){}
 function renderSecurityResponseSummary(response){ return "Production security response Security response Denylisted app versions Support handling"; }
 function securityResponseTone(status){}
@@ -23967,12 +24286,18 @@ const trustScopeFields = "scope statementLifecycle localAnchorsOnly importedStat
 function renderBetaRecoveryActions(actions){}
 function operatorRecoveryActionVisible(action){ const actionId = "preserve-data-uninstall"; return actionId !== "preserve-data-uninstall"; }
 function loadBetaDashboardSection(){ loadJson(apiUrl("operator/beta-dashboard")); }
-function loadSupportBundle(){ loadJson(apiUrl("operator/support-bundle")); supportBundleSnapshot = {}; }
+function loadSupportBundle(){ loadJson(apiUrl("operator/support-bundle/preview")); loadJson(apiUrl("operator/support-bundle")); supportBundleSnapshot = {}; }
+function supportBundleRedactionStatus(bundle){ return "pass"; }
+function supportBundleRedactionFailed(bundle){ return false; }
+function supportBundleExportBlocked(bundle){ return supportBundleRedactionFailed(bundle); }
+function supportBundleOmittedFieldCount(bundle){ return 0; }
+function supportBundleDigestShort(bundle){ return "0123456789abcdef..."; }
+function supportJsonText(bundle){ return formatJson(bundle); }
+const supportBundleBlocked = "Support bundle redaction failed; copy and download are disabled.";
 function downloadSupportBundle(){}
-function copySupportSummary(){}
+function copySupportSummary(){ return "Support JSON copied."; }
 function submitOperatorRecoveryAction(form){}
 sections.betaDashboard.addEventListener("submit", async () => submitOperatorRecoveryAction(form));
-let supportBundlePreviewSnapshot = null;
 function renderOperatorRcRecovery(){}
 function loadOperatorRcDashboard(){ loadJson(apiUrl("operator/rc-dashboard")); rcCompatibilityFallback = true; }
 function previewOperatorSupportBundle(){ loadJson(apiUrl("operator/support-bundle/preview")); supportBundlePreviewSnapshot = {}; }
@@ -24018,7 +24343,11 @@ const safeSecurityDom = "definitionList text safeUninstallGuidance";
         '<div id="beta-dashboard-body"></div>'
         '<a id="diagnostics-legacy-export-link">Open legacy plaintext diagnostic export</a>'
         '<p>Plaintext diagnostics remain only as support or emergency fallback.</p>'
+        '<p>This support bundle is generated locally and is not uploaded automatically. '
+        'It excludes raw content, raw app data, private insert URIs, tokens, identity material, '
+        'and local paths. Review it before sharing.</p>'
         '<button id="support-bundle-download-button">Download support JSON</button>'
+        '<button id="support-bundle-copy-button">Copy support JSON</button>'
         '<button id="all-app-data-backup-button">Download all app-data backup</button>'
         '<form id="operator-app-data-restore-form">'
         '<label>Sensitive backup payload</label><textarea name="backupPayload"></textarea>'
@@ -24067,8 +24396,32 @@ final class OperatorBetaDashboardService {
     OperatorSupportRedactor.redact(dashboard);
     OperatorSupportRedactor.redact(diagnostics);
     OperatorSupportRedactor.redact(recentAudit);
-    return Map.of();
+    OperatorSupportRedactor.redact(sections);
+    int SUPPORT_BUNDLE_SCHEMA_VERSION = 2;
+    bundle.put("kind", "cryptad-operator-support-bundle");
+    bundle.put("schemaVersion", SUPPORT_BUNDLE_SCHEMA_VERSION);
+    bundle.put("supportDigest", supportDigestForPayload(bundle));
+    bundle.put("privacy", Map.of("includesRawContent", false, "includesRawAppData", false,
+      "includesPrivateInsertUris", false, "includesTokens", false,
+      "includesIdentityMaterial", false, "includesLocalPaths", false,
+      "localOnlyUntilExported", true));
+    bundle.put("redaction", Map.of("omittedFieldNames", List.of(), "omittedFieldCount", 0,
+      "redactionFindings", List.of(), "rawSensitiveMaterialExcluded", true,
+      "patternsChecked", OperatorSupportRedactor.patternsChecked()));
+    bundle.put("sections", Map.of("catalog", catalog, "appUpdates", updates,
+      "subscriptions", subscriptions, "appData", appData, "appServiceGrants", grants,
+      "consent", consent, "migrations", migrations, "sandbox", sandbox,
+      "contentFormats", contentFormats, "trustGraph", trustGraph, "socialInbox", socialInbox,
+      "recovery", recovery, "diagnostics", diagnostics, "legacyFallbacks", legacyFallbacks,
+      "releaseCertification", releaseCertification));
+    bundle.put("rawDiagnosticBodiesExcluded", true);
+    bundle.put("plainTextExportEmbeddedInDefaultBundle", false);
+    String safe = "\\"rawDiagnosticBodiesExcluded\\" \\"plainTextExportEmbeddedInDefaultBundle\\" "
+      + "app-platform.privacy-preserving-beta-diagnostics";
+    diagnosticsApiHandler.supportSummary();
+    return bundle;
   }
+  Object supportDigestForPayload(Map<String, Object> supportBundlePayload) { return "sha256"; }
   Map<String, Object> catalogSummary(Map<String, Object> catalog) {
     json.put("trustedCatalogKeyStatus", "configured");
     json.put("lastFetchStatus", status);
@@ -24250,8 +24603,14 @@ record OperatorRecoveryTarget() {
     (operator_dir / "OperatorSupportRedactor.java").write_text(
         'final class OperatorSupportRedactor { String[] fields = {"formpassword", '
         '"browsersession", "plantoken", "requestbody", "rawbody", "sourcepath", "rollbackpath", '
-        '"backupbundle", "payloadbase64", "authorizationheader", "cisecretvalue", "rawappdata"}; String marker = "crypta-app-data-backup"; '
-        'String value = REDACTED_APP_DATA_BACKUP; }\n',
+        '"backupbundle", "payloadbase64", "authorizationheader", "cisecretvalue", "rawappdata", '
+        '"privateinserturi", "rawprofiledocument", "rawfeedsnapshot", "rawtruststatement", '
+        '"rawsocialmessage", "appserviceinvocationbody", "vaultidentitymaterial"}; '
+        'String[] patterns = {"private_insert_uri", "public_content_uri", '
+        '"raw_profile_document", "raw_feed_snapshot", "raw_trust_statement", '
+        '"raw_social_message", "app_service_invocation_body", "vault_identity_material", '
+        '"nested_archive_or_base64_backup_payload"}; String marker = "crypta-app-data-backup"; '
+        'String value = REDACTED_APP_DATA_BACKUP; static Object patternsChecked(){ return null; } }\n',
         encoding="utf-8",
     )
     (api_dir / "PlatformApiOperatorRoutes.java").write_text(
@@ -24343,6 +24702,8 @@ class PlatformApiOperatorRoutesTest {
     String path = "/work/private/catalog";
     String secret = FORM_FIELD_ASSIGNMENT;
     assertFalse(response.body().contains(FORM_FIELD_ASSIGNMENT));
+    assertFalse(response.body().contains("plainTextExport"));
+    assertTrue(response.body().contains("redactedLineCount"));
   }
   void route_whenPathParameterAttemptsRouteProxy_expectIgnored() {
     String path = "some/arbitrary/path";
@@ -24388,6 +24749,18 @@ class OperatorSupportRedactorTest {
   }
   void redact_whenSecurityIncidentArtifactContainsIntakeSecrets_expectIncidentEvidenceRedacted() {}
   void redact_whenBackupPayloadAccidentallyEntersSupportBundle_expectWholeBackupRedacted() {}
+  void redact_whenPrivacyPreservingDiagnosticsFieldsPresent_expectUnsafeFieldsOmitted() {}
+}
+""",
+        encoding="utf-8",
+    )
+    (redactor_test_dir / "OperatorBetaDashboardServiceTest.java").write_text(
+        """
+class OperatorBetaDashboardServiceTest {
+  void supportBundle_whenSensitiveDiagnosticsPresent_expectSchemaV2SafeSummariesAndDigest() {
+    String plain = "plainTextExport";
+    String lines = "redactedLineCount";
+  }
 }
 """,
         encoding="utf-8",
@@ -24437,6 +24810,51 @@ class OperatorSupportRedactorTest {
         read_source(docs / "platform-api-surface.md") + "\nOperator routes are host/operator-only.\n",
         encoding="utf-8",
     )
+    (docs / "privacy-preserving-beta-diagnostics.md").write_text(
+        "Privacy-preserving beta diagnostics are local-only support bundles. They exclude raw "
+        "content, raw app data, private insert URIs, tokens, identity material, local paths, and "
+        "legacy plaintext diagnostics from default exports.\n",
+        encoding="utf-8",
+    )
+    fixture_dir = workspace / "tools/release-certification/fixtures"
+    fixture_dir.mkdir(parents=True, exist_ok=True)
+    fixture_payloads = {
+        "support-bundle-redaction-safe.json": {
+            "kind": "cryptad-operator-support-bundle",
+            "redaction": {"status": "pass"},
+            "privacy": {"includesRawContent": False},
+            "sections": {"catalog": {"status": "available", "sourceDigest": "0" * 64}},
+        },
+        "support-bundle-redaction-private-insert-uri.json": {
+            "privateInsertUri": "crypta:SSK@fake-private-insert/example"
+        },
+        "support-bundle-redaction-token.json": {"authorization": "Bearer fake-token"},
+        "support-bundle-redaction-raw-profile.json": {
+            "rawProfileDocument": {"type": "crypta.profile.v1", "displayName": "Private"}
+        },
+        "support-bundle-redaction-raw-feed.json": {
+            "rawFeedSnapshot": {"type": "crypta.feed.snapshot.v1", "items": []}
+        },
+        "support-bundle-redaction-raw-trust-statement.json": {
+            "rawTrustStatement": {"type": "crypta.trust.statement.v1"}
+        },
+        "support-bundle-redaction-raw-social-message.json": {
+            "rawSocialMessage": {"type": "crypta.social.message.v1", "body": "Private"}
+        },
+        "support-bundle-redaction-raw-app-data.json": {"rawAppDataValue": "private-value"},
+        "support-bundle-redaction-local-path.json": {"localPath": "/home/operator/.cryptad"},
+        "support-bundle-redaction-private-key.json": {
+            "privateKey": "-----BEGIN PRIVATE KEY-----\nfake\n-----END PRIVATE KEY-----"
+        },
+        "support-bundle-redaction-app-service-body.json": {
+            "appServiceInvocationBody": {"request": "private"}
+        },
+        "support-bundle-redaction-nested-backup.json": {
+            "backupPayload": {"kind": "crypta-app-data-backup", "apps": []}
+        },
+    }
+    for fixture_name, fixture_payload in fixture_payloads.items():
+        write_json(fixture_dir / fixture_name, fixture_payload)
     router_test = workspace / "src/test/java/network/crypta/platform/api/PlatformApiRouterTest.java"
     router_test.parent.mkdir(parents=True, exist_ok=True)
     router_test.write_text(

@@ -1,0 +1,11 @@
+{
+  "kind": "cryptad-operator-support-bundle",
+  "rawFeedSnapshot": {
+    "type": "crypta.feed.snapshot.v1",
+    "items": [
+      {
+        "title": "Fake Private Feed Item"
+      }
+    ]
+  }
+}

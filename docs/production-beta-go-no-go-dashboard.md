@@ -88,6 +88,13 @@ digests, and redaction booleans, but they must not include raw fetched content, 
 bodies, raw social message bodies, raw trust statements, raw feed bodies, raw signatures, private
 insert URIs, private keys, tokens, browser sessions, raw app-data values, or absolute local paths.
 
+The dashboard also has a dedicated `privacy-preserving-diagnostics-risk` domain. It ties
+`app-platform.privacy-preserving-beta-diagnostics`, `operator-beta.support-bundle-redaction`,
+`operator-rc.support-bundle-wizard`, and `multi-node-beta.support-bundle-drill` together. Missing
+support-bundle schema, missing preview/export routes, unsafe lifecycle summaries, raw legacy
+plaintext diagnostics in the default bundle, or redaction fixture failures are `no-go` conditions
+in production beta. Redaction failures in this domain are non-waivable.
+
 These content profiles are Crypta app ecosystem profiles. They are not compatibility promises for
 legacy WoT, Freetalk, Sone, Freemail, or any old plugin ABI/protocol.
 

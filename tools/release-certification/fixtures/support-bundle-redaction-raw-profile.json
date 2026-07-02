@@ -1,0 +1,7 @@
+{
+  "kind": "cryptad-operator-support-bundle",
+  "rawProfileDocument": {
+    "type": "crypta.profile.v1",
+    "displayName": "Fake Private Profile"
+  }
+}
