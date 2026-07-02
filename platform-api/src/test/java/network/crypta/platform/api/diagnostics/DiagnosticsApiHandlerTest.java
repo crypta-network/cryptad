@@ -118,10 +118,14 @@ class DiagnosticsApiHandlerTest {
                             "Health:",
                             List.of(
                                 "Errors: 0",
+                                "Errors: none",
+                                "Errors: no failures",
                                 "No failures",
+                                "Exceptions: none",
                                 "Exceptions: 0",
                                 "0 failed",
-                                "Failure count: 0")))));
+                                "Failure count: 0",
+                                "Failure count: none")))));
 
     Map<String, Object> response = handler.supportSummary();
 
@@ -138,13 +142,18 @@ class DiagnosticsApiHandlerTest {
                 new DiagnosticReportSnapshot(
                     List.of(
                         new DiagnosticSectionSnapshot(
-                            "Health:", List.of("Errors: 2", "1 failure", "Exception count: 3")))));
+                            "Health:",
+                            List.of(
+                                "Errors: 2",
+                                "1 failure",
+                                "Exception count: 3",
+                                "Error: no route to peer")))));
 
     Map<String, Object> response = handler.supportSummary();
 
     Map<String, Object> section = firstSection(response);
     assertEquals("error", section.get("status"));
-    assertEquals(3L, section.get("errorCount"));
+    assertEquals(4L, section.get("errorCount"));
   }
 
   @Test
@@ -158,8 +167,11 @@ class DiagnosticsApiHandlerTest {
                             "Health:",
                             List.of(
                                 "Warnings: 0",
+                                "Warnings: none",
+                                "Warnings: no warnings",
                                 "No warnings",
                                 "Warn count: 0",
+                                "Warn count: none",
                                 "0 warns",
                                 "zero warning")))));
 
@@ -178,13 +190,18 @@ class DiagnosticsApiHandlerTest {
                 new DiagnosticReportSnapshot(
                     List.of(
                         new DiagnosticSectionSnapshot(
-                            "Health:", List.of("Warnings: 2", "1 warning", "Warn count: 3")))));
+                            "Health:",
+                            List.of(
+                                "Warnings: 2",
+                                "1 warning",
+                                "Warn count: 3",
+                                "Warning: no route to peer")))));
 
     Map<String, Object> response = handler.supportSummary();
 
     Map<String, Object> section = firstSection(response);
     assertEquals("warning", section.get("status"));
-    assertEquals(3L, section.get("warningCount"));
+    assertEquals(4L, section.get("warningCount"));
   }
 
   private static Map<String, Object> sensitiveSupportSummaryResponse() {

@@ -40,6 +40,7 @@ public final class DiagnosticsApiHandler {
   private static final Set<String> ERROR_WORDS =
       Set.of("error", "errors", "failed", "failure", "failures", "exception", "exceptions");
   private static final Set<String> WARNING_WORDS = Set.of("warn", "warns", "warning", "warnings");
+  private static final Set<String> TEXTUAL_ZERO_COUNT_WORDS = Set.of("no", "none", "zero");
 
   private enum CountSignal {
     NONE,
@@ -280,21 +281,36 @@ public final class DiagnosticsApiHandler {
       return previous;
     }
     int nextIndex = errorWordIndex + 1;
+    boolean explicitCount = false;
     if (nextIndex < tokens.size() && "count".equals(tokens.get(nextIndex))) {
+      explicitCount = true;
       nextIndex++;
     }
-    return numericCountSignal(tokens, nextIndex);
+    return countValueSignal(
+        tokens, nextIndex, explicitCount || isPluralCountSummaryWord(tokens.get(errorWordIndex)));
   }
 
   private static CountSignal numericCountSignal(List<String> tokens, int index) {
+    return countValueSignal(tokens, index, false);
+  }
+
+  private static CountSignal countValueSignal(
+      List<String> tokens, int index, boolean allowTextualZero) {
     if (index < 0 || index >= tokens.size()) {
       return CountSignal.NONE;
+    }
+    if (allowTextualZero && TEXTUAL_ZERO_COUNT_WORDS.contains(tokens.get(index))) {
+      return CountSignal.ZERO;
     }
     try {
       return Long.parseLong(tokens.get(index)) == 0L ? CountSignal.ZERO : CountSignal.NON_ZERO;
     } catch (NumberFormatException _) {
       return CountSignal.NONE;
     }
+  }
+
+  private static boolean isPluralCountSummaryWord(String signalWord) {
+    return signalWord.endsWith("s");
   }
 
   private static long boundedWarningCount(List<String> lines) {
