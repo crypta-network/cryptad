@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.regex.Pattern;
 import network.crypta.platform.api.operator.OperatorSupportRedactor;
 import network.crypta.runtime.spi.DiagnosticPort;
 import network.crypta.runtime.spi.DiagnosticReportSnapshot;
@@ -34,6 +35,17 @@ import network.crypta.runtime.spi.LegacyAdminUsageSnapshot;
  */
 public final class DiagnosticsApiHandler {
   private static final HexFormat HEX = HexFormat.of();
+  private static final Pattern ERROR_WORD_PATTERN =
+      Pattern.compile("\\b(?:errors?|failed|failures?|exceptions?)\\b");
+  private static final Pattern NON_ZERO_ERROR_COUNT_PATTERN =
+      Pattern.compile(
+          "\\b(?:errors?|failed|failures?|exceptions?)(?:\\s+count)?\\b\\s*[:=]\\s*[1-9]\\d*\\b"
+              + "|\\b[1-9]\\d*\\s+(?:errors?|failed|failures?|exceptions?)\\b");
+  private static final Pattern ZERO_OR_NEGATED_ERROR_COUNT_PATTERN =
+      Pattern.compile(
+          "\\b(?:no|zero)\\s+(?:errors?|failed|failures?|exceptions?)\\b"
+              + "|\\b(?:errors?|failed|failures?|exceptions?)(?:\\s+count)?\\b\\s*[:=]\\s*0\\b"
+              + "|\\b0\\s+(?:errors?|failed|failures?|exceptions?)\\b");
 
   /** Detached runtime diagnostic-report port. */
   private final DiagnosticPort diagnosticPort;
@@ -216,14 +228,18 @@ public final class DiagnosticsApiHandler {
   private static long boundedErrorCount(List<String> lines) {
     return lines.stream()
         .map(line -> line.toLowerCase(Locale.ROOT))
-        .filter(
-            line ->
-                line.contains("error")
-                    || line.contains("failed")
-                    || line.contains("failure")
-                    || line.contains("exception"))
+        .filter(DiagnosticsApiHandler::hasErrorSignal)
         .limit(1_000L)
         .count();
+  }
+
+  private static boolean hasErrorSignal(String line) {
+    if (NON_ZERO_ERROR_COUNT_PATTERN.matcher(line).find()) {
+      return true;
+    }
+    String lineWithoutZeroSummaries =
+        ZERO_OR_NEGATED_ERROR_COUNT_PATTERN.matcher(line).replaceAll(" ");
+    return ERROR_WORD_PATTERN.matcher(lineWithoutZeroSummaries).find();
   }
 
   private static long boundedWarningCount(List<String> lines) {

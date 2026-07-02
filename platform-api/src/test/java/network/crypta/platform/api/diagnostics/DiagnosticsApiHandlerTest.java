@@ -92,9 +92,7 @@ class DiagnosticsApiHandlerTest {
     assertEquals(true, response.get("plainTextExportAvailable"));
     assertEquals(true, response.get("legacyFallbackAvailable"));
     assertFalse(response.containsKey("plainTextExport"));
-    @SuppressWarnings("unchecked")
-    List<Map<String, Object>> sections = (List<Map<String, Object>>) response.get("sections");
-    Map<String, Object> section = sections.getFirst();
+    Map<String, Object> section = firstSection(response);
     assertFalse(section.containsKey("lines"));
     assertEquals("sensitive", section.get("id"));
     assertEquals("error", section.get("status"));
@@ -107,6 +105,29 @@ class DiagnosticsApiHandlerTest {
     assertFalse(rendered.contains("/work/private/catalog"));
     assertFalse(rendered.contains("USK@example/private/0"));
     assertFalse(rendered.contains("token=secret"));
+  }
+
+  @Test
+  void supportSummary_whenZeroErrorSummaryLinesPresent_expectAvailableSection() {
+    DiagnosticsApiHandler handler =
+        new DiagnosticsApiHandler(
+            () ->
+                new DiagnosticReportSnapshot(
+                    List.of(
+                        new DiagnosticSectionSnapshot(
+                            "Health:",
+                            List.of(
+                                "Errors: 0",
+                                "No failures",
+                                "Exceptions: 0",
+                                "0 failed",
+                                "Failure count: 0")))));
+
+    Map<String, Object> response = handler.supportSummary();
+
+    Map<String, Object> section = firstSection(response);
+    assertEquals("available", section.get("status"));
+    assertEquals(0L, section.get("errorCount"));
   }
 
   private static Map<String, Object> sensitiveSupportSummaryResponse() {
@@ -156,5 +177,11 @@ class DiagnosticsApiHandlerTest {
   @SuppressWarnings("unchecked")
   private static Map<String, Object> legacyAdmin(Map<String, Object> response) {
     return (Map<String, Object>) assertInstanceOf(Map.class, response.get("legacyAdmin"));
+  }
+
+  @SuppressWarnings("unchecked")
+  private static Map<String, Object> firstSection(Map<String, Object> response) {
+    List<Map<String, Object>> sections = (List<Map<String, Object>>) response.get("sections");
+    return sections.getFirst();
   }
 }

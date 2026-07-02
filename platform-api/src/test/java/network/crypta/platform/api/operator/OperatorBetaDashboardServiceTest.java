@@ -381,6 +381,19 @@ class OperatorBetaDashboardServiceTest {
     assertEquals(0L, appUpdates.get("blockedUpdateCount"));
   }
 
+  @Test
+  void supportBundle_whenAppDataServiceUnavailable_expectAppDataSectionUnavailable() {
+    AppUpdateService updateService = mock(AppUpdateService.class);
+    when(updateService.summary(APP_ID)).thenReturn(updateSummary(Map.of()));
+
+    Map<String, Object> bundle = service(appsHandler(), updateService).supportBundle();
+
+    Map<String, Object> appData = mapValue(mapValue(bundle.get("sections")).get("appData"));
+    assertEquals(UNAVAILABLE, appData.get("status"));
+    assertEquals(1L, appData.get("unavailableCount"));
+    assertEquals("App-data service is unavailable.", appData.get("lastSafeStatusMessage"));
+  }
+
   private static OperatorBetaDashboardService service(
       AppsApiHandler appsApiHandler, AppUpdateService appUpdateService) {
     return service(appsApiHandler, null, appUpdateService);

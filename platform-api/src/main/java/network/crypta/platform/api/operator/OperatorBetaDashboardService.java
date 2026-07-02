@@ -1026,10 +1026,11 @@ public final class OperatorBetaDashboardService {
       }
     }
     Map<String, Object> json =
-        baseLifecycleSummary(APP_DATA_FIELD, unavailable > 0L ? WARNING : lifecycleStatus(apps));
+        baseLifecycleSummary(APP_DATA_FIELD, appDataLifecycleStatus(apps, unavailable));
     json.put(BOUNDED_COUNT_FIELD, apps.size());
     json.put("unavailableCount", unavailable);
     json.put(QUOTA_WARNING_COUNT_FIELD, quotaWarnings);
+    json.put(LAST_SAFE_STATUS_MESSAGE_FIELD, firstNestedWarning(apps, APP_DATA_FIELD));
     json.put("rawAppDataExcluded", true);
     json.put("backupPayloadsExcluded", true);
     json.put(SAFE_IDS_FIELD, safeIds(apps, APP_ID_FIELD));
@@ -1242,6 +1243,23 @@ public final class OperatorBetaDashboardService {
             .anyMatch(
                 update ->
                     isUnavailable(update) || !stringList(update.get(WARNINGS_FIELD)).isEmpty())
+        ? WARNING
+        : AVAILABLE_STATUS;
+  }
+
+  private static String appDataLifecycleStatus(List<Map<String, Object>> apps, long unavailable) {
+    if (apps.isEmpty()) {
+      return "empty";
+    }
+    if (unavailable > 0L) {
+      return UNAVAILABLE;
+    }
+    return apps.stream()
+            .map(app -> mapValue(app.get(APP_DATA_FIELD)))
+            .anyMatch(
+                appData ->
+                    hasAppDataQuotaWarning(appData)
+                        || !stringList(appData.get(WARNINGS_FIELD)).isEmpty())
         ? WARNING
         : AVAILABLE_STATUS;
   }
