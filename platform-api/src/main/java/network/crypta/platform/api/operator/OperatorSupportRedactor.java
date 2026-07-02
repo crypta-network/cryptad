@@ -43,6 +43,7 @@ public final class OperatorSupportRedactor {
           "rawappdataenabled",
           "rawappdataexcluded",
           "rawappdataexcludedfromevidence",
+          "rawappdatavaluesexcluded",
           "rawappdatapresent",
           "rawappdataredacted",
           "rawappdatarequired");

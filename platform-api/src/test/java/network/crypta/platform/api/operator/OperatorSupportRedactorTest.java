@@ -114,6 +114,7 @@ class OperatorSupportRedactorTest {
     input.put("appId", "feed-reader");
     input.put("publicContentUri", "crypta:CHK@public-content-digest/profile.json");
     input.put("rawAppDataExcluded", true);
+    input.put("rawAppDataValuesExcluded", true);
     input.put("rawProfileDocument", "{\"displayName\":\"Private Profile\"}");
     input.put("rawFeedSnapshot", "{\"items\":[{\"body\":\"Private Feed Item\"}]}");
     input.put("rawTrustStatement", "{\"subject\":\"Private Trust Subject\"}");
@@ -134,6 +135,7 @@ class OperatorSupportRedactorTest {
     assertTrue(redacted.containsKey("catalogId"));
     assertTrue(redacted.containsKey("appId"));
     assertTrue(redacted.containsKey("rawAppDataExcluded"));
+    assertTrue(redacted.containsKey("rawAppDataValuesExcluded"));
     assertTrue(rendered.contains("stable-catalog"));
     assertTrue(rendered.contains("feed-reader"));
     assertTrue(rendered.contains("<redacted-content-uri>"));

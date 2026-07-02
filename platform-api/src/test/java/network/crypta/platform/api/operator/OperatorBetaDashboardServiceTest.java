@@ -505,6 +505,7 @@ class OperatorBetaDashboardServiceTest {
     assertEquals(2L, migrations.get("migrationWarningCount"));
     assertEquals("app_data_migration_missing", migrations.get("lastErrorCode"));
     assertEquals("app_data_migration_missing", migrations.get("lastSafeStatusMessage"));
+    assertEquals(true, migrations.get("rawAppDataValuesExcluded"));
     assertEquals(List.of(APP_ID), migrations.get("safeIds"));
   }
 
