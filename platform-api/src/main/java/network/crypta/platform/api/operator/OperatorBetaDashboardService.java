@@ -1000,12 +1000,13 @@ public final class OperatorBetaDashboardService {
       }
     }
     Map<String, Object> json =
-        baseLifecycleSummary("appUpdates", blocked > 0L ? ACTION_REQUIRED : lifecycleStatus(apps));
+        baseLifecycleSummary("appUpdates", appUpdateLifecycleStatus(apps, blocked));
     json.put(BOUNDED_COUNT_FIELD, apps.size());
     json.put(PENDING_UPDATE_COUNT_FIELD, pending);
     json.put(STAGED_UPDATE_COUNT_FIELD, staged);
     json.put("blockedUpdateCount", blocked);
     json.put(LAST_ERROR_CODE_FIELD, firstNestedLastErrorCode(apps, UPDATE_FIELD));
+    json.put(LAST_SAFE_STATUS_MESSAGE_FIELD, firstNestedWarning(apps, UPDATE_FIELD));
     json.put(SAFE_IDS_FIELD, safeIds(apps, APP_ID_FIELD));
     json.put(RECOVERY_ACTION_IDS_FIELD, recoveryActionIds(apps));
     json.put(DIGEST_FIELD, digestOrNull(PlatformApiJsonWriter.write(json)));
@@ -1229,6 +1230,22 @@ public final class OperatorBetaDashboardService {
     return AVAILABLE_STATUS;
   }
 
+  private static String appUpdateLifecycleStatus(List<Map<String, Object>> apps, long blocked) {
+    if (apps.isEmpty()) {
+      return "empty";
+    }
+    if (blocked > 0L) {
+      return ACTION_REQUIRED;
+    }
+    return apps.stream()
+            .map(app -> mapValue(app.get(UPDATE_FIELD)))
+            .anyMatch(
+                update ->
+                    isUnavailable(update) || !stringList(update.get(WARNINGS_FIELD)).isEmpty())
+        ? WARNING
+        : AVAILABLE_STATUS;
+  }
+
   private static String dashboardDerivedLifecycleStatus(
       List<Map<String, Object>> items,
       List<String> dashboardWarnings,
@@ -1284,6 +1301,13 @@ public final class OperatorBetaDashboardService {
 
   private static String firstWarning(Map<String, Object> item) {
     return stringList(item.get(WARNINGS_FIELD)).stream().findFirst().orElse(null);
+  }
+
+  private static String firstNestedWarning(List<Map<String, Object>> items, String nestedField) {
+    return items.stream()
+        .flatMap(item -> stringList(mapValue(item.get(nestedField)).get(WARNINGS_FIELD)).stream())
+        .findFirst()
+        .orElse(null);
   }
 
   private static String firstMatchingWarning(List<String> warnings, String... markers) {

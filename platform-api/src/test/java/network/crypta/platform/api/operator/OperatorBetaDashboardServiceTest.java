@@ -366,6 +366,21 @@ class OperatorBetaDashboardServiceTest {
     assertEquals(true, legacyFallbacks.get("legacyFallbackAvailable"));
   }
 
+  @Test
+  void supportBundle_whenOnlyAppQuotaWarningPresent_expectAppUpdatesSectionAvailable() {
+    AppUpdateService updateService = mock(AppUpdateService.class);
+    when(updateService.summary(APP_ID)).thenReturn(updateSummary(Map.of()));
+
+    Map<String, Object> bundle =
+        service(appsHandler(installedAppWithQuotaWarning()), updateService).supportBundle();
+
+    Map<String, Object> appUpdates = mapValue(mapValue(bundle.get("sections")).get("appUpdates"));
+    assertEquals(AVAILABLE, appUpdates.get("status"));
+    assertEquals(0L, appUpdates.get("pendingUpdateCount"));
+    assertEquals(0L, appUpdates.get("stagedUpdateCount"));
+    assertEquals(0L, appUpdates.get("blockedUpdateCount"));
+  }
+
   private static OperatorBetaDashboardService service(
       AppsApiHandler appsApiHandler, AppUpdateService appUpdateService) {
     return service(appsApiHandler, null, appUpdateService);
