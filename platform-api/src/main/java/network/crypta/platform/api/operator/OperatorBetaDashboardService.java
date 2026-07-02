@@ -80,6 +80,8 @@ public final class OperatorBetaDashboardService {
   private static final String LEGACY_FALLBACK_AVAILABLE_FIELD = "legacyFallbackAvailable";
   private static final String LIVE_USK = "live-usk";
   private static final String METADATA_ONLY_STATUS = "metadata_only";
+  private static final String MATERIAL_CONSENT_REASONS_FIELD = "materialConsentReasons";
+  private static final String OPERATOR_ACTION_REQUIRED_FIELD = "operatorActionRequired";
   private static final String PENDING = "pending";
   private static final String PAUSED_STATUS = "paused";
   private static final String PLAIN_TEXT_EXPORT_AVAILABLE_FIELD = "plainTextExportAvailable";
@@ -1045,9 +1047,7 @@ public final class OperatorBetaDashboardService {
   private static Map<String, Object> appServiceLifecycleSummary(
       Map<String, Object> appServices, List<Map<String, Object>> recentAudit) {
     Map<String, Object> json =
-        baseLifecycleSummary(
-            APP_SERVICE_GRANTS_FIELD,
-            booleanValue(appServices.get(AVAILABLE_FIELD)) ? AVAILABLE_STATUS : UNAVAILABLE);
+        baseLifecycleSummary(APP_SERVICE_GRANTS_FIELD, appServiceLifecycleStatus(appServices));
     json.put(BOUNDED_COUNT_FIELD, longValue(appServices.get("serviceCount")));
     json.put(PENDING_GRANT_COUNT_FIELD, longValue(appServices.get(PENDING_GRANT_COUNT_FIELD)));
     json.put(ACTIVE_GRANT_COUNT_FIELD, longValue(appServices.get(ACTIVE_GRANT_COUNT_FIELD)));
@@ -1062,10 +1062,17 @@ public final class OperatorBetaDashboardService {
   }
 
   private static Map<String, Object> consentLifecycleSummary(List<Map<String, Object>> apps) {
-    Map<String, Object> json = baseLifecycleSummary(CONSENT_FIELD, METADATA_ONLY_STATUS);
+    long pendingOrRejected = countConsentWarnings(apps);
+    Map<String, Object> json =
+        baseLifecycleSummary(
+            CONSENT_FIELD, pendingOrRejected > 0L ? WARNING : METADATA_ONLY_STATUS);
     json.put(BOUNDED_COUNT_FIELD, apps.size());
-    json.put("pendingOrRejectedCount", countConsentWarnings(apps));
-    json.put(LAST_SAFE_STATUS_MESSAGE_FIELD, "Consent details are summarized only when present.");
+    json.put("pendingOrRejectedCount", pendingOrRejected);
+    json.put(
+        LAST_SAFE_STATUS_MESSAGE_FIELD,
+        pendingOrRejected > 0L
+            ? "Update consent is pending or rejected for one or more apps."
+            : "Consent details are summarized only when present.");
     json.put("rawConsentBodiesExcluded", true);
     json.put(DIGEST_FIELD, digestOrNull(PlatformApiJsonWriter.write(json)));
     return json;
@@ -1097,7 +1104,7 @@ public final class OperatorBetaDashboardService {
       }
     }
     Map<String, Object> json =
-        baseLifecycleSummary(SANDBOX_FIELD, unavailable > 0L ? WARNING : lifecycleStatus(apps));
+        baseLifecycleSummary(SANDBOX_FIELD, sandboxLifecycleStatus(apps, unavailable));
     json.put(BOUNDED_COUNT_FIELD, apps.size());
     json.put("warningCount", unavailable);
     json.put("providerPathsExcluded", true);
@@ -1303,6 +1310,24 @@ public final class OperatorBetaDashboardService {
         : AVAILABLE_STATUS;
   }
 
+  private static String appServiceLifecycleStatus(Map<String, Object> appServices) {
+    if (!booleanValue(appServices.get(AVAILABLE_FIELD))) {
+      return UNAVAILABLE;
+    }
+    if (longValue(appServices.get(PENDING_GRANT_COUNT_FIELD)) > 0L
+        || !stringList(appServices.get(WARNINGS_FIELD)).isEmpty()) {
+      return WARNING;
+    }
+    return AVAILABLE_STATUS;
+  }
+
+  private static String sandboxLifecycleStatus(List<Map<String, Object>> apps, long unavailable) {
+    if (apps.isEmpty()) {
+      return EMPTY_STATUS;
+    }
+    return unavailable > 0L ? WARNING : AVAILABLE_STATUS;
+  }
+
   private static List<Map<String, Object>> updateMigrationSummaries(
       List<Map<String, Object>> apps) {
     ArrayList<Map<String, Object>> migrations = new ArrayList<>();
@@ -1466,10 +1491,30 @@ public final class OperatorBetaDashboardService {
   }
 
   private static long countConsentWarnings(List<Map<String, Object>> apps) {
-    return apps.stream()
-        .flatMap(app -> stringList(app.get(WARNINGS_FIELD)).stream())
-        .filter(warning -> warning.toLowerCase(Locale.ROOT).contains(CONSENT_FIELD))
-        .count();
+    return apps.stream().filter(OperatorBetaDashboardService::hasConsentWarning).count();
+  }
+
+  private static boolean hasConsentWarning(Map<String, Object> app) {
+    return stringList(app.get(WARNINGS_FIELD)).stream()
+            .anyMatch(warning -> warning.toLowerCase(Locale.ROOT).contains(CONSENT_FIELD))
+        || updateConsentStates(app).stream()
+            .anyMatch(OperatorBetaDashboardService::hasUpdateConsentBlocker);
+  }
+
+  private static List<Map<String, Object>> updateConsentStates(Map<String, Object> app) {
+    Map<String, Object> update = mapValue(app.get(UPDATE_FIELD));
+    return List.of(mapValue(update.get(CANDIDATE_FIELD)), mapValue(update.get(STAGED_FIELD)));
+  }
+
+  private static boolean hasUpdateConsentBlocker(Map<String, Object> updateState) {
+    if (!stringList(updateState.get(MATERIAL_CONSENT_REASONS_FIELD)).isEmpty()) {
+      return true;
+    }
+    Map<String, Object> consent = mapValue(updateState.get(CONSENT_FIELD));
+    String status = stringValue(consent.get(STATUS_FIELD));
+    return PENDING.equals(status)
+        || "rejected".equals(status)
+        || booleanValue(consent.get(OPERATOR_ACTION_REQUIRED_FIELD));
   }
 
   private static long countWarningContaining(List<Map<String, Object>> items, String needle) {

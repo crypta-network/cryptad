@@ -40,6 +40,7 @@ class OperatorBetaDashboardServiceTest {
   private static final String AVAILABLE = "available";
   private static final String ERROR = "error";
   private static final String MANUAL_SOURCE_KIND = "manual";
+  private static final String PENDING = "pending";
   private static final String QUOTA_FIELD = "quota";
   private static final String ROLLBACK_APP_ACTION = "rollback-app";
   private static final String SOURCE_KIND_FIELD = "sourceKind";
@@ -377,10 +378,41 @@ class OperatorBetaDashboardServiceTest {
         service(appsHandler(installedAppWithQuotaWarning()), updateService).supportBundle();
 
     Map<String, Object> appUpdates = mapValue(mapValue(bundle.get("sections")).get("appUpdates"));
+    Map<String, Object> sandbox = mapValue(mapValue(bundle.get("sections")).get("sandbox"));
     assertEquals(AVAILABLE, appUpdates.get("status"));
     assertEquals(0L, appUpdates.get("pendingUpdateCount"));
     assertEquals(0L, appUpdates.get("stagedUpdateCount"));
     assertEquals(0L, appUpdates.get("blockedUpdateCount"));
+    assertEquals(AVAILABLE, sandbox.get("status"));
+    assertEquals(0L, sandbox.get("warningCount"));
+  }
+
+  @Test
+  void supportBundle_whenAppServiceGrantPending_expectAppServiceLifecycleWarning() {
+    Map<String, Object> bundle =
+        serviceWithAppServiceCoordinator(appServiceCoordinatorWithGrantStatus(PENDING))
+            .supportBundle();
+
+    Map<String, Object> appServiceGrants =
+        mapValue(mapValue(bundle.get("sections")).get("appServiceGrants"));
+    assertEquals(WARNING, appServiceGrants.get("status"));
+    assertEquals(1L, appServiceGrants.get("pendingGrantCount"));
+    assertEquals("pending_app_service_grants", appServiceGrants.get("lastSafeStatusMessage"));
+  }
+
+  @Test
+  void supportBundle_whenUpdateConsentRequired_expectConsentLifecycleWarning() {
+    AppUpdateService updateService = mock(AppUpdateService.class);
+    when(updateService.summary(APP_ID)).thenReturn(updateSummary(consentRequiredCandidate()));
+
+    Map<String, Object> bundle = service(appsHandler(), updateService).supportBundle();
+
+    Map<String, Object> consent = mapValue(mapValue(bundle.get("sections")).get("consent"));
+    assertEquals(WARNING, consent.get("status"));
+    assertEquals(1L, consent.get("pendingOrRejectedCount"));
+    assertEquals(
+        "Update consent is pending or rejected for one or more apps.",
+        consent.get("lastSafeStatusMessage"));
   }
 
   @Test
@@ -513,6 +545,19 @@ class OperatorBetaDashboardServiceTest {
         CLOCK);
   }
 
+  private static OperatorBetaDashboardService serviceWithAppServiceCoordinator(
+      AppServiceCoordinator appServiceCoordinator) {
+    return new OperatorBetaDashboardService(
+        new OperatorBetaDashboardService.HandlerSources(
+            emptyAppsHandler(), emptyCatalogsApiHandler(), null, diagnosticsWithLegacyAdmin()),
+        new OperatorBetaDashboardService.AppStateSources(
+            emptyContentSubscriptionService(),
+            availableAppDataService(),
+            availableTrustGraphApiHandler(),
+            appServiceCoordinator),
+        CLOCK);
+  }
+
   private static OperatorBetaDashboardService serviceWithSensitiveSupportMaterial() {
     AppServiceCoordinator appServiceCoordinator = emptyAppServiceCoordinator();
     when(appServiceCoordinator.audit(any(), any()))
@@ -634,6 +679,12 @@ class OperatorBetaDashboardServiceTest {
     when(appServiceCoordinator.audit(any(), any())).thenReturn(List.of());
     when(appServiceCoordinator.listServices()).thenReturn(List.of());
     when(appServiceCoordinator.listRequests(any())).thenReturn(List.of());
+    return appServiceCoordinator;
+  }
+
+  private static AppServiceCoordinator appServiceCoordinatorWithGrantStatus(String status) {
+    AppServiceCoordinator appServiceCoordinator = emptyAppServiceCoordinator();
+    when(appServiceCoordinator.listGrants(any())).thenReturn(List.of(Map.of("status", status)));
     return appServiceCoordinator;
   }
 
@@ -855,6 +906,13 @@ class OperatorBetaDashboardServiceTest {
         reviewTrust,
         "securityDecision",
         securityDecision);
+  }
+
+  private static Map<String, Object> consentRequiredCandidate() {
+    LinkedHashMap<String, Object> candidate = new LinkedHashMap<>(availableCandidate());
+    candidate.put("materialConsentReasons", List.of("new_permission"));
+    candidate.put("operatorActionRequired", true);
+    return candidate;
   }
 
   private static Map<String, Object> availableCandidateWithDataMigration(
