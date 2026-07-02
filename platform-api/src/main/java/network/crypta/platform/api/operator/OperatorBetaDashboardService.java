@@ -69,6 +69,7 @@ public final class OperatorBetaDashboardService {
   private static final String CANDIDATE_FIELD = "candidate";
   private static final String CATALOG_ID_FIELD = "catalogId";
   private static final String CONSENT_FIELD = "consent";
+  private static final String DATA_MIGRATION_FIELD = "dataMigration";
   private static final String DIAGNOSTICS_UNAVAILABLE = "Diagnostics service is unavailable.";
   private static final String DIAGNOSTICS_FIELD = "diagnostics";
   private static final String DIGEST_FIELD = "digest";
@@ -117,6 +118,7 @@ public final class OperatorBetaDashboardService {
   private static final String REVIEW_TRUST_FIELD = "reviewTrust";
   private static final String SECURITY_DECISION_FIELD = "securityDecision";
   private static final String BLOCKS_UPDATE_FIELD = "blocksUpdate";
+  private static final String BLOCK_REASON_FIELD = "blockReason";
   private static final String REQUIRES_ACKNOWLEDGEMENT_FIELD = "requiresAcknowledgement";
   private static final String RUNNING_FIELD = "running";
   private static final String SANDBOX_FIELD = "sandbox";
@@ -1069,12 +1071,15 @@ public final class OperatorBetaDashboardService {
   }
 
   private static Map<String, Object> migrationLifecycleSummary(List<Map<String, Object>> apps) {
-    long migrationWarnings = countNestedWarning(apps, "migration");
+    List<Map<String, Object>> migrations = updateMigrationSummaries(apps);
+    long migrationWarnings =
+        migrations.stream().filter(OperatorBetaDashboardService::hasMigrationWarning).count();
     Map<String, Object> json =
         baseLifecycleSummary("migrations", migrationWarnings > 0L ? WARNING : METADATA_ONLY_STATUS);
     json.put(BOUNDED_COUNT_FIELD, apps.size());
     json.put("migrationWarningCount", migrationWarnings);
-    json.put(LAST_ERROR_CODE_FIELD, firstNestedLastErrorCode(apps, "migration"));
+    json.put(LAST_ERROR_CODE_FIELD, firstMigrationErrorCode(migrations));
+    json.put(LAST_SAFE_STATUS_MESSAGE_FIELD, firstMigrationStatusMessage(migrations));
     json.put("rawMigrationLogsExcluded", true);
     json.put("rawAppDataValuesExcluded", true);
     json.put(SAFE_IDS_FIELD, safeIds(apps, APP_ID_FIELD));
@@ -1263,6 +1268,69 @@ public final class OperatorBetaDashboardService {
                         || !stringList(appData.get(WARNINGS_FIELD)).isEmpty())
         ? WARNING
         : AVAILABLE_STATUS;
+  }
+
+  private static List<Map<String, Object>> updateMigrationSummaries(
+      List<Map<String, Object>> apps) {
+    ArrayList<Map<String, Object>> migrations = new ArrayList<>();
+    for (Map<String, Object> app : apps) {
+      Map<String, Object> update = mapValue(app.get(UPDATE_FIELD));
+      addUpdateMigrationSummary(migrations, mapValue(update.get(CANDIDATE_FIELD)));
+      addUpdateMigrationSummary(migrations, mapValue(update.get(STAGED_FIELD)));
+    }
+    return List.copyOf(migrations);
+  }
+
+  private static void addUpdateMigrationSummary(
+      List<Map<String, Object>> migrations, Map<String, Object> updateState) {
+    Map<String, Object> migration = mapValue(updateState.get(DATA_MIGRATION_FIELD));
+    if (!migration.isEmpty()) {
+      migrations.add(migration);
+    }
+  }
+
+  private static boolean hasMigrationWarning(Map<String, Object> migration) {
+    String status = stringValue(migration.get(STATUS_FIELD));
+    return !stringList(migration.get(WARNINGS_FIELD)).isEmpty()
+        || stringValue(migration.get(LAST_ERROR_CODE_FIELD)) != null
+        || stringValue(migration.get(BLOCK_REASON_FIELD)) != null
+        || "missing_migration".equals(status)
+        || "dry_run_failed".equals(status)
+        || "rollback_incompatible".equals(status)
+        || "requires_stopped".equals(status)
+        || "sandbox_unavailable".equals(status)
+        || "failed".equals(status);
+  }
+
+  private static String firstMigrationErrorCode(List<Map<String, Object>> migrations) {
+    for (Map<String, Object> migration : migrations) {
+      String lastErrorCode = stringValue(migration.get(LAST_ERROR_CODE_FIELD));
+      if (lastErrorCode != null) {
+        return lastErrorCode;
+      }
+      String blockReason = stringValue(migration.get(BLOCK_REASON_FIELD));
+      if (blockReason != null) {
+        return blockReason;
+      }
+    }
+    return null;
+  }
+
+  private static String firstMigrationStatusMessage(List<Map<String, Object>> migrations) {
+    for (Map<String, Object> migration : migrations) {
+      String warning = firstWarning(migration);
+      if (warning != null) {
+        return warning;
+      }
+      String blockReason = stringValue(migration.get(BLOCK_REASON_FIELD));
+      if (blockReason != null) {
+        return blockReason;
+      }
+      if (hasMigrationWarning(migration)) {
+        return stringValue(migration.get(STATUS_FIELD));
+      }
+    }
+    return null;
   }
 
   private static String dashboardDerivedLifecycleStatus(

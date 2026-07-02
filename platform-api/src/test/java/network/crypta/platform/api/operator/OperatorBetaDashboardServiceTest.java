@@ -48,6 +48,7 @@ class OperatorBetaDashboardServiceTest {
   private static final String UPPERCASE_FILE_CATALOG_SOURCE =
       "FILE:///home/operator/private/cryptad-app-catalog.properties";
   private static final String WARNINGS_FIELD = "warnings";
+  private static final String WARNING = "warning";
   private static final Clock CLOCK =
       Clock.fixed(Instant.parse("2026-05-24T12:00:00Z"), ZoneOffset.UTC);
 
@@ -392,6 +393,36 @@ class OperatorBetaDashboardServiceTest {
     assertEquals(UNAVAILABLE, appData.get("status"));
     assertEquals(1L, appData.get("unavailableCount"));
     assertEquals("App-data service is unavailable.", appData.get("lastSafeStatusMessage"));
+  }
+
+  @Test
+  void supportBundle_whenUpdateDataMigrationBlocked_expectMigrationSectionWarning() {
+    AppUpdateService updateService = mock(AppUpdateService.class);
+    when(updateService.summary(APP_ID))
+        .thenReturn(
+            updateSummary(
+                availableCandidateWithDataMigration(
+                    Map.of(
+                        "status",
+                        "missing_migration",
+                        "blockReason",
+                        "app_data_migration_missing")),
+                stagedUpdateWithDataMigration(
+                    Map.of(
+                        "status",
+                        "dry_run_failed",
+                        "lastErrorCode",
+                        "app_data_migration_dry_run_failed")),
+                rollbackAvailable()));
+
+    Map<String, Object> bundle = service(appsHandler(), updateService).supportBundle();
+
+    Map<String, Object> migrations = mapValue(mapValue(bundle.get("sections")).get("migrations"));
+    assertEquals(WARNING, migrations.get("status"));
+    assertEquals(2L, migrations.get("migrationWarningCount"));
+    assertEquals("app_data_migration_missing", migrations.get("lastErrorCode"));
+    assertEquals("app_data_migration_missing", migrations.get("lastSafeStatusMessage"));
+    assertEquals(List.of(APP_ID), migrations.get("safeIds"));
   }
 
   private static OperatorBetaDashboardService service(
@@ -785,12 +816,26 @@ class OperatorBetaDashboardServiceTest {
         securityDecision);
   }
 
+  private static Map<String, Object> availableCandidateWithDataMigration(
+      Map<String, Object> dataMigration) {
+    LinkedHashMap<String, Object> candidate = new LinkedHashMap<>(availableCandidate());
+    candidate.put("dataMigration", dataMigration);
+    return candidate;
+  }
+
   private static Map<String, Object> stagedUpdate() {
     return stagedUpdate(Map.of());
   }
 
   private static Map<String, Object> stagedUpdate(Map<String, Object> securityDecision) {
     return Map.of(AVAILABLE, true, "reviewTrust", Map.of(), "securityDecision", securityDecision);
+  }
+
+  private static Map<String, Object> stagedUpdateWithDataMigration(
+      Map<String, Object> dataMigration) {
+    LinkedHashMap<String, Object> staged = new LinkedHashMap<>(stagedUpdate());
+    staged.put("dataMigration", dataMigration);
+    return staged;
   }
 
   private static Map<String, Object> rollbackAvailable() {
