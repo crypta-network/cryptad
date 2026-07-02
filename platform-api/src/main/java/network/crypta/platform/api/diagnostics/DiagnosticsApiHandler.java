@@ -277,21 +277,22 @@ public final class DiagnosticsApiHandler {
 
   private static CountSignal countSignal(
       List<String> tokens, int signalWordIndex, Set<String> signalWords) {
-    CountSignal previous = numericCountSignal(tokens, signalWordIndex - 1);
-    if (previous != CountSignal.NONE) {
-      return previous;
-    }
     int nextIndex = signalWordIndex + 1;
     boolean explicitCount = false;
     if (nextIndex < tokens.size() && "count".equals(tokens.get(nextIndex))) {
       explicitCount = true;
       nextIndex++;
     }
-    return countValueSignal(
-        tokens,
-        nextIndex,
-        explicitCount || isPluralCountSummaryWord(tokens.get(signalWordIndex)),
-        signalWords);
+    CountSignal next =
+        countValueSignal(
+            tokens,
+            nextIndex,
+            explicitCount || isPluralCountSummaryWord(tokens.get(signalWordIndex)),
+            signalWords);
+    if (next != CountSignal.NONE) {
+      return next;
+    }
+    return numericCountSignal(tokens, signalWordIndex - 1);
   }
 
   private static CountSignal numericCountSignal(List<String> tokens, int index) {

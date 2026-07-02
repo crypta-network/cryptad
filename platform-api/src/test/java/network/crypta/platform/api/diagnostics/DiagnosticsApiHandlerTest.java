@@ -120,6 +120,7 @@ class DiagnosticsApiHandlerTest {
                                 "Errors: 0",
                                 "Errors: none",
                                 "Errors: no failures",
+                                "Peer 1 Errors: 0",
                                 "Error: none",
                                 "Error: no errors",
                                 "No failures",
@@ -148,6 +149,7 @@ class DiagnosticsApiHandlerTest {
                             "Health:",
                             List.of(
                                 "Errors: 2",
+                                "Peer 0 Errors: 2",
                                 "1 failure",
                                 "Exception count: 3",
                                 "Error: no route to peer")))));
@@ -156,7 +158,7 @@ class DiagnosticsApiHandlerTest {
 
     Map<String, Object> section = firstSection(response);
     assertEquals("error", section.get("status"));
-    assertEquals(4L, section.get("errorCount"));
+    assertEquals(5L, section.get("errorCount"));
   }
 
   @Test
@@ -172,6 +174,7 @@ class DiagnosticsApiHandlerTest {
                                 "Warnings: 0",
                                 "Warnings: none",
                                 "Warnings: no warnings",
+                                "Node 2 Warnings: none",
                                 "Warning: none",
                                 "Warning: no warnings",
                                 "No warnings",
@@ -198,6 +201,7 @@ class DiagnosticsApiHandlerTest {
                             "Health:",
                             List.of(
                                 "Warnings: 2",
+                                "Node 0 Warnings: 2",
                                 "1 warning",
                                 "Warn count: 3",
                                 "Warning: no route to peer")))));
@@ -206,7 +210,7 @@ class DiagnosticsApiHandlerTest {
 
     Map<String, Object> section = firstSection(response);
     assertEquals("warning", section.get("status"));
-    assertEquals(4L, section.get("warningCount"));
+    assertEquals(5L, section.get("warningCount"));
   }
 
   private static Map<String, Object> sensitiveSupportSummaryResponse() {
