@@ -284,6 +284,35 @@ class OperatorSupportRedactorTest {
     assertTrue(rendered.contains("/app/node/#beta-dashboard"));
   }
 
+  @Test
+  void redact_whenAbsolutePathsFollowColonLabels_expectUnsafePathsRemoved() {
+    String labeledPosixPath = "installPath:" + posixAppPath();
+    String labeledDirPath =
+        "workingDir:" + '/' + String.join("/", "work", CRYPTAD_PATH_ELEMENT, "run");
+    String labeledWindowsPath = "path:" + windowsDriveRollbackPath();
+    String safeRoute = "route:/api/v1/operator/support-bundle";
+    String safeUrl = "url:https://example.invalid/support/path";
+    Map<String, Object> input =
+        Map.of(
+            DIAGNOSTIC_FIELD,
+            String.join(
+                ", ", labeledPosixPath, labeledDirPath, labeledWindowsPath, safeRoute, safeUrl));
+
+    OperatorSupportRedactor.RedactionResult result = OperatorSupportRedactor.redact(input);
+
+    String rendered = result.value().toString();
+    assertFalse(rendered.contains(labeledPosixPath));
+    assertFalse(rendered.contains(labeledDirPath));
+    assertFalse(rendered.contains(labeledWindowsPath));
+    assertFalse(rendered.contains("/work/" + CRYPTAD_PATH_ELEMENT + "/run"));
+    assertFalse(rendered.contains(USERS_PATH_ELEMENT + "/operator/AppData"));
+    assertTrue(rendered.contains("installPath:<redacted-path>"));
+    assertTrue(rendered.contains("workingDir:<redacted-path>"));
+    assertTrue(rendered.contains("path:" + REDACTED));
+    assertTrue(rendered.contains(safeRoute));
+    assertTrue(rendered.contains(safeUrl));
+  }
+
   private static String posixAppPath() {
     return '/' + String.join("/", "data", CRYPTAD_PATH_ELEMENT, "apps", "feed-reader");
   }

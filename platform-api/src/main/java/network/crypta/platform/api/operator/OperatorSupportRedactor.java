@@ -47,6 +47,20 @@ public final class OperatorSupportRedactor {
           "rawappdatapresent",
           "rawappdataredacted",
           "rawappdatarequired");
+  private static final Set<String> PATH_LABEL_FIELD_NAMES =
+      Set.of(
+          "path",
+          "dir",
+          "directory",
+          "file",
+          "filepath",
+          "localpath",
+          "sourcepath",
+          "stageddir",
+          "stagedpath",
+          "stagedbundlepath",
+          "scratchpath",
+          "rollbackpath");
   private static final Pattern CONTENT_URI =
       Pattern.compile("(?i)\\b(?:crypta:)?(?:CHK|SSK|USK|KSK)@[^\\s\"'<>]+");
   private static final Pattern AUTHORIZATION_OR_COOKIE_HEADER =
@@ -530,12 +544,34 @@ public final class OperatorSupportRedactor {
       return true;
     }
     char previous = input.charAt(index - 1);
+    if (previous == ':') {
+      return hasPathLabelBeforeColon(input, index - 1);
+    }
     return !(Character.isLetterOrDigit(previous)
         || previous == '_'
-        || previous == ':'
         || previous == '/'
         || previous == '.'
         || previous == '-');
+  }
+
+  private static boolean hasPathLabelBeforeColon(String input, int colonIndex) {
+    int labelStart = colonIndex;
+    while (labelStart > 0 && isPathLabelCharacter(input.charAt(labelStart - 1))) {
+      labelStart--;
+    }
+    return labelStart < colonIndex
+        && isPathLabelName(normalizeFieldName(input.substring(labelStart, colonIndex)));
+  }
+
+  private static boolean isPathLabelName(String normalized) {
+    return PATH_LABEL_FIELD_NAMES.contains(normalized)
+        || normalized.endsWith("path")
+        || normalized.endsWith("dir")
+        || normalized.endsWith("directory");
+  }
+
+  private static boolean isPathLabelCharacter(char value) {
+    return Character.isLetterOrDigit(value) || value == '_' || value == '-' || value == '.';
   }
 
   private static boolean isSafeRoutePath(String input, int index) {
