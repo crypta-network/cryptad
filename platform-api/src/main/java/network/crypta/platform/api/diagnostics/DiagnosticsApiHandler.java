@@ -39,6 +39,7 @@ public final class DiagnosticsApiHandler {
   private static final Pattern DIAGNOSTIC_TOKEN_SEPARATOR_PATTERN = Pattern.compile("[^a-z0-9]+");
   private static final Set<String> ERROR_WORDS =
       Set.of("error", "errors", "failed", "failure", "failures", "exception", "exceptions");
+  private static final Set<String> WARNING_WORDS = Set.of("warn", "warns", "warning", "warnings");
 
   private enum CountSignal {
     NONE,
@@ -233,21 +234,29 @@ public final class DiagnosticsApiHandler {
   }
 
   private static boolean hasErrorSignal(String line) {
+    return hasDiagnosticSignal(line, ERROR_WORDS);
+  }
+
+  private static boolean hasWarningSignal(String line) {
+    return hasDiagnosticSignal(line, WARNING_WORDS);
+  }
+
+  private static boolean hasDiagnosticSignal(String line, Set<String> signalWords) {
     List<String> tokens = diagnosticTokens(line);
-    boolean hasUnqualifiedErrorWord = false;
+    boolean hasUnqualifiedSignalWord = false;
     for (int index = 0; index < tokens.size(); index++) {
-      if (!ERROR_WORDS.contains(tokens.get(index))) {
+      if (!signalWords.contains(tokens.get(index))) {
         continue;
       }
       CountSignal countSignal = countSignal(tokens, index);
       if (countSignal == CountSignal.NON_ZERO) {
         return true;
       }
-      if (countSignal != CountSignal.ZERO && !isNegatedErrorWord(tokens, index)) {
-        hasUnqualifiedErrorWord = true;
+      if (countSignal != CountSignal.ZERO && !isNegatedSignalWord(tokens, index)) {
+        hasUnqualifiedSignalWord = true;
       }
     }
-    return hasUnqualifiedErrorWord;
+    return hasUnqualifiedSignalWord;
   }
 
   private static List<String> diagnosticTokens(String line) {
@@ -257,11 +266,11 @@ public final class DiagnosticsApiHandler {
         .toList();
   }
 
-  private static boolean isNegatedErrorWord(List<String> tokens, int errorWordIndex) {
-    if (errorWordIndex == 0) {
+  private static boolean isNegatedSignalWord(List<String> tokens, int signalWordIndex) {
+    if (signalWordIndex == 0) {
       return false;
     }
-    String previous = tokens.get(errorWordIndex - 1);
+    String previous = tokens.get(signalWordIndex - 1);
     return "no".equals(previous) || "zero".equals(previous);
   }
 
@@ -291,7 +300,7 @@ public final class DiagnosticsApiHandler {
   private static long boundedWarningCount(List<String> lines) {
     return lines.stream()
         .map(line -> line.toLowerCase(Locale.ROOT))
-        .filter(line -> line.contains("warn"))
+        .filter(DiagnosticsApiHandler::hasWarningSignal)
         .limit(1_000L)
         .count();
   }

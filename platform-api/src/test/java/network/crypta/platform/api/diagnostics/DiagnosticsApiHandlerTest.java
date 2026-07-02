@@ -147,6 +147,46 @@ class DiagnosticsApiHandlerTest {
     assertEquals(3L, section.get("errorCount"));
   }
 
+  @Test
+  void supportSummary_whenZeroWarningSummaryLinesPresent_expectAvailableSection() {
+    DiagnosticsApiHandler handler =
+        new DiagnosticsApiHandler(
+            () ->
+                new DiagnosticReportSnapshot(
+                    List.of(
+                        new DiagnosticSectionSnapshot(
+                            "Health:",
+                            List.of(
+                                "Warnings: 0",
+                                "No warnings",
+                                "Warn count: 0",
+                                "0 warns",
+                                "zero warning")))));
+
+    Map<String, Object> response = handler.supportSummary();
+
+    Map<String, Object> section = firstSection(response);
+    assertEquals("available", section.get("status"));
+    assertEquals(0L, section.get("warningCount"));
+  }
+
+  @Test
+  void supportSummary_whenNonZeroWarningSummaryLinesPresent_expectWarningSection() {
+    DiagnosticsApiHandler handler =
+        new DiagnosticsApiHandler(
+            () ->
+                new DiagnosticReportSnapshot(
+                    List.of(
+                        new DiagnosticSectionSnapshot(
+                            "Health:", List.of("Warnings: 2", "1 warning", "Warn count: 3")))));
+
+    Map<String, Object> response = handler.supportSummary();
+
+    Map<String, Object> section = firstSection(response);
+    assertEquals("warning", section.get("status"));
+    assertEquals(3L, section.get("warningCount"));
+  }
+
   private static Map<String, Object> sensitiveSupportSummaryResponse() {
     DiagnosticsApiHandler handler =
         new DiagnosticsApiHandler(
