@@ -168,6 +168,7 @@ CRITICAL_PRODUCTION_BETA_EVIDENCE_IDS = (
     *APP_STORE_SUBMISSION_EVIDENCE_IDS,
     *THIRD_PARTY_DEVELOPER_BETA_EVIDENCE_IDS,
     *PLATFORM_API_STABLE_FREEZE_EVIDENCE_IDS,
+    "app-platform.trust-social-content-format-profiles",
     "app-ui.lint",
     "apphost.sandbox-provider",
     "app-update.data-migration-contract",
@@ -2927,6 +2928,20 @@ def build_command(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
 
 
 def run_self_test(quiet: bool = False) -> None:
+    content_format_evidence_id = "app-platform.trust-social-content-format-profiles"
+    if content_format_evidence_id not in CRITICAL_PRODUCTION_BETA_EVIDENCE_IDS:
+        raise AssertionError("content-format profile evidence must be production-critical")
+    if not evidence_id_is_non_waivable_in_mode(content_format_evidence_id, "production-beta"):
+        raise AssertionError(
+            "content-format profile evidence must be non-waivable in production-beta"
+        )
+    if not evidence_id_is_non_waivable_in_mode(
+        f"evidence.{content_format_evidence_id}",
+        "production-beta",
+    ):
+        raise AssertionError(
+            "content-format profile promotion gate must be non-waivable in production-beta"
+        )
     for evidence_id in CRITICAL_PRODUCTION_BETA_EVIDENCE_IDS:
         if not evidence_id_is_non_waivable_in_mode(evidence_id, "production-beta"):
             raise AssertionError(f"production critical evidence is waivable in production-beta: {evidence_id}")
