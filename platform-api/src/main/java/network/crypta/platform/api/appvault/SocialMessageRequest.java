@@ -12,7 +12,8 @@ import java.util.Map;
 import java.util.Set;
 import network.crypta.platform.api.PlatformApiException;
 import network.crypta.platform.api.PlatformApiParameters;
-import network.crypta.platform.api.json.PlatformApiJsonWriter;
+import network.crypta.platform.api.contentformats.CanonicalJson;
+import network.crypta.platform.api.contentformats.ContentFormatProfileRegistry;
 
 /**
  * Validated bounded social-message signing request for one app-visible vault identity.
@@ -69,7 +70,7 @@ record SocialMessageRequest(
     String replyTo,
     String recipientFingerprint,
     List<String> tags) {
-  static final String TYPE = "crypta.social.message.v1";
+  static final String TYPE = ContentFormatProfileRegistry.SOCIAL_MESSAGE_ID;
   static final String SIGNING_PURPOSE = TYPE;
 
   private static final int MAX_AUTHOR_LABEL_LENGTH = 80;
@@ -81,7 +82,8 @@ record SocialMessageRequest(
   private static final int MAX_SUBJECT_LENGTH = 160;
   private static final int MAX_TAG_COUNT = 12;
   private static final int MAX_TAG_LENGTH = 32;
-  private static final int MAX_SIGNED_PAYLOAD_BYTES = 32 * 1024;
+  private static final int MAX_SIGNED_PAYLOAD_BYTES =
+      ContentFormatProfileRegistry.DEFAULT_SIGNED_PAYLOAD_MAX_BYTES;
   private static final String FORMAT_TEXT_PLAIN = "text/plain";
   private static final String PARAM_AUTHOR_LABEL = "authorLabel";
   private static final String PARAM_BODY = "body";
@@ -240,8 +242,7 @@ record SocialMessageRequest(
     LinkedHashMap<String, Object> document = LinkedHashMap.newLinkedHashMap(2);
     document.put("type", TYPE);
     document.put("message", message());
-    String canonical = SIGNING_PURPOSE + "\n" + PlatformApiJsonWriter.write(document);
-    return canonical.getBytes(StandardCharsets.UTF_8);
+    return CanonicalJson.domainSeparatedBytes(SIGNING_PURPOSE, document);
   }
 
   /**
@@ -485,7 +486,7 @@ record SocialMessageRequest(
    */
   private static String generatedMessageId(Map<String, Object> messageWithoutId) {
     return "msg-"
-        + sha256Hex(PlatformApiJsonWriter.write(messageWithoutId).getBytes(StandardCharsets.UTF_8));
+        + sha256Hex(CanonicalJson.write(messageWithoutId).getBytes(StandardCharsets.UTF_8));
   }
 
   /**

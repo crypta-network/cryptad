@@ -3140,14 +3140,61 @@
           "docs/user-consent-and-permission-upgrade-ux.md"
         ]
       },
-      "id": "app-platform.trust-social-beta-hardening",
-      "requiredForReleaseCandidate": true,
-      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
-      "status": "pass",
-      "summary": "Trust Graph and Social Inbox beta hardening evidence passed."
+    "id": "app-platform.trust-social-beta-hardening",
+    "requiredForReleaseCandidate": true,
+    "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+    "status": "pass",
+    "summary": "Trust Graph and Social Inbox beta hardening evidence passed."
+  },
+  {
+    "details": {
+      "checks": {
+        "docsExistWithLegacyNonGoals": true,
+        "javaRoutesUseRegistry": true,
+        "platformApiStableBaselineNotExpanded": true,
+        "referenceAppsUseSdkProfiles": true,
+        "registryProfilesExist": true,
+        "releaseEvidenceDocumented": true,
+        "sdkMirrorAndHelpersUseProfiles": true,
+        "trustgraphDriftIsTested": true,
+        "validationCoversMalformedOversizedVersionDeprecatedAndSignature": true
+      },
+      "profiles": [
+        "crypta.profile.v1",
+        "crypta.feed.snapshot.v1",
+        "crypta.trust.statement.v1",
+        "crypta.social.message.v1",
+        "crypta.social.outbox.v1"
+      ],
+      "redaction": {
+        "absolutePathsExcluded": true,
+        "privateInsertUrisExcluded": true,
+        "rawAppDataExcluded": true,
+        "rawFetchedContentExcluded": true,
+        "rawMessageBodiesExcluded": true,
+        "rawProfileDocumentsExcluded": true,
+        "rawSignaturesExcluded": true,
+        "rawTrustStatementsExcluded": true,
+        "tokensExcluded": true
+      },
+      "sourceFiles": [
+        "platform-api/src/main/java/network/crypta/platform/api/contentformats/ContentFormatProfileRegistry.java",
+        "platform-api/src/main/java/network/crypta/platform/api/appvault/ProfileDocumentRequest.java",
+        "platform-api/src/main/java/network/crypta/platform/api/appvault/SocialMessageRequest.java",
+        "platform-api/src/main/java/network/crypta/platform/api/appvault/TrustStatementRequest.java",
+        "platform-trustgraph/src/main/java/network/crypta/platform/trustgraph/TrustDocumentTypes.java",
+        "platform-sdk-js/src/main/resources/network/crypta/platform/sdk/js/crypta-platform.js",
+        "docs/trust-social-content-format-profiles.md"
+      ]
     },
-    {
-      "details": {
+    "id": "app-platform.trust-social-content-format-profiles",
+    "requiredForReleaseCandidate": true,
+    "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+    "status": "pass",
+    "summary": "Trust/social content format profile evidence passed."
+  },
+  {
+    "details": {
         "checks": {
           "appComposesExpectedPlatformSurfaces": true,
           "evidenceIdsDocumented": true,

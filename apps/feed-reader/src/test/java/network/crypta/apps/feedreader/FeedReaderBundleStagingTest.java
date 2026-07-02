@@ -241,6 +241,10 @@ class FeedReaderBundleStagingTest {
         "Feed sources",
         "Reader",
         "Publisher",
+        "Format profile",
+        "<code>crypta.feed.snapshot.v1</code>",
+        "<code>application/vnd.crypta.feed+json</code>",
+        "<code>feed.json</code>",
         "Queue preview",
         "Create platform USK subscription",
         "persist through app-data records",
@@ -299,6 +303,8 @@ class FeedReaderBundleStagingTest {
     verifyContainsAll(
         appScript,
         "const appId = \"feed-reader\";",
+        "const feedSnapshotFormat = CryptaPlatform.contentFormats.feedSnapshot;",
+        "const rawFeedFetchMaxBytes = 262144;",
         "CryptaPlatform.bootstrap.load({ appId })",
         "CryptaPlatform.content.fetchText",
         "CryptaPlatform.content.subscriptions",
@@ -327,7 +333,7 @@ class FeedReaderBundleStagingTest {
         "persistDurableState",
         "map(durableSnapshot)",
         "itemCount: snapshotItemCount(snapshot)",
-        "type: \"crypta.feed.snapshot.v1\"",
+        "type: feedSnapshotFormat.type",
         "items:",
         "subscriptionPollIntervalSeconds",
         "loadSubscriptions",
@@ -344,7 +350,14 @@ class FeedReaderBundleStagingTest {
         "replaceChildren",
         "DOMParser",
         "buildPublishedSnapshot",
-        "application/vnd.crypta.feed+json");
+        "feedSnapshotProfileType",
+        "profileType.startsWith(\"crypta.feed.snapshot.\")",
+        "feedSnapshotFormat.contentType",
+        "feedSnapshotFormat.defaultFilename",
+        "maxBytes: rawFeedFetchMaxBytes");
+    assertFalse(
+        appScript.contains("maxBytes: feedSnapshotFormat.maxDocumentBytes"),
+        "Raw feed fetches must keep the broader route cap before snapshot profile detection.");
     assertTrue(
         appScript.indexOf("CryptaPlatform.content.fetchText")
             < appScript.indexOf("CryptaPlatform.feed.fetchSnapshot"),

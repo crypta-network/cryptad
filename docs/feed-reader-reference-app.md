@@ -14,6 +14,24 @@ The app is not a generic crawler, an arbitrary HTTP/HTTPS fetcher, a catalog fet
 vault/identity app. It should not request local source-path authority, app-vault permissions,
 catalog management, or host/operator credentials.
 
+These content profiles are Crypta app ecosystem profiles. They are not compatibility promises for
+legacy WoT, Freetalk, Sone, Freemail, or any old plugin ABI/protocol.
+
+## Content format profile
+
+Feed Reader generated snapshots use `crypta.feed.snapshot.v1`,
+`application/vnd.crypta.feed+json`, and default filename `feed.json` from
+`CryptaPlatform.contentFormats.feedSnapshot`. The profile is unsigned, bounded to 65536 bytes,
+and generated with deterministic root field order for `type`, safe source metadata, title,
+`updatedAt`, and bounded `items`.
+
+Malformed snapshots, unsupported future versions, deprecated versions, and oversized fetched
+documents must produce bounded import/fetch errors instead of crashing the app. Feed Reader stores
+safe summaries, hashes, read state, and subscription metadata; it does not persist raw fetched
+content, raw feed bodies, private insert URIs, tokens, raw app-data values, or local paths. See
+[trust-social-content-format-profiles.md](trust-social-content-format-profiles.md) for the shared
+profile table, version policy, and release evidence.
+
 ## Required capabilities
 
 Feed Reader declares these app permissions:
@@ -40,13 +58,12 @@ The static UI should use the SDK helpers rather than building Platform API forms
 ```js
 await CryptaPlatform.bootstrap.load({ appId: "feed-reader" });
 
-const fetched = await CryptaPlatform.feed.fetchSnapshot({
+const fetched = await CryptaPlatform.content.fetchText({
   uri: feedUri,
   maxBytes: 262144,
   timeoutMillis: 30000,
+  purpose: "feed-preview",
 });
-
-const feed = fetched.snapshot;
 
 const { subscription } = await CryptaPlatform.content.subscriptions.create({
   uri: "USK@example/feed/0/feed.json",
@@ -65,10 +82,12 @@ await CryptaPlatform.feed.publishSnapshot({
 });
 ```
 
-`CryptaPlatform.feed.fetchSnapshot` wraps `POST /api/v1/content/fetch` and parses the canonical
-feed snapshot JSON returned by the bounded fetch route. The reference app fetches text first so it
-can render canonical snapshots, RSS/Atom entries, or plain text feed previews through the same
-bounded route.
+The reference app fetches text first so it can render canonical snapshots, RSS/Atom entries, or
+plain text feed previews through the same bounded route. Raw feed fetches and subscriptions use the
+broader 262144-byte content-fetch bound. When a fetched body declares a `crypta.feed.snapshot.*`
+profile type, the app hands it to `CryptaPlatform.feed.parseSnapshot`; that parser enforces the
+65536-byte `crypta.feed.snapshot.v1` profile cap and rejects unsupported profile versions instead
+of treating them as plain text.
 `CryptaPlatform.content.subscriptions.*` wraps `/api/v1/content/subscriptions` and lets the app
 create, list, inspect, refresh, pause, resume, and delete its own USK subscriptions. Subscription
 sources are limited to `USK@...` and `crypta:USK@...`. The app displays scheduler status, last

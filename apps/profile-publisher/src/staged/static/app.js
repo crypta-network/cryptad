@@ -2,7 +2,7 @@
   "use strict";
 
   const appId = "profile-publisher";
-  const defaultProfileContentType = "application/vnd.crypta.profile+json";
+  const profileDocumentFormat = CryptaPlatform.contentFormats.profileDocument;
   const maxRecentActions = 5;
   const maxDisplayTextLength = 240;
   const maxProfileTextLength = 512;
@@ -237,8 +237,8 @@
       document: documentData,
       insertUri,
       identifier,
-      contentType: fieldValue(elements.publishForm, "contentType") || defaultProfileContentType,
-      targetFilename: fieldValue(elements.publishForm, "targetFilename") || "profile.json",
+      contentType: fieldValue(elements.publishForm, "contentType") || profileDocumentFormat.contentType,
+      targetFilename: fieldValue(elements.publishForm, "targetFilename") || profileDocumentFormat.defaultFilename,
     };
   }
 
@@ -268,7 +268,7 @@
 
   function buildUnsignedProfilePreview() {
     return {
-      schema: "crypta.profile.v1",
+      schema: profileDocumentFormat.schema,
       profile: buildProfilePayload(),
       identity: selectedIdentitySummary(),
       signature: null,
@@ -315,8 +315,16 @@
 
   function initializePublishForm() {
     const identifier = elements.publishForm.querySelector('input[name="identifier"]');
+    const contentType = elements.publishForm.querySelector('input[name="contentType"]');
+    const targetFilename = elements.publishForm.querySelector('input[name="targetFilename"]');
     if (identifier instanceof HTMLInputElement && !identifier.value.trim()) {
       identifier.value = generatedIdentifier("publish");
+    }
+    if (contentType instanceof HTMLInputElement) {
+      contentType.value = profileDocumentFormat.contentType;
+    }
+    if (targetFilename instanceof HTMLInputElement) {
+      targetFilename.value = profileDocumentFormat.defaultFilename;
     }
   }
 
@@ -556,7 +564,10 @@
     const profile = documentData && typeof documentData === "object" ? documentData.profile || {} : {};
     const identity = documentData && typeof documentData === "object" ? documentData.identity : null;
     return {
-      schema: "crypta.profile.v1",
+      schema: profileDocumentFormat.schema,
+      contentType: profileDocumentFormat.contentType,
+      profileVersion: profileDocumentFormat.majorVersion,
+      maxDocumentBytes: profileDocumentFormat.maxDocumentBytes,
       displayName: boundedText(profile.displayName || "", maxDisplayTextLength),
       hasBio: Boolean(profile.bio),
       hasWebsite: Boolean(profile.website),
@@ -565,6 +576,8 @@
       tagCount: Array.isArray(profile.tags) ? profile.tags.length : 0,
       identitySummary: summarizeIdentityForPreview(identity),
       signature: documentData && documentData.signature ? "present" : "not present",
+      signingDomain: profileDocumentFormat.signingDomain,
+      unknownFields: profileDocumentFormat.unknownFieldPolicy,
       redaction: "profile summary only; raw signature and vault identity material omitted",
     };
   }

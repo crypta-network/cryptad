@@ -49,6 +49,18 @@ class TrustStatementParserTest {
   }
 
   @Test
+  void parse_whenFutureMajorTypePresent_expectUnsupportedVersionRejected() {
+    String document =
+        validStatement().replace("crypta.trust.statement.v1", "crypta.trust.statement.v2");
+
+    TrustGraphException exception =
+        assertThrows(TrustGraphException.class, () -> TrustStatementParser.parse(document));
+
+    assertEquals("invalid_trust_statement", exception.errorCode());
+    assertTrue(exception.getMessage().contains("crypta.trust.statement.v1"));
+  }
+
+  @Test
   void parse_whenOversizedMalformedJson_expectRejectedBeforeParsing() {
     String document = "{" + " ".repeat(TrustStatementValidator.MAX_DOCUMENT_BYTES + 1);
 

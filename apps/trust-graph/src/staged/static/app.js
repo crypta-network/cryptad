@@ -2,8 +2,9 @@
   "use strict";
 
   const appId = "trust-graph";
-  const maxStatementBytes = 65536;
-  const trustStatementType = "crypta.trust.statement.v1";
+  const trustStatementFormat = CryptaPlatform.contentFormats.trustStatement;
+  const maxStatementBytes = trustStatementFormat.maxDocumentBytes;
+  const trustStatementType = trustStatementFormat.type;
   const dataNamespace = "ui-state";
   const dataStateKey = "preview-state";
   const dataSchemaVersion = 2;

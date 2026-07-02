@@ -195,6 +195,7 @@ Release-candidate mode requires these evidence ids:
 | `app-platform.trust-graph-durable-store` | App-platform smoke summary. | The file-backed trust graph store is present, runtime wiring injects it into Platform API, anchors/statements/lifecycle/source/audit entries are bounded and redacted, lifecycle state survives restart, and evidence excludes raw trust bodies, raw fetched content, private insert URIs, tokens, signatures, and local paths. |
 | `app-platform.trust-graph-exchange` | App-platform smoke summary. | Trust URI import and audit descriptors, SDK exchange helpers for URI import, publish, and subscription wrappers, and exchange evidence use only route names, capability names, booleans, counts, and redacted identifiers without adding a Trust Graph crawler. |
 | `app-platform.trust-social-beta-hardening` | App-platform smoke summary. | Trust Graph import preview, duplicate issuer/conflict summaries, anchor lifecycle, bounded score explanations, recovery/export/import docs, Social Inbox multi-source controls, read/unread state, local mute/block filters, redacted message export, mediated Trust Graph score grants, additive Social Inbox schema-1 beta data readiness, consent markers, and redaction markers are present. |
+| `app-platform.trust-social-content-format-profiles` | App-platform smoke summary. | The shared content-format registry, SDK mirrors, AppVault/profile/social/trust builders, trust graph drift tests, reference app format-profile UI, docs, malformed/oversized/unsupported/deprecated validation coverage, and production beta content-format risk summaries are present without raw fetched content, raw document bodies, raw signatures, private insert URIs, tokens, raw app-data values, or local paths. |
 | `app-platform.trust-statement-signing` | App-platform smoke summary. | The bounded AppVault route `POST /api/v1/app-vault/identities/{identityId}/trust-statement` is present, documented, requires `trust.write`, `vault.identities.read`, and `vault.identities.use`, and does not expose private material in evidence. |
 | `app-platform.social-message-signing` | App-platform smoke summary. | Contract v11 exposes the bounded AppVault route `POST /api/v1/app-vault/identities/{identityId}/social-message`, fixes the signing domain to `crypta.social.message.v1`, requires `vault.identities.read` and `vault.identities.use`, and does not expose generic browser signing or private material in evidence. |
 | `app-services.registry` | App-platform smoke summary. | Contract v12 exposes `/api/v1/app-services`, `app.services.read`, and `app.services.call`, parses signed manifest service descriptors and requests, wires a shared coordinator, and includes SDK service helpers. |
@@ -521,6 +522,7 @@ Social Inbox RC supplies the threaded social inbox reference path. Release evide
 `reference-app.social-inbox-app-data`, `reference-app.social-inbox-trust-annotations`,
 `reference-app.social-inbox-service-grant`, `reference-app.social-inbox-rc-threading`,
 `app-platform.trust-social-beta-hardening`,
+`app-platform.trust-social-content-format-profiles`,
 `app-services.registry`, `app-services.grants`, `app-services.dependency-graph`,
 `app-services.grant-bundles`, `app-services.grant-expiry-renewal`,
 `app-services.provider-revalidation`, `app-services.trust-score-provider`,
@@ -539,6 +541,7 @@ Trust Graph Local RC supplies the local trust-service reference path. Release ev
 `reference-app.trust-graph-app-data-preview`, `app-platform.trust-graph-preview`,
 `app-platform.trust-graph-rc-scope-and-safety`, `app-platform.trust-graph-durable-store`,
 `app-platform.trust-social-beta-hardening`,
+`app-platform.trust-social-content-format-profiles`,
 `app-platform.trust-graph-exchange`, `app-platform.trust-statement-signing`,
 `app-services.registry`, `app-services.grants`, `app-services.dependency-graph`,
 `app-services.grant-bundles`, `app-services.grant-expiry-renewal`,

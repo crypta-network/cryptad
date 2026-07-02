@@ -304,6 +304,7 @@ app-data.backup-restore-portability
 app-platform.trust-graph-preview
 app-platform.trust-graph-rc-scope-and-safety
 app-platform.trust-social-beta-hardening
+app-platform.trust-social-content-format-profiles
 app-platform.trust-statement-signing
 app-platform.social-message-signing
 app-services.registry
@@ -480,6 +481,11 @@ RC and Social Inbox RC: import preview, duplicate issuer/conflict summaries, anc
 bounded score explanations, recovery/export/import docs, multi-source Social Inbox controls,
 read/unread state, local mute/block filters, redacted message export, mediated app-service trust
 annotations, additive schema readiness, consent markers, and redaction markers.
+`app-platform.trust-social-content-format-profiles` verifies the shared registry, SDK mirrors,
+AppVault/profile/social/trust builders, trust graph drift tests, reference app format-profile UI,
+docs, malformed/oversized/unsupported/deprecated validation coverage, and production beta
+content-format risk summaries without raw fetched content, raw document bodies, raw signatures,
+private insert URIs, tokens, raw app-data values, or local paths.
 `app-review.first-party-catalog`
 also runs offline, but release-candidate mode requires explicit reviewer key inputs so the runner
 can pack every staged first-party app and sign, verify, and embed a matching first-party review

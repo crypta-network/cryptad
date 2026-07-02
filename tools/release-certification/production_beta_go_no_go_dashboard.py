@@ -128,6 +128,7 @@ MULTI_NODE_BETA_EVIDENCE_IDS = (
 )
 TRUST_SOCIAL_HARDENING_EVIDENCE_IDS = (
     "app-platform.trust-social-beta-hardening",
+    "app-platform.trust-social-content-format-profiles",
     "reference-app.trust-graph",
     "reference-app.trust-graph-durable-exchange",
     "reference-app.trust-graph-app-data-preview",
@@ -252,6 +253,12 @@ DOMAIN_SPECS = (
         "id": "trust-graph-social-inbox-hardening",
         "title": "Trust Graph and Social Inbox beta hardening",
         "evidenceIds": TRUST_SOCIAL_HARDENING_EVIDENCE_IDS,
+        "artifactInputs": ("appPlatformSummary",),
+    },
+    {
+        "id": "trust-social-content-format-risk",
+        "title": "Trust/social content-format risk",
+        "evidenceIds": ("app-platform.trust-social-content-format-profiles",),
         "artifactInputs": ("appPlatformSummary",),
     },
     {

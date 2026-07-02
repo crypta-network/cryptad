@@ -294,6 +294,28 @@
           "summary": "Trust/social hardening passed."
         },
         {
+          "details": {
+            "profiles": [
+              "crypta.profile.v1",
+              "crypta.feed.snapshot.v1",
+              "crypta.trust.statement.v1",
+              "crypta.social.message.v1",
+              "crypta.social.outbox.v1"
+            ],
+            "redaction": {
+              "rawFetchedContentExcluded": true,
+              "rawSocialMessageBodiesExcluded": true,
+              "rawTrustStatementBodiesExcluded": true,
+              "rawSignaturesExcluded": true
+            }
+          },
+          "id": "app-platform.trust-social-content-format-profiles",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-app-platform",
+          "status": "pass",
+          "summary": "Trust/social content format profiles passed."
+        },
+        {
           "id": "reference-app.trust-graph",
           "requiredForReleaseCandidate": true,
           "source": "fixture-app-platform",

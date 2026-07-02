@@ -1,9 +1,11 @@
 package network.crypta.platform.api.appvault;
 
 import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import network.crypta.platform.api.PlatformApiException;
+import network.crypta.platform.api.contentformats.ContentFormatProfileRegistry;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -29,7 +31,9 @@ class ProfileDocumentRequestTest {
     assertEquals("Line one\nLine two", request.bio());
     assertEquals(List.of("crypta", "profile"), request.tags());
     assertEquals(
-        "{\"schema\":\"crypta.profile.v1\","
+        "{\"schema\":\""
+            + ContentFormatProfileRegistry.PROFILE_DOCUMENT_ID
+            + "\","
             + "\"appId\":\"profile-publisher\","
             + "\"identityId\":\"identity-one\","
             + "\"displayName\":\"Ada Example\","
@@ -114,5 +118,24 @@ class ProfileDocumentRequestTest {
     assertEquals(400, error.statusCode());
     assertEquals("invalid_query_parameter", error.errorCode());
     assertEquals("Query parameter 'tags' must not contain empty tags.", error.getMessage());
+  }
+
+  @Test
+  void fromQuery_whenCallerSuppliesUnknownSigningField_expectRejectedBeforeSigning() {
+    Map<String, List<String>> queryParameters = new LinkedHashMap<>();
+    queryParameters.put("displayName", List.of("Ada Example"));
+    queryParameters.put("purpose", List.of("generic.signing"));
+    queryParameters.put("payloadBase64", List.of("e30="));
+
+    PlatformApiException error =
+        assertThrows(
+            PlatformApiException.class,
+            () ->
+                ProfileDocumentRequest.fromQuery(
+                    "profile-publisher", "identity-one", queryParameters));
+
+    assertEquals(400, error.statusCode());
+    assertEquals("invalid_query_parameter", error.errorCode());
+    assertEquals("Query parameter 'purpose' is not supported.", error.getMessage());
   }
 }

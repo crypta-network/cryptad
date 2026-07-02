@@ -69,6 +69,20 @@ The manifest requires Platform API contract v9 because the reference app depends
 subscription helpers and durable app-data records for reader state, and it is tested through the
 current v10 contract.
 
+## Content format profile
+
+Feed Reader uses `CryptaPlatform.contentFormats.feedSnapshot` for the
+`crypta.feed.snapshot.v1` type, `application/vnd.crypta.feed+json` content type, `feed.json`
+default filename, and 65536-byte document bound. Generated snapshots are unsigned deterministic
+JSON. Raw RSS/Atom/plain text fetches keep the broader 262144-byte content-fetch bound; the app
+applies the 65536-byte profile cap only after a fetched JSON body declares a
+`crypta.feed.snapshot.*` profile type. Imports and fetches handle malformed documents, unsupported
+versions, deprecated versions, and oversized profile documents as bounded errors without persisting
+raw fetched content or raw feed bodies.
+
+These content profiles are Crypta app ecosystem profiles. They are not compatibility promises for
+legacy WoT, Freetalk, Sone, Freemail, or any old plugin ABI/protocol.
+
 ## App-data backup scope
 
 Operator app-data backups for `feed-reader` include the app's `ui-state` durable app-data record:

@@ -2,10 +2,13 @@
   "use strict";
 
   const appId = "social-inbox";
-  const socialMessageType = "crypta.social.message.v1";
-  const socialOutboxType = "crypta.social.outbox.v1";
-  const socialOutboxContentType = "application/vnd.crypta.social.outbox+json";
-  const socialOutboxTargetFilename = "social-outbox.json";
+  const profileDocumentFormat = CryptaPlatform.contentFormats.profileDocument;
+  const socialMessageFormat = CryptaPlatform.contentFormats.socialMessage;
+  const socialOutboxFormat = CryptaPlatform.contentFormats.socialOutbox;
+  const socialMessageType = socialMessageFormat.type;
+  const socialOutboxType = socialOutboxFormat.type;
+  const socialOutboxContentType = socialOutboxFormat.contentType;
+  const socialOutboxTargetFilename = socialOutboxFormat.defaultFilename;
   const trustScoreProviderAppId = "trust-graph";
   const trustScoreServiceId = "trust.score";
   const trustScoreScope = "score.read";
@@ -35,7 +38,7 @@
   const maxMutedAuthors = 128;
   const maxBlockedSources = 64;
   const maxExportedMessages = 80;
-  const maxFetchedDocumentChars = 128 * 1024;
+  const maxFetchedDocumentBytes = socialOutboxFormat.maxDocumentBytes;
   const sourcePollIntervalSeconds = 15 * 60;
   const subscriptionStatusLabels = Object.freeze({
     queue_pressure: "Queue pressure",
@@ -239,7 +242,7 @@
       );
       elements.profilePreview.textContent = boundedPreview(
         JSON.stringify(profileDocumentPreviewSummary(profileDocument), null, 2),
-        maxFetchedDocumentChars,
+        maxFetchedDocumentBytes,
       );
       state.drafts.profileUri = profileUri;
       state.drafts.authorLabel = boundedPreview(textValue(formData, "authorLabel"), maxAuthorLabelLength);
@@ -387,7 +390,7 @@
         uri,
         label: source.label,
         pollIntervalSeconds: sourcePollIntervalSeconds,
-        maxBytes: maxFetchedDocumentChars,
+        maxBytes: maxFetchedDocumentBytes,
         timeoutMillis: 30000,
       });
       source.subscriptionId = subscriptionId(subscription.subscription || subscription);
@@ -464,7 +467,7 @@
       }
       const response = await CryptaPlatform.content.fetchText({
         uri: fetchUri,
-        maxBytes: maxFetchedDocumentChars,
+        maxBytes: maxFetchedDocumentBytes,
         timeoutMillis: 30000,
         purpose: "social-outbox",
       });
@@ -610,10 +613,15 @@
 
   async function importOutboxText(text, source, response) {
     const value = typeof text === "string" ? text : "";
-    if (value.length > maxFetchedDocumentChars) {
+    if (byteLength(value) > maxFetchedDocumentBytes) {
       throw new Error("Social outbox document is too large.");
     }
     const document = parseJsonObject(value, "Social outbox");
+    rejectUnexpectedFields(
+      document,
+      ["type", "appId", "generatedAt", "profileUri", "sourceLabel", "messages"],
+      "Social outbox"
+    );
     if (document.type !== socialOutboxType || document.appId !== appId) {
       throw new Error("Social outbox document type is not supported.");
     }
@@ -3362,7 +3370,7 @@
     const profile = documentValue && typeof documentValue === "object" ? documentValue.profile || {} : {};
     const identity = documentValue && typeof documentValue === "object" ? documentValue.identity : null;
     return {
-      schema: "crypta.profile.v1",
+      schema: profileDocumentFormat.schema,
       displayName: boundedPreview(profile.displayName || "", maxAuthorLabelLength),
       hasWebsite: Boolean(profile.website),
       hasContact: Boolean(profile.contactUri),
@@ -3424,6 +3432,14 @@
     return Array.from(new Uint8Array(digest))
       .map((byte) => byte.toString(16).padStart(2, "0"))
       .join("");
+  }
+
+  function byteLength(value) {
+    const text = typeof value === "string" ? value : String(value || "");
+    if (window.TextEncoder) {
+      return new TextEncoder().encode(text).length;
+    }
+    return text.length;
   }
 
   function setStatus(message, tone) {
