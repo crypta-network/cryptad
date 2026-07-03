@@ -40,8 +40,10 @@ class OperatorBetaDashboardServiceTest {
   private static final String APPLY_APP_UPDATE_ACTION = "apply-app-update";
   private static final String AVAILABLE = "available";
   private static final String BLOCKED_UPDATE_COUNT_FIELD = "blockedUpdateCount";
+  private static final String CONSENT_SECTION = "consent";
   private static final String ERROR = "error";
   private static final String MANUAL_SOURCE_KIND = "manual";
+  private static final String MIGRATIONS_SECTION = "migrations";
   private static final String PENDING = "pending";
   private static final String PENDING_UPDATE_COUNT_FIELD = "pendingUpdateCount";
   private static final String QUOTA_FIELD = "quota";
@@ -384,15 +386,15 @@ class OperatorBetaDashboardServiceTest {
     Map<String, Object> sections = mapValue(bundle.get("sections"));
     Map<String, Object> appUpdates = mapValue(sections.get(APP_UPDATES_SECTION));
     Map<String, Object> appData = mapValue(sections.get("appData"));
+    Map<String, Object> consent = mapValue(sections.get(CONSENT_SECTION));
+    Map<String, Object> migrations = mapValue(sections.get(MIGRATIONS_SECTION));
     String appHostInspectionWarning =
         "Installed apps could not be inspected: IllegalStateException";
 
-    assertEquals(UNAVAILABLE, appUpdates.get("status"));
-    assertEquals(0, appUpdates.get("boundedCount"));
-    assertEquals(appHostInspectionWarning, appUpdates.get("lastSafeStatusMessage"));
-    assertEquals(UNAVAILABLE, appData.get("status"));
-    assertEquals(0, appData.get("boundedCount"));
-    assertEquals(appHostInspectionWarning, appData.get("lastSafeStatusMessage"));
+    assertUnavailableAppDerivedSection(appUpdates, appHostInspectionWarning);
+    assertUnavailableAppDerivedSection(appData, appHostInspectionWarning);
+    assertUnavailableAppDerivedSection(consent, appHostInspectionWarning);
+    assertUnavailableAppDerivedSection(migrations, appHostInspectionWarning);
   }
 
   @Test
@@ -550,7 +552,7 @@ class OperatorBetaDashboardServiceTest {
 
     Map<String, Object> bundle = service(appsHandler(), updateService).supportBundle();
 
-    Map<String, Object> consent = mapValue(mapValue(bundle.get("sections")).get("consent"));
+    Map<String, Object> consent = mapValue(mapValue(bundle.get("sections")).get(CONSENT_SECTION));
     assertEquals(WARNING, consent.get("status"));
     assertEquals(1L, consent.get("pendingOrRejectedCount"));
     assertEquals(
@@ -604,7 +606,8 @@ class OperatorBetaDashboardServiceTest {
 
     Map<String, Object> bundle = service(appsHandler(), updateService).supportBundle();
 
-    Map<String, Object> migrations = mapValue(mapValue(bundle.get("sections")).get("migrations"));
+    Map<String, Object> migrations =
+        mapValue(mapValue(bundle.get("sections")).get(MIGRATIONS_SECTION));
     assertEquals(WARNING, migrations.get("status"));
     assertEquals(2L, migrations.get("migrationWarningCount"));
     assertEquals("app_data_migration_missing", migrations.get("lastErrorCode"));
@@ -1220,6 +1223,13 @@ class OperatorBetaDashboardServiceTest {
     return mapValue(mapValue(bundle.get("sections")).get(APP_UPDATES_SECTION));
   }
 
+  private static void assertUnavailableAppDerivedSection(
+      Map<String, Object> section, String appHostInspectionWarning) {
+    assertEquals(UNAVAILABLE, section.get("status"));
+    assertEquals(0, section.get("boundedCount"));
+    assertEquals(appHostInspectionWarning, section.get("lastSafeStatusMessage"));
+  }
+
   private static void assertSafeDiagnosticsSummary(Map<String, Object> bundle) {
     Map<String, Object> diagnostics = mapValue(bundle.get("diagnostics"));
     assertEquals(true, diagnostics.get(AVAILABLE));
@@ -1243,8 +1253,8 @@ class OperatorBetaDashboardServiceTest {
             "subscriptions",
             "appData",
             "appServiceGrants",
-            "consent",
-            "migrations",
+            CONSENT_SECTION,
+            MIGRATIONS_SECTION,
             "sandbox",
             "contentFormats",
             "trustGraph",

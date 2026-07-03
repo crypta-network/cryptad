@@ -81,6 +81,7 @@ public final class OperatorBetaDashboardService {
   private static final String LEGACY_FALLBACK_AVAILABLE_FIELD = "legacyFallbackAvailable";
   private static final String LIVE_USK = "live-usk";
   private static final String METADATA_ONLY_STATUS = "metadata_only";
+  private static final String MIGRATIONS_FIELD = "migrations";
   private static final String MATERIAL_CONSENT_REASONS_FIELD = "materialConsentReasons";
   private static final String OPERATOR_ACTION_REQUIRED_FIELD = "operatorActionRequired";
   private static final String PENDING = "pending";
@@ -987,8 +988,8 @@ public final class OperatorBetaDashboardService {
         APP_DATA_FIELD,
         appDataLifecycleSummary(apps, appDataServiceAvailable, appInspectionWarning));
     sections.put(APP_SERVICE_GRANTS_FIELD, appServiceLifecycleSummary(appServices, recentAudit));
-    sections.put(CONSENT_FIELD, consentLifecycleSummary(apps));
-    sections.put("migrations", migrationLifecycleSummary(apps));
+    sections.put(CONSENT_FIELD, consentLifecycleSummary(apps, appInspectionWarning));
+    sections.put(MIGRATIONS_FIELD, migrationLifecycleSummary(apps, appInspectionWarning));
     sections.put(SANDBOX_FIELD, sandboxLifecycleSummary(apps, appInspectionWarning));
     sections.put("contentFormats", contentFormatLifecycleSummary());
     sections.put(TRUST_GRAPH_FIELD, trustGraphLifecycleSummary(trustGraph));
@@ -1116,33 +1117,36 @@ public final class OperatorBetaDashboardService {
     return json;
   }
 
-  private static Map<String, Object> consentLifecycleSummary(List<Map<String, Object>> apps) {
+  private static Map<String, Object> consentLifecycleSummary(
+      List<Map<String, Object>> apps, String appInspectionWarning) {
     long pendingOrRejected = countConsentWarnings(apps);
     Map<String, Object> json =
         baseLifecycleSummary(
-            CONSENT_FIELD, pendingOrRejected > 0L ? WARNING : METADATA_ONLY_STATUS);
+            CONSENT_FIELD, consentLifecycleStatus(pendingOrRejected, appInspectionWarning));
     json.put(BOUNDED_COUNT_FIELD, apps.size());
     json.put("pendingOrRejectedCount", pendingOrRejected);
     json.put(
         LAST_SAFE_STATUS_MESSAGE_FIELD,
-        pendingOrRejected > 0L
-            ? "Update consent is pending or rejected for one or more apps."
-            : "Consent details are summarized only when present.");
+        firstNonNull(appInspectionWarning, consentLifecycleMessage(pendingOrRejected)));
     json.put("rawConsentBodiesExcluded", true);
     json.put(DIGEST_FIELD, digestOrNull(PlatformApiJsonWriter.write(json)));
     return json;
   }
 
-  private static Map<String, Object> migrationLifecycleSummary(List<Map<String, Object>> apps) {
+  private static Map<String, Object> migrationLifecycleSummary(
+      List<Map<String, Object>> apps, String appInspectionWarning) {
     List<Map<String, Object>> migrations = updateMigrationSummaries(apps);
     long migrationWarnings =
         migrations.stream().filter(OperatorBetaDashboardService::hasMigrationWarning).count();
     Map<String, Object> json =
-        baseLifecycleSummary("migrations", migrationWarnings > 0L ? WARNING : METADATA_ONLY_STATUS);
+        baseLifecycleSummary(
+            MIGRATIONS_FIELD, migrationLifecycleStatus(migrationWarnings, appInspectionWarning));
     json.put(BOUNDED_COUNT_FIELD, apps.size());
     json.put("migrationWarningCount", migrationWarnings);
     json.put(LAST_ERROR_CODE_FIELD, firstMigrationErrorCode(migrations));
-    json.put(LAST_SAFE_STATUS_MESSAGE_FIELD, firstMigrationStatusMessage(migrations));
+    json.put(
+        LAST_SAFE_STATUS_MESSAGE_FIELD,
+        firstNonNull(appInspectionWarning, firstMigrationStatusMessage(migrations)));
     json.put("rawMigrationLogsExcluded", true);
     json.put("rawAppDataValuesExcluded", true);
     json.put(SAFE_IDS_FIELD, safeIds(apps, APP_ID_FIELD));
@@ -1442,6 +1446,28 @@ public final class OperatorBetaDashboardService {
                         || !stringList(appData.get(WARNINGS_FIELD)).isEmpty())
         ? WARNING
         : AVAILABLE_STATUS;
+  }
+
+  private static String consentLifecycleStatus(
+      long pendingOrRejected, String appInspectionWarning) {
+    if (appInspectionWarning != null) {
+      return UNAVAILABLE;
+    }
+    return pendingOrRejected > 0L ? WARNING : METADATA_ONLY_STATUS;
+  }
+
+  private static String consentLifecycleMessage(long pendingOrRejected) {
+    return pendingOrRejected > 0L
+        ? "Update consent is pending or rejected for one or more apps."
+        : "Consent details are summarized only when present.";
+  }
+
+  private static String migrationLifecycleStatus(
+      long migrationWarnings, String appInspectionWarning) {
+    if (appInspectionWarning != null) {
+      return UNAVAILABLE;
+    }
+    return migrationWarnings > 0L ? WARNING : METADATA_ONLY_STATUS;
   }
 
   private static String appServiceLifecycleStatus(Map<String, Object> appServices) {
