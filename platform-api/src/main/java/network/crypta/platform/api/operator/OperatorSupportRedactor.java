@@ -35,6 +35,7 @@ public final class OperatorSupportRedactor {
   private static final String PEM_BEGIN_PREFIX = "-----BEGIN ";
   private static final String PEM_END_PREFIX = "-----END ";
   private static final String PEM_LINE_SUFFIX = "-----";
+  private static final String DIRECTORY_FIELD_NAME = "directory";
   private static final String SIGNATURE_FIELD_NAME = "signature";
   private static final Set<String> SAFE_RAW_APP_DATA_BOOLEAN_METADATA_FIELDS =
       Set.of(
@@ -51,7 +52,7 @@ public final class OperatorSupportRedactor {
       Set.of(
           "path",
           "dir",
-          "directory",
+          DIRECTORY_FIELD_NAME,
           "file",
           "filepath",
           "localpath",
@@ -154,7 +155,7 @@ public final class OperatorSupportRedactor {
           "stagedbundlepath",
           "scratchpath",
           "rollbackpath",
-          "directory",
+          DIRECTORY_FIELD_NAME,
           "dir",
           "file");
   private static final List<String> SENSITIVE_SIGNATURE_SUFFIXES =
@@ -567,7 +568,7 @@ public final class OperatorSupportRedactor {
     return PATH_LABEL_FIELD_NAMES.contains(normalized)
         || normalized.endsWith("path")
         || normalized.endsWith("dir")
-        || normalized.endsWith("directory");
+        || normalized.endsWith(DIRECTORY_FIELD_NAME);
   }
 
   private static boolean isPathLabelCharacter(char value) {
