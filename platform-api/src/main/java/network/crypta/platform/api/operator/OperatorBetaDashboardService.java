@@ -1181,13 +1181,15 @@ public final class OperatorBetaDashboardService {
             .filter(subscription -> SOCIAL_INBOX_APP_ID.equals(subscription.get(APP_ID_FIELD)))
             .toList();
     long pausedSources = countStatus(socialSubscriptions, PAUSED_STATUS);
+    long malformedMessages = countMalformedWarnings(socialApps);
     Map<String, Object> json =
         baseLifecycleSummary(
             SOCIAL_INBOX_SECTION,
-            socialInboxLifecycleStatus(socialApps, socialSubscriptions, pausedSources));
+            socialInboxLifecycleStatus(
+                socialApps, socialSubscriptions, pausedSources, malformedMessages));
     json.put(BOUNDED_COUNT_FIELD, socialApps.size());
     json.put(SOURCE_PAUSED_COUNT_FIELD, pausedSources);
-    json.put("malformedMessageRejectedCount", countMalformedWarnings(socialApps));
+    json.put("malformedMessageRejectedCount", malformedMessages);
     json.put("rawMessagesExcluded", true);
     json.put("rawOutboxesExcluded", true);
     json.put(SAFE_IDS_FIELD, safeIds(socialApps, APP_ID_FIELD));
@@ -1198,17 +1200,18 @@ public final class OperatorBetaDashboardService {
   private static String socialInboxLifecycleStatus(
       List<Map<String, Object>> socialApps,
       List<Map<String, Object>> socialSubscriptions,
-      long pausedSources) {
+      long pausedSources,
+      long malformedMessages) {
     if (socialApps.isEmpty() && socialSubscriptions.isEmpty()) {
       return "not_installed";
     }
-    if (pausedSources > 0L) {
+    if (pausedSources > 0L || malformedMessages > 0L) {
       return WARNING;
     }
     if (socialApps.isEmpty()) {
       return WARNING;
     }
-    return lifecycleStatus(socialApps);
+    return AVAILABLE_STATUS;
   }
 
   private static Map<String, Object> recoveryLifecycleSummary(

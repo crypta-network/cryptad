@@ -490,6 +490,22 @@ class OperatorBetaDashboardServiceTest {
   }
 
   @Test
+  void supportBundle_whenSocialInboxHasAppQuotaWarning_expectSocialInboxLifecycleAvailable() {
+    Map<String, Object> bundle =
+        serviceWithContentSubscriptions(
+                appsHandler(installedSocialInboxAppWithQuotaWarning()),
+                emptyContentSubscriptionService())
+            .supportBundle();
+
+    Map<String, Object> socialInbox =
+        mapValue(mapValue(bundle.get("sections")).get(SOCIAL_INBOX_SECTION));
+    assertEquals(AVAILABLE, socialInbox.get("status"));
+    assertEquals(0L, socialInbox.get("sourcePausedCount"));
+    assertEquals(0L, socialInbox.get("malformedMessageRejectedCount"));
+    assertEquals(List.of(SOCIAL_INBOX_APP_ID), socialInbox.get("safeIds"));
+  }
+
+  @Test
   void supportBundle_whenUpdateConsentRequired_expectConsentLifecycleWarning() {
     AppUpdateService updateService = mock(AppUpdateService.class);
     when(updateService.summary(APP_ID)).thenReturn(updateSummary(consentRequiredCandidate()));
@@ -926,6 +942,20 @@ class OperatorBetaDashboardServiceTest {
     Map<String, Object> app = installedApp(false);
     app.put("appId", SOCIAL_INBOX_APP_ID);
     app.put("name", "Social Inbox");
+    return app;
+  }
+
+  private static Map<String, Object> installedSocialInboxAppWithQuotaWarning() {
+    Map<String, Object> app = installedSocialInboxApp();
+    app.put(
+        QUOTA_FIELD,
+        Map.of(
+            WARNINGS_FIELD,
+            List.of("Cache usage exceeds the configured app limit."),
+            "dataOverLimit",
+            false,
+            "cacheOverLimit",
+            false));
     return app;
   }
 
