@@ -147,6 +147,8 @@ public final class OperatorBetaDashboardService {
   private static final String APP_DATA_UNAVAILABLE = "App-data service is unavailable.";
   private static final String CONTENT_SUBSCRIPTIONS_UNAVAILABLE =
       "Content subscription service is unavailable.";
+  private static final String CONTENT_SUBSCRIPTIONS_COULD_NOT_PREFIX =
+      "Content subscriptions could not";
   private static final int SUPPORT_BUNDLE_SCHEMA_VERSION = 2;
   private static final HexFormat HEX = HexFormat.of();
 
@@ -550,7 +552,8 @@ public final class OperatorBetaDashboardService {
           .map(this::operatorSubscriptionSummary)
           .toList();
     } catch (RuntimeException exception) {
-      warnings.add("Content subscriptions could not be inspected: " + safeReason(exception));
+      warnings.add(
+          CONTENT_SUBSCRIPTIONS_COULD_NOT_PREFIX + " be inspected: " + safeReason(exception));
       return List.of();
     }
   }
@@ -964,12 +967,12 @@ public final class OperatorBetaDashboardService {
             dashboardDerivedLifecycleStatus(
                 subscriptions,
                 dashboardWarnings,
-                List.of(CONTENT_SUBSCRIPTIONS_UNAVAILABLE, "Content subscriptions could not"),
+                List.of(CONTENT_SUBSCRIPTIONS_UNAVAILABLE, CONTENT_SUBSCRIPTIONS_COULD_NOT_PREFIX),
                 List.of()),
             firstMatchingWarning(
                 dashboardWarnings,
                 CONTENT_SUBSCRIPTIONS_UNAVAILABLE,
-                "Content subscriptions could not")));
+                CONTENT_SUBSCRIPTIONS_COULD_NOT_PREFIX)));
     sections.put(APP_DATA_FIELD, appDataLifecycleSummary(apps, appDataServiceAvailable));
     sections.put(APP_SERVICE_GRANTS_FIELD, appServiceLifecycleSummary(appServices, recentAudit));
     sections.put(CONSENT_FIELD, consentLifecycleSummary(apps));
@@ -1196,7 +1199,7 @@ public final class OperatorBetaDashboardService {
         firstMatchingWarning(
             dashboardWarnings,
             CONTENT_SUBSCRIPTIONS_UNAVAILABLE,
-            "Content subscriptions could not");
+            CONTENT_SUBSCRIPTIONS_COULD_NOT_PREFIX);
     Map<String, Object> json =
         baseLifecycleSummary(
             SOCIAL_INBOX_SECTION,
