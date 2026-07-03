@@ -16370,6 +16370,7 @@ PRIVACY_BETA_DIAGNOSTICS_EVIDENCE_ID = "app-platform.privacy-preserving-beta-dia
 SUPPORT_BUNDLE_REDACTION_FIXTURES = (
     "support-bundle-redaction-safe.json",
     "support-bundle-redaction-private-insert-uri.json",
+    "support-bundle-redaction-private-insert-uri-text.json",
     "support-bundle-redaction-token.json",
     "support-bundle-redaction-raw-profile.json",
     "support-bundle-redaction-raw-feed.json",
@@ -20444,6 +20445,13 @@ def run_self_test(repo_root: Path) -> None:
             for entry in privacy_fixture_entries
             if not entry["expectedSafe"]
         ), privacy_fixture_entries
+        private_insert_text_entry = next(
+            entry
+            for entry in privacy_fixture_entries
+            if entry["fixture"] == "support-bundle-redaction-private-insert-uri-text.json"
+        )
+        assert "content-uri" in private_insert_text_entry["findings"], private_insert_text_entry
+        assert private_insert_text_entry["omittedFieldCount"] == 0, private_insert_text_entry
         encoded = json.dumps(summary, sort_keys=True)
         for forbidden in ("CRYPTAD_APP_TOKEN=secret", "formPassword=hunter2", str(workspace)):
             assert forbidden not in encoded, f"self-test leaked {forbidden}"
@@ -24931,9 +24939,13 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 final class OperatorSupportRedactor {
   private static final String REDACTED_APP_DATA_BACKUP = "<redacted-app-data-backup>";
+  private static final String REDACTED_CONTENT_URI = "<redacted-content-uri>";
+  private static final Pattern CONTENT_URI =
+      Pattern.compile("(?i)\\\\b(?:crypta:)?(?:CHK|SSK|USK|KSK)@[^\\\\s\\\"'<>]+");
   private static final Set<String> SENSITIVE_FIELD_NAMES =
       Set.of(
           "formpassword",
@@ -25000,8 +25012,11 @@ final class OperatorSupportRedactor {
       }
       return redacted;
     }
-    if (value instanceof String text && text.contains("crypta-app-data-backup")) {
-      return REDACTED_APP_DATA_BACKUP;
+    if (value instanceof String text) {
+      if (text.contains("crypta-app-data-backup")) {
+        return REDACTED_APP_DATA_BACKUP;
+      }
+      return CONTENT_URI.matcher(text).replaceAll(REDACTED_CONTENT_URI);
     }
     return value;
   }
@@ -25234,6 +25249,12 @@ class OperatorBetaDashboardServiceTest {
         },
         "support-bundle-redaction-private-insert-uri.json": {
             "privateInsertUri": "crypta:SSK@fake-private-insert/example"
+        },
+        "support-bundle-redaction-private-insert-uri-text.json": {
+            "kind": "cryptad-operator-support-bundle",
+            "message": (
+                "Support text mentions crypta:SSK@fake-private-insert/example under a safe key."
+            ),
         },
         "support-bundle-redaction-token.json": {"authorization": "Bearer fake-token"},
         "support-bundle-redaction-raw-profile.json": {
