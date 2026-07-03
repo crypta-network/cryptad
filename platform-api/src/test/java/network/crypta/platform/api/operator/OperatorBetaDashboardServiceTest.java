@@ -377,6 +377,25 @@ class OperatorBetaDashboardServiceTest {
   }
 
   @Test
+  void supportBundle_whenAppHostInspectionFails_expectAppDependentLifecycleUnavailable() {
+    Map<String, Object> bundle =
+        serviceWithAppHostInspectionFailureAndAvailableStateServices().supportBundle();
+
+    Map<String, Object> sections = mapValue(bundle.get("sections"));
+    Map<String, Object> appUpdates = mapValue(sections.get(APP_UPDATES_SECTION));
+    Map<String, Object> appData = mapValue(sections.get("appData"));
+    String appHostInspectionWarning =
+        "Installed apps could not be inspected: IllegalStateException";
+
+    assertEquals(UNAVAILABLE, appUpdates.get("status"));
+    assertEquals(0, appUpdates.get("boundedCount"));
+    assertEquals(appHostInspectionWarning, appUpdates.get("lastSafeStatusMessage"));
+    assertEquals(UNAVAILABLE, appData.get("status"));
+    assertEquals(0, appData.get("boundedCount"));
+    assertEquals(appHostInspectionWarning, appData.get("lastSafeStatusMessage"));
+  }
+
+  @Test
   void supportBundle_whenUpdateServiceUnavailableAndNoApps_expectUpdateSectionUnavailable() {
     Map<String, Object> bundle = serviceWithNoAppsAndMissingUpdateService().supportBundle();
 
@@ -653,6 +672,22 @@ class OperatorBetaDashboardServiceTest {
         CLOCK);
   }
 
+  private static OperatorBetaDashboardService
+      serviceWithAppHostInspectionFailureAndAvailableStateServices() {
+    return new OperatorBetaDashboardService(
+        new OperatorBetaDashboardService.HandlerSources(
+            throwingAppsHandler(),
+            emptyCatalogsApiHandler(),
+            mock(AppUpdateService.class),
+            diagnosticsWithLegacyAdmin()),
+        new OperatorBetaDashboardService.AppStateSources(
+            emptyContentSubscriptionService(),
+            availableAppDataService(),
+            availableTrustGraphApiHandler(),
+            emptyAppServiceCoordinator()),
+        CLOCK);
+  }
+
   private static OperatorBetaDashboardService serviceWithLegacyAdminUsage() {
     DiagnosticsApiHandler diagnosticsApiHandler =
         new DiagnosticsApiHandler(
@@ -926,6 +961,12 @@ class OperatorBetaDashboardServiceTest {
   private static AppsApiHandler emptyAppsHandler() {
     AppsApiHandler appsApiHandler = mock(AppsApiHandler.class);
     when(appsApiHandler.list(false)).thenReturn(List.of());
+    return appsApiHandler;
+  }
+
+  private static AppsApiHandler throwingAppsHandler() {
+    AppsApiHandler appsApiHandler = mock(AppsApiHandler.class);
+    when(appsApiHandler.list(false)).thenThrow(new IllegalStateException("backend offline"));
     return appsApiHandler;
   }
 

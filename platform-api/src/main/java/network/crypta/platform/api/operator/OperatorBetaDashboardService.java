@@ -142,6 +142,7 @@ public final class OperatorBetaDashboardService {
   private static final String VERSION_FIELD = "version";
   private static final String CATALOGS_UNAVAILABLE = "Catalog service is unavailable.";
   private static final String APPS_UNAVAILABLE = "AppHost service is unavailable.";
+  private static final String INSTALLED_APPS_COULD_NOT_PREFIX = "Installed apps could not";
   private static final String APP_UPDATE_UNAVAILABLE =
       "App-update lifecycle service is unavailable.";
   private static final String APP_DATA_UNAVAILABLE = "App-data service is unavailable.";
@@ -458,7 +459,7 @@ public final class OperatorBetaDashboardService {
           .map(app -> appSummary(app, appServiceGrants, warnings))
           .toList();
     } catch (RuntimeException exception) {
-      warnings.add("Installed apps could not be inspected: " + safeReason(exception));
+      warnings.add(INSTALLED_APPS_COULD_NOT_PREFIX + " be inspected: " + safeReason(exception));
       return List.of();
     }
   }
@@ -936,6 +937,13 @@ public final class OperatorBetaDashboardService {
     Map<String, Object> trustGraph = mapValue(dashboard.get(TRUST_GRAPH_FIELD));
     List<Map<String, Object>> recoveryActions = listOfMaps(dashboard.get(RECOVERY_ACTIONS_FIELD));
     List<String> dashboardWarnings = stringList(dashboard.get(WARNINGS_FIELD));
+    String appInspectionWarning =
+        firstMatchingWarning(dashboardWarnings, APPS_UNAVAILABLE, INSTALLED_APPS_COULD_NOT_PREFIX);
+    String subscriptionInspectionWarning =
+        firstMatchingWarning(
+            dashboardWarnings,
+            CONTENT_SUBSCRIPTIONS_UNAVAILABLE,
+            CONTENT_SUBSCRIPTIONS_COULD_NOT_PREFIX);
 
     LinkedHashMap<String, Object> sections = LinkedHashMap.newLinkedHashMap(15);
     sections.put(
@@ -957,7 +965,9 @@ public final class OperatorBetaDashboardService {
                 "Catalog health could not be inspected",
                 RECOMMENDED_FIRST_PARTY_CATALOG_MISSING,
                 "Recommended catalog state could not be inspected")));
-    sections.put(APP_UPDATES_FIELD, appUpdateLifecycleSummary(apps, appUpdateServiceAvailable));
+    sections.put(
+        APP_UPDATES_FIELD,
+        appUpdateLifecycleSummary(apps, appUpdateServiceAvailable, appInspectionWarning));
     sections.put(
         SUBSCRIPTIONS_FIELD,
         lifecycleSummary(
@@ -973,15 +983,19 @@ public final class OperatorBetaDashboardService {
                 dashboardWarnings,
                 CONTENT_SUBSCRIPTIONS_UNAVAILABLE,
                 CONTENT_SUBSCRIPTIONS_COULD_NOT_PREFIX)));
-    sections.put(APP_DATA_FIELD, appDataLifecycleSummary(apps, appDataServiceAvailable));
+    sections.put(
+        APP_DATA_FIELD,
+        appDataLifecycleSummary(apps, appDataServiceAvailable, appInspectionWarning));
     sections.put(APP_SERVICE_GRANTS_FIELD, appServiceLifecycleSummary(appServices, recentAudit));
     sections.put(CONSENT_FIELD, consentLifecycleSummary(apps));
     sections.put("migrations", migrationLifecycleSummary(apps));
-    sections.put(SANDBOX_FIELD, sandboxLifecycleSummary(apps, dashboardWarnings));
+    sections.put(SANDBOX_FIELD, sandboxLifecycleSummary(apps, appInspectionWarning));
     sections.put("contentFormats", contentFormatLifecycleSummary());
     sections.put(TRUST_GRAPH_FIELD, trustGraphLifecycleSummary(trustGraph));
     sections.put(
-        SOCIAL_INBOX_SECTION, socialInboxLifecycleSummary(apps, subscriptions, dashboardWarnings));
+        SOCIAL_INBOX_SECTION,
+        socialInboxLifecycleSummary(
+            apps, subscriptions, appInspectionWarning, subscriptionInspectionWarning));
     sections.put("recovery", recoveryLifecycleSummary(recoveryActions));
     sections.put(DIAGNOSTICS_FIELD, diagnosticsLifecycleSummary(diagnostics));
     sections.put("legacyFallbacks", legacyFallbackLifecycleSummary(diagnostics, legacyAdmin));
@@ -1007,7 +1021,9 @@ public final class OperatorBetaDashboardService {
   }
 
   private static Map<String, Object> appUpdateLifecycleSummary(
-      List<Map<String, Object>> apps, boolean appUpdateServiceAvailable) {
+      List<Map<String, Object>> apps,
+      boolean appUpdateServiceAvailable,
+      String appInspectionWarning) {
     long pending = 0L;
     long staged = 0L;
     long blocked = 0L;
@@ -1026,7 +1042,8 @@ public final class OperatorBetaDashboardService {
     Map<String, Object> json =
         baseLifecycleSummary(
             APP_UPDATES_FIELD,
-            appUpdateLifecycleStatus(apps, pending, staged, blocked, appUpdateServiceAvailable));
+            appUpdateLifecycleStatus(
+                apps, pending, staged, blocked, appUpdateServiceAvailable, appInspectionWarning));
     json.put(BOUNDED_COUNT_FIELD, apps.size());
     json.put(PENDING_UPDATE_COUNT_FIELD, pending);
     json.put(STAGED_UPDATE_COUNT_FIELD, staged);
@@ -1035,8 +1052,10 @@ public final class OperatorBetaDashboardService {
     json.put(
         LAST_SAFE_STATUS_MESSAGE_FIELD,
         firstNonNull(
-            appUpdateServiceAvailable ? null : APP_UPDATE_UNAVAILABLE,
-            firstNestedWarning(apps, UPDATE_FIELD)));
+            appUpdateServiceAvailable ? appInspectionWarning : null,
+            firstNonNull(
+                appUpdateServiceAvailable ? null : APP_UPDATE_UNAVAILABLE,
+                firstNestedWarning(apps, UPDATE_FIELD))));
     json.put(SAFE_IDS_FIELD, safeIds(apps, APP_ID_FIELD));
     json.put(RECOVERY_ACTION_IDS_FIELD, recoveryActionIds(apps));
     json.put(DIGEST_FIELD, digestOrNull(PlatformApiJsonWriter.write(json)));
@@ -1044,7 +1063,9 @@ public final class OperatorBetaDashboardService {
   }
 
   private static Map<String, Object> appDataLifecycleSummary(
-      List<Map<String, Object>> apps, boolean appDataServiceAvailable) {
+      List<Map<String, Object>> apps,
+      boolean appDataServiceAvailable,
+      String appInspectionWarning) {
     long unavailable = 0L;
     long quotaWarnings = 0L;
     for (Map<String, Object> app : apps) {
@@ -1058,15 +1079,19 @@ public final class OperatorBetaDashboardService {
     }
     Map<String, Object> json =
         baseLifecycleSummary(
-            APP_DATA_FIELD, appDataLifecycleStatus(apps, unavailable, appDataServiceAvailable));
+            APP_DATA_FIELD,
+            appDataLifecycleStatus(
+                apps, unavailable, appDataServiceAvailable, appInspectionWarning));
     json.put(BOUNDED_COUNT_FIELD, apps.size());
     json.put("unavailableCount", unavailable);
     json.put(QUOTA_WARNING_COUNT_FIELD, quotaWarnings);
     json.put(
         LAST_SAFE_STATUS_MESSAGE_FIELD,
         firstNonNull(
-            appDataServiceAvailable ? null : APP_DATA_UNAVAILABLE,
-            firstNestedWarning(apps, APP_DATA_FIELD)));
+            appDataServiceAvailable ? appInspectionWarning : null,
+            firstNonNull(
+                appDataServiceAvailable ? null : APP_DATA_UNAVAILABLE,
+                firstNestedWarning(apps, APP_DATA_FIELD))));
     json.put("rawAppDataExcluded", true);
     json.put("backupPayloadsExcluded", true);
     json.put(SAFE_IDS_FIELD, safeIds(apps, APP_ID_FIELD));
@@ -1126,7 +1151,7 @@ public final class OperatorBetaDashboardService {
   }
 
   private static Map<String, Object> sandboxLifecycleSummary(
-      List<Map<String, Object>> apps, List<String> dashboardWarnings) {
+      List<Map<String, Object>> apps, String appInspectionWarning) {
     long unavailable = 0L;
     for (Map<String, Object> app : apps) {
       Map<String, Object> sandbox = mapValue(app.get(SANDBOX_FIELD));
@@ -1134,8 +1159,6 @@ public final class OperatorBetaDashboardService {
         unavailable++;
       }
     }
-    String appInspectionWarning =
-        firstMatchingWarning(dashboardWarnings, APPS_UNAVAILABLE, "Installed apps could not");
     Map<String, Object> json =
         baseLifecycleSummary(
             SANDBOX_FIELD, sandboxLifecycleStatus(apps, unavailable, appInspectionWarning != null));
@@ -1184,7 +1207,8 @@ public final class OperatorBetaDashboardService {
   private static Map<String, Object> socialInboxLifecycleSummary(
       List<Map<String, Object>> apps,
       List<Map<String, Object>> subscriptions,
-      List<String> dashboardWarnings) {
+      String appInspectionWarning,
+      String subscriptionInspectionWarning) {
     List<Map<String, Object>> socialApps =
         apps.stream().filter(app -> SOCIAL_INBOX_APP_ID.equals(app.get(APP_ID_FIELD))).toList();
     List<Map<String, Object>> socialSubscriptions =
@@ -1193,13 +1217,6 @@ public final class OperatorBetaDashboardService {
             .toList();
     long pausedSources = countStatus(socialSubscriptions, PAUSED_STATUS);
     long malformedMessages = countMalformedWarnings(socialApps);
-    String appInspectionWarning =
-        firstMatchingWarning(dashboardWarnings, APPS_UNAVAILABLE, "Installed apps could not");
-    String subscriptionInspectionWarning =
-        firstMatchingWarning(
-            dashboardWarnings,
-            CONTENT_SUBSCRIPTIONS_UNAVAILABLE,
-            CONTENT_SUBSCRIPTIONS_COULD_NOT_PREFIX);
     Map<String, Object> json =
         baseLifecycleSummary(
             SOCIAL_INBOX_SECTION,
@@ -1365,8 +1382,12 @@ public final class OperatorBetaDashboardService {
       long pending,
       long staged,
       long blocked,
-      boolean appUpdateServiceAvailable) {
+      boolean appUpdateServiceAvailable,
+      String appInspectionWarning) {
     if (!appUpdateServiceAvailable) {
+      return UNAVAILABLE;
+    }
+    if (appInspectionWarning != null) {
       return UNAVAILABLE;
     }
     if (apps.isEmpty()) {
@@ -1397,8 +1418,14 @@ public final class OperatorBetaDashboardService {
   }
 
   private static String appDataLifecycleStatus(
-      List<Map<String, Object>> apps, long unavailable, boolean appDataServiceAvailable) {
+      List<Map<String, Object>> apps,
+      long unavailable,
+      boolean appDataServiceAvailable,
+      String appInspectionWarning) {
     if (!appDataServiceAvailable) {
+      return UNAVAILABLE;
+    }
+    if (appInspectionWarning != null) {
       return UNAVAILABLE;
     }
     if (apps.isEmpty()) {
