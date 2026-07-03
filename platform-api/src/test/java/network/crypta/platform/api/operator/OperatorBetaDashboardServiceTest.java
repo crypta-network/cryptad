@@ -351,6 +351,7 @@ class OperatorBetaDashboardServiceTest {
     Map<String, Object> appUpdates = mapValue(sections.get(APP_UPDATES_SECTION));
     Map<String, Object> subscriptions = mapValue(sections.get("subscriptions"));
     Map<String, Object> appData = mapValue(sections.get("appData"));
+    Map<String, Object> sandbox = mapValue(sections.get("sandbox"));
     Map<String, Object> nodeSummary = mapValue(bundle.get("nodeSummary"));
 
     assertEquals(UNAVAILABLE, catalog.get("status"));
@@ -366,6 +367,9 @@ class OperatorBetaDashboardServiceTest {
     assertEquals(UNAVAILABLE, appData.get("status"));
     assertEquals("App-data service is unavailable.", appData.get("lastSafeStatusMessage"));
     assertEquals(0, appData.get("boundedCount"));
+    assertEquals(UNAVAILABLE, sandbox.get("status"));
+    assertEquals("AppHost service is unavailable.", sandbox.get("lastSafeStatusMessage"));
+    assertEquals(0, sandbox.get("boundedCount"));
     assertTrue(
         nodeSummary.get("architecture") instanceof String architecture
             && List.of("amd64", "arm64").contains(architecture));
@@ -502,6 +506,21 @@ class OperatorBetaDashboardServiceTest {
     assertEquals(AVAILABLE, socialInbox.get("status"));
     assertEquals(0L, socialInbox.get("sourcePausedCount"));
     assertEquals(0L, socialInbox.get("malformedMessageRejectedCount"));
+    assertEquals(List.of(SOCIAL_INBOX_APP_ID), socialInbox.get("safeIds"));
+  }
+
+  @Test
+  void supportBundle_whenSocialInboxSubscriptionServiceUnavailable_expectSocialInboxUnavailable() {
+    Map<String, Object> bundle =
+        serviceWithContentSubscriptions(appsHandler(installedSocialInboxApp()), null)
+            .supportBundle();
+
+    Map<String, Object> socialInbox =
+        mapValue(mapValue(bundle.get("sections")).get(SOCIAL_INBOX_SECTION));
+    assertEquals(UNAVAILABLE, socialInbox.get("status"));
+    assertEquals(
+        "Content subscription service is unavailable.", socialInbox.get("lastSafeStatusMessage"));
+    assertEquals(0L, socialInbox.get("sourcePausedCount"));
     assertEquals(List.of(SOCIAL_INBOX_APP_ID), socialInbox.get("safeIds"));
   }
 

@@ -974,10 +974,11 @@ public final class OperatorBetaDashboardService {
     sections.put(APP_SERVICE_GRANTS_FIELD, appServiceLifecycleSummary(appServices, recentAudit));
     sections.put(CONSENT_FIELD, consentLifecycleSummary(apps));
     sections.put("migrations", migrationLifecycleSummary(apps));
-    sections.put(SANDBOX_FIELD, sandboxLifecycleSummary(apps));
+    sections.put(SANDBOX_FIELD, sandboxLifecycleSummary(apps, dashboardWarnings));
     sections.put("contentFormats", contentFormatLifecycleSummary());
     sections.put(TRUST_GRAPH_FIELD, trustGraphLifecycleSummary(trustGraph));
-    sections.put(SOCIAL_INBOX_SECTION, socialInboxLifecycleSummary(apps, subscriptions));
+    sections.put(
+        SOCIAL_INBOX_SECTION, socialInboxLifecycleSummary(apps, subscriptions, dashboardWarnings));
     sections.put("recovery", recoveryLifecycleSummary(recoveryActions));
     sections.put(DIAGNOSTICS_FIELD, diagnosticsLifecycleSummary(diagnostics));
     sections.put("legacyFallbacks", legacyFallbackLifecycleSummary(diagnostics, legacyAdmin));
@@ -1121,7 +1122,8 @@ public final class OperatorBetaDashboardService {
     return json;
   }
 
-  private static Map<String, Object> sandboxLifecycleSummary(List<Map<String, Object>> apps) {
+  private static Map<String, Object> sandboxLifecycleSummary(
+      List<Map<String, Object>> apps, List<String> dashboardWarnings) {
     long unavailable = 0L;
     for (Map<String, Object> app : apps) {
       Map<String, Object> sandbox = mapValue(app.get(SANDBOX_FIELD));
@@ -1129,10 +1131,14 @@ public final class OperatorBetaDashboardService {
         unavailable++;
       }
     }
+    String appInspectionWarning =
+        firstMatchingWarning(dashboardWarnings, APPS_UNAVAILABLE, "Installed apps could not");
     Map<String, Object> json =
-        baseLifecycleSummary(SANDBOX_FIELD, sandboxLifecycleStatus(apps, unavailable));
+        baseLifecycleSummary(
+            SANDBOX_FIELD, sandboxLifecycleStatus(apps, unavailable, appInspectionWarning != null));
     json.put(BOUNDED_COUNT_FIELD, apps.size());
     json.put("warningCount", unavailable);
+    json.put(LAST_SAFE_STATUS_MESSAGE_FIELD, appInspectionWarning);
     json.put("providerPathsExcluded", true);
     json.put(SAFE_IDS_FIELD, safeIds(apps, APP_ID_FIELD));
     json.put(DIGEST_FIELD, digestOrNull(PlatformApiJsonWriter.write(json)));
@@ -1173,7 +1179,9 @@ public final class OperatorBetaDashboardService {
   }
 
   private static Map<String, Object> socialInboxLifecycleSummary(
-      List<Map<String, Object>> apps, List<Map<String, Object>> subscriptions) {
+      List<Map<String, Object>> apps,
+      List<Map<String, Object>> subscriptions,
+      List<String> dashboardWarnings) {
     List<Map<String, Object>> socialApps =
         apps.stream().filter(app -> SOCIAL_INBOX_APP_ID.equals(app.get(APP_ID_FIELD))).toList();
     List<Map<String, Object>> socialSubscriptions =
@@ -1182,14 +1190,29 @@ public final class OperatorBetaDashboardService {
             .toList();
     long pausedSources = countStatus(socialSubscriptions, PAUSED_STATUS);
     long malformedMessages = countMalformedWarnings(socialApps);
+    String appInspectionWarning =
+        firstMatchingWarning(dashboardWarnings, APPS_UNAVAILABLE, "Installed apps could not");
+    String subscriptionInspectionWarning =
+        firstMatchingWarning(
+            dashboardWarnings,
+            CONTENT_SUBSCRIPTIONS_UNAVAILABLE,
+            "Content subscriptions could not");
     Map<String, Object> json =
         baseLifecycleSummary(
             SOCIAL_INBOX_SECTION,
             socialInboxLifecycleStatus(
-                socialApps, socialSubscriptions, pausedSources, malformedMessages));
+                socialApps,
+                socialSubscriptions,
+                pausedSources,
+                malformedMessages,
+                appInspectionWarning != null,
+                subscriptionInspectionWarning != null));
     json.put(BOUNDED_COUNT_FIELD, socialApps.size());
     json.put(SOURCE_PAUSED_COUNT_FIELD, pausedSources);
     json.put("malformedMessageRejectedCount", malformedMessages);
+    json.put(
+        LAST_SAFE_STATUS_MESSAGE_FIELD,
+        firstNonNull(appInspectionWarning, subscriptionInspectionWarning));
     json.put("rawMessagesExcluded", true);
     json.put("rawOutboxesExcluded", true);
     json.put(SAFE_IDS_FIELD, safeIds(socialApps, APP_ID_FIELD));
@@ -1201,7 +1224,12 @@ public final class OperatorBetaDashboardService {
       List<Map<String, Object>> socialApps,
       List<Map<String, Object>> socialSubscriptions,
       long pausedSources,
-      long malformedMessages) {
+      long malformedMessages,
+      boolean appInspectionUnavailable,
+      boolean subscriptionInspectionUnavailable) {
+    if (appInspectionUnavailable || (subscriptionInspectionUnavailable && !socialApps.isEmpty())) {
+      return UNAVAILABLE;
+    }
     if (socialApps.isEmpty() && socialSubscriptions.isEmpty()) {
       return "not_installed";
     }
@@ -1397,7 +1425,11 @@ public final class OperatorBetaDashboardService {
     return AVAILABLE_STATUS;
   }
 
-  private static String sandboxLifecycleStatus(List<Map<String, Object>> apps, long unavailable) {
+  private static String sandboxLifecycleStatus(
+      List<Map<String, Object>> apps, long unavailable, boolean appInspectionUnavailable) {
+    if (appInspectionUnavailable) {
+      return UNAVAILABLE;
+    }
     if (apps.isEmpty()) {
       return EMPTY_STATUS;
     }
