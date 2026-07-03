@@ -27,7 +27,7 @@ Every production security response uses these bounded artifacts:
 | Reviewer registry update | Revoked reviewer key or exact receipt revocation. | Include key ids, receipt fingerprints, digests, timestamps, and bounded reasons only. |
 | Emergency catalog candidate | Replacement metadata plus advisory and denylist state. | Sign with approved test or production process; do not publish private keys. |
 | Operator status summary | Compact Web Shell and Platform API status. | Do not expose raw catalog bytes, local paths, staged bundle paths, tokens, or raw evidence JSON. |
-| Support bundle | Redacted operator support context. | Exclude private insert URIs, private keys, bearer/session/app tokens, raw fetched content, raw app data, raw request bodies, raw signatures, command lines, and local absolute paths. |
+| Support bundle | Redacted operator support context. | Use the [privacy-preserving beta diagnostics](privacy-preserving-beta-diagnostics.md) schema. Exclude private insert URIs, private keys, bearer/session/app tokens, raw fetched content, raw app data, raw request bodies, raw signatures, command lines, local absolute paths, and legacy plaintext diagnostics bodies. |
 | Security release notes | Public communication for operators and packagers. | Credit reporters without private contact details or sensitive reproduction material. |
 | Certification evidence | Deterministic proof that the response flow is executable. | Store only path-free, token-free, bounded summaries. |
 
@@ -66,7 +66,8 @@ referenced advisory is later resolved or retracted for history.
    combine those actions.
 5. Generate a dry-run emergency catalog candidate and reviewer registry change when applicable.
 6. Verify signatures, advisory enforcement, denylist behavior, review trust failure, update
-   scheduler behavior, Web Shell warning text, support redaction, and release notes.
+   scheduler behavior, Web Shell warning text, privacy-preserving support-bundle redaction, and
+   release notes.
 7. Publish the signed catalog or registry update through the approved channel.
 8. Monitor operator-facing status and update the advisory lifecycle after remediation.
 

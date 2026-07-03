@@ -778,7 +778,10 @@ public final class OperatorRecoveryService {
     }
     bundle.put("supportBundleVersion", bundle.get("schemaVersion"));
     bundle.put("recoveryContext", supportContext());
-    return redactedMap(bundle);
+    LinkedHashMap<String, Object> redacted = LinkedHashMap.newLinkedHashMap(bundle.size());
+    redacted.putAll(redactedMap(bundle));
+    redacted.put("supportDigest", OperatorBetaDashboardService.supportDigestForPayload(redacted));
+    return redacted;
   }
 
   private void addRequiredTargetPreconditions(

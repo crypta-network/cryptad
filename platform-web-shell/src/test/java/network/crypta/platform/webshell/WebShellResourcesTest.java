@@ -31,7 +31,10 @@ class WebShellResourcesTest {
         "The beta dashboard route remains a compatibility fallback.",
         "Generate support bundle",
         "Download support JSON",
-        "Copy support summary",
+        "Copy support JSON",
+        "This support bundle is generated locally and is not uploaded automatically.",
+        "It excludes",
+        "Review it before sharing.",
         "Download all app-data backup",
         "Sensitive backup payload",
         "Preview restore",
@@ -133,31 +136,8 @@ class WebShellResourcesTest {
     String stylesheet =
         WebShellResources.readText(WebShellPaths.resourcePath(WebShellPaths.STYLESHEET_PATH));
 
-    assertTrue(stylesheet.contains(".alert-card-text {"));
-    assertTrue(stylesheet.contains("white-space: pre-wrap;"));
-    assertTrue(stylesheet.contains(".app-card-list {"));
-    assertTrue(stylesheet.contains(".app-card-actions {"));
-    assertTrue(stylesheet.contains(".app-log-tail {"));
-    assertTrue(stylesheet.contains(".permission-list {"));
-    assertTrue(stylesheet.contains(".consent-preview {"));
-    assertTrue(stylesheet.contains(".consent-section-list {"));
-    assertTrue(stylesheet.contains(".consent-finding-list {"));
-    assertTrue(stylesheet.contains(".consent-actions {"));
-    assertTrue(stylesheet.contains(".vault-grant-form {"));
-    assertTrue(stylesheet.contains(".app-audit-event.is-denied {"));
-    assertTrue(stylesheet.contains(".catalog-app-card {"));
-    assertTrue(stylesheet.contains(".catalog-app-card.is-update-available {"));
-    assertTrue(stylesheet.contains(".metadata-link-list {"));
-    assertTrue(stylesheet.contains(".permission-review-list {"));
-    assertTrue(stylesheet.contains(".publisher-forms {"));
-    assertTrue(stylesheet.contains(".publisher-result-actions,"));
-    assertTrue(stylesheet.contains(".security-fallback-actions {"));
+    assertStylesheetMarkersPresent(stylesheet);
     assertFalse(stylesheet.contains(".diagnostics-export"));
-    assertTrue(stylesheet.contains(".app-data-restore-form {"));
-    assertTrue(stylesheet.contains(".app-data-restore-payload {"));
-    assertTrue(stylesheet.contains(".app-data-restore-result {"));
-    assertTrue(stylesheet.contains(".app-data-restore-details {"));
-    assertTrue(stylesheet.contains(".status-pill.is-success::before {"));
   }
 
   private static void assertContainsAll(String text, String... expectedFragments) {
@@ -165,6 +145,36 @@ class WebShellResourcesTest {
       assertTrue(
           text.contains(expectedFragment), () -> "Expected fragment missing: " + expectedFragment);
     }
+  }
+
+  private static void assertStylesheetMarkersPresent(String stylesheet) {
+    assertContainsAll(
+        stylesheet,
+        ".alert-card-text {",
+        "white-space: pre-wrap;",
+        ".app-card-list {",
+        ".app-card-actions {",
+        ".app-log-tail {",
+        ".permission-list {",
+        ".consent-preview {",
+        ".consent-section-list {",
+        ".consent-finding-list {",
+        ".consent-actions {",
+        ".vault-grant-form {",
+        ".app-audit-event.is-denied {",
+        ".catalog-app-card {",
+        ".catalog-app-card.is-update-available {",
+        ".metadata-link-list {",
+        ".permission-review-list {",
+        ".publisher-forms {",
+        ".publisher-result-actions,",
+        ".security-fallback-actions {",
+        ".app-data-restore-form {",
+        ".app-data-restore-payload {",
+        ".app-data-restore-result {",
+        ".app-data-restore-details {",
+        ".support-bundle-notice {",
+        ".status-pill.is-success::before {");
   }
 
   private static void assertQueueMutationMarkersPresent(String script) {
@@ -405,6 +415,7 @@ class WebShellResourcesTest {
     assertContainsAll(
         script,
         "betaDashboardSnapshot: null",
+        "supportBundlePreviewSnapshot: null",
         "supportBundleSnapshot: null",
         "let betaDashboardLoadGeneration = 0;",
         "betaDashboard: document.getElementById(\"beta-dashboard-body\")",
@@ -460,7 +471,13 @@ class WebShellResourcesTest {
         "function buildOperatorRecoveryAction(action)",
         "function loadBetaDashboardSection()",
         "function loadSupportBundle()",
-        "function supportSummaryText(bundle)",
+        "function supportBundleRedactionStatus(bundle)",
+        "function supportBundleRedactionFailed(bundle)",
+        "Missing redaction status",
+        "function supportBundleExportBlocked(bundle)",
+        "function supportBundleOmittedFieldCount(bundle)",
+        "function supportBundleDigestShort(bundle)",
+        "function supportJsonText(bundle)",
         "function downloadSupportBundle()",
         "function copySupportSummary()",
         "function downloadAllAppDataBackup()",
@@ -469,7 +486,7 @@ class WebShellResourcesTest {
         "function bindBetaDashboardInteractions()",
         "loadJson(apiUrl(\"operator/rc-dashboard\"))",
         "loadJson(apiUrl(\"operator/beta-dashboard\"))",
-        "loadJson(apiUrl(\"operator/support-bundle/preview\"))",
+        "apiUrl(\"operator/support-bundle/preview\")",
         "loadJson(apiUrl(\"operator/support-bundle\"))",
         "\"operator/recovery/plan\"",
         "\"operator/recovery/execute\"",
@@ -487,6 +504,8 @@ class WebShellResourcesTest {
         "appendOperatorRcResultSteps(container, result.steps)",
         "appendOperatorRcResultDetails(container, result.details)",
         "appendOperatorRcSupportBundleArtifact(container, result)",
+        "Support bundle redaction failed; copy and download are disabled.",
+        "Support JSON copied.",
         "downloadJsonBlob(supportBundle, supportBundleFileName(supportBundle))",
         "case \"support-bundle.export\":",
         "case \"trust-graph.export-summary\":",

@@ -1,0 +1,24 @@
+{
+  "kind": "cryptad-operator-support-bundle",
+  "schemaVersion": 2,
+  "privacy": {
+    "includesRawContent": false,
+    "includesRawAppData": false,
+    "includesPrivateInsertUris": false,
+    "includesTokens": false,
+    "includesIdentityMaterial": false,
+    "includesLocalPaths": false
+  },
+  "redaction": {
+    "status": "pass",
+    "omittedFieldCount": 0,
+    "rawSensitiveMaterialExcluded": true,
+    "localOnlyUntilExported": true
+  },
+  "sections": {
+    "catalog": {
+      "status": "available",
+      "sourceDigest": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  }
+}

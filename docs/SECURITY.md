@@ -96,6 +96,10 @@ bundle intake, and security release notes is defined in
 [production-security-response-runbook.md](production-security-response-runbook.md). The runbook is
 the release-manager procedure; this document defines the trust and redaction boundaries it must
 preserve.
+Default operator support bundles follow
+[privacy-preserving-beta-diagnostics.md](privacy-preserving-beta-diagnostics.md): they are local
+until the operator explicitly exports them, and they exclude raw content, raw app data, private
+insert URIs, tokens, identity material, local paths, and legacy plaintext diagnostics bodies.
 
 The app-review transparency log is local and tamper-evident. It is not a global public log and does
 not create trust by itself. Platform API, Web Shell, CLI, and release-certification review surfaces
@@ -212,7 +216,8 @@ local transparency-log verification responses, live USK publication summaries, A
 and Web Shell summaries may include counts, hashes, policy ids, key ids, lifecycle states, status
 codes, and bounded redacted summaries. They must not include private insert URIs, private keys,
 raw fetched bodies, raw request bodies, raw trust statements, raw signatures, app or browser
-tokens, form passwords, local paths, catalog scratch paths, or raw app bundle paths.
+tokens, form passwords, local paths, catalog scratch paths, raw app bundle paths, raw app-data
+values, app-service invocation bodies, raw Social Inbox messages, or raw profile/feed documents.
 
 The app secret and identity vault is a local at-rest protection boundary, not a remote KMS,
 hardware-backed enclave, OS keychain, or replacement for process sandboxing. Vault records are

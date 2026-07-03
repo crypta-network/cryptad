@@ -35,6 +35,7 @@ public final class OperatorSupportRedactor {
   private static final String PEM_BEGIN_PREFIX = "-----BEGIN ";
   private static final String PEM_END_PREFIX = "-----END ";
   private static final String PEM_LINE_SUFFIX = "-----";
+  private static final String DIRECTORY_FIELD_NAME = "directory";
   private static final String SIGNATURE_FIELD_NAME = "signature";
   private static final Set<String> SAFE_RAW_APP_DATA_BOOLEAN_METADATA_FIELDS =
       Set.of(
@@ -43,9 +44,25 @@ public final class OperatorSupportRedactor {
           "rawappdataenabled",
           "rawappdataexcluded",
           "rawappdataexcludedfromevidence",
+          "rawappdatavaluesexcluded",
           "rawappdatapresent",
           "rawappdataredacted",
-          "rawappdatarequired");
+          "rawappdatarequired",
+          "includesrawappdata");
+  private static final Set<String> PATH_LABEL_FIELD_NAMES =
+      Set.of(
+          "path",
+          "dir",
+          DIRECTORY_FIELD_NAME,
+          "file",
+          "filepath",
+          "localpath",
+          "sourcepath",
+          "stageddir",
+          "stagedpath",
+          "stagedbundlepath",
+          "scratchpath",
+          "rollbackpath");
   private static final Pattern CONTENT_URI =
       Pattern.compile("(?i)\\b(?:crypta:)?(?:CHK|SSK|USK|KSK)@[^\\s\"'<>]+");
   private static final Pattern AUTHORIZATION_OR_COOKIE_HEADER =
@@ -79,18 +96,39 @@ public final class OperatorSupportRedactor {
           "cisecrets",
           "cisecretvalue",
           "secretvalue",
+          "identitymaterial",
+          "vaultidentitymaterial",
           "privatekey",
           "privateuri",
+          "privateinserturi",
           "seed",
           "recoveryphrase",
           "requestbody",
           "rawrequestbody",
           "rawbody",
           "rawfetchedcontent",
+          "rawcontent",
+          "rawdocument",
+          "rawprofiledocument",
+          "profiledocumentbody",
+          "rawfeedsnapshot",
+          "feedsnapshotbody",
+          "rawtruststatement",
           "rawtruststatementbody",
           "rawtruststatementsignature",
+          "rawsocialmessage",
+          "socialmessagebody",
+          "rawsocialoutbox",
+          "socialoutboxbody",
+          "canonicalsignaturepayload",
+          "canonicalsignaturepayloadbytes",
           "appserviceinvocationrequestbody",
           "appserviceinvocationresponsebody",
+          "appserviceinvocationbody",
+          "invocationrequestbody",
+          "invocationresponsebody",
+          "subjecturi",
+          "rawsubjecturi",
           "body",
           "plaintextbody",
           "plaintext",
@@ -108,6 +146,7 @@ public final class OperatorSupportRedactor {
           "recordvalue",
           "payloadbase64",
           "valuebase64",
+          "rawappdatarecordkey",
           "commandline",
           "command",
           "path",
@@ -117,7 +156,7 @@ public final class OperatorSupportRedactor {
           "stagedbundlepath",
           "scratchpath",
           "rollbackpath",
-          "directory",
+          DIRECTORY_FIELD_NAME,
           "dir",
           "file");
   private static final List<String> SENSITIVE_SIGNATURE_SUFFIXES =
@@ -133,6 +172,18 @@ public final class OperatorSupportRedactor {
   private static final List<String> PATTERNS_CHECKED =
       List.of(
           "crypta_or_freenet_content_uri",
+          "private_insert_uri",
+          "public_content_uri",
+          "raw_profile_document",
+          "raw_feed_snapshot",
+          "raw_trust_statement",
+          "raw_social_message",
+          "raw_social_outbox",
+          "canonical_signature_payload",
+          "raw_signature_material",
+          "app_service_invocation_body",
+          "vault_identity_material",
+          "seed_or_recovery_phrase",
           "pem_private_key_block",
           "file_uri_absolute_path",
           "unix_absolute_path",
@@ -142,6 +193,8 @@ public final class OperatorSupportRedactor {
           "secret_assignment",
           "sensitive_query_parameter",
           "app_data_backup_payload",
+          "raw_app_data_record_value",
+          "nested_archive_or_base64_backup_payload",
           "sensitive_field_name");
 
   private OperatorSupportRedactor() {}
@@ -230,7 +283,8 @@ public final class OperatorSupportRedactor {
 
   private static boolean isSensitiveFieldName(String fieldName, Object value) {
     String normalized = normalizeFieldName(fieldName);
-    return isSensitiveCredentialKey(normalized, value);
+    return isSensitiveCredentialKey(normalized, value)
+        || PATH_LABEL_FIELD_NAMES.contains(normalized);
   }
 
   private static String redactString(String input) {
@@ -493,12 +547,34 @@ public final class OperatorSupportRedactor {
       return true;
     }
     char previous = input.charAt(index - 1);
+    if (previous == ':') {
+      return hasPathLabelBeforeColon(input, index - 1);
+    }
     return !(Character.isLetterOrDigit(previous)
         || previous == '_'
-        || previous == ':'
         || previous == '/'
         || previous == '.'
         || previous == '-');
+  }
+
+  private static boolean hasPathLabelBeforeColon(String input, int colonIndex) {
+    int labelStart = colonIndex;
+    while (labelStart > 0 && isPathLabelCharacter(input.charAt(labelStart - 1))) {
+      labelStart--;
+    }
+    return labelStart < colonIndex
+        && isPathLabelName(normalizeFieldName(input.substring(labelStart, colonIndex)));
+  }
+
+  private static boolean isPathLabelName(String normalized) {
+    return PATH_LABEL_FIELD_NAMES.contains(normalized)
+        || normalized.endsWith("path")
+        || normalized.endsWith("dir")
+        || normalized.endsWith(DIRECTORY_FIELD_NAME);
+  }
+
+  private static boolean isPathLabelCharacter(char value) {
+    return Character.isLetterOrDigit(value) || value == '_' || value == '-' || value == '.';
   }
 
   private static boolean isSafeRoutePath(String input, int index) {

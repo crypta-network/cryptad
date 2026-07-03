@@ -322,6 +322,7 @@ CRITICAL_PRODUCTION_BETA_EVIDENCE_IDS = (
     "app-ui.lint",
     "apphost.sandbox-provider",
     TRUST_SOCIAL_CONTENT_FORMAT_PROFILES_EVIDENCE_ID,
+    "app-platform.privacy-preserving-beta-diagnostics",
     "app-update.data-migration-contract",
     "app-data.backup-restore-portability",
     "catalog.security-advisories",

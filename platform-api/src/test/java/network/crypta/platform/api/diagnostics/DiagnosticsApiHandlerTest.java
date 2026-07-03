@@ -9,7 +9,9 @@ import network.crypta.runtime.spi.LegacyAdminUsageSnapshot;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SuppressWarnings("java:S100")
 class DiagnosticsApiHandlerTest {
@@ -81,6 +83,156 @@ class DiagnosticsApiHandlerTest {
         surfaces.getFirst());
   }
 
+  @Test
+  void supportSummary_whenReportContainsSensitiveLines_expectSummaryOnlyAndRedactedDigest() {
+    Map<String, Object> response = sensitiveSupportSummaryResponse();
+
+    assertEquals(true, response.get("available"));
+    assertEquals(1, response.get("sectionCount"));
+    assertEquals(true, response.get("plainTextExportAvailable"));
+    assertEquals(true, response.get("legacyFallbackAvailable"));
+    assertFalse(response.containsKey("plainTextExport"));
+    Map<String, Object> section = firstSection(response);
+    assertFalse(section.containsKey("lines"));
+    assertEquals("sensitive", section.get("id"));
+    assertEquals("error", section.get("status"));
+    assertEquals(4, section.get("lineCount"));
+    assertEquals(3L, section.get("redactedLineCount"));
+    assertEquals(1L, section.get("warningCount"));
+    assertEquals(1L, section.get("errorCount"));
+    assertTrue(section.get("digest") instanceof String digest && digest.matches("[a-f0-9]{64}"));
+    String rendered = response.toString();
+    assertFalse(rendered.contains("/work/private/catalog"));
+    assertFalse(rendered.contains("USK@example/private/0"));
+    assertFalse(rendered.contains("token=secret"));
+  }
+
+  @Test
+  void supportSummary_whenZeroErrorSummaryLinesPresent_expectAvailableSection() {
+    DiagnosticsApiHandler handler =
+        new DiagnosticsApiHandler(
+            () ->
+                new DiagnosticReportSnapshot(
+                    List.of(
+                        new DiagnosticSectionSnapshot(
+                            "Health:",
+                            List.of(
+                                "Errors: 0",
+                                "Errors: none",
+                                "Errors: no failures",
+                                "Peer 1 Errors: 0",
+                                "Error: none",
+                                "Error: no errors",
+                                "Last error code: none",
+                                "Last exception reason: none",
+                                "No failures",
+                                "Exceptions: none",
+                                "Exception: none",
+                                "Exceptions: 0",
+                                "0 failed",
+                                "Failure count: 0",
+                                "Failure count: none")))));
+
+    Map<String, Object> response = handler.supportSummary();
+
+    Map<String, Object> section = firstSection(response);
+    assertEquals("available", section.get("status"));
+    assertEquals(0L, section.get("errorCount"));
+  }
+
+  @Test
+  void supportSummary_whenNonZeroErrorSummaryLinesPresent_expectErrorSection() {
+    DiagnosticsApiHandler handler =
+        new DiagnosticsApiHandler(
+            () ->
+                new DiagnosticReportSnapshot(
+                    List.of(
+                        new DiagnosticSectionSnapshot(
+                            "Health:",
+                            List.of(
+                                "Errors: 2",
+                                "Peer 0 Errors: 2",
+                                "1 failure",
+                                "Exception count: 3",
+                                "Error: no route to peer")))));
+
+    Map<String, Object> response = handler.supportSummary();
+
+    Map<String, Object> section = firstSection(response);
+    assertEquals("error", section.get("status"));
+    assertEquals(5L, section.get("errorCount"));
+  }
+
+  @Test
+  void supportSummary_whenZeroWarningSummaryLinesPresent_expectAvailableSection() {
+    DiagnosticsApiHandler handler =
+        new DiagnosticsApiHandler(
+            () ->
+                new DiagnosticReportSnapshot(
+                    List.of(
+                        new DiagnosticSectionSnapshot(
+                            "Health:",
+                            List.of(
+                                "Warnings: 0",
+                                "Warnings: none",
+                                "Warnings: no warnings",
+                                "Node 2 Warnings: none",
+                                "Warning: none",
+                                "Warning: no warnings",
+                                "Last warning code: none",
+                                "Last warn status: none",
+                                "No warnings",
+                                "Warn count: 0",
+                                "Warn count: none",
+                                "0 warns",
+                                "zero warning")))));
+
+    Map<String, Object> response = handler.supportSummary();
+
+    Map<String, Object> section = firstSection(response);
+    assertEquals("available", section.get("status"));
+    assertEquals(0L, section.get("warningCount"));
+  }
+
+  @Test
+  void supportSummary_whenNonZeroWarningSummaryLinesPresent_expectWarningSection() {
+    DiagnosticsApiHandler handler =
+        new DiagnosticsApiHandler(
+            () ->
+                new DiagnosticReportSnapshot(
+                    List.of(
+                        new DiagnosticSectionSnapshot(
+                            "Health:",
+                            List.of(
+                                "Warnings: 2",
+                                "Node 0 Warnings: 2",
+                                "1 warning",
+                                "Warn count: 3",
+                                "Warning: no route to peer")))));
+
+    Map<String, Object> response = handler.supportSummary();
+
+    Map<String, Object> section = firstSection(response);
+    assertEquals("warning", section.get("status"));
+    assertEquals(5L, section.get("warningCount"));
+  }
+
+  private static Map<String, Object> sensitiveSupportSummaryResponse() {
+    DiagnosticsApiHandler handler =
+        new DiagnosticsApiHandler(
+            () ->
+                new DiagnosticReportSnapshot(
+                    List.of(
+                        new DiagnosticSectionSnapshot(
+                            "!!! Sensitive:",
+                            List.of(
+                                "path /work/private/catalog",
+                                "uri USK@example/private/0",
+                                "warn token=secret",
+                                "error failed")))));
+    return handler.supportSummary();
+  }
+
   private static Map<String, Object> legacyAdminUsageResponse() {
     DiagnosticsApiHandler handler =
         new DiagnosticsApiHandler(
@@ -112,5 +264,11 @@ class DiagnosticsApiHandlerTest {
   @SuppressWarnings("unchecked")
   private static Map<String, Object> legacyAdmin(Map<String, Object> response) {
     return (Map<String, Object>) assertInstanceOf(Map.class, response.get("legacyAdmin"));
+  }
+
+  @SuppressWarnings("unchecked")
+  private static Map<String, Object> firstSection(Map<String, Object> response) {
+    List<Map<String, Object>> sections = (List<Map<String, Object>>) response.get("sections");
+    return sections.getFirst();
   }
 }

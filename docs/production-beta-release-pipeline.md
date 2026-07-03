@@ -286,6 +286,14 @@ gating, stale snapshot protection, audit redaction, Web Shell UI, tests, and doc
 without requiring a live node. Consent evidence must not include private insert URI values, secret
 inputs, raw fetched content, raw app data, backup payloads, or host-local paths.
 
+Production beta promotion also includes
+`app-platform.privacy-preserving-beta-diagnostics`. That evidence proves the support-bundle schema,
+preview/export routes, safe diagnostics summary, lifecycle sections, redaction patterns, fuzz
+fixtures, Web Shell warnings, operator docs, and go/no-go blockers are present without a live node.
+Redaction failure in this evidence is non-waivable in production beta. Default support bundles must
+not embed raw diagnostics lines, legacy plaintext diagnostics, raw content documents, raw app-data
+values, private insert URIs, tokens, identity material, app-service bodies, or absolute local paths.
+
 Production beta promotion also includes `multi-node-beta.*` evidence. The generated or attached
 summary must prove catalog channel behavior, first-party install/update/rollback, app-data
 migration, backup/restore, subscription pressure, Trust Graph import, Social Inbox multi-source

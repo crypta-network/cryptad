@@ -1,0 +1,7 @@
+{
+  "kind": "cryptad-operator-support-bundle",
+  "rawSocialMessage": {
+    "type": "crypta.social.message.v1",
+    "body": "Fake private social message"
+  }
+}

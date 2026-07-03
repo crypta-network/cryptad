@@ -51,6 +51,7 @@ REQUIRED_DOCS = (
     "docs/production-first-party-catalog-channels.md",
     "docs/production-beta-release-pipeline.md",
     "docs/multi-node-beta-soak-and-upgrade-drill.md",
+    "docs/privacy-preserving-beta-diagnostics.md",
     "docs/feed-reader-reference-app.md",
     "docs/social-inbox-reference-app.md",
     "docs/trust-graph-preview.md",

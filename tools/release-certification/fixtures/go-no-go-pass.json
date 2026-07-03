@@ -316,6 +316,37 @@
           "summary": "Trust/social content format profiles passed."
         },
         {
+          "details": {
+            "checks": {
+              "lifecycleSummaries": true,
+              "productionBlockers": true,
+              "redactionFixtures": true,
+              "safeDiagnosticsSummary": true,
+              "schemaV2": true,
+              "webShellExportBoundary": true
+            }
+          },
+          "id": "app-platform.privacy-preserving-beta-diagnostics",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-app-platform",
+          "status": "pass",
+          "summary": "Privacy-preserving beta diagnostics passed."
+        },
+        {
+          "id": "operator-beta.support-bundle-redaction",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-app-platform",
+          "status": "pass",
+          "summary": "Operator support-bundle redaction passed."
+        },
+        {
+          "id": "operator-rc.support-bundle-wizard",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-app-platform",
+          "status": "pass",
+          "summary": "Operator RC support-bundle wizard passed."
+        },
+        {
           "id": "reference-app.trust-graph",
           "requiredForReleaseCandidate": true,
           "source": "fixture-app-platform",
@@ -560,6 +591,12 @@
           "releaseBlocker": false,
           "status": "pass",
           "title": "Production beta go/no-go dashboard"
+        },
+        {
+          "id": "privacy-preserving-diagnostics-risk",
+          "releaseBlocker": false,
+          "status": "pass",
+          "title": "Privacy-preserving beta diagnostics"
         }
       ],
       "status": "pass"

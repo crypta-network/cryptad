@@ -3,11 +3,15 @@ package network.crypta.platform.api;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.HexFormat;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import network.crypta.platform.api.appdata.AppDataRecord;
@@ -17,6 +21,7 @@ import network.crypta.platform.api.appdata.InMemoryAppDataStore;
 import network.crypta.platform.api.content.subscriptions.ContentSubscriptionSchedulerConfig;
 import network.crypta.platform.api.content.subscriptions.ContentSubscriptionService;
 import network.crypta.platform.api.content.subscriptions.InMemoryContentSubscriptionStore;
+import network.crypta.platform.api.json.PlatformApiJsonWriter;
 import network.crypta.platform.api.networkbudget.AppNetworkBudgetConfig;
 import network.crypta.platform.api.networkbudget.AppNetworkBudgetOperation;
 import network.crypta.platform.api.networkbudget.AppNetworkBudgetService;
@@ -35,6 +40,7 @@ import org.mockito.Answers;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -49,6 +55,7 @@ class PlatformApiOperatorRoutesTest {
   private static final String PARAM_PLAN_TOKEN = "planToken";
   private static final String SOURCE = "USK@example/feed/7/feed.json";
   private static final Instant NOW = Instant.parse("2026-05-24T12:00:00Z");
+  private static final HexFormat HEX = HexFormat.of();
 
   @Test
   void route_whenOperatorDashboardRequested_expectSectionShape() {
@@ -250,8 +257,38 @@ class PlatformApiOperatorRoutesTest {
     assertFalse(response.body().contains("/work/private/catalog"));
     assertFalse(response.body().contains("USK@example/private/0"));
     assertFalse(response.body().contains(FORM_FIELD_ASSIGNMENT));
-    assertTrue(response.body().contains("<redacted"));
+    assertFalse(response.body().contains("\"plainTextExport\""));
+    assertFalse(response.body().contains("\"lines\""));
+    assertTrue(response.body().contains("\"schemaVersion\":2"));
+    assertTrue(response.body().contains("\"privacy\""));
+    assertTrue(response.body().contains("\"supportDigest\""));
+    assertTrue(response.body().contains("\"supportBundleVersion\":2"));
+    assertTrue(response.body().contains("\"recoveryContext\""));
+    assertTrue(response.body().contains("\"redactedLineCount\":3"));
     assertTrue(response.body().contains("\"redaction\":{\"status\":\"pass\""));
+  }
+
+  @Test
+  void supportBundleForExport_whenRouteFieldsAdded_expectDigestCoversFinalPayload() {
+    LinkedHashMap<String, Object> serviceBundle = new LinkedHashMap<>();
+    serviceBundle.put("kind", "cryptad-operator-support-bundle");
+    serviceBundle.put("schemaVersion", 2);
+    serviceBundle.put("supportDigest", Map.of("algorithm", "SHA-256", "digest", "0".repeat(64)));
+    LinkedHashMap<String, Object> recoveryContext = new LinkedHashMap<>();
+    recoveryContext.put("kind", "operator-recovery-context");
+    recoveryContext.put("supportBundlePayloadPolicy", "metadata-only");
+
+    Map<String, Object> exported =
+        PlatformApiOperatorRoutes.supportBundleForExport(serviceBundle, recoveryContext);
+
+    Map<String, Object> supportDigest = mapValue(exported.get("supportDigest"));
+    LinkedHashMap<String, Object> digestInput = new LinkedHashMap<>(exported);
+    digestInput.remove("supportDigest");
+    assertEquals("SHA-256", supportDigest.get("algorithm"));
+    assertEquals(2, exported.get("supportBundleVersion"));
+    assertEquals(recoveryContext, exported.get("recoveryContext"));
+    assertEquals(sha256(PlatformApiJsonWriter.write(digestInput)), supportDigest.get("digest"));
+    assertNotEquals("0".repeat(64), supportDigest.get("digest"));
   }
 
   @Test
@@ -709,6 +746,20 @@ class PlatformApiOperatorRoutesTest {
   private static PlatformApiRequest request(
       String method, List<String> segments, Map<String, List<String>> params) {
     return request(method, segments, params, PlatformApiPrincipal.hostOperator());
+  }
+
+  @SuppressWarnings("unchecked")
+  private static Map<String, Object> mapValue(Object value) {
+    return value instanceof Map<?, ?> map ? (Map<String, Object>) map : Map.of();
+  }
+
+  private static String sha256(String value) {
+    try {
+      return HEX.formatHex(
+          MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8)));
+    } catch (NoSuchAlgorithmException exception) {
+      throw new IllegalStateException("SHA-256 is unavailable", exception);
+    }
   }
 
   private static String planToken(String body) {

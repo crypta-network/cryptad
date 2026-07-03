@@ -108,6 +108,44 @@ class OperatorSupportRedactorTest {
   }
 
   @Test
+  void redact_whenPrivacyPreservingDiagnosticsFieldsPresent_expectUnsafeFieldsOmitted() {
+    LinkedHashMap<String, Object> input = new LinkedHashMap<>();
+    input.put("catalogId", "stable-catalog");
+    input.put("appId", "feed-reader");
+    input.put("publicContentUri", "crypta:CHK@public-content-digest/profile.json");
+    input.put("includesRawAppData", false);
+    input.put("rawAppDataExcluded", true);
+    input.put("rawAppDataValuesExcluded", true);
+    input.put("rawProfileDocument", "{\"displayName\":\"Private Profile\"}");
+    input.put("rawFeedSnapshot", "{\"items\":[{\"body\":\"Private Feed Item\"}]}");
+    input.put("rawTrustStatement", "{\"subject\":\"Private Trust Subject\"}");
+    input.put("rawSocialMessage", "{\"body\":\"Private Social Message\"}");
+    input.put("rawSocialOutbox", "{\"messages\":[\"Private Outbox Message\"]}");
+    input.put("canonicalSignaturePayload", "canonical-private-payload");
+    input.put("rawSignatureValue", "raw-private-signature");
+    input.put("appServiceInvocationBody", "{\"request\":\"Private App Service Body\"}");
+    input.put("vaultIdentityMaterial", "vault-private-identity");
+    input.put("privateInsertUri", "crypta:SSK@private-insert-key/example");
+    input.put("rawAppDataRecordKey", "private-record-key");
+    input.put("rawAppDataValue", "private-record-value");
+
+    OperatorSupportRedactor.RedactionResult result = OperatorSupportRedactor.redact(input);
+
+    Map<?, ?> redacted = assertInstanceOf(Map.class, result.value());
+    String rendered = redacted.toString();
+    assertTrue(redacted.containsKey("catalogId"));
+    assertTrue(redacted.containsKey("appId"));
+    assertTrue(redacted.containsKey("includesRawAppData"));
+    assertTrue(redacted.containsKey("rawAppDataExcluded"));
+    assertTrue(redacted.containsKey("rawAppDataValuesExcluded"));
+    assertTrue(rendered.contains("stable-catalog"));
+    assertTrue(rendered.contains("feed-reader"));
+    assertTrue(rendered.contains("<redacted-content-uri>"));
+    assertPrivacyDiagnosticsValuesRedacted(rendered);
+    assertPrivacyDiagnosticsFieldsRecorded(result);
+  }
+
+  @Test
   void redact_whenOperatorRcRecoveryContextContainsSecrets_expectUnsafeValuesRemoved() {
     Map<String, Object> recoveryContext =
         Map.ofEntries(
@@ -246,6 +284,50 @@ class OperatorSupportRedactorTest {
     assertTrue(rendered.contains("<redacted-path>"));
     assertTrue(rendered.contains("/api/v1/operator/support-bundle"));
     assertTrue(rendered.contains("/app/node/#beta-dashboard"));
+  }
+
+  @Test
+  void redact_whenAbsolutePathsFollowColonLabels_expectUnsafePathsRemoved() {
+    String labeledPosixPath = "installPath:" + posixAppPath();
+    String labeledDirPath =
+        "workingDir:" + '/' + String.join("/", "work", CRYPTAD_PATH_ELEMENT, "run");
+    String labeledWindowsPath = "path:" + windowsDriveRollbackPath();
+    String safeRoute = "route:/api/v1/operator/support-bundle";
+    String safeUrl = "url:https://example.invalid/support/path";
+    Map<String, Object> input =
+        Map.of(
+            DIAGNOSTIC_FIELD,
+            String.join(
+                ", ", labeledPosixPath, labeledDirPath, labeledWindowsPath, safeRoute, safeUrl));
+
+    OperatorSupportRedactor.RedactionResult result = OperatorSupportRedactor.redact(input);
+
+    String rendered = result.value().toString();
+    assertFalse(rendered.contains(labeledPosixPath));
+    assertFalse(rendered.contains(labeledDirPath));
+    assertFalse(rendered.contains(labeledWindowsPath));
+    assertFalse(rendered.contains("/work/" + CRYPTAD_PATH_ELEMENT + "/run"));
+    assertFalse(rendered.contains(USERS_PATH_ELEMENT + "/operator/AppData"));
+    assertTrue(rendered.contains("installPath:<redacted-path>"));
+    assertTrue(rendered.contains("workingDir:<redacted-path>"));
+    assertTrue(rendered.contains("path:" + REDACTED));
+    assertTrue(rendered.contains(safeRoute));
+    assertTrue(rendered.contains(safeUrl));
+  }
+
+  @Test
+  void redact_whenLocalPathFieldPresent_expectFieldOmitted() {
+    Map<String, Object> input =
+        Map.of("localPath", "/home/operator/.cryptad/private/catalog.json", "status", "warning");
+
+    OperatorSupportRedactor.RedactionResult result = OperatorSupportRedactor.redact(input);
+
+    Map<?, ?> redacted = assertInstanceOf(Map.class, result.value());
+    String rendered = redacted.toString();
+    assertFalse(redacted.containsKey("localPath"));
+    assertFalse(rendered.contains("/home/operator/.cryptad/private/catalog.json"));
+    assertTrue(redacted.containsKey("status"));
+    assertTrue(result.omittedFields().contains("localPath"));
   }
 
   private static String posixAppPath() {
@@ -406,6 +488,48 @@ class OperatorSupportRedactorTest {
             .filter(rendered::contains)
             .toList();
     assertTrue(leakedValues.isEmpty(), () -> EXPECTED_VALUES_REDACTED + leakedValues);
+  }
+
+  private static void assertPrivacyDiagnosticsValuesRedacted(String rendered) {
+    List<String> leakedValues =
+        Stream.of(
+                "public-content-digest",
+                "Private Profile",
+                "Private Feed Item",
+                "Private Trust Subject",
+                "Private Social Message",
+                "Private Outbox Message",
+                "canonical-private-payload",
+                "raw-private-signature",
+                "Private App Service Body",
+                "vault-private-identity",
+                "private-insert-key",
+                "private-record-key",
+                "private-record-value")
+            .filter(rendered::contains)
+            .toList();
+    assertTrue(leakedValues.isEmpty(), () -> EXPECTED_VALUES_REDACTED + leakedValues);
+  }
+
+  private static void assertPrivacyDiagnosticsFieldsRecorded(
+      OperatorSupportRedactor.RedactionResult result) {
+    List<String> missingFields =
+        Stream.of(
+                "rawProfileDocument",
+                "rawFeedSnapshot",
+                "rawTrustStatement",
+                "rawSocialMessage",
+                "rawSocialOutbox",
+                "canonicalSignaturePayload",
+                "rawSignatureValue",
+                "appServiceInvocationBody",
+                "vaultIdentityMaterial",
+                "privateInsertUri",
+                "rawAppDataRecordKey",
+                "rawAppDataValue")
+            .filter(fieldName -> !result.omittedFields().contains(fieldName))
+            .toList();
+    assertTrue(missingFields.isEmpty(), () -> EXPECTED_OMITTED_FIELDS + missingFields);
   }
 
   private static void verifySecurityIncidentFieldsRecorded(
