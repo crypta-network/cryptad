@@ -617,6 +617,26 @@ class OperatorBetaDashboardServiceTest {
   }
 
   @Test
+  void supportBundle_whenMigrationRequiresOperatorReview_expectMigrationSectionWarning() {
+    AppUpdateService updateService = mock(AppUpdateService.class);
+    when(updateService.summary(APP_ID))
+        .thenReturn(
+            updateSummary(
+                availableCandidateWithDataMigration(
+                    Map.of("status", "ready", "operatorReviewRequired", true)),
+                Map.of(AVAILABLE, false),
+                rollbackAvailable()));
+
+    Map<String, Object> bundle = service(appsHandler(), updateService).supportBundle();
+
+    Map<String, Object> migrations =
+        mapValue(mapValue(bundle.get("sections")).get(MIGRATIONS_SECTION));
+    assertEquals(WARNING, migrations.get("status"));
+    assertEquals(1L, migrations.get("migrationWarningCount"));
+    assertEquals("operator_review_required", migrations.get("lastSafeStatusMessage"));
+  }
+
+  @Test
   void supportBundle_whenDiagnosticSectionReportsError_expectDiagnosticsLifecycleError() {
     Map<String, Object> bundle =
         serviceWithDiagnosticLines(List.of("Errors: 2", "Warnings: 0")).supportBundle();

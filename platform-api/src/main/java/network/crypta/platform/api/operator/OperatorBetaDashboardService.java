@@ -84,6 +84,7 @@ public final class OperatorBetaDashboardService {
   private static final String MIGRATIONS_FIELD = "migrations";
   private static final String MATERIAL_CONSENT_REASONS_FIELD = "materialConsentReasons";
   private static final String OPERATOR_ACTION_REQUIRED_FIELD = "operatorActionRequired";
+  private static final String OPERATOR_REVIEW_REQUIRED_FIELD = "operatorReviewRequired";
   private static final String PENDING = "pending";
   private static final String PAUSED_STATUS = "paused";
   private static final String PLAIN_TEXT_EXPORT_AVAILABLE_FIELD = "plainTextExportAvailable";
@@ -1516,6 +1517,7 @@ public final class OperatorBetaDashboardService {
     return !stringList(migration.get(WARNINGS_FIELD)).isEmpty()
         || stringValue(migration.get(LAST_ERROR_CODE_FIELD)) != null
         || stringValue(migration.get(BLOCK_REASON_FIELD)) != null
+        || booleanValue(migration.get(OPERATOR_REVIEW_REQUIRED_FIELD))
         || "missing_migration".equals(status)
         || "dry_run_failed".equals(status)
         || "rollback_incompatible".equals(status)
@@ -1547,6 +1549,9 @@ public final class OperatorBetaDashboardService {
       String blockReason = stringValue(migration.get(BLOCK_REASON_FIELD));
       if (blockReason != null) {
         return blockReason;
+      }
+      if (booleanValue(migration.get(OPERATOR_REVIEW_REQUIRED_FIELD))) {
+        return "operator_review_required";
       }
       if (hasMigrationWarning(migration)) {
         return stringValue(migration.get(STATUS_FIELD));
