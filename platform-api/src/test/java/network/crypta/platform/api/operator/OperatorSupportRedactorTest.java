@@ -113,6 +113,7 @@ class OperatorSupportRedactorTest {
     input.put("catalogId", "stable-catalog");
     input.put("appId", "feed-reader");
     input.put("publicContentUri", "crypta:CHK@public-content-digest/profile.json");
+    input.put("includesRawAppData", false);
     input.put("rawAppDataExcluded", true);
     input.put("rawAppDataValuesExcluded", true);
     input.put("rawProfileDocument", "{\"displayName\":\"Private Profile\"}");
@@ -134,6 +135,7 @@ class OperatorSupportRedactorTest {
     String rendered = redacted.toString();
     assertTrue(redacted.containsKey("catalogId"));
     assertTrue(redacted.containsKey("appId"));
+    assertTrue(redacted.containsKey("includesRawAppData"));
     assertTrue(redacted.containsKey("rawAppDataExcluded"));
     assertTrue(redacted.containsKey("rawAppDataValuesExcluded"));
     assertTrue(rendered.contains("stable-catalog"));
@@ -311,6 +313,21 @@ class OperatorSupportRedactorTest {
     assertTrue(rendered.contains("path:" + REDACTED));
     assertTrue(rendered.contains(safeRoute));
     assertTrue(rendered.contains(safeUrl));
+  }
+
+  @Test
+  void redact_whenLocalPathFieldPresent_expectFieldOmitted() {
+    Map<String, Object> input =
+        Map.of("localPath", "/home/operator/.cryptad/private/catalog.json", "status", "warning");
+
+    OperatorSupportRedactor.RedactionResult result = OperatorSupportRedactor.redact(input);
+
+    Map<?, ?> redacted = assertInstanceOf(Map.class, result.value());
+    String rendered = redacted.toString();
+    assertFalse(redacted.containsKey("localPath"));
+    assertFalse(rendered.contains("/home/operator/.cryptad/private/catalog.json"));
+    assertTrue(redacted.containsKey("status"));
+    assertTrue(result.omittedFields().contains("localPath"));
   }
 
   private static String posixAppPath() {

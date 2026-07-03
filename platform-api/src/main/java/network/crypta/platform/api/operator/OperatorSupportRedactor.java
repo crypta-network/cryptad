@@ -47,7 +47,8 @@ public final class OperatorSupportRedactor {
           "rawappdatavaluesexcluded",
           "rawappdatapresent",
           "rawappdataredacted",
-          "rawappdatarequired");
+          "rawappdatarequired",
+          "includesrawappdata");
   private static final Set<String> PATH_LABEL_FIELD_NAMES =
       Set.of(
           "path",
@@ -282,7 +283,8 @@ public final class OperatorSupportRedactor {
 
   private static boolean isSensitiveFieldName(String fieldName, Object value) {
     String normalized = normalizeFieldName(fieldName);
-    return isSensitiveCredentialKey(normalized, value);
+    return isSensitiveCredentialKey(normalized, value)
+        || PATH_LABEL_FIELD_NAMES.contains(normalized);
   }
 
   private static String redactString(String input) {

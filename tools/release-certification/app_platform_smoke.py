@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Collect app-platform release-certification smoke evidence.
 
-The smoke runner keeps its self-test Python-only and offline.  Normal runs can
+The smoke runner keeps its self-test offline and deterministic.  Normal runs can
 optionally invoke Gradle and the installed ``crypta-app`` launcher to validate
 first-party staged apps, sample app packaging, signed bundles, signed catalogs,
 app-owned static UI, content fetch, content subscriptions and feed-reader routes,
@@ -17202,73 +17202,327 @@ def support_bundle_fixture_findings(value: Any, path: str = "$") -> list[str]:
     return findings
 
 
-def support_bundle_redacted_fixture_output(value: Any) -> Any:
+def java_string_literal(value: str) -> str:
+    return json.dumps(value, ensure_ascii=True)
+
+
+def support_bundle_java_literal(value: Any) -> str:
     if isinstance(value, dict):
-        redacted: dict[str, Any] = {}
+        entries: list[str] = []
         for raw_key, child in value.items():
-            key = str(raw_key)
-            normalized = re.sub(r"[^A-Za-z0-9]", "", key).lower()
-            if normalized in SUPPORT_BUNDLE_SENSITIVE_KEYS:
-                continue
-            redacted[key] = support_bundle_redacted_fixture_output(child)
-        return redacted
+            entries.append(java_string_literal(str(raw_key)))
+            entries.append(support_bundle_java_literal(child))
+        return f"map({', '.join(entries)})"
     if isinstance(value, list):
-        return [support_bundle_redacted_fixture_output(child) for child in value]
+        return f"list({', '.join(support_bundle_java_literal(child) for child in value)})"
     if isinstance(value, str):
-        if "-----BEGIN PRIVATE KEY-----" in value or "-----BEGIN OPENSSH PRIVATE KEY-----" in value:
-            return "<redacted-private-key>"
-        redacted = SUPPORT_BUNDLE_CONTENT_URI_RE.sub("<redacted-content-uri>", value)
-        redacted = SUPPORT_BUNDLE_BEARER_TOKEN_RE.sub("Bearer <redacted-token>", redacted)
-        redacted = SUPPORT_BUNDLE_LOCAL_PATH_RE.sub("<redacted-local-path>", redacted)
-        return "<redacted-app-data-backup>" if "crypta-app-data-backup" in redacted else redacted
-    return value
+        return java_string_literal(value)
+    if isinstance(value, bool):
+        return "Boolean.TRUE" if value else "Boolean.FALSE"
+    if value is None:
+        return "null"
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, float):
+        return repr(value)
+    return java_string_literal(str(value))
 
 
-def support_bundle_fixture_report(fixtures_dir: Path) -> dict[str, Any]:
+def support_bundle_java_string_set_literal(values: frozenset[str] | set[str]) -> str:
+    return "Set.of(" + ", ".join(java_string_literal(value) for value in sorted(values)) + ")"
+
+
+def support_bundle_redactor_fixture_runner_source(
+    fixture_values: dict[str, dict[str, Any]],
+) -> str:
+    fixture_entries = []
+    for fixture_name in SUPPORT_BUNDLE_REDACTION_FIXTURES:
+        if fixture_name not in fixture_values:
+            continue
+        fixture_entries.append(
+            "    fixtures.add(new Fixture("
+            + java_string_literal(fixture_name)
+            + ", "
+            + ("true" if fixture_name.endswith("-safe.json") else "false")
+            + ", "
+            + support_bundle_java_literal(fixture_values[fixture_name])
+            + "));"
+        )
+    return (
+        """
+package network.crypta.platform.api.operator;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.regex.Pattern;
+
+final class SupportBundleRedactorFixtureRunner {
+  private static final Set<String> SENSITIVE_KEYS = """
+        + support_bundle_java_string_set_literal(SUPPORT_BUNDLE_SENSITIVE_KEYS)
+        + """;
+  private static final Pattern CONTENT_URI =
+      Pattern.compile("(?i)\\\\b(?:crypta:)?(?:CHK|SSK|USK|KSK)@");
+  private static final Pattern BEARER_TOKEN =
+      Pattern.compile("(?i)\\\\bBearer\\\\s+[A-Za-z0-9._~-]+");
+  private static final Pattern LOCAL_PATH =
+      Pattern.compile("(?i)(?:/work/|/home/|/Users/|C:\\\\\\\\|file:/)");
+
+  public static void main(String[] args) {
+    List<Fixture> fixtures = new ArrayList<>();
+"""
+        + "\n".join(fixture_entries)
+        + """
+    boolean passed = true;
+    for (Fixture fixture : fixtures) {
+      List<String> rawFindings = findings(fixture.value());
+      OperatorSupportRedactor.RedactionResult result =
+          OperatorSupportRedactor.redact(fixture.value());
+      List<String> redactedFindings = findings(result.value());
+      boolean fixturePassed =
+          fixture.expectedSafe()
+              ? rawFindings.isEmpty() && redactedFindings.isEmpty()
+              : !rawFindings.isEmpty() && redactedFindings.isEmpty();
+      if (!fixturePassed) {
+        passed = false;
+      }
+      System.out.println(
+          String.join(
+              "\\t",
+              "RESULT",
+              fixture.name(),
+              fixturePassed ? "pass" : "fail",
+              Boolean.toString(fixture.expectedSafe()),
+              Integer.toString(rawFindings.size()),
+              Integer.toString(redactedFindings.size()),
+              Integer.toString(result.omittedFields().size()),
+              String.join("|", rawFindings),
+              String.join("|", redactedFindings)));
+    }
+    if (!passed) {
+      System.exit(1);
+    }
+  }
+
+  private static List<String> findings(Object value) {
+    List<String> findings = new ArrayList<>();
+    appendFindings(value, findings);
+    return findings;
+  }
+
+  private static void appendFindings(Object value, List<String> findings) {
+    if (value instanceof Map<?, ?> map) {
+      for (Map.Entry<?, ?> entry : map.entrySet()) {
+        String key = String.valueOf(entry.getKey());
+        if (SENSITIVE_KEYS.contains(normalize(key))) {
+          findings.add("sensitive-key");
+        }
+        appendFindings(entry.getValue(), findings);
+      }
+      return;
+    }
+    if (value instanceof List<?> list) {
+      for (Object child : list) {
+        appendFindings(child, findings);
+      }
+      return;
+    }
+    if (value instanceof String text) {
+      if (CONTENT_URI.matcher(text).find()) {
+        findings.add("content-uri");
+      }
+      if (BEARER_TOKEN.matcher(text).find()) {
+        findings.add("bearer-token");
+      }
+      if (text.contains("-----BEGIN PRIVATE KEY-----")
+          || text.contains("-----BEGIN OPENSSH PRIVATE KEY-----")) {
+        findings.add("private-key");
+      }
+      if (LOCAL_PATH.matcher(text).find()) {
+        findings.add("local-path");
+      }
+      if (text.contains("crypta-app-data-backup")) {
+        findings.add("app-data-backup");
+      }
+    }
+  }
+
+  private static String normalize(String key) {
+    return key.replaceAll("[^A-Za-z0-9]", "").toLowerCase(java.util.Locale.ROOT);
+  }
+
+  private static Map<String, Object> map(Object... entries) {
+    LinkedHashMap<String, Object> map = new LinkedHashMap<>();
+    for (int index = 0; index < entries.length; index += 2) {
+      map.put((String) entries[index], entries[index + 1]);
+    }
+    return map;
+  }
+
+  private static List<Object> list(Object... items) {
+    return Arrays.asList(items);
+  }
+
+  private record Fixture(String name, boolean expectedSafe, Object value) {}
+}
+"""
+    )
+
+
+def parse_support_bundle_redactor_fixture_output(stdout: str) -> dict[str, dict[str, Any]]:
+    entries: dict[str, dict[str, Any]] = {}
+    for line in stdout.splitlines():
+        if not line.startswith("RESULT\t"):
+            continue
+        parts = line.split("\t", 8)
+        if len(parts) != 9:
+            continue
+        (
+            _marker,
+            fixture_name,
+            status,
+            expected_safe,
+            raw_count,
+            redacted_count,
+            omitted_count,
+            findings,
+            redacted_findings,
+        ) = parts
+        entries[fixture_name] = {
+            "fixture": fixture_name,
+            "status": status,
+            "expectedSafe": expected_safe == "true",
+            "rawFindingCount": int(raw_count),
+            "redactedFindingCount": int(redacted_count),
+            "omittedFieldCount": int(omitted_count),
+            "findings": [finding for finding in findings.split("|") if finding][:8],
+            "redactedFindings": [
+                finding for finding in redacted_findings.split("|") if finding
+            ][:8],
+            "redactor": "OperatorSupportRedactor",
+        }
+    return entries
+
+
+def run_support_bundle_redactor_fixture_runner(
+    settings: Settings, fixture_values: dict[str, dict[str, Any]]
+) -> dict[str, Any]:
+    redactor_source = (
+        settings.workspace_root
+        / "platform-api/src/main/java/network/crypta/platform/api/operator/OperatorSupportRedactor.java"
+    )
+    if not redactor_source.is_file():
+        return {
+            "passed": False,
+            "entriesByFixture": {},
+            "error": "OperatorSupportRedactor.java is missing.",
+        }
+    harness_root = settings.out_dir / "artifacts" / "support-redactor-fixtures"
+    if harness_root.exists():
+        shutil.rmtree(harness_root)
+    source_dir = harness_root / "src/network/crypta/platform/api/operator"
+    classes_dir = harness_root / "classes"
+    source_dir.mkdir(parents=True, exist_ok=True)
+    classes_dir.mkdir(parents=True, exist_ok=True)
+    runner_source = source_dir / "SupportBundleRedactorFixtureRunner.java"
+    runner_source.write_text(
+        support_bundle_redactor_fixture_runner_source(fixture_values),
+        encoding="utf-8",
+    )
+    compile_result = run_command(
+        ["javac", "-d", str(classes_dir), str(redactor_source), str(runner_source)],
+        settings,
+        "support-bundle-redactor-fixtures-javac",
+        timeout_seconds=120,
+    )
+    if compile_result.exit_code != 0:
+        return {
+            "passed": False,
+            "entriesByFixture": {},
+            "compileCommand": command_details(compile_result, settings),
+            "error": "OperatorSupportRedactor fixture runner did not compile.",
+        }
+    run_result = run_command(
+        [
+            "java",
+            "-cp",
+            str(classes_dir),
+            "network.crypta.platform.api.operator.SupportBundleRedactorFixtureRunner",
+        ],
+        settings,
+        "support-bundle-redactor-fixtures-java",
+        timeout_seconds=120,
+    )
+    entries_by_fixture = parse_support_bundle_redactor_fixture_output(run_result.stdout)
+    return {
+        "passed": run_result.exit_code == 0
+        and len(entries_by_fixture) == len(fixture_values)
+        and all(entry["status"] == "pass" for entry in entries_by_fixture.values()),
+        "entriesByFixture": entries_by_fixture,
+        "compileCommand": command_details(compile_result, settings),
+        "runCommand": command_details(run_result, settings),
+        "runner": display_path(runner_source, settings.workspace_root),
+    }
+
+
+def support_bundle_fixture_report(fixtures_dir: Path, settings: Settings) -> dict[str, Any]:
     entries: list[dict[str, Any]] = []
     missing: list[str] = []
+    fixture_values: dict[str, dict[str, Any]] = {}
     for fixture_name in SUPPORT_BUNDLE_REDACTION_FIXTURES:
         path = fixtures_dir / fixture_name
         value = read_json_file(path)
         if value is None:
             missing.append(fixture_name)
+            continue
+        fixture_values[fixture_name] = value
+    actual_redactor = run_support_bundle_redactor_fixture_runner(settings, fixture_values)
+    actual_entries = actual_redactor.get("entriesByFixture", {})
+    for fixture_name in SUPPORT_BUNDLE_REDACTION_FIXTURES:
+        expected_safe = fixture_name.endswith("-safe.json")
+        if fixture_name in missing:
             entries.append(
                 {
                     "fixture": fixture_name,
                     "status": "missing",
-                    "expectedSafe": fixture_name.endswith("-safe.json"),
+                    "expectedSafe": expected_safe,
                     "rawFindingCount": 0,
                     "redactedFindingCount": 0,
+                    "omittedFieldCount": 0,
                     "findings": [],
                     "redactedFindings": [],
+                    "redactor": "OperatorSupportRedactor",
                 }
             )
             continue
-        findings = support_bundle_fixture_findings(value)
-        redacted_output = support_bundle_redacted_fixture_output(value)
-        redacted_findings = support_bundle_fixture_findings(redacted_output)
-        expected_safe = fixture_name.endswith("-safe.json")
-        status = (
-            "pass"
-            if (expected_safe and not findings and not redacted_findings)
-            or (not expected_safe and findings and not redacted_findings)
-            else "fail"
-        )
-        entries.append(
-            {
+        entry = actual_entries.get(fixture_name)
+        if entry is None:
+            value = fixture_values[fixture_name]
+            findings = support_bundle_fixture_findings(value)
+            entry = {
                 "fixture": fixture_name,
-                "status": status,
+                "status": "fail",
                 "expectedSafe": expected_safe,
                 "rawFindingCount": len(findings),
-                "redactedFindingCount": len(redacted_findings),
+                "redactedFindingCount": 0,
+                "omittedFieldCount": 0,
                 "findings": findings[:8],
-                "redactedFindings": redacted_findings[:8],
+                "redactedFindings": [],
+                "redactor": "OperatorSupportRedactor",
             }
-        )
+        entries.append(entry)
     return {
         "missing": missing,
         "entries": entries,
-        "passed": not missing and all(entry["status"] == "pass" for entry in entries),
+        "actualRedactor": {
+            key: value for key, value in actual_redactor.items() if key != "entriesByFixture"
+        },
+        "passed": not missing
+        and actual_redactor.get("passed") is True
+        and all(entry["status"] == "pass" for entry in entries),
     }
 
 
@@ -17324,7 +17578,9 @@ def collect_privacy_preserving_beta_diagnostics_evidence(settings: Settings) -> 
     operator_routes_test_text = read_source(operator_routes_test_source)
     redactor_test_text = read_source(redactor_test_source)
     service_test_text = read_source(service_test_source)
-    fixture_report = support_bundle_fixture_report(workspace / "tools/release-certification/fixtures")
+    fixture_report = support_bundle_fixture_report(
+        workspace / "tools/release-certification/fixtures", settings
+    )
 
     lifecycle_sections = (
         '"catalog"',
@@ -17822,7 +18078,7 @@ def settings_from_args(args: argparse.Namespace) -> Settings:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--self-test", action="store_true", help="Run Python-only self-tests.")
+    parser.add_argument("--self-test", action="store_true", help="Run offline deterministic self-tests.")
     parser.add_argument("--workspace-root", type=Path, default=Path.cwd())
     parser.add_argument("--out-dir", type=Path, default=DEFAULT_OUT_DIR)
     parser.add_argument("--mode", choices=MODES, default=None)
@@ -24666,16 +24922,102 @@ record OperatorRecoveryTarget() {
         encoding="utf-8",
     )
     (operator_dir / "OperatorSupportRedactor.java").write_text(
-        'final class OperatorSupportRedactor { String[] fields = {"formpassword", '
-        '"browsersession", "plantoken", "requestbody", "rawbody", "sourcepath", "rollbackpath", '
-        '"backupbundle", "payloadbase64", "authorizationheader", "cisecretvalue", "rawappdata", '
-        '"privateinserturi", "rawprofiledocument", "rawfeedsnapshot", "rawtruststatement", '
-        '"rawsocialmessage", "appserviceinvocationbody", "vaultidentitymaterial"}; '
-        'String[] patterns = {"private_insert_uri", "public_content_uri", '
-        '"raw_profile_document", "raw_feed_snapshot", "raw_trust_statement", '
-        '"raw_social_message", "app_service_invocation_body", "vault_identity_material", '
-        '"nested_archive_or_base64_backup_payload"}; String marker = "crypta-app-data-backup"; '
-        'String value = REDACTED_APP_DATA_BACKUP; static Object patternsChecked(){ return null; } }\n',
+        """
+package network.crypta.platform.api.operator;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+final class OperatorSupportRedactor {
+  private static final String REDACTED_APP_DATA_BACKUP = "<redacted-app-data-backup>";
+  private static final Set<String> SENSITIVE_FIELD_NAMES =
+      Set.of(
+          "formpassword",
+          "browsersession",
+          "plantoken",
+          "requestbody",
+          "rawbody",
+          "sourcepath",
+          "rollbackpath",
+          "backupbundle",
+          "payloadbase64",
+          "authorizationheader",
+          "cisecretvalue",
+          "rawappdata",
+          "privateinserturi",
+          "rawprofiledocument",
+          "rawfeedsnapshot",
+          "rawtruststatement",
+          "rawsocialmessage",
+          "appserviceinvocationbody",
+          "vaultidentitymaterial",
+          "authorization",
+          "token",
+          "privatekey",
+          "rawappdatavalue",
+          "localpath",
+          "backuppayload");
+  String[] patterns = {"private_insert_uri", "public_content_uri",
+    "raw_profile_document", "raw_feed_snapshot", "raw_trust_statement",
+    "raw_social_message", "app_service_invocation_body", "vault_identity_material",
+    "nested_archive_or_base64_backup_payload"};
+  String marker = "crypta-app-data-backup";
+
+  static Object patternsChecked() {
+    return null;
+  }
+
+  static RedactionResult redact(Object value) {
+    LinkedHashSet<String> omittedFields = new LinkedHashSet<>();
+    return new RedactionResult(redactValue(value, omittedFields), List.copyOf(omittedFields));
+  }
+
+  private static Object redactValue(Object value, LinkedHashSet<String> omittedFields) {
+    if (value instanceof Map<?, ?> map) {
+      if (isBackupPayloadMap(map)) {
+        omittedFields.add("appDataBackup");
+        return REDACTED_APP_DATA_BACKUP;
+      }
+      LinkedHashMap<String, Object> redacted = new LinkedHashMap<>();
+      for (Map.Entry<?, ?> entry : map.entrySet()) {
+        String key = String.valueOf(entry.getKey());
+        if (SENSITIVE_FIELD_NAMES.contains(normalize(key))) {
+          omittedFields.add(key);
+          continue;
+        }
+        redacted.put(key, redactValue(entry.getValue(), omittedFields));
+      }
+      return redacted;
+    }
+    if (value instanceof List<?> list) {
+      ArrayList<Object> redacted = new ArrayList<>();
+      for (Object child : list) {
+        redacted.add(redactValue(child, omittedFields));
+      }
+      return redacted;
+    }
+    if (value instanceof String text && text.contains("crypta-app-data-backup")) {
+      return REDACTED_APP_DATA_BACKUP;
+    }
+    return value;
+  }
+
+  private static boolean isBackupPayloadMap(Map<?, ?> map) {
+    Object kind = map.get("kind");
+    return kind instanceof String text && "crypta-app-data-backup".equals(text);
+  }
+
+  private static String normalize(String value) {
+    return value.replaceAll("[^A-Za-z0-9]", "").toLowerCase(java.util.Locale.ROOT);
+  }
+
+  record RedactionResult(Object value, List<String> omittedFields) {}
+}
+""",
         encoding="utf-8",
     )
     (api_dir / "PlatformApiOperatorRoutes.java").write_text(
