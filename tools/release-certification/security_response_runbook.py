@@ -1105,6 +1105,11 @@ def validate_drill_artifact_files(
             errors.append(f"security drill artifact for {scenario_text} has the wrong evidenceMode")
             artifact_status = "fail"
         if strict:
+            if artifact.get("fixtureOnly") is True:
+                errors.append(
+                    f"security drill artifact for {scenario_text} must not be fixtureOnly"
+                )
+                artifact_status = "fail"
             stale, age_days, stale_reason = artifact_is_stale(artifact, evaluated_at, max_age_days)
             if stale:
                 errors.append(f"security drill artifact for {scenario_text} is stale: {stale_reason}")
@@ -2066,6 +2071,33 @@ def self_test() -> dict[str, Any]:
         fixture_summary["promotionReady"] = False
         checks["productionRejectsFixtureOnly"] = (
             validate_drills_summary(fixture_summary, production=True)["status"] == "fail"
+        )
+        fixture_artifacts_dir = tmpdir / "fixture-artifacts"
+        fixture_artifacts_summary_path = fixture_artifacts_dir / "security-drills-summary.json"
+        fixture_artifacts_summary = drill_run_all(
+            DEFAULT_MODEL,
+            fixture_artifacts_dir,
+            fixture_artifacts_summary_path,
+            release_id="cryptad-production-beta-self-test",
+            generated_at="2026-07-03T00:00:00Z",
+            fixture_only=True,
+        )
+        fixture_artifacts_summary["fixtureOnly"] = False
+        fixture_artifacts_summary["nonRelease"] = False
+        fixture_artifacts_summary["promotionReady"] = True
+        write_json(fixture_artifacts_summary_path, fixture_artifacts_summary)
+        fixture_artifacts_validation = validate_drill_artifact_files(
+            fixture_artifacts_summary,
+            fixture_artifacts_summary_path,
+            strict=True,
+            now=dt.datetime(2026, 7, 3, tzinfo=dt.timezone.utc),
+        )
+        checks["rejectFixtureOnlyArtifactsInStrictValidation"] = (
+            fixture_artifacts_validation["status"] == "fail"
+            and any(
+                str(error) == "security drill artifact for reviewer-key-compromise must not be fixtureOnly"
+                for error in fixture_artifacts_validation.get("errors", [])
+            )
         )
 
     failures = [name for name, ok in checks.items() if not ok]
