@@ -1482,6 +1482,124 @@ def app_platform_evidence(
     return items
 
 
+def security_drill_artifact_file_validation(
+    summary: dict[str, Any],
+    summary_path: Path,
+    workspace_root: Path,
+    out_dir: Path,
+) -> dict[str, Any]:
+    artifacts = summary.get("artifacts")
+    if not isinstance(artifacts, list):
+        return {
+            "status": "fail",
+            "errors": ["security drills summary artifacts must be an array"],
+            "redactionFindings": [],
+        }
+    source_dir = summary_path.parent
+    model_path = workspace_root / "tools/release-certification/production-security-response-runbook.json"
+    if not model_path.is_file():
+        model_path = Path(__file__).resolve().parent / "production-security-response-runbook.json"
+    expected_release_id = summary.get("releaseId")
+    expected_mode = summary.get("mode")
+    expected_evidence_mode = summary.get("evidenceMode")
+    errors: list[str] = []
+    redaction_findings: list[Any] = []
+    seen: set[str] = set()
+    checked: list[dict[str, Any]] = []
+    for index, entry in enumerate(artifacts):
+        if not isinstance(entry, dict):
+            errors.append(f"security drill artifact entry {index} must be an object")
+            continue
+        scenario = entry.get("scenario")
+        if scenario not in security_response_runbook.REQUIRED_DRILLS:
+            errors.append(f"security drill artifact entry {index} has an unknown scenario")
+            continue
+        scenario_text = str(scenario)
+        if scenario_text in seen:
+            errors.append(f"security drill artifact for {scenario_text} is duplicated")
+            continue
+        seen.add(scenario_text)
+        artifact_name = entry.get("artifact")
+        expected_name = security_response_runbook.DRILL_OUTPUT_FILENAMES[scenario_text]
+        if artifact_name != expected_name:
+            errors.append(f"security drill artifact for {scenario_text} must be named {expected_name}")
+            continue
+        if Path(str(artifact_name)).name != artifact_name:
+            errors.append(f"security drill artifact for {scenario_text} has an unsafe file name")
+            continue
+        artifact_path = source_dir / str(artifact_name)
+        display_artifact = display_path(artifact_path, workspace_root, out_dir)
+        if not artifact_path.is_file() or artifact_path.is_symlink():
+            errors.append(f"security drill artifact for {scenario_text} is missing")
+            checked.append(
+                {
+                    "scenario": scenario_text,
+                    "artifact": str(artifact_name),
+                    "path": display_artifact,
+                    "status": "missing",
+                }
+            )
+            continue
+        try:
+            digest = security_response_runbook.sha256_path(artifact_path)
+            verification = security_response_runbook.drill_verify(artifact_path, model_path)
+            artifact = read_json(artifact_path)
+        except (OSError, ValueError, json.JSONDecodeError):
+            errors.append(f"security drill artifact for {scenario_text} could not be verified")
+            checked.append(
+                {
+                    "scenario": scenario_text,
+                    "artifact": str(artifact_name),
+                    "path": display_artifact,
+                    "status": "fail",
+                }
+            )
+            continue
+        artifact_status = "pass"
+        if entry.get("digest") != digest:
+            errors.append(f"security drill artifact digest mismatch for {scenario_text}")
+            artifact_status = "fail"
+        if verification.get("status") != "pass":
+            errors.append(f"security drill artifact for {scenario_text} failed offline verification")
+            artifact_status = "fail"
+        verifier_findings = verification.get("redactionFindings")
+        if isinstance(verifier_findings, list):
+            redaction_findings.extend(verifier_findings)
+        if not isinstance(artifact, dict):
+            errors.append(f"security drill artifact for {scenario_text} is malformed")
+            artifact_status = "fail"
+        else:
+            if artifact.get("scenario") != scenario_text:
+                errors.append(f"security drill artifact for {scenario_text} has the wrong scenario")
+                artifact_status = "fail"
+            if artifact.get("releaseId") != expected_release_id:
+                errors.append(f"security drill artifact for {scenario_text} has the wrong releaseId")
+                artifact_status = "fail"
+            if artifact.get("mode") != expected_mode:
+                errors.append(f"security drill artifact for {scenario_text} has the wrong mode")
+                artifact_status = "fail"
+            if artifact.get("evidenceMode") != expected_evidence_mode:
+                errors.append(f"security drill artifact for {scenario_text} has the wrong evidenceMode")
+                artifact_status = "fail"
+        checked.append(
+            {
+                "scenario": scenario_text,
+                "artifact": str(artifact_name),
+                "path": display_artifact,
+                "digest": digest,
+                "status": artifact_status,
+            }
+        )
+    for scenario in sorted(set(security_response_runbook.REQUIRED_DRILLS) - seen):
+        errors.append(f"security drill artifact for {scenario} is missing")
+    return {
+        "status": "pass" if not errors else "fail",
+        "errors": errors,
+        "redactionFindings": security_response_runbook.safe_redaction_findings(redaction_findings),
+        "checked": checked,
+    }
+
+
 def security_drills_evidence(
     path: Path | None,
     workspace_root: Path,
@@ -1509,6 +1627,12 @@ def security_drills_evidence(
         summary,
         strict=mode == "release-candidate",
     )
+    artifact_validation = security_drill_artifact_file_validation(
+        summary,
+        source_path,
+        workspace_root,
+        out_dir,
+    )
     counts = summary.get("counts") if isinstance(summary.get("counts"), dict) else {}
     redaction = summary.get("redaction") if isinstance(summary.get("redaction"), dict) else {}
     validation_redaction_findings = validation.get("redactionFindings")
@@ -1517,9 +1641,20 @@ def security_drills_evidence(
     summary_redaction_findings = redaction.get("findings")
     if not isinstance(summary_redaction_findings, list):
         summary_redaction_findings = []
-    redaction_findings = [*validation_redaction_findings, *summary_redaction_findings]
+    artifact_redaction_findings = artifact_validation.get("redactionFindings")
+    if not isinstance(artifact_redaction_findings, list):
+        artifact_redaction_findings = []
+    redaction_findings = [
+        *validation_redaction_findings,
+        *summary_redaction_findings,
+        *artifact_redaction_findings,
+    ]
     if redaction.get("status") != "pass" and not redaction_findings:
         redaction_findings.append("security response drills summary redaction status is not pass")
+    validation_errors = list(validation.get("errors", [])) if isinstance(validation.get("errors"), list) else []
+    artifact_errors = (
+        artifact_validation.get("errors") if isinstance(artifact_validation.get("errors"), list) else []
+    )
     details = {
         "summaryRequired": True,
         "summaryStatus": summary.get("status", "missing"),
@@ -1541,18 +1676,22 @@ def security_drills_evidence(
         "releaseNotes": summary.get("releaseNotes", {}),
         "advisoryTemplate": summary.get("advisoryTemplate", {}),
         "artifacts": summary.get("artifacts", []),
-        "validationErrors": validation.get("errors", []),
-        "redactionClean": validation.get("redactionClean", False),
+        "artifactValidation": artifact_validation,
+        "validationErrors": [*validation_errors, *artifact_errors],
+        "redactionClean": validation.get("redactionClean", False) and not artifact_redaction_findings,
         "redactionFindings": redaction_findings,
     }
     details = dict(sanitize_value(details, workspace_root, out_dir))
-    if validation["status"] == "pass":
+    if validation["status"] == "pass" and artifact_validation.get("status") == "pass":
         passed = counts.get("passed", len(summary.get("passedScenarios", [])))
         required = counts.get("required", len(security_response_runbook.REQUIRED_DRILLS))
         headline = f"Security response drills passed for {passed}/{required} required scenarios."
         status = "pass"
     else:
-        headline = "Security response drills are missing, stale, failed, malformed, or redaction-unsafe."
+        headline = (
+            "Security response drills are missing, stale, failed, malformed, "
+            "artifact-incomplete, or redaction-unsafe."
+        )
         status = "fail"
     return EvidenceItem(
         "production-security.response-runbook",
@@ -8908,6 +9047,63 @@ def run_self_test(repo_root: Path) -> None:
             skip_git_metadata=True,
             history_dir=workspace / "build/no-auto-history",
         )
+        security_item = security_drills_evidence(
+            security_drills_summary,
+            workspace.resolve(),
+            out_dir.resolve(),
+            "release-candidate",
+        )
+        assert security_item.status == "pass", security_item
+        missing_artifacts_dir = workspace / "security-drills-missing-artifacts"
+        missing_artifacts_summary = missing_artifacts_dir / "security-drills-summary.json"
+        security_drills_summary_value = read_json(security_drills_summary)
+        assert isinstance(security_drills_summary_value, dict), security_drills_summary
+        write_json(missing_artifacts_summary, security_drills_summary_value)
+        missing_artifacts_item = security_drills_evidence(
+            missing_artifacts_summary,
+            workspace.resolve(),
+            out_dir.resolve(),
+            "release-candidate",
+        )
+        assert missing_artifacts_item.status == "fail", missing_artifacts_item
+        assert any(
+            "security drill artifact for reviewer-key-compromise is missing" == error
+            for error in missing_artifacts_item.details.get("validationErrors", [])
+        ), missing_artifacts_item.details
+        tampered_artifacts_dir = workspace / "security-drills-tampered-artifacts"
+        shutil.copytree(security_drills_summary.parent, tampered_artifacts_dir)
+        tampered_summary_path = tampered_artifacts_dir / "security-drills-summary.json"
+        tampered_artifact_path = (
+            tampered_artifacts_dir
+            / security_response_runbook.DRILL_OUTPUT_FILENAMES["reviewer-key-compromise"]
+        )
+        tampered_artifact = read_json(tampered_artifact_path)
+        assert isinstance(tampered_artifact, dict), tampered_artifact_path
+        tampered_artifact["steps"][0]["safeSummary"] = "Tampered but redaction-safe drill text."
+        write_json(tampered_artifact_path, tampered_artifact)
+        tampered_summary = read_json(tampered_summary_path)
+        assert isinstance(tampered_summary, dict), tampered_summary_path
+        for artifact_entry in tampered_summary.get("artifacts", []):
+            if (
+                isinstance(artifact_entry, dict)
+                and artifact_entry.get("scenario") == "reviewer-key-compromise"
+            ):
+                artifact_entry["digest"] = security_response_runbook.sha256_path(
+                    tampered_artifact_path
+                )
+                break
+        write_json(tampered_summary_path, tampered_summary)
+        tampered_artifacts_item = security_drills_evidence(
+            tampered_summary_path,
+            workspace.resolve(),
+            out_dir.resolve(),
+            "release-candidate",
+        )
+        assert tampered_artifacts_item.status == "fail", tampered_artifacts_item
+        assert any(
+            "security drill artifact for reviewer-key-compromise failed offline verification" == error
+            for error in tampered_artifacts_item.details.get("validationErrors", [])
+        ), tampered_artifacts_item.details
         redaction_unsafe_security_drills = read_json(security_drills_summary)
         assert isinstance(redaction_unsafe_security_drills, dict), security_drills_summary
         redaction_unsafe_security_drills["redaction"] = {
