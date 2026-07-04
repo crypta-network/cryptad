@@ -1489,147 +1489,16 @@ def security_drill_artifact_file_validation(
     out_dir: Path,
     strict: bool,
 ) -> dict[str, Any]:
-    artifacts = summary.get("artifacts")
-    if not isinstance(artifacts, list):
-        return {
-            "status": "fail",
-            "errors": ["security drills summary artifacts must be an array"],
-            "redactionFindings": [],
-        }
-    source_dir = summary_path.parent
     model_path = workspace_root / "tools/release-certification/production-security-response-runbook.json"
     if not model_path.is_file():
         model_path = Path(__file__).resolve().parent / "production-security-response-runbook.json"
-    expected_release_id = summary.get("releaseId")
-    expected_mode = summary.get("mode")
-    expected_evidence_mode = summary.get("evidenceMode")
-    summary_generated_at = security_response_runbook.parse_timestamp(summary.get("generatedAt"))
-    evaluated_at = summary_generated_at or dt.datetime.now(dt.timezone.utc)
-    max_age_days_value = summary.get("maxAgeDays")
-    max_age_days = security_response_runbook.DEFAULT_MAX_AGE_DAYS
-    if (
-        isinstance(max_age_days_value, int)
-        and not isinstance(max_age_days_value, bool)
-        and max_age_days_value > 0
-    ):
-        max_age_days = (
-            min(max_age_days_value, security_response_runbook.DEFAULT_MAX_AGE_DAYS)
-            if strict
-            else max_age_days_value
-        )
-    errors: list[str] = []
-    redaction_findings: list[Any] = []
-    seen: set[str] = set()
-    checked: list[dict[str, Any]] = []
-    for index, entry in enumerate(artifacts):
-        if not isinstance(entry, dict):
-            errors.append(f"security drill artifact entry {index} must be an object")
-            continue
-        scenario = entry.get("scenario")
-        if scenario not in security_response_runbook.REQUIRED_DRILLS:
-            errors.append(f"security drill artifact entry {index} has an unknown scenario")
-            continue
-        scenario_text = str(scenario)
-        if scenario_text in seen:
-            errors.append(f"security drill artifact for {scenario_text} is duplicated")
-            continue
-        seen.add(scenario_text)
-        artifact_name = entry.get("artifact")
-        expected_name = security_response_runbook.DRILL_OUTPUT_FILENAMES[scenario_text]
-        if artifact_name != expected_name:
-            errors.append(f"security drill artifact for {scenario_text} must be named {expected_name}")
-            continue
-        if Path(str(artifact_name)).name != artifact_name:
-            errors.append(f"security drill artifact for {scenario_text} has an unsafe file name")
-            continue
-        artifact_path = source_dir / str(artifact_name)
-        display_artifact = display_path(artifact_path, workspace_root, out_dir)
-        if not artifact_path.is_file() or artifact_path.is_symlink():
-            errors.append(f"security drill artifact for {scenario_text} is missing")
-            checked.append(
-                {
-                    "scenario": scenario_text,
-                    "artifact": str(artifact_name),
-                    "path": display_artifact,
-                    "status": "missing",
-                }
-            )
-            continue
-        try:
-            digest = security_response_runbook.sha256_path(artifact_path)
-            verification = security_response_runbook.drill_verify(artifact_path, model_path)
-            artifact = read_json(artifact_path)
-        except (OSError, ValueError, json.JSONDecodeError):
-            errors.append(f"security drill artifact for {scenario_text} could not be verified")
-            checked.append(
-                {
-                    "scenario": scenario_text,
-                    "artifact": str(artifact_name),
-                    "path": display_artifact,
-                    "status": "fail",
-                }
-            )
-            continue
-        artifact_status = "pass"
-        stale = False
-        age_days: int | None = None
-        stale_reason = ""
-        if entry.get("digest") != digest:
-            errors.append(f"security drill artifact digest mismatch for {scenario_text}")
-            artifact_status = "fail"
-        if verification.get("status") != "pass":
-            errors.append(f"security drill artifact for {scenario_text} failed offline verification")
-            artifact_status = "fail"
-        verifier_findings = verification.get("redactionFindings")
-        if isinstance(verifier_findings, list):
-            redaction_findings.extend(verifier_findings)
-        if not isinstance(artifact, dict):
-            errors.append(f"security drill artifact for {scenario_text} is malformed")
-            artifact_status = "fail"
-        else:
-            if artifact.get("scenario") != scenario_text:
-                errors.append(f"security drill artifact for {scenario_text} has the wrong scenario")
-                artifact_status = "fail"
-            if artifact.get("releaseId") != expected_release_id:
-                errors.append(f"security drill artifact for {scenario_text} has the wrong releaseId")
-                artifact_status = "fail"
-            if artifact.get("mode") != expected_mode:
-                errors.append(f"security drill artifact for {scenario_text} has the wrong mode")
-                artifact_status = "fail"
-            if artifact.get("evidenceMode") != expected_evidence_mode:
-                errors.append(f"security drill artifact for {scenario_text} has the wrong evidenceMode")
-                artifact_status = "fail"
-            if strict:
-                stale, age_days, stale_reason = security_response_runbook.artifact_is_stale(
-                    artifact,
-                    evaluated_at,
-                    max_age_days,
-                )
-                if stale:
-                    errors.append(
-                        f"security drill artifact for {scenario_text} is stale: {stale_reason}"
-                    )
-                    artifact_status = "fail"
-        checked.append(
-            {
-                "scenario": scenario_text,
-                "artifact": str(artifact_name),
-                "path": display_artifact,
-                "digest": digest,
-                "status": artifact_status,
-                "ageDays": age_days,
-                "stale": stale,
-                "staleReason": stale_reason,
-            }
-        )
-    for scenario in sorted(set(security_response_runbook.REQUIRED_DRILLS) - seen):
-        errors.append(f"security drill artifact for {scenario} is missing")
-    return {
-        "status": "pass" if not errors else "fail",
-        "errors": errors,
-        "redactionFindings": security_response_runbook.safe_redaction_findings(redaction_findings),
-        "checked": checked,
-    }
+    return security_response_runbook.validate_drill_artifact_files(
+        summary,
+        summary_path,
+        model_path=model_path,
+        strict=strict,
+        display_path_fn=lambda path: display_path(path, workspace_root, out_dir),
+    )
 
 
 def security_drills_evidence(

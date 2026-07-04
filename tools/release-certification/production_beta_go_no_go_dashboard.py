@@ -1128,6 +1128,7 @@ def security_response_evidence(
     now: dt.datetime | None = None,
     expected_release_id: str | None = None,
     expected_mode: str | None = None,
+    summary_path: Path | None = None,
 ) -> dict[str, Any] | None:
     if not isinstance(summary, dict):
         if source == "security-drills-summary":
@@ -1170,6 +1171,23 @@ def security_response_evidence(
             expected_mode=expected_mode,
         )
         validation_errors = list(validation.get("errors", [])) if isinstance(validation.get("errors"), list) else []
+        artifact_validation: dict[str, Any] | None = None
+        artifact_redaction_findings: list[Any] = []
+        if summary_path is not None:
+            artifact_validation = security_response_runbook.validate_drill_artifact_files(
+                summary,
+                summary_path,
+                model_path=Path(__file__).resolve().parent
+                / "production-security-response-runbook.json",
+                strict=strict,
+                now=now,
+            )
+            artifact_errors = artifact_validation.get("errors")
+            if isinstance(artifact_errors, list):
+                validation_errors.extend(str(error) for error in artifact_errors)
+            artifact_findings = artifact_validation.get("redactionFindings")
+            if isinstance(artifact_findings, list):
+                artifact_redaction_findings.extend(artifact_findings)
         release_id = summary.get("releaseId")
         release_id_matches = not (
             strict
@@ -1191,7 +1209,11 @@ def security_response_evidence(
             else []
         )
         redaction_findings = security_response_runbook.safe_redaction_findings(
-            [*declared_redaction_findings, *validator_redaction_findings]
+            [
+                *declared_redaction_findings,
+                *validator_redaction_findings,
+                *artifact_redaction_findings,
+            ]
         )
         required_scenarios = (
             summary.get("requiredScenarios") if isinstance(summary.get("requiredScenarios"), list) else []
@@ -1211,7 +1233,15 @@ def security_response_evidence(
         malformed_scenarios = (
             summary.get("malformedScenarios") if isinstance(summary.get("malformedScenarios"), list) else []
         )
-        status = "pass" if validation.get("status") == "pass" and release_id_matches else "fail"
+        artifacts_valid = (
+            artifact_validation is None
+            or artifact_validation.get("status") == "pass"
+        )
+        status = (
+            "pass"
+            if validation.get("status") == "pass" and release_id_matches and artifacts_valid
+            else "fail"
+        )
         required = safe_int_count(counts.get("required"), len(security_response_runbook.REQUIRED_DRILLS))
         passed = safe_int_count(counts.get("passed"), len(passed_scenarios))
         if status == "pass":
@@ -1250,8 +1280,12 @@ def security_response_evidence(
                 "releaseNotes": summary.get("releaseNotes", {}),
                 "advisoryTemplate": summary.get("advisoryTemplate", {}),
                 "artifacts": summary.get("artifacts", []),
+                "artifactValidation": artifact_validation or {},
                 "validationErrors": validation_errors,
-                "redactionClean": validation.get("redactionClean", False),
+                "redactionClean": (
+                    validation.get("redactionClean", False)
+                    and not artifact_redaction_findings
+                ),
             },
         }
     status = normalize_status(summary.get("status"))
@@ -2493,6 +2527,7 @@ def compact_security_drills(
     now: dt.datetime | None = None,
     expected_release_id: str | None = None,
     expected_mode: str | None = None,
+    artifact_validation: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     if not isinstance(summary, dict):
         return {
@@ -2558,8 +2593,19 @@ def compact_security_drills(
     )
     if not release_id_matches:
         validation_errors.append(f"releaseId must match dashboard candidate {expected_release_id}")
+    artifact_errors = (
+        artifact_validation.get("errors")
+        if isinstance(artifact_validation, dict)
+        and isinstance(artifact_validation.get("errors"), list)
+        else []
+    )
+    validation_errors.extend(str(error) for error in artifact_errors)
     computed_status = normalize_status(summary.get("status"))
-    if validation.get("status") != "pass" or not release_id_matches:
+    artifacts_valid = (
+        artifact_validation is None
+        or artifact_validation.get("status") == "pass"
+    )
+    if validation.get("status") != "pass" or not release_id_matches or not artifacts_valid:
         computed_status = "fail"
     passed_scenarios = summary.get("passedScenarios") if isinstance(summary.get("passedScenarios"), list) else []
     failed_scenarios = summary.get("failedScenarios") if isinstance(summary.get("failedScenarios"), list) else []
@@ -2579,6 +2625,7 @@ def compact_security_drills(
             bool(summary.get("promotionReady"))
             and validation.get("status") == "pass"
             and release_id_matches
+            and artifacts_valid
         ),
         "releaseId": release_id if isinstance(release_id, str) else "missing",
         "expectedReleaseId": expected_release_id or "not-required",
@@ -2608,6 +2655,7 @@ def compact_security_drills(
         "supportBundleIntakeRedactionStatus": support_status,
         "fixtureOnly": bool(summary.get("fixtureOnly")),
         "nonRelease": bool(summary.get("nonRelease")),
+        "artifactValidation": artifact_validation or {},
         "validationErrors": validation_errors,
     }
 
@@ -3011,6 +3059,7 @@ def collect_issues(
             now=now,
             expected_release_id=release_id,
             expected_mode=mode if mode in {"release-candidate", "production-beta"} else None,
+            summary_path=input_paths.get("securityDrillsSummary"),
         )
         if security_drills_evidence is not None:
             existing_security_entries = [
@@ -3187,6 +3236,15 @@ def build_dashboard(
         if isinstance(multi_node_summary.get("previousCandidateUpgrade"), dict)
         else {"status": "missing"}
     )
+    security_response_item = all_evidence.get("production-security.response-runbook")
+    security_response_details = evidence_details(security_response_item)
+    security_drills_component = security_response_details.get("securityDrills")
+    security_drills_details = (
+        evidence_details(security_drills_component)
+        if isinstance(security_drills_component, dict)
+        else {}
+    )
+    artifact_validation = security_drills_details.get("artifactValidation")
     security_drills = compact_security_drills(
         inputs.get("securityDrillsSummary") if isinstance(inputs.get("securityDrillsSummary"), dict) else None,
         production=mode == "production-beta",
@@ -3194,6 +3252,11 @@ def build_dashboard(
         now=now,
         expected_release_id=release_id,
         expected_mode=mode if mode in {"release-candidate", "production-beta"} else None,
+        artifact_validation=(
+            artifact_validation
+            if isinstance(artifact_validation, dict) and "status" in artifact_validation
+            else None
+        ),
     )
     artifact_refs = {
         "dashboardJson": OUTPUT_JSON,
@@ -3797,6 +3860,7 @@ def run_self_test(quiet: bool = False) -> None:
         assert_security_drills_preserve_failing_runbook_evidence(root)
         assert_security_drills_require_app_platform_runbook_evidence(root)
         assert_security_drill_summary_evidence_is_not_generic_release_evidence(root)
+        assert_security_drill_summary_path_requires_sibling_artifacts(root)
         assert_security_drills_release_id_matches_dashboard_candidate(root)
         assert_validator_security_drill_redaction_findings_are_non_waivable(root)
         assert_inherited_security_drill_summary_timestamp_rebinds(root)
@@ -4086,6 +4150,74 @@ def assert_security_drill_summary_evidence_is_not_generic_release_evidence(root:
         or security_drills_compact.get("promotionReady") is not True
     ):
         raise AssertionError(f"passing drill summary should remain visible separately: {dashboard}")
+
+
+def assert_security_drill_summary_path_requires_sibling_artifacts(root: Path) -> None:
+    input_args, input_paths = path_input_args_from_pass_fixture(
+        root,
+        "security-drill-summary-path-missing-artifacts",
+    )
+    pass_fixture = read_json(FIXTURE_DIR / "go-no-go-pass.json")
+    if not isinstance(pass_fixture, dict) or not isinstance(pass_fixture.get("inputs"), dict):
+        raise AssertionError("go-no-go-pass.json must contain security drill path-test inputs")
+    security_drills = pass_fixture["inputs"].get("securityDrillsSummary")
+    if not isinstance(security_drills, dict):
+        raise AssertionError("go-no-go-pass fixture is missing securityDrillsSummary")
+    security_drills_path = (
+        root
+        / "security-drill-summary-path-missing-artifacts"
+        / "security-drills-summary.json"
+    )
+    write_json(security_drills_path, security_drills)
+    args_list = [
+        "build",
+        "--workspace-root",
+        str(Path(__file__).resolve().parents[2]),
+        "--out-dir",
+        str(root / "security-drill-summary-path-missing-artifacts-output"),
+        "--mode",
+        "production-beta",
+        "--release-id",
+        "crypta-production-beta-270",
+        "--generated-at",
+        DEFAULT_GENERATED_AT,
+        "--security-drills-summary",
+        str(security_drills_path),
+    ]
+    for flag, input_name in input_args:
+        args_list.extend([flag, str(input_paths[input_name])])
+    dashboard, _exit_code = build_command(build_parser().parse_args(args_list))
+    if dashboard.get("decision") != "no-go":
+        raise AssertionError(
+            "file-backed securityDrillsSummary without sibling artifacts produced GO: "
+            f"{dashboard}"
+        )
+    blocker_ids = {
+        str(blocker.get("evidenceId"))
+        for blocker in dashboard.get("blockers", [])
+        if isinstance(blocker, dict)
+    }
+    if "production-security.response-runbook" not in blocker_ids:
+        raise AssertionError(f"missing drill artifacts did not block security response: {dashboard}")
+    security_drills_compact = dashboard.get("securityDrills")
+    if (
+        not isinstance(security_drills_compact, dict)
+        or security_drills_compact.get("status") != "fail"
+        or security_drills_compact.get("promotionReady") is True
+    ):
+        raise AssertionError(f"missing drill artifacts did not fail compact drill status: {dashboard}")
+    artifact_validation = security_drills_compact.get("artifactValidation")
+    artifact_errors = (
+        artifact_validation.get("errors")
+        if isinstance(artifact_validation, dict)
+        and isinstance(artifact_validation.get("errors"), list)
+        else []
+    )
+    if "security drill artifact for reviewer-key-compromise is missing" not in artifact_errors:
+        raise AssertionError(
+            "missing sibling drill artifacts were not reported in compact validation: "
+            f"{dashboard}"
+        )
 
 
 def assert_security_drills_release_id_matches_dashboard_candidate(root: Path) -> None:
