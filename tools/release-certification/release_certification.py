@@ -1487,6 +1487,7 @@ def security_drill_artifact_file_validation(
     summary_path: Path,
     workspace_root: Path,
     out_dir: Path,
+    strict: bool,
 ) -> dict[str, Any]:
     artifacts = summary.get("artifacts")
     if not isinstance(artifacts, list):
@@ -1502,6 +1503,20 @@ def security_drill_artifact_file_validation(
     expected_release_id = summary.get("releaseId")
     expected_mode = summary.get("mode")
     expected_evidence_mode = summary.get("evidenceMode")
+    summary_generated_at = security_response_runbook.parse_timestamp(summary.get("generatedAt"))
+    evaluated_at = summary_generated_at or dt.datetime.now(dt.timezone.utc)
+    max_age_days_value = summary.get("maxAgeDays")
+    max_age_days = security_response_runbook.DEFAULT_MAX_AGE_DAYS
+    if (
+        isinstance(max_age_days_value, int)
+        and not isinstance(max_age_days_value, bool)
+        and max_age_days_value > 0
+    ):
+        max_age_days = (
+            min(max_age_days_value, security_response_runbook.DEFAULT_MAX_AGE_DAYS)
+            if strict
+            else max_age_days_value
+        )
     errors: list[str] = []
     redaction_findings: list[Any] = []
     seen: set[str] = set()
@@ -1556,6 +1571,9 @@ def security_drill_artifact_file_validation(
             )
             continue
         artifact_status = "pass"
+        stale = False
+        age_days: int | None = None
+        stale_reason = ""
         if entry.get("digest") != digest:
             errors.append(f"security drill artifact digest mismatch for {scenario_text}")
             artifact_status = "fail"
@@ -1581,6 +1599,17 @@ def security_drill_artifact_file_validation(
             if artifact.get("evidenceMode") != expected_evidence_mode:
                 errors.append(f"security drill artifact for {scenario_text} has the wrong evidenceMode")
                 artifact_status = "fail"
+            if strict:
+                stale, age_days, stale_reason = security_response_runbook.artifact_is_stale(
+                    artifact,
+                    evaluated_at,
+                    max_age_days,
+                )
+                if stale:
+                    errors.append(
+                        f"security drill artifact for {scenario_text} is stale: {stale_reason}"
+                    )
+                    artifact_status = "fail"
         checked.append(
             {
                 "scenario": scenario_text,
@@ -1588,6 +1617,9 @@ def security_drill_artifact_file_validation(
                 "path": display_artifact,
                 "digest": digest,
                 "status": artifact_status,
+                "ageDays": age_days,
+                "stale": stale,
+                "staleReason": stale_reason,
             }
         )
     for scenario in sorted(set(security_response_runbook.REQUIRED_DRILLS) - seen):
@@ -1632,6 +1664,7 @@ def security_drills_evidence(
         source_path,
         workspace_root,
         out_dir,
+        strict=mode == "release-candidate",
     )
     counts = summary.get("counts") if isinstance(summary.get("counts"), dict) else {}
     redaction = summary.get("redaction") if isinstance(summary.get("redaction"), dict) else {}
@@ -9104,6 +9137,37 @@ def run_self_test(repo_root: Path) -> None:
             "security drill artifact for reviewer-key-compromise failed offline verification" == error
             for error in tampered_artifacts_item.details.get("validationErrors", [])
         ), tampered_artifacts_item.details
+        stale_artifacts_dir = workspace / "security-drills-stale-artifacts"
+        stale_artifacts_summary = stale_artifacts_dir / "security-drills-summary.json"
+        fresh_summary_generated_at = security_response_runbook.utc_now()
+        fresh_summary_time = security_response_runbook.parse_timestamp(fresh_summary_generated_at)
+        assert fresh_summary_time is not None, fresh_summary_generated_at
+        stale_artifact_generated_at = (
+            fresh_summary_time
+            - dt.timedelta(days=security_response_runbook.DEFAULT_MAX_AGE_DAYS + 2)
+        ).isoformat().replace("+00:00", "Z")
+        security_response_runbook.drill_run_all(
+            repo_root / security_response_runbook.DEFAULT_MODEL,
+            stale_artifacts_dir,
+            stale_artifacts_summary,
+            release_id="cryptad-production-beta-self-test",
+            generated_at=stale_artifact_generated_at,
+        )
+        stale_summary = read_json(stale_artifacts_summary)
+        assert isinstance(stale_summary, dict), stale_artifacts_summary
+        stale_summary["generatedAt"] = fresh_summary_generated_at
+        write_json(stale_artifacts_summary, stale_summary)
+        stale_artifacts_item = security_drills_evidence(
+            stale_artifacts_summary,
+            workspace.resolve(),
+            out_dir.resolve(),
+            "release-candidate",
+        )
+        assert stale_artifacts_item.status == "fail", stale_artifacts_item
+        assert any(
+            str(error).startswith("security drill artifact for reviewer-key-compromise is stale:")
+            for error in stale_artifacts_item.details.get("validationErrors", [])
+        ), stale_artifacts_item.details
         redaction_unsafe_security_drills = read_json(security_drills_summary)
         assert isinstance(redaction_unsafe_security_drills, dict), security_drills_summary
         redaction_unsafe_security_drills["redaction"] = {
