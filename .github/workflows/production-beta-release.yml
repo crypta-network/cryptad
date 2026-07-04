@@ -47,6 +47,11 @@ on:
         required: false
         default: ''
         type: string
+      security_drills_summary:
+        description: Existing security response drills summary path or actions-artifact://run/artifact/path reference with sibling scenario drill JSON files. HTTPS summary-only URLs are unsupported.
+        required: false
+        default: ''
+        type: string
       previous_summary:
         description: Previous beta candidate summary path, HTTPS JSON URL, or actions-artifact://run/artifact/path reference for upgrade evidence.
         required: false
@@ -113,6 +118,7 @@ jobs:
           INPUT_MULTI_NODE_MODE: ${{ inputs.multi_node_mode || '' }}
           INPUT_MULTI_NODE_SOAK_CONFIG: ${{ inputs.multi_node_soak_config || 'tools/release-certification/fixtures/self-test-multi-node-beta-soak.json' }}
           INPUT_MULTI_NODE_SOAK_SUMMARY: ${{ inputs.multi_node_soak_summary || '' }}
+          INPUT_SECURITY_DRILLS_SUMMARY: ${{ inputs.security_drills_summary || '' }}
           INPUT_PREVIOUS_SUMMARY: ${{ inputs.previous_summary || '' }}
           INPUT_PREVIOUS_RELEASE_CERTIFICATION_SUMMARY: ${{ inputs.previous_release_certification_summary || '' }}
           INPUT_WAIVER_FILE: ${{ inputs.waiver_file || '' }}
@@ -177,6 +183,22 @@ jobs:
             esac
           }
 
+          materialize_security_drills_summary() {
+            local value="$1"
+            if [[ -z "$value" ]]; then
+              return 0
+            fi
+            case "$value" in
+              http://*|https://*)
+                echo "::error::Security response drills summary must be a checked-out path or actions-artifact:// reference with security-drills-summary.json beside all seven scenario drill JSON files. HTTPS summary-only URLs are not supported."
+                exit 1
+                ;;
+              *)
+                materialize_input_file "$value" INPUT_SECURITY_DRILLS_SUMMARY security-drills-summary.json "Security response drills summary"
+                ;;
+            esac
+          }
+
           materialize_actions_artifact_file() {
             local value="$1"
             local env_name="$2"
@@ -219,6 +241,7 @@ jobs:
           materialize_input_file "$INPUT_PREVIOUS_SUMMARY" INPUT_PREVIOUS_SUMMARY previous-beta-candidate-summary.json "Previous beta candidate summary"
           materialize_input_file "$INPUT_PREVIOUS_RELEASE_CERTIFICATION_SUMMARY" INPUT_PREVIOUS_RELEASE_CERTIFICATION_SUMMARY previous-release-certification-summary.json "Previous release-certification summary"
           materialize_input_file "$INPUT_MULTI_NODE_SOAK_SUMMARY" INPUT_MULTI_NODE_SOAK_SUMMARY multi-node-beta-soak-summary.json "Multi-node soak summary"
+          materialize_security_drills_summary "$INPUT_SECURITY_DRILLS_SUMMARY"
           materialize_input_file "$INPUT_WAIVER_FILE" INPUT_WAIVER_FILE go-no-go-waivers.json "Go/no-go waiver file"
 
           args=(
@@ -236,6 +259,9 @@ jobs:
             args+=(--multi-node-soak-summary "$INPUT_MULTI_NODE_SOAK_SUMMARY")
           else
             args+=(--run-multi-node-soak)
+          fi
+          if [[ -n "$INPUT_SECURITY_DRILLS_SUMMARY" ]]; then
+            args+=(--security-drills-summary "$INPUT_SECURITY_DRILLS_SUMMARY")
           fi
 
           if [[ -z "$INPUT_MULTI_NODE_SOAK_SUMMARY" && -n "$INPUT_MULTI_NODE_SOAK_CONFIG" ]]; then
@@ -328,6 +354,10 @@ jobs:
           path: |
             build/production-beta-release/
             !**/private-insert-uris.json
+            !**/raw-support-bundle/**
+            !**/raw-support-bundle*
+            !**/raw-diagnostics/**
+            !**/raw-diagnostics*
             !**/.DS_Store
             !**/._*
             !**/__MACOSX/**
@@ -394,6 +424,7 @@ jobs:
           INPUT_MULTI_NODE_MODE: ${{ inputs.multi_node_mode || '' }}
           INPUT_MULTI_NODE_SOAK_CONFIG: ${{ inputs.multi_node_soak_config || '' }}
           INPUT_MULTI_NODE_SOAK_SUMMARY: ${{ inputs.multi_node_soak_summary || '' }}
+          INPUT_SECURITY_DRILLS_SUMMARY: ${{ inputs.security_drills_summary || '' }}
           INPUT_PREVIOUS_SUMMARY: ${{ inputs.previous_summary || '' }}
           INPUT_PREVIOUS_RELEASE_CERTIFICATION_SUMMARY: ${{ inputs.previous_release_certification_summary || '' }}
           INPUT_WAIVER_FILE: ${{ inputs.waiver_file || '' }}
@@ -460,6 +491,22 @@ jobs:
             esac
           }
 
+          materialize_security_drills_summary() {
+            local value="$1"
+            if [[ -z "$value" ]]; then
+              return 0
+            fi
+            case "$value" in
+              http://*|https://*)
+                echo "::error::Security response drills summary must be a checked-out path or actions-artifact:// reference with security-drills-summary.json beside all seven scenario drill JSON files. HTTPS summary-only URLs are not supported."
+                exit 1
+                ;;
+              *)
+                materialize_input_file "$value" INPUT_SECURITY_DRILLS_SUMMARY security-drills-summary.json "Security response drills summary"
+                ;;
+            esac
+          }
+
           materialize_actions_artifact_file() {
             local value="$1"
             local env_name="$2"
@@ -506,6 +553,7 @@ jobs:
           materialize_input_file "$INPUT_PREVIOUS_SUMMARY" INPUT_PREVIOUS_SUMMARY previous-beta-candidate-summary.json "Previous beta candidate summary"
           materialize_input_file "$INPUT_PREVIOUS_RELEASE_CERTIFICATION_SUMMARY" INPUT_PREVIOUS_RELEASE_CERTIFICATION_SUMMARY previous-release-certification-summary.json "Previous release-certification summary"
           materialize_input_file "$INPUT_MULTI_NODE_SOAK_SUMMARY" INPUT_MULTI_NODE_SOAK_SUMMARY multi-node-beta-soak-summary.json "Multi-node soak summary"
+          materialize_security_drills_summary "$INPUT_SECURITY_DRILLS_SUMMARY"
           materialize_input_file "$INPUT_WAIVER_FILE" INPUT_WAIVER_FILE go-no-go-waivers.json "Go/no-go waiver file"
 
           if [[ -z "$INPUT_ARTIFACT_BASE_URI" ]]; then
@@ -560,6 +608,9 @@ jobs:
           if [[ -n "$INPUT_MULTI_NODE_SOAK_SUMMARY" ]]; then
             require_file "$INPUT_MULTI_NODE_SOAK_SUMMARY" "Multi-node soak summary"
           fi
+          if [[ -n "$INPUT_SECURITY_DRILLS_SUMMARY" ]]; then
+            require_file "$INPUT_SECURITY_DRILLS_SUMMARY" "Security response drills summary"
+          fi
           if [[ -n "$INPUT_MULTI_NODE_SOAK_CONFIG" ]]; then
             require_file "$INPUT_MULTI_NODE_SOAK_CONFIG" "Multi-node soak topology config"
           fi
@@ -592,6 +643,9 @@ jobs:
             args+=(--multi-node-soak-summary "$INPUT_MULTI_NODE_SOAK_SUMMARY")
           else
             args+=(--run-multi-node-soak --multi-node-soak-config "$INPUT_MULTI_NODE_SOAK_CONFIG")
+          fi
+          if [[ -n "$INPUT_SECURITY_DRILLS_SUMMARY" ]]; then
+            args+=(--security-drills-summary "$INPUT_SECURITY_DRILLS_SUMMARY")
           fi
           if [[ -n "$INPUT_MULTI_NODE_MODE" ]]; then
             args+=(--multi-node-mode "$INPUT_MULTI_NODE_MODE")
@@ -654,6 +708,10 @@ jobs:
           path: |
             build/production-beta-release/
             !**/private-insert-uris.json
+            !**/raw-support-bundle/**
+            !**/raw-support-bundle*
+            !**/raw-diagnostics/**
+            !**/raw-diagnostics*
             !**/.DS_Store
             !**/._*
             !**/__MACOSX/**

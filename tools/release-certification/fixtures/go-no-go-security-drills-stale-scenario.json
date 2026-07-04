@@ -1,0 +1,16 @@
+{
+  "extends": "go-no-go-pass.json",
+  "inputs": {
+    "securityDrillsSummary": {
+      "counts": {
+        "passed": 6,
+        "stale": 1
+      },
+      "promotionReady": false,
+      "staleScenarios": [
+        "catalog-signing-key-rotation"
+      ],
+      "status": "fail"
+    }
+  }
+}

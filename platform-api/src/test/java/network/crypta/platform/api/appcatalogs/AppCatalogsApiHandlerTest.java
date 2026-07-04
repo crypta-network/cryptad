@@ -1173,9 +1173,17 @@ class AppCatalogsApiHandlerTest {
     Map<String, Object> summary = (Map<String, Object>) response.get(SUMMARY_FIELD);
     assertEquals(1, summary.get(ACTIVE_ADVISORY_COUNT_FIELD));
     assertEquals(1, summary.get(DENYLISTED_VERSION_COUNT_FIELD));
+    assertEquals("unavailable", summary.get("installedVulnerableAppCount"));
     assertEquals(1, summary.get(REVOKED_REVIEWER_KEY_COUNT_FIELD));
     assertEquals(CONFIGURED_TEXT, summary.get("catalogKeyRotationStatus"));
+    assertEquals(true, summary.get("emergencyReplacementGuidanceAvailable"));
     assertEquals("required", summary.get("supportRedactionStatus"));
+    assertEquals("release_artifact_required", summary.get("securityDrillsStatus"));
+    assertEquals("not_loaded", summary.get("securityDrillsLastStatus"));
+    Map<String, Object> securityDrills = (Map<String, Object>) response.get("securityDrills");
+    assertEquals("cryptad-security-response-drills-summary", securityDrills.get("artifactKind"));
+    assertEquals(7, securityDrills.get("requiredScenarioCount"));
+    assertEquals(false, securityDrills.get("summaryAvailable"));
     Map<String, Object> advisory =
         ((List<Map<String, Object>>) response.get("activeAdvisories")).getFirst();
     assertEquals(SECURITY_ADVISORY_ID_0001, advisory.get("id"));
@@ -1191,6 +1199,34 @@ class AppCatalogsApiHandlerTest {
     assertFalse(response.toString().contains(FIRST_PARTY_SOURCE));
     assertFalse(response.toString().contains(tempDir.toString()));
     assertRedactsReviewerPublicKey(response, reviewerKeyPair);
+  }
+
+  @Test
+  void securityResponseSummary_whenDenylistHasReplacementGuidance_expectGuidanceAvailable()
+      throws Exception {
+    AppCatalogSourceSnapshot snapshot = firstPartyCatalogSnapshot();
+    when(catalogManager.listCatalogs()).thenReturn(List.of(snapshot));
+    when(catalogManager.securityPolicy(snapshot.catalogId()))
+        .thenReturn(denylistReplacementOnlySecurityResponsePolicy());
+    AppCatalogsApiHandler handler =
+        new AppCatalogsApiHandler(
+            catalogManager,
+            appHost,
+            () -> null,
+            AppReviewPolicy.DEFAULT,
+            TrustedReviewerKeys::empty);
+
+    Map<String, Object> response = handler.securityResponseSummary();
+
+    assertEquals("denylist_active", response.get(STATUS_FIELD));
+    Map<String, Object> summary = (Map<String, Object>) response.get(SUMMARY_FIELD);
+    assertEquals(true, summary.get("emergencyReplacementGuidanceAvailable"));
+    Map<String, Object> advisory =
+        ((List<Map<String, Object>>) response.get("activeAdvisories")).getFirst();
+    assertNull(advisory.get("replacementAppId"));
+    Map<String, Object> denylist =
+        ((List<Map<String, Object>>) response.get("denylistedVersions")).getFirst();
+    assertEquals(APP_ID, denylist.get("replacementAppId"));
   }
 
   @Test
@@ -1969,6 +2005,32 @@ class AppCatalogsApiHandlerTest {
             Optional.of(APP_ID),
             Optional.of("Keep installed data until a replacement is reviewed."));
     return new AppCatalogSecurityPolicy(List.of(advisory), List.of());
+  }
+
+  private static AppCatalogSecurityPolicy denylistReplacementOnlySecurityResponsePolicy() {
+    AppCatalogSecurityAdvisoryRecord advisory =
+        new AppCatalogSecurityAdvisoryRecord(
+            SECURITY_ADVISORY_ID_0001,
+            URI.create(SECURITY_ADVISORY_URI_0001),
+            "Queue Manager vulnerable release",
+            AppCatalogSecuritySeverity.CRITICAL,
+            AppCatalogSecurityStatus.PUBLISHED,
+            AppCatalogSecurityAction.DENYLIST,
+            "Upgrade to the reviewed replacement version.",
+            Instant.parse("2026-06-11T00:00:00Z"),
+            Instant.parse("2026-06-12T00:00:00Z"),
+            Optional.empty(),
+            Optional.of("Export app data before removal."));
+    AppCatalogVersionDenylistEntry denylist =
+        new AppCatalogVersionDenylistEntry(
+            "deny-queue-1-2-0",
+            APP_ID,
+            CATALOG_VERSION,
+            advisory.id(),
+            "Known vulnerable release.",
+            Optional.of(APP_ID),
+            Optional.of("Export app data before removal."));
+    return new AppCatalogSecurityPolicy(List.of(advisory), List.of(denylist));
   }
 
   private static AppCatalogSecurityDecision denylistedSecurityDecision() {

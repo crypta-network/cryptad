@@ -1,0 +1,22 @@
+{
+  "extends": "go-no-go-security-drills-redaction-unsafe.json",
+  "waivers": {
+    "schemaVersion": 1,
+    "waivers": [
+      {
+        "id": "waive-critical-security-drill-redaction",
+        "evidenceId": "production-security.response-runbook",
+        "severity": "blocker",
+        "scope": "production-beta",
+        "rationale": "Fixture verifies critical redaction cannot be waived by a lower-severity waiver.",
+        "approvedBy": "release-manager",
+        "owner": "release",
+        "createdAt": "1970-01-01T00:00:00Z",
+        "expiresAt": "2099-01-01T00:00:00Z",
+        "references": [
+          "release-drill-redaction-waiver-fixture"
+        ]
+      }
+    ]
+  }
+}

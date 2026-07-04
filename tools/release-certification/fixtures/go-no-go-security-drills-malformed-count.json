@@ -1,0 +1,16 @@
+{
+  "extends": "go-no-go-pass.json",
+  "inputs": {
+    "securityDrillsSummary": {
+      "counts": {
+        "required": "seven",
+        "passed": null,
+        "failed": 0,
+        "missing": 0,
+        "stale": 0,
+        "malformed": 0
+      },
+      "passedScenarios": null
+    }
+  }
+}

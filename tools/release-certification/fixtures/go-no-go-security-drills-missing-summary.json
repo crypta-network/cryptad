@@ -1,0 +1,6 @@
+{
+  "extends": "go-no-go-pass.json",
+  "inputs": {
+    "securityDrillsSummary": null
+  }
+}

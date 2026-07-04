@@ -94,8 +94,10 @@ Production beta incident response for vulnerable app versions, malicious catalog
 catalog signing-key compromise, reviewer-key compromise, emergency replacement publication, support
 bundle intake, and security release notes is defined in
 [production-security-response-runbook.md](production-security-response-runbook.md). The runbook is
-the release-manager procedure; this document defines the trust and redaction boundaries it must
-preserve.
+the release-manager procedure; its required drill artifacts and
+`security-drills-summary.json` are release gates, and missing, failed, stale, malformed,
+fixture-only production, or redaction-unsafe drills block promotion. This document defines the
+trust and redaction boundaries those artifacts must preserve.
 Default operator support bundles follow
 [privacy-preserving-beta-diagnostics.md](privacy-preserving-beta-diagnostics.md): they are local
 until the operator explicitly exports them, and they exclude raw content, raw app data, private

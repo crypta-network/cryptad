@@ -40,6 +40,7 @@ sys.path.insert(0, str(TOOL_DIR))
 
 import release_certification  # noqa: E402
 import multi_node_beta_soak  # noqa: E402
+import security_response_runbook  # noqa: E402
 
 
 TOOL_NAME = "production-beta-release"
@@ -48,7 +49,16 @@ MODES = ("developer-dry-run", "release-candidate", "production-beta")
 CATALOG_CHANNELS = ("stable", "beta", "nightly", "deprecated")
 OUT_DIR_SENTINEL = ".cryptad-production-beta-release-output"
 PROTECTED_CLEAN_TOP_LEVELS = {".git", ".github", "apps", "docs", "tools"}
-RELEASE_OUTPUT_ROOTS = ("inputs", "build", "catalog", "reviews", "evidence", "reports")
+RELEASE_OUTPUT_ROOTS = (
+    "inputs",
+    "build",
+    "catalog",
+    "reviews",
+    "evidence",
+    "reports",
+    "security-drills",
+    "security",
+)
 GO_NO_GO_DASHBOARD_JSON = "reports/go-no-go-dashboard.json"
 GO_NO_GO_DASHBOARD_MARKDOWN = "reports/go-no-go-dashboard.md"
 GO_NO_GO_REDACTION_REPORT = "reports/go-no-go-redaction-report.json"
@@ -502,6 +512,7 @@ class Settings:
     third_party_intake_summary: Path | None = None
     require_third_party_intake: bool = False
     run_third_party_intake_sample_flow: bool = False
+    security_drills_summary: Path | None = None
 
 
 @dataclasses.dataclass
@@ -2487,6 +2498,364 @@ def certification_mode(settings: Settings) -> str:
     return "pr" if settings.mode == "developer-dry-run" else "release-candidate"
 
 
+def security_drills_dir(settings: Settings) -> Path:
+    return settings.out_dir / "security-drills"
+
+
+def security_drills_summary_path(settings: Settings) -> Path:
+    return security_drills_dir(settings) / "security-drills-summary.json"
+
+
+def security_release_notes_draft_path(settings: Settings) -> Path:
+    return settings.out_dir / "security/security-release-notes-draft.md"
+
+
+def security_drills_release_id(state: PipelineState) -> str:
+    return f"cryptad-beta-{state.version}"
+
+
+def attached_security_drill_artifact_errors(
+    state: PipelineState,
+    summary: dict[str, Any],
+    attached_summary: Path,
+    target_dir: Path,
+) -> list[str]:
+    artifacts = summary.get("artifacts")
+    if not isinstance(artifacts, list):
+        return ["attached security drills summary artifacts must be an array"]
+    source_dir = attached_summary.parent
+    target_dir.mkdir(parents=True, exist_ok=True)
+    model_path = (
+        state.settings.workspace_root
+        / "tools/release-certification/production-security-response-runbook.json"
+    )
+    errors: list[str] = []
+    seen: set[str] = set()
+    for index, entry in enumerate(artifacts):
+        if not isinstance(entry, dict):
+            errors.append(f"attached security drill artifact entry {index} must be an object")
+            continue
+        scenario = entry.get("scenario")
+        if scenario not in security_response_runbook.REQUIRED_DRILLS:
+            errors.append(f"attached security drill artifact entry {index} has an unknown scenario")
+            continue
+        scenario_text = str(scenario)
+        if scenario_text in seen:
+            errors.append(f"attached security drill artifact for {scenario_text} is duplicated")
+            continue
+        seen.add(scenario_text)
+        artifact_name = entry.get("artifact")
+        expected_name = security_response_runbook.DRILL_OUTPUT_FILENAMES[scenario_text]
+        if artifact_name != expected_name:
+            errors.append(f"attached security drill artifact for {scenario_text} must be named {expected_name}")
+            continue
+        if Path(str(artifact_name)).name != artifact_name or bad_artifact_name(str(artifact_name)):
+            errors.append(f"attached security drill artifact for {scenario_text} has an unsafe file name")
+            continue
+        source_path = source_dir / str(artifact_name)
+        if not source_path.is_file() or source_path.is_symlink():
+            errors.append(f"attached security drill artifact for {scenario_text} is missing")
+            continue
+        try:
+            digest = security_response_runbook.sha256_path(source_path)
+            verification = security_response_runbook.drill_verify(source_path, model_path)
+        except (OSError, ValueError, json.JSONDecodeError):
+            errors.append(f"attached security drill artifact for {scenario_text} could not be verified")
+            continue
+        if entry.get("digest") != digest:
+            errors.append(f"attached security drill artifact digest mismatch for {scenario_text}")
+            continue
+        if verification.get("status") != "pass":
+            errors.append(f"attached security drill artifact for {scenario_text} failed offline verification")
+            continue
+        target_path = target_dir / str(artifact_name)
+        if source_path.resolve() != target_path.resolve():
+            shutil.copy2(source_path, target_path)
+    missing = sorted(set(security_response_runbook.REQUIRED_DRILLS) - seen)
+    for scenario in missing:
+        errors.append(f"attached security drill artifact for {scenario} is missing")
+    return errors
+
+
+def mark_attached_security_drills_summary_failed(summary: dict[str, Any], errors: list[str]) -> dict[str, Any]:
+    failed = json.loads(json.dumps(summary, sort_keys=True))
+    failed["status"] = "fail"
+    failed["promotionReady"] = False
+    failed["attachmentErrors"] = list(errors)
+    return failed
+
+
+def attached_security_drills_failure_summary(
+    state: PipelineState,
+    expected_release_id: str,
+    validation: dict[str, Any],
+    release_id_matches: bool,
+    errors: list[Any],
+) -> dict[str, Any]:
+    safe_errors = security_response_runbook.safe_redaction_findings([str(error) for error in errors])
+    validation_findings = validation.get("redactionFindings")
+    safe_findings = security_response_runbook.safe_redaction_findings(
+        validation_findings if isinstance(validation_findings, list) else []
+    )
+    attached_digest = "missing"
+    attached_path = state.settings.security_drills_summary
+    if attached_path is not None and attached_path.is_file() and not attached_path.is_symlink():
+        try:
+            attached_digest = security_response_runbook.sha256_path(attached_path)
+        except OSError:
+            attached_digest = "unavailable"
+    required = list(security_response_runbook.REQUIRED_DRILLS)
+    return {
+        "kind": "cryptad-security-response-drills-summary",
+        "schemaVersion": security_response_runbook.DRILL_SUMMARY_SCHEMA_VERSION,
+        "status": "fail",
+        "promotionReady": False,
+        "nonRelease": True,
+        "fixtureOnly": False,
+        "releaseId": expected_release_id,
+        "mode": state.settings.mode,
+        "generatedAt": state.started_at,
+        "maxAgeDays": security_response_runbook.DEFAULT_MAX_AGE_DAYS,
+        "requiredScenarios": required,
+        "passedScenarios": [],
+        "failedScenarios": [],
+        "missingScenarios": required,
+        "staleScenarios": [],
+        "malformedScenarios": [],
+        "counts": {
+            "required": len(required),
+            "passed": 0,
+            "failed": 0,
+            "missing": len(required),
+            "stale": 0,
+            "malformed": 0,
+        },
+        "redaction": {
+            "status": "fail",
+            "rawSensitiveMaterialExcluded": False,
+            "findings": safe_findings or ["attached security drills summary was rejected before ingestion"],
+        },
+        "releaseNotes": {
+            "templateStatus": "fail",
+            "redactedSnippet": "Attached security drill summary was rejected before release evidence ingestion.",
+        },
+        "advisoryTemplate": {
+            "templateStatus": "fail",
+            "redactedSnippet": "Attached security drill summary was rejected before advisory evidence ingestion.",
+        },
+        "artifacts": [],
+        "attachment": {
+            "status": "fail",
+            "releaseIdMatchesCandidate": release_id_matches,
+            "validationStatus": validation.get("status", "fail"),
+            "attachedSummaryDigest": attached_digest,
+            "sanitized": True,
+        },
+        "attachmentErrors": safe_errors,
+    }
+
+
+def run_security_response_drills(state: PipelineState) -> Path:
+    summary_path = security_drills_summary_path(state.settings)
+    if state.settings.security_drills_summary is not None:
+        value = read_json(state.settings.security_drills_summary)
+        expected_release_id = security_drills_release_id(state)
+        validation = security_response_runbook.validate_drills_summary(
+            value if isinstance(value, dict) else {},
+            production=state.settings.mode == "production-beta",
+            strict=state.settings.mode in {"release-candidate", "production-beta"},
+            now=security_response_runbook.parse_timestamp(state.started_at),
+            expected_mode=state.settings.mode if state.settings.mode in {"release-candidate", "production-beta"} else None,
+        )
+        release_id_matches = isinstance(value, dict) and value.get("releaseId") == expected_release_id
+        rejection_errors: list[Any] = []
+        if not release_id_matches:
+            rejection_errors.append("attached security response drill summary releaseId does not match this candidate")
+            state.failures.append(
+                "attached security response drill summary releaseId does not match this candidate."
+            )
+        if validation.get("status") != "pass":
+            validation_errors = (
+                validation.get("errors") if isinstance(validation.get("errors"), list) else []
+            )
+            rejection_errors.extend(validation_errors)
+            safe_validation_errors = security_response_runbook.safe_redaction_findings(
+                [str(error) for error in validation_errors[:5]]
+            )
+            state.failures.append(
+                "attached security response drill summary is not promotion-ready: "
+                + ("; ".join(safe_validation_errors) or "validation failed")
+            )
+        if isinstance(value, dict):
+            artifact_errors: list[str] = []
+            final_validation = validation
+            if validation.get("status") == "pass" and release_id_matches:
+                write_json(summary_path, value)
+                artifact_errors = attached_security_drill_artifact_errors(
+                    state,
+                    value,
+                    state.settings.security_drills_summary,
+                    security_drills_dir(state.settings),
+                )
+                if artifact_errors:
+                    write_json(summary_path, mark_attached_security_drills_summary_failed(value, artifact_errors))
+                    state.failures.append(
+                        "attached security response drill artifacts are incomplete or unverified: "
+                        + "; ".join(artifact_errors[:5])
+                    )
+                else:
+                    verified_summary = security_response_runbook.drill_verify_all(
+                        security_drills_dir(state.settings),
+                        summary_path,
+                        state.settings.workspace_root
+                        / "tools/release-certification/production-security-response-runbook.json",
+                        release_id=expected_release_id,
+                        mode=(
+                            state.settings.mode
+                            if state.settings.mode in {"release-candidate", "production-beta"}
+                            else None
+                        ),
+                        now_text=state.started_at,
+                    )
+                    final_validation = security_response_runbook.validate_drills_summary(
+                        verified_summary,
+                        production=state.settings.mode == "production-beta",
+                        strict=state.settings.mode in {"release-candidate", "production-beta"},
+                        now=security_response_runbook.parse_timestamp(state.started_at),
+                        expected_mode=(
+                            state.settings.mode
+                            if state.settings.mode in {"release-candidate", "production-beta"}
+                            else None
+                        ),
+                    )
+                    if final_validation.get("status") != "pass":
+                        state.failures.append(
+                            "attached security response drill artifacts did not verify as a complete summary: "
+                            + "; ".join(str(error) for error in final_validation.get("errors", [])[:5])
+                        )
+            else:
+                write_json(
+                    summary_path,
+                    attached_security_drills_failure_summary(
+                        state,
+                        expected_release_id,
+                        validation,
+                        release_id_matches,
+                        rejection_errors,
+                    ),
+                )
+        else:
+            artifact_errors = ["attached summary is missing or malformed"]
+            final_validation = validation
+            write_json(
+                summary_path,
+                attached_security_drills_failure_summary(
+                    state,
+                    expected_release_id,
+                    validation,
+                    False,
+                    artifact_errors,
+                ),
+            )
+        stage_ok = (
+            validation.get("status") == "pass"
+            and final_validation.get("status") == "pass"
+            and release_id_matches
+            and not artifact_errors
+        )
+        record_pipeline_stage(
+            state,
+            "security-response-drills",
+            "pass" if stage_ok else "fail",
+            "Consumed attached security response drill summary and verified per-scenario artifacts.",
+        )
+        return summary_path
+
+    verify_result = run_command(
+        state,
+        "security-response-runbook-verify",
+        [
+            sys.executable,
+            str(state.settings.workspace_root / "tools/release-certification/security_response_runbook.py"),
+            "verify",
+        ],
+        timeout_seconds=120,
+        allow_failure=True,
+    )
+    run_all_result = run_command(
+        state,
+        "security-response-drill-run-all",
+        [
+            sys.executable,
+            str(state.settings.workspace_root / "tools/release-certification/security_response_runbook.py"),
+            "drill",
+            "run-all",
+            "--out-dir",
+            str(security_drills_dir(state.settings)),
+            "--summary-out",
+            str(summary_path),
+            "--release-id",
+            security_drills_release_id(state),
+            "--generated-at",
+            state.started_at,
+            "--mode",
+            state.settings.mode,
+            "--release-notes-out",
+            str(security_release_notes_draft_path(state.settings)),
+        ],
+        timeout_seconds=120,
+        allow_failure=True,
+    )
+    verify_all_result = run_command(
+        state,
+        "security-response-drill-verify-all",
+        [
+            sys.executable,
+            str(state.settings.workspace_root / "tools/release-certification/security_response_runbook.py"),
+            "drill",
+            "verify-all",
+            "--input-dir",
+            str(security_drills_dir(state.settings)),
+            "--summary-out",
+            str(summary_path),
+            "--release-id",
+            security_drills_release_id(state),
+            "--generated-at",
+            state.started_at,
+            "--mode",
+            state.settings.mode,
+            "--now",
+            state.started_at,
+        ],
+        timeout_seconds=120,
+        allow_failure=True,
+    )
+    generated_summary = read_json(summary_path)
+    validation = security_response_runbook.validate_drills_summary(
+        generated_summary if isinstance(generated_summary, dict) else {},
+        production=state.settings.mode == "production-beta",
+        strict=state.settings.mode in {"release-candidate", "production-beta"},
+        now=security_response_runbook.parse_timestamp(state.started_at),
+        expected_mode=state.settings.mode if state.settings.mode in {"release-candidate", "production-beta"} else None,
+    )
+    stage_ok = (
+        verify_result.ok()
+        and run_all_result.ok()
+        and verify_all_result.ok()
+        and validation.get("status") == "pass"
+    )
+    if not stage_ok:
+        state.failures.append("security response drills did not produce a promotion-ready summary.")
+    record_pipeline_stage(
+        state,
+        "security-response-drills",
+        "pass" if stage_ok else "fail",
+        "Generated and verified all required security response drills.",
+        verify_all_result,
+    )
+    return summary_path
+
+
 def run_fixture_certification(state: PipelineState, cert_out: Path) -> None:
     fixtures = state.settings.workspace_root / "tools/release-certification/fixtures"
     cert_out.mkdir(parents=True, exist_ok=True)
@@ -2530,6 +2899,8 @@ def run_fixture_certification(state: PipelineState, cert_out: Path) -> None:
         str(network_summary),
         "--multi-node-soak-summary",
         str(multi_node_summary),
+        "--security-drills-summary",
+        str(security_drills_summary_path(state.settings)),
         "--skip-git-metadata",
     ]
     result = run_command(state, "release-certification-fixture", args, timeout_seconds=300, allow_failure=True)
@@ -2594,6 +2965,7 @@ def run_release_certification(state: PipelineState, env: dict[str, str], cert_ou
         args.extend(["--multi-node-mode", state.settings.multi_node_mode])
     if state.settings.require_multi_node_soak:
         args.append("--require-multi-node-soak")
+    args.extend(["--security-drills-summary", str(security_drills_summary_path(state.settings))])
     if state.settings.mode != "developer-dry-run":
         args.append("--require-history")
     history_summary = previous_release_certification_summary_for_certification(state.settings)
@@ -3133,12 +3505,14 @@ def write_evidence_extracts(settings: Settings, cert_out: Path) -> dict[str, Any
     resolved_multi_node_summary_path = multi_node_summary_path(settings, cert_out)
     cert_summary_path = cert_out / release_certification.SUMMARY_FILE_NAME
     matrix_path = cert_out / release_certification.ECOSYSTEM_MATRIX_FILE_NAME
+    security_drills_path = security_drills_summary_path(settings)
     app_summary = read_json(app_summary_path)
     live_summary = read_json(live_summary_path)
     network_summary = read_json(network_summary_path)
     multi_node_summary = read_json(resolved_multi_node_summary_path)
     cert_summary = read_json(cert_summary_path)
     matrix_summary = read_json(matrix_path)
+    security_drills_summary = read_json(security_drills_path)
     third_party_intake_summary = read_third_party_intake_summary(settings)
 
     evidence_dir = settings.out_dir / "evidence"
@@ -3154,6 +3528,7 @@ def write_evidence_extracts(settings: Settings, cert_out: Path) -> dict[str, Any
     )
     write_json(evidence_dir / "ecosystem-rc-certification.json", cert_summary or {"status": "missing"})
     write_json(evidence_dir / "ecosystem-certification-matrix.json", matrix_summary or {"status": "missing"})
+    write_json(evidence_dir / "security-drills-summary.json", security_drills_summary or {"status": "missing"})
     write_json(
         evidence_dir / "third-party-intake-summary.json",
         third_party_intake_summary or {"status": "missing", "required": settings.require_third_party_intake},
@@ -3228,6 +3603,7 @@ def write_evidence_extracts(settings: Settings, cert_out: Path) -> dict[str, Any
         "multiNodeBetaSoak": multi_node_summary,
         "certification": cert_summary,
         "matrix": matrix_summary,
+        "securityDrills": security_drills_summary,
         "thirdPartyIntake": third_party_intake_summary,
     }
 
@@ -3239,6 +3615,15 @@ def status_ok(status: str) -> bool:
 def evidence_details(item: dict[str, Any]) -> dict[str, Any]:
     details = item.get("details")
     return details if isinstance(details, dict) else {}
+
+
+def nested_evidence_details(parent_details: dict[str, Any], key: str) -> dict[str, Any]:
+    nested_item = parent_details.get(key)
+    if isinstance(nested_item, dict):
+        nested_details = nested_item.get("details")
+        if isinstance(nested_details, dict):
+            return nested_details
+    return parent_details
 
 
 def evidence_has_unwaivable_redaction_findings(item: dict[str, Any]) -> bool:
@@ -3297,16 +3682,69 @@ def production_security_response_summary(all_evidence: dict[str, Any]) -> dict[s
             "warnings": [],
         }
     details = evidence_details(item)
-    checks = details.get("checks") if isinstance(details.get("checks"), dict) else {}
-    drill_ids = set(details.get("drillIds") if isinstance(details.get("drillIds"), list) else [])
+    app_runbook_item = (
+        details.get("appPlatformRunbook")
+        if isinstance(details.get("appPlatformRunbook"), dict)
+        else item
+    )
+    app_runbook_details = nested_evidence_details(details, "appPlatformRunbook")
+    drill_details = nested_evidence_details(details, "securityDrills")
+    checks = (
+        app_runbook_details.get("checks")
+        if isinstance(app_runbook_details.get("checks"), dict)
+        else {}
+    )
+    drill_ids = set(
+        app_runbook_details.get("drillIds")
+        if isinstance(app_runbook_details.get("drillIds"), list)
+        else []
+    )
+    passed_scenarios = set(
+        str(value) for value in drill_details.get("passedScenarios", []) if isinstance(value, str)
+    ) if isinstance(drill_details.get("passedScenarios"), list) else set()
+    failed_scenarios = [
+        str(value) for value in drill_details.get("failedScenarios", []) if isinstance(value, str)
+    ] if isinstance(drill_details.get("failedScenarios"), list) else []
+    missing_scenarios = [
+        str(value) for value in drill_details.get("missingScenarios", []) if isinstance(value, str)
+    ] if isinstance(drill_details.get("missingScenarios"), list) else []
+    stale_scenarios = [
+        str(value) for value in drill_details.get("staleScenarios", []) if isinstance(value, str)
+    ] if isinstance(drill_details.get("staleScenarios"), list) else []
+    malformed_scenarios = [
+        str(value) for value in drill_details.get("malformedScenarios", []) if isinstance(value, str)
+    ] if isinstance(drill_details.get("malformedScenarios"), list) else []
+    counts = drill_details.get("counts") if isinstance(drill_details.get("counts"), dict) else {}
+    redaction = (
+        drill_details.get("redaction")
+        if isinstance(drill_details.get("redaction"), dict)
+        else {}
+    )
+    release_notes = (
+        drill_details.get("releaseNotes")
+        if isinstance(drill_details.get("releaseNotes"), dict)
+        else {}
+    )
     item_ok = evidence_status_ok(item)
+    app_runbook_ok = evidence_status_ok(app_runbook_item)
+    app_runbook_status = str(app_runbook_item.get("status", item.get("status", "missing")))
 
     def check_status(key: str) -> str:
         if not checks:
-            return "pass" if item_ok else "missing"
-        return "pass" if checks.get(key) is True else "missing"
+            return "pass" if app_runbook_ok else app_runbook_status
+        if checks.get(key) is True:
+            return "pass"
+        return "fail" if app_runbook_status == "fail" else "missing"
 
     def drill_status(drill_id: str) -> str:
+        if drill_id in failed_scenarios or drill_id in malformed_scenarios:
+            return "fail"
+        if drill_id in stale_scenarios:
+            return "stale"
+        if drill_id in missing_scenarios:
+            return "missing"
+        if drill_id in passed_scenarios:
+            return "pass"
         if not drill_ids:
             return "pass" if item_ok else "missing"
         return "pass" if drill_id in drill_ids else "missing"
@@ -3314,8 +3752,18 @@ def production_security_response_summary(all_evidence: dict[str, Any]) -> dict[s
     blockers: list[str] = []
     if not item_ok:
         blockers.append(str(item.get("summary", "Security response runbook evidence is not passing.")))
+    blockers.extend(f"Security response drill failed: {scenario}" for scenario in failed_scenarios)
+    blockers.extend(f"Security response drill missing: {scenario}" for scenario in missing_scenarios)
+    blockers.extend(f"Security response drill stale: {scenario}" for scenario in stale_scenarios)
+    blockers.extend(f"Security response drill malformed: {scenario}" for scenario in malformed_scenarios)
     errors = details.get("errors")
     warnings = [str(error) for error in errors] if isinstance(errors, list) else []
+    app_errors = app_runbook_details.get("errors")
+    if isinstance(app_errors, list):
+        warnings.extend(str(error) for error in app_errors)
+    validation_errors = drill_details.get("validationErrors")
+    if isinstance(validation_errors, list):
+        warnings.extend(str(error) for error in validation_errors)
     return {
         "status": str(item.get("status", "missing")),
         "runbookStatus": check_status("runbookDocExists"),
@@ -3323,9 +3771,28 @@ def production_security_response_summary(all_evidence: dict[str, Any]) -> dict[s
         "reviewerCompromiseDrillStatus": drill_status("reviewer-key-compromise"),
         "catalogKeyRotationDrillStatus": drill_status("catalog-signing-key-rotation"),
         "appSigningKeyCompromiseDrillStatus": drill_status("app-signing-key-compromise"),
+        "vulnerableAppVersionDrillStatus": drill_status("vulnerable-app-version"),
+        "maliciousCatalogEntryDrillStatus": drill_status("malicious-catalog-entry"),
         "emergencyCatalogUpdateDrillStatus": drill_status("emergency-replacement-app"),
-        "supportRedactionStatus": check_status("supportRedactionDrill"),
-        "securityReleaseNotesTemplateStatus": check_status("releaseNotesTemplate"),
+        "supportRedactionStatus": (
+            drill_status("support-bundle-intake-redaction")
+            if counts
+            else check_status("supportRedactionDrill")
+        ),
+        "securityReleaseNotesTemplateStatus": (
+            str(release_notes.get("templateStatus", "missing")) if release_notes else check_status("releaseNotesTemplate")
+        ),
+        "redactionStatus": str(redaction.get("status", "missing")) if redaction else "missing",
+        "promotionReady": bool(drill_details.get("promotionReady", details.get("promotionReady", item_ok))),
+        "nonRelease": bool(drill_details.get("nonRelease", details.get("nonRelease", False))),
+        "fixtureOnly": bool(drill_details.get("fixtureOnly", details.get("fixtureOnly", False))),
+        "counts": counts,
+        "requiredScenarios": drill_details.get("requiredScenarios", []),
+        "passedScenarios": sorted(passed_scenarios),
+        "failedScenarios": failed_scenarios,
+        "missingScenarios": missing_scenarios,
+        "staleScenarios": stale_scenarios,
+        "malformedScenarios": malformed_scenarios,
         "blockers": blockers,
         "warnings": warnings,
     }
@@ -4335,6 +4802,23 @@ def render_markdown_summary(summary: dict[str, Any]) -> str:
             "- Security release notes template: "
             f"`{security_response.get('securityReleaseNotesTemplateStatus', 'missing')}`"
         )
+        counts = security_response.get("counts")
+        if isinstance(counts, dict):
+            lines.append(f"- Required drills: `{counts.get('required', 0)}`")
+            lines.append(f"- Passed drills: `{counts.get('passed', 0)}`")
+            lines.append(f"- Failed drills: `{counts.get('failed', 0)}`")
+            lines.append(f"- Missing drills: `{counts.get('missing', 0)}`")
+            lines.append(f"- Stale drills: `{counts.get('stale', 0)}`")
+            lines.append(f"- Redaction: `{security_response.get('redactionStatus', 'missing')}`")
+        for label, key in (
+            ("Failed drills", "failedScenarios"),
+            ("Missing drills", "missingScenarios"),
+            ("Stale drills", "staleScenarios"),
+            ("Malformed drills", "malformedScenarios"),
+        ):
+            values = security_response.get(key)
+            if isinstance(values, list) and values:
+                lines.append(f"- {label}: `{','.join(str(value) for value in values)}`")
         for blocker in security_response.get("blockers", []):
             lines.append(f"- Blocker: {blocker}")
         for warning in security_response.get("warnings", []):
@@ -4426,6 +4910,8 @@ def build_final_summary(
         "channelMetadata": "catalog/channel-metadata.json",
         "reviewReceipts": "reviews/review-receipts/",
         "appPlatformSmoke": "evidence/app-platform-smoke.json",
+        "securityDrillsSummary": "security-drills/security-drills-summary.json",
+        "securityDrillsEvidence": "evidence/security-drills-summary.json",
         "multiNodeBetaSoak": "evidence/multi-node-beta-soak.json",
         "ecosystemCertification": "evidence/ecosystem-rc-certification.json",
         "thirdPartyIntake": "evidence/third-party-intake-summary.json",
@@ -4434,6 +4920,8 @@ def build_final_summary(
         "goNoGoDashboardReport": GO_NO_GO_DASHBOARD_MARKDOWN,
         "goNoGoRedactionReport": GO_NO_GO_REDACTION_REPORT,
     }
+    if security_release_notes_draft_path(settings).is_file():
+        artifacts["securityReleaseNotesDraft"] = "security/security-release-notes-draft.md"
     if archive is not None:
         artifacts["distArchive"] = f"dist/{archive.name}"
         artifacts["checksums"] = "dist/checksums.txt"
@@ -4555,6 +5043,8 @@ def dashboard_args(settings: Settings) -> list[str]:
         str(settings.out_dir / "evidence/network-scale-soak.json"),
         "--multi-node-beta-soak-summary",
         str(settings.out_dir / "evidence/multi-node-beta-soak.json"),
+        "--security-drills-summary",
+        str(settings.out_dir / "evidence/security-drills-summary.json"),
     ]
     if settings.waiver_file:
         args.extend(["--waivers", str(settings.waiver_file)])
@@ -4918,6 +5408,7 @@ def run_pipeline(settings: Settings) -> tuple[dict[str, Any], int]:
         check_workspace_clean(state, "post-artifact-build")
         write_json(settings.out_dir / "inputs/release-config.json", release_config(state))
         profile_env = state.signing_profile.env if state.signing_profile else os.environ.copy()
+        run_security_response_drills(state)
         run_release_certification(state, profile_env, cert_out)
         check_workspace_clean(state, "post-certification")
         summaries = write_evidence_extracts(settings, cert_out)
@@ -5034,6 +5525,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Attach a redacted third-party app intake summary for optional or required production-beta evidence.",
     )
     parser.add_argument(
+        "--security-drills-summary",
+        type=Path,
+        help="Attach a redacted security response drill summary instead of generating drills in this run.",
+    )
+    parser.add_argument(
         "--require-third-party-intake",
         action="store_true",
         help="Require third-party intake evidence for promotion gates.",
@@ -5099,6 +5595,11 @@ def settings_from_args(args: argparse.Namespace) -> Settings:
         )
     multi_node_soak_config = resolve_workspace_path_arg(args.multi_node_soak_config, workspace)
     third_party_intake_summary = resolve_workspace_path_arg(args.third_party_intake_summary, workspace)
+    security_drills_summary = (
+        resolve_workspace_path_arg(args.security_drills_summary, workspace)
+        if args.security_drills_summary is not None
+        else resolve_workspace_path_text(os.environ.get("CRYPTAD_SECURITY_DRILLS_SUMMARY"), workspace)
+    )
     if args.third_party_intake_summary is not None and args.run_third_party_intake_sample_flow:
         raise SystemExit("--run-third-party-intake-sample-flow cannot be combined with --third-party-intake-summary.")
     artifact_base_uri = args.artifact_base_uri.strip() or os.environ.get(
@@ -5209,6 +5710,7 @@ def settings_from_args(args: argparse.Namespace) -> Settings:
         third_party_intake_summary=third_party_intake_summary,
         require_third_party_intake=args.require_third_party_intake,
         run_third_party_intake_sample_flow=args.run_third_party_intake_sample_flow,
+        security_drills_summary=security_drills_summary,
     )
 
 
@@ -6525,6 +7027,296 @@ def assert_developer_dry_run_exit_code_fails_on_recorded_failures() -> None:
         )
         assert summary["status"] == "fail", summary
         assert release_exit_code(settings, summary) == 1, summary
+
+
+def assert_security_release_notes_draft_artifact_requires_file() -> None:
+    with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-security-draft-") as temp_name:
+        workspace = Path(temp_name) / "repo"
+        workspace.mkdir(parents=True)
+        settings = Settings(
+            workspace_root=workspace,
+            out_dir=workspace / "build/production-beta",
+            mode="developer-dry-run",
+            catalog_channel="stable",
+            artifact_base_uri="https://downloads.crypta.invalid/self-test",
+            require_live_network=False,
+            require_sandbox_provider_tests=False,
+            skip_gradle=True,
+            skip_full_build=True,
+            use_fixture_evidence=False,
+            allow_dirty_workspace=True,
+            emergency_skip_live_network=False,
+            emergency_skip_build=False,
+            allow_test_signing_in_production=False,
+            previous_summary=None,
+            waiver_file=None,
+            timeout_seconds=60,
+            clean_out_dir=True,
+        )
+        state = PipelineState(settings, "self-test", utc_now(), [], [], [])
+        promotion = {
+            "status": "pass",
+            "promotionReady": False,
+            "nonRelease": True,
+            "gates": [],
+            "knownLimitations": [],
+        }
+        redaction_report = {
+            "schemaVersion": 1,
+            "status": "pass",
+            "scannedRoot": "<release-out>",
+            "findingCount": 0,
+            "findings": [],
+        }
+        without_draft = build_final_summary(state, promotion, redaction_report, None)
+        assert "securityReleaseNotesDraft" not in without_draft["artifacts"], without_draft["artifacts"]
+        write_text(security_release_notes_draft_path(settings), "# Security Release Notes Draft\n")
+        with_draft = build_final_summary(state, promotion, redaction_report, None)
+        assert (
+            with_draft["artifacts"]["securityReleaseNotesDraft"]
+            == "security/security-release-notes-draft.md"
+        ), with_draft["artifacts"]
+
+
+def assert_security_response_summary_reads_combined_drill_details() -> None:
+    counts = {
+        "required": len(security_response_runbook.REQUIRED_DRILLS),
+        "passed": len(security_response_runbook.REQUIRED_DRILLS),
+        "failed": 0,
+        "missing": 0,
+        "stale": 0,
+        "malformed": 0,
+    }
+    combined = {
+        "production-security.response-runbook": {
+            "id": "production-security.response-runbook",
+            "status": "pass",
+            "summary": "Production security response runbook and operational drills passed.",
+            "details": {
+                "appPlatformRunbook": {
+                    "status": "pass",
+                    "details": {
+                        "checks": {
+                            "runbookDocExists": True,
+                            "advisoryLifecycleTestable": True,
+                            "releaseNotesTemplate": True,
+                            "supportRedactionDrill": True,
+                        },
+                        "drillIds": list(security_response_runbook.REQUIRED_DRILLS),
+                    },
+                },
+                "securityDrills": {
+                    "status": "pass",
+                    "details": {
+                        "promotionReady": True,
+                        "nonRelease": False,
+                        "fixtureOnly": False,
+                        "counts": counts,
+                        "requiredScenarios": list(security_response_runbook.REQUIRED_DRILLS),
+                        "passedScenarios": list(security_response_runbook.REQUIRED_DRILLS),
+                        "failedScenarios": [],
+                        "missingScenarios": [],
+                        "staleScenarios": [],
+                        "malformedScenarios": [],
+                        "redaction": {"status": "pass", "findings": []},
+                        "releaseNotes": {"templateStatus": "pass"},
+                        "validationErrors": [],
+                    },
+                },
+                "componentStatuses": {
+                    "appPlatformRunbook": "pass",
+                    "securityDrills": "pass",
+                },
+            },
+        }
+    }
+
+    summary = production_security_response_summary(combined)
+
+    assert summary["counts"] == counts, summary
+    assert summary["requiredScenarios"] == list(security_response_runbook.REQUIRED_DRILLS), summary
+    assert summary["passedScenarios"] == sorted(security_response_runbook.REQUIRED_DRILLS), summary
+    assert summary["runbookStatus"] == "pass", summary
+    assert summary["advisoryLifecycleStatus"] == "pass", summary
+    assert summary["reviewerCompromiseDrillStatus"] == "pass", summary
+    assert summary["supportRedactionStatus"] == "pass", summary
+    assert summary["redactionStatus"] == "pass", summary
+    assert summary["securityReleaseNotesTemplateStatus"] == "pass", summary
+
+    failed_runbook = json.loads(json.dumps(combined))
+    failed_item = failed_runbook["production-security.response-runbook"]
+    failed_item["status"] = "fail"
+    failed_item["summary"] = "Production security response is not promotion-ready."
+    failed_app = failed_item["details"]["appPlatformRunbook"]
+    failed_app["status"] = "fail"
+    failed_app["details"]["checks"]["runbookDocExists"] = False
+    failed_app["details"]["checks"]["advisoryLifecycleTestable"] = False
+    failed_item["details"]["componentStatuses"]["appPlatformRunbook"] = "fail"
+
+    failed_summary = production_security_response_summary(failed_runbook)
+
+    assert failed_summary["counts"] == counts, failed_summary
+    assert failed_summary["runbookStatus"] == "fail", failed_summary
+    assert failed_summary["advisoryLifecycleStatus"] == "fail", failed_summary
+    assert failed_summary["reviewerCompromiseDrillStatus"] == "pass", failed_summary
+
+
+def assert_attached_security_drills_summary_is_bound_to_release_id() -> None:
+    with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-security-drills-release-id-") as temp_name:
+        workspace = Path(temp_name) / "repo"
+        make_self_test_workspace(workspace)
+        out_dir = workspace / "build/production-beta"
+        attached_dir = workspace / "attached/security-drills"
+        attached_summary = attached_dir / "security-drills-summary.json"
+        started_at = "2026-07-04T00:00:00Z"
+        security_response_runbook.drill_run_all(
+            workspace / "tools/release-certification/production-security-response-runbook.json",
+            attached_dir,
+            attached_summary,
+            release_id="cryptad-beta-other-candidate",
+            generated_at=started_at,
+            mode="release-candidate",
+        )
+        settings = Settings(
+            workspace_root=workspace,
+            out_dir=out_dir,
+            mode="release-candidate",
+            catalog_channel="stable",
+            artifact_base_uri="https://downloads.crypta.invalid/self-test",
+            require_live_network=False,
+            require_sandbox_provider_tests=False,
+            skip_gradle=True,
+            skip_full_build=True,
+            use_fixture_evidence=True,
+            allow_dirty_workspace=True,
+            emergency_skip_live_network=False,
+            emergency_skip_build=False,
+            allow_test_signing_in_production=False,
+            previous_summary=None,
+            waiver_file=None,
+            timeout_seconds=120,
+            clean_out_dir=True,
+            security_drills_summary=attached_summary,
+        )
+        state = PipelineState(settings, "current-candidate", started_at, [], [], [])
+
+        run_security_response_drills(state)
+
+        stage = state.pipeline_stages.get("security-response-drills", {})
+        assert stage.get("status") == "fail", stage
+        assert any("releaseId does not match" in failure for failure in state.failures), state.failures
+
+
+def assert_invalid_attached_security_drills_summary_is_sanitized() -> None:
+    with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-security-drills-sanitized-") as temp_name:
+        workspace = Path(temp_name) / "repo"
+        make_self_test_workspace(workspace)
+        started_at = "2026-07-04T00:00:00Z"
+        version = "current-candidate"
+        release_id = f"cryptad-beta-{version}"
+        attached_dir = workspace / "attached/security-drills"
+        attached_summary = attached_dir / "security-drills-summary.json"
+        security_response_runbook.drill_run_all(
+            workspace / "tools/release-certification/production-security-response-runbook.json",
+            attached_dir,
+            attached_summary,
+            release_id=release_id,
+            generated_at=started_at,
+            mode="production-beta",
+        )
+        unsafe_summary = read_json(attached_summary)
+        if unsafe_summary is None:
+            raise AssertionError("security drills self-test did not create an attached summary")
+        unsafe_summary["rawSupportBundleBody"] = "-----BEGIN PRIVATE KEY-----\nunsafe-fixture\n-----END PRIVATE KEY-----"
+        unsafe_summary.setdefault("releaseNotes", {})["redactedSnippet"] = (
+            "Unsafe attached summary mentions /home/alice/private/key.pem"
+        )
+        write_json(attached_summary, unsafe_summary)
+        settings = dataclasses.replace(
+            cleanup_test_settings(workspace, workspace / "build/production-beta-unsafe-security-drills"),
+            mode="production-beta",
+            security_drills_summary=attached_summary,
+        )
+        state = PipelineState(settings, version, started_at, [], [], [])
+
+        summary_path = run_security_response_drills(state)
+
+        stage = state.pipeline_stages.get("security-response-drills", {})
+        assert stage.get("status") == "fail", stage
+        persisted = read_json(summary_path)
+        assert isinstance(persisted, dict), persisted
+        assert persisted.get("status") == "fail", persisted
+        assert persisted.get("promotionReady") is False, persisted
+        assert persisted.get("attachment", {}).get("sanitized") is True, persisted
+        assert persisted.get("attachmentErrors"), persisted
+        encoded = summary_path.read_text(encoding="utf-8") + json.dumps(state.failures, sort_keys=True)
+        for forbidden in ("-----BEGIN PRIVATE KEY-----", "/home/alice/private/key.pem", "unsafe-fixture"):
+            assert forbidden not in encoded, forbidden
+
+
+def assert_attached_security_drills_summary_preserves_artifacts() -> None:
+    with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-security-drills-attached-") as temp_name:
+        workspace = Path(temp_name) / "repo"
+        make_self_test_workspace(workspace)
+        started_at = "2026-07-04T00:00:00Z"
+        version = "current-candidate"
+        release_id = f"cryptad-beta-{version}"
+        attached_dir = workspace / "attached/security-drills"
+        attached_summary = attached_dir / "security-drills-summary.json"
+        security_response_runbook.drill_run_all(
+            workspace / "tools/release-certification/production-security-response-runbook.json",
+            attached_dir,
+            attached_summary,
+            release_id=release_id,
+            generated_at=started_at,
+            mode="production-beta",
+        )
+        settings = dataclasses.replace(
+            cleanup_test_settings(workspace, workspace / "build/production-beta"),
+            mode="production-beta",
+            security_drills_summary=attached_summary,
+        )
+        state = PipelineState(settings, version, started_at, [], [], [])
+
+        summary_path = run_security_response_drills(state)
+
+        stage = state.pipeline_stages.get("security-response-drills", {})
+        assert stage.get("status") == "pass", stage
+        assert state.failures == [], state.failures
+        assert read_json(summary_path)["status"] == "pass"
+        for scenario, file_name in security_response_runbook.DRILL_OUTPUT_FILENAMES.items():
+            copied = security_drills_dir(settings) / file_name
+            assert copied.is_file(), scenario
+
+        missing_dir = workspace / "attached-missing/security-drills"
+        missing_summary = missing_dir / "security-drills-summary.json"
+        security_response_runbook.drill_run_all(
+            workspace / "tools/release-certification/production-security-response-runbook.json",
+            missing_dir,
+            missing_summary,
+            release_id=release_id,
+            generated_at=started_at,
+            mode="production-beta",
+        )
+        (missing_dir / security_response_runbook.DRILL_OUTPUT_FILENAMES["reviewer-key-compromise"]).unlink()
+        missing_settings = dataclasses.replace(
+            cleanup_test_settings(workspace, workspace / "build/production-beta-missing"),
+            mode="production-beta",
+            security_drills_summary=missing_summary,
+        )
+        missing_state = PipelineState(missing_settings, version, started_at, [], [], [])
+
+        missing_summary_path = run_security_response_drills(missing_state)
+
+        missing_stage = missing_state.pipeline_stages.get("security-response-drills", {})
+        assert missing_stage.get("status") == "fail", missing_stage
+        assert any("artifacts are incomplete" in failure for failure in missing_state.failures), (
+            missing_state.failures
+        )
+        failed_summary = read_json(missing_summary_path)
+        assert failed_summary["status"] == "fail", failed_summary
+        assert failed_summary["promotionReady"] is False, failed_summary
+        assert failed_summary["attachmentErrors"], failed_summary
 
 
 def assert_certification_failure_marks_dry_run_failed() -> None:
@@ -8958,6 +9750,11 @@ def run_self_test() -> None:
     assert_release_candidate_third_party_intake_rejects_non_release_summary()
     assert_waived_critical_evidence_is_accepted_without_redaction_findings()
     assert_developer_dry_run_exit_code_fails_on_recorded_failures()
+    assert_security_release_notes_draft_artifact_requires_file()
+    assert_security_response_summary_reads_combined_drill_details()
+    assert_attached_security_drills_summary_is_bound_to_release_id()
+    assert_invalid_attached_security_drills_summary_is_sanitized()
+    assert_attached_security_drills_summary_preserves_artifacts()
     assert_certification_failure_marks_dry_run_failed()
     assert_release_candidate_no_go_dashboard_preserves_summary_and_exit()
     assert_go_with_waivers_cannot_promote_failed_production_summary()

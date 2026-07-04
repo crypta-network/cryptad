@@ -1,0 +1,22 @@
+{
+  "extends": "go-no-go-security-drills-failed-scenario.json",
+  "waivers": {
+    "schemaVersion": 1,
+    "waivers": [
+      {
+        "id": "waive-security-drill-failure",
+        "evidenceId": "production-security.response-runbook",
+        "severity": "blocker",
+        "scope": "production-beta",
+        "rationale": "Fixture verifies expired drill waiver rejection.",
+        "approvedBy": "release-manager",
+        "owner": "release",
+        "createdAt": "1969-12-30T00:00:00Z",
+        "expiresAt": "1969-12-31T00:00:00Z",
+        "references": [
+          "release-drill-waiver-fixture"
+        ]
+      }
+    ]
+  }
+}

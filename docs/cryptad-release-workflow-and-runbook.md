@@ -97,10 +97,16 @@ Treat these as release blockers, in order:
    Confirm `production-security.response-runbook` passes in the production beta summary, and review
    the compact `multiNodeBetaSoak` and `developerBetaProgram` sections before promotion. Security
    releases or app ecosystem incident responses must also run
-   `python3 tools/release-certification/security_response_runbook.py verify`, preserve the
-   generated drill/advisory artifacts as redacted release evidence, and draft public notes from
-   [templates/security-release-notes.md](templates/security-release-notes.md). The operational
-   procedure is [production-security-response-runbook.md](production-security-response-runbook.md).
+   `python3 tools/release-certification/security_response_runbook.py verify`,
+   `python3 tools/release-certification/security_response_runbook.py drill run-all --out-dir build/security-drills --release-id cryptad-beta-<version> --summary-out build/security-drills/security-drills-summary.json`,
+   and
+   `python3 tools/release-certification/security_response_runbook.py drill verify-all --input-dir build/security-drills --summary-out build/security-drills/security-drills-summary.json`.
+   Preserve `build/security-drills/security-drills-summary.json`, the seven per-scenario drill
+   artifacts, and any generated redacted security release notes draft as release evidence. Draft
+   public notes from [templates/security-release-notes.md](templates/security-release-notes.md).
+   Missing, failed, stale, fixture-only production, malformed, or redaction-unsafe drills are
+   production blockers. The operational procedure is
+   [production-security-response-runbook.md](production-security-response-runbook.md).
 3. **Release certification report** - generate the release-candidate report after the source gates
    below have produced their summaries:
    ```bash

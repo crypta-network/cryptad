@@ -135,6 +135,17 @@ python3 tools/release-certification/security_response_runbook.py drill create \
   --out build/security-drills/reviewer-key-compromise.json
 python3 tools/release-certification/security_response_runbook.py drill verify \
   --input build/security-drills/reviewer-key-compromise.json
+python3 tools/release-certification/security_response_runbook.py drill run-all \
+  --out-dir build/security-drills \
+  --release-id cryptad-beta-<version> \
+  --mode production-beta \
+  --summary-out build/security-drills/security-drills-summary.json \
+  --release-notes-out build/security/security-release-notes-draft.md
+python3 tools/release-certification/security_response_runbook.py drill verify-all \
+  --input-dir build/security-drills \
+  --release-id cryptad-beta-<version> \
+  --mode production-beta \
+  --summary-out build/security-drills/security-drills-summary.json
 python3 tools/release-certification/security_response_runbook.py advisory template \
   --scenario vulnerable-app-version \
   --out build/security-advisory-template.md
@@ -143,6 +154,36 @@ python3 tools/release-certification/security_response_runbook.py advisory templa
 These commands are deterministic, do not require live network access or private keys, and verify
 [docs/production-security-response-runbook.md](../../docs/production-security-response-runbook.md)
 for the `production-security.response-runbook` evidence used by production beta promotion.
+`drill run-all` creates one redacted schema-version 2 artifact for each required scenario and a
+`cryptad-security-response-drills-summary` aggregate. Release certification, the production beta
+release wrapper, and the go/no-go dashboard consume the summary through
+`--security-drills-summary`. Attached summaries must use the candidate release id,
+`cryptad-beta-<version>`, and the matching release mode (`release-candidate` for RC certification,
+`production-beta` for protected production-beta attachment). Keep the seven per-scenario JSON files
+beside the attached summary; the release wrapper copies and verifies those artifacts before
+accepting the summary. The release wrapper and strict go/no-go dashboards reject summaries generated
+for another candidate. Production-beta promotion fails closed when the summary is missing, a
+required scenario is missing, a scenario fails, an artifact is stale or malformed, production
+evidence is marked fixture-only, or any drill/advisory/release-note redaction check fails.
+Redaction failures are critical and non-waivable.
+
+The required scenarios are:
+
+```text
+vulnerable-app-version
+app-signing-key-compromise
+reviewer-key-compromise
+catalog-signing-key-rotation
+malicious-catalog-entry
+emergency-replacement-app
+support-bundle-intake-redaction
+```
+
+Drill artifacts, summaries, and generated release notes must contain only safe scenario ids,
+statuses, bounded operator guidance, evidence ids, counts, and digests. They must not contain
+private keys, private insert URIs, tokens, raw receipt signatures, raw support bundle bodies, raw
+fetched content, raw app data, raw profile/feed/trust/social documents, raw app-service bodies,
+nested backup material, or absolute local paths.
 
 The command cleans existing output directories only under `build/production-beta*` or when the
 directory already contains the `.cryptad-production-beta-release-output` sentinel. Output is
@@ -175,6 +216,8 @@ build/release-certification/
   live-network-beta-smoke/
     summary.json
     live-network-beta-smoke-report.md
+  security-drills/
+    security-drills-summary.json
 ```
 
 The production beta wrapper uses a separate public artifact layout under
@@ -192,7 +235,11 @@ catalog/first-party-catalog.sig
 catalog/channel-metadata.json
 reviews/review-receipts/
 reviews/review-transparency-log.json
+security-drills/security-drills-summary.json
+security-drills/<scenario>.json
+security/security-release-notes-draft.md
 evidence/
+evidence/security-drills-summary.json
 reports/production-beta-summary.json
 reports/production-beta-summary.md
 reports/redaction-report.json
@@ -664,10 +711,19 @@ actions-artifact://<run-id>/<artifact-name>/<path-inside-artifact>
 The workflow restores these inputs into `$RUNNER_TEMP` and then passes the restored local path to
 the release tool. Plain `http://` URLs, missing artifact paths, absolute artifact paths, and
 artifact paths containing `..` are rejected before strict production-beta validation runs.
+
+For `security_drills_summary`, pass a checked-out local path or an `actions-artifact://` reference
+to `security-drills-summary.json` inside an artifact that also contains the seven per-scenario
+drill JSON files beside the summary. HTTPS JSON URLs are rejected for this input because
+`production_beta_release.py` re-verifies sibling drill artifacts and summary digests before the
+attached evidence can contribute to promotion.
+
 For `previous_summary`, strict validation runs
 `multi_node_beta_soak.py verify-previous-summary --strict --max-age-days 90` before uploadable
-production artifacts are accepted. The workflow must not print raw summary bodies, private insert
-URIs, private keys, tokens, raw app data, raw social message bodies, or raw trust statements.
+production artifacts are accepted. Security drill summaries are validated by
+`production_beta_release.py` and the go/no-go dashboard before promotion. The workflow must not
+print raw summary bodies, private insert URIs, private keys, tokens, raw app data, raw social
+message bodies, raw support bundle bodies, raw signatures, or raw trust statements.
 
 ## Structured waiver files
 

@@ -33,7 +33,8 @@
       ],
       "verificationEvidence": [
         "catalog.version-denylist",
-        "app-update.security-denylist-gates"
+        "app-update.security-denylist-gates",
+        "operator-beta.support-bundle-redaction"
       ],
       "releaseNotesTemplate": "affected apps, severity, containment, update guidance"
     },
@@ -66,8 +67,10 @@
         "omit key file paths"
       ],
       "verificationEvidence": [
-        "catalog.security-advisories",
-        "app-review.receipt-revocation"
+        "catalog.version-denylist",
+        "app-update.security-denylist-gates",
+        "app-review.receipt-revocation",
+        "production-beta.launch-artifact-hygiene"
       ],
       "releaseNotesTemplate": "signing key id, affected versions, replacement status"
     },
@@ -101,7 +104,9 @@
       ],
       "verificationEvidence": [
         "app-review.reviewer-key-compromise-flow",
-        "app-review.receipt-revocation"
+        "app-review.receipt-revocation",
+        "app-review.transparency-log",
+        "web-shell.security-advisory-trust-warnings"
       ],
       "releaseNotesTemplate": "reviewer key id, affected receipts, replacement review status"
     },
@@ -133,8 +138,9 @@
         "omit trusted-key paths"
       ],
       "verificationEvidence": [
-        "catalog.smoke",
-        "production-security.response-runbook"
+        "catalog.operations-and-mirrors",
+        "catalog.security-advisories",
+        "app-update.live-catalog-refresh"
       ],
       "releaseNotesTemplate": "old key id, new key id, effective timestamp, verification status"
     },
@@ -167,6 +173,8 @@
       ],
       "verificationEvidence": [
         "catalog.security-advisories",
+        "catalog.version-denylist",
+        "catalog.operations-and-mirrors",
         "web-shell.security-advisory-trust-warnings"
       ],
       "releaseNotesTemplate": "catalog id, affected entry, corrected metadata, channel status"
@@ -199,8 +207,10 @@
         "omit raw bundle contents"
       ],
       "verificationEvidence": [
-        "catalog.smoke",
-        "app-review.first-party-catalog"
+        "catalog.security-advisories",
+        "app-update.lifecycle",
+        "app-update.data-migration-contract",
+        "operator-rc.recovery-plan-execute"
       ],
       "releaseNotesTemplate": "replacement version, review status, advisory id, support guidance"
     },
@@ -233,7 +243,8 @@
       ],
       "verificationEvidence": [
         "operator-beta.support-bundle-redaction",
-        "operator-rc.redaction"
+        "app-platform.privacy-preserving-beta-diagnostics",
+        "production-beta.dashboard-redaction"
       ],
       "releaseNotesTemplate": "support bundle note, redaction note, private reporter data excluded"
     }

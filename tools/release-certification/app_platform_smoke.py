@@ -18662,8 +18662,10 @@ def assert_security_response_drill_verify_rejects_malformed_envelope(repo_root: 
     parsed = json.loads(result.stdout)
     assert parsed["status"] == "fail", parsed
     assert parsed["ok"] is False, parsed
-    assert "schemaVersion must be 1" in parsed["errors"], parsed
-    assert "scenario must match drill id" in parsed["errors"], parsed
+    assert "generatedAt must be an ISO-8601 UTC timestamp" in parsed["errors"], parsed
+    assert "releaseId must be a non-empty string" in parsed["errors"], parsed
+    assert "steps must be a non-empty array" in parsed["errors"], parsed
+    assert "redaction must be an object" in parsed["errors"], parsed
 
 
 def assert_security_response_verifier_rejects_bounded_model_violations(repo_root: Path) -> None:
