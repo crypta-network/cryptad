@@ -1777,7 +1777,13 @@ def load_inputs_from_fixture(args: argparse.Namespace, workspace_root: Path) -> 
     mode = args.mode or str(fixture.get("mode", "release-candidate"))
     generated_at = args.generated_at or str(fixture.get("generatedAt", DEFAULT_GENERATED_AT))
     release_id = args.release_id or str(fixture.get("releaseId", fixture_path.stem))
-    inputs = rebind_inherited_fixture_security_drills_summary(inputs, fixture_path, release_id, mode)
+    inputs = rebind_inherited_fixture_security_drills_summary(
+        inputs,
+        fixture_path,
+        release_id,
+        mode,
+        generated_at,
+    )
     return inputs, {}, [fixture_path], waiver_value, release_id, mode, generated_at
 
 
@@ -1786,6 +1792,7 @@ def rebind_inherited_fixture_security_drills_summary(
     fixture_path: Path,
     release_id: str,
     mode: str,
+    generated_at: str,
 ) -> dict[str, Any]:
     """Keep inherited pass-fixture drill summaries bound to the child fixture candidate."""
     raw_fixture = read_json(fixture_path)
@@ -1801,6 +1808,7 @@ def rebind_inherited_fixture_security_drills_summary(
     rebound_summary = rebound.get("securityDrillsSummary")
     if isinstance(rebound_summary, dict):
         rebound_summary["releaseId"] = release_id
+        rebound_summary["generatedAt"] = generated_at
         if mode in security_response_runbook.RELEASE_DRILL_MODES:
             rebound_summary["mode"] = mode
     return rebound
@@ -3791,6 +3799,7 @@ def run_self_test(quiet: bool = False) -> None:
         assert_security_drill_summary_evidence_is_not_generic_release_evidence(root)
         assert_security_drills_release_id_matches_dashboard_candidate(root)
         assert_validator_security_drill_redaction_findings_are_non_waivable(root)
+        assert_inherited_security_drill_summary_timestamp_rebinds(root)
         assert_previous_candidate_upgrade_current_binding_is_enforced(root)
         assert_multi_node_release_evidence_is_not_overwritten(root)
     if not quiet:
@@ -3837,6 +3846,44 @@ def assert_multi_node_release_evidence_is_not_overwritten(root: Path) -> None:
         raise AssertionError(
             "failing release-certification support-bundle drill evidence did not block: "
             f"{dashboard}"
+        )
+
+
+def assert_inherited_security_drill_summary_timestamp_rebinds(root: Path) -> None:
+    args = build_parser().parse_args(
+        [
+            "build",
+            "--workspace-root",
+            str(Path(__file__).resolve().parents[2]),
+            "--out-dir",
+            str(root / "inherited-security-drills-timestamp-rebind"),
+            "--fixtures",
+            str(FIXTURE_DIR / "go-no-go-expired-waiver.json"),
+        ]
+    )
+    inputs, _paths, _scan_targets, _waiver_value, _release_id, mode, generated_at = (
+        load_inputs_from_fixture(args, Path(__file__).resolve().parents[2])
+    )
+    summary = inputs.get("securityDrillsSummary")
+    if not isinstance(summary, dict):
+        raise AssertionError("expired-waiver fixture did not inherit a security drills summary")
+    if summary.get("generatedAt") != generated_at:
+        raise AssertionError(
+            "inherited security drills summary did not rebind generatedAt: "
+            f"{summary.get('generatedAt')} != {generated_at}"
+        )
+    _timestamp, now = parse_generated_at(generated_at)
+    validation = security_response_runbook.validate_drills_summary(
+        summary,
+        production=mode == "production-beta",
+        strict=mode in {"release-candidate", "production-beta"},
+        now=now,
+        expected_mode=mode if mode in {"release-candidate", "production-beta"} else None,
+    )
+    if "drills summary is stale" in validation.get("errors", []):
+        raise AssertionError(
+            "inherited security drills summary kept the parent fixture timestamp: "
+            f"{validation}"
         )
 
 

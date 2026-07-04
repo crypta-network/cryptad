@@ -743,6 +743,8 @@ def validate_drill_steps(
             continue
         if steps[index].get("evidenceIds") != expected_step.get("evidenceIds"):
             errors.append(f"steps[{index}].evidenceIds must match the runbook scenario")
+        if steps[index].get("safeSummary") != expected_step.get("safeSummary"):
+            errors.append(f"steps[{index}].safeSummary must match the runbook scenario")
     return errors
 
 
@@ -892,18 +894,30 @@ def validate_v2_drill_artifact(value: dict[str, Any], model_path: Path = DEFAULT
     else:
         if release_notes.get("templateStatus") != "pass":
             errors.append("releaseNotes.templateStatus must be pass")
+        if drill is not None and release_notes.get("template") != drill.get("releaseNotesTemplate"):
+            errors.append("releaseNotes.template must match the runbook scenario")
         snippet = release_notes.get("redactedSnippet")
         if not isinstance(snippet, str) or not snippet.strip():
             errors.append("releaseNotes.redactedSnippet must be a non-empty string")
+        elif drill is not None and isinstance(scenario, str) and snippet != release_notes_snippet(scenario, drill):
+            errors.append("releaseNotes.redactedSnippet must match the runbook scenario")
     advisory_template = value.get("advisoryTemplate")
     if not isinstance(advisory_template, dict):
         errors.append("advisoryTemplate must be an object")
     else:
         if advisory_template.get("templateStatus") != "pass":
             errors.append("advisoryTemplate.templateStatus must be pass")
+        if (
+            drill is not None
+            and "template" in advisory_template
+            and advisory_template.get("template") != drill.get("releaseNotesTemplate")
+        ):
+            errors.append("advisoryTemplate.template must match the runbook scenario")
         snippet = advisory_template.get("redactedSnippet")
         if not isinstance(snippet, str) or not snippet.strip():
             errors.append("advisoryTemplate.redactedSnippet must be a non-empty string")
+        elif drill is not None and isinstance(scenario, str) and snippet != release_notes_snippet(scenario, drill):
+            errors.append("advisoryTemplate.redactedSnippet must match the runbook scenario")
     redaction = value.get("redaction")
     if not isinstance(redaction, dict):
         errors.append("redaction must be an object")
@@ -1527,6 +1541,38 @@ def self_test() -> dict[str, Any]:
         write_json(wrong_step_evidence_path, wrong_step_evidence_artifact)
         checks["rejectWrongDrillStepEvidence"] = (
             drill_verify(wrong_step_evidence_path)["status"] == "fail"
+        )
+        wrong_step_summary_artifact = clone_json(artifact)
+        wrong_step_summary_artifact["steps"][0]["safeSummary"] = "Reviewer key flow text was replaced."
+        wrong_step_summary_path = tmpdir / "reviewer-key-compromise-wrong-step-summary.json"
+        write_json(wrong_step_summary_path, wrong_step_summary_artifact)
+        checks["rejectWrongDrillStepSummary"] = (
+            drill_verify(wrong_step_summary_path)["status"] == "fail"
+        )
+        wrong_release_template_artifact = clone_json(artifact)
+        wrong_release_template_artifact["releaseNotes"]["template"] = "tampered release notes template"
+        wrong_release_template_path = tmpdir / "reviewer-key-compromise-wrong-release-template.json"
+        write_json(wrong_release_template_path, wrong_release_template_artifact)
+        checks["rejectWrongReleaseNotesTemplate"] = (
+            drill_verify(wrong_release_template_path)["status"] == "fail"
+        )
+        wrong_release_snippet_artifact = clone_json(artifact)
+        wrong_release_snippet_artifact["releaseNotes"]["redactedSnippet"] = (
+            "Scenario reviewer-key-compromise: tampered release-note evidence verified."
+        )
+        wrong_release_snippet_path = tmpdir / "reviewer-key-compromise-wrong-release-snippet.json"
+        write_json(wrong_release_snippet_path, wrong_release_snippet_artifact)
+        checks["rejectWrongReleaseNotesSnippet"] = (
+            drill_verify(wrong_release_snippet_path)["status"] == "fail"
+        )
+        wrong_advisory_snippet_artifact = clone_json(artifact)
+        wrong_advisory_snippet_artifact["advisoryTemplate"]["redactedSnippet"] = (
+            "Scenario reviewer-key-compromise: tampered advisory evidence verified."
+        )
+        wrong_advisory_snippet_path = tmpdir / "reviewer-key-compromise-wrong-advisory-snippet.json"
+        write_json(wrong_advisory_snippet_path, wrong_advisory_snippet_artifact)
+        checks["rejectWrongAdvisoryTemplateSnippet"] = (
+            drill_verify(wrong_advisory_snippet_path)["status"] == "fail"
         )
 
         summary = drill_run_all(
