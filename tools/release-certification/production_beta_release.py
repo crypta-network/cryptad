@@ -5044,11 +5044,28 @@ def dashboard_args(settings: Settings) -> list[str]:
         "--multi-node-beta-soak-summary",
         str(settings.out_dir / "evidence/multi-node-beta-soak.json"),
         "--security-drills-summary",
-        str(settings.out_dir / "evidence/security-drills-summary.json"),
+        str(security_drills_summary_path(settings)),
     ]
     if settings.waiver_file:
         args.extend(["--waivers", str(settings.waiver_file)])
     return args
+
+
+def assert_dashboard_args_use_security_drill_artifact_directory() -> None:
+    with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-dashboard-drills-") as temp_name:
+        workspace = Path(temp_name) / "repo"
+        workspace.mkdir(parents=True)
+        out_dir = workspace / "build/production-beta"
+        settings = dataclasses.replace(
+            cleanup_test_settings(workspace, out_dir),
+            mode="production-beta",
+        )
+        args = dashboard_args(settings)
+        summary_index = args.index("--security-drills-summary") + 1
+        summary_path = Path(args[summary_index])
+        assert summary_path == security_drills_summary_path(settings), args
+        assert summary_path.parent == security_drills_dir(settings), args
+        assert summary_path != settings.out_dir / "evidence/security-drills-summary.json", args
 
 
 def clear_stale_go_no_go_dashboard_artifacts(out_dir: Path) -> list[str]:
@@ -9756,6 +9773,7 @@ def run_self_test() -> None:
     assert_invalid_attached_security_drills_summary_is_sanitized()
     assert_attached_security_drills_summary_preserves_artifacts()
     assert_certification_failure_marks_dry_run_failed()
+    assert_dashboard_args_use_security_drill_artifact_directory()
     assert_release_candidate_no_go_dashboard_preserves_summary_and_exit()
     assert_go_with_waivers_cannot_promote_failed_production_summary()
     assert_missing_go_no_go_dashboard_fails_summary_and_exit()
