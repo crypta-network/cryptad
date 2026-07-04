@@ -43,6 +43,9 @@ responses, catalog signing key rotations, and app signing key compromise respons
 
 ## Verification
 
+- Security drill scenario:
+- Security drill artifact digest:
+- Security drill summary status:
 - Signed catalog verified:
 - Advisory parser/writer verified:
 - Install/update/stage/apply gates verified:

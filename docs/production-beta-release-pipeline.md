@@ -103,10 +103,24 @@ Production beta supports three explicit test/emergency escape hatches:
   non-production signing labels. It sets `nonRelease=true`, keeps `promotionReady=false`, and must
   not be used for release publication.
 
-Production beta requires `production-security.response-runbook` evidence. Missing runbook
-documentation, drill model, reviewer compromise drill, catalog key rotation drill, app signing key
-compromise drill, emergency catalog update drill, support redaction proof, or security release
-notes template is a production blocker. The runbook procedure is
+Production beta requires `production-security.response-runbook` evidence backed by the operational
+security drill summary. Missing runbook documentation, drill model, reviewer compromise drill,
+catalog key rotation drill, app signing key compromise drill, emergency catalog update drill,
+support redaction proof, security release notes template, or
+`security-drills/security-drills-summary.json` is a production blocker. The wrapper generates this
+summary by default with `security_response_runbook.py drill run-all` and verifies it with
+`drill verify-all`; protected runs can also consume a prebuilt summary through
+`--security-drills-summary`. Attached summaries must use the current candidate release id,
+`cryptad-beta-<version>`, use `mode=production-beta` for protected production-beta attachment, and
+keep all seven per-scenario drill JSON files beside the summary. The wrapper copies those artifacts
+into `security-drills/`, verifies their digests and offline drill envelopes, and rejects summary-only
+attachments as incomplete release evidence. The wrapper and strict go/no-go dashboard reject
+summaries generated for another candidate as unbound to the release. The required scenarios are
+`vulnerable-app-version`,
+`app-signing-key-compromise`, `reviewer-key-compromise`, `catalog-signing-key-rotation`,
+`malicious-catalog-entry`, `emergency-replacement-app`, and
+`support-bundle-intake-redaction`. Missing, failed, stale, malformed, fixture-only production, or
+redaction-unsafe drill evidence keeps `promotionReady=false`. The runbook procedure is
 [production-security-response-runbook.md](production-security-response-runbook.md).
 
 Production beta also requires `catalog.operations-and-mirrors` evidence. That row proves
@@ -190,7 +204,19 @@ build/production-beta-release/
   reviews/
     review-receipts/
     review-transparency-log.json
+  security-drills/
+    security-drills-summary.json
+    vulnerable-app-version.json
+    app-signing-key-compromise.json
+    reviewer-key-compromise.json
+    catalog-signing-key-rotation.json
+    malicious-catalog-entry.json
+    emergency-replacement-app.json
+    support-bundle-intake-redaction.json
+  security/
+    security-release-notes-draft.md
   evidence/
+    security-drills-summary.json
     api-compatibility.json
     platform-api-contract-current.json
     platform-api-contract-previous.json
@@ -245,6 +271,8 @@ content, raw app data, and host-local absolute paths.
 | `pipelineStages` | Per-stage proof for launcher installation, full Gradle build, first-party app staging, signing, and verification. Production-beta promotion requires all required stages to be `pass` from this pipeline execution. |
 | `promotion.gates` | Per-gate pass/fail records for signed artifacts, evidence ids, live-network evidence, ecosystem certification, and signing profile checks. |
 | `promotion.securityResponse` | Compact status for the production security response runbook, advisory lifecycle, reviewer compromise drill, catalog key rotation drill, app signing key compromise drill, emergency catalog update drill, support redaction, security release notes template, blockers, and warnings. |
+| `artifacts.securityDrillsSummary` | Redacted operational security drill summary generated or consumed by the pipeline. It contains only scenario statuses, safe counts, digests, and redaction metadata. |
+| `artifacts.securityReleaseNotesDraft` | Draft security release notes generated from drill data. Treat it as a redacted starting point for release-manager editing, not as automatically published notes. |
 | `multiNodeBetaSoak` | Compact status for multi-node soak and upgrade evidence, including mode, scenario statuses, blockers, warnings, promotion readiness, previous-candidate upgrade status, and the `evidence/multi-node-beta-soak.json` artifact path. |
 | `catalogOperations` | Compact source-level evidence for mirror health, fallback, rollback, key-rotation status, emergency advisory refresh, and redaction when present in the app-platform smoke summary. |
 | `previousCandidateMetadata` | Sanitized release, catalog, Platform API, first-party app, app-data, Social Inbox, Trust Graph, support-bundle, and redaction metadata copied by the next cycle's previous-summary normalizer. It contains digests, counts, schema versions, and statuses only. |
@@ -406,6 +434,7 @@ The pipeline classifies failures into these groups:
 | Build and staging | Gradle toolchain failure, `stageFirstPartyApps` failure, missing `crypta-app` launcher. | Fails release-candidate and production-beta. |
 | Signing and catalog | Missing production keys in production-beta, bundle verification failure, catalog signature failure, review receipt verification failure. | Fails release-candidate and production-beta. |
 | Evidence | Missing Platform API, UI lint, sandbox, app-platform smoke, first-party maintenance policy, network-scale soak, or ecosystem certification evidence. | Fails release-candidate and production-beta when critical. |
+| Security response drills | Missing `security-drills-summary.json`, missing required scenario, failed scenario, stale artifact, malformed drill envelope, fixture-only production drill, unsafe advisory or release-note template, or support-bundle intake redaction failure. | Blocks production-beta promotion. Critical redaction findings are non-waivable. |
 | Multi-node beta soak | Missing required multi-node soak, upgrade-drill, scenario, previous-candidate summary, app-data migration, backup/restore, Trust Graph, Social Inbox, support-bundle, or redaction evidence. | Fails production-beta promotion when `--require-multi-node-soak` is set or production-beta mode is used. |
 | Live network | Required live-network beta evidence missing, stale, wrong mode, failed, or explicitly skipped. | Blocks production-beta promotion. `--emergency-skip-live-network` records an explicit failed skip gate instead of silently treating missing live evidence as acceptable. |
 | Redaction | Private insert URI, private key, bearer token, app/browser session token, raw fetched content, raw app data, host path, AppleDouble, `__MACOSX`, `.DS_Store`, or CI secret value found. | Always fails. Redaction findings are not waivable. |
@@ -500,6 +529,11 @@ The workflow downloads HTTPS sources with `curl` and restores `actions-artifact:
 path to the release tool. HTTP URLs, missing artifact paths, absolute artifact paths, and artifact
 paths containing `..` fail before the pipeline starts.
 
+For `security_drills_summary`, pass a checked-out local path or an `actions-artifact://` reference
+to `security-drills-summary.json` inside an artifact that also contains all seven per-scenario
+drill JSON files beside the summary. HTTPS JSON URLs are rejected for this input because the
+production-beta release tool re-verifies the sibling artifacts and their self-reported digests.
+
 For `previous_summary`, the workflow also runs:
 
 ```bash
@@ -512,6 +546,11 @@ python3 tools/release-certification/multi_node_beta_soak.py verify-previous-summ
 The verification output is limited to status and validation errors. The workflow must not print
 the raw summary body, private insert URIs, tokens, private keys, raw app data, raw social message
 bodies, or raw Trust Graph statements into logs.
+
+For `security_drills_summary`, the release tool validates the
+`cryptad-security-response-drills-summary` envelope, redaction block, candidate release id, release
+mode, and sibling per-scenario drill artifacts before the input can contribute to promotion.
+Omitting the input is allowed because the pipeline generates the full drill set itself.
 
 ## Known limitations
 

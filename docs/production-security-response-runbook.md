@@ -266,20 +266,66 @@ malformed advisory or denylist records.
    data, or bypass signed advisories and denylists.
 9. Produce security release notes from [docs/templates/security-release-notes.md](templates/security-release-notes.md).
 10. Run `python3 tools/release-certification/security_response_runbook.py verify`.
-11. Run `python3 tools/release-certification/app_platform_smoke.py --self-test`.
-12. Run `python3 tools/release-certification/release_certification.py --self-test` before release
+11. Generate the operational drill evidence. Use `release-candidate` for release-candidate
+   certification, or `production-beta` when the summary will be attached to a protected
+   production-beta pipeline run:
+   ```bash
+   DRILL_MODE=production-beta
+   python3 tools/release-certification/security_response_runbook.py drill run-all \
+     --out-dir build/security-drills \
+     --release-id cryptad-beta-<version> \
+     --mode "$DRILL_MODE" \
+     --summary-out build/security-drills/security-drills-summary.json \
+     --release-notes-out build/security/security-release-notes-draft.md
+   python3 tools/release-certification/security_response_runbook.py drill verify-all \
+     --input-dir build/security-drills \
+     --release-id cryptad-beta-<version> \
+     --mode "$DRILL_MODE" \
+     --summary-out build/security-drills/security-drills-summary.json
+   ```
+12. Run `python3 tools/release-certification/app_platform_smoke.py --self-test`.
+13. Run `python3 tools/release-certification/release_certification.py --self-test` before release
    candidate certification.
-13. Publish only the signed emergency catalog and redacted release artifacts.
+14. Publish only the signed emergency catalog and redacted release artifacts.
 
 No production private key is required for deterministic tests. Fixture and dry-run artifacts use
 synthetic ids, digests, and test keys only.
+
+## Operational drill artifacts
+
+The seven required production security scenarios are:
+
+- `vulnerable-app-version`
+- `app-signing-key-compromise`
+- `reviewer-key-compromise`
+- `catalog-signing-key-rotation`
+- `malicious-catalog-entry`
+- `emergency-replacement-app`
+- `support-bundle-intake-redaction`
+
+Each scenario generates a `kind=cryptad-security-response-drill`, `schemaVersion=2` JSON artifact.
+The artifact records the scenario, release id, generated timestamp, severity, runbook scenario
+digest, bounded verification evidence ids, per-step safe summaries, redacted release-note text, and
+redaction metadata. It must not include private keys, private insert URIs, raw receipt signatures,
+raw support bundle bodies, raw fetched content, raw app-data values, raw profile/feed/trust/social
+documents, raw app-service bodies, nested backup material, tokens, or absolute local paths.
+
+`drill run-all` writes one artifact per required scenario plus
+`security-drills-summary.json`. The summary uses
+`kind=cryptad-security-response-drills-summary`, reports `status`, `promotionReady`,
+required/passed/failed/missing/stale scenario lists, artifact digests, release-notes template
+status, advisory-template status, and the aggregate redaction result. Production beta promotion
+requires this summary to be present, schema-valid, fresh, `promotionReady=true`, and free of
+redaction findings. Missing scenarios, failed scenarios, stale artifacts, malformed envelopes,
+fixture-only production drills, and redaction failures are production blockers. Redaction failures
+are critical and non-waivable.
 
 ## Certification checklist
 
 `production-security.response-runbook` passes only when release certification can prove:
 
 - this runbook exists and covers the required incident scenarios;
-- the deterministic drill model exists and validates;
+- the deterministic drill model exists, validates, and has a fresh all-drills summary;
 - advisory lifecycle, reviewer-key compromise, catalog signing key rotation, app signing key
   compromise, emergency catalog update, support redaction, release notes, Web Shell/API/operator
   status, and redaction boundaries are represented;

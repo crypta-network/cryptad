@@ -1,0 +1,10 @@
+{
+  "extends": "go-no-go-pass.json",
+  "inputs": {
+    "securityDrillsSummary": {
+      "mode": "developer-dry-run",
+      "nonRelease": true,
+      "promotionReady": false
+    }
+  }
+}

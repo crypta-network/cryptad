@@ -1,0 +1,11 @@
+{
+  "extends": "go-no-go-pass.json",
+  "inputs": {
+    "securityDrillsSummary": {
+      "kind": "cryptad-security-response-drill",
+      "promotionReady": false,
+      "schemaVersion": 99,
+      "status": "fail"
+    }
+  }
+}

@@ -28,6 +28,7 @@ from typing import Any, Iterable, Iterator
 
 sys.dont_write_bytecode = True
 import multi_node_beta_soak
+import security_response_runbook
 
 TOOL_NAME = "production-beta-go-no-go-dashboard"
 SCHEMA_VERSION = 1
@@ -282,9 +283,9 @@ DOMAIN_SPECS = (
     },
     {
         "id": "production-security-response",
-        "title": "Production security response runbook",
+        "title": "Production security response drills",
         "evidenceIds": SECURITY_RESPONSE_EVIDENCE_IDS,
-        "artifactInputs": ("securityResponseSummary", "appPlatformSummary"),
+        "artifactInputs": ("securityDrillsSummary", "securityResponseSummary", "appPlatformSummary"),
     },
     {
         "id": "live-network-beta-smoke",
@@ -325,6 +326,7 @@ CRITICAL_INPUTS_BY_MODE = {
         "releaseCertificationSummary",
         "ecosystemMatrix",
         "appPlatformSummary",
+        "securityDrillsSummary",
         "networkScaleSoakSummary",
         "multiNodeBetaSoakSummary",
     ),
@@ -333,6 +335,7 @@ CRITICAL_INPUTS_BY_MODE = {
         "releaseCertificationSummary",
         "ecosystemMatrix",
         "appPlatformSummary",
+        "securityDrillsSummary",
         "liveNetworkSummary",
         "networkScaleSoakSummary",
         "multiNodeBetaSoakSummary",
@@ -973,6 +976,114 @@ def status_warn(entry: dict[str, Any] | None) -> bool:
     return isinstance(entry, dict) and normalize_status(entry.get("status")) == "warn"
 
 
+def evidence_entries(summary: dict[str, Any] | None, evidence_id: str) -> list[dict[str, Any]]:
+    if not isinstance(summary, dict):
+        return []
+    entries = summary.get("evidence", [])
+    if not isinstance(entries, list):
+        return []
+    return [
+        entry
+        for entry in entries
+        if isinstance(entry, dict) and str(entry.get("id", "")) == evidence_id
+    ]
+
+
+def evidence_details(entry: dict[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(entry, dict):
+        return {}
+    details = entry.get("details")
+    return details if isinstance(details, dict) else {}
+
+
+def security_response_app_component(entries: list[dict[str, Any]]) -> dict[str, Any] | None:
+    candidates: list[dict[str, Any]] = []
+    for entry in entries:
+        details = evidence_details(entry)
+        component = details.get("appPlatformRunbook")
+        if isinstance(component, dict):
+            candidates.append(component)
+        elif not isinstance(details.get("securityDrills"), dict):
+            candidates.append(entry)
+    return worst_status_entry(candidates or entries)
+
+
+def worst_status_entry(entries: list[dict[str, Any]]) -> dict[str, Any] | None:
+    if not entries:
+        return None
+    rank = {"fail": 0, "missing": 1, "skip": 2, "warn": 3, "pass": 4}
+    return sorted(
+        entries,
+        key=lambda entry: rank.get(normalize_status(entry.get("status")), -1),
+    )[0]
+
+
+def combined_security_response_status(entries: list[dict[str, Any]]) -> str:
+    statuses = [normalize_status(entry.get("status")) for entry in entries if isinstance(entry, dict)]
+    for status in ("fail", "missing", "skip", "warn"):
+        if status in statuses:
+            return status
+    return "pass"
+
+
+def security_response_redaction_findings(entries: list[dict[str, Any]]) -> list[Any]:
+    findings: list[Any] = []
+    for entry in entries:
+        details = evidence_details(entry)
+        item_findings = details.get("redactionFindings")
+        if isinstance(item_findings, list):
+            findings.extend(item_findings)
+    return findings
+
+
+def combine_security_response_evidence(
+    existing_entries: list[dict[str, Any]],
+    drill_entry: dict[str, Any],
+) -> dict[str, Any]:
+    app_entry = security_response_app_component(existing_entries)
+    if app_entry is None:
+        app_entry = {
+            "id": "production-security.response-runbook",
+            "requiredForReleaseCandidate": True,
+            "source": "app-platform-smoke",
+            "status": "missing",
+            "summary": "App-platform security response runbook evidence is missing.",
+            "details": {},
+        }
+    components = [app_entry, drill_entry]
+    status = combined_security_response_status(components)
+    if status == "pass":
+        summary = "Production security response runbook and operational drills passed."
+    else:
+        summary = (
+            "Production security response is not promotion-ready: "
+            f"appPlatformRunbook={normalize_status(app_entry.get('status'))}, "
+            f"securityDrills={normalize_status(drill_entry.get('status'))}."
+        )
+    details: dict[str, Any] = {
+        "appPlatformRunbook": app_entry,
+        "securityDrills": drill_entry,
+        "componentStatuses": {
+            "appPlatformRunbook": normalize_status(app_entry.get("status")),
+            "securityDrills": normalize_status(drill_entry.get("status")),
+        },
+    }
+    redaction_findings = security_response_redaction_findings([*existing_entries, drill_entry])
+    if redaction_findings:
+        details["redactionFindings"] = redaction_findings
+    return {
+        "id": "production-security.response-runbook",
+        "requiredForReleaseCandidate": True,
+        "source": "; ".join(
+            str(entry.get("source", "production-security.response-runbook"))
+            for entry in components
+        ),
+        "status": status,
+        "summary": summary,
+        "details": details,
+    }
+
+
 def evidence_map(*summaries: dict[str, Any] | None) -> dict[str, dict[str, Any]]:
     result: dict[str, dict[str, Any]] = {}
     for summary in summaries:
@@ -1009,9 +1120,174 @@ def multi_node_scenario_evidence(summary: dict[str, Any] | None) -> dict[str, di
     return result
 
 
-def security_response_evidence(summary: dict[str, Any] | None) -> dict[str, Any] | None:
+def security_response_evidence(
+    summary: dict[str, Any] | None,
+    source: str = "security-response-summary",
+    production: bool = False,
+    strict: bool = False,
+    now: dt.datetime | None = None,
+    expected_release_id: str | None = None,
+    expected_mode: str | None = None,
+    summary_path: Path | None = None,
+) -> dict[str, Any] | None:
     if not isinstance(summary, dict):
+        if source == "security-drills-summary":
+            return {
+                "id": "production-security.response-runbook",
+                "requiredForReleaseCandidate": True,
+                "source": source,
+                "status": "fail",
+                "summary": "Security response drills summary must be an aggregate JSON object.",
+                "details": {
+                    "summaryRequired": True,
+                    "promotionReady": False,
+                    "validationErrors": ["securityDrillsSummary must be an object"],
+                    "redactionClean": False,
+                },
+            }
         return None
+    if source == "security-drills-summary" and summary.get("kind") != "cryptad-security-response-drills-summary":
+        return {
+            "id": "production-security.response-runbook",
+            "requiredForReleaseCandidate": True,
+            "source": source,
+            "status": "fail",
+            "summary": "Security response drills summary must use the aggregate drill-summary envelope.",
+            "details": {
+                "summaryRequired": True,
+                "summaryStatus": summary.get("status", "missing"),
+                "promotionReady": False,
+                "kind": summary.get("kind", "missing"),
+                "validationErrors": ["kind must be cryptad-security-response-drills-summary"],
+                "redactionClean": False,
+            },
+        }
+    if summary.get("kind") == "cryptad-security-response-drills-summary":
+        validation = security_response_runbook.validate_drills_summary(
+            summary,
+            production=production,
+            strict=strict,
+            now=now,
+            expected_mode=expected_mode,
+        )
+        validation_errors = list(validation.get("errors", [])) if isinstance(validation.get("errors"), list) else []
+        artifact_validation: dict[str, Any] | None = None
+        artifact_redaction_findings: list[Any] = []
+        if summary_path is not None:
+            artifact_validation = security_response_runbook.validate_drill_artifact_files(
+                summary,
+                summary_path,
+                model_path=Path(__file__).resolve().parent
+                / "production-security-response-runbook.json",
+                strict=strict,
+                now=now,
+            )
+            artifact_errors = artifact_validation.get("errors")
+            if isinstance(artifact_errors, list):
+                validation_errors.extend(str(error) for error in artifact_errors)
+            artifact_findings = artifact_validation.get("redactionFindings")
+            if isinstance(artifact_findings, list):
+                artifact_redaction_findings.extend(artifact_findings)
+        release_id = summary.get("releaseId")
+        release_id_matches = not (
+            strict
+            and expected_release_id
+            and release_id != expected_release_id
+        )
+        if not release_id_matches:
+            validation_errors.append(
+                f"releaseId must match dashboard candidate {expected_release_id}"
+            )
+        counts = summary.get("counts") if isinstance(summary.get("counts"), dict) else {}
+        redaction = summary.get("redaction") if isinstance(summary.get("redaction"), dict) else {}
+        declared_redaction_findings = (
+            redaction.get("findings") if isinstance(redaction.get("findings"), list) else []
+        )
+        validator_redaction_findings = (
+            validation.get("redactionFindings")
+            if isinstance(validation.get("redactionFindings"), list)
+            else []
+        )
+        redaction_findings = security_response_runbook.safe_redaction_findings(
+            [
+                *declared_redaction_findings,
+                *validator_redaction_findings,
+                *artifact_redaction_findings,
+            ]
+        )
+        required_scenarios = (
+            summary.get("requiredScenarios") if isinstance(summary.get("requiredScenarios"), list) else []
+        )
+        passed_scenarios = (
+            summary.get("passedScenarios") if isinstance(summary.get("passedScenarios"), list) else []
+        )
+        failed_scenarios = (
+            summary.get("failedScenarios") if isinstance(summary.get("failedScenarios"), list) else []
+        )
+        missing_scenarios = (
+            summary.get("missingScenarios") if isinstance(summary.get("missingScenarios"), list) else []
+        )
+        stale_scenarios = (
+            summary.get("staleScenarios") if isinstance(summary.get("staleScenarios"), list) else []
+        )
+        malformed_scenarios = (
+            summary.get("malformedScenarios") if isinstance(summary.get("malformedScenarios"), list) else []
+        )
+        artifacts_valid = (
+            artifact_validation is None
+            or artifact_validation.get("status") == "pass"
+        )
+        status = (
+            "pass"
+            if validation.get("status") == "pass" and release_id_matches and artifacts_valid
+            else "fail"
+        )
+        required = safe_int_count(counts.get("required"), len(security_response_runbook.REQUIRED_DRILLS))
+        passed = safe_int_count(counts.get("passed"), len(passed_scenarios))
+        if status == "pass":
+            summary_text = f"Security response drills passed for {passed}/{required} required scenarios."
+        else:
+            summary_text = (
+                "Security response drills are missing, failed, stale, malformed, fixture-only, "
+                "or redaction-unsafe."
+            )
+        return {
+            "id": "production-security.response-runbook",
+            "requiredForReleaseCandidate": True,
+            "source": source,
+            "status": status,
+            "summary": summary_text,
+            "details": {
+                "summaryStatus": summary.get("status", "missing"),
+                "promotionReady": bool(summary.get("promotionReady")),
+                "nonRelease": bool(summary.get("nonRelease")),
+                "fixtureOnly": bool(summary.get("fixtureOnly")),
+                "mode": summary.get("mode", "missing"),
+                "evidenceMode": summary.get("evidenceMode", "missing"),
+                "releaseId": release_id if isinstance(release_id, str) else "missing",
+                "expectedReleaseId": expected_release_id or "not-required",
+                "releaseIdMatchesDashboard": release_id_matches,
+                "generatedAt": summary.get("generatedAt", "missing"),
+                "counts": counts,
+                "requiredScenarios": required_scenarios,
+                "passedScenarios": passed_scenarios,
+                "failedScenarios": failed_scenarios,
+                "missingScenarios": missing_scenarios,
+                "staleScenarios": stale_scenarios,
+                "malformedScenarios": malformed_scenarios,
+                "redaction": redaction,
+                "redactionFindings": redaction_findings,
+                "releaseNotes": summary.get("releaseNotes", {}),
+                "advisoryTemplate": summary.get("advisoryTemplate", {}),
+                "artifacts": summary.get("artifacts", []),
+                "artifactValidation": artifact_validation or {},
+                "validationErrors": validation_errors,
+                "redactionClean": (
+                    validation.get("redactionClean", False)
+                    and not artifact_redaction_findings
+                ),
+            },
+        }
     status = normalize_status(summary.get("status"))
     if status == "missing":
         return None
@@ -1023,7 +1299,7 @@ def security_response_evidence(summary: dict[str, Any] | None) -> dict[str, Any]
     return {
         "id": "production-security.response-runbook",
         "requiredForReleaseCandidate": True,
-        "source": "security-response-summary",
+        "source": source,
         "status": status,
         "summary": summary_text,
     }
@@ -1498,6 +1774,7 @@ def load_inputs_from_paths(args: argparse.Namespace, workspace_root: Path) -> tu
         "liveNetworkSummary": args.live_network_summary,
         "networkScaleSoakSummary": args.network_scale_soak_summary,
         "multiNodeBetaSoakSummary": args.multi_node_beta_soak_summary,
+        "securityDrillsSummary": args.security_drills_summary,
         "securityResponseSummary": args.security_response_summary,
     }
     inputs: dict[str, Any] = {}
@@ -1534,7 +1811,41 @@ def load_inputs_from_fixture(args: argparse.Namespace, workspace_root: Path) -> 
     mode = args.mode or str(fixture.get("mode", "release-candidate"))
     generated_at = args.generated_at or str(fixture.get("generatedAt", DEFAULT_GENERATED_AT))
     release_id = args.release_id or str(fixture.get("releaseId", fixture_path.stem))
+    inputs = rebind_inherited_fixture_security_drills_summary(
+        inputs,
+        fixture_path,
+        release_id,
+        mode,
+        generated_at,
+    )
     return inputs, {}, [fixture_path], waiver_value, release_id, mode, generated_at
+
+
+def rebind_inherited_fixture_security_drills_summary(
+    inputs: dict[str, Any],
+    fixture_path: Path,
+    release_id: str,
+    mode: str,
+    generated_at: str,
+) -> dict[str, Any]:
+    """Keep inherited pass-fixture drill summaries bound to the child fixture candidate."""
+    raw_fixture = read_json(fixture_path)
+    raw_inputs = raw_fixture.get("inputs") if isinstance(raw_fixture, dict) else None
+    if isinstance(raw_inputs, dict) and "securityDrillsSummary" in raw_inputs:
+        return inputs
+    summary = inputs.get("securityDrillsSummary")
+    if not isinstance(summary, dict):
+        return inputs
+    if summary.get("kind") != "cryptad-security-response-drills-summary":
+        return inputs
+    rebound = json.loads(json.dumps(inputs))
+    rebound_summary = rebound.get("securityDrillsSummary")
+    if isinstance(rebound_summary, dict):
+        rebound_summary["releaseId"] = release_id
+        rebound_summary["generatedAt"] = generated_at
+        if mode in security_response_runbook.RELEASE_DRILL_MODES:
+            rebound_summary["mode"] = mode
+    return rebound
 
 
 def load_fixture(fixture_path: Path, seen: set[Path] | None = None) -> dict[str, Any]:
@@ -1570,12 +1881,18 @@ def deep_merge(base: Any, override: Any) -> Any:
 def infer_release_id(inputs: dict[str, Any]) -> str:
     prod = inputs.get("productionBetaSummary")
     if isinstance(prod, dict):
+        release_id = prod.get("releaseId")
+        if isinstance(release_id, str) and release_id.strip():
+            return release_id
         version = prod.get("version")
         if version:
             return f"crypta-production-beta-{version}"
     cert = inputs.get("releaseCertificationSummary")
     if isinstance(cert, dict):
         metadata = cert.get("metadata") if isinstance(cert.get("metadata"), dict) else {}
+        release_id = metadata.get("releaseId")
+        if isinstance(release_id, str) and release_id.strip():
+            return release_id
         release_version = metadata.get("releaseVersion") or metadata.get("version")
         if release_version:
             return f"crypta-production-beta-{release_version}"
@@ -2203,6 +2520,155 @@ def domain_summary(
     return "Domain is not passing."
 
 
+def compact_security_drills(
+    summary: dict[str, Any] | None,
+    production: bool = False,
+    strict: bool = False,
+    now: dt.datetime | None = None,
+    expected_release_id: str | None = None,
+    expected_mode: str | None = None,
+    artifact_validation: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    if not isinstance(summary, dict):
+        return {
+            "status": "missing",
+            "promotionReady": False,
+            "expectedReleaseId": expected_release_id or "not-required",
+            "requiredScenarioCount": len(security_response_runbook.REQUIRED_DRILLS),
+            "passedScenarioCount": 0,
+            "failedScenarioCount": 0,
+            "missingScenarioCount": len(security_response_runbook.REQUIRED_DRILLS),
+            "staleScenarioCount": 0,
+            "malformedScenarioCount": 0,
+            "redactionStatus": "missing",
+            "releaseNotesTemplateStatus": "missing",
+            "advisoryTemplateStatus": "missing",
+            "supportBundleIntakeRedactionStatus": "missing",
+        }
+    if summary.get("kind") != "cryptad-security-response-drills-summary":
+        return {
+            "status": "fail",
+            "promotionReady": False,
+            "requiredScenarios": list(security_response_runbook.REQUIRED_DRILLS),
+            "passedScenarios": [],
+            "failedScenarios": [],
+            "missingScenarios": list(security_response_runbook.REQUIRED_DRILLS),
+            "staleScenarios": [],
+            "malformedScenarios": [str(summary.get("scenario", summary.get("kind", "unknown")))],
+            "requiredScenarioCount": len(security_response_runbook.REQUIRED_DRILLS),
+            "passedScenarioCount": 0,
+            "failedScenarioCount": 0,
+            "missingScenarioCount": len(security_response_runbook.REQUIRED_DRILLS),
+            "staleScenarioCount": 0,
+            "malformedScenarioCount": 1,
+            "redactionStatus": "fail",
+            "releaseNotesTemplateStatus": "missing",
+            "advisoryTemplateStatus": "missing",
+            "supportBundleIntakeRedactionStatus": "missing",
+            "fixtureOnly": bool(summary.get("fixtureOnly")),
+            "nonRelease": bool(summary.get("nonRelease")),
+            "releaseId": summary.get("releaseId", "missing"),
+            "expectedReleaseId": expected_release_id or "not-required",
+            "releaseIdMatchesDashboard": False,
+        }
+    counts = summary.get("counts") if isinstance(summary.get("counts"), dict) else {}
+    redaction = summary.get("redaction") if isinstance(summary.get("redaction"), dict) else {}
+    release_notes = summary.get("releaseNotes") if isinstance(summary.get("releaseNotes"), dict) else {}
+    advisory_template = (
+        summary.get("advisoryTemplate") if isinstance(summary.get("advisoryTemplate"), dict) else {}
+    )
+    validation = security_response_runbook.validate_drills_summary(
+        summary,
+        production=production,
+        strict=strict,
+        now=now,
+        expected_mode=expected_mode,
+    )
+    validation_errors = list(validation.get("errors", [])) if isinstance(validation.get("errors"), list) else []
+    release_id = summary.get("releaseId")
+    release_id_matches = not (
+        strict
+        and expected_release_id
+        and release_id != expected_release_id
+    )
+    if not release_id_matches:
+        validation_errors.append(f"releaseId must match dashboard candidate {expected_release_id}")
+    artifact_errors = (
+        artifact_validation.get("errors")
+        if isinstance(artifact_validation, dict)
+        and isinstance(artifact_validation.get("errors"), list)
+        else []
+    )
+    validation_errors.extend(str(error) for error in artifact_errors)
+    computed_status = normalize_status(summary.get("status"))
+    artifacts_valid = (
+        artifact_validation is None
+        or artifact_validation.get("status") == "pass"
+    )
+    if validation.get("status") != "pass" or not release_id_matches or not artifacts_valid:
+        computed_status = "fail"
+    passed_scenarios = summary.get("passedScenarios") if isinstance(summary.get("passedScenarios"), list) else []
+    failed_scenarios = summary.get("failedScenarios") if isinstance(summary.get("failedScenarios"), list) else []
+    missing_scenarios = summary.get("missingScenarios") if isinstance(summary.get("missingScenarios"), list) else []
+    stale_scenarios = summary.get("staleScenarios") if isinstance(summary.get("staleScenarios"), list) else []
+    malformed_scenarios = summary.get("malformedScenarios") if isinstance(summary.get("malformedScenarios"), list) else []
+    support_status = "pass" if "support-bundle-intake-redaction" in passed_scenarios else "missing"
+    if "support-bundle-intake-redaction" in failed_scenarios:
+        support_status = "fail"
+    elif "support-bundle-intake-redaction" in stale_scenarios:
+        support_status = "stale"
+    elif "support-bundle-intake-redaction" in malformed_scenarios:
+        support_status = "fail"
+    return {
+        "status": computed_status,
+        "promotionReady": (
+            bool(summary.get("promotionReady"))
+            and validation.get("status") == "pass"
+            and release_id_matches
+            and artifacts_valid
+        ),
+        "releaseId": release_id if isinstance(release_id, str) else "missing",
+        "expectedReleaseId": expected_release_id or "not-required",
+        "releaseIdMatchesDashboard": release_id_matches,
+        "requiredScenarios": summary.get("requiredScenarios", []),
+        "passedScenarios": passed_scenarios,
+        "failedScenarios": failed_scenarios,
+        "missingScenarios": missing_scenarios,
+        "staleScenarios": stale_scenarios,
+        "malformedScenarios": malformed_scenarios,
+        "requiredScenarioCount": safe_int_count(
+            counts.get("required"),
+            len(security_response_runbook.REQUIRED_DRILLS),
+        ),
+        "passedScenarioCount": safe_int_count(counts.get("passed"), len(passed_scenarios)),
+        "failedScenarioCount": safe_int_count(counts.get("failed"), len(failed_scenarios)),
+        "missingScenarioCount": safe_int_count(counts.get("missing"), len(missing_scenarios)),
+        "staleScenarioCount": safe_int_count(counts.get("stale"), len(stale_scenarios)),
+        "malformedScenarioCount": safe_int_count(
+            counts.get("malformed"),
+            len(malformed_scenarios),
+        ),
+        "redactionStatus": normalize_status(redaction.get("status")),
+        "criticalBlockers": len(failed_scenarios) + len(missing_scenarios) + len(stale_scenarios) + len(malformed_scenarios),
+        "releaseNotesTemplateStatus": normalize_status(release_notes.get("templateStatus")),
+        "advisoryTemplateStatus": normalize_status(advisory_template.get("templateStatus")),
+        "supportBundleIntakeRedactionStatus": support_status,
+        "fixtureOnly": bool(summary.get("fixtureOnly")),
+        "nonRelease": bool(summary.get("nonRelease")),
+        "artifactValidation": artifact_validation or {},
+        "validationErrors": validation_errors,
+    }
+
+
+def safe_int_count(value: Any, fallback: int) -> int:
+    if isinstance(value, bool):
+        return fallback
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return fallback
+
+
 def scope_applies(scope: str, mode: str) -> bool:
     normalized = scope.strip().lower()
     if normalized in {"all", "all-modes", "any"}:
@@ -2571,6 +3037,8 @@ def collect_issues(
     inputs: dict[str, Any],
     mode: str,
     input_paths: dict[str, Path],
+    now: dt.datetime,
+    release_id: str,
 ) -> tuple[list[Issue], dict[str, dict[str, Any]]]:
     all_evidence = evidence_map(
         inputs.get("releaseCertificationSummary"),
@@ -2582,9 +3050,44 @@ def collect_issues(
         inputs.get("multiNodeBetaSoakSummary")
     ).items():
         all_evidence.setdefault(evidence_id, entry)
-    standalone_security_evidence = security_response_evidence(inputs.get("securityResponseSummary"))
-    if standalone_security_evidence is not None:
-        all_evidence.setdefault("production-security.response-runbook", standalone_security_evidence)
+    if "securityDrillsSummary" in inputs:
+        security_drills_evidence = security_response_evidence(
+            inputs.get("securityDrillsSummary"),
+            "security-drills-summary",
+            production=mode == "production-beta",
+            strict=mode in {"release-candidate", "production-beta"},
+            now=now,
+            expected_release_id=release_id,
+            expected_mode=mode if mode in {"release-candidate", "production-beta"} else None,
+            summary_path=input_paths.get("securityDrillsSummary"),
+        )
+        if security_drills_evidence is not None:
+            existing_security_entries = [
+                *evidence_entries(
+                    inputs.get("releaseCertificationSummary"),
+                    "production-security.response-runbook",
+                ),
+                *evidence_entries(
+                    inputs.get("appPlatformSummary"),
+                    "production-security.response-runbook",
+                ),
+                *evidence_entries(
+                    inputs.get("securityResponseSummary"),
+                    "production-security.response-runbook",
+                ),
+            ]
+            if not existing_security_entries and "production-security.response-runbook" in all_evidence:
+                existing_security_entries = [all_evidence["production-security.response-runbook"]]
+            all_evidence["production-security.response-runbook"] = combine_security_response_evidence(
+                existing_security_entries,
+                security_drills_evidence,
+            )
+        else:
+            all_evidence.pop("production-security.response-runbook", None)
+    else:
+        standalone_security_evidence = security_response_evidence(inputs.get("securityResponseSummary"))
+        if standalone_security_evidence is not None:
+            all_evidence.setdefault("production-security.response-runbook", standalone_security_evidence)
     issues: list[Issue] = []
     for name in CRITICAL_INPUTS_BY_MODE.get(mode, ()):
         if name not in inputs:
@@ -2603,7 +3106,6 @@ def collect_issues(
             inputs.get("productionBetaSummary") if isinstance(inputs.get("productionBetaSummary"), dict) else None,
         )
     )
-    issues.extend(security_response_issues(inputs.get("securityResponseSummary")))
     for spec in DOMAIN_SPECS:
         domain_id = str(spec["id"])
         if domain_id in {
@@ -2684,7 +3186,7 @@ def build_dashboard(
 ) -> dict[str, Any]:
     if mode not in MODES:
         raise SystemExit(f"--mode must be one of {', '.join(MODES)}")
-    issues, all_evidence = collect_issues(inputs, mode, input_paths)
+    issues, all_evidence = collect_issues(inputs, mode, input_paths, now, release_id)
     imported_waivers = release_certification_waiver_records(
         inputs.get("releaseCertificationSummary") if isinstance(inputs.get("releaseCertificationSummary"), dict) else None,
         mode,
@@ -2734,6 +3236,28 @@ def build_dashboard(
         if isinstance(multi_node_summary.get("previousCandidateUpgrade"), dict)
         else {"status": "missing"}
     )
+    security_response_item = all_evidence.get("production-security.response-runbook")
+    security_response_details = evidence_details(security_response_item)
+    security_drills_component = security_response_details.get("securityDrills")
+    security_drills_details = (
+        evidence_details(security_drills_component)
+        if isinstance(security_drills_component, dict)
+        else {}
+    )
+    artifact_validation = security_drills_details.get("artifactValidation")
+    security_drills = compact_security_drills(
+        inputs.get("securityDrillsSummary") if isinstance(inputs.get("securityDrillsSummary"), dict) else None,
+        production=mode == "production-beta",
+        strict=mode in {"release-candidate", "production-beta"},
+        now=now,
+        expected_release_id=release_id,
+        expected_mode=mode if mode in {"release-candidate", "production-beta"} else None,
+        artifact_validation=(
+            artifact_validation
+            if isinstance(artifact_validation, dict) and "status" in artifact_validation
+            else None
+        ),
+    )
     artifact_refs = {
         "dashboardJson": OUTPUT_JSON,
         "dashboardMarkdown": OUTPUT_MARKDOWN,
@@ -2763,6 +3287,7 @@ def build_dashboard(
         "warnings": [issue.to_json() for issue in warnings],
         "waivers": [waiver.to_json() for waiver in waivers],
         "previousCandidateUpgrade": previous_upgrade,
+        "securityDrills": security_drills,
         "redaction": redaction,
         "recommendation": recommendation_for(decision, blockers, warnings),
         "artifactRefs": artifact_refs,
@@ -2786,9 +3311,39 @@ def render_markdown(dashboard: dict[str, Any]) -> str:
         f"- Generated: `{dashboard.get('generatedAt', '')}`",
         f"- Recommendation: {dashboard.get('recommendation', '')}",
         "",
-        "## Top Blockers",
+        "## Security Drills",
         "",
     ]
+    security_drills = dashboard.get("securityDrills") if isinstance(dashboard.get("securityDrills"), dict) else {}
+    lines.extend(
+        [
+            f"- Status: `{security_drills.get('status', 'missing')}`",
+            f"- Promotion ready: `{str(security_drills.get('promotionReady', False)).lower()}`",
+            f"- Required scenarios: `{security_drills.get('requiredScenarioCount', 0)}`",
+            f"- Passed scenarios: `{security_drills.get('passedScenarioCount', 0)}`",
+            f"- Failed scenarios: `{security_drills.get('failedScenarioCount', 0)}`",
+            f"- Missing scenarios: `{security_drills.get('missingScenarioCount', 0)}`",
+            f"- Stale scenarios: `{security_drills.get('staleScenarioCount', 0)}`",
+            f"- Redaction: `{security_drills.get('redactionStatus', 'missing')}`",
+            f"- Release notes template: `{security_drills.get('releaseNotesTemplateStatus', 'missing')}`",
+            f"- Advisory template: `{security_drills.get('advisoryTemplateStatus', 'missing')}`",
+            f"- Support-bundle intake redaction: `{security_drills.get('supportBundleIntakeRedactionStatus', 'missing')}`",
+            "",
+        ]
+    )
+    if security_drills.get("failedScenarios"):
+        lines.append(f"- Failed: {markdown_code_list(security_drills.get('failedScenarios', []))}")
+    if security_drills.get("missingScenarios"):
+        lines.append(f"- Missing: {markdown_code_list(security_drills.get('missingScenarios', []))}")
+    if security_drills.get("staleScenarios"):
+        lines.append(f"- Stale: {markdown_code_list(security_drills.get('staleScenarios', []))}")
+    lines.extend(
+        [
+            "",
+            "## Top Blockers",
+            "",
+        ]
+    )
     blockers = dashboard.get("blockers", [])
     if not blockers:
         lines.append("No unwaived blockers.")
@@ -3041,6 +3596,18 @@ def run_self_test(quiet: bool = False) -> None:
         "go-no-go-release-candidate-live-waiver.json": "go-with-waivers",
         "go-no-go-release-candidate-live-disabled.json": "no-go",
         "go-no-go-malformed-non-release-status.json": "no-go",
+        "go-no-go-security-drills-missing-summary.json": "no-go",
+        "go-no-go-security-drills-missing-scenario.json": "no-go",
+        "go-no-go-security-drills-failed-scenario.json": "no-go",
+        "go-no-go-security-drills-stale-scenario.json": "no-go",
+        "go-no-go-security-drills-redaction-unsafe.json": "no-go",
+        "go-no-go-security-drills-fixture-only.json": "no-go",
+        "go-no-go-security-drills-developer-dry-run.json": "no-go",
+        "go-no-go-security-drills-malformed-envelope.json": "no-go",
+        "go-no-go-security-drills-single-artifact-pass.json": "no-go",
+        "go-no-go-security-drills-malformed-count.json": "no-go",
+        "go-no-go-security-drills-expired-waiver.json": "no-go",
+        "go-no-go-security-drills-underseverity-redaction-waiver.json": "no-go",
     }
     with tempfile.TemporaryDirectory(prefix="cryptad-go-no-go-dashboard-") as temp_name:
         root = Path(temp_name)
@@ -3079,6 +3646,32 @@ def run_self_test(quiet: bool = False) -> None:
                     raise AssertionError("expired waiver did not produce a waiver-validation blocker")
                 if dashboard.get("generatedAt") != "2026-06-24T00:00:00Z":
                     raise AssertionError("expired waiver fixture did not use its recorded generatedAt")
+            if fixture_name.startswith("go-no-go-security-drills-"):
+                if "production-security.response-runbook" not in blocker_ids:
+                    raise AssertionError(
+                        f"{fixture_name} did not block on production security response evidence"
+                    )
+                security_drills = dashboard.get("securityDrills")
+                if not isinstance(security_drills, dict) or security_drills.get("promotionReady") is True:
+                    raise AssertionError(f"{fixture_name} left security drills promotion-ready")
+            if fixture_name == "go-no-go-security-drills-redaction-unsafe.json":
+                critical_security_blockers = [
+                    blocker
+                    for blocker in dashboard.get("blockers", [])
+                    if isinstance(blocker, dict)
+                    and blocker.get("evidenceId") == "production-security.response-runbook"
+                    and blocker.get("severity") == "critical"
+                ]
+                if not critical_security_blockers:
+                    raise AssertionError("redaction-unsafe drill fixture did not create a critical blocker")
+            if fixture_name in {
+                "go-no-go-security-drills-expired-waiver.json",
+                "go-no-go-security-drills-underseverity-redaction-waiver.json",
+            }:
+                if int(dashboard.get("summary", {}).get("waiversUsed", 0)) != 0:
+                    raise AssertionError("security drill waiver fixture was incorrectly used")
+                if "production-beta.waiver-validation" not in blocker_ids:
+                    raise AssertionError("security drill waiver fixture did not fail waiver validation")
             if fixture_name == "go-no-go-waiver-valid-at-generated-at.json":
                 if int(dashboard.get("summary", {}).get("waiversUsed", 0)) != 0:
                     raise AssertionError("non-waivable live evidence waiver was incorrectly used")
@@ -3262,7 +3855,15 @@ def run_self_test(quiet: bool = False) -> None:
         assert_supplied_waiver_file_errors_block_launch(root)
         assert_protected_secret_values_are_scanned_and_redacted(root)
         assert_symlink_inputs_are_rejected(root)
+        assert_legacy_security_response_summary_fallback_is_honored(root)
         assert_standalone_security_response_summary_is_honored(root)
+        assert_security_drills_preserve_failing_runbook_evidence(root)
+        assert_security_drills_require_app_platform_runbook_evidence(root)
+        assert_security_drill_summary_evidence_is_not_generic_release_evidence(root)
+        assert_security_drill_summary_path_requires_sibling_artifacts(root)
+        assert_security_drills_release_id_matches_dashboard_candidate(root)
+        assert_validator_security_drill_redaction_findings_are_non_waivable(root)
+        assert_inherited_security_drill_summary_timestamp_rebinds(root)
         assert_previous_candidate_upgrade_current_binding_is_enforced(root)
         assert_multi_node_release_evidence_is_not_overwritten(root)
     if not quiet:
@@ -3291,7 +3892,7 @@ def assert_multi_node_release_evidence_is_not_overwritten(root: Path) -> None:
         Path(__file__).resolve().parents[2],
         root / "multi-node-release-evidence-preserved",
         "production-beta",
-        "crypta-production-beta-270-multi-node-release-evidence-preserved",
+        "crypta-production-beta-270",
         generated_at,
         now,
     )
@@ -3309,6 +3910,44 @@ def assert_multi_node_release_evidence_is_not_overwritten(root: Path) -> None:
         raise AssertionError(
             "failing release-certification support-bundle drill evidence did not block: "
             f"{dashboard}"
+        )
+
+
+def assert_inherited_security_drill_summary_timestamp_rebinds(root: Path) -> None:
+    args = build_parser().parse_args(
+        [
+            "build",
+            "--workspace-root",
+            str(Path(__file__).resolve().parents[2]),
+            "--out-dir",
+            str(root / "inherited-security-drills-timestamp-rebind"),
+            "--fixtures",
+            str(FIXTURE_DIR / "go-no-go-expired-waiver.json"),
+        ]
+    )
+    inputs, _paths, _scan_targets, _waiver_value, _release_id, mode, generated_at = (
+        load_inputs_from_fixture(args, Path(__file__).resolve().parents[2])
+    )
+    summary = inputs.get("securityDrillsSummary")
+    if not isinstance(summary, dict):
+        raise AssertionError("expired-waiver fixture did not inherit a security drills summary")
+    if summary.get("generatedAt") != generated_at:
+        raise AssertionError(
+            "inherited security drills summary did not rebind generatedAt: "
+            f"{summary.get('generatedAt')} != {generated_at}"
+        )
+    _timestamp, now = parse_generated_at(generated_at)
+    validation = security_response_runbook.validate_drills_summary(
+        summary,
+        production=mode == "production-beta",
+        strict=mode in {"release-candidate", "production-beta"},
+        now=now,
+        expected_mode=mode if mode in {"release-candidate", "production-beta"} else None,
+    )
+    if "drills summary is stale" in validation.get("errors", []):
+        raise AssertionError(
+            "inherited security drills summary kept the parent fixture timestamp: "
+            f"{validation}"
         )
 
 
@@ -3332,7 +3971,7 @@ def assert_previous_candidate_upgrade_current_binding_is_enforced(root: Path) ->
             Path(__file__).resolve().parents[2],
             root / f"previous-candidate-current-binding-{label}",
             "production-beta",
-            f"crypta-production-beta-270-{label}",
+            "crypta-production-beta-270",
             generated_at,
             now,
         )
@@ -3347,9 +3986,365 @@ def assert_previous_candidate_upgrade_current_binding_is_enforced(root: Path) ->
             raise AssertionError(f"mismatched previous-candidate upgrade {field} used wrong blocker: {dashboard}")
 
 
+def assert_security_drills_preserve_failing_runbook_evidence(root: Path) -> None:
+    pass_fixture = load_fixture(FIXTURE_DIR / "go-no-go-pass.json")
+    inputs = json.loads(json.dumps(pass_fixture["inputs"]))
+    inputs["releaseCertificationSummary"].setdefault("evidence", []).append(
+        {
+            "id": "production-security.response-runbook",
+            "status": "pass",
+            "summary": "Combined release-certification security response evidence passed.",
+            "source": "release-certification-summary",
+            "details": {
+                "appPlatformRunbook": {
+                    "id": "production-security.response-runbook",
+                    "status": "pass",
+                    "summary": "App-platform runbook evidence passed.",
+                    "source": "app-platform-smoke",
+                },
+                "securityDrills": {
+                    "id": "production-security.response-runbook",
+                    "status": "pass",
+                    "summary": "Security response drills passed.",
+                    "source": "security-drills-summary",
+                },
+                "componentStatuses": {
+                    "appPlatformRunbook": "pass",
+                    "securityDrills": "pass",
+                },
+            },
+        }
+    )
+    for entry in inputs["appPlatformSummary"]["evidence"]:
+        if isinstance(entry, dict) and entry.get("id") == "production-security.response-runbook":
+            entry["status"] = "fail"
+            entry["summary"] = "App-platform security response runbook integration failed."
+            entry["details"] = {"checks": {"runbookDocExists": False}}
+            break
+    else:
+        raise AssertionError("app-platform production-security.response-runbook evidence is missing")
+    generated_at, now = parse_generated_at(DEFAULT_GENERATED_AT)
+    dashboard = build_dashboard(
+        inputs,
+        {},
+        [FIXTURE_DIR / "go-no-go-pass.json"],
+        None,
+        Path(__file__).resolve().parents[2],
+        root / "security-drills-preserve-failing-runbook",
+        "production-beta",
+        "crypta-production-beta-270",
+        generated_at,
+        now,
+    )
+    if dashboard.get("decision") != "no-go":
+        raise AssertionError(
+            "passing security drills overwrote failing runbook evidence: "
+            f"{dashboard}"
+        )
+    blocker_ids = {
+        str(blocker.get("evidenceId"))
+        for blocker in dashboard.get("blockers", [])
+        if isinstance(blocker, dict)
+    }
+    if "production-security.response-runbook" not in blocker_ids:
+        raise AssertionError(f"failing runbook evidence did not block: {dashboard}")
+    security_domain = next(
+        (domain for domain in dashboard.get("domains", []) if domain.get("id") == "production-security-response"),
+        {},
+    )
+    if security_domain.get("status") != "fail":
+        raise AssertionError(f"security response domain did not fail: {security_domain}")
+
+
+def assert_security_drills_require_app_platform_runbook_evidence(root: Path) -> None:
+    pass_fixture = load_fixture(FIXTURE_DIR / "go-no-go-pass.json")
+    inputs = json.loads(json.dumps(pass_fixture["inputs"]))
+    for summary_name in ("releaseCertificationSummary", "appPlatformSummary"):
+        summary = inputs.get(summary_name)
+        if not isinstance(summary, dict) or not isinstance(summary.get("evidence"), list):
+            continue
+        summary["evidence"] = [
+            entry
+            for entry in summary["evidence"]
+            if not (isinstance(entry, dict) and entry.get("id") == "production-security.response-runbook")
+        ]
+    generated_at, now = parse_generated_at(DEFAULT_GENERATED_AT)
+    dashboard = build_dashboard(
+        inputs,
+        {},
+        [FIXTURE_DIR / "go-no-go-pass.json"],
+        None,
+        Path(__file__).resolve().parents[2],
+        root / "security-drills-require-app-platform-runbook",
+        "production-beta",
+        "crypta-production-beta-270",
+        generated_at,
+        now,
+    )
+    if dashboard.get("decision") != "no-go":
+        raise AssertionError(
+            "passing security drills masked missing app-platform runbook evidence: "
+            f"{dashboard}"
+        )
+    blocker_ids = {
+        str(blocker.get("evidenceId"))
+        for blocker in dashboard.get("blockers", [])
+        if isinstance(blocker, dict)
+    }
+    if "production-security.response-runbook" not in blocker_ids:
+        raise AssertionError(f"missing app-platform runbook evidence did not block: {dashboard}")
+    security_evidence = dashboard.get("securityDrills")
+    if not isinstance(security_evidence, dict) or security_evidence.get("promotionReady") is not True:
+        raise AssertionError(f"passing drill summary should remain visible separately: {dashboard}")
+
+
+def assert_security_drill_summary_evidence_is_not_generic_release_evidence(root: Path) -> None:
+    pass_fixture = load_fixture(FIXTURE_DIR / "go-no-go-pass.json")
+    inputs = json.loads(json.dumps(pass_fixture["inputs"]))
+    for entry in inputs["appPlatformSummary"]["evidence"]:
+        if isinstance(entry, dict) and entry.get("id") == "first-party-app.beta-quality-pass":
+            entry["status"] = "fail"
+            entry["summary"] = "First-party beta-quality readiness failed."
+            break
+    else:
+        raise AssertionError("first-party beta-quality evidence is missing from app-platform fixture")
+    security_drills = inputs.get("securityDrillsSummary")
+    if not isinstance(security_drills, dict):
+        raise AssertionError("go-no-go-pass fixture is missing securityDrillsSummary")
+    security_drills.setdefault("evidence", []).append(
+        {
+            "id": "first-party-app.beta-quality-pass",
+            "status": "pass",
+            "summary": "Forged generic evidence inside the security drills summary.",
+            "source": "security-drills-summary",
+        }
+    )
+    generated_at, now = parse_generated_at(DEFAULT_GENERATED_AT)
+    dashboard = build_dashboard(
+        inputs,
+        {},
+        [FIXTURE_DIR / "go-no-go-pass.json"],
+        None,
+        Path(__file__).resolve().parents[2],
+        root / "security-drills-evidence-not-generic",
+        "production-beta",
+        "crypta-production-beta-270",
+        generated_at,
+        now,
+    )
+    if dashboard.get("decision") != "no-go":
+        raise AssertionError(
+            "generic evidence embedded in securityDrillsSummary overrode authoritative evidence: "
+            f"{dashboard}"
+        )
+    blocker_ids = {
+        str(blocker.get("evidenceId"))
+        for blocker in dashboard.get("blockers", [])
+        if isinstance(blocker, dict)
+    }
+    if "first-party-app.beta-quality-pass" not in blocker_ids:
+        raise AssertionError(f"failed first-party beta-quality evidence did not block: {dashboard}")
+    security_drills_compact = dashboard.get("securityDrills")
+    if (
+        not isinstance(security_drills_compact, dict)
+        or security_drills_compact.get("promotionReady") is not True
+    ):
+        raise AssertionError(f"passing drill summary should remain visible separately: {dashboard}")
+
+
+def assert_security_drill_summary_path_requires_sibling_artifacts(root: Path) -> None:
+    input_args, input_paths = path_input_args_from_pass_fixture(
+        root,
+        "security-drill-summary-path-missing-artifacts",
+    )
+    pass_fixture = read_json(FIXTURE_DIR / "go-no-go-pass.json")
+    if not isinstance(pass_fixture, dict) or not isinstance(pass_fixture.get("inputs"), dict):
+        raise AssertionError("go-no-go-pass.json must contain security drill path-test inputs")
+    security_drills = pass_fixture["inputs"].get("securityDrillsSummary")
+    if not isinstance(security_drills, dict):
+        raise AssertionError("go-no-go-pass fixture is missing securityDrillsSummary")
+    security_drills_path = (
+        root
+        / "security-drill-summary-path-missing-artifacts"
+        / "security-drills-summary.json"
+    )
+    write_json(security_drills_path, security_drills)
+    args_list = [
+        "build",
+        "--workspace-root",
+        str(Path(__file__).resolve().parents[2]),
+        "--out-dir",
+        str(root / "security-drill-summary-path-missing-artifacts-output"),
+        "--mode",
+        "production-beta",
+        "--release-id",
+        "crypta-production-beta-270",
+        "--generated-at",
+        DEFAULT_GENERATED_AT,
+        "--security-drills-summary",
+        str(security_drills_path),
+    ]
+    for flag, input_name in input_args:
+        args_list.extend([flag, str(input_paths[input_name])])
+    dashboard, _exit_code = build_command(build_parser().parse_args(args_list))
+    if dashboard.get("decision") != "no-go":
+        raise AssertionError(
+            "file-backed securityDrillsSummary without sibling artifacts produced GO: "
+            f"{dashboard}"
+        )
+    blocker_ids = {
+        str(blocker.get("evidenceId"))
+        for blocker in dashboard.get("blockers", [])
+        if isinstance(blocker, dict)
+    }
+    if "production-security.response-runbook" not in blocker_ids:
+        raise AssertionError(f"missing drill artifacts did not block security response: {dashboard}")
+    security_drills_compact = dashboard.get("securityDrills")
+    if (
+        not isinstance(security_drills_compact, dict)
+        or security_drills_compact.get("status") != "fail"
+        or security_drills_compact.get("promotionReady") is True
+    ):
+        raise AssertionError(f"missing drill artifacts did not fail compact drill status: {dashboard}")
+    artifact_validation = security_drills_compact.get("artifactValidation")
+    artifact_errors = (
+        artifact_validation.get("errors")
+        if isinstance(artifact_validation, dict)
+        and isinstance(artifact_validation.get("errors"), list)
+        else []
+    )
+    if "security drill artifact for reviewer-key-compromise is missing" not in artifact_errors:
+        raise AssertionError(
+            "missing sibling drill artifacts were not reported in compact validation: "
+            f"{dashboard}"
+        )
+
+
+def assert_security_drills_release_id_matches_dashboard_candidate(root: Path) -> None:
+    pass_fixture = load_fixture(FIXTURE_DIR / "go-no-go-pass.json")
+    inputs = json.loads(json.dumps(pass_fixture["inputs"]))
+    security_drills = inputs.get("securityDrillsSummary")
+    if not isinstance(security_drills, dict):
+        raise AssertionError("go-no-go-pass fixture is missing securityDrillsSummary")
+    security_drills["releaseId"] = "cryptad-beta-other-candidate"
+    generated_at, now = parse_generated_at(DEFAULT_GENERATED_AT)
+    dashboard = build_dashboard(
+        inputs,
+        {},
+        [FIXTURE_DIR / "go-no-go-pass.json"],
+        None,
+        Path(__file__).resolve().parents[2],
+        root / "security-drills-release-id-mismatch",
+        "production-beta",
+        "crypta-production-beta-270",
+        generated_at,
+        now,
+    )
+    if dashboard.get("decision") != "no-go":
+        raise AssertionError(
+            "security drills from another release id did not block: "
+            f"{dashboard}"
+        )
+    blockers = [
+        blocker
+        for blocker in dashboard.get("blockers", [])
+        if isinstance(blocker, dict)
+        and blocker.get("evidenceId") == "production-security.response-runbook"
+    ]
+    if not blockers:
+        raise AssertionError(f"release-id mismatch did not block production security response: {dashboard}")
+    security_evidence = next(
+        (
+            domain
+            for domain in dashboard.get("domains", [])
+            if isinstance(domain, dict) and domain.get("id") == "production-security-response"
+        ),
+        {},
+    )
+    if security_evidence.get("status") != "fail":
+        raise AssertionError(f"release-id mismatch did not fail security response domain: {dashboard}")
+    security_drills = dashboard.get("securityDrills")
+    if not isinstance(security_drills, dict) or security_drills.get("status") != "fail":
+        raise AssertionError(f"release-id mismatch did not fail compact security drill status: {dashboard}")
+    if security_drills.get("promotionReady") is True:
+        raise AssertionError(f"release-id mismatch left security drills promotion-ready: {dashboard}")
+
+
+def assert_validator_security_drill_redaction_findings_are_non_waivable(root: Path) -> None:
+    pass_fixture = load_fixture(FIXTURE_DIR / "go-no-go-pass.json")
+    inputs = json.loads(json.dumps(pass_fixture["inputs"]))
+    security_drills = inputs.get("securityDrillsSummary")
+    if not isinstance(security_drills, dict):
+        raise AssertionError("go-no-go-pass fixture is missing securityDrillsSummary")
+    security_drills["mode"] = "release-candidate"
+    security_drills["rawSupportBundleBody"] = "fixture-payload"
+    redaction = security_drills.get("redaction")
+    if not isinstance(redaction, dict):
+        raise AssertionError("go-no-go-pass fixture securityDrillsSummary is missing redaction")
+    redaction["status"] = "pass"
+    redaction["findings"] = []
+    redaction["rawSensitiveMaterialExcluded"] = True
+    waiver_value = {
+        "schemaVersion": 1,
+        "waivers": [
+            {
+                "id": "waive-validator-security-drill-redaction",
+                "evidenceId": "production-security.response-runbook",
+                "severity": "blocker",
+                "scope": "release-candidate",
+                "rationale": "Regression fixture: validator redaction findings are non-waivable.",
+                "approvedBy": "release-manager",
+                "owner": "release",
+                "createdAt": "1970-01-01T00:00:00Z",
+                "expiresAt": "2099-01-01T00:00:00Z",
+                "references": ["validator-security-drill-redaction"],
+            }
+        ],
+    }
+    generated_at, now = parse_generated_at(DEFAULT_GENERATED_AT)
+    dashboard = build_dashboard(
+        inputs,
+        {},
+        [FIXTURE_DIR / "go-no-go-pass.json"],
+        waiver_value,
+        Path(__file__).resolve().parents[2],
+        root / "validator-security-drill-redaction",
+        "release-candidate",
+        "crypta-production-beta-270",
+        generated_at,
+        now,
+    )
+    if dashboard.get("decision") != "no-go":
+        raise AssertionError(
+            "validator-detected security drill redaction was waived: "
+            f"{dashboard}"
+        )
+    if int(dashboard.get("summary", {}).get("waiversUsed", 0)) != 0:
+        raise AssertionError("validator-detected security drill redaction waiver was incorrectly used")
+    critical_redaction_blockers = [
+        blocker
+        for blocker in dashboard.get("blockers", [])
+        if isinstance(blocker, dict)
+        and blocker.get("evidenceId") == "production-security.response-runbook"
+        and blocker.get("category") == "redaction"
+        and blocker.get("severity") == "critical"
+        and blocker.get("waivable") is False
+    ]
+    if not critical_redaction_blockers:
+        raise AssertionError(
+            "validator-detected security drill redaction did not create a critical non-waivable blocker: "
+            f"{dashboard}"
+        )
+
+
 def assert_standalone_security_response_summary_is_honored(root: Path) -> None:
     pass_fixture = load_fixture(FIXTURE_DIR / "go-no-go-pass.json")
     inputs = json.loads(json.dumps(pass_fixture["inputs"]))
+    inputs.pop("securityDrillsSummary", None)
+    inputs["securityResponseSummary"] = {
+        "status": "pass",
+        "summary": "Standalone production security response summary passed.",
+    }
     app_summary = inputs["appPlatformSummary"]
     evidence = app_summary["evidence"]
     app_summary["evidence"] = [
@@ -3367,7 +4362,7 @@ def assert_standalone_security_response_summary_is_honored(root: Path) -> None:
         None,
         Path(__file__).resolve().parents[2],
         root / "standalone-security-response",
-        "production-beta",
+        "developer-dry-run",
         "crypta-production-beta-270-standalone-security-response",
         generated_at,
         now,
@@ -3380,6 +4375,46 @@ def assert_standalone_security_response_summary_is_honored(root: Path) -> None:
     )
     if security_domain.get("status") != "pass":
         raise AssertionError(f"standalone security-response domain did not pass: {security_domain}")
+
+
+def assert_legacy_security_response_summary_fallback_is_honored(root: Path) -> None:
+    pass_fixture = load_fixture(FIXTURE_DIR / "go-no-go-pass.json")
+    inputs = json.loads(json.dumps(pass_fixture["inputs"]))
+    inputs.pop("securityDrillsSummary", None)
+    inputs["securityResponseSummary"] = {
+        "status": "pass",
+        "summary": "Legacy production security response summary passed.",
+    }
+    for summary_name in ("appPlatformSummary", "releaseCertificationSummary"):
+        summary = inputs.get(summary_name)
+        if not isinstance(summary, dict) or not isinstance(summary.get("evidence"), list):
+            continue
+        summary["evidence"] = [
+            entry
+            for entry in summary["evidence"]
+            if not (isinstance(entry, dict) and entry.get("id") == "production-security.response-runbook")
+        ]
+    generated_at, now = parse_generated_at(DEFAULT_GENERATED_AT)
+    dashboard = build_dashboard(
+        inputs,
+        {},
+        [FIXTURE_DIR / "go-no-go-pass.json"],
+        None,
+        Path(__file__).resolve().parents[2],
+        root / "legacy-security-response-fallback",
+        "developer-dry-run",
+        "crypta-production-beta-270-legacy-security-response-fallback",
+        generated_at,
+        now,
+    )
+    if dashboard.get("decision") != "go":
+        raise AssertionError(f"legacy security-response fallback produced {dashboard.get('decision')}: {dashboard}")
+    security_domain = next(
+        (domain for domain in dashboard.get("domains", []) if domain.get("id") == "production-security-response"),
+        {},
+    )
+    if security_domain.get("status") != "pass":
+        raise AssertionError(f"legacy security-response fallback domain did not pass: {security_domain}")
 
 
 def path_input_args_from_pass_fixture(root: Path, input_dir_name: str) -> tuple[tuple[tuple[str, str], ...], dict[str, Path]]:
@@ -3614,6 +4649,7 @@ def build_parser() -> argparse.ArgumentParser:
     build.add_argument("--live-network-summary", type=Path)
     build.add_argument("--network-scale-soak-summary", type=Path)
     build.add_argument("--multi-node-beta-soak-summary", type=Path)
+    build.add_argument("--security-drills-summary", type=Path)
     build.add_argument("--security-response-summary", type=Path)
     build.add_argument("--waivers", type=Path)
     build.add_argument("--fixtures", type=Path, help="Build from a checked-in dashboard fixture bundle.")

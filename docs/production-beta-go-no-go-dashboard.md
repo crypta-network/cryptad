@@ -43,10 +43,13 @@ python3 tools/release-certification/production_beta_go_no_go_dashboard.py build 
   --live-network-summary build/live-network-beta-smoke/summary.json \
   --network-scale-soak-summary build/network-scale-soak/summary.json \
   --multi-node-beta-soak-summary build/multi-node-beta-soak/summary.json \
-  --security-response-summary build/security-response-runbook/summary.json \
+  --security-drills-summary build/security-drills/security-drills-summary.json \
   --waivers release/waivers.json \
   --mode production-beta
 ```
+
+`--security-response-summary` remains a developer dry-run legacy fallback. Strict
+release-candidate and production-beta dashboard runs must pass `--security-drills-summary`.
 
 Run the offline fixture tests with:
 
@@ -69,6 +72,7 @@ Production beta mode fails closed when these critical inputs are missing or malf
 | `live-network-beta-smoke/summary.json` | Required production beta live-network smoke evidence. |
 | `network-scale-soak/summary.json` | Network-scale budget, pressure, and redaction evidence. |
 | `multi-node-beta-soak/summary.json` | Multi-node soak, previous-candidate upgrade drill, scenario, app migration, backup/restore, Social Inbox, Trust Graph, support-bundle, and redaction evidence. |
+| `security-drills/security-drills-summary.json` | Operational production security response drill summary, required scenario status, artifact digests, release-notes/advisory template status, and aggregate redaction status. |
 | `third-party-intake-summary.json` | Optional third-party app intake summary copied by the release wrapper when `--third-party-intake-summary` or `--run-third-party-intake-sample-flow` is used. |
 
 Developer dry-runs tolerate missing production-only inputs so PR and local runs remain CI-safe. A
@@ -95,6 +99,15 @@ support-bundle schema, missing preview/export routes, unsafe lifecycle summaries
 plaintext diagnostics in the default bundle, or redaction fixture failures are `no-go` conditions
 in production beta. Redaction failures in this domain are non-waivable.
 
+The `production-security-response` domain consumes the
+`cryptad-security-response-drills-summary` artifact. The dashboard reports required, passed,
+failed, missing, stale, and malformed scenario counts; aggregate redaction status;
+release-notes/advisory template status; support-bundle intake redaction status; fixture-only and
+non-release markers; and the critical blockers derived from the summary. A missing summary, missing
+required scenario, failed scenario, stale artifact, malformed envelope, fixture-only production
+summary, or critical redaction finding is `no-go`. Redaction findings from security drills are
+non-waivable, and waiver attempts for critical drill redaction are recorded as invalid.
+
 These content profiles are Crypta app ecosystem profiles. They are not compatibility promises for
 legacy WoT, Freetalk, Sone, Freemail, or any old plugin ABI/protocol.
 
@@ -120,6 +133,8 @@ production launch set.
 - unsafe artifact hygiene finding such as AppleDouble metadata, `.DS_Store`, or `__MACOSX`;
 - production beta mode using test-only or generated signing material;
 - production beta artifact marked `nonRelease=true`;
+- missing security drill summary, missing required scenario, failed scenario, stale drill artifact,
+  malformed drill envelope, fixture-only production drill, or drill redaction finding;
 - production beta summary with failed promotion gates or `promotionReady=false`.
 
 Previous-candidate upgrade evidence is a production-beta launch blocker. Missing, failing, warning,
@@ -191,7 +206,7 @@ These findings always produce `no-go`:
   production beta;
 - missing or failing live-network beta evidence, sandbox provider evidence, production signing,
   previous-candidate summary validation, previous-candidate multi-node upgrade evidence,
-  multi-node redaction, or ecosystem RC gates in production beta;
+  multi-node redaction, security drill redaction, or ecosystem RC gates in production beta;
 - malformed or expired waiver records.
 
 The scanner allows deterministic placeholders such as `<redacted-private-insert-uri>`,

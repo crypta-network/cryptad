@@ -1,0 +1,11 @@
+{
+  "extends": "go-no-go-pass.json",
+  "inputs": {
+    "securityDrillsSummary": {
+      "evidenceMode": "fixture",
+      "fixtureOnly": true,
+      "nonRelease": true,
+      "promotionReady": false
+    }
+  }
+}

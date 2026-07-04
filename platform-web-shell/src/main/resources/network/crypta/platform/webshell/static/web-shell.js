@@ -940,6 +940,7 @@
     const denylistedVersions = arrayValue(safeResponse.denylistedVersions).map(recordValue);
     const reviewerGovernance = recordValue(safeResponse.reviewerGovernance);
     const catalogSigningKeys = arrayValue(safeResponse.catalogSigningKeys).map(recordValue);
+    const securityDrills = recordValue(safeResponse.securityDrills);
     const registryCounts = recordValue(reviewerGovernance.counts);
     const status = typeof safeResponse.status === "string" ? safeResponse.status : "unavailable";
     const list = document.createElement("div");
@@ -952,11 +953,15 @@
       definitionList([
         ["Active advisories", scalar(summary.activeAdvisoryCount)],
         ["Denylisted versions", scalar(summary.denylistedVersionCount)],
+        ["Installed vulnerable apps", scalar(summary.installedVulnerableAppCount)],
         ["Revoked reviewer keys", scalar(summary.revokedReviewerKeyCount ?? registryCounts.revoked)],
         ["Revoked receipts", scalar(summary.revokedReceiptCount)],
         ["Catalog signing keys", scalar(summary.catalogSigningKeyCount)],
         ["Catalog key rotation", normalizedStatus(summary.catalogKeyRotationStatus, "Unavailable")],
+        ["Emergency replacement guidance", yesNoText(summary.emergencyReplacementGuidanceAvailable, null)],
         ["Support redaction", normalizedStatus(summary.supportRedactionStatus, "Unavailable")],
+        ["Security drills", normalizedStatus(summary.securityDrillsStatus, "Unavailable")],
+        ["Last drill status", normalizedStatus(summary.securityDrillsLastStatus, "Unavailable")],
       ]),
       renderSecurityResponseActionLabels(arrayValue(safeResponse.operatorActions)),
     );
@@ -975,6 +980,9 @@
         renderSecurityResponseRecordCard("Catalog signing keys", catalogSigningKeys, securityResponseCatalogKeyLine),
       );
     }
+    if (Object.keys(securityDrills).length) {
+      list.append(renderSecurityDrillsSummaryCard(securityDrills));
+    }
     if (typeof safeResponse.supportGuidance === "string" && safeResponse.supportGuidance.length) {
       const support = document.createElement("article");
       support.className = "app-card";
@@ -986,6 +994,26 @@
     }
     group.append(list);
     return group;
+  }
+
+  function renderSecurityDrillsSummaryCard(securityDrills) {
+    const status = typeof securityDrills.status === "string" ? securityDrills.status : "unavailable";
+    const card = document.createElement("article");
+    card.className = securityResponseTone(status) ? `app-card ${securityResponseTone(status)}` : "app-card";
+    card.append(
+      betaCardHeader("Security drills", normalizedStatus(status, "Unavailable"), securityResponseTone(status)),
+      definitionList([
+        ["Last status", normalizedStatus(securityDrills.lastStatus, "Unavailable")],
+        ["Promotion ready", yesNoText(securityDrills.promotionReady, false)],
+        ["Required scenarios", scalar(securityDrills.requiredScenarioCount)],
+        ["Redaction", normalizedStatus(securityDrills.redactionStatus, "Unavailable")],
+        ["Artifact", scalar(securityDrills.artifactKind)],
+      ]),
+    );
+    if (typeof securityDrills.summary === "string" && securityDrills.summary.length) {
+      card.append(text("p", "empty-state", securityDrills.summary));
+    }
+    return card;
   }
 
   function securityResponseTone(status) {

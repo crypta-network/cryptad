@@ -177,9 +177,11 @@ ecosystem-security.advisory-revocation-redaction
 ```
 
 Production beta additionally requires `production-security.response-runbook`, which verifies the
-runbook document, machine-readable drill model, security-release-notes template, API/Web Shell
-summary integration, and support redaction coverage for emergency catalog updates and compromise
-drills.
+runbook document, machine-readable drill model, schema-version 2 drill artifacts,
+`security-drills-summary.json`, security-release-notes template, API/Web Shell summary
+integration, and support redaction coverage for emergency catalog updates and compromise drills.
+Missing, failed, stale, malformed, fixture-only production, or redaction-unsafe drills block
+production-beta promotion.
 
 The evidence proves strict v4 parser/writer behavior, exact version denylist enforcement, warning
 acknowledgement behavior, install/update/stage/apply/scheduler gates, receipt revocation,

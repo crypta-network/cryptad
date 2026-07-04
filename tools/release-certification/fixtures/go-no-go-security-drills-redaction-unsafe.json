@@ -1,0 +1,16 @@
+{
+  "extends": "go-no-go-pass.json",
+  "inputs": {
+    "securityDrillsSummary": {
+      "promotionReady": false,
+      "redaction": {
+        "findings": [
+          "raw support bundle marker"
+        ],
+        "rawSensitiveMaterialExcluded": false,
+        "status": "fail"
+      },
+      "status": "fail"
+    }
+  }
+}

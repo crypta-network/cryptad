@@ -729,6 +729,152 @@
     "securityResponseSummary": {
       "status": "pass",
       "tool": "security-response-runbook"
+    },
+    "securityDrillsSummary": {
+      "artifactDirectory": "security-drills",
+      "artifacts": [
+        {
+          "ageDays": 0,
+          "artifact": "app-signing-key-compromise.json",
+          "advisoryTemplateStatus": "pass",
+          "digest": "sha256:4e59733ce7bf99dd66e4a362b7437edbf4f53e9147b6be2966b54b8b0fee6304",
+          "releaseNotesTemplateStatus": "pass",
+          "scenario": "app-signing-key-compromise",
+          "stale": false,
+          "staleReason": "",
+          "status": "pass"
+        },
+        {
+          "ageDays": 0,
+          "artifact": "catalog-signing-key-rotation.json",
+          "advisoryTemplateStatus": "pass",
+          "digest": "sha256:346caac3698d4b9dba022d61566c225945cf322dc376e6999868b0665e25961d",
+          "releaseNotesTemplateStatus": "pass",
+          "scenario": "catalog-signing-key-rotation",
+          "stale": false,
+          "staleReason": "",
+          "status": "pass"
+        },
+        {
+          "ageDays": 0,
+          "artifact": "emergency-replacement-app.json",
+          "advisoryTemplateStatus": "pass",
+          "digest": "sha256:8938696ccaff3024b02cd970ad1b2e5ff6cc757e60f8885b4ef8922de4dcf6c2",
+          "releaseNotesTemplateStatus": "pass",
+          "scenario": "emergency-replacement-app",
+          "stale": false,
+          "staleReason": "",
+          "status": "pass"
+        },
+        {
+          "ageDays": 0,
+          "artifact": "malicious-catalog-entry.json",
+          "advisoryTemplateStatus": "pass",
+          "digest": "sha256:c91b072091c9548419cc477ecebf33ab42fe6423779dd610493990cd5fce0166",
+          "releaseNotesTemplateStatus": "pass",
+          "scenario": "malicious-catalog-entry",
+          "stale": false,
+          "staleReason": "",
+          "status": "pass"
+        },
+        {
+          "ageDays": 0,
+          "artifact": "reviewer-key-compromise.json",
+          "advisoryTemplateStatus": "pass",
+          "digest": "sha256:e78a6d92a319c84cee13ef50113694233d41aa68bd827d9dfc34b2d8bb82e963",
+          "releaseNotesTemplateStatus": "pass",
+          "scenario": "reviewer-key-compromise",
+          "stale": false,
+          "staleReason": "",
+          "status": "pass"
+        },
+        {
+          "ageDays": 0,
+          "artifact": "support-bundle-intake-redaction.json",
+          "advisoryTemplateStatus": "pass",
+          "digest": "sha256:3b22cd7cd79efdc395c1db3d5194489a13b57b5510737c374253c12f77a2f59b",
+          "releaseNotesTemplateStatus": "pass",
+          "scenario": "support-bundle-intake-redaction",
+          "stale": false,
+          "staleReason": "",
+          "status": "pass"
+        },
+        {
+          "ageDays": 0,
+          "artifact": "vulnerable-app-version.json",
+          "advisoryTemplateStatus": "pass",
+          "digest": "sha256:0e9c8b31df262484f27e1fa61941d179043ee24e43034b11b2687e5d90c68b83",
+          "releaseNotesTemplateStatus": "pass",
+          "scenario": "vulnerable-app-version",
+          "stale": false,
+          "staleReason": "",
+          "status": "pass"
+        }
+      ],
+      "counts": {
+        "failed": 0,
+        "malformed": 0,
+        "missing": 0,
+        "passed": 7,
+        "required": 7,
+        "stale": 0
+      },
+      "evidenceMode": "release-operations",
+      "failedScenarios": [],
+      "fixtureOnly": false,
+      "generatedAt": "1970-01-01T00:00:00Z",
+      "kind": "cryptad-security-response-drills-summary",
+      "malformedScenarios": [],
+      "maxAgeDays": 30,
+      "missingScenarios": [],
+      "mode": "production-beta",
+      "nonRelease": false,
+      "passedScenarios": [
+        "vulnerable-app-version",
+        "app-signing-key-compromise",
+        "reviewer-key-compromise",
+        "catalog-signing-key-rotation",
+        "malicious-catalog-entry",
+        "emergency-replacement-app",
+        "support-bundle-intake-redaction"
+      ],
+      "promotionReady": true,
+      "redaction": {
+        "findings": [],
+        "patternsChecked": [
+          "private-key",
+          "private-insert-uri",
+          "token",
+          "raw-content",
+          "raw-app-data",
+          "raw-support-bundle",
+          "raw-profile-feed-trust-social",
+          "raw-signature",
+          "local-path"
+        ],
+        "rawSensitiveMaterialExcluded": true,
+        "status": "pass"
+      },
+      "releaseId": "crypta-production-beta-270",
+      "advisoryTemplate": {
+        "templateStatus": "pass"
+      },
+      "releaseNotes": {
+        "templateStatus": "pass"
+      },
+      "requiredScenarios": [
+        "vulnerable-app-version",
+        "app-signing-key-compromise",
+        "reviewer-key-compromise",
+        "catalog-signing-key-rotation",
+        "malicious-catalog-entry",
+        "emergency-replacement-app",
+        "support-bundle-intake-redaction"
+      ],
+      "schemaVersion": 1,
+      "staleScenarios": [],
+      "status": "pass",
+      "tool": "security-response-runbook"
     }
   },
   "mode": "production-beta",

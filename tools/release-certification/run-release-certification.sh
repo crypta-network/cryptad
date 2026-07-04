@@ -16,6 +16,8 @@ MULTI_NODE_MODE="${CRYPTAD_CERT_MULTI_NODE_MODE:-}"
 MULTI_NODE_MODE_PROVIDED=0
 MULTI_NODE_SOAK_CONFIG="${CRYPTAD_CERT_MULTI_NODE_SOAK_CONFIG:-}"
 REQUIRE_MULTI_NODE_SOAK="${CRYPTAD_CERT_REQUIRE_MULTI_NODE_SOAK:-0}"
+SECURITY_DRILLS_SUMMARY="${CRYPTAD_CERT_SECURITY_DRILLS_SUMMARY:-}"
+SECURITY_DRILLS_SUMMARY_PROVIDED=0
 SKIP_GRADLE_ARG=()
 LIVE_ARGS=()
 LIVE_NETWORK_ARGS=()
@@ -30,6 +32,9 @@ if [[ -n "$MULTI_NODE_SOAK_SUMMARY" ]]; then
 fi
 if [[ -n "$MULTI_NODE_MODE" ]]; then
   MULTI_NODE_MODE_PROVIDED=1
+fi
+if [[ -n "$SECURITY_DRILLS_SUMMARY" ]]; then
+  SECURITY_DRILLS_SUMMARY_PROVIDED=1
 fi
 
 normalize_flag() {
@@ -132,6 +137,16 @@ while [[ $# -gt 0 ]]; do
       REQUIRE_MULTI_NODE_SOAK=1
       shift
       ;;
+    --security-drills-summary|--security-response-summary)
+      SECURITY_DRILLS_SUMMARY="$2"
+      SECURITY_DRILLS_SUMMARY_PROVIDED=1
+      shift 2
+      ;;
+    --security-drills-summary=*|--security-response-summary=*)
+      SECURITY_DRILLS_SUMMARY="${1#*=}"
+      SECURITY_DRILLS_SUMMARY_PROVIDED=1
+      shift
+      ;;
     --form-password)
       echo "--form-password is not supported; set CRYPTAD_CERT_FORM_PASSWORD in the environment." >&2
       exit 2
@@ -212,6 +227,19 @@ case "$MULTI_NODE_SOAK_SUMMARY" in
     ;;
 esac
 MULTI_NODE_SOAK_OUT_DIR="$(dirname "$MULTI_NODE_SOAK_SUMMARY")"
+
+case "$SECURITY_DRILLS_SUMMARY" in
+  "")
+    SECURITY_DRILLS_SUMMARY_PROVIDED=0
+    SECURITY_DRILLS_SUMMARY="$OUT_DIR/security-drills/security-drills-summary.json"
+    ;;
+  /*)
+    ;;
+  *)
+    SECURITY_DRILLS_SUMMARY="$ROOT_DIR/$SECURITY_DRILLS_SUMMARY"
+    ;;
+esac
+SECURITY_DRILLS_OUT_DIR="$(dirname "$SECURITY_DRILLS_SUMMARY")"
 
 if [[ -n "$MULTI_NODE_SOAK_CONFIG" ]]; then
   case "$MULTI_NODE_SOAK_CONFIG" in
@@ -300,6 +328,21 @@ if [[ "$MULTI_NODE_SOAK_SUMMARY_PROVIDED" != "1" ]]; then
     "$MULTI_NODE_SOAK_OUT_DIR/multi-node-beta-soak-summary.json" \
     "$MULTI_NODE_SOAK_OUT_DIR/multi-node-beta-soak-summary.md"
 fi
+if [[ "$SECURITY_DRILLS_SUMMARY_PROVIDED" != "1" ]]; then
+  rm -rf "$SECURITY_DRILLS_OUT_DIR"
+fi
+
+set +e
+(
+  cd "$ROOT_DIR" &&
+    python3 "$ROOT_DIR/tools/release-certification/security_response_runbook.py" verify
+)
+SECURITY_RUNBOOK_EXIT=$?
+set -e
+if [[ "$SECURITY_RUNBOOK_EXIT" -ne 0 ]]; then
+  echo "Security response runbook verification exited with $SECURITY_RUNBOOK_EXIT; certification aggregation will record" \
+    "the evidence state." >&2
+fi
 
 if [[ "$SKIP_APP_SMOKE" != "1" ]]; then
   set +e
@@ -373,6 +416,44 @@ if [[ "$MULTI_NODE_SOAK_SUMMARY_PROVIDED" != "1" ]]; then
   fi
 fi
 
+if [[ "$SECURITY_DRILLS_SUMMARY_PROVIDED" != "1" ]]; then
+  mkdir -p "$SECURITY_DRILLS_OUT_DIR"
+  set +e
+  (
+    cd "$ROOT_DIR" &&
+      python3 "$ROOT_DIR/tools/release-certification/security_response_runbook.py" drill run-all \
+        --out-dir "$SECURITY_DRILLS_OUT_DIR" \
+        --summary-out "$SECURITY_DRILLS_SUMMARY" \
+        --release-id "cryptad-cert-${MODE}" \
+        --mode "$MODE" \
+        --release-notes-out "$OUT_DIR/security/security-release-notes-draft.md"
+  )
+  SECURITY_DRILL_RUN_EXIT=$?
+  set -e
+  if [[ "$SECURITY_DRILL_RUN_EXIT" -ne 0 ]]; then
+    echo "Security response drill generation exited with $SECURITY_DRILL_RUN_EXIT; certification aggregation will record" \
+      "the evidence state." >&2
+  fi
+fi
+
+if [[ "$SECURITY_DRILLS_SUMMARY_PROVIDED" != "1" ]]; then
+  set +e
+  (
+    cd "$ROOT_DIR" &&
+      python3 "$ROOT_DIR/tools/release-certification/security_response_runbook.py" drill verify-all \
+        --input-dir "$SECURITY_DRILLS_OUT_DIR" \
+        --summary-out "$SECURITY_DRILLS_SUMMARY" \
+        --release-id "cryptad-cert-${MODE}" \
+        --mode "$MODE"
+  )
+  SECURITY_DRILL_VERIFY_EXIT=$?
+  set -e
+  if [[ "$SECURITY_DRILL_VERIFY_EXIT" -ne 0 ]]; then
+    echo "Security response drill verification exited with $SECURITY_DRILL_VERIFY_EXIT; certification aggregation will record" \
+      "the evidence state." >&2
+  fi
+fi
+
 exec python3 "$ROOT_DIR/tools/release-certification/release_certification.py" \
   --workspace-root "$ROOT_DIR" \
   --out-dir "$OUT_DIR" \
@@ -381,5 +462,6 @@ exec python3 "$ROOT_DIR/tools/release-certification/release_certification.py" \
   --live-network-summary "$LIVE_NETWORK_SUMMARY" \
   --network-scale-soak-summary "$NETWORK_SCALE_SOAK_SUMMARY" \
   --multi-node-soak-summary "$MULTI_NODE_SOAK_SUMMARY" \
+  --security-drills-summary "$SECURITY_DRILLS_SUMMARY" \
   "${CERT_LIVE_ARGS[@]}" \
   "${CERT_ARGS[@]}"

@@ -165,6 +165,14 @@ Redaction failures are production-critical and non-waivable. Missing schema, mis
 routes, raw diagnostics embedded in default bundles, unsafe fuzz fixtures, or default bundle exports
 that include legacy plaintext diagnostics are no-go conditions.
 
+The production security response drill set also treats `support-bundle-intake-redaction` as a
+required production drill. Its artifact may include boolean redaction metadata, safe omitted-field
+counts, digests, and fixture result names, but it must not include raw support bundle bodies, raw
+diagnostic lines, raw app data, raw profile/feed/trust/social documents, raw app-service bodies,
+nested backup material, private insert URIs, tokens, private keys, or local paths. A missing,
+failed, stale, malformed, fixture-only production, or redaction-unsafe drill blocks production beta
+promotion through the go/no-go dashboard.
+
 ## Limitations
 
 The support bundle is not telemetry, crash-report upload, analytics, remote logging, or automatic

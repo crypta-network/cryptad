@@ -988,9 +988,11 @@ public final class AppCatalogsApiHandler {
       int revokedReviewerKeys = revokedReviewerCount(registryJson);
       int revokedReceipts = registry.receiptRevocationCount();
 
-      LinkedHashMap<String, Object> summary = LinkedHashMap.newLinkedHashMap(7);
+      Map<String, Object> securityDrills = securityDrillsReadinessSummary();
+      LinkedHashMap<String, Object> summary = LinkedHashMap.newLinkedHashMap(11);
       summary.put("activeAdvisoryCount", activeAdvisories.size());
       summary.put("denylistedVersionCount", denylistedVersions.size());
+      summary.put("installedVulnerableAppCount", "unavailable");
       summary.put("revokedReviewerKeyCount", revokedReviewerKeys);
       summary.put("revokedReceiptCount", revokedReceipts);
       summary.put("catalogSigningKeyCount", catalogSigningKeys.size());
@@ -999,7 +1001,12 @@ public final class AppCatalogsApiHandler {
           catalogSigningKeys.stream().anyMatch(key -> key.get("keyId") == null)
               ? VERSION_STATUS_UNKNOWN
               : CONFIGURED_FIELD);
+      summary.put(
+          "emergencyReplacementGuidanceAvailable",
+          emergencyReplacementGuidanceAvailable(activeAdvisories, denylistedVersions));
       summary.put("supportRedactionStatus", "required");
+      summary.put("securityDrillsStatus", securityDrills.get(STATUS_FIELD));
+      summary.put("securityDrillsLastStatus", securityDrills.get("lastStatus"));
 
       LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(8);
       json.put(
@@ -1011,6 +1018,7 @@ public final class AppCatalogsApiHandler {
       json.put("denylistedVersions", List.copyOf(denylistedVersions));
       json.put("reviewerGovernance", registryJson);
       json.put("catalogSigningKeys", List.copyOf(catalogSigningKeys));
+      json.put("securityDrills", securityDrills);
       json.put("operatorActions", securityResponseOperatorActions());
       json.put("supportGuidance", "Use redacted support bundle preview before sharing evidence.");
       return json;
@@ -1079,6 +1087,14 @@ public final class AppCatalogsApiHandler {
         .toList();
   }
 
+  private static boolean emergencyReplacementGuidanceAvailable(
+      List<Map<String, Object>> activeAdvisories, List<Map<String, Object>> denylistedVersions) {
+    return activeAdvisories.stream()
+            .anyMatch(advisory -> nonEmptyString(advisory.get(REPLACEMENT_APP_ID_FIELD)))
+        || denylistedVersions.stream()
+            .anyMatch(denylist -> nonEmptyString(denylist.get(REPLACEMENT_APP_ID_FIELD)));
+  }
+
   private static Map<String, Object> securityResponseDenylistEntry(
       String catalogId, Map<String, Object> denylistEntry) {
     LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(8);
@@ -1145,6 +1161,26 @@ public final class AppCatalogsApiHandler {
     json.put("id", id);
     json.put("label", label);
     return json;
+  }
+
+  private static Map<String, Object> securityDrillsReadinessSummary() {
+    LinkedHashMap<String, Object> json = LinkedHashMap.newLinkedHashMap(8);
+    json.put(STATUS_FIELD, "release_artifact_required");
+    json.put("lastStatus", "not_loaded");
+    json.put("summaryAvailable", false);
+    json.put("promotionReady", false);
+    json.put("requiredScenarioCount", 7);
+    json.put("redactionStatus", "not_loaded");
+    json.put("artifactKind", "cryptad-security-response-drills-summary");
+    json.put(
+        SUMMARY_FIELD,
+        "Release certification verifies security drills from redacted artifacts; no raw drill"
+            + " artifacts are uploaded to this node.");
+    return json;
+  }
+
+  private static boolean nonEmptyString(Object value) {
+    return value instanceof String text && !text.isBlank();
   }
 
   /**
