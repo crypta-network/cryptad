@@ -4,6 +4,11 @@ This document describes the local third-party app submission workflow added for 
 review. It is an offline, deterministic packaging and review path, not a hosted public app store,
 ranking service, payment system, or install-consent flow.
 
+Public-beta app authors, reviewers, and release managers should start with
+[public-beta/app-submission-walkthrough.md](public-beta/app-submission-walkthrough.md). This page
+remains the detailed submission package, pre-review, decision, receipt, intake queue, transparency
+log, and catalog-candidate source of truth.
+
 The workflow turns a staged app bundle into a reviewable package:
 
 ```text

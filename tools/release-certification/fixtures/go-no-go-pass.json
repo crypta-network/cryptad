@@ -576,6 +576,59 @@
           "source": "fixture-live-network",
           "status": "pass",
           "summary": "Live redaction passed."
+        },
+        {
+          "id": "public-beta.docs-onboarding",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-public-beta-docs",
+          "status": "pass",
+          "summary": "Public beta onboarding docs passed."
+        },
+        {
+          "id": "public-beta.user-guide",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-public-beta-docs",
+          "status": "pass",
+          "summary": "Public beta user guide passed."
+        },
+        {
+          "id": "public-beta.developer-quickstart",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-public-beta-docs",
+          "status": "pass",
+          "summary": "Public beta developer quickstart passed."
+        },
+        {
+          "id": "public-beta.troubleshooting",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-public-beta-docs",
+          "status": "pass",
+          "summary": "Public beta troubleshooting guide passed."
+        },
+        {
+          "id": "public-beta.security-reporting",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-public-beta-docs",
+          "status": "pass",
+          "summary": "Public beta security reporting guide passed."
+        },
+        {
+          "id": "public-beta.limitations",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-public-beta-docs",
+          "status": "pass",
+          "summary": "Public beta limitations passed."
+        },
+        {
+          "id": "public-beta.links-redaction",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-public-beta-docs",
+          "status": "pass",
+          "summary": "Public beta docs links and redaction passed.",
+          "details": {
+            "redactionFindings": [],
+            "brokenLinks": []
+          }
         }
       ],
       "mode": "release-candidate",

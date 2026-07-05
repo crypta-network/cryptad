@@ -2,6 +2,10 @@
 
 This page records conservative limits and safety boundaries for the Crypta app ecosystem beta.
 
+The public-beta onboarding front door summarizes these limits for users and developers in
+[public-beta/README.md](public-beta/README.md) and
+[public-beta/trust-social-limitations.md](public-beta/trust-social-limitations.md).
+
 ## General beta limits
 
 - This is an app ecosystem beta, not a public production app store.

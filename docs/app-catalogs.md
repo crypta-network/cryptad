@@ -2,6 +2,10 @@
 
 This document describes Cryptad's signed app catalog format and the local install/update flow.
 
+Public-beta users should start with the catalog onboarding summary in
+[public-beta/catalogs-and-apps.md](public-beta/catalogs-and-apps.md). This document remains the
+signed catalog source of truth.
+
 ## Scope
 
 Signed app catalogs are a Phase 5 app-platform control plane. They do not change peer protocols,

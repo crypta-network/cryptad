@@ -3,6 +3,9 @@
 This page is the entry point for app developers, reviewers, operators, and release managers working
 with the Crypta app ecosystem beta.
 
+Public-beta onboarding for users, operators, developers, former plugin authors, security reporters,
+reviewers, and release managers starts at [public-beta/README.md](public-beta/README.md).
+
 ## Scope
 
 The app platform beta covers offline app authoring, signed bundle and catalog workflows, local
@@ -14,6 +17,7 @@ Use this portal first, then follow the detailed source-of-truth pages for the ar
 
 | Area | Source of truth |
 | --- | --- |
+| Public beta onboarding front door | [public-beta/README.md](public-beta/README.md) |
 | Copyable beta tutorials | [app-platform-beta-tutorials.md](app-platform-beta-tutorials.md) |
 | Known beta limits and safety boundaries | [app-platform-beta-known-limitations.md](app-platform-beta-known-limitations.md) |
 | Beta submission, feedback, and closeout runbook | [app-platform-beta-program.md](app-platform-beta-program.md) |

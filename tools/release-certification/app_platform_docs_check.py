@@ -19,6 +19,13 @@ EVIDENCE_IDS = (
     "app-platform.beta-program",
     "app-platform.beta-tutorials",
     "app-platform.docs-redaction",
+    "public-beta.docs-onboarding",
+    "public-beta.user-guide",
+    "public-beta.developer-quickstart",
+    "public-beta.troubleshooting",
+    "public-beta.security-reporting",
+    "public-beta.limitations",
+    "public-beta.links-redaction",
 )
 
 REQUIRED_DOCS = (
@@ -86,11 +93,13 @@ ISSUE_TEMPLATES = (
     ".github/ISSUE_TEMPLATE/app-review-appeal.yml",
     ".github/ISSUE_TEMPLATE/platform-api-compatibility.yml",
     ".github/ISSUE_TEMPLATE/plugin-migration-feedback.yml",
+    ".github/ISSUE_TEMPLATE/public-beta-support.yml",
 )
 
 REQUIRED_PORTAL_LINKS = tuple(
     path for path in REQUIRED_DOCS if path != "docs/app-platform-developer-portal.md"
 ) + (
+    "docs/public-beta/README.md",
     "docs/app-distribution.md",
     "docs/app-owned-ui.md",
     "docs/app-ui-design-system.md",
@@ -152,6 +161,139 @@ REQUIRED_CONCEPTS = (
     "platform-api.deprecation-window-policy",
     "platform-api.experimental-graduation-policy",
     "FProxy browse remains retained",
+)
+
+PUBLIC_BETA_DOCS = (
+    "docs/public-beta/README.md",
+    "docs/public-beta/user-guide.md",
+    "docs/public-beta/install-update-rollback.md",
+    "docs/public-beta/catalogs-and-apps.md",
+    "docs/public-beta/permissions-and-consent.md",
+    "docs/public-beta/trust-social-limitations.md",
+    "docs/public-beta/developer-quickstart.md",
+    "docs/public-beta/app-submission-walkthrough.md",
+    "docs/public-beta/troubleshooting.md",
+    "docs/public-beta/security-reporting.md",
+    "docs/public-beta/legacy-plugin-authors.md",
+)
+
+PUBLIC_BETA_ONBOARDING_CONCEPTS = (
+    "Public beta onboarding",
+    "I am a beta user/operator",
+    "I am installing or updating Cryptad",
+    "I am installing first-party apps",
+    "I am backing up or restoring app data",
+    "I am troubleshooting a problem",
+    "I am reporting a security issue",
+    "I am a third-party app developer",
+    "I am a former plugin author",
+    "I am a reviewer/release manager",
+    "install and start Cryptad",
+    "open Web Shell",
+    "stable catalog",
+    "first-party app",
+    "permissions",
+    "rollback",
+    "app-data backup",
+    "support bundle",
+    "Trust Graph Local RC",
+    "not global WebOfTrust",
+    "Social Inbox RC",
+    "not Freemail",
+    "crypta-app init",
+    "submission pre-review",
+    "security reporting",
+    "legacy plugin migration",
+    "FProxy browse remains retained",
+)
+
+PUBLIC_BETA_USER_GUIDE_CONCEPTS = (
+    "Install and start Cryptad",
+    "Open Web Shell",
+    "check node status",
+    "stable catalog",
+    "catalog health",
+    "install a first-party app",
+    "Review permissions",
+    "service grants",
+    "Update or rollback an app",
+    "Back up or restore app data",
+    "privacy-preserving support bundle",
+    "Recover from common failures",
+)
+
+PUBLIC_BETA_DEVELOPER_QUICKSTART_CONCEPTS = (
+    "./gradlew :platform-devtools:installDist",
+    "crypta-app init",
+    "--dir build/dev-apps/hello-stable",
+    "--template hello-stable",
+    "crypta-app dev",
+    "crypta-app test",
+    "crypta-app ui lint",
+    "crypta-app api snapshot",
+    "crypta-app api policy",
+    "crypta-app compat verify",
+    "crypta-app keys generate",
+    "--private-key-file build/dev-keys/dev-local-private.der",
+    "--public-key-file build/dev-keys/dev-local-public.der",
+    "--trusted-keys-file build/dev-keys/trusted-app-keys.properties",
+    "crypta-app sign",
+    "crypta-app verify",
+    "crypta-app pack",
+    "crypta-app submission create",
+    "crypta-app submission verify",
+    "crypta-app submission pre-review",
+    "submission verify --json",
+)
+
+PUBLIC_BETA_TROUBLESHOOTING_CONCEPTS = (
+    "Cannot open Web Shell",
+    "Catalog not reachable",
+    "Catalog mirror unhealthy",
+    "Catalog signature verification failed",
+    "App install failed",
+    "App update staged but not applied",
+    "App rollback needed",
+    "Permission delta blocks update",
+    "Grant expired or revoked",
+    "Subscription stuck",
+    "App-data migration failed",
+    "Backup restore failed",
+    "Sandbox provider unavailable",
+    "Security advisory blocks update",
+    "Support bundle export needed",
+)
+
+PUBLIC_BETA_SECURITY_REPORTING_CONCEPTS = (
+    "Report suspected vulnerabilities",
+    "What not to include",
+    "Advisories and denylists",
+    "Support bundle redaction expectations",
+    "docs/SECURITY.md",
+    "private insert URIs",
+    "raw support bundles",
+    "security-release-notes.md",
+)
+
+PUBLIC_BETA_LIMITATION_CONCEPTS = (
+    "Trust Graph Local RC",
+    "local advisory trust only",
+    "not global WebOfTrust",
+    "not routing policy",
+    "not global moderation",
+    "not a crawler",
+    "not legacy WoT compatibility",
+    "not a daemon-core identity-sharing system",
+    "not authority for apps to import or mutate trust data",
+    "trust.score",
+    "operator-approved app-service grants",
+    "Social Inbox RC",
+    "not Freemail",
+    "not Freetalk/Sone compatibility",
+    "not encrypted mail transport",
+    "not daemon-core social store",
+    "not a background crawler",
+    "not a promise that old social plugins will run unchanged",
 )
 
 REDACTION_ALLOWLIST_PATH_PREFIXES = (
@@ -284,6 +426,7 @@ RAW_PLUGIN_MIGRATION_ARTIFACT_RE = re.compile(
     r"old[-_ ]?plugin[-_ ]?export|plugin[-_ ]?export[-_ ]?body|"
     r"plugin[-_ ]?export[-_ ]?payload|fproxy[-_ ]?html|"
     r"raw[-_ ]?fproxy[-_ ]?html|fproxy[-_ ]?dump|raw[-_ ]?fproxy[-_ ]?dump|"
+    r"raw[-_ ]?support[-_ ]?bundle|support[-_ ]?bundle[-_ ]?payload|"
     r"raw[-_ ]?html[-_ ]?dump|queue[-_ ]?html|plain[-_ ]?text[-_ ]?export"
     r")[\"']?\s*[:=]"
     r"(?!\s*[\"']?(?:<redacted[^>\r\n]*>|redacted|\.\.\.)[\"']?\s*(?:$|[\r\n,}\]`\\]))"
@@ -367,6 +510,15 @@ def missing_concepts(text: str) -> list[str]:
     return sorted(concept for concept in REQUIRED_CONCEPTS if concept.lower() not in lowered)
 
 
+def missing_terms(text: str, terms: tuple[str, ...]) -> list[str]:
+    lowered = normalize_crypta_app_aliases(text).lower()
+    return sorted(term for term in terms if term.lower() not in lowered)
+
+
+def docs_text(workspace_root: Path, paths: tuple[str, ...]) -> str:
+    return "\n".join(read_text(workspace_root / path) for path in paths)
+
+
 def normalize_doc_link_target(raw_target: str) -> str:
     target = raw_target.strip()
     if not target or target.startswith("#"):
@@ -442,14 +594,17 @@ def markdown_link_targets(workspace_root: Path, markdown_file: Path) -> set[str]
 def markdown_files_to_check(workspace_root: Path) -> list[Path]:
     files = [workspace_root / path for path in NEW_DOCS]
     files.extend(workspace_root / path for path in (*REQUIRED_DOCS, *REQUIRED_PORTAL_LINKS))
+    files.extend(workspace_root / path for path in PUBLIC_BETA_DOCS)
     files.extend(workspace_root / path for path in PLUGIN_MIGRATION_DOCS)
     files.append(workspace_root / "README.md")
     return sorted({path for path in files if path.is_file()})
 
 
-def broken_markdown_links(workspace_root: Path) -> list[dict[str, str]]:
+def broken_markdown_links_for_files(
+    workspace_root: Path, markdown_files: list[Path]
+) -> list[dict[str, str]]:
     broken: list[dict[str, str]] = []
-    for markdown_file in markdown_files_to_check(workspace_root):
+    for markdown_file in markdown_files:
         text = read_text(markdown_file)
         for target in markdown_doc_link_targets(text):
             resolved = resolve_doc_link_target(workspace_root, markdown_file, target)
@@ -475,8 +630,13 @@ def broken_markdown_links(workspace_root: Path) -> list[dict[str, str]]:
     return broken
 
 
+def broken_markdown_links(workspace_root: Path) -> list[dict[str, str]]:
+    return broken_markdown_links_for_files(workspace_root, markdown_files_to_check(workspace_root))
+
+
 def redaction_files_to_check(workspace_root: Path) -> list[Path]:
     files = [workspace_root / path for path in (*REQUIRED_DOCS, *REQUIRED_PORTAL_LINKS)]
+    files.extend(workspace_root / path for path in PUBLIC_BETA_DOCS)
     files.extend(workspace_root / path for path in PLUGIN_MIGRATION_DOCS)
     files.extend(workspace_root / path for path in ISSUE_TEMPLATES)
     files.append(workspace_root / "README.md")
@@ -548,9 +708,11 @@ def safe_summary_for_output(value: Any) -> Any:
     return value
 
 
-def redaction_findings(workspace_root: Path) -> list[dict[str, str]]:
+def redaction_findings_for_files(
+    workspace_root: Path, files: list[Path]
+) -> list[dict[str, str]]:
     findings: list[dict[str, str]] = []
-    for path in redaction_files_to_check(workspace_root):
+    for path in files:
         relative = display_path(path.relative_to(workspace_root))
         text = read_text(path)
         for issue, pattern in REDACTION_CHECKS:
@@ -559,6 +721,28 @@ def redaction_findings(workspace_root: Path) -> list[dict[str, str]]:
         if has_disallowed_local_path(text):
             findings.append({"path": relative, "issue": "local-absolute-path"})
     return findings
+
+
+def redaction_findings(workspace_root: Path) -> list[dict[str, str]]:
+    return redaction_findings_for_files(workspace_root, redaction_files_to_check(workspace_root))
+
+
+def public_beta_markdown_files_to_check(workspace_root: Path) -> list[Path]:
+    return sorted(
+        {
+            workspace_root / path
+            for path in PUBLIC_BETA_DOCS
+            if (workspace_root / path).is_file()
+        }
+    )
+
+
+def public_beta_redaction_files_to_check(workspace_root: Path) -> list[Path]:
+    paths = (
+        *PUBLIC_BETA_DOCS,
+        ".github/ISSUE_TEMPLATE/public-beta-support.yml",
+    )
+    return sorted({workspace_root / path for path in paths if (workspace_root / path).is_file()})
 
 
 def portal_link_status(workspace_root: Path) -> dict[str, bool]:
@@ -601,10 +785,52 @@ def run_check(workspace_root: Path) -> dict[str, Any]:
     tutorial_concepts_missing = missing_concepts(tutorial_doc_concept_text(workspace_root))
     broken_links = broken_markdown_links(workspace_root)
     redaction = redaction_findings(workspace_root)
+    public_beta_broken_links = broken_markdown_links_for_files(
+        workspace_root, public_beta_markdown_files_to_check(workspace_root)
+    )
+    public_beta_redaction = redaction_findings_for_files(
+        workspace_root, public_beta_redaction_files_to_check(workspace_root)
+    )
+    public_beta_docs = required_file_status(workspace_root, PUBLIC_BETA_DOCS)
+    public_beta_text = docs_text(workspace_root, PUBLIC_BETA_DOCS)
+    public_beta_user_text = read_text(workspace_root / "docs/public-beta/user-guide.md")
+    public_beta_developer_text = read_text(
+        workspace_root / "docs/public-beta/developer-quickstart.md"
+    )
+    public_beta_troubleshooting_text = read_text(
+        workspace_root / "docs/public-beta/troubleshooting.md"
+    )
+    public_beta_security_text = read_text(
+        workspace_root / "docs/public-beta/security-reporting.md"
+    )
+    public_beta_limitations_text = read_text(
+        workspace_root / "docs/public-beta/trust-social-limitations.md"
+    )
 
     missing_docs = sorted(path for path, present in required_docs.items() if not present)
     missing_issue_templates = sorted(path for path, present in issue_templates.items() if not present)
     missing_portal_links = sorted(path for path, present in portal_links.items() if not present)
+    missing_public_beta_docs = sorted(
+        path for path, present in public_beta_docs.items() if not present
+    )
+    public_beta_onboarding_missing = missing_terms(
+        public_beta_text, PUBLIC_BETA_ONBOARDING_CONCEPTS
+    )
+    public_beta_user_missing = missing_terms(
+        public_beta_user_text, PUBLIC_BETA_USER_GUIDE_CONCEPTS
+    )
+    public_beta_developer_missing = missing_terms(
+        public_beta_developer_text, PUBLIC_BETA_DEVELOPER_QUICKSTART_CONCEPTS
+    )
+    public_beta_troubleshooting_missing = missing_terms(
+        public_beta_troubleshooting_text, PUBLIC_BETA_TROUBLESHOOTING_CONCEPTS
+    )
+    public_beta_security_missing = missing_terms(
+        public_beta_security_text, PUBLIC_BETA_SECURITY_REPORTING_CONCEPTS
+    )
+    public_beta_limitations_missing = missing_terms(
+        public_beta_limitations_text, PUBLIC_BETA_LIMITATION_CONCEPTS
+    )
 
     docs_portal_passed = (
         not missing_docs
@@ -619,6 +845,34 @@ def run_check(workspace_root: Path) -> dict[str, Any]:
         required_docs["docs/app-platform-beta-tutorials.md"] and not tutorial_concepts_missing
     )
     docs_redaction_passed = not broken_links and not redaction
+    public_beta_links_redaction_passed = (
+        not public_beta_broken_links and not public_beta_redaction
+    )
+    public_beta_onboarding_passed = (
+        not missing_public_beta_docs
+        and not public_beta_onboarding_missing
+        and public_beta_links_redaction_passed
+    )
+    public_beta_user_passed = (
+        public_beta_docs["docs/public-beta/user-guide.md"] and not public_beta_user_missing
+    )
+    public_beta_developer_passed = (
+        public_beta_docs["docs/public-beta/developer-quickstart.md"]
+        and not public_beta_developer_missing
+    )
+    public_beta_troubleshooting_passed = (
+        public_beta_docs["docs/public-beta/troubleshooting.md"]
+        and not public_beta_troubleshooting_missing
+    )
+    public_beta_security_passed = (
+        public_beta_docs["docs/public-beta/security-reporting.md"]
+        and issue_templates[".github/ISSUE_TEMPLATE/public-beta-support.yml"]
+        and not public_beta_security_missing
+    )
+    public_beta_limitations_passed = (
+        public_beta_docs["docs/public-beta/trust-social-limitations.md"]
+        and not public_beta_limitations_missing
+    )
 
     evidence = [
         evidence_item(
@@ -689,6 +943,126 @@ def run_check(workspace_root: Path) -> dict[str, Any]:
                 "externalUrlsFetched": False,
             },
         ),
+        evidence_item(
+            "public-beta.docs-onboarding",
+            "pass" if public_beta_onboarding_passed else "fail",
+            (
+                "Public beta onboarding docs are complete, cross-linked, and redaction-safe."
+                if public_beta_onboarding_passed
+                else "Public beta onboarding docs are incomplete or redaction-unsafe."
+            ),
+            "docs/public-beta/README.md",
+            {
+                "requiredDocsPresent": not missing_public_beta_docs,
+                "missingDocs": missing_public_beta_docs,
+                "requiredConceptCount": len(PUBLIC_BETA_ONBOARDING_CONCEPTS),
+                "missingConcepts": public_beta_onboarding_missing,
+                "linksAndRedactionOk": public_beta_links_redaction_passed,
+                "supportBundleRedactionWarningRequired": True,
+                "rawSecretsOrContentExamplesAllowed": False,
+            },
+        ),
+        evidence_item(
+            "public-beta.user-guide",
+            "pass" if public_beta_user_passed else "fail",
+            (
+                "Public beta user/operator guide covers install, catalog, apps, consent, backup, support, and recovery."
+                if public_beta_user_passed
+                else "Public beta user/operator guide is missing required workflow coverage."
+            ),
+            "docs/public-beta/user-guide.md",
+            {
+                "docPresent": public_beta_docs["docs/public-beta/user-guide.md"],
+                "requiredConceptCount": len(PUBLIC_BETA_USER_GUIDE_CONCEPTS),
+                "missingConcepts": public_beta_user_missing,
+            },
+        ),
+        evidence_item(
+            "public-beta.developer-quickstart",
+            "pass" if public_beta_developer_passed else "fail",
+            (
+                "Public beta developer quickstart covers the current crypta-app command path."
+                if public_beta_developer_passed
+                else "Public beta developer quickstart is missing required crypta-app command coverage."
+            ),
+            "docs/public-beta/developer-quickstart.md",
+            {
+                "docPresent": public_beta_docs["docs/public-beta/developer-quickstart.md"],
+                "requiredConceptCount": len(PUBLIC_BETA_DEVELOPER_QUICKSTART_CONCEPTS),
+                "missingConcepts": public_beta_developer_missing,
+            },
+        ),
+        evidence_item(
+            "public-beta.troubleshooting",
+            "pass" if public_beta_troubleshooting_passed else "fail",
+            (
+                "Public beta troubleshooting guide covers expected user-visible failure modes."
+                if public_beta_troubleshooting_passed
+                else "Public beta troubleshooting guide is missing required failure-mode coverage."
+            ),
+            "docs/public-beta/troubleshooting.md",
+            {
+                "docPresent": public_beta_docs["docs/public-beta/troubleshooting.md"],
+                "requiredConceptCount": len(PUBLIC_BETA_TROUBLESHOOTING_CONCEPTS),
+                "missingConcepts": public_beta_troubleshooting_missing,
+            },
+        ),
+        evidence_item(
+            "public-beta.security-reporting",
+            "pass" if public_beta_security_passed else "fail",
+            (
+                "Public beta security reporting path and redaction-safe support template are present."
+                if public_beta_security_passed
+                else "Public beta security reporting path or redaction-safe support template is incomplete."
+            ),
+            "docs/public-beta/security-reporting.md",
+            {
+                "docPresent": public_beta_docs["docs/public-beta/security-reporting.md"],
+                "supportIssueTemplatePresent": issue_templates[
+                    ".github/ISSUE_TEMPLATE/public-beta-support.yml"
+                ],
+                "requiredConceptCount": len(PUBLIC_BETA_SECURITY_REPORTING_CONCEPTS),
+                "missingConcepts": public_beta_security_missing,
+            },
+        ),
+        evidence_item(
+            "public-beta.limitations",
+            "pass" if public_beta_limitations_passed else "fail",
+            (
+                "Public beta Trust Graph and Social Inbox limitations are prominent and user-facing."
+                if public_beta_limitations_passed
+                else "Public beta Trust Graph or Social Inbox limitations are incomplete."
+            ),
+            "docs/public-beta/trust-social-limitations.md",
+            {
+                "docPresent": public_beta_docs[
+                    "docs/public-beta/trust-social-limitations.md"
+                ],
+                "requiredConceptCount": len(PUBLIC_BETA_LIMITATION_CONCEPTS),
+                "missingConcepts": public_beta_limitations_missing,
+            },
+        ),
+        evidence_item(
+            "public-beta.links-redaction",
+            "pass" if public_beta_links_redaction_passed else "fail",
+            (
+                "Public beta onboarding docs passed local link and redaction checks."
+                if public_beta_links_redaction_passed
+                else "Public beta onboarding docs or support template failed local link or redaction checks."
+            ),
+            "tools/release-certification/app_platform_docs_check.py",
+            {
+                "internalLinksOk": not public_beta_broken_links,
+                "brokenLinks": public_beta_broken_links,
+                "redactionOk": not public_beta_redaction,
+                "redactionFindings": public_beta_redaction,
+                "externalUrlsFetched": False,
+                "privateInsertUrisAllowed": False,
+                "rawSupportBundlesAllowed": False,
+                "rawContentExamplesAllowed": False,
+                "localAbsolutePathsAllowed": False,
+            },
+        ),
     ]
     status = "pass" if all(item["status"] == "pass" for item in evidence) else "fail"
     return {
@@ -709,7 +1083,9 @@ def run_self_test(repo_root: Path) -> None:
     assert summary["status"] == "pass", summary
     with tempfile.TemporaryDirectory(prefix="cryptad-docs-check-self-test-") as temp_name:
         temp_root = Path(temp_name)
-        for path in sorted({*REQUIRED_DOCS, *REQUIRED_PORTAL_LINKS, *PLUGIN_MIGRATION_DOCS}):
+        for path in sorted(
+            {*REQUIRED_DOCS, *REQUIRED_PORTAL_LINKS, *PUBLIC_BETA_DOCS, *PLUGIN_MIGRATION_DOCS}
+        ):
             source = repo_root / path
             target = temp_root / path
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -909,6 +1285,67 @@ def run_self_test(repo_root: Path) -> None:
             "path": "docs/app-owned-ui.md",
             "issue": "private-insert-uri",
         } in sensitive_link_evidence["details"]["redactionFindings"], sensitive_links
+        security_reporting_doc = temp_root / "docs/public-beta/security-reporting.md"
+        security_reporting_doc.unlink()
+        missing_security = run_check(temp_root)
+        missing_security_evidence = evidence_by_id(missing_security)
+        assert missing_security_evidence["public-beta.security-reporting"]["status"] == "fail", (
+            missing_security
+        )
+        assert missing_security_evidence["public-beta.docs-onboarding"]["status"] == "fail", (
+            missing_security
+        )
+        security_reporting_doc.write_text(
+            read_text(repo_root / "docs/public-beta/security-reporting.md"), encoding="utf-8"
+        )
+        limitations_doc = temp_root / "docs/public-beta/trust-social-limitations.md"
+        limitations_doc.write_text(
+            "# Public beta limits\n\nSocial Inbox RC is not Freemail.\n", encoding="utf-8"
+        )
+        missing_limitations = run_check(temp_root)
+        limitations_evidence = evidence_by_id(missing_limitations)["public-beta.limitations"]
+        assert limitations_evidence["status"] == "fail", missing_limitations
+        assert "Trust Graph Local RC" in limitations_evidence["details"][
+            "missingConcepts"
+        ], missing_limitations
+        assert "not a crawler" in limitations_evidence["details"][
+            "missingConcepts"
+        ], missing_limitations
+        assert "not routing policy" in limitations_evidence["details"][
+            "missingConcepts"
+        ], missing_limitations
+        limitations_doc.write_text(
+            read_text(repo_root / "docs/public-beta/trust-social-limitations.md"),
+            encoding="utf-8",
+        )
+        public_beta_readme = temp_root / "docs/public-beta/README.md"
+        public_beta_readme.write_text(
+            read_text(repo_root / "docs/public-beta/README.md")
+            + "\n[Missing public beta doc](missing-public-beta-doc.md)\n",
+            encoding="utf-8",
+        )
+        missing_public_beta_link = run_check(temp_root)
+        public_beta_link_evidence = evidence_by_id(missing_public_beta_link)[
+            "public-beta.links-redaction"
+        ]
+        assert public_beta_link_evidence["status"] == "fail", missing_public_beta_link
+        assert {
+            "source": "docs/public-beta/README.md",
+            "target": "missing-public-beta-doc.md",
+            "reason": "missing",
+        } in public_beta_link_evidence["details"]["brokenLinks"], missing_public_beta_link
+        public_beta_readme.write_text(
+            read_text(repo_root / "docs/public-beta/README.md")
+            + "\nrawSupportBundle: private diagnostic body\n",
+            encoding="utf-8",
+        )
+        raw_support_bundle = run_check(temp_root)
+        public_beta_redaction = evidence_by_id(raw_support_bundle)["public-beta.links-redaction"]
+        assert public_beta_redaction["status"] == "fail", raw_support_bundle
+        assert {
+            "path": "docs/public-beta/README.md",
+            "issue": "migration-raw-artifact",
+        } in public_beta_redaction["details"]["redactionFindings"], raw_support_bundle
     assert redaction_findings_for_text("Authorization: Bearer concrete-token-value") == [
         "authorization-header"
     ]
@@ -1056,6 +1493,9 @@ def run_self_test(repo_root: Path) -> None:
     )
     assert "migration-raw-artifact" in redaction_findings_for_text(
         "rawSocialMessage: <redacted> private-message-body"
+    )
+    assert "migration-raw-artifact" in redaction_findings_for_text(
+        "rawSupportBundle: private diagnostic body"
     )
     assert "migration-raw-artifact" in redaction_findings_for_text(
         '"rawSocialMessage": "<redacted> private-message-body"'

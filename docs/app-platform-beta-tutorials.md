@@ -3,6 +3,10 @@
 Use these offline-first tutorials to create, test, sign, pack, catalog, and review a beta app
 without reading Cryptad internals.
 
+For role-based public-beta onboarding before running these tutorials, start with
+[public-beta/README.md](public-beta/README.md) and
+[public-beta/developer-quickstart.md](public-beta/developer-quickstart.md).
+
 ## Prerequisites
 
 Run from the repository root with Java 25 or newer. The flows use the Gradle wrapper and the

@@ -3,6 +3,9 @@
 This page defines the app ecosystem beta program, app submission expectations, feedback workflow,
 and current RC closeout runbook.
 
+Public-beta users and operators should start with [public-beta/README.md](public-beta/README.md);
+this page remains the program, feedback, submission, and maintainer closeout source of truth.
+
 ## Purpose
 
 The beta is for proving that external app developers and release managers can complete an offline,

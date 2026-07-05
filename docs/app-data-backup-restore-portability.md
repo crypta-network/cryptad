@@ -2,6 +2,11 @@
 
 This document describes the operator-visible durable app-data backup and restore layer.
 
+Public-beta users should start with
+[public-beta/user-guide.md#back-up-or-restore-app-data](public-beta/user-guide.md#back-up-or-restore-app-data)
+for the backup/restore workflow and support-bundle safety summary. This page remains the detailed
+backup, restore, portability, and redaction source of truth.
+
 ## Scope
 
 App-data backup is for user-owned durable records stored through the Platform API app-data store.

@@ -3,6 +3,9 @@
 PR-248 promotes the first-party app catalog from a beta-only flow to a production release-candidate
 channel model. The supported signed catalog entry channels are:
 
+For user-facing stable, beta, and nightly channel guidance, see
+[public-beta/catalogs-and-apps.md](public-beta/catalogs-and-apps.md).
+
 | Channel | Use | Default automation |
 | --- | --- | --- |
 | `stable` | Production-safe first-party releases. | Allowed by default. |

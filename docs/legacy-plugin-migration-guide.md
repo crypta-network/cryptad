@@ -2,6 +2,10 @@
 
 This guide explains how legacy plugin-style functionality should move to the Crypta app platform.
 
+Former plugin authors should start with
+[public-beta/legacy-plugin-authors.md](public-beta/legacy-plugin-authors.md). This guide remains
+the detailed migration architecture and pattern map.
+
 ## Status and non-goals
 
 The old plugin runtime removed status is intentional and frozen for production RC. See

@@ -3,6 +3,11 @@
 Use this cookbook to turn an old plugin design into a public-beta app or app-service design without
 restoring the removed in-process plugin runtime.
 
+Former plugin authors should start with
+[public-beta/legacy-plugin-authors.md](public-beta/legacy-plugin-authors.md), then use this
+cookbook for hands-on migration patterns, unsupported boundaries, app-service examples, and safe
+artifact rules.
+
 ## Scope
 
 This cookbook is for plugin authors, reviewers, and release managers. It covers public-beta

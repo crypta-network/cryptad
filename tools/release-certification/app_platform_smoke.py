@@ -31,6 +31,8 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
+import app_platform_docs_check
+
 
 TOOL_NAME = "app-platform-smoke"
 SCHEMA_VERSION = 1
@@ -527,6 +529,11 @@ PUBLIC_BETA_SECURITY_EVIDENCE_IDS = (
     "public-beta-security.sandbox-host-checks",
     "public-beta-security.audit-redaction-fuzz",
     "public-beta-security.transparency-log-privacy",
+)
+PUBLIC_BETA_DOCS_EVIDENCE_IDS = tuple(
+    evidence_id
+    for evidence_id in app_platform_docs_check.EVIDENCE_IDS
+    if evidence_id.startswith("public-beta.")
 )
 ECOSYSTEM_SECURITY_EVIDENCE_IDS = (
     "catalog.security-advisories",
@@ -6221,6 +6228,180 @@ def collect_third_party_developer_beta_program_evidence(
                 ),
                 source,
                 {"checks": checks, "errors": errors, **base_details},
+            )
+        )
+    return evidence
+
+
+def public_beta_docs_text(workspace: Path, paths: tuple[str, ...]) -> str:
+    return "\n".join(read_source(workspace / path) for path in paths)
+
+
+def public_beta_missing_terms(text: str, terms: tuple[str, ...]) -> list[str]:
+    lowered = app_platform_docs_check.normalize_crypta_app_aliases(text).lower()
+    return sorted(term for term in terms if term.lower() not in lowered)
+
+
+def public_beta_broken_links(workspace: Path) -> list[dict[str, str]]:
+    broken: list[dict[str, str]] = []
+    workspace_resolved = workspace.resolve()
+    for doc_path in app_platform_docs_check.PUBLIC_BETA_DOCS:
+        markdown_file = workspace / doc_path
+        if not markdown_file.is_file():
+            continue
+        text = read_source(markdown_file)
+        for target in app_platform_docs_check.markdown_doc_link_targets(text):
+            resolved = app_platform_docs_check.resolve_doc_link_target(
+                workspace, markdown_file, target
+            )
+            try:
+                resolved.relative_to(workspace_resolved)
+            except ValueError:
+                broken.append(
+                    {
+                        "source": doc_path,
+                        "target": app_platform_docs_check.safe_broken_link_target(target),
+                        "reason": "outside-repo",
+                    }
+                )
+                continue
+            if not resolved.is_file():
+                broken.append(
+                    {
+                        "source": doc_path,
+                        "target": app_platform_docs_check.safe_broken_link_target(target),
+                        "reason": "missing",
+                    }
+                )
+    return broken
+
+
+def public_beta_redaction_findings(workspace: Path) -> list[dict[str, str]]:
+    findings: list[dict[str, str]] = []
+    paths = (
+        *app_platform_docs_check.PUBLIC_BETA_DOCS,
+        ".github/ISSUE_TEMPLATE/public-beta-support.yml",
+    )
+    for doc_path in paths:
+        path = workspace / doc_path
+        if not path.is_file():
+            continue
+        for issue in app_platform_docs_check.redaction_findings_for_text(read_source(path)):
+            findings.append({"path": doc_path, "issue": issue})
+    return findings
+
+
+def collect_public_beta_docs_onboarding_evidence(settings: Settings) -> list[EvidenceItem]:
+    workspace = settings.workspace_root
+    source = display_path(
+        workspace / "tools/release-certification/app_platform_docs_check.py", workspace
+    )
+    doc_status = {
+        path: (workspace / path).is_file() and bool(read_source(workspace / path).strip())
+        for path in app_platform_docs_check.PUBLIC_BETA_DOCS
+    }
+    missing_docs = sorted(path for path, present in doc_status.items() if not present)
+    issue_template_present = (
+        workspace / ".github/ISSUE_TEMPLATE/public-beta-support.yml"
+    ).is_file()
+    all_text = public_beta_docs_text(workspace, app_platform_docs_check.PUBLIC_BETA_DOCS)
+    user_text = read_source(workspace / "docs/public-beta/user-guide.md")
+    developer_text = read_source(workspace / "docs/public-beta/developer-quickstart.md")
+    troubleshooting_text = read_source(workspace / "docs/public-beta/troubleshooting.md")
+    security_text = read_source(workspace / "docs/public-beta/security-reporting.md")
+    limitations_text = read_source(workspace / "docs/public-beta/trust-social-limitations.md")
+    broken_links = public_beta_broken_links(workspace)
+    redaction = public_beta_redaction_findings(workspace)
+    links_redaction_ok = not broken_links and not redaction
+    checks_by_id: dict[str, dict[str, Any]] = {
+        "public-beta.docs-onboarding": {
+            "requiredDocsPresent": not missing_docs,
+            "missingDocs": missing_docs,
+            "missingConcepts": public_beta_missing_terms(
+                all_text, app_platform_docs_check.PUBLIC_BETA_ONBOARDING_CONCEPTS
+            ),
+            "linksAndRedactionOk": links_redaction_ok,
+        },
+        "public-beta.user-guide": {
+            "docPresent": doc_status.get("docs/public-beta/user-guide.md", False),
+            "missingConcepts": public_beta_missing_terms(
+                user_text, app_platform_docs_check.PUBLIC_BETA_USER_GUIDE_CONCEPTS
+            ),
+        },
+        "public-beta.developer-quickstart": {
+            "docPresent": doc_status.get("docs/public-beta/developer-quickstart.md", False),
+            "missingConcepts": public_beta_missing_terms(
+                developer_text,
+                app_platform_docs_check.PUBLIC_BETA_DEVELOPER_QUICKSTART_CONCEPTS,
+            ),
+        },
+        "public-beta.troubleshooting": {
+            "docPresent": doc_status.get("docs/public-beta/troubleshooting.md", False),
+            "missingConcepts": public_beta_missing_terms(
+                troubleshooting_text,
+                app_platform_docs_check.PUBLIC_BETA_TROUBLESHOOTING_CONCEPTS,
+            ),
+        },
+        "public-beta.security-reporting": {
+            "docPresent": doc_status.get("docs/public-beta/security-reporting.md", False),
+            "supportIssueTemplatePresent": issue_template_present,
+            "missingConcepts": public_beta_missing_terms(
+                security_text, app_platform_docs_check.PUBLIC_BETA_SECURITY_REPORTING_CONCEPTS
+            ),
+        },
+        "public-beta.limitations": {
+            "docPresent": doc_status.get(
+                "docs/public-beta/trust-social-limitations.md", False
+            ),
+            "missingConcepts": public_beta_missing_terms(
+                limitations_text, app_platform_docs_check.PUBLIC_BETA_LIMITATION_CONCEPTS
+            ),
+        },
+        "public-beta.links-redaction": {
+            "internalLinksOk": not broken_links,
+            "brokenLinks": broken_links,
+            "redactionOk": not redaction,
+            "redactionFindings": redaction,
+            "externalUrlsFetched": False,
+        },
+    }
+    evidence: list[EvidenceItem] = []
+    for evidence_id in PUBLIC_BETA_DOCS_EVIDENCE_IDS:
+        checks = checks_by_id[evidence_id]
+        errors: list[str] = []
+        if checks.get("requiredDocsPresent") is False:
+            errors.append("requiredDocsPresent")
+        if checks.get("docPresent") is False:
+            errors.append("docPresent")
+        if checks.get("supportIssueTemplatePresent") is False:
+            errors.append("supportIssueTemplatePresent")
+        if checks.get("linksAndRedactionOk") is False:
+            errors.append("linksAndRedactionOk")
+        if checks.get("internalLinksOk") is False:
+            errors.append("internalLinksOk")
+        if checks.get("redactionOk") is False:
+            errors.append("redactionOk")
+        missing_concepts = checks.get("missingConcepts")
+        if isinstance(missing_concepts, list) and missing_concepts:
+            errors.append("missingConcepts")
+        status = "pass" if not errors else root_consequence(settings, "fail")
+        evidence.append(
+            EvidenceItem(
+                evidence_id,
+                status,
+                True,
+                (
+                    "Public beta docs onboarding evidence passed."
+                    if not errors
+                    else "Public beta docs onboarding evidence is incomplete or redaction-unsafe."
+                ),
+                source,
+                {
+                    "checks": checks,
+                    "errors": errors,
+                    "docs": list(app_platform_docs_check.PUBLIC_BETA_DOCS),
+                    "supportIssueTemplate": ".github/ISSUE_TEMPLATE/public-beta-support.yml",
+                },
             )
         )
     return evidence
@@ -18463,6 +18644,7 @@ def run(settings: Settings) -> tuple[dict[str, Any], int]:
         collect_first_party_evidence(settings, cli if isinstance(cli, Path) else None),
         cli_item,
         collect_developer_beta_toolkit_evidence(settings),
+        *collect_public_beta_docs_onboarding_evidence(settings),
         platform_api_contract_item,
         *collect_platform_api_stable_freeze_evidence(settings, platform_api_contract_item),
         *collect_app_services_evidence(settings),
@@ -20211,6 +20393,35 @@ def run_self_test(repo_root: Path) -> None:
             assert evidence_by_id[evidence_id]["status"] == "pass", evidence_by_id[evidence_id]
         for evidence_id in THIRD_PARTY_INTAKE_EVIDENCE_IDS:
             assert evidence_by_id[evidence_id]["status"] == "pass", evidence_by_id[evidence_id]
+        for evidence_id in PUBLIC_BETA_DOCS_EVIDENCE_IDS:
+            assert evidence_by_id[evidence_id]["status"] == "pass", evidence_by_id[evidence_id]
+        public_beta_readme = workspace / "docs/public-beta/README.md"
+        public_beta_readme_original = read_source(public_beta_readme)
+        sensitive_public_beta_targets = (
+            "USK@abcdefghijklmno,qrstuvwxyz0123456789ABCDEFG/private/doc.md",
+            "/home/alice/key.md",
+        )
+        try:
+            public_beta_readme.write_text(
+                public_beta_readme_original
+                + "\n[Sensitive public beta URI](USK@abcdefghijklmno,qrstuvwxyz0123456789ABCDEFG/private/doc.md)\n"
+                + "[Sensitive public beta path](/home/alice/key.md)\n",
+                encoding="utf-8",
+            )
+            unsafe_public_beta_evidence = {
+                item.id: item.to_json()
+                for item in collect_public_beta_docs_onboarding_evidence(settings)
+            }
+        finally:
+            public_beta_readme.write_text(public_beta_readme_original, encoding="utf-8")
+        public_beta_links = unsafe_public_beta_evidence["public-beta.links-redaction"]
+        assert public_beta_links["status"] != "pass", public_beta_links
+        public_beta_links_json = json.dumps(public_beta_links, sort_keys=True)
+        for target in sensitive_public_beta_targets:
+            assert target not in public_beta_links_json, public_beta_links
+        assert app_platform_docs_check.REDACTED_BROKEN_LINK_TARGET in public_beta_links_json, (
+            public_beta_links
+        )
         third_party_intake = evidence_by_id["third-party-intake.beta-catalog-install-smoke"]
         assert (
             "install-from-beta-catalog smoke passed"
@@ -24099,6 +24310,167 @@ def make_self_test_workspace(workspace: Path) -> None:
         "crypta-app compat verify third-party hello-stable SDK example.\n",
         encoding="utf-8",
     )
+    public_beta_dir = docs / "public-beta"
+    public_beta_dir.mkdir(parents=True, exist_ok=True)
+    public_beta_common = "\n".join(
+        (
+            "# Public beta onboarding",
+            "I am a beta user/operator",
+            "I am installing or updating Cryptad",
+            "I am installing first-party apps",
+            "I am backing up or restoring app data",
+            "I am troubleshooting a problem",
+            "I am reporting a security issue",
+            "I am a third-party app developer",
+            "I am a former plugin author",
+            "I am a reviewer/release manager",
+            "install and start Cryptad",
+            "open Web Shell",
+            "stable catalog",
+            "first-party app",
+            "permissions",
+            "rollback",
+            "app-data backup",
+            "support bundle",
+            "Trust Graph Local RC",
+            "not global WebOfTrust",
+            "Social Inbox RC",
+            "not Freemail",
+            "crypta-app init",
+            "submission pre-review",
+            "security reporting",
+            "legacy plugin migration",
+            "FProxy browse remains retained",
+        )
+    )
+    public_beta_doc_text = {
+        "README.md": public_beta_common,
+        "user-guide.md": "\n".join(
+            (
+                "# Public beta user guide",
+                "Install and start Cryptad",
+                "Open Web Shell",
+                "check node status",
+                "stable catalog",
+                "catalog health",
+                "install a first-party app",
+                "Review permissions",
+                "service grants",
+                "Update or rollback an app",
+                "Back up or restore app data",
+                "privacy-preserving support bundle",
+                "Recover from common failures",
+            )
+        ),
+        "install-update-rollback.md": (
+            "daemon update app update production beta artifact verification backup-before-update "
+            "app-data migration dry-run app rollback catalog rollback safe support bundle\n"
+        ),
+        "catalogs-and-apps.md": (
+            "stable beta nightly primary catalog source catalog mirrors transport fallback only "
+            "catalog signature verification catalog health status catalog rollback catalog key rotation "
+            "security advisory denylist caution rejected reviewed states\n"
+        ),
+        "permissions-and-consent.md": (
+            "capabilities permission rationale permission delta user consent app-service dependency grants "
+            "optional required grant expiry renewal revocation app-data migration consent security advisory "
+            "acknowledgement audit events\n"
+        ),
+        "trust-social-limitations.md": "\n".join(
+            (
+                "# Public beta trust and social limitations",
+                "Trust Graph Local RC",
+                "local advisory trust only",
+                "not global WebOfTrust",
+                "not routing policy",
+                "not global moderation",
+                "not a crawler",
+                "not legacy WoT compatibility",
+                "not a daemon-core identity-sharing system",
+                "not authority for apps to import or mutate trust data",
+                "trust.score",
+                "operator-approved app-service grants",
+                "Social Inbox RC",
+                "not Freemail",
+                "not Freetalk/Sone compatibility",
+                "not encrypted mail transport",
+                "not daemon-core social store",
+                "not a background crawler",
+                "not a promise that old social plugins will run unchanged",
+            )
+        ),
+        "developer-quickstart.md": "\n".join(
+            (
+                "# Public beta developer quickstart",
+                "./gradlew :platform-devtools:installDist",
+                "crypta-app init --dir build/dev-apps/hello-stable --template hello-stable",
+                "crypta-app dev",
+                "crypta-app test",
+                "crypta-app ui lint",
+                "crypta-app api snapshot",
+                "crypta-app api policy",
+                "crypta-app compat verify",
+                "crypta-app keys generate",
+                "--private-key-file build/dev-keys/dev-local-private.der",
+                "--public-key-file build/dev-keys/dev-local-public.der",
+                "--trusted-keys-file build/dev-keys/trusted-app-keys.properties",
+                "crypta-app sign",
+                "crypta-app verify",
+                "crypta-app pack",
+                "crypta-app submission create",
+                "crypta-app submission verify",
+                "crypta-app submission pre-review",
+                "submission verify --json",
+            )
+        ),
+        "app-submission-walkthrough.md": (
+            "create submission package verify package automated pre-review intake queue reviewer assignment "
+            "reviewed caution rejected resubmission_requested review receipt transparency log beta catalog "
+            "candidate install from beta catalog\n"
+        ),
+        "troubleshooting.md": "\n".join(
+            (
+                "# Public beta troubleshooting",
+                "Cannot open Web Shell",
+                "Catalog not reachable",
+                "Catalog mirror unhealthy",
+                "Catalog signature verification failed",
+                "App install failed",
+                "App update staged but not applied",
+                "App rollback needed",
+                "Permission delta blocks update",
+                "Grant expired or revoked",
+                "Subscription stuck",
+                "App-data migration failed",
+                "Backup restore failed",
+                "Sandbox provider unavailable",
+                "Security advisory blocks update",
+                "Support bundle export needed",
+            )
+        ),
+        "security-reporting.md": "\n".join(
+            (
+                "# Public beta security reporting",
+                "Report suspected vulnerabilities",
+                "What not to include",
+                "Advisories and denylists",
+                "Support bundle redaction expectations",
+                "docs/SECURITY.md",
+                "private insert URIs",
+                "raw support bundles",
+                "security-release-notes.md",
+            )
+        ),
+        "legacy-plugin-authors.md": (
+            "legacy plugin migration legacy plugin freeze policy migration cookbook FProxy browse remains retained "
+            "no old plugin ABI compatibility no WebOfTrust Freetalk Sone Freemail compatibility promise\n"
+        ),
+    }
+    for relative_path in app_platform_docs_check.PUBLIC_BETA_DOCS:
+        public_beta_name = Path(relative_path).name
+        (workspace / relative_path).write_text(
+            public_beta_doc_text[public_beta_name] + "\n", encoding="utf-8"
+        )
     issue_dir = workspace / ".github/ISSUE_TEMPLATE"
     issue_dir.mkdir(parents=True, exist_ok=True)
     issue_text = (
@@ -24111,6 +24483,7 @@ def make_self_test_workspace(workspace: Path) -> None:
         "app-review-appeal.yml",
         "platform-api-compatibility.yml",
         "plugin-migration-feedback.yml",
+        "public-beta-support.yml",
     ):
         (issue_dir / template_name).write_text(issue_text, encoding="utf-8")
     sample_dir = workspace / "samples/third-party/hello-stable-app"
