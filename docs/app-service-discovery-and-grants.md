@@ -355,6 +355,12 @@ content, block replies, alter subscription refresh, change sorting policy, or tr
 app must not fall back to `CryptaPlatform.trust.score` or direct Trust Graph score routes when the
 grant boundary denies access.
 
+Former plugin authors should use
+[legacy-plugin-migration-cookbook.md](legacy-plugin-migration-cookbook.md) for app-service
+migration examples. The cookbook shows Social Inbox consuming Trust Graph `trust.score`, a generic
+migrated app declaring an optional service dependency, provider-unavailable degradation, grant
+revocation, provider descriptor revalidation, and support-bundle redaction.
+
 ## Security and evidence
 
 Release evidence should prove descriptor parsing, legacy request parsing, dependency graph routes,

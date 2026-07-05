@@ -1,0 +1,5 @@
+{
+  "legacyPluginId": "legacy.example",
+  "newAppId": "app-id.example",
+  "privateInsertUri": "crypta:USK@PRIVATEINSERTURI12345/example/0"
+}

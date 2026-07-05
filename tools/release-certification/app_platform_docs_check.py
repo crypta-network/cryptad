@@ -56,8 +56,20 @@ REQUIRED_DOCS = (
     "docs/social-inbox-reference-app.md",
     "docs/trust-graph-preview.md",
     "docs/legacy-plugin-migration-guide.md",
+    "docs/legacy-plugin-migration-cookbook.md",
     "docs/release-certification.md",
     "docs/SECURITY.md",
+)
+
+PLUGIN_MIGRATION_DOCS = (
+    "docs/legacy-plugin-migration-cookbook.md",
+    "docs/templates/plugin-migration-plan.md",
+    "docs/examples/plugin-migration/wot-like-trust-graph-app.md",
+    "docs/examples/plugin-migration/social-inbox-migration.md",
+    "docs/examples/plugin-migration/future-mail-app-pattern.md",
+    "docs/examples/plugin-migration/content-publisher-migration.md",
+    "docs/examples/plugin-migration/app-service-grant-migration.md",
+    "docs/examples/plugin-migration/plugin-author-submission-flow.md",
 )
 
 NEW_DOCS = (
@@ -263,6 +275,22 @@ PRIVATE_INSERT_URI_RE = re.compile(
     r"[A-Za-z0-9~_,=-]+(?:/[^\s`'\"<>)]*)?",
     re.IGNORECASE,
 )
+RAW_PLUGIN_MIGRATION_ARTIFACT_RE = re.compile(
+    r"(?<![\w-])[\"']?(?:"
+    r"raw[-_ ]?social[-_ ]?message|raw[-_ ]?trust[-_ ]?statement|"
+    r"raw[-_ ]?profile[-_ ]?document|raw[-_ ]?feed[-_ ]?document|"
+    r"raw[-_ ]?feed[-_ ]?snapshot|raw[-_ ]?app[-_ ]?data[-_ ]?value|"
+    r"raw[-_ ]?legacy[-_ ]?plugin[-_ ]?state|legacy[-_ ]?plugin[-_ ]?export|"
+    r"old[-_ ]?plugin[-_ ]?export|plugin[-_ ]?export[-_ ]?body|"
+    r"plugin[-_ ]?export[-_ ]?payload|fproxy[-_ ]?html|"
+    r"raw[-_ ]?fproxy[-_ ]?html|fproxy[-_ ]?dump|raw[-_ ]?fproxy[-_ ]?dump|"
+    r"raw[-_ ]?html[-_ ]?dump|queue[-_ ]?html|plain[-_ ]?text[-_ ]?export"
+    r")[\"']?\s*[:=]"
+    r"(?!\s*[\"']?(?:<redacted[^>\r\n]*>|redacted|\.\.\.)[\"']?\s*(?:$|[\r\n,}\]`\\]))"
+    r"\s*"
+    r"(?:[{\[]|[\"'][^\"'\r\n]{4,}[\"']|[^\r\n,}]{4,})",
+    re.IGNORECASE,
+)
 LOCAL_ABSOLUTE_PATH_RE = re.compile(
     r"(?<![A-Za-z0-9_:/.\->])(?:"
     r"/(?!/)(?:[A-Za-z0-9._~+-]+/)+[A-Za-z0-9._~+-]+/?"
@@ -301,6 +329,7 @@ REDACTION_CHECKS = (
     ("token-assignment", TOKEN_ASSIGNMENT_RE),
     ("form-password", FORM_PASSWORD_RE),
     ("private-insert-uri", PRIVATE_INSERT_URI_RE),
+    ("migration-raw-artifact", RAW_PLUGIN_MIGRATION_ARTIFACT_RE),
 )
 REDACTED_BROKEN_LINK_TARGET = "<redacted-sensitive-link-target>"
 
@@ -413,6 +442,7 @@ def markdown_link_targets(workspace_root: Path, markdown_file: Path) -> set[str]
 def markdown_files_to_check(workspace_root: Path) -> list[Path]:
     files = [workspace_root / path for path in NEW_DOCS]
     files.extend(workspace_root / path for path in (*REQUIRED_DOCS, *REQUIRED_PORTAL_LINKS))
+    files.extend(workspace_root / path for path in PLUGIN_MIGRATION_DOCS)
     files.append(workspace_root / "README.md")
     return sorted({path for path in files if path.is_file()})
 
@@ -447,6 +477,7 @@ def broken_markdown_links(workspace_root: Path) -> list[dict[str, str]]:
 
 def redaction_files_to_check(workspace_root: Path) -> list[Path]:
     files = [workspace_root / path for path in (*REQUIRED_DOCS, *REQUIRED_PORTAL_LINKS)]
+    files.extend(workspace_root / path for path in PLUGIN_MIGRATION_DOCS)
     files.extend(workspace_root / path for path in ISSUE_TEMPLATES)
     files.append(workspace_root / "README.md")
     return sorted({path for path in files if path.is_file()})
@@ -678,7 +709,7 @@ def run_self_test(repo_root: Path) -> None:
     assert summary["status"] == "pass", summary
     with tempfile.TemporaryDirectory(prefix="cryptad-docs-check-self-test-") as temp_name:
         temp_root = Path(temp_name)
-        for path in sorted({*REQUIRED_DOCS, *REQUIRED_PORTAL_LINKS}):
+        for path in sorted({*REQUIRED_DOCS, *REQUIRED_PORTAL_LINKS, *PLUGIN_MIGRATION_DOCS}):
             source = repo_root / path
             target = temp_root / path
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -988,7 +1019,58 @@ def run_self_test(repo_root: Path) -> None:
         "Placeholder: crypta:USK@<catalog-key>/cryptad-app-catalog.properties"
     )
     assert "private-insert-uri" not in redaction_findings_for_text(
+        "Placeholder: crypta:USK@<example-public-read-key>/profile/0"
+    )
+    assert "private-insert-uri" not in redaction_findings_for_text(
         "Placeholder: USK@.../profile.json"
+    )
+    assert "migration-raw-artifact" in redaction_findings_for_text(
+        '"rawSocialMessage": "private-message-body"'
+    )
+    assert "migration-raw-artifact" in redaction_findings_for_text(
+        '"raw_social_message": "private-message-body"'
+    )
+    assert "migration-raw-artifact" in redaction_findings_for_text(
+        "rawTrustStatement: trust-statement-json"
+    )
+    assert "migration-raw-artifact" in redaction_findings_for_text(
+        "raw-trust-statement: trust-statement-json"
+    )
+    assert "migration-raw-artifact" in redaction_findings_for_text(
+        "oldPluginExport=serialized-state-with-secrets"
+    )
+    assert "migration-raw-artifact" in redaction_findings_for_text(
+        '"old_plugin_export": "serialized-state-with-secrets"'
+    )
+    assert "migration-raw-artifact" in redaction_findings_for_text(
+        '"raw profile document": "private-profile-document"'
+    )
+    assert "migration-raw-artifact" in redaction_findings_for_text(
+        "rawFproxyHtml: <html><body>private</body></html>"
+    )
+    assert "migration-raw-artifact" in redaction_findings_for_text(
+        '"rawSocialMessage": {\n  "body": "private-message-body"\n}'
+    )
+    assert "migration-raw-artifact" in redaction_findings_for_text(
+        '"rawTrustStatement": [\n  {"issuer": "private-issuer"}\n]'
+    )
+    assert "migration-raw-artifact" in redaction_findings_for_text(
+        "rawSocialMessage: <redacted> private-message-body"
+    )
+    assert "migration-raw-artifact" in redaction_findings_for_text(
+        '"rawSocialMessage": "<redacted> private-message-body"'
+    )
+    assert "migration-raw-artifact" not in redaction_findings_for_text(
+        "rawSocialMessage: <redacted>"
+    )
+    assert "migration-raw-artifact" not in redaction_findings_for_text(
+        '"rawSocialMessage": "<redacted>",'
+    )
+    assert "migration-raw-artifact" not in redaction_findings_for_text(
+        "rawSocialMessage: <redacted>\nnextField: summary-only"
+    )
+    assert "migration-raw-artifact" not in redaction_findings_for_text(
+        "The migration guide says raw social messages must never appear in support bundles."
     )
     assert "local-absolute-path" in redaction_findings_for_text(
         "/root/.crypta-dev/keys/dev-local-bundle-private.der"

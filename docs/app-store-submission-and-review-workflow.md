@@ -27,7 +27,10 @@ Third-party authors should start with
 [third-party-app-submission-checklist.md](third-party-app-submission-checklist.md), and verify the
 stability target against
 [platform-api-compatibility-support-window.md](platform-api-compatibility-support-window.md) before
-creating a package. The checked-in stable sample is
+creating a package. Former plugin authors should also use
+[legacy-plugin-migration-cookbook.md](legacy-plugin-migration-cookbook.md) before filing a
+submission, because reviewers expect the migration plan, non-goals, redaction policy, and app/
+app-service mapping to be explicit. The checked-in stable sample is
 `samples/third-party/hello-stable-app/`.
 
 ## Submission Package
@@ -135,6 +138,11 @@ backup/restore is unsupported, but that unsupported state must be explicit and e
 
 `review/security-notes.md` and `review/changelog.md` are optional review context unless a reviewer
 policy requires them.
+
+Former plugin authors should include a migration-plan review note based on
+[templates/plugin-migration-plan.md](templates/plugin-migration-plan.md). Reviewers use it to
+check state classification, AppVault boundaries, app-service grants, content subscription limits,
+backup/restore behavior, explicit unsupported old plugin behavior, and redaction.
 
 ## API Stability Rules
 

@@ -438,6 +438,13 @@
           "summary": "Legacy emergency fallback evidence passed."
         },
         {
+          "id": "legacy-plugin.migration-finalization",
+          "requiredForReleaseCandidate": true,
+          "source": "fixture-app-platform",
+          "status": "pass",
+          "summary": "Legacy plugin migration finalization evidence passed."
+        },
+        {
           "id": "production-security.response-runbook",
           "requiredForReleaseCandidate": true,
           "source": "fixture-app-platform",

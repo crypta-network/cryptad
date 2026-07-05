@@ -425,6 +425,34 @@ SOCIAL_INBOX_DISPLAY_NAMES = {
     "Social Inbox RC",
     "Social Inbox Reference",
 }
+PLUGIN_MIGRATION_COOKBOOK_PATH = Path("docs/legacy-plugin-migration-cookbook.md")
+PLUGIN_MIGRATION_TEMPLATE_PATH = Path("docs/templates/plugin-migration-plan.md")
+PLUGIN_MIGRATION_EXAMPLE_PATHS = (
+    Path("docs/examples/plugin-migration/wot-like-trust-graph-app.md"),
+    Path("docs/examples/plugin-migration/social-inbox-migration.md"),
+    Path("docs/examples/plugin-migration/future-mail-app-pattern.md"),
+    Path("docs/examples/plugin-migration/content-publisher-migration.md"),
+    Path("docs/examples/plugin-migration/app-service-grant-migration.md"),
+    Path("docs/examples/plugin-migration/plugin-author-submission-flow.md"),
+)
+PLUGIN_MIGRATION_REDACTION_FIXTURE_EXPECTATIONS = {
+    "tools/release-certification/fixtures/plugin-migration-redaction-private-insert-uri.json": "private insert URI",
+    "tools/release-certification/fixtures/plugin-migration-redaction-private-key.json": "private key",
+    "tools/release-certification/fixtures/plugin-migration-redaction-general-credentials.json": "credential-or-path marker",
+    "tools/release-certification/fixtures/plugin-migration-redaction-app-token.json": "app token",
+    "tools/release-certification/fixtures/plugin-migration-redaction-browser-session-token.json": "browser session token",
+    "tools/release-certification/fixtures/plugin-migration-redaction-raw-social-message.json": "raw migration artifact",
+    "tools/release-certification/fixtures/plugin-migration-redaction-raw-trust-statement.json": "raw migration artifact",
+    "tools/release-certification/fixtures/plugin-migration-redaction-raw-profile-feed-document.json": "raw migration artifact",
+    "tools/release-certification/fixtures/plugin-migration-redaction-raw-app-data-value.json": "raw migration artifact",
+    "tools/release-certification/fixtures/plugin-migration-redaction-local-path.json": "local path",
+    "tools/release-certification/fixtures/plugin-migration-redaction-raw-fproxy-html.json": "raw migration artifact",
+    "tools/release-certification/fixtures/plugin-migration-redaction-old-plugin-export-secrets.json": "raw migration artifact",
+    "tools/release-certification/fixtures/plugin-migration-redaction-raw-artifact-separators.json": "raw migration artifact",
+    "tools/release-certification/fixtures/plugin-migration-redaction-partial-redaction.json": "raw migration artifact",
+    "tools/release-certification/fixtures/plugin-migration-redaction-multiline-raw-payload.json": "raw migration artifact",
+    "tools/release-certification/fixtures/plugin-migration-redaction-java-file-uri.json": "local path",
+}
 SECRET_COMMAND_VALUE_OPTIONS = {
     "--private-key-base64",
     "--private-key-file",
@@ -673,6 +701,72 @@ WINDOWS_UNC_PATH_RE = re.compile(
     r"(?<![A-Za-z0-9_:/.\->])(?:\\\\[^\\/:*?\"<>|\r\n]+\\[^\\/:*?\"<>|\r\n]+(?:\\[^\\/:*?\"<>|\r\n]+)*\\?)"
 )
 FILE_URI_PATH_RE = re.compile(r"\bfile://(?P<path>[^\s\])},;\"']+)")
+PLUGIN_MIGRATION_FILE_URI_PATH_RE = re.compile(
+    r"\bfile:(?://(?P<authority>[^/\s\])},;\"']*))?"
+    r"(?P<path>/[^\s\])},;\"']+|[A-Za-z]:[\\/][^\s\])},;\"']+)",
+    re.IGNORECASE,
+)
+PLUGIN_MIGRATION_PRIVATE_INSERT_URI_RE = re.compile(
+    r"\b(?:crypta:|freenet:)?(?:SSK|USK)@"
+    r"(?!<|\.\.\.)"
+    r"(?=[A-Za-z0-9~_-]{8})"
+    r"[A-Za-z0-9~_,=-]+(?:/[^\s`'\"<>)]*)?",
+    re.IGNORECASE,
+)
+PLUGIN_MIGRATION_PRIVATE_KEY_RE = re.compile(
+    r"-----BEGIN [A-Z0-9 -]*PRIVATE KEY(?: BLOCK)?-----",
+    re.IGNORECASE,
+)
+PLUGIN_MIGRATION_TOKEN_ASSIGNMENT_RE = re.compile(
+    r"\b[\"']?(?:CRYPTAD_APP_TOKEN|browserSessionToken|appProcessToken)[\"']?\s*[:=]\s*"
+    r"(?![\"']?(?:<[^>]+>|\.\.\.|redacted|<redacted>|<token-redacted>)[\"']?(?:$|[\s,}\]`]))"
+    r"(?:[\"'][^\"'<>\r\n]{8,}[\"']|[A-Za-z0-9._~+/=-]{8,})",
+    re.IGNORECASE,
+)
+PLUGIN_MIGRATION_BROWSER_SESSION_TOKEN_RE = re.compile(
+    r"\b[\"']?browserSessionToken[\"']?\s*[:=]\s*"
+    r"(?![\"']?(?:<[^>]+>|\.\.\.|redacted|<redacted>|<token-redacted>)[\"']?(?:$|[\s,}\]`]))"
+    r"(?:[\"'][^\"'<>\r\n]{8,}[\"']|[A-Za-z0-9._~+/=-]{8,})",
+    re.IGNORECASE,
+)
+PLUGIN_MIGRATION_AUTH_HEADER_RE = re.compile(
+    r"(?<![\w-])[\"']?Authorization[\"']?\s*:\s*[\"']?"
+    r"(?!(?:<[^>\r\n]+>|redacted|\.\.\.)(?:[\"']?\s*(?:$|[\r\n,}\]`])))"
+    r"(?:[A-Za-z][A-Za-z0-9._~-]*\s+)?[A-Za-z0-9._~+/=:,-]{8,}",
+    re.IGNORECASE,
+)
+PLUGIN_MIGRATION_RAW_ARTIFACT_RE = re.compile(
+    r"(?<![\w-])[\"']?(?:"
+    r"raw[-_ ]?social[-_ ]?message|raw[-_ ]?trust[-_ ]?statement|"
+    r"raw[-_ ]?profile[-_ ]?document|raw[-_ ]?feed[-_ ]?document|"
+    r"raw[-_ ]?feed[-_ ]?snapshot|raw[-_ ]?app[-_ ]?data[-_ ]?value|"
+    r"raw[-_ ]?legacy[-_ ]?plugin[-_ ]?state|legacy[-_ ]?plugin[-_ ]?export|"
+    r"old[-_ ]?plugin[-_ ]?export|plugin[-_ ]?export[-_ ]?body|"
+    r"plugin[-_ ]?export[-_ ]?payload|fproxy[-_ ]?html|"
+    r"raw[-_ ]?fproxy[-_ ]?html|fproxy[-_ ]?dump|raw[-_ ]?fproxy[-_ ]?dump|"
+    r"raw[-_ ]?html[-_ ]?dump|queue[-_ ]?html|plain[-_ ]?text[-_ ]?export"
+    r")[\"']?\s*[:=]"
+    r"(?!\s*[\"']?(?:<redacted[^>\r\n]*>|redacted|\.\.\.)[\"']?\s*(?:$|[\r\n,}\]`\\]))"
+    r"\s*"
+    r"(?:[{\[]|[\"'][^\"'\r\n]{4,}[\"']|[^\r\n,}]{4,})",
+    re.IGNORECASE,
+)
+PLUGIN_MIGRATION_SAFE_URI_PLACEHOLDER_RE = re.compile(
+    r"\b(?:crypta:|freenet:)?(?:CHK|SSK|USK)@(?:<[^>\r\n]+>|\.\.\.)"
+    r"(?:/[^\s`'\"<>)]*)?",
+    re.IGNORECASE,
+)
+PLUGIN_MIGRATION_COMPAT_SHIM_DECLARATION_RE = re.compile(
+    r"\b(?:class|interface|enum|record)\s+"
+    r"(?:WebOfTrust|WoT|Freetalk|Sone|Freemail)[A-Za-z0-9_]*"
+    r"(?:Compat|Compatibility|Shim|Bridge|Adapter|Handler|Plugin)\b"
+    r"|"
+    r"\b(?:class|interface|enum|record)\s+"
+    r"(?:Plugin|LegacyPlugin)[A-Za-z0-9_]*(?:Toadlet|Admin|Manager|Runtime)\b"
+)
+PLUGIN_MIGRATION_PLUGIN_ROUTE_LITERAL_RE = re.compile(
+    r"[\"']/plugins(?:/[^\"'\r\n]*)?[\"']"
+)
 ROUTE_PATH_RE = re.compile(
     r"(?<![A-Za-z0-9_:/.\->])/"
     r"(?:api/v1|apps|app/node|app-data|app-vault|content|identity-vault|operator|platform|queue|"
@@ -12139,6 +12233,412 @@ def collect_legacy_plugin_migration_evidence(settings: Settings) -> EvidenceItem
     )
 
 
+def plugin_migration_paths() -> tuple[Path, ...]:
+    return (
+        PLUGIN_MIGRATION_COOKBOOK_PATH,
+        PLUGIN_MIGRATION_TEMPLATE_PATH,
+        *PLUGIN_MIGRATION_EXAMPLE_PATHS,
+    )
+
+
+def plugin_migration_allowed_path(value: str) -> bool:
+    normalized = value.replace("\\", "/").rstrip("/")
+    return normalized in {
+        "/app/node",
+        "/content",
+        "/queue",
+        "/welcome",
+    } or normalized.startswith(
+        (
+            "/api/",
+            "/apps/",
+            "/app-data/",
+            "/app/node/",
+            "/content/",
+            "/queue/",
+            "/platform/",
+            "/operator/",
+            "/trust-graph/",
+            "/docs/",
+            "/static/",
+            "/src/",
+            "/welcome/",
+            "/.well-known/",
+        )
+    )
+
+
+def plugin_migration_has_disallowed_local_path(text: str) -> bool:
+    for match in PLUGIN_MIGRATION_FILE_URI_PATH_RE.finditer(text):
+        path_value = urllib.parse.unquote(match.group("path")).replace("\\", "/")
+        if not plugin_migration_allowed_path(path_value):
+            return True
+    for pattern in (WINDOWS_UNC_PATH_RE, WINDOWS_DRIVE_PATH_RE, ABSOLUTE_PATH_RE):
+        for match in pattern.finditer(text):
+            if not plugin_migration_allowed_path(match.group(0)):
+                return True
+    return False
+
+
+def plugin_migration_text_for_general_redaction(text: str) -> str:
+    return PLUGIN_MIGRATION_SAFE_URI_PLACEHOLDER_RE.sub("<safe-placeholder-uri>", text)
+
+
+def plugin_migration_redaction_findings_for_text(
+    text: str, workspace: Path, relative_path: str
+) -> list[dict[str, str]]:
+    checks = (
+        ("private insert URI", PLUGIN_MIGRATION_PRIVATE_INSERT_URI_RE),
+        ("private key", PLUGIN_MIGRATION_PRIVATE_KEY_RE),
+        ("browser session token", PLUGIN_MIGRATION_BROWSER_SESSION_TOKEN_RE),
+        ("app token", PLUGIN_MIGRATION_TOKEN_ASSIGNMENT_RE),
+        ("authorization header", PLUGIN_MIGRATION_AUTH_HEADER_RE),
+        ("raw migration artifact", PLUGIN_MIGRATION_RAW_ARTIFACT_RE),
+    )
+    findings: list[dict[str, str]] = []
+    for kind, pattern in checks:
+        if pattern.search(text):
+            findings.append({"path": relative_path, "kind": kind})
+    for kind in production_security_redaction_findings(
+        plugin_migration_text_for_general_redaction(text),
+        workspace,
+    ):
+        findings.append({"path": relative_path, "kind": kind})
+    if plugin_migration_has_disallowed_local_path(text):
+        findings.append({"path": relative_path, "kind": "local path"})
+    return sorted({(finding["path"], finding["kind"]): finding for finding in findings}.values(), key=str)
+
+
+def plugin_migration_redaction_summary(workspace: Path) -> dict[str, Any]:
+    document_findings: list[dict[str, str]] = []
+    for relative_path in plugin_migration_paths():
+        path = workspace / relative_path
+        if path.is_file():
+            document_findings.extend(
+                plugin_migration_redaction_findings_for_text(
+                    read_source(path),
+                    workspace,
+                    relative_path.as_posix(),
+                )
+            )
+    safe_fixture_path = (
+        workspace
+        / "tools/release-certification/fixtures/plugin-migration-redaction-safe.json"
+    )
+    safe_fixture_findings = (
+        plugin_migration_redaction_findings_for_text(
+            read_source(safe_fixture_path),
+            workspace,
+            "tools/release-certification/fixtures/plugin-migration-redaction-safe.json",
+        )
+        if safe_fixture_path.is_file()
+        else [{"path": display_path(safe_fixture_path, workspace), "kind": "missing safe fixture"}]
+    )
+    negative_fixture_results: dict[str, dict[str, Any]] = {}
+    negative_fixture_findings: list[dict[str, Any]] = []
+    for relative_path, expected_kind in PLUGIN_MIGRATION_REDACTION_FIXTURE_EXPECTATIONS.items():
+        path = workspace / relative_path
+        findings = (
+            plugin_migration_redaction_findings_for_text(
+                read_source(path), workspace, relative_path
+            )
+            if path.is_file()
+            else [{"path": relative_path, "kind": "missing fixture"}]
+        )
+        kinds = sorted({finding["kind"] for finding in findings})
+        negative_fixture_results[relative_path] = {
+            "expectedKind": expected_kind,
+            "detectedKinds": kinds,
+            "passes": expected_kind in kinds,
+        }
+        if not negative_fixture_results[relative_path]["passes"]:
+            negative_fixture_findings.append(
+                {
+                    "path": relative_path,
+                    "kind": "negative redaction fixture failed",
+                    "expectedKind": expected_kind,
+                    "detectedKinds": kinds,
+                }
+            )
+    return {
+        "documentFindings": document_findings,
+        "safeFixtureFindings": safe_fixture_findings,
+        "negativeFixtureResults": negative_fixture_results,
+        "negativeFixtureFindings": negative_fixture_findings,
+        "negativeFixturesPass": all(
+            result["passes"] for result in negative_fixture_results.values()
+        ),
+    }
+
+
+def collect_legacy_plugin_migration_finalization_evidence(
+    settings: Settings,
+) -> EvidenceItem:
+    source = summary_source(settings)
+    workspace = settings.workspace_root
+    cookbook_path = workspace / PLUGIN_MIGRATION_COOKBOOK_PATH
+    template_path = workspace / PLUGIN_MIGRATION_TEMPLATE_PATH
+    example_paths = [workspace / path for path in PLUGIN_MIGRATION_EXAMPLE_PATHS]
+    guide_path = workspace / "docs/legacy-plugin-migration-guide.md"
+    freeze_policy_path = workspace / "docs/legacy-plugin-freeze-policy.md"
+    plugin_system_path = workspace / "docs/plugin-system.md"
+    portal_path = workspace / "docs/app-platform-developer-portal.md"
+    third_party_program_path = workspace / "docs/third-party-developer-beta-program.md"
+    submission_checklist_path = workspace / "docs/third-party-app-submission-checklist.md"
+    workflow_path = workspace / "docs/app-store-submission-and-review-workflow.md"
+    legacy_retirement_path = workspace / "docs/legacy-retirement-plan.md"
+    app_service_docs_path = workspace / "docs/app-service-discovery-and-grants.md"
+    trust_graph_docs_path = workspace / "docs/trust-graph-preview.md"
+    social_inbox_docs_path = workspace / "docs/social-inbox-reference-app.md"
+    go_no_go_docs_path = workspace / "docs/production-beta-go-no-go-dashboard.md"
+    release_docs_path = workspace / "docs/release-certification.md"
+    release_readme_path = workspace / "tools/release-certification/README.md"
+
+    cookbook = read_source(cookbook_path)
+    cookbook_lower = cookbook.lower()
+    template_text = read_source(template_path)
+    examples_text = "\n".join(read_source(path) for path in example_paths)
+    examples_lower = examples_text.lower()
+    guide_text = read_source(guide_path)
+    freeze_policy_text = read_source(freeze_policy_path)
+    plugin_system_text = read_source(plugin_system_path)
+    portal_text = read_source(portal_path)
+    third_party_program_text = read_source(third_party_program_path)
+    submission_checklist_text = read_source(submission_checklist_path)
+    workflow_text = read_source(workflow_path)
+    legacy_retirement_text = read_source(legacy_retirement_path)
+    app_service_docs_text = read_source(app_service_docs_path)
+    trust_graph_docs_text = read_source(trust_graph_docs_path)
+    social_inbox_docs_text = read_source(social_inbox_docs_path)
+    go_no_go_docs_text = read_source(go_no_go_docs_path)
+    release_docs_text = read_source(release_docs_path)
+    release_readme_text = read_source(release_readme_path)
+    linked_docs_text = "\n".join(
+        [
+            guide_text,
+            freeze_policy_text,
+            plugin_system_text,
+            portal_text,
+            third_party_program_text,
+            submission_checklist_text,
+            workflow_text,
+            legacy_retirement_text,
+            app_service_docs_text,
+            trust_graph_docs_text,
+            social_inbox_docs_text,
+            go_no_go_docs_text,
+        ]
+    )
+    linked_docs_lower = linked_docs_text.lower()
+    release_docs_combined = release_docs_text + "\n" + release_readme_text
+    runtime_violations = collect_plugin_runtime_surface_violations(workspace)
+    redaction_summary = plugin_migration_redaction_summary(workspace)
+    document_redaction_findings = redaction_summary["documentFindings"]
+    safe_fixture_findings = redaction_summary["safeFixtureFindings"]
+    negative_fixture_findings = redaction_summary["negativeFixtureFindings"]
+    checks = {
+        "cookbookExists": cookbook_path.is_file() and bool(cookbook.strip()),
+        "migrationPlanTemplateExists": template_path.is_file() and bool(template_text.strip()),
+        "examplesExist": all(path.is_file() and bool(read_source(path).strip()) for path in example_paths),
+        "guideLinksCookbook": "legacy-plugin-migration-cookbook.md" in guide_text,
+        "freezePolicyLinksCookbook": "legacy-plugin-migration-cookbook.md" in freeze_policy_text,
+        "pluginSystemLinksCookbook": "legacy-plugin-migration-cookbook.md" in plugin_system_text,
+        "developerPortalLinksCookbook": "legacy-plugin-migration-cookbook.md" in portal_text,
+        "thirdPartyProgramLinksCookbook": "legacy-plugin-migration-cookbook.md" in third_party_program_text,
+        "submissionChecklistLinksCookbook": "legacy-plugin-migration-cookbook.md"
+        in submission_checklist_text,
+        "workflowLinksCookbook": "legacy-plugin-migration-cookbook.md" in workflow_text,
+        "legacyRetirementLinksCookbook": "legacy-plugin-migration-cookbook.md" in legacy_retirement_text,
+        "releaseDocsListFinalization": "legacy-plugin.migration-finalization" in release_docs_combined,
+        "goNoGoDocsListFinalization": "legacy-plugin.migration-finalization" in go_no_go_docs_text,
+        "decisionTreePresent": "## decision tree" in cookbook_lower
+        and "legacy plugin function" in cookbook_lower
+        and "unsupported; no public-beta compatibility path is promised" in cookbook_lower,
+        "migrationMatrixPresent": "## migration matrix" in cookbook_lower
+        and all(
+            marker in cookbook_lower
+            for marker in (
+                "old plugin ui",
+                "plugin config and state",
+                "plugin identity and secrets",
+                "plugin trust score lookup",
+                "old fcp plugin command",
+            )
+        ),
+        "unsupportedForeverPresent": "## unsupported forever" in cookbook_lower
+        and all(
+            marker in cookbook_lower
+            for marker in (
+                "in-process daemon hooks",
+                "old plugin abi/fcp command compatibility",
+                "ambient localhost rpc",
+                "raw fproxy scraping",
+                "direct daemon internals",
+                "private-key export",
+                "unbounded crawling",
+            )
+        ),
+        "webOfTrustMapsToTrustGraphLocalRc": "weboftrust-like" in cookbook_lower
+        and "trust graph local rc" in cookbook_lower
+        and "trust.score" in cookbook,
+        "webOfTrustLocalOnlyLimitations": "local-only" in cookbook_lower
+        and "global moderation" in cookbook_lower
+        and "routing policy" in cookbook_lower
+        and "peer-selection policy" in cookbook_lower,
+        "webOfTrustGrantBoundary": "operator consent" in cookbook_lower
+        and "service dependency and grant bundle approval" in cookbook_lower,
+        "webOfTrustImportCapabilityBoundary": (
+            "importing statements is a trust graph app capability" in cookbook_lower
+        ),
+        "webOfTrustDiagnosticsRedacted": (
+            "must not include raw trust statements or signatures" in cookbook_lower
+        ),
+        "freetalkSoneMapsToSocialInboxRc": "freetalk/sone-like" in cookbook_lower
+        and "social inbox rc" in cookbook_lower
+        and "crypta.social.message.v1" in cookbook
+        and "crypta.social.outbox.v1" in cookbook,
+        "freetalkSoneNoProtocolCompatibility": (
+            "not freetalk/sone protocol compatibility" in cookbook_lower
+            or "no freetalk/sone protocol compatibility" in cookbook_lower
+        )
+        and "no daemon-core message store" in cookbook_lower
+        and "no global moderation" in cookbook_lower,
+        "freemailFutureMailPatternOnly": "freemail-like future mail app pattern" in cookbook_lower
+        and "no implementation in pr-279" in cookbook_lower
+        and "not encrypted mail transport" in cookbook_lower
+        and "no freemail protocol compatibility" in cookbook_lower,
+        "dataIdentitySubscriptionMigrationSafe": all(
+            marker in cookbook_lower
+            for marker in (
+                "data, identity, and subscription preservation",
+                "inventory old plugin state",
+                "define app-data namespaces and schema versions",
+                "support dry-run mode",
+                "provide backup/export before destructive migration",
+                "avoid private identity export",
+                "avoid private insert uri persistence",
+                "bind operator consent",
+                "document what cannot be migrated automatically",
+            )
+        ),
+        "migrationPlanSchemaTemplate": all(
+            marker in template_text
+            for marker in (
+                "legacyPluginId",
+                "newAppId",
+                "stateClasses",
+                "manifestCapabilities",
+                "appDataNamespaces",
+                "contentSubscriptions",
+                "identityGrants",
+                "appServiceDependencies",
+                "migrationSteps",
+                "backupRestorePolicy",
+                "reviewEvidence",
+                "redactionPolicy",
+                "knownNonGoals",
+            )
+        ),
+        "appServiceDependencyExamplesPresent": "app-service dependency examples" in cookbook_lower
+        and "provider unavailable" in cookbook_lower
+        and "grant revoked or expired" in cookbook_lower
+        and "provider descriptor changed" in cookbook_lower
+        and "no app-service request bodies or tokens" in cookbook_lower
+        and "trust.score" in examples_text,
+        "pluginAuthorBetaSubmissionFlowPresent": "beta submission flow" in cookbook_lower
+        and all(
+            command in cookbook
+            for command in (
+                "crypta-app init",
+                "crypta-app test",
+                "crypta-app ui lint",
+                "crypta-app compat verify",
+                "crypta-app pack",
+                "crypta-app submission create",
+                "crypta-app submission verify",
+                "crypta-app submission pre-review",
+            )
+        ),
+        "legacyAdminMaintenanceOnlyBoundaryPresent": "maintenance-only" in linked_docs_lower
+        and "legacy admin" in linked_docs_lower,
+        "fproxyBrowseRetainedBoundaryPresent": "fproxy browse remains retained" in linked_docs_lower
+        and "does not create a new plugin api" in linked_docs_lower
+        and "retained browse does not create a new plugin api" in linked_docs_lower,
+        "oldPluginCompatibilityAbsent": "old plugin abi/fcp/runtime/toadlet/admin surfaces are not used"
+        in cookbook_lower
+        and "unsupportedpluginmessage" in linked_docs_lower
+        and "no compatibility shim" in cookbook_lower,
+        "wotExamplePresent": "trust graph local rc" in examples_lower
+        and "trust.score" in examples_text,
+        "socialExamplePresent": "social inbox rc" in examples_lower
+        and "crypta.social.message.v1" in examples_text,
+        "mailExamplePresent": "future mail" in examples_lower
+        and "not implemented in pr-279" in examples_lower,
+        "contentPublishingExamplePresent": "content.insert.app-document" in examples_text
+        and "private insert uris" in examples_lower,
+        "sourceSurfaceAuditPasses": not runtime_violations,
+        "redactionChecksPass": not document_redaction_findings
+        and not safe_fixture_findings
+        and redaction_summary["negativeFixturesPass"],
+    }
+    details: dict[str, Any] = {
+        "sources": {
+            "cookbook": display_path(cookbook_path, workspace),
+            "template": display_path(template_path, workspace),
+            "examples": [display_path(path, workspace) for path in example_paths],
+            "linkedDocs": [
+                display_path(guide_path, workspace),
+                display_path(freeze_policy_path, workspace),
+                display_path(plugin_system_path, workspace),
+                display_path(portal_path, workspace),
+                display_path(third_party_program_path, workspace),
+                display_path(submission_checklist_path, workspace),
+                display_path(workflow_path, workspace),
+                display_path(legacy_retirement_path, workspace),
+                display_path(app_service_docs_path, workspace),
+                display_path(trust_graph_docs_path, workspace),
+                display_path(social_inbox_docs_path, workspace),
+                display_path(go_no_go_docs_path, workspace),
+                display_path(release_docs_path, workspace),
+                display_path(release_readme_path, workspace),
+            ],
+        },
+        "checks": checks,
+        "runtimeSurfaceViolations": runtime_violations,
+        "redaction": {
+            "documentsScanned": [path.as_posix() for path in plugin_migration_paths()],
+            "safeFixtureFindings": safe_fixture_findings,
+            "negativeFixtureResults": redaction_summary["negativeFixtureResults"],
+            "negativeFixtureFindings": negative_fixture_findings,
+            "documentFindings": document_redaction_findings,
+        },
+    }
+    if document_redaction_findings or safe_fixture_findings or negative_fixture_findings:
+        details["redactionFindings"] = (
+            document_redaction_findings
+            + safe_fixture_findings
+            + negative_fixture_findings
+        )
+    errors = [name for name, passed in checks.items() if not passed]
+    if errors:
+        return EvidenceItem(
+            "legacy-plugin.migration-finalization",
+            root_consequence(settings, "fail"),
+            True,
+            "Legacy plugin migration finalization evidence found problems.",
+            source,
+            {"errors": errors, **details},
+        )
+    return EvidenceItem(
+        "legacy-plugin.migration-finalization",
+        "pass",
+        True,
+        "Legacy plugin migration finalization evidence passed.",
+        source,
+        details,
+    )
+
+
 def collect_legacy_plugin_social_inbox_spike_evidence(settings: Settings) -> EvidenceItem:
     source = summary_source(settings)
     workspace = settings.workspace_root
@@ -12274,6 +12774,17 @@ def collect_plugin_runtime_surface_violations(workspace: Path) -> list[dict[str,
             violations.append({"path": relative, "reason": "pluginmanager import"})
         if forbidden_declaration_re.search(text):
             violations.append({"path": relative, "reason": "old plugin runtime declaration"})
+        if PLUGIN_MIGRATION_COMPAT_SHIM_DECLARATION_RE.search(text):
+            violations.append(
+                {
+                    "path": relative,
+                    "reason": "legacy plugin compatibility shim declaration",
+                }
+            )
+        if PLUGIN_MIGRATION_PLUGIN_ROUTE_LITERAL_RE.search(text) and (
+            "Toadlet" in text or "register" in text or "LegacyAdmin" in text
+        ):
+            violations.append({"path": relative, "reason": "legacy plugin route registration"})
         if relative not in allowed_runtime_command_files and any(
             f'"{command_name}"' in text for command_name in old_command_names
         ):
@@ -18009,6 +18520,7 @@ def run(settings: Settings) -> tuple[dict[str, Any], int]:
         collect_legacy_plugin_migration_evidence(settings),
         collect_legacy_plugin_social_inbox_spike_evidence(settings),
         collect_legacy_plugin_freeze_policy_evidence(settings),
+        collect_legacy_plugin_migration_finalization_evidence(settings),
         collect_feed_reader_reference_app_evidence(settings),
         collect_feed_reader_subscription_evidence(settings),
         collect_feed_reader_app_data_evidence(settings),
@@ -20006,6 +20518,294 @@ def run_self_test(repo_root: Path) -> None:
         assert evidence_by_id["legacy-plugin.social-inbox-spike"]["status"] == "pass"
         assert evidence_by_id["legacy-plugin.freeze-policy"]["status"] == "pass"
         assert evidence_by_id["legacy-plugin.freeze-policy"]["requiredForReleaseCandidate"] is True
+        assert evidence_by_id["legacy-plugin.migration-finalization"]["status"] == "pass"
+        assert (
+            evidence_by_id["legacy-plugin.migration-finalization"]["requiredForReleaseCandidate"]
+            is True
+        )
+        migration_cookbook = workspace / PLUGIN_MIGRATION_COOKBOOK_PATH
+        migration_cookbook_text = migration_cookbook.read_text(encoding="utf-8")
+        try:
+            migration_cookbook.unlink()
+            missing_cookbook_item = collect_legacy_plugin_migration_finalization_evidence(
+                dataclasses.replace(settings, mode="release-candidate")
+            )
+        finally:
+            migration_cookbook.write_text(migration_cookbook_text, encoding="utf-8")
+        assert missing_cookbook_item.status == "fail", missing_cookbook_item
+        assert "cookbookExists" in missing_cookbook_item.details["errors"], (
+            missing_cookbook_item
+        )
+        try:
+            migration_cookbook.write_text(
+                migration_cookbook_text.replace("Trust Graph Local RC", "Local score app"),
+                encoding="utf-8",
+            )
+            missing_trust_graph_item = collect_legacy_plugin_migration_finalization_evidence(
+                dataclasses.replace(settings, mode="release-candidate")
+            )
+        finally:
+            migration_cookbook.write_text(migration_cookbook_text, encoding="utf-8")
+        assert missing_trust_graph_item.status == "fail", missing_trust_graph_item
+        assert "webOfTrustMapsToTrustGraphLocalRc" in missing_trust_graph_item.details["errors"], (
+            missing_trust_graph_item
+        )
+        shim_source = (
+            workspace
+            / "runtime-node/src/main/java/network/crypta/runtime/WebOfTrustCompatibilityShim.java"
+        )
+        shim_source.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            shim_source.write_text(
+                "package network.crypta.runtime; final class WebOfTrustCompatibilityShim {}\n",
+                encoding="utf-8",
+            )
+            shim_item = collect_legacy_plugin_migration_finalization_evidence(
+                dataclasses.replace(settings, mode="release-candidate")
+            )
+        finally:
+            shim_source.unlink(missing_ok=True)
+        assert shim_item.status == "fail", shim_item
+        assert "sourceSurfaceAuditPasses" in shim_item.details["errors"], shim_item
+        route_source = (
+            workspace
+            / "adapter-http-legacy-admin/src/main/java/network/crypta/clients/http/LegacyPluginRouteProbe.java"
+        )
+        route_source.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            route_source.write_text(
+                "package network.crypta.clients.http; "
+                "final class LegacyPluginRouteProbe { "
+                "void install(Object router) { router.register(\"/plugins/WebOfTrust/\"); } }\n",
+                encoding="utf-8",
+            )
+            route_item = collect_legacy_plugin_migration_finalization_evidence(
+                dataclasses.replace(settings, mode="release-candidate")
+            )
+        finally:
+            route_source.unlink(missing_ok=True)
+        assert route_item.status == "fail", route_item
+        assert "sourceSurfaceAuditPasses" in route_item.details["errors"], route_item
+        assert any(
+            violation.get("reason") == "legacy plugin route registration"
+            for violation in route_item.details["runtimeSurfaceViolations"]
+        ), route_item
+        unsafe_example = workspace / PLUGIN_MIGRATION_EXAMPLE_PATHS[1]
+        unsafe_example_text = unsafe_example.read_text(encoding="utf-8")
+        try:
+            unsafe_example.write_text(
+                unsafe_example_text + '\n"rawSocialMessage": "private-message-body"\n',
+                encoding="utf-8",
+            )
+            raw_artifact_item = collect_legacy_plugin_migration_finalization_evidence(
+                dataclasses.replace(settings, mode="release-candidate")
+            )
+        finally:
+            unsafe_example.write_text(unsafe_example_text, encoding="utf-8")
+        assert raw_artifact_item.status == "fail", raw_artifact_item
+        assert "redactionChecksPass" in raw_artifact_item.details["errors"], raw_artifact_item
+        assert "private-message-body" not in json.dumps(raw_artifact_item.to_json()), (
+            raw_artifact_item
+        )
+        try:
+            unsafe_example.write_text(
+                unsafe_example_text
+                + "\nrawSocialMessage: <redacted> private-message-body\n",
+                encoding="utf-8",
+            )
+            partial_raw_artifact_item = collect_legacy_plugin_migration_finalization_evidence(
+                dataclasses.replace(settings, mode="release-candidate")
+            )
+        finally:
+            unsafe_example.write_text(unsafe_example_text, encoding="utf-8")
+        assert partial_raw_artifact_item.status == "fail", partial_raw_artifact_item
+        assert "redactionChecksPass" in partial_raw_artifact_item.details["errors"], (
+            partial_raw_artifact_item
+        )
+        assert "private-message-body" not in json.dumps(
+            partial_raw_artifact_item.to_json()
+        ), partial_raw_artifact_item
+        try:
+            unsafe_example.write_text(
+                unsafe_example_text
+                + '\n"rawSocialMessage": {\n'
+                + '  "body": "private-message-body"\n'
+                + "}\n",
+                encoding="utf-8",
+            )
+            multiline_raw_artifact_item = collect_legacy_plugin_migration_finalization_evidence(
+                dataclasses.replace(settings, mode="release-candidate")
+            )
+        finally:
+            unsafe_example.write_text(unsafe_example_text, encoding="utf-8")
+        assert multiline_raw_artifact_item.status == "fail", multiline_raw_artifact_item
+        assert "redactionChecksPass" in multiline_raw_artifact_item.details["errors"], (
+            multiline_raw_artifact_item
+        )
+        assert "private-message-body" not in json.dumps(
+            multiline_raw_artifact_item.to_json()
+        ), multiline_raw_artifact_item
+        try:
+            unsafe_example.write_text(
+                unsafe_example_text + "\nexportPath=file:/home/alice/plugin-export.json\n",
+                encoding="utf-8",
+            )
+            java_file_uri_item = collect_legacy_plugin_migration_finalization_evidence(
+                dataclasses.replace(settings, mode="release-candidate")
+            )
+        finally:
+            unsafe_example.write_text(unsafe_example_text, encoding="utf-8")
+        assert java_file_uri_item.status == "fail", java_file_uri_item
+        assert "redactionChecksPass" in java_file_uri_item.details["errors"], (
+            java_file_uri_item
+        )
+        for leak_text in (
+            '"raw_social_message": "private-message-body"',
+            "raw-trust-statement: trust-statement-json",
+            '"old_plugin_export": "serialized-state-with-secrets"',
+            '"raw profile document": "private-profile-document"',
+            "rawSocialMessage: <redacted> private-message-body",
+            '"rawSocialMessage": "<redacted> private-message-body"',
+            '"rawSocialMessage": {\n  "body": "private-message-body"\n}',
+            '"rawTrustStatement": [\n  {"issuer": "private-issuer"}\n]',
+        ):
+            separator_findings = plugin_migration_redaction_findings_for_text(
+                leak_text,
+                workspace,
+                "separator-leak",
+            )
+            assert any(
+                finding["kind"] == "raw migration artifact"
+                for finding in separator_findings
+            ), separator_findings
+        for safe_redacted_text in (
+            "rawSocialMessage: <redacted>",
+            '"rawSocialMessage": "<redacted>",',
+            "rawSocialMessage: <redacted>\nnextField: summary-only",
+        ):
+            safe_redacted_findings = plugin_migration_redaction_findings_for_text(
+                safe_redacted_text,
+                workspace,
+                "safe-redacted",
+            )
+            assert not any(
+                finding["kind"] == "raw migration artifact"
+                for finding in safe_redacted_findings
+            ), safe_redacted_findings
+        assert not plugin_migration_redaction_findings_for_text(
+            "crypta:USK@<example-public-read-key>/profile/1/profile.json",
+            workspace,
+            "safe-placeholder",
+        )
+        java_file_uri_findings = plugin_migration_redaction_findings_for_text(
+            "exportPath=file:/home/alice/plugin-export.json",
+            workspace,
+            "java-file-uri",
+        )
+        assert any(
+            finding["kind"] == "local path" for finding in java_file_uri_findings
+        ), java_file_uri_findings
+        for leak_text in (
+            '"privateKey": "MC4CAQAwBQYDK2VwBCIEIAabcdefghijklmnop"',
+            "formPassword=hunter2",
+            "Cookie: sid=abcdef0123456789",
+            "X-Crypta-App-Session: browser-session-secret",
+        ):
+            leak_findings = plugin_migration_redaction_findings_for_text(
+                leak_text,
+                workspace,
+                "generic-leak",
+            )
+            assert any(
+                finding["kind"] == "credential-or-path marker" for finding in leak_findings
+            ), leak_findings
+        try:
+            unsafe_example.write_text(
+                unsafe_example_text
+                + '\n"privateKey": "MC4CAQAwBQYDK2VwBCIEIAabcdefghijklmnop"\n'
+                + "formPassword=hunter2\n"
+                + "Cookie: sid=abcdef0123456789\n"
+                + "X-Crypta-App-Session: browser-session-secret\n",
+                encoding="utf-8",
+            )
+            generic_secret_item = collect_legacy_plugin_migration_finalization_evidence(
+                dataclasses.replace(settings, mode="release-candidate")
+            )
+        finally:
+            unsafe_example.write_text(unsafe_example_text, encoding="utf-8")
+        assert generic_secret_item.status == "fail", generic_secret_item
+        assert "redactionChecksPass" in generic_secret_item.details["errors"], (
+            generic_secret_item
+        )
+        generic_secret_json = json.dumps(generic_secret_item.to_json())
+        for leaked_value in (
+            "MC4CAQAwBQYDK2VwBCIEIAabcdefghijklmnop",
+            "hunter2",
+            "sid=abcdef0123456789",
+            "browser-session-secret",
+        ):
+            assert leaked_value not in generic_secret_json, generic_secret_item
+        broken_negative_fixture = (
+            workspace
+            / "tools/release-certification/fixtures/plugin-migration-redaction-raw-social-message.json"
+        )
+        broken_negative_fixture_text = broken_negative_fixture.read_text(encoding="utf-8")
+        try:
+            write_json(
+                broken_negative_fixture,
+                {
+                    "legacyPluginId": "legacy.example",
+                    "newAppId": "app-id.example",
+                    "summary": "summary-only",
+                },
+            )
+            broken_negative_fixture_item = collect_legacy_plugin_migration_finalization_evidence(
+                dataclasses.replace(settings, mode="release-candidate")
+            )
+        finally:
+            broken_negative_fixture.write_text(
+                broken_negative_fixture_text, encoding="utf-8"
+            )
+        assert broken_negative_fixture_item.status == "fail", broken_negative_fixture_item
+        assert "redactionChecksPass" in broken_negative_fixture_item.details["errors"], (
+            broken_negative_fixture_item
+        )
+        negative_redaction_findings = broken_negative_fixture_item.details.get(
+            "redactionFindings", []
+        )
+        assert any(
+            finding.get("kind") == "negative redaction fixture failed"
+            and finding.get("path")
+            == "tools/release-certification/fixtures/plugin-migration-redaction-raw-social-message.json"
+            for finding in negative_redaction_findings
+        ), broken_negative_fixture_item
+        assert (
+            "synthetic-private-message-body"
+            not in json.dumps(broken_negative_fixture_item.to_json())
+        ), broken_negative_fixture_item
+        try:
+            broken_negative_fixture.unlink()
+            missing_negative_fixture_item = collect_legacy_plugin_migration_finalization_evidence(
+                dataclasses.replace(settings, mode="release-candidate")
+            )
+        finally:
+            broken_negative_fixture.write_text(
+                broken_negative_fixture_text, encoding="utf-8"
+            )
+        assert missing_negative_fixture_item.status == "fail", missing_negative_fixture_item
+        assert "redactionChecksPass" in missing_negative_fixture_item.details["errors"], (
+            missing_negative_fixture_item
+        )
+        missing_negative_fixture_findings = missing_negative_fixture_item.details.get(
+            "redactionFindings", []
+        )
+        assert any(
+            finding.get("kind") == "negative redaction fixture failed"
+            and finding.get("path")
+            == "tools/release-certification/fixtures/plugin-migration-redaction-raw-social-message.json"
+            and "missing fixture" in finding.get("detectedKinds", [])
+            for finding in missing_negative_fixture_findings
+        ), missing_negative_fixture_item
         freeze_policy = workspace / "docs/legacy-plugin-freeze-policy.md"
         freeze_policy_text = freeze_policy.read_text(encoding="utf-8")
         try:
@@ -20023,7 +20823,7 @@ def run_self_test(repo_root: Path) -> None:
         freeze_migration_guide_text = freeze_migration_guide.read_text(encoding="utf-8")
         try:
             freeze_migration_guide.write_text(
-                freeze_migration_guide_text.replace("legacy-plugin-freeze-policy.md and ", ""),
+                freeze_migration_guide_text.replace("legacy-plugin-freeze-policy.md, ", ""),
                 encoding="utf-8",
             )
             missing_freeze_link_item = collect_legacy_plugin_freeze_policy_evidence(
@@ -23152,7 +23952,8 @@ def make_self_test_workspace(workspace: Path) -> None:
         "reference-app.social-inbox-service-dependency, "
         "migration.social-mail-preview, "
         "legacy-plugin.migration-guide, legacy-plugin.social-inbox-spike, "
-        "legacy-plugin.freeze-policy, legacy-admin.removal-wave-4, "
+        "legacy-plugin.freeze-policy, legacy-plugin.migration-finalization, "
+        "legacy-admin.removal-wave-4, "
         "reference-app.feed-reader, reference-app.feed-reader-subscriptions, "
         "app-platform.content-fetch, app-platform.content-subscriptions, "
         "network-content.subscription-scheduler, "
@@ -23166,7 +23967,7 @@ def make_self_test_workspace(workspace: Path) -> None:
         "app-platform.trust-statement-signing, app-platform.social-message-signing, "
         "app-platform.identity-profile-publish, and app-platform.generated-document-insert. "
         "Developers can find legacy-plugin-freeze-policy.md, legacy-plugin-migration-guide.md, "
-        "and plugin-system.md from the app-platform portal. "
+        "legacy-plugin-migration-cookbook.md, and plugin-system.md from the app-platform portal. "
         "The production RC plugin freeze policy says the old in-process plugin runtime is frozen "
         "and removed, with no new in-core plugin APIs, no old plugin ABI compatibility, no old FCP "
         "plugin command compatibility, and docs/legacy historical material only. Migration uses "
@@ -23231,6 +24032,8 @@ def make_self_test_workspace(workspace: Path) -> None:
         "app-data-backup-restore-portability.md",
         "app-data-store.md",
         "app-dev-cli.md",
+        "app-service-discovery-and-grants.md",
+        "app-store-submission-and-review-workflow.md",
         "app-platform-developer-portal.md",
         "app-platform-beta-known-limitations.md",
         "app-platform-beta-tutorials.md",
@@ -23253,6 +24056,7 @@ def make_self_test_workspace(workspace: Path) -> None:
         "SECURITY.md",
         "operator-rc-recovery-and-support-workflow.md",
         "production-beta-release-pipeline.md",
+        "production-beta-go-no-go-dashboard.md",
         "cryptad-release-workflow-and-runbook.md",
         "social-inbox-reference-app.md",
         "trust-graph-preview.md",
@@ -23274,6 +24078,7 @@ def make_self_test_workspace(workspace: Path) -> None:
                 "Sandbox declaration",
                 "App-data schema declaration",
                 "Data migration declaration",
+                "Legacy plugin migration plan using legacy-plugin-migration-cookbook.md",
                 "Backup/restore declaration",
                 "Service dependency/grant declaration",
                 "Security notes",
@@ -23342,6 +24147,76 @@ def make_self_test_workspace(workspace: Path) -> None:
     cert_readme = workspace / "tools/release-certification/README.md"
     cert_readme.parent.mkdir(parents=True, exist_ok=True)
     cert_readme.write_text(first_party_docs, encoding="utf-8")
+    plugin_fixture_dir = workspace / "tools/release-certification/fixtures"
+    plugin_fixture_dir.mkdir(parents=True, exist_ok=True)
+    plugin_fixture_payloads = {
+        "plugin-migration-redaction-safe.json": {
+            "legacyPluginId": "legacy.example",
+            "newAppId": "app-id.example",
+            "publicReadUri": "crypta:USK@<example-public-read-key>/profile/1/profile.json",
+            "contentDigest": "sha256:example-digest",
+        },
+        "plugin-migration-redaction-private-insert-uri.json": {
+            "privateInsertUri": "crypta:USK@PRIVATEINSERTURI12345/example/0"
+        },
+        "plugin-migration-redaction-private-key.json": {
+            "keyMaterial": "-----BEGIN PRIVATE KEY-----\nfixture\n-----END PRIVATE KEY-----"
+        },
+        "plugin-migration-redaction-general-credentials.json": {
+            "privateKey": "MC4CAQAwBQYDK2VwBCIEIAabcdefghijklmnop",
+            "formPassword": "synthetic-form-password",
+            "Cookie": "sid=synthetic-cookie-secret",
+            "X-Crypta-App-Session": "synthetic-browser-session-secret",
+        },
+        "plugin-migration-redaction-app-token.json": {
+            "CRYPTAD_APP_TOKEN": "synthetic-token-1234567890"
+        },
+        "plugin-migration-redaction-browser-session-token.json": {
+            "browserSessionToken": "synthetic-browser-session-token"
+        },
+        "plugin-migration-redaction-raw-social-message.json": {
+            "rawSocialMessage": "synthetic-private-message-body"
+        },
+        "plugin-migration-redaction-raw-trust-statement.json": {
+            "rawTrustStatement": "synthetic-private-trust-statement"
+        },
+        "plugin-migration-redaction-raw-profile-feed-document.json": {
+            "rawProfileDocument": "synthetic-private-profile-document",
+            "rawFeedSnapshot": "synthetic-private-feed-snapshot",
+        },
+        "plugin-migration-redaction-raw-app-data-value.json": {
+            "rawAppDataValue": "synthetic-private-app-data-value"
+        },
+        "plugin-migration-redaction-local-path.json": {
+            "exportPath": "/home/example/.crypta/plugin-export.json"
+        },
+        "plugin-migration-redaction-raw-fproxy-html.json": {
+            "rawFproxyHtml": "<html><body>fixture</body></html>"
+        },
+        "plugin-migration-redaction-old-plugin-export-secrets.json": {
+            "oldPluginExport": "synthetic-plugin-export-with-secrets"
+        },
+        "plugin-migration-redaction-raw-artifact-separators.json": {
+            "raw_social_message": "synthetic-private-message-body",
+            "raw-trust-statement": "synthetic-private-trust-statement",
+            "old_plugin_export": "synthetic-plugin-export-with-secrets",
+            "raw profile document": "synthetic-private-profile-document",
+        },
+        "plugin-migration-redaction-partial-redaction.json": {
+            "rawSocialMessage": "<redacted> synthetic-private-message-body"
+        },
+        "plugin-migration-redaction-multiline-raw-payload.json": {
+            "rawSocialMessage": {
+                "type": "crypta.social.message.v1",
+                "body": "synthetic-private-message-body",
+            }
+        },
+        "plugin-migration-redaction-java-file-uri.json": {
+            "exportPath": "file:/home/example/plugin-export.json"
+        },
+    }
+    for fixture_name, fixture_payload in plugin_fixture_payloads.items():
+        write_json(plugin_fixture_dir / fixture_name, fixture_payload)
     runbook_text = (
         "# Production Security Response Runbook\n\n"
         "Vulnerable app version\n"
@@ -23489,13 +24364,16 @@ def make_self_test_workspace(workspace: Path) -> None:
         "those names must keep deterministic unsupported responses and must not execute plugin code. "
         "Legacy docs under docs/legacy are historical only and not current implementation commitments. "
         "Migration uses out-of-process apps, Platform API, signed catalogs, AppVault, content subscriptions, "
-        "durable app data, Trust Graph Local RC, and app-service grants. This is not full WoT, not old "
+        "durable app data, Trust Graph Local RC, and app-service grants. "
+        "See legacy-plugin-migration-cookbook.md for the public-beta executable path. "
+        "This is not full WoT, not old "
         "WebOfTrust plugin compatibility, not Freetalk/Sone/Freemail compatibility, not encrypted mail "
         "transport, and not a daemon-core social or mail protocol.\n",
         encoding="utf-8",
     )
     (docs / "legacy-plugin-migration-guide.md").write_text(
-        "See legacy-plugin-freeze-policy.md and plugin-system.md for the production RC freeze policy. "
+        "See legacy-plugin-freeze-policy.md, legacy-plugin-migration-cookbook.md and "
+        "plugin-system.md for the production RC freeze policy. "
         "The old plugin runtime removed status is intentional. There is no old plugin ABI "
         "compatibility and no old FCP plugin command compatibility. No new in-core plugin APIs "
         "will be added. WebOfTrust-like and WoT-like "
@@ -23520,7 +24398,8 @@ def make_self_test_workspace(workspace: Path) -> None:
         "There are no new in-core plugin APIs, no old plugin ABI compatibility, and no old FCP "
         "plugin command compatibility. Legacy FCP plugin command names must keep failing "
         "deterministically through UnsupportedPluginMessage. Legacy plugin migrations should use "
-        "legacy-plugin-freeze-policy.md, legacy-plugin-migration-guide.md, out-of-process apps, "
+        "legacy-plugin-freeze-policy.md, legacy-plugin-migration-guide.md, "
+        "legacy-plugin-migration-cookbook.md, out-of-process apps, "
         "Platform API, signed catalogs, AppVault, content subscriptions, durable app data, "
         "Trust Graph Local RC, and app-service grants. Legacy docs under docs/legacy are "
         "historical only and not an implementation "
@@ -23529,6 +24408,76 @@ def make_self_test_workspace(workspace: Path) -> None:
         "social or mail protocol.\n",
         encoding="utf-8",
     )
+    (docs / "templates").mkdir(parents=True, exist_ok=True)
+    (docs / "templates/plugin-migration-plan.md").write_text(
+        "legacyPluginId\nnewAppId\nstateClasses\nmanifestCapabilities\n"
+        "appDataNamespaces\ncontentSubscriptions\nidentityGrants\n"
+        "appServiceDependencies\nmigrationSteps\nbackupRestorePolicy\n"
+        "reviewEvidence\nredactionPolicy\nknownNonGoals\n",
+        encoding="utf-8",
+    )
+    plugin_examples_dir = docs / "examples/plugin-migration"
+    plugin_examples_dir.mkdir(parents=True, exist_ok=True)
+    (docs / "legacy-plugin-migration-cookbook.md").write_text(
+        "# Legacy plugin migration cookbook\n\n"
+        "Old plugin runtime remains removed and frozen. No compatibility shim, old plugin ABI/FCP "
+        "command compatibility, WebOfTrust/Freetalk/Sone/Freemail protocol compatibility, daemon-core "
+        "compatibility shims, raw FProxy scraping, ambient localhost RPC, direct daemon internals, "
+        "private-key export, or unbounded crawling is promised. UnsupportedPluginMessage is the "
+        "deterministic unsupported boundary.\n\n"
+        "## Decision tree\nLegacy plugin function -> needs local UI? -> app-owned UI. "
+        "exposes a capability? -> app-service provider. consumes another service? -> app-service "
+        "consumer. publishes documents? -> content format profile. keeps mutable local state? -> "
+        "app-data namespace and migration. signs identity or social documents? -> AppVault identity "
+        "grant. follows sources? -> content subscription. distributes to users? -> review and "
+        "catalog flow. unsupported daemon hook? -> unsupported; no public-beta compatibility path "
+        "is promised.\n\n"
+        "## Migration matrix\nOld plugin UI maps to app-owned UI. Plugin config and state maps to "
+        "durable app data. Plugin identity and secrets maps to AppVault. Plugin trust score lookup "
+        "maps to Trust Graph Local RC trust.score. Plugin social feed maps to Social Inbox RC. "
+        "Old FCP plugin command maps to UnsupportedPluginMessage only.\n\n"
+        "## Unsupported forever\nin-process daemon hooks; old plugin ABI/FCP command compatibility; "
+        "ambient localhost RPC; raw FProxy scraping; direct daemon internals; private-key export; "
+        "unbounded crawling. Retained FProxy browse remains retained and does not create a new "
+        "plugin API.\n\n"
+        "## WebOfTrust-like trust annotations\nWebOfTrust-like migration maps to Trust Graph Local RC "
+        "and trust.score. The replacement is local-only; no global moderation, routing policy, "
+        "peer-selection policy, full WoT, old WebOfTrust API, crawler, or daemon-core trust store. "
+        "Operator consent plus service dependency and grant bundle approval are required. Importing "
+        "statements is a Trust Graph app capability. Diagnostics must not include raw trust "
+        "statements or signatures.\n\n"
+        "## Freetalk/Sone-like social, forum, and profile flows\nFreetalk/Sone-like migration maps "
+        "to Social Inbox RC, crypta.social.message.v1, crypta.social.outbox.v1, AppVault, content "
+        "subscriptions, durable app data, and optional Trust Graph trust.score grants. It is not "
+        "Freetalk/Sone protocol compatibility, no daemon-core message store, and no global "
+        "moderation.\n\n"
+        "## Freemail-like future Mail app pattern\nFreemail-like future Mail app pattern has no "
+        "implementation in PR-279. Social Inbox is a bounded UX reference only, not encrypted mail "
+        "transport and no Freemail protocol compatibility.\n\n"
+        "## Data, identity, and subscription preservation\nInventory old plugin state, define "
+        "app-data namespaces and schema versions, support dry-run mode, provide backup/export "
+        "before destructive migration, avoid private identity export, avoid private insert URI "
+        "persistence, bind operator consent to migration and grant deltas, and document what "
+        "cannot be migrated automatically.\n\n"
+        "## App-service dependency examples\nApp-service dependency examples cover provider "
+        "unavailable, grant revoked or expired, provider descriptor changed, and no app-service "
+        "request bodies or tokens in support bundles. Social Inbox consumes trust.score through "
+        "operator-approved grants.\n\n"
+        "## Beta submission flow\ncrypta-app init, crypta-app test, crypta-app ui lint, "
+        "crypta-app compat verify, crypta-app pack, crypta-app submission create, "
+        "crypta-app submission verify, and crypta-app submission pre-review.\n\n"
+        "old plugin ABI/FCP/runtime/toadlet/admin surfaces are not used.\n",
+        encoding="utf-8",
+    )
+    for example_name, example_text in {
+        "wot-like-trust-graph-app.md": "Trust Graph Local RC trust.score app-service grant example.\n",
+        "social-inbox-migration.md": "Social Inbox RC crypta.social.message.v1 migration example.\n",
+        "future-mail-app-pattern.md": "Future Mail pattern not implemented in PR-279.\n",
+        "content-publisher-migration.md": "content.insert.app-document example excluding private insert URIs.\n",
+        "app-service-grant-migration.md": "trust.score provider unavailable grant revoked descriptor changed.\n",
+        "plugin-author-submission-flow.md": "crypta-app submission pre-review catalog candidate flow.\n",
+    }.items():
+        (plugin_examples_dir / example_name).write_text(example_text, encoding="utf-8")
     adapter_fcp_dir = workspace / "adapter-fcp/src/main/java/network/crypta/clients/fcp"
     adapter_fcp_dir.mkdir(parents=True, exist_ok=True)
     (adapter_fcp_dir / "UnsupportedPluginMessage.java").write_text(
@@ -23576,6 +24525,8 @@ def make_self_test_workspace(workspace: Path) -> None:
         "policy: legacy admin is maintenance-only after Wave 5, daily operator workflows are Web Shell "
         "or app-first, and no new legacy admin surfaces should be added. legacy-admin.browse-retained "
         "documents that FProxy browse and content rendering remain retained and content filter remains retained. "
+        "Retained browse does not create a new plugin API; former plugin authors use "
+        "legacy-plugin-migration-cookbook.md. "
         "legacy-admin.emergency-fallback-retained documents startup and recovery fallback, diagnostic support "
         "and emergency fallback, and redaction for support bundles. Query strings, request bodies, "
         "tokens, private insert URIs, raw diagnostic output, raw fetched content, app data, and local "

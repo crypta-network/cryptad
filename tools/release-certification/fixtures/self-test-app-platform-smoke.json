@@ -3294,6 +3294,40 @@
     },
     {
       "details": {
+        "checks": {
+          "appServiceDependencyExamplesPresent": true,
+          "cookbookExists": true,
+          "dataIdentitySubscriptionMigrationSafe": true,
+          "decisionTreePresent": true,
+          "examplesExist": true,
+          "fproxyBrowseRetainedBoundaryPresent": true,
+          "freemailFutureMailPatternOnly": true,
+          "freetalkSoneMapsToSocialInboxRc": true,
+          "freetalkSoneNoProtocolCompatibility": true,
+          "goNoGoDocsListFinalization": true,
+          "legacyAdminMaintenanceOnlyBoundaryPresent": true,
+          "migrationMatrixPresent": true,
+          "migrationPlanSchemaTemplate": true,
+          "oldPluginCompatibilityAbsent": true,
+          "pluginAuthorBetaSubmissionFlowPresent": true,
+          "redactionChecksPass": true,
+          "releaseDocsListFinalization": true,
+          "sourceSurfaceAuditPasses": true,
+          "unsupportedForeverPresent": true,
+          "webOfTrustGrantBoundary": true,
+          "webOfTrustImportCapabilityBoundary": true,
+          "webOfTrustLocalOnlyLimitations": true,
+          "webOfTrustMapsToTrustGraphLocalRc": true
+        }
+      },
+      "id": "legacy-plugin.migration-finalization",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Legacy plugin migration finalization evidence passed."
+    },
+    {
+      "details": {
         "appId": "trust-graph",
         "checks": {
           "docsDescribePreviewLimits": true,

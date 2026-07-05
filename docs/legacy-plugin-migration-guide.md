@@ -10,6 +10,12 @@ The old plugin runtime removed status is intentional and frozen for production R
 the old in-process plugin runtime, `network.crypta.pluginmanager`, plugin toadlets, or old plugin
 FCP commands.
 
+For executable public-beta recipes, use
+[legacy-plugin-migration-cookbook.md](legacy-plugin-migration-cookbook.md). The cookbook contains
+the decision tree, migration matrix, per-pattern capability/storage/review guidance, safe examples,
+and [plugin migration plan template](templates/plugin-migration-plan.md) used by former plugin
+authors.
+
 Production RC migration work does not restore old plugin ABI compatibility, old FCP plugin command
 compatibility, or compatibility shims for WebOfTrust, Freetalk, Sone, or Freemail plugin APIs.
 Migration work should use out-of-process apps, signed bundles, signed catalogs, Platform API
@@ -38,6 +44,10 @@ Legacy plugin responsibilities map to existing app-platform mechanisms:
 The app platform keeps authority explicit. Apps declare capabilities and rationales in their
 manifest, use SDK helpers for Platform API calls, and rely on operator-approved grants when one app
 needs a local service from another app.
+
+The cookbook expands this table into the public-beta author path and includes recipes for
+WebOfTrust-like trust annotations, Freetalk/Sone-like social apps, Freemail-like future Mail app
+patterns, content publishers, queue helpers, identity/profile apps, and diagnostics/support apps.
 
 ## Category-specific migration patterns
 

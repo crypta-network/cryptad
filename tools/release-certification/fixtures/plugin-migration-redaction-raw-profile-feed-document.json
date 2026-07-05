@@ -1,0 +1,6 @@
+{
+  "legacyPluginId": "legacy.example",
+  "newAppId": "app-id.example",
+  "rawProfileDocument": "synthetic-private-profile-document",
+  "rawFeedSnapshot": "synthetic-private-feed-snapshot"
+}

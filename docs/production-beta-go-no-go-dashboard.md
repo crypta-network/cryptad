@@ -111,6 +111,14 @@ non-waivable, and waiver attempts for critical drill redaction are recorded as i
 These content profiles are Crypta app ecosystem profiles. They are not compatibility promises for
 legacy WoT, Freetalk, Sone, Freemail, or any old plugin ABI/protocol.
 
+The dashboard also has a dedicated `legacy-plugin-migration-finalization` domain for
+`legacy-plugin.migration-finalization`. Missing or failing evidence is a no-go condition when the
+failure means the cookbook, matrix, examples, app-service dependency examples,
+data/identity/subscription preservation guidance, beta submission path, source-surface audit,
+legacy-admin maintenance-only boundary, retained FProxy browse boundary, or migration artifact
+redaction checks are incomplete. Source-surface reintroduction, old plugin compatibility shims, old
+FCP plugin command compatibility, or migration artifact redaction leaks are non-waivable blockers.
+
 ## Decision states
 
 `go` means all required production beta gates pass, the production summary is promotion-ready,
@@ -207,6 +215,7 @@ These findings always produce `no-go`:
 - missing or failing live-network beta evidence, sandbox provider evidence, production signing,
   previous-candidate summary validation, previous-candidate multi-node upgrade evidence,
   multi-node redaction, security drill redaction, or ecosystem RC gates in production beta;
+- missing or failing legacy plugin migration finalization evidence in production beta;
 - malformed or expired waiver records.
 
 The scanner allows deterministic placeholders such as `<redacted-private-insert-uri>`,

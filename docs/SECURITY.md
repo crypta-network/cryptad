@@ -103,6 +103,16 @@ Default operator support bundles follow
 until the operator explicitly exports them, and they exclude raw content, raw app data, private
 insert URIs, tokens, identity material, local paths, and legacy plaintext diagnostics bodies.
 
+Former plugin authors use the public-beta path in
+[legacy-plugin-migration-cookbook.md](legacy-plugin-migration-cookbook.md). Migration plans,
+examples, review notes, diagnostics, and support bundles must stay summary-only: counts, statuses,
+schema versions, digests, app ids, provider ids, service ids, and redaction booleans are acceptable;
+raw legacy plugin state, raw social messages, raw trust statements, raw profile/feed documents, raw
+app-data values, raw FProxy HTML, private insert URIs, private keys, app or browser tokens, form
+passwords, cookies, and local paths are not. The cookbook does not restore old plugin ABI/FCP
+compatibility, in-process plugin runtime behavior, plugin toadlets, plugin admin pages, or
+WebOfTrust/Freetalk/Sone/Freemail compatibility shims.
+
 The app-review transparency log is local and tamper-evident. It is not a global public log and does
 not create trust by itself. Platform API, Web Shell, CLI, and release-certification review surfaces
 may expose reviewer key ids, display names, lifecycle status, policy ids/versions, timestamps,

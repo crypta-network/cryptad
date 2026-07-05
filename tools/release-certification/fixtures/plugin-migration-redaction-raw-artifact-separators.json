@@ -1,0 +1,8 @@
+{
+  "legacyPluginId": "legacy.example",
+  "newAppId": "app-id.example",
+  "raw_social_message": "synthetic-private-message-body",
+  "raw-trust-statement": "synthetic-private-trust-statement",
+  "old_plugin_export": "synthetic-plugin-export-with-secrets",
+  "raw profile document": "synthetic-private-profile-document"
+}

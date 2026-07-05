@@ -282,13 +282,29 @@ known-limitations page for current beta boundaries:
 ## Plugin author migration
 
 Legacy plugin authors should start with
-[legacy-plugin-migration-guide.md](legacy-plugin-migration-guide.md) and
+[legacy-plugin-migration-cookbook.md](legacy-plugin-migration-cookbook.md), then check the policy
+overview in [legacy-plugin-migration-guide.md](legacy-plugin-migration-guide.md) and
 [legacy-plugin-freeze-policy.md](legacy-plugin-freeze-policy.md). Map old plugin patterns to app
-manifests, app-owned static UI, durable app data, app services, and stable Platform API
-capabilities where possible. Patterns that require daemon-private hooks, old plugin ABI
-compatibility, raw localhost RPC, or old WebOfTrust/Freetalk/Sone/Freemail internals remain
-unsupported. Retained FProxy browse behavior is an emergency and compatibility boundary; it is not
-a path for new plugin APIs.
+manifests, app-owned static UI, durable app data, content subscriptions, AppVault, app services,
+and stable Platform API capabilities where possible.
+
+The cookbook path is:
+
+1. Write a migration plan from [templates/plugin-migration-plan.md](templates/plugin-migration-plan.md).
+2. Run `crypta-app init` or adapt an existing app template.
+3. Declare manifest capabilities, app-data namespaces, content profiles, identity grants, and
+   app-service dependencies.
+4. Write permission rationale, app-data schema notes, migration notes, backup/restore notes,
+   security notes, and redaction policy.
+5. Run `crypta-app test`, `crypta-app ui lint`, and `crypta-app compat verify`.
+6. Create the submission package, run pre-review, complete reviewer decision, stage a catalog
+   candidate when eligible, and install from the beta catalog only after signed bundle, signed
+   catalog, review receipt, compatibility, and consent gates pass.
+
+Patterns that require daemon-private hooks, old plugin ABI compatibility, old FCP plugin command
+compatibility, raw localhost RPC, raw FProxy scraping, private-key export, unbounded crawling, or
+old WebOfTrust/Freetalk/Sone/Freemail internals remain unsupported. Retained FProxy browse behavior
+is an emergency and compatibility boundary; it is not a path for new plugin APIs.
 
 ## Beta artifacts versus production artifacts
 

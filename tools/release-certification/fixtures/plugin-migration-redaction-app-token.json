@@ -1,0 +1,5 @@
+{
+  "legacyPluginId": "legacy.example",
+  "newAppId": "app-id.example",
+  "CRYPTAD_APP_TOKEN": "synthetic-token-1234567890"
+}

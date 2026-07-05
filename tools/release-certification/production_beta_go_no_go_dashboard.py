@@ -146,6 +146,7 @@ LEGACY_ADMIN_EVIDENCE_IDS = (
     "legacy-admin.browse-retained",
     "legacy-admin.emergency-fallback-retained",
 )
+LEGACY_PLUGIN_MIGRATION_EVIDENCE_IDS = ("legacy-plugin.migration-finalization",)
 CATALOG_AND_SIGNING_EVIDENCE_IDS = (
     "app-platform.signed-bundles",
     "catalog.smoke",
@@ -186,6 +187,7 @@ CRITICAL_PRODUCTION_BETA_EVIDENCE_IDS = (
     "app-services.grant-bundles",
     "app-services.dependency-redaction",
     "production-security.response-runbook",
+    *LEGACY_PLUGIN_MIGRATION_EVIDENCE_IDS,
     *LEGACY_ADMIN_EVIDENCE_IDS,
 )
 
@@ -279,6 +281,12 @@ DOMAIN_SPECS = (
         "id": "legacy-admin-final-surface",
         "title": "Legacy admin Wave 5 final surface",
         "evidenceIds": LEGACY_ADMIN_EVIDENCE_IDS,
+        "artifactInputs": ("appPlatformSummary",),
+    },
+    {
+        "id": "legacy-plugin-migration-finalization",
+        "title": "Legacy plugin migration finalization",
+        "evidenceIds": LEGACY_PLUGIN_MIGRATION_EVIDENCE_IDS,
         "artifactInputs": ("appPlatformSummary",),
     },
     {
@@ -404,6 +412,8 @@ PRODUCTION_BETA_NON_WAIVABLE_EVIDENCE_IDS = {
     "release-certification.ecosystem-rc-gate",
     "ecosystem.release-candidate-passed",
     "ecosystem.certification-matrix",
+    "legacy-plugin.migration-finalization",
+    "evidence.legacy-plugin.migration-finalization",
 }
 PRODUCTION_ARTIFACT_GATE_IDS = {
     "artifact.signed-first-party-bundles",
@@ -3523,10 +3533,13 @@ def build_command(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
 def run_self_test(quiet: bool = False) -> None:
     content_format_evidence_id = "app-platform.trust-social-content-format-profiles"
     privacy_diagnostics_evidence_id = "app-platform.privacy-preserving-beta-diagnostics"
+    plugin_migration_evidence_id = "legacy-plugin.migration-finalization"
     if content_format_evidence_id not in CRITICAL_PRODUCTION_BETA_EVIDENCE_IDS:
         raise AssertionError("content-format profile evidence must be production-critical")
     if privacy_diagnostics_evidence_id not in CRITICAL_PRODUCTION_BETA_EVIDENCE_IDS:
         raise AssertionError("privacy-preserving diagnostics evidence must be production-critical")
+    if plugin_migration_evidence_id not in CRITICAL_PRODUCTION_BETA_EVIDENCE_IDS:
+        raise AssertionError("legacy plugin migration finalization evidence must be production-critical")
     if not evidence_id_is_non_waivable_in_mode(content_format_evidence_id, "production-beta"):
         raise AssertionError(
             "content-format profile evidence must be non-waivable in production-beta"
@@ -3549,6 +3562,18 @@ def run_self_test(quiet: bool = False) -> None:
     ):
         raise AssertionError(
             "privacy-preserving diagnostics promotion gate must be non-waivable"
+        )
+    if not evidence_id_is_non_waivable_in_mode(
+        plugin_migration_evidence_id,
+        "production-beta",
+    ):
+        raise AssertionError("legacy plugin migration finalization must be non-waivable")
+    if not evidence_id_is_non_waivable_in_mode(
+        f"evidence.{plugin_migration_evidence_id}",
+        "production-beta",
+    ):
+        raise AssertionError(
+            "legacy plugin migration finalization gate must be non-waivable"
         )
     for evidence_id in CRITICAL_PRODUCTION_BETA_EVIDENCE_IDS:
         if not evidence_id_is_non_waivable_in_mode(evidence_id, "production-beta"):

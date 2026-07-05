@@ -1,0 +1,12 @@
+{
+  "legacyPluginId": "legacy.example",
+  "newAppId": "app-id.example",
+  "publicReadUri": "crypta:USK@<example-public-read-key>/profile/1/profile.json",
+  "contentDigest": "sha256:example-digest",
+  "reviewer": "reviewer.example",
+  "migrationSummary": {
+    "stateClasses": ["local-config", "public-content", "subscriptions"],
+    "redactionPolicy": "summaries, counts, digests, and placeholders only",
+    "rawArtifactsExcluded": true
+  }
+}

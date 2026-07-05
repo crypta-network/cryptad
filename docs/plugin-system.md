@@ -12,7 +12,10 @@ production RC app-platform transition.
 
 The detailed freeze boundary is maintained in
 [legacy-plugin-freeze-policy.md](legacy-plugin-freeze-policy.md). Migration guidance is maintained
-in [legacy-plugin-migration-guide.md](legacy-plugin-migration-guide.md).
+in [legacy-plugin-migration-guide.md](legacy-plugin-migration-guide.md). Former plugin authors
+should use the public-beta cookbook in
+[legacy-plugin-migration-cookbook.md](legacy-plugin-migration-cookbook.md) for executable recipes,
+safe migration artifacts, and submission evidence.
 
 ## Removed and frozen surfaces
 
@@ -45,6 +48,10 @@ Plugin-like functionality should move to out-of-process app/platform mechanisms:
 These mechanisms keep authority explicit. Apps declare capabilities, catalogs and bundles verify
 distribution artifacts, and operators approve local app-service grants before one app can call
 another app's advertised service.
+
+Use [legacy-plugin-migration-cookbook.md](legacy-plugin-migration-cookbook.md) to choose between an
+app-owned UI, an app-service provider, an app-service consumer, a content profile, an app-data
+namespace, an AppVault grant, a content subscription, or an unsupported/no-compatibility outcome.
 
 ## Non-goals
 
