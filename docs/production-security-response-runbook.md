@@ -243,7 +243,7 @@ malformed advisory or denylist records.
 | Web Shell/operator UX expected behavior | Show redaction status, support guidance, and incident category without raw payloads. |
 | Recovery guidance | Use typed recovery plans; do not accept arbitrary commands or paths as incident instructions. |
 | Redaction requirements | Exclude private insert URIs, private keys, bearer tokens, browser/session tokens, app tokens, authorization headers, raw fetched content, raw app data, raw trust statements/signatures when not needed, command lines containing secrets, absolute local filesystem paths, and CI secret values. |
-| Release note fields | Support bundle guidance, redaction note, credits, and private reporter-data exclusion. |
+| Release note fields | Support bundle guidance, redaction note, credits, private reporter-data exclusion, and public-safe beta release notes linkage. |
 | Verification steps | Run support redaction tests, production beta redaction scan, docs redaction scan, and release-certification redaction evidence. |
 | Rollback or follow-up | Destroy raw intake artifacts that were not needed and keep only bounded summaries. |
 
@@ -264,7 +264,7 @@ malformed advisory or denylist records.
 8. If the emergency catalog is bad but a previous verified revision remains safe, use explicit
    rollback to that digest after re-verification. Rollback does not uninstall apps, change app
    data, or bypass signed advisories and denylists.
-9. Produce security release notes from [docs/templates/security-release-notes.md](templates/security-release-notes.md).
+9. Produce security release notes from [docs/templates/security-release-notes.md](templates/security-release-notes.md), and keep public beta support guidance aligned with [templates/beta-release-notes.md](templates/beta-release-notes.md) and [public-beta/support-and-feedback.md](public-beta/support-and-feedback.md).
 10. Run `python3 tools/release-certification/security_response_runbook.py verify`.
 11. Generate the operational drill evidence. Use `release-candidate` for release-candidate
    certification, or `production-beta` when the summary will be attached to a protected

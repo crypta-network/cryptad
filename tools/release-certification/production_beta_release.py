@@ -309,7 +309,7 @@ THIRD_PARTY_INTAKE_EVIDENCE_IDS = (
     "third-party-intake.caution-warning",
     "third-party-intake.redaction",
 )
-PUBLIC_BETA_DOCS_EVIDENCE_IDS = (
+PUBLIC_BETA_ONBOARDING_EVIDENCE_IDS = (
     "public-beta.docs-onboarding",
     "public-beta.user-guide",
     "public-beta.developer-quickstart",
@@ -317,6 +317,24 @@ PUBLIC_BETA_DOCS_EVIDENCE_IDS = (
     "public-beta.security-reporting",
     "public-beta.limitations",
     "public-beta.links-redaction",
+)
+PUBLIC_BETA_SUPPORT_FEEDBACK_EVIDENCE_IDS = (
+    "public-beta.support-feedback-loop",
+    "public-beta.support-feedback-docs",
+    "public-beta.issue-templates",
+    "public-beta.triage-taxonomy",
+    "public-beta.known-issues-tracker",
+    "public-beta.feedback-to-backlog",
+    "public-beta.release-notes-template",
+    "public-beta.support-bundle-guidance",
+    "public-beta.security-reporting-handoff",
+    "public-beta.app-specific-feedback",
+    "public-beta.catalog-incident-feedback",
+    "public-beta.redaction-fixtures",
+)
+PUBLIC_BETA_DOCS_EVIDENCE_IDS = (
+    *PUBLIC_BETA_ONBOARDING_EVIDENCE_IDS,
+    *PUBLIC_BETA_SUPPORT_FEEDBACK_EVIDENCE_IDS,
 )
 CRITICAL_PRODUCTION_BETA_EVIDENCE_IDS = (
     "app-platform.signed-bundles",
@@ -3870,7 +3888,7 @@ def public_beta_docs_summary(all_evidence: dict[str, Any]) -> dict[str, Any]:
         evidence_id: str(all_evidence.get(evidence_id, {}).get("status", "missing"))
         if isinstance(all_evidence.get(evidence_id), dict)
         else "missing"
-        for evidence_id in PUBLIC_BETA_DOCS_EVIDENCE_IDS
+        for evidence_id in PUBLIC_BETA_ONBOARDING_EVIDENCE_IDS
     }
 
     def status_for(*evidence_ids: str) -> str:
@@ -3883,17 +3901,17 @@ def public_beta_docs_summary(all_evidence: dict[str, Any]) -> dict[str, Any]:
 
     blockers = [
         str(item.get("summary", f"{evidence_id} is not passing."))
-        for evidence_id in PUBLIC_BETA_DOCS_EVIDENCE_IDS
+        for evidence_id in PUBLIC_BETA_ONBOARDING_EVIDENCE_IDS
         if isinstance((item := all_evidence.get(evidence_id)), dict)
         and not evidence_status_ok(item)
     ]
     missing = [
         evidence_id
-        for evidence_id in PUBLIC_BETA_DOCS_EVIDENCE_IDS
+        for evidence_id in PUBLIC_BETA_ONBOARDING_EVIDENCE_IDS
         if not isinstance(all_evidence.get(evidence_id), dict)
     ]
     warnings: list[str] = []
-    for evidence_id in PUBLIC_BETA_DOCS_EVIDENCE_IDS:
+    for evidence_id in PUBLIC_BETA_ONBOARDING_EVIDENCE_IDS:
         item = all_evidence.get(evidence_id)
         if not isinstance(item, dict):
             continue
@@ -3904,7 +3922,7 @@ def public_beta_docs_summary(all_evidence: dict[str, Any]) -> dict[str, Any]:
     if missing:
         blockers.extend(f"{evidence_id} evidence is missing." for evidence_id in missing)
     return {
-        "status": status_for(*PUBLIC_BETA_DOCS_EVIDENCE_IDS),
+        "status": status_for(*PUBLIC_BETA_ONBOARDING_EVIDENCE_IDS),
         "docsOnboarding": status_for("public-beta.docs-onboarding"),
         "userGuide": status_for("public-beta.user-guide"),
         "developerQuickstart": status_for("public-beta.developer-quickstart"),
@@ -3912,6 +3930,71 @@ def public_beta_docs_summary(all_evidence: dict[str, Any]) -> dict[str, Any]:
         "securityReporting": status_for("public-beta.security-reporting"),
         "limitations": status_for("public-beta.limitations"),
         "linksRedaction": status_for("public-beta.links-redaction"),
+        "blockers": blockers,
+        "warnings": warnings,
+    }
+
+
+def public_beta_support_feedback_summary(all_evidence: dict[str, Any]) -> dict[str, Any]:
+    def effective_status(evidence_id: str) -> str:
+        item = all_evidence.get(evidence_id)
+        if not isinstance(item, dict):
+            return "missing"
+        if evidence_has_unwaivable_redaction_findings(item):
+            return "fail"
+        return str(item.get("status", "missing"))
+
+    status_by_id = {
+        evidence_id: effective_status(evidence_id)
+        for evidence_id in PUBLIC_BETA_SUPPORT_FEEDBACK_EVIDENCE_IDS
+    }
+
+    def status_for(*evidence_ids: str) -> str:
+        values = [status_by_id[evidence_id] for evidence_id in evidence_ids]
+        if any(value in {"fail", "missing"} for value in values):
+            return "fail" if "fail" in values else "missing"
+        if any(value in {"warn", "skip"} for value in values):
+            return "warn"
+        return "pass"
+
+    blockers: list[str] = []
+    for evidence_id in PUBLIC_BETA_SUPPORT_FEEDBACK_EVIDENCE_IDS:
+        item = all_evidence.get(evidence_id)
+        if not isinstance(item, dict) or evidence_status_ok(item):
+            continue
+        if evidence_has_unwaivable_redaction_findings(item):
+            blockers.append(f"{evidence_id} evidence has redaction findings.")
+        else:
+            blockers.append(str(item.get("summary", f"{evidence_id} is not passing.")))
+    missing = [
+        evidence_id
+        for evidence_id in PUBLIC_BETA_SUPPORT_FEEDBACK_EVIDENCE_IDS
+        if not isinstance(all_evidence.get(evidence_id), dict)
+    ]
+    warnings: list[str] = []
+    for evidence_id in PUBLIC_BETA_SUPPORT_FEEDBACK_EVIDENCE_IDS:
+        item = all_evidence.get(evidence_id)
+        if not isinstance(item, dict):
+            continue
+        details = evidence_details(item)
+        errors = details.get("errors")
+        if isinstance(errors, list):
+            warnings.extend(str(error) for error in errors)
+    if missing:
+        blockers.extend(f"{evidence_id} evidence is missing." for evidence_id in missing)
+    return {
+        "status": status_for(*PUBLIC_BETA_SUPPORT_FEEDBACK_EVIDENCE_IDS),
+        "docs": status_for("public-beta.support-feedback-docs"),
+        "issueTemplates": status_for("public-beta.issue-templates"),
+        "triageTaxonomy": status_for("public-beta.triage-taxonomy"),
+        "knownIssuesTracker": status_for("public-beta.known-issues-tracker"),
+        "feedbackToBacklog": status_for("public-beta.feedback-to-backlog"),
+        "releaseNotesTemplate": status_for("public-beta.release-notes-template"),
+        "supportBundleGuidance": status_for("public-beta.support-bundle-guidance"),
+        "securityHandoff": status_for("public-beta.security-reporting-handoff"),
+        "appSpecificFeedback": status_for("public-beta.app-specific-feedback"),
+        "catalogIncidentFeedback": status_for("public-beta.catalog-incident-feedback"),
+        "redactionFixtures": status_for("public-beta.redaction-fixtures"),
         "blockers": blockers,
         "warnings": warnings,
     }
@@ -4226,6 +4309,7 @@ def evaluate_promotion(state: PipelineState, summaries: dict[str, Any]) -> dict[
         "securityResponse": production_security_response_summary(all_evidence),
         "developerBetaProgram": developer_beta_program_summary(all_evidence),
         "publicBetaDocs": public_beta_docs_summary(all_evidence),
+        "publicBetaSupportFeedback": public_beta_support_feedback_summary(all_evidence),
         "contentFormatRisk": content_format_risk_summary(app_evidence),
         "thirdPartyIntake": {
             "status": summary_status(third_party_intake_summary),
@@ -4803,6 +4887,35 @@ def render_markdown_summary(summary: dict[str, Any]) -> str:
         blockers = public_beta_docs.get("blockers", [])
         if isinstance(blockers, list):
             lines.append(f"- Blocker count: `{len(blockers)}`")
+    support_feedback = summary.get("publicBetaSupportFeedback", {})
+    if isinstance(support_feedback, dict) and support_feedback:
+        lines.extend(["", "## Public Beta Support Feedback", ""])
+        lines.append(f"- Status: `{support_feedback.get('status', 'missing')}`")
+        lines.append(f"- Docs: `{support_feedback.get('docs', 'missing')}`")
+        lines.append(
+            f"- Issue templates: `{support_feedback.get('issueTemplates', 'missing')}`"
+        )
+        lines.append(
+            f"- Known issues: `{support_feedback.get('knownIssuesTracker', 'missing')}`"
+        )
+        lines.append(
+            f"- Feedback to backlog: `{support_feedback.get('feedbackToBacklog', 'missing')}`"
+        )
+        lines.append(
+            f"- Release notes template: `{support_feedback.get('releaseNotesTemplate', 'missing')}`"
+        )
+        lines.append(
+            f"- Support bundle guidance: `{support_feedback.get('supportBundleGuidance', 'missing')}`"
+        )
+        lines.append(
+            f"- Security handoff: `{support_feedback.get('securityHandoff', 'missing')}`"
+        )
+        lines.append(
+            f"- Redaction fixtures: `{support_feedback.get('redactionFixtures', 'missing')}`"
+        )
+        blockers = support_feedback.get("blockers", [])
+        if isinstance(blockers, list):
+            lines.append(f"- Blocker count: `{len(blockers)}`")
     third_party_intake = summary.get("thirdPartyIntake", {})
     if isinstance(third_party_intake, dict) and third_party_intake:
         lines.extend(["", "## Third-Party Intake", ""])
@@ -5071,6 +5184,10 @@ def build_final_summary(
             {"status": "missing"},
         ),
         "publicBetaDocs": final_promotion.get("publicBetaDocs", {"status": "missing"}),
+        "publicBetaSupportFeedback": final_promotion.get(
+            "publicBetaSupportFeedback",
+            {"status": "missing"},
+        ),
         "thirdPartyIntake": final_promotion.get(
             "thirdPartyIntake",
             {"status": "missing", "required": settings.require_third_party_intake},
@@ -6896,6 +7013,48 @@ def assert_required_third_party_intake_requires_summary() -> None:
         promotion = evaluate_promotion(state, passing_promotion_summaries())
         assert promotion_gate_by_id(promotion, "third-party-intake.required-evidence")["status"] == "fail", promotion
         assert promotion_gate_by_id(promotion, "third-party-intake.redaction")["status"] == "fail", promotion
+
+
+def assert_public_beta_support_feedback_evidence_is_critical() -> None:
+    with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-support-feedback-") as temp_name:
+        workspace = Path(temp_name) / "repo"
+        workspace.mkdir(parents=True)
+        out_dir = workspace / "build/production-beta"
+        settings = dataclasses.replace(
+            cleanup_test_settings(workspace, out_dir),
+            mode="production-beta",
+        )
+        state = PipelineState(settings, "self-test", utc_now(), [], [], [])
+        state.signing_profile = production_signing_profile()
+        summaries = passing_promotion_summaries()
+        summaries["certification"]["evidence"] = [
+            item
+            for item in summaries["certification"]["evidence"]
+            if item.get("id") != "public-beta.support-feedback-loop"
+        ]
+        promotion = evaluate_promotion(state, summaries)
+        assert promotion_gate_by_id(promotion, "evidence.public-beta.support-feedback-loop")[
+            "status"
+        ] == "fail", promotion
+        assert promotion["publicBetaSupportFeedback"]["status"] == "missing", promotion
+        redaction_summaries = passing_promotion_summaries()
+        for item in redaction_summaries["certification"]["evidence"]:
+            if item.get("id") == "public-beta.redaction-fixtures":
+                item["status"] = "pass"
+                item["details"] = {"redactionFindings": [{"path": "support-feedback", "issue": "token"}]}
+        redaction_promotion = evaluate_promotion(state, redaction_summaries)
+        assert promotion_gate_by_id(redaction_promotion, "evidence.public-beta.redaction-fixtures")[
+            "status"
+        ] == "fail", redaction_promotion
+        assert redaction_promotion["publicBetaSupportFeedback"]["status"] == "fail", (
+            redaction_promotion
+        )
+        assert redaction_promotion["publicBetaSupportFeedback"]["redactionFixtures"] == "fail", (
+            redaction_promotion
+        )
+        assert "public-beta.redaction-fixtures evidence has redaction findings." in (
+            redaction_promotion["publicBetaSupportFeedback"]["blockers"]
+        ), redaction_promotion
 
 
 def assert_required_third_party_intake_uses_attached_summary_rows() -> None:
@@ -9854,6 +10013,7 @@ def run_self_test() -> None:
     assert_production_third_party_intake_rejects_non_release_summary()
     assert_production_third_party_intake_rejects_optional_non_release_summary()
     assert_release_candidate_third_party_intake_rejects_non_release_summary()
+    assert_public_beta_support_feedback_evidence_is_critical()
     assert_waived_critical_evidence_is_accepted_without_redaction_findings()
     assert_developer_dry_run_exit_code_fails_on_recorded_failures()
     assert_security_release_notes_draft_artifact_requires_file()

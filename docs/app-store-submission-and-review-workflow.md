@@ -495,6 +495,12 @@ install-from-beta-catalog smoke status, transparency export verification, reject
 blocking, caution warnings, and redaction. Fixture evidence remains non-production and must not be
 used as production promotion evidence.
 
+PR-281 support-feedback-loop evidence links review appeals, app submission feedback, compatibility
+reports, known issues, backlog candidates, and beta release notes. Use
+[public-beta/support-and-feedback.md](public-beta/support-and-feedback.md),
+[public-beta/feedback-to-backlog.md](public-beta/feedback-to-backlog.md), and
+[templates/beta-release-notes.md](templates/beta-release-notes.md) for the redaction-safe loop.
+
 ## Out Of Scope
 
 This workflow does not provide:

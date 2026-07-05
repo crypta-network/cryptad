@@ -1,0 +1,168 @@
+name: App-specific beta feedback
+description: Report redacted public-beta feedback for a first-party app.
+title: "[app-feedback] "
+labels:
+  - app-platform
+  - beta-feedback
+  - status/needs-repro
+  - privacy/redaction-required
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for first-party app behavior only. Start with docs/public-beta/support-and-feedback.md and check docs/public-beta/known-issues.md before filing.
+
+        Do not paste private insert URIs, private keys, reviewer private keys, app signing private keys, browser session tokens, app tokens, AppHost process tokens, authorization headers, cookies, form passwords, seed phrases, raw fetched content, raw feed bodies, raw profile documents, raw trust statements, raw social messages, raw app data values, raw support bundle files, raw request or response bodies, absolute local paths, or unredacted stack traces.
+  - type: input
+    id: release_id
+    attributes:
+      label: Release id
+      placeholder: "Example: cryptad-beta-1500"
+    validations:
+      required: true
+  - type: input
+    id: cryptad_version
+    attributes:
+      label: Cryptad version/build
+      placeholder: "Example: 1500 or commit SHA"
+    validations:
+      required: true
+  - type: input
+    id: platform_api_contract_version
+    attributes:
+      label: Platform API contract version
+      placeholder: "Example: 1.0"
+  - type: dropdown
+    id: app_id
+    attributes:
+      label: App id
+      options:
+        - queue-manager
+        - publisher
+        - site-publisher
+        - profile-publisher
+        - feed-reader
+        - trust-graph
+        - social-inbox
+    validations:
+      required: true
+  - type: input
+    id: app_version
+    attributes:
+      label: App version
+      placeholder: "Example: 1.0.0"
+    validations:
+      required: true
+  - type: input
+    id: catalog_channel
+    attributes:
+      label: Catalog channel
+      placeholder: "Example: stable-first-party"
+  - type: input
+    id: catalog_id
+    attributes:
+      label: Catalog id
+      placeholder: "Example: crypta-first-party"
+  - type: input
+    id: operation_being_attempted
+    attributes:
+      label: Operation being attempted
+      placeholder: "Example: refresh subscription metadata"
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction_steps
+    attributes:
+      label: Redacted reproduction steps
+      description: Include only public-safe steps, ids, status values, and redacted placeholders.
+    validations:
+      required: true
+  - type: textarea
+    id: expected_behavior
+    attributes:
+      label: Expected result
+    validations:
+      required: true
+  - type: textarea
+    id: actual_behavior
+    attributes:
+      label: Actual result
+    validations:
+      required: true
+  - type: input
+    id: support_bundle_digest
+    attributes:
+      label: Support bundle digest
+      placeholder: "Example: sha256:..."
+  - type: input
+    id: support_bundle_schema_version
+    attributes:
+      label: Support bundle schema version
+      placeholder: "Example: 1"
+  - type: input
+    id: diagnostic_summary_id
+    attributes:
+      label: Diagnostic summary id
+  - type: input
+    id: consent_audit_event_id
+    attributes:
+      label: Consent/audit event id, if relevant
+  - type: input
+    id: operator_recovery_action_id
+    attributes:
+      label: Operator recovery action id, if relevant
+  - type: input
+    id: known_issue_id
+    attributes:
+      label: Known issue id, if relevant
+      placeholder: "Example: PBKI-EXAMPLE-001"
+  - type: input
+    id: app_data_backup_status
+    attributes:
+      label: App-data backup status, if relevant
+      placeholder: "Example: backup current, not attached"
+  - type: input
+    id: migration_status
+    attributes:
+      label: Migration status, if relevant
+  - type: input
+    id: subscription_id
+    attributes:
+      label: Subscription id, redacted if relevant
+      placeholder: "Example: redacted-subscription-id"
+  - type: input
+    id: trust_social_document_profile_id
+    attributes:
+      label: Trust/social document profile id, redacted if relevant
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      options:
+        - severity/blocker
+        - severity/high
+        - severity/medium
+        - severity/low
+    validations:
+      required: true
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impact
+      description: Describe user-visible impact without private content.
+    validations:
+      required: true
+  - type: textarea
+    id: redacted_evidence
+    attributes:
+      label: Redacted evidence
+      description: Include safe status codes, evidence ids, counters, digest values, or section names only.
+  - type: checkboxes
+    id: redaction-confirmation
+    attributes:
+      label: Redaction confirmation
+      options:
+        - label: I confirm this report contains no secrets, private URIs, tokens, authorization headers, cookies, form passwords, raw content, raw app data, raw support bundles, raw request or response bodies, or unredacted local absolute paths.
+          required: true
+        - label: I confirm any screenshot is public-safe and contains no raw private content, raw app data, tokens, keys, private URIs, or local paths.
+          required: true

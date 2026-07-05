@@ -1,0 +1,67 @@
+{
+  "schemaVersion": 1,
+  "supportIssueMetadata": {
+    "release_id": "cryptad-beta-1500",
+    "cryptad_version": "1500",
+    "platform_api_contract_version": "1.0",
+    "support_bundle_digest": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "support_bundle_schema_version": "1",
+    "diagnostic_summary_id": "diag-summary-2026-07-05T00-00-00Z",
+    "known_issue_id": "PBKI-EXAMPLE-001",
+    "severity": "severity/medium",
+    "impact": "Catalog refresh warning has a workaround.",
+    "redacted_evidence": "catalog health status warning, redacted error code CATALOG_HEALTH_WARN"
+  },
+  "catalogIncidentMetadata": {
+    "catalog_id": "crypta-first-party",
+    "catalog_channel": "stable-first-party",
+    "catalog_source_class": "signed-public-catalog",
+    "mirror_id": "mirror-public-1",
+    "catalog_revision": "42",
+    "signature_verification_status": "pass",
+    "health_status": "warn",
+    "rollback_attempted": "no",
+    "support_bundle_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "redacted_error_code": "CATALOG_HEALTH_WARN"
+  },
+  "appSpecificFeedbackMetadata": {
+    "app_id": "feed-reader",
+    "app_version": "1.0.0",
+    "catalog_channel": "stable-first-party",
+    "operation_being_attempted": "refresh subscription metadata",
+    "expected_result": "subscription state advances",
+    "actual_result": "subscription remains pending with redacted warning code",
+    "subscription_id": "redacted-subscription-id",
+    "support_bundle_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+  },
+  "knownIssueEntry": {
+    "knownIssueId": "PBKI-EXAMPLE-001",
+    "status": "open-example",
+    "severity": "severity/medium",
+    "area": "area/catalog",
+    "affectedChannels": ["stable-first-party"],
+    "affectedAppIds": [],
+    "affectedVersions": ["cryptad-beta-example"],
+    "firstSeenReleaseId": "cryptad-beta-example",
+    "fixedInReleaseId": "unfixed",
+    "workaroundSummary": "Use an alternate public mirror and share only digest and status metadata.",
+    "supportBundleEvidenceAllowed": "digest-and-summary-only",
+    "redactionNotes": "No raw bundle, app data, private URI, or local path is stored.",
+    "backlogLinkOrPlaceholder": "BACKLOG-PUBLIC-BETA-CATALOG-MIRROR-EXAMPLE"
+  },
+  "betaReleaseNotesSnippet": {
+    "release_id": "cryptad-beta-1500",
+    "known_issues": ["PBKI-EXAMPLE-001"],
+    "fixed_issues": [],
+    "support_guidance": "Start with support bundle digest, schema version, diagnostic summary ID, and known issue ID."
+  },
+  "feedbackToBacklogRecord": {
+    "intake_issue": "public-beta-safe-example",
+    "redaction_check": "pass",
+    "reproduction_check": "needs-repro",
+    "triage_category": "area/catalog",
+    "known_issue_id": "PBKI-EXAMPLE-001",
+    "backlogLinkOrPlaceholder": "BACKLOG-PUBLIC-BETA-CATALOG-MIRROR-EXAMPLE",
+    "next_beta_verification": "release certification public-beta.support-feedback-loop evidence remains pass"
+  }
+}

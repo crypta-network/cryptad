@@ -244,11 +244,14 @@ Use the structured GitHub templates:
 - `.github/ISSUE_TEMPLATE/app-review-appeal.yml` for review appeals and resubmissions;
 - `.github/ISSUE_TEMPLATE/platform-api-compatibility.yml` for compatibility-window issues;
 - `.github/ISSUE_TEMPLATE/plugin-migration-feedback.yml` for legacy plugin migration feedback.
+- `.github/ISSUE_TEMPLATE/security-advisory-intake.yml` only for a public-safe security handoff.
 
 Reports should include app id, version, capability names, stable/experimental target, pre-review
 status, safe digests, and redacted summaries. Do not paste private keys, private insert URIs,
 browser session tokens, authorization headers, raw app data, raw fetched content, raw signatures,
-or local absolute paths.
+raw support bundles, or local absolute paths. The full public beta support loop is in
+[public-beta/support-and-feedback.md](public-beta/support-and-feedback.md), and maintainer backlog
+routing is in [public-beta/feedback-to-backlog.md](public-beta/feedback-to-backlog.md).
 
 ## Compatibility support window
 

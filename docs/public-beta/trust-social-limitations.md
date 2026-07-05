@@ -34,6 +34,11 @@ Source docs:
 - [../trust-social-content-format-profiles.md](../trust-social-content-format-profiles.md)
 - [../legacy-plugin-migration-cookbook.md](../legacy-plugin-migration-cookbook.md)
 
+Report Trust Graph import warnings with [support-and-feedback.md](support-and-feedback.md) and
+`app-specific-feedback.yml`. Include app id, app version, catalog channel, redacted trust/social
+document profile id when relevant, warning code, support bundle digest, expected result, and actual
+result. Do not include raw trust statements.
+
 ## Social Inbox RC
 
 Social Inbox RC is a local threaded social/message reference app.
@@ -60,6 +65,11 @@ Source docs:
 - [../social-inbox-reference-app.md](../social-inbox-reference-app.md)
 - [../trust-social-content-format-profiles.md](../trust-social-content-format-profiles.md)
 - [../legacy-plugin-migration-guide.md](../legacy-plugin-migration-guide.md)
+
+Report Social Inbox rendering or subscription issues with
+[support-and-feedback.md](support-and-feedback.md) and `app-specific-feedback.yml`. Include app id,
+app version, catalog channel, redacted subscription id when relevant, support bundle digest,
+expected result, and actual result. Do not include raw social messages.
 
 ## Legacy social and mail boundaries
 

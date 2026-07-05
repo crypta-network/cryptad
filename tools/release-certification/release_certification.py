@@ -63,6 +63,18 @@ PUBLIC_BETA_DOCS_EVIDENCE_IDS = tuple(
     for evidence_id in app_platform_docs_check.EVIDENCE_IDS
     if evidence_id.startswith("public-beta.")
 )
+PUBLIC_BETA_ONBOARDING_EVIDENCE_IDS = (
+    "public-beta.docs-onboarding",
+    "public-beta.user-guide",
+    "public-beta.developer-quickstart",
+    "public-beta.troubleshooting",
+    "public-beta.security-reporting",
+    "public-beta.limitations",
+    "public-beta.links-redaction",
+)
+PUBLIC_BETA_SUPPORT_FEEDBACK_EVIDENCE_IDS = (
+    app_platform_docs_check.PUBLIC_BETA_SUPPORT_FEEDBACK_EVIDENCE_IDS
+)
 OPERATOR_BETA_EVIDENCE_IDS = (
     "operator-beta.dashboard",
     "operator-beta.catalog-health",
@@ -345,6 +357,7 @@ ECOSYSTEM_RC_REDACTION_EVIDENCE_IDS = (
     "operator-beta.support-bundle-redaction",
     "operator-rc.redaction",
     "public-beta-security.audit-redaction-fuzz",
+    "public-beta.redaction-fixtures",
     "production-security.response-runbook",
     "third-party-developer.redaction",
 )
@@ -3121,7 +3134,7 @@ def ecosystem_matrix_row_specs() -> list[MatrixRowSpec]:
             id="public-beta-docs-onboarding",
             category="app-platform",
             title="Public beta docs and onboarding readiness",
-            required_evidence_ids=PUBLIC_BETA_DOCS_EVIDENCE_IDS,
+            required_evidence_ids=PUBLIC_BETA_ONBOARDING_EVIDENCE_IDS,
             docs=(
                 "docs/public-beta/README.md",
                 "docs/public-beta/user-guide.md",
@@ -3134,6 +3147,24 @@ def ecosystem_matrix_row_specs() -> list[MatrixRowSpec]:
                 "docs/public-beta/troubleshooting.md",
                 "docs/public-beta/security-reporting.md",
                 "docs/public-beta/legacy-plugin-authors.md",
+                "docs/release-certification.md",
+                "tools/release-certification/README.md",
+            ),
+            phase="phase-10",
+        ),
+        MatrixRowSpec(
+            id="public-beta-support-feedback-loop",
+            category="app-platform",
+            title="Public beta support and feedback loop",
+            required_evidence_ids=PUBLIC_BETA_SUPPORT_FEEDBACK_EVIDENCE_IDS,
+            docs=(
+                "docs/public-beta/support-and-feedback.md",
+                "docs/public-beta/triage-taxonomy.md",
+                "docs/public-beta/known-issues.md",
+                "docs/public-beta/feedback-to-backlog.md",
+                "docs/templates/beta-release-notes.md",
+                "docs/privacy-preserving-beta-diagnostics.md",
+                "docs/public-beta/security-reporting.md",
                 "docs/release-certification.md",
                 "tools/release-certification/README.md",
             ),
@@ -8922,6 +8953,9 @@ def run_self_test(repo_root: Path) -> None:
             *app_platform_docs_check.REQUIRED_DOCS,
             *app_platform_docs_check.REQUIRED_PORTAL_LINKS,
             *app_platform_docs_check.ISSUE_TEMPLATES,
+            app_platform_docs_check.PUBLIC_BETA_KNOWN_ISSUES_METADATA,
+            app_platform_docs_check.PUBLIC_BETA_SAFE_FEEDBACK_FIXTURE,
+            *app_platform_docs_check.PUBLIC_BETA_NEGATIVE_FEEDBACK_FIXTURES,
             "README.md",
             "samples/third-party/hello-stable-app/README.md",
             "tools/interop/README.md",

@@ -93,7 +93,9 @@ reviewer-key bytes, raw receipts, or local secret paths into public docs or issu
 | `resubmission_requested` | Developer must submit a linked corrected package. |
 
 Rejected apps do not enter the stable catalog. Caution apps show warnings. A beta catalog candidate
-is not automatic stable promotion.
+is not automatic stable promotion. Use `app-review-appeal.yml` for public-safe appeal or
+resubmission feedback and [support-and-feedback.md](support-and-feedback.md) for the wider beta
+feedback loop.
 
 ## Review receipt and transparency log
 
@@ -137,7 +139,10 @@ Release managers should verify:
 - `third-party-developer.*` evidence for developer docs, sample app flow, compatibility, feedback,
   plugin migration, and redaction;
 - `public-beta.docs-onboarding` and related public-beta docs evidence;
+- `public-beta.support-feedback-loop` and child evidence for templates, known issues, beta release
+  notes, security handoff, and redaction fixtures;
 - go/no-go dashboard status before promotion.
 
 See [../release-certification.md](../release-certification.md) and
-[../production-beta-go-no-go-dashboard.md](../production-beta-go-no-go-dashboard.md).
+[../production-beta-go-no-go-dashboard.md](../production-beta-go-no-go-dashboard.md). Public release
+notes should use [../templates/beta-release-notes.md](../templates/beta-release-notes.md).

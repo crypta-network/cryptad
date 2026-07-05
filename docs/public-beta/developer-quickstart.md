@@ -159,9 +159,18 @@ install approvals.
 Beta catalog candidate staging happens after reviewer decision and receipt checks. It is not
 automatic stable promotion.
 
+Use [support-and-feedback.md](support-and-feedback.md) for developer beta feedback, Platform API
+compatibility reports, app review appeals, support bundle digest fields, known issue ids, and safe
+release feedback routing.
+
 ## Redaction rules
 
 Do not include private insert URIs, private keys, reviewer private keys, app tokens, browser
 session tokens, form passwords, cookies, authorization headers, raw app data, raw user documents,
 raw support bundles, raw FProxy HTML, or local absolute paths in submissions, review notes, logs,
 issue templates, or release evidence.
+
+The public beta feedback loop is in [support-and-feedback.md](support-and-feedback.md). Developer
+feedback should include release id, Cryptad build, Platform API contract version, app id/version,
+support bundle digest when relevant, diagnostic summary id when relevant, expected behavior, actual
+behavior, and redacted evidence only.

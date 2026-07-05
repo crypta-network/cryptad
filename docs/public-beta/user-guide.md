@@ -37,7 +37,7 @@ Check these areas first:
 | Node status | The node is reachable and not still starting. | [../operator-beta-dashboard.md](../operator-beta-dashboard.md) |
 | Catalog health | Stable catalog source is verified, and mirrors are healthy or clearly marked fallback-only. | [catalogs-and-apps.md](catalogs-and-apps.md) |
 | Installed apps | Installed apps show version, channel, review, security, and update state. | [../app-update-lifecycle.md](../app-update-lifecycle.md) |
-| Support bundle | Preview metadata is redacted before export. | [../privacy-preserving-beta-diagnostics.md](../privacy-preserving-beta-diagnostics.md) |
+| Support bundle | Preview metadata is redacted before export. | [support-and-feedback.md](support-and-feedback.md) and [../privacy-preserving-beta-diagnostics.md](../privacy-preserving-beta-diagnostics.md) |
 
 ## Add or verify the stable catalog
 
@@ -149,7 +149,13 @@ Never paste raw support bundle internals publicly if they include private conten
 private insert URIs, tokens, form passwords, raw content, raw app data, raw social messages, raw
 trust statements, raw profile/feed documents, raw FProxy HTML, or local absolute paths.
 
-See [../privacy-preserving-beta-diagnostics.md](../privacy-preserving-beta-diagnostics.md) and
+Public reports should start with support bundle digest, support bundle schema version, diagnostic
+summary id, known issue id when relevant, and short redacted section summaries. Share raw bundle
+files only if maintainers explicitly request a reviewed redacted bundle through an appropriate
+channel. Raw app-data backups are not support bundles.
+
+See [support-and-feedback.md](support-and-feedback.md),
+[../privacy-preserving-beta-diagnostics.md](../privacy-preserving-beta-diagnostics.md), and
 [security-reporting.md](security-reporting.md).
 
 ## Recover from common failures
@@ -158,6 +164,8 @@ Use [troubleshooting.md](troubleshooting.md) for symptom-specific steps. The saf
 
 1. Stop and read the Web Shell status before retrying.
 2. Export redacted support evidence if the failure may need maintainer help.
-3. Back up app data before update, rollback, migration, or restore operations.
-4. Prefer explicit rollback or recovery actions over manual file edits.
-5. Do not paste raw user content or local paths into public reports.
+3. Check [known-issues.md](known-issues.md), then file the specific issue form named in
+   [support-and-feedback.md](support-and-feedback.md) if the issue is not already known.
+4. Back up app data before update, rollback, migration, or restore operations.
+5. Prefer explicit rollback or recovery actions over manual file edits.
+6. Do not paste raw user content or local paths into public reports.

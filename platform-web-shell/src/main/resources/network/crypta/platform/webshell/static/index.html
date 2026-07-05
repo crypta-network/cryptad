@@ -60,16 +60,23 @@
             Start with <code>docs/public-beta/README.md</code> for install, catalog setup,
             first-party apps, permissions, updates, rollback, app-data backup, troubleshooting,
             security reporting, developer quickstart, app submission, and legacy plugin migration.
+            Use <code>docs/public-beta/support-and-feedback.md</code>,
+            <code>docs/public-beta/known-issues.md</code>,
+            <code>docs/public-beta/security-reporting.md</code>, and
+            <code>docs/privacy-preserving-beta-diagnostics.md</code> when filing public beta
+            feedback.
           </p>
           <div class="queue-toolbar">
-            <a class="button button-secondary" href="#beta-dashboard">Support bundle</a>
+            <a class="button button-secondary" href="#beta-dashboard">Support bundle preview/export</a>
             <a class="button button-secondary" href="#apps">Catalog and app health</a>
             <a class="button button-secondary" href="#diagnostics-panel">Diagnostics</a>
           </div>
           <p class="support-bundle-notice">
             Web Shell does not fetch remote docs or upload support bundles. Do not paste private
             insert URIs, private keys, tokens, raw content, raw app data, raw support bundles, raw
-            FProxy HTML, or local paths into public reports.
+            FProxy HTML, or local paths into public reports. Public reports should start with
+            digest, schema version, diagnostic summary id, known issue id, and redacted section
+            summaries.
           </p>
         </article>
 
@@ -105,7 +112,7 @@
           <p class="support-bundle-notice">
             This support bundle is generated locally and is not uploaded automatically. It excludes
             raw content, raw app data, private insert URIs, tokens, identity material, and local
-            paths. Review it before sharing.
+            paths. Share supportDigest and schema version first. Review it before sharing.
           </p>
           <form class="control-form app-data-restore-form" id="operator-app-data-restore-form">
             <p class="panel-description">

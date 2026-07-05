@@ -2,6 +2,19 @@
   "extends": "go-no-go-pass.json",
   "inputs": {
     "productionBetaSummary": {
+      "publicBetaSupportFeedback": {
+        "blockers": [],
+        "docs": "pass",
+        "feedbackToBacklog": "pass",
+        "issueTemplates": "pass",
+        "knownIssuesTracker": "pass",
+        "redactionFixtures": "pass",
+        "releaseNotesTemplate": "pass",
+        "securityHandoff": "pass",
+        "status": "pass",
+        "supportBundleGuidance": "pass",
+        "warnings": []
+      },
       "redaction": {
         "findingCount": 1,
         "findings": [

@@ -88,3 +88,8 @@ Audit events should record bounded metadata: principal, capability, app id, deci
 timestamps, and redaction state. They must not include query strings, request bodies, form
 passwords, app tokens, browser session tokens, private insert URIs, raw app data, or local absolute
 paths.
+
+When filing permission or consent feedback, include only the consent/audit event id, app id, app
+version, capability names, decision status, support bundle digest, and diagnostic summary id. Route
+the report through [support-and-feedback.md](support-and-feedback.md) so maintainers can triage it
+with the public beta taxonomy.

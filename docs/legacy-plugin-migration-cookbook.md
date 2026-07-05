@@ -7,6 +7,9 @@ Former plugin authors should start with
 [public-beta/legacy-plugin-authors.md](public-beta/legacy-plugin-authors.md), then use this
 cookbook for hands-on migration patterns, unsupported boundaries, app-service examples, and safe
 artifact rules.
+Plugin authors who need maintainer feedback should use
+[public-beta/support-and-feedback.md](public-beta/support-and-feedback.md) and
+[public-beta/feedback-to-backlog.md](public-beta/feedback-to-backlog.md).
 
 ## Scope
 
@@ -328,7 +331,8 @@ reviewer.example
 They must not include private insert URIs, private keys, app tokens, browser session tokens,
 cookies, form passwords, raw legacy plugin state, raw social messages, raw trust statements, raw
 profile documents, raw feed snapshots, raw app-data values, raw signatures, local paths, raw
-FProxy HTML, or raw support bundles.
+FProxy HTML, or raw support bundles. Link known migration issues through
+[public-beta/known-issues.md](public-beta/known-issues.md) rather than copying issue bodies.
 
 ## Review checklist for migrated apps
 

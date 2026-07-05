@@ -2,9 +2,11 @@ Security
 ========
 
 Public-beta security reporting starts at
-[public-beta/security-reporting.md](public-beta/security-reporting.md). That page summarizes what
-to include, what never to paste publicly, how app/catalog advisories and denylists work, and how
-support-bundle redaction should behave.
+[public-beta/security-reporting.md](public-beta/security-reporting.md). Public-safe beta support
+and handoff guidance starts at
+[public-beta/support-and-feedback.md](public-beta/support-and-feedback.md). Those pages summarize
+what to include, what never to paste publicly, how app/catalog advisories and denylists work, and
+how support-bundle redaction should behave.
 
 Freenet requires different security considerations than other projects.
 
@@ -105,8 +107,12 @@ fixture-only production, or redaction-unsafe drills block promotion. This docume
 trust and redaction boundaries those artifacts must preserve.
 Default operator support bundles follow
 [privacy-preserving-beta-diagnostics.md](privacy-preserving-beta-diagnostics.md): they are local
-until the operator explicitly exports them, and they exclude raw content, raw app data, private
-insert URIs, tokens, identity material, local paths, and legacy plaintext diagnostics bodies.
+until the operator explicitly exports them, and public support should start with digest and summary
+fields from [public-beta/support-and-feedback.md](public-beta/support-and-feedback.md). Suspected
+support-bundle redaction failures, advisory events, reviewer key compromise, catalog signing key
+compromise, or app signing key compromise belong on the private security path. Support bundles
+exclude raw content, raw app data, private insert URIs, tokens, identity material, local paths, and
+legacy plaintext diagnostics bodies.
 
 Former plugin authors use the public-beta path in
 [legacy-plugin-migration-cookbook.md](legacy-plugin-migration-cookbook.md). Migration plans,

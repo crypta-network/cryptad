@@ -17,6 +17,8 @@ Start with:
 - [../templates/plugin-migration-plan.md](../templates/plugin-migration-plan.md)
 - [developer-quickstart.md](developer-quickstart.md)
 - [app-submission-walkthrough.md](app-submission-walkthrough.md)
+- [support-and-feedback.md](support-and-feedback.md)
+- [feedback-to-backlog.md](feedback-to-backlog.md)
 
 ## Boundaries
 
@@ -75,3 +77,8 @@ schema versions, app ids, service ids, provider ids, digests, and redaction bool
 Do not publish raw legacy plugin exports, raw social messages, raw trust statements, raw profile or
 feed documents, raw app-data values, raw FProxy HTML, private insert URIs, private keys, app or
 browser tokens, form passwords, cookies, authorization headers, or local absolute paths.
+
+Use `plugin-migration-feedback.yml` through [support-and-feedback.md](support-and-feedback.md) when
+the migration question should become maintainer feedback. Maintainers may match the report to
+[known-issues.md](known-issues.md) or turn it into a backlog candidate through
+[feedback-to-backlog.md](feedback-to-backlog.md).

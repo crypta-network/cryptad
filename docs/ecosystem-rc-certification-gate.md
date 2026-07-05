@@ -159,6 +159,12 @@ third-party-developer.compatibility-window
 third-party-developer.feedback-workflow
 third-party-developer.plugin-author-migration
 third-party-developer.redaction
+public-beta.support-feedback-loop
+public-beta.issue-templates
+public-beta.known-issues-tracker
+public-beta.feedback-to-backlog
+public-beta.release-notes-template
+public-beta.redaction-fixtures
 ```
 
 These items prove the public docs, `hello-stable` template, checked-in sample app, local
@@ -167,6 +173,10 @@ feedback issue templates, plugin-author migration notes, and redaction checks ar
 not approve arbitrary third-party apps or bypass signed bundle, catalog, review, sandbox,
 permission, and consent gates. Redaction findings in the sample app or its `review/*.md` files are
 release blockers.
+
+The `public-beta.*` support-feedback-loop rows prove redaction-safe intake docs, issue templates,
+known issues, backlog routing, release notes, security handoff, and fixtures. They do not collect
+telemetry or raw support bundles.
 
 ## Live-network beta optional versus required
 
@@ -219,8 +229,9 @@ accepted.
 
 ## Redaction sensitivity
 
-Final ecosystem RC certification artifacts are intended for release records and CI uploads. Do not
-publish:
+Final ecosystem RC certification artifacts are intended for release records and CI uploads. Feedback
+loop artifacts, release notes examples, known issue entries, support-bundle summaries, and issue
+template fixtures follow the same rule. Do not publish:
 
 - private signing keys or reviewer keys;
 - raw trusted reviewer public key bytes;

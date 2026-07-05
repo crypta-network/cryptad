@@ -55,6 +55,12 @@ Check:
 - catalog signing-key rotation state;
 - security advisory refresh state.
 
+Report catalog incidents with `catalog-incident.yml` through
+[support-and-feedback.md](support-and-feedback.md). Include catalog id, channel, source class,
+mirror id when relevant, revision or edition, signature verification status, health status,
+rollback attempted, redacted error code, and support bundle digest. Do not include private insert
+URIs.
+
 ## App review states
 
 | State | User-facing meaning |
@@ -87,4 +93,6 @@ must not silently roll back to older bytes. Key rotation status should be visibl
 source is trusted for install or update.
 
 Use rollback when a verified revision is operationally bad, not when signature verification fails.
-For signature failures, stop and use troubleshooting or support guidance.
+For signature failures, stop and use troubleshooting or support guidance. Link the incident to
+[known-issues.md](known-issues.md) when maintainers assign a `knownIssueId`, and cite only digest
+and summary fields from [../privacy-preserving-beta-diagnostics.md](../privacy-preserving-beta-diagnostics.md).

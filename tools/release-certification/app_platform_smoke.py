@@ -6278,14 +6278,8 @@ def public_beta_broken_links(workspace: Path) -> list[dict[str, str]]:
 
 def public_beta_redaction_findings(workspace: Path) -> list[dict[str, str]]:
     findings: list[dict[str, str]] = []
-    paths = (
-        *app_platform_docs_check.PUBLIC_BETA_DOCS,
-        ".github/ISSUE_TEMPLATE/public-beta-support.yml",
-    )
-    for doc_path in paths:
-        path = workspace / doc_path
-        if not path.is_file():
-            continue
+    for path in app_platform_docs_check.public_beta_redaction_files_to_check(workspace):
+        doc_path = display_path(path, workspace)
         for issue in app_platform_docs_check.redaction_findings_for_text(read_source(path)):
             findings.append({"path": doc_path, "issue": issue})
     return findings
@@ -6293,115 +6287,39 @@ def public_beta_redaction_findings(workspace: Path) -> list[dict[str, str]]:
 
 def collect_public_beta_docs_onboarding_evidence(settings: Settings) -> list[EvidenceItem]:
     workspace = settings.workspace_root
-    source = display_path(
-        workspace / "tools/release-certification/app_platform_docs_check.py", workspace
-    )
-    doc_status = {
-        path: (workspace / path).is_file() and bool(read_source(workspace / path).strip())
-        for path in app_platform_docs_check.PUBLIC_BETA_DOCS
-    }
-    missing_docs = sorted(path for path, present in doc_status.items() if not present)
-    issue_template_present = (
-        workspace / ".github/ISSUE_TEMPLATE/public-beta-support.yml"
-    ).is_file()
-    all_text = public_beta_docs_text(workspace, app_platform_docs_check.PUBLIC_BETA_DOCS)
-    user_text = read_source(workspace / "docs/public-beta/user-guide.md")
-    developer_text = read_source(workspace / "docs/public-beta/developer-quickstart.md")
-    troubleshooting_text = read_source(workspace / "docs/public-beta/troubleshooting.md")
-    security_text = read_source(workspace / "docs/public-beta/security-reporting.md")
-    limitations_text = read_source(workspace / "docs/public-beta/trust-social-limitations.md")
-    broken_links = public_beta_broken_links(workspace)
-    redaction = public_beta_redaction_findings(workspace)
-    links_redaction_ok = not broken_links and not redaction
-    checks_by_id: dict[str, dict[str, Any]] = {
-        "public-beta.docs-onboarding": {
-            "requiredDocsPresent": not missing_docs,
-            "missingDocs": missing_docs,
-            "missingConcepts": public_beta_missing_terms(
-                all_text, app_platform_docs_check.PUBLIC_BETA_ONBOARDING_CONCEPTS
-            ),
-            "linksAndRedactionOk": links_redaction_ok,
-        },
-        "public-beta.user-guide": {
-            "docPresent": doc_status.get("docs/public-beta/user-guide.md", False),
-            "missingConcepts": public_beta_missing_terms(
-                user_text, app_platform_docs_check.PUBLIC_BETA_USER_GUIDE_CONCEPTS
-            ),
-        },
-        "public-beta.developer-quickstart": {
-            "docPresent": doc_status.get("docs/public-beta/developer-quickstart.md", False),
-            "missingConcepts": public_beta_missing_terms(
-                developer_text,
-                app_platform_docs_check.PUBLIC_BETA_DEVELOPER_QUICKSTART_CONCEPTS,
-            ),
-        },
-        "public-beta.troubleshooting": {
-            "docPresent": doc_status.get("docs/public-beta/troubleshooting.md", False),
-            "missingConcepts": public_beta_missing_terms(
-                troubleshooting_text,
-                app_platform_docs_check.PUBLIC_BETA_TROUBLESHOOTING_CONCEPTS,
-            ),
-        },
-        "public-beta.security-reporting": {
-            "docPresent": doc_status.get("docs/public-beta/security-reporting.md", False),
-            "supportIssueTemplatePresent": issue_template_present,
-            "missingConcepts": public_beta_missing_terms(
-                security_text, app_platform_docs_check.PUBLIC_BETA_SECURITY_REPORTING_CONCEPTS
-            ),
-        },
-        "public-beta.limitations": {
-            "docPresent": doc_status.get(
-                "docs/public-beta/trust-social-limitations.md", False
-            ),
-            "missingConcepts": public_beta_missing_terms(
-                limitations_text, app_platform_docs_check.PUBLIC_BETA_LIMITATION_CONCEPTS
-            ),
-        },
-        "public-beta.links-redaction": {
-            "internalLinksOk": not broken_links,
-            "brokenLinks": broken_links,
-            "redactionOk": not redaction,
-            "redactionFindings": redaction,
-            "externalUrlsFetched": False,
-        },
+    docs_summary = app_platform_docs_check.run_check(workspace)
+    docs_evidence = {
+        str(item.get("id")): item
+        for item in docs_summary.get("evidence", [])
+        if isinstance(item, dict)
     }
     evidence: list[EvidenceItem] = []
     for evidence_id in PUBLIC_BETA_DOCS_EVIDENCE_IDS:
-        checks = checks_by_id[evidence_id]
-        errors: list[str] = []
-        if checks.get("requiredDocsPresent") is False:
-            errors.append("requiredDocsPresent")
-        if checks.get("docPresent") is False:
-            errors.append("docPresent")
-        if checks.get("supportIssueTemplatePresent") is False:
-            errors.append("supportIssueTemplatePresent")
-        if checks.get("linksAndRedactionOk") is False:
-            errors.append("linksAndRedactionOk")
-        if checks.get("internalLinksOk") is False:
-            errors.append("internalLinksOk")
-        if checks.get("redactionOk") is False:
-            errors.append("redactionOk")
-        missing_concepts = checks.get("missingConcepts")
-        if isinstance(missing_concepts, list) and missing_concepts:
-            errors.append("missingConcepts")
-        status = "pass" if not errors else root_consequence(settings, "fail")
+        item = docs_evidence.get(evidence_id)
+        if not isinstance(item, dict):
+            evidence.append(
+                EvidenceItem(
+                    evidence_id,
+                    root_consequence(settings, "fail"),
+                    True,
+                    f"{evidence_id} evidence is missing from app-platform docs check.",
+                    summary_source(settings),
+                    {"errors": ["missingDocsCheckEvidence"]},
+                )
+            )
+            continue
+        status = str(item.get("status", "missing"))
+        if status != "pass":
+            status = root_consequence(settings, "fail")
+        details = item.get("details") if isinstance(item.get("details"), dict) else {}
         evidence.append(
             EvidenceItem(
                 evidence_id,
                 status,
                 True,
-                (
-                    "Public beta docs onboarding evidence passed."
-                    if not errors
-                    else "Public beta docs onboarding evidence is incomplete or redaction-unsafe."
-                ),
-                source,
-                {
-                    "checks": checks,
-                    "errors": errors,
-                    "docs": list(app_platform_docs_check.PUBLIC_BETA_DOCS),
-                    "supportIssueTemplate": ".github/ISSUE_TEMPLATE/public-beta-support.yml",
-                },
+                str(item.get("summary", f"{evidence_id} evidence imported.")),
+                str(item.get("source", "tools/release-certification/app_platform_docs_check.py")),
+                dict(details),
             )
         )
     return evidence
@@ -24459,11 +24377,75 @@ def make_self_test_workspace(workspace: Path) -> None:
                 "private insert URIs",
                 "raw support bundles",
                 "security-release-notes.md",
+                "Public bug report",
+                "Private security report",
+                "Security advisory or denylist event",
+                "Reviewer key compromise",
+                "Catalog signing key compromise",
+                "App signing key compromise",
+                "Support bundle redaction failure",
+                "Do not include exploit details",
             )
         ),
         "legacy-plugin-authors.md": (
             "legacy plugin migration legacy plugin freeze policy migration cookbook FProxy browse remains retained "
             "no old plugin ABI compatibility no WebOfTrust Freetalk Sone Freemail compatibility promise\n"
+        ),
+        "support-and-feedback.md": "\n".join(
+            (
+                "# Public beta support and feedback loop",
+                "observe the issue",
+                "collect a privacy-preserving diagnostic summary",
+                "export a support bundle locally",
+                "file the most specific structured issue form",
+                "Maintainers run the redaction check",
+                "known issue",
+                "backlog candidate",
+                "beta release notes template",
+                "next beta candidate verifies",
+                "support_bundle_digest support_bundle_schema_version diagnostic_summary_id",
+                "consent_audit_event_id operator_recovery_action_id known_issue_id",
+                "private insert URI private keys browser session tokens raw fetched content",
+                "raw app data values absolute local paths",
+                "support bundles are local-only and include digest, schema version, diagnostic summary fields",
+                "Raw app-data backups are not support bundles",
+                "reviewed redacted bundle do not attach",
+            )
+        ),
+        "triage-taxonomy.md": "\n".join(app_platform_docs_check.PUBLIC_BETA_TRIAGE_LABELS),
+        "known-issues.md": "\n".join(
+            (
+                "# Public beta known issues",
+                *app_platform_docs_check.KNOWN_ISSUE_FIELDS,
+                "PBKI-EXAMPLE-001",
+            )
+        ),
+        "feedback-to-backlog.md": "\n".join(
+            (
+                "# Feedback to backlog workflow",
+                "intake",
+                "redaction check",
+                "reproduction check",
+                "triage category",
+                "known issue matching",
+                "support response",
+                "security escalation",
+                "developer or app-review escalation",
+                "release blocker decision",
+                "backlog candidate creation",
+                "next beta verification",
+                "release notes entry",
+                "closure criteria",
+                "Catalog cannot refresh",
+                "App update failed",
+                "Subscription stuck",
+                "Trust Graph import warning",
+                "Social Inbox rendering issue",
+                "Third-party app compatibility report",
+                "Legacy plugin author migration question",
+                "Support bundle redaction concern",
+                "Suspected security advisory",
+            )
         ),
     }
     for relative_path in app_platform_docs_check.PUBLIC_BETA_DOCS:
@@ -24473,19 +24455,142 @@ def make_self_test_workspace(workspace: Path) -> None:
         )
     issue_dir = workspace / ".github/ISSUE_TEMPLATE"
     issue_dir.mkdir(parents=True, exist_ok=True)
-    issue_text = (
-        "Do not paste private keys, private insert URIs, tokens, raw app data, "
-        "raw fetched content, raw signatures, or local absolute paths.\n"
+    issue_text = "\n".join(
+        (
+            "name: Synthetic public beta feedback",
+            "labels:",
+            "  - privacy/redaction-required",
+            "body:",
+            "  - type: markdown",
+            "    attributes:",
+            "      value: |",
+            "        Do not upload raw support bundles. Do not include exploit details publicly. Do not paste private insert URIs, private keys, tokens, raw app data, raw fetched content, raw signatures, or local absolute paths.",
+            "        private security report security advisory or denylist event reviewer key compromise catalog signing key compromise app signing key compromise support bundle redaction failure",
+            "  - type: checkboxes",
+            "    id: redaction-confirmation",
+            "    attributes:",
+            "      label: Redaction confirmation",
+            "      options:",
+            "        - label: I confirm this report is redacted.",
+            "          required: true",
+            "  - type: input",
+            "    id: release_id",
+            "  - type: input",
+            "    id: cryptad_version",
+            "  - type: input",
+            "    id: platform_api_contract_version",
+            "  - type: input",
+            "    id: catalog_channel",
+            "  - type: input",
+            "    id: catalog_id",
+            "  - type: input",
+            "    id: catalog_source_class",
+            "  - type: input",
+            "    id: mirror_id",
+            "  - type: input",
+            "    id: catalog_revision_edition",
+            "  - type: input",
+            "    id: signature_verification_status",
+            "  - type: input",
+            "    id: health_status",
+            "  - type: input",
+            "    id: rollback_attempted",
+            "  - type: input",
+            "    id: redacted_error_code",
+            "  - type: input",
+            "    id: app_id",
+            "    attributes:",
+            "      options: [queue-manager, publisher, site-publisher, profile-publisher, feed-reader, trust-graph, social-inbox]",
+            "  - type: input",
+            "    id: app_version",
+            "  - type: input",
+            "    id: target_app_version",
+            "  - type: input",
+            "    id: operation_being_attempted",
+            "  - type: input",
+            "    id: update_phase",
+            "  - type: input",
+            "    id: rollback_result",
+            "  - type: input",
+            "    id: migration_status",
+            "  - type: input",
+            "    id: app_data_backup_status",
+            "  - type: input",
+            "    id: subscription_id",
+            "  - type: input",
+            "    id: trust_social_document_profile_id",
+            "  - type: input",
+            "    id: support_bundle_digest",
+            "  - type: input",
+            "    id: support_bundle_schema_version",
+            "  - type: input",
+            "    id: diagnostic_summary_id",
+            "  - type: input",
+            "    id: consent_audit_event_id",
+            "  - type: input",
+            "    id: operator_recovery_action_id",
+            "  - type: input",
+            "    id: known_issue_id",
+            "  - type: input",
+            "    id: severity",
+            "  - type: input",
+            "    id: impact",
+            "  - type: input",
+            "    id: reproduction_steps",
+            "  - type: input",
+            "    id: expected_behavior",
+            "  - type: input",
+            "    id: actual_behavior",
+            "  - type: input",
+            "    id: redacted_evidence",
+            "  - type: input",
+            "    id: export_preview_status",
+            "  - type: input",
+            "    id: redaction_concern_category",
+            "  - type: input",
+            "    id: advisory_type",
+            "  - type: input",
+            "    id: affected_component",
+            "  - type: input",
+            "    id: public_safe_impact",
+        )
     )
-    for template_name in (
-        "developer-beta-feedback.yml",
-        "app-submission-beta.yml",
-        "app-review-appeal.yml",
-        "platform-api-compatibility.yml",
-        "plugin-migration-feedback.yml",
-        "public-beta-support.yml",
-    ):
-        (issue_dir / template_name).write_text(issue_text, encoding="utf-8")
+    for template_path in app_platform_docs_check.ISSUE_TEMPLATES:
+        path = workspace / template_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(issue_text, encoding="utf-8")
+    beta_template = workspace / app_platform_docs_check.PUBLIC_BETA_RELEASE_NOTES_TEMPLATE
+    beta_template.parent.mkdir(parents=True, exist_ok=True)
+    beta_template.write_text(
+        "\n".join(f"## {section}" for section in app_platform_docs_check.BETA_RELEASE_NOTES_SECTIONS)
+        + "\nNo private insert URIs, raw support bundles, raw app data, or local paths.\n",
+        encoding="utf-8",
+    )
+    known_issues_metadata = workspace / app_platform_docs_check.PUBLIC_BETA_KNOWN_ISSUES_METADATA
+    known_issues_metadata.parent.mkdir(parents=True, exist_ok=True)
+    write_json(
+        known_issues_metadata,
+        {
+            "schemaVersion": 1,
+            "knownIssues": [
+                {
+                    "knownIssueId": "PBKI-EXAMPLE-001",
+                    "status": "open-example",
+                    "severity": "severity/medium",
+                    "area": "area/catalog",
+                    "affectedChannels": ["stable-first-party"],
+                    "affectedAppIds": [],
+                    "affectedVersions": ["cryptad-beta-example"],
+                    "firstSeenReleaseId": "cryptad-beta-example",
+                    "fixedInReleaseId": "unfixed",
+                    "workaroundSummary": "Use digest and summary metadata only.",
+                    "supportBundleEvidenceAllowed": "digest-and-summary-only",
+                    "redactionNotes": "No raw data.",
+                    "backlogLinkOrPlaceholder": "BACKLOG-PUBLIC-BETA-EXAMPLE",
+                }
+            ],
+        },
+    )
     sample_dir = workspace / "samples/third-party/hello-stable-app"
     (sample_dir / "static").mkdir(parents=True, exist_ok=True)
     (sample_dir / "review").mkdir(parents=True, exist_ok=True)
@@ -24522,6 +24627,75 @@ def make_self_test_workspace(workspace: Path) -> None:
     cert_readme.write_text(first_party_docs, encoding="utf-8")
     plugin_fixture_dir = workspace / "tools/release-certification/fixtures"
     plugin_fixture_dir.mkdir(parents=True, exist_ok=True)
+    write_json(
+        workspace / app_platform_docs_check.PUBLIC_BETA_SAFE_FEEDBACK_FIXTURE,
+        {
+            "supportIssueMetadata": {
+                "release_id": "cryptad-beta-example",
+                "support_bundle_digest": "sha256:0123456789abcdef",
+                "diagnostic_summary_id": "diag-example",
+            },
+            "catalogIncidentMetadata": {"catalog_id": "crypta-first-party"},
+            "appSpecificFeedbackMetadata": {"app_id": "feed-reader"},
+            "knownIssueEntry": {
+                "knownIssueId": "PBKI-EXAMPLE-001",
+                "status": "open-example",
+                "severity": "severity/medium",
+                "area": "area/catalog",
+                "affectedChannels": ["stable-first-party"],
+                "affectedAppIds": [],
+                "affectedVersions": ["cryptad-beta-example"],
+                "firstSeenReleaseId": "cryptad-beta-example",
+                "fixedInReleaseId": "unfixed",
+                "workaroundSummary": "Use digest and summary metadata only.",
+                "supportBundleEvidenceAllowed": "digest-and-summary-only",
+                "redactionNotes": "No raw data.",
+                "backlogLinkOrPlaceholder": "BACKLOG-PUBLIC-BETA-EXAMPLE",
+            },
+            "betaReleaseNotesSnippet": {"release_id": "cryptad-beta-example"},
+            "feedbackToBacklogRecord": {"redaction_check": "pass"},
+        },
+    )
+    public_beta_negative_payloads = {
+        "public-beta-feedback-redaction-private-insert-uri.json": {
+            "privateInsertUri": "USK@abcdefghijklmno,qrstuvwxyz0123456789ABCDEFG/name/0"
+        },
+        "public-beta-feedback-redaction-private-key.json": {
+            "privateKey": "-----BEGIN PRIVATE KEY-----\nfixture\n-----END PRIVATE KEY-----"
+        },
+        "public-beta-feedback-redaction-app-token.json": {
+            "appToken": "<redacted> abcdef0123456789"
+        },
+        "public-beta-feedback-redaction-browser-session-token.json": {
+            "browserSessionToken": "browser-session-secret"
+        },
+        "public-beta-feedback-redaction-authorization-header.json": {
+            "header": "Authorization: Bearer concrete-token-value"
+        },
+        "public-beta-feedback-redaction-cookie.json": {"header": "Cookie: sid=abcdef012345"},
+        "public-beta-feedback-redaction-raw-feed.json": {"rawFeedDocument": "private feed"},
+        "public-beta-feedback-redaction-raw-profile.json": {
+            "rawProfileDocument": "private profile"
+        },
+        "public-beta-feedback-redaction-raw-trust.json": {
+            "rawTrustStatement": "private trust"
+        },
+        "public-beta-feedback-redaction-raw-social.json": {
+            "rawSocialMessage": "private social"
+        },
+        "public-beta-feedback-redaction-raw-app-data.json": {
+            "rawAppDataValue": "private app data"
+        },
+        "public-beta-feedback-redaction-local-path.json": {
+            "path": "/home/example/.crypta/private.json"
+        },
+        "public-beta-feedback-redaction-nested-backup.json": {
+            "rawSupportBundle": {"nestedBackup": "private backup"}
+        },
+    }
+    for fixture_path in app_platform_docs_check.PUBLIC_BETA_NEGATIVE_FEEDBACK_FIXTURES:
+        fixture_name = Path(fixture_path).name
+        write_json(workspace / fixture_path, public_beta_negative_payloads[fixture_name])
     plugin_fixture_payloads = {
         "plugin-migration-redaction-safe.json": {
             "legacyPluginId": "legacy.example",

@@ -272,6 +272,7 @@ content, raw app data, and host-local absolute paths.
 | `promotion.gates` | Per-gate pass/fail records for signed artifacts, evidence ids, live-network evidence, ecosystem certification, and signing profile checks. |
 | `promotion.securityResponse` | Compact status for the production security response runbook, advisory lifecycle, reviewer compromise drill, catalog key rotation drill, app signing key compromise drill, emergency catalog update drill, support redaction, security release notes template, blockers, and warnings. |
 | `publicBetaDocs` | Compact status for public-beta docs onboarding, user guide, developer quickstart, troubleshooting, security reporting, limitations, and public-beta link/redaction evidence. |
+| `publicBetaSupportFeedback` | Compact status for the public beta support-feedback loop: canonical support docs, structured issue templates, taxonomy, known issues, feedback-to-backlog workflow, beta release notes template, support bundle guidance, security handoff, and redaction fixtures. |
 | `artifacts.securityDrillsSummary` | Redacted operational security drill summary generated or consumed by the pipeline. It contains only scenario statuses, safe counts, digests, and redaction metadata. |
 | `artifacts.securityReleaseNotesDraft` | Draft security release notes generated from drill data. Treat it as a redacted starting point for release-manager editing, not as automatically published notes. |
 | `multiNodeBetaSoak` | Compact status for multi-node soak and upgrade evidence, including mode, scenario statuses, blockers, warnings, promotion readiness, previous-candidate upgrade status, and the `evidence/multi-node-beta-soak.json` artifact path. |
@@ -441,6 +442,25 @@ reporting path, broken public-beta docs links, or redaction findings for secrets
 URIs, raw support bundles, raw content, unsafe file URI links, or local absolute paths block
 promotion.
 
+Public beta support and feedback loop evidence is production-critical:
+
+- `public-beta.support-feedback-loop`
+- `public-beta.support-feedback-docs`
+- `public-beta.issue-templates`
+- `public-beta.triage-taxonomy`
+- `public-beta.known-issues-tracker`
+- `public-beta.feedback-to-backlog`
+- `public-beta.release-notes-template`
+- `public-beta.support-bundle-guidance`
+- `public-beta.security-reporting-handoff`
+- `public-beta.app-specific-feedback`
+- `public-beta.catalog-incident-feedback`
+- `public-beta.redaction-fixtures`
+
+Missing support-feedback docs, missing issue templates, missing redaction confirmations, missing
+known issue tracker, missing release notes template, missing security handoff, unsafe known issue or
+release-note content, or redaction fixture failures block promotion.
+
 ## Failure classes
 
 The pipeline classifies failures into these groups:
@@ -449,7 +469,7 @@ The pipeline classifies failures into these groups:
 | --- | --- | --- |
 | Build and staging | Gradle toolchain failure, `stageFirstPartyApps` failure, missing `crypta-app` launcher. | Fails release-candidate and production-beta. |
 | Signing and catalog | Missing production keys in production-beta, bundle verification failure, catalog signature failure, review receipt verification failure. | Fails release-candidate and production-beta. |
-| Evidence | Missing Platform API, UI lint, sandbox, app-platform smoke, first-party maintenance policy, public-beta onboarding docs, network-scale soak, or ecosystem certification evidence. | Fails release-candidate and production-beta when critical. |
+| Evidence | Missing Platform API, UI lint, sandbox, app-platform smoke, first-party maintenance policy, public-beta onboarding docs, public-beta support-feedback loop evidence, network-scale soak, or ecosystem certification evidence. | Fails release-candidate and production-beta when critical. |
 | Security response drills | Missing `security-drills-summary.json`, missing required scenario, failed scenario, stale artifact, malformed drill envelope, fixture-only production drill, unsafe advisory or release-note template, or support-bundle intake redaction failure. | Blocks production-beta promotion. Critical redaction findings are non-waivable. |
 | Multi-node beta soak | Missing required multi-node soak, upgrade-drill, scenario, previous-candidate summary, app-data migration, backup/restore, Trust Graph, Social Inbox, support-bundle, or redaction evidence. | Fails production-beta promotion when `--require-multi-node-soak` is set or production-beta mode is used. |
 | Live network | Required live-network beta evidence missing, stale, wrong mode, failed, or explicitly skipped. | Blocks production-beta promotion. `--emergency-skip-live-network` records an explicit failed skip gate instead of silently treating missing live evidence as acceptable. |

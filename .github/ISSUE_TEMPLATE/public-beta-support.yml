@@ -4,13 +4,15 @@ title: "[public-beta-support] "
 labels:
   - app-platform
   - beta-feedback
+  - status/needs-repro
+  - privacy/redaction-required
 body:
   - type: markdown
     attributes:
       value: |
-        Use this template only for redacted public-beta support and documentation issues. If this might be a vulnerability, do not describe exploit details here; follow docs/SECURITY.md and the public-beta security reporting guide instead.
+        Use this template only for redacted public-beta support and documentation issues. Start with docs/public-beta/support-and-feedback.md and docs/public-beta/known-issues.md. If this might be a vulnerability, do not describe exploit details here; follow docs/SECURITY.md and the public-beta security reporting guide instead.
 
-        Do not paste private keys, reviewer private keys, seed phrases, private insert URIs, browser session tokens, AppHost process tokens, form passwords, authorization headers, cookies, request bodies, raw content, raw feed/profile/trust/social documents, raw app-data values, raw support bundles, raw FProxy HTML, or local absolute paths.
+        Do not paste private keys, reviewer private keys, app signing private keys, seed phrases, private insert URIs, browser session tokens, app tokens, AppHost process tokens, form passwords, authorization headers, cookies, request bodies, response bodies, raw content, raw feed/profile/trust/social documents, raw app-data values, raw support bundles, raw app-data backups, raw FProxy HTML, or local absolute paths.
   - type: dropdown
     id: area
     attributes:
@@ -33,22 +35,93 @@ body:
     validations:
       required: true
   - type: input
-    id: cryptad-version
+    id: release_id
+    attributes:
+      label: Release id
+      placeholder: "Example: cryptad-beta-1500"
+    validations:
+      required: true
+  - type: input
+    id: cryptad_version
     attributes:
       label: Cryptad version/build
       placeholder: "Example: 1481 or commit SHA"
     validations:
       required: true
   - type: input
+    id: platform_api_contract_version
+    attributes:
+      label: Platform API contract version
+      placeholder: "Example: 1.0"
+  - type: input
     id: platform
     attributes:
       label: Platform and package type
       placeholder: "Example: Fedora RPM, macOS app image, portable distribution"
   - type: input
-    id: app-or-catalog
+    id: app_id
     attributes:
-      label: App or catalog summary, redacted
-      placeholder: "Example: feed-reader 1.0.0, stable first-party catalog"
+      label: App id, if relevant
+      placeholder: "Example: feed-reader"
+  - type: input
+    id: app_version
+    attributes:
+      label: App version, if relevant
+      placeholder: "Example: 1.0.0"
+  - type: input
+    id: catalog_id
+    attributes:
+      label: Catalog id, if relevant
+      placeholder: "Example: crypta-first-party"
+  - type: input
+    id: catalog_channel
+    attributes:
+      label: Catalog channel, if relevant
+      placeholder: "Example: stable-first-party"
+  - type: input
+    id: support_bundle_digest
+    attributes:
+      label: Support bundle digest, if available
+      placeholder: "Example: sha256:..."
+  - type: input
+    id: support_bundle_schema_version
+    attributes:
+      label: Support bundle schema version, if available
+  - type: input
+    id: diagnostic_summary_id
+    attributes:
+      label: Diagnostic summary id, if available
+  - type: input
+    id: consent_audit_event_id
+    attributes:
+      label: Consent/audit event id, if relevant
+  - type: input
+    id: operator_recovery_action_id
+    attributes:
+      label: Operator recovery action id, if relevant
+  - type: input
+    id: known_issue_id
+    attributes:
+      label: Known issue id, if relevant
+      placeholder: "Example: PBKI-EXAMPLE-001"
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      options:
+        - severity/blocker
+        - severity/high
+        - severity/medium
+        - severity/low
+    validations:
+      required: true
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impact
+      description: Describe who is affected and whether there is a workaround.
+    validations:
+      required: true
   - type: textarea
     id: problem
     attributes:
@@ -57,12 +130,25 @@ body:
     validations:
       required: true
   - type: textarea
+    id: reproduction_steps
+    attributes:
+      label: Redacted reproduction steps
+      description: Use safe actions only. Do not include private URIs, raw content, raw app data, or local paths.
+  - type: textarea
+    id: expected_behavior
+    attributes:
+      label: Expected behavior
+  - type: textarea
+    id: actual_behavior
+    attributes:
+      label: Actual behavior
+  - type: textarea
     id: safe-actions
     attributes:
       label: Safe actions already tried
       description: Include Web Shell actions, catalog refreshes, backups, support-bundle export status, or rollback attempts with sensitive values redacted.
   - type: textarea
-    id: redacted-evidence
+    id: redacted_evidence
     attributes:
       label: Redacted evidence
       description: Paste only short sanitized summaries, status codes, evidence ids, redaction booleans, or support-bundle section names.

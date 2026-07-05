@@ -109,6 +109,19 @@ examples are `no-go` conditions in production beta. Redaction findings for priva
 private keys, app/browser tokens, raw support bundles, raw fetched/social/trust/profile/feed/app
 data, unsafe file URI links, or absolute local paths are non-waivable.
 
+The dashboard also has a dedicated `public-beta-support-feedback-loop` domain. It ties
+`public-beta.support-feedback-loop`, `public-beta.support-feedback-docs`,
+`public-beta.issue-templates`, `public-beta.triage-taxonomy`,
+`public-beta.known-issues-tracker`, `public-beta.feedback-to-backlog`,
+`public-beta.release-notes-template`, `public-beta.support-bundle-guidance`,
+`public-beta.security-reporting-handoff`, `public-beta.app-specific-feedback`,
+`public-beta.catalog-incident-feedback`, and `public-beta.redaction-fixtures` together. Missing
+support-feedback docs, missing issue templates, missing required redaction confirmation, missing
+known issue tracker, missing beta release notes template, missing security handoff, unsafe
+redaction fixture behavior, or redaction-unsafe known issue/release note/support feedback evidence
+is `no-go` for production beta. Minor deterministic taxonomy wording gaps may be warnings only when
+the artifacts remain complete and redaction-safe.
+
 The `production-security-response` domain consumes the
 `cryptad-security-response-drills-summary` artifact. The dashboard reports required, passed,
 failed, missing, stale, and malformed scenario counts; aggregate redaction status;
@@ -153,6 +166,9 @@ production launch set.
 - production beta artifact marked `nonRelease=true`;
 - missing security drill summary, missing required scenario, failed scenario, stale drill artifact,
   malformed drill envelope, fixture-only production drill, or drill redaction finding;
+- missing or redaction-unsafe public beta support-feedback-loop evidence, including missing
+  structured issue templates, known issues tracker, release notes template, security handoff, or
+  redaction fixtures;
 - missing public-beta onboarding docs, missing public-beta security reporting path, missing
   Trust Graph/Social Inbox limitation wording, broken required public-beta docs links, or unsafe
   public-beta docs redaction finding;
@@ -223,6 +239,8 @@ These findings always produce `no-go`:
   special files, invalid archives, or unsafe nested archive entries;
 - production beta using test-only signing material or generated test keys;
 - production beta output marked `nonRelease=true`;
+- missing public beta support-feedback-loop evidence or missing redaction confirmation in a
+  required public beta feedback template;
 - fixture evidence, skipped Gradle build/stage/sign/verify stages, or dirty/unknown workspace in
   production beta;
 - missing or failing live-network beta evidence, sandbox provider evidence, production signing,

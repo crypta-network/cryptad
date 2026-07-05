@@ -12,6 +12,7 @@ readiness without reading daemon internals.
 | I am installing or updating Cryptad | [install-update-rollback.md](install-update-rollback.md) | [../production-beta-release-pipeline.md](../production-beta-release-pipeline.md) and [../app-update-lifecycle.md](../app-update-lifecycle.md) |
 | I am installing first-party apps | [catalogs-and-apps.md](catalogs-and-apps.md) | [../app-catalogs.md](../app-catalogs.md), [../first-party-beta-catalog.md](../first-party-beta-catalog.md), and [../production-first-party-catalog-channels.md](../production-first-party-catalog-channels.md) |
 | I am backing up or restoring app data | [user-guide.md](user-guide.md#back-up-or-restore-app-data) | [../app-data-backup-restore-portability.md](../app-data-backup-restore-portability.md) |
+| I need support or want to file beta feedback | [support-and-feedback.md](support-and-feedback.md) | [triage-taxonomy.md](triage-taxonomy.md), [known-issues.md](known-issues.md), and [feedback-to-backlog.md](feedback-to-backlog.md) |
 | I am troubleshooting a problem | [troubleshooting.md](troubleshooting.md) | [../operator-rc-recovery-and-support-workflow.md](../operator-rc-recovery-and-support-workflow.md) |
 | I am reporting a security issue | [security-reporting.md](security-reporting.md) | [../SECURITY.md](../SECURITY.md) and [../production-security-response-runbook.md](../production-security-response-runbook.md) |
 | I am a third-party app developer | [developer-quickstart.md](developer-quickstart.md) | [../third-party-developer-beta-program.md](../third-party-developer-beta-program.md) and [../developer-beta-toolkit.md](../developer-beta-toolkit.md) |
@@ -29,7 +30,9 @@ readiness without reading daemon internals.
 6. Review the permission request, service grants, and any migration consent.
 7. Back up app data before material updates.
 8. Export a privacy-preserving support bundle when support asks for evidence.
-9. Use explicit rollback or recovery actions when an update, catalog refresh, or migration fails.
+9. File structured feedback with safe fields from [support-and-feedback.md](support-and-feedback.md)
+   when the issue needs maintainer triage.
+10. Use explicit rollback or recovery actions when an update, catalog refresh, or migration fails.
 
 The full path is in [user-guide.md](user-guide.md).
 
@@ -74,5 +77,6 @@ data values, and local absolute paths.
 
 Support bundles are local until you explicitly export them. They are designed to report metadata,
 counts, statuses, versions, digests, and redaction booleans rather than private content. See
-[security-reporting.md](security-reporting.md) and
+[support-and-feedback.md](support-and-feedback.md), [known-issues.md](known-issues.md),
+[triage-taxonomy.md](triage-taxonomy.md), [security-reporting.md](security-reporting.md), and
 [../privacy-preserving-beta-diagnostics.md](../privacy-preserving-beta-diagnostics.md).

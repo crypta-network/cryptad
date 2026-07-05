@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import copy
 import dataclasses
 import datetime as dt
 import io
@@ -159,7 +160,7 @@ CONSENT_EVIDENCE_IDS = ("app-platform.user-consent-flow",)
 SECURITY_RESPONSE_EVIDENCE_IDS = ("production-security.response-runbook",)
 FIRST_PARTY_MAINTENANCE_EVIDENCE_IDS = ("app-catalog.first-party-maintenance-policy",)
 FIRST_PARTY_BETA_QUALITY_EVIDENCE_IDS = ("first-party-app.beta-quality-pass",)
-PUBLIC_BETA_DOCS_EVIDENCE_IDS = (
+PUBLIC_BETA_ONBOARDING_EVIDENCE_IDS = (
     "public-beta.docs-onboarding",
     "public-beta.user-guide",
     "public-beta.developer-quickstart",
@@ -167,6 +168,24 @@ PUBLIC_BETA_DOCS_EVIDENCE_IDS = (
     "public-beta.security-reporting",
     "public-beta.limitations",
     "public-beta.links-redaction",
+)
+PUBLIC_BETA_SUPPORT_FEEDBACK_EVIDENCE_IDS = (
+    "public-beta.support-feedback-loop",
+    "public-beta.support-feedback-docs",
+    "public-beta.issue-templates",
+    "public-beta.triage-taxonomy",
+    "public-beta.known-issues-tracker",
+    "public-beta.feedback-to-backlog",
+    "public-beta.release-notes-template",
+    "public-beta.support-bundle-guidance",
+    "public-beta.security-reporting-handoff",
+    "public-beta.app-specific-feedback",
+    "public-beta.catalog-incident-feedback",
+    "public-beta.redaction-fixtures",
+)
+PUBLIC_BETA_DOCS_EVIDENCE_IDS = (
+    *PUBLIC_BETA_ONBOARDING_EVIDENCE_IDS,
+    *PUBLIC_BETA_SUPPORT_FEEDBACK_EVIDENCE_IDS,
 )
 CRITICAL_PRODUCTION_BETA_EVIDENCE_IDS = (
     "app-platform.signed-bundles",
@@ -332,8 +351,19 @@ DOMAIN_SPECS = (
     {
         "id": "public-beta-docs-onboarding",
         "title": "Public beta docs and onboarding",
-        "evidenceIds": PUBLIC_BETA_DOCS_EVIDENCE_IDS,
+        "evidenceIds": PUBLIC_BETA_ONBOARDING_EVIDENCE_IDS,
         "artifactInputs": (
+            "releaseCertificationSummary",
+            "appPlatformSummary",
+            "ecosystemMatrix",
+        ),
+    },
+    {
+        "id": "public-beta-support-feedback-loop",
+        "title": "Public beta support feedback loop",
+        "evidenceIds": PUBLIC_BETA_SUPPORT_FEEDBACK_EVIDENCE_IDS,
+        "artifactInputs": (
+            "productionBetaSummary",
             "releaseCertificationSummary",
             "appPlatformSummary",
             "ecosystemMatrix",
@@ -3554,12 +3584,15 @@ def run_self_test(quiet: bool = False) -> None:
     content_format_evidence_id = "app-platform.trust-social-content-format-profiles"
     privacy_diagnostics_evidence_id = "app-platform.privacy-preserving-beta-diagnostics"
     plugin_migration_evidence_id = "legacy-plugin.migration-finalization"
+    support_feedback_evidence_id = "public-beta.support-feedback-loop"
     if content_format_evidence_id not in CRITICAL_PRODUCTION_BETA_EVIDENCE_IDS:
         raise AssertionError("content-format profile evidence must be production-critical")
     if privacy_diagnostics_evidence_id not in CRITICAL_PRODUCTION_BETA_EVIDENCE_IDS:
         raise AssertionError("privacy-preserving diagnostics evidence must be production-critical")
     if plugin_migration_evidence_id not in CRITICAL_PRODUCTION_BETA_EVIDENCE_IDS:
         raise AssertionError("legacy plugin migration finalization evidence must be production-critical")
+    if support_feedback_evidence_id not in CRITICAL_PRODUCTION_BETA_EVIDENCE_IDS:
+        raise AssertionError("public beta support feedback loop must be production-critical")
     if not evidence_id_is_non_waivable_in_mode(content_format_evidence_id, "production-beta"):
         raise AssertionError(
             "content-format profile evidence must be non-waivable in production-beta"
@@ -3594,6 +3627,18 @@ def run_self_test(quiet: bool = False) -> None:
     ):
         raise AssertionError(
             "legacy plugin migration finalization gate must be non-waivable"
+        )
+    if not evidence_id_is_non_waivable_in_mode(
+        support_feedback_evidence_id,
+        "production-beta",
+    ):
+        raise AssertionError("public beta support feedback loop must be non-waivable")
+    if not evidence_id_is_non_waivable_in_mode(
+        f"evidence.{support_feedback_evidence_id}",
+        "production-beta",
+    ):
+        raise AssertionError(
+            "public beta support feedback loop promotion gate must be non-waivable"
         )
     for evidence_id in CRITICAL_PRODUCTION_BETA_EVIDENCE_IDS:
         if not evidence_id_is_non_waivable_in_mode(evidence_id, "production-beta"):
@@ -3879,6 +3924,83 @@ def run_self_test(quiet: bool = False) -> None:
                 if forbidden in encoded:
                     raise AssertionError(f"{fixture_name} leaked {forbidden}")
             outputs[fixture_name] = (out_dir / OUTPUT_JSON).read_text(encoding="utf-8")
+        pass_fixture = load_fixture(FIXTURE_DIR / "go-no-go-pass.json")
+        missing_support_fixture = copy.deepcopy(pass_fixture)
+        for summary_name in ("appPlatformSummary", "releaseCertificationSummary"):
+            summary = missing_support_fixture.get("inputs", {}).get(summary_name)
+            if isinstance(summary, dict) and isinstance(summary.get("evidence"), list):
+                summary["evidence"] = [
+                    item
+                    for item in summary["evidence"]
+                    if not (
+                        isinstance(item, dict)
+                        and item.get("id") == "public-beta.support-feedback-loop"
+                    )
+                ]
+        missing_fixture_path = root / "go-no-go-missing-support-feedback.json"
+        write_json(missing_fixture_path, missing_support_fixture)
+        missing_out = root / "missing-support-feedback"
+        missing_args = build_parser().parse_args(
+            [
+                "build",
+                "--workspace-root",
+                str(Path(__file__).resolve().parents[2]),
+                "--out-dir",
+                str(missing_out),
+                "--fixtures",
+                str(missing_fixture_path),
+            ]
+        )
+        missing_dashboard, _ = build_command(missing_args)
+        if missing_dashboard["decision"] != "no-go":
+            raise AssertionError("missing support-feedback-loop evidence did not block")
+        missing_blocker_ids = {
+            str(blocker.get("evidenceId"))
+            for blocker in missing_dashboard.get("blockers", [])
+            if isinstance(blocker, dict)
+        }
+        if "public-beta.support-feedback-loop" not in missing_blocker_ids:
+            raise AssertionError("missing support-feedback-loop blocker was not reported")
+        unsafe_support_fixture = copy.deepcopy(pass_fixture)
+        unsafe_evidence_found = False
+        for summary_name in ("appPlatformSummary", "releaseCertificationSummary"):
+            summary = unsafe_support_fixture.get("inputs", {}).get(summary_name)
+            if not isinstance(summary, dict) or not isinstance(summary.get("evidence"), list):
+                continue
+            for item in summary["evidence"]:
+                if isinstance(item, dict) and item.get("id") == "public-beta.redaction-fixtures":
+                    item["details"] = {
+                        "redactionFindings": [
+                            {"path": "support-feedback", "issue": "app-token"}
+                        ]
+                    }
+                    unsafe_evidence_found = True
+        if not unsafe_evidence_found:
+            raise AssertionError("pass fixture is missing public-beta.redaction-fixtures")
+        unsafe_fixture_path = root / "go-no-go-unsafe-support-feedback.json"
+        write_json(unsafe_fixture_path, unsafe_support_fixture)
+        unsafe_out = root / "unsafe-support-feedback"
+        unsafe_args = build_parser().parse_args(
+            [
+                "build",
+                "--workspace-root",
+                str(Path(__file__).resolve().parents[2]),
+                "--out-dir",
+                str(unsafe_out),
+                "--fixtures",
+                str(unsafe_fixture_path),
+            ]
+        )
+        unsafe_dashboard, _ = build_command(unsafe_args)
+        if unsafe_dashboard["decision"] != "no-go":
+            raise AssertionError("redaction-unsafe support-feedback evidence did not block")
+        unsafe_critical_ids = {
+            str(blocker.get("evidenceId"))
+            for blocker in unsafe_dashboard.get("blockers", [])
+            if isinstance(blocker, dict) and blocker.get("severity") == "critical"
+        }
+        if "public-beta.redaction-fixtures" not in unsafe_critical_ids:
+            raise AssertionError("redaction-unsafe support-feedback blocker was not critical")
         repeat_dir = root / "repeat"
         repeat_args = build_parser().parse_args(
             [

@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "tracker": "public-beta-known-issues",
+  "redactionPolicy": {
+    "rawSupportBundlesStored": false,
+    "rawAppDataStored": false,
+    "rawContentStored": false,
+    "privateInsertUrisStored": false,
+    "absoluteLocalPathsStored": false
+  },
+  "knownIssues": [
+    {
+      "knownIssueId": "PBKI-EXAMPLE-001",
+      "status": "open-example",
+      "severity": "severity/medium",
+      "area": "area/catalog",
+      "affectedChannels": ["stable-first-party"],
+      "affectedAppIds": [],
+      "affectedVersions": ["cryptad-beta-example"],
+      "firstSeenReleaseId": "cryptad-beta-example",
+      "fixedInReleaseId": "unfixed",
+      "workaroundSummary": "Refresh the catalog from another configured mirror and include only catalog ID, channel, health status, signature verification status, and a support bundle digest in public feedback.",
+      "supportBundleEvidenceAllowed": "digest-and-summary-only",
+      "redactionNotes": "Do not include catalog source private material, private insert URIs, mirror operator local paths, raw support bundle files, or raw request and response bodies.",
+      "backlogLinkOrPlaceholder": "BACKLOG-PUBLIC-BETA-CATALOG-MIRROR-EXAMPLE"
+    }
+  ]
+}

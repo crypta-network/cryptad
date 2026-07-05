@@ -26,6 +26,18 @@ EVIDENCE_IDS = (
     "public-beta.security-reporting",
     "public-beta.limitations",
     "public-beta.links-redaction",
+    "public-beta.support-feedback-loop",
+    "public-beta.support-feedback-docs",
+    "public-beta.issue-templates",
+    "public-beta.triage-taxonomy",
+    "public-beta.known-issues-tracker",
+    "public-beta.feedback-to-backlog",
+    "public-beta.release-notes-template",
+    "public-beta.support-bundle-guidance",
+    "public-beta.security-reporting-handoff",
+    "public-beta.app-specific-feedback",
+    "public-beta.catalog-incident-feedback",
+    "public-beta.redaction-fixtures",
 )
 
 REQUIRED_DOCS = (
@@ -88,12 +100,32 @@ NEW_DOCS = (
 
 ISSUE_TEMPLATES = (
     ".github/ISSUE_TEMPLATE/app-platform-beta-feedback.yml",
+    ".github/ISSUE_TEMPLATE/app-specific-feedback.yml",
+    ".github/ISSUE_TEMPLATE/app-update-rollback.yml",
     ".github/ISSUE_TEMPLATE/app-submission-beta.yml",
     ".github/ISSUE_TEMPLATE/developer-beta-feedback.yml",
     ".github/ISSUE_TEMPLATE/app-review-appeal.yml",
+    ".github/ISSUE_TEMPLATE/catalog-incident.yml",
     ".github/ISSUE_TEMPLATE/platform-api-compatibility.yml",
     ".github/ISSUE_TEMPLATE/plugin-migration-feedback.yml",
     ".github/ISSUE_TEMPLATE/public-beta-support.yml",
+    ".github/ISSUE_TEMPLATE/security-advisory-intake.yml",
+    ".github/ISSUE_TEMPLATE/support-bundle-diagnostics.yml",
+)
+
+PUBLIC_BETA_SUPPORT_FEEDBACK_EVIDENCE_IDS = (
+    "public-beta.support-feedback-loop",
+    "public-beta.support-feedback-docs",
+    "public-beta.issue-templates",
+    "public-beta.triage-taxonomy",
+    "public-beta.known-issues-tracker",
+    "public-beta.feedback-to-backlog",
+    "public-beta.release-notes-template",
+    "public-beta.support-bundle-guidance",
+    "public-beta.security-reporting-handoff",
+    "public-beta.app-specific-feedback",
+    "public-beta.catalog-incident-feedback",
+    "public-beta.redaction-fixtures",
 )
 
 REQUIRED_PORTAL_LINKS = tuple(
@@ -175,7 +207,236 @@ PUBLIC_BETA_DOCS = (
     "docs/public-beta/troubleshooting.md",
     "docs/public-beta/security-reporting.md",
     "docs/public-beta/legacy-plugin-authors.md",
+    "docs/public-beta/support-and-feedback.md",
+    "docs/public-beta/triage-taxonomy.md",
+    "docs/public-beta/known-issues.md",
+    "docs/public-beta/feedback-to-backlog.md",
 )
+
+PUBLIC_BETA_SUPPORT_FEEDBACK_DOCS = (
+    "docs/public-beta/support-and-feedback.md",
+    "docs/public-beta/triage-taxonomy.md",
+    "docs/public-beta/known-issues.md",
+    "docs/public-beta/feedback-to-backlog.md",
+    "docs/templates/beta-release-notes.md",
+    "tools/release-certification/public-beta-known-issues.json",
+)
+
+PUBLIC_BETA_RELEASE_NOTES_TEMPLATE = "docs/templates/beta-release-notes.md"
+PUBLIC_BETA_KNOWN_ISSUES_METADATA = (
+    "tools/release-certification/public-beta-known-issues.json"
+)
+PUBLIC_BETA_SAFE_FEEDBACK_FIXTURE = (
+    "tools/release-certification/fixtures/public-beta-feedback-safe-examples.json"
+)
+PUBLIC_BETA_NEGATIVE_FEEDBACK_FIXTURES = (
+    "tools/release-certification/fixtures/public-beta-feedback-redaction-private-insert-uri.json",
+    "tools/release-certification/fixtures/public-beta-feedback-redaction-private-key.json",
+    "tools/release-certification/fixtures/public-beta-feedback-redaction-app-token.json",
+    "tools/release-certification/fixtures/public-beta-feedback-redaction-browser-session-token.json",
+    "tools/release-certification/fixtures/public-beta-feedback-redaction-authorization-header.json",
+    "tools/release-certification/fixtures/public-beta-feedback-redaction-cookie.json",
+    "tools/release-certification/fixtures/public-beta-feedback-redaction-raw-feed.json",
+    "tools/release-certification/fixtures/public-beta-feedback-redaction-raw-profile.json",
+    "tools/release-certification/fixtures/public-beta-feedback-redaction-raw-trust.json",
+    "tools/release-certification/fixtures/public-beta-feedback-redaction-raw-social.json",
+    "tools/release-certification/fixtures/public-beta-feedback-redaction-raw-app-data.json",
+    "tools/release-certification/fixtures/public-beta-feedback-redaction-local-path.json",
+    "tools/release-certification/fixtures/public-beta-feedback-redaction-nested-backup.json",
+)
+
+PUBLIC_BETA_SUPPORT_FEEDBACK_CONCEPTS = (
+    "observe the issue",
+    "collect a privacy-preserving diagnostic summary",
+    "export a support bundle locally",
+    "file the most specific structured issue form",
+    "Maintainers run the redaction check",
+    "known issue",
+    "backlog candidate",
+    "beta release notes template",
+    "next beta candidate verifies",
+    "support_bundle_digest",
+    "support_bundle_schema_version",
+    "diagnostic_summary_id",
+    "consent_audit_event_id",
+    "operator_recovery_action_id",
+    "known_issue_id",
+    "private insert URI",
+    "private keys",
+    "browser session tokens",
+    "raw fetched content",
+    "raw app data values",
+    "absolute local paths",
+)
+
+PUBLIC_BETA_TRIAGE_LABELS = (
+    "area/catalog",
+    "area/app-update",
+    "area/app-data",
+    "area/app-service-grants",
+    "area/trust-graph",
+    "area/social-inbox",
+    "area/feed-reader",
+    "area/profile-publisher",
+    "area/platform-api",
+    "area/third-party-review",
+    "area/security-advisory",
+    "area/legacy-plugin-migration",
+    "area/docs",
+    "area/support-bundle",
+    "severity/blocker",
+    "severity/high",
+    "severity/medium",
+    "severity/low",
+    "status/needs-redaction",
+    "status/needs-repro",
+    "status/known-issue",
+    "status/backlog-candidate",
+    "status/fixed-next-beta",
+    "status/waiver-requested",
+    "privacy/redaction-required",
+    "privacy/redaction-passed",
+)
+
+KNOWN_ISSUE_FIELDS = (
+    "knownIssueId",
+    "status",
+    "severity",
+    "area",
+    "affectedChannels",
+    "affectedAppIds",
+    "affectedVersions",
+    "firstSeenReleaseId",
+    "fixedInReleaseId",
+    "workaroundSummary",
+    "supportBundleEvidenceAllowed",
+    "redactionNotes",
+    "backlogLinkOrPlaceholder",
+)
+
+BETA_RELEASE_NOTES_SECTIONS = (
+    "Release ID",
+    "Catalog channels",
+    "Supported upgrade path",
+    "Known issues",
+    "Fixed issues",
+    "Security advisories",
+    "App compatibility notes",
+    "Platform API compatibility notes",
+    "First-party app changes",
+    "Third-party app intake notes",
+    "Legacy plugin migration notes",
+    "Support bundle and diagnostics changes",
+    "Operator recovery notes",
+    "Go/no-go summary",
+    "Waivers",
+    "Redaction confirmation",
+)
+
+COMMON_FEEDBACK_FIELD_IDS = (
+    "release_id",
+    "cryptad_version",
+    "support_bundle_digest",
+    "diagnostic_summary_id",
+    "known_issue_id",
+    "severity",
+    "impact",
+    "reproduction_steps",
+    "expected_behavior",
+    "actual_behavior",
+    "redacted_evidence",
+)
+
+ISSUE_TEMPLATE_REQUIRED_FIELDS = {
+    ".github/ISSUE_TEMPLATE/public-beta-support.yml": (
+        *COMMON_FEEDBACK_FIELD_IDS,
+        "platform_api_contract_version",
+        "catalog_channel",
+        "catalog_id",
+        "app_id",
+        "app_version",
+        "consent_audit_event_id",
+        "operator_recovery_action_id",
+    ),
+    ".github/ISSUE_TEMPLATE/app-specific-feedback.yml": (
+        *COMMON_FEEDBACK_FIELD_IDS,
+        "platform_api_contract_version",
+        "catalog_channel",
+        "catalog_id",
+        "app_id",
+        "app_version",
+        "operation_being_attempted",
+        "support_bundle_schema_version",
+        "consent_audit_event_id",
+        "operator_recovery_action_id",
+        "app_data_backup_status",
+        "migration_status",
+        "subscription_id",
+        "trust_social_document_profile_id",
+    ),
+    ".github/ISSUE_TEMPLATE/catalog-incident.yml": (
+        "release_id",
+        "cryptad_version",
+        "catalog_id",
+        "catalog_channel",
+        "catalog_source_class",
+        "mirror_id",
+        "catalog_revision_edition",
+        "signature_verification_status",
+        "health_status",
+        "rollback_attempted",
+        "support_bundle_digest",
+        "redacted_error_code",
+        "known_issue_id",
+        "severity",
+        "impact",
+        "reproduction_steps",
+        "expected_behavior",
+        "actual_behavior",
+        "redacted_evidence",
+    ),
+    ".github/ISSUE_TEMPLATE/app-update-rollback.yml": (
+        *COMMON_FEEDBACK_FIELD_IDS,
+        "platform_api_contract_version",
+        "app_id",
+        "app_version",
+        "target_app_version",
+        "catalog_channel",
+        "update_phase",
+        "rollback_result",
+        "migration_status",
+        "app_data_backup_status",
+        "consent_audit_event_id",
+        "operator_recovery_action_id",
+    ),
+    ".github/ISSUE_TEMPLATE/support-bundle-diagnostics.yml": (
+        "release_id",
+        "cryptad_version",
+        "support_bundle_digest",
+        "support_bundle_schema_version",
+        "diagnostic_summary_id",
+        "export_preview_status",
+        "redaction_concern_category",
+        "known_issue_id",
+        "severity",
+        "impact",
+        "reproduction_steps",
+        "expected_behavior",
+        "actual_behavior",
+        "redacted_evidence",
+    ),
+    ".github/ISSUE_TEMPLATE/security-advisory-intake.yml": (
+        "advisory_type",
+        "release_id",
+        "cryptad_version",
+        "affected_component",
+        "support_bundle_digest",
+        "diagnostic_summary_id",
+        "known_issue_id",
+        "severity",
+        "public_safe_impact",
+    ),
+}
 
 PUBLIC_BETA_ONBOARDING_CONCEPTS = (
     "Public beta onboarding",
@@ -385,7 +646,7 @@ APP_SESSION_RE = re.compile(
 PARTIAL_REDACTION_RE = re.compile(
     r"(?<![\w-])(?:[\"']?Authorization[\"']?\s*:\s*[\"']?(?:[A-Za-z][A-Za-z0-9._~-]*\s+)?|"
     r"(?:Cookie|Set-Cookie|X-Crypta-App-Session)\s*:|"
-    r"[\"']?(?:CRYPTAD_APP_TOKEN|browserSessionToken|appProcessToken|"
+    r"[\"']?(?:CRYPTAD_APP_TOKEN|appToken|browserSessionToken|appProcessToken|"
     r"formPassword|CRYPTAD_CERT_FORM_PASSWORD|"
     + PRIVATE_KEY_ASSIGNMENT_NAME_RE
     + r")[\"']?\s*[:=]|"
@@ -398,7 +659,7 @@ PARTIAL_REDACTION_RE = re.compile(
     re.IGNORECASE,
 )
 TOKEN_ASSIGNMENT_RE = re.compile(
-    r"\b[\"']?(?:CRYPTAD_APP_TOKEN|browserSessionToken|appProcessToken)[\"']?\s*[:=]\s*"
+    r"\b[\"']?(?:CRYPTAD_APP_TOKEN|appToken|browserSessionToken|appProcessToken)[\"']?\s*[:=]\s*"
     r"(?![\"']?(?:<[^>]+>|\.\.\.|redacted|<redacted>|<token-redacted>)[\"']?(?:$|[\s,}\]`]))"
     r"(?:[\"'][^\"'<>\r\n]{8,}[\"']|[A-Za-z0-9._~+/=-]{8,})",
     re.IGNORECASE,
@@ -422,6 +683,8 @@ RAW_PLUGIN_MIGRATION_ARTIFACT_RE = re.compile(
     r"raw[-_ ]?social[-_ ]?message|raw[-_ ]?trust[-_ ]?statement|"
     r"raw[-_ ]?profile[-_ ]?document|raw[-_ ]?feed[-_ ]?document|"
     r"raw[-_ ]?feed[-_ ]?snapshot|raw[-_ ]?app[-_ ]?data[-_ ]?value|"
+    r"raw[-_ ]?fetched[-_ ]?content|raw[-_ ]?fetched[-_ ]?body|"
+    r"raw[-_ ]?content|raw[-_ ]?content[-_ ]?body|"
     r"raw[-_ ]?legacy[-_ ]?plugin[-_ ]?state|legacy[-_ ]?plugin[-_ ]?export|"
     r"old[-_ ]?plugin[-_ ]?export|plugin[-_ ]?export[-_ ]?body|"
     r"plugin[-_ ]?export[-_ ]?payload|fproxy[-_ ]?html|"
@@ -595,6 +858,7 @@ def markdown_files_to_check(workspace_root: Path) -> list[Path]:
     files = [workspace_root / path for path in NEW_DOCS]
     files.extend(workspace_root / path for path in (*REQUIRED_DOCS, *REQUIRED_PORTAL_LINKS))
     files.extend(workspace_root / path for path in PUBLIC_BETA_DOCS)
+    files.append(workspace_root / PUBLIC_BETA_RELEASE_NOTES_TEMPLATE)
     files.extend(workspace_root / path for path in PLUGIN_MIGRATION_DOCS)
     files.append(workspace_root / "README.md")
     return sorted({path for path in files if path.is_file()})
@@ -637,6 +901,7 @@ def broken_markdown_links(workspace_root: Path) -> list[dict[str, str]]:
 def redaction_files_to_check(workspace_root: Path) -> list[Path]:
     files = [workspace_root / path for path in (*REQUIRED_DOCS, *REQUIRED_PORTAL_LINKS)]
     files.extend(workspace_root / path for path in PUBLIC_BETA_DOCS)
+    files.extend(workspace_root / path for path in PUBLIC_BETA_SUPPORT_FEEDBACK_DOCS)
     files.extend(workspace_root / path for path in PLUGIN_MIGRATION_DOCS)
     files.extend(workspace_root / path for path in ISSUE_TEMPLATES)
     files.append(workspace_root / "README.md")
@@ -740,7 +1005,10 @@ def public_beta_markdown_files_to_check(workspace_root: Path) -> list[Path]:
 def public_beta_redaction_files_to_check(workspace_root: Path) -> list[Path]:
     paths = (
         *PUBLIC_BETA_DOCS,
-        ".github/ISSUE_TEMPLATE/public-beta-support.yml",
+        *ISSUE_TEMPLATES,
+        PUBLIC_BETA_RELEASE_NOTES_TEMPLATE,
+        PUBLIC_BETA_KNOWN_ISSUES_METADATA,
+        PUBLIC_BETA_SAFE_FEEDBACK_FIXTURE,
     )
     return sorted({workspace_root / path for path in paths if (workspace_root / path).is_file()})
 
@@ -756,6 +1024,334 @@ def readme_links_portal(workspace_root: Path) -> bool:
     return "docs/app-platform-developer-portal.md" in markdown_link_targets(
         workspace_root, workspace_root / "README.md"
     )
+
+
+ISSUE_TEMPLATE_ID_RE = re.compile(r"(?m)^\s*id:\s*([A-Za-z0-9_-]+)\s*$")
+
+
+def issue_template_field_ids(text: str) -> set[str]:
+    return {match.group(1) for match in ISSUE_TEMPLATE_ID_RE.finditer(text)}
+
+
+def indentation_width(line: str) -> int:
+    return len(line) - len(line.lstrip(" "))
+
+
+def issue_template_item_blocks(text: str) -> list[list[str]]:
+    blocks: list[list[str]] = []
+    current: list[str] = []
+    current_indent = 0
+    for line in text.splitlines():
+        if re.match(r"^\s*-\s*type:\s*", line):
+            indent = indentation_width(line)
+            if current and indent <= current_indent:
+                blocks.append(current)
+                current = []
+            current_indent = indent
+        if current or re.match(r"^\s*-\s*type:\s*", line):
+            current.append(line)
+    if current:
+        blocks.append(current)
+    return blocks
+
+
+def checkbox_option_blocks(item_lines: list[str]) -> list[list[str]]:
+    options_index = -1
+    options_indent = 0
+    for index, line in enumerate(item_lines):
+        if re.match(r"^\s*options:\s*$", line):
+            options_index = index
+            options_indent = indentation_width(line)
+            break
+    if options_index < 0:
+        return []
+
+    option_blocks: list[list[str]] = []
+    current: list[str] = []
+    current_indent = 0
+    for line in item_lines[options_index + 1 :]:
+        if line.strip() and indentation_width(line) <= options_indent:
+            break
+        if re.match(r"^\s*-\s*label:\s*", line):
+            if current:
+                option_blocks.append(current)
+            current = [line]
+            current_indent = indentation_width(line)
+            continue
+        if current:
+            if line.strip() and indentation_width(line) <= current_indent:
+                break
+            current.append(line)
+    if current:
+        option_blocks.append(current)
+    return option_blocks
+
+
+def checkbox_option_is_required(option_lines: list[str]) -> bool:
+    return any(re.match(r"^\s*required:\s*true\s*$", line, re.IGNORECASE) for line in option_lines)
+
+
+def has_required_redaction_confirmation(text: str) -> bool:
+    for item_lines in issue_template_item_blocks(text):
+        item_text = "\n".join(item_lines)
+        if not re.search(r"(?im)^\s*-\s*type:\s*checkboxes\s*$", item_text):
+            continue
+        if not re.search(r"(?im)^\s*id:\s*redaction[-_]confirmation\s*$", item_text):
+            continue
+        if "redaction confirmation" not in item_text.lower():
+            continue
+        options = checkbox_option_blocks(item_lines)
+        return bool(options) and all(checkbox_option_is_required(option) for option in options)
+    return False
+
+
+def line_negates_sensitive_request(line: str) -> bool:
+    lowered = line.lower()
+    return bool(
+        re.search(
+            r"\b(?:do|does|must)\s+not\b|\bnever\b|"
+            r"\bnot\s+(?:include|included|request|requested|ask|asked|upload|uploaded|"
+            r"attach|attached|paste|pasted|provide|provided|share|shared|disclose|"
+            r"disclosed|describe|described)\b|"
+            r"\bcontains?\s+no\b|"
+            r"\bwith\s+no\s+(?:secrets?|private\b|private\s+uris?|"
+            r"private\s+insert\s+uris?|raw\b|raw\s+support\s+bundles?|"
+            r"exploit\s+details?|proof-of-concept|tokens?)\b|"
+            r"\bwithout\s+(?:public\s+)?(?:exploit\s+details?|secrets?|private\s+"
+            r"(?:material|content|values?|uris?|insert\s+uris?)|raw\s+"
+            r"(?:content|data|support\s+bundles?))\b",
+            lowered,
+        )
+    )
+
+
+def unsafe_template_prompt_findings(path: str, text: str) -> list[dict[str, str]]:
+    findings: list[dict[str, str]] = []
+    for line_number, line in enumerate(text.splitlines(), start=1):
+        lowered = line.lower()
+        if "raw support bundle" in lowered and any(
+            verb in lowered for verb in ("upload", "attach", "paste", "include", "request", "ask")
+        ) and not line_negates_sensitive_request(line):
+            findings.append(
+                {
+                    "path": path,
+                    "issue": "raw-support-bundle-request",
+                    "line": str(line_number),
+                }
+            )
+        if "private insert uri" in lowered and not line_negates_sensitive_request(line):
+            findings.append(
+                {"path": path, "issue": "private-insert-uri-request", "line": str(line_number)}
+            )
+        if "exploit detail" in lowered and not line_negates_sensitive_request(line):
+            findings.append(
+                {"path": path, "issue": "public-exploit-detail-request", "line": str(line_number)}
+            )
+    return findings
+
+
+def issue_template_validation(workspace_root: Path) -> dict[str, Any]:
+    missing_fields: dict[str, list[str]] = {}
+    missing_redaction_confirmation: list[str] = []
+    unsafe_prompts: list[dict[str, str]] = []
+    field_ids_by_template: dict[str, list[str]] = {}
+    first_party_app_options = (
+        "queue-manager",
+        "publisher",
+        "site-publisher",
+        "profile-publisher",
+        "feed-reader",
+        "trust-graph",
+        "social-inbox",
+    )
+    security_handoff_terms = (
+        "private security report",
+        "security advisory or denylist event",
+        "reviewer key compromise",
+        "catalog signing key compromise",
+        "app signing key compromise",
+        "support bundle redaction failure",
+    )
+    for path in ISSUE_TEMPLATES:
+        text = read_text(workspace_root / path)
+        field_ids = issue_template_field_ids(text)
+        field_ids_by_template[path] = sorted(field_ids)
+        if not has_required_redaction_confirmation(text):
+            missing_redaction_confirmation.append(path)
+        unsafe_prompts.extend(unsafe_template_prompt_findings(path, text))
+        required_fields = ISSUE_TEMPLATE_REQUIRED_FIELDS.get(path, ())
+        missing = [field for field in required_fields if field not in field_ids]
+        if missing:
+            missing_fields[path] = missing
+    app_specific_text = read_text(
+        workspace_root / ".github/ISSUE_TEMPLATE/app-specific-feedback.yml"
+    )
+    missing_first_party_options = [
+        app_id for app_id in first_party_app_options if app_id not in app_specific_text
+    ]
+    security_text = read_text(
+        workspace_root / ".github/ISSUE_TEMPLATE/security-advisory-intake.yml"
+    )
+    missing_security_handoff_terms = [
+        term for term in security_handoff_terms if term not in security_text.lower()
+    ]
+    return {
+        "fieldIdsByTemplate": field_ids_by_template,
+        "missingFields": missing_fields,
+        "missingRedactionConfirmation": sorted(missing_redaction_confirmation),
+        "unsafePrompts": unsafe_prompts,
+        "missingFirstPartyAppOptions": missing_first_party_options,
+        "missingSecurityHandoffTerms": missing_security_handoff_terms,
+        "passed": not missing_fields
+        and not missing_redaction_confirmation
+        and not unsafe_prompts
+        and not missing_first_party_options
+        and not missing_security_handoff_terms,
+    }
+
+
+def load_json_document(path: Path) -> tuple[Any | None, str]:
+    try:
+        return json.loads(read_text(path)), ""
+    except json.JSONDecodeError as exc:
+        return None, str(exc)
+
+
+def known_issues_validation(workspace_root: Path) -> dict[str, Any]:
+    doc_text = read_text(workspace_root / "docs/public-beta/known-issues.md")
+    metadata_path = workspace_root / PUBLIC_BETA_KNOWN_ISSUES_METADATA
+    metadata, error = load_json_document(metadata_path)
+    missing_doc_fields = [field for field in KNOWN_ISSUE_FIELDS if field not in doc_text]
+    missing_metadata_fields: dict[str, list[str]] = {}
+    redaction = redaction_findings_for_files(
+        workspace_root,
+        [
+            workspace_root / "docs/public-beta/known-issues.md",
+            metadata_path,
+        ],
+    )
+    if isinstance(metadata, dict):
+        issues = metadata.get("knownIssues")
+        if isinstance(issues, list):
+            for index, issue in enumerate(issues):
+                if isinstance(issue, dict):
+                    missing = [field for field in KNOWN_ISSUE_FIELDS if field not in issue]
+                else:
+                    missing = list(KNOWN_ISSUE_FIELDS)
+                if missing:
+                    missing_metadata_fields[str(index)] = missing
+        else:
+            missing_metadata_fields["knownIssues"] = ["knownIssues"]
+    else:
+        missing_metadata_fields["json"] = ["parse"]
+    return {
+        "jsonParseError": error,
+        "missingDocFields": missing_doc_fields,
+        "missingMetadataFields": missing_metadata_fields,
+        "redactionFindings": redaction,
+        "passed": not error
+        and not missing_doc_fields
+        and not missing_metadata_fields
+        and not redaction,
+    }
+
+
+def release_notes_template_validation(workspace_root: Path) -> dict[str, Any]:
+    path = workspace_root / PUBLIC_BETA_RELEASE_NOTES_TEMPLATE
+    text = read_text(path)
+    missing_sections = [section for section in BETA_RELEASE_NOTES_SECTIONS if section not in text]
+    redaction = redaction_findings_for_files(workspace_root, [path])
+    return {
+        "missingSections": missing_sections,
+        "redactionFindings": redaction,
+        "passed": path.is_file() and not missing_sections and not redaction,
+    }
+
+
+def redaction_fixture_validation(workspace_root: Path) -> dict[str, Any]:
+    positive_path = workspace_root / PUBLIC_BETA_SAFE_FEEDBACK_FIXTURE
+    negative_paths = [workspace_root / path for path in PUBLIC_BETA_NEGATIVE_FEEDBACK_FIXTURES]
+    missing_fixtures = [
+        display_path(path.relative_to(workspace_root))
+        for path in [positive_path, *negative_paths]
+        if not path.is_file()
+    ]
+    positive_findings = (
+        redaction_findings_for_files(workspace_root, [positive_path])
+        if positive_path.is_file()
+        else []
+    )
+    negative_findings_by_path: dict[str, list[str]] = {}
+    undetected_negative_fixtures: list[str] = []
+    for path in negative_paths:
+        if not path.is_file():
+            continue
+        relative = display_path(path.relative_to(workspace_root))
+        findings = redaction_findings_for_files(workspace_root, [path])
+        issues = [finding["issue"] for finding in findings if finding.get("path") == relative]
+        negative_findings_by_path[relative] = issues
+        if not issues:
+            undetected_negative_fixtures.append(relative)
+    return {
+        "positiveFixture": PUBLIC_BETA_SAFE_FEEDBACK_FIXTURE,
+        "negativeFixtures": list(PUBLIC_BETA_NEGATIVE_FEEDBACK_FIXTURES),
+        "missingFixtures": missing_fixtures,
+        "positiveFindings": positive_findings,
+        "negativeFindingsByPath": negative_findings_by_path,
+        "undetectedNegativeFixtures": undetected_negative_fixtures,
+        "passed": not missing_fixtures
+        and not positive_findings
+        and not undetected_negative_fixtures,
+    }
+
+
+def support_bundle_guidance_validation(workspace_root: Path) -> dict[str, Any]:
+    paths = (
+        "docs/public-beta/support-and-feedback.md",
+        "docs/privacy-preserving-beta-diagnostics.md",
+        ".github/ISSUE_TEMPLATE/support-bundle-diagnostics.yml",
+    )
+    text = docs_text(workspace_root, paths)
+    required_terms = (
+        "local-only",
+        "digest",
+        "schema version",
+        "diagnostic summary",
+        "Raw app-data backups are not support bundles",
+        "reviewed redacted bundle",
+        "do not attach",
+    )
+    missing = missing_terms(text, required_terms)
+    return {"missingTerms": missing, "passed": not missing}
+
+
+def security_handoff_validation(workspace_root: Path) -> dict[str, Any]:
+    paths = (
+        "docs/public-beta/security-reporting.md",
+        "docs/SECURITY.md",
+        ".github/ISSUE_TEMPLATE/security-advisory-intake.yml",
+    )
+    text = docs_text(workspace_root, paths)
+    required_terms = (
+        "Public bug report",
+        "Private security report",
+        "Security advisory or denylist event",
+        "Reviewer key compromise",
+        "Catalog signing key compromise",
+        "App signing key compromise",
+        "Support bundle redaction failure",
+        "Do not include exploit details",
+    )
+    missing = missing_terms(text, required_terms)
+    unsafe_prompts = unsafe_template_prompt_findings(
+        ".github/ISSUE_TEMPLATE/security-advisory-intake.yml",
+        read_text(workspace_root / ".github/ISSUE_TEMPLATE/security-advisory-intake.yml"),
+    )
+    return {
+        "missingTerms": missing,
+        "unsafePrompts": unsafe_prompts,
+        "passed": not missing and not unsafe_prompts,
+    }
 
 
 def evidence_item(
@@ -806,6 +1402,24 @@ def run_check(workspace_root: Path) -> dict[str, Any]:
     public_beta_limitations_text = read_text(
         workspace_root / "docs/public-beta/trust-social-limitations.md"
     )
+    support_feedback_doc_status = required_file_status(
+        workspace_root, PUBLIC_BETA_SUPPORT_FEEDBACK_DOCS
+    )
+    support_feedback_text = read_text(
+        workspace_root / "docs/public-beta/support-and-feedback.md"
+    )
+    triage_taxonomy_text = read_text(
+        workspace_root / "docs/public-beta/triage-taxonomy.md"
+    )
+    feedback_to_backlog_text = read_text(
+        workspace_root / "docs/public-beta/feedback-to-backlog.md"
+    )
+    issue_template_checks = issue_template_validation(workspace_root)
+    known_issue_checks = known_issues_validation(workspace_root)
+    release_notes_checks = release_notes_template_validation(workspace_root)
+    support_bundle_guidance_checks = support_bundle_guidance_validation(workspace_root)
+    security_handoff_checks = security_handoff_validation(workspace_root)
+    redaction_fixture_checks = redaction_fixture_validation(workspace_root)
 
     missing_docs = sorted(path for path, present in required_docs.items() if not present)
     missing_issue_templates = sorted(path for path, present in issue_templates.items() if not present)
@@ -830,6 +1444,42 @@ def run_check(workspace_root: Path) -> dict[str, Any]:
     )
     public_beta_limitations_missing = missing_terms(
         public_beta_limitations_text, PUBLIC_BETA_LIMITATION_CONCEPTS
+    )
+    missing_support_feedback_docs = sorted(
+        path for path, present in support_feedback_doc_status.items() if not present
+    )
+    support_feedback_missing = missing_terms(
+        support_feedback_text, PUBLIC_BETA_SUPPORT_FEEDBACK_CONCEPTS
+    )
+    triage_taxonomy_missing = missing_terms(
+        triage_taxonomy_text, PUBLIC_BETA_TRIAGE_LABELS
+    )
+    feedback_to_backlog_missing = missing_terms(
+        feedback_to_backlog_text,
+        (
+            "intake",
+            "redaction check",
+            "reproduction check",
+            "triage category",
+            "known issue matching",
+            "support response",
+            "security escalation",
+            "developer or app-review escalation",
+            "release blocker decision",
+            "backlog candidate creation",
+            "next beta verification",
+            "release notes entry",
+            "closure criteria",
+            "Catalog cannot refresh",
+            "App update failed",
+            "Subscription stuck",
+            "Trust Graph import warning",
+            "Social Inbox rendering issue",
+            "Third-party app compatibility report",
+            "Legacy plugin author migration question",
+            "Support bundle redaction concern",
+            "Suspected security advisory",
+        ),
     )
 
     docs_portal_passed = (
@@ -872,6 +1522,58 @@ def run_check(workspace_root: Path) -> dict[str, Any]:
     public_beta_limitations_passed = (
         public_beta_docs["docs/public-beta/trust-social-limitations.md"]
         and not public_beta_limitations_missing
+    )
+    support_feedback_docs_passed = (
+        not missing_support_feedback_docs and not support_feedback_missing
+    )
+    issue_templates_passed = (
+        not missing_issue_templates and bool(issue_template_checks["passed"])
+    )
+    triage_taxonomy_passed = (
+        support_feedback_doc_status["docs/public-beta/triage-taxonomy.md"]
+        and not triage_taxonomy_missing
+    )
+    known_issues_passed = bool(known_issue_checks["passed"])
+    feedback_to_backlog_passed = (
+        support_feedback_doc_status["docs/public-beta/feedback-to-backlog.md"]
+        and not feedback_to_backlog_missing
+    )
+    release_notes_template_passed = bool(release_notes_checks["passed"])
+    support_bundle_guidance_passed = bool(support_bundle_guidance_checks["passed"])
+    security_handoff_passed = bool(security_handoff_checks["passed"])
+    app_specific_feedback_passed = (
+        issue_templates[".github/ISSUE_TEMPLATE/app-specific-feedback.yml"]
+        and not issue_template_checks["missingFields"].get(
+            ".github/ISSUE_TEMPLATE/app-specific-feedback.yml"
+        )
+        and not issue_template_checks["missingFirstPartyAppOptions"]
+    )
+    catalog_incident_feedback_passed = (
+        issue_templates[".github/ISSUE_TEMPLATE/catalog-incident.yml"]
+        and not issue_template_checks["missingFields"].get(
+            ".github/ISSUE_TEMPLATE/catalog-incident.yml"
+        )
+        and not any(
+            finding["path"] == ".github/ISSUE_TEMPLATE/catalog-incident.yml"
+            for finding in issue_template_checks["unsafePrompts"]
+        )
+    )
+    redaction_fixtures_passed = bool(redaction_fixture_checks["passed"])
+    support_feedback_loop_passed = all(
+        (
+            support_feedback_docs_passed,
+            issue_templates_passed,
+            triage_taxonomy_passed,
+            known_issues_passed,
+            feedback_to_backlog_passed,
+            release_notes_template_passed,
+            support_bundle_guidance_passed,
+            security_handoff_passed,
+            app_specific_feedback_passed,
+            catalog_incident_feedback_passed,
+            redaction_fixtures_passed,
+            public_beta_links_redaction_passed,
+        )
     )
 
     evidence = [
@@ -1063,6 +1765,197 @@ def run_check(workspace_root: Path) -> dict[str, Any]:
                 "localAbsolutePathsAllowed": False,
             },
         ),
+        evidence_item(
+            "public-beta.support-feedback-loop",
+            "pass" if support_feedback_loop_passed else "fail",
+            (
+                "Public beta support-feedback loop evidence is complete and redaction-safe."
+                if support_feedback_loop_passed
+                else "Public beta support-feedback loop evidence is incomplete or redaction-unsafe."
+            ),
+            "docs/public-beta/support-and-feedback.md",
+            {
+                "childEvidenceIds": list(PUBLIC_BETA_SUPPORT_FEEDBACK_EVIDENCE_IDS[1:]),
+                "docs": support_feedback_docs_passed,
+                "issueTemplates": issue_templates_passed,
+                "triageTaxonomy": triage_taxonomy_passed,
+                "knownIssuesTracker": known_issues_passed,
+                "feedbackToBacklog": feedback_to_backlog_passed,
+                "releaseNotesTemplate": release_notes_template_passed,
+                "supportBundleGuidance": support_bundle_guidance_passed,
+                "securityHandoff": security_handoff_passed,
+                "appSpecificFeedback": app_specific_feedback_passed,
+                "catalogIncidentFeedback": catalog_incident_feedback_passed,
+                "redactionFixtures": redaction_fixtures_passed,
+                "linksAndRedactionOk": public_beta_links_redaction_passed,
+            },
+        ),
+        evidence_item(
+            "public-beta.support-feedback-docs",
+            "pass" if support_feedback_docs_passed else "fail",
+            (
+                "Canonical public beta support-feedback docs are present."
+                if support_feedback_docs_passed
+                else "Canonical public beta support-feedback docs are missing required coverage."
+            ),
+            "docs/public-beta/support-and-feedback.md",
+            {
+                "requiredDocsPresent": not missing_support_feedback_docs,
+                "missingDocs": missing_support_feedback_docs,
+                "requiredConceptCount": len(PUBLIC_BETA_SUPPORT_FEEDBACK_CONCEPTS),
+                "missingConcepts": support_feedback_missing,
+            },
+        ),
+        evidence_item(
+            "public-beta.issue-templates",
+            "pass" if issue_templates_passed else "fail",
+            (
+                "Public beta feedback issue templates have required fields and redaction confirmations."
+                if issue_templates_passed
+                else "Public beta feedback issue templates are missing required structure or contain unsafe prompts."
+            ),
+            ".github/ISSUE_TEMPLATE/",
+            {
+                "issueTemplates": list(ISSUE_TEMPLATES),
+                "missingIssueTemplates": missing_issue_templates,
+                "missingFields": issue_template_checks["missingFields"],
+                "missingRedactionConfirmation": issue_template_checks[
+                    "missingRedactionConfirmation"
+                ],
+                "unsafePrompts": issue_template_checks["unsafePrompts"],
+            },
+        ),
+        evidence_item(
+            "public-beta.triage-taxonomy",
+            "pass" if triage_taxonomy_passed else "fail",
+            (
+                "Public beta triage taxonomy covers required area, severity, status, and privacy labels."
+                if triage_taxonomy_passed
+                else "Public beta triage taxonomy is incomplete."
+            ),
+            "docs/public-beta/triage-taxonomy.md",
+            {
+                "docPresent": support_feedback_doc_status[
+                    "docs/public-beta/triage-taxonomy.md"
+                ],
+                "missingLabels": triage_taxonomy_missing,
+            },
+        ),
+        evidence_item(
+            "public-beta.known-issues-tracker",
+            "pass" if known_issues_passed else "fail",
+            (
+                "Public beta known-issues tracker is deterministic and redaction-safe."
+                if known_issues_passed
+                else "Public beta known-issues tracker is missing fields or redaction-safe metadata."
+            ),
+            "docs/public-beta/known-issues.md",
+            known_issue_checks,
+        ),
+        evidence_item(
+            "public-beta.feedback-to-backlog",
+            "pass" if feedback_to_backlog_passed else "fail",
+            (
+                "Public beta feedback-to-backlog workflow covers required triage outcomes and examples."
+                if feedback_to_backlog_passed
+                else "Public beta feedback-to-backlog workflow is incomplete."
+            ),
+            "docs/public-beta/feedback-to-backlog.md",
+            {
+                "docPresent": support_feedback_doc_status[
+                    "docs/public-beta/feedback-to-backlog.md"
+                ],
+                "missingConcepts": feedback_to_backlog_missing,
+            },
+        ),
+        evidence_item(
+            "public-beta.release-notes-template",
+            "pass" if release_notes_template_passed else "fail",
+            (
+                "Public beta release notes template is present and redaction-safe."
+                if release_notes_template_passed
+                else "Public beta release notes template is missing sections or has redaction findings."
+            ),
+            PUBLIC_BETA_RELEASE_NOTES_TEMPLATE,
+            release_notes_checks,
+        ),
+        evidence_item(
+            "public-beta.support-bundle-guidance",
+            "pass" if support_bundle_guidance_passed else "fail",
+            (
+                "Public beta support-bundle guidance is digest-first and local-only."
+                if support_bundle_guidance_passed
+                else "Public beta support-bundle guidance is missing required sharing safeguards."
+            ),
+            "docs/public-beta/support-and-feedback.md",
+            support_bundle_guidance_checks,
+        ),
+        evidence_item(
+            "public-beta.security-reporting-handoff",
+            "pass" if security_handoff_passed else "fail",
+            (
+                "Public beta security reporting handoff keeps public forms free of exploit details."
+                if security_handoff_passed
+                else "Public beta security reporting handoff is incomplete or unsafe."
+            ),
+            "docs/public-beta/security-reporting.md",
+            security_handoff_checks,
+        ),
+        evidence_item(
+            "public-beta.app-specific-feedback",
+            "pass" if app_specific_feedback_passed else "fail",
+            (
+                "Public beta app-specific feedback template covers first-party app metadata."
+                if app_specific_feedback_passed
+                else "Public beta app-specific feedback template is incomplete."
+            ),
+            ".github/ISSUE_TEMPLATE/app-specific-feedback.yml",
+            {
+                "templatePresent": issue_templates[
+                    ".github/ISSUE_TEMPLATE/app-specific-feedback.yml"
+                ],
+                "missingFields": issue_template_checks["missingFields"].get(
+                    ".github/ISSUE_TEMPLATE/app-specific-feedback.yml", []
+                ),
+                "missingFirstPartyAppOptions": issue_template_checks[
+                    "missingFirstPartyAppOptions"
+                ],
+            },
+        ),
+        evidence_item(
+            "public-beta.catalog-incident-feedback",
+            "pass" if catalog_incident_feedback_passed else "fail",
+            (
+                "Public beta catalog incident template captures safe catalog metadata."
+                if catalog_incident_feedback_passed
+                else "Public beta catalog incident template is incomplete or asks for unsafe material."
+            ),
+            ".github/ISSUE_TEMPLATE/catalog-incident.yml",
+            {
+                "templatePresent": issue_templates[
+                    ".github/ISSUE_TEMPLATE/catalog-incident.yml"
+                ],
+                "missingFields": issue_template_checks["missingFields"].get(
+                    ".github/ISSUE_TEMPLATE/catalog-incident.yml", []
+                ),
+                "unsafePrompts": [
+                    finding
+                    for finding in issue_template_checks["unsafePrompts"]
+                    if finding["path"] == ".github/ISSUE_TEMPLATE/catalog-incident.yml"
+                ],
+            },
+        ),
+        evidence_item(
+            "public-beta.redaction-fixtures",
+            "pass" if redaction_fixtures_passed else "fail",
+            (
+                "Public beta feedback redaction fixtures detect unsafe examples and accept safe examples."
+                if redaction_fixtures_passed
+                else "Public beta feedback redaction fixtures are missing or unsafe examples were accepted."
+            ),
+            "tools/release-certification/fixtures/",
+            redaction_fixture_checks,
+        ),
     ]
     status = "pass" if all(item["status"] == "pass" for item in evidence) else "fail"
     return {
@@ -1084,7 +1977,15 @@ def run_self_test(repo_root: Path) -> None:
     with tempfile.TemporaryDirectory(prefix="cryptad-docs-check-self-test-") as temp_name:
         temp_root = Path(temp_name)
         for path in sorted(
-            {*REQUIRED_DOCS, *REQUIRED_PORTAL_LINKS, *PUBLIC_BETA_DOCS, *PLUGIN_MIGRATION_DOCS}
+            {
+                *REQUIRED_DOCS,
+                *REQUIRED_PORTAL_LINKS,
+                *PUBLIC_BETA_DOCS,
+                *PUBLIC_BETA_SUPPORT_FEEDBACK_DOCS,
+                *PLUGIN_MIGRATION_DOCS,
+                PUBLIC_BETA_SAFE_FEEDBACK_FIXTURE,
+                *PUBLIC_BETA_NEGATIVE_FEEDBACK_FIXTURES,
+            }
         ):
             source = repo_root / path
             target = temp_root / path
@@ -1346,6 +2247,153 @@ def run_self_test(repo_root: Path) -> None:
             "path": "docs/public-beta/README.md",
             "issue": "migration-raw-artifact",
         } in public_beta_redaction["details"]["redactionFindings"], raw_support_bundle
+        public_beta_readme.write_text(
+            read_text(repo_root / "docs/public-beta/README.md"), encoding="utf-8"
+        )
+        support_template = temp_root / ".github/ISSUE_TEMPLATE/public-beta-support.yml"
+        support_template_original = read_text(support_template)
+        support_template.write_text(
+            support_template_original.replace(
+                "id: redaction-confirmation", "id: missing-redaction-confirmation"
+            ),
+            encoding="utf-8",
+        )
+        missing_redaction_confirmation = run_check(temp_root)
+        issue_template_evidence = evidence_by_id(missing_redaction_confirmation)[
+            "public-beta.issue-templates"
+        ]
+        assert issue_template_evidence["status"] == "fail", missing_redaction_confirmation
+        assert ".github/ISSUE_TEMPLATE/public-beta-support.yml" in issue_template_evidence[
+            "details"
+        ]["missingRedactionConfirmation"], missing_redaction_confirmation
+        support_template.write_text(support_template_original, encoding="utf-8")
+        optional_checkbox_template = re.sub(
+            r"(id: redaction-confirmation[\s\S]*?options:\n\s+- label:[^\n]*\n\s+)required: true",
+            r"\1required: false",
+            support_template_original,
+            count=1,
+        )
+        assert optional_checkbox_template != support_template_original
+        support_template.write_text(optional_checkbox_template, encoding="utf-8")
+        optional_redaction_confirmation = run_check(temp_root)
+        optional_redaction_evidence = evidence_by_id(optional_redaction_confirmation)[
+            "public-beta.issue-templates"
+        ]
+        assert optional_redaction_evidence["status"] == "fail", optional_redaction_confirmation
+        assert ".github/ISSUE_TEMPLATE/public-beta-support.yml" in optional_redaction_evidence[
+            "details"
+        ]["missingRedactionConfirmation"], optional_redaction_confirmation
+        support_template.write_text(support_template_original, encoding="utf-8")
+        support_template.write_text(
+            support_template_original
+            + "\n  - type: textarea\n"
+            + "    id: raw_bundle_upload\n"
+            + "    attributes:\n"
+            + "      label: Please upload a raw support bundle\n",
+            encoding="utf-8",
+        )
+        raw_bundle_upload = run_check(temp_root)
+        assert evidence_by_id(raw_bundle_upload)["public-beta.issue-templates"][
+            "status"
+        ] == "fail", raw_bundle_upload
+        support_template.write_text(support_template_original, encoding="utf-8")
+        catalog_template = temp_root / ".github/ISSUE_TEMPLATE/catalog-incident.yml"
+        catalog_template_original = read_text(catalog_template)
+        catalog_template.write_text(
+            catalog_template_original
+            + "\n  - type: input\n"
+            + "    id: unsafe_private_insert_uri\n"
+            + "    attributes:\n"
+            + "      label: Private insert URI\n",
+            encoding="utf-8",
+        )
+        catalog_private_uri = run_check(temp_root)
+        assert evidence_by_id(catalog_private_uri)["public-beta.catalog-incident-feedback"][
+            "status"
+        ] == "fail", catalog_private_uri
+        catalog_template.write_text(catalog_template_original, encoding="utf-8")
+        known_issues_doc = temp_root / "docs/public-beta/known-issues.md"
+        known_issues_doc_original = read_text(known_issues_doc)
+        known_issues_doc.write_text(
+            known_issues_doc_original + '\nrawAppDataValue: "private app value"\n',
+            encoding="utf-8",
+        )
+        known_raw_app_data = run_check(temp_root)
+        assert evidence_by_id(known_raw_app_data)["public-beta.known-issues-tracker"][
+            "status"
+        ] == "fail", known_raw_app_data
+        known_issues_doc.write_text(
+            known_issues_doc_original
+            + "\nInsert URI: USK@abcdefghijklmno,qrstuvwxyz0123456789ABCDEFG/name/0\n",
+            encoding="utf-8",
+        )
+        known_private_uri = run_check(temp_root)
+        assert evidence_by_id(known_private_uri)["public-beta.known-issues-tracker"][
+            "status"
+        ] == "fail", known_private_uri
+        known_issues_doc.write_text(known_issues_doc_original, encoding="utf-8")
+        release_notes_template = temp_root / PUBLIC_BETA_RELEASE_NOTES_TEMPLATE
+        release_notes_template_original = read_text(release_notes_template)
+        release_notes_template.write_text(
+            release_notes_template_original + '\nrawFetchedContent: "private fetched body"\n',
+            encoding="utf-8",
+        )
+        release_notes_raw_content = run_check(temp_root)
+        assert evidence_by_id(release_notes_raw_content)[
+            "public-beta.release-notes-template"
+        ]["status"] == "fail", release_notes_raw_content
+        release_notes_template.write_text(release_notes_template_original, encoding="utf-8")
+        safe_fixture = temp_root / PUBLIC_BETA_SAFE_FEEDBACK_FIXTURE
+        safe_fixture_original = read_text(safe_fixture)
+        safe_fixture.write_text(
+            safe_fixture_original
+            + '\n{"feedbackToBacklogRecord":{"privateKey":"-----BEGIN PRIVATE KEY-----"}}\n',
+            encoding="utf-8",
+        )
+        feedback_private_key = run_check(temp_root)
+        assert evidence_by_id(feedback_private_key)["public-beta.redaction-fixtures"][
+            "status"
+        ] == "fail", feedback_private_key
+        safe_fixture.write_text(safe_fixture_original, encoding="utf-8")
+        security_template = temp_root / ".github/ISSUE_TEMPLATE/security-advisory-intake.yml"
+        security_template_original = read_text(security_template)
+        security_template.write_text(
+            security_template_original + "\nPlease include exploit details publicly.\n",
+            encoding="utf-8",
+        )
+        security_public_exploit = run_check(temp_root)
+        assert evidence_by_id(security_public_exploit)[
+            "public-beta.security-reporting-handoff"
+        ]["status"] == "fail", security_public_exploit
+        security_template.write_text(security_template_original, encoding="utf-8")
+        assert unsafe_template_prompt_findings(
+            "unsafe.yml", "Please include exploit details without redaction."
+        ) == [
+            {
+                "path": "unsafe.yml",
+                "issue": "public-exploit-detail-request",
+                "line": "1",
+            }
+        ]
+        assert unsafe_template_prompt_findings(
+            "unsafe.yml", "Please paste a raw support bundle with no redaction."
+        ) == [
+            {
+                "path": "unsafe.yml",
+                "issue": "raw-support-bundle-request",
+                "line": "1",
+            }
+        ]
+        assert not unsafe_template_prompt_findings(
+            "safe.yml", "Do not include exploit details here."
+        )
+        assert not unsafe_template_prompt_findings(
+            "safe.yml",
+            "Classify a suspected public-beta security issue without public exploit details.",
+        )
+        assert not unsafe_template_prompt_findings(
+            "safe.yml", "Do not upload a raw support bundle in this public issue."
+        )
     assert redaction_findings_for_text("Authorization: Bearer concrete-token-value") == [
         "authorization-header"
     ]
@@ -1378,6 +2426,9 @@ def run_self_test(repo_root: Path) -> None:
     )
     assert "partial-redaction" in redaction_findings_for_text(
         "Cookie: <redacted>; sid=abcdef012345"
+    )
+    assert "partial-redaction" in redaction_findings_for_text(
+        "appToken: <redacted> abcdef0123456789"
     )
     assert "partial-redaction" not in redaction_findings_for_text(
         "Authorization: Bearer <redacted>"
@@ -1442,6 +2493,7 @@ def run_self_test(repo_root: Path) -> None:
     assert "token-assignment" in redaction_findings_for_text(
         "appProcessToken: abcdef0123456789"
     )
+    assert "token-assignment" in redaction_findings_for_text("appToken: abcdef0123456789")
     assert "token-assignment" not in redaction_findings_for_text("CRYPTAD_APP_TOKEN=...")
     assert "token-assignment" not in redaction_findings_for_text(
         '"browserSessionToken": "<opaque-browser-session-token>"'
@@ -1496,6 +2548,9 @@ def run_self_test(repo_root: Path) -> None:
     )
     assert "migration-raw-artifact" in redaction_findings_for_text(
         "rawSupportBundle: private diagnostic body"
+    )
+    assert "migration-raw-artifact" in redaction_findings_for_text(
+        "rawFetchedContent: private fetched body"
     )
     assert "migration-raw-artifact" in redaction_findings_for_text(
         '"rawSocialMessage": "<redacted> private-message-body"'

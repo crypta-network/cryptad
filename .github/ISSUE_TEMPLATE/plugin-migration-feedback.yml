@@ -4,11 +4,30 @@ title: "[plugin-migration] "
 labels:
   - app-platform
   - plugin-migration
+  - area/legacy-plugin-migration
+  - status/needs-repro
+  - privacy/redaction-required
 body:
   - type: markdown
     attributes:
       value: |
-        Do not paste private keys, seed phrases, private insert URIs, browser session tokens, authorization headers, raw plugin state, raw app data, raw fetched content, raw trust documents, or local absolute paths.
+        Use docs/public-beta/support-and-feedback.md and docs/public-beta/feedback-to-backlog.md to route migration feedback into known issues or backlog candidates.
+
+        Do not paste private keys, reviewer private keys, app signing private keys, seed phrases, private insert URIs, browser session tokens, app tokens, authorization headers, cookies, form passwords, raw plugin state, raw app data, raw fetched content, raw support bundles, raw trust documents, raw social messages, request or response bodies, or local absolute paths.
+  - type: input
+    id: release_id
+    attributes:
+      label: Release id
+    validations:
+      required: true
+  - type: input
+    id: cryptad_version
+    attributes:
+      label: Cryptad version/build
+  - type: input
+    id: platform_api_contract_version
+    attributes:
+      label: Platform API contract version, if relevant
   - type: dropdown
     id: legacy-plugin-category
     attributes:
@@ -53,10 +72,63 @@ body:
       description: Note any old ABI, old FCP command, daemon-private hook, or localhost RPC behavior that will not migrate directly.
     validations:
       required: true
+  - type: input
+    id: app_id
+    attributes:
+      label: Proposed app id, if relevant
+  - type: input
+    id: app_version
+    attributes:
+      label: Proposed app version, if relevant
+  - type: input
+    id: support_bundle_digest
+    attributes:
+      label: Support bundle digest, if relevant
+  - type: input
+    id: diagnostic_summary_id
+    attributes:
+      label: Diagnostic summary id, if relevant
+  - type: input
+    id: known_issue_id
+    attributes:
+      label: Known issue id, if relevant
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      options:
+        - severity/blocker
+        - severity/high
+        - severity/medium
+        - severity/low
+    validations:
+      required: true
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impact
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction_steps
+    attributes:
+      label: Redacted reproduction steps, if relevant
+  - type: textarea
+    id: expected_behavior
+    attributes:
+      label: Expected behavior
+  - type: textarea
+    id: actual_behavior
+    attributes:
+      label: Actual behavior
+  - type: textarea
+    id: redacted_evidence
+    attributes:
+      label: Redacted evidence
   - type: checkboxes
     id: redaction-confirmation
     attributes:
       label: Redaction confirmation
       options:
-        - label: I confirm this feedback contains no secrets, private URIs, tokens, raw plugin state, raw app data, raw fetched content, or unredacted local absolute paths.
+        - label: I confirm this feedback contains no secrets, private URIs, tokens, raw plugin state, raw app data, raw fetched content, raw support bundles, request or response bodies, or unredacted local absolute paths.
           required: true
