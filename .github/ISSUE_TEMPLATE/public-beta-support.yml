@@ -1,0 +1,77 @@
+name: Public beta support
+description: Request help with public-beta install, catalog, app, update, backup, or support-bundle workflows.
+title: "[public-beta-support] "
+labels:
+  - app-platform
+  - beta-feedback
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template only for redacted public-beta support and documentation issues. If this might be a vulnerability, do not describe exploit details here; follow docs/SECURITY.md and the public-beta security reporting guide instead.
+
+        Do not paste private keys, reviewer private keys, seed phrases, private insert URIs, browser session tokens, AppHost process tokens, form passwords, authorization headers, cookies, request bodies, raw content, raw feed/profile/trust/social documents, raw app-data values, raw support bundles, raw FProxy HTML, or local absolute paths.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Install or first launch
+        - Web Shell
+        - Catalog setup or mirror health
+        - First-party app install
+        - App update or rollback
+        - Permissions or service grants
+        - App-data backup or restore
+        - Support bundle export
+        - Trust Graph Local RC
+        - Social Inbox RC
+        - Developer quickstart
+        - Plugin migration
+        - Suspected security issue, no details included
+        - Documentation issue
+    validations:
+      required: true
+  - type: input
+    id: cryptad-version
+    attributes:
+      label: Cryptad version/build
+      placeholder: "Example: 1481 or commit SHA"
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Platform and package type
+      placeholder: "Example: Fedora RPM, macOS app image, portable distribution"
+  - type: input
+    id: app-or-catalog
+    attributes:
+      label: App or catalog summary, redacted
+      placeholder: "Example: feed-reader 1.0.0, stable first-party catalog"
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem summary
+      description: Describe the visible problem without secrets, raw content, raw support bundle bodies, or local paths.
+    validations:
+      required: true
+  - type: textarea
+    id: safe-actions
+    attributes:
+      label: Safe actions already tried
+      description: Include Web Shell actions, catalog refreshes, backups, support-bundle export status, or rollback attempts with sensitive values redacted.
+  - type: textarea
+    id: redacted-evidence
+    attributes:
+      label: Redacted evidence
+      description: Paste only short sanitized summaries, status codes, evidence ids, redaction booleans, or support-bundle section names.
+  - type: checkboxes
+    id: redaction-confirmation
+    attributes:
+      label: Redaction confirmation
+      options:
+        - label: I confirm this report does not include secrets, private URIs, tokens, request bodies, raw user documents, raw app data, raw support bundles, raw FProxy HTML, cookies, authorization headers, or unredacted local absolute paths.
+          required: true
+        - label: If this is security-sensitive, I have not included exploit details and will use the private security reporting path in docs/SECURITY.md.
+          required: true

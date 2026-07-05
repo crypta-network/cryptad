@@ -446,6 +446,11 @@ inputs.
 
 ## App Platform Beta
 
+Public-beta onboarding starts at
+[docs/public-beta/README.md](docs/public-beta/README.md). It links role-based paths for beta
+users/operators, installers, first-party app users, developers, former plugin authors, security
+reporters, reviewers, and release managers.
+
 The app ecosystem beta is documented through
 [docs/app-platform-developer-portal.md](docs/app-platform-developer-portal.md). Start there for
 the current Platform API contract version, first-party app map, offline beta tutorials, known

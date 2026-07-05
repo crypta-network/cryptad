@@ -5,6 +5,10 @@ primary sources, mirrors, fallback refresh, verified revision history, explicit 
 catalog signing key rotation status, emergency advisory refresh, and release-certification
 evidence.
 
+Public-beta users should start with [public-beta/catalogs-and-apps.md](public-beta/catalogs-and-apps.md)
+for channel, mirror, health, signature, advisory, denylist, and rollback concepts. This page
+defines the operator route and release-certification details.
+
 ## Scope
 
 Catalog operations are transport and operator-recovery features for signed catalogs. They do not

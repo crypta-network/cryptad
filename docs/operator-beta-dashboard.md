@@ -4,6 +4,12 @@ The operator beta dashboard is a local host/operator-only surface for checking w
 platform is ready for public beta use. PR-257 keeps this route as compatibility evidence while
 the Web Shell now presents the RC workflow documented in
 [operator-rc-recovery-and-support-workflow.md](operator-rc-recovery-and-support-workflow.md).
+
+Public-beta users and operators should start with
+[public-beta/user-guide.md](public-beta/user-guide.md) and
+[public-beta/troubleshooting.md](public-beta/troubleshooting.md). This page remains the detailed
+Web Shell dashboard, support-bundle, and operator recovery source of truth.
+
 It is exposed through the Web Shell and the internal operator route family:
 
 - `GET /api/v1/operator/rc-dashboard`

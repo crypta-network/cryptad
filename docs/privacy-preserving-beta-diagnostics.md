@@ -8,6 +8,12 @@ gate state into a JSON support bundle that an operator can preview, download, or
 The bundle is generated locally. Cryptad does not upload it, send it to maintainers, open a support
 ticket, or phone home. Operators decide whether to share the exported JSON.
 
+Public-beta users should start with
+[public-beta/security-reporting.md](public-beta/security-reporting.md) and
+[public-beta/troubleshooting.md](public-beta/troubleshooting.md) before exporting support evidence.
+This page defines the diagnostics schema, redaction expectations, support intake, and release
+gates.
+
 ## Operator Workflow
 
 The Web Shell exposes the workflow under the Operator RC Recovery panel:

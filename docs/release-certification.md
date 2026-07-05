@@ -149,6 +149,7 @@ Release-candidate mode requires these evidence ids:
 | `app-platform.beta-program` | App-platform docs check. | The beta program doc and app platform beta feedback/submission issue templates are present. |
 | `app-platform.beta-tutorials` | App-platform docs check. | Offline beta tutorials cover the required `crypta-app` commands, first-party app map, Platform API capabilities, review governance, update/rollback, and retained FProxy browse concepts. |
 | `app-platform.docs-redaction` | App-platform docs check. | Local Markdown links resolve without network access, and docs/templates pass obvious secret, token, private key, cookie, form-password, and local-path redaction checks. |
+| `public-beta.*` | App-platform docs check and app-platform smoke summary. | Public-beta onboarding front door, user/operator guide, developer quickstart, troubleshooting, security reporting, Trust Graph/Social Inbox limitations, legacy plugin author entry point, support-bundle warnings, local public-beta links, and public-beta docs redaction checks are present. The group expands to `public-beta.docs-onboarding`, `public-beta.user-guide`, `public-beta.developer-quickstart`, `public-beta.troubleshooting`, `public-beta.security-reporting`, `public-beta.limitations`, and `public-beta.links-redaction`. |
 | `app-platform.signed-bundles` | App-platform smoke summary. | First-party and sample bundle signing/verification evidence exists with configured non-production or release signing inputs. |
 | `catalog.smoke` | App-platform smoke summary. | Signed catalog create/sign/verify evidence exists and records digest, catalog id, and app id without private key material. |
 | `catalog.live-usk-publication` | App-platform smoke summary. | `crypta-app publish-usk --live` validates and verifies signed catalog sidecars, reads the private insert URI and form password only from secure sources, enqueues real localhost live insertion, and writes sanitized evidence. |
@@ -427,6 +428,18 @@ beta program, required source docs, issue templates, README link, critical conce
 relative Markdown links, and obvious secret/redaction rules are present without fetching external
 URLs. Missing docs or redaction failures block release-candidate mode unless a release manager
 records an explicit waiver for a docs-only gap; redaction failures should not be waived.
+
+`public-beta.docs-onboarding`, `public-beta.user-guide`,
+`public-beta.developer-quickstart`, `public-beta.troubleshooting`,
+`public-beta.security-reporting`, `public-beta.limitations`, and
+`public-beta.links-redaction` are the public-beta onboarding docs gate. They verify role-based
+entry points, install/update/rollback, catalog setup, first-party app install, permissions/consent,
+app-data backup/restore, support bundle export, troubleshooting, security reporting, app
+submission, plugin migration entry points, and Trust Graph/Social Inbox limitation wording.
+`public-beta.links-redaction` scans only the public-beta onboarding docs and support issue template;
+repo-wide docs hygiene remains covered by `app-platform.docs-redaction`. Public-beta redaction
+findings for secrets, private insert URIs, raw support bundles, raw content, unsafe file links, or
+absolute local paths are release blockers and should not be waived.
 
 `platform-api.contract` is generated offline with `crypta-app api snapshot`. The companion
 `platform-api.stable-baseline` evidence records the Platform API 1.0 baseline name, capability

@@ -58,6 +58,11 @@ PUBLIC_BETA_SECURITY_EVIDENCE_IDS = (
     "public-beta-security.audit-redaction-fuzz",
     "public-beta-security.transparency-log-privacy",
 )
+PUBLIC_BETA_DOCS_EVIDENCE_IDS = tuple(
+    evidence_id
+    for evidence_id in app_platform_docs_check.EVIDENCE_IDS
+    if evidence_id.startswith("public-beta.")
+)
 OPERATOR_BETA_EVIDENCE_IDS = (
     "operator-beta.dashboard",
     "operator-beta.catalog-health",
@@ -328,6 +333,7 @@ ECOSYSTEM_RC_REQUIRED_EVIDENCE_IDS = (
 )
 ECOSYSTEM_RC_REDACTION_EVIDENCE_IDS = (
     "app-platform.docs-redaction",
+    "public-beta.links-redaction",
     "ecosystem-security.advisory-revocation-redaction",
     "live-network-beta.redaction",
     "network-scale.redaction",
@@ -3110,6 +3116,28 @@ def ecosystem_matrix_row_specs() -> list[MatrixRowSpec]:
                 "docs/app-platform-beta-program.md",
                 "docs/release-certification.md",
             ),
+        ),
+        MatrixRowSpec(
+            id="public-beta-docs-onboarding",
+            category="app-platform",
+            title="Public beta docs and onboarding readiness",
+            required_evidence_ids=PUBLIC_BETA_DOCS_EVIDENCE_IDS,
+            docs=(
+                "docs/public-beta/README.md",
+                "docs/public-beta/user-guide.md",
+                "docs/public-beta/install-update-rollback.md",
+                "docs/public-beta/catalogs-and-apps.md",
+                "docs/public-beta/permissions-and-consent.md",
+                "docs/public-beta/trust-social-limitations.md",
+                "docs/public-beta/developer-quickstart.md",
+                "docs/public-beta/app-submission-walkthrough.md",
+                "docs/public-beta/troubleshooting.md",
+                "docs/public-beta/security-reporting.md",
+                "docs/public-beta/legacy-plugin-authors.md",
+                "docs/release-certification.md",
+                "tools/release-certification/README.md",
+            ),
+            phase="phase-10",
         ),
         MatrixRowSpec(
             id="app-vault-and-generated-documents",
@@ -8055,6 +8083,7 @@ def render_report(summary: dict[str, Any]) -> str:
         "app-platform.beta-program",
         "app-platform.beta-tutorials",
         "app-platform.docs-redaction",
+        *PUBLIC_BETA_DOCS_EVIDENCE_IDS,
         *THIRD_PARTY_DEVELOPER_BETA_EVIDENCE_IDS,
         "platform-api.contract",
         "app-vault.capabilities",
@@ -8522,7 +8551,10 @@ def gather_evidence(settings: Settings, waiver_context: WaiverContext) -> list[E
             settings.multi_node_soak_required,
         )
     )
-    evidence.extend(app_platform_docs_evidence(settings.workspace_root, settings.out_dir))
+    app_platform_docs_items = app_platform_docs_evidence(settings.workspace_root, settings.out_dir)
+    app_platform_docs_item_ids = {item.id for item in app_platform_docs_items}
+    evidence = [item for item in evidence if item.id not in app_platform_docs_item_ids]
+    evidence.extend(app_platform_docs_items)
     evidence.extend(production_beta_go_no_go_evidence(settings.workspace_root, settings.out_dir))
     return [
         sanitize_evidence_item(
@@ -8891,6 +8923,9 @@ def run_self_test(repo_root: Path) -> None:
             *app_platform_docs_check.REQUIRED_PORTAL_LINKS,
             *app_platform_docs_check.ISSUE_TEMPLATES,
             "README.md",
+            "samples/third-party/hello-stable-app/README.md",
+            "tools/interop/README.md",
+            "tools/perf/README.md",
         }
         for source_doc in repo_root.glob("docs/**/*.md"):
             target_doc = workspace / source_doc.relative_to(repo_root)

@@ -2,6 +2,11 @@
 
 This document describes the v1 lifecycle for Cryptad AppHost app updates and rollback evidence.
 
+Public-beta users should start with
+[public-beta/install-update-rollback.md](public-beta/install-update-rollback.md) for daemon update,
+app update, backup-before-update, app rollback, catalog rollback, and failed-update support-bundle
+guidance.
+
 ## Scope
 
 App updates are local AppHost bundle replacements. They are separate from CoreUpdater and do not

@@ -3,6 +3,11 @@
 This document describes the unified operator consent layer for app install, app update,
 app-service grant, and app-data migration decisions.
 
+Public-beta users should start with
+[public-beta/permissions-and-consent.md](public-beta/permissions-and-consent.md). This page remains
+the detailed consent snapshot, permission delta, service grant, migration consent, and audit UX
+source of truth.
+
 ## Scope
 
 Consent applies when an app operation would change material trust, permission, support, security,

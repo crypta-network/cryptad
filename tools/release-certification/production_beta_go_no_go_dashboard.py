@@ -159,6 +159,15 @@ CONSENT_EVIDENCE_IDS = ("app-platform.user-consent-flow",)
 SECURITY_RESPONSE_EVIDENCE_IDS = ("production-security.response-runbook",)
 FIRST_PARTY_MAINTENANCE_EVIDENCE_IDS = ("app-catalog.first-party-maintenance-policy",)
 FIRST_PARTY_BETA_QUALITY_EVIDENCE_IDS = ("first-party-app.beta-quality-pass",)
+PUBLIC_BETA_DOCS_EVIDENCE_IDS = (
+    "public-beta.docs-onboarding",
+    "public-beta.user-guide",
+    "public-beta.developer-quickstart",
+    "public-beta.troubleshooting",
+    "public-beta.security-reporting",
+    "public-beta.limitations",
+    "public-beta.links-redaction",
+)
 CRITICAL_PRODUCTION_BETA_EVIDENCE_IDS = (
     "app-platform.signed-bundles",
     "app-catalog.first-party-maintenance-policy",
@@ -187,6 +196,7 @@ CRITICAL_PRODUCTION_BETA_EVIDENCE_IDS = (
     "app-services.grant-bundles",
     "app-services.dependency-redaction",
     "production-security.response-runbook",
+    *PUBLIC_BETA_DOCS_EVIDENCE_IDS,
     *LEGACY_PLUGIN_MIGRATION_EVIDENCE_IDS,
     *LEGACY_ADMIN_EVIDENCE_IDS,
 )
@@ -318,6 +328,16 @@ DOMAIN_SPECS = (
         "title": "Third-party developer beta program",
         "evidenceIds": THIRD_PARTY_DEVELOPER_BETA_EVIDENCE_IDS,
         "artifactInputs": ("appPlatformSummary",),
+    },
+    {
+        "id": "public-beta-docs-onboarding",
+        "title": "Public beta docs and onboarding",
+        "evidenceIds": PUBLIC_BETA_DOCS_EVIDENCE_IDS,
+        "artifactInputs": (
+            "releaseCertificationSummary",
+            "appPlatformSummary",
+            "ecosystemMatrix",
+        ),
     },
     {
         "id": "redaction-artifact-hygiene",

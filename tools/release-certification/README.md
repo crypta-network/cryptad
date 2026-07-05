@@ -297,6 +297,13 @@ app-platform.docs-portal
 app-platform.beta-program
 app-platform.beta-tutorials
 app-platform.docs-redaction
+public-beta.docs-onboarding
+public-beta.user-guide
+public-beta.developer-quickstart
+public-beta.troubleshooting
+public-beta.security-reporting
+public-beta.limitations
+public-beta.links-redaction
 third-party-developer.beta-program
 third-party-developer.docs
 third-party-developer.template
@@ -459,6 +466,14 @@ URIs, private keys, live fetched bodies, raw trust statements, or app/session to
 `app-platform.beta-program`, `app-platform.beta-tutorials`, and
 `app-platform.docs-redaction` run a deterministic local docs check for required docs, concept
 coverage, issue templates, internal Markdown links, README/portal links, and obvious secret leaks.
+The `public-beta.*` rows add the public-beta onboarding front door, user/operator guide,
+install/update/rollback path, catalog/app path, permissions/consent path, Trust Graph and Social
+Inbox limitations, third-party developer quickstart, app-submission walkthrough, troubleshooting,
+security reporting, former plugin author path, support-bundle redaction warning, and local
+public-beta link/redaction checks. `public-beta.links-redaction` scans the onboarding docs and
+public-beta support template for private insert URIs, private keys, tokens, raw support bundles,
+raw fetched/social/trust/profile/feed/app-data content, unsafe file URI links, and absolute local
+paths without fetching external URLs.
 The `platform-api.stable-baseline` and `platform-api.stable-breaking-change-check` rows prove the
 Platform API 1.0 baseline is present and compare stable capability names, stable endpoint
 identities, stable endpoint required-capability sets, stable endpoint action labels, and stable

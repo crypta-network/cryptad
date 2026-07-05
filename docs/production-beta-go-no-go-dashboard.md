@@ -99,6 +99,16 @@ support-bundle schema, missing preview/export routes, unsafe lifecycle summaries
 plaintext diagnostics in the default bundle, or redaction fixture failures are `no-go` conditions
 in production beta. Redaction failures in this domain are non-waivable.
 
+The dashboard also has a dedicated `public-beta-docs-onboarding` domain. It ties
+`public-beta.docs-onboarding`, `public-beta.user-guide`, `public-beta.developer-quickstart`,
+`public-beta.troubleshooting`, `public-beta.security-reporting`, `public-beta.limitations`, and
+`public-beta.links-redaction` together. Missing public-beta onboarding docs, missing
+user/operator/developer/security/troubleshooting paths, missing Trust Graph Local RC or Social
+Inbox RC limitations, broken required public-beta Markdown links, or unsafe public-beta docs
+examples are `no-go` conditions in production beta. Redaction findings for private insert URIs,
+private keys, app/browser tokens, raw support bundles, raw fetched/social/trust/profile/feed/app
+data, unsafe file URI links, or absolute local paths are non-waivable.
+
 The `production-security-response` domain consumes the
 `cryptad-security-response-drills-summary` artifact. The dashboard reports required, passed,
 failed, missing, stale, and malformed scenario counts; aggregate redaction status;
@@ -143,6 +153,9 @@ production launch set.
 - production beta artifact marked `nonRelease=true`;
 - missing security drill summary, missing required scenario, failed scenario, stale drill artifact,
   malformed drill envelope, fixture-only production drill, or drill redaction finding;
+- missing public-beta onboarding docs, missing public-beta security reporting path, missing
+  Trust Graph/Social Inbox limitation wording, broken required public-beta docs links, or unsafe
+  public-beta docs redaction finding;
 - production beta summary with failed promotion gates or `promotionReady=false`.
 
 Previous-candidate upgrade evidence is a production-beta launch blocker. Missing, failing, warning,

@@ -1,6 +1,11 @@
 Security
 ========
 
+Public-beta security reporting starts at
+[public-beta/security-reporting.md](public-beta/security-reporting.md). That page summarizes what
+to include, what never to paste publicly, how app/catalog advisories and denylists work, and how
+support-bundle redaction should behave.
+
 Freenet requires different security considerations than other projects.
 
 Any security issue that can correlate your activity with easily observable behavior of your node is critical.

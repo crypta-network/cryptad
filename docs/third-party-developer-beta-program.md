@@ -5,6 +5,11 @@ Crypta apps without reading daemon internals. It connects the developer CLI, bro
 API 1.0 stable baseline, submission pre-review, reviewer decisions, catalog-candidate generation,
 feedback templates, and release-certification evidence into one deterministic workflow.
 
+Third-party developers should start with
+[public-beta/developer-quickstart.md](public-beta/developer-quickstart.md) for the concise command
+path, then use this page for program scope, review expectations, intake, feedback, compatibility,
+and beta artifact rules.
+
 The program is for external app authors, plugin authors migrating toward app bundles, reviewers who
 need reproducible local evidence, and release managers checking that the app ecosystem remains
 usable outside first-party development. It is not a hosted public app store, ranking service,
