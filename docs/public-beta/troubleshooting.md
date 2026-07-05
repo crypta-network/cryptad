@@ -39,5 +39,12 @@ metadata, what not to paste publicly, and source docs.
 ## When to report
 
 Use a public issue only for redacted beta support, documentation, or developer workflow problems.
-Use [security-reporting.md](security-reporting.md) for suspected vulnerabilities, private report
-channels, advisory behavior, denylist behavior, and support-bundle redaction expectations.
+Start with [support-and-feedback.md](support-and-feedback.md), check
+[known-issues.md](known-issues.md), and choose the most specific issue form:
+`public-beta-support.yml`, `app-specific-feedback.yml`, `catalog-incident.yml`,
+`app-update-rollback.yml`, `support-bundle-diagnostics.yml`, `developer-beta-feedback.yml`,
+`platform-api-compatibility.yml`, or `plugin-migration-feedback.yml`.
+
+Use [security-reporting.md](security-reporting.md) and `security-advisory-intake.yml` only for a
+safe public handoff when a suspected vulnerability, advisory behavior, denylist behavior, key
+compromise, or support-bundle redaction failure may need private handling.

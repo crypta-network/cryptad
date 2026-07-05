@@ -441,6 +441,18 @@ repo-wide docs hygiene remains covered by `app-platform.docs-redaction`. Public-
 findings for secrets, private insert URIs, raw support bundles, raw content, unsafe file links, or
 absolute local paths are release blockers and should not be waived.
 
+`public-beta.support-feedback-loop`, `public-beta.support-feedback-docs`,
+`public-beta.issue-templates`, `public-beta.triage-taxonomy`,
+`public-beta.known-issues-tracker`, `public-beta.feedback-to-backlog`,
+`public-beta.release-notes-template`, `public-beta.support-bundle-guidance`,
+`public-beta.security-reporting-handoff`, `public-beta.app-specific-feedback`,
+`public-beta.catalog-incident-feedback`, and `public-beta.redaction-fixtures` are the public beta
+support-feedback-loop gate. They verify the canonical support loop doc, structured feedback
+templates, required redaction confirmations, deterministic taxonomy, redaction-safe known issue
+tracker, feedback-to-backlog workflow, beta release notes template, digest-first support bundle
+guidance, safe security handoff, app-specific and catalog incident coverage, and positive/negative
+redaction fixtures.
+
 `platform-api.contract` is generated offline with `crypta-app api snapshot`. The companion
 `platform-api.stable-baseline` evidence records the Platform API 1.0 baseline name, capability
 count/list, endpoint count/list, stable endpoint required-capability sets, stable endpoint action
@@ -658,7 +670,9 @@ or ecosystem gates; it summarizes them into deterministic rows that answer:
 The production beta go/no-go dashboard consumes this matrix as an input and surfaces its blocker
 count, waiver ids, redaction coverage, and recommendations in one launch decision. Release
 managers should keep the matrix with the release record because it remains the detailed checklist
-behind the dashboard.
+behind the dashboard. The `public-beta-support-feedback-loop` matrix row records PR-281 evidence
+for support intake, issue-template coverage, known issues, backlog routing, release-note linkage,
+security handoff, support-bundle sharing guidance, and redaction fixtures.
 
 | Field | Meaning |
 | --- | --- |

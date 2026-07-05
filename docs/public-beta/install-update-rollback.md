@@ -105,5 +105,11 @@ multiple recovery attempts. Include catalog status, app update state, migration 
 backup/restore preview status, security advisory state, and redaction status. Do not paste raw
 content or secrets publicly.
 
-See [troubleshooting.md](troubleshooting.md) and
+File failed install, update, migration, and rollback reports with `app-update-rollback.yml` through
+[support-and-feedback.md](support-and-feedback.md). Check [known-issues.md](known-issues.md) first,
+and include release id, app id/version, catalog channel, update phase, rollback result, migration
+status, app-data backup status, support bundle digest, and redacted reproduction steps.
+
+See [troubleshooting.md](troubleshooting.md),
+[support-and-feedback.md](support-and-feedback.md), and
 [../privacy-preserving-beta-diagnostics.md](../privacy-preserving-beta-diagnostics.md).

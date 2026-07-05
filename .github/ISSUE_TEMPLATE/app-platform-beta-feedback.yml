@@ -4,11 +4,15 @@ title: "[app-platform-beta] "
 labels:
   - app-platform
   - beta-feedback
+  - status/needs-repro
+  - privacy/redaction-required
 body:
   - type: markdown
     attributes:
       value: |
-        Do not paste private keys, reviewer private keys, seed phrases, private insert URIs, browser session tokens, AppHost process tokens, form passwords, authorization headers, cookies, request bodies, raw feed bodies, raw trust documents, raw receipt signatures, or local absolute paths.
+        Use this broad fallback only when a dedicated public-beta issue form does not fit. Start with docs/public-beta/support-and-feedback.md and docs/public-beta/known-issues.md.
+
+        Do not paste private keys, reviewer private keys, app signing private keys, seed phrases, private insert URIs, browser session tokens, app tokens, AppHost process tokens, form passwords, authorization headers, cookies, request bodies, response bodies, raw fetched content, raw feed bodies, raw profile documents, raw trust statements, raw social messages, raw app data values, raw support bundles, raw receipt signatures, or local absolute paths.
   - type: dropdown
     id: area
     attributes:
@@ -29,50 +33,103 @@ body:
     validations:
       required: true
   - type: input
-    id: cryptad-version
+    id: release_id
+    attributes:
+      label: Release id
+      placeholder: "Example: cryptad-beta-1500"
+    validations:
+      required: true
+  - type: input
+    id: cryptad_version
     attributes:
       label: Cryptad version/build
       placeholder: "Example: 1481 or commit SHA"
     validations:
       required: true
   - type: input
-    id: platform-api-contract
+    id: platform_api_contract_version
     attributes:
       label: Platform API contract version
       placeholder: "Example: 22"
     validations:
       required: true
   - type: input
-    id: app-id-version
+    id: app_id
     attributes:
-      label: App id/version
-      placeholder: "Example: feed-reader 1.0.0"
+      label: App id, if relevant
+      placeholder: "Example: feed-reader"
   - type: input
-    id: catalog-source
+    id: app_version
     attributes:
-      label: Catalog id/source class, redacted
-      placeholder: "Example: crypta-first-party-beta, crypta:USK@<catalog-key>/cryptad-app-catalog.properties"
+      label: App version, if relevant
+      placeholder: "Example: 1.0.0"
+  - type: input
+    id: catalog_id
+    attributes:
+      label: Catalog id, if relevant
+      placeholder: "Example: crypta-first-party"
+  - type: input
+    id: catalog_channel
+    attributes:
+      label: Catalog channel, if relevant
+      placeholder: "Example: stable-first-party"
+  - type: input
+    id: catalog_source_class
+    attributes:
+      label: Catalog source class, redacted
+      placeholder: "Example: signed-public-catalog"
+  - type: input
+    id: support_bundle_digest
+    attributes:
+      label: Support bundle digest, if available
+      placeholder: "Example: sha256:..."
+  - type: input
+    id: diagnostic_summary_id
+    attributes:
+      label: Diagnostic summary id, if available
+  - type: input
+    id: known_issue_id
+    attributes:
+      label: Known issue id, if relevant
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      options:
+        - severity/blocker
+        - severity/high
+        - severity/medium
+        - severity/low
+    validations:
+      required: true
   - type: textarea
-    id: expected
+    id: impact
+    attributes:
+      label: Impact
+      description: Describe who is affected and whether there is a workaround.
+    validations:
+      required: true
+  - type: textarea
+    id: expected_behavior
     attributes:
       label: Expected behavior
     validations:
       required: true
   - type: textarea
-    id: actual
+    id: actual_behavior
     attributes:
       label: Actual behavior
     validations:
       required: true
   - type: textarea
-    id: reproduction
+    id: reproduction_steps
     attributes:
       label: Reproduction steps
       description: Use offline or loopback-only steps where possible. Redact local paths and private values.
     validations:
       required: true
   - type: textarea
-    id: evidence
+    id: redacted_evidence
     attributes:
       label: Redacted evidence
       description: Paste redacted release-certification evidence, `crypta-app test` JSON summaries, or short sanitized excerpts only.
@@ -81,5 +138,5 @@ body:
     attributes:
       label: Redaction confirmation
       options:
-        - label: I confirm this report does not include secrets, private URIs, tokens, request bodies, raw user documents, raw signatures, or unredacted local absolute paths.
+        - label: I confirm this report does not include secrets, private URIs, tokens, authorization headers, cookies, form passwords, request bodies, response bodies, raw user documents, raw app data, raw support bundles, raw signatures, or unredacted local absolute paths.
           required: true

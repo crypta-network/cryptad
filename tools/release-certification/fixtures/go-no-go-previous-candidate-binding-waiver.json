@@ -14,6 +14,19 @@
         ],
         "promotionReady": false,
         "status": "fail"
+      },
+      "publicBetaSupportFeedback": {
+        "blockers": [],
+        "docs": "pass",
+        "feedbackToBacklog": "pass",
+        "issueTemplates": "pass",
+        "knownIssuesTracker": "pass",
+        "redactionFixtures": "pass",
+        "releaseNotesTemplate": "pass",
+        "securityHandoff": "pass",
+        "status": "pass",
+        "supportBundleGuidance": "pass",
+        "warnings": []
       }
     }
   },

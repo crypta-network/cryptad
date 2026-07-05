@@ -60,6 +60,24 @@
       "details": {
         "apiVersion": "v1",
         "capabilityCount": 25,
+        "compatibilityWindow": {
+          "baselineContractVersion": 19,
+          "baselineName": "1.0",
+          "criticalStableRemovalWaiverAllowed": false,
+          "currentContractVersion": 23,
+          "experimentalGraduationRequiresReview": true,
+          "experimentalGraduationRequiresStableReferenceUpdate": true,
+          "minimumDeprecationWindowContractVersions": 2,
+          "minimumScheduledRemovalWindowContractVersions": 2,
+          "policyDocument": "docs/platform-api-compatibility-support-window.md",
+          "previousSnapshotRequiredInProductionBeta": true,
+          "schemaVersion": 1,
+          "stableRemovalRequiresExplicitWaiver": true,
+          "stableRemovalRequiresNewBaseline": true,
+          "stableRemovalRequiresPreviousSnapshot": true,
+          "supportPhase": "beta",
+          "supportWindowStartedRelease": "production-beta"
+        },
         "contractVersion": 23,
         "endpointCount": 65,
         "flaggedStability": [],
@@ -129,6 +147,40 @@
           "queue.write"
         ],
         "stableCapabilityCount": 9,
+        "stableEndpointActionLabels": {
+          "DELETE /app-data/namespaces/{namespace}": "app-data.namespaces.delete",
+          "DELETE /app-data/records/{namespace}/{key}": "app-data.records.delete",
+          "DELETE /content/subscriptions/{subscriptionId}": "content.subscriptions.delete",
+          "GET /app-data/export": "app-data.export",
+          "GET /app-data/namespaces": "app-data.namespaces.list",
+          "GET /app-data/namespaces/{namespace}": "app-data.namespaces.read",
+          "GET /app-data/records": "app-data.records.list",
+          "GET /app-data/records/{namespace}/{key}": "app-data.records.read",
+          "GET /app-data/status": "app-data.status",
+          "GET /content/subscriptions": "content.subscriptions.list",
+          "GET /content/subscriptions/{subscriptionId}": "content.subscriptions.read",
+          "GET /platform/contract": "platform.contract.read",
+          "GET /queue": "queue.read",
+          "GET /queue/count": "queue.read",
+          "GET /queue/keys": "queue.read",
+          "POST /app-data/import": "app-data.import",
+          "POST /app-data/namespaces/{namespace}/schema": "app-data.namespaces.schema",
+          "POST /app-data/records": "app-data.records.write",
+          "POST /content/fetch": "content.fetch",
+          "POST /content/subscriptions": "content.subscriptions.create",
+          "POST /content/subscriptions/{subscriptionId}/pause": "content.subscriptions.pause",
+          "POST /content/subscriptions/{subscriptionId}/refresh": "content.subscriptions.refresh",
+          "POST /content/subscriptions/{subscriptionId}/resume": "content.subscriptions.resume",
+          "POST /queue/cleanup/downloads": "queue.cleanup.downloads",
+          "POST /queue/cleanup/uploads": "queue.cleanup.uploads",
+          "POST /queue/downloads": "queue.downloads.create",
+          "POST /queue/inserts/app-document": "queue.inserts.app-document",
+          "POST /queue/inserts/directory": "queue.inserts.directory",
+          "POST /queue/inserts/file": "queue.inserts.file",
+          "POST /queue/requests/priority": "queue.requests.priority",
+          "POST /queue/requests/remove": "queue.requests.remove",
+          "POST /queue/requests/restart": "queue.requests.restart"
+        },
         "stableEndpointAppAccess": {
           "DELETE /app-data/namespaces/{namespace}": {
             "appBrowserPrincipalsAllowed": false,
@@ -296,40 +348,6 @@
           "POST /queue/requests/remove": [],
           "POST /queue/requests/restart": []
         },
-        "stableEndpointActionLabels": {
-          "DELETE /app-data/namespaces/{namespace}": "app-data.namespaces.delete",
-          "DELETE /app-data/records/{namespace}/{key}": "app-data.records.delete",
-          "DELETE /content/subscriptions/{subscriptionId}": "content.subscriptions.delete",
-          "GET /app-data/export": "app-data.export",
-          "GET /app-data/namespaces": "app-data.namespaces.list",
-          "GET /app-data/namespaces/{namespace}": "app-data.namespaces.read",
-          "GET /app-data/records": "app-data.records.list",
-          "GET /app-data/records/{namespace}/{key}": "app-data.records.read",
-          "GET /app-data/status": "app-data.status",
-          "GET /content/subscriptions": "content.subscriptions.list",
-          "GET /content/subscriptions/{subscriptionId}": "content.subscriptions.read",
-          "GET /platform/contract": "platform.contract.read",
-          "GET /queue": "queue.read",
-          "GET /queue/count": "queue.read",
-          "GET /queue/keys": "queue.read",
-          "POST /app-data/import": "app-data.import",
-          "POST /app-data/namespaces/{namespace}/schema": "app-data.namespaces.schema",
-          "POST /app-data/records": "app-data.records.write",
-          "POST /content/fetch": "content.fetch",
-          "POST /content/subscriptions": "content.subscriptions.create",
-          "POST /content/subscriptions/{subscriptionId}/pause": "content.subscriptions.pause",
-          "POST /content/subscriptions/{subscriptionId}/refresh": "content.subscriptions.refresh",
-          "POST /content/subscriptions/{subscriptionId}/resume": "content.subscriptions.resume",
-          "POST /queue/cleanup/downloads": "queue.cleanup.downloads",
-          "POST /queue/cleanup/uploads": "queue.cleanup.uploads",
-          "POST /queue/downloads": "queue.downloads.create",
-          "POST /queue/inserts/app-document": "queue.inserts.app-document",
-          "POST /queue/inserts/directory": "queue.inserts.directory",
-          "POST /queue/inserts/file": "queue.inserts.file",
-          "POST /queue/requests/priority": "queue.requests.priority",
-          "POST /queue/requests/remove": "queue.requests.remove",
-          "POST /queue/requests/restart": "queue.requests.restart"
-        },
         "stableEndpoints": [
           "DELETE /app-data/namespaces/{namespace}",
           "DELETE /app-data/records/{namespace}/{key}",
@@ -363,25 +381,7 @@
           "POST /queue/requests/priority",
           "POST /queue/requests/remove",
           "POST /queue/requests/restart"
-        ],
-        "compatibilityWindow": {
-          "schemaVersion": 1,
-          "baselineName": "1.0",
-          "baselineContractVersion": 19,
-          "currentContractVersion": 23,
-          "supportPhase": "beta",
-          "supportWindowStartedRelease": "production-beta",
-          "minimumDeprecationWindowContractVersions": 2,
-          "minimumScheduledRemovalWindowContractVersions": 2,
-          "stableRemovalRequiresNewBaseline": true,
-          "stableRemovalRequiresPreviousSnapshot": true,
-          "stableRemovalRequiresExplicitWaiver": true,
-          "criticalStableRemovalWaiverAllowed": false,
-          "experimentalGraduationRequiresReview": true,
-          "experimentalGraduationRequiresStableReferenceUpdate": true,
-          "previousSnapshotRequiredInProductionBeta": true,
-          "policyDocument": "docs/platform-api-compatibility-support-window.md"
-        }
+        ]
       },
       "id": "platform-api.contract",
       "requiredForReleaseCandidate": true,
@@ -589,22 +589,22 @@
     {
       "details": {
         "compatibilityWindow": {
-          "schemaVersion": 1,
-          "baselineName": "1.0",
           "baselineContractVersion": 19,
-          "currentContractVersion": 23,
-          "supportPhase": "beta",
-          "supportWindowStartedRelease": "production-beta",
-          "minimumDeprecationWindowContractVersions": 2,
-          "minimumScheduledRemovalWindowContractVersions": 2,
-          "stableRemovalRequiresNewBaseline": true,
-          "stableRemovalRequiresPreviousSnapshot": true,
-          "stableRemovalRequiresExplicitWaiver": true,
+          "baselineName": "1.0",
           "criticalStableRemovalWaiverAllowed": false,
+          "currentContractVersion": 23,
           "experimentalGraduationRequiresReview": true,
           "experimentalGraduationRequiresStableReferenceUpdate": true,
+          "minimumDeprecationWindowContractVersions": 2,
+          "minimumScheduledRemovalWindowContractVersions": 2,
+          "policyDocument": "docs/platform-api-compatibility-support-window.md",
           "previousSnapshotRequiredInProductionBeta": true,
-          "policyDocument": "docs/platform-api-compatibility-support-window.md"
+          "schemaVersion": 1,
+          "stableRemovalRequiresExplicitWaiver": true,
+          "stableRemovalRequiresNewBaseline": true,
+          "stableRemovalRequiresPreviousSnapshot": true,
+          "supportPhase": "beta",
+          "supportWindowStartedRelease": "production-beta"
         },
         "errors": []
       },
@@ -649,9 +649,9 @@
       "details": {
         "checks": {
           "reviewRequired": true,
+          "stableReferenceDocNamesFrozenBaseline": true,
           "stableReferenceUpdateRequired": true,
           "supportWindowDocExplainsGraduation": true,
-          "stableReferenceDocNamesFrozenBaseline": true,
           "verifierTestsCoverStableIdentity": true
         },
         "errors": [],
@@ -3140,61 +3140,61 @@
           "docs/user-consent-and-permission-upgrade-ux.md"
         ]
       },
-    "id": "app-platform.trust-social-beta-hardening",
-    "requiredForReleaseCandidate": true,
-    "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
-    "status": "pass",
-    "summary": "Trust Graph and Social Inbox beta hardening evidence passed."
-  },
-  {
-    "details": {
-      "checks": {
-        "docsExistWithLegacyNonGoals": true,
-        "javaRoutesUseRegistry": true,
-        "platformApiStableBaselineNotExpanded": true,
-        "referenceAppsUseSdkProfiles": true,
-        "registryProfilesExist": true,
-        "releaseEvidenceDocumented": true,
-        "sdkMirrorAndHelpersUseProfiles": true,
-        "trustgraphDriftIsTested": true,
-        "validationCoversMalformedOversizedVersionDeprecatedAndSignature": true
-      },
-      "profiles": [
-        "crypta.profile.v1",
-        "crypta.feed.snapshot.v1",
-        "crypta.trust.statement.v1",
-        "crypta.social.message.v1",
-        "crypta.social.outbox.v1"
-      ],
-      "redaction": {
-        "absolutePathsExcluded": true,
-        "privateInsertUrisExcluded": true,
-        "rawAppDataExcluded": true,
-        "rawFetchedContentExcluded": true,
-        "rawMessageBodiesExcluded": true,
-        "rawProfileDocumentsExcluded": true,
-        "rawSignaturesExcluded": true,
-        "rawTrustStatementsExcluded": true,
-        "tokensExcluded": true
-      },
-      "sourceFiles": [
-        "platform-api/src/main/java/network/crypta/platform/api/contentformats/ContentFormatProfileRegistry.java",
-        "platform-api/src/main/java/network/crypta/platform/api/appvault/ProfileDocumentRequest.java",
-        "platform-api/src/main/java/network/crypta/platform/api/appvault/SocialMessageRequest.java",
-        "platform-api/src/main/java/network/crypta/platform/api/appvault/TrustStatementRequest.java",
-        "platform-trustgraph/src/main/java/network/crypta/platform/trustgraph/TrustDocumentTypes.java",
-        "platform-sdk-js/src/main/resources/network/crypta/platform/sdk/js/crypta-platform.js",
-        "docs/trust-social-content-format-profiles.md"
-      ]
+      "id": "app-platform.trust-social-beta-hardening",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Trust Graph and Social Inbox beta hardening evidence passed."
     },
-    "id": "app-platform.trust-social-content-format-profiles",
-    "requiredForReleaseCandidate": true,
-    "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
-    "status": "pass",
-    "summary": "Trust/social content format profile evidence passed."
-  },
-  {
-    "details": {
+    {
+      "details": {
+        "checks": {
+          "docsExistWithLegacyNonGoals": true,
+          "javaRoutesUseRegistry": true,
+          "platformApiStableBaselineNotExpanded": true,
+          "referenceAppsUseSdkProfiles": true,
+          "registryProfilesExist": true,
+          "releaseEvidenceDocumented": true,
+          "sdkMirrorAndHelpersUseProfiles": true,
+          "trustgraphDriftIsTested": true,
+          "validationCoversMalformedOversizedVersionDeprecatedAndSignature": true
+        },
+        "profiles": [
+          "crypta.profile.v1",
+          "crypta.feed.snapshot.v1",
+          "crypta.trust.statement.v1",
+          "crypta.social.message.v1",
+          "crypta.social.outbox.v1"
+        ],
+        "redaction": {
+          "absolutePathsExcluded": true,
+          "privateInsertUrisExcluded": true,
+          "rawAppDataExcluded": true,
+          "rawFetchedContentExcluded": true,
+          "rawMessageBodiesExcluded": true,
+          "rawProfileDocumentsExcluded": true,
+          "rawSignaturesExcluded": true,
+          "rawTrustStatementsExcluded": true,
+          "tokensExcluded": true
+        },
+        "sourceFiles": [
+          "platform-api/src/main/java/network/crypta/platform/api/contentformats/ContentFormatProfileRegistry.java",
+          "platform-api/src/main/java/network/crypta/platform/api/appvault/ProfileDocumentRequest.java",
+          "platform-api/src/main/java/network/crypta/platform/api/appvault/SocialMessageRequest.java",
+          "platform-api/src/main/java/network/crypta/platform/api/appvault/TrustStatementRequest.java",
+          "platform-trustgraph/src/main/java/network/crypta/platform/trustgraph/TrustDocumentTypes.java",
+          "platform-sdk-js/src/main/resources/network/crypta/platform/sdk/js/crypta-platform.js",
+          "docs/trust-social-content-format-profiles.md"
+        ]
+      },
+      "id": "app-platform.trust-social-content-format-profiles",
+      "requiredForReleaseCandidate": true,
+      "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
+      "status": "pass",
+      "summary": "Trust/social content format profile evidence passed."
+    },
+    {
+      "details": {
         "checks": {
           "appComposesExpectedPlatformSurfaces": true,
           "evidenceIdsDocumented": true,
@@ -4507,6 +4507,114 @@
       "source": "<repo>/build/release-certification/app-platform-smoke/summary.json",
       "status": "skip",
       "summary": "Live AppHost lifecycle smoke was not requested."
+    },
+    {
+      "details": {
+        "docs": true,
+        "feedbackToBacklog": true,
+        "issueTemplates": true,
+        "knownIssuesTracker": true,
+        "redactionFixtures": true,
+        "releaseNotesTemplate": true,
+        "securityHandoff": true,
+        "supportBundleGuidance": true
+      },
+      "id": "public-beta.support-feedback-loop",
+      "requiredForReleaseCandidate": true,
+      "source": "tools/release-certification/fixtures",
+      "status": "pass",
+      "summary": "public-beta.support-feedback-loop fixture evidence passed."
+    },
+    {
+      "details": {},
+      "id": "public-beta.support-feedback-docs",
+      "requiredForReleaseCandidate": true,
+      "source": "tools/release-certification/fixtures",
+      "status": "pass",
+      "summary": "public-beta.support-feedback-docs fixture evidence passed."
+    },
+    {
+      "details": {},
+      "id": "public-beta.issue-templates",
+      "requiredForReleaseCandidate": true,
+      "source": "tools/release-certification/fixtures",
+      "status": "pass",
+      "summary": "public-beta.issue-templates fixture evidence passed."
+    },
+    {
+      "details": {},
+      "id": "public-beta.triage-taxonomy",
+      "requiredForReleaseCandidate": true,
+      "source": "tools/release-certification/fixtures",
+      "status": "pass",
+      "summary": "public-beta.triage-taxonomy fixture evidence passed."
+    },
+    {
+      "details": {},
+      "id": "public-beta.known-issues-tracker",
+      "requiredForReleaseCandidate": true,
+      "source": "tools/release-certification/fixtures",
+      "status": "pass",
+      "summary": "public-beta.known-issues-tracker fixture evidence passed."
+    },
+    {
+      "details": {},
+      "id": "public-beta.feedback-to-backlog",
+      "requiredForReleaseCandidate": true,
+      "source": "tools/release-certification/fixtures",
+      "status": "pass",
+      "summary": "public-beta.feedback-to-backlog fixture evidence passed."
+    },
+    {
+      "details": {},
+      "id": "public-beta.release-notes-template",
+      "requiredForReleaseCandidate": true,
+      "source": "tools/release-certification/fixtures",
+      "status": "pass",
+      "summary": "public-beta.release-notes-template fixture evidence passed."
+    },
+    {
+      "details": {},
+      "id": "public-beta.support-bundle-guidance",
+      "requiredForReleaseCandidate": true,
+      "source": "tools/release-certification/fixtures",
+      "status": "pass",
+      "summary": "public-beta.support-bundle-guidance fixture evidence passed."
+    },
+    {
+      "details": {},
+      "id": "public-beta.security-reporting-handoff",
+      "requiredForReleaseCandidate": true,
+      "source": "tools/release-certification/fixtures",
+      "status": "pass",
+      "summary": "public-beta.security-reporting-handoff fixture evidence passed."
+    },
+    {
+      "details": {},
+      "id": "public-beta.app-specific-feedback",
+      "requiredForReleaseCandidate": true,
+      "source": "tools/release-certification/fixtures",
+      "status": "pass",
+      "summary": "public-beta.app-specific-feedback fixture evidence passed."
+    },
+    {
+      "details": {},
+      "id": "public-beta.catalog-incident-feedback",
+      "requiredForReleaseCandidate": true,
+      "source": "tools/release-certification/fixtures",
+      "status": "pass",
+      "summary": "public-beta.catalog-incident-feedback fixture evidence passed."
+    },
+    {
+      "details": {
+        "redactionFindings": [],
+        "undetectedNegativeFixtures": []
+      },
+      "id": "public-beta.redaction-fixtures",
+      "requiredForReleaseCandidate": true,
+      "source": "tools/release-certification/fixtures",
+      "status": "pass",
+      "summary": "public-beta.redaction-fixtures fixture evidence passed."
     }
   ],
   "generatedAt": "2026-05-01T00:00:00Z",

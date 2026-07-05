@@ -5,8 +5,9 @@ support evidence without leaking private material.
 
 ## Report suspected vulnerabilities
 
-Start with [../SECURITY.md](../SECURITY.md). Source path: `docs/SECURITY.md`. Do not open a
-public issue for a vulnerability that could identify users, reveal private content, bypass
+Start with [../SECURITY.md](../SECURITY.md). Source path: `docs/SECURITY.md`. Use
+[support-and-feedback.md](support-and-feedback.md) only for public-safe support reports. Do not open
+a public issue for a vulnerability that could identify users, reveal private content, bypass
 app/catalog trust, expose tokens, or weaken redaction.
 
 When reporting privately, include:
@@ -21,6 +22,18 @@ When reporting privately, include:
   Platform API permissions, AppHost, support bundles, or release evidence.
 
 Do not include exploit details in public issue titles, public comments, screenshots, or logs.
+
+## Public or private path
+
+| Situation | Safe path |
+| --- | --- |
+| Public bug report with no security impact | Public issue form from [support-and-feedback.md](support-and-feedback.md). |
+| Private security report | Private workflow in [../SECURITY.md](../SECURITY.md). |
+| Security advisory or denylist event | Private security workflow, then public-safe release notes when approved. |
+| Reviewer key compromise | Private security workflow and reviewer-key compromise runbook evidence. |
+| Catalog signing key compromise | Private security workflow and signed catalog replacement guidance. |
+| App signing key compromise | Private security workflow, denylist or advisory metadata, and replacement app guidance. |
+| Support bundle redaction failure | `security-advisory-intake.yml` for public-safe handoff, then private details in [../SECURITY.md](../SECURITY.md). |
 
 ## What not to include
 
@@ -75,11 +88,13 @@ Before sharing a bundle:
 3. Share only through the requested private support channel when the report is security-sensitive.
 4. Keep the original export available in case maintainers ask for additional redacted metadata.
 
-See [../privacy-preserving-beta-diagnostics.md](../privacy-preserving-beta-diagnostics.md).
+See [support-and-feedback.md](support-and-feedback.md) and
+[../privacy-preserving-beta-diagnostics.md](../privacy-preserving-beta-diagnostics.md).
 
 ## Public support template
 
 Use public GitHub issue templates only for redacted support or documentation issues. The templates
 under `../../.github/ISSUE_TEMPLATE/` ask for summary evidence and confirmation that secrets and raw
-content are not included. If a report may be security-sensitive, use the private security path in
+content are not included. `security-advisory-intake.yml` is a handoff-only public form and must not
+request exploit details. If a report may be security-sensitive, use the private security path in
 [../SECURITY.md](../SECURITY.md) instead.

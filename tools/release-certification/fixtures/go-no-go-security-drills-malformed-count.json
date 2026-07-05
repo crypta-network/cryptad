@@ -3,12 +3,12 @@
   "inputs": {
     "securityDrillsSummary": {
       "counts": {
-        "required": "seven",
-        "passed": null,
         "failed": 0,
+        "malformed": 0,
         "missing": 0,
-        "stale": 0,
-        "malformed": 0
+        "passed": null,
+        "required": "seven",
+        "stale": 0
       },
       "passedScenarios": null
     }

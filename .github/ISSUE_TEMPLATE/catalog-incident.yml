@@ -1,0 +1,163 @@
+name: Catalog incident
+description: Report a redacted public-beta catalog, channel, mirror, signature, or rollback incident.
+title: "[catalog-incident] "
+labels:
+  - app-platform
+  - area/catalog
+  - status/needs-repro
+  - privacy/redaction-required
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for catalog incidents only. Do not include private insert URIs or full private source URIs. Use catalog id, source class, channel, revision, mirror id, health status, and redacted error codes instead.
+
+        Do not paste private insert URIs, private keys, reviewer private keys, app signing private keys, browser session tokens, app tokens, AppHost process tokens, authorization headers, cookies, form passwords, seed phrases, raw fetched content, raw feed bodies, raw profile documents, raw trust statements, raw social messages, raw app data values, raw support bundle files, raw request or response bodies, absolute local paths, or unredacted stack traces.
+  - type: input
+    id: release_id
+    attributes:
+      label: Release id
+    validations:
+      required: true
+  - type: input
+    id: cryptad_version
+    attributes:
+      label: Cryptad version/build
+    validations:
+      required: true
+  - type: input
+    id: catalog_id
+    attributes:
+      label: Catalog id
+      placeholder: "Example: crypta-first-party"
+    validations:
+      required: true
+  - type: input
+    id: catalog_channel
+    attributes:
+      label: Catalog channel
+      placeholder: "Example: stable-first-party"
+    validations:
+      required: true
+  - type: dropdown
+    id: catalog_source_class
+    attributes:
+      label: Catalog source class
+      options:
+        - signed-public-catalog
+        - configured-public-mirror
+        - bundled-catalog
+        - operator-configured-source
+        - unknown
+    validations:
+      required: true
+  - type: input
+    id: mirror_id
+    attributes:
+      label: Mirror id, if relevant
+  - type: input
+    id: catalog_revision_edition
+    attributes:
+      label: Catalog revision/edition
+    validations:
+      required: true
+  - type: dropdown
+    id: signature_verification_status
+    attributes:
+      label: Signature verification status
+      options:
+        - pass
+        - warn
+        - fail
+        - not reached
+        - unknown
+    validations:
+      required: true
+  - type: dropdown
+    id: health_status
+    attributes:
+      label: Health status
+      options:
+        - pass
+        - warn
+        - fail
+        - stale
+        - unknown
+    validations:
+      required: true
+  - type: dropdown
+    id: rollback_attempted
+    attributes:
+      label: Rollback attempted
+      options:
+        - "no"
+        - "yes, succeeded"
+        - "yes, failed"
+    validations:
+      required: true
+  - type: input
+    id: redacted_error_code
+    attributes:
+      label: Redacted error code
+  - type: input
+    id: support_bundle_digest
+    attributes:
+      label: Support bundle digest
+  - type: input
+    id: support_bundle_schema_version
+    attributes:
+      label: Support bundle schema version
+  - type: input
+    id: diagnostic_summary_id
+    attributes:
+      label: Diagnostic summary id
+  - type: input
+    id: known_issue_id
+    attributes:
+      label: Known issue id, if relevant
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      options:
+        - severity/blocker
+        - severity/high
+        - severity/medium
+        - severity/low
+    validations:
+      required: true
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impact
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction_steps
+    attributes:
+      label: Redacted reproduction steps
+    validations:
+      required: true
+  - type: textarea
+    id: expected_behavior
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual_behavior
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: redacted_evidence
+    attributes:
+      label: Redacted evidence
+  - type: checkboxes
+    id: redaction-confirmation
+    attributes:
+      label: Redaction confirmation
+      options:
+        - label: I confirm this catalog incident report does not include private insert URIs, private source material, secrets, tokens, raw request or response bodies, raw support bundles, or unredacted local absolute paths.
+          required: true

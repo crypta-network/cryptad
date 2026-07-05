@@ -1,0 +1,162 @@
+name: App update or rollback problem
+description: Report a redacted app install, update, migration, or rollback failure.
+title: "[app-update-rollback] "
+labels:
+  - app-platform
+  - area/app-update
+  - status/needs-repro
+  - privacy/redaction-required
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for app install, update, migration, rollback, or denylist-gate failures. Share digest and summary fields first; do not attach app-data backups or raw support bundles.
+
+        Do not paste private insert URIs, private keys, reviewer private keys, app signing private keys, browser session tokens, app tokens, AppHost process tokens, authorization headers, cookies, form passwords, seed phrases, raw fetched content, raw feed bodies, raw profile documents, raw trust statements, raw social messages, raw app data values, raw support bundle files, raw request or response bodies, absolute local paths, or unredacted stack traces.
+  - type: input
+    id: release_id
+    attributes:
+      label: Release id
+    validations:
+      required: true
+  - type: input
+    id: cryptad_version
+    attributes:
+      label: Cryptad version/build
+    validations:
+      required: true
+  - type: input
+    id: platform_api_contract_version
+    attributes:
+      label: Platform API contract version
+  - type: input
+    id: app_id
+    attributes:
+      label: App id
+    validations:
+      required: true
+  - type: input
+    id: app_version
+    attributes:
+      label: Installed app version
+    validations:
+      required: true
+  - type: input
+    id: target_app_version
+    attributes:
+      label: Target app version
+  - type: input
+    id: catalog_id
+    attributes:
+      label: Catalog id
+  - type: input
+    id: catalog_channel
+    attributes:
+      label: Catalog channel
+    validations:
+      required: true
+  - type: dropdown
+    id: update_phase
+    attributes:
+      label: Update phase
+      options:
+        - install
+        - stage
+        - permission review
+        - migration consent
+        - apply
+        - rollback
+        - denylist gate
+        - unknown
+    validations:
+      required: true
+  - type: dropdown
+    id: rollback_result
+    attributes:
+      label: Rollback result
+      options:
+        - not attempted
+        - succeeded
+        - failed
+        - blocked by safety gate
+    validations:
+      required: true
+  - type: input
+    id: migration_status
+    attributes:
+      label: Migration status
+  - type: input
+    id: app_data_backup_status
+    attributes:
+      label: App-data backup status
+      placeholder: "Example: backup current, not attached"
+  - type: input
+    id: support_bundle_digest
+    attributes:
+      label: Support bundle digest
+  - type: input
+    id: support_bundle_schema_version
+    attributes:
+      label: Support bundle schema version
+  - type: input
+    id: diagnostic_summary_id
+    attributes:
+      label: Diagnostic summary id
+  - type: input
+    id: consent_audit_event_id
+    attributes:
+      label: Consent/audit event id, if relevant
+  - type: input
+    id: operator_recovery_action_id
+    attributes:
+      label: Operator recovery action id, if relevant
+  - type: input
+    id: known_issue_id
+    attributes:
+      label: Known issue id, if relevant
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      options:
+        - severity/blocker
+        - severity/high
+        - severity/medium
+        - severity/low
+    validations:
+      required: true
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impact
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction_steps
+    attributes:
+      label: Redacted reproduction steps
+    validations:
+      required: true
+  - type: textarea
+    id: expected_behavior
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual_behavior
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: redacted_evidence
+    attributes:
+      label: Redacted evidence
+  - type: checkboxes
+    id: redaction-confirmation
+    attributes:
+      label: Redaction confirmation
+      options:
+        - label: I confirm this update or rollback report contains no app-data backup files, secrets, private URIs, tokens, raw app data, raw support bundles, raw request or response bodies, or unredacted local absolute paths.
+          required: true

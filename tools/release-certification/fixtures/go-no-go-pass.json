@@ -60,31 +60,31 @@
           "summary": "First-party beta-quality readiness passed."
         },
         {
+          "details": {
+            "compatibilityWindow": {
+              "baselineContractVersion": 19,
+              "baselineName": "1.0",
+              "criticalStableRemovalWaiverAllowed": false,
+              "currentContractVersion": 23,
+              "experimentalGraduationRequiresReview": true,
+              "experimentalGraduationRequiresStableReferenceUpdate": true,
+              "minimumDeprecationWindowContractVersions": 2,
+              "minimumScheduledRemovalWindowContractVersions": 2,
+              "policyDocument": "docs/platform-api-compatibility-support-window.md",
+              "previousSnapshotRequiredInProductionBeta": true,
+              "schemaVersion": 1,
+              "stableRemovalRequiresExplicitWaiver": true,
+              "stableRemovalRequiresNewBaseline": true,
+              "stableRemovalRequiresPreviousSnapshot": true,
+              "supportPhase": "beta",
+              "supportWindowStartedRelease": "production-beta"
+            }
+          },
           "id": "platform-api.contract",
           "requiredForReleaseCandidate": true,
           "source": "fixture-app-platform",
           "status": "pass",
-          "summary": "Platform API contract passed.",
-          "details": {
-            "compatibilityWindow": {
-              "schemaVersion": 1,
-              "baselineName": "1.0",
-              "baselineContractVersion": 19,
-              "currentContractVersion": 23,
-              "supportPhase": "beta",
-              "supportWindowStartedRelease": "production-beta",
-              "minimumDeprecationWindowContractVersions": 2,
-              "minimumScheduledRemovalWindowContractVersions": 2,
-              "stableRemovalRequiresNewBaseline": true,
-              "stableRemovalRequiresPreviousSnapshot": true,
-              "stableRemovalRequiresExplicitWaiver": true,
-              "criticalStableRemovalWaiverAllowed": false,
-              "experimentalGraduationRequiresReview": true,
-              "experimentalGraduationRequiresStableReferenceUpdate": true,
-              "previousSnapshotRequiredInProductionBeta": true,
-              "policyDocument": "docs/platform-api-compatibility-support-window.md"
-            }
-          }
+          "summary": "Platform API contract passed."
         },
         {
           "id": "platform-api.stable-baseline",
@@ -103,22 +103,22 @@
         {
           "details": {
             "compatibilityWindow": {
-              "schemaVersion": 1,
-              "baselineName": "1.0",
               "baselineContractVersion": 19,
-              "currentContractVersion": 23,
-              "supportPhase": "beta",
-              "supportWindowStartedRelease": "production-beta",
-              "minimumDeprecationWindowContractVersions": 2,
-              "minimumScheduledRemovalWindowContractVersions": 2,
-              "stableRemovalRequiresNewBaseline": true,
-              "stableRemovalRequiresPreviousSnapshot": true,
-              "stableRemovalRequiresExplicitWaiver": true,
+              "baselineName": "1.0",
               "criticalStableRemovalWaiverAllowed": false,
+              "currentContractVersion": 23,
               "experimentalGraduationRequiresReview": true,
               "experimentalGraduationRequiresStableReferenceUpdate": true,
+              "minimumDeprecationWindowContractVersions": 2,
+              "minimumScheduledRemovalWindowContractVersions": 2,
+              "policyDocument": "docs/platform-api-compatibility-support-window.md",
               "previousSnapshotRequiredInProductionBeta": true,
-              "policyDocument": "docs/platform-api-compatibility-support-window.md"
+              "schemaVersion": 1,
+              "stableRemovalRequiresExplicitWaiver": true,
+              "stableRemovalRequiresNewBaseline": true,
+              "stableRemovalRequiresPreviousSnapshot": true,
+              "supportPhase": "beta",
+              "supportWindowStartedRelease": "production-beta"
             },
             "errors": []
           },
@@ -163,9 +163,9 @@
           "details": {
             "checks": {
               "reviewRequired": true,
+              "stableReferenceDocNamesFrozenBaseline": true,
               "stableReferenceUpdateRequired": true,
               "supportWindowDocExplainsGraduation": true,
-              "stableReferenceDocNamesFrozenBaseline": true,
               "verifierTestsCoverStableIdentity": true
             },
             "errors": [],
@@ -304,9 +304,9 @@
             ],
             "redaction": {
               "rawFetchedContentExcluded": true,
+              "rawSignaturesExcluded": true,
               "rawSocialMessageBodiesExcluded": true,
-              "rawTrustStatementBodiesExcluded": true,
-              "rawSignaturesExcluded": true
+              "rawTrustStatementBodiesExcluded": true
             }
           },
           "id": "app-platform.trust-social-content-format-profiles",
@@ -620,15 +620,123 @@
           "summary": "Public beta limitations passed."
         },
         {
+          "details": {
+            "brokenLinks": [],
+            "redactionFindings": []
+          },
           "id": "public-beta.links-redaction",
           "requiredForReleaseCandidate": true,
           "source": "fixture-public-beta-docs",
           "status": "pass",
-          "summary": "Public beta docs links and redaction passed.",
+          "summary": "Public beta docs links and redaction passed."
+        },
+        {
+          "details": {
+            "docs": true,
+            "feedbackToBacklog": true,
+            "issueTemplates": true,
+            "knownIssuesTracker": true,
+            "redactionFixtures": true,
+            "releaseNotesTemplate": true,
+            "securityHandoff": true,
+            "supportBundleGuidance": true
+          },
+          "id": "public-beta.support-feedback-loop",
+          "requiredForReleaseCandidate": true,
+          "source": "tools/release-certification/fixtures",
+          "status": "pass",
+          "summary": "public-beta.support-feedback-loop fixture evidence passed."
+        },
+        {
+          "details": {},
+          "id": "public-beta.support-feedback-docs",
+          "requiredForReleaseCandidate": true,
+          "source": "tools/release-certification/fixtures",
+          "status": "pass",
+          "summary": "public-beta.support-feedback-docs fixture evidence passed."
+        },
+        {
+          "details": {},
+          "id": "public-beta.issue-templates",
+          "requiredForReleaseCandidate": true,
+          "source": "tools/release-certification/fixtures",
+          "status": "pass",
+          "summary": "public-beta.issue-templates fixture evidence passed."
+        },
+        {
+          "details": {},
+          "id": "public-beta.triage-taxonomy",
+          "requiredForReleaseCandidate": true,
+          "source": "tools/release-certification/fixtures",
+          "status": "pass",
+          "summary": "public-beta.triage-taxonomy fixture evidence passed."
+        },
+        {
+          "details": {},
+          "id": "public-beta.known-issues-tracker",
+          "requiredForReleaseCandidate": true,
+          "source": "tools/release-certification/fixtures",
+          "status": "pass",
+          "summary": "public-beta.known-issues-tracker fixture evidence passed."
+        },
+        {
+          "details": {},
+          "id": "public-beta.feedback-to-backlog",
+          "requiredForReleaseCandidate": true,
+          "source": "tools/release-certification/fixtures",
+          "status": "pass",
+          "summary": "public-beta.feedback-to-backlog fixture evidence passed."
+        },
+        {
+          "details": {},
+          "id": "public-beta.release-notes-template",
+          "requiredForReleaseCandidate": true,
+          "source": "tools/release-certification/fixtures",
+          "status": "pass",
+          "summary": "public-beta.release-notes-template fixture evidence passed."
+        },
+        {
+          "details": {},
+          "id": "public-beta.support-bundle-guidance",
+          "requiredForReleaseCandidate": true,
+          "source": "tools/release-certification/fixtures",
+          "status": "pass",
+          "summary": "public-beta.support-bundle-guidance fixture evidence passed."
+        },
+        {
+          "details": {},
+          "id": "public-beta.security-reporting-handoff",
+          "requiredForReleaseCandidate": true,
+          "source": "tools/release-certification/fixtures",
+          "status": "pass",
+          "summary": "public-beta.security-reporting-handoff fixture evidence passed."
+        },
+        {
+          "details": {},
+          "id": "public-beta.app-specific-feedback",
+          "requiredForReleaseCandidate": true,
+          "source": "tools/release-certification/fixtures",
+          "status": "pass",
+          "summary": "public-beta.app-specific-feedback fixture evidence passed."
+        },
+        {
+          "details": {},
+          "id": "public-beta.catalog-incident-feedback",
+          "requiredForReleaseCandidate": true,
+          "source": "tools/release-certification/fixtures",
+          "status": "pass",
+          "summary": "public-beta.catalog-incident-feedback fixture evidence passed."
+        },
+        {
           "details": {
             "redactionFindings": [],
-            "brokenLinks": []
-          }
+            "undetectedNegativeFixtures": []
+          },
+          "id": "public-beta.redaction-fixtures",
+          "requiredForReleaseCandidate": true,
+          "source": "tools/release-certification/fixtures",
+          "status": "pass",
+          "summary": "public-beta.redaction-fixtures fixture evidence passed."
         }
       ],
       "mode": "release-candidate",
@@ -674,7 +782,6 @@
     },
     "multiNodeBetaSoakSummary": {
       "mode": "hybrid",
-      "promotionReady": true,
       "previousCandidateUpgrade": {
         "backupBeforeUpdateStatus": "pass",
         "currentCatalogChannel": "stable",
@@ -683,19 +790,21 @@
         "currentProductionBetaSummaryConfigured": false,
         "currentProductionBetaSummaryProvided": false,
         "currentProductionBetaSummaryValid": false,
-        "currentVersion": "270",
+        "currentProductionBetaValidationErrors": [],
         "currentUpgradePathRepresented": true,
+        "currentVersion": "270",
         "evidenceId": "multi-node-beta.upgrade-drill",
         "firstPartyAppMigrationStatus": "pass",
         "previousBetaCatalogEdition": 124,
         "previousCatalogChannel": "stable",
         "previousReleaseId": "cryptad-beta-269",
-        "previousSummaryDrillDigest": "sha256:639dfbee8342617f5203e0994662f8c7717a729680e945a399201743b0b5fb5f",
         "previousStableCatalogEdition": 123,
         "previousSummaryConfigured": true,
+        "previousSummaryDrillDigest": "sha256:639dfbee8342617f5203e0994662f8c7717a729680e945a399201743b0b5fb5f",
         "previousSummaryProvided": true,
         "previousSummaryStatus": "pass",
         "previousSummaryValid": true,
+        "previousSummaryValidationErrors": [],
         "previousVersion": "269",
         "rawDataIncluded": false,
         "restoreIntoCleanNodeStatus": "pass",
@@ -704,10 +813,9 @@
         "status": "pass",
         "strictPreviousSummaryRequired": true,
         "supportBundleRedactionStatus": "pass",
-        "trustGraphMigrationStatus": "pass",
-        "currentProductionBetaValidationErrors": [],
-        "previousSummaryValidationErrors": []
+        "trustGraphMigrationStatus": "pass"
       },
+      "promotionReady": true,
       "redaction": {
         "findings": [],
         "status": "pass"
@@ -763,6 +871,19 @@
         "status": "pass"
       },
       "promotionReady": true,
+      "publicBetaSupportFeedback": {
+        "blockers": [],
+        "docs": "pass",
+        "feedbackToBacklog": "pass",
+        "issueTemplates": "pass",
+        "knownIssuesTracker": "pass",
+        "redactionFixtures": "pass",
+        "releaseNotesTemplate": "pass",
+        "securityHandoff": "pass",
+        "status": "pass",
+        "supportBundleGuidance": "pass",
+        "warnings": []
+      },
       "redaction": {
         "findingCount": 0,
         "findings": [],
@@ -780,23 +901,131 @@
     "releaseCertificationSummary": {
       "ecosystemGates": [],
       "ecosystemRcPassed": true,
-      "evidence": [],
+      "evidence": [
+        {
+          "details": {
+            "docs": true,
+            "feedbackToBacklog": true,
+            "issueTemplates": true,
+            "knownIssuesTracker": true,
+            "redactionFixtures": true,
+            "releaseNotesTemplate": true,
+            "securityHandoff": true,
+            "supportBundleGuidance": true
+          },
+          "id": "public-beta.support-feedback-loop",
+          "requiredForReleaseCandidate": true,
+          "source": "tools/release-certification/fixtures",
+          "status": "pass",
+          "summary": "public-beta.support-feedback-loop fixture evidence passed."
+        },
+        {
+          "details": {},
+          "id": "public-beta.support-feedback-docs",
+          "requiredForReleaseCandidate": true,
+          "source": "tools/release-certification/fixtures",
+          "status": "pass",
+          "summary": "public-beta.support-feedback-docs fixture evidence passed."
+        },
+        {
+          "details": {},
+          "id": "public-beta.issue-templates",
+          "requiredForReleaseCandidate": true,
+          "source": "tools/release-certification/fixtures",
+          "status": "pass",
+          "summary": "public-beta.issue-templates fixture evidence passed."
+        },
+        {
+          "details": {},
+          "id": "public-beta.triage-taxonomy",
+          "requiredForReleaseCandidate": true,
+          "source": "tools/release-certification/fixtures",
+          "status": "pass",
+          "summary": "public-beta.triage-taxonomy fixture evidence passed."
+        },
+        {
+          "details": {},
+          "id": "public-beta.known-issues-tracker",
+          "requiredForReleaseCandidate": true,
+          "source": "tools/release-certification/fixtures",
+          "status": "pass",
+          "summary": "public-beta.known-issues-tracker fixture evidence passed."
+        },
+        {
+          "details": {},
+          "id": "public-beta.feedback-to-backlog",
+          "requiredForReleaseCandidate": true,
+          "source": "tools/release-certification/fixtures",
+          "status": "pass",
+          "summary": "public-beta.feedback-to-backlog fixture evidence passed."
+        },
+        {
+          "details": {},
+          "id": "public-beta.release-notes-template",
+          "requiredForReleaseCandidate": true,
+          "source": "tools/release-certification/fixtures",
+          "status": "pass",
+          "summary": "public-beta.release-notes-template fixture evidence passed."
+        },
+        {
+          "details": {},
+          "id": "public-beta.support-bundle-guidance",
+          "requiredForReleaseCandidate": true,
+          "source": "tools/release-certification/fixtures",
+          "status": "pass",
+          "summary": "public-beta.support-bundle-guidance fixture evidence passed."
+        },
+        {
+          "details": {},
+          "id": "public-beta.security-reporting-handoff",
+          "requiredForReleaseCandidate": true,
+          "source": "tools/release-certification/fixtures",
+          "status": "pass",
+          "summary": "public-beta.security-reporting-handoff fixture evidence passed."
+        },
+        {
+          "details": {},
+          "id": "public-beta.app-specific-feedback",
+          "requiredForReleaseCandidate": true,
+          "source": "tools/release-certification/fixtures",
+          "status": "pass",
+          "summary": "public-beta.app-specific-feedback fixture evidence passed."
+        },
+        {
+          "details": {},
+          "id": "public-beta.catalog-incident-feedback",
+          "requiredForReleaseCandidate": true,
+          "source": "tools/release-certification/fixtures",
+          "status": "pass",
+          "summary": "public-beta.catalog-incident-feedback fixture evidence passed."
+        },
+        {
+          "details": {
+            "redactionFindings": [],
+            "undetectedNegativeFixtures": []
+          },
+          "id": "public-beta.redaction-fixtures",
+          "requiredForReleaseCandidate": true,
+          "source": "tools/release-certification/fixtures",
+          "status": "pass",
+          "summary": "public-beta.redaction-fixtures fixture evidence passed."
+        }
+      ],
       "promotionDecision": "PASS",
       "releaseCandidatePassed": true,
       "status": "pass",
       "waiverRecords": []
     },
-    "securityResponseSummary": {
-      "status": "pass",
-      "tool": "security-response-runbook"
-    },
     "securityDrillsSummary": {
+      "advisoryTemplate": {
+        "templateStatus": "pass"
+      },
       "artifactDirectory": "security-drills",
       "artifacts": [
         {
+          "advisoryTemplateStatus": "pass",
           "ageDays": 0,
           "artifact": "app-signing-key-compromise.json",
-          "advisoryTemplateStatus": "pass",
           "digest": "sha256:4e59733ce7bf99dd66e4a362b7437edbf4f53e9147b6be2966b54b8b0fee6304",
           "releaseNotesTemplateStatus": "pass",
           "scenario": "app-signing-key-compromise",
@@ -805,9 +1034,9 @@
           "status": "pass"
         },
         {
+          "advisoryTemplateStatus": "pass",
           "ageDays": 0,
           "artifact": "catalog-signing-key-rotation.json",
-          "advisoryTemplateStatus": "pass",
           "digest": "sha256:346caac3698d4b9dba022d61566c225945cf322dc376e6999868b0665e25961d",
           "releaseNotesTemplateStatus": "pass",
           "scenario": "catalog-signing-key-rotation",
@@ -816,9 +1045,9 @@
           "status": "pass"
         },
         {
+          "advisoryTemplateStatus": "pass",
           "ageDays": 0,
           "artifact": "emergency-replacement-app.json",
-          "advisoryTemplateStatus": "pass",
           "digest": "sha256:8938696ccaff3024b02cd970ad1b2e5ff6cc757e60f8885b4ef8922de4dcf6c2",
           "releaseNotesTemplateStatus": "pass",
           "scenario": "emergency-replacement-app",
@@ -827,9 +1056,9 @@
           "status": "pass"
         },
         {
+          "advisoryTemplateStatus": "pass",
           "ageDays": 0,
           "artifact": "malicious-catalog-entry.json",
-          "advisoryTemplateStatus": "pass",
           "digest": "sha256:c91b072091c9548419cc477ecebf33ab42fe6423779dd610493990cd5fce0166",
           "releaseNotesTemplateStatus": "pass",
           "scenario": "malicious-catalog-entry",
@@ -838,9 +1067,9 @@
           "status": "pass"
         },
         {
+          "advisoryTemplateStatus": "pass",
           "ageDays": 0,
           "artifact": "reviewer-key-compromise.json",
-          "advisoryTemplateStatus": "pass",
           "digest": "sha256:e78a6d92a319c84cee13ef50113694233d41aa68bd827d9dfc34b2d8bb82e963",
           "releaseNotesTemplateStatus": "pass",
           "scenario": "reviewer-key-compromise",
@@ -849,9 +1078,9 @@
           "status": "pass"
         },
         {
+          "advisoryTemplateStatus": "pass",
           "ageDays": 0,
           "artifact": "support-bundle-intake-redaction.json",
-          "advisoryTemplateStatus": "pass",
           "digest": "sha256:3b22cd7cd79efdc395c1db3d5194489a13b57b5510737c374253c12f77a2f59b",
           "releaseNotesTemplateStatus": "pass",
           "scenario": "support-bundle-intake-redaction",
@@ -860,9 +1089,9 @@
           "status": "pass"
         },
         {
+          "advisoryTemplateStatus": "pass",
           "ageDays": 0,
           "artifact": "vulnerable-app-version.json",
-          "advisoryTemplateStatus": "pass",
           "digest": "sha256:0e9c8b31df262484f27e1fa61941d179043ee24e43034b11b2687e5d90c68b83",
           "releaseNotesTemplateStatus": "pass",
           "scenario": "vulnerable-app-version",
@@ -916,9 +1145,6 @@
         "status": "pass"
       },
       "releaseId": "crypta-production-beta-270",
-      "advisoryTemplate": {
-        "templateStatus": "pass"
-      },
       "releaseNotes": {
         "templateStatus": "pass"
       },
@@ -933,6 +1159,10 @@
       ],
       "schemaVersion": 1,
       "staleScenarios": [],
+      "status": "pass",
+      "tool": "security-response-runbook"
+    },
+    "securityResponseSummary": {
       "status": "pass",
       "tool": "security-response-runbook"
     }

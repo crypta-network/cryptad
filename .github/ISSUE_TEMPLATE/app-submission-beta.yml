@@ -4,17 +4,47 @@ title: "[app-submission-beta] "
 labels:
   - app-platform
   - app-submission
+  - area/third-party-review
+  - status/needs-repro
+  - privacy/redaction-required
 body:
   - type: markdown
     attributes:
       value: |
-        Do not paste private keys, reviewer private keys, seed phrases, private insert URIs, browser session tokens, AppHost process tokens, form passwords, authorization headers, cookies, request bodies, raw feed bodies, raw trust documents, raw receipt signatures, or local absolute paths.
+        Public beta support and review feedback flows are in docs/public-beta/support-and-feedback.md and docs/public-beta/feedback-to-backlog.md.
+
+        Do not paste private keys, reviewer private keys, app signing private keys, seed phrases, private insert URIs, browser session tokens, app tokens, AppHost process tokens, form passwords, authorization headers, cookies, request bodies, response bodies, raw fetched content, raw feed bodies, raw profile documents, raw trust statements, raw social messages, raw app data values, raw support bundles, raw receipt signatures, or local absolute paths.
         Use `docs/third-party-app-submission-checklist.md`, `docs/third-party-developer-beta-program.md`, `docs/app-store-submission-and-review-workflow.md`, and `docs/platform-api-compatibility-support-window.md` before filing.
+  - type: input
+    id: release_id
+    attributes:
+      label: Release id
+      placeholder: "Example: cryptad-beta-1500"
+    validations:
+      required: true
+  - type: input
+    id: cryptad_version
+    attributes:
+      label: Cryptad version/build
+    validations:
+      required: true
   - type: input
     id: app-id-name-version
     attributes:
       label: App id/name/version
       placeholder: "Example: hello-crypta / Hello Crypta / 0.1.0"
+    validations:
+      required: true
+  - type: input
+    id: app_id
+    attributes:
+      label: App id
+    validations:
+      required: true
+  - type: input
+    id: app_version
+    attributes:
+      label: App version
     validations:
       required: true
   - type: input
@@ -51,6 +81,13 @@ body:
     attributes:
       label: Template or reference app lineage
       placeholder: "Example: hello-stable, static-basic, queue-dashboard, publisher, vault-profile, or custom"
+  - type: input
+    id: platform_api_contract_version
+    attributes:
+      label: Platform API contract version
+      placeholder: "Example: 1.0"
+    validations:
+      required: true
   - type: dropdown
     id: api-target-stability
     attributes:
@@ -121,6 +158,36 @@ body:
     validations:
       required: true
   - type: input
+    id: support_bundle_digest
+    attributes:
+      label: Support bundle digest, if relevant
+  - type: input
+    id: diagnostic_summary_id
+    attributes:
+      label: Diagnostic summary id, if relevant
+  - type: input
+    id: known_issue_id
+    attributes:
+      label: Known issue id, if relevant
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      options:
+        - severity/blocker
+        - severity/high
+        - severity/medium
+        - severity/low
+    validations:
+      required: true
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impact
+      description: Describe reviewer or user impact without private material.
+    validations:
+      required: true
+  - type: input
     id: bundle-digest
     attributes:
       label: Signed bundle digest
@@ -174,6 +241,23 @@ body:
     validations:
       required: true
   - type: textarea
+    id: reproduction_steps
+    attributes:
+      label: Redacted reproduction steps, if relevant
+  - type: textarea
+    id: expected_behavior
+    attributes:
+      label: Expected behavior, if relevant
+  - type: textarea
+    id: actual_behavior
+    attributes:
+      label: Actual behavior, if relevant
+  - type: textarea
+    id: redacted_evidence
+    attributes:
+      label: Redacted evidence
+      description: Include review finding ids, digests, and public-safe descriptor fields only.
+  - type: textarea
     id: security-notes
     attributes:
       label: Security notes
@@ -190,5 +274,5 @@ body:
     attributes:
       label: Redaction confirmation
       options:
-        - label: I confirm this submission does not include private keys, tokens, private URIs, request bodies, raw user documents, raw signatures, or unredacted local absolute paths.
+        - label: I confirm this submission does not include private keys, tokens, private URIs, request bodies, response bodies, raw user documents, raw app data, raw support bundles, raw signatures, or unredacted local absolute paths.
           required: true

@@ -3,10 +3,10 @@
   "inputs": {
     "securityDrillsSummary": {
       "kind": "cryptad-security-response-drill",
-      "schemaVersion": 2,
+      "promotionReady": true,
       "scenario": "reviewer-key-compromise",
-      "status": "pass",
-      "promotionReady": true
+      "schemaVersion": 2,
+      "status": "pass"
     }
   }
 }

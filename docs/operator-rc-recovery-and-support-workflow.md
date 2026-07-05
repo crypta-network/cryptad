@@ -56,6 +56,8 @@ The default support bundle follows
 [privacy-preserving-beta-diagnostics.md](privacy-preserving-beta-diagnostics.md). It remains local
 until the operator explicitly copies or downloads the JSON, and Web Shell disables export when the
 bundle reports redaction failure.
+Public beta support reports should start with the digest and summary workflow in
+[public-beta/support-and-feedback.md](public-beta/support-and-feedback.md), not raw bundle uploads.
 
 `operator-rc.recovery-plan-execute` release evidence checks this plan-before-execute behavior,
 unknown-action rejection, destructive confirmation, form-password coverage, and route-proxy
@@ -180,3 +182,5 @@ compatibility evidence for the beta route and dashboard fallback.
 PR-277 adds `app-platform.privacy-preserving-beta-diagnostics` and the
 `privacy-preserving-diagnostics-risk` row so release certification can block production beta when
 support-bundle schema, preview/export, safe lifecycle summaries, or redaction fixtures regress.
+PR-281 adds separate `public-beta.support-feedback-loop` evidence for issue-template routing,
+known issues, release notes, and digest-first support guidance.

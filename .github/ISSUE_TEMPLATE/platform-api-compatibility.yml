@@ -4,16 +4,38 @@ title: "[platform-api-compat] "
 labels:
   - app-platform
   - compatibility
+  - area/platform-api
+  - status/needs-repro
+  - privacy/redaction-required
 body:
   - type: markdown
     attributes:
       value: |
-        Do not paste private keys, tokens, private insert URIs, authorization headers, raw app data, raw fetched content, raw request bodies, or local absolute paths. Use contract versions, capability names, finding ids, and digests.
+        Use docs/public-beta/support-and-feedback.md for safe metadata and docs/public-beta/feedback-to-backlog.md for maintainer triage.
+
+        Do not paste private keys, reviewer private keys, app signing private keys, tokens, private insert URIs, authorization headers, cookies, form passwords, raw app data, raw fetched content, raw support bundles, raw request bodies, raw response bodies, or local absolute paths. Use contract versions, capability names, finding ids, and digests.
   - type: input
-    id: app-id-version
+    id: release_id
     attributes:
-      label: App id/version
-      placeholder: "Example: org.example.hello 0.1.0"
+      label: Release id
+    validations:
+      required: true
+  - type: input
+    id: cryptad_version
+    attributes:
+      label: Cryptad version/build
+  - type: input
+    id: app_id
+    attributes:
+      label: App id
+      placeholder: "Example: org.example.hello"
+    validations:
+      required: true
+  - type: input
+    id: app_version
+    attributes:
+      label: App version
+      placeholder: "Example: 0.1.0"
     validations:
       required: true
   - type: dropdown
@@ -23,6 +45,13 @@ body:
       options:
         - stable
         - experimental
+    validations:
+      required: true
+  - type: input
+    id: platform_api_contract_version
+    attributes:
+      label: Platform API contract version
+      placeholder: "Example: 1.0"
     validations:
       required: true
   - type: input
@@ -46,10 +75,55 @@ body:
       description: Include `crypta-app compat verify` finding ids and status, not raw bundle bodies.
     validations:
       required: true
+  - type: input
+    id: support_bundle_digest
+    attributes:
+      label: Support bundle digest, if relevant
+  - type: input
+    id: diagnostic_summary_id
+    attributes:
+      label: Diagnostic summary id, if relevant
+  - type: input
+    id: known_issue_id
+    attributes:
+      label: Known issue id, if relevant
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      options:
+        - severity/blocker
+        - severity/high
+        - severity/medium
+        - severity/low
+    validations:
+      required: true
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impact
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction_steps
+    attributes:
+      label: Redacted reproduction steps
+  - type: textarea
+    id: expected_behavior
+    attributes:
+      label: Expected behavior
+  - type: textarea
+    id: actual_behavior
+    attributes:
+      label: Actual behavior
+  - type: textarea
+    id: redacted_evidence
+    attributes:
+      label: Redacted evidence
   - type: checkboxes
     id: redaction-confirmation
     attributes:
       label: Redaction confirmation
       options:
-        - label: I confirm this issue contains no secrets, private URIs, tokens, raw app data, raw fetched content, or unredacted local absolute paths.
+        - label: I confirm this issue contains no secrets, private URIs, tokens, raw app data, raw fetched content, raw support bundles, request or response bodies, or unredacted local absolute paths.
           required: true

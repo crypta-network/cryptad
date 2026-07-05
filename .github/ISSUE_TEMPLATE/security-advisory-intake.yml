@@ -1,0 +1,83 @@
+name: Security advisory intake handoff
+description: Classify a suspected public-beta security issue without public exploit details.
+title: "[security-handoff] "
+labels:
+  - app-platform
+  - area/security-advisory
+  - privacy/redaction-required
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form only to request a safe handoff to the private security reporting workflow. Do not include exploit details, proof-of-concept payloads, keys, tokens, private insert URIs, raw logs, raw support bundles, raw app data, raw content, authorization headers, cookies, form passwords, or local absolute paths.
+
+        Follow docs/public-beta/security-reporting.md and docs/SECURITY.md for the private report. Maintainers may close this public issue after confirming the private handoff path.
+  - type: dropdown
+    id: advisory_type
+    attributes:
+      label: Advisory type
+      options:
+        - private security report requested
+        - security advisory or denylist event
+        - reviewer key compromise
+        - catalog signing key compromise
+        - app signing key compromise
+        - support bundle redaction failure
+        - public bug report, not security-sensitive
+    validations:
+      required: true
+  - type: input
+    id: release_id
+    attributes:
+      label: Release id
+  - type: input
+    id: cryptad_version
+    attributes:
+      label: Cryptad version/build
+  - type: input
+    id: affected_component
+    attributes:
+      label: Affected component, public-safe
+      placeholder: "Example: catalog verification, support bundle redaction, app review receipt"
+    validations:
+      required: true
+  - type: input
+    id: support_bundle_digest
+    attributes:
+      label: Support bundle digest, if redaction-safe and relevant
+  - type: input
+    id: diagnostic_summary_id
+    attributes:
+      label: Diagnostic summary id, if redaction-safe and relevant
+  - type: input
+    id: known_issue_id
+    attributes:
+      label: Known issue id, if relevant
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Public-safe severity estimate
+      options:
+        - severity/blocker
+        - severity/high
+        - severity/medium
+        - severity/low
+        - unknown
+    validations:
+      required: true
+  - type: textarea
+    id: public_safe_impact
+    attributes:
+      label: Public-safe impact summary
+      description: State the affected area and need for private handoff. Do not include exploit details or steps.
+    validations:
+      required: true
+  - type: checkboxes
+    id: redaction-confirmation
+    attributes:
+      label: Redaction confirmation
+      options:
+        - label: I confirm this public handoff contains no exploit details, proof-of-concept payloads, secrets, private URIs, keys, tokens, raw logs, raw support bundles, raw app data, raw content, authorization headers, cookies, form passwords, or unredacted local absolute paths.
+          required: true
+        - label: I will use the private security reporting path in docs/SECURITY.md for technical details.
+          required: true

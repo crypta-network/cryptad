@@ -9,7 +9,8 @@ The bundle is generated locally. Cryptad does not upload it, send it to maintain
 ticket, or phone home. Operators decide whether to share the exported JSON.
 
 Public-beta users should start with
-[public-beta/security-reporting.md](public-beta/security-reporting.md) and
+[public-beta/support-and-feedback.md](public-beta/support-and-feedback.md),
+[public-beta/security-reporting.md](public-beta/security-reporting.md), and
 [public-beta/troubleshooting.md](public-beta/troubleshooting.md) before exporting support evidence.
 This page defines the diagnostics schema, redaction expectations, support intake, and release
 gates.
@@ -146,9 +147,11 @@ bodies.
 
 ## Support Intake
 
-Maintainers should ask operators for the support JSON only after first asking them to review it.
-Support requests should reference the `supportDigest`, release id/channel, schema version, and
-specific section statuses instead of asking for raw content or local files.
+Maintainers should ask operators for digest and summary fields first, not raw JSON in public
+issues. Support requests should reference the `supportDigest`, release id/channel, schema version,
+diagnostic summary id, known issue id when relevant, and specific section statuses instead of
+asking for raw content or local files. The public feedback loop is defined in
+[public-beta/support-and-feedback.md](public-beta/support-and-feedback.md).
 
 Maintainers must not request raw profile documents, feed snapshots, Trust Graph statements, Social
 Inbox messages, app-data backups, private insert URIs, tokens, private keys, identity material, or

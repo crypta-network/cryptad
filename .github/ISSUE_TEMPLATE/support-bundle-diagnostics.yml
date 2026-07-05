@@ -1,0 +1,132 @@
+name: Support bundle or diagnostics problem
+description: Report a redacted support bundle preview, digest, schema, diagnostics, or redaction concern.
+title: "[support-bundle] "
+labels:
+  - app-platform
+  - area/support-bundle
+  - status/needs-redaction
+  - privacy/redaction-required
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Support bundles are local-only until you choose to share them. Start with digest, schema version, diagnostic summary id, section names, and redaction status. Do not upload a raw support bundle in this public issue. Raw app-data backups are not support bundles.
+
+        Do not paste private insert URIs, private keys, reviewer private keys, app signing private keys, browser session tokens, app tokens, AppHost process tokens, authorization headers, cookies, form passwords, seed phrases, raw fetched content, raw feed bodies, raw profile documents, raw trust statements, raw social messages, raw app data values, raw support bundle files, raw request or response bodies, absolute local paths, or unredacted stack traces.
+  - type: input
+    id: release_id
+    attributes:
+      label: Release id
+    validations:
+      required: true
+  - type: input
+    id: cryptad_version
+    attributes:
+      label: Cryptad version/build
+    validations:
+      required: true
+  - type: input
+    id: support_bundle_digest
+    attributes:
+      label: Support bundle digest
+      placeholder: "Example: sha256:..."
+    validations:
+      required: true
+  - type: input
+    id: support_bundle_schema_version
+    attributes:
+      label: Support bundle schema version
+    validations:
+      required: true
+  - type: input
+    id: diagnostic_summary_id
+    attributes:
+      label: Diagnostic summary id
+    validations:
+      required: true
+  - type: dropdown
+    id: export_preview_status
+    attributes:
+      label: Export or preview status
+      options:
+        - preview pass
+        - preview warn
+        - preview fail
+        - export pass
+        - export blocked
+        - unknown
+    validations:
+      required: true
+  - type: dropdown
+    id: redaction_concern_category
+    attributes:
+      label: Redaction concern category
+      options:
+        - raw content suspected
+        - raw app data suspected
+        - token or key suspected
+        - private URI suspected
+        - local path suspected
+        - schema or digest mismatch
+        - export UX problem
+        - other diagnostics problem
+    validations:
+      required: true
+  - type: input
+    id: affected_section
+    attributes:
+      label: Affected support bundle section name
+      placeholder: "Example: catalogHealth"
+  - type: input
+    id: known_issue_id
+    attributes:
+      label: Known issue id, if relevant
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      options:
+        - severity/blocker
+        - severity/high
+        - severity/medium
+        - severity/low
+    validations:
+      required: true
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impact
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction_steps
+    attributes:
+      label: Redacted reproduction steps
+    validations:
+      required: true
+  - type: textarea
+    id: expected_behavior
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual_behavior
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: redacted_evidence
+    attributes:
+      label: Redacted evidence
+      description: Include only digest, schema, summary ids, redaction status, safe counters, section names, and redacted error codes.
+  - type: checkboxes
+    id: redaction-confirmation
+    attributes:
+      label: Redaction confirmation
+      options:
+        - label: I confirm I have not attached or pasted a raw support bundle, raw app-data backup, raw content, secrets, private URIs, tokens, request or response bodies, or unredacted local absolute paths.
+          required: true
+        - label: I confirm the operator reviewed the preview before sharing any digest or summary values.
+          required: true

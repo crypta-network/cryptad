@@ -4,18 +4,18 @@
     "schemaVersion": 1,
     "waivers": [
       {
-        "id": "waive-security-drill-failure",
-        "evidenceId": "production-security.response-runbook",
-        "severity": "blocker",
-        "scope": "production-beta",
-        "rationale": "Fixture verifies expired drill waiver rejection.",
         "approvedBy": "release-manager",
-        "owner": "release",
         "createdAt": "1969-12-30T00:00:00Z",
+        "evidenceId": "production-security.response-runbook",
         "expiresAt": "1969-12-31T00:00:00Z",
+        "id": "waive-security-drill-failure",
+        "owner": "release",
+        "rationale": "Fixture verifies expired drill waiver rejection.",
         "references": [
           "release-drill-waiver-fixture"
-        ]
+        ],
+        "scope": "production-beta",
+        "severity": "blocker"
       }
     ]
   }

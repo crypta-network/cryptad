@@ -304,6 +304,18 @@ public-beta.troubleshooting
 public-beta.security-reporting
 public-beta.limitations
 public-beta.links-redaction
+public-beta.support-feedback-loop
+public-beta.support-feedback-docs
+public-beta.issue-templates
+public-beta.triage-taxonomy
+public-beta.known-issues-tracker
+public-beta.feedback-to-backlog
+public-beta.release-notes-template
+public-beta.support-bundle-guidance
+public-beta.security-reporting-handoff
+public-beta.app-specific-feedback
+public-beta.catalog-incident-feedback
+public-beta.redaction-fixtures
 third-party-developer.beta-program
 third-party-developer.docs
 third-party-developer.template
@@ -470,10 +482,14 @@ The `public-beta.*` rows add the public-beta onboarding front door, user/operato
 install/update/rollback path, catalog/app path, permissions/consent path, Trust Graph and Social
 Inbox limitations, third-party developer quickstart, app-submission walkthrough, troubleshooting,
 security reporting, former plugin author path, support-bundle redaction warning, and local
-public-beta link/redaction checks. `public-beta.links-redaction` scans the onboarding docs and
-public-beta support template for private insert URIs, private keys, tokens, raw support bundles,
-raw fetched/social/trust/profile/feed/app-data content, unsafe file URI links, and absolute local
-paths without fetching external URLs.
+public-beta link/redaction checks. PR-281 extends those rows with the public beta
+support-feedback-loop gate: canonical support docs, structured issue templates, triage taxonomy,
+known issue tracker, feedback-to-backlog workflow, beta release notes template, digest-first
+support bundle guidance, security handoff, app-specific feedback, catalog incident reporting, and
+positive/negative redaction fixtures. `public-beta.links-redaction` and
+`public-beta.redaction-fixtures` scan for private insert URIs, private keys, tokens, raw support
+bundles, raw fetched/social/trust/profile/feed/app-data content, unsafe file URI links, and
+absolute local paths without fetching external URLs.
 The `platform-api.stable-baseline` and `platform-api.stable-breaking-change-check` rows prove the
 Platform API 1.0 baseline is present and compare stable capability names, stable endpoint
 identities, stable endpoint required-capability sets, stable endpoint action labels, and stable
