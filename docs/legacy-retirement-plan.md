@@ -31,6 +31,11 @@ retained. The browse split under
 `:adapter-http-legacy-browse` remains outside deletion scope for this plan. The content filter also
 remains retained as browse safety tooling.
 
+Retained browse does not create a new plugin API. Former plugin authors should use
+[legacy-plugin-migration-cookbook.md](legacy-plugin-migration-cookbook.md) for app/app-service
+replacement patterns, and old plugin routes must not be silently redirected to app-platform
+services without review.
+
 Retained and pending legacy routes remain reachable in this batch. They stay available through
 direct URLs and any explicit fallback entry points until their Web Shell or app replacements are
 complete enough to retire the legacy path.

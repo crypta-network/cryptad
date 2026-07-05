@@ -306,6 +306,7 @@ third-party-developer.compatibility-window
 third-party-developer.feedback-workflow
 third-party-developer.plugin-author-migration
 third-party-developer.redaction
+legacy-plugin.migration-finalization
 app-platform.signed-bundles
 catalog.smoke
 app-catalog.first-party-beta
@@ -376,6 +377,7 @@ migration.social-mail-preview
 legacy-plugin.freeze-policy
 legacy-plugin.migration-guide
 legacy-plugin.social-inbox-spike
+legacy-plugin.migration-finalization
 reference-app.feed-reader
 reference-app.feed-reader-subscriptions
 reference-app.trust-graph
@@ -644,7 +646,8 @@ blocker row becomes `warn`, never a silent `pass`.
 Required evidence that regresses from `pass` to `fail`, `missing`, or `skip` blocks
 release-candidate promotion unless a visible waiver applies. `pass` to `warn` is a warning.
 `legacy-plugin.freeze-policy`, `legacy-plugin.migration-guide`,
-`legacy-plugin.social-inbox-spike`, `legacy-admin.removal-wave-3`,
+`legacy-plugin.social-inbox-spike`, `legacy-plugin.migration-finalization`,
+`legacy-admin.removal-wave-3`,
 `legacy-admin.removal-wave-4`, `legacy-admin.removal-wave-5`,
 `legacy-admin.final-admin-surface`, `legacy-admin.browse-retained`, and
 `legacy-admin.emergency-fallback-retained` are required release-candidate evidence. The plugin evidence
@@ -652,7 +655,11 @@ verifies that the old in-process plugin runtime is frozen and removed, that no i
 runtime/API surface has been reintroduced, that old plugin command names still map only to
 deterministic unsupported responses, and that legacy plugin categories have a documented
 out-of-process app-platform migration path without old plugin ABI or FCP command compatibility.
-Social Inbox remains the executable social/mail-like migration spike. Wave 3 verifies only the
+The finalization row proves the public-beta cookbook, migration matrix, examples, template,
+app-service grant examples, data/identity/subscription preservation guidance, beta submission
+flow, source-surface audit, redaction-negative fixtures, retained FProxy browse boundary, and
+maintenance-only legacy admin boundary. Social Inbox remains the executable social/mail-like
+migration spike. Wave 3 verifies only the
 `security-levels` route, safe-read redirect behavior, mutating legacy fallback, retained
 browse/filter/diagnostic/wizard surfaces, and redacted diagnostics counters without a live node.
 Wave 5 verifies the maintenance-only final admin surface, retained FProxy browse/content

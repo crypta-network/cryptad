@@ -1,0 +1,8 @@
+{
+  "legacyPluginId": "legacy.example",
+  "newAppId": "app-id.example",
+  "rawSocialMessage": {
+    "type": "crypta.social.message.v1",
+    "body": "synthetic-private-message-body"
+  }
+}

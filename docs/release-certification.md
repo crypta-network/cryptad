@@ -230,6 +230,7 @@ Release-candidate mode requires these evidence ids:
 | `legacy-plugin.freeze-policy` | App-platform smoke summary. | The production RC freeze policy exists, is linked from plugin-system and app-platform docs, documents the old in-process plugin runtime as removed/frozen, keeps old FCP plugin commands mapped only to deterministic unsupported responses, and proves no in-core plugin runtime/API surface has been reintroduced. |
 | `legacy-plugin.migration-guide` | App-platform smoke summary. | The legacy plugin migration guide exists, is linked from plugin-system and app-platform docs, documents old plugin runtime removal, and maps legacy plugin categories to out-of-process app-platform mechanisms without restoring old plugin ABI or FCP command compatibility. |
 | `legacy-plugin.social-inbox-spike` | App-platform smoke summary. | Social Inbox RC is certified as the executable app-platform replacement path for social/message-board plugin patterns with AppVault, app data, content subscriptions, app-generated documents, and mediated Trust Graph score service grants. |
+| `legacy-plugin.migration-finalization` | App-platform smoke summary. | The public-beta cookbook, migration matrix, safe examples, migration-plan template, app-service grant examples, data/identity/subscription preservation guidance, beta submission path, source-surface audit, legacy-admin maintenance-only boundary, retained FProxy browse boundary, and migration artifact redaction checks all pass without restoring old plugin compatibility. |
 | `reference-app.feed-reader` | App-platform smoke summary. | Feed Reader exists as the first content-subscription reference app, declares `content.fetch`, `content.subscribe`, and generated-document publication permissions, uses SDK feed helpers, and keeps evidence free of raw feed bodies and private fetch inputs. |
 | `reference-app.feed-reader-subscriptions` | App-platform smoke summary. | Feed Reader requires at least API v9, is tested through v14, uses `CryptaPlatform.content.subscriptions.*` for durable USK follow behavior, shows scheduler metadata, and does not rely on a tab-local timer as the durable follow path. |
 | `reference-app.feed-reader-app-data` | App-platform smoke summary. | Feed Reader requires at least contract v9, is tested through v14, declares `app.data.*`, uses SDK JSON record helpers for bounded feed sources, selected source, read/render metadata, safe publisher draft state, and a signed v1-to-v2 migration example, and keeps evidence free of raw feed bodies and app-data values. |
@@ -533,9 +534,12 @@ Social Inbox RC supplies the threaded social inbox reference path. Release evide
 `reference-app.social-inbox-service-dependency`, `app-services.web-shell`,
 `app-services.redaction`, `app-services.dependency-redaction`, and `migration.social-mail-preview`
 before a release claims Social Inbox RC support.
-`legacy-plugin.freeze-policy`, `legacy-plugin.migration-guide`, and
-`legacy-plugin.social-inbox-spike` certify the broader legacy plugin freeze boundary,
-plugin-to-app migration guidance, and the executable Social Inbox app-platform replacement path.
+`legacy-plugin.freeze-policy`, `legacy-plugin.migration-guide`,
+`legacy-plugin.social-inbox-spike`, and `legacy-plugin.migration-finalization` certify the broader
+legacy plugin freeze boundary, plugin-to-app migration guidance, the executable Social Inbox
+app-platform replacement path, the public-beta cookbook/matrix/examples, app-service grant
+examples, safe migration artifact redaction, the source-surface audit, and the retained FProxy
+browse plus maintenance-only legacy admin boundaries.
 Social Inbox evidence must not include raw social message bodies, raw fetched social documents,
 raw profile documents, raw request bodies, raw signature values, private insert URIs, private
 identity material, app process tokens, browser-session tokens, form passwords, private keys,

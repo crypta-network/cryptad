@@ -1,0 +1,5 @@
+{
+  "legacyPluginId": "legacy.example",
+  "newAppId": "app-id.example",
+  "rawSocialMessage": "synthetic-private-message-body"
+}

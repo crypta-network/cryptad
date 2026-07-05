@@ -52,7 +52,10 @@ Replacement work should use out-of-process app/platform mechanisms:
 | Cross-app local services | App-service descriptors, dependency bundles, operator approval, expiry, and revalidation |
 
 The [legacy plugin migration guide](legacy-plugin-migration-guide.md) maps common old plugin
-categories to those mechanisms.
+categories to those mechanisms. The
+[legacy plugin migration cookbook](legacy-plugin-migration-cookbook.md) is the public-beta
+plugin-author path with the executable decision tree, migration matrix, safe examples, and
+submission/review evidence checklist.
 
 ## Historical material
 

@@ -346,6 +346,7 @@ CRITICAL_PRODUCTION_BETA_EVIDENCE_IDS = (
     "app-services.grant-bundles",
     "app-services.dependency-redaction",
     "production-security.response-runbook",
+    "legacy-plugin.migration-finalization",
     "legacy-admin.removal-wave-5",
     "legacy-admin.final-admin-surface",
     "legacy-admin.browse-retained",

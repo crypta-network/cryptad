@@ -22,7 +22,8 @@ compatibility layer, encrypted mail transport, moderation system, daemon-core me
 daemon-core message protocol, crawler, or network protocol change.
 
 For broader legacy plugin categories and migration recipes, see
-[legacy-plugin-migration-guide.md](legacy-plugin-migration-guide.md).
+[legacy-plugin-migration-guide.md](legacy-plugin-migration-guide.md) and the executable
+[legacy-plugin-migration-cookbook.md](legacy-plugin-migration-cookbook.md).
 
 These content profiles are Crypta app ecosystem profiles. They are not compatibility promises for
 legacy WoT, Freetalk, Sone, Freemail, or any old plugin ABI/protocol.

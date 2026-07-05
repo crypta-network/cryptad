@@ -65,6 +65,21 @@ review decision. Keep the headings stable so release certification can detect th
 - [ ] Breaking schema changes list a migration path or explain why the beta data can be discarded.
 - [ ] Migration notes avoid raw user records and local paths.
 
+## Legacy plugin migration plan
+
+- [ ] Former plugin behavior is documented with
+      [templates/plugin-migration-plan.md](templates/plugin-migration-plan.md).
+- [ ] The plan lists `legacyPluginId`, `newAppId`, state classes, manifest capabilities,
+      app-data namespaces, content subscriptions, identity grants, app-service dependencies,
+      migration steps, backup/restore policy, review evidence, redaction policy, and known
+      non-goals.
+- [ ] WebOfTrust-like, Freetalk/Sone-like, Freemail-like, content publishing, queue/helper,
+      identity/profile, diagnostics/support, and app-service patterns follow
+      [legacy-plugin-migration-cookbook.md](legacy-plugin-migration-cookbook.md) when applicable.
+- [ ] The submission does not claim old plugin ABI/FCP compatibility, WebOfTrust/Freetalk/Sone/
+      Freemail protocol compatibility, daemon-private hooks, ambient localhost RPC, raw FProxy
+      scraping, private-key export, or unbounded crawling.
+
 ## Backup/restore declaration
 
 - [ ] `review/backup-restore.md` states whether app data participates in backup/restore.
@@ -76,6 +91,9 @@ review decision. Keep the headings stable so release certification can detect th
 - [ ] App-service dependencies and grant bundles are listed when used.
 - [ ] Required service capabilities are separate from app manifest permissions.
 - [ ] Apps with no service dependencies state that no grants are required.
+- [ ] Migrated apps that consume `trust.score` or another service describe provider id, service
+      id, scopes, contexts, dependency kind, degrade behavior, grant bundle, and revalidation
+      behavior. See [legacy-plugin-migration-cookbook.md](legacy-plugin-migration-cookbook.md).
 
 ## Security notes
 

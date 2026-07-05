@@ -561,6 +561,21 @@ Omitting the input is allowed because the pipeline generates the full drill set 
 - Generated dry-run keys are never release keys. Any output with `nonRelease=true` must not be
   promoted.
 
+## Legacy plugin migration finalization gate
+
+Production beta promotion requires `legacy-plugin.migration-finalization` evidence. The gate proves
+that former plugin authors have the public-beta cookbook, migration matrix, safe examples,
+migration-plan template, app-service grant examples, data/identity/subscription preservation
+guidance, beta submission path, source-surface audit, retained FProxy browse boundary, and
+maintenance-only legacy admin boundary. A failure is promotion-blocking when it reintroduces an old
+plugin runtime/API/toadlet/admin surface, old FCP plugin command compatibility, a compatibility shim
+for WebOfTrust/Freetalk/Sone/Freemail, ambient localhost trust, raw FProxy scraping, or a migration
+artifact redaction leak.
+
+The gate does not restore old plugin compatibility and does not remove FProxy browse. FProxy browse,
+content rendering, and the content filter remain retained product surfaces; retained browse does not
+create a new plugin API.
+
 ## Legacy admin Wave 5 gate
 
 Production beta promotion now requires `legacy-admin.removal-wave-5`,

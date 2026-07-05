@@ -319,6 +319,12 @@ changes those descriptor fields incompatibly, the grant becomes `revalidation-re
 operator explicitly renews or revalidates the bundle. App-service score output must be no more
 permissive than direct score output and must preserve evidence limits.
 
+Former WebOfTrust-like plugin authors should use
+[legacy-plugin-migration-cookbook.md](legacy-plugin-migration-cookbook.md) for the Trust Graph
+Local RC migration recipe. The cookbook makes the consumer/provider split explicit: importing
+statements and mutating anchors are Trust Graph capabilities, while ordinary migrated apps consume
+only the read-only `trust.score` service through operator-approved app-service grants.
+
 Trust statement subscription management uses the content subscription routes through SDK trust
 exchange helpers. This avoids a Trust Graph crawler and keeps subscription ownership, restart
 durability, refresh, pause, resume, delete, queue-pressure backoff, and network budget semantics in
