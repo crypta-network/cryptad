@@ -676,6 +676,8 @@ def recursive_redaction_failure(value: Any) -> bool:
             return True
         if "redactionFindings" in value and value.get("redactionFindings"):
             return True
+        if "findings" in value and value.get("findings"):
+            return True
         status = value.get("status")
         if isinstance(status, str) and normalize_status(status) == "fail":
             redaction_keys = {key.lower() for key in value}
@@ -2756,6 +2758,7 @@ def run_self_test() -> None:
         "missing-platform-baseline",
         "stable-api-breaking-change",
         "missing-first-party",
+        "diagnostics-nested-redaction-findings",
         "missing-third-party",
         "empty-third-party-sample-flow",
         "stale-security",
@@ -3014,6 +3017,33 @@ def run_self_test() -> None:
             mutate_evidence(inputs, "first-party-app.beta-quality-pass", remove=True)
 
         run_case(root, "missing-first-party", missing_first_party, "not-ready", expect_blocker="first-party-app.beta-quality-pass")
+
+        def diagnostics_nested_redaction_findings(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            def mutate(entry: dict[str, Any]) -> None:
+                entry.setdefault("details", {})["redaction"] = {
+                    "status": "pass",
+                    "findings": [
+                        {
+                            "kind": "redaction-fixture",
+                            "location": "app-platform-diagnostics",
+                            "summary": "Synthetic nested diagnostics redaction finding.",
+                        }
+                    ],
+                }
+
+            mutate_evidence(inputs, "app-platform.privacy-preserving-beta-diagnostics", mutate)
+
+        run_case(
+            root,
+            "diagnostics-nested-redaction-findings",
+            diagnostics_nested_redaction_findings,
+            "not-ready",
+            expect_blocker="stable-1.0.redaction",
+        )
 
         def missing_third_party(inputs: dict[str, Any], _limitations: dict[str, Any], _paths: dict[str, Path]) -> None:
             mutate_evidence(inputs, "third-party-intake.beta-catalog-install-smoke", remove=True)

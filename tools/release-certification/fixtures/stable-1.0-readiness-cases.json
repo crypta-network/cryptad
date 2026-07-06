@@ -104,6 +104,11 @@
       "category": "negative"
     },
     {
+      "id": "diagnostics-nested-redaction-findings",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
       "id": "missing-third-party",
       "expectedDecision": "not-ready",
       "category": "negative"
