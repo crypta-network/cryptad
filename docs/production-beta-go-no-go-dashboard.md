@@ -202,6 +202,14 @@ When `--require-stable-readiness` is set, a missing Stable summary, invalid Stab
 Stable redaction findings are critical and non-waivable even when the section is otherwise
 advisory.
 
+Required Stable readiness is bound to the dashboard candidate. The Stable summary `releaseId` must
+match the production beta release id, and the dashboard records the expected release id plus the
+match result in JSON and Markdown. The required path also validates that every expected
+`stable-1.0.*` evidence row is present and not `fail`, `missing`, or `skip`; a truncated summary
+with only top-level `status=pass`, `decision=ready`, and `stableReady=true` is still `no-go`.
+Warnings remain visible but do not block unless the Stable policy or required mode turns them into
+blockers.
+
 See [stable-1.0-readiness-gate.md](stable-1.0-readiness-gate.md) for required Stable domains,
 allowed limitations, disallowed limitations, and non-waivable blockers.
 

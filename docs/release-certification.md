@@ -134,6 +134,14 @@ normal release-candidate behavior is unchanged. With the required flag, missing 
 readiness makes Stable promotion impossible. Redaction failures remain non-waivable. See
 [stable-1.0-readiness-gate.md](stable-1.0-readiness-gate.md).
 
+Required Stable readiness must be evidence-complete. The synthetic `stable-1-0-readiness` matrix
+row fails when any expected `stable-1.0.*` evidence item is missing, `fail`, `missing`, or `skip`,
+even if the attached summary's top-level `status`, `decision`, and `stableReady` fields look
+successful. Stable redaction failures add `stable-1.0.redaction` and
+`matrix.stable-readiness.redaction-failed` as unwaivable issue targets, so row-level or matrix
+issue waivers cannot turn a redaction-unsafe Stable summary into a passing release-candidate
+certification.
+
 The wrapper consumes the existing gate outputs when present:
 
 ```text

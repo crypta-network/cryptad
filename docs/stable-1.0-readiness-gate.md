@@ -118,6 +118,17 @@ fixture-only evidence, non-release summary, test signing, skipped Gradle build, 
 tests, skipped live evidence, or skipped previous-candidate upgrade evidence cannot satisfy Stable
 promotion.
 
+The production beta summary's `releaseId` is the candidate identity for Stable review. The
+go/no-go dashboard and security drill summary must carry the same `releaseId`; stale dashboards or
+drill summaries from another candidate are blockers. The go/no-go summary must be from
+`production-beta` mode, and the release-certification summary must be from `release-candidate`
+mode with `status=pass` and `releaseCandidatePassed=true`.
+
+The policy file is required evidence. A missing, mistyped, or malformed `--policy` path fails
+closed instead of falling back to hard-coded defaults. The release-certification redaction block
+may use the current `release_certification.py` boolean schema or a `status=pass` schema, but all
+declared redaction fields must pass and findings must be empty.
+
 Platform API 1.0 readiness requires a stable baseline, previous contract snapshot, passing stable
 breaking-change check, enforced deprecation/removal windows, explicit experimental/stable
 boundaries, and no critical stable-removal waiver.
@@ -137,10 +148,27 @@ signing key rotation, app signing key compromise, malicious catalog entry, vulne
 emergency replacement app, and support-bundle intake redaction. Advisory, denylist, update
 scheduler, catalog, reviewer, and app compromise paths must fail closed.
 
+Security drill freshness is checked at the summary and artifact levels. The summary must include a
+fresh `generatedAt`. Per-scenario artifacts may include their own `generatedAt`, or they may use
+the existing security drill producer fields `stale` and `ageDays`. `stale=true`, an age over the
+policy window, or missing freshness metadata blocks Stable readiness.
+
 Live and soak readiness requires live-network smoke, previous-candidate multi-node upgrade drill,
 network-scale operation coverage, app install/update/rollback, app-data migration, backup/restore,
 content subscription pressure, queue backoff, Trust Graph migration, Social Inbox migration, and
 redaction-safe soak artifacts.
+
+When the production beta wrapper generates Stable readiness, it passes Stable-specific soak
+extracts:
+
+```text
+build/production-beta-release/evidence/stable-readiness-multi-node-beta-soak.json
+build/production-beta-release/evidence/stable-readiness-network-scale-soak.json
+```
+
+Use those extracts for direct Stable readiness reruns. They preserve or synthesize the freshness
+timestamps required by the Stable soak gate; the generic compact production-beta soak extracts are
+not interchangeable.
 
 Legacy migration readiness requires legacy admin to be maintenance-only, retained FProxy browse
 boundaries to be explicit, the old plugin surface to remain frozen, migration cookbook and matrix
@@ -175,6 +203,12 @@ These classes always block Stable 1.0:
 
 Waivers cannot hide redaction findings or any policy-listed non-waivable blocker. Invalid waiver
 attempts are reported as Stable blockers.
+
+Stable waiver records must include approval metadata before they become active: `id`,
+`evidenceId`, `scope`, approved status, `rationale`, `approvedBy`, `owner`, non-empty
+`references`, and a future `expiresAt`. Production beta dashboard waivers are not automatically
+forwarded into Stable validation. Stable waiver scope must be explicit so a production beta waiver
+does not accidentally clear a Stable 1.0 limitation.
 
 ## Allowed limitations
 
@@ -214,3 +248,9 @@ The production beta go/no-go dashboard accepts `--stable-readiness-summary` and
 `--require-stable-readiness`. Without the required flag, it displays Stable readiness without
 weakening or strengthening production beta go/no-go. With the flag, missing or failing Stable
 readiness becomes `no-go`; redaction findings are always non-waivable.
+
+Required consumers validate more than the top-level `stableReady` boolean. The dashboard and
+release-certification matrix reject Stable summaries with the wrong `kind`, invalid
+`status`/`decision`, a mismatched `releaseId`, failing redaction, or missing/failing
+`stable-1.0.*` evidence rows. `ready-with-allowed-limitations` remains a warning state so the
+limitations stay visible in the release record.

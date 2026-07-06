@@ -104,8 +104,20 @@ reports/stable-1.0-readiness/stable-1.0-blockers.json
 
 In advisory mode these artifacts do not change production beta go/no-go. With
 `--require-stable-readiness`, missing or failing Stable readiness marks the summary not
-promotion-ready and reruns the go/no-go dashboard with the Stable section required. See
-[stable-1.0-readiness-gate.md](stable-1.0-readiness-gate.md).
+promotion-ready, removes planned `distArchive` and `checksums` references, and reruns the
+go/no-go dashboard with the Stable section required so the dashboard does not advertise an archive
+that was intentionally skipped. See [stable-1.0-readiness-gate.md](stable-1.0-readiness-gate.md).
+
+The wrapper writes Stable-specific soak extracts for the readiness tool:
+
+```text
+evidence/stable-readiness-multi-node-beta-soak.json
+evidence/stable-readiness-network-scale-soak.json
+```
+
+These are the paths passed to `stable_1_0_readiness.py`. They preserve the `generatedAt`
+freshness metadata that Stable readiness requires, while the generic production beta extracts stay
+compact for production beta summary purposes.
 
 First-party beta readiness is required evidence in strict modes. The pipeline copies sanitized
 `inputs/first-party-app-beta-readiness.json` and requires
@@ -288,10 +300,15 @@ baseline findings. They are safe previous-history inputs for later `crypta-app a
 must not contain local paths, private insert URIs, tokens, raw fetched content, or raw app data.
 
 The public `dist/` archive is created only after the main artifact redaction report and the
-go/no-go dashboard redaction report both pass. Archive creation rejects AppleDouble files,
-`.DS_Store`, `__MACOSX/`, secret-looking filenames, symlinks, hard links, device nodes, nested
-unsafe archives, private insert URIs, private keys, app or browser-session tokens, raw fetched
-content, raw app data, and host-local absolute paths.
+go/no-go dashboard redaction report both pass. When Stable readiness is generated, the wrapper
+folds the Stable readiness redaction status back into the release artifact redaction report before
+upload or archive decisions. Archive creation also requires the dashboard redaction status to stay
+`pass`; the pipeline keeps that status separate from the release artifact scan as
+`goNoGo.redactionStatus` and records the release tree scan as
+`goNoGo.releaseArtifactRedactionStatus`. Archive creation rejects AppleDouble files, `.DS_Store`,
+`__MACOSX/`, secret-looking filenames, symlinks, hard links, device nodes, nested unsafe archives,
+private insert URIs, private keys, app or browser-session tokens, raw fetched content, raw app
+data, and host-local absolute paths.
 
 ## Summary files
 
@@ -317,7 +334,7 @@ content, raw app data, and host-local absolute paths.
 | `previousCandidateMetadata` | Sanitized release, catalog, Platform API, first-party app, app-data, Social Inbox, Trust Graph, support-bundle, and redaction metadata copied by the next cycle's previous-summary normalizer. It contains digests, counts, schema versions, and statuses only. |
 | `artifacts.firstPartyMaintenancePolicy` | Redacted copy of the checked-in first-party maintenance policy source used to generate signed catalog descriptors. |
 | `redaction` | Final artifact scanner result and findings. |
-| `goNoGo` | Compact pointer to the final production beta go/no-go decision, dashboard JSON, dashboard Markdown, redaction report, failed gate count, waiver count, and non-release state. |
+| `goNoGo` | Compact pointer to the final production beta go/no-go decision, dashboard JSON, dashboard Markdown, dashboard redaction report, release artifact redaction status, failed gate count, waiver count, and non-release state. |
 | `commands` | Redacted command metadata, exit codes, durations, and scrubbed output tails. |
 
 ## Go/no-go dashboard
