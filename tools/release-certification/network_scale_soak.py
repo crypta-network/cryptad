@@ -48,6 +48,7 @@ SUMMARY: dict[str, Any] = {
         "concurrencyLeasesReleased": True,
     },
     "redaction": {
+        "status": "pass",
         "rawFetchedContentExcluded": True,
         "privateInsertUrisExcluded": True,
         "tokensExcluded": True,
@@ -88,6 +89,7 @@ def validate(summary: dict[str, Any]) -> list[str]:
         (
             "redaction",
             (
+                "status",
                 "rawFetchedContentExcluded",
                 "privateInsertUrisExcluded",
                 "tokensExcluded",
@@ -101,8 +103,9 @@ def validate(summary: dict[str, Any]) -> list[str]:
             errors.append(f"{section} must be an object")
             continue
         for key in required:
-            if value.get(key) is not True:
-                errors.append(f"{section}.{key} must be true")
+            expected = "pass" if key == "status" else True
+            if value.get(key) != expected:
+                errors.append(f"{section}.{key} must be {expected}")
     return errors
 
 

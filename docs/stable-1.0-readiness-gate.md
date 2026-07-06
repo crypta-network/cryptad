@@ -157,7 +157,8 @@ policy window, or missing freshness metadata blocks Stable readiness.
 Live and soak readiness requires live-network smoke, previous-candidate multi-node upgrade drill,
 network-scale operation coverage, app install/update/rollback, app-data migration, backup/restore,
 content subscription pressure, queue backoff, Trust Graph migration, Social Inbox migration, and
-redaction-safe soak artifacts.
+redaction-safe soak artifacts. Network-scale soak summaries must include an explicit
+`redaction.status=pass`; missing redaction metadata blocks Stable readiness.
 
 When the production beta wrapper generates Stable readiness, it passes Stable-specific soak
 extracts:

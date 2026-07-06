@@ -151,6 +151,8 @@ production beta `releaseId`, requires Stable-specific multi-node soak extracts t
 the same candidate release identity, requires `release-candidate` release-certification evidence,
 accepts the existing boolean release-certification redaction schema, and validates security drill
 artifact freshness from either per-artifact `generatedAt` or the existing `stale`/`ageDays` fields.
+Network-scale soak inputs must include an explicit `redaction.status=pass`; omitted redaction
+metadata fails Stable readiness.
 
 Production beta catalog descriptors also consume
 `tools/release-certification/first-party-app-maintenance-policy.json`. The pipeline copies that

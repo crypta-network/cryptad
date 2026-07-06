@@ -1768,11 +1768,11 @@ def evaluate_live_multi_node_soak(
                     "network-scale-soak-summary",
                 )
             )
-        redaction = network.get("redaction") if isinstance(network.get("redaction"), dict) else {}
+        redaction = network.get("redaction") if isinstance(network.get("redaction"), dict) else None
         redaction_status = (
-            normalize_status(redaction.get("status", "pass"))
-            if "status" in redaction
-            else "pass"
+            normalize_status(redaction.get("status", "missing"))
+            if isinstance(redaction, dict)
+            else "missing"
         )
         if redaction_status != "pass" or recursive_redaction_failure(redaction):
             blockers.append(
@@ -2713,6 +2713,8 @@ def run_self_test() -> None:
         "stale-security-artifact-age",
         "missing-previous-upgrade",
         "app-data-migration-scenario-failed",
+        "network-redaction-missing",
+        "network-redaction-status-missing",
         "network-redaction-status-fail",
         "stale-soak-evidence",
         "insufficient-network",
@@ -2951,6 +2953,36 @@ def run_self_test() -> None:
             app_data_migration_scenario_failed,
             "not-ready",
             expect_blocker="multi-node-beta.app-data-migration",
+        )
+
+        def network_redaction_missing(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs["networkScaleSoakSummary"].pop("redaction", None)
+
+        run_case(
+            root,
+            "network-redaction-missing",
+            network_redaction_missing,
+            "not-ready",
+            expect_blocker="stable-1.0.redaction",
+        )
+
+        def network_redaction_status_missing(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs["networkScaleSoakSummary"]["redaction"] = {"findings": []}
+
+        run_case(
+            root,
+            "network-redaction-status-missing",
+            network_redaction_status_missing,
+            "not-ready",
+            expect_blocker="stable-1.0.redaction",
         )
 
         def network_redaction_status_fail(
