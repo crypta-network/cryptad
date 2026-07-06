@@ -570,7 +570,10 @@ def evidence_details(entry: dict[str, Any] | None) -> dict[str, Any]:
 def entry_has_redaction_findings(entry: dict[str, Any] | None) -> bool:
     details = evidence_details(entry)
     findings = details.get("redactionFindings")
-    return isinstance(findings, list) and bool(findings)
+    if isinstance(findings, list) and bool(findings):
+        return True
+    redaction = details.get("redaction")
+    return recursive_redaction_failure(redaction)
 
 
 def entry_ok(entry: dict[str, Any] | None) -> bool:
@@ -2054,7 +2057,19 @@ def evaluate_support_feedback(
                         "public-beta-known-issues",
                     )
                 )
-        for known_issue in known_issues.get("knownIssues", []):
+        known_issue_records = known_issues.get("knownIssues")
+        if not isinstance(known_issue_records, list):
+            blockers.append(
+                blocker_issue(
+                    domain_id,
+                    "public-beta.known-issues-tracker",
+                    "Public beta known issues tracker schema is malformed",
+                    "publicBetaKnownIssues.knownIssues must be a list so Stable 1.0 can verify unresolved critical issues.",
+                    "public-beta-known-issues",
+                )
+            )
+            known_issue_records = []
+        for known_issue in known_issue_records:
             if not isinstance(known_issue, dict):
                 continue
             severity = str(known_issue.get("severity", "")).lower()
@@ -2886,6 +2901,7 @@ def run_self_test() -> None:
         "release-certification-redaction-field-failed",
         "release-certification-evidence-failed",
         "release-certification-evidence-redaction-findings",
+        "release-certification-evidence-nested-redaction-findings",
         "ecosystem-matrix-failed",
         "missing-platform-baseline",
         "missing-compatibility-window-details",
@@ -2911,6 +2927,7 @@ def run_self_test() -> None:
         "network-redaction-status-fail",
         "stale-soak-evidence",
         "insufficient-network",
+        "malformed-known-issues-tracker",
         "critical-known-issue",
         "critical-known-issue-future-fixed",
         "beta-only-limitation",
@@ -3153,6 +3170,32 @@ def run_self_test() -> None:
             root,
             "release-certification-evidence-redaction-findings",
             release_certification_evidence_redaction_findings,
+            "not-ready",
+            expect_blocker="app-platform.signed-bundles",
+        )
+
+        def release_certification_evidence_nested_redaction_findings(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            def mutate(entry: dict[str, Any]) -> None:
+                entry.setdefault("details", {})["redaction"] = {
+                    "status": "pass",
+                    "findings": [
+                        {
+                            "kind": "stable-readiness-fixture",
+                            "summary": "Synthetic nested required-evidence redaction finding.",
+                        }
+                    ],
+                }
+
+            mutate_evidence(inputs, "app-platform.signed-bundles", mutate)
+
+        run_case(
+            root,
+            "release-certification-evidence-nested-redaction-findings",
+            release_certification_evidence_nested_redaction_findings,
             "not-ready",
             expect_blocker="app-platform.signed-bundles",
         )
@@ -3460,6 +3503,21 @@ def run_self_test() -> None:
             inputs["networkScaleSoakSummary"]["trustGraph"] = {"importsAttempted": 0}
 
         run_case(root, "insufficient-network", insufficient_network, "not-ready", expect_blocker="stable-1.0.live-multi-node-soak")
+
+        def malformed_known_issues_tracker(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs["publicBetaKnownIssues"].pop("knownIssues", None)
+
+        run_case(
+            root,
+            "malformed-known-issues-tracker",
+            malformed_known_issues_tracker,
+            "not-ready",
+            expect_blocker="public-beta.known-issues-tracker",
+        )
 
         def critical_known_issue(inputs: dict[str, Any], _limitations: dict[str, Any], _paths: dict[str, Path]) -> None:
             inputs["publicBetaKnownIssues"]["knownIssues"].append(

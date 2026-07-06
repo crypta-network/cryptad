@@ -94,6 +94,11 @@
       "category": "negative"
     },
     {
+      "id": "release-certification-evidence-nested-redaction-findings",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
       "id": "ecosystem-matrix-failed",
       "expectedDecision": "not-ready",
       "category": "negative"
@@ -215,6 +220,11 @@
     },
     {
       "id": "insufficient-network",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "malformed-known-issues-tracker",
       "expectedDecision": "not-ready",
       "category": "negative"
     },

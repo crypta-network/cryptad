@@ -2416,6 +2416,20 @@ def production_beta_go_no_go_evidence(workspace_root: Path, out_dir: Path) -> li
     ]
 
 
+def parse_stable_readiness_count(value: Any) -> tuple[int, bool]:
+    if value is None or value == "":
+        return 0, False
+    if isinstance(value, bool):
+        return 0, True
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return 0, True
+    if parsed < 0:
+        return 0, True
+    return parsed, False
+
+
 def stable_readiness_evidence(
     summary_path: Path | None,
     required: bool,
@@ -2458,7 +2472,25 @@ def stable_readiness_evidence(
     decision = str(summary.get("decision", "not-ready"))
     stable_ready = summary.get("stableReady") is True
     main_status = normalize_evidence_status(str(summary.get("status", "missing")))
-    if summary_kind != "stable-1.0-readiness" or redaction_status != "pass" or redaction_findings:
+    blocker_count, malformed_blocker_count = parse_stable_readiness_count(summary.get("blockerCount", 0))
+    disallowed_count, malformed_disallowed_count = parse_stable_readiness_count(
+        summary.get("disallowedLimitationCount", 0)
+    )
+    count_validation_errors: list[str] = []
+    if malformed_blocker_count:
+        count_validation_errors.append("blockerCount is not a non-negative integer")
+    elif blocker_count > 0:
+        count_validation_errors.append(f"blockerCount is {blocker_count}")
+    if malformed_disallowed_count:
+        count_validation_errors.append("disallowedLimitationCount is not a non-negative integer")
+    elif disallowed_count > 0:
+        count_validation_errors.append(f"disallowedLimitationCount is {disallowed_count}")
+    if (
+        summary_kind != "stable-1.0-readiness"
+        or redaction_status != "pass"
+        or redaction_findings
+        or count_validation_errors
+    ):
         main_status = "fail"
     elif decision == "ready-with-allowed-limitations" and main_status == "pass":
         main_status = "warn"
@@ -2472,20 +2504,28 @@ def stable_readiness_evidence(
     }
     if redaction_findings:
         redaction_details["redactionFindings"] = redaction_findings
+    main_summary = f"Stable 1.0 readiness decision is {decision}."
+    if count_validation_errors:
+        main_summary = "Stable 1.0 readiness summary reports remaining blockers or forbidden limitations."
     synthetic_entries: dict[str, dict[str, Any]] = {
         "stable-1.0.readiness-gate": {
             "id": "stable-1.0.readiness-gate",
             "status": main_status,
-            "summary": f"Stable 1.0 readiness decision is {decision}.",
+            "summary": main_summary,
             "details": {
                 "required": required,
                 "summaryKind": summary_kind,
                 "decision": decision,
                 "stableReady": stable_ready,
-                "blockerCount": summary.get("blockerCount", 0),
+                "blockerCount": blocker_count
+                if not malformed_blocker_count
+                else summary.get("blockerCount", 0),
                 "warningCount": summary.get("warningCount", 0),
                 "allowedLimitationCount": summary.get("allowedLimitationCount", 0),
-                "disallowedLimitationCount": summary.get("disallowedLimitationCount", 0),
+                "disallowedLimitationCount": disallowed_count
+                if not malformed_disallowed_count
+                else summary.get("disallowedLimitationCount", 0),
+                "validationErrors": count_validation_errors,
                 "summaryPath": source,
                 "artifactRefs": summary.get("artifactRefs", {})
                 if isinstance(summary.get("artifactRefs"), dict)
@@ -13679,6 +13719,69 @@ def run_self_test(repo_root: Path) -> None:
         assert stable_redaction_waived_row["details"]["unwaivableIssueIds"] == [
             "matrix.stable-readiness.redaction-failed"
         ], stable_redaction_waived_row
+
+        stable_remaining_blockers_summary = workspace / "build/stable-readiness-remaining-blockers.json"
+        write_json(
+            stable_remaining_blockers_summary,
+            {
+                "schemaVersion": 1,
+                "kind": "stable-1.0-readiness",
+                "status": "pass",
+                "decision": "ready",
+                "stableReady": True,
+                "blockerCount": 1,
+                "warningCount": 0,
+                "allowedLimitationCount": 0,
+                "disallowedLimitationCount": 1,
+                "domains": [],
+                "blockers": [
+                    {
+                        "id": "stable-self-test-blocker",
+                        "evidenceId": "stable-1.0.test",
+                    }
+                ],
+                "warnings": [],
+                "allowedLimitations": [],
+                "disallowedLimitations": [
+                    {
+                        "id": "stable-self-test-disallowed",
+                    }
+                ],
+                "redaction": {"status": "pass", "findings": []},
+                "evidence": [
+                    {
+                        "id": evidence_id,
+                        "status": "pass",
+                        "summary": f"{evidence_id} passed.",
+                        "details": {"decision": "ready", "stableReady": True}
+                        if evidence_id == "stable-1.0.readiness-gate"
+                        else {},
+                    }
+                    for evidence_id in STABLE_1_0_READINESS_EVIDENCE_IDS
+                ],
+            },
+        )
+        stable_remaining_items = stable_readiness_evidence(
+            stable_remaining_blockers_summary,
+            True,
+            workspace,
+            out_dir,
+        )
+        stable_remaining_statuses = {item.id: item.status for item in stable_remaining_items}
+        assert stable_remaining_statuses["stable-1.0.readiness-gate"] == "fail", stable_remaining_statuses
+        stable_remaining_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/stable-remaining-blockers-cert").resolve(),
+            stable_readiness_summary=stable_remaining_blockers_summary,
+            stable_readiness_required=True,
+        )
+        stable_remaining_cert, stable_remaining_exit_code = run(stable_remaining_settings)
+        assert stable_remaining_exit_code == 1, stable_remaining_cert
+        stable_remaining_row = matrix_row_by_id(stable_remaining_settings.out_dir, "stable-1-0-readiness")
+        assert stable_remaining_row["status"] == "fail", stable_remaining_row
+        assert stable_remaining_row["releaseBlocker"] is True, stable_remaining_row
+        assert "evidence.stable-1.0.readiness-gate" in stable_remaining_row["issueIds"], stable_remaining_row
+        assert "matrix.stable-readiness.evidence-not-passing" in stable_remaining_row["issueIds"], stable_remaining_row
 
         stable_truncated_summary = workspace / "build/stable-readiness-truncated.json"
         write_json(
