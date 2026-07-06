@@ -538,7 +538,7 @@ def evidence_map_from_summaries(*summaries: dict[str, Any] | None) -> dict[str, 
             if not isinstance(entry, dict):
                 continue
             evidence_id = entry.get("id") or entry.get("evidenceId")
-            if isinstance(evidence_id, str) and evidence_id:
+            if isinstance(evidence_id, str) and evidence_id and evidence_id not in result:
                 result[evidence_id] = entry
     return result
 
@@ -1371,7 +1371,9 @@ def evaluate_third_party(evidence: dict[str, dict[str, Any]]) -> dict[str, Any]:
     )
     sample = evidence_details(evidence.get("third-party-developer.sample-app-flow"))
     sample_flow = sample.get("sampleFlow")
-    if entry_ok(evidence.get("third-party-developer.sample-app-flow")) and not isinstance(sample_flow, list):
+    if entry_ok(evidence.get("third-party-developer.sample-app-flow")) and (
+        not isinstance(sample_flow, list) or not sample_flow
+    ):
         blockers.append(
             blocker_issue(
                 domain_id,
@@ -1520,7 +1522,11 @@ def evaluate_security(
                 )
             )
         redaction = security_summary.get("redaction") if isinstance(security_summary.get("redaction"), dict) else {}
-        if normalize_status(redaction.get("status", "missing")) != "pass" or redaction.get("findings"):
+        if (
+            normalize_status(redaction.get("status", "missing")) != "pass"
+            or redaction.get("findings")
+            or recursive_redaction_failure(security_summary)
+        ):
             blockers.append(
                 blocker_issue(
                     domain_id,
@@ -1685,7 +1691,11 @@ def evaluate_live_multi_node_soak(
             if freshness is not None:
                 blockers.append(freshness)
         redaction = multi_node.get("redaction") if isinstance(multi_node.get("redaction"), dict) else {}
-        if normalize_status(redaction.get("status", "missing")) != "pass" or redaction.get("findings"):
+        if (
+            normalize_status(redaction.get("status", "missing")) != "pass"
+            or redaction.get("findings")
+            or recursive_redaction_failure(multi_node)
+        ):
             blockers.append(
                 blocker_issue(
                     domain_id,
@@ -1808,7 +1818,7 @@ def evaluate_live_multi_node_soak(
         if (
             redaction_status != "pass"
             or redaction.get("findings")
-            or recursive_redaction_failure(redaction)
+            or recursive_redaction_failure(network)
         ):
             blockers.append(
                 blocker_issue(
@@ -2742,14 +2752,18 @@ def run_self_test() -> None:
         "release-certification-non-rc-mode",
         "release-certification-missing-redaction",
         "release-certification-redaction-field-failed",
+        "release-certification-evidence-failed",
         "missing-platform-baseline",
         "stable-api-breaking-change",
         "missing-first-party",
         "missing-third-party",
+        "empty-third-party-sample-flow",
         "stale-security",
+        "security-redaction-unsafe-flag",
         "security-release-id-mismatch",
         "missing-security-required-scenarios",
         "multi-node-release-id-mismatch",
+        "multi-node-raw-evidence-flag",
         "stale-security-summary-age",
         "stale-security-artifact-age",
         "missing-previous-upgrade",
@@ -2963,6 +2977,25 @@ def run_self_test() -> None:
             expect_blocker="stable-1.0.redaction",
         )
 
+        def release_certification_evidence_failed(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            for entry in inputs["releaseCertificationSummary"]["evidence"]:
+                if isinstance(entry, dict) and entry.get("id") == "platform-api.stable-breaking-change-check":
+                    entry["status"] = "fail"
+                    entry.setdefault("details", {})["errors"] = ["stable_api_endpoint_removed"]
+                    break
+
+        run_case(
+            root,
+            "release-certification-evidence-failed",
+            release_certification_evidence_failed,
+            "not-ready",
+            expect_blocker="platform-api.stable-breaking-change-check",
+        )
+
         def missing_baseline(inputs: dict[str, Any], _limitations: dict[str, Any], _paths: dict[str, Path]) -> None:
             mutate_evidence(inputs, "platform-api.stable-baseline", remove=True)
 
@@ -2987,6 +3020,20 @@ def run_self_test() -> None:
 
         run_case(root, "missing-third-party", missing_third_party, "not-ready", expect_blocker="third-party-intake.beta-catalog-install-smoke")
 
+        def empty_third_party_sample_flow(inputs: dict[str, Any], _limitations: dict[str, Any], _paths: dict[str, Path]) -> None:
+            def mutate(entry: dict[str, Any]) -> None:
+                entry.setdefault("details", {})["sampleFlow"] = []
+
+            mutate_evidence(inputs, "third-party-developer.sample-app-flow", mutate)
+
+        run_case(
+            root,
+            "empty-third-party-sample-flow",
+            empty_third_party_sample_flow,
+            "not-ready",
+            expect_blocker="stable-1.0.third-party-intake",
+        )
+
         def stale_security(inputs: dict[str, Any], _limitations: dict[str, Any], _paths: dict[str, Path]) -> None:
             inputs["securityDrillsSummary"]["staleScenarios"] = ["reviewer-key-compromise"]
             inputs["securityDrillsSummary"]["passedScenarios"] = [
@@ -2994,6 +3041,21 @@ def run_self_test() -> None:
             ]
 
         run_case(root, "stale-security", stale_security, "not-ready", expect_blocker="stable-1.0.security-drills")
+
+        def security_redaction_unsafe_flag(inputs: dict[str, Any], _limitations: dict[str, Any], _paths: dict[str, Path]) -> None:
+            inputs["securityDrillsSummary"]["redaction"] = {
+                "status": "pass",
+                "findings": [],
+                "rawSensitiveMaterialExcluded": False,
+            }
+
+        run_case(
+            root,
+            "security-redaction-unsafe-flag",
+            security_redaction_unsafe_flag,
+            "not-ready",
+            expect_blocker="stable-1.0.redaction",
+        )
 
         def security_release_id_mismatch(inputs: dict[str, Any], _limitations: dict[str, Any], _paths: dict[str, Path]) -> None:
             inputs["securityDrillsSummary"]["releaseId"] = "cryptad-beta-previous"
@@ -3039,6 +3101,17 @@ def run_self_test() -> None:
             multi_node_release_id_mismatch,
             "not-ready",
             expect_blocker="stable-1.0.live-multi-node-soak",
+        )
+
+        def multi_node_raw_evidence_flag(inputs: dict[str, Any], _limitations: dict[str, Any], _paths: dict[str, Path]) -> None:
+            inputs["multiNodeSoakSummary"]["previousCandidateUpgrade"]["rawDataIncluded"] = True
+
+        run_case(
+            root,
+            "multi-node-raw-evidence-flag",
+            multi_node_raw_evidence_flag,
+            "not-ready",
+            expect_blocker="stable-1.0.redaction",
         )
 
         def stale_security_summary_age(inputs: dict[str, Any], _limitations: dict[str, Any], _paths: dict[str, Path]) -> None:

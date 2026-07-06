@@ -84,6 +84,11 @@
       "category": "negative"
     },
     {
+      "id": "release-certification-evidence-failed",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
       "id": "missing-platform-baseline",
       "expectedDecision": "not-ready",
       "category": "negative"
@@ -104,7 +109,17 @@
       "category": "negative"
     },
     {
+      "id": "empty-third-party-sample-flow",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
       "id": "stale-security",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "security-redaction-unsafe-flag",
       "expectedDecision": "not-ready",
       "category": "negative"
     },
@@ -120,6 +135,11 @@
     },
     {
       "id": "multi-node-release-id-mismatch",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "multi-node-raw-evidence-flag",
       "expectedDecision": "not-ready",
       "category": "negative"
     },
