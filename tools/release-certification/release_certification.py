@@ -1947,6 +1947,40 @@ def allowlisted_network_scale_bool_section(
     }
 
 
+def allowlisted_network_scale_redaction_section(
+    summary: dict[str, Any],
+    errors: list[str],
+) -> dict[str, Any]:
+    value = summary.get("redaction", {})
+    if not isinstance(value, dict):
+        errors.append("redaction must be an object")
+        value = {}
+    else:
+        add_network_scale_unexpected_field_error(
+            value,
+            {*NETWORK_SCALE_SOAK_REDACTION_KEYS, "status"},
+            errors,
+            "redaction",
+        )
+    safe_redaction = {
+        key: network_scale_safe_bool(
+            value.get(key),
+            errors,
+            f"redaction.{key}",
+            expected=True,
+        )
+        for key in NETWORK_SCALE_SOAK_REDACTION_KEYS
+    }
+    if "status" in value:
+        safe_redaction["status"] = network_scale_safe_enum(
+            value.get("status"),
+            {"pass"},
+            errors,
+            "redaction.status",
+        )
+    return safe_redaction
+
+
 def allowlisted_network_scale_soak_summary(
     summary: dict[str, Any],
 ) -> tuple[dict[str, Any], list[str]]:
@@ -2027,12 +2061,7 @@ def allowlisted_network_scale_soak_summary(
                 NETWORK_SCALE_SOAK_BUDGET_KEYS,
                 errors,
             ),
-            "redaction": allowlisted_network_scale_bool_section(
-                summary,
-                "redaction",
-                NETWORK_SCALE_SOAK_REDACTION_KEYS,
-                errors,
-            ),
+            "redaction": allowlisted_network_scale_redaction_section(summary, errors),
         },
         errors,
     )
