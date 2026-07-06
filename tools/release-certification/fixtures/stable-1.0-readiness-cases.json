@@ -24,6 +24,16 @@
       "category": "negative"
     },
     {
+      "id": "production-missing-signing-profile",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "production-missing-signing-field",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
       "id": "go-no-go-no-go",
       "expectedDecision": "not-ready",
       "category": "negative"
@@ -80,6 +90,11 @@
     },
     {
       "id": "stale-security",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "security-release-id-mismatch",
       "expectedDecision": "not-ready",
       "category": "negative"
     },

@@ -738,17 +738,56 @@ def evaluate_production_beta_state(
                     "production-beta-summary",
                 )
             )
-        signing = production.get("signingProfile") if isinstance(production.get("signingProfile"), dict) else {}
-        if signing.get("generatedTestKeys") is True or str(signing.get("kind", "production")) != "production":
+        signing = production.get("signingProfile")
+        if not isinstance(signing, dict):
             blockers.append(
                 blocker_issue(
                     domain_id,
                     "stable-1.0.production-beta-state",
-                    "Production beta summary uses non-production signing evidence",
-                    "Stable 1.0 requires production signing and reviewer evidence, not fixture or generated test keys.",
+                    "Production beta signing profile is missing",
+                    "Stable 1.0 requires explicit production signing and reviewer-key evidence.",
                     "production-beta-summary",
                 )
             )
+        else:
+            required_signing_fields = (
+                "kind",
+                "generatedTestKeys",
+                "appKeyId",
+                "reviewerKeyId",
+                "privateKeyMaterialIncluded",
+            )
+            missing_fields = [
+                field
+                for field in required_signing_fields
+                if field not in signing
+                or signing.get(field) is None
+                or (isinstance(signing.get(field), str) and not signing.get(field).strip())
+            ]
+            if missing_fields:
+                blockers.append(
+                    blocker_issue(
+                        domain_id,
+                        "stable-1.0.production-beta-state",
+                        "Production beta signing evidence is incomplete",
+                        "Stable 1.0 signing profile is missing fields: " + ", ".join(missing_fields) + ".",
+                        "production-beta-summary",
+                    )
+                )
+            if (
+                signing.get("generatedTestKeys") is not False
+                or str(signing.get("kind", "")) != "production"
+                or signing.get("privateKeyMaterialIncluded") is not False
+            ):
+                blockers.append(
+                    blocker_issue(
+                        domain_id,
+                        "stable-1.0.production-beta-state",
+                        "Production beta summary uses non-production signing evidence",
+                        "Stable 1.0 requires production signing and reviewer evidence, not fixture or generated test keys.",
+                        "production-beta-summary",
+                    )
+                )
         redaction = production.get("redaction") if isinstance(production.get("redaction"), dict) else {}
         if normalize_status(redaction.get("status", "missing")) != "pass":
             blockers.append(
@@ -1201,6 +1240,7 @@ def evaluate_security(
     security_summary: dict[str, Any] | None,
     policy: dict[str, Any],
     now: dt.datetime,
+    candidate_release_id: str,
 ) -> dict[str, Any]:
     domain_id = "security-drills"
     blockers = add_required_evidence_blockers(
@@ -1254,6 +1294,21 @@ def evaluate_security(
                     "stable-1.0.security-drills",
                     "Security drill summary is not promotion-ready",
                     "All required Stable 1.0 security drill scenarios must pass.",
+                    "security-drills-summary",
+                )
+            )
+        security_release_id = str(security_summary.get("releaseId", "")).strip()
+        if candidate_release_id and security_release_id != candidate_release_id:
+            blockers.append(
+                blocker_issue(
+                    domain_id,
+                    "stable-1.0.security-drills",
+                    "Security drill summary is not bound to this release",
+                    (
+                        "Stable 1.0 requires the security drill releaseId to match the "
+                        f"production beta releaseId; security={security_release_id or 'missing'}, "
+                        f"production={candidate_release_id}."
+                    ),
                     "security-drills-summary",
                 )
             )
@@ -2187,6 +2242,12 @@ def run(settings: Settings) -> tuple[dict[str, Any], int]:
         inputs.get("releaseCertificationSummary"),
         inputs.get("appPlatformSummary"),
     )
+    production_summary = inputs.get("productionBetaSummary")
+    candidate_release_id = (
+        str(production_summary.get("releaseId", "")).strip()
+        if isinstance(production_summary, dict)
+        else ""
+    )
     known_limitations_domain, allowed, disallowed, resolved = evaluate_known_limitations(
         limitations,
         waivers,
@@ -2207,7 +2268,13 @@ def run(settings: Settings) -> tuple[dict[str, Any], int]:
         evaluate_platform_api(evidence, policy),
         evaluate_app_ecosystem(evidence),
         evaluate_third_party(evidence),
-        evaluate_security(evidence, inputs.get("securityDrillsSummary"), policy, now),
+        evaluate_security(
+            evidence,
+            inputs.get("securityDrillsSummary"),
+            policy,
+            now,
+            candidate_release_id,
+        ),
         evaluate_live_multi_node_soak(
             evidence,
             inputs.get("multiNodeSoakSummary"),
@@ -2307,6 +2374,8 @@ def base_self_test_inputs() -> tuple[dict[str, Any], dict[str, Any]]:
     production["signingProfile"] = {
         "kind": "production",
         "generatedTestKeys": False,
+        "appKeyId": "production-app-key",
+        "reviewerKeyId": "production-reviewer-key",
         "privateKeyMaterialIncluded": False,
     }
     production["pipelineStages"] = {
@@ -2460,6 +2529,8 @@ def run_self_test() -> None:
         "allowed-limitations",
         "missing-production",
         "production-not-ready",
+        "production-missing-signing-profile",
+        "production-missing-signing-field",
         "go-no-go-no-go",
         "go-no-go-wrong-release-id",
         "go-no-go-non-production-mode",
@@ -2472,6 +2543,7 @@ def run_self_test() -> None:
         "missing-first-party",
         "missing-third-party",
         "stale-security",
+        "security-release-id-mismatch",
         "stale-security-summary-age",
         "missing-previous-upgrade",
         "app-data-migration-scenario-failed",
@@ -2522,6 +2594,28 @@ def run_self_test() -> None:
             inputs["productionBetaSummary"]["promotionReady"] = False
 
         run_case(root, "production-not-ready", production_not_ready, "not-ready", expect_blocker="stable-1.0.production-beta-state")
+
+        def production_missing_signing_profile(inputs: dict[str, Any], _limitations: dict[str, Any], _paths: dict[str, Path]) -> None:
+            inputs["productionBetaSummary"].pop("signingProfile", None)
+
+        run_case(
+            root,
+            "production-missing-signing-profile",
+            production_missing_signing_profile,
+            "not-ready",
+            expect_blocker="stable-1.0.production-beta-state",
+        )
+
+        def production_missing_signing_field(inputs: dict[str, Any], _limitations: dict[str, Any], _paths: dict[str, Path]) -> None:
+            inputs["productionBetaSummary"]["signingProfile"].pop("generatedTestKeys", None)
+
+        run_case(
+            root,
+            "production-missing-signing-field",
+            production_missing_signing_field,
+            "not-ready",
+            expect_blocker="stable-1.0.production-beta-state",
+        )
 
         def go_no_go_no_go(inputs: dict[str, Any], _limitations: dict[str, Any], _paths: dict[str, Path]) -> None:
             inputs["goNoGoSummary"]["decision"] = "no-go"
@@ -2626,6 +2720,17 @@ def run_self_test() -> None:
             ]
 
         run_case(root, "stale-security", stale_security, "not-ready", expect_blocker="stable-1.0.security-drills")
+
+        def security_release_id_mismatch(inputs: dict[str, Any], _limitations: dict[str, Any], _paths: dict[str, Path]) -> None:
+            inputs["securityDrillsSummary"]["releaseId"] = "cryptad-beta-previous"
+
+        run_case(
+            root,
+            "security-release-id-mismatch",
+            security_release_id_mismatch,
+            "not-ready",
+            expect_blocker="stable-1.0.security-drills",
+        )
 
         def stale_security_summary_age(inputs: dict[str, Any], _limitations: dict[str, Any], _paths: dict[str, Path]) -> None:
             inputs["securityDrillsSummary"]["generatedAt"] = "1969-11-01T00:00:00Z"
