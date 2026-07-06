@@ -34,6 +34,11 @@
       "category": "negative"
     },
     {
+      "id": "production-redaction-findings",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
       "id": "go-no-go-no-go",
       "expectedDecision": "not-ready",
       "category": "negative"

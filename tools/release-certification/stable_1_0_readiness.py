@@ -924,7 +924,11 @@ def evaluate_production_beta_state(
                     )
                 )
         redaction = production.get("redaction") if isinstance(production.get("redaction"), dict) else {}
-        if normalize_status(redaction.get("status", "missing")) != "pass":
+        if (
+            normalize_status(redaction.get("status", "missing")) != "pass"
+            or redaction.get("findings")
+            or recursive_redaction_failure(redaction)
+        ):
             blockers.append(
                 blocker_issue(
                     domain_id,
@@ -2694,6 +2698,7 @@ def run_self_test() -> None:
         "production-not-ready",
         "production-missing-signing-profile",
         "production-missing-signing-field",
+        "production-redaction-findings",
         "go-no-go-no-go",
         "go-no-go-wrong-release-id",
         "go-no-go-non-production-mode",
@@ -2783,6 +2788,32 @@ def run_self_test() -> None:
             production_missing_signing_field,
             "not-ready",
             expect_blocker="stable-1.0.production-beta-state",
+        )
+
+        def production_redaction_findings(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs["productionBetaSummary"]["redaction"] = {
+                "schemaVersion": 1,
+                "status": "pass",
+                "findingCount": 1,
+                "findings": [
+                    {
+                        "kind": "redaction-fixture",
+                        "location": "production-beta-summary",
+                        "summary": "Synthetic redaction finding for Stable readiness validation.",
+                    }
+                ],
+            }
+
+        run_case(
+            root,
+            "production-redaction-findings",
+            production_redaction_findings,
+            "not-ready",
+            expect_blocker="stable-1.0.redaction",
         )
 
         def go_no_go_no_go(inputs: dict[str, Any], _limitations: dict[str, Any], _paths: dict[str, Path]) -> None:
