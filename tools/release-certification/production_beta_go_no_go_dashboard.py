@@ -3348,6 +3348,11 @@ def stable_readiness_issues(
             )
         )
     stable_evidence = evidence_map(summary)
+    evidence_redaction_findings = [
+        evidence_id
+        for evidence_id in STABLE_1_0_READINESS_EVIDENCE_IDS
+        if evidence_id in stable_evidence and entry_has_redaction_findings(stable_evidence[evidence_id])
+    ]
     missing_evidence = [
         evidence_id
         for evidence_id in STABLE_1_0_READINESS_EVIDENCE_IDS
@@ -3377,6 +3382,24 @@ def stable_readiness_issues(
                 source="stable-readiness-summary",
                 waivable=not required,
                 category="stable-readiness",
+            )
+        )
+    if evidence_redaction_findings:
+        issues.append(
+            Issue(
+                id="stable-1.0.readiness-summary.evidence-redaction",
+                evidence_id="stable-1.0.redaction",
+                domain_id=domain_id,
+                severity="critical",
+                title="Stable 1.0 readiness evidence has redaction findings",
+                summary=(
+                    "Stable readiness evidence rows contain non-waivable redaction findings: "
+                    + ", ".join(evidence_redaction_findings)
+                    + "."
+                ),
+                source="stable-readiness-summary",
+                waivable=False,
+                category="redaction",
             )
         )
     if failed_evidence:
@@ -4919,6 +4942,49 @@ def assert_required_stable_readiness_release_id_matches_dashboard_candidate(root
     ]
     if not truncated_blockers:
         raise AssertionError(f"missing Stable evidence blocker was not reported: {truncated_dashboard}")
+
+    redaction_inputs = json.loads(json.dumps(inputs))
+    for entry in redaction_inputs["stableReadinessSummary"]["evidence"]:
+        if isinstance(entry, dict) and entry.get("id") == "stable-1.0.redaction":
+            entry["details"] = {
+                "redactionFindings": [
+                    {"kind": "stable-readiness-fixture", "summary": "Synthetic Stable redaction finding."}
+                ]
+            }
+            break
+    else:
+        raise AssertionError("synthetic Stable summary is missing stable-1.0.redaction evidence")
+    redaction_dashboard = build_dashboard(
+        redaction_inputs,
+        {},
+        [FIXTURE_DIR / "go-no-go-pass.json"],
+        None,
+        Path(__file__).resolve().parents[2],
+        root / "stable-readiness-evidence-redaction",
+        "production-beta",
+        release_id,
+        generated_at,
+        now,
+        require_stable_readiness=True,
+    )
+    if redaction_dashboard.get("decision") != "no-go":
+        raise AssertionError(
+            "required Stable readiness with evidence-row redaction findings did not block: "
+            f"{redaction_dashboard}"
+        )
+    redaction_blockers = [
+        blocker
+        for blocker in redaction_dashboard.get("blockers", [])
+        if isinstance(blocker, dict)
+        and blocker.get("id") == "stable-1.0.readiness-summary.evidence-redaction"
+        and blocker.get("evidenceId") == "stable-1.0.redaction"
+        and blocker.get("severity") == "critical"
+    ]
+    if not redaction_blockers:
+        raise AssertionError(
+            "Stable evidence-row redaction findings were not reported as a critical blocker: "
+            f"{redaction_dashboard}"
+        )
 
 
 def assert_validator_security_drill_redaction_findings_are_non_waivable(root: Path) -> None:
