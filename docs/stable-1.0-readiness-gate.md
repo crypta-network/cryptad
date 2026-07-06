@@ -119,10 +119,11 @@ tests, skipped live evidence, or skipped previous-candidate upgrade evidence can
 promotion.
 
 The production beta summary's `releaseId` is the candidate identity for Stable review. The
-go/no-go dashboard and security drill summary must carry the same `releaseId`; stale dashboards or
-drill summaries from another candidate are blockers. The go/no-go summary must be from
-`production-beta` mode, and the release-certification summary must be from `release-candidate`
-mode with `status=pass` and `releaseCandidatePassed=true`.
+go/no-go dashboard, security drill summary, and attached multi-node soak summary must carry or
+derive the same `releaseId`; stale dashboards, drill summaries, or multi-node soak summaries from
+another candidate are blockers. The go/no-go summary must be from `production-beta` mode, and the
+release-certification summary must be from `release-candidate` mode with `status=pass` and
+`releaseCandidatePassed=true`.
 
 The policy file is required evidence. A missing, mistyped, or malformed `--policy` path fails
 closed instead of falling back to hard-coded defaults. The release-certification redaction block

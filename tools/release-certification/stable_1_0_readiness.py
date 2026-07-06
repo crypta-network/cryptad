@@ -339,6 +339,39 @@ def positive_int(value: Any) -> int | None:
     return parsed if parsed > 0 else None
 
 
+def non_empty_string(value: Any) -> str:
+    return value.strip() if isinstance(value, str) else ""
+
+
+def release_id_from_beta_version(value: Any) -> str:
+    version = non_empty_string(value)
+    if not version:
+        return ""
+    if version.startswith("cryptad-beta-"):
+        return version
+    safe_version = "".join(
+        char if char.isalnum() or char in "._-" else "-"
+        for char in version
+    ).strip("-")
+    return f"cryptad-beta-{safe_version}" if safe_version else ""
+
+
+def multi_node_candidate_release_ids(summary: dict[str, Any]) -> list[tuple[str, str]]:
+    identities: list[tuple[str, str]] = []
+    release_id = non_empty_string(summary.get("releaseId"))
+    if release_id:
+        identities.append(("releaseId", release_id))
+    current_candidate = summary.get("currentCandidate")
+    if isinstance(current_candidate, dict):
+        release_id = non_empty_string(current_candidate.get("releaseId"))
+        if release_id:
+            identities.append(("currentCandidate.releaseId", release_id))
+        release_id = release_id_from_beta_version(current_candidate.get("version"))
+        if release_id:
+            identities.append(("currentCandidate.version", release_id))
+    return identities
+
+
 def evidence_age_blocker(
     *,
     domain_id: str,
@@ -1528,6 +1561,7 @@ def evaluate_live_multi_node_soak(
     network: dict[str, Any] | None,
     policy: dict[str, Any],
     now: dt.datetime,
+    candidate_release_id: str,
 ) -> dict[str, Any]:
     domain_id = "live-multi-node-soak"
     blockers = add_required_evidence_blockers(
@@ -1562,6 +1596,29 @@ def evaluate_live_multi_node_soak(
             )
         )
     else:
+        if candidate_release_id:
+            release_identities = multi_node_candidate_release_ids(multi_node)
+            mismatched_release_ids = [
+                (source, release_id)
+                for source, release_id in release_identities
+                if release_id != candidate_release_id
+            ]
+            if not release_identities or mismatched_release_ids:
+                if mismatched_release_ids:
+                    release_id_source, multi_node_release_id = mismatched_release_ids[0]
+                else:
+                    release_id_source, multi_node_release_id = "missing", "missing"
+                blockers.append(
+                    blocker_issue(
+                        domain_id,
+                        "stable-1.0.live-multi-node-soak",
+                        "Multi-node soak summary is not bound to this release",
+                        "Stable 1.0 requires multi-node soak evidence to match the production beta "
+                        f"releaseId; multi-node {release_id_source}={multi_node_release_id or 'missing'}, "
+                        f"production={candidate_release_id}.",
+                        "multi-node-beta-soak-summary",
+                    )
+                )
         mode = str(multi_node.get("mode", "missing"))
         if mode not in accepted_multi:
             blockers.append(
@@ -2377,6 +2434,7 @@ def run(settings: Settings) -> tuple[dict[str, Any], int]:
             inputs.get("networkScaleSoakSummary"),
             policy,
             now,
+            candidate_release_id,
         ),
         evaluate_legacy(evidence),
         evaluate_support_feedback(
@@ -2523,6 +2581,7 @@ def base_self_test_inputs() -> tuple[dict[str, Any], dict[str, Any]]:
     multi_node = copy.deepcopy(go_inputs["multiNodeBetaSoakSummary"])
     multi_node["mode"] = "hybrid"
     multi_node["generatedAt"] = DEFAULT_GENERATED_AT
+    multi_node["currentCandidate"] = {"version": "270", "catalogChannel": "stable"}
     scenario_statuses = (
         multi_node.get("scenarioStatuses")
         if isinstance(multi_node.get("scenarioStatuses"), dict)
@@ -2649,6 +2708,7 @@ def run_self_test() -> None:
         "missing-third-party",
         "stale-security",
         "security-release-id-mismatch",
+        "multi-node-release-id-mismatch",
         "stale-security-summary-age",
         "stale-security-artifact-age",
         "missing-previous-upgrade",
@@ -2847,6 +2907,21 @@ def run_self_test() -> None:
             security_release_id_mismatch,
             "not-ready",
             expect_blocker="stable-1.0.security-drills",
+        )
+
+        def multi_node_release_id_mismatch(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs["multiNodeSoakSummary"]["releaseId"] = "cryptad-beta-previous"
+
+        run_case(
+            root,
+            "multi-node-release-id-mismatch",
+            multi_node_release_id_mismatch,
+            "not-ready",
+            expect_blocker="stable-1.0.live-multi-node-soak",
         )
 
         def stale_security_summary_age(inputs: dict[str, Any], _limitations: dict[str, Any], _paths: dict[str, Path]) -> None:

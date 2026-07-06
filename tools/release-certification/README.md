@@ -147,9 +147,10 @@ Use the Stable-specific soak extracts shown above when rerunning the readiness t
 production beta bundle. The generic compact production beta soak extracts are optimized for the
 production beta summary and may not carry the `generatedAt` freshness metadata required by the
 Stable gate. Stable readiness also binds attached go/no-go and security drill summaries to the
-production beta `releaseId`, requires `release-candidate` release-certification evidence, accepts
-the existing boolean release-certification redaction schema, and validates security drill artifact
-freshness from either per-artifact `generatedAt` or the existing `stale`/`ageDays` fields.
+production beta `releaseId`, requires Stable-specific multi-node soak extracts to carry or derive
+the same candidate release identity, requires `release-candidate` release-certification evidence,
+accepts the existing boolean release-certification redaction schema, and validates security drill
+artifact freshness from either per-artifact `generatedAt` or the existing `stale`/`ageDays` fields.
 
 Production beta catalog descriptors also consume
 `tools/release-certification/first-party-app-maintenance-policy.json`. The pipeline copies that

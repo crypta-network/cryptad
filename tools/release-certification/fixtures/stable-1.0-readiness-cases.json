@@ -104,6 +104,11 @@
       "category": "negative"
     },
     {
+      "id": "multi-node-release-id-mismatch",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
       "id": "stale-security-summary-age",
       "expectedDecision": "not-ready",
       "category": "negative"
