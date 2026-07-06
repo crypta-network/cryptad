@@ -372,6 +372,23 @@ def multi_node_candidate_release_ids(summary: dict[str, Any]) -> list[tuple[str,
     return identities
 
 
+def network_scale_candidate_release_ids(summary: dict[str, Any]) -> list[tuple[str, str]]:
+    identities: list[tuple[str, str]] = []
+    for key in ("releaseId", "candidateReleaseId"):
+        release_id = non_empty_string(summary.get(key))
+        if release_id:
+            identities.append((key, release_id))
+    current_candidate = summary.get("currentCandidate")
+    if isinstance(current_candidate, dict):
+        release_id = non_empty_string(current_candidate.get("releaseId"))
+        if release_id:
+            identities.append(("currentCandidate.releaseId", release_id))
+        release_id = release_id_from_beta_version(current_candidate.get("version"))
+        if release_id:
+            identities.append(("currentCandidate.version", release_id))
+    return identities
+
+
 def evidence_age_blocker(
     *,
     domain_id: str,
@@ -1254,7 +1271,18 @@ def evaluate_platform_api(evidence: dict[str, dict[str, Any]], policy: dict[str,
                 "platform-api.stable-breaking-change-check",
             )
         )
-    compatibility = evidence_details(evidence.get("platform-api.compatibility-window")).get("compatibilityWindow")
+    compatibility_entry = evidence.get("platform-api.compatibility-window")
+    compatibility = evidence_details(compatibility_entry).get("compatibilityWindow")
+    if entry_ok(compatibility_entry) and not isinstance(compatibility, dict):
+        blockers.append(
+            blocker_issue(
+                domain_id,
+                "stable-1.0.platform-api-compatibility",
+                "Platform API compatibility-window details are missing",
+                "Stable 1.0 requires platform-api.compatibility-window details.compatibilityWindow metadata.",
+                "platform-api.compatibility-window",
+            )
+        )
     if isinstance(compatibility, dict):
         if compatibility.get("previousSnapshotRequiredInProductionBeta") is not True:
             blockers.append(
@@ -1766,6 +1794,26 @@ def evaluate_live_multi_node_soak(
             )
         )
     else:
+        if candidate_release_id:
+            release_identities = network_scale_candidate_release_ids(network)
+            mismatched_release_ids = [
+                (source, release_id)
+                for source, release_id in release_identities
+                if release_id != candidate_release_id
+            ]
+            if mismatched_release_ids:
+                release_id_source, network_release_id = mismatched_release_ids[0]
+                blockers.append(
+                    blocker_issue(
+                        domain_id,
+                        "stable-1.0.live-multi-node-soak",
+                        "Network-scale soak summary is not bound to this release",
+                        "Stable 1.0 requires network-scale soak evidence to match the production beta "
+                        f"releaseId when the summary declares one; network {release_id_source}={network_release_id}, "
+                        f"production={candidate_release_id}.",
+                        "network-scale-soak-summary",
+                    )
+                )
         mode = str(network.get("mode", "missing"))
         if mode not in accepted_network:
             blockers.append(
@@ -2003,13 +2051,20 @@ def evaluate_known_limitations(
         for category in policy.get("disallowedLimitationCategories", [])
         if str(category).strip()
     }
-    if not isinstance(limitations_doc, dict) or not isinstance(limitations_doc.get("limitations"), list):
+    malformed_limitations_doc = (
+        not isinstance(limitations_doc, dict)
+        or limitations_doc.get("schemaVersion") != SCHEMA_VERSION
+        or limitations_doc.get("kind") != "stable-1.0-known-limitations"
+        or not isinstance(limitations_doc.get("limitations"), list)
+        or not limitations_doc.get("limitations")
+    )
+    if malformed_limitations_doc:
         blockers.append(
             blocker_issue(
                 domain_id,
                 "stable-1.0.known-limitations",
-                "Stable 1.0 known limitations source is missing",
-                "Stable 1.0 requires a deterministic known limitations source.",
+                "Stable 1.0 known limitations source is missing or malformed",
+                "Stable 1.0 requires a deterministic known limitations source with schemaVersion=1, kind=stable-1.0-known-limitations, and a non-empty limitations array.",
                 "stable-known-limitations",
             )
         )
@@ -2756,6 +2811,7 @@ def run_self_test() -> None:
         "release-certification-redaction-field-failed",
         "release-certification-evidence-failed",
         "missing-platform-baseline",
+        "missing-compatibility-window-details",
         "stable-api-breaking-change",
         "missing-first-party",
         "diagnostics-nested-redaction-findings",
@@ -2767,6 +2823,7 @@ def run_self_test() -> None:
         "missing-security-required-scenarios",
         "multi-node-release-id-mismatch",
         "multi-node-raw-evidence-flag",
+        "network-release-id-mismatch",
         "stale-security-summary-age",
         "stale-security-artifact-age",
         "missing-previous-upgrade",
@@ -2782,6 +2839,7 @@ def run_self_test() -> None:
         "beta-only-limitation",
         "allowed-disallowed-category",
         "unknown-limitation-classification",
+        "malformed-known-limitations",
         "missing-policy",
         "redaction-unsafe",
         "invalid-waiver",
@@ -3004,6 +3062,24 @@ def run_self_test() -> None:
 
         run_case(root, "missing-platform-baseline", missing_baseline, "not-ready", expect_blocker="platform-api.stable-baseline")
 
+        def missing_compatibility_window_details(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            def mutate(entry: dict[str, Any]) -> None:
+                entry.setdefault("details", {}).pop("compatibilityWindow", None)
+
+            mutate_evidence(inputs, "platform-api.compatibility-window", mutate)
+
+        run_case(
+            root,
+            "missing-compatibility-window-details",
+            missing_compatibility_window_details,
+            "not-ready",
+            expect_blocker="stable-1.0.platform-api-compatibility",
+        )
+
         def stable_breaking(inputs: dict[str, Any], _limitations: dict[str, Any], _paths: dict[str, Path]) -> None:
             def mutate(entry: dict[str, Any]) -> None:
                 entry["status"] = "fail"
@@ -3142,6 +3218,17 @@ def run_self_test() -> None:
             multi_node_raw_evidence_flag,
             "not-ready",
             expect_blocker="stable-1.0.redaction",
+        )
+
+        def network_release_id_mismatch(inputs: dict[str, Any], _limitations: dict[str, Any], _paths: dict[str, Path]) -> None:
+            inputs["networkScaleSoakSummary"]["releaseId"] = "cryptad-beta-previous"
+
+        run_case(
+            root,
+            "network-release-id-mismatch",
+            network_release_id_mismatch,
+            "not-ready",
+            expect_blocker="stable-1.0.live-multi-node-soak",
         )
 
         def stale_security_summary_age(inputs: dict[str, Any], _limitations: dict[str, Any], _paths: dict[str, Path]) -> None:
@@ -3325,6 +3412,22 @@ def run_self_test() -> None:
             )
 
         run_case(root, "unknown-limitation-classification", unknown_limitation_classification, "not-ready", expect_blocker="stable-1.0.known-limitations")
+
+        def malformed_known_limitations(
+            _inputs: dict[str, Any],
+            limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            limitations.clear()
+            limitations["limitations"] = []
+
+        run_case(
+            root,
+            "malformed-known-limitations",
+            malformed_known_limitations,
+            "not-ready",
+            expect_blocker="stable-1.0.known-limitations",
+        )
 
         def missing_policy(_inputs: dict[str, Any], _limitations: dict[str, Any], paths: dict[str, Path]) -> None:
             paths["policy"] = paths["stableKnownLimitations"].parent / "missing-policy.json"

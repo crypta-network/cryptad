@@ -94,6 +94,11 @@
       "category": "negative"
     },
     {
+      "id": "missing-compatibility-window-details",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
       "id": "stable-api-breaking-change",
       "expectedDecision": "not-ready",
       "category": "negative"
@@ -145,6 +150,11 @@
     },
     {
       "id": "multi-node-raw-evidence-flag",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "network-release-id-mismatch",
       "expectedDecision": "not-ready",
       "category": "negative"
     },
@@ -220,6 +230,11 @@
     },
     {
       "id": "unknown-limitation-classification",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "malformed-known-limitations",
       "expectedDecision": "not-ready",
       "category": "negative"
     },
