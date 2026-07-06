@@ -2469,6 +2469,14 @@ def stable_readiness_evidence(
     redaction = summary.get("redaction") if isinstance(summary.get("redaction"), dict) else {}
     redaction_status = normalize_evidence_status(str(redaction.get("status", "missing")))
     redaction_findings = redaction.get("findings") if isinstance(redaction.get("findings"), list) else []
+    redaction_finding_count, malformed_redaction_finding_count = parse_stable_readiness_count(
+        redaction.get("findingCount", len(redaction_findings))
+    )
+    redaction_validation_errors: list[str] = []
+    if malformed_redaction_finding_count:
+        redaction_validation_errors.append("findingCount is not a non-negative integer")
+    elif redaction_finding_count > 0:
+        redaction_validation_errors.append(f"findingCount is {redaction_finding_count}")
     decision = str(summary.get("decision", "not-ready"))
     stable_ready = summary.get("stableReady") is True
     main_status = normalize_evidence_status(str(summary.get("status", "missing")))
@@ -2489,6 +2497,7 @@ def stable_readiness_evidence(
         summary_kind != "stable-1.0-readiness"
         or redaction_status != "pass"
         or redaction_findings
+        or redaction_validation_errors
         or count_validation_errors
     ):
         main_status = "fail"
@@ -2500,8 +2509,12 @@ def stable_readiness_evidence(
     evidence_entries = evidence_map_from_summary(summary)
     redaction_details: dict[str, Any] = {
         "status": redaction_status,
-        "findingCount": len(redaction_findings),
+        "findingCount": redaction_finding_count
+        if not malformed_redaction_finding_count
+        else redaction.get("findingCount", len(redaction_findings)),
     }
+    if redaction_validation_errors:
+        redaction_details["validationErrors"] = redaction_validation_errors
     if redaction_findings:
         redaction_details["redactionFindings"] = redaction_findings
     main_summary = f"Stable 1.0 readiness decision is {decision}."
@@ -2534,10 +2547,14 @@ def stable_readiness_evidence(
         },
         "stable-1.0.redaction": {
             "id": "stable-1.0.redaction",
-            "status": "fail" if redaction_status != "pass" or redaction_findings else "pass",
+            "status": "fail"
+            if redaction_status != "pass" or redaction_findings or redaction_validation_errors
+            else "pass",
             "summary": (
                 "Stable 1.0 readiness redaction checks passed."
-                if redaction_status == "pass" and not redaction_findings
+                if redaction_status == "pass"
+                and not redaction_findings
+                and not redaction_validation_errors
                 else "Stable 1.0 readiness redaction checks failed."
             ),
             "details": redaction_details,
@@ -2560,7 +2577,9 @@ def stable_readiness_evidence(
             continue
         details = entry.get("details", {}) if isinstance(entry.get("details"), dict) else {}
         status = normalize_evidence_status(str(entry.get("status", "missing")))
-        if evidence_id == "stable-1.0.redaction" and (redaction_status != "pass" or redaction_findings):
+        if evidence_id == "stable-1.0.redaction" and (
+            redaction_status != "pass" or redaction_findings or redaction_validation_errors
+        ):
             status = "fail"
         items.append(
             EvidenceItem(
@@ -13719,6 +13738,61 @@ def run_self_test(repo_root: Path) -> None:
         assert stable_redaction_waived_row["details"]["unwaivableIssueIds"] == [
             "matrix.stable-readiness.redaction-failed"
         ], stable_redaction_waived_row
+
+        stable_redaction_count_summary = workspace / "build/stable-readiness-redaction-count.json"
+        write_json(
+            stable_redaction_count_summary,
+            {
+                "schemaVersion": 1,
+                "kind": "stable-1.0-readiness",
+                "status": "pass",
+                "decision": "ready",
+                "stableReady": True,
+                "blockerCount": 0,
+                "warningCount": 0,
+                "allowedLimitationCount": 0,
+                "disallowedLimitationCount": 0,
+                "domains": [],
+                "blockers": [],
+                "warnings": [],
+                "allowedLimitations": [],
+                "disallowedLimitations": [],
+                "redaction": {"status": "pass", "findingCount": 1},
+                "evidence": [
+                    {
+                        "id": evidence_id,
+                        "status": "pass",
+                        "summary": f"{evidence_id} passed.",
+                        "details": {"decision": "ready", "stableReady": True}
+                        if evidence_id == "stable-1.0.readiness-gate"
+                        else {},
+                    }
+                    for evidence_id in STABLE_1_0_READINESS_EVIDENCE_IDS
+                ],
+            },
+        )
+        stable_redaction_count_items = stable_readiness_evidence(
+            stable_redaction_count_summary,
+            True,
+            workspace,
+            out_dir,
+        )
+        stable_redaction_count_statuses = {item.id: item.status for item in stable_redaction_count_items}
+        assert stable_redaction_count_statuses["stable-1.0.readiness-gate"] == "fail", stable_redaction_count_statuses
+        assert stable_redaction_count_statuses["stable-1.0.redaction"] == "fail", stable_redaction_count_statuses
+        stable_redaction_count_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/stable-redaction-count-cert").resolve(),
+            stable_readiness_summary=stable_redaction_count_summary,
+            stable_readiness_required=True,
+        )
+        stable_redaction_count_cert, stable_redaction_count_exit_code = run(stable_redaction_count_settings)
+        assert stable_redaction_count_exit_code == 1, stable_redaction_count_cert
+        stable_redaction_count_row = matrix_row_by_id(stable_redaction_count_settings.out_dir, "stable-1-0-readiness")
+        assert stable_redaction_count_row["status"] == "fail", stable_redaction_count_row
+        assert stable_redaction_count_row["releaseBlocker"] is True, stable_redaction_count_row
+        assert "evidence.stable-1.0.redaction" in stable_redaction_count_row["issueIds"], stable_redaction_count_row
+        assert "matrix.stable-readiness.redaction-failed" in stable_redaction_count_row["issueIds"], stable_redaction_count_row
 
         stable_remaining_blockers_summary = workspace / "build/stable-readiness-remaining-blockers.json"
         write_json(

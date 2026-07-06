@@ -3333,7 +3333,21 @@ def stable_readiness_issues(
             )
         )
     redaction = summary.get("redaction") if isinstance(summary.get("redaction"), dict) else {}
-    if normalize_status(redaction.get("status", "missing")) != "pass" or redaction.get("findings"):
+    redaction_findings = redaction.get("findings") if isinstance(redaction.get("findings"), list) else []
+    redaction_finding_count, malformed_redaction_finding_count = parse_release_blocker_count(
+        redaction.get("findingCount", len(redaction_findings))
+    )
+    if (
+        normalize_status(redaction.get("status", "missing")) != "pass"
+        or redaction_findings
+        or malformed_redaction_finding_count
+        or redaction_finding_count > 0
+    ):
+        details: list[str] = []
+        if malformed_redaction_finding_count:
+            details.append("findingCount is not a non-negative integer")
+        elif redaction_finding_count > 0:
+            details.append(f"findingCount is {redaction_finding_count}")
         issues.append(
             Issue(
                 id="stable-1.0.readiness-summary.redaction",
@@ -3341,7 +3355,11 @@ def stable_readiness_issues(
                 domain_id=domain_id,
                 severity="critical",
                 title="Stable 1.0 readiness redaction failed",
-                summary="Stable readiness summary redaction findings are non-waivable.",
+                summary=(
+                    "Stable readiness summary redaction findings are non-waivable"
+                    + (": " + "; ".join(details) if details else "")
+                    + "."
+                ),
                 source="stable-readiness-summary",
                 waivable=False,
                 category="redaction",
@@ -5011,6 +5029,43 @@ def assert_required_stable_readiness_release_id_matches_dashboard_candidate(root
         raise AssertionError(
             "Stable evidence-row redaction findings were not reported as a critical blocker: "
             f"{redaction_dashboard}"
+        )
+
+    redaction_count_inputs = json.loads(json.dumps(inputs))
+    redaction_count_inputs["stableReadinessSummary"]["redaction"] = {
+        "status": "pass",
+        "findingCount": 1,
+    }
+    redaction_count_dashboard = build_dashboard(
+        redaction_count_inputs,
+        {},
+        [FIXTURE_DIR / "go-no-go-pass.json"],
+        None,
+        Path(__file__).resolve().parents[2],
+        root / "stable-readiness-redaction-count",
+        "production-beta",
+        release_id,
+        generated_at,
+        now,
+        require_stable_readiness=True,
+    )
+    if redaction_count_dashboard.get("decision") != "no-go":
+        raise AssertionError(
+            "required Stable readiness with top-level redaction findingCount did not block: "
+            f"{redaction_count_dashboard}"
+        )
+    redaction_count_blockers = [
+        blocker
+        for blocker in redaction_count_dashboard.get("blockers", [])
+        if isinstance(blocker, dict)
+        and blocker.get("id") == "stable-1.0.readiness-summary.redaction"
+        and blocker.get("evidenceId") == "stable-1.0.redaction"
+        and blocker.get("severity") == "critical"
+    ]
+    if not redaction_count_blockers:
+        raise AssertionError(
+            "Stable top-level redaction findingCount was not reported as a critical blocker: "
+            f"{redaction_count_dashboard}"
         )
 
     remaining_blockers_inputs = json.loads(json.dumps(inputs))
