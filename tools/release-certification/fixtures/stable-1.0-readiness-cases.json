@@ -69,6 +69,11 @@
       "category": "negative"
     },
     {
+      "id": "release-certification-redaction-field-failed",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
       "id": "missing-platform-baseline",
       "expectedDecision": "not-ready",
       "category": "negative"
@@ -100,6 +105,11 @@
     },
     {
       "id": "stale-security-summary-age",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "stale-security-artifact-age",
       "expectedDecision": "not-ready",
       "category": "negative"
     },

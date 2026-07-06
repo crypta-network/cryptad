@@ -5292,6 +5292,7 @@ def build_final_summary(
             "blockingGateIds": [],
             "failedGateCount": int(final_promotion.get("failedGateCount", 0)),
             "redactionStatus": redaction_report.get("status", "missing"),
+            "releaseArtifactRedactionStatus": redaction_report.get("status", "missing"),
             "nonRelease": final_promotion.get("nonRelease", True),
         },
     }
@@ -5562,6 +5563,8 @@ def attach_go_no_go_dashboard(
         for gate in summary.get("promotion", {}).get("gates", [])
         if isinstance(gate, dict) and gate.get("status") != "pass"
     ]
+    previous_go_no_go = summary.get("goNoGo") if isinstance(summary.get("goNoGo"), dict) else {}
+    summary_redaction = summary.get("redaction") if isinstance(summary.get("redaction"), dict) else {}
     go_no_go = {
         "decision": str(dashboard.get("decision", "no-go")),
         "basis": "production-beta-go-no-go-dashboard",
@@ -5573,6 +5576,12 @@ def attach_go_no_go_dashboard(
         "redactionStatus": str(dashboard.get("redaction", {}).get("status", "missing"))
         if isinstance(dashboard.get("redaction"), dict)
         else "missing",
+        "releaseArtifactRedactionStatus": str(
+            previous_go_no_go.get(
+                "releaseArtifactRedactionStatus",
+                summary_redaction.get("status", "missing"),
+            )
+        ),
         "nonRelease": bool(summary.get("nonRelease", True)),
         "waiversUsed": int(dashboard.get("summary", {}).get("waiversUsed", 0))
         if isinstance(dashboard.get("summary"), dict)
@@ -5727,7 +5736,7 @@ def apply_release_redaction_report(
 ) -> dict[str, Any]:
     summary["redaction"] = redaction_report
     go_no_go = summary.get("goNoGo") if isinstance(summary.get("goNoGo"), dict) else {}
-    go_no_go["redactionStatus"] = redaction_report.get("status", "missing")
+    go_no_go["releaseArtifactRedactionStatus"] = redaction_report.get("status", "missing")
     summary["goNoGo"] = go_no_go
     if redaction_report.get("status") != "pass":
         record_artifact_redaction_failure(state, summary)
@@ -5735,6 +5744,16 @@ def apply_release_redaction_report(
     write_json(state.settings.out_dir / "reports/production-beta-summary.json", summary)
     write_text(state.settings.out_dir / "reports/production-beta-summary.md", render_markdown_summary(summary))
     return summary
+
+
+def release_redaction_allows_dist(summary: dict[str, Any], redaction_report: dict[str, Any]) -> bool:
+    go_no_go = summary.get("goNoGo") if isinstance(summary.get("goNoGo"), dict) else {}
+    summary_redaction = summary.get("redaction") if isinstance(summary.get("redaction"), dict) else {}
+    return (
+        str(redaction_report.get("status", "missing")) == "pass"
+        and str(summary_redaction.get("status", "missing")) == "pass"
+        and str(go_no_go.get("redactionStatus", "missing")) == "pass"
+    )
 
 
 def assert_stable_readiness_args_do_not_forward_go_no_go_waiver_file() -> None:
@@ -6035,11 +6054,7 @@ def run_pipeline(settings: Settings) -> tuple[dict[str, Any], int]:
                     and summary["stableReadiness"].get("stableReady") is True
                 )
             )
-            if (
-                redaction_report["status"] == "pass"
-                and summary.get("goNoGo", {}).get("redactionStatus") == "pass"
-                and stable_allows_dist
-            ):
+            if release_redaction_allows_dist(summary, redaction_report) and stable_allows_dist:
                 try:
                     archive = create_dist_bundle(settings, version)
                 except ReleaseArtifactError as exc:
@@ -8730,9 +8745,39 @@ def assert_stable_readiness_redaction_failure_updates_release_report() -> None:
             for finding in persisted_report["findings"]
         ), persisted_report
         assert persisted_summary["redaction"]["status"] == "fail", persisted_summary
-        assert persisted_summary["goNoGo"]["redactionStatus"] == "fail", persisted_summary
+        assert persisted_summary["goNoGo"]["redactionStatus"] == "pass", persisted_summary
+        assert persisted_summary["goNoGo"]["releaseArtifactRedactionStatus"] == "fail", persisted_summary
         assert persisted_summary["promotionReady"] is False, persisted_summary
         assert ARTIFACT_REDACTION_FAILURE in persisted_summary["failures"], persisted_summary
+
+
+def assert_release_redaction_update_preserves_dashboard_redaction_status() -> None:
+    with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-dashboard-redaction-preserve-") as temp_name:
+        workspace = Path(temp_name) / "repo"
+        workspace.mkdir(parents=True)
+        settings = cleanup_test_settings(workspace, workspace / "build/production-beta")
+        state = PipelineState(settings, "270", utc_now(), [], [], [])
+        summary = build_final_summary(
+            state,
+            {
+                "status": "pass",
+                "promotionReady": True,
+                "nonRelease": True,
+                "failedGateCount": 0,
+                "gates": [],
+            },
+            release_redaction_report([]),
+            archive=None,
+        )
+        summary["goNoGo"]["redactionStatus"] = "fail"
+
+        clean_release_redaction = release_redaction_report([])
+        updated = apply_release_redaction_report(state, summary, clean_release_redaction)
+
+        assert updated["redaction"]["status"] == "pass", updated
+        assert updated["goNoGo"]["redactionStatus"] == "fail", updated
+        assert updated["goNoGo"]["releaseArtifactRedactionStatus"] == "pass", updated
+        assert release_redaction_allows_dist(updated, clean_release_redaction) is False, updated
 
 
 def assert_platform_api_contract_snapshots_are_written_as_envelopes() -> None:
@@ -10578,6 +10623,7 @@ def run_self_test() -> None:
     assert_attached_multi_node_summary_is_extracted()
     assert_stable_readiness_soak_inputs_are_timestamped()
     assert_stable_readiness_redaction_failure_updates_release_report()
+    assert_release_redaction_update_preserves_dashboard_redaction_status()
     assert_platform_api_contract_snapshots_are_written_as_envelopes()
     assert_env_attached_multi_node_summary_is_extracted()
     assert_attached_multi_node_summary_is_not_marked_generated()

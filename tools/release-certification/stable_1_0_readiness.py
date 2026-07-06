@@ -186,6 +186,19 @@ STABLE_EVIDENCE_IDS = (
     "stable-1.0.redaction",
 )
 
+RELEASE_CERTIFICATION_REDACTION_BOOL_FIELDS = (
+    "secretMaterialRedacted",
+    "formPasswordsRedacted",
+    "rawFeedBodiesExcluded",
+    "rawRequestBodiesExcluded",
+    "privateInsertUrisExcluded",
+    "appProcessTokensRedacted",
+    "browserSessionTokensRedacted",
+    "signatureValuesRedacted",
+    "rawUpdateRollbackOutputsExcluded",
+    "absolutePathsSanitized",
+)
+
 
 @dataclasses.dataclass(frozen=True)
 class Settings:
@@ -506,6 +519,95 @@ def evidence_details(entry: dict[str, Any] | None) -> dict[str, Any]:
 
 def entry_ok(entry: dict[str, Any] | None) -> bool:
     return isinstance(entry, dict) and status_ok(entry.get("status"))
+
+
+def release_certification_redaction_passed(redaction: dict[str, Any] | None) -> tuple[bool, dict[str, Any]]:
+    if not isinstance(redaction, dict):
+        return False, {"status": "missing", "missing": list(RELEASE_CERTIFICATION_REDACTION_BOOL_FIELDS)}
+    findings = redaction.get("findings") if isinstance(redaction.get("findings"), list) else []
+    status_value = redaction.get("status")
+    known_false = [
+        field
+        for field in RELEASE_CERTIFICATION_REDACTION_BOOL_FIELDS
+        if field in redaction and redaction.get(field) is not True
+    ]
+    if status_value is not None:
+        status = normalize_status(status_value)
+        passed = status == "pass" and not findings and not known_false
+        return passed, {
+            "status": status,
+            "findingCount": len(findings),
+            "failedFields": known_false,
+        }
+    missing = [
+        field
+        for field in RELEASE_CERTIFICATION_REDACTION_BOOL_FIELDS
+        if field not in redaction
+    ]
+    passed = not missing and not known_false and not findings
+    return passed, {
+        "status": "pass" if passed else "fail",
+        "findingCount": len(findings),
+        "missingFields": missing,
+        "failedFields": known_false,
+    }
+
+
+def security_artifact_freshness_blocker(
+    *,
+    artifact: dict[str, Any],
+    scenario: str,
+    domain_id: str,
+    now: dt.datetime,
+    maximum_age_days: int,
+) -> dict[str, Any] | None:
+    if artifact.get("stale") is True:
+        stale_reason = str(artifact.get("staleReason", "artifact is marked stale")).strip()
+        return blocker_issue(
+            domain_id,
+            "stable-1.0.security-drills",
+            "Security drill artifact is stale",
+            f"Security drill artifact {scenario} is stale: {stale_reason or 'artifact is marked stale'}.",
+            "security-drills-summary",
+        )
+    generated_at = artifact.get("generatedAt")
+    if isinstance(generated_at, str) and generated_at.strip():
+        return evidence_age_blocker(
+            domain_id=domain_id,
+            evidence_id="stable-1.0.security-drills",
+            title="Security drill artifact",
+            source="security-drills-summary",
+            generated_at=generated_at,
+            now=now,
+            maximum_age_days=maximum_age_days,
+            label=f"security drill artifact {scenario}",
+        )
+    age_days = artifact.get("ageDays")
+    if isinstance(age_days, (int, float)) and not isinstance(age_days, bool):
+        if float(age_days) > maximum_age_days:
+            return blocker_issue(
+                domain_id,
+                "stable-1.0.security-drills",
+                "Security drill artifact is stale",
+                (
+                    f"Security drill artifact {scenario} age is {float(age_days):.1f} days; "
+                    f"policy maximum is {maximum_age_days} days."
+                ),
+                "security-drills-summary",
+            )
+        return None
+    if artifact.get("stale") is False:
+        return None
+    return blocker_issue(
+        domain_id,
+        "stable-1.0.security-drills",
+        "Security drill artifact freshness evidence is missing",
+        (
+            f"Security drill artifact {scenario} must include generatedAt or the producer's "
+            "stale/ageDays freshness fields."
+        ),
+        "security-drills-summary",
+    )
 
 
 def add_required_evidence_blockers(
@@ -960,11 +1062,8 @@ def evaluate_release_certification_summary(release_certification: dict[str, Any]
             if isinstance(release_certification.get("redaction"), dict)
             else None
         )
-        if (
-            not isinstance(redaction, dict)
-            or normalize_status(redaction.get("status", "missing")) != "pass"
-            or bool(redaction.get("findings"))
-        ):
+        redaction_passed, _redaction_details = release_certification_redaction_passed(redaction)
+        if not redaction_passed:
             blockers.append(
                 blocker_issue(
                     domain_id,
@@ -1331,15 +1430,12 @@ def evaluate_security(
                     if not isinstance(artifact, dict):
                         continue
                     scenario = str(artifact.get("scenario", artifact.get("id", f"artifact-{index}")))
-                    artifact_freshness = evidence_age_blocker(
+                    artifact_freshness = security_artifact_freshness_blocker(
+                        artifact=artifact,
+                        scenario=scenario,
                         domain_id=domain_id,
-                        evidence_id="stable-1.0.security-drills",
-                        title="Security drill artifact",
-                        source="security-drills-summary",
-                        generated_at=artifact.get("generatedAt"),
                         now=now,
                         maximum_age_days=max_age_days,
-                        label=f"security drill artifact {scenario}",
                     )
                     if artifact_freshness is not None:
                         blockers.append(artifact_freshness)
@@ -2408,14 +2504,22 @@ def base_self_test_inputs() -> tuple[dict[str, Any], dict[str, Any]]:
         "releaseCandidatePassed": True,
         "ecosystemRcPassed": True,
         "evidence": copy.deepcopy(app_platform.get("evidence", [])),
-        "redaction": {"status": "pass"},
+        "redaction": {
+            "secretMaterialRedacted": True,
+            "formPasswordsRedacted": True,
+            "rawFeedBodiesExcluded": True,
+            "rawRequestBodiesExcluded": True,
+            "privateInsertUrisExcluded": True,
+            "appProcessTokensRedacted": True,
+            "browserSessionTokensRedacted": True,
+            "signatureValuesRedacted": True,
+            "rawUpdateRollbackOutputsExcluded": True,
+            "absolutePathsSanitized": True,
+        },
     }
     security = copy.deepcopy(go_inputs["securityDrillsSummary"])
     security["releaseId"] = "cryptad-beta-270"
     security["generatedAt"] = DEFAULT_GENERATED_AT
-    for artifact in security.get("artifacts", []):
-        if isinstance(artifact, dict):
-            artifact["generatedAt"] = DEFAULT_GENERATED_AT
     multi_node = copy.deepcopy(go_inputs["multiNodeBetaSoakSummary"])
     multi_node["mode"] = "hybrid"
     multi_node["generatedAt"] = DEFAULT_GENERATED_AT
@@ -2538,6 +2642,7 @@ def run_self_test() -> None:
         "release-certification-not-passed",
         "release-certification-non-rc-mode",
         "release-certification-missing-redaction",
+        "release-certification-redaction-field-failed",
         "missing-platform-baseline",
         "stable-api-breaking-change",
         "missing-first-party",
@@ -2545,6 +2650,7 @@ def run_self_test() -> None:
         "stale-security",
         "security-release-id-mismatch",
         "stale-security-summary-age",
+        "stale-security-artifact-age",
         "missing-previous-upgrade",
         "app-data-migration-scenario-failed",
         "network-redaction-status-fail",
@@ -2689,6 +2795,17 @@ def run_self_test() -> None:
             expect_blocker="stable-1.0.redaction",
         )
 
+        def release_certification_redaction_field_failed(inputs: dict[str, Any], _limitations: dict[str, Any], _paths: dict[str, Path]) -> None:
+            inputs["releaseCertificationSummary"]["redaction"]["privateInsertUrisExcluded"] = False
+
+        run_case(
+            root,
+            "release-certification-redaction-field-failed",
+            release_certification_redaction_field_failed,
+            "not-ready",
+            expect_blocker="stable-1.0.redaction",
+        )
+
         def missing_baseline(inputs: dict[str, Any], _limitations: dict[str, Any], _paths: dict[str, Path]) -> None:
             mutate_evidence(inputs, "platform-api.stable-baseline", remove=True)
 
@@ -2736,6 +2853,14 @@ def run_self_test() -> None:
             inputs["securityDrillsSummary"]["generatedAt"] = "1969-11-01T00:00:00Z"
 
         run_case(root, "stale-security-summary-age", stale_security_summary_age, "not-ready", expect_blocker="stable-1.0.security-drills")
+
+        def stale_security_artifact_age(inputs: dict[str, Any], _limitations: dict[str, Any], _paths: dict[str, Path]) -> None:
+            artifact = inputs["securityDrillsSummary"]["artifacts"][0]
+            artifact["stale"] = True
+            artifact["ageDays"] = 31
+            artifact["staleReason"] = "Artifact exceeds the Stable 1.0 freshness window."
+
+        run_case(root, "stale-security-artifact-age", stale_security_artifact_age, "not-ready", expect_blocker="stable-1.0.security-drills")
 
         def missing_previous_upgrade(inputs: dict[str, Any], _limitations: dict[str, Any], _paths: dict[str, Path]) -> None:
             inputs["multiNodeSoakSummary"]["previousCandidateUpgrade"]["status"] = "missing"

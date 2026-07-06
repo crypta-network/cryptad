@@ -3975,18 +3975,28 @@ def aggregate_status_values(values: list[str], *, missing_if_empty: bool = False
     return "pass"
 
 
-def unwaivable_matrix_issue_ids(unwaivable_evidence_ids: set[str]) -> set[str]:
+def unwaivable_matrix_issue_ids(
+    unwaivable_evidence_ids: set[str],
+    extra_unwaivable_issue_ids: set[str] | None = None,
+) -> set[str]:
     unwaivable_issue_ids = set(unwaivable_evidence_ids)
     unwaivable_issue_ids.update(
         f"evidence.{evidence_id}" for evidence_id in unwaivable_evidence_ids
     )
+    if extra_unwaivable_issue_ids:
+        unwaivable_issue_ids.update(extra_unwaivable_issue_ids)
     return unwaivable_issue_ids
 
 
 def waivable_matrix_issue_ids(
-    issue_ids: list[str], unwaivable_evidence_ids: set[str]
+    issue_ids: list[str],
+    unwaivable_evidence_ids: set[str],
+    extra_unwaivable_issue_ids: set[str] | None = None,
 ) -> list[str]:
-    unwaivable_issue_ids = unwaivable_matrix_issue_ids(unwaivable_evidence_ids)
+    unwaivable_issue_ids = unwaivable_matrix_issue_ids(
+        unwaivable_evidence_ids,
+        extra_unwaivable_issue_ids,
+    )
     return [issue_id for issue_id in issue_ids if issue_id not in unwaivable_issue_ids]
 
 
@@ -3998,12 +4008,20 @@ def row_waivers(
     mode: str,
     issue_ids: list[str],
     unwaivable_evidence_ids: set[str],
+    extra_unwaivable_issue_ids: set[str] | None = None,
 ) -> tuple[list[WaiverRecord], list[str]]:
     records: dict[str, WaiverRecord] = {}
-    unwaivable_issue_ids = unwaivable_matrix_issue_ids(unwaivable_evidence_ids)
-    waivable_issue_ids = waivable_matrix_issue_ids(issue_ids, unwaivable_evidence_ids)
+    unwaivable_issue_ids = unwaivable_matrix_issue_ids(
+        unwaivable_evidence_ids,
+        extra_unwaivable_issue_ids,
+    )
+    waivable_issue_ids = waivable_matrix_issue_ids(
+        issue_ids,
+        unwaivable_evidence_ids,
+        extra_unwaivable_issue_ids,
+    )
     targets = [spec.id, *spec.evidence_ids(), *spec.all_gate_ids()]
-    if unwaivable_evidence_ids:
+    if unwaivable_evidence_ids or extra_unwaivable_issue_ids:
         targets = [
             target_id
             for target_id in targets
@@ -4041,10 +4059,17 @@ def row_release_blocker_waiver(
     issue_ids: list[str],
     blocker_targets: list[str],
     unwaivable_evidence_ids: set[str],
+    extra_unwaivable_issue_ids: set[str] | None = None,
 ) -> WaiverRecord | None:
     if unwaivable_evidence_ids.intersection(blocker_targets):
         return None
-    waivable_issue_ids = waivable_matrix_issue_ids(issue_ids, unwaivable_evidence_ids)
+    if extra_unwaivable_issue_ids and extra_unwaivable_issue_ids.intersection(issue_ids):
+        return None
+    waivable_issue_ids = waivable_matrix_issue_ids(
+        issue_ids,
+        unwaivable_evidence_ids,
+        extra_unwaivable_issue_ids,
+    )
     return active_waiver_for(
         context,
         spec.id,
@@ -4125,6 +4150,7 @@ def evaluate_matrix_row(
     }
     stable_not_requested = False
     issue_ids: list[str] = []
+    extra_unwaivable_issue_ids: set[str] = set()
     gate_blockers: list[str] = []
     gate_warnings: list[str] = []
     for gate_id in spec.all_gate_ids():
@@ -4242,6 +4268,16 @@ def evaluate_matrix_row(
             or evidence_entry_has_unwaivable_redaction_findings(main_entry)
             or evidence_entry_has_unwaivable_redaction_findings(redaction_entry)
         )
+        stable_evidence_bad = [
+            evidence_id
+            for evidence_id in spec.evidence_ids()
+            if evidence_status(evidence_entries.get(evidence_id)) in {"fail", "missing", "skip"}
+        ]
+        stable_evidence_warn = [
+            evidence_id
+            for evidence_id in spec.evidence_ids()
+            if evidence_status(evidence_entries.get(evidence_id)) == "warn"
+        ]
         if not attached and not settings.stable_readiness_required:
             status = "pass"
             release_blocker = False
@@ -4260,7 +4296,19 @@ def evaluate_matrix_row(
             status = "fail"
             release_blocker = True
             summary = "Stable 1.0 readiness redaction findings are non-waivable."
+            unwaivable_redaction_evidence_ids.add("stable-1.0.redaction")
+            extra_unwaivable_issue_ids.add("matrix.stable-readiness.redaction-failed")
+            blocker_targets.append("stable-1.0.redaction")
             issue_ids.append("matrix.stable-readiness.redaction-failed")
+        elif stable_evidence_bad:
+            release_blocker = settings.stable_readiness_required
+            status = "fail" if release_blocker else "warn"
+            summary = (
+                "Stable 1.0 readiness is required but expected evidence is missing or failing."
+                if release_blocker
+                else "Stable 1.0 readiness advisory evidence is missing or failing."
+            )
+            issue_ids.append("matrix.stable-readiness.evidence-not-passing")
         elif main_status == "fail" or not stable_ready or decision == "not-ready":
             release_blocker = settings.stable_readiness_required
             status = "fail" if release_blocker else "warn"
@@ -4273,6 +4321,10 @@ def evaluate_matrix_row(
             status = "warn"
             release_blocker = False
             summary = "Stable 1.0 readiness is ready with bounded allowed limitations."
+        elif stable_evidence_warn:
+            status = "warn"
+            release_blocker = False
+            summary = "Stable 1.0 readiness evidence has warnings."
         else:
             status = "pass"
             release_blocker = False
@@ -4320,6 +4372,7 @@ def evaluate_matrix_row(
         issue_ids,
         blocker_targets,
         unwaivable_redaction_evidence_ids,
+        extra_unwaivable_issue_ids,
     )
     if release_blocker and waiver_for_blocker is not None:
         status = "warn"
@@ -4333,6 +4386,7 @@ def evaluate_matrix_row(
         settings.mode,
         issue_ids,
         unwaivable_redaction_evidence_ids,
+        extra_unwaivable_issue_ids,
     )
     if waiver_for_blocker is not None and waiver_for_blocker.id not in waiver_ids:
         waiver_records = sorted([*waiver_records, waiver_for_blocker], key=lambda record: record.id)
@@ -4377,6 +4431,8 @@ def evaluate_matrix_row(
         details["required"] = False
     if unwaivable_redaction_evidence_ids:
         details["unwaivableRedactionEvidenceIds"] = sorted(unwaivable_redaction_evidence_ids)
+    if extra_unwaivable_issue_ids:
+        details["unwaivableIssueIds"] = sorted(extra_unwaivable_issue_ids)
 
     return {
         "id": spec.id,
@@ -13567,6 +13623,80 @@ def run_self_test(repo_root: Path) -> None:
         stable_statuses = {item.id: item.status for item in stable_items}
         assert stable_statuses["stable-1.0.readiness-gate"] == "fail", stable_statuses
         assert stable_statuses["stable-1.0.redaction"] == "fail", stable_statuses
+        stable_redaction_waived_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/stable-redaction-waived-cert").resolve(),
+            stable_readiness_summary=stable_missing_redaction_summary,
+            stable_readiness_required=True,
+            waivers={
+                "stable-1-0-readiness": "Attempted row waiver for Stable redaction failure.",
+                "matrix.stable-readiness.redaction-failed": "Attempted matrix issue waiver for Stable redaction failure.",
+            },
+        )
+        stable_redaction_waived_summary, stable_redaction_waived_exit_code = run(
+            stable_redaction_waived_settings
+        )
+        assert stable_redaction_waived_exit_code == 1, stable_redaction_waived_summary
+        stable_redaction_waived_row = matrix_row_by_id(
+            stable_redaction_waived_settings.out_dir,
+            "stable-1-0-readiness",
+        )
+        assert stable_redaction_waived_row["status"] == "fail", stable_redaction_waived_row
+        assert stable_redaction_waived_row["releaseBlocker"] is True, stable_redaction_waived_row
+        assert stable_redaction_waived_row.get("waiverIds") == [], stable_redaction_waived_row
+        assert stable_redaction_waived_row["details"]["unwaivableRedactionEvidenceIds"] == [
+            "stable-1.0.redaction"
+        ], stable_redaction_waived_row
+        assert stable_redaction_waived_row["details"]["unwaivableIssueIds"] == [
+            "matrix.stable-readiness.redaction-failed"
+        ], stable_redaction_waived_row
+
+        stable_truncated_summary = workspace / "build/stable-readiness-truncated.json"
+        write_json(
+            stable_truncated_summary,
+            {
+                "schemaVersion": 1,
+                "kind": "stable-1.0-readiness",
+                "status": "pass",
+                "decision": "ready",
+                "stableReady": True,
+                "blockerCount": 0,
+                "warningCount": 0,
+                "allowedLimitationCount": 0,
+                "disallowedLimitationCount": 0,
+                "domains": [],
+                "blockers": [],
+                "warnings": [],
+                "allowedLimitations": [],
+                "disallowedLimitations": [],
+                "redaction": {"status": "pass", "findings": []},
+                "evidence": [
+                    {
+                        "id": evidence_id,
+                        "status": "pass",
+                        "summary": f"{evidence_id} passed.",
+                        "details": {"decision": "ready", "stableReady": True}
+                        if evidence_id == "stable-1.0.readiness-gate"
+                        else {},
+                    }
+                    for evidence_id in STABLE_1_0_READINESS_EVIDENCE_IDS
+                    if evidence_id != "stable-1.0.security-drills"
+                ],
+            },
+        )
+        stable_truncated_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/stable-truncated-cert").resolve(),
+            stable_readiness_summary=stable_truncated_summary,
+            stable_readiness_required=True,
+        )
+        stable_truncated_cert, stable_truncated_exit_code = run(stable_truncated_settings)
+        assert stable_truncated_exit_code == 1, stable_truncated_cert
+        stable_truncated_row = matrix_row_by_id(stable_truncated_settings.out_dir, "stable-1-0-readiness")
+        assert stable_truncated_row["status"] == "fail", stable_truncated_row
+        assert stable_truncated_row["releaseBlocker"] is True, stable_truncated_row
+        assert "evidence.stable-1.0.security-drills" in stable_truncated_row["issueIds"], stable_truncated_row
+        assert "matrix.stable-readiness.evidence-not-passing" in stable_truncated_row["issueIds"], stable_truncated_row
 
 
 def main(argv: list[str] | None = None) -> int:
