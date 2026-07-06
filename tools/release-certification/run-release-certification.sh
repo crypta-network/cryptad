@@ -155,15 +155,15 @@ while [[ $# -gt 0 ]]; do
       echo "--form-password is not supported; set CRYPTAD_CERT_FORM_PASSWORD in the environment." >&2
       exit 2
       ;;
-    --waive|--metadata|--previous-summary|--history-dir|--history-label|--waiver-file)
+    --waive|--metadata|--previous-summary|--history-dir|--history-label|--waiver-file|--stable-readiness-summary|--stable-1-0-readiness-summary)
       CERT_ARGS+=("$1" "$2")
       shift 2
       ;;
-    --waive=*|--metadata=*|--previous-summary=*|--history-dir=*|--history-label=*|--waiver-file=*)
+    --waive=*|--metadata=*|--previous-summary=*|--history-dir=*|--history-label=*|--waiver-file=*|--stable-readiness-summary=*|--stable-1-0-readiness-summary=*)
       CERT_ARGS+=("$1")
       shift
       ;;
-    --skip-git-metadata|--require-history|--write-history)
+    --skip-git-metadata|--require-history|--write-history|--require-stable-readiness)
       CERT_ARGS+=("$1")
       shift
       ;;

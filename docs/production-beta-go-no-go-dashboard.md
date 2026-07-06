@@ -19,6 +19,10 @@ no-go
 go-with-waivers
 ```
 
+The dashboard can also display the Stable 1.0 readiness decision from
+`stable_1_0_readiness.py`. That section is informational by default. It becomes a go/no-go input
+only when `--require-stable-readiness` is supplied.
+
 ## Generate the dashboard
 
 The production beta pipeline writes the dashboard automatically under
@@ -44,6 +48,7 @@ python3 tools/release-certification/production_beta_go_no_go_dashboard.py build 
   --network-scale-soak-summary build/network-scale-soak/summary.json \
   --multi-node-beta-soak-summary build/multi-node-beta-soak/summary.json \
   --security-drills-summary build/security-drills/security-drills-summary.json \
+  --stable-readiness-summary build/stable-1.0-readiness/stable-1.0-readiness-summary.json \
   --waivers release/waivers.json \
   --mode production-beta
 ```
@@ -74,6 +79,7 @@ Production beta mode fails closed when these critical inputs are missing or malf
 | `multi-node-beta-soak/summary.json` | Multi-node soak, previous-candidate upgrade drill, scenario, app migration, backup/restore, Social Inbox, Trust Graph, support-bundle, and redaction evidence. |
 | `security-drills/security-drills-summary.json` | Operational production security response drill summary, required scenario status, artifact digests, release-notes/advisory template status, and aggregate redaction status. |
 | `third-party-intake-summary.json` | Optional third-party app intake summary copied by the release wrapper when `--third-party-intake-summary` or `--run-third-party-intake-sample-flow` is used. |
+| `stable-1.0-readiness-summary.json` | Optional Stable readiness summary. Required only when `--require-stable-readiness` is supplied for Stable promotion review. |
 
 Developer dry-runs tolerate missing production-only inputs so PR and local runs remain CI-safe. A
 dry-run can complete successfully, but the dashboard still marks non-release artifacts as
@@ -178,6 +184,26 @@ Previous-candidate upgrade evidence is a production-beta launch blocker. Missing
 or redaction-unsafe previous-candidate evidence makes the dashboard decision `no-go` in
 production-beta mode. A warning is allowed only in developer or PR-safe contexts where the
 candidate remains non-release.
+
+## Stable 1.0 readiness section
+
+Pass `--stable-readiness-summary` to show Stable readiness status, decision, blocker count,
+warning count, allowed limitations, disallowed limitations, and redaction status in the dashboard.
+
+Decision mapping:
+
+- `ready` is displayed as a passing Stable section.
+- `ready-with-allowed-limitations` is displayed as a warning so the limitations remain visible.
+- `not-ready` is displayed as a Stable failure. It affects the production beta decision only when
+  `--require-stable-readiness` is set.
+
+When `--require-stable-readiness` is set, a missing Stable summary, invalid Stable summary,
+`not-ready` decision, failed Stable status, or `stableReady=false` makes the dashboard `no-go`.
+Stable redaction findings are critical and non-waivable even when the section is otherwise
+advisory.
+
+See [stable-1.0-readiness-gate.md](stable-1.0-readiness-gate.md) for required Stable domains,
+allowed limitations, disallowed limitations, and non-waivable blockers.
 
 Third-party app intake rows are shown in the app submission and review workflow domain as
 `third-party-intake.queue-schema` through `third-party-intake.redaction`. Missing rows are warnings

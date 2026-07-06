@@ -41,6 +41,7 @@ sys.path.insert(0, str(TOOL_DIR))
 import release_certification  # noqa: E402
 import multi_node_beta_soak  # noqa: E402
 import security_response_runbook  # noqa: E402
+import stable_1_0_readiness  # noqa: E402
 
 
 TOOL_NAME = "production-beta-release"
@@ -62,6 +63,14 @@ RELEASE_OUTPUT_ROOTS = (
 GO_NO_GO_DASHBOARD_JSON = "reports/go-no-go-dashboard.json"
 GO_NO_GO_DASHBOARD_MARKDOWN = "reports/go-no-go-dashboard.md"
 GO_NO_GO_REDACTION_REPORT = "reports/go-no-go-redaction-report.json"
+STABLE_READINESS_DIR = "reports/stable-1.0-readiness"
+STABLE_READINESS_SUMMARY_JSON = f"{STABLE_READINESS_DIR}/stable-1.0-readiness-summary.json"
+STABLE_READINESS_REPORT_MARKDOWN = f"{STABLE_READINESS_DIR}/stable-1.0-readiness-report.md"
+STABLE_READINESS_LIMITATIONS_JSON = f"{STABLE_READINESS_DIR}/stable-1.0-known-limitations.json"
+STABLE_READINESS_BLOCKERS_JSON = f"{STABLE_READINESS_DIR}/stable-1.0-blockers.json"
+STABLE_READINESS_MULTI_NODE_SOAK_JSON = "evidence/stable-readiness-multi-node-beta-soak.json"
+STABLE_READINESS_NETWORK_SCALE_SOAK_JSON = "evidence/stable-readiness-network-scale-soak.json"
+ARTIFACT_REDACTION_FAILURE = "artifact redaction scan failed"
 PLACEHOLDER_ARTIFACT_HOSTS = {"downloads.crypta.invalid"}
 LOCAL_ARTIFACT_HOSTS = {"127.0.0.1", "localhost", "::1", "0:0:0:0:0:0:0:1"}
 PRIVATE_ARTIFACT_HOST_SUFFIXES = (
@@ -542,6 +551,10 @@ class Settings:
     require_third_party_intake: bool = False
     run_third_party_intake_sample_flow: bool = False
     security_drills_summary: Path | None = None
+    generate_stable_readiness: bool = False
+    require_stable_readiness: bool = False
+    stable_readiness_policy: Path | None = None
+    stable_known_limitations: Path | None = None
 
 
 @dataclasses.dataclass
@@ -2493,6 +2506,8 @@ def release_config(state: PipelineState) -> dict[str, Any]:
         "requireMultiNodeSoak": settings.require_multi_node_soak,
         "runMultiNodeSoak": settings.run_multi_node_soak,
         "multiNodeMode": settings.multi_node_mode or "config",
+        "generateStableReadiness": settings.generate_stable_readiness,
+        "requireStableReadiness": settings.require_stable_readiness,
         "skipGradle": settings.skip_gradle,
         "skipFullBuild": settings.skip_full_build,
         "useFixtureEvidence": settings.use_fixture_evidence,
@@ -2537,6 +2552,22 @@ def security_drills_summary_path(settings: Settings) -> Path:
 
 def security_release_notes_draft_path(settings: Settings) -> Path:
     return settings.out_dir / "security/security-release-notes-draft.md"
+
+
+def stable_readiness_out_dir(settings: Settings) -> Path:
+    return settings.out_dir / STABLE_READINESS_DIR
+
+
+def stable_readiness_summary_path(settings: Settings) -> Path:
+    return settings.out_dir / STABLE_READINESS_SUMMARY_JSON
+
+
+def stable_readiness_multi_node_soak_path(settings: Settings) -> Path:
+    return settings.out_dir / STABLE_READINESS_MULTI_NODE_SOAK_JSON
+
+
+def stable_readiness_network_scale_soak_path(settings: Settings) -> Path:
+    return settings.out_dir / STABLE_READINESS_NETWORK_SCALE_SOAK_JSON
 
 
 def security_drills_release_id(state: PipelineState) -> str:
@@ -3451,6 +3482,26 @@ def compact_multi_node_summary_for_release(summary: dict[str, Any] | None, *, st
     return compact
 
 
+def generated_at_from_summary(summary: dict[str, Any] | None) -> str:
+    if not isinstance(summary, dict):
+        return ""
+    generated_at = summary.get("generatedAt")
+    return generated_at.strip() if isinstance(generated_at, str) else ""
+
+
+def stable_readiness_soak_summary(
+    summary: dict[str, Any] | None,
+    *,
+    fallback_generated_at: str = "",
+) -> dict[str, Any]:
+    if not isinstance(summary, dict):
+        return {"status": "missing"}
+    stable_summary = dict(summary)
+    if fallback_generated_at and not generated_at_from_summary(stable_summary):
+        stable_summary["generatedAt"] = fallback_generated_at
+    return stable_summary
+
+
 def third_party_intake_sample_summary() -> dict[str, Any]:
     """Return non-release deterministic evidence for exercising the intake release gates."""
     return {
@@ -3553,6 +3604,17 @@ def write_evidence_extracts(settings: Settings, cert_out: Path) -> dict[str, Any
         compact_multi_node_summary_for_release(
             multi_node_summary,
             strict=settings.mode == "production-beta" and settings.require_multi_node_soak,
+        ),
+    )
+    write_json(
+        stable_readiness_multi_node_soak_path(settings),
+        stable_readiness_soak_summary(multi_node_summary),
+    )
+    write_json(
+        stable_readiness_network_scale_soak_path(settings),
+        stable_readiness_soak_summary(
+            network_summary,
+            fallback_generated_at=generated_at_from_summary(cert_summary),
         ),
     )
     write_json(evidence_dir / "ecosystem-rc-certification.json", cert_summary or {"status": "missing"})
@@ -4792,6 +4854,16 @@ def scan_tree(root: Path, settings: Settings, include_dist: bool = False) -> lis
     return findings
 
 
+def release_redaction_report(findings: list[dict[str, str]]) -> dict[str, Any]:
+    return {
+        "schemaVersion": 1,
+        "status": "pass" if not findings else "fail",
+        "scannedRoot": "<release-out>",
+        "findingCount": len(findings),
+        "findings": findings,
+    }
+
+
 def scan_tarball(path: Path, settings: Settings) -> list[dict[str, str]]:
     try:
         with tarfile.open(path, "r:gz") as archive:
@@ -4830,6 +4902,19 @@ def render_markdown_summary(summary: dict[str, Any]) -> str:
         )
         lines.append(f"- Redaction report: `{go_no_go.get('redactionReport', GO_NO_GO_REDACTION_REPORT)}`")
         lines.append(f"- Waivers used: `{go_no_go.get('waiversUsed', 0)}`")
+    stable_readiness = summary.get("stableReadiness", {})
+    if isinstance(stable_readiness, dict) and stable_readiness:
+        lines.extend(["", "## Stable 1.0 Readiness", ""])
+        lines.append(f"- Required: `{str(stable_readiness.get('required', False)).lower()}`")
+        lines.append(f"- Status: `{stable_readiness.get('status', 'missing')}`")
+        lines.append(f"- Decision: `{stable_readiness.get('decision', 'not-ready')}`")
+        lines.append(f"- Stable ready: `{str(stable_readiness.get('stableReady', False)).lower()}`")
+        lines.append(f"- Blockers: `{stable_readiness.get('blockerCount', 0)}`")
+        lines.append(f"- Warnings: `{stable_readiness.get('warningCount', 0)}`")
+        lines.append(f"- Allowed limitations: `{stable_readiness.get('allowedLimitationCount', 0)}`")
+        lines.append(f"- Disallowed limitations: `{stable_readiness.get('disallowedLimitationCount', 0)}`")
+        lines.append(f"- Redaction: `{stable_readiness.get('redactionStatus', 'missing')}`")
+        lines.append(f"- Report: `{stable_readiness.get('reportPath', STABLE_READINESS_REPORT_MARKDOWN)}`")
     multi_node = summary.get("multiNodeBetaSoak", {})
     if isinstance(multi_node, dict) and multi_node:
         lines.extend(["", "## Multi-node Beta Soak", ""])
@@ -5224,7 +5309,11 @@ def release_exit_code(settings: Settings, summary: dict[str, Any]) -> int:
     return 0 if summary.get("status") == "pass" and (settings.mode != "production-beta" or summary.get("promotionReady") is True) else 1
 
 
-def dashboard_args(settings: Settings) -> list[str]:
+def dashboard_args(
+    settings: Settings,
+    stable_readiness_summary: Path | None = None,
+    require_stable_readiness: bool = False,
+) -> list[str]:
     args = [
         sys.executable,
         str(TOOL_DIR / "production_beta_go_no_go_dashboard.py"),
@@ -5254,6 +5343,10 @@ def dashboard_args(settings: Settings) -> list[str]:
     ]
     if settings.waiver_file:
         args.extend(["--waivers", str(settings.waiver_file)])
+    if stable_readiness_summary is not None:
+        args.extend(["--stable-readiness-summary", str(stable_readiness_summary)])
+    if require_stable_readiness:
+        args.append("--require-stable-readiness")
     return args
 
 
@@ -5390,7 +5483,12 @@ def write_rejected_launchable_dashboard_artifacts(
     return overridden
 
 
-def attach_go_no_go_dashboard(state: PipelineState, summary: dict[str, Any]) -> dict[str, Any]:
+def attach_go_no_go_dashboard(
+    state: PipelineState,
+    summary: dict[str, Any],
+    stable_readiness_summary: Path | None = None,
+    require_stable_readiness: bool = False,
+) -> dict[str, Any]:
     stale_clear_failures = clear_stale_go_no_go_dashboard_artifacts(state.settings.out_dir)
     for failure in stale_clear_failures:
         if failure not in state.failures:
@@ -5398,7 +5496,11 @@ def attach_go_no_go_dashboard(state: PipelineState, summary: dict[str, Any]) -> 
     result = run_command(
         state,
         "production-beta-go-no-go-dashboard",
-        dashboard_args(state.settings),
+        dashboard_args(
+            state.settings,
+            stable_readiness_summary,
+            require_stable_readiness,
+        ),
         timeout_seconds=120,
         allow_failure=True,
     )
@@ -5543,6 +5645,275 @@ def attach_go_no_go_dashboard(state: PipelineState, summary: dict[str, Any]) -> 
     return summary
 
 
+def stable_readiness_args(settings: Settings) -> list[str]:
+    args = [
+        sys.executable,
+        str(TOOL_DIR / "stable_1_0_readiness.py"),
+        "--workspace-root",
+        str(settings.workspace_root),
+        "--out-dir",
+        str(stable_readiness_out_dir(settings)),
+        "--production-beta-summary",
+        str(settings.out_dir / "reports/production-beta-summary.json"),
+        "--go-no-go-summary",
+        str(settings.out_dir / GO_NO_GO_DASHBOARD_JSON),
+        "--release-certification-summary",
+        str(settings.out_dir / "evidence/ecosystem-rc-certification.json"),
+        "--ecosystem-matrix",
+        str(settings.out_dir / "evidence/ecosystem-certification-matrix.json"),
+        "--app-platform-summary",
+        str(settings.out_dir / "evidence/app-platform-smoke.json"),
+        "--multi-node-beta-soak-summary",
+        str(stable_readiness_multi_node_soak_path(settings)),
+        "--network-scale-soak-summary",
+        str(stable_readiness_network_scale_soak_path(settings)),
+        "--security-drills-summary",
+        str(security_drills_summary_path(settings)),
+        "--public-beta-known-issues",
+        str(settings.workspace_root / "tools/release-certification/public-beta-known-issues.json"),
+    ]
+    if settings.stable_readiness_policy is not None:
+        args.extend(["--policy", str(settings.stable_readiness_policy)])
+    if settings.stable_known_limitations is not None:
+        args.extend(["--stable-known-limitations", str(settings.stable_known_limitations)])
+    return args
+
+
+def stable_readiness_redaction_findings(summary: dict[str, Any]) -> list[dict[str, str]]:
+    stable_readiness = (
+        summary.get("stableReadiness") if isinstance(summary.get("stableReadiness"), dict) else {}
+    )
+    if not stable_readiness:
+        return []
+    redaction_status = str(stable_readiness.get("redactionStatus", "missing")).strip().lower()
+    if redaction_status == "pass":
+        return []
+    return [
+        {
+            "path": STABLE_READINESS_SUMMARY_JSON,
+            "kind": "stable-readiness-redaction-status",
+            "detail": f"Stable 1.0 readiness redaction status was {redaction_status}.",
+        }
+    ]
+
+
+def stable_readiness_release_redaction_report(
+    settings: Settings,
+    summary: dict[str, Any],
+) -> dict[str, Any]:
+    findings = scan_tree(settings.out_dir, settings, include_dist=True)
+    findings.extend(stable_readiness_redaction_findings(summary))
+    return release_redaction_report(findings)
+
+
+def record_artifact_redaction_failure(state: PipelineState, summary: dict[str, Any]) -> None:
+    if ARTIFACT_REDACTION_FAILURE not in state.failures:
+        state.failures.append(ARTIFACT_REDACTION_FAILURE)
+    failures = summary.get("failures") if isinstance(summary.get("failures"), list) else []
+    if ARTIFACT_REDACTION_FAILURE not in failures:
+        failures.append(ARTIFACT_REDACTION_FAILURE)
+    summary["failures"] = failures
+    summary["status"] = "fail"
+    summary["promotionReady"] = False
+    promotion = summary.get("promotion") if isinstance(summary.get("promotion"), dict) else {}
+    promotion["promotionReady"] = False
+    summary["promotion"] = promotion
+
+
+def apply_release_redaction_report(
+    state: PipelineState,
+    summary: dict[str, Any],
+    redaction_report: dict[str, Any],
+) -> dict[str, Any]:
+    summary["redaction"] = redaction_report
+    go_no_go = summary.get("goNoGo") if isinstance(summary.get("goNoGo"), dict) else {}
+    go_no_go["redactionStatus"] = redaction_report.get("status", "missing")
+    summary["goNoGo"] = go_no_go
+    if redaction_report.get("status") != "pass":
+        record_artifact_redaction_failure(state, summary)
+    write_json(state.settings.out_dir / "reports/redaction-report.json", redaction_report)
+    write_json(state.settings.out_dir / "reports/production-beta-summary.json", summary)
+    write_text(state.settings.out_dir / "reports/production-beta-summary.md", render_markdown_summary(summary))
+    return summary
+
+
+def assert_stable_readiness_args_do_not_forward_go_no_go_waiver_file() -> None:
+    with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-stable-waiver-") as temp_name:
+        workspace = Path(temp_name) / "repo"
+        workspace.mkdir(parents=True)
+        waiver_file = workspace / "release-waivers.json"
+        settings = Settings(
+            workspace_root=workspace,
+            out_dir=workspace / "build/production-beta",
+            mode="developer-dry-run",
+            catalog_channel="stable",
+            artifact_base_uri="https://downloads.crypta.invalid/self-test",
+            require_live_network=False,
+            require_sandbox_provider_tests=False,
+            skip_gradle=True,
+            skip_full_build=True,
+            use_fixture_evidence=True,
+            allow_dirty_workspace=True,
+            emergency_skip_live_network=False,
+            emergency_skip_build=False,
+            allow_test_signing_in_production=False,
+            previous_summary=None,
+            waiver_file=waiver_file,
+            timeout_seconds=120,
+            clean_out_dir=True,
+            generate_stable_readiness=True,
+            stable_readiness_policy=workspace / "tools/release-certification/stable-1.0-readiness-policy.json",
+            stable_known_limitations=workspace / "tools/release-certification/stable-1.0-known-limitations.json",
+        )
+        args = stable_readiness_args(settings)
+        assert "--waivers" not in args, args
+        assert str(waiver_file) not in args, args
+
+
+def assert_required_stable_readiness_removes_dist_refs_from_dashboard() -> None:
+    with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-stable-dist-") as temp_name:
+        workspace = Path(temp_name) / "repo"
+        make_self_test_workspace(workspace)
+        out_dir = workspace / "build/production-beta"
+        settings = Settings(
+            workspace_root=workspace,
+            out_dir=out_dir,
+            mode="developer-dry-run",
+            catalog_channel="stable",
+            artifact_base_uri="https://downloads.crypta.invalid/self-test",
+            require_live_network=False,
+            require_sandbox_provider_tests=False,
+            skip_gradle=True,
+            skip_full_build=True,
+            use_fixture_evidence=True,
+            allow_dirty_workspace=True,
+            emergency_skip_live_network=False,
+            emergency_skip_build=False,
+            allow_test_signing_in_production=False,
+            previous_summary=None,
+            waiver_file=None,
+            timeout_seconds=120,
+            clean_out_dir=True,
+            generate_stable_readiness=True,
+            require_stable_readiness=True,
+            stable_readiness_policy=workspace / "tools/release-certification/stable-1.0-readiness-policy.json",
+            stable_known_limitations=workspace / "tools/release-certification/stable-1.0-known-limitations.json",
+        )
+
+        summary, exit_code = run_pipeline(settings)
+
+        assert exit_code == 1, summary
+        stable_readiness = summary.get("stableReadiness")
+        assert isinstance(stable_readiness, dict), summary
+        assert stable_readiness["required"] is True, stable_readiness
+        assert stable_readiness["stableReady"] is False, stable_readiness
+        artifacts = summary.get("artifacts") if isinstance(summary.get("artifacts"), dict) else {}
+        assert "distArchive" not in artifacts, artifacts
+        assert "checksums" not in artifacts, artifacts
+        persisted_summary = read_json(out_dir / "reports/production-beta-summary.json")
+        assert persisted_summary is not None, summary
+        persisted_artifacts = (
+            persisted_summary.get("artifacts") if isinstance(persisted_summary.get("artifacts"), dict) else {}
+        )
+        assert "distArchive" not in persisted_artifacts, persisted_artifacts
+        assert "checksums" not in persisted_artifacts, persisted_artifacts
+        dashboard = read_json(out_dir / GO_NO_GO_DASHBOARD_JSON)
+        assert dashboard is not None, summary
+        assert dashboard["decision"] == "no-go", dashboard
+        dashboard_stable = dashboard.get("stableReadiness")
+        assert isinstance(dashboard_stable, dict), dashboard
+        assert dashboard_stable["required"] is True, dashboard_stable
+        assert dashboard_stable["stableReady"] is False, dashboard_stable
+        artifact_refs = dashboard.get("artifactRefs") if isinstance(dashboard.get("artifactRefs"), dict) else {}
+        assert "distArchive" not in artifact_refs, artifact_refs
+        assert "checksums" not in artifact_refs, artifact_refs
+        encoded_dashboard = json.dumps(dashboard, sort_keys=True)
+        assert f"crypta-production-beta-{summary['version']}.tar.gz" not in encoded_dashboard, dashboard
+        assert "dist/checksums.txt" not in encoded_dashboard, dashboard
+
+
+def compact_stable_readiness_for_summary(
+    settings: Settings,
+    stable_summary: dict[str, Any] | None,
+    result: CommandResult,
+) -> dict[str, Any]:
+    if not isinstance(stable_summary, dict):
+        return {
+            "status": "missing",
+            "decision": "not-ready",
+            "stableReady": False,
+            "required": settings.require_stable_readiness,
+            "summaryPath": STABLE_READINESS_SUMMARY_JSON,
+            "reportPath": STABLE_READINESS_REPORT_MARKDOWN,
+            "blockerCount": 1 if settings.require_stable_readiness else 0,
+            "warningCount": 0,
+            "allowedLimitationCount": 0,
+            "disallowedLimitationCount": 0,
+            "redactionStatus": "missing",
+            "toolExitCode": result.exit_code,
+        }
+    redaction = stable_summary.get("redaction") if isinstance(stable_summary.get("redaction"), dict) else {}
+    return {
+        "status": str(stable_summary.get("status", "missing")),
+        "decision": str(stable_summary.get("decision", "not-ready")),
+        "stableReady": stable_summary.get("stableReady") is True,
+        "required": settings.require_stable_readiness,
+        "summaryPath": STABLE_READINESS_SUMMARY_JSON,
+        "reportPath": STABLE_READINESS_REPORT_MARKDOWN,
+        "blockersPath": STABLE_READINESS_BLOCKERS_JSON,
+        "knownLimitationsPath": STABLE_READINESS_LIMITATIONS_JSON,
+        "blockerCount": int(stable_summary.get("blockerCount", 0)),
+        "warningCount": int(stable_summary.get("warningCount", 0)),
+        "allowedLimitationCount": int(stable_summary.get("allowedLimitationCount", 0)),
+        "disallowedLimitationCount": int(stable_summary.get("disallowedLimitationCount", 0)),
+        "redactionStatus": str(redaction.get("status", "missing")),
+        "toolExitCode": result.exit_code,
+    }
+
+
+def generate_stable_readiness(state: PipelineState, summary: dict[str, Any]) -> dict[str, Any]:
+    output_dir = stable_readiness_out_dir(state.settings)
+    if output_dir.exists():
+        shutil.rmtree(output_dir)
+    result = run_command(
+        state,
+        "stable-1.0-readiness",
+        stable_readiness_args(state.settings),
+        timeout_seconds=max(state.settings.timeout_seconds, 300),
+        allow_failure=True,
+    )
+    stable_summary = read_json(stable_readiness_summary_path(state.settings))
+    compact = compact_stable_readiness_for_summary(state.settings, stable_summary, result)
+    artifacts = summary.get("artifacts") if isinstance(summary.get("artifacts"), dict) else {}
+    artifacts.update(
+        {
+            "stableReadinessSummary": STABLE_READINESS_SUMMARY_JSON,
+            "stableReadinessReport": STABLE_READINESS_REPORT_MARKDOWN,
+            "stableKnownLimitations": STABLE_READINESS_LIMITATIONS_JSON,
+            "stableBlockers": STABLE_READINESS_BLOCKERS_JSON,
+        }
+    )
+    summary["artifacts"] = artifacts
+    summary["stableReadiness"] = compact
+    if state.settings.require_stable_readiness and compact.get("stableReady") is not True:
+        failure = "Stable 1.0 readiness is required and the candidate is not ready."
+        if failure not in state.failures:
+            state.failures.append(failure)
+        failures = summary.get("failures") if isinstance(summary.get("failures"), list) else []
+        if failure not in failures:
+            failures.append(failure)
+        summary["failures"] = failures
+        summary["status"] = "fail"
+        summary["promotionReady"] = False
+        promotion = summary.get("promotion") if isinstance(summary.get("promotion"), dict) else {}
+        promotion["promotionReady"] = False
+        summary["promotion"] = promotion
+    summary["commands"] = [dataclasses.asdict(command) for command in state.commands]
+    write_json(state.settings.out_dir / "reports/production-beta-summary.json", summary)
+    write_text(state.settings.out_dir / "reports/production-beta-summary.md", render_markdown_summary(summary))
+    return summary
+
+
 def run_pipeline(settings: Settings) -> tuple[dict[str, Any], int]:
     version = read_project_version(settings.workspace_root)
     state = PipelineState(settings, version, utc_now(), [], [], [])
@@ -5637,13 +6008,7 @@ def run_pipeline(settings: Settings) -> tuple[dict[str, Any], int]:
         summaries = write_evidence_extracts(settings, cert_out)
         promotion = evaluate_promotion(state, summaries)
         pre_dist_findings = scan_tree(settings.out_dir, settings, include_dist=True)
-        redaction_report = {
-            "schemaVersion": 1,
-            "status": "pass" if not pre_dist_findings else "fail",
-            "scannedRoot": "<release-out>",
-            "findingCount": len(pre_dist_findings),
-            "findings": pre_dist_findings,
-        }
+        redaction_report = release_redaction_report(pre_dist_findings)
         write_json(settings.out_dir / "reports/redaction-report.json", redaction_report)
         archive: Path | None = None
         summary: dict[str, Any] | None = None
@@ -5653,7 +6018,28 @@ def run_pipeline(settings: Settings) -> tuple[dict[str, Any], int]:
             write_json(settings.out_dir / "reports/production-beta-summary.json", summary)
             write_text(settings.out_dir / "reports/production-beta-summary.md", render_markdown_summary(summary))
             summary = attach_go_no_go_dashboard(state, summary)
-            if summary.get("goNoGo", {}).get("redactionStatus") == "pass":
+            if settings.generate_stable_readiness:
+                summary = generate_stable_readiness(state, summary)
+                summary = attach_go_no_go_dashboard(
+                    state,
+                    summary,
+                    stable_readiness_summary_path(settings),
+                    settings.require_stable_readiness,
+                )
+                redaction_report = stable_readiness_release_redaction_report(settings, summary)
+                summary = apply_release_redaction_report(state, summary, redaction_report)
+            stable_allows_dist = (
+                not settings.require_stable_readiness
+                or (
+                    isinstance(summary.get("stableReadiness"), dict)
+                    and summary["stableReadiness"].get("stableReady") is True
+                )
+            )
+            if (
+                redaction_report["status"] == "pass"
+                and summary.get("goNoGo", {}).get("redactionStatus") == "pass"
+                and stable_allows_dist
+            ):
                 try:
                     archive = create_dist_bundle(settings, version)
                 except ReleaseArtifactError as exc:
@@ -5672,31 +6058,44 @@ def run_pipeline(settings: Settings) -> tuple[dict[str, Any], int]:
                 summary["artifacts"] = artifacts
                 write_json(settings.out_dir / "reports/production-beta-summary.json", summary)
                 write_text(settings.out_dir / "reports/production-beta-summary.md", render_markdown_summary(summary))
+                summary = attach_go_no_go_dashboard(
+                    state,
+                    summary,
+                    stable_readiness_summary_path(settings) if settings.generate_stable_readiness else None,
+                    settings.require_stable_readiness,
+                )
             if archive is not None and not tar_findings:
                 summary.setdefault("artifacts", {})["distArchive"] = f"dist/{archive.name}"
                 summary.setdefault("artifacts", {})["checksums"] = "dist/checksums.txt"
                 write_json(settings.out_dir / "reports/production-beta-summary.json", summary)
                 write_text(settings.out_dir / "reports/production-beta-summary.md", render_markdown_summary(summary))
             elif tar_findings:
-                redaction_report = {
-                    "schemaVersion": 1,
-                    "status": "fail",
-                    "scannedRoot": "<release-out>",
-                    "findingCount": len(tar_findings),
-                    "findings": tar_findings,
-                }
+                redaction_report = release_redaction_report(tar_findings)
                 write_json(settings.out_dir / "reports/redaction-report.json", redaction_report)
                 if archive is not None:
                     remove_dist_bundle(settings, archive)
                 archive = None
                 summary = None
         if redaction_report["status"] != "pass":
-            state.failures.append("artifact redaction scan failed")
+            if summary is not None:
+                record_artifact_redaction_failure(state, summary)
+                write_json(settings.out_dir / "reports/production-beta-summary.json", summary)
+                write_text(settings.out_dir / "reports/production-beta-summary.md", render_markdown_summary(summary))
+            elif ARTIFACT_REDACTION_FAILURE not in state.failures:
+                state.failures.append(ARTIFACT_REDACTION_FAILURE)
         if summary is None:
             summary = build_final_summary(state, promotion, redaction_report, archive)
             write_json(settings.out_dir / "reports/production-beta-summary.json", summary)
             write_text(settings.out_dir / "reports/production-beta-summary.md", render_markdown_summary(summary))
             summary = attach_go_no_go_dashboard(state, summary)
+            if settings.generate_stable_readiness:
+                summary = generate_stable_readiness(state, summary)
+                summary = attach_go_no_go_dashboard(
+                    state,
+                    summary,
+                    stable_readiness_summary_path(settings),
+                    settings.require_stable_readiness,
+                )
         return summary, release_exit_code(settings, summary)
 
 
@@ -5762,6 +6161,26 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Generate deterministic non-release third-party intake sample evidence.",
     )
+    parser.add_argument(
+        "--generate-stable-readiness",
+        action="store_true",
+        help="Generate advisory Stable 1.0 readiness artifacts after production beta go/no-go evidence.",
+    )
+    parser.add_argument(
+        "--require-stable-readiness",
+        action="store_true",
+        help="Require passing Stable 1.0 readiness before packaging a stable-promotion artifact.",
+    )
+    parser.add_argument(
+        "--stable-readiness-policy",
+        type=Path,
+        help="Stable 1.0 readiness policy JSON. Defaults to tools/release-certification/stable-1.0-readiness-policy.json.",
+    )
+    parser.add_argument(
+        "--stable-known-limitations",
+        type=Path,
+        help="Stable 1.0 known limitations JSON. Defaults to tools/release-certification/stable-1.0-known-limitations.json.",
+    )
     parser.add_argument("--require-sandbox-provider-tests", action="store_true", help="Require sandbox evidence.")
     parser.add_argument("--skip-gradle", action="store_true", help="Skip Gradle stages. Use only for fixture/self-test dry-runs.")
     parser.add_argument("--skip-full-build", action="store_true", help="Skip buildJar and assembleCryptadDist.")
@@ -5822,6 +6241,17 @@ def settings_from_args(args: argparse.Namespace) -> Settings:
         resolve_workspace_path_arg(args.security_drills_summary, workspace)
         if args.security_drills_summary is not None
         else resolve_workspace_path_text(os.environ.get("CRYPTAD_SECURITY_DRILLS_SUMMARY"), workspace)
+    )
+    generate_stable_readiness = args.generate_stable_readiness or args.require_stable_readiness
+    stable_readiness_policy = resolve_workspace_path_arg(
+        args.stable_readiness_policy
+        or Path("tools/release-certification/stable-1.0-readiness-policy.json"),
+        workspace,
+    )
+    stable_known_limitations = resolve_workspace_path_arg(
+        args.stable_known_limitations
+        or Path("tools/release-certification/stable-1.0-known-limitations.json"),
+        workspace,
     )
     if args.third_party_intake_summary is not None and args.run_third_party_intake_sample_flow:
         raise SystemExit("--run-third-party-intake-sample-flow cannot be combined with --third-party-intake-summary.")
@@ -5934,6 +6364,10 @@ def settings_from_args(args: argparse.Namespace) -> Settings:
         require_third_party_intake=args.require_third_party_intake,
         run_third_party_intake_sample_flow=args.run_third_party_intake_sample_flow,
         security_drills_summary=security_drills_summary,
+        generate_stable_readiness=generate_stable_readiness,
+        require_stable_readiness=args.require_stable_readiness,
+        stable_readiness_policy=stable_readiness_policy,
+        stable_known_limitations=stable_known_limitations,
     )
 
 
@@ -8191,6 +8625,116 @@ def assert_attached_multi_node_summary_is_extracted() -> None:
         assert extracted["promotionReady"] is True, extracted
 
 
+def assert_stable_readiness_soak_inputs_are_timestamped() -> None:
+    with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-stable-soak-inputs-") as temp_name:
+        workspace = Path(temp_name) / "repo"
+        workspace.mkdir(parents=True)
+        out_dir = workspace / "build/production-beta"
+        cert_out = workspace / "external-certification"
+        settings = cleanup_test_settings(workspace, out_dir)
+        cert_generated_at = "2026-06-24T00:00:00Z"
+        multi_node_summary = passing_promotion_summaries()["multiNodeBetaSoak"]
+        network_summary = read_json(
+            REPO_ROOT / "tools/release-certification/fixtures/self-test-network-scale-soak.json"
+        )
+        assert isinstance(network_summary, dict), network_summary
+        assert generated_at_from_summary(multi_node_summary), multi_node_summary
+        assert not generated_at_from_summary(network_summary), network_summary
+
+        write_json(cert_out / "app-platform-smoke/summary.json", {"status": "pass", "evidence": []})
+        write_json(cert_out / "live-network-beta-smoke/summary.json", {"status": "pass", "evidence": []})
+        write_json(cert_out / "network-scale-soak/summary.json", network_summary)
+        write_json(cert_out / "multi-node-beta-soak/summary.json", multi_node_summary)
+        write_json(
+            cert_out / release_certification.SUMMARY_FILE_NAME,
+            {
+                "status": "pass",
+                "generatedAt": cert_generated_at,
+                "historyComparison": {"status": "pass"},
+                "ecosystemGates": [],
+                "evidence": [],
+            },
+        )
+        write_json(
+            cert_out / release_certification.ECOSYSTEM_MATRIX_FILE_NAME,
+            {"status": "pass"},
+        )
+
+        write_evidence_extracts(settings, cert_out)
+
+        compact_multi_node = read_json(out_dir / "evidence/multi-node-beta-soak.json")
+        stable_multi_node = read_json(stable_readiness_multi_node_soak_path(settings))
+        stable_network = read_json(stable_readiness_network_scale_soak_path(settings))
+        assert isinstance(compact_multi_node, dict), compact_multi_node
+        assert isinstance(stable_multi_node, dict), stable_multi_node
+        assert isinstance(stable_network, dict), stable_network
+        assert "generatedAt" not in compact_multi_node, compact_multi_node
+        assert stable_multi_node["generatedAt"] == multi_node_summary["generatedAt"], stable_multi_node
+        assert stable_network["generatedAt"] == cert_generated_at, stable_network
+
+        args = stable_readiness_args(settings)
+        multi_node_arg = args[args.index("--multi-node-beta-soak-summary") + 1]
+        network_arg = args[args.index("--network-scale-soak-summary") + 1]
+        assert multi_node_arg == str(stable_readiness_multi_node_soak_path(settings)), args
+        assert network_arg == str(stable_readiness_network_scale_soak_path(settings)), args
+
+
+def assert_stable_readiness_redaction_failure_updates_release_report() -> None:
+    with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-stable-redaction-") as temp_name:
+        workspace = Path(temp_name) / "repo"
+        workspace.mkdir(parents=True)
+        settings = cleanup_test_settings(workspace, workspace / "build/production-beta")
+        state = PipelineState(settings, "270", utc_now(), [], [], [])
+        promotion = {
+            "status": "pass",
+            "promotionReady": True,
+            "nonRelease": True,
+            "failedGateCount": 0,
+            "gates": [],
+        }
+        summary = build_final_summary(
+            state,
+            promotion,
+            release_redaction_report([]),
+            archive=None,
+        )
+        summary["stableReadiness"] = {
+            "required": True,
+            "status": "fail",
+            "decision": "not-ready",
+            "stableReady": False,
+            "redactionStatus": "fail",
+        }
+        write_json(
+            stable_readiness_summary_path(settings),
+            {
+                "schemaVersion": 1,
+                "kind": "stable-1.0-readiness",
+                "status": "fail",
+                "decision": "not-ready",
+                "stableReady": False,
+                "redaction": {"status": "fail", "findingCount": 1, "findings": []},
+            },
+        )
+
+        redaction_report = stable_readiness_release_redaction_report(settings, summary)
+        summary = apply_release_redaction_report(state, summary, redaction_report)
+
+        persisted_report = read_json(settings.out_dir / "reports/redaction-report.json")
+        persisted_summary = read_json(settings.out_dir / "reports/production-beta-summary.json")
+        assert persisted_report is not None, redaction_report
+        assert persisted_summary is not None, summary
+        assert persisted_report["status"] == "fail", persisted_report
+        assert any(
+            finding.get("kind") == "stable-readiness-redaction-status"
+            for finding in persisted_report["findings"]
+        ), persisted_report
+        assert persisted_summary["redaction"]["status"] == "fail", persisted_summary
+        assert persisted_summary["goNoGo"]["redactionStatus"] == "fail", persisted_summary
+        assert persisted_summary["promotionReady"] is False, persisted_summary
+        assert ARTIFACT_REDACTION_FAILURE in persisted_summary["failures"], persisted_summary
+
+
 def assert_platform_api_contract_snapshots_are_written_as_envelopes() -> None:
     with tempfile.TemporaryDirectory(
         prefix="cryptad-production-beta-api-contract-snapshots-"
@@ -10021,6 +10565,8 @@ def run_self_test() -> None:
     assert_attached_security_drills_summary_is_bound_to_release_id()
     assert_invalid_attached_security_drills_summary_is_sanitized()
     assert_attached_security_drills_summary_preserves_artifacts()
+    assert_stable_readiness_args_do_not_forward_go_no_go_waiver_file()
+    assert_required_stable_readiness_removes_dist_refs_from_dashboard()
     assert_certification_failure_marks_dry_run_failed()
     assert_dashboard_args_use_security_drill_artifact_directory()
     assert_release_candidate_no_go_dashboard_preserves_summary_and_exit()
@@ -10030,6 +10576,8 @@ def run_self_test() -> None:
     assert_incomplete_go_no_go_dashboard_outputs_fail_summary_and_exit()
     assert_failed_go_no_go_redaction_fails_summary_and_exit()
     assert_attached_multi_node_summary_is_extracted()
+    assert_stable_readiness_soak_inputs_are_timestamped()
+    assert_stable_readiness_redaction_failure_updates_release_report()
     assert_platform_api_contract_snapshots_are_written_as_envelopes()
     assert_env_attached_multi_node_summary_is_extracted()
     assert_attached_multi_node_summary_is_not_marked_generated()

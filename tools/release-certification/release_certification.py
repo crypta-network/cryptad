@@ -201,6 +201,7 @@ ECOSYSTEM_RC_GATE_ID = "ecosystem.rc-certification"
 ECOSYSTEM_RC_EVIDENCE_ID = "release-certification.ecosystem-rc-gate"
 ECOSYSTEM_RC_MATRIX_ROW_ID = "ecosystem-rc-certification-gate"
 PRODUCTION_BETA_GO_NO_GO_EVIDENCE_IDS = production_beta_go_no_go_dashboard.DASHBOARD_EVIDENCE_IDS
+STABLE_1_0_READINESS_EVIDENCE_IDS = production_beta_go_no_go_dashboard.STABLE_1_0_READINESS_EVIDENCE_IDS
 APP_SERVICE_DEPENDENCY_AND_GRANT_BUNDLE_EVIDENCE_IDS = (
     "app-services.dependency-graph",
     "app-services.grant-bundles",
@@ -623,6 +624,8 @@ class Settings:
     multi_node_soak_summary: Path = DEFAULT_OUT_DIR / "multi-node-beta-soak" / "summary.json"
     multi_node_soak_required: bool = False
     security_drills_summary: Path | None = None
+    stable_readiness_summary: Path | None = None
+    stable_readiness_required: bool = False
 
 
 def utc_now() -> str:
@@ -2384,6 +2387,125 @@ def production_beta_go_no_go_evidence(workspace_root: Path, out_dir: Path) -> li
     ]
 
 
+def stable_readiness_evidence(
+    summary_path: Path | None,
+    required: bool,
+    workspace_root: Path,
+    out_dir: Path,
+) -> list[EvidenceItem]:
+    if summary_path is None:
+        if not required:
+            return []
+        return [
+            EvidenceItem(
+                evidence_id,
+                "missing",
+                False,
+                "Stable 1.0 readiness is required but no summary path was provided.",
+                "stable-readiness-summary",
+                {"required": True},
+            )
+            for evidence_id in STABLE_1_0_READINESS_EVIDENCE_IDS
+        ]
+
+    source = display_path(summary_path, workspace_root, out_dir)
+    summary = read_json(summary_path)
+    if not isinstance(summary, dict):
+        return [
+            EvidenceItem(
+                "stable-1.0.readiness-gate",
+                "fail",
+                False,
+                "Stable 1.0 readiness summary is missing or malformed.",
+                source,
+                {"required": required},
+            )
+        ]
+
+    summary_kind = str(summary.get("kind", ""))
+    redaction = summary.get("redaction") if isinstance(summary.get("redaction"), dict) else {}
+    redaction_status = normalize_evidence_status(str(redaction.get("status", "missing")))
+    redaction_findings = redaction.get("findings") if isinstance(redaction.get("findings"), list) else []
+    decision = str(summary.get("decision", "not-ready"))
+    stable_ready = summary.get("stableReady") is True
+    main_status = normalize_evidence_status(str(summary.get("status", "missing")))
+    if summary_kind != "stable-1.0-readiness" or redaction_status != "pass" or redaction_findings:
+        main_status = "fail"
+    elif decision == "ready-with-allowed-limitations" and main_status == "pass":
+        main_status = "warn"
+    elif not stable_ready or decision == "not-ready":
+        main_status = "fail"
+
+    evidence_entries = evidence_map_from_summary(summary)
+    redaction_details: dict[str, Any] = {
+        "status": redaction_status,
+        "findingCount": len(redaction_findings),
+    }
+    if redaction_findings:
+        redaction_details["redactionFindings"] = redaction_findings
+    synthetic_entries: dict[str, dict[str, Any]] = {
+        "stable-1.0.readiness-gate": {
+            "id": "stable-1.0.readiness-gate",
+            "status": main_status,
+            "summary": f"Stable 1.0 readiness decision is {decision}.",
+            "details": {
+                "required": required,
+                "summaryKind": summary_kind,
+                "decision": decision,
+                "stableReady": stable_ready,
+                "blockerCount": summary.get("blockerCount", 0),
+                "warningCount": summary.get("warningCount", 0),
+                "allowedLimitationCount": summary.get("allowedLimitationCount", 0),
+                "disallowedLimitationCount": summary.get("disallowedLimitationCount", 0),
+                "summaryPath": source,
+                "artifactRefs": summary.get("artifactRefs", {})
+                if isinstance(summary.get("artifactRefs"), dict)
+                else {},
+            },
+        },
+        "stable-1.0.redaction": {
+            "id": "stable-1.0.redaction",
+            "status": "fail" if redaction_status != "pass" or redaction_findings else "pass",
+            "summary": (
+                "Stable 1.0 readiness redaction checks passed."
+                if redaction_status == "pass" and not redaction_findings
+                else "Stable 1.0 readiness redaction checks failed."
+            ),
+            "details": redaction_details,
+        },
+    }
+    items: list[EvidenceItem] = []
+    for evidence_id in STABLE_1_0_READINESS_EVIDENCE_IDS:
+        entry = synthetic_entries.get(evidence_id) or evidence_entries.get(evidence_id)
+        if not isinstance(entry, dict):
+            items.append(
+                EvidenceItem(
+                    evidence_id,
+                    "missing",
+                    False,
+                    f"{evidence_id} was not reported by the Stable 1.0 readiness summary.",
+                    source,
+                    {"required": required},
+                )
+            )
+            continue
+        details = entry.get("details", {}) if isinstance(entry.get("details"), dict) else {}
+        status = normalize_evidence_status(str(entry.get("status", "missing")))
+        if evidence_id == "stable-1.0.redaction" and (redaction_status != "pass" or redaction_findings):
+            status = "fail"
+        items.append(
+            EvidenceItem(
+                evidence_id,
+                status,
+                False,
+                str(entry.get("summary", f"{evidence_id} status is {status}.")),
+                source,
+                dict(details),
+            )
+        )
+    return items
+
+
 def command_output(args: list[str], cwd: Path) -> str:
     try:
         completed = subprocess.run(
@@ -3055,6 +3177,21 @@ def ecosystem_matrix_row_specs() -> list[MatrixRowSpec]:
                 "tools/release-certification/README.md",
             ),
             phase="phase-10",
+        ),
+        MatrixRowSpec(
+            id="stable-1-0-readiness",
+            category="release-operations",
+            title="Stable 1.0 readiness gate",
+            optional_evidence_ids=STABLE_1_0_READINESS_EVIDENCE_IDS,
+            docs=(
+                "docs/stable-1.0-readiness-gate.md",
+                "docs/stable-1.0-known-limitations.md",
+                "docs/production-beta-go-no-go-dashboard.md",
+                "docs/release-certification.md",
+            ),
+            phase="phase-11",
+            required_for_release_candidate=False,
+            synthetic="stable-readiness",
         ),
         MatrixRowSpec(
             id="interop-smoke",
@@ -3986,6 +4123,7 @@ def evaluate_matrix_row(
         for gate_id in spec.optional_gate_ids
         if gate_id in gate_entries
     }
+    stable_not_requested = False
     issue_ids: list[str] = []
     gate_blockers: list[str] = []
     gate_warnings: list[str] = []
@@ -4026,6 +4164,12 @@ def evaluate_matrix_row(
     ]
     optional_warn: list[str] = []
     for evidence_id, status in optional_statuses.items():
+        if (
+            evidence_id in STABLE_1_0_READINESS_EVIDENCE_IDS
+            and status == "missing"
+            and not settings.stable_readiness_required
+        ):
+            continue
         if status in {"fail", "warn", "missing"}:
             optional_warn.append(evidence_id)
         elif status == "skip":
@@ -4084,6 +4228,55 @@ def evaluate_matrix_row(
         summary = "Certification summaries and copied artifacts exclude private material."
         if release_blocker:
             issue_ids.append("matrix.redaction.failed")
+    elif spec.synthetic == "stable-readiness":
+        attached = any(evidence_id in evidence_entries for evidence_id in spec.evidence_ids())
+        main_entry = evidence_entries.get("stable-1.0.readiness-gate")
+        redaction_entry = evidence_entries.get("stable-1.0.redaction")
+        main_status = evidence_status(main_entry)
+        redaction_status = evidence_status(redaction_entry)
+        main_details = evidence_details(main_entry)
+        decision = str(main_details.get("decision", "not-attached"))
+        stable_ready = main_details.get("stableReady") is True
+        redaction_failed = (
+            redaction_status == "fail"
+            or evidence_entry_has_unwaivable_redaction_findings(main_entry)
+            or evidence_entry_has_unwaivable_redaction_findings(redaction_entry)
+        )
+        if not attached and not settings.stable_readiness_required:
+            status = "pass"
+            release_blocker = False
+            stable_not_requested = True
+            summary = "Stable 1.0 readiness was not requested for this certification run."
+            issue_ids = [
+                issue_id
+                for issue_id in issue_ids
+                if not issue_id.startswith("evidence.stable-1.0.")
+            ]
+        elif not attached:
+            status = "fail"
+            release_blocker = True
+            summary = "Stable 1.0 readiness is required but no summary was attached."
+        elif redaction_failed:
+            status = "fail"
+            release_blocker = True
+            summary = "Stable 1.0 readiness redaction findings are non-waivable."
+            issue_ids.append("matrix.stable-readiness.redaction-failed")
+        elif main_status == "fail" or not stable_ready or decision == "not-ready":
+            release_blocker = settings.stable_readiness_required
+            status = "fail" if release_blocker else "warn"
+            summary = (
+                "Stable 1.0 readiness is required and not passing."
+                if release_blocker
+                else "Stable 1.0 readiness is attached as advisory evidence and is not ready."
+            )
+        elif main_status == "warn" or decision == "ready-with-allowed-limitations":
+            status = "warn"
+            release_blocker = False
+            summary = "Stable 1.0 readiness is ready with bounded allowed limitations."
+        else:
+            status = "pass"
+            release_blocker = False
+            summary = "Stable 1.0 readiness evidence passed."
     elif not spec.evidence_ids() and not spec.all_gate_ids():
         status = "missing"
         release_blocker = False
@@ -4156,6 +4349,9 @@ def evaluate_matrix_row(
         previous_matrix_present,
         previous_row_statuses,
     )
+    if stable_not_requested:
+        previous_status = "pass"
+        regression_status = "unchanged"
     if regression_status in {"regressed-warning", "regressed-blocker"} and status == "pass":
         status = "warn"
     gate_status_value = aggregate_status_values(
@@ -4176,6 +4372,9 @@ def evaluate_matrix_row(
         details["previousMatrixPresent"] = previous_matrix_present
     if spec.synthetic == "redaction":
         details["redaction"] = redaction
+    if stable_not_requested:
+        details["notRequested"] = True
+        details["required"] = False
     if unwaivable_redaction_evidence_ids:
         details["unwaivableRedactionEvidenceIds"] = sorted(unwaivable_redaction_evidence_ids)
 
@@ -4426,7 +4625,10 @@ def build_ecosystem_matrix(
     release_blockers = 0
     waived_rows = 0
     for row in rows:
-        counts[row["status"]] = counts.get(row["status"], 0) + 1
+        if row["status"] == "skip" and row.get("requiredForReleaseCandidate") is False:
+            counts["optionalSkips"] = counts.get("optionalSkips", 0) + 1
+        else:
+            counts[row["status"]] = counts.get(row["status"], 0) + 1
         if row.get("releaseBlocker"):
             release_blockers += 1
         if row.get("waiverIds"):
@@ -4515,6 +4717,44 @@ def matrix_compact_summary(matrix: dict[str, Any] | None) -> dict[str, Any]:
         "coverage": matrix.get("coverage", {}) if isinstance(matrix.get("coverage"), dict) else {},
         "rowStatuses": row_statuses,
         "matrixDiffs": matrix.get("matrixDiffs", []) if isinstance(matrix.get("matrixDiffs"), list) else [],
+    }
+
+
+def stable_readiness_compact_summary(
+    evidence: list[EvidenceItem],
+    required: bool,
+) -> dict[str, Any]:
+    entries = evidence_map_from_items(evidence)
+    main = entries.get("stable-1.0.readiness-gate")
+    redaction = entries.get("stable-1.0.redaction")
+    if not isinstance(main, dict):
+        return {
+            "status": "missing" if required else "skip",
+            "decision": "not-attached",
+            "stableReady": False,
+            "required": required,
+            "summary": (
+                "Stable 1.0 readiness is required but not attached."
+                if required
+                else "Stable 1.0 readiness was not requested for this certification run."
+            ),
+        }
+    details = evidence_details(main)
+    redaction_details = evidence_details(redaction)
+    return {
+        "status": evidence_status(main),
+        "decision": str(details.get("decision", "not-ready")),
+        "stableReady": details.get("stableReady") is True,
+        "required": required,
+        "source": str(main.get("source", "")),
+        "summary": str(main.get("summary", "")),
+        "blockerCount": details.get("blockerCount", 0),
+        "warningCount": details.get("warningCount", 0),
+        "allowedLimitationCount": details.get("allowedLimitationCount", 0),
+        "disallowedLimitationCount": details.get("disallowedLimitationCount", 0),
+        "redactionStatus": evidence_status(redaction),
+        "redactionFindingCount": redaction_details.get("findingCount", 0),
+        "artifactRefs": details.get("artifactRefs", {}) if isinstance(details.get("artifactRefs"), dict) else {},
     }
 
 
@@ -7990,6 +8230,10 @@ def build_summary(
     ecosystem_status = aggregate_gate_status(ecosystem_gates)
     cli_waivers = sanitized_cli_waivers(settings)
     compact_matrix = matrix_compact_summary(ecosystem_matrix)
+    compact_stable_readiness = stable_readiness_compact_summary(
+        evidence,
+        settings.stable_readiness_required,
+    )
     compact_rc_gate = ecosystem_rc_gate_summary(ecosystem_gates)
     compact_rc_gate_decision = ecosystem_rc_decision(compact_rc_gate)
     compact_rc_decision = compact_rc_gate_decision if release_candidate_passed else "FAIL"
@@ -8035,6 +8279,7 @@ def build_summary(
         "ecosystemRcPassed": ecosystem_rc_passed,
         "ecosystemRcDecision": compact_rc_decision,
         "ecosystemMatrix": compact_matrix,
+        "stableReadiness": compact_stable_readiness,
         "copiedArtifacts": copied_artifacts,
         "redaction": {
             "privateArtifactsExcluded": list(PRIVATE_ARTIFACT_NAMES),
@@ -8079,6 +8324,7 @@ def render_report(summary: dict[str, Any]) -> str:
     append_ecosystem_rc_gate(lines, summary)
     append_ecosystem_gates(lines, summary)
     append_ecosystem_matrix_summary(lines, summary)
+    append_stable_readiness_summary(lines, summary)
     append_waivers(lines, summary)
     append_regressions(lines, summary)
     lines.extend(["## Evidence Summary", "", "| Evidence | Status | Required for RC | Source | Summary |", "| --- | --- | --- | --- | --- |"])
@@ -8096,6 +8342,8 @@ def render_report(summary: dict[str, Any]) -> str:
     lines.extend(["", "## Release Operations", ""])
     append_detail(lines, summary, "release-certification.ecosystem-matrix")
     append_detail(lines, summary, ECOSYSTEM_RC_EVIDENCE_ID)
+    for evidence_id in STABLE_1_0_READINESS_EVIDENCE_IDS:
+        append_detail(lines, summary, evidence_id)
     lines.extend(["", "## Hyphanet Interop", ""])
     append_detail(lines, summary, "interop.smoke")
     append_detail(lines, summary, "interop.extended")
@@ -8353,6 +8601,29 @@ def append_ecosystem_matrix_summary(lines: list[str], summary: dict[str, Any]) -
     )
 
 
+def append_stable_readiness_summary(lines: list[str], summary: dict[str, Any]) -> None:
+    stable = summary.get("stableReadiness", {})
+    if not isinstance(stable, dict):
+        return
+    lines.extend(
+        [
+            "## Stable 1.0 Readiness",
+            "",
+            f"- Status: `{stable.get('status', 'missing')}`",
+            f"- Decision: `{stable.get('decision', 'not-attached')}`",
+            f"- Stable ready: `{str(stable.get('stableReady', False)).lower()}`",
+            f"- Required: `{str(stable.get('required', False)).lower()}`",
+            f"- Blockers: `{stable.get('blockerCount', 0)}`",
+            f"- Warnings: `{stable.get('warningCount', 0)}`",
+            f"- Allowed limitations: `{stable.get('allowedLimitationCount', 0)}`",
+            f"- Disallowed limitations: `{stable.get('disallowedLimitationCount', 0)}`",
+            f"- Redaction: `{stable.get('redactionStatus', 'missing')}`",
+            f"- Summary: {stable.get('summary', '')}",
+            "",
+        ]
+    )
+
+
 def append_ecosystem_rc_gate(lines: list[str], summary: dict[str, Any]) -> None:
     compact = summary.get("ecosystemRcGate", {})
     gates = summary.get("ecosystemGates", [])
@@ -8587,6 +8858,14 @@ def gather_evidence(settings: Settings, waiver_context: WaiverContext) -> list[E
     evidence = [item for item in evidence if item.id not in app_platform_docs_item_ids]
     evidence.extend(app_platform_docs_items)
     evidence.extend(production_beta_go_no_go_evidence(settings.workspace_root, settings.out_dir))
+    evidence.extend(
+        stable_readiness_evidence(
+            settings.stable_readiness_summary,
+            settings.stable_readiness_required,
+            settings.workspace_root,
+            settings.out_dir,
+        )
+    )
     return [
         sanitize_evidence_item(
             with_waiver_record(
@@ -8832,6 +9111,11 @@ def settings_from_args(args: argparse.Namespace) -> Settings:
         or args.security_response_summary
         or os.environ.get("CRYPTAD_CERT_SECURITY_DRILLS_SUMMARY")
     )
+    stable_readiness_summary_arg = (
+        args.stable_readiness_summary
+        or args.stable_1_0_readiness_summary
+        or os.environ.get("CRYPTAD_CERT_STABLE_READINESS_SUMMARY")
+    )
     return Settings(
         workspace_root=workspace_root,
         out_dir=out_dir,
@@ -8859,6 +9143,15 @@ def settings_from_args(args: argparse.Namespace) -> Settings:
             resolve_path(workspace_root, Path(security_drills_summary_arg))
             if security_drills_summary_arg
             else None
+        ),
+        stable_readiness_summary=(
+            resolve_path(workspace_root, Path(stable_readiness_summary_arg))
+            if stable_readiness_summary_arg
+            else None
+        ),
+        stable_readiness_required=(
+            args.require_stable_readiness
+            or env_flag("CRYPTAD_CERT_REQUIRE_STABLE_READINESS")
         ),
     )
 
@@ -8908,6 +9201,19 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Deprecated alias for --security-drills-summary.",
     )
+    parser.add_argument(
+        "--stable-readiness-summary",
+        type=Path,
+        default=None,
+        help="Stable 1.0 readiness summary produced by stable_1_0_readiness.py.",
+    )
+    parser.add_argument(
+        "--stable-1-0-readiness-summary",
+        dest="stable_1_0_readiness_summary",
+        type=Path,
+        default=None,
+        help="Alias for --stable-readiness-summary.",
+    )
     parser.add_argument("--live-network-beta", action="store_true", help="Expect optional live-network beta evidence.")
     parser.add_argument(
         "--require-live-network-beta",
@@ -8918,6 +9224,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--require-multi-node-soak",
         action="store_true",
         help="Treat missing or failing multi-node beta soak evidence as release-blocking.",
+    )
+    parser.add_argument(
+        "--require-stable-readiness",
+        action="store_true",
+        help="Treat missing or failing Stable 1.0 readiness evidence as release-blocking.",
     )
     parser.add_argument("--waive", action="append", default=[], metavar="ID=REASON")
     parser.add_argument("--waiver-file", action="append", default=[], type=Path)
@@ -9295,6 +9606,17 @@ def run_self_test(repo_root: Path) -> None:
             issue_id.startswith("evidence.live-network-beta.")
             for issue_id in disabled_live_row.get("issueIds", [])
         ), disabled_live_row
+        stable_not_requested_row = matrix_rows_by_id["stable-1-0-readiness"]
+        assert stable_not_requested_row["status"] == "pass", stable_not_requested_row
+        assert stable_not_requested_row["releaseBlocker"] is False, stable_not_requested_row
+        assert stable_not_requested_row["previousStatus"] == "pass", stable_not_requested_row
+        assert stable_not_requested_row["regressionStatus"] == "unchanged", stable_not_requested_row
+        assert stable_not_requested_row["details"]["notRequested"] is True, stable_not_requested_row
+        assert stable_not_requested_row["details"]["required"] is False, stable_not_requested_row
+        assert not any(
+            issue_id.startswith("evidence.stable-1.0.")
+            for issue_id in stable_not_requested_row.get("issueIds", [])
+        ), stable_not_requested_row
         covered_evidence_ids = {
             evidence_id
             for row in matrix["rows"]
@@ -13215,6 +13537,36 @@ def run_self_test(repo_root: Path) -> None:
         )
         for forbidden in ("hunter2", "USK@private", "/mnt/secrets/signing/key.pem", str(workspace)):
             assert forbidden not in sensitive_encoded, f"waiver reason leaked {forbidden}"
+
+        stable_missing_redaction_summary = workspace / "build/stable-readiness-missing-redaction.json"
+        write_json(
+            stable_missing_redaction_summary,
+            {
+                "schemaVersion": 1,
+                "kind": "stable-1.0-readiness",
+                "status": "pass",
+                "decision": "ready",
+                "stableReady": True,
+                "blockerCount": 0,
+                "warningCount": 0,
+                "allowedLimitationCount": 0,
+                "disallowedLimitationCount": 0,
+                "domains": [],
+                "blockers": [],
+                "warnings": [],
+                "allowedLimitations": [],
+                "disallowedLimitations": [],
+            },
+        )
+        stable_items = stable_readiness_evidence(
+            stable_missing_redaction_summary,
+            True,
+            workspace,
+            out_dir,
+        )
+        stable_statuses = {item.id: item.status for item in stable_items}
+        assert stable_statuses["stable-1.0.readiness-gate"] == "fail", stable_statuses
+        assert stable_statuses["stable-1.0.redaction"] == "fail", stable_statuses
 
 
 def main(argv: list[str] | None = None) -> int:

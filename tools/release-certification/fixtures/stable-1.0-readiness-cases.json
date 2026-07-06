@@ -1,0 +1,162 @@
+{
+  "schemaVersion": 1,
+  "kind": "stable-1.0-readiness-fixture-cases",
+  "generatedBy": "stable_1_0_readiness.py --self-test",
+  "cases": [
+    {
+      "id": "ready",
+      "expectedDecision": "ready",
+      "category": "positive"
+    },
+    {
+      "id": "allowed-limitations",
+      "expectedDecision": "ready-with-allowed-limitations",
+      "category": "positive"
+    },
+    {
+      "id": "missing-production",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "production-not-ready",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "go-no-go-no-go",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "go-no-go-wrong-release-id",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "go-no-go-non-production-mode",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "release-certification-failed",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "release-certification-not-passed",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "release-certification-non-rc-mode",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "release-certification-missing-redaction",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "missing-platform-baseline",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "stable-api-breaking-change",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "missing-first-party",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "missing-third-party",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "stale-security",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "stale-security-summary-age",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "missing-previous-upgrade",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "app-data-migration-scenario-failed",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "stale-soak-evidence",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "insufficient-network",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "critical-known-issue",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "beta-only-limitation",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "allowed-disallowed-category",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "unknown-limitation-classification",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "missing-policy",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "redaction-unsafe",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "invalid-waiver",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "incomplete-waiver-metadata",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "allowed-trust-graph",
+      "expectedDecision": "ready-with-allowed-limitations",
+      "category": "positive"
+    },
+    {
+      "id": "allowed-social-inbox",
+      "expectedDecision": "ready-with-allowed-limitations",
+      "category": "positive"
+    }
+  ]
+}

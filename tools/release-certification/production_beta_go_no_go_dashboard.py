@@ -227,6 +227,20 @@ DASHBOARD_EVIDENCE_IDS = (
     "production-beta.dashboard-redaction",
     "production-beta.launch-artifact-hygiene",
 )
+STABLE_1_0_READINESS_EVIDENCE_IDS = (
+    "stable-1.0.readiness-gate",
+    "stable-1.0.production-beta-state",
+    "stable-1.0.release-certification",
+    "stable-1.0.platform-api-compatibility",
+    "stable-1.0.app-ecosystem-maturity",
+    "stable-1.0.third-party-intake",
+    "stable-1.0.security-drills",
+    "stable-1.0.live-multi-node-soak",
+    "stable-1.0.legacy-plugin-migration",
+    "stable-1.0.support-feedback-readiness",
+    "stable-1.0.known-limitations",
+    "stable-1.0.redaction",
+)
 
 DOMAIN_SPECS = (
     {
@@ -270,6 +284,12 @@ DOMAIN_SPECS = (
         "title": "Platform API 1.0 stable freeze",
         "evidenceIds": PLATFORM_API_STABLE_FREEZE_EVIDENCE_IDS,
         "artifactInputs": ("appPlatformSummary",),
+    },
+    {
+        "id": "stable-1-0-readiness",
+        "title": "Stable 1.0 readiness",
+        "evidenceIds": STABLE_1_0_READINESS_EVIDENCE_IDS,
+        "artifactInputs": ("stableReadinessSummary",),
     },
     {
         "id": "app-submission-review-workflow",
@@ -1836,6 +1856,7 @@ def load_inputs_from_paths(args: argparse.Namespace, workspace_root: Path) -> tu
         "multiNodeBetaSoakSummary": args.multi_node_beta_soak_summary,
         "securityDrillsSummary": args.security_drills_summary,
         "securityResponseSummary": args.security_response_summary,
+        "stableReadinessSummary": args.stable_readiness_summary,
     }
     inputs: dict[str, Any] = {}
     paths: dict[str, Path] = {}
@@ -2249,6 +2270,17 @@ def ecosystem_matrix_issues(matrix: dict[str, Any] | None) -> list[Issue]:
         if not isinstance(row, dict):
             continue
         status = normalize_status(row.get("status"))
+        details = row.get("details") if isinstance(row.get("details"), dict) else {}
+        if (
+            row.get("id") == "stable-1-0-readiness"
+            and status == "skip"
+            and row.get("releaseBlocker") is not True
+            and (
+                details.get("notRequested") is True
+                or "not requested" in str(row.get("summary", "")).lower()
+            )
+        ):
+            continue
         if status in {"pass", "warn"} and row.get("releaseBlocker") is not True:
             continue
         row_id = str(row.get("id", "matrix-row"))
@@ -2720,6 +2752,33 @@ def compact_security_drills(
     }
 
 
+def compact_stable_readiness(summary: dict[str, Any] | None, required: bool = False) -> dict[str, Any]:
+    if not isinstance(summary, dict):
+        return {
+            "status": "missing",
+            "decision": "not-attached",
+            "stableReady": False,
+            "required": required,
+            "blockerCount": 0,
+            "warningCount": 0,
+            "allowedLimitationCount": 0,
+            "disallowedLimitationCount": 0,
+            "redactionStatus": "missing",
+        }
+    redaction = summary.get("redaction") if isinstance(summary.get("redaction"), dict) else {}
+    return {
+        "status": normalize_status(summary.get("status")),
+        "decision": str(summary.get("decision", "not-ready")),
+        "stableReady": summary.get("stableReady") is True,
+        "required": required,
+        "blockerCount": safe_int_count(summary.get("blockerCount"), 0),
+        "warningCount": safe_int_count(summary.get("warningCount"), 0),
+        "allowedLimitationCount": safe_int_count(summary.get("allowedLimitationCount"), 0),
+        "disallowedLimitationCount": safe_int_count(summary.get("disallowedLimitationCount"), 0),
+        "redactionStatus": normalize_status(redaction.get("status", "missing")),
+    }
+
+
 def safe_int_count(value: Any, fallback: int) -> int:
     if isinstance(value, bool):
         return fallback
@@ -3099,12 +3158,14 @@ def collect_issues(
     input_paths: dict[str, Path],
     now: dt.datetime,
     release_id: str,
+    require_stable_readiness: bool = False,
 ) -> tuple[list[Issue], dict[str, dict[str, Any]]]:
     all_evidence = evidence_map(
         inputs.get("releaseCertificationSummary"),
         inputs.get("appPlatformSummary"),
         inputs.get("liveNetworkSummary"),
         inputs.get("securityResponseSummary"),
+        inputs.get("stableReadinessSummary"),
     )
     for evidence_id, entry in multi_node_scenario_evidence(
         inputs.get("multiNodeBetaSoakSummary")
@@ -3166,12 +3227,14 @@ def collect_issues(
             inputs.get("productionBetaSummary") if isinstance(inputs.get("productionBetaSummary"), dict) else None,
         )
     )
+    issues.extend(stable_readiness_issues(inputs.get("stableReadinessSummary"), require_stable_readiness))
     for spec in DOMAIN_SPECS:
         domain_id = str(spec["id"])
         if domain_id in {
             "production-beta-release-pipeline",
             "release-certification",
             "ecosystem-rc-certification-matrix",
+            "stable-1-0-readiness",
             "network-scale-soak",
             "multi-node-beta-soak",
             "redaction-artifact-hygiene",
@@ -3184,6 +3247,115 @@ def collect_issues(
             if issue is not None:
                 issues.append(issue)
     return dedupe_issues(issues), all_evidence
+
+
+def stable_readiness_issues(summary: dict[str, Any] | None, required: bool) -> list[Issue]:
+    domain_id = "stable-1-0-readiness"
+    if not isinstance(summary, dict):
+        if not required:
+            return []
+        severity = "blocker" if required else "warning"
+        return [
+            Issue(
+                id="stable-1.0.readiness-summary.missing",
+                evidence_id="stable-1.0.readiness-gate",
+                domain_id=domain_id,
+                severity=severity,
+                title="Stable 1.0 readiness summary is missing",
+                summary=(
+                    "Stable 1.0 readiness is required for this dashboard."
+                    if required
+                    else "Stable 1.0 readiness was not attached; production beta decision is unchanged."
+                ),
+                source="stable-readiness-summary",
+                waivable=not required,
+                category="stable-readiness",
+            )
+        ]
+    issues: list[Issue] = []
+    kind = str(summary.get("kind", ""))
+    if kind != "stable-1.0-readiness":
+        issues.append(
+            Issue(
+                id="stable-1.0.readiness-summary.kind",
+                evidence_id="stable-1.0.readiness-gate",
+                domain_id=domain_id,
+                severity="blocker" if required else "warning",
+                title="Stable 1.0 readiness summary kind is invalid",
+                summary=f"Stable readiness summary kind is {kind or 'missing'}.",
+                source="stable-readiness-summary",
+                waivable=not required,
+                category="stable-readiness",
+            )
+        )
+    redaction = summary.get("redaction") if isinstance(summary.get("redaction"), dict) else {}
+    if normalize_status(redaction.get("status", "missing")) != "pass" or redaction.get("findings"):
+        issues.append(
+            Issue(
+                id="stable-1.0.readiness-summary.redaction",
+                evidence_id="stable-1.0.redaction",
+                domain_id=domain_id,
+                severity="critical",
+                title="Stable 1.0 readiness redaction failed",
+                summary="Stable readiness summary redaction findings are non-waivable.",
+                source="stable-readiness-summary",
+                waivable=False,
+                category="redaction",
+            )
+        )
+    status = normalize_status(summary.get("status", "missing"))
+    decision = str(summary.get("decision", "not-ready"))
+    stable_ready = summary.get("stableReady") is True
+    valid_statuses = {"pass", "warn", "fail"}
+    valid_decisions = {"ready", "ready-with-allowed-limitations", "not-ready"}
+    if status not in valid_statuses or decision not in valid_decisions:
+        issues.append(
+            Issue(
+                id="stable-1.0.readiness-summary.invalid",
+                evidence_id="stable-1.0.readiness-gate",
+                domain_id=domain_id,
+                severity="blocker" if required else "warning",
+                title="Stable 1.0 readiness summary status is invalid",
+                summary=(
+                    f"Stable readiness status is {status}; decision is {decision}. "
+                    "Expected status pass|warn|fail and decision ready|ready-with-allowed-limitations|not-ready."
+                ),
+                source="stable-readiness-summary",
+                waivable=not required,
+                category="stable-readiness",
+            )
+        )
+    elif not stable_ready or decision == "not-ready" or status == "fail":
+        issues.append(
+            Issue(
+                id="stable-1.0.readiness-summary.not-ready",
+                evidence_id="stable-1.0.readiness-gate",
+                domain_id=domain_id,
+                severity="blocker" if required else "warning",
+                title="Stable 1.0 readiness is not passing",
+                summary=f"Stable readiness decision is {decision}.",
+                source="stable-readiness-summary",
+                waivable=not required,
+                category="stable-readiness",
+            )
+        )
+    elif decision == "ready-with-allowed-limitations":
+        issues.append(
+            Issue(
+                id="stable-1.0.readiness-summary.allowed-limitations",
+                evidence_id="stable-1.0.known-limitations",
+                domain_id=domain_id,
+                severity="warning",
+                title="Stable 1.0 readiness has allowed limitations",
+                summary=(
+                    f"Stable readiness allows {summary.get('allowedLimitationCount', 0)} bounded limitation(s)."
+                ),
+                source="stable-readiness-summary",
+                waivable=True,
+                category="stable-readiness",
+            )
+        )
+    return issues
 
 
 def dedupe_issues(issues: list[Issue]) -> list[Issue]:
@@ -3243,10 +3415,18 @@ def build_dashboard(
     release_id: str,
     generated_at: str,
     now: dt.datetime,
+    require_stable_readiness: bool = False,
 ) -> dict[str, Any]:
     if mode not in MODES:
         raise SystemExit(f"--mode must be one of {', '.join(MODES)}")
-    issues, all_evidence = collect_issues(inputs, mode, input_paths, now, release_id)
+    issues, all_evidence = collect_issues(
+        inputs,
+        mode,
+        input_paths,
+        now,
+        release_id,
+        require_stable_readiness,
+    )
     imported_waivers = release_certification_waiver_records(
         inputs.get("releaseCertificationSummary") if isinstance(inputs.get("releaseCertificationSummary"), dict) else None,
         mode,
@@ -3323,6 +3503,7 @@ def build_dashboard(
         "dashboardMarkdown": OUTPUT_MARKDOWN,
         "dashboardRedactionReport": OUTPUT_REDACTION,
     }
+    stable_readiness = compact_stable_readiness(inputs.get("stableReadinessSummary"), require_stable_readiness)
     artifacts = production_summary.get("artifacts") if isinstance(production_summary.get("artifacts"), dict) else {}
     for key in ("redactionReport", "distArchive", "checksums", "ecosystemCertification", "multiNodeBetaSoak"):
         if key in artifacts:
@@ -3348,6 +3529,7 @@ def build_dashboard(
         "waivers": [waiver.to_json() for waiver in waivers],
         "previousCandidateUpgrade": previous_upgrade,
         "securityDrills": security_drills,
+        "stableReadiness": stable_readiness,
         "redaction": redaction,
         "recommendation": recommendation_for(decision, blockers, warnings),
         "artifactRefs": artifact_refs,
@@ -3371,9 +3553,34 @@ def render_markdown(dashboard: dict[str, Any]) -> str:
         f"- Generated: `{dashboard.get('generatedAt', '')}`",
         f"- Recommendation: {dashboard.get('recommendation', '')}",
         "",
-        "## Security Drills",
+        "## Stable 1.0 Readiness",
         "",
     ]
+    stable_readiness = (
+        dashboard.get("stableReadiness")
+        if isinstance(dashboard.get("stableReadiness"), dict)
+        else {}
+    )
+    lines.extend(
+        [
+            f"- Status: `{stable_readiness.get('status', 'missing')}`",
+            f"- Decision: `{stable_readiness.get('decision', 'not-attached')}`",
+            f"- Stable ready: `{str(stable_readiness.get('stableReady', False)).lower()}`",
+            f"- Required: `{str(stable_readiness.get('required', False)).lower()}`",
+            f"- Blockers: `{stable_readiness.get('blockerCount', 0)}`",
+            f"- Warnings: `{stable_readiness.get('warningCount', 0)}`",
+            f"- Allowed limitations: `{stable_readiness.get('allowedLimitationCount', 0)}`",
+            f"- Disallowed limitations: `{stable_readiness.get('disallowedLimitationCount', 0)}`",
+            f"- Redaction: `{stable_readiness.get('redactionStatus', 'missing')}`",
+            "",
+        ]
+    )
+    lines.extend(
+        [
+        "## Security Drills",
+        "",
+        ]
+    )
     security_drills = dashboard.get("securityDrills") if isinstance(dashboard.get("securityDrills"), dict) else {}
     lines.extend(
         [
@@ -3575,6 +3782,7 @@ def build_command(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         release_id,
         generated_at,
         now,
+        args.require_stable_readiness,
     )
     dashboard = write_dashboard_artifacts(dashboard, out_dir, workspace_root)
     return dashboard, 0 if dashboard["decision"] in {"go", "go-with-waivers"} else 1
@@ -3653,6 +3861,51 @@ def run_self_test(quiet: bool = False) -> None:
         "production-beta",
     ):
         raise AssertionError("previous-candidate binding failures must be non-waivable in production-beta")
+    optional_stable_matrix = {
+        "status": "pass",
+        "releaseBlockerCount": 0,
+        "rows": [
+            {
+                "id": "stable-1-0-readiness",
+                "status": "skip",
+                "releaseBlocker": False,
+                "summary": "Stable 1.0 readiness was not requested for this certification run.",
+                "details": {"notRequested": True, "required": False},
+            }
+        ],
+    }
+    if ecosystem_matrix_issues(optional_stable_matrix):
+        raise AssertionError("optional Stable 1.0 not-requested matrix row produced a dashboard warning")
+    unrelated_skip_matrix = copy.deepcopy(optional_stable_matrix)
+    unrelated_skip_matrix["rows"][0]["id"] = "self-test-unrelated-row"
+    unrelated_skip_issues = ecosystem_matrix_issues(unrelated_skip_matrix)
+    if not any(issue.id == "ecosystem-matrix.self-test-unrelated-row" for issue in unrelated_skip_issues):
+        raise AssertionError("non-Stable skipped matrix rows must still be surfaced by the dashboard")
+    for invalid_stable_summary in (
+        {
+            "kind": "stable-1.0-readiness",
+            "status": "skip",
+            "decision": "ready",
+            "stableReady": True,
+            "redaction": {"status": "pass", "findings": []},
+        },
+        {
+            "kind": "stable-1.0-readiness",
+            "status": "pass",
+            "decision": "ship-it",
+            "stableReady": True,
+            "redaction": {"status": "pass", "findings": []},
+        },
+    ):
+        invalid_stable_issues = stable_readiness_issues(invalid_stable_summary, True)
+        if not any(
+            issue.id == "stable-1.0.readiness-summary.invalid"
+            and issue.severity == "blocker"
+            for issue in invalid_stable_issues
+        ):
+            raise AssertionError(
+                f"required malformed Stable readiness summary did not block: {invalid_stable_issues}"
+            )
 
     fixture_expectations = {
         "go-no-go-pass.json": "go",
@@ -4818,6 +5071,8 @@ def build_parser() -> argparse.ArgumentParser:
     build.add_argument("--multi-node-beta-soak-summary", type=Path)
     build.add_argument("--security-drills-summary", type=Path)
     build.add_argument("--security-response-summary", type=Path)
+    build.add_argument("--stable-readiness-summary", "--stable-1-0-readiness-summary", type=Path)
+    build.add_argument("--require-stable-readiness", action="store_true")
     build.add_argument("--waivers", type=Path)
     build.add_argument("--fixtures", type=Path, help="Build from a checked-in dashboard fixture bundle.")
     return parser

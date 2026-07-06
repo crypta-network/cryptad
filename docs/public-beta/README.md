@@ -18,7 +18,7 @@ readiness without reading daemon internals.
 | I am a third-party app developer | [developer-quickstart.md](developer-quickstart.md) | [../third-party-developer-beta-program.md](../third-party-developer-beta-program.md) and [../developer-beta-toolkit.md](../developer-beta-toolkit.md) |
 | I am submitting an app for review | [app-submission-walkthrough.md](app-submission-walkthrough.md) | [../app-store-submission-and-review-workflow.md](../app-store-submission-and-review-workflow.md) |
 | I am a former plugin author | [legacy-plugin-authors.md](legacy-plugin-authors.md) | [../legacy-plugin-migration-cookbook.md](../legacy-plugin-migration-cookbook.md) and [../legacy-plugin-freeze-policy.md](../legacy-plugin-freeze-policy.md) |
-| I am a reviewer/release manager | [app-submission-walkthrough.md](app-submission-walkthrough.md#reviewer-and-release-manager-path) | [../production-beta-go-no-go-dashboard.md](../production-beta-go-no-go-dashboard.md) and [../release-certification.md](../release-certification.md) |
+| I am a reviewer/release manager | [app-submission-walkthrough.md](app-submission-walkthrough.md#reviewer-and-release-manager-path) | [../production-beta-go-no-go-dashboard.md](../production-beta-go-no-go-dashboard.md), [../release-certification.md](../release-certification.md), and [../stable-1.0-readiness-gate.md](../stable-1.0-readiness-gate.md) |
 
 ## User/operator path
 
@@ -54,6 +54,12 @@ flow is in [app-submission-walkthrough.md](app-submission-walkthrough.md).
 
 The public beta does not promise stable 1.0 product status. It also does not restore old plugin
 compatibility or legacy social/mail protocols.
+
+Stable 1.0 readiness is tracked separately by release tooling. See
+[../stable-1.0-readiness-gate.md](../stable-1.0-readiness-gate.md) for the evidence bar and
+[../stable-1.0-known-limitations.md](../stable-1.0-known-limitations.md) for the current allowed
+and blocking limitation classes. These pages describe readiness criteria; they do not announce
+that Stable 1.0 has launched.
 
 - Trust Graph Local RC is local advisory trust only. It is not global WebOfTrust, routing policy,
   global moderation, a crawler, or legacy WoT compatibility.
