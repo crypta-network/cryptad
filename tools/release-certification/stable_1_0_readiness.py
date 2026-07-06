@@ -127,6 +127,14 @@ NETWORK_SCALE_EVIDENCE_IDS = (
     "network-scale.redaction",
 )
 
+NETWORK_SCALE_REDACTION_PROOF_FIELDS = (
+    "rawFetchedContentExcluded",
+    "privateInsertUrisExcluded",
+    "tokensExcluded",
+    "absolutePathsExcluded",
+    "queueHtmlExcluded",
+)
+
 MULTI_NODE_SCENARIO_EVIDENCE_IDS = (
     "multi-node-beta.soak",
     "multi-node-beta.upgrade-drill",
@@ -337,6 +345,12 @@ def positive_int(value: Any) -> int | None:
     except (TypeError, ValueError):
         return None
     return parsed if parsed > 0 else None
+
+
+def missing_true_fields(value: Any, fields: Iterable[str]) -> list[str]:
+    if not isinstance(value, dict):
+        return list(fields)
+    return [field for field in fields if value.get(field) is not True]
 
 
 def non_empty_string(value: Any) -> str:
@@ -1325,13 +1339,17 @@ def evaluate_platform_api(evidence: dict[str, dict[str, Any]], policy: dict[str,
                 "platform-api.stable-baseline",
             )
         )
-    if entry_ok(baseline_entry) and int(baseline.get("capabilityCount", 0) or 0) <= 0:
+    capability_count = positive_int(baseline.get("capabilityCount"))
+    if entry_ok(baseline_entry) and capability_count is None:
         blockers.append(
             blocker_issue(
                 domain_id,
                 "stable-1.0.platform-api-compatibility",
                 "Platform API stable baseline has no capabilities",
-                "Stable 1.0 requires a non-empty Platform API 1.0 baseline.",
+                (
+                    "Stable 1.0 requires a non-empty Platform API 1.0 baseline; "
+                    f"capabilityCount is {baseline.get('capabilityCount', 'missing')}."
+                ),
                 "platform-api.stable-baseline",
             )
         )
@@ -1942,9 +1960,11 @@ def evaluate_live_multi_node_soak(
             if isinstance(redaction, dict)
             else "missing"
         )
+        missing_redaction_proof_fields = missing_true_fields(redaction, NETWORK_SCALE_REDACTION_PROOF_FIELDS)
         if (
             redaction_status != "pass"
-            or redaction.get("findings")
+            or (isinstance(redaction, dict) and redaction.get("findings"))
+            or missing_redaction_proof_fields
             or recursive_redaction_failure(network)
         ):
             blockers.append(
@@ -1952,7 +1972,11 @@ def evaluate_live_multi_node_soak(
                     domain_id,
                     "stable-1.0.redaction",
                     "Network-scale soak redaction did not pass",
-                    "Stable 1.0 network-scale artifacts must be metadata-only.",
+                    (
+                        "Stable 1.0 network-scale artifacts must be metadata-only with complete "
+                        f"redaction proof fields; missing or false fields: "
+                        f"{', '.join(missing_redaction_proof_fields) or 'none'}."
+                    ),
                     "network-scale-soak-summary",
                 )
             )
@@ -2904,6 +2928,7 @@ def run_self_test() -> None:
         "release-certification-evidence-nested-redaction-findings",
         "ecosystem-matrix-failed",
         "missing-platform-baseline",
+        "malformed-platform-baseline-count",
         "missing-compatibility-window-details",
         "stable-api-breaking-change",
         "missing-first-party",
@@ -2922,6 +2947,7 @@ def run_self_test() -> None:
         "missing-previous-upgrade",
         "app-data-migration-scenario-failed",
         "network-redaction-missing",
+        "network-redaction-truncated-proof",
         "network-redaction-status-missing",
         "network-redaction-findings",
         "network-redaction-status-fail",
@@ -3225,6 +3251,24 @@ def run_self_test() -> None:
 
         run_case(root, "missing-platform-baseline", missing_baseline, "not-ready", expect_blocker="platform-api.stable-baseline")
 
+        def malformed_platform_baseline_count(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            def mutate(entry: dict[str, Any]) -> None:
+                entry.setdefault("details", {}).setdefault("stableBaseline", {})["capabilityCount"] = "many"
+
+            mutate_evidence(inputs, "platform-api.stable-baseline", mutate)
+
+        run_case(
+            root,
+            "malformed-platform-baseline-count",
+            malformed_platform_baseline_count,
+            "not-ready",
+            expect_blocker="stable-1.0.platform-api-compatibility",
+        )
+
         def missing_compatibility_window_details(
             inputs: dict[str, Any],
             _limitations: dict[str, Any],
@@ -3434,6 +3478,21 @@ def run_self_test() -> None:
             root,
             "network-redaction-missing",
             network_redaction_missing,
+            "not-ready",
+            expect_blocker="stable-1.0.redaction",
+        )
+
+        def network_redaction_truncated_proof(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs["networkScaleSoakSummary"]["redaction"] = {"status": "pass"}
+
+        run_case(
+            root,
+            "network-redaction-truncated-proof",
+            network_redaction_truncated_proof,
             "not-ready",
             expect_blocker="stable-1.0.redaction",
         )

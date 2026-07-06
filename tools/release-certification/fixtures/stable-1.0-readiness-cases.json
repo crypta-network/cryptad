@@ -109,6 +109,11 @@
       "category": "negative"
     },
     {
+      "id": "malformed-platform-baseline-count",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
       "id": "missing-compatibility-window-details",
       "expectedDecision": "not-ready",
       "category": "negative"
@@ -195,6 +200,11 @@
     },
     {
       "id": "network-redaction-missing",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "network-redaction-truncated-proof",
       "expectedDecision": "not-ready",
       "category": "negative"
     },
