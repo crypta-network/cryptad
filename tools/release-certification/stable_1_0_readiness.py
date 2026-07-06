@@ -1778,7 +1778,11 @@ def evaluate_live_multi_node_soak(
             if isinstance(redaction, dict)
             else "missing"
         )
-        if redaction_status != "pass" or recursive_redaction_failure(redaction):
+        if (
+            redaction_status != "pass"
+            or redaction.get("findings")
+            or recursive_redaction_failure(redaction)
+        ):
             blockers.append(
                 blocker_issue(
                     domain_id,
@@ -2720,6 +2724,7 @@ def run_self_test() -> None:
         "app-data-migration-scenario-failed",
         "network-redaction-missing",
         "network-redaction-status-missing",
+        "network-redaction-findings",
         "network-redaction-status-fail",
         "stale-soak-evidence",
         "insufficient-network",
@@ -3012,6 +3017,30 @@ def run_self_test() -> None:
             root,
             "network-redaction-status-missing",
             network_redaction_status_missing,
+            "not-ready",
+            expect_blocker="stable-1.0.redaction",
+        )
+
+        def network_redaction_findings(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs["networkScaleSoakSummary"]["redaction"] = {
+                "status": "pass",
+                "findings": [
+                    {
+                        "kind": "redaction-fixture",
+                        "location": "network-scale-soak-summary",
+                        "summary": "Synthetic network redaction finding for Stable readiness validation.",
+                    }
+                ],
+            }
+
+        run_case(
+            root,
+            "network-redaction-findings",
+            network_redaction_findings,
             "not-ready",
             expect_blocker="stable-1.0.redaction",
         )
