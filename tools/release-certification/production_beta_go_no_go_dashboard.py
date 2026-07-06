@@ -3430,6 +3430,33 @@ def stable_readiness_issues(
                 category="stable-readiness",
             )
         )
+    blocker_count, malformed_blocker_count = parse_release_blocker_count(summary.get("blockerCount", 0))
+    disallowed_count, malformed_disallowed_count = parse_release_blocker_count(
+        summary.get("disallowedLimitationCount", 0)
+    )
+    if malformed_blocker_count or malformed_disallowed_count or blocker_count > 0 or disallowed_count > 0:
+        details: list[str] = []
+        if malformed_blocker_count:
+            details.append("blockerCount is not a non-negative integer")
+        elif blocker_count > 0:
+            details.append(f"blockerCount is {blocker_count}")
+        if malformed_disallowed_count:
+            details.append("disallowedLimitationCount is not a non-negative integer")
+        elif disallowed_count > 0:
+            details.append(f"disallowedLimitationCount is {disallowed_count}")
+        issues.append(
+            Issue(
+                id="stable-1.0.readiness-summary.remaining-blockers",
+                evidence_id="stable-1.0.readiness-gate",
+                domain_id=domain_id,
+                severity="blocker" if required else "warning",
+                title="Stable 1.0 readiness summary reports remaining blockers",
+                summary="Stable readiness summary is inconsistent: " + "; ".join(details) + ".",
+                source="stable-readiness-summary",
+                waivable=not required,
+                category="stable-readiness",
+            )
+        )
     status = normalize_status(summary.get("status", "missing"))
     decision = str(summary.get("decision", "not-ready"))
     stable_ready = summary.get("stableReady") is True
@@ -4984,6 +5011,40 @@ def assert_required_stable_readiness_release_id_matches_dashboard_candidate(root
         raise AssertionError(
             "Stable evidence-row redaction findings were not reported as a critical blocker: "
             f"{redaction_dashboard}"
+        )
+
+    remaining_blockers_inputs = json.loads(json.dumps(inputs))
+    remaining_blockers_inputs["stableReadinessSummary"]["blockerCount"] = 1
+    remaining_blockers_inputs["stableReadinessSummary"]["disallowedLimitationCount"] = 1
+    remaining_blockers_dashboard = build_dashboard(
+        remaining_blockers_inputs,
+        {},
+        [FIXTURE_DIR / "go-no-go-pass.json"],
+        None,
+        Path(__file__).resolve().parents[2],
+        root / "stable-readiness-remaining-blockers",
+        "production-beta",
+        release_id,
+        generated_at,
+        now,
+        require_stable_readiness=True,
+    )
+    if remaining_blockers_dashboard.get("decision") != "no-go":
+        raise AssertionError(
+            "required Stable readiness with remaining blockers did not block: "
+            f"{remaining_blockers_dashboard}"
+        )
+    remaining_blocker_issues = [
+        blocker
+        for blocker in remaining_blockers_dashboard.get("blockers", [])
+        if isinstance(blocker, dict)
+        and blocker.get("id") == "stable-1.0.readiness-summary.remaining-blockers"
+        and blocker.get("evidenceId") == "stable-1.0.readiness-gate"
+    ]
+    if not remaining_blocker_issues:
+        raise AssertionError(
+            "Stable readiness remaining blockers were not reported as a required blocker: "
+            f"{remaining_blockers_dashboard}"
         )
 
 
