@@ -99,6 +99,11 @@
       "category": "negative"
     },
     {
+      "id": "network-redaction-status-fail",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
       "id": "stale-soak-evidence",
       "expectedDecision": "not-ready",
       "category": "negative"

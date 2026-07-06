@@ -1561,7 +1561,12 @@ def evaluate_live_multi_node_soak(
                 )
             )
         redaction = network.get("redaction") if isinstance(network.get("redaction"), dict) else {}
-        if recursive_redaction_failure(redaction):
+        redaction_status = (
+            normalize_status(redaction.get("status", "pass"))
+            if "status" in redaction
+            else "pass"
+        )
+        if redaction_status != "pass" or recursive_redaction_failure(redaction):
             blockers.append(
                 blocker_issue(
                     domain_id,
@@ -2470,6 +2475,7 @@ def run_self_test() -> None:
         "stale-security-summary-age",
         "missing-previous-upgrade",
         "app-data-migration-scenario-failed",
+        "network-redaction-status-fail",
         "stale-soak-evidence",
         "insufficient-network",
         "critical-known-issue",
@@ -2640,6 +2646,21 @@ def run_self_test() -> None:
             app_data_migration_scenario_failed,
             "not-ready",
             expect_blocker="multi-node-beta.app-data-migration",
+        )
+
+        def network_redaction_status_fail(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs["networkScaleSoakSummary"]["redaction"] = {"status": "fail"}
+
+        run_case(
+            root,
+            "network-redaction-status-fail",
+            network_redaction_status_fail,
+            "not-ready",
+            expect_blocker="stable-1.0.redaction",
         )
 
         def stale_soak_evidence(inputs: dict[str, Any], _limitations: dict[str, Any], _paths: dict[str, Path]) -> None:

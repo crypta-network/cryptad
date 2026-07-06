@@ -132,8 +132,8 @@ python3 tools/release-certification/stable_1_0_readiness.py \
   --release-certification-summary build/production-beta-release/evidence/ecosystem-rc-certification.json \
   --ecosystem-matrix build/production-beta-release/evidence/ecosystem-certification-matrix.json \
   --app-platform-summary build/production-beta-release/evidence/app-platform-smoke.json \
-  --multi-node-beta-soak-summary build/production-beta-release/evidence/multi-node-beta-soak.json \
-  --network-scale-soak-summary build/production-beta-release/evidence/network-scale-soak.json \
+  --multi-node-beta-soak-summary build/production-beta-release/evidence/stable-readiness-multi-node-beta-soak.json \
+  --network-scale-soak-summary build/production-beta-release/evidence/stable-readiness-network-scale-soak.json \
   --security-drills-summary build/production-beta-release/security-drills/security-drills-summary.json \
   --public-beta-known-issues tools/release-certification/public-beta-known-issues.json
 ```
