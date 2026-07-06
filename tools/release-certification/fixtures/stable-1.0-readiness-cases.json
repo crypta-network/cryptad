@@ -89,6 +89,11 @@
       "category": "negative"
     },
     {
+      "id": "release-certification-evidence-redaction-findings",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
       "id": "ecosystem-matrix-failed",
       "expectedDecision": "not-ready",
       "category": "negative"

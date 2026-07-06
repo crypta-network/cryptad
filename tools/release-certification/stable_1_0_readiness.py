@@ -567,8 +567,14 @@ def evidence_details(entry: dict[str, Any] | None) -> dict[str, Any]:
     return details if isinstance(details, dict) else {}
 
 
+def entry_has_redaction_findings(entry: dict[str, Any] | None) -> bool:
+    details = evidence_details(entry)
+    findings = details.get("redactionFindings")
+    return isinstance(findings, list) and bool(findings)
+
+
 def entry_ok(entry: dict[str, Any] | None) -> bool:
-    return isinstance(entry, dict) and status_ok(entry.get("status"))
+    return isinstance(entry, dict) and status_ok(entry.get("status")) and not entry_has_redaction_findings(entry)
 
 
 def release_certification_redaction_passed(redaction: dict[str, Any] | None) -> tuple[bool, dict[str, Any]]:
@@ -673,6 +679,8 @@ def add_required_evidence_blockers(
             continue
         if entry is None:
             summary = f"Required evidence {evidence_id} is missing."
+        elif entry_has_redaction_findings(entry):
+            summary = f"Required evidence {evidence_id} has redaction findings."
         else:
             summary = f"Required evidence {evidence_id} status is {normalize_status(entry.get('status'))}."
         blockers.append(
@@ -2877,6 +2885,7 @@ def run_self_test() -> None:
         "release-certification-missing-redaction",
         "release-certification-redaction-field-failed",
         "release-certification-evidence-failed",
+        "release-certification-evidence-redaction-findings",
         "ecosystem-matrix-failed",
         "missing-platform-baseline",
         "missing-compatibility-window-details",
@@ -3123,6 +3132,29 @@ def run_self_test() -> None:
             release_certification_evidence_failed,
             "not-ready",
             expect_blocker="platform-api.stable-breaking-change-check",
+        )
+
+        def release_certification_evidence_redaction_findings(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            def mutate(entry: dict[str, Any]) -> None:
+                entry.setdefault("details", {})["redactionFindings"] = [
+                    {
+                        "kind": "stable-readiness-fixture",
+                        "summary": "Synthetic required-evidence redaction finding.",
+                    }
+                ]
+
+            mutate_evidence(inputs, "app-platform.signed-bundles", mutate)
+
+        run_case(
+            root,
+            "release-certification-evidence-redaction-findings",
+            release_certification_evidence_redaction_findings,
+            "not-ready",
+            expect_blocker="app-platform.signed-bundles",
         )
 
         def ecosystem_matrix_failed(inputs: dict[str, Any], _limitations: dict[str, Any], _paths: dict[str, Path]) -> None:
