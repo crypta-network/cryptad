@@ -89,6 +89,11 @@
       "category": "negative"
     },
     {
+      "id": "ecosystem-matrix-failed",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
       "id": "missing-platform-baseline",
       "expectedDecision": "not-ready",
       "category": "negative"

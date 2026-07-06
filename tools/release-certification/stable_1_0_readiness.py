@@ -1138,6 +1138,72 @@ def evaluate_release_certification_summary(release_certification: dict[str, Any]
     )
 
 
+def evaluate_ecosystem_matrix(matrix: dict[str, Any] | None) -> dict[str, Any]:
+    domain_id = "ecosystem-certification-matrix"
+    evidence_id = "release-certification.ecosystem-matrix"
+    blockers: list[dict[str, Any]] = []
+    if not isinstance(matrix, dict):
+        blockers.append(
+            blocker_issue(
+                domain_id,
+                evidence_id,
+                "Ecosystem certification matrix is missing",
+                "Stable 1.0 readiness requires the ecosystem certification matrix.",
+                "ecosystem-certification-matrix",
+            )
+        )
+        return domain_result(domain_id, "Ecosystem certification matrix", (evidence_id,), blockers, [])
+    status = normalize_status(matrix.get("status"))
+    release_blocker_count, malformed_release_blocker_count = dashboard.parse_release_blocker_count(
+        matrix.get("releaseBlockerCount", 0)
+    )
+    if status != "pass" or malformed_release_blocker_count or release_blocker_count > 0:
+        details: list[str] = []
+        if status != "pass":
+            details.append(f"status is {status}")
+        if malformed_release_blocker_count:
+            details.append("releaseBlockerCount is not a non-negative integer")
+        elif release_blocker_count > 0:
+            details.append(f"releaseBlockerCount is {release_blocker_count}")
+        blockers.append(
+            blocker_issue(
+                domain_id,
+                evidence_id,
+                "Ecosystem certification matrix is not Stable-ready",
+                "Ecosystem certification matrix "
+                + ("; ".join(details) if details else "contains release blockers")
+                + ".",
+                "ecosystem-certification-matrix",
+            )
+        )
+    coverage = matrix.get("coverage") if isinstance(matrix.get("coverage"), dict) else {}
+    if coverage.get("redactionPassed") is False:
+        blockers.append(
+            blocker_issue(
+                domain_id,
+                "stable-1.0.redaction",
+                "Ecosystem matrix redaction coverage failed",
+                "Stable 1.0 readiness cannot depend on a matrix whose coverage reports redactionPassed=false.",
+                "ecosystem-certification-matrix",
+            )
+        )
+    rows = matrix.get("rows") if isinstance(matrix.get("rows"), list) else []
+    for row in rows:
+        if not isinstance(row, dict) or row.get("releaseBlocker") is not True:
+            continue
+        row_id = str(row.get("id", "matrix-row"))
+        blockers.append(
+            blocker_issue(
+                domain_id,
+                row_id,
+                "Ecosystem matrix row is release-blocking",
+                f"Ecosystem matrix row {row_id} is marked releaseBlocker=true.",
+                "ecosystem-certification-matrix",
+            )
+        )
+    return domain_result(domain_id, "Ecosystem certification matrix", (evidence_id,), blockers, [])
+
+
 def evaluate_policy(
     policy: dict[str, Any] | None,
     policy_path: Path,
@@ -2522,6 +2588,7 @@ def run(settings: Settings) -> tuple[dict[str, Any], int]:
             policy,
         ),
         evaluate_release_certification_summary(inputs.get("releaseCertificationSummary")),
+        evaluate_ecosystem_matrix(inputs.get("ecosystemMatrix")),
         evaluate_platform_api(evidence, policy),
         evaluate_app_ecosystem(evidence),
         evaluate_third_party(evidence),
@@ -2810,6 +2877,7 @@ def run_self_test() -> None:
         "release-certification-missing-redaction",
         "release-certification-redaction-field-failed",
         "release-certification-evidence-failed",
+        "ecosystem-matrix-failed",
         "missing-platform-baseline",
         "missing-compatibility-window-details",
         "stable-api-breaking-change",
@@ -3055,6 +3123,26 @@ def run_self_test() -> None:
             release_certification_evidence_failed,
             "not-ready",
             expect_blocker="platform-api.stable-breaking-change-check",
+        )
+
+        def ecosystem_matrix_failed(inputs: dict[str, Any], _limitations: dict[str, Any], _paths: dict[str, Path]) -> None:
+            inputs["ecosystemMatrix"]["status"] = "fail"
+            inputs["ecosystemMatrix"]["releaseBlockerCount"] = 1
+            inputs["ecosystemMatrix"].setdefault("rows", []).append(
+                {
+                    "id": "stable-self-test-release-blocker",
+                    "status": "fail",
+                    "releaseBlocker": True,
+                    "title": "Stable self-test release blocker",
+                }
+            )
+
+        run_case(
+            root,
+            "ecosystem-matrix-failed",
+            ecosystem_matrix_failed,
+            "not-ready",
+            expect_blocker="release-certification.ecosystem-matrix",
         )
 
         def missing_baseline(inputs: dict[str, Any], _limitations: dict[str, Any], _paths: dict[str, Path]) -> None:
