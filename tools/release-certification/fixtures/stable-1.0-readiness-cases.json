@@ -54,6 +54,11 @@
       "category": "negative"
     },
     {
+      "id": "go-no-go-redaction-findings",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
       "id": "release-certification-failed",
       "expectedDecision": "not-ready",
       "category": "negative"
@@ -105,6 +110,11 @@
     },
     {
       "id": "security-release-id-mismatch",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "missing-security-required-scenarios",
       "expectedDecision": "not-ready",
       "category": "negative"
     },
@@ -165,6 +175,11 @@
     },
     {
       "id": "critical-known-issue",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "critical-known-issue-future-fixed",
       "expectedDecision": "not-ready",
       "category": "negative"
     },

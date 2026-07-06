@@ -1034,7 +1034,7 @@ def evaluate_production_beta_state(
                 )
             )
         redaction = go_no_go.get("redaction") if isinstance(go_no_go.get("redaction"), dict) else {}
-        if normalize_status(redaction.get("status", "missing")) != "pass":
+        if normalize_status(redaction.get("status", "missing")) != "pass" or redaction.get("findings"):
             blockers.append(
                 blocker_issue(
                     domain_id,
@@ -1171,6 +1171,19 @@ def evaluate_policy(
                     "stable-1.0.security-drills",
                     "Stable security drill evidence age policy is missing",
                     "securityDrillCriteria.maximumEvidenceAgeDays must be a positive integer.",
+                    source,
+                )
+            )
+        required_scenarios = security.get("requiredScenarios")
+        if not isinstance(required_scenarios, list) or not any(
+            isinstance(item, str) and item.strip() for item in required_scenarios
+        ):
+            blockers.append(
+                blocker_issue(
+                    domain_id,
+                    "stable-1.0.security-drills",
+                    "Stable security drill scenario policy is missing",
+                    "securityDrillCriteria.requiredScenarios must be a non-empty array of scenario identifiers.",
                     source,
                 )
             )
@@ -1390,8 +1403,22 @@ def evaluate_security(
         if isinstance(policy.get("securityDrillCriteria"), dict)
         else {}
     )
-    required = set(security_criteria.get("requiredScenarios", []))
+    required = {
+        str(item).strip()
+        for item in security_criteria.get("requiredScenarios", [])
+        if isinstance(item, str) and item.strip()
+    }
     max_age_days = positive_int(security_criteria.get("maximumEvidenceAgeDays"))
+    if not required:
+        blockers.append(
+            blocker_issue(
+                domain_id,
+                "stable-1.0.security-drills",
+                "Security drill scenario policy is missing",
+                "securityDrillCriteria.requiredScenarios must name every required Stable 1.0 drill scenario.",
+                "stable-readiness-policy",
+            )
+        )
     if max_age_days is None:
         blockers.append(
             blocker_issue(
@@ -1855,6 +1882,7 @@ def evaluate_support_feedback(
     evidence: dict[str, dict[str, Any]],
     known_issues: dict[str, Any] | None,
     workspace_root: Path,
+    candidate_release_id: str,
 ) -> dict[str, Any]:
     domain_id = "support-feedback-readiness"
     blockers = add_required_evidence_blockers(
@@ -1897,8 +1925,9 @@ def evaluate_support_feedback(
                 continue
             severity = str(known_issue.get("severity", "")).lower()
             status = str(known_issue.get("status", "")).lower()
-            fixed = str(known_issue.get("fixedInReleaseId", "")).lower()
-            open_issue = status not in {"fixed", "resolved", "closed"} and fixed in {"", "unfixed", "none"}
+            fixed = str(known_issue.get("fixedInReleaseId", "")).strip().lower()
+            candidate_fixed = bool(candidate_release_id and fixed == candidate_release_id.lower())
+            open_issue = status not in {"fixed", "resolved", "closed"} and not candidate_fixed
             if open_issue and ("critical" in severity or "blocker" in severity):
                 blockers.append(
                     blocker_issue(
@@ -2449,6 +2478,7 @@ def run(settings: Settings) -> tuple[dict[str, Any], int]:
             evidence,
             inputs.get("publicBetaKnownIssues"),
             settings.workspace_root,
+            candidate_release_id,
         ),
         known_limitations_domain,
         domain_result("redaction", "Redaction safety", ("stable-1.0.redaction",), [], []),
@@ -2706,6 +2736,7 @@ def run_self_test() -> None:
         "go-no-go-no-go",
         "go-no-go-wrong-release-id",
         "go-no-go-non-production-mode",
+        "go-no-go-redaction-findings",
         "release-certification-failed",
         "release-certification-not-passed",
         "release-certification-non-rc-mode",
@@ -2717,6 +2748,7 @@ def run_self_test() -> None:
         "missing-third-party",
         "stale-security",
         "security-release-id-mismatch",
+        "missing-security-required-scenarios",
         "multi-node-release-id-mismatch",
         "stale-security-summary-age",
         "stale-security-artifact-age",
@@ -2729,6 +2761,7 @@ def run_self_test() -> None:
         "stale-soak-evidence",
         "insufficient-network",
         "critical-known-issue",
+        "critical-known-issue-future-fixed",
         "beta-only-limitation",
         "allowed-disallowed-category",
         "unknown-limitation-classification",
@@ -2849,6 +2882,32 @@ def run_self_test() -> None:
             expect_blocker="stable-1.0.go-no-go-decision",
         )
 
+        def go_no_go_redaction_findings(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs["goNoGoSummary"]["redaction"] = {
+                "schemaVersion": 1,
+                "status": "pass",
+                "findingCount": 1,
+                "findings": [
+                    {
+                        "kind": "redaction-fixture",
+                        "location": "go-no-go-summary",
+                        "summary": "Synthetic dashboard redaction finding for Stable readiness validation.",
+                    }
+                ],
+            }
+
+        run_case(
+            root,
+            "go-no-go-redaction-findings",
+            go_no_go_redaction_findings,
+            "not-ready",
+            expect_blocker="stable-1.0.redaction",
+        )
+
         def release_certification_failed(inputs: dict[str, Any], _limitations: dict[str, Any], _paths: dict[str, Path]) -> None:
             inputs["releaseCertificationSummary"]["status"] = "fail"
 
@@ -2943,6 +3002,26 @@ def run_self_test() -> None:
             root,
             "security-release-id-mismatch",
             security_release_id_mismatch,
+            "not-ready",
+            expect_blocker="stable-1.0.security-drills",
+        )
+
+        def missing_security_required_scenarios(
+            _inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            paths: dict[str, Path],
+        ) -> None:
+            policy = copy.deepcopy(read_json(DEFAULT_POLICY) or {})
+            if isinstance(policy.get("securityDrillCriteria"), dict):
+                policy["securityDrillCriteria"].pop("requiredScenarios", None)
+            policy_path = paths["stableKnownLimitations"].parent / "missing-security-required-scenarios-policy.json"
+            write_json(policy_path, policy)
+            paths["policy"] = policy_path
+
+        run_case(
+            root,
+            "missing-security-required-scenarios",
+            missing_security_required_scenarios,
             "not-ready",
             expect_blocker="stable-1.0.security-drills",
         )
@@ -3083,6 +3162,24 @@ def run_self_test() -> None:
             )
 
         run_case(root, "critical-known-issue", critical_known_issue, "not-ready", expect_blocker="stable-1.0.critical-known-issue")
+
+        def critical_known_issue_future_fixed(inputs: dict[str, Any], _limitations: dict[str, Any], _paths: dict[str, Path]) -> None:
+            inputs["publicBetaKnownIssues"]["knownIssues"].append(
+                {
+                    "knownIssueId": "PBKI-CRITICAL-002",
+                    "status": "open",
+                    "severity": "severity/critical",
+                    "fixedInReleaseId": "cryptad-beta-999",
+                }
+            )
+
+        run_case(
+            root,
+            "critical-known-issue-future-fixed",
+            critical_known_issue_future_fixed,
+            "not-ready",
+            expect_blocker="stable-1.0.critical-known-issue",
+        )
 
         def beta_only_limitation(_inputs: dict[str, Any], limitations: dict[str, Any], _paths: dict[str, Path]) -> None:
             limitations["limitations"].append(
