@@ -701,6 +701,35 @@ def evidence_map_from_summaries(*summaries: dict[str, Any] | None) -> dict[str, 
     return result
 
 
+def app_platform_summary_envelope_blockers(
+    summary: dict[str, Any] | None,
+    domain_id: str,
+) -> list[dict[str, Any]]:
+    if not isinstance(summary, dict):
+        return []
+    validation_errors = schema_tool_errors(
+        summary,
+        expected_tool="app-platform-smoke",
+        evidence_label="appPlatformSummary",
+    )
+    status = normalize_status(summary.get("status", "missing"))
+    if status != "pass":
+        validation_errors.append(f"appPlatformSummary.status must be pass; got {status}")
+    if validation_errors:
+        return [
+            blocker_issue(
+                domain_id,
+                "stable-1.0.app-ecosystem-maturity",
+                "App-platform smoke summary envelope is not passing",
+                "Stable 1.0 requires the attached app-platform smoke summary envelope to pass: "
+                + "; ".join(validation_errors)
+                + ".",
+                "app-platform-summary",
+            )
+        ]
+    return []
+
+
 def attached_evidence_redaction_blockers(
     *named_summaries: tuple[str, dict[str, Any] | None],
 ) -> list[dict[str, Any]]:
@@ -2472,14 +2501,20 @@ def evaluate_platform_api(evidence: dict[str, dict[str, Any]], policy: dict[str,
     )
 
 
-def evaluate_app_ecosystem(evidence: dict[str, dict[str, Any]]) -> dict[str, Any]:
+def evaluate_app_ecosystem(
+    evidence: dict[str, dict[str, Any]],
+    app_platform_summary: dict[str, Any] | None,
+) -> dict[str, Any]:
     domain_id = "app-ecosystem-maturity"
-    blockers = add_required_evidence_blockers(
-        evidence,
-        domain_id,
-        APP_ECOSYSTEM_EVIDENCE_IDS,
-        "release-certification",
-    )
+    blockers = [
+        *app_platform_summary_envelope_blockers(app_platform_summary, domain_id),
+        *add_required_evidence_blockers(
+            evidence,
+            domain_id,
+            APP_ECOSYSTEM_EVIDENCE_IDS,
+            "release-certification",
+        ),
+    ]
     for evidence_id in (
         "app-platform.first-party",
         "app-catalog.first-party-maintenance-policy",
@@ -3836,7 +3871,7 @@ def run(settings: Settings) -> tuple[dict[str, Any], int]:
         evaluate_release_certification_summary(inputs.get("releaseCertificationSummary")),
         evaluate_ecosystem_matrix(inputs.get("ecosystemMatrix")),
         evaluate_platform_api(evidence, policy),
-        evaluate_app_ecosystem(evidence),
+        evaluate_app_ecosystem(evidence, inputs.get("appPlatformSummary")),
         evaluate_third_party(evidence),
         evaluate_security(
             evidence,
@@ -4179,6 +4214,8 @@ def run_self_test() -> None:
         "release-certification-evidence-redaction-findings",
         "release-certification-evidence-malformed-redaction-findings",
         "release-certification-evidence-nested-redaction-findings",
+        "app-platform-summary-failed",
+        "app-platform-summary-malformed-envelope",
         "ecosystem-matrix-failed",
         "ecosystem-matrix-failed-row",
         "ecosystem-matrix-missing-rows",
@@ -4769,6 +4806,37 @@ def run_self_test() -> None:
             app_platform_duplicate_evidence_failed,
             "not-ready",
             expect_blocker="platform-api.contract",
+        )
+
+        def app_platform_summary_failed(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs["appPlatformSummary"]["status"] = "fail"
+
+        run_case(
+            root,
+            "app-platform-summary-failed",
+            app_platform_summary_failed,
+            "not-ready",
+            expect_blocker="stable-1.0.app-ecosystem-maturity",
+        )
+
+        def app_platform_summary_malformed_envelope(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs["appPlatformSummary"]["schemaVersion"] = True
+            inputs["appPlatformSummary"]["tool"] = "not-app-platform-smoke"
+
+        run_case(
+            root,
+            "app-platform-summary-malformed-envelope",
+            app_platform_summary_malformed_envelope,
+            "not-ready",
+            expect_blocker="stable-1.0.app-ecosystem-maturity",
         )
 
         def attached_evidence_redaction_findings(

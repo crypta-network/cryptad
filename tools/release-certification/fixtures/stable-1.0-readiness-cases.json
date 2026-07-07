@@ -194,6 +194,16 @@
       "category": "negative"
     },
     {
+      "id": "app-platform-summary-failed",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "app-platform-summary-malformed-envelope",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
       "id": "ecosystem-matrix-failed",
       "expectedDecision": "not-ready",
       "category": "negative"
