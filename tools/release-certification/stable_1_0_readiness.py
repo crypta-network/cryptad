@@ -1078,13 +1078,7 @@ def recursive_redaction_failure(value: Any) -> bool:
                 return True
         status = value.get("status")
         if isinstance(status, str) and normalize_status(status) == "fail":
-            redaction_keys = {key.lower() for key in value}
-            if (
-                "findings" in redaction_keys
-                or "findingcount" in redaction_keys
-                or "rawsensitivematerialexcluded" in redaction_keys
-            ):
-                return True
+            return True
         for key, child in value.items():
             lowered = str(key).lower()
             if (
@@ -3998,6 +3992,7 @@ def run_self_test() -> None:
         "malformed-platform-baseline-count",
         "missing-compatibility-window-details",
         "stable-api-breaking-change",
+        "platform-api-status-only-redaction-failure",
         "missing-first-party",
         "diagnostics-nested-redaction-findings",
         "missing-third-party",
@@ -4793,6 +4788,24 @@ def run_self_test() -> None:
             mutate_evidence(inputs, "platform-api.stable-breaking-change-check", mutate)
 
         run_case(root, "stable-api-breaking-change", stable_breaking, "not-ready", expect_blocker="platform-api.stable-breaking-change-check")
+
+        def platform_api_status_only_redaction_failure(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            def mutate(entry: dict[str, Any]) -> None:
+                entry.setdefault("details", {})["redaction"] = {"status": "fail"}
+
+            mutate_evidence(inputs, "platform-api.contract", mutate)
+
+        run_case(
+            root,
+            "platform-api-status-only-redaction-failure",
+            platform_api_status_only_redaction_failure,
+            "not-ready",
+            expect_blocker="stable-1.0.redaction",
+        )
 
         def missing_first_party(inputs: dict[str, Any], _limitations: dict[str, Any], _paths: dict[str, Path]) -> None:
             mutate_evidence(inputs, "first-party-app.beta-quality-pass", remove=True)

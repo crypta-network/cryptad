@@ -239,6 +239,11 @@
       "category": "negative"
     },
     {
+      "id": "platform-api-status-only-redaction-failure",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
       "id": "missing-first-party",
       "expectedDecision": "not-ready",
       "category": "negative"

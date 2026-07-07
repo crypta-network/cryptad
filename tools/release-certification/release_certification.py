@@ -1059,9 +1059,7 @@ def redaction_signal_has_unwaivable_findings(value: Any) -> bool:
                 return True
         status = value.get("status")
         if normalize_evidence_status(str(status)) == "fail":
-            redaction_keys = {str(key).lower() for key in value}
-            if "findings" in redaction_keys or "findingcount" in redaction_keys:
-                return True
+            return True
         for key, child in value.items():
             lowered = str(key).lower()
             if lowered.endswith("excluded") and child is False:
@@ -15230,6 +15228,99 @@ def run_self_test(repo_root: Path) -> None:
         )
         assert "matrix.stable-readiness.redaction-failed" in stable_extra_redaction_row["issueIds"], (
             stable_extra_redaction_row
+        )
+
+        stable_extra_status_redaction_summary = (
+            workspace / "build/stable-readiness-extra-evidence-status-redaction.json"
+        )
+        write_json(
+            stable_extra_status_redaction_summary,
+            {
+                "schemaVersion": 1,
+                "kind": "stable-1.0-readiness",
+                "releaseId": "cryptad-production-beta-self-test",
+                "status": "pass",
+                "decision": "ready",
+                "stableReady": True,
+                "blockerCount": 0,
+                "warningCount": 0,
+                "allowedLimitationCount": 0,
+                "disallowedLimitationCount": 0,
+                "domains": [],
+                "blockers": [],
+                "warnings": [],
+                "allowedLimitations": [],
+                "disallowedLimitations": [],
+                "redaction": {"status": "pass", "findings": []},
+                "evidence": [
+                    *[
+                        {
+                            "id": evidence_id,
+                            "status": "pass",
+                            "summary": f"{evidence_id} passed.",
+                            "details": {"decision": "ready", "stableReady": True}
+                            if evidence_id == "stable-1.0.readiness-gate"
+                            else {},
+                        }
+                        for evidence_id in STABLE_1_0_READINESS_EVIDENCE_IDS
+                    ],
+                    {
+                        "id": "stable-1.0.extra-status-redaction-fixture",
+                        "status": "pass",
+                        "summary": "Synthetic extra Stable evidence row with failed redaction status.",
+                        "details": {"redaction": {"status": "fail"}},
+                    },
+                ],
+            },
+        )
+        stable_extra_status_redaction_items = stable_readiness_evidence(
+            stable_extra_status_redaction_summary,
+            True,
+            workspace,
+            out_dir,
+        )
+        stable_extra_status_redaction_statuses = {
+            item.id: item.status for item in stable_extra_status_redaction_items
+        }
+        assert stable_extra_status_redaction_statuses["stable-1.0.readiness-gate"] == "fail", (
+            stable_extra_status_redaction_statuses
+        )
+        assert stable_extra_status_redaction_statuses["stable-1.0.redaction"] == "fail", (
+            stable_extra_status_redaction_statuses
+        )
+        stable_extra_status_redaction_details = next(
+            item.details
+            for item in stable_extra_status_redaction_items
+            if item.id == "stable-1.0.redaction"
+        )
+        assert stable_extra_status_redaction_details["validationErrors"] == [
+            "evidence rows contain redaction findings: stable-1.0.extra-status-redaction-fixture"
+        ], stable_extra_status_redaction_details
+        stable_extra_status_redaction_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/stable-extra-evidence-status-redaction-cert").resolve(),
+            stable_readiness_summary=stable_extra_status_redaction_summary,
+            stable_readiness_required=True,
+        )
+        stable_extra_status_redaction_cert, stable_extra_status_redaction_exit_code = run(
+            stable_extra_status_redaction_settings
+        )
+        assert stable_extra_status_redaction_exit_code == 1, stable_extra_status_redaction_cert
+        stable_extra_status_redaction_row = matrix_row_by_id(
+            stable_extra_status_redaction_settings.out_dir,
+            "stable-1-0-readiness",
+        )
+        assert stable_extra_status_redaction_row["status"] == "fail", (
+            stable_extra_status_redaction_row
+        )
+        assert stable_extra_status_redaction_row["releaseBlocker"] is True, (
+            stable_extra_status_redaction_row
+        )
+        assert "evidence.stable-1.0.redaction" in stable_extra_status_redaction_row["issueIds"], (
+            stable_extra_status_redaction_row
+        )
+        assert "matrix.stable-readiness.redaction-failed" in stable_extra_status_redaction_row["issueIds"], (
+            stable_extra_status_redaction_row
         )
 
         stable_duplicate_evidence_summary = workspace / "build/stable-readiness-duplicate-evidence.json"
