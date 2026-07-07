@@ -2498,6 +2498,23 @@ def stable_readiness_record_errors(
     return record_count, errors
 
 
+def stable_readiness_allowed_record_errors(
+    summary: dict[str, Any],
+    parsed_count: int,
+    malformed_count: bool,
+) -> tuple[int, list[str]]:
+    value = summary.get("allowedLimitations")
+    if not isinstance(value, list):
+        return 0, ["allowedLimitations must be a list"]
+    record_count = len(value)
+    errors: list[str] = []
+    if not malformed_count and parsed_count != record_count:
+        errors.append(
+            f"allowedLimitationCount is {parsed_count} but allowedLimitations contains {record_count}"
+        )
+    return record_count, errors
+
+
 def stable_readiness_evidence_rows(summary: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
     rows = {evidence_id: [] for evidence_id in STABLE_1_0_READINESS_EVIDENCE_IDS}
     evidence = summary.get("evidence")
@@ -2607,6 +2624,9 @@ def stable_readiness_evidence(
     stable_ready = summary.get("stableReady") is True
     main_status = normalize_evidence_status(str(summary.get("status", "missing")))
     blocker_count, malformed_blocker_count = parse_stable_readiness_count(summary.get("blockerCount", 0))
+    allowed_count, malformed_allowed_count = parse_stable_readiness_count(
+        summary.get("allowedLimitationCount", 0)
+    )
     disallowed_count, malformed_disallowed_count = parse_stable_readiness_count(
         summary.get("disallowedLimitationCount", 0)
     )
@@ -2624,6 +2644,11 @@ def stable_readiness_evidence(
         disallowed_count,
         malformed_disallowed_count,
     )
+    allowed_record_count, allowed_record_errors = stable_readiness_allowed_record_errors(
+        summary,
+        allowed_count,
+        malformed_allowed_count,
+    )
     count_validation_errors: list[str] = []
     if malformed_blocker_count:
         count_validation_errors.append("blockerCount is not a non-negative integer")
@@ -2635,6 +2660,11 @@ def stable_readiness_evidence(
         count_validation_errors.append(f"disallowedLimitationCount is {disallowed_count}")
     count_validation_errors.extend(blocker_record_errors)
     count_validation_errors.extend(disallowed_record_errors)
+    allowed_validation_errors: list[str] = []
+    if malformed_allowed_count:
+        allowed_validation_errors.append("allowedLimitationCount is not a non-negative integer")
+    allowed_validation_errors.extend(allowed_record_errors)
+    allowed_remaining_count = max(allowed_count if not malformed_allowed_count else 0, allowed_record_count)
     evidence_rows = stable_readiness_evidence_rows(summary)
     duplicate_evidence_ids = [
         evidence_id
@@ -2663,10 +2693,14 @@ def stable_readiness_evidence(
         or redaction_validation_errors
         or decision_validation_errors
         or count_validation_errors
+        or allowed_validation_errors
         or evidence_validation_errors
     ):
         main_status = "fail"
-    elif decision == "ready-with-allowed-limitations" and main_status == "pass":
+    elif (
+        decision == "ready-with-allowed-limitations"
+        or allowed_remaining_count > 0
+    ) and main_status == "pass":
         main_status = "warn"
     elif not stable_ready or decision == "not-ready":
         main_status = "fail"
@@ -2686,14 +2720,19 @@ def stable_readiness_evidence(
         *summary_validation_errors,
         *decision_validation_errors,
         *count_validation_errors,
+        *allowed_validation_errors,
         *evidence_validation_errors,
     ]
     if summary_validation_errors:
         main_summary = "Stable 1.0 readiness summary schema is malformed."
     elif count_validation_errors:
         main_summary = "Stable 1.0 readiness summary reports remaining blockers or forbidden limitations."
+    elif allowed_validation_errors:
+        main_summary = "Stable 1.0 readiness summary allowed limitations are malformed."
     elif evidence_validation_errors:
         main_summary = "Stable 1.0 readiness summary evidence rows are malformed."
+    elif allowed_remaining_count > 0:
+        main_summary = "Stable 1.0 readiness has bounded allowed limitations."
     synthetic_entries: dict[str, dict[str, Any]] = {
         "stable-1.0.readiness-gate": {
             "id": "stable-1.0.readiness-gate",
@@ -2709,11 +2748,15 @@ def stable_readiness_evidence(
                 if not malformed_blocker_count
                 else summary.get("blockerCount", 0),
                 "warningCount": summary.get("warningCount", 0),
-                "allowedLimitationCount": summary.get("allowedLimitationCount", 0),
+                "allowedLimitationCount": allowed_count
+                if not malformed_allowed_count
+                else summary.get("allowedLimitationCount", 0),
                 "disallowedLimitationCount": disallowed_count
                 if not malformed_disallowed_count
                 else summary.get("disallowedLimitationCount", 0),
                 "blockerRecordCount": blocker_record_count,
+                "allowedLimitationRecordCount": allowed_record_count,
+                "allowedLimitationOpenCount": allowed_remaining_count,
                 "disallowedLimitationRecordCount": disallowed_record_count,
                 "validationErrors": main_validation_errors,
                 "summaryPath": source,
@@ -14626,6 +14669,147 @@ def run_self_test(repo_root: Path) -> None:
         assert "matrix.stable-readiness.evidence-not-passing" in stable_blocker_record_row["issueIds"], (
             stable_blocker_record_row
         )
+
+        stable_allowed_record_summary = workspace / "build/stable-readiness-allowed-records.json"
+        write_json(
+            stable_allowed_record_summary,
+            {
+                "schemaVersion": 1,
+                "kind": "stable-1.0-readiness",
+                "status": "pass",
+                "decision": "ready",
+                "stableReady": True,
+                "blockerCount": 0,
+                "warningCount": 0,
+                "allowedLimitationCount": 0,
+                "disallowedLimitationCount": 0,
+                "domains": [],
+                "blockers": [],
+                "warnings": [],
+                "allowedLimitations": [
+                    {
+                        "id": "stable-self-test-allowed",
+                        "classification": "allowed-for-stable-1.0",
+                    }
+                ],
+                "disallowedLimitations": [],
+                "redaction": {"status": "pass", "findings": []},
+                "evidence": [
+                    {
+                        "id": evidence_id,
+                        "status": "pass",
+                        "summary": f"{evidence_id} passed.",
+                        "details": {"decision": "ready", "stableReady": True}
+                        if evidence_id == "stable-1.0.readiness-gate"
+                        else {},
+                    }
+                    for evidence_id in STABLE_1_0_READINESS_EVIDENCE_IDS
+                ],
+            },
+        )
+        stable_allowed_record_items = stable_readiness_evidence(
+            stable_allowed_record_summary,
+            True,
+            workspace,
+            out_dir,
+        )
+        stable_allowed_record_gate = next(
+            item
+            for item in stable_allowed_record_items
+            if item.id == "stable-1.0.readiness-gate"
+        )
+        assert stable_allowed_record_gate.status == "fail", stable_allowed_record_gate
+        assert stable_allowed_record_gate.details["validationErrors"] == [
+            "allowedLimitationCount is 0 but allowedLimitations contains 1"
+        ], stable_allowed_record_gate.details
+        stable_allowed_record_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/stable-allowed-records-cert").resolve(),
+            stable_readiness_summary=stable_allowed_record_summary,
+            stable_readiness_required=True,
+        )
+        stable_allowed_record_cert, stable_allowed_record_exit_code = run(
+            stable_allowed_record_settings
+        )
+        assert stable_allowed_record_exit_code == 1, stable_allowed_record_cert
+        stable_allowed_record_row = matrix_row_by_id(
+            stable_allowed_record_settings.out_dir,
+            "stable-1-0-readiness",
+        )
+        assert stable_allowed_record_row["status"] == "fail", stable_allowed_record_row
+        assert stable_allowed_record_row["releaseBlocker"] is True, stable_allowed_record_row
+        assert "evidence.stable-1.0.readiness-gate" in stable_allowed_record_row["issueIds"], (
+            stable_allowed_record_row
+        )
+        assert "matrix.stable-readiness.evidence-not-passing" in stable_allowed_record_row["issueIds"], (
+            stable_allowed_record_row
+        )
+
+        stable_allowed_warning_summary = workspace / "build/stable-readiness-allowed-warning.json"
+        write_json(
+            stable_allowed_warning_summary,
+            {
+                "schemaVersion": 1,
+                "kind": "stable-1.0-readiness",
+                "status": "pass",
+                "decision": "ready",
+                "stableReady": True,
+                "blockerCount": 0,
+                "warningCount": 0,
+                "allowedLimitationCount": 1,
+                "disallowedLimitationCount": 0,
+                "domains": [],
+                "blockers": [],
+                "warnings": [],
+                "allowedLimitations": [
+                    {
+                        "id": "stable-self-test-allowed",
+                        "classification": "allowed-for-stable-1.0",
+                    }
+                ],
+                "disallowedLimitations": [],
+                "redaction": {"status": "pass", "findings": []},
+                "evidence": [
+                    {
+                        "id": evidence_id,
+                        "status": "pass",
+                        "summary": f"{evidence_id} passed.",
+                        "details": {"decision": "ready", "stableReady": True}
+                        if evidence_id == "stable-1.0.readiness-gate"
+                        else {},
+                    }
+                    for evidence_id in STABLE_1_0_READINESS_EVIDENCE_IDS
+                ],
+            },
+        )
+        stable_allowed_warning_items = stable_readiness_evidence(
+            stable_allowed_warning_summary,
+            True,
+            workspace,
+            out_dir,
+        )
+        stable_allowed_warning_gate = next(
+            item
+            for item in stable_allowed_warning_items
+            if item.id == "stable-1.0.readiness-gate"
+        )
+        assert stable_allowed_warning_gate.status == "warn", stable_allowed_warning_gate
+        stable_allowed_warning_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/stable-allowed-warning-cert").resolve(),
+            stable_readiness_summary=stable_allowed_warning_summary,
+            stable_readiness_required=True,
+        )
+        stable_allowed_warning_cert, stable_allowed_warning_exit_code = run(
+            stable_allowed_warning_settings
+        )
+        assert stable_allowed_warning_exit_code == 0, stable_allowed_warning_cert
+        stable_allowed_warning_row = matrix_row_by_id(
+            stable_allowed_warning_settings.out_dir,
+            "stable-1-0-readiness",
+        )
+        assert stable_allowed_warning_row["status"] == "warn", stable_allowed_warning_row
+        assert stable_allowed_warning_row["releaseBlocker"] is False, stable_allowed_warning_row
 
         stable_duplicate_evidence_summary = workspace / "build/stable-readiness-duplicate-evidence.json"
         stable_duplicate_evidence_rows = [

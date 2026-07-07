@@ -2118,6 +2118,30 @@ def evaluate_policy(
                     source,
                 )
             )
+        platform_api_policy_value = policy.get("platformApi10Criteria")
+        platform_api_policy = (
+            platform_api_policy_value if isinstance(platform_api_policy_value, dict) else {}
+        )
+        if not isinstance(platform_api_policy_value, dict):
+            blockers.append(
+                blocker_issue(
+                    domain_id,
+                    "stable-1.0.platform-api-compatibility",
+                    "Stable Platform API policy is invalid",
+                    "platformApi10Criteria must be present as an object.",
+                    source,
+                )
+            )
+        elif not non_empty_string(platform_api_policy.get("stableBaselineName")):
+            blockers.append(
+                blocker_issue(
+                    domain_id,
+                    "stable-1.0.platform-api-compatibility",
+                    "Stable Platform API baseline policy is invalid",
+                    "platformApi10Criteria.stableBaselineName must be a non-empty string.",
+                    source,
+                )
+            )
         required_soak = policy.get("requiredSoak") if isinstance(policy.get("requiredSoak"), dict) else {}
         security = (
             policy.get("securityDrillCriteria")
@@ -2227,7 +2251,12 @@ def evaluate_platform_api(evidence: dict[str, dict[str, Any]], policy: dict[str,
     baseline_entry = evidence.get("platform-api.stable-baseline")
     baseline_details = evidence_details(baseline_entry)
     baseline = baseline_details.get("stableBaseline") if isinstance(baseline_details.get("stableBaseline"), dict) else {}
-    required_name = policy.get("platformApi10Criteria", {}).get("stableBaselineName", "1.0")
+    platform_api_policy = (
+        policy.get("platformApi10Criteria")
+        if isinstance(policy.get("platformApi10Criteria"), dict)
+        else {}
+    )
+    required_name = non_empty_string(platform_api_policy.get("stableBaselineName")) or "1.0"
     if entry_ok(baseline_entry) and baseline.get("name") != required_name:
         blockers.append(
             blocker_issue(
@@ -3968,6 +3997,7 @@ def run_self_test() -> None:
         "malformed-required-release-modes-policy",
         "malformed-soak-mode-policy",
         "fractional-stable-policy-integers",
+        "scalar-platform-api-policy",
         "scalar-allowed-limitation-categories-policy",
         "scalar-non-waivable-blockers-policy",
         "malformed-category-policy-entry",
@@ -4982,6 +5012,25 @@ def run_self_test() -> None:
             fractional_stable_policy_integers,
             "not-ready",
             expect_blocker="stable-1.0.live-multi-node-soak",
+        )
+
+        def scalar_platform_api_policy(
+            _inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            paths: dict[str, Path],
+        ) -> None:
+            policy = copy.deepcopy(read_json(DEFAULT_POLICY) or {})
+            policy["platformApi10Criteria"] = 1
+            policy_path = paths["stableKnownLimitations"].parent / "scalar-platform-api-policy.json"
+            write_json(policy_path, policy)
+            paths["policy"] = policy_path
+
+        run_case(
+            root,
+            "scalar-platform-api-policy",
+            scalar_platform_api_policy,
+            "not-ready",
+            expect_blocker="stable-1.0.platform-api-compatibility",
         )
 
         def scalar_allowed_limitation_categories_policy(
