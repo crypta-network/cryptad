@@ -54,6 +54,11 @@
       "category": "negative"
     },
     {
+      "id": "production-failed-gate-status",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
       "id": "go-no-go-no-go",
       "expectedDecision": "not-ready",
       "category": "negative"
@@ -80,6 +85,11 @@
     },
     {
       "id": "go-no-go-failed-domain",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "go-no-go-listed-blocker",
       "expectedDecision": "not-ready",
       "category": "negative"
     },

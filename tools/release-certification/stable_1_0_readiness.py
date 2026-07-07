@@ -1447,28 +1447,34 @@ def evaluate_production_beta_state(
                 )
             )
         gates_value = promotion.get("gates") if isinstance(promotion.get("gates"), list) else []
-        failed_gates = [
-            str(gate.get("id"))
-            for gate in gates_value
-            if isinstance(gate, dict) and gate.get("status") != "pass"
-        ]
-        forbidden_gate_prefixes = (
-            "fixture-evidence",
-            "live.production-beta-skip",
-            "build.",
-            "workspace.",
-            "multi-node-beta.previous-candidate",
-        )
-        forbidden_failed = [
-            gate_id for gate_id in failed_gates if gate_id.startswith(forbidden_gate_prefixes)
-        ]
-        if forbidden_failed:
+        failed_gates = []
+        for index, gate in enumerate(gates_value):
+            if not isinstance(gate, dict):
+                continue
+            gate_status = normalize_status(gate.get("status", "missing"))
+            if gate_status != "pass":
+                gate_id = non_empty_string(gate.get("id")) or f"gates[{index}]"
+                failed_gates.append(f"{gate_id}:{gate_status}")
+        if failed_gates:
             blockers.append(
                 blocker_issue(
                     domain_id,
                     "stable-1.0.production-beta-state",
-                    "Production beta promotion gates include Stable-forbidden failures",
-                    "Failed production gates: " + ", ".join(forbidden_failed[:8]),
+                    "Production beta promotion gates include failures",
+                    "Failed production gates: " + ", ".join(failed_gates[:8]) + ".",
+                    "production-beta-summary",
+                )
+            )
+        if not malformed_failed_gate_count and failed_gate_count != len(failed_gates):
+            blockers.append(
+                blocker_issue(
+                    domain_id,
+                    "stable-1.0.production-beta-state",
+                    "Production beta promotion gate count is inconsistent",
+                    (
+                        f"promotion.failedGateCount is {failed_gate_count}, "
+                        f"but promotion.gates contains {len(failed_gates)} non-passing entries."
+                    ),
                     "production-beta-summary",
                 )
             )
@@ -1619,6 +1625,21 @@ def evaluate_production_beta_state(
                     (
                         f"goNoGoSummary.summary.blockers is {blockers_count}, "
                         f"but blockers contains {len(go_no_go.get('blockers', []))} entries."
+                    ),
+                    "go-no-go-summary",
+                )
+            )
+        dashboard_blockers = go_no_go.get("blockers") if isinstance(go_no_go.get("blockers"), list) else []
+        if dashboard_blockers or (not blockers_count_malformed and blockers_count > 0):
+            blockers.append(
+                blocker_issue(
+                    domain_id,
+                    "stable-1.0.go-no-go-decision",
+                    "Go/no-go dashboard still reports blockers",
+                    (
+                        "Stable 1.0 readiness requires the production beta go/no-go dashboard "
+                        f"to have zero blockers; summary.blockers={blockers_count}, "
+                        f"blockers entries={len(dashboard_blockers)}."
                     ),
                     "go-no-go-summary",
                 )
@@ -3847,12 +3868,14 @@ def run_self_test() -> None:
         "production-redaction-findings",
         "production-redaction-count",
         "production-boolean-schema-version",
+        "production-failed-gate-status",
         "go-no-go-no-go",
         "go-no-go-stub",
         "go-no-go-wrong-release-id",
         "go-no-go-non-production-mode",
         "go-no-go-boolean-schema-version",
         "go-no-go-failed-domain",
+        "go-no-go-listed-blocker",
         "go-no-go-redaction-findings",
         "go-no-go-redaction-count",
         "go-no-go-redaction-fractional-count",
@@ -4082,6 +4105,25 @@ def run_self_test() -> None:
             expect_blocker="stable-1.0.production-beta-state",
         )
 
+        def production_failed_gate_status(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            for gate in inputs["productionBetaSummary"]["promotion"]["gates"]:
+                if gate.get("id") == "signing.production-keys":
+                    gate["status"] = "fail"
+                    return
+            raise AssertionError("signing.production-keys gate missing from self-test fixture")
+
+        run_case(
+            root,
+            "production-failed-gate-status",
+            production_failed_gate_status,
+            "not-ready",
+            expect_blocker="stable-1.0.production-beta-state",
+        )
+
         def go_no_go_no_go(inputs: dict[str, Any], _limitations: dict[str, Any], _paths: dict[str, Path]) -> None:
             inputs["goNoGoSummary"]["decision"] = "no-go"
             inputs["goNoGoSummary"]["promotionReady"] = False
@@ -4153,6 +4195,28 @@ def run_self_test() -> None:
             root,
             "go-no-go-failed-domain",
             go_no_go_failed_domain,
+            "not-ready",
+            expect_blocker="stable-1.0.go-no-go-decision",
+        )
+
+        def go_no_go_listed_blocker(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs["goNoGoSummary"]["summary"]["blockers"] = 1
+            inputs["goNoGoSummary"]["blockers"] = [
+                {
+                    "id": "production-beta.go-no-go-forged-blocker",
+                    "evidenceId": "production-beta.go-no-go-decision",
+                    "summary": "Synthetic go/no-go blocker.",
+                }
+            ]
+
+        run_case(
+            root,
+            "go-no-go-listed-blocker",
+            go_no_go_listed_blocker,
             "not-ready",
             expect_blocker="stable-1.0.go-no-go-decision",
         )

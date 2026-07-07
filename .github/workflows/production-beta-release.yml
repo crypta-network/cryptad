@@ -67,6 +67,11 @@ on:
         required: false
         default: ''
         type: string
+      stable_readiness_waivers:
+        description: Optional Stable 1.0 waiver file path, HTTPS JSON URL, or actions-artifact://run/artifact/path reference for requires-waiver-before-stable limitations.
+        required: false
+        default: ''
+        type: string
       require_multi_node_soak:
         description: Require multi-node beta soak evidence.
         required: true
@@ -132,6 +137,7 @@ jobs:
           INPUT_PREVIOUS_SUMMARY: ${{ inputs.previous_summary || '' }}
           INPUT_PREVIOUS_RELEASE_CERTIFICATION_SUMMARY: ${{ inputs.previous_release_certification_summary || '' }}
           INPUT_WAIVER_FILE: ${{ inputs.waiver_file || '' }}
+          INPUT_STABLE_READINESS_WAIVERS: ${{ inputs.stable_readiness_waivers || '' }}
           INPUT_REQUIRE_MULTI_NODE_SOAK: ${{ inputs.require_multi_node_soak || 'false' }}
           INPUT_GENERATE_STABLE_READINESS: ${{ inputs.generate_stable_readiness || 'false' }}
           INPUT_REQUIRE_STABLE_READINESS: ${{ inputs.require_stable_readiness || 'false' }}
@@ -255,6 +261,7 @@ jobs:
           materialize_input_file "$INPUT_MULTI_NODE_SOAK_SUMMARY" INPUT_MULTI_NODE_SOAK_SUMMARY multi-node-beta-soak-summary.json "Multi-node soak summary"
           materialize_security_drills_summary "$INPUT_SECURITY_DRILLS_SUMMARY"
           materialize_input_file "$INPUT_WAIVER_FILE" INPUT_WAIVER_FILE go-no-go-waivers.json "Go/no-go waiver file"
+          materialize_input_file "$INPUT_STABLE_READINESS_WAIVERS" INPUT_STABLE_READINESS_WAIVERS stable-readiness-waivers.json "Stable readiness waiver file"
 
           args=(
             --workspace-root .
@@ -308,6 +315,9 @@ jobs:
           fi
           if [[ -n "$INPUT_WAIVER_FILE" ]]; then
             args+=(--waiver-file "$INPUT_WAIVER_FILE")
+          fi
+          if [[ -n "$INPUT_STABLE_READINESS_WAIVERS" ]]; then
+            args+=(--stable-readiness-waivers "$INPUT_STABLE_READINESS_WAIVERS")
           fi
 
           if [[ -n "$INPUT_ARTIFACT_BASE_URI" ]]; then
@@ -446,6 +456,7 @@ jobs:
           INPUT_PREVIOUS_SUMMARY: ${{ inputs.previous_summary || '' }}
           INPUT_PREVIOUS_RELEASE_CERTIFICATION_SUMMARY: ${{ inputs.previous_release_certification_summary || '' }}
           INPUT_WAIVER_FILE: ${{ inputs.waiver_file || '' }}
+          INPUT_STABLE_READINESS_WAIVERS: ${{ inputs.stable_readiness_waivers || '' }}
           INPUT_GENERATE_STABLE_READINESS: ${{ inputs.generate_stable_readiness || 'false' }}
           INPUT_REQUIRE_STABLE_READINESS: ${{ inputs.require_stable_readiness || 'false' }}
           GH_TOKEN: ${{ github.token }}
@@ -575,6 +586,7 @@ jobs:
           materialize_input_file "$INPUT_MULTI_NODE_SOAK_SUMMARY" INPUT_MULTI_NODE_SOAK_SUMMARY multi-node-beta-soak-summary.json "Multi-node soak summary"
           materialize_security_drills_summary "$INPUT_SECURITY_DRILLS_SUMMARY"
           materialize_input_file "$INPUT_WAIVER_FILE" INPUT_WAIVER_FILE go-no-go-waivers.json "Go/no-go waiver file"
+          materialize_input_file "$INPUT_STABLE_READINESS_WAIVERS" INPUT_STABLE_READINESS_WAIVERS stable-readiness-waivers.json "Stable readiness waiver file"
 
           if [[ -z "$INPUT_ARTIFACT_BASE_URI" ]]; then
             echo "::error::CRYPTAD_PRODUCTION_BETA_ARTIFACT_BASE_URI or workflow artifact_base_uri input is required for production-beta."
@@ -645,6 +657,9 @@ jobs:
           if [[ -n "$INPUT_WAIVER_FILE" ]]; then
             require_file "$INPUT_WAIVER_FILE" "Go/no-go waiver file"
           fi
+          if [[ -n "$INPUT_STABLE_READINESS_WAIVERS" ]]; then
+            require_file "$INPUT_STABLE_READINESS_WAIVERS" "Stable readiness waiver file"
+          fi
 
           args=(
             tools/release-certification/run-production-beta-release.sh
@@ -672,6 +687,9 @@ jobs:
           fi
           if [[ -n "$INPUT_WAIVER_FILE" ]]; then
             args+=(--waiver-file "$INPUT_WAIVER_FILE")
+          fi
+          if [[ -n "$INPUT_STABLE_READINESS_WAIVERS" ]]; then
+            args+=(--stable-readiness-waivers "$INPUT_STABLE_READINESS_WAIVERS")
           fi
           if [[ "$INPUT_GENERATE_STABLE_READINESS" == "true" ]]; then
             args+=(--generate-stable-readiness)
