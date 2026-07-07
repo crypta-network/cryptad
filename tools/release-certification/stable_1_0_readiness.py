@@ -2118,13 +2118,17 @@ def evaluate_policy(
                 )
             )
         for key in ("allowedLimitationCategories", "disallowedLimitationCategories", "nonWaivableBlockers"):
-            if not isinstance(policy.get(key), list):
+            if key not in policy:
+                policy_list_errors = [f"{key} must be present as an array"]
+            else:
+                _, policy_list_errors = string_array_values(policy.get(key), key, ())
+            for policy_list_error in policy_list_errors:
                 blockers.append(
                     blocker_issue(
                         domain_id,
                         "stable-1.0.known-limitations",
-                        "Stable readiness policy category list is missing",
-                        f"{key} must be present as an array.",
+                        "Stable readiness policy category list is invalid",
+                        policy_list_error + ".",
                         source,
                     )
                 )
@@ -3876,6 +3880,7 @@ def run_self_test() -> None:
         "malformed-soak-mode-policy",
         "scalar-allowed-limitation-categories-policy",
         "scalar-non-waivable-blockers-policy",
+        "malformed-category-policy-entry",
         "multi-node-release-id-mismatch",
         "multi-node-raw-evidence-flag",
         "multi-node-redaction-count",
@@ -4807,6 +4812,36 @@ def run_self_test() -> None:
             root,
             "scalar-non-waivable-blockers-policy",
             scalar_non_waivable_blockers_policy,
+            "not-ready",
+            expect_blocker="stable-1.0.known-limitations",
+        )
+
+        def malformed_category_policy_entry(
+            _inputs: dict[str, Any],
+            limitations: dict[str, Any],
+            paths: dict[str, Path],
+        ) -> None:
+            policy = copy.deepcopy(read_json(DEFAULT_POLICY) or {})
+            policy["allowedLimitationCategories"] = ["redaction-failure"]
+            policy["disallowedLimitationCategories"] = [1]
+            policy_path = paths["stableKnownLimitations"].parent / "malformed-category-policy-entry.json"
+            write_json(policy_path, policy)
+            paths["policy"] = policy_path
+            limitations["limitations"].append(
+                {
+                    "id": "stable-1.0.allowed-redaction-failure-policy-gap",
+                    "title": "Disallowed category with malformed policy",
+                    "classification": "allowed-for-stable-1.0",
+                    "category": "redaction-failure",
+                    "status": "open",
+                    "summary": "Self-test malformed category policy entry.",
+                }
+            )
+
+        run_case(
+            root,
+            "malformed-category-policy-entry",
+            malformed_category_policy_entry,
             "not-ready",
             expect_blocker="stable-1.0.known-limitations",
         )
