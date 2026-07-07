@@ -611,7 +611,9 @@ def entry_ok(entry: dict[str, Any] | None) -> bool:
 def release_certification_redaction_passed(redaction: dict[str, Any] | None) -> tuple[bool, dict[str, Any]]:
     if not isinstance(redaction, dict):
         return False, {"status": "missing", "missing": list(RELEASE_CERTIFICATION_REDACTION_BOOL_FIELDS)}
-    findings = redaction.get("findings") if isinstance(redaction.get("findings"), list) else []
+    findings_value = redaction.get("findings")
+    findings = findings_value if isinstance(findings_value, list) else []
+    malformed_findings = "findings" in redaction and not isinstance(findings_value, list)
     finding_count, malformed_finding_count = non_negative_count(
         redaction.get("findingCount", len(findings))
     )
@@ -635,6 +637,8 @@ def release_certification_redaction_passed(redaction: dict[str, Any] | None) -> 
     }
     if malformed_finding_count:
         details["validationErrors"] = ["findingCount is not a non-negative integer"]
+    if malformed_findings:
+        details.setdefault("validationErrors", []).append("findings is not a list")
     if status_value is not None:
         status = normalize_status(status_value)
         details["status"] = status
@@ -643,6 +647,7 @@ def release_certification_redaction_passed(redaction: dict[str, Any] | None) -> 
             and not findings
             and finding_count == 0
             and not malformed_finding_count
+            and not malformed_findings
             and not missing
             and not known_false
         )
@@ -653,6 +658,7 @@ def release_certification_redaction_passed(redaction: dict[str, Any] | None) -> 
         and not findings
         and finding_count == 0
         and not malformed_finding_count
+        and not malformed_findings
     )
     details["status"] = "pass" if passed else "fail"
     return passed, details
@@ -782,10 +788,14 @@ def recursive_redaction_failure(value: Any) -> bool:
     if isinstance(value, dict):
         if "redaction" in value and recursive_redaction_failure(value["redaction"]):
             return True
-        if "redactionFindings" in value and value.get("redactionFindings"):
-            return True
-        if "findings" in value and value.get("findings"):
-            return True
+        if "redactionFindings" in value:
+            redaction_findings = value.get("redactionFindings")
+            if not isinstance(redaction_findings, list) or bool(redaction_findings):
+                return True
+        if "findings" in value:
+            findings = value.get("findings")
+            if not isinstance(findings, list) or bool(findings):
+                return True
         if "findingCount" in value:
             finding_count, malformed_finding_count = non_negative_count(value.get("findingCount"))
             if malformed_finding_count or finding_count > 0:
@@ -1152,16 +1162,29 @@ def evaluate_production_beta_state(
                 )
             )
         redaction = go_no_go.get("redaction") if isinstance(go_no_go.get("redaction"), dict) else {}
-        redaction_findings = redaction.get("findings") if isinstance(redaction.get("findings"), list) else []
+        redaction_findings_value = redaction.get("findings")
+        malformed_redaction_findings = (
+            "findings" in redaction and not isinstance(redaction_findings_value, list)
+        )
+        redaction_findings = (
+            redaction_findings_value if isinstance(redaction_findings_value, list) else []
+        )
         redaction_finding_count, malformed_redaction_finding_count = non_negative_count(
             redaction.get("findingCount", len(redaction_findings))
         )
         if (
             normalize_status(redaction.get("status", "missing")) != "pass"
             or redaction_findings
+            or malformed_redaction_findings
             or malformed_redaction_finding_count
             or redaction_finding_count > 0
         ):
+            if malformed_redaction_findings:
+                redaction_detail = "redaction.findings is not a list"
+            elif malformed_redaction_finding_count:
+                redaction_detail = "findingCount is malformed"
+            else:
+                redaction_detail = f"findingCount is {redaction_finding_count}"
             blockers.append(
                 blocker_issue(
                     domain_id,
@@ -1169,7 +1192,7 @@ def evaluate_production_beta_state(
                     "Go/no-go dashboard redaction did not pass",
                     (
                         "Stable 1.0 readiness cannot depend on a redaction-unsafe dashboard; "
-                        f"findingCount is {redaction_finding_count if not malformed_redaction_finding_count else 'malformed'}."
+                        f"{redaction_detail}."
                     ),
                     "go-no-go-summary",
                 )
@@ -1197,9 +1220,63 @@ def evaluate_release_certification_summary(release_certification: dict[str, Any]
             )
         )
     else:
+        schema_version = release_certification.get("schemaVersion")
+        tool = str(release_certification.get("tool", "missing"))
         status = normalize_status(release_certification.get("status", "missing"))
         mode = str(release_certification.get("mode", "missing"))
         release_candidate_passed = release_certification.get("releaseCandidatePassed")
+        evidence_records = release_certification.get("evidence")
+        if schema_version != SCHEMA_VERSION or tool != "release-certification":
+            blockers.append(
+                blocker_issue(
+                    domain_id,
+                    "stable-1.0.release-certification",
+                    "Release certification summary schema is malformed",
+                    (
+                        "Stable 1.0 readiness requires schemaVersion=1 and "
+                        f"tool=release-certification; schemaVersion is {schema_version!r}, tool is {tool}."
+                    ),
+                    "release-certification-summary",
+                )
+            )
+        if not isinstance(evidence_records, list) or not evidence_records:
+            blockers.append(
+                blocker_issue(
+                    domain_id,
+                    "stable-1.0.release-certification",
+                    "Release certification evidence is missing",
+                    "Stable 1.0 readiness requires a non-empty release-certification evidence array.",
+                    "release-certification-summary",
+                )
+            )
+        elif any(not isinstance(entry, dict) for entry in evidence_records):
+            blockers.append(
+                blocker_issue(
+                    domain_id,
+                    "stable-1.0.release-certification",
+                    "Release certification evidence is malformed",
+                    "Stable 1.0 readiness requires every release-certification evidence entry to be an object.",
+                    "release-certification-summary",
+                )
+            )
+        else:
+            malformed_evidence_indexes = [
+                str(index)
+                for index, entry in enumerate(evidence_records)
+                if not non_empty_string(entry.get("id")) or normalize_status(entry.get("status", "missing")) == "missing"
+            ]
+            if malformed_evidence_indexes:
+                blockers.append(
+                    blocker_issue(
+                        domain_id,
+                        "stable-1.0.release-certification",
+                        "Release certification evidence is malformed",
+                        "Release-certification evidence entries must include id and status; malformed indexes: "
+                        + ", ".join(malformed_evidence_indexes)
+                        + ".",
+                        "release-certification-summary",
+                    )
+                )
         if mode != "release-candidate":
             blockers.append(
                 blocker_issue(
@@ -1268,6 +1345,81 @@ def evaluate_ecosystem_matrix(matrix: dict[str, Any] | None) -> dict[str, Any]:
     release_blocker_count, malformed_release_blocker_count = dashboard.parse_release_blocker_count(
         matrix.get("releaseBlockerCount", 0)
     )
+    rows_value = matrix.get("rows")
+    rows: list[dict[str, Any]] = []
+    if not isinstance(rows_value, list) or not rows_value:
+        blockers.append(
+            blocker_issue(
+                domain_id,
+                evidence_id,
+                "Ecosystem certification matrix rows are missing",
+                "Stable 1.0 readiness requires a non-empty ecosystem matrix rows array.",
+                "ecosystem-certification-matrix",
+            )
+        )
+    else:
+        malformed_row_indexes = [
+            str(index)
+            for index, row in enumerate(rows_value)
+            if not isinstance(row, dict)
+        ]
+        if malformed_row_indexes:
+            blockers.append(
+                blocker_issue(
+                    domain_id,
+                    evidence_id,
+                    "Ecosystem certification matrix rows are malformed",
+                    "Matrix rows must be objects; malformed row indexes: " + ", ".join(malformed_row_indexes) + ".",
+                    "ecosystem-certification-matrix",
+                )
+            )
+        else:
+            malformed_shape_indexes = [
+                str(index)
+                for index, row in enumerate(rows_value)
+                if not non_empty_string(row.get("id"))
+                or normalize_status(row.get("status", "missing")) == "missing"
+                or not isinstance(row.get("releaseBlocker"), bool)
+            ]
+            if malformed_shape_indexes:
+                blockers.append(
+                    blocker_issue(
+                        domain_id,
+                        evidence_id,
+                        "Ecosystem certification matrix row shape is malformed",
+                        "Matrix rows must include id, status, and boolean releaseBlocker; malformed row indexes: "
+                        + ", ".join(malformed_shape_indexes)
+                        + ".",
+                        "ecosystem-certification-matrix",
+                    )
+                )
+        rows = [row for row in rows_value if isinstance(row, dict)]
+    counts = matrix.get("counts") if isinstance(matrix.get("counts"), dict) else {}
+    row_count, malformed_row_count = (
+        non_negative_count(counts.get("rows"))
+        if "rows" in counts
+        else (len(rows), False)
+    )
+    row_count_mismatch = (
+        "rows" in counts
+        and isinstance(rows_value, list)
+        and row_count != len(rows_value)
+    )
+    if malformed_row_count or row_count_mismatch:
+        details = (
+            "counts.rows is not a non-negative integer"
+            if malformed_row_count
+            else f"counts.rows is {row_count}, but rows contains {len(rows_value)} entries"
+        )
+        blockers.append(
+            blocker_issue(
+                domain_id,
+                evidence_id,
+                "Ecosystem certification matrix row count is malformed",
+                details + ".",
+                "ecosystem-certification-matrix",
+            )
+        )
     if status != "pass" or malformed_release_blocker_count or release_blocker_count > 0:
         details: list[str] = []
         if status != "pass":
@@ -1298,9 +1450,8 @@ def evaluate_ecosystem_matrix(matrix: dict[str, Any] | None) -> dict[str, Any]:
                 "ecosystem-certification-matrix",
             )
         )
-    rows = matrix.get("rows") if isinstance(matrix.get("rows"), list) else []
     for row in rows:
-        if not isinstance(row, dict) or row.get("releaseBlocker") is not True:
+        if row.get("releaseBlocker") is not True:
             continue
         row_id = str(row.get("id", "matrix-row"))
         blockers.append(
@@ -3039,9 +3190,11 @@ def run_self_test() -> None:
         "go-no-go-non-production-mode",
         "go-no-go-redaction-findings",
         "go-no-go-redaction-count",
+        "go-no-go-redaction-malformed-findings",
         "release-certification-failed",
         "release-certification-not-passed",
         "release-certification-non-rc-mode",
+        "release-certification-stub",
         "release-certification-missing-redaction",
         "release-certification-redaction-field-failed",
         "release-certification-redaction-truncated-proof",
@@ -3050,6 +3203,9 @@ def run_self_test() -> None:
         "release-certification-evidence-redaction-findings",
         "release-certification-evidence-nested-redaction-findings",
         "ecosystem-matrix-failed",
+        "ecosystem-matrix-missing-rows",
+        "ecosystem-matrix-non-list-rows",
+        "ecosystem-matrix-malformed-row",
         "missing-platform-baseline",
         "malformed-platform-baseline-count",
         "missing-compatibility-window-details",
@@ -3269,6 +3425,24 @@ def run_self_test() -> None:
             expect_blocker="stable-1.0.redaction",
         )
 
+        def go_no_go_redaction_malformed_findings(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs["goNoGoSummary"]["redaction"] = {
+                "status": "pass",
+                "findings": "not-a-list",
+            }
+
+        run_case(
+            root,
+            "go-no-go-redaction-malformed-findings",
+            go_no_go_redaction_malformed_findings,
+            "not-ready",
+            expect_blocker="stable-1.0.redaction",
+        )
+
         def release_certification_failed(inputs: dict[str, Any], _limitations: dict[str, Any], _paths: dict[str, Path]) -> None:
             inputs["releaseCertificationSummary"]["status"] = "fail"
 
@@ -3298,6 +3472,24 @@ def run_self_test() -> None:
             root,
             "release-certification-non-rc-mode",
             release_certification_non_rc_mode,
+            "not-ready",
+            expect_blocker="stable-1.0.release-certification",
+        )
+
+        def release_certification_stub(inputs: dict[str, Any], _limitations: dict[str, Any], _paths: dict[str, Path]) -> None:
+            inputs["releaseCertificationSummary"] = {
+                "schemaVersion": 1,
+                "tool": "release-certification",
+                "mode": "release-candidate",
+                "status": "pass",
+                "releaseCandidatePassed": True,
+                "redaction": copy.deepcopy(inputs["releaseCertificationSummary"]["redaction"]),
+            }
+
+        run_case(
+            root,
+            "release-certification-stub",
+            release_certification_stub,
             "not-ready",
             expect_blocker="stable-1.0.release-certification",
         )
@@ -3438,6 +3630,39 @@ def run_self_test() -> None:
             root,
             "ecosystem-matrix-failed",
             ecosystem_matrix_failed,
+            "not-ready",
+            expect_blocker="release-certification.ecosystem-matrix",
+        )
+
+        def ecosystem_matrix_missing_rows(inputs: dict[str, Any], _limitations: dict[str, Any], _paths: dict[str, Path]) -> None:
+            inputs["ecosystemMatrix"].pop("rows", None)
+
+        run_case(
+            root,
+            "ecosystem-matrix-missing-rows",
+            ecosystem_matrix_missing_rows,
+            "not-ready",
+            expect_blocker="release-certification.ecosystem-matrix",
+        )
+
+        def ecosystem_matrix_non_list_rows(inputs: dict[str, Any], _limitations: dict[str, Any], _paths: dict[str, Path]) -> None:
+            inputs["ecosystemMatrix"]["rows"] = {"stable-readiness": "not-a-list"}
+
+        run_case(
+            root,
+            "ecosystem-matrix-non-list-rows",
+            ecosystem_matrix_non_list_rows,
+            "not-ready",
+            expect_blocker="release-certification.ecosystem-matrix",
+        )
+
+        def ecosystem_matrix_malformed_row(inputs: dict[str, Any], _limitations: dict[str, Any], _paths: dict[str, Path]) -> None:
+            inputs["ecosystemMatrix"]["rows"].append("not-a-row-object")
+
+        run_case(
+            root,
+            "ecosystem-matrix-malformed-row",
+            ecosystem_matrix_malformed_row,
             "not-ready",
             expect_blocker="release-certification.ecosystem-matrix",
         )
