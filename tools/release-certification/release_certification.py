@@ -1047,6 +1047,8 @@ def redaction_signal_has_unwaivable_findings(value: Any) -> bool:
         if isinstance(redaction_findings, list) and bool(redaction_findings):
             return True
         findings = value.get("findings")
+        if "findings" in value and not isinstance(findings, list):
+            return True
         if isinstance(findings, list) and bool(findings):
             return True
         if "findingCount" in value:
@@ -2519,11 +2521,17 @@ def stable_readiness_evidence(
         )
     redaction = summary.get("redaction") if isinstance(summary.get("redaction"), dict) else {}
     redaction_status = normalize_evidence_status(str(redaction.get("status", "missing")))
-    redaction_findings = redaction.get("findings") if isinstance(redaction.get("findings"), list) else []
+    redaction_findings_value = redaction.get("findings")
+    redaction_findings_malformed = (
+        "findings" in redaction and not isinstance(redaction_findings_value, list)
+    )
+    redaction_findings = redaction_findings_value if isinstance(redaction_findings_value, list) else []
     redaction_finding_count, malformed_redaction_finding_count = parse_stable_readiness_count(
         redaction.get("findingCount", len(redaction_findings))
     )
     redaction_validation_errors: list[str] = []
+    if redaction_findings_malformed:
+        redaction_validation_errors.append("findings is not a list")
     if malformed_redaction_finding_count:
         redaction_validation_errors.append("findingCount is not a non-negative integer")
     elif redaction_finding_count > 0:
@@ -13853,6 +13861,91 @@ def run_self_test(repo_root: Path) -> None:
         assert stable_redaction_count_row["releaseBlocker"] is True, stable_redaction_count_row
         assert "evidence.stable-1.0.redaction" in stable_redaction_count_row["issueIds"], stable_redaction_count_row
         assert "matrix.stable-readiness.redaction-failed" in stable_redaction_count_row["issueIds"], stable_redaction_count_row
+
+        stable_malformed_redaction_findings_summary = (
+            workspace / "build/stable-readiness-malformed-redaction-findings.json"
+        )
+        write_json(
+            stable_malformed_redaction_findings_summary,
+            {
+                "schemaVersion": 1,
+                "kind": "stable-1.0-readiness",
+                "status": "pass",
+                "decision": "ready",
+                "stableReady": True,
+                "blockerCount": 0,
+                "warningCount": 0,
+                "allowedLimitationCount": 0,
+                "disallowedLimitationCount": 0,
+                "domains": [],
+                "blockers": [],
+                "warnings": [],
+                "allowedLimitations": [],
+                "disallowedLimitations": [],
+                "redaction": {"status": "pass", "findings": "malformed-redaction-proof"},
+                "evidence": [
+                    {
+                        "id": evidence_id,
+                        "status": "pass",
+                        "summary": f"{evidence_id} passed.",
+                        "details": {"decision": "ready", "stableReady": True}
+                        if evidence_id == "stable-1.0.readiness-gate"
+                        else {},
+                    }
+                    for evidence_id in STABLE_1_0_READINESS_EVIDENCE_IDS
+                ],
+            },
+        )
+        stable_malformed_redaction_findings_items = stable_readiness_evidence(
+            stable_malformed_redaction_findings_summary,
+            True,
+            workspace,
+            out_dir,
+        )
+        stable_malformed_redaction_findings_statuses = {
+            item.id: item.status for item in stable_malformed_redaction_findings_items
+        }
+        assert stable_malformed_redaction_findings_statuses["stable-1.0.readiness-gate"] == "fail", (
+            stable_malformed_redaction_findings_statuses
+        )
+        assert stable_malformed_redaction_findings_statuses["stable-1.0.redaction"] == "fail", (
+            stable_malformed_redaction_findings_statuses
+        )
+        stable_malformed_redaction_findings_details = next(
+            item.details
+            for item in stable_malformed_redaction_findings_items
+            if item.id == "stable-1.0.redaction"
+        )
+        assert stable_malformed_redaction_findings_details["validationErrors"] == [
+            "findings is not a list"
+        ], stable_malformed_redaction_findings_details
+        stable_malformed_redaction_findings_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/stable-malformed-redaction-findings-cert").resolve(),
+            stable_readiness_summary=stable_malformed_redaction_findings_summary,
+            stable_readiness_required=True,
+        )
+        (
+            stable_malformed_redaction_findings_cert,
+            stable_malformed_redaction_findings_exit_code,
+        ) = run(stable_malformed_redaction_findings_settings)
+        assert stable_malformed_redaction_findings_exit_code == 1, stable_malformed_redaction_findings_cert
+        stable_malformed_redaction_findings_row = matrix_row_by_id(
+            stable_malformed_redaction_findings_settings.out_dir,
+            "stable-1-0-readiness",
+        )
+        assert stable_malformed_redaction_findings_row["status"] == "fail", (
+            stable_malformed_redaction_findings_row
+        )
+        assert stable_malformed_redaction_findings_row["releaseBlocker"] is True, (
+            stable_malformed_redaction_findings_row
+        )
+        assert "evidence.stable-1.0.redaction" in stable_malformed_redaction_findings_row["issueIds"], (
+            stable_malformed_redaction_findings_row
+        )
+        assert "matrix.stable-readiness.redaction-failed" in stable_malformed_redaction_findings_row["issueIds"], (
+            stable_malformed_redaction_findings_row
+        )
 
         stable_nested_redaction_summary = workspace / "build/stable-readiness-nested-redaction.json"
         nested_redaction_evidence_id = "stable-1.0.production-beta-state"

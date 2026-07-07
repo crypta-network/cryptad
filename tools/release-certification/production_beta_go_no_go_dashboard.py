@@ -1042,6 +1042,8 @@ def recursive_redaction_failure(value: Any) -> bool:
         if value.get("redactionFindings"):
             return True
         findings = value.get("findings")
+        if "findings" in value and not isinstance(findings, list):
+            return True
         if isinstance(findings, list) and bool(findings):
             return True
         finding_count, malformed_finding_count = parse_release_blocker_count(
@@ -3384,17 +3386,24 @@ def stable_readiness_issues(
             )
         )
     redaction = summary.get("redaction") if isinstance(summary.get("redaction"), dict) else {}
-    redaction_findings = redaction.get("findings") if isinstance(redaction.get("findings"), list) else []
+    redaction_findings_value = redaction.get("findings")
+    redaction_findings_malformed = (
+        "findings" in redaction and not isinstance(redaction_findings_value, list)
+    )
+    redaction_findings = redaction_findings_value if isinstance(redaction_findings_value, list) else []
     redaction_finding_count, malformed_redaction_finding_count = parse_release_blocker_count(
         redaction.get("findingCount", len(redaction_findings))
     )
     if (
         normalize_status(redaction.get("status", "missing")) != "pass"
+        or redaction_findings_malformed
         or redaction_findings
         or malformed_redaction_finding_count
         or redaction_finding_count > 0
     ):
         details: list[str] = []
+        if redaction_findings_malformed:
+            details.append("findings is not a list")
         if malformed_redaction_finding_count:
             details.append("findingCount is not a non-negative integer")
         elif redaction_finding_count > 0:
@@ -5200,6 +5209,43 @@ def assert_required_stable_readiness_release_id_matches_dashboard_candidate(root
         raise AssertionError(
             "Stable top-level redaction findingCount was not reported as a critical blocker: "
             f"{redaction_count_dashboard}"
+        )
+
+    malformed_redaction_findings_inputs = json.loads(json.dumps(inputs))
+    malformed_redaction_findings_inputs["stableReadinessSummary"]["redaction"] = {
+        "status": "pass",
+        "findings": "malformed-redaction-proof",
+    }
+    malformed_redaction_findings_dashboard = build_dashboard(
+        malformed_redaction_findings_inputs,
+        {},
+        [FIXTURE_DIR / "go-no-go-pass.json"],
+        None,
+        Path(__file__).resolve().parents[2],
+        root / "stable-readiness-malformed-redaction-findings",
+        "production-beta",
+        release_id,
+        generated_at,
+        now,
+        require_stable_readiness=True,
+    )
+    if malformed_redaction_findings_dashboard.get("decision") != "no-go":
+        raise AssertionError(
+            "required Stable readiness with malformed top-level redaction findings did not block: "
+            f"{malformed_redaction_findings_dashboard}"
+        )
+    malformed_redaction_findings_blockers = [
+        blocker
+        for blocker in malformed_redaction_findings_dashboard.get("blockers", [])
+        if isinstance(blocker, dict)
+        and blocker.get("id") == "stable-1.0.readiness-summary.redaction"
+        and blocker.get("evidenceId") == "stable-1.0.redaction"
+        and blocker.get("severity") == "critical"
+    ]
+    if not malformed_redaction_findings_blockers:
+        raise AssertionError(
+            "Stable top-level malformed redaction findings were not reported as a critical blocker: "
+            f"{malformed_redaction_findings_dashboard}"
         )
 
     remaining_blockers_inputs = json.loads(json.dumps(inputs))
