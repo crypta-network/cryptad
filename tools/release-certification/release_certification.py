@@ -1044,6 +1044,8 @@ def redaction_signal_has_unwaivable_findings(value: Any) -> bool:
         if "redaction" in value and redaction_signal_has_unwaivable_findings(value["redaction"]):
             return True
         redaction_findings = value.get("redactionFindings")
+        if "redactionFindings" in value and not isinstance(redaction_findings, list):
+            return True
         if isinstance(redaction_findings, list) and bool(redaction_findings):
             return True
         findings = value.get("findings")
@@ -1079,6 +1081,8 @@ def redaction_signal_has_unwaivable_findings(value: Any) -> bool:
 
 def has_unwaivable_redaction_findings(_evidence_id: str, details: dict[str, Any]) -> bool:
     redaction_findings = details.get("redactionFindings")
+    if "redactionFindings" in details and not isinstance(redaction_findings, list):
+        return True
     if isinstance(redaction_findings, list) and bool(redaction_findings):
         return True
     return redaction_signal_has_unwaivable_findings(details.get("redaction"))
@@ -13956,6 +13960,81 @@ def run_self_test(repo_root: Path) -> None:
         )
         assert "matrix.stable-readiness.redaction-failed" in stable_malformed_redaction_findings_row["issueIds"], (
             stable_malformed_redaction_findings_row
+        )
+
+        stable_malformed_row_redaction_findings_summary = (
+            workspace / "build/stable-readiness-malformed-row-redaction-findings.json"
+        )
+        malformed_row_redaction_evidence_id = "stable-1.0.production-beta-state"
+        write_json(
+            stable_malformed_row_redaction_findings_summary,
+            {
+                "schemaVersion": 1,
+                "kind": "stable-1.0-readiness",
+                "status": "pass",
+                "decision": "ready",
+                "stableReady": True,
+                "blockerCount": 0,
+                "warningCount": 0,
+                "allowedLimitationCount": 0,
+                "disallowedLimitationCount": 0,
+                "domains": [],
+                "blockers": [],
+                "warnings": [],
+                "allowedLimitations": [],
+                "disallowedLimitations": [],
+                "redaction": {"status": "pass", "findings": []},
+                "evidence": [
+                    {
+                        "id": evidence_id,
+                        "status": "pass",
+                        "summary": f"{evidence_id} passed.",
+                        "details": {"redactionFindings": "not-a-list"}
+                        if evidence_id == malformed_row_redaction_evidence_id
+                        else (
+                            {"decision": "ready", "stableReady": True}
+                            if evidence_id == "stable-1.0.readiness-gate"
+                            else {}
+                        ),
+                    }
+                    for evidence_id in STABLE_1_0_READINESS_EVIDENCE_IDS
+                ],
+            },
+        )
+        stable_malformed_row_items = stable_readiness_evidence(
+            stable_malformed_row_redaction_findings_summary,
+            True,
+            workspace,
+            out_dir,
+        )
+        stable_malformed_row_statuses = {item.id: item.status for item in stable_malformed_row_items}
+        assert stable_malformed_row_statuses[malformed_row_redaction_evidence_id] == "fail", (
+            stable_malformed_row_statuses
+        )
+        stable_malformed_row_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/stable-malformed-row-redaction-cert").resolve(),
+            stable_readiness_summary=stable_malformed_row_redaction_findings_summary,
+            stable_readiness_required=True,
+            waivers={
+                "stable-1-0-readiness": "Attempted row waiver for malformed Stable row redaction failure.",
+                "matrix.stable-readiness.redaction-failed": "Attempted matrix issue waiver for malformed row redaction failure.",
+            },
+        )
+        stable_malformed_row_cert, stable_malformed_row_exit_code = run(stable_malformed_row_settings)
+        assert stable_malformed_row_exit_code == 1, stable_malformed_row_cert
+        stable_malformed_row = matrix_row_by_id(
+            stable_malformed_row_settings.out_dir,
+            "stable-1-0-readiness",
+        )
+        assert stable_malformed_row["status"] == "fail", stable_malformed_row
+        assert stable_malformed_row["releaseBlocker"] is True, stable_malformed_row
+        assert stable_malformed_row.get("waiverIds") == [], stable_malformed_row
+        assert malformed_row_redaction_evidence_id in stable_malformed_row["details"]["unwaivableRedactionEvidenceIds"], (
+            stable_malformed_row
+        )
+        assert "matrix.stable-readiness.redaction-failed" in stable_malformed_row["issueIds"], (
+            stable_malformed_row
         )
 
         stable_nested_redaction_summary = workspace / "build/stable-readiness-nested-redaction.json"

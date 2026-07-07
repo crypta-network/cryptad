@@ -159,6 +159,11 @@
       "category": "negative"
     },
     {
+      "id": "release-certification-evidence-malformed-redaction-findings",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
       "id": "release-certification-evidence-nested-redaction-findings",
       "expectedDecision": "not-ready",
       "category": "negative"
@@ -425,6 +430,11 @@
     },
     {
       "id": "invalid-waiver",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "boolean-waiver-schema-version",
       "expectedDecision": "not-ready",
       "category": "negative"
     },

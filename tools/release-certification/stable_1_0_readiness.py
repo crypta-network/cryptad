@@ -653,6 +653,8 @@ def evidence_details(entry: dict[str, Any] | None) -> dict[str, Any]:
 def entry_has_redaction_findings(entry: dict[str, Any] | None) -> bool:
     details = evidence_details(entry)
     findings = details.get("redactionFindings")
+    if "redactionFindings" in details and not isinstance(findings, list):
+        return True
     if isinstance(findings, list) and bool(findings):
         return True
     redaction = details.get("redaction")
@@ -1030,7 +1032,13 @@ def load_waivers(path: Path | None, now: dt.datetime, workspace_root: Path) -> l
             )
         ]
     records = value.get("waivers")
-    if value.get("schemaVersion", value.get("version")) != 1 or not isinstance(records, list):
+    schema_version = value.get("schemaVersion", value.get("version"))
+    schema_version_valid = (
+        isinstance(schema_version, int)
+        and not isinstance(schema_version, bool)
+        and schema_version == 1
+    )
+    if not schema_version_valid or not isinstance(records, list):
         return [
             StableWaiver(
                 id="stable-waiver-schema-invalid",
@@ -3692,6 +3700,7 @@ def run_self_test() -> None:
         "release-certification-redaction-count",
         "release-certification-evidence-failed",
         "release-certification-evidence-redaction-findings",
+        "release-certification-evidence-malformed-redaction-findings",
         "release-certification-evidence-nested-redaction-findings",
         "ecosystem-matrix-failed",
         "ecosystem-matrix-missing-rows",
@@ -3746,6 +3755,7 @@ def run_self_test() -> None:
         "missing-policy",
         "redaction-unsafe",
         "invalid-waiver",
+        "boolean-waiver-schema-version",
         "incomplete-waiver-metadata",
         "allowed-trust-graph",
         "allowed-social-inbox",
@@ -4200,6 +4210,24 @@ def run_self_test() -> None:
             root,
             "release-certification-evidence-redaction-findings",
             release_certification_evidence_redaction_findings,
+            "not-ready",
+            expect_blocker="app-platform.signed-bundles",
+        )
+
+        def release_certification_evidence_malformed_redaction_findings(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            def mutate(entry: dict[str, Any]) -> None:
+                entry.setdefault("details", {})["redactionFindings"] = "not-a-list"
+
+            mutate_evidence(inputs, "app-platform.signed-bundles", mutate)
+
+        run_case(
+            root,
+            "release-certification-evidence-malformed-redaction-findings",
+            release_certification_evidence_malformed_redaction_findings,
             "not-ready",
             expect_blocker="app-platform.signed-bundles",
         )
@@ -4948,6 +4976,51 @@ def run_self_test() -> None:
             return waiver_path
 
         run_case(root, "invalid-waiver", invalid_waiver, "not-ready", expect_blocker="stable-1.0.waiver-validation")
+
+        def boolean_waiver_schema_version(
+            _inputs: dict[str, Any],
+            limitations: dict[str, Any],
+            paths: dict[str, Path],
+        ) -> Path:
+            limitations["limitations"].append(
+                {
+                    "id": "stable-1.0.boolean-schema-waiver-followup",
+                    "title": "Boolean schema waiver follow-up",
+                    "classification": "requires-waiver-before-stable",
+                    "category": "ui-polish-accessibility-warning",
+                    "status": "open",
+                    "summary": "Self-test waiver-required limitation.",
+                }
+            )
+            waiver_path = paths["stableKnownLimitations"].parent / "boolean-schema-waivers.json"
+            write_json(
+                waiver_path,
+                {
+                    "schemaVersion": True,
+                    "waivers": [
+                        {
+                            "id": "stable-waive-boolean-schema",
+                            "evidenceId": "stable-1.0.boolean-schema-waiver-followup",
+                            "scope": "stable-1.0",
+                            "status": "approved",
+                            "rationale": "Self-test waiver with malformed boolean schema version.",
+                            "approvedBy": "stable-release-manager",
+                            "owner": "stable-readiness",
+                            "expiresAt": "2999-01-01T00:00:00Z",
+                            "references": ["docs/stable-1.0-readiness-gate.md"],
+                        }
+                    ],
+                },
+            )
+            return waiver_path
+
+        run_case(
+            root,
+            "boolean-waiver-schema-version",
+            boolean_waiver_schema_version,
+            "not-ready",
+            expect_blocker="stable-1.0.waiver-validation",
+        )
 
         def incomplete_waiver_metadata(
             _inputs: dict[str, Any],
