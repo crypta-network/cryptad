@@ -2498,6 +2498,39 @@ def stable_readiness_record_errors(
     return record_count, errors
 
 
+def stable_readiness_evidence_rows(summary: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
+    rows = {evidence_id: [] for evidence_id in STABLE_1_0_READINESS_EVIDENCE_IDS}
+    evidence = summary.get("evidence")
+    if not isinstance(evidence, list):
+        return rows
+    for entry in evidence:
+        if not isinstance(entry, dict):
+            continue
+        evidence_id = str(entry.get("id", ""))
+        if evidence_id in rows:
+            rows[evidence_id].append(entry)
+    return rows
+
+
+def stable_readiness_row_status(rows: list[dict[str, Any]]) -> str:
+    if not rows:
+        return "missing"
+    if len(rows) > 1:
+        return "fail"
+    if any(evidence_entry_has_unwaivable_redaction_findings(row) for row in rows):
+        return "fail"
+    statuses = [normalize_evidence_status(str(row.get("status", "missing"))) for row in rows]
+    if any(status == "fail" for status in statuses):
+        return "fail"
+    if any(status == "missing" for status in statuses):
+        return "missing"
+    if any(status == "skip" for status in statuses):
+        return "skip"
+    if any(status == "warn" for status in statuses):
+        return "warn"
+    return "pass"
+
+
 def stable_readiness_evidence(
     summary_path: Path | None,
     required: bool,
@@ -2602,6 +2635,26 @@ def stable_readiness_evidence(
         count_validation_errors.append(f"disallowedLimitationCount is {disallowed_count}")
     count_validation_errors.extend(blocker_record_errors)
     count_validation_errors.extend(disallowed_record_errors)
+    evidence_rows = stable_readiness_evidence_rows(summary)
+    duplicate_evidence_ids = [
+        evidence_id
+        for evidence_id, rows in evidence_rows.items()
+        if len(rows) > 1
+    ]
+    evidence_validation_errors: list[str] = []
+    if duplicate_evidence_ids:
+        evidence_validation_errors.append(
+            "evidence contains duplicate required IDs: " + ", ".join(duplicate_evidence_ids)
+        )
+    evidence_redaction_ids = [
+        evidence_id
+        for evidence_id, rows in evidence_rows.items()
+        if any(evidence_entry_has_unwaivable_redaction_findings(row) for row in rows)
+    ]
+    if evidence_redaction_ids:
+        redaction_validation_errors.append(
+            "evidence rows contain redaction findings: " + ", ".join(evidence_redaction_ids)
+        )
     if (
         summary_kind != "stable-1.0-readiness"
         or summary_validation_errors
@@ -2610,6 +2663,7 @@ def stable_readiness_evidence(
         or redaction_validation_errors
         or decision_validation_errors
         or count_validation_errors
+        or evidence_validation_errors
     ):
         main_status = "fail"
     elif decision == "ready-with-allowed-limitations" and main_status == "pass":
@@ -2617,7 +2671,6 @@ def stable_readiness_evidence(
     elif not stable_ready or decision == "not-ready":
         main_status = "fail"
 
-    evidence_entries = evidence_map_from_summary(summary)
     redaction_details: dict[str, Any] = {
         "status": redaction_status,
         "findingCount": redaction_finding_count
@@ -2633,11 +2686,14 @@ def stable_readiness_evidence(
         *summary_validation_errors,
         *decision_validation_errors,
         *count_validation_errors,
+        *evidence_validation_errors,
     ]
     if summary_validation_errors:
         main_summary = "Stable 1.0 readiness summary schema is malformed."
     elif count_validation_errors:
         main_summary = "Stable 1.0 readiness summary reports remaining blockers or forbidden limitations."
+    elif evidence_validation_errors:
+        main_summary = "Stable 1.0 readiness summary evidence rows are malformed."
     synthetic_entries: dict[str, dict[str, Any]] = {
         "stable-1.0.readiness-gate": {
             "id": "stable-1.0.readiness-gate",
@@ -2683,7 +2739,8 @@ def stable_readiness_evidence(
     }
     items: list[EvidenceItem] = []
     for evidence_id in STABLE_1_0_READINESS_EVIDENCE_IDS:
-        entry = synthetic_entries.get(evidence_id) or evidence_entries.get(evidence_id)
+        rows = evidence_rows.get(evidence_id, [])
+        entry = synthetic_entries.get(evidence_id) or (rows[0] if rows else None)
         if not isinstance(entry, dict):
             items.append(
                 EvidenceItem(
@@ -2698,7 +2755,15 @@ def stable_readiness_evidence(
             continue
         details = entry.get("details", {}) if isinstance(entry.get("details"), dict) else {}
         status = normalize_evidence_status(str(entry.get("status", "missing")))
-        if evidence_entry_has_unwaivable_redaction_findings(entry):
+        if evidence_id not in synthetic_entries:
+            status = stable_readiness_row_status(rows)
+            if len(rows) > 1:
+                details = dict(details)
+                details["duplicateStableReadinessEvidenceRows"] = len(rows)
+                details["validationErrors"] = [
+                    f"{evidence_id} appears {len(rows)} times in stable readiness evidence"
+                ]
+        elif evidence_entry_has_unwaivable_redaction_findings(entry):
             status = "fail"
         elif evidence_id == "stable-1.0.redaction" and (
             redaction_status != "pass" or redaction_findings or redaction_validation_errors
@@ -14560,6 +14625,90 @@ def run_self_test(repo_root: Path) -> None:
         )
         assert "matrix.stable-readiness.evidence-not-passing" in stable_blocker_record_row["issueIds"], (
             stable_blocker_record_row
+        )
+
+        stable_duplicate_evidence_summary = workspace / "build/stable-readiness-duplicate-evidence.json"
+        stable_duplicate_evidence_rows = [
+            {
+                "id": evidence_id,
+                "status": "pass",
+                "summary": f"{evidence_id} passed.",
+                "details": {"decision": "ready", "stableReady": True}
+                if evidence_id == "stable-1.0.readiness-gate"
+                else {},
+            }
+            for evidence_id in STABLE_1_0_READINESS_EVIDENCE_IDS
+        ]
+        for index, entry in enumerate(stable_duplicate_evidence_rows):
+            if entry["id"] == "stable-1.0.security-drills":
+                stable_duplicate_evidence_rows.insert(
+                    index,
+                    {
+                        "id": "stable-1.0.security-drills",
+                        "status": "fail",
+                        "summary": "Synthetic failed duplicate Stable security drills evidence.",
+                        "details": {},
+                    },
+                )
+                break
+        else:
+            raise AssertionError("stable-1.0.security-drills evidence missing from self-test fixture")
+        write_json(
+            stable_duplicate_evidence_summary,
+            {
+                "schemaVersion": 1,
+                "kind": "stable-1.0-readiness",
+                "status": "pass",
+                "decision": "ready",
+                "stableReady": True,
+                "blockerCount": 0,
+                "warningCount": 0,
+                "allowedLimitationCount": 0,
+                "disallowedLimitationCount": 0,
+                "domains": [],
+                "blockers": [],
+                "warnings": [],
+                "allowedLimitations": [],
+                "disallowedLimitations": [],
+                "redaction": {"status": "pass", "findings": []},
+                "evidence": stable_duplicate_evidence_rows,
+            },
+        )
+        stable_duplicate_items = stable_readiness_evidence(
+            stable_duplicate_evidence_summary,
+            True,
+            workspace,
+            out_dir,
+        )
+        stable_duplicate_statuses = {item.id: item.status for item in stable_duplicate_items}
+        assert stable_duplicate_statuses["stable-1.0.readiness-gate"] == "fail", (
+            stable_duplicate_statuses
+        )
+        assert stable_duplicate_statuses["stable-1.0.security-drills"] == "fail", (
+            stable_duplicate_statuses
+        )
+        stable_duplicate_details = next(
+            item.details
+            for item in stable_duplicate_items
+            if item.id == "stable-1.0.readiness-gate"
+        )
+        assert stable_duplicate_details["validationErrors"] == [
+            "evidence contains duplicate required IDs: stable-1.0.security-drills"
+        ], stable_duplicate_details
+        stable_duplicate_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/stable-duplicate-evidence-cert").resolve(),
+            stable_readiness_summary=stable_duplicate_evidence_summary,
+            stable_readiness_required=True,
+        )
+        stable_duplicate_cert, stable_duplicate_exit_code = run(stable_duplicate_settings)
+        assert stable_duplicate_exit_code == 1, stable_duplicate_cert
+        stable_duplicate_row = matrix_row_by_id(stable_duplicate_settings.out_dir, "stable-1-0-readiness")
+        assert stable_duplicate_row["status"] == "fail", stable_duplicate_row
+        assert stable_duplicate_row["releaseBlocker"] is True, stable_duplicate_row
+        assert "evidence.stable-1.0.security-drills" in stable_duplicate_row["issueIds"], stable_duplicate_row
+        assert "matrix.stable-readiness.evidence-not-passing" in stable_duplicate_row["issueIds"], (
+            stable_duplicate_row
         )
 
         stable_truncated_summary = workspace / "build/stable-readiness-truncated.json"
