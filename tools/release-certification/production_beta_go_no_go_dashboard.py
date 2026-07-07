@@ -3298,6 +3298,29 @@ def stable_readiness_issues(
             )
         ]
     issues: list[Issue] = []
+    schema_version = summary.get("schemaVersion")
+    schema_version_valid = (
+        isinstance(schema_version, int)
+        and not isinstance(schema_version, bool)
+        and schema_version == 1
+    )
+    if not schema_version_valid:
+        issues.append(
+            Issue(
+                id="stable-1.0.readiness-summary.schema-version",
+                evidence_id="stable-1.0.readiness-gate",
+                domain_id=domain_id,
+                severity="blocker" if required else "warning",
+                title="Stable 1.0 readiness summary schema version is invalid",
+                summary=(
+                    "Stable readiness summary schemaVersion must be integer 1; "
+                    f"summary schemaVersion is {schema_version if schema_version is not None else 'missing'}."
+                ),
+                source="stable-readiness-summary",
+                waivable=not required,
+                category="stable-readiness",
+            )
+        )
     kind = str(summary.get("kind", ""))
     if kind != "stable-1.0-readiness":
         issues.append(
@@ -4921,6 +4944,39 @@ def assert_required_stable_readiness_release_id_matches_dashboard_candidate(root
     matching_stable = matching_dashboard.get("stableReadiness")
     if not isinstance(matching_stable, dict) or matching_stable.get("releaseIdMatchesDashboard") is not True:
         raise AssertionError(f"matching Stable readiness binding was not reported: {matching_dashboard}")
+
+    missing_schema_inputs = json.loads(json.dumps(inputs))
+    missing_schema_inputs["stableReadinessSummary"].pop("schemaVersion", None)
+    missing_schema_dashboard = build_dashboard(
+        missing_schema_inputs,
+        {},
+        [FIXTURE_DIR / "go-no-go-pass.json"],
+        None,
+        Path(__file__).resolve().parents[2],
+        root / "stable-readiness-missing-schema-version",
+        "production-beta",
+        release_id,
+        generated_at,
+        now,
+        require_stable_readiness=True,
+    )
+    if missing_schema_dashboard.get("decision") != "no-go":
+        raise AssertionError(
+            "required Stable readiness with missing schemaVersion did not block: "
+            f"{missing_schema_dashboard}"
+        )
+    missing_schema_blockers = [
+        blocker
+        for blocker in missing_schema_dashboard.get("blockers", [])
+        if isinstance(blocker, dict)
+        and blocker.get("id") == "stable-1.0.readiness-summary.schema-version"
+        and blocker.get("evidenceId") == "stable-1.0.readiness-gate"
+    ]
+    if not missing_schema_blockers:
+        raise AssertionError(
+            "missing Stable schemaVersion was not reported as a required blocker: "
+            f"{missing_schema_dashboard}"
+        )
 
     mismatched_inputs = json.loads(json.dumps(inputs))
     mismatched_inputs["stableReadinessSummary"]["releaseId"] = "crypta-production-beta-previous"

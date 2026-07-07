@@ -2466,6 +2466,19 @@ def stable_readiness_evidence(
         ]
 
     summary_kind = str(summary.get("kind", ""))
+    summary_schema_version = summary.get("schemaVersion")
+    summary_schema_version_valid = (
+        isinstance(summary_schema_version, int)
+        and not isinstance(summary_schema_version, bool)
+        and summary_schema_version == 1
+    )
+    summary_validation_errors: list[str] = []
+    if not summary_schema_version_valid:
+        summary_validation_errors.append(
+            "schemaVersion is not integer 1"
+            if summary_schema_version is not None
+            else "schemaVersion is missing"
+        )
     redaction = summary.get("redaction") if isinstance(summary.get("redaction"), dict) else {}
     redaction_status = normalize_evidence_status(str(redaction.get("status", "missing")))
     redaction_findings = redaction.get("findings") if isinstance(redaction.get("findings"), list) else []
@@ -2495,6 +2508,7 @@ def stable_readiness_evidence(
         count_validation_errors.append(f"disallowedLimitationCount is {disallowed_count}")
     if (
         summary_kind != "stable-1.0-readiness"
+        or summary_validation_errors
         or redaction_status != "pass"
         or redaction_findings
         or redaction_validation_errors
@@ -2518,7 +2532,10 @@ def stable_readiness_evidence(
     if redaction_findings:
         redaction_details["redactionFindings"] = redaction_findings
     main_summary = f"Stable 1.0 readiness decision is {decision}."
-    if count_validation_errors:
+    main_validation_errors = [*summary_validation_errors, *count_validation_errors]
+    if summary_validation_errors:
+        main_summary = "Stable 1.0 readiness summary schema is malformed."
+    elif count_validation_errors:
         main_summary = "Stable 1.0 readiness summary reports remaining blockers or forbidden limitations."
     synthetic_entries: dict[str, dict[str, Any]] = {
         "stable-1.0.readiness-gate": {
@@ -2528,6 +2545,7 @@ def stable_readiness_evidence(
             "details": {
                 "required": required,
                 "summaryKind": summary_kind,
+                "schemaVersion": summary_schema_version if summary_schema_version is not None else "missing",
                 "decision": decision,
                 "stableReady": stable_ready,
                 "blockerCount": blocker_count
@@ -2538,7 +2556,7 @@ def stable_readiness_evidence(
                 "disallowedLimitationCount": disallowed_count
                 if not malformed_disallowed_count
                 else summary.get("disallowedLimitationCount", 0),
-                "validationErrors": count_validation_errors,
+                "validationErrors": main_validation_errors,
                 "summaryPath": source,
                 "artifactRefs": summary.get("artifactRefs", {})
                 if isinstance(summary.get("artifactRefs"), dict)
@@ -13793,6 +13811,59 @@ def run_self_test(repo_root: Path) -> None:
         assert stable_redaction_count_row["releaseBlocker"] is True, stable_redaction_count_row
         assert "evidence.stable-1.0.redaction" in stable_redaction_count_row["issueIds"], stable_redaction_count_row
         assert "matrix.stable-readiness.redaction-failed" in stable_redaction_count_row["issueIds"], stable_redaction_count_row
+
+        stable_missing_schema_summary = workspace / "build/stable-readiness-missing-schema-version.json"
+        write_json(
+            stable_missing_schema_summary,
+            {
+                "kind": "stable-1.0-readiness",
+                "status": "pass",
+                "decision": "ready",
+                "stableReady": True,
+                "blockerCount": 0,
+                "warningCount": 0,
+                "allowedLimitationCount": 0,
+                "disallowedLimitationCount": 0,
+                "domains": [],
+                "blockers": [],
+                "warnings": [],
+                "allowedLimitations": [],
+                "disallowedLimitations": [],
+                "redaction": {"status": "pass", "findings": []},
+                "evidence": [
+                    {
+                        "id": evidence_id,
+                        "status": "pass",
+                        "summary": f"{evidence_id} passed.",
+                        "details": {"decision": "ready", "stableReady": True}
+                        if evidence_id == "stable-1.0.readiness-gate"
+                        else {},
+                    }
+                    for evidence_id in STABLE_1_0_READINESS_EVIDENCE_IDS
+                ],
+            },
+        )
+        stable_missing_schema_items = stable_readiness_evidence(
+            stable_missing_schema_summary,
+            True,
+            workspace,
+            out_dir,
+        )
+        stable_missing_schema_statuses = {item.id: item.status for item in stable_missing_schema_items}
+        assert stable_missing_schema_statuses["stable-1.0.readiness-gate"] == "fail", stable_missing_schema_statuses
+        stable_missing_schema_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/stable-missing-schema-cert").resolve(),
+            stable_readiness_summary=stable_missing_schema_summary,
+            stable_readiness_required=True,
+        )
+        stable_missing_schema_cert, stable_missing_schema_exit_code = run(stable_missing_schema_settings)
+        assert stable_missing_schema_exit_code == 1, stable_missing_schema_cert
+        stable_missing_schema_row = matrix_row_by_id(stable_missing_schema_settings.out_dir, "stable-1-0-readiness")
+        assert stable_missing_schema_row["status"] == "fail", stable_missing_schema_row
+        assert stable_missing_schema_row["releaseBlocker"] is True, stable_missing_schema_row
+        assert "evidence.stable-1.0.readiness-gate" in stable_missing_schema_row["issueIds"], stable_missing_schema_row
+        assert "matrix.stable-readiness.evidence-not-passing" in stable_missing_schema_row["issueIds"], stable_missing_schema_row
 
         stable_remaining_blockers_summary = workspace / "build/stable-readiness-remaining-blockers.json"
         write_json(
