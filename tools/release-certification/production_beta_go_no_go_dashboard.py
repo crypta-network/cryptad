@@ -2250,6 +2250,25 @@ def parse_release_blocker_count(value: Any) -> tuple[int, bool]:
     return parsed, False
 
 
+def stable_summary_record_errors(
+    summary: dict[str, Any],
+    field_name: str,
+    count_field_name: str,
+    parsed_count: int,
+    malformed_count: bool,
+) -> list[str]:
+    value = summary.get(field_name)
+    if not isinstance(value, list):
+        return [f"{field_name} must be a list"]
+    errors: list[str] = []
+    record_count = len(value)
+    if record_count:
+        errors.append(f"{field_name} contains {record_count} record(s)")
+    if not malformed_count and parsed_count != record_count:
+        errors.append(f"{count_field_name} is {parsed_count} but {field_name} contains {record_count}")
+    return errors
+
+
 def ecosystem_matrix_issues(matrix: dict[str, Any] | None) -> list[Issue]:
     if not isinstance(matrix, dict):
         return []
@@ -3512,7 +3531,29 @@ def stable_readiness_issues(
     disallowed_count, malformed_disallowed_count = parse_release_blocker_count(
         summary.get("disallowedLimitationCount", 0)
     )
-    if malformed_blocker_count or malformed_disallowed_count or blocker_count > 0 or disallowed_count > 0:
+    record_errors = [
+        *stable_summary_record_errors(
+            summary,
+            "blockers",
+            "blockerCount",
+            blocker_count,
+            malformed_blocker_count,
+        ),
+        *stable_summary_record_errors(
+            summary,
+            "disallowedLimitations",
+            "disallowedLimitationCount",
+            disallowed_count,
+            malformed_disallowed_count,
+        ),
+    ]
+    if (
+        malformed_blocker_count
+        or malformed_disallowed_count
+        or blocker_count > 0
+        or disallowed_count > 0
+        or record_errors
+    ):
         details: list[str] = []
         if malformed_blocker_count:
             details.append("blockerCount is not a non-negative integer")
@@ -3522,6 +3563,7 @@ def stable_readiness_issues(
             details.append("disallowedLimitationCount is not a non-negative integer")
         elif disallowed_count > 0:
             details.append(f"disallowedLimitationCount is {disallowed_count}")
+        details.extend(record_errors)
         issues.append(
             Issue(
                 id="stable-1.0.readiness-summary.remaining-blockers",
@@ -4946,6 +4988,8 @@ def assert_required_stable_readiness_release_id_matches_dashboard_candidate(root
         "warningCount": 0,
         "allowedLimitationCount": 0,
         "disallowedLimitationCount": 0,
+        "blockers": [],
+        "disallowedLimitations": [],
         "redaction": {"status": "pass", "findings": []},
         "evidence": [
             {
@@ -5280,6 +5324,44 @@ def assert_required_stable_readiness_release_id_matches_dashboard_candidate(root
         raise AssertionError(
             "Stable readiness remaining blockers were not reported as a required blocker: "
             f"{remaining_blockers_dashboard}"
+        )
+
+    blocker_record_inputs = json.loads(json.dumps(inputs))
+    blocker_record_inputs["stableReadinessSummary"]["blockers"] = [
+        {"id": "stable-self-test-blocker", "evidenceId": "stable-1.0.readiness-gate"}
+    ]
+    blocker_record_inputs["stableReadinessSummary"]["disallowedLimitations"] = [
+        {"id": "stable-self-test-disallowed"}
+    ]
+    blocker_record_dashboard = build_dashboard(
+        blocker_record_inputs,
+        {},
+        [FIXTURE_DIR / "go-no-go-pass.json"],
+        None,
+        Path(__file__).resolve().parents[2],
+        root / "stable-readiness-blocker-records",
+        "production-beta",
+        release_id,
+        generated_at,
+        now,
+        require_stable_readiness=True,
+    )
+    if blocker_record_dashboard.get("decision") != "no-go":
+        raise AssertionError(
+            "required Stable readiness with blocker records but zero counts did not block: "
+            f"{blocker_record_dashboard}"
+        )
+    blocker_record_issues = [
+        blocker
+        for blocker in blocker_record_dashboard.get("blockers", [])
+        if isinstance(blocker, dict)
+        and blocker.get("id") == "stable-1.0.readiness-summary.remaining-blockers"
+        and blocker.get("evidenceId") == "stable-1.0.readiness-gate"
+    ]
+    if not blocker_record_issues:
+        raise AssertionError(
+            "Stable readiness blocker records were not reported as a required blocker: "
+            f"{blocker_record_dashboard}"
         )
 
 

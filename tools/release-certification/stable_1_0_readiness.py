@@ -425,6 +425,25 @@ def list_shape_errors(value: Any, label: str, *, allow_empty: bool = False) -> l
     return []
 
 
+def string_array_values(value: Any, label: str, default: Iterable[str]) -> tuple[set[str], list[str]]:
+    if value is None:
+        return set(default), []
+    if not isinstance(value, list):
+        return set(default), [f"{label} must be a list"]
+    if not value:
+        return set(default), [f"{label} must not be empty"]
+    malformed = [
+        str(index)
+        for index, item in enumerate(value)
+        if not isinstance(item, str) or not item.strip()
+    ]
+    if malformed:
+        return set(default), [
+            f"{label} entries must be non-empty strings; malformed indexes: {', '.join(malformed)}"
+        ]
+    return {item.strip() for item in value}, []
+
+
 def release_id_from_beta_version(value: Any) -> str:
     version = non_empty_string(value)
     if not version:
@@ -1962,6 +1981,25 @@ def evaluate_policy(
             if isinstance(policy.get("securityDrillCriteria"), dict)
             else {}
         )
+        for key, default in (
+            ("acceptedMultiNodeModes", ("hybrid", "live")),
+            ("acceptedNetworkScaleModes", ("simulated-rc-soak", "live-rc-soak")),
+        ):
+            _, mode_errors = string_array_values(
+                required_soak.get(key),
+                f"requiredSoak.{key}",
+                default,
+            )
+            for mode_error in mode_errors:
+                blockers.append(
+                    blocker_issue(
+                        domain_id,
+                        "stable-1.0.live-multi-node-soak",
+                        "Stable soak accepted mode policy is invalid",
+                        mode_error + ".",
+                        source,
+                    )
+                )
         if positive_int(required_soak.get("maximumEvidenceAgeDays")) is None:
             blockers.append(
                 blocker_issue(
@@ -2440,8 +2478,26 @@ def evaluate_live_multi_node_soak(
         "release-certification",
     )
     required_soak = policy.get("requiredSoak") if isinstance(policy.get("requiredSoak"), dict) else {}
-    accepted_multi = set(required_soak.get("acceptedMultiNodeModes", ["hybrid", "live"]))
-    accepted_network = set(required_soak.get("acceptedNetworkScaleModes", ["simulated-rc-soak", "live-rc-soak"]))
+    accepted_multi, accepted_multi_errors = string_array_values(
+        required_soak.get("acceptedMultiNodeModes"),
+        "requiredSoak.acceptedMultiNodeModes",
+        ("hybrid", "live"),
+    )
+    accepted_network, accepted_network_errors = string_array_values(
+        required_soak.get("acceptedNetworkScaleModes"),
+        "requiredSoak.acceptedNetworkScaleModes",
+        ("simulated-rc-soak", "live-rc-soak"),
+    )
+    for mode_error in [*accepted_multi_errors, *accepted_network_errors]:
+        blockers.append(
+            blocker_issue(
+                domain_id,
+                "stable-1.0.live-multi-node-soak",
+                "Stable soak accepted mode policy is invalid",
+                mode_error + ".",
+                "stable-readiness-policy",
+            )
+        )
     min_ops = positive_int(required_soak.get("minimumOperationCount")) or 500
     max_age_days = positive_int(required_soak.get("maximumEvidenceAgeDays"))
     if max_age_days is None:
@@ -3086,6 +3142,11 @@ def build_summary(
 ) -> dict[str, Any]:
     blockers = [blocker for domain in domains for blocker in domain.get("blockers", [])]
     warnings = [warning for domain in domains for warning in domain.get("warnings", [])]
+    redaction_blockers = [
+        blocker
+        for blocker in blockers
+        if isinstance(blocker, dict) and blocker.get("evidenceId") == "stable-1.0.redaction"
+    ]
     if redaction.get("status") != "pass":
         redaction_blocker = blocker_issue(
             "redaction",
@@ -3095,11 +3156,31 @@ def build_summary(
             "stable-readiness-redaction",
         )
         blockers.append(redaction_blocker)
+        redaction_blockers.append(redaction_blocker)
+    if redaction_blockers:
         for domain in domains:
             if domain.get("id") == "redaction":
-                domain.setdefault("blockers", []).append(redaction_blocker)
+                existing = domain.setdefault("blockers", [])
+                existing_keys = {
+                    (
+                        blocker.get("id"),
+                        blocker.get("evidenceId"),
+                        blocker.get("source"),
+                    )
+                    for blocker in existing
+                    if isinstance(blocker, dict)
+                }
+                for redaction_blocker in redaction_blockers:
+                    redaction_key = (
+                        redaction_blocker.get("id"),
+                        redaction_blocker.get("evidenceId"),
+                        redaction_blocker.get("source"),
+                    )
+                    if redaction_key not in existing_keys:
+                        existing.append(redaction_blocker)
+                        existing_keys.add(redaction_key)
                 domain["status"] = "fail"
-                domain["summary"] = redaction_blocker["summary"]
+                domain["summary"] = "Stable 1.0 readiness redaction blockers are present."
                 break
     blocker_count = len(blockers)
     warning_count = len(warnings)
@@ -3625,6 +3706,7 @@ def run_case(
     *,
     expect_blocker: str | None = None,
     expect_allowed: str | None = None,
+    post_check: Callable[[dict[str, Any]], None] | None = None,
 ) -> None:
     inputs, limitations = base_self_test_inputs()
     if expected_decision == "ready":
@@ -3654,6 +3736,8 @@ def run_case(
         allowed_ids = {str(limitation.get("id")) for limitation in summary.get("allowedLimitations", [])}
         if expect_allowed not in allowed_ids:
             raise AssertionError(f"{name} missing allowed limitation {expect_allowed}: {summary.get('allowedLimitations')}")
+    if post_check is not None:
+        post_check(summary)
 
 
 def run_self_test() -> None:
@@ -3709,6 +3793,7 @@ def run_self_test() -> None:
         "security-redaction-count",
         "security-release-id-mismatch",
         "missing-security-required-scenarios",
+        "malformed-soak-mode-policy",
         "multi-node-release-id-mismatch",
         "multi-node-raw-evidence-flag",
         "multi-node-redaction-count",
@@ -4451,12 +4536,25 @@ def run_self_test() -> None:
                 "findingCount": 1,
             }
 
+        def expect_stable_redaction_evidence_failed(summary: dict[str, Any]) -> None:
+            evidence_statuses = {
+                str(entry.get("id")): str(entry.get("status"))
+                for entry in summary.get("evidence", [])
+                if isinstance(entry, dict)
+            }
+            if evidence_statuses.get("stable-1.0.redaction") != "fail":
+                raise AssertionError(
+                    "security redaction blocker did not fail stable-1.0.redaction evidence: "
+                    f"{evidence_statuses}"
+                )
+
         run_case(
             root,
             "security-redaction-count",
             security_redaction_count,
             "not-ready",
             expect_blocker="stable-1.0.redaction",
+            post_check=expect_stable_redaction_evidence_failed,
         )
 
         def security_release_id_mismatch(inputs: dict[str, Any], _limitations: dict[str, Any], _paths: dict[str, Path]) -> None:
@@ -4488,6 +4586,27 @@ def run_self_test() -> None:
             missing_security_required_scenarios,
             "not-ready",
             expect_blocker="stable-1.0.security-drills",
+        )
+
+        def malformed_soak_mode_policy(
+            _inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            paths: dict[str, Path],
+        ) -> None:
+            policy = copy.deepcopy(read_json(DEFAULT_POLICY) or {})
+            if isinstance(policy.get("requiredSoak"), dict):
+                policy["requiredSoak"]["acceptedMultiNodeModes"] = [1]
+                policy["requiredSoak"]["acceptedNetworkScaleModes"] = ["live-rc-soak", 2]
+            policy_path = paths["stableKnownLimitations"].parent / "malformed-soak-mode-policy.json"
+            write_json(policy_path, policy)
+            paths["policy"] = policy_path
+
+        run_case(
+            root,
+            "malformed-soak-mode-policy",
+            malformed_soak_mode_policy,
+            "not-ready",
+            expect_blocker="stable-1.0.live-multi-node-soak",
         )
 
         def multi_node_release_id_mismatch(

@@ -259,6 +259,11 @@
       "category": "negative"
     },
     {
+      "id": "malformed-soak-mode-policy",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
       "id": "multi-node-release-id-mismatch",
       "expectedDecision": "not-ready",
       "category": "negative"

@@ -2474,6 +2474,25 @@ def parse_stable_readiness_count(value: Any) -> tuple[int, bool]:
     return parsed, False
 
 
+def stable_readiness_record_errors(
+    summary: dict[str, Any],
+    field_name: str,
+    count_field_name: str,
+    parsed_count: int,
+    malformed_count: bool,
+) -> tuple[int, list[str]]:
+    value = summary.get(field_name)
+    if not isinstance(value, list):
+        return 0, [f"{field_name} must be a list"]
+    errors: list[str] = []
+    record_count = len(value)
+    if record_count:
+        errors.append(f"{field_name} contains {record_count} record(s)")
+    if not malformed_count and parsed_count != record_count:
+        errors.append(f"{count_field_name} is {parsed_count} but {field_name} contains {record_count}")
+    return record_count, errors
+
+
 def stable_readiness_evidence(
     summary_path: Path | None,
     required: bool,
@@ -2553,6 +2572,20 @@ def stable_readiness_evidence(
     disallowed_count, malformed_disallowed_count = parse_stable_readiness_count(
         summary.get("disallowedLimitationCount", 0)
     )
+    blocker_record_count, blocker_record_errors = stable_readiness_record_errors(
+        summary,
+        "blockers",
+        "blockerCount",
+        blocker_count,
+        malformed_blocker_count,
+    )
+    disallowed_record_count, disallowed_record_errors = stable_readiness_record_errors(
+        summary,
+        "disallowedLimitations",
+        "disallowedLimitationCount",
+        disallowed_count,
+        malformed_disallowed_count,
+    )
     count_validation_errors: list[str] = []
     if malformed_blocker_count:
         count_validation_errors.append("blockerCount is not a non-negative integer")
@@ -2562,6 +2595,8 @@ def stable_readiness_evidence(
         count_validation_errors.append("disallowedLimitationCount is not a non-negative integer")
     elif disallowed_count > 0:
         count_validation_errors.append(f"disallowedLimitationCount is {disallowed_count}")
+    count_validation_errors.extend(blocker_record_errors)
+    count_validation_errors.extend(disallowed_record_errors)
     if (
         summary_kind != "stable-1.0-readiness"
         or summary_validation_errors
@@ -2617,6 +2652,8 @@ def stable_readiness_evidence(
                 "disallowedLimitationCount": disallowed_count
                 if not malformed_disallowed_count
                 else summary.get("disallowedLimitationCount", 0),
+                "blockerRecordCount": blocker_record_count,
+                "disallowedLimitationRecordCount": disallowed_record_count,
                 "validationErrors": main_validation_errors,
                 "summaryPath": source,
                 "artifactRefs": summary.get("artifactRefs", {})
@@ -14301,6 +14338,80 @@ def run_self_test(repo_root: Path) -> None:
         assert stable_remaining_row["releaseBlocker"] is True, stable_remaining_row
         assert "evidence.stable-1.0.readiness-gate" in stable_remaining_row["issueIds"], stable_remaining_row
         assert "matrix.stable-readiness.evidence-not-passing" in stable_remaining_row["issueIds"], stable_remaining_row
+
+        stable_blocker_records_summary = workspace / "build/stable-readiness-blocker-records.json"
+        write_json(
+            stable_blocker_records_summary,
+            {
+                "schemaVersion": 1,
+                "kind": "stable-1.0-readiness",
+                "status": "pass",
+                "decision": "ready",
+                "stableReady": True,
+                "blockerCount": 0,
+                "warningCount": 0,
+                "allowedLimitationCount": 0,
+                "disallowedLimitationCount": 0,
+                "domains": [],
+                "blockers": [
+                    {
+                        "id": "stable-self-test-blocker",
+                        "evidenceId": "stable-1.0.readiness-gate",
+                    }
+                ],
+                "warnings": [],
+                "allowedLimitations": [],
+                "disallowedLimitations": [
+                    {
+                        "id": "stable-self-test-disallowed",
+                    }
+                ],
+                "redaction": {"status": "pass", "findings": []},
+                "evidence": [
+                    {
+                        "id": evidence_id,
+                        "status": "pass",
+                        "summary": f"{evidence_id} passed.",
+                        "details": {"decision": "ready", "stableReady": True}
+                        if evidence_id == "stable-1.0.readiness-gate"
+                        else {},
+                    }
+                    for evidence_id in STABLE_1_0_READINESS_EVIDENCE_IDS
+                ],
+            },
+        )
+        stable_blocker_record_items = stable_readiness_evidence(
+            stable_blocker_records_summary,
+            True,
+            workspace,
+            out_dir,
+        )
+        stable_blocker_record_statuses = {
+            item.id: item.status for item in stable_blocker_record_items
+        }
+        assert stable_blocker_record_statuses["stable-1.0.readiness-gate"] == "fail", (
+            stable_blocker_record_statuses
+        )
+        stable_blocker_record_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/stable-blocker-records-cert").resolve(),
+            stable_readiness_summary=stable_blocker_records_summary,
+            stable_readiness_required=True,
+        )
+        stable_blocker_record_cert, stable_blocker_record_exit_code = run(stable_blocker_record_settings)
+        assert stable_blocker_record_exit_code == 1, stable_blocker_record_cert
+        stable_blocker_record_row = matrix_row_by_id(
+            stable_blocker_record_settings.out_dir,
+            "stable-1-0-readiness",
+        )
+        assert stable_blocker_record_row["status"] == "fail", stable_blocker_record_row
+        assert stable_blocker_record_row["releaseBlocker"] is True, stable_blocker_record_row
+        assert "evidence.stable-1.0.readiness-gate" in stable_blocker_record_row["issueIds"], (
+            stable_blocker_record_row
+        )
+        assert "matrix.stable-readiness.evidence-not-passing" in stable_blocker_record_row["issueIds"], (
+            stable_blocker_record_row
+        )
 
         stable_truncated_summary = workspace / "build/stable-readiness-truncated.json"
         write_json(
