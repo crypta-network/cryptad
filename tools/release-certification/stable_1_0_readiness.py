@@ -697,6 +697,40 @@ def security_artifact_freshness_blocker(
     )
 
 
+def security_scenario_set(
+    summary: dict[str, Any],
+    field: str,
+    domain_id: str,
+) -> tuple[set[str], dict[str, Any] | None]:
+    if field not in summary:
+        return set(), None
+    value = summary.get(field)
+    if not isinstance(value, list):
+        return set(), blocker_issue(
+            domain_id,
+            "stable-1.0.security-drills",
+            "Security drill scenario list is malformed",
+            f"{field} must be a list of scenario identifiers.",
+            "security-drills-summary",
+        )
+    scenarios: set[str] = set()
+    malformed_items: list[str] = []
+    for index, item in enumerate(value):
+        if isinstance(item, str) and item.strip():
+            scenarios.add(item)
+        else:
+            malformed_items.append(f"{field}[{index}]")
+    if malformed_items:
+        return scenarios, blocker_issue(
+            domain_id,
+            "stable-1.0.security-drills",
+            "Security drill scenario list is malformed",
+            "Malformed scenario entries: " + ", ".join(malformed_items),
+            "security-drills-summary",
+        )
+    return scenarios, None
+
+
 def add_required_evidence_blockers(
     evidence: dict[str, dict[str, Any]],
     domain_id: str,
@@ -1656,11 +1690,26 @@ def evaluate_security(
                     )
                     if artifact_freshness is not None:
                         blockers.append(artifact_freshness)
-        passed = {str(item) for item in security_summary.get("passedScenarios", []) if isinstance(item, str)}
-        failed = {str(item) for item in security_summary.get("failedScenarios", []) if isinstance(item, str)}
-        missing = {str(item) for item in security_summary.get("missingScenarios", []) if isinstance(item, str)}
-        stale = {str(item) for item in security_summary.get("staleScenarios", []) if isinstance(item, str)}
-        malformed = {str(item) for item in security_summary.get("malformedScenarios", []) if isinstance(item, str)}
+        scenario_sets: dict[str, set[str]] = {}
+        for field in (
+            "passedScenarios",
+            "failedScenarios",
+            "missingScenarios",
+            "staleScenarios",
+            "malformedScenarios",
+        ):
+            scenario_sets[field], scenario_blocker = security_scenario_set(
+                security_summary,
+                field,
+                domain_id,
+            )
+            if scenario_blocker is not None:
+                blockers.append(scenario_blocker)
+        passed = scenario_sets["passedScenarios"]
+        failed = scenario_sets["failedScenarios"]
+        missing = scenario_sets["missingScenarios"]
+        stale = scenario_sets["staleScenarios"]
+        malformed = scenario_sets["malformedScenarios"]
         not_passing = sorted((required - passed) | failed | missing | stale | malformed)
         if not_passing:
             blockers.append(
@@ -2963,6 +3012,7 @@ def run_self_test() -> None:
         "missing-third-party",
         "empty-third-party-sample-flow",
         "stale-security",
+        "malformed-security-scenario-list",
         "security-redaction-unsafe-flag",
         "security-release-id-mismatch",
         "missing-security-required-scenarios",
@@ -3400,6 +3450,21 @@ def run_self_test() -> None:
             ]
 
         run_case(root, "stale-security", stale_security, "not-ready", expect_blocker="stable-1.0.security-drills")
+
+        def malformed_security_scenario_list(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs["securityDrillsSummary"]["passedScenarios"] = None
+
+        run_case(
+            root,
+            "malformed-security-scenario-list",
+            malformed_security_scenario_list,
+            "not-ready",
+            expect_blocker="stable-1.0.security-drills",
+        )
 
         def security_redaction_unsafe_flag(inputs: dict[str, Any], _limitations: dict[str, Any], _paths: dict[str, Path]) -> None:
             inputs["securityDrillsSummary"]["redaction"] = {

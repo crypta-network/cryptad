@@ -154,6 +154,11 @@
       "category": "negative"
     },
     {
+      "id": "malformed-security-scenario-list",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
       "id": "security-redaction-unsafe-flag",
       "expectedDecision": "not-ready",
       "category": "negative"

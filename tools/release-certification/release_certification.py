@@ -1039,9 +1039,47 @@ def unique_non_empty_strings(values: Any) -> list[str]:
     return result
 
 
+def redaction_signal_has_unwaivable_findings(value: Any) -> bool:
+    if isinstance(value, dict):
+        if "redaction" in value and redaction_signal_has_unwaivable_findings(value["redaction"]):
+            return True
+        redaction_findings = value.get("redactionFindings")
+        if isinstance(redaction_findings, list) and bool(redaction_findings):
+            return True
+        findings = value.get("findings")
+        if isinstance(findings, list) and bool(findings):
+            return True
+        if "findingCount" in value:
+            finding_count, malformed_finding_count = parse_stable_readiness_count(value.get("findingCount"))
+            if malformed_finding_count or finding_count > 0:
+                return True
+        status = value.get("status")
+        if normalize_evidence_status(str(status)) == "fail":
+            redaction_keys = {str(key).lower() for key in value}
+            if "findings" in redaction_keys or "findingcount" in redaction_keys:
+                return True
+        for key, child in value.items():
+            lowered = str(key).lower()
+            if lowered.endswith("excluded") and child is False:
+                return True
+            if (
+                lowered.startswith("raw")
+                and (lowered.endswith("included") or lowered.endswith("persisted") or lowered.endswith("inevidence"))
+                and child is True
+            ):
+                return True
+            if redaction_signal_has_unwaivable_findings(child):
+                return True
+    elif isinstance(value, list):
+        return any(redaction_signal_has_unwaivable_findings(child) for child in value)
+    return False
+
+
 def has_unwaivable_redaction_findings(_evidence_id: str, details: dict[str, Any]) -> bool:
     redaction_findings = details.get("redactionFindings")
-    return isinstance(redaction_findings, list) and bool(redaction_findings)
+    if isinstance(redaction_findings, list) and bool(redaction_findings):
+        return True
+    return redaction_signal_has_unwaivable_findings(details.get("redaction"))
 
 
 def evidence_item_has_unwaivable_redaction_findings(item: EvidenceItem) -> bool:
@@ -2595,7 +2633,9 @@ def stable_readiness_evidence(
             continue
         details = entry.get("details", {}) if isinstance(entry.get("details"), dict) else {}
         status = normalize_evidence_status(str(entry.get("status", "missing")))
-        if evidence_id == "stable-1.0.redaction" and (
+        if evidence_entry_has_unwaivable_redaction_findings(entry):
+            status = "fail"
+        elif evidence_id == "stable-1.0.redaction" and (
             redaction_status != "pass" or redaction_findings or redaction_validation_errors
         ):
             status = "fail"
@@ -4371,6 +4411,7 @@ def evaluate_matrix_row(
         stable_ready = main_details.get("stableReady") is True
         redaction_failed = (
             redaction_status == "fail"
+            or bool(unwaivable_redaction_evidence_ids)
             or evidence_entry_has_unwaivable_redaction_findings(main_entry)
             or evidence_entry_has_unwaivable_redaction_findings(redaction_entry)
         )
@@ -4402,9 +4443,10 @@ def evaluate_matrix_row(
             status = "fail"
             release_blocker = True
             summary = "Stable 1.0 readiness redaction findings are non-waivable."
-            unwaivable_redaction_evidence_ids.add("stable-1.0.redaction")
+            if redaction_status == "fail" or not unwaivable_redaction_evidence_ids:
+                unwaivable_redaction_evidence_ids.add("stable-1.0.redaction")
             extra_unwaivable_issue_ids.add("matrix.stable-readiness.redaction-failed")
-            blocker_targets.append("stable-1.0.redaction")
+            blocker_targets.extend(sorted(unwaivable_redaction_evidence_ids))
             issue_ids.append("matrix.stable-readiness.redaction-failed")
         elif stable_evidence_bad:
             release_blocker = settings.stable_readiness_required
@@ -13811,6 +13853,80 @@ def run_self_test(repo_root: Path) -> None:
         assert stable_redaction_count_row["releaseBlocker"] is True, stable_redaction_count_row
         assert "evidence.stable-1.0.redaction" in stable_redaction_count_row["issueIds"], stable_redaction_count_row
         assert "matrix.stable-readiness.redaction-failed" in stable_redaction_count_row["issueIds"], stable_redaction_count_row
+
+        stable_nested_redaction_summary = workspace / "build/stable-readiness-nested-redaction.json"
+        nested_redaction_evidence_id = "stable-1.0.production-beta-state"
+        write_json(
+            stable_nested_redaction_summary,
+            {
+                "schemaVersion": 1,
+                "kind": "stable-1.0-readiness",
+                "status": "pass",
+                "decision": "ready",
+                "stableReady": True,
+                "blockerCount": 0,
+                "warningCount": 0,
+                "allowedLimitationCount": 0,
+                "disallowedLimitationCount": 0,
+                "domains": [],
+                "blockers": [],
+                "warnings": [],
+                "allowedLimitations": [],
+                "disallowedLimitations": [],
+                "redaction": {"status": "pass", "findings": []},
+                "evidence": [
+                    {
+                        "id": evidence_id,
+                        "status": "pass",
+                        "summary": f"{evidence_id} passed.",
+                        "details": {
+                            "redaction": {
+                                "status": "pass",
+                                "findings": [
+                                    {
+                                        "kind": "stable-readiness-fixture",
+                                        "summary": "Synthetic nested Stable evidence redaction finding.",
+                                    }
+                                ],
+                            }
+                        }
+                        if evidence_id == nested_redaction_evidence_id
+                        else (
+                            {"decision": "ready", "stableReady": True}
+                            if evidence_id == "stable-1.0.readiness-gate"
+                            else {}
+                        ),
+                    }
+                    for evidence_id in STABLE_1_0_READINESS_EVIDENCE_IDS
+                ],
+            },
+        )
+        stable_nested_items = stable_readiness_evidence(
+            stable_nested_redaction_summary,
+            True,
+            workspace,
+            out_dir,
+        )
+        stable_nested_statuses = {item.id: item.status for item in stable_nested_items}
+        assert stable_nested_statuses[nested_redaction_evidence_id] == "fail", stable_nested_statuses
+        stable_nested_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/stable-nested-redaction-cert").resolve(),
+            stable_readiness_summary=stable_nested_redaction_summary,
+            stable_readiness_required=True,
+            waivers={
+                "stable-1-0-readiness": "Attempted row waiver for nested Stable redaction failure.",
+                "matrix.stable-readiness.redaction-failed": "Attempted matrix issue waiver for nested Stable redaction failure.",
+            },
+        )
+        stable_nested_cert, stable_nested_exit_code = run(stable_nested_settings)
+        assert stable_nested_exit_code == 1, stable_nested_cert
+        stable_nested_row = matrix_row_by_id(stable_nested_settings.out_dir, "stable-1-0-readiness")
+        assert stable_nested_row["status"] == "fail", stable_nested_row
+        assert stable_nested_row["releaseBlocker"] is True, stable_nested_row
+        assert stable_nested_row.get("waiverIds") == [], stable_nested_row
+        assert nested_redaction_evidence_id in stable_nested_row["details"]["unwaivableRedactionEvidenceIds"], stable_nested_row
+        assert "matrix.stable-readiness.redaction-failed" in stable_nested_row["issueIds"], stable_nested_row
 
         stable_missing_schema_summary = workspace / "build/stable-readiness-missing-schema-version.json"
         write_json(
