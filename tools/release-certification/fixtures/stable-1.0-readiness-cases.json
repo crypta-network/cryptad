@@ -19,6 +19,11 @@
       "category": "negative"
     },
     {
+      "id": "production-stub",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
       "id": "production-not-ready",
       "expectedDecision": "not-ready",
       "category": "negative"
@@ -45,6 +50,11 @@
     },
     {
       "id": "go-no-go-no-go",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "go-no-go-stub",
       "expectedDecision": "not-ready",
       "category": "negative"
     },

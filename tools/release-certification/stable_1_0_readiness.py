@@ -38,6 +38,27 @@ REPORT_FILE = "stable-1.0-readiness-report.md"
 KNOWN_LIMITATIONS_FILE = "stable-1.0-known-limitations.json"
 BLOCKERS_FILE = "stable-1.0-blockers.json"
 
+PRODUCTION_BETA_REQUIRED_PIPELINE_STAGES = (
+    "crypta-app-launcher-install",
+    "gradle-full-build",
+    "first-party-app-staging",
+    "first-party-app-signing",
+    "first-party-app-verification",
+)
+
+PRODUCTION_BETA_REQUIRED_ARTIFACTS = (
+    "redactionReport",
+    "distArchive",
+    "checksums",
+)
+
+GO_NO_GO_SUMMARY_COUNT_FIELDS = (
+    "blockers",
+    "warnings",
+    "waiversUsed",
+    "criticalRedactionFindings",
+)
+
 APP_IDS = (
     "queue-manager",
     "publisher",
@@ -369,6 +390,35 @@ def missing_true_fields(value: Any, fields: Iterable[str]) -> list[str]:
 
 def non_empty_string(value: Any) -> str:
     return value.strip() if isinstance(value, str) else ""
+
+
+def schema_tool_errors(
+    value: dict[str, Any],
+    *,
+    expected_tool: str,
+    evidence_label: str,
+) -> list[str]:
+    errors: list[str] = []
+    if value.get("schemaVersion") != SCHEMA_VERSION:
+        errors.append(f"{evidence_label}.schemaVersion must be {SCHEMA_VERSION}")
+    if str(value.get("tool", "missing")) != expected_tool:
+        errors.append(f"{evidence_label}.tool must be {expected_tool}")
+    return errors
+
+
+def list_shape_errors(value: Any, label: str, *, allow_empty: bool = False) -> list[str]:
+    if not isinstance(value, list):
+        return [f"{label} must be a list"]
+    if not allow_empty and not value:
+        return [f"{label} must not be empty"]
+    malformed = [
+        str(index)
+        for index, item in enumerate(value)
+        if not isinstance(item, dict)
+    ]
+    if malformed:
+        return [f"{label} entries must be objects; malformed indexes: {', '.join(malformed)}"]
+    return []
 
 
 def release_id_from_beta_version(value: Any) -> str:
@@ -970,6 +1020,31 @@ def evaluate_production_beta_state(
             )
         )
     else:
+        provenance_errors = schema_tool_errors(
+            production,
+            expected_tool="production-beta-release",
+            evidence_label="productionBetaSummary",
+        )
+        for error in provenance_errors:
+            blockers.append(
+                blocker_issue(
+                    domain_id,
+                    "stable-1.0.production-beta-state",
+                    "Production beta summary schema is malformed",
+                    error + ".",
+                    "production-beta-summary",
+                )
+            )
+        if not non_empty_string(production.get("generatedAt")):
+            blockers.append(
+                blocker_issue(
+                    domain_id,
+                    "stable-1.0.production-beta-state",
+                    "Production beta summary timestamp is missing",
+                    "Stable 1.0 readiness requires generatedAt from the production beta release pipeline.",
+                    "production-beta-summary",
+                )
+            )
         mode = str(production.get("mode", "missing"))
         if mode not in required_modes:
             blockers.append(
@@ -998,6 +1073,118 @@ def evaluate_production_beta_state(
                     "stable-1.0.production-beta-state",
                     "Production beta summary is marked non-release",
                     "Stable 1.0 cannot depend on developer dry-run, fixture, emergency-skip, dirty workspace, or test-signing evidence.",
+                    "production-beta-summary",
+                )
+            )
+        pipeline_stages = production.get("pipelineStages")
+        if not isinstance(pipeline_stages, dict) or not pipeline_stages:
+            blockers.append(
+                blocker_issue(
+                    domain_id,
+                    "stable-1.0.production-beta-state",
+                    "Production beta pipeline stages are missing",
+                    "Stable 1.0 readiness requires pipelineStages from the production beta release pipeline.",
+                    "production-beta-summary",
+                )
+            )
+            pipeline_stages = {}
+        missing_or_failed_stages = [
+            stage_id
+            for stage_id in PRODUCTION_BETA_REQUIRED_PIPELINE_STAGES
+            if not isinstance(pipeline_stages.get(stage_id), dict)
+            or normalize_status(pipeline_stages.get(stage_id, {}).get("status", "missing")) != "pass"
+        ]
+        if missing_or_failed_stages:
+            blockers.append(
+                blocker_issue(
+                    domain_id,
+                    "stable-1.0.production-beta-state",
+                    "Production beta required pipeline stages did not pass",
+                    "Missing or non-pass pipeline stages: " + ", ".join(missing_or_failed_stages) + ".",
+                    "production-beta-summary",
+                )
+            )
+        artifacts = production.get("artifacts")
+        if not isinstance(artifacts, dict):
+            blockers.append(
+                blocker_issue(
+                    domain_id,
+                    "stable-1.0.production-beta-state",
+                    "Production beta artifact references are missing",
+                    "Stable 1.0 readiness requires production beta artifact references.",
+                    "production-beta-summary",
+                )
+            )
+            artifacts = {}
+        missing_artifacts = [
+            artifact_id
+            for artifact_id in PRODUCTION_BETA_REQUIRED_ARTIFACTS
+            if not non_empty_string(artifacts.get(artifact_id))
+        ]
+        if missing_artifacts:
+            blockers.append(
+                blocker_issue(
+                    domain_id,
+                    "stable-1.0.production-beta-state",
+                    "Production beta artifact references are incomplete",
+                    "Missing artifact references: " + ", ".join(missing_artifacts) + ".",
+                    "production-beta-summary",
+                )
+            )
+        promotion = production.get("promotion")
+        if not isinstance(promotion, dict):
+            blockers.append(
+                blocker_issue(
+                    domain_id,
+                    "stable-1.0.production-beta-state",
+                    "Production beta promotion proof is missing",
+                    "Stable 1.0 readiness requires the production beta promotion gate summary.",
+                    "production-beta-summary",
+                )
+            )
+            promotion = {}
+        if (
+            normalize_status(promotion.get("status", "missing")) != "pass"
+            or promotion.get("promotionReady") is not True
+            or promotion.get("nonRelease") is not False
+        ):
+            blockers.append(
+                blocker_issue(
+                    domain_id,
+                    "stable-1.0.production-beta-state",
+                    "Production beta promotion proof is not passing",
+                    (
+                        "Stable 1.0 readiness requires promotion.status=pass, "
+                        "promotion.promotionReady=true, and promotion.nonRelease=false."
+                    ),
+                    "production-beta-summary",
+                )
+            )
+        failed_gate_count, malformed_failed_gate_count = non_negative_count(
+            promotion.get("failedGateCount", 0)
+        )
+        if malformed_failed_gate_count or failed_gate_count > 0:
+            blockers.append(
+                blocker_issue(
+                    domain_id,
+                    "stable-1.0.production-beta-state",
+                    "Production beta promotion gates are failing",
+                    (
+                        "promotion.failedGateCount is "
+                        + ("malformed" if malformed_failed_gate_count else str(failed_gate_count))
+                        + "."
+                    ),
+                    "production-beta-summary",
+                )
+            )
+        gate_errors = list_shape_errors(promotion.get("gates"), "productionBetaSummary.promotion.gates")
+        for error in gate_errors:
+            blockers.append(
+                blocker_issue(
+                    domain_id,
+                    "stable-1.0.production-beta-state",
+                    "Production beta promotion gates are missing or malformed",
+                    error + ".",
                     "production-beta-summary",
                 )
             )
@@ -1066,9 +1253,10 @@ def evaluate_production_beta_state(
                     "production-beta-summary",
                 )
             )
+        gates_value = promotion.get("gates") if isinstance(promotion.get("gates"), list) else []
         failed_gates = [
             str(gate.get("id"))
-            for gate in production.get("promotion", {}).get("gates", [])
+            for gate in gates_value
             if isinstance(gate, dict) and gate.get("status") != "pass"
         ]
         forbidden_gate_prefixes = (
@@ -1104,6 +1292,107 @@ def evaluate_production_beta_state(
     else:
         decision = str(go_no_go.get("decision", "missing"))
         dashboard_mode = str(go_no_go.get("mode", "missing"))
+        provenance_errors = schema_tool_errors(
+            go_no_go,
+            expected_tool="production-beta-go-no-go-dashboard",
+            evidence_label="goNoGoSummary",
+        )
+        for error in provenance_errors:
+            blockers.append(
+                blocker_issue(
+                    domain_id,
+                    "stable-1.0.go-no-go-decision",
+                    "Go/no-go dashboard summary schema is malformed",
+                    error + ".",
+                    "go-no-go-summary",
+                )
+            )
+        dashboard_summary = go_no_go.get("summary") if isinstance(go_no_go.get("summary"), dict) else {}
+        if not dashboard_summary:
+            blockers.append(
+                blocker_issue(
+                    domain_id,
+                    "stable-1.0.go-no-go-decision",
+                    "Go/no-go dashboard summary counts are missing",
+                    "Stable 1.0 readiness requires the go/no-go dashboard summary counts.",
+                    "go-no-go-summary",
+                )
+            )
+        for field in GO_NO_GO_SUMMARY_COUNT_FIELDS:
+            count, malformed_count = non_negative_count(dashboard_summary.get(field, 0))
+            if malformed_count:
+                blockers.append(
+                    blocker_issue(
+                        domain_id,
+                        "stable-1.0.go-no-go-decision",
+                        "Go/no-go dashboard summary count is malformed",
+                        f"goNoGoSummary.summary.{field} must be a non-negative integer.",
+                        "go-no-go-summary",
+                    )
+                )
+        domain_errors = list_shape_errors(go_no_go.get("domains"), "goNoGoSummary.domains")
+        for error in domain_errors:
+            blockers.append(
+                blocker_issue(
+                    domain_id,
+                    "stable-1.0.go-no-go-decision",
+                    "Go/no-go dashboard domains are missing or malformed",
+                    error + ".",
+                    "go-no-go-summary",
+                )
+            )
+        for list_field in ("blockers", "warnings"):
+            issue_errors = list_shape_errors(
+                go_no_go.get(list_field),
+                f"goNoGoSummary.{list_field}",
+                allow_empty=True,
+            )
+            for error in issue_errors:
+                blockers.append(
+                    blocker_issue(
+                        domain_id,
+                        "stable-1.0.go-no-go-decision",
+                        "Go/no-go dashboard issue list is malformed",
+                        error + ".",
+                        "go-no-go-summary",
+                    )
+                )
+        blockers_count, blockers_count_malformed = non_negative_count(dashboard_summary.get("blockers", 0))
+        if (
+            isinstance(go_no_go.get("blockers"), list)
+            and not blockers_count_malformed
+            and blockers_count != len(go_no_go.get("blockers", []))
+        ):
+            blockers.append(
+                blocker_issue(
+                    domain_id,
+                    "stable-1.0.go-no-go-decision",
+                    "Go/no-go dashboard blocker count is inconsistent",
+                    (
+                        f"goNoGoSummary.summary.blockers is {blockers_count}, "
+                        f"but blockers contains {len(go_no_go.get('blockers', []))} entries."
+                    ),
+                    "go-no-go-summary",
+                )
+            )
+        warnings_count, warnings_count_malformed = non_negative_count(dashboard_summary.get("warnings", 0))
+        if (
+            isinstance(go_no_go.get("warnings"), list)
+            and not warnings_count_malformed
+            and warnings_count != len(go_no_go.get("warnings", []))
+        ):
+            blockers.append(
+                blocker_issue(
+                    domain_id,
+                    "stable-1.0.go-no-go-decision",
+                    "Go/no-go dashboard warning count is inconsistent",
+                    (
+                        f"goNoGoSummary.summary.warnings is {warnings_count}, "
+                        f"but warnings contains {len(go_no_go.get('warnings', []))} entries."
+                    ),
+                    "go-no-go-summary",
+                )
+            )
         if dashboard_mode != "production-beta":
             blockers.append(
                 blocker_issue(
@@ -3012,6 +3301,7 @@ def base_self_test_inputs() -> tuple[dict[str, Any], dict[str, Any]]:
     network["mode"] = "live-rc-soak"
     network["status"] = "pass"
     production = copy.deepcopy(go_inputs["productionBetaSummary"])
+    production["generatedAt"] = DEFAULT_GENERATED_AT
     production["releaseId"] = "cryptad-beta-270"
     production["version"] = "270"
     production["signingProfile"] = {
@@ -3028,6 +3318,22 @@ def base_self_test_inputs() -> tuple[dict[str, Any], dict[str, Any]]:
         "first-party-app-signing": {"status": "pass"},
         "first-party-app-verification": {"status": "pass"},
     }
+    production["promotion"] = {
+        "status": "pass",
+        "promotionReady": True,
+        "nonRelease": False,
+        "failedGateCount": 0,
+        "gates": [
+            {"id": "build.crypta-app-launcher-install", "status": "pass"},
+            {"id": "build.gradle-full-build", "status": "pass"},
+            {"id": "build.first-party-app-staging", "status": "pass"},
+            {"id": "build.first-party-app-signing", "status": "pass"},
+            {"id": "build.first-party-app-verification", "status": "pass"},
+            {"id": "build.production-beta-complete", "status": "pass"},
+            {"id": "workspace.clean-production-beta", "status": "pass"},
+            {"id": "signing.production-keys", "status": "pass"},
+        ],
+    }
     go_no_go = {
         "schemaVersion": 1,
         "tool": "production-beta-go-no-go-dashboard",
@@ -3041,6 +3347,15 @@ def base_self_test_inputs() -> tuple[dict[str, Any], dict[str, Any]]:
             "waiversUsed": 0,
             "criticalRedactionFindings": 0,
         },
+        "domains": [
+            {
+                "id": "production-beta-release-pipeline",
+                "status": "pass",
+                "summary": "Production beta release pipeline passed.",
+            }
+        ],
+        "blockers": [],
+        "warnings": [],
         "redaction": {"schemaVersion": 1, "status": "pass", "findingCount": 0, "findings": []},
     }
     release_cert = {
@@ -3180,12 +3495,14 @@ def run_self_test() -> None:
         "ready",
         "allowed-limitations",
         "missing-production",
+        "production-stub",
         "production-not-ready",
         "production-missing-signing-profile",
         "production-missing-signing-field",
         "production-redaction-findings",
         "production-redaction-count",
         "go-no-go-no-go",
+        "go-no-go-stub",
         "go-no-go-wrong-release-id",
         "go-no-go-non-production-mode",
         "go-no-go-redaction-findings",
@@ -3281,6 +3598,32 @@ def run_self_test() -> None:
 
         run_case(root, "missing-production", missing_production, "not-ready", expect_blocker="stable-1.0.production-beta-state")
 
+        def production_stub(inputs: dict[str, Any], _limitations: dict[str, Any], _paths: dict[str, Path]) -> None:
+            inputs["productionBetaSummary"] = {
+                "mode": "production-beta",
+                "status": "pass",
+                "promotionReady": True,
+                "nonRelease": False,
+                "releaseId": "cryptad-beta-270",
+                "version": "270",
+                "signingProfile": {
+                    "kind": "production",
+                    "generatedTestKeys": False,
+                    "appKeyId": "production-app-key",
+                    "reviewerKeyId": "production-reviewer-key",
+                    "privateKeyMaterialIncluded": False,
+                },
+                "redaction": {"status": "pass", "findingCount": 0, "findings": []},
+            }
+
+        run_case(
+            root,
+            "production-stub",
+            production_stub,
+            "not-ready",
+            expect_blocker="stable-1.0.production-beta-state",
+        )
+
         def production_not_ready(inputs: dict[str, Any], _limitations: dict[str, Any], _paths: dict[str, Path]) -> None:
             inputs["productionBetaSummary"]["promotionReady"] = False
 
@@ -3357,6 +3700,23 @@ def run_self_test() -> None:
             inputs["goNoGoSummary"]["promotionReady"] = False
 
         run_case(root, "go-no-go-no-go", go_no_go_no_go, "not-ready", expect_blocker="stable-1.0.go-no-go-decision")
+
+        def go_no_go_stub(inputs: dict[str, Any], _limitations: dict[str, Any], _paths: dict[str, Path]) -> None:
+            inputs["goNoGoSummary"] = {
+                "mode": "production-beta",
+                "releaseId": "cryptad-beta-270",
+                "decision": "go",
+                "promotionReady": True,
+                "redaction": {"status": "pass", "findingCount": 0, "findings": []},
+            }
+
+        run_case(
+            root,
+            "go-no-go-stub",
+            go_no_go_stub,
+            "not-ready",
+            expect_blocker="stable-1.0.go-no-go-decision",
+        )
 
         def go_no_go_wrong_release_id(inputs: dict[str, Any], _limitations: dict[str, Any], _paths: dict[str, Path]) -> None:
             inputs["goNoGoSummary"]["releaseId"] = "cryptad-beta-previous"
