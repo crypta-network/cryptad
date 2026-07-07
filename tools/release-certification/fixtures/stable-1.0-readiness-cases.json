@@ -174,6 +174,11 @@
       "category": "negative"
     },
     {
+      "id": "attached-evidence-redaction-findings",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
       "id": "release-certification-evidence-redaction-findings",
       "expectedDecision": "not-ready",
       "category": "negative"

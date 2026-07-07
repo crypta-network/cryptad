@@ -679,6 +679,39 @@ def evidence_map_from_summaries(*summaries: dict[str, Any] | None) -> dict[str, 
     return result
 
 
+def attached_evidence_redaction_blockers(
+    *named_summaries: tuple[str, dict[str, Any] | None],
+) -> list[dict[str, Any]]:
+    affected_rows: list[str] = []
+    for source_name, summary in named_summaries:
+        if not isinstance(summary, dict):
+            continue
+        entries = summary.get("evidence")
+        if not isinstance(entries, list):
+            continue
+        for index, entry in enumerate(entries, start=1):
+            if not isinstance(entry, dict) or not entry_has_redaction_findings(entry):
+                continue
+            evidence_id = entry.get("id") or entry.get("evidenceId") or f"row-{index}"
+            affected_rows.append(f"{source_name}:{evidence_id}")
+    if not affected_rows:
+        return []
+    return [
+        blocker_issue(
+            "redaction",
+            "stable-1.0.redaction",
+            "Attached release evidence has redaction findings",
+            (
+                "Attached release evidence rows contain non-waivable redaction findings: "
+                + ", ".join(sorted(affected_rows))
+                + "."
+            ),
+            "attached-release-evidence",
+            issue_id="redaction.attached-release-evidence.blocker",
+        )
+    ]
+
+
 def evidence_details(entry: dict[str, Any] | None) -> dict[str, Any]:
     if not isinstance(entry, dict):
         return {}
@@ -3540,6 +3573,10 @@ def run(settings: Settings) -> tuple[dict[str, Any], int]:
         inputs.get("releaseCertificationSummary"),
         inputs.get("appPlatformSummary"),
     )
+    attached_redaction_blockers = attached_evidence_redaction_blockers(
+        ("release-certification-summary", inputs.get("releaseCertificationSummary")),
+        ("app-platform-summary", inputs.get("appPlatformSummary")),
+    )
     production_summary = inputs.get("productionBetaSummary")
     candidate_release_id = (
         str(production_summary.get("releaseId", "")).strip()
@@ -3590,7 +3627,13 @@ def run(settings: Settings) -> tuple[dict[str, Any], int]:
             candidate_release_id,
         ),
         known_limitations_domain,
-        domain_result("redaction", "Redaction safety", ("stable-1.0.redaction",), [], []),
+        domain_result(
+            "redaction",
+            "Redaction safety",
+            ("stable-1.0.redaction",),
+            attached_redaction_blockers,
+            [],
+        ),
     ]
     validation_blockers = validate_waivers_against_blockers(
         waivers,
@@ -3898,6 +3941,7 @@ def run_self_test() -> None:
         "release-certification-redaction-count",
         "release-certification-evidence-failed",
         "app-platform-duplicate-evidence-failed",
+        "attached-evidence-redaction-findings",
         "release-certification-evidence-redaction-findings",
         "release-certification-evidence-malformed-redaction-findings",
         "release-certification-evidence-nested-redaction-findings",
@@ -4481,6 +4525,35 @@ def run_self_test() -> None:
             app_platform_duplicate_evidence_failed,
             "not-ready",
             expect_blocker="platform-api.contract",
+        )
+
+        def attached_evidence_redaction_findings(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs["releaseCertificationSummary"]["evidence"].append(
+                {
+                    "id": "release-certification.non-stable-redaction-fixture",
+                    "status": "pass",
+                    "summary": "Synthetic otherwise-unused evidence row with redaction findings.",
+                    "details": {
+                        "redactionFindings": [
+                            {
+                                "kind": "stable-readiness-fixture",
+                                "summary": "Synthetic attached evidence redaction finding.",
+                            }
+                        ]
+                    },
+                }
+            )
+
+        run_case(
+            root,
+            "attached-evidence-redaction-findings",
+            attached_evidence_redaction_findings,
+            "not-ready",
+            expect_blocker="stable-1.0.redaction",
         )
 
         def release_certification_evidence_redaction_findings(

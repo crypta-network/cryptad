@@ -3568,9 +3568,22 @@ def stable_readiness_issues(
             )
         )
     blocker_count, malformed_blocker_count = parse_release_blocker_count(summary.get("blockerCount", 0))
+    allowed_count, malformed_allowed_count = parse_release_blocker_count(
+        summary.get("allowedLimitationCount", 0)
+    )
     disallowed_count, malformed_disallowed_count = parse_release_blocker_count(
         summary.get("disallowedLimitationCount", 0)
     )
+    allowed_limitations = summary.get("allowedLimitations")
+    allowed_limitation_count = len(allowed_limitations) if isinstance(allowed_limitations, list) else 0
+    allowed_record_errors: list[str] = []
+    if not isinstance(allowed_limitations, list):
+        allowed_record_errors.append("allowedLimitations must be a list")
+    elif not malformed_allowed_count and allowed_count != allowed_limitation_count:
+        allowed_record_errors.append(
+            f"allowedLimitationCount is {allowed_count} "
+            f"but allowedLimitations contains {allowed_limitation_count}"
+        )
     record_errors = [
         *stable_summary_record_errors(
             summary,
@@ -3587,6 +3600,24 @@ def stable_readiness_issues(
             malformed_disallowed_count,
         ),
     ]
+    if malformed_allowed_count or allowed_record_errors:
+        details: list[str] = []
+        if malformed_allowed_count:
+            details.append("allowedLimitationCount is not a non-negative integer")
+        details.extend(allowed_record_errors)
+        issues.append(
+            Issue(
+                id="stable-1.0.readiness-summary.allowed-limitations-invalid",
+                evidence_id="stable-1.0.known-limitations",
+                domain_id=domain_id,
+                severity="blocker" if required else "warning",
+                title="Stable 1.0 readiness allowed limitations are invalid",
+                summary="Stable readiness allowed limitations are inconsistent: " + "; ".join(details) + ".",
+                source="stable-readiness-summary",
+                waivable=not required,
+                category="stable-readiness",
+            )
+        )
     if (
         malformed_blocker_count
         or malformed_disallowed_count
@@ -3653,7 +3684,10 @@ def stable_readiness_issues(
                 category="stable-readiness",
             )
         )
-    elif decision == "ready-with-allowed-limitations":
+    allowed_limitations_remain = allowed_limitation_count > 0 or (
+        not malformed_allowed_count and allowed_count > 0
+    )
+    if decision == "ready-with-allowed-limitations" or allowed_limitations_remain:
         issues.append(
             Issue(
                 id="stable-1.0.readiness-summary.allowed-limitations",
@@ -3662,7 +3696,8 @@ def stable_readiness_issues(
                 severity="warning",
                 title="Stable 1.0 readiness has allowed limitations",
                 summary=(
-                    f"Stable readiness allows {summary.get('allowedLimitationCount', 0)} bounded limitation(s)."
+                    f"Stable readiness allows {max(allowed_count, allowed_limitation_count)} "
+                    "bounded limitation(s)."
                 ),
                 source="stable-readiness-summary",
                 waivable=True,
@@ -5029,6 +5064,7 @@ def assert_required_stable_readiness_release_id_matches_dashboard_candidate(root
         "allowedLimitationCount": 0,
         "disallowedLimitationCount": 0,
         "blockers": [],
+        "allowedLimitations": [],
         "disallowedLimitations": [],
         "redaction": {"status": "pass", "findings": []},
         "evidence": [
@@ -5516,6 +5552,85 @@ def assert_required_stable_readiness_release_id_matches_dashboard_candidate(root
         raise AssertionError(
             "Stable readiness blocker records were not reported as a required blocker: "
             f"{blocker_record_dashboard}"
+        )
+
+    allowed_record_inputs = json.loads(json.dumps(inputs))
+    allowed_record_inputs["stableReadinessSummary"]["allowedLimitations"] = [
+        {
+            "id": "stable-1.0.self-test-allowed-limitation",
+            "classification": "allowed-for-stable-1.0",
+            "summary": "Synthetic bounded Stable 1.0 limitation.",
+        }
+    ]
+    allowed_record_dashboard = build_dashboard(
+        allowed_record_inputs,
+        {},
+        [FIXTURE_DIR / "go-no-go-pass.json"],
+        None,
+        Path(__file__).resolve().parents[2],
+        root / "stable-readiness-allowed-limitation-record-mismatch",
+        "production-beta",
+        release_id,
+        generated_at,
+        now,
+        require_stable_readiness=True,
+    )
+    if allowed_record_dashboard.get("decision") != "no-go":
+        raise AssertionError(
+            "required Stable readiness with allowed limitation records but zero count did not block: "
+            f"{allowed_record_dashboard}"
+        )
+    allowed_record_issues = [
+        blocker
+        for blocker in allowed_record_dashboard.get("blockers", [])
+        if isinstance(blocker, dict)
+        and blocker.get("id") == "stable-1.0.readiness-summary.allowed-limitations-invalid"
+        and blocker.get("evidenceId") == "stable-1.0.known-limitations"
+    ]
+    if not allowed_record_issues:
+        raise AssertionError(
+            "Stable readiness allowed limitation count mismatch was not reported as a required blocker: "
+            f"{allowed_record_dashboard}"
+        )
+
+    allowed_warning_inputs = json.loads(json.dumps(inputs))
+    allowed_warning_inputs["stableReadinessSummary"]["allowedLimitationCount"] = 1
+    allowed_warning_inputs["stableReadinessSummary"]["allowedLimitations"] = [
+        {
+            "id": "stable-1.0.self-test-allowed-limitation",
+            "classification": "allowed-for-stable-1.0",
+            "summary": "Synthetic bounded Stable 1.0 limitation.",
+        }
+    ]
+    allowed_warning_dashboard = build_dashboard(
+        allowed_warning_inputs,
+        {},
+        [FIXTURE_DIR / "go-no-go-pass.json"],
+        None,
+        Path(__file__).resolve().parents[2],
+        root / "stable-readiness-allowed-limitation-warning",
+        "production-beta",
+        release_id,
+        generated_at,
+        now,
+        require_stable_readiness=True,
+    )
+    if allowed_warning_dashboard.get("decision") != "go":
+        raise AssertionError(
+            "valid Stable readiness allowed limitations should warn without blocking: "
+            f"{allowed_warning_dashboard}"
+        )
+    allowed_warning_issues = [
+        warning
+        for warning in allowed_warning_dashboard.get("warnings", [])
+        if isinstance(warning, dict)
+        and warning.get("id") == "stable-1.0.readiness-summary.allowed-limitations"
+        and warning.get("evidenceId") == "stable-1.0.known-limitations"
+    ]
+    if not allowed_warning_issues:
+        raise AssertionError(
+            "Stable readiness allowed limitations were not reported as a dashboard warning: "
+            f"{allowed_warning_dashboard}"
         )
 
 
