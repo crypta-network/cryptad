@@ -716,7 +716,16 @@ def app_platform_summary_envelope_blockers(
     domain_id: str,
 ) -> list[dict[str, Any]]:
     if not isinstance(summary, dict):
-        return []
+        return [
+            blocker_issue(
+                domain_id,
+                "stable-1.0.app-ecosystem-maturity",
+                "App-platform smoke summary envelope is missing",
+                "Stable 1.0 requires the direct app-platform smoke summary envelope; "
+                "release-certification evidence rows alone are not sufficient.",
+                "app-platform-summary",
+            )
+        ]
     validation_errors = schema_tool_errors(
         summary,
         expected_tool="app-platform-smoke",
@@ -4260,6 +4269,7 @@ def run_self_test() -> None:
         "release-certification-evidence-redaction-findings",
         "release-certification-evidence-malformed-redaction-findings",
         "release-certification-evidence-nested-redaction-findings",
+        "app-platform-summary-missing",
         "app-platform-summary-failed",
         "app-platform-summary-malformed-envelope",
         "ecosystem-matrix-failed",
@@ -4853,6 +4863,21 @@ def run_self_test() -> None:
             app_platform_duplicate_evidence_failed,
             "not-ready",
             expect_blocker="platform-api.contract",
+        )
+
+        def app_platform_summary_missing(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs.pop("appPlatformSummary", None)
+
+        run_case(
+            root,
+            "app-platform-summary-missing",
+            app_platform_summary_missing,
+            "not-ready",
+            expect_blocker="stable-1.0.app-ecosystem-maturity",
         )
 
         def app_platform_summary_failed(
