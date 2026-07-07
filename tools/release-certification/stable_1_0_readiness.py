@@ -392,6 +392,10 @@ def non_empty_string(value: Any) -> str:
     return value.strip() if isinstance(value, str) else ""
 
 
+def schema_version_is_current(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value == SCHEMA_VERSION
+
+
 def schema_tool_errors(
     value: dict[str, Any],
     *,
@@ -399,12 +403,7 @@ def schema_tool_errors(
     evidence_label: str,
 ) -> list[str]:
     errors: list[str] = []
-    schema_version = value.get("schemaVersion")
-    if (
-        not isinstance(schema_version, int)
-        or isinstance(schema_version, bool)
-        or schema_version != SCHEMA_VERSION
-    ):
+    if not schema_version_is_current(value.get("schemaVersion")):
         errors.append(f"{evidence_label}.schemaVersion must be {SCHEMA_VERSION}")
     if str(value.get("tool", "missing")) != expected_tool:
         errors.append(f"{evidence_label}.tool must be {expected_tool}")
@@ -1033,12 +1032,7 @@ def load_waivers(path: Path | None, now: dt.datetime, workspace_root: Path) -> l
         ]
     records = value.get("waivers")
     schema_version = value.get("schemaVersion", value.get("version"))
-    schema_version_valid = (
-        isinstance(schema_version, int)
-        and not isinstance(schema_version, bool)
-        and schema_version == 1
-    )
-    if not schema_version_valid or not isinstance(records, list):
+    if not schema_version_is_current(schema_version) or not isinstance(records, list):
         return [
             StableWaiver(
                 id="stable-waiver-schema-invalid",
@@ -1693,12 +1687,7 @@ def evaluate_release_certification_summary(release_certification: dict[str, Any]
         mode = str(release_certification.get("mode", "missing"))
         release_candidate_passed = release_certification.get("releaseCandidatePassed")
         evidence_records = release_certification.get("evidence")
-        schema_version_valid = (
-            isinstance(schema_version, int)
-            and not isinstance(schema_version, bool)
-            and schema_version == SCHEMA_VERSION
-        )
-        if not schema_version_valid or tool != "release-certification":
+        if not schema_version_is_current(schema_version) or tool != "release-certification":
             blockers.append(
                 blocker_issue(
                     domain_id,
@@ -1957,7 +1946,7 @@ def evaluate_policy(
             )
         )
     else:
-        if policy.get("schemaVersion") != SCHEMA_VERSION or policy.get("kind") != "stable-1.0-readiness-policy":
+        if not schema_version_is_current(policy.get("schemaVersion")) or policy.get("kind") != "stable-1.0-readiness-policy":
             blockers.append(
                 blocker_issue(
                     domain_id,
@@ -2893,7 +2882,7 @@ def evaluate_known_limitations(
     }
     malformed_limitations_doc = (
         not isinstance(limitations_doc, dict)
-        or limitations_doc.get("schemaVersion") != SCHEMA_VERSION
+        or not schema_version_is_current(limitations_doc.get("schemaVersion"))
         or limitations_doc.get("kind") != "stable-1.0-known-limitations"
         or not isinstance(limitations_doc.get("limitations"), list)
         or not limitations_doc.get("limitations")
@@ -3751,8 +3740,10 @@ def run_self_test() -> None:
         "allowed-disallowed-category",
         "unknown-limitation-classification",
         "malformed-known-limitations",
+        "boolean-known-limitations-schema-version",
         "malformed-known-limitation-entry",
         "missing-policy",
+        "boolean-policy-schema-version",
         "redaction-unsafe",
         "invalid-waiver",
         "boolean-waiver-schema-version",
@@ -4930,6 +4921,21 @@ def run_self_test() -> None:
             expect_blocker="stable-1.0.known-limitations",
         )
 
+        def boolean_known_limitations_schema_version(
+            _inputs: dict[str, Any],
+            limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            limitations["schemaVersion"] = True
+
+        run_case(
+            root,
+            "boolean-known-limitations-schema-version",
+            boolean_known_limitations_schema_version,
+            "not-ready",
+            expect_blocker="stable-1.0.known-limitations",
+        )
+
         def malformed_known_limitation_entry(
             _inputs: dict[str, Any],
             limitations: dict[str, Any],
@@ -4949,6 +4955,25 @@ def run_self_test() -> None:
             paths["policy"] = paths["stableKnownLimitations"].parent / "missing-policy.json"
 
         run_case(root, "missing-policy", missing_policy, "not-ready", expect_blocker="stable-1.0.readiness-gate")
+
+        def boolean_policy_schema_version(
+            _inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            paths: dict[str, Path],
+        ) -> None:
+            policy = copy.deepcopy(read_json(DEFAULT_POLICY) or {})
+            policy["schemaVersion"] = True
+            policy_path = paths["stableKnownLimitations"].parent / "boolean-schema-policy.json"
+            write_json(policy_path, policy)
+            paths["policy"] = policy_path
+
+        run_case(
+            root,
+            "boolean-policy-schema-version",
+            boolean_policy_schema_version,
+            "not-ready",
+            expect_blocker="stable-1.0.readiness-gate",
+        )
 
         def redaction_unsafe(inputs: dict[str, Any], _limitations: dict[str, Any], _paths: dict[str, Path]) -> None:
             inputs["goNoGoSummary"]["unsafeHeader"] = "Authorization: Bearer selftestsecret"

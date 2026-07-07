@@ -414,12 +414,22 @@
       "category": "negative"
     },
     {
+      "id": "boolean-known-limitations-schema-version",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
       "id": "malformed-known-limitation-entry",
       "expectedDecision": "not-ready",
       "category": "negative"
     },
     {
       "id": "missing-policy",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "boolean-policy-schema-version",
       "expectedDecision": "not-ready",
       "category": "negative"
     },
