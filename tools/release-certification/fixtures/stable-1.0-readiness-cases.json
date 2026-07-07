@@ -59,6 +59,11 @@
       "category": "negative"
     },
     {
+      "id": "go-no-go-redaction-count",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
       "id": "release-certification-failed",
       "expectedDecision": "not-ready",
       "category": "negative"

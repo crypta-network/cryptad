@@ -1032,7 +1032,35 @@ def entry_has_redaction_findings(entry: dict[str, Any] | None) -> bool:
     if not isinstance(entry, dict):
         return False
     details = entry.get("details", {})
-    return isinstance(details, dict) and bool(details.get("redactionFindings"))
+    if not isinstance(details, dict):
+        return False
+    return bool(details.get("redactionFindings")) or recursive_redaction_failure(details.get("redaction"))
+
+
+def recursive_redaction_failure(value: Any) -> bool:
+    if isinstance(value, dict):
+        if value.get("redactionFindings"):
+            return True
+        findings = value.get("findings")
+        if isinstance(findings, list) and bool(findings):
+            return True
+        finding_count, malformed_finding_count = parse_release_blocker_count(
+            value.get("findingCount", 0)
+        )
+        if malformed_finding_count or finding_count > 0:
+            return True
+        status = value.get("status")
+        if isinstance(status, str) and normalize_status(status) == "fail":
+            return True
+        for key, child in value.items():
+            lowered = str(key).lower()
+            if lowered.endswith("excluded") and child is False:
+                return True
+            if recursive_redaction_failure(child):
+                return True
+    elif isinstance(value, list):
+        return any(recursive_redaction_failure(child) for child in value)
+    return False
 
 
 def entry_waiver_id(entry: dict[str, Any] | None) -> str:
@@ -5085,6 +5113,56 @@ def assert_required_stable_readiness_release_id_matches_dashboard_candidate(root
         raise AssertionError(
             "Stable evidence-row redaction findings were not reported as a critical blocker: "
             f"{redaction_dashboard}"
+        )
+
+    nested_redaction_inputs = json.loads(json.dumps(inputs))
+    for entry in nested_redaction_inputs["stableReadinessSummary"]["evidence"]:
+        if isinstance(entry, dict) and entry.get("id") == "stable-1.0.production-beta-state":
+            entry["details"] = {
+                "redaction": {
+                    "status": "pass",
+                    "findingCount": 1,
+                    "findings": [
+                        {
+                            "kind": "stable-readiness-fixture",
+                            "summary": "Synthetic nested Stable evidence redaction finding.",
+                        }
+                    ],
+                }
+            }
+            break
+    else:
+        raise AssertionError("synthetic Stable summary is missing stable-1.0.production-beta-state evidence")
+    nested_redaction_dashboard = build_dashboard(
+        nested_redaction_inputs,
+        {},
+        [FIXTURE_DIR / "go-no-go-pass.json"],
+        None,
+        Path(__file__).resolve().parents[2],
+        root / "stable-readiness-evidence-nested-redaction",
+        "production-beta",
+        release_id,
+        generated_at,
+        now,
+        require_stable_readiness=True,
+    )
+    if nested_redaction_dashboard.get("decision") != "no-go":
+        raise AssertionError(
+            "required Stable readiness with nested evidence redaction findings did not block: "
+            f"{nested_redaction_dashboard}"
+        )
+    nested_redaction_blockers = [
+        blocker
+        for blocker in nested_redaction_dashboard.get("blockers", [])
+        if isinstance(blocker, dict)
+        and blocker.get("id") == "stable-1.0.readiness-summary.evidence-redaction"
+        and blocker.get("evidenceId") == "stable-1.0.redaction"
+        and blocker.get("severity") == "critical"
+    ]
+    if not nested_redaction_blockers:
+        raise AssertionError(
+            "Stable nested evidence-row redaction findings were not reported as a critical blocker: "
+            f"{nested_redaction_dashboard}"
         )
 
     redaction_count_inputs = json.loads(json.dumps(inputs))

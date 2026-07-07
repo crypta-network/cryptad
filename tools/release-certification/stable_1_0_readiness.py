@@ -347,6 +347,20 @@ def positive_int(value: Any) -> int | None:
     return parsed if parsed > 0 else None
 
 
+def non_negative_count(value: Any, default: int = 0) -> tuple[int, bool]:
+    if value is None or value == "":
+        return default, False
+    if isinstance(value, bool):
+        return default, True
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default, True
+    if parsed < 0:
+        return default, True
+    return parsed, False
+
+
 def missing_true_fields(value: Any, fields: Iterable[str]) -> list[str]:
     if not isinstance(value, dict):
         return list(fields)
@@ -1078,13 +1092,25 @@ def evaluate_production_beta_state(
                 )
             )
         redaction = go_no_go.get("redaction") if isinstance(go_no_go.get("redaction"), dict) else {}
-        if normalize_status(redaction.get("status", "missing")) != "pass" or redaction.get("findings"):
+        redaction_findings = redaction.get("findings") if isinstance(redaction.get("findings"), list) else []
+        redaction_finding_count, malformed_redaction_finding_count = non_negative_count(
+            redaction.get("findingCount", len(redaction_findings))
+        )
+        if (
+            normalize_status(redaction.get("status", "missing")) != "pass"
+            or redaction_findings
+            or malformed_redaction_finding_count
+            or redaction_finding_count > 0
+        ):
             blockers.append(
                 blocker_issue(
                     domain_id,
                     "stable-1.0.redaction",
                     "Go/no-go dashboard redaction did not pass",
-                    "Stable 1.0 readiness cannot depend on a redaction-unsafe dashboard.",
+                    (
+                        "Stable 1.0 readiness cannot depend on a redaction-unsafe dashboard; "
+                        f"findingCount is {redaction_finding_count if not malformed_redaction_finding_count else 'malformed'}."
+                    ),
                     "go-no-go-summary",
                 )
             )
@@ -2918,6 +2944,7 @@ def run_self_test() -> None:
         "go-no-go-wrong-release-id",
         "go-no-go-non-production-mode",
         "go-no-go-redaction-findings",
+        "go-no-go-redaction-count",
         "release-certification-failed",
         "release-certification-not-passed",
         "release-certification-non-rc-mode",
@@ -3099,6 +3126,25 @@ def run_self_test() -> None:
             root,
             "go-no-go-redaction-findings",
             go_no_go_redaction_findings,
+            "not-ready",
+            expect_blocker="stable-1.0.redaction",
+        )
+
+        def go_no_go_redaction_count(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs["goNoGoSummary"]["redaction"] = {
+                "schemaVersion": 1,
+                "status": "pass",
+                "findingCount": 1,
+            }
+
+        run_case(
+            root,
+            "go-no-go-redaction-count",
+            go_no_go_redaction_count,
             "not-ready",
             expect_blocker="stable-1.0.redaction",
         )
