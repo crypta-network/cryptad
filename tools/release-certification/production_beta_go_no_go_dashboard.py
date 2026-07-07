@@ -2241,9 +2241,14 @@ def parse_release_blocker_count(value: Any) -> tuple[int, bool]:
         return 0, False
     if isinstance(value, bool):
         return 0, True
-    try:
-        parsed = int(value)
-    except (TypeError, ValueError):
+    if isinstance(value, int):
+        parsed = value
+    elif isinstance(value, str):
+        text = value.strip()
+        if not text or not text.isdigit():
+            return 0, True
+        parsed = int(text)
+    else:
         return 0, True
     if parsed < 0:
         return 0, True
@@ -5253,6 +5258,43 @@ def assert_required_stable_readiness_release_id_matches_dashboard_candidate(root
         raise AssertionError(
             "Stable top-level redaction findingCount was not reported as a critical blocker: "
             f"{redaction_count_dashboard}"
+        )
+
+    redaction_fractional_count_inputs = json.loads(json.dumps(inputs))
+    redaction_fractional_count_inputs["stableReadinessSummary"]["redaction"] = {
+        "status": "pass",
+        "findingCount": 0.5,
+    }
+    redaction_fractional_count_dashboard = build_dashboard(
+        redaction_fractional_count_inputs,
+        {},
+        [FIXTURE_DIR / "go-no-go-pass.json"],
+        None,
+        Path(__file__).resolve().parents[2],
+        root / "stable-readiness-redaction-fractional-count",
+        "production-beta",
+        release_id,
+        generated_at,
+        now,
+        require_stable_readiness=True,
+    )
+    if redaction_fractional_count_dashboard.get("decision") != "no-go":
+        raise AssertionError(
+            "required Stable readiness with fractional top-level redaction findingCount did not block: "
+            f"{redaction_fractional_count_dashboard}"
+        )
+    redaction_fractional_count_blockers = [
+        blocker
+        for blocker in redaction_fractional_count_dashboard.get("blockers", [])
+        if isinstance(blocker, dict)
+        and blocker.get("id") == "stable-1.0.readiness-summary.redaction"
+        and blocker.get("evidenceId") == "stable-1.0.redaction"
+        and blocker.get("severity") == "critical"
+    ]
+    if not redaction_fractional_count_blockers:
+        raise AssertionError(
+            "Stable fractional top-level redaction findingCount was not reported as a critical blocker: "
+            f"{redaction_fractional_count_dashboard}"
         )
 
     malformed_redaction_findings_inputs = json.loads(json.dumps(inputs))

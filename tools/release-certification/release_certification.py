@@ -2465,9 +2465,14 @@ def parse_stable_readiness_count(value: Any) -> tuple[int, bool]:
         return 0, False
     if isinstance(value, bool):
         return 0, True
-    try:
-        parsed = int(value)
-    except (TypeError, ValueError):
+    if isinstance(value, int):
+        parsed = value
+    elif isinstance(value, str):
+        text = value.strip()
+        if not text or not text.isdigit():
+            return 0, True
+        parsed = int(text)
+    else:
         return 0, True
     if parsed < 0:
         return 0, True
@@ -13914,6 +13919,80 @@ def run_self_test(repo_root: Path) -> None:
         assert "evidence.stable-1.0.redaction" in stable_redaction_count_row["issueIds"], stable_redaction_count_row
         assert "matrix.stable-readiness.redaction-failed" in stable_redaction_count_row["issueIds"], stable_redaction_count_row
 
+        stable_redaction_fractional_count_summary = workspace / "build/stable-readiness-redaction-fractional-count.json"
+        write_json(
+            stable_redaction_fractional_count_summary,
+            {
+                "schemaVersion": 1,
+                "kind": "stable-1.0-readiness",
+                "status": "pass",
+                "decision": "ready",
+                "stableReady": True,
+                "blockerCount": 0,
+                "warningCount": 0,
+                "allowedLimitationCount": 0,
+                "disallowedLimitationCount": 0,
+                "domains": [],
+                "blockers": [],
+                "warnings": [],
+                "allowedLimitations": [],
+                "disallowedLimitations": [],
+                "redaction": {"status": "pass", "findingCount": 0.5},
+                "evidence": [
+                    {
+                        "id": evidence_id,
+                        "status": "pass",
+                        "summary": f"{evidence_id} passed.",
+                        "details": {"decision": "ready", "stableReady": True}
+                        if evidence_id == "stable-1.0.readiness-gate"
+                        else {},
+                    }
+                    for evidence_id in STABLE_1_0_READINESS_EVIDENCE_IDS
+                ],
+            },
+        )
+        stable_redaction_fractional_count_items = stable_readiness_evidence(
+            stable_redaction_fractional_count_summary,
+            True,
+            workspace,
+            out_dir,
+        )
+        stable_redaction_fractional_count_statuses = {
+            item.id: item.status for item in stable_redaction_fractional_count_items
+        }
+        assert stable_redaction_fractional_count_statuses["stable-1.0.readiness-gate"] == "fail", (
+            stable_redaction_fractional_count_statuses
+        )
+        assert stable_redaction_fractional_count_statuses["stable-1.0.redaction"] == "fail", (
+            stable_redaction_fractional_count_statuses
+        )
+        stable_redaction_fractional_count_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/stable-redaction-fractional-count-cert").resolve(),
+            stable_readiness_summary=stable_redaction_fractional_count_summary,
+            stable_readiness_required=True,
+        )
+        stable_redaction_fractional_count_cert, stable_redaction_fractional_count_exit_code = run(
+            stable_redaction_fractional_count_settings
+        )
+        assert stable_redaction_fractional_count_exit_code == 1, stable_redaction_fractional_count_cert
+        stable_redaction_fractional_count_row = matrix_row_by_id(
+            stable_redaction_fractional_count_settings.out_dir,
+            "stable-1-0-readiness",
+        )
+        assert stable_redaction_fractional_count_row["status"] == "fail", (
+            stable_redaction_fractional_count_row
+        )
+        assert stable_redaction_fractional_count_row["releaseBlocker"] is True, (
+            stable_redaction_fractional_count_row
+        )
+        assert "evidence.stable-1.0.redaction" in stable_redaction_fractional_count_row["issueIds"], (
+            stable_redaction_fractional_count_row
+        )
+        assert "matrix.stable-readiness.redaction-failed" in stable_redaction_fractional_count_row["issueIds"], (
+            stable_redaction_fractional_count_row
+        )
+
         stable_malformed_redaction_findings_summary = (
             workspace / "build/stable-readiness-malformed-redaction-findings.json"
         )
@@ -14338,6 +14417,76 @@ def run_self_test(repo_root: Path) -> None:
         assert stable_remaining_row["releaseBlocker"] is True, stable_remaining_row
         assert "evidence.stable-1.0.readiness-gate" in stable_remaining_row["issueIds"], stable_remaining_row
         assert "matrix.stable-readiness.evidence-not-passing" in stable_remaining_row["issueIds"], stable_remaining_row
+
+        stable_fractional_remaining_counts_summary = (
+            workspace / "build/stable-readiness-fractional-remaining-counts.json"
+        )
+        write_json(
+            stable_fractional_remaining_counts_summary,
+            {
+                "schemaVersion": 1,
+                "kind": "stable-1.0-readiness",
+                "status": "pass",
+                "decision": "ready",
+                "stableReady": True,
+                "blockerCount": 0.5,
+                "warningCount": 0,
+                "allowedLimitationCount": 0,
+                "disallowedLimitationCount": 0.5,
+                "domains": [],
+                "blockers": [],
+                "warnings": [],
+                "allowedLimitations": [],
+                "disallowedLimitations": [],
+                "redaction": {"status": "pass", "findings": []},
+                "evidence": [
+                    {
+                        "id": evidence_id,
+                        "status": "pass",
+                        "summary": f"{evidence_id} passed.",
+                        "details": {"decision": "ready", "stableReady": True}
+                        if evidence_id == "stable-1.0.readiness-gate"
+                        else {},
+                    }
+                    for evidence_id in STABLE_1_0_READINESS_EVIDENCE_IDS
+                ],
+            },
+        )
+        stable_fractional_remaining_count_items = stable_readiness_evidence(
+            stable_fractional_remaining_counts_summary,
+            True,
+            workspace,
+            out_dir,
+        )
+        stable_fractional_remaining_count_statuses = {
+            item.id: item.status for item in stable_fractional_remaining_count_items
+        }
+        assert stable_fractional_remaining_count_statuses["stable-1.0.readiness-gate"] == "fail", (
+            stable_fractional_remaining_count_statuses
+        )
+        stable_fractional_remaining_count_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/stable-fractional-remaining-counts-cert").resolve(),
+            stable_readiness_summary=stable_fractional_remaining_counts_summary,
+            stable_readiness_required=True,
+        )
+        stable_fractional_remaining_count_cert, stable_fractional_remaining_count_exit_code = run(
+            stable_fractional_remaining_count_settings
+        )
+        assert stable_fractional_remaining_count_exit_code == 1, stable_fractional_remaining_count_cert
+        stable_fractional_remaining_count_row = matrix_row_by_id(
+            stable_fractional_remaining_count_settings.out_dir,
+            "stable-1-0-readiness",
+        )
+        assert stable_fractional_remaining_count_row["status"] == "fail", (
+            stable_fractional_remaining_count_row
+        )
+        assert stable_fractional_remaining_count_row["releaseBlocker"] is True, (
+            stable_fractional_remaining_count_row
+        )
+        assert "evidence.stable-1.0.readiness-gate" in stable_fractional_remaining_count_row["issueIds"], (
+            stable_fractional_remaining_count_row
+        )
 
         stable_blocker_records_summary = workspace / "build/stable-readiness-blocker-records.json"
         write_json(
