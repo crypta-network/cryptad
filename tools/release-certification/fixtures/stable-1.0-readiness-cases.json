@@ -484,6 +484,11 @@
       "category": "negative"
     },
     {
+      "id": "missing-live-network-evidence",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
       "id": "missing-previous-upgrade",
       "expectedDecision": "not-ready",
       "category": "negative"

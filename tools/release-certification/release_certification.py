@@ -2540,10 +2540,10 @@ def stable_readiness_allowed_record_errors(
 
 def stable_readiness_domain_errors(summary: dict[str, Any]) -> list[str]:
     domains = summary.get("domains")
-    if domains is None:
-        return []
     if not isinstance(domains, list):
-        return ["domains must be a list"]
+        return ["domains must be a non-empty list"]
+    if not domains:
+        return ["domains must not be empty"]
     errors: list[str] = []
     for index, domain in enumerate(domains):
         if not isinstance(domain, dict):
@@ -14050,6 +14050,19 @@ def run_self_test(repo_root: Path) -> None:
         for forbidden in ("hunter2", "USK@private", "/mnt/secrets/signing/key.pem", str(workspace)):
             assert forbidden not in sensitive_encoded, f"waiver reason leaked {forbidden}"
 
+        def stable_self_test_passing_domains() -> list[dict[str, Any]]:
+            return [
+                {
+                    "id": "production-beta-state",
+                    "status": "pass",
+                    "summary": "Synthetic Stable domain row passed.",
+                    "evidenceIds": ["stable-1.0.production-beta-state"],
+                    "blockers": [],
+                    "warnings": [],
+                    "allowedLimitations": [],
+                }
+            ]
+
         stable_release_mismatch_summary = workspace / "build/stable-readiness-release-mismatch.json"
         write_json(
             stable_release_mismatch_summary,
@@ -14064,7 +14077,16 @@ def run_self_test(repo_root: Path) -> None:
                 "warningCount": 0,
                 "allowedLimitationCount": 0,
                 "disallowedLimitationCount": 0,
-                "domains": [],
+                "domains": [
+                    {
+                        "id": "stable-1.0.readiness-gate",
+                        "status": "pass",
+                        "summary": "Stable readiness gate passed.",
+                        "blockers": [],
+                        "warnings": [],
+                        "allowedLimitations": [],
+                    }
+                ],
                 "blockers": [],
                 "warnings": [],
                 "allowedLimitations": [],
@@ -14120,6 +14142,77 @@ def run_self_test(repo_root: Path) -> None:
         )
         assert "matrix.stable-readiness.evidence-not-passing" in stable_release_mismatch_row["issueIds"], (
             stable_release_mismatch_row
+        )
+
+        stable_missing_domains_summary = workspace / "build/stable-readiness-missing-domains.json"
+        write_json(
+            stable_missing_domains_summary,
+            {
+                "schemaVersion": 1,
+                "kind": "stable-1.0-readiness",
+                "releaseId": "cryptad-production-beta-self-test",
+                "status": "pass",
+                "decision": "ready",
+                "stableReady": True,
+                "blockerCount": 0,
+                "warningCount": 0,
+                "allowedLimitationCount": 0,
+                "disallowedLimitationCount": 0,
+                "blockers": [],
+                "warnings": [],
+                "allowedLimitations": [],
+                "disallowedLimitations": [],
+                "redaction": {"status": "pass", "findings": []},
+                "evidence": [
+                    {
+                        "id": evidence_id,
+                        "status": "pass",
+                        "summary": f"{evidence_id} passed.",
+                        "details": {"decision": "ready", "stableReady": True}
+                        if evidence_id == "stable-1.0.readiness-gate"
+                        else {},
+                    }
+                    for evidence_id in STABLE_1_0_READINESS_EVIDENCE_IDS
+                ],
+            },
+        )
+        stable_missing_domains_items = stable_readiness_evidence(
+            stable_missing_domains_summary,
+            True,
+            workspace,
+            out_dir,
+            "cryptad-production-beta-self-test",
+        )
+        stable_missing_domains_gate = next(
+            item
+            for item in stable_missing_domains_items
+            if item.id == "stable-1.0.readiness-gate"
+        )
+        assert stable_missing_domains_gate.status == "fail", stable_missing_domains_gate
+        assert stable_missing_domains_gate.details["validationErrors"] == [
+            "domains must be a non-empty list"
+        ], stable_missing_domains_gate.details
+        stable_missing_domains_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/stable-missing-domains-cert").resolve(),
+            stable_readiness_summary=stable_missing_domains_summary,
+            stable_readiness_required=True,
+        )
+        stable_missing_domains_cert, stable_missing_domains_exit_code = run(
+            stable_missing_domains_settings
+        )
+        assert stable_missing_domains_exit_code == 1, stable_missing_domains_cert
+        stable_missing_domains_row = matrix_row_by_id(
+            stable_missing_domains_settings.out_dir,
+            "stable-1-0-readiness",
+        )
+        assert stable_missing_domains_row["status"] == "fail", stable_missing_domains_row
+        assert stable_missing_domains_row["releaseBlocker"] is True, stable_missing_domains_row
+        assert "evidence.stable-1.0.readiness-gate" in stable_missing_domains_row["issueIds"], (
+            stable_missing_domains_row
+        )
+        assert "matrix.stable-readiness.evidence-not-passing" in stable_missing_domains_row["issueIds"], (
+            stable_missing_domains_row
         )
 
         stable_failed_domain_summary = workspace / "build/stable-readiness-failed-domain.json"
@@ -14368,7 +14461,7 @@ def run_self_test(repo_root: Path) -> None:
                 "warningCount": 0,
                 "allowedLimitationCount": 0,
                 "disallowedLimitationCount": 0,
-                "domains": [],
+                "domains": stable_self_test_passing_domains(),
                 "blockers": [],
                 "warnings": [],
                 "allowedLimitations": [],
@@ -14426,7 +14519,7 @@ def run_self_test(repo_root: Path) -> None:
                 "warningCount": 0,
                 "allowedLimitationCount": 0,
                 "disallowedLimitationCount": 0,
-                "domains": [],
+                "domains": stable_self_test_passing_domains(),
                 "blockers": [],
                 "warnings": [],
                 "allowedLimitations": [],
@@ -14529,7 +14622,7 @@ def run_self_test(repo_root: Path) -> None:
                 "warningCount": 0,
                 "allowedLimitationCount": 0,
                 "disallowedLimitationCount": 0,
-                "domains": [],
+                "domains": stable_self_test_passing_domains(),
                 "blockers": [],
                 "warnings": [],
                 "allowedLimitations": [],
@@ -14606,7 +14699,7 @@ def run_self_test(repo_root: Path) -> None:
                 "warningCount": 0,
                 "allowedLimitationCount": 0,
                 "disallowedLimitationCount": 0,
-                "domains": [],
+                "domains": stable_self_test_passing_domains(),
                 "blockers": [],
                 "warnings": [],
                 "allowedLimitations": [],
@@ -14693,7 +14786,7 @@ def run_self_test(repo_root: Path) -> None:
                 "warningCount": 0,
                 "allowedLimitationCount": 0,
                 "disallowedLimitationCount": 0,
-                "domains": [],
+                "domains": stable_self_test_passing_domains(),
                 "blockers": [],
                 "warnings": [],
                 "allowedLimitations": [],
@@ -14767,7 +14860,7 @@ def run_self_test(repo_root: Path) -> None:
                 "warningCount": 0,
                 "allowedLimitationCount": 0,
                 "disallowedLimitationCount": 0,
-                "domains": [],
+                "domains": stable_self_test_passing_domains(),
                 "blockers": [],
                 "warnings": [],
                 "allowedLimitations": [],
@@ -14840,7 +14933,7 @@ def run_self_test(repo_root: Path) -> None:
                 "warningCount": 0,
                 "allowedLimitationCount": 0,
                 "disallowedLimitationCount": 0,
-                "domains": [],
+                "domains": stable_self_test_passing_domains(),
                 "blockers": [],
                 "warnings": [],
                 "allowedLimitations": [],
@@ -14895,7 +14988,7 @@ def run_self_test(repo_root: Path) -> None:
                 "warningCount": 0,
                 "allowedLimitationCount": 0,
                 "disallowedLimitationCount": 0,
-                "domains": [],
+                "domains": stable_self_test_passing_domains(),
                 "blockers": [],
                 "warnings": [],
                 "allowedLimitations": [],
@@ -14971,7 +15064,7 @@ def run_self_test(repo_root: Path) -> None:
                 "warningCount": 0,
                 "allowedLimitationCount": 0,
                 "disallowedLimitationCount": 1,
-                "domains": [],
+                "domains": stable_self_test_passing_domains(),
                 "blockers": [
                     {
                         "id": "stable-self-test-blocker",
@@ -15037,7 +15130,7 @@ def run_self_test(repo_root: Path) -> None:
                 "warningCount": 0,
                 "allowedLimitationCount": 0,
                 "disallowedLimitationCount": 0.5,
-                "domains": [],
+                "domains": stable_self_test_passing_domains(),
                 "blockers": [],
                 "warnings": [],
                 "allowedLimitations": [],
@@ -15106,7 +15199,7 @@ def run_self_test(repo_root: Path) -> None:
                 "warningCount": 0,
                 "allowedLimitationCount": 0,
                 "disallowedLimitationCount": 0,
-                "domains": [],
+                "domains": stable_self_test_passing_domains(),
                 "blockers": [
                     {
                         "id": "stable-self-test-blocker",
@@ -15181,7 +15274,7 @@ def run_self_test(repo_root: Path) -> None:
                 "warningCount": 0,
                 "allowedLimitationCount": 0,
                 "disallowedLimitationCount": 0,
-                "domains": [],
+                "domains": stable_self_test_passing_domains(),
                 "blockers": [],
                 "warnings": [],
                 "allowedLimitations": [
@@ -15263,7 +15356,7 @@ def run_self_test(repo_root: Path) -> None:
                 "warningCount": 0,
                 "allowedLimitationCount": 1,
                 "disallowedLimitationCount": 0,
-                "domains": [],
+                "domains": stable_self_test_passing_domains(),
                 "blockers": [],
                 "warnings": [],
                 "allowedLimitations": [1],
@@ -15334,7 +15427,7 @@ def run_self_test(repo_root: Path) -> None:
                 "warningCount": 0,
                 "allowedLimitationCount": 1,
                 "disallowedLimitationCount": 0,
-                "domains": [],
+                "domains": stable_self_test_passing_domains(),
                 "blockers": [],
                 "warnings": [],
                 "allowedLimitations": [
@@ -15407,7 +15500,7 @@ def run_self_test(repo_root: Path) -> None:
                 "warningCount": 0,
                 "allowedLimitationCount": 0,
                 "disallowedLimitationCount": 0,
-                "domains": [],
+                "domains": stable_self_test_passing_domains(),
                 "blockers": [],
                 "warnings": [],
                 "allowedLimitations": [],
@@ -15503,7 +15596,7 @@ def run_self_test(repo_root: Path) -> None:
                 "warningCount": 0,
                 "allowedLimitationCount": 0,
                 "disallowedLimitationCount": 0,
-                "domains": [],
+                "domains": stable_self_test_passing_domains(),
                 "blockers": [],
                 "warnings": [],
                 "allowedLimitations": [],
@@ -15619,7 +15712,7 @@ def run_self_test(repo_root: Path) -> None:
                 "warningCount": 0,
                 "allowedLimitationCount": 0,
                 "disallowedLimitationCount": 0,
-                "domains": [],
+                "domains": stable_self_test_passing_domains(),
                 "blockers": [],
                 "warnings": [],
                 "allowedLimitations": [],
@@ -15679,7 +15772,7 @@ def run_self_test(repo_root: Path) -> None:
                 "warningCount": 0,
                 "allowedLimitationCount": 0,
                 "disallowedLimitationCount": 0,
-                "domains": [],
+                "domains": stable_self_test_passing_domains(),
                 "blockers": [],
                 "warnings": [],
                 "allowedLimitations": [],

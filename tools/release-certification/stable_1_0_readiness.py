@@ -150,6 +150,18 @@ NETWORK_SCALE_EVIDENCE_IDS = (
     "network-scale.redaction",
 )
 
+LIVE_NETWORK_BETA_REQUIRED_EVIDENCE_IDS = (
+    "live-network-beta.preflight",
+    "live-network-beta.catalog-usk-fetch",
+    "live-network-beta.app-install-update-rollback",
+    "live-network-beta.content-fetch",
+    "live-network-beta.feed-subscription",
+    "live-network-beta.profile-publish",
+    "live-network-beta.trust-statement-publish-import",
+    "live-network-beta.interop-perf-budget",
+    "live-network-beta.redaction",
+)
+
 NETWORK_SCALE_REDACTION_PROOF_FIELDS = (
     "rawFetchedContentExcluded",
     "privateInsertUrisExcluded",
@@ -2996,7 +3008,7 @@ def evaluate_live_multi_node_soak(
     blockers = add_required_evidence_blockers(
         evidence,
         domain_id,
-        NETWORK_SCALE_EVIDENCE_IDS,
+        (*LIVE_NETWORK_BETA_REQUIRED_EVIDENCE_IDS, *NETWORK_SCALE_EVIDENCE_IDS),
         "release-certification",
     )
     required_soak = policy.get("requiredSoak") if isinstance(policy.get("requiredSoak"), dict) else {}
@@ -3266,7 +3278,17 @@ def evaluate_live_multi_node_soak(
                     "network-scale-soak-summary",
                 )
             )
-    return domain_result(domain_id, "Live, multi-node, and network-scale evidence", (*NETWORK_SCALE_EVIDENCE_IDS, *MULTI_NODE_SCENARIO_EVIDENCE_IDS), blockers, [])
+    return domain_result(
+        domain_id,
+        "Live, multi-node, and network-scale evidence",
+        (
+            *LIVE_NETWORK_BETA_REQUIRED_EVIDENCE_IDS,
+            *NETWORK_SCALE_EVIDENCE_IDS,
+            *MULTI_NODE_SCENARIO_EVIDENCE_IDS,
+        ),
+        blockers,
+        [],
+    )
 
 
 def evaluate_legacy(evidence: dict[str, dict[str, Any]]) -> dict[str, Any]:
@@ -4187,6 +4209,17 @@ def base_self_test_inputs() -> tuple[dict[str, Any], dict[str, Any]]:
             "absolutePathsSanitized": True,
         },
     }
+    release_cert["evidence"].extend(
+        {
+            "id": evidence_id,
+            "status": "pass",
+            "summary": f"{evidence_id} passed.",
+            "details": {"redaction": {"status": "pass", "findings": []}}
+            if evidence_id == "live-network-beta.redaction"
+            else {},
+        }
+        for evidence_id in LIVE_NETWORK_BETA_REQUIRED_EVIDENCE_IDS
+    )
     security = copy.deepcopy(go_inputs["securityDrillsSummary"])
     security["releaseId"] = "cryptad-beta-270"
     security["generatedAt"] = DEFAULT_GENERATED_AT
@@ -4399,6 +4432,7 @@ def run_self_test() -> None:
         "missing-security-artifact-advisory-template-status",
         "extra-pass-security-artifact",
         "extra-failed-security-artifact",
+        "missing-live-network-evidence",
         "missing-previous-upgrade",
         "app-data-migration-scenario-failed",
         "network-redaction-missing",
@@ -5984,6 +6018,25 @@ def run_self_test() -> None:
             extra_failed_security_artifact,
             "not-ready",
             expect_blocker="stable-1.0.security-drills",
+        )
+
+        def missing_live_network_evidence(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs["releaseCertificationSummary"]["evidence"] = [
+                entry
+                for entry in inputs["releaseCertificationSummary"]["evidence"]
+                if not isinstance(entry, dict) or entry.get("id") != "live-network-beta.content-fetch"
+            ]
+
+        run_case(
+            root,
+            "missing-live-network-evidence",
+            missing_live_network_evidence,
+            "not-ready",
+            expect_blocker="live-network-beta.content-fetch",
         )
 
         def missing_previous_upgrade(inputs: dict[str, Any], _limitations: dict[str, Any], _paths: dict[str, Path]) -> None:

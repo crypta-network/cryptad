@@ -2306,10 +2306,10 @@ def stable_summary_allowed_limitation_metadata_errors(record: Any, label: str) -
 
 def stable_summary_domain_errors(summary: dict[str, Any]) -> list[str]:
     domains = summary.get("domains")
-    if domains is None:
-        return []
     if not isinstance(domains, list):
-        return ["domains must be a list"]
+        return ["domains must be a non-empty list"]
+    if not domains:
+        return ["domains must not be empty"]
     errors: list[str] = []
     for index, domain in enumerate(domains):
         if not isinstance(domain, dict):
@@ -5209,6 +5209,39 @@ def assert_required_stable_readiness_release_id_matches_dashboard_candidate(root
     matching_stable = matching_dashboard.get("stableReadiness")
     if not isinstance(matching_stable, dict) or matching_stable.get("releaseIdMatchesDashboard") is not True:
         raise AssertionError(f"matching Stable readiness binding was not reported: {matching_dashboard}")
+
+    missing_domains_inputs = json.loads(json.dumps(inputs))
+    missing_domains_inputs["stableReadinessSummary"].pop("domains", None)
+    missing_domains_dashboard = build_dashboard(
+        missing_domains_inputs,
+        {},
+        [FIXTURE_DIR / "go-no-go-pass.json"],
+        None,
+        Path(__file__).resolve().parents[2],
+        root / "stable-readiness-missing-domains",
+        "production-beta",
+        release_id,
+        generated_at,
+        now,
+        require_stable_readiness=True,
+    )
+    if missing_domains_dashboard.get("decision") != "no-go":
+        raise AssertionError(
+            "required Stable readiness with omitted domains did not block: "
+            f"{missing_domains_dashboard}"
+        )
+    missing_domains_blockers = [
+        blocker
+        for blocker in missing_domains_dashboard.get("blockers", [])
+        if isinstance(blocker, dict)
+        and blocker.get("id") == "stable-1.0.readiness-summary.domain-failed"
+        and blocker.get("evidenceId") == "stable-1.0.readiness-gate"
+    ]
+    if not missing_domains_blockers:
+        raise AssertionError(
+            "omitted Stable readiness domains were not reported as a required blocker: "
+            f"{missing_domains_dashboard}"
+        )
 
     failed_domain_inputs = json.loads(json.dumps(inputs))
     failed_domain_inputs["stableReadinessSummary"]["domains"][0]["status"] = "fail"
