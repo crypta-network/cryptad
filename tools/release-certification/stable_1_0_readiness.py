@@ -138,6 +138,8 @@ SECURITY_RESPONSE_EVIDENCE_IDS = (
     "production-security.response-runbook",
 )
 
+SECURITY_DRILL_RELEASE_MODES = ("production-beta", "release-candidate")
+
 NETWORK_SCALE_EVIDENCE_IDS = (
     "network-scale.app-network-budget",
     "network-scale.content-fetch-budget",
@@ -154,6 +156,14 @@ NETWORK_SCALE_REDACTION_PROOF_FIELDS = (
     "tokensExcluded",
     "absolutePathsExcluded",
     "queueHtmlExcluded",
+)
+
+NETWORK_SCALE_REQUIRED_APPS = ("social-inbox", "feed-reader")
+
+NETWORK_SCALE_BUDGET_PROOF_FIELDS = (
+    "globalFetchBudgetEnforced",
+    "perAppFetchBudgetEnforced",
+    "concurrencyLeasesReleased",
 )
 
 MULTI_NODE_SCENARIO_EVIDENCE_IDS = (
@@ -371,6 +381,18 @@ def positive_int(value: Any) -> int | None:
     else:
         return None
     return parsed if parsed > 0 else None
+
+
+def strict_positive_int(value: Any) -> int | None:
+    if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+        return value
+    return None
+
+
+def strict_non_negative_int(value: Any) -> int | None:
+    if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+        return value
+    return None
 
 
 def non_negative_count(value: Any, default: int = 0) -> tuple[int, bool]:
@@ -1046,6 +1068,82 @@ def security_artifact_blockers(
             if artifact_freshness is not None:
                 blockers.append(artifact_freshness)
 
+    return blockers
+
+
+def security_summary_structure_blockers(
+    summary: dict[str, Any],
+    required: set[str],
+    domain_id: str,
+) -> list[dict[str, Any]]:
+    blockers: list[dict[str, Any]] = []
+    mode = str(summary.get("mode", "")).strip().lower()
+    if mode not in SECURITY_DRILL_RELEASE_MODES:
+        blockers.append(
+            blocker_issue(
+                domain_id,
+                "stable-1.0.security-drills",
+                "Security drill summary mode is not release-capable",
+                "Stable 1.0 requires securityDrillsSummary.mode to be release-candidate or production-beta.",
+                "security-drills-summary",
+            )
+        )
+    if strict_positive_int(summary.get("maxAgeDays")) is None:
+        blockers.append(
+            blocker_issue(
+                domain_id,
+                "stable-1.0.security-drills",
+                "Security drill summary freshness metadata is missing",
+                "Stable 1.0 requires securityDrillsSummary.maxAgeDays to be a positive integer.",
+                "security-drills-summary",
+            )
+        )
+    required_scenarios, required_blocker = security_scenario_set(
+        summary,
+        "requiredScenarios",
+        domain_id,
+    )
+    if required_blocker is not None:
+        blockers.append(required_blocker)
+    if required_scenarios != required:
+        blockers.append(
+            blocker_issue(
+                domain_id,
+                "stable-1.0.security-drills",
+                "Security drill required scenario list does not match policy",
+                "securityDrillsSummary.requiredScenarios must exactly match the Stable 1.0 policy scenarios.",
+                "security-drills-summary",
+            )
+        )
+    counts = summary.get("counts")
+    expected_counts = {
+        "required": len(required),
+        "passed": len(required),
+        "failed": 0,
+        "missing": 0,
+        "stale": 0,
+        "malformed": 0,
+    }
+    malformed_counts: list[str] = []
+    if not isinstance(counts, dict):
+        malformed_counts.append("counts")
+    else:
+        for field, expected in expected_counts.items():
+            value = strict_non_negative_int(counts.get(field))
+            if value != expected:
+                malformed_counts.append(f"counts.{field}")
+    if malformed_counts:
+        blockers.append(
+            blocker_issue(
+                domain_id,
+                "stable-1.0.security-drills",
+                "Security drill summary counts are missing or inconsistent",
+                "Stable 1.0 requires producer summary counts to match the required passing drills: "
+                + ", ".join(malformed_counts)
+                + ".",
+                "security-drills-summary",
+            )
+        )
     return blockers
 
 
@@ -2542,6 +2640,7 @@ def evaluate_security(
                     "security-drills-summary",
                 )
             )
+        blockers.extend(security_summary_structure_blockers(security_summary, required, domain_id))
         if not status_ok(security_summary.get("status")) or security_summary.get("promotionReady") is not True:
             blockers.append(
                 blocker_issue(
@@ -2689,6 +2788,74 @@ def network_operation_count(network_summary: dict[str, Any] | None) -> int:
     if isinstance(value, int) and not isinstance(value, bool):
         count += value
     return count
+
+
+def network_scale_structure_blockers(
+    network: dict[str, Any],
+    domain_id: str,
+) -> list[dict[str, Any]]:
+    blockers: list[dict[str, Any]] = []
+    duration_hours = strict_positive_int(network.get("durationHoursSimulated"))
+    if duration_hours is None or duration_hours < 24:
+        blockers.append(
+            blocker_issue(
+                domain_id,
+                "stable-1.0.live-multi-node-soak",
+                "Network-scale soak duration evidence is missing or insufficient",
+                "Stable 1.0 requires durationHoursSimulated to cover at least 24 hours.",
+                "network-scale-soak-summary",
+            )
+        )
+    apps = network.get("apps")
+    app_errors: list[str] = []
+    if not isinstance(apps, dict):
+        app_errors.append("apps")
+        apps = {}
+    for app_id in NETWORK_SCALE_REQUIRED_APPS:
+        app = apps.get(app_id) if isinstance(apps, dict) else None
+        if not isinstance(app, dict):
+            app_errors.append(app_id)
+            continue
+        if app.get("rawContentPersisted") is not False:
+            app_errors.append(f"{app_id}.rawContentPersisted")
+    if app_errors:
+        blockers.append(
+            blocker_issue(
+                domain_id,
+                "stable-1.0.live-multi-node-soak",
+                "Network-scale app soak sections are missing or unsafe",
+                "Stable 1.0 requires social-inbox and feed-reader soak sections with rawContentPersisted=false: "
+                + ", ".join(app_errors)
+                + ".",
+                "network-scale-soak-summary",
+            )
+        )
+    trust_graph = network.get("trustGraph")
+    if not isinstance(trust_graph, dict) or trust_graph.get("rawStatementsInEvidence") is not False:
+        blockers.append(
+            blocker_issue(
+                domain_id,
+                "stable-1.0.live-multi-node-soak",
+                "Network-scale Trust Graph evidence is missing or unsafe",
+                "Stable 1.0 requires trustGraph.rawStatementsInEvidence=false.",
+                "network-scale-soak-summary",
+            )
+        )
+    budgets = network.get("budgets")
+    missing_budget_fields = missing_true_fields(budgets, NETWORK_SCALE_BUDGET_PROOF_FIELDS)
+    if missing_budget_fields:
+        blockers.append(
+            blocker_issue(
+                domain_id,
+                "stable-1.0.live-multi-node-soak",
+                "Network-scale budget enforcement proof is missing",
+                "Stable 1.0 requires network-scale budget enforcement fields to be true: "
+                + ", ".join(missing_budget_fields)
+                + ".",
+                "network-scale-soak-summary",
+            )
+        )
+    return blockers
 
 
 def evaluate_live_multi_node_soak(
@@ -2922,6 +3089,7 @@ def evaluate_live_multi_node_soak(
                     "network-scale-soak-summary",
                 )
             )
+        blockers.extend(network_scale_structure_blockers(network, domain_id))
         if max_age_days is not None:
             freshness = evidence_age_blocker(
                 domain_id=domain_id,
@@ -4029,6 +4197,7 @@ def run_self_test() -> None:
         "malformed-security-scenario-list",
         "security-missing-schema-version",
         "security-boolean-schema-version",
+        "security-truncated-summary",
         "security-redaction-unsafe-flag",
         "security-redaction-count",
         "security-release-id-mismatch",
@@ -4045,6 +4214,7 @@ def run_self_test() -> None:
         "multi-node-raw-evidence-flag",
         "multi-node-redaction-count",
         "network-release-id-mismatch",
+        "network-truncated-summary",
         "stale-security-summary-age",
         "stale-security-artifact-age",
         "missing-security-artifacts",
@@ -4943,6 +5113,22 @@ def run_self_test() -> None:
             expect_blocker="stable-1.0.security-drills",
         )
 
+        def security_truncated_summary(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            for field in ("requiredScenarios", "counts", "maxAgeDays", "mode"):
+                inputs["securityDrillsSummary"].pop(field, None)
+
+        run_case(
+            root,
+            "security-truncated-summary",
+            security_truncated_summary,
+            "not-ready",
+            expect_blocker="stable-1.0.security-drills",
+        )
+
         def security_redaction_unsafe_flag(inputs: dict[str, Any], _limitations: dict[str, Any], _paths: dict[str, Path]) -> None:
             inputs["securityDrillsSummary"]["redaction"] = {
                 "status": "pass",
@@ -5244,6 +5430,31 @@ def run_self_test() -> None:
             root,
             "network-release-id-mismatch",
             network_release_id_mismatch,
+            "not-ready",
+            expect_blocker="stable-1.0.live-multi-node-soak",
+        )
+
+        def network_truncated_summary(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            network = inputs["networkScaleSoakSummary"]
+            truncated = {
+                "mode": network.get("mode"),
+                "status": network.get("status"),
+                "generatedAt": network.get("generatedAt"),
+                "operationCount": 9999,
+                "redaction": copy.deepcopy(network.get("redaction")),
+            }
+            if "releaseId" in network:
+                truncated["releaseId"] = network["releaseId"]
+            inputs["networkScaleSoakSummary"] = truncated
+
+        run_case(
+            root,
+            "network-truncated-summary",
+            network_truncated_summary,
             "not-ready",
             expect_blocker="stable-1.0.live-multi-node-soak",
         )
