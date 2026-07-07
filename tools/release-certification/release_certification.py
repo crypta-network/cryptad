@@ -2559,11 +2559,45 @@ def stable_readiness_row_status(rows: list[dict[str, Any]]) -> str:
     return "pass"
 
 
+def stable_readiness_release_id_from_mapping(value: Any) -> str:
+    if not isinstance(value, dict):
+        return ""
+    for key in ("releaseId", "release_id", "candidateReleaseId", "candidate_release_id"):
+        release_id = value.get(key)
+        if isinstance(release_id, str) and release_id.strip() and release_id != "missing":
+            return release_id.strip()
+    return ""
+
+
+def stable_readiness_expected_release_id(
+    settings: Settings,
+    evidence: list[EvidenceItem],
+) -> str:
+    metadata_release_id = stable_readiness_release_id_from_mapping(settings.metadata)
+    if metadata_release_id:
+        return metadata_release_id
+    for item in evidence:
+        if item.id != "production-security.response-runbook":
+            continue
+        release_id = stable_readiness_release_id_from_mapping(item.details)
+        if release_id:
+            return release_id
+        security_drills = item.details.get("securityDrills")
+        if isinstance(security_drills, dict):
+            nested_release_id = stable_readiness_release_id_from_mapping(
+                security_drills.get("details")
+            )
+            if nested_release_id:
+                return nested_release_id
+    return ""
+
+
 def stable_readiness_evidence(
     summary_path: Path | None,
     required: bool,
     workspace_root: Path,
     out_dir: Path,
+    expected_release_id: str = "",
 ) -> list[EvidenceItem]:
     if summary_path is None:
         if not required:
@@ -2595,6 +2629,13 @@ def stable_readiness_evidence(
         ]
 
     summary_kind = str(summary.get("kind", ""))
+    expected_release_id = expected_release_id.strip()
+    summary_release_id_value = summary.get("releaseId")
+    summary_release_id = (
+        summary_release_id_value.strip()
+        if isinstance(summary_release_id_value, str)
+        else ""
+    )
     summary_schema_version = summary.get("schemaVersion")
     summary_schema_version_valid = (
         isinstance(summary_schema_version, int)
@@ -2608,6 +2649,16 @@ def stable_readiness_evidence(
             if summary_schema_version is not None
             else "schemaVersion is missing"
         )
+    if expected_release_id:
+        if not summary_release_id:
+            summary_validation_errors.append(
+                f"releaseId is missing; expected {expected_release_id}"
+            )
+        elif summary_release_id != expected_release_id:
+            summary_validation_errors.append(
+                f"releaseId must match candidate {expected_release_id}; "
+                f"summary releaseId is {summary_release_id}"
+            )
     redaction = summary.get("redaction") if isinstance(summary.get("redaction"), dict) else {}
     redaction_status = normalize_evidence_status(str(redaction.get("status", "missing")))
     redaction_findings_value = redaction.get("findings")
@@ -2749,6 +2800,8 @@ def stable_readiness_evidence(
                 "required": required,
                 "summaryKind": summary_kind,
                 "schemaVersion": summary_schema_version if summary_schema_version is not None else "missing",
+                "releaseId": summary_release_id or "missing",
+                "expectedReleaseId": expected_release_id or "not-available",
                 "decision": decision,
                 "stableReady": stable_ready,
                 "blockerCount": blocker_count
@@ -9242,12 +9295,14 @@ def gather_evidence(settings: Settings, waiver_context: WaiverContext) -> list[E
     evidence = [item for item in evidence if item.id not in app_platform_docs_item_ids]
     evidence.extend(app_platform_docs_items)
     evidence.extend(production_beta_go_no_go_evidence(settings.workspace_root, settings.out_dir))
+    expected_stable_release_id = stable_readiness_expected_release_id(settings, evidence)
     evidence.extend(
         stable_readiness_evidence(
             settings.stable_readiness_summary,
             settings.stable_readiness_required,
             settings.workspace_root,
             settings.out_dir,
+            expected_stable_release_id,
         )
     )
     return [
@@ -13922,12 +13977,85 @@ def run_self_test(repo_root: Path) -> None:
         for forbidden in ("hunter2", "USK@private", "/mnt/secrets/signing/key.pem", str(workspace)):
             assert forbidden not in sensitive_encoded, f"waiver reason leaked {forbidden}"
 
+        stable_release_mismatch_summary = workspace / "build/stable-readiness-release-mismatch.json"
+        write_json(
+            stable_release_mismatch_summary,
+            {
+                "schemaVersion": 1,
+                "kind": "stable-1.0-readiness",
+                "releaseId": "cryptad-beta-old",
+                "status": "pass",
+                "decision": "ready",
+                "stableReady": True,
+                "blockerCount": 0,
+                "warningCount": 0,
+                "allowedLimitationCount": 0,
+                "disallowedLimitationCount": 0,
+                "domains": [],
+                "blockers": [],
+                "warnings": [],
+                "allowedLimitations": [],
+                "disallowedLimitations": [],
+                "redaction": {"status": "pass", "findings": []},
+                "evidence": [
+                    {
+                        "id": evidence_id,
+                        "status": "pass",
+                        "summary": f"{evidence_id} passed.",
+                        "details": {"decision": "ready", "stableReady": True}
+                        if evidence_id == "stable-1.0.readiness-gate"
+                        else {},
+                    }
+                    for evidence_id in STABLE_1_0_READINESS_EVIDENCE_IDS
+                ],
+            },
+        )
+        stable_release_mismatch_items = stable_readiness_evidence(
+            stable_release_mismatch_summary,
+            True,
+            workspace,
+            out_dir,
+            "cryptad-production-beta-self-test",
+        )
+        stable_release_mismatch_gate = next(
+            item
+            for item in stable_release_mismatch_items
+            if item.id == "stable-1.0.readiness-gate"
+        )
+        assert stable_release_mismatch_gate.status == "fail", stable_release_mismatch_gate
+        assert stable_release_mismatch_gate.details["validationErrors"] == [
+            "releaseId must match candidate cryptad-production-beta-self-test; summary releaseId is cryptad-beta-old"
+        ], stable_release_mismatch_gate.details
+        stable_release_mismatch_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/stable-release-mismatch-cert").resolve(),
+            stable_readiness_summary=stable_release_mismatch_summary,
+            stable_readiness_required=True,
+        )
+        stable_release_mismatch_cert, stable_release_mismatch_exit_code = run(
+            stable_release_mismatch_settings
+        )
+        assert stable_release_mismatch_exit_code == 1, stable_release_mismatch_cert
+        stable_release_mismatch_row = matrix_row_by_id(
+            stable_release_mismatch_settings.out_dir,
+            "stable-1-0-readiness",
+        )
+        assert stable_release_mismatch_row["status"] == "fail", stable_release_mismatch_row
+        assert stable_release_mismatch_row["releaseBlocker"] is True, stable_release_mismatch_row
+        assert "evidence.stable-1.0.readiness-gate" in stable_release_mismatch_row["issueIds"], (
+            stable_release_mismatch_row
+        )
+        assert "matrix.stable-readiness.evidence-not-passing" in stable_release_mismatch_row["issueIds"], (
+            stable_release_mismatch_row
+        )
+
         stable_missing_redaction_summary = workspace / "build/stable-readiness-missing-redaction.json"
         write_json(
             stable_missing_redaction_summary,
             {
                 "schemaVersion": 1,
                 "kind": "stable-1.0-readiness",
+                "releaseId": "cryptad-production-beta-self-test",
                 "status": "pass",
                 "decision": "ready",
                 "stableReady": True,
@@ -13985,6 +14113,7 @@ def run_self_test(repo_root: Path) -> None:
             {
                 "schemaVersion": 1,
                 "kind": "stable-1.0-readiness",
+                "releaseId": "cryptad-production-beta-self-test",
                 "status": "pass",
                 "decision": "ready",
                 "stableReady": True,
@@ -14040,6 +14169,7 @@ def run_self_test(repo_root: Path) -> None:
             {
                 "schemaVersion": 1,
                 "kind": "stable-1.0-readiness",
+                "releaseId": "cryptad-production-beta-self-test",
                 "status": "pass",
                 "decision": "ready",
                 "stableReady": True,
@@ -14116,6 +14246,7 @@ def run_self_test(repo_root: Path) -> None:
             {
                 "schemaVersion": 1,
                 "kind": "stable-1.0-readiness",
+                "releaseId": "cryptad-production-beta-self-test",
                 "status": "pass",
                 "decision": "ready",
                 "stableReady": True,
@@ -14202,6 +14333,7 @@ def run_self_test(repo_root: Path) -> None:
             {
                 "schemaVersion": 1,
                 "kind": "stable-1.0-readiness",
+                "releaseId": "cryptad-production-beta-self-test",
                 "status": "pass",
                 "decision": "ready",
                 "stableReady": True,
@@ -14275,6 +14407,7 @@ def run_self_test(repo_root: Path) -> None:
             {
                 "schemaVersion": 1,
                 "kind": "stable-1.0-readiness",
+                "releaseId": "cryptad-production-beta-self-test",
                 "status": "pass",
                 "decision": "ready",
                 "stableReady": True,
@@ -14347,6 +14480,7 @@ def run_self_test(repo_root: Path) -> None:
             stable_missing_schema_summary,
             {
                 "kind": "stable-1.0-readiness",
+                "releaseId": "cryptad-production-beta-self-test",
                 "status": "pass",
                 "decision": "ready",
                 "stableReady": True,
@@ -14401,6 +14535,7 @@ def run_self_test(repo_root: Path) -> None:
             {
                 "schemaVersion": 1,
                 "kind": "stable-1.0-readiness",
+                "releaseId": "cryptad-production-beta-self-test",
                 "status": "pass",
                 "decision": "ship-it",
                 "stableReady": True,
@@ -14476,6 +14611,7 @@ def run_self_test(repo_root: Path) -> None:
             {
                 "schemaVersion": 1,
                 "kind": "stable-1.0-readiness",
+                "releaseId": "cryptad-production-beta-self-test",
                 "status": "pass",
                 "decision": "ready",
                 "stableReady": True,
@@ -14541,6 +14677,7 @@ def run_self_test(repo_root: Path) -> None:
             {
                 "schemaVersion": 1,
                 "kind": "stable-1.0-readiness",
+                "releaseId": "cryptad-production-beta-self-test",
                 "status": "pass",
                 "decision": "ready",
                 "stableReady": True,
@@ -14609,6 +14746,7 @@ def run_self_test(repo_root: Path) -> None:
             {
                 "schemaVersion": 1,
                 "kind": "stable-1.0-readiness",
+                "releaseId": "cryptad-production-beta-self-test",
                 "status": "pass",
                 "decision": "ready",
                 "stableReady": True,
@@ -14683,6 +14821,7 @@ def run_self_test(repo_root: Path) -> None:
             {
                 "schemaVersion": 1,
                 "kind": "stable-1.0-readiness",
+                "releaseId": "cryptad-production-beta-self-test",
                 "status": "pass",
                 "decision": "ready",
                 "stableReady": True,
@@ -14758,6 +14897,7 @@ def run_self_test(repo_root: Path) -> None:
             {
                 "schemaVersion": 1,
                 "kind": "stable-1.0-readiness",
+                "releaseId": "cryptad-production-beta-self-test",
                 "status": "pass",
                 "decision": "ready",
                 "stableReady": True,
@@ -14824,6 +14964,7 @@ def run_self_test(repo_root: Path) -> None:
             {
                 "schemaVersion": 1,
                 "kind": "stable-1.0-readiness",
+                "releaseId": "cryptad-production-beta-self-test",
                 "status": "pass",
                 "decision": "ready",
                 "stableReady": True,
@@ -14942,6 +15083,7 @@ def run_self_test(repo_root: Path) -> None:
             {
                 "schemaVersion": 1,
                 "kind": "stable-1.0-readiness",
+                "releaseId": "cryptad-production-beta-self-test",
                 "status": "pass",
                 "decision": "ready",
                 "stableReady": True,
@@ -15001,6 +15143,7 @@ def run_self_test(repo_root: Path) -> None:
             {
                 "schemaVersion": 1,
                 "kind": "stable-1.0-readiness",
+                "releaseId": "cryptad-production-beta-self-test",
                 "status": "pass",
                 "decision": "ready",
                 "stableReady": True,
