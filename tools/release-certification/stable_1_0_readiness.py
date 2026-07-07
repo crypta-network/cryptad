@@ -1144,7 +1144,21 @@ def evaluate_production_beta_state(
     domain_id = "production-beta-state"
     blockers: list[dict[str, Any]] = []
     warnings: list[dict[str, Any]] = []
-    required_modes = set(policy.get("requiredReleaseModes", ["production-beta"]))
+    required_modes, required_mode_errors = string_array_values(
+        policy.get("requiredReleaseModes"),
+        "requiredReleaseModes",
+        ("production-beta",),
+    )
+    for mode_error in required_mode_errors:
+        blockers.append(
+            blocker_issue(
+                domain_id,
+                "stable-1.0.production-beta-state",
+                "Stable release mode policy is invalid",
+                mode_error + ".",
+                "stable-readiness-policy",
+            )
+        )
     if not isinstance(production, dict):
         blockers.append(
             blocker_issue(
@@ -1972,6 +1986,21 @@ def evaluate_policy(
                     "stable-1.0.readiness-gate",
                     "Stable 1.0 readiness policy schema is invalid",
                     "Stable 1.0 readiness requires schemaVersion=1 and kind=stable-1.0-readiness-policy.",
+                    source,
+                )
+            )
+        _, required_mode_errors = string_array_values(
+            policy.get("requiredReleaseModes"),
+            "requiredReleaseModes",
+            ("production-beta",),
+        )
+        for mode_error in required_mode_errors:
+            blockers.append(
+                blocker_issue(
+                    domain_id,
+                    "stable-1.0.production-beta-state",
+                    "Stable release mode policy is invalid",
+                    mode_error + ".",
                     source,
                 )
             )
@@ -3793,6 +3822,7 @@ def run_self_test() -> None:
         "security-redaction-count",
         "security-release-id-mismatch",
         "missing-security-required-scenarios",
+        "malformed-required-release-modes-policy",
         "malformed-soak-mode-policy",
         "multi-node-release-id-mismatch",
         "multi-node-raw-evidence-flag",
@@ -4586,6 +4616,25 @@ def run_self_test() -> None:
             missing_security_required_scenarios,
             "not-ready",
             expect_blocker="stable-1.0.security-drills",
+        )
+
+        def malformed_required_release_modes_policy(
+            _inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            paths: dict[str, Path],
+        ) -> None:
+            policy = copy.deepcopy(read_json(DEFAULT_POLICY) or {})
+            policy["requiredReleaseModes"] = [1]
+            policy_path = paths["stableKnownLimitations"].parent / "malformed-required-release-modes-policy.json"
+            write_json(policy_path, policy)
+            paths["policy"] = policy_path
+
+        run_case(
+            root,
+            "malformed-required-release-modes-policy",
+            malformed_required_release_modes_policy,
+            "not-ready",
+            expect_blocker="stable-1.0.production-beta-state",
         )
 
         def malformed_soak_mode_policy(
