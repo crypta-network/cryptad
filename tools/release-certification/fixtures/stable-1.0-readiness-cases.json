@@ -39,6 +39,11 @@
       "category": "negative"
     },
     {
+      "id": "production-redaction-count",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
       "id": "go-no-go-no-go",
       "expectedDecision": "not-ready",
       "category": "negative"
@@ -85,6 +90,16 @@
     },
     {
       "id": "release-certification-redaction-field-failed",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "release-certification-redaction-truncated-proof",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "release-certification-redaction-count",
       "expectedDecision": "not-ready",
       "category": "negative"
     },
@@ -164,6 +179,11 @@
       "category": "negative"
     },
     {
+      "id": "security-redaction-count",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
       "id": "security-release-id-mismatch",
       "expectedDecision": "not-ready",
       "category": "negative"
@@ -180,6 +200,11 @@
     },
     {
       "id": "multi-node-raw-evidence-flag",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "multi-node-redaction-count",
       "expectedDecision": "not-ready",
       "category": "negative"
     },
@@ -229,6 +254,11 @@
       "category": "negative"
     },
     {
+      "id": "network-redaction-count",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
       "id": "network-redaction-status-fail",
       "expectedDecision": "not-ready",
       "category": "negative"
@@ -245,6 +275,11 @@
     },
     {
       "id": "malformed-known-issues-tracker",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "malformed-known-issue-entry",
       "expectedDecision": "not-ready",
       "category": "negative"
     },
@@ -275,6 +310,11 @@
     },
     {
       "id": "malformed-known-limitations",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "malformed-known-limitation-entry",
       "expectedDecision": "not-ready",
       "category": "negative"
     },

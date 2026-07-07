@@ -612,32 +612,50 @@ def release_certification_redaction_passed(redaction: dict[str, Any] | None) -> 
     if not isinstance(redaction, dict):
         return False, {"status": "missing", "missing": list(RELEASE_CERTIFICATION_REDACTION_BOOL_FIELDS)}
     findings = redaction.get("findings") if isinstance(redaction.get("findings"), list) else []
+    finding_count, malformed_finding_count = non_negative_count(
+        redaction.get("findingCount", len(findings))
+    )
     status_value = redaction.get("status")
-    known_false = [
-        field
-        for field in RELEASE_CERTIFICATION_REDACTION_BOOL_FIELDS
-        if field in redaction and redaction.get(field) is not True
-    ]
-    if status_value is not None:
-        status = normalize_status(status_value)
-        passed = status == "pass" and not findings and not known_false
-        return passed, {
-            "status": status,
-            "findingCount": len(findings),
-            "failedFields": known_false,
-        }
     missing = [
         field
         for field in RELEASE_CERTIFICATION_REDACTION_BOOL_FIELDS
         if field not in redaction
     ]
-    passed = not missing and not known_false and not findings
-    return passed, {
-        "status": "pass" if passed else "fail",
-        "findingCount": len(findings),
+    known_false = [
+        field
+        for field in RELEASE_CERTIFICATION_REDACTION_BOOL_FIELDS
+        if field in redaction and redaction.get(field) is not True
+    ]
+    details: dict[str, Any] = {
+        "findingCount": finding_count
+        if not malformed_finding_count
+        else redaction.get("findingCount", len(findings)),
         "missingFields": missing,
         "failedFields": known_false,
     }
+    if malformed_finding_count:
+        details["validationErrors"] = ["findingCount is not a non-negative integer"]
+    if status_value is not None:
+        status = normalize_status(status_value)
+        details["status"] = status
+        passed = (
+            status == "pass"
+            and not findings
+            and finding_count == 0
+            and not malformed_finding_count
+            and not missing
+            and not known_false
+        )
+        return passed, details
+    passed = (
+        not missing
+        and not known_false
+        and not findings
+        and finding_count == 0
+        and not malformed_finding_count
+    )
+    details["status"] = "pass" if passed else "fail"
+    return passed, details
 
 
 def security_artifact_freshness_blocker(
@@ -768,10 +786,18 @@ def recursive_redaction_failure(value: Any) -> bool:
             return True
         if "findings" in value and value.get("findings"):
             return True
+        if "findingCount" in value:
+            finding_count, malformed_finding_count = non_negative_count(value.get("findingCount"))
+            if malformed_finding_count or finding_count > 0:
+                return True
         status = value.get("status")
         if isinstance(status, str) and normalize_status(status) == "fail":
             redaction_keys = {key.lower() for key in value}
-            if "findings" in redaction_keys or "rawsensitivematerialexcluded" in redaction_keys:
+            if (
+                "findings" in redaction_keys
+                or "findingcount" in redaction_keys
+                or "rawsensitivematerialexcluded" in redaction_keys
+            ):
                 return True
         for key, child in value.items():
             lowered = str(key).lower()
@@ -2168,8 +2194,17 @@ def evaluate_support_feedback(
                 )
             )
             known_issue_records = []
-        for known_issue in known_issue_records:
+        for index, known_issue in enumerate(known_issue_records):
             if not isinstance(known_issue, dict):
+                blockers.append(
+                    blocker_issue(
+                        domain_id,
+                        "public-beta.known-issues-tracker",
+                        "Public beta known issue record is malformed",
+                        f"publicBetaKnownIssues.knownIssues[{index}] must be an object.",
+                        "public-beta-known-issues",
+                    )
+                )
                 continue
             severity = str(known_issue.get("severity", "")).lower()
             status = str(known_issue.get("status", "")).lower()
@@ -2257,8 +2292,17 @@ def evaluate_known_limitations(
             )
         )
         return domain_result(domain_id, "Known limitations", ("stable-1.0.known-limitations",), blockers, warnings), allowed, disallowed, resolved
-    for raw in limitations_doc.get("limitations", []):
+    for index, raw in enumerate(limitations_doc.get("limitations", [])):
         if not isinstance(raw, dict):
+            blockers.append(
+                blocker_issue(
+                    domain_id,
+                    "stable-1.0.known-limitations",
+                    "Stable 1.0 known limitation record is malformed",
+                    f"stableKnownLimitations.limitations[{index}] must be an object.",
+                    "stable-known-limitations",
+                )
+            )
             continue
         limitation = safe_limitation(raw)
         classification = str(raw.get("classification", "")).lower()
@@ -2989,6 +3033,7 @@ def run_self_test() -> None:
         "production-missing-signing-profile",
         "production-missing-signing-field",
         "production-redaction-findings",
+        "production-redaction-count",
         "go-no-go-no-go",
         "go-no-go-wrong-release-id",
         "go-no-go-non-production-mode",
@@ -2999,6 +3044,8 @@ def run_self_test() -> None:
         "release-certification-non-rc-mode",
         "release-certification-missing-redaction",
         "release-certification-redaction-field-failed",
+        "release-certification-redaction-truncated-proof",
+        "release-certification-redaction-count",
         "release-certification-evidence-failed",
         "release-certification-evidence-redaction-findings",
         "release-certification-evidence-nested-redaction-findings",
@@ -3014,10 +3061,12 @@ def run_self_test() -> None:
         "stale-security",
         "malformed-security-scenario-list",
         "security-redaction-unsafe-flag",
+        "security-redaction-count",
         "security-release-id-mismatch",
         "missing-security-required-scenarios",
         "multi-node-release-id-mismatch",
         "multi-node-raw-evidence-flag",
+        "multi-node-redaction-count",
         "network-release-id-mismatch",
         "stale-security-summary-age",
         "stale-security-artifact-age",
@@ -3027,16 +3076,19 @@ def run_self_test() -> None:
         "network-redaction-truncated-proof",
         "network-redaction-status-missing",
         "network-redaction-findings",
+        "network-redaction-count",
         "network-redaction-status-fail",
         "stale-soak-evidence",
         "insufficient-network",
         "malformed-known-issues-tracker",
+        "malformed-known-issue-entry",
         "critical-known-issue",
         "critical-known-issue-future-fixed",
         "beta-only-limitation",
         "allowed-disallowed-category",
         "unknown-limitation-classification",
         "malformed-known-limitations",
+        "malformed-known-limitation-entry",
         "missing-policy",
         "redaction-unsafe",
         "invalid-waiver",
@@ -3122,6 +3174,24 @@ def run_self_test() -> None:
             root,
             "production-redaction-findings",
             production_redaction_findings,
+            "not-ready",
+            expect_blocker="stable-1.0.redaction",
+        )
+
+        def production_redaction_count(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs["productionBetaSummary"]["redaction"] = {
+                "status": "pass",
+                "findingCount": 1,
+            }
+
+        run_case(
+            root,
+            "production-redaction-count",
+            production_redaction_count,
             "not-ready",
             expect_blocker="stable-1.0.redaction",
         )
@@ -3250,6 +3320,36 @@ def run_self_test() -> None:
             root,
             "release-certification-redaction-field-failed",
             release_certification_redaction_field_failed,
+            "not-ready",
+            expect_blocker="stable-1.0.redaction",
+        )
+
+        def release_certification_redaction_truncated_proof(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs["releaseCertificationSummary"]["redaction"] = {"status": "pass"}
+
+        run_case(
+            root,
+            "release-certification-redaction-truncated-proof",
+            release_certification_redaction_truncated_proof,
+            "not-ready",
+            expect_blocker="stable-1.0.redaction",
+        )
+
+        def release_certification_redaction_count(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs["releaseCertificationSummary"]["redaction"]["findingCount"] = 1
+
+        run_case(
+            root,
+            "release-certification-redaction-count",
+            release_certification_redaction_count,
             "not-ready",
             expect_blocker="stable-1.0.redaction",
         )
@@ -3481,6 +3581,24 @@ def run_self_test() -> None:
             expect_blocker="stable-1.0.redaction",
         )
 
+        def security_redaction_count(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs["securityDrillsSummary"]["redaction"] = {
+                "status": "pass",
+                "findingCount": 1,
+            }
+
+        run_case(
+            root,
+            "security-redaction-count",
+            security_redaction_count,
+            "not-ready",
+            expect_blocker="stable-1.0.redaction",
+        )
+
         def security_release_id_mismatch(inputs: dict[str, Any], _limitations: dict[str, Any], _paths: dict[str, Path]) -> None:
             inputs["securityDrillsSummary"]["releaseId"] = "cryptad-beta-previous"
 
@@ -3534,6 +3652,24 @@ def run_self_test() -> None:
             root,
             "multi-node-raw-evidence-flag",
             multi_node_raw_evidence_flag,
+            "not-ready",
+            expect_blocker="stable-1.0.redaction",
+        )
+
+        def multi_node_redaction_count(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs["multiNodeSoakSummary"]["redaction"] = {
+                "status": "pass",
+                "findingCount": 1,
+            }
+
+        run_case(
+            root,
+            "multi-node-redaction-count",
+            multi_node_redaction_count,
             "not-ready",
             expect_blocker="stable-1.0.redaction",
         )
@@ -3647,6 +3783,24 @@ def run_self_test() -> None:
             expect_blocker="stable-1.0.redaction",
         )
 
+        def network_redaction_count(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs["networkScaleSoakSummary"]["redaction"] = {
+                "status": "pass",
+                "findingCount": 1,
+            }
+
+        run_case(
+            root,
+            "network-redaction-count",
+            network_redaction_count,
+            "not-ready",
+            expect_blocker="stable-1.0.redaction",
+        )
+
         def network_redaction_status_fail(
             inputs: dict[str, Any],
             _limitations: dict[str, Any],
@@ -3685,6 +3839,21 @@ def run_self_test() -> None:
             root,
             "malformed-known-issues-tracker",
             malformed_known_issues_tracker,
+            "not-ready",
+            expect_blocker="public-beta.known-issues-tracker",
+        )
+
+        def malformed_known_issue_entry(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs["publicBetaKnownIssues"]["knownIssues"] = ["not-an-object"]
+
+        run_case(
+            root,
+            "malformed-known-issue-entry",
+            malformed_known_issue_entry,
             "not-ready",
             expect_blocker="public-beta.known-issues-tracker",
         )
@@ -3773,6 +3942,21 @@ def run_self_test() -> None:
             root,
             "malformed-known-limitations",
             malformed_known_limitations,
+            "not-ready",
+            expect_blocker="stable-1.0.known-limitations",
+        )
+
+        def malformed_known_limitation_entry(
+            _inputs: dict[str, Any],
+            limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            limitations["limitations"] = ["not-an-object"]
+
+        run_case(
+            root,
+            "malformed-known-limitation-entry",
+            malformed_known_limitation_entry,
             "not-ready",
             expect_blocker="stable-1.0.known-limitations",
         )
