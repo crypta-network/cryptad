@@ -373,9 +373,14 @@ def non_negative_count(value: Any, default: int = 0) -> tuple[int, bool]:
         return default, False
     if isinstance(value, bool):
         return default, True
-    try:
-        parsed = int(value)
-    except (TypeError, ValueError):
+    if isinstance(value, int):
+        parsed = value
+    elif isinstance(value, str):
+        text = value.strip()
+        if not text or not text.isdigit():
+            return default, True
+        parsed = int(text)
+    else:
         return default, True
     if parsed < 0:
         return default, True
@@ -830,6 +835,16 @@ def security_scenario_set(
     return scenarios, None
 
 
+def sha256_digest(value: Any) -> bool:
+    if not isinstance(value, str):
+        return False
+    text = value.strip()
+    if not text.startswith("sha256:"):
+        return False
+    digest = text.removeprefix("sha256:")
+    return len(digest) == 64 and all(char in "0123456789abcdefABCDEF" for char in digest)
+
+
 def security_artifact_blockers(
     artifacts: Any,
     required: set[str],
@@ -862,12 +877,15 @@ def security_artifact_blockers(
     scenario_counts: dict[str, int] = {}
     malformed_entries: list[str] = []
     malformed_scenarios: list[str] = []
+    malformed_digests: list[str] = []
     failing_required: list[str] = []
     object_artifacts: list[tuple[str, dict[str, Any]]] = []
     for index, artifact in enumerate(artifacts):
         if not isinstance(artifact, dict):
             malformed_entries.append(f"artifacts[{index}]")
             continue
+        if not sha256_digest(artifact.get("digest")):
+            malformed_digests.append(f"artifacts[{index}].digest")
         scenario = non_empty_string(artifact.get("scenario")) or non_empty_string(artifact.get("id"))
         if not scenario:
             malformed_scenarios.append(f"artifacts[{index}].scenario")
@@ -886,6 +904,18 @@ def security_artifact_blockers(
                 "stable-1.0.security-drills",
                 "Security drill artifact list is malformed",
                 "Malformed security drill artifact entries: " + ", ".join(malformed) + ".",
+                "security-drills-summary",
+            )
+        )
+    if malformed_digests:
+        blockers.append(
+            blocker_issue(
+                domain_id,
+                "stable-1.0.security-drills",
+                "Security drill artifact digest is missing or malformed",
+                "Security drill artifacts must include sha256:<64 hex> digest values: "
+                + ", ".join(malformed_digests)
+                + ".",
                 "security-drills-summary",
             )
         )
@@ -3789,6 +3819,7 @@ def run_self_test() -> None:
         "go-no-go-failed-domain",
         "go-no-go-redaction-findings",
         "go-no-go-redaction-count",
+        "go-no-go-redaction-fractional-count",
         "go-no-go-critical-redaction-summary-count",
         "go-no-go-redaction-malformed-findings",
         "release-certification-failed",
@@ -3834,6 +3865,8 @@ def run_self_test() -> None:
         "non-list-security-artifacts",
         "empty-security-artifacts",
         "malformed-security-artifact-entry",
+        "missing-security-artifact-digest",
+        "malformed-security-artifact-digest",
         "missing-required-security-artifact",
         "duplicate-required-security-artifact",
         "failed-required-security-artifact",
@@ -4123,6 +4156,25 @@ def run_self_test() -> None:
             root,
             "go-no-go-redaction-count",
             go_no_go_redaction_count,
+            "not-ready",
+            expect_blocker="stable-1.0.redaction",
+        )
+
+        def go_no_go_redaction_fractional_count(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs["goNoGoSummary"]["redaction"] = {
+                "schemaVersion": 1,
+                "status": "pass",
+                "findingCount": 0.5,
+            }
+
+        run_case(
+            root,
+            "go-no-go-redaction-fractional-count",
+            go_no_go_redaction_fractional_count,
             "not-ready",
             expect_blocker="stable-1.0.redaction",
         )
@@ -4782,6 +4834,37 @@ def run_self_test() -> None:
             root,
             "malformed-security-artifact-entry",
             malformed_security_artifact_entry,
+            "not-ready",
+            expect_blocker="stable-1.0.security-drills",
+        )
+
+        def missing_security_artifact_digest(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            for artifact in inputs["securityDrillsSummary"]["artifacts"]:
+                artifact.pop("digest", None)
+
+        run_case(
+            root,
+            "missing-security-artifact-digest",
+            missing_security_artifact_digest,
+            "not-ready",
+            expect_blocker="stable-1.0.security-drills",
+        )
+
+        def malformed_security_artifact_digest(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs["securityDrillsSummary"]["artifacts"][0]["digest"] = "sha256:not-a-valid-digest"
+
+        run_case(
+            root,
+            "malformed-security-artifact-digest",
+            malformed_security_artifact_digest,
             "not-ready",
             expect_blocker="stable-1.0.security-drills",
         )

@@ -94,6 +94,11 @@
       "category": "negative"
     },
     {
+      "id": "go-no-go-redaction-fractional-count",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
       "id": "go-no-go-critical-redaction-summary-count",
       "expectedDecision": "not-ready",
       "category": "negative"
@@ -315,6 +320,16 @@
     },
     {
       "id": "malformed-security-artifact-entry",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "missing-security-artifact-digest",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "malformed-security-artifact-digest",
       "expectedDecision": "not-ready",
       "category": "negative"
     },
