@@ -3483,12 +3483,21 @@ def stable_readiness_issues(
     redaction_finding_count, malformed_redaction_finding_count = parse_release_blocker_count(
         redaction.get("findingCount", len(redaction_findings))
     )
+    redaction_payload_unsafe = recursive_redaction_failure(redaction)
+    redaction_payload_unaccounted = redaction_payload_unsafe and not (
+        normalize_status(redaction.get("status", "missing")) != "pass"
+        or redaction_findings_malformed
+        or redaction_findings
+        or malformed_redaction_finding_count
+        or redaction_finding_count > 0
+    )
     if (
         normalize_status(redaction.get("status", "missing")) != "pass"
         or redaction_findings_malformed
         or redaction_findings
         or malformed_redaction_finding_count
         or redaction_finding_count > 0
+        or redaction_payload_unsafe
     ):
         details: list[str] = []
         if redaction_findings_malformed:
@@ -3497,6 +3506,8 @@ def stable_readiness_issues(
             details.append("findingCount is not a non-negative integer")
         elif redaction_finding_count > 0:
             details.append(f"findingCount is {redaction_finding_count}")
+        if redaction_payload_unaccounted:
+            details.append("redaction payload contains unsafe raw or unwaivable findings")
         issues.append(
             Issue(
                 id="stable-1.0.readiness-summary.redaction",
@@ -5668,6 +5679,45 @@ def assert_required_stable_readiness_release_id_matches_dashboard_candidate(root
         raise AssertionError(
             "Stable raw-included evidence-row redaction was not reported as a critical blocker: "
             f"{raw_included_redaction_dashboard}"
+        )
+
+    top_level_raw_redaction_inputs = json.loads(json.dumps(inputs))
+    top_level_raw_redaction_inputs["stableReadinessSummary"]["redaction"] = {
+        "status": "pass",
+        "findingCount": 0,
+        "findings": [],
+        "rawFetchedContentIncluded": True,
+    }
+    top_level_raw_redaction_dashboard = build_dashboard(
+        top_level_raw_redaction_inputs,
+        {},
+        [FIXTURE_DIR / "go-no-go-pass.json"],
+        None,
+        Path(__file__).resolve().parents[2],
+        root / "stable-readiness-top-level-raw-included-redaction",
+        "production-beta",
+        release_id,
+        generated_at,
+        now,
+        require_stable_readiness=True,
+    )
+    if top_level_raw_redaction_dashboard.get("decision") != "no-go":
+        raise AssertionError(
+            "required Stable readiness with top-level raw-included redaction did not block: "
+            f"{top_level_raw_redaction_dashboard}"
+        )
+    top_level_raw_redaction_blockers = [
+        blocker
+        for blocker in top_level_raw_redaction_dashboard.get("blockers", [])
+        if isinstance(blocker, dict)
+        and blocker.get("id") == "stable-1.0.readiness-summary.redaction"
+        and blocker.get("evidenceId") == "stable-1.0.redaction"
+        and blocker.get("severity") == "critical"
+    ]
+    if not top_level_raw_redaction_blockers:
+        raise AssertionError(
+            "Stable top-level raw-included redaction was not reported as a critical blocker: "
+            f"{top_level_raw_redaction_dashboard}"
         )
 
     redaction_count_inputs = json.loads(json.dumps(inputs))

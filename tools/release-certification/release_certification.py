@@ -2734,6 +2734,15 @@ def stable_readiness_evidence(
         redaction_validation_errors.append("findingCount is not a non-negative integer")
     elif redaction_finding_count > 0:
         redaction_validation_errors.append(f"findingCount is {redaction_finding_count}")
+    redaction_payload_unsafe = redaction_signal_has_unwaivable_findings(redaction)
+    if redaction_payload_unsafe and not (
+        redaction_status != "pass"
+        or redaction_findings
+        or redaction_validation_errors
+    ):
+        redaction_validation_errors.append(
+            "redaction payload contains unsafe raw or unwaivable findings"
+        )
     decision = str(summary.get("decision", "not-ready"))
     valid_decisions = {"ready", "ready-with-allowed-limitations", "not-ready"}
     decision_validation_errors: list[str] = []
@@ -14458,6 +14467,53 @@ def run_self_test(repo_root: Path) -> None:
         assert stable_redaction_count_row["releaseBlocker"] is True, stable_redaction_count_row
         assert "evidence.stable-1.0.redaction" in stable_redaction_count_row["issueIds"], stable_redaction_count_row
         assert "matrix.stable-readiness.redaction-failed" in stable_redaction_count_row["issueIds"], stable_redaction_count_row
+
+        stable_redaction_raw_flag_summary = workspace / "build/stable-readiness-redaction-raw-flag.json"
+        stable_redaction_raw_flag_value = read_json(stable_redaction_count_summary) or {}
+        stable_redaction_raw_flag_value["redaction"] = {
+            "status": "pass",
+            "findingCount": 0,
+            "findings": [],
+            "rawFetchedContentIncluded": True,
+        }
+        write_json(stable_redaction_raw_flag_summary, stable_redaction_raw_flag_value)
+        stable_redaction_raw_flag_items = stable_readiness_evidence(
+            stable_redaction_raw_flag_summary,
+            True,
+            workspace,
+            out_dir,
+        )
+        stable_redaction_raw_flag_statuses = {
+            item.id: item.status for item in stable_redaction_raw_flag_items
+        }
+        assert stable_redaction_raw_flag_statuses["stable-1.0.readiness-gate"] == "fail", (
+            stable_redaction_raw_flag_statuses
+        )
+        assert stable_redaction_raw_flag_statuses["stable-1.0.redaction"] == "fail", (
+            stable_redaction_raw_flag_statuses
+        )
+        stable_redaction_raw_flag_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/stable-redaction-raw-flag-cert").resolve(),
+            stable_readiness_summary=stable_redaction_raw_flag_summary,
+            stable_readiness_required=True,
+        )
+        stable_redaction_raw_flag_cert, stable_redaction_raw_flag_exit_code = run(
+            stable_redaction_raw_flag_settings
+        )
+        assert stable_redaction_raw_flag_exit_code == 1, stable_redaction_raw_flag_cert
+        stable_redaction_raw_flag_row = matrix_row_by_id(
+            stable_redaction_raw_flag_settings.out_dir,
+            "stable-1-0-readiness",
+        )
+        assert stable_redaction_raw_flag_row["status"] == "fail", stable_redaction_raw_flag_row
+        assert stable_redaction_raw_flag_row["releaseBlocker"] is True, stable_redaction_raw_flag_row
+        assert "evidence.stable-1.0.redaction" in stable_redaction_raw_flag_row["issueIds"], (
+            stable_redaction_raw_flag_row
+        )
+        assert "matrix.stable-readiness.redaction-failed" in stable_redaction_raw_flag_row[
+            "issueIds"
+        ], stable_redaction_raw_flag_row
 
         stable_redaction_fractional_count_summary = workspace / "build/stable-readiness-redaction-fractional-count.json"
         write_json(

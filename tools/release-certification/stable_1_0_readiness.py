@@ -1260,6 +1260,41 @@ def recursive_redaction_failure(value: Any) -> bool:
     return False
 
 
+def recursive_redaction_field_failure(value: Any) -> bool:
+    if isinstance(value, dict):
+        redaction_payload = {
+            key: child
+            for key, child in value.items()
+            if redaction_signal_key(key)
+        }
+        if redaction_payload and recursive_redaction_failure(redaction_payload):
+            return True
+        return any(
+            recursive_redaction_field_failure(child)
+            for child in value.values()
+            if isinstance(child, (dict, list))
+        )
+    if isinstance(value, list):
+        return any(recursive_redaction_field_failure(child) for child in value)
+    return False
+
+
+def redaction_signal_key(key: Any) -> bool:
+    lowered = str(key).lower()
+    return (
+        "redaction" in lowered
+        or lowered in {"findings", "findingcount"}
+        or (
+            lowered.startswith("raw")
+            and (
+                lowered.endswith("included")
+                or lowered.endswith("persisted")
+                or lowered.endswith("inevidence")
+            )
+        )
+    )
+
+
 def apps_from_entry(entry: dict[str, Any] | None) -> set[str]:
     details = evidence_details(entry)
     apps = details.get("apps")
@@ -2211,6 +2246,25 @@ def evaluate_ecosystem_matrix(matrix: dict[str, Any] | None) -> dict[str, Any]:
                 "stable-1.0.redaction",
                 "Ecosystem matrix redaction coverage failed",
                 "Stable 1.0 readiness cannot depend on a matrix whose coverage reports redactionPassed=false.",
+                "ecosystem-certification-matrix",
+            )
+        )
+    redaction_failed_sources: list[str] = []
+    if recursive_redaction_field_failure(coverage):
+        redaction_failed_sources.append("coverage")
+    for row in rows:
+        row_id = str(row.get("id", "matrix-row"))
+        if recursive_redaction_field_failure(row):
+            redaction_failed_sources.append(row_id)
+    if redaction_failed_sources:
+        blockers.append(
+            blocker_issue(
+                domain_id,
+                "stable-1.0.redaction",
+                "Ecosystem matrix contains redaction failures",
+                "Stable 1.0 readiness cannot depend on matrix coverage or rows with redaction findings: "
+                + ", ".join(redaction_failed_sources)
+                + ".",
                 "ecosystem-certification-matrix",
             )
         )
@@ -4277,6 +4331,7 @@ def run_self_test() -> None:
         "ecosystem-matrix-missing-rows",
         "ecosystem-matrix-non-list-rows",
         "ecosystem-matrix-malformed-row",
+        "ecosystem-matrix-row-redaction-failure",
         "missing-platform-baseline",
         "malformed-platform-baseline-count",
         "missing-compatibility-window-details",
@@ -5079,6 +5134,30 @@ def run_self_test() -> None:
             ecosystem_matrix_malformed_row,
             "not-ready",
             expect_blocker="release-certification.ecosystem-matrix",
+        )
+
+        def ecosystem_matrix_row_redaction_failure(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            rows = inputs["ecosystemMatrix"].get("rows")
+            if not isinstance(rows, list) or not rows:
+                raise AssertionError("base ecosystem matrix fixture has no rows")
+            rows[0]["details"] = {
+                "redaction": {
+                    "status": "fail",
+                    "findings": [],
+                }
+            }
+            inputs["ecosystemMatrix"].setdefault("coverage", {})["redactionPassed"] = True
+
+        run_case(
+            root,
+            "ecosystem-matrix-row-redaction-failure",
+            ecosystem_matrix_row_redaction_failure,
+            "not-ready",
+            expect_blocker="stable-1.0.redaction",
         )
 
         def missing_baseline(inputs: dict[str, Any], _limitations: dict[str, Any], _paths: dict[str, Path]) -> None:
