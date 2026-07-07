@@ -78,7 +78,10 @@ tools/release-certification/run-production-beta-release.sh \
 ```
 
 Use `--require-stable-readiness` only for a Stable promotion review. Production beta remains
-backward-compatible: Stable readiness is not required by default.
+backward-compatible: Stable readiness is not required by default. When an approved Stable
+known-limitation waiver is needed, pass it with `--stable-readiness-waivers`; production beta
+`--waiver-file` inputs are reserved for the go/no-go dashboard and are not forwarded to the Stable
+readiness gate.
 
 ## Decisions
 

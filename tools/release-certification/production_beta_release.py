@@ -555,6 +555,7 @@ class Settings:
     require_stable_readiness: bool = False
     stable_readiness_policy: Path | None = None
     stable_known_limitations: Path | None = None
+    stable_readiness_waivers: Path | None = None
 
 
 @dataclasses.dataclass
@@ -5685,6 +5686,8 @@ def stable_readiness_args(settings: Settings) -> list[str]:
         args.extend(["--policy", str(settings.stable_readiness_policy)])
     if settings.stable_known_limitations is not None:
         args.extend(["--stable-known-limitations", str(settings.stable_known_limitations)])
+    if settings.stable_readiness_waivers is not None:
+        args.extend(["--waivers", str(settings.stable_readiness_waivers)])
     return args
 
 
@@ -5756,11 +5759,12 @@ def release_redaction_allows_dist(summary: dict[str, Any], redaction_report: dic
     )
 
 
-def assert_stable_readiness_args_do_not_forward_go_no_go_waiver_file() -> None:
+def assert_stable_readiness_args_use_stable_waiver_file_only() -> None:
     with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-stable-waiver-") as temp_name:
         workspace = Path(temp_name) / "repo"
         workspace.mkdir(parents=True)
         waiver_file = workspace / "release-waivers.json"
+        stable_waivers = workspace / "stable-waivers.json"
         settings = Settings(
             workspace_root=workspace,
             out_dir=workspace / "build/production-beta",
@@ -5783,10 +5787,12 @@ def assert_stable_readiness_args_do_not_forward_go_no_go_waiver_file() -> None:
             generate_stable_readiness=True,
             stable_readiness_policy=workspace / "tools/release-certification/stable-1.0-readiness-policy.json",
             stable_known_limitations=workspace / "tools/release-certification/stable-1.0-known-limitations.json",
+            stable_readiness_waivers=stable_waivers,
         )
         args = stable_readiness_args(settings)
-        assert "--waivers" not in args, args
         assert str(waiver_file) not in args, args
+        assert "--waivers" in args, args
+        assert str(stable_waivers) in args, args
 
 
 def assert_required_stable_readiness_removes_dist_refs_from_dashboard() -> None:
@@ -6196,6 +6202,11 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         help="Stable 1.0 known limitations JSON. Defaults to tools/release-certification/stable-1.0-known-limitations.json.",
     )
+    parser.add_argument(
+        "--stable-readiness-waivers",
+        type=Path,
+        help="Stable 1.0 waiver JSON forwarded only to the Stable readiness gate.",
+    )
     parser.add_argument("--require-sandbox-provider-tests", action="store_true", help="Require sandbox evidence.")
     parser.add_argument("--skip-gradle", action="store_true", help="Skip Gradle stages. Use only for fixture/self-test dry-runs.")
     parser.add_argument("--skip-full-build", action="store_true", help="Skip buildJar and assembleCryptadDist.")
@@ -6268,6 +6279,7 @@ def settings_from_args(args: argparse.Namespace) -> Settings:
         or Path("tools/release-certification/stable-1.0-known-limitations.json"),
         workspace,
     )
+    stable_readiness_waivers = resolve_workspace_path_arg(args.stable_readiness_waivers, workspace)
     if args.third_party_intake_summary is not None and args.run_third_party_intake_sample_flow:
         raise SystemExit("--run-third-party-intake-sample-flow cannot be combined with --third-party-intake-summary.")
     artifact_base_uri = args.artifact_base_uri.strip() or os.environ.get(
@@ -6383,6 +6395,7 @@ def settings_from_args(args: argparse.Namespace) -> Settings:
         require_stable_readiness=args.require_stable_readiness,
         stable_readiness_policy=stable_readiness_policy,
         stable_known_limitations=stable_known_limitations,
+        stable_readiness_waivers=stable_readiness_waivers,
     )
 
 
@@ -10610,7 +10623,7 @@ def run_self_test() -> None:
     assert_attached_security_drills_summary_is_bound_to_release_id()
     assert_invalid_attached_security_drills_summary_is_sanitized()
     assert_attached_security_drills_summary_preserves_artifacts()
-    assert_stable_readiness_args_do_not_forward_go_no_go_waiver_file()
+    assert_stable_readiness_args_use_stable_waiver_file_only()
     assert_required_stable_readiness_removes_dist_refs_from_dashboard()
     assert_certification_failure_marks_dry_run_failed()
     assert_dashboard_args_use_security_drill_artifact_directory()

@@ -140,7 +140,9 @@ python3 tools/release-certification/stable_1_0_readiness.py \
 
 `run-production-beta-release.sh --generate-stable-readiness` writes the same artifacts under
 `reports/stable-1.0-readiness/`. Add `--require-stable-readiness` only for a Stable promotion
-review. The default production beta pipeline remains advisory-only for Stable readiness. See
+review. The default production beta pipeline remains advisory-only for Stable readiness. Use
+`--stable-readiness-waivers <path>` for Stable-scoped known-limitation waivers; production beta
+`--waiver-file` inputs remain go/no-go dashboard waivers and are not forwarded. See
 [docs/stable-1.0-readiness-gate.md](../../docs/stable-1.0-readiness-gate.md).
 
 Use the Stable-specific soak extracts shown above when rerunning the readiness tool against a

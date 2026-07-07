@@ -64,7 +64,9 @@ tools/release-certification/run-production-beta-release.sh \
 ```
 
 Use `--require-stable-readiness` only when the run is a Stable 1.0 promotion review. The default
-production beta pipeline does not require Stable readiness and remains backward-compatible.
+production beta pipeline does not require Stable readiness and remains backward-compatible. Stable
+known-limitation waivers use `--stable-readiness-waivers`; production beta `--waiver-file` inputs
+are not forwarded to the Stable gate.
 
 Protected `production-beta` workflow dispatches must provide `previous_summary`,
 `previous_release_certification_summary`, and either a passing attached multi-node summary or an
@@ -227,6 +229,7 @@ inputs through environment variables or protected files:
 | `--require-stable-readiness` | Generates Stable readiness artifacts and treats missing or failing Stable readiness as a Stable promotion blocker. Required Stable runs do not package a promotion archive unless Stable readiness passes. |
 | `--stable-readiness-policy` | Optional override for `tools/release-certification/stable-1.0-readiness-policy.json`. |
 | `--stable-known-limitations` | Optional override for `tools/release-certification/stable-1.0-known-limitations.json`. |
+| `--stable-readiness-waivers` | Optional Stable-scoped waiver JSON for `requires-waiver-before-stable` limitations. This is forwarded only to the Stable readiness gate; production beta `--waiver-file` remains a go/no-go dashboard waiver input. |
 | `--multi-node-soak-summary "$MULTI_NODE_BETA_SOAK_SUMMARY"` or `--run-multi-node-soak --multi-node-soak-config <production topology>` | Passing multi-node soak and upgrade evidence. CLI runs pass a local summary path. Manual workflow dispatches may pass a local checked-out path, an HTTPS JSON URL, or `actions-artifact://<run-id>/<artifact-name>/<path-inside-artifact>` for `multi_node_soak_summary`. Production-beta rejects the self-test topology and simulated mode as required promotion evidence. |
 
 Do not pass private keys, private insert URIs, form passwords, app tokens, or browser session tokens

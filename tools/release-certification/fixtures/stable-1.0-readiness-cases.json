@@ -284,6 +284,11 @@
       "category": "negative"
     },
     {
+      "id": "fractional-stable-policy-integers",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
       "id": "scalar-allowed-limitation-categories-policy",
       "expectedDecision": "not-ready",
       "category": "negative"

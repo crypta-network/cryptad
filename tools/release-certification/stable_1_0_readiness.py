@@ -361,9 +361,14 @@ def status_ok(value: Any) -> bool:
 def positive_int(value: Any) -> int | None:
     if isinstance(value, bool):
         return None
-    try:
-        parsed = int(value)
-    except (TypeError, ValueError):
+    if isinstance(value, int):
+        parsed = value
+    elif isinstance(value, str):
+        text = value.strip()
+        if not text or not text.isdigit():
+            return None
+        parsed = int(text)
+    else:
         return None
     return parsed if parsed > 0 else None
 
@@ -2084,6 +2089,16 @@ def evaluate_policy(
                         source,
                     )
                 )
+        if positive_int(required_soak.get("minimumOperationCount")) is None:
+            blockers.append(
+                blocker_issue(
+                    domain_id,
+                    "stable-1.0.live-multi-node-soak",
+                    "Stable soak operation-count policy is missing",
+                    "requiredSoak.minimumOperationCount must be a positive integer.",
+                    source,
+                )
+            )
         if positive_int(required_soak.get("maximumEvidenceAgeDays")) is None:
             blockers.append(
                 blocker_issue(
@@ -3878,6 +3893,7 @@ def run_self_test() -> None:
         "missing-security-required-scenarios",
         "malformed-required-release-modes-policy",
         "malformed-soak-mode-policy",
+        "fractional-stable-policy-integers",
         "scalar-allowed-limitation-categories-policy",
         "scalar-non-waivable-blockers-policy",
         "malformed-category-policy-entry",
@@ -4774,6 +4790,29 @@ def run_self_test() -> None:
             root,
             "malformed-soak-mode-policy",
             malformed_soak_mode_policy,
+            "not-ready",
+            expect_blocker="stable-1.0.live-multi-node-soak",
+        )
+
+        def fractional_stable_policy_integers(
+            _inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            paths: dict[str, Path],
+        ) -> None:
+            policy = copy.deepcopy(read_json(DEFAULT_POLICY) or {})
+            if isinstance(policy.get("requiredSoak"), dict):
+                policy["requiredSoak"]["minimumOperationCount"] = 629.5
+                policy["requiredSoak"]["maximumEvidenceAgeDays"] = 30.5
+            if isinstance(policy.get("securityDrillCriteria"), dict):
+                policy["securityDrillCriteria"]["maximumEvidenceAgeDays"] = 30.5
+            policy_path = paths["stableKnownLimitations"].parent / "fractional-stable-policy-integers.json"
+            write_json(policy_path, policy)
+            paths["policy"] = policy_path
+
+        run_case(
+            root,
+            "fractional-stable-policy-integers",
+            fractional_stable_policy_integers,
             "not-ready",
             expect_blocker="stable-1.0.live-multi-node-soak",
         )
