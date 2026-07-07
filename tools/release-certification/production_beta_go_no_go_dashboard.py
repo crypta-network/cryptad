@@ -1034,12 +1034,18 @@ def entry_has_redaction_findings(entry: dict[str, Any] | None) -> bool:
     details = entry.get("details", {})
     if not isinstance(details, dict):
         return False
-    return bool(details.get("redactionFindings")) or recursive_redaction_failure(details.get("redaction"))
+    findings = details.get("redactionFindings")
+    if "redactionFindings" in details and not isinstance(findings, list):
+        return True
+    return bool(findings) or recursive_redaction_failure(details.get("redaction"))
 
 
 def recursive_redaction_failure(value: Any) -> bool:
     if isinstance(value, dict):
-        if value.get("redactionFindings"):
+        redaction_findings = value.get("redactionFindings")
+        if "redactionFindings" in value and not isinstance(redaction_findings, list):
+            return True
+        if isinstance(redaction_findings, list) and bool(redaction_findings):
             return True
         findings = value.get("findings")
         if "findings" in value and not isinstance(findings, list):
@@ -5171,6 +5177,45 @@ def assert_required_stable_readiness_release_id_matches_dashboard_candidate(root
         raise AssertionError(
             "Stable evidence-row redaction findings were not reported as a critical blocker: "
             f"{redaction_dashboard}"
+        )
+
+    malformed_row_redaction_inputs = json.loads(json.dumps(inputs))
+    for entry in malformed_row_redaction_inputs["stableReadinessSummary"]["evidence"]:
+        if isinstance(entry, dict) and entry.get("id") == "stable-1.0.production-beta-state":
+            entry["details"] = {"redactionFindings": 0}
+            break
+    else:
+        raise AssertionError("synthetic Stable summary is missing stable-1.0.production-beta-state evidence")
+    malformed_row_redaction_dashboard = build_dashboard(
+        malformed_row_redaction_inputs,
+        {},
+        [FIXTURE_DIR / "go-no-go-pass.json"],
+        None,
+        Path(__file__).resolve().parents[2],
+        root / "stable-readiness-evidence-malformed-row-redaction",
+        "production-beta",
+        release_id,
+        generated_at,
+        now,
+        require_stable_readiness=True,
+    )
+    if malformed_row_redaction_dashboard.get("decision") != "no-go":
+        raise AssertionError(
+            "required Stable readiness with malformed falsey row redactionFindings did not block: "
+            f"{malformed_row_redaction_dashboard}"
+        )
+    malformed_row_redaction_blockers = [
+        blocker
+        for blocker in malformed_row_redaction_dashboard.get("blockers", [])
+        if isinstance(blocker, dict)
+        and blocker.get("id") == "stable-1.0.readiness-summary.evidence-redaction"
+        and blocker.get("evidenceId") == "stable-1.0.redaction"
+        and blocker.get("severity") == "critical"
+    ]
+    if not malformed_row_redaction_blockers:
+        raise AssertionError(
+            "Stable falsey malformed evidence-row redaction findings were not reported as a critical blocker: "
+            f"{malformed_row_redaction_dashboard}"
         )
 
     nested_redaction_inputs = json.loads(json.dumps(inputs))
