@@ -49,6 +49,11 @@
       "category": "negative"
     },
     {
+      "id": "production-boolean-schema-version",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
       "id": "go-no-go-no-go",
       "expectedDecision": "not-ready",
       "category": "negative"
@@ -65,6 +70,16 @@
     },
     {
       "id": "go-no-go-non-production-mode",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "go-no-go-boolean-schema-version",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "go-no-go-failed-domain",
       "expectedDecision": "not-ready",
       "category": "negative"
     },
@@ -100,6 +115,11 @@
     },
     {
       "id": "release-certification-non-rc-mode",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "release-certification-boolean-schema-version",
       "expectedDecision": "not-ready",
       "category": "negative"
     },

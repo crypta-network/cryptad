@@ -399,7 +399,12 @@ def schema_tool_errors(
     evidence_label: str,
 ) -> list[str]:
     errors: list[str] = []
-    if value.get("schemaVersion") != SCHEMA_VERSION:
+    schema_version = value.get("schemaVersion")
+    if (
+        not isinstance(schema_version, int)
+        or isinstance(schema_version, bool)
+        or schema_version != SCHEMA_VERSION
+    ):
         errors.append(f"{evidence_label}.schemaVersion must be {SCHEMA_VERSION}")
     if str(value.get("tool", "missing")) != expected_tool:
         errors.append(f"{evidence_label}.tool must be {expected_tool}")
@@ -1464,6 +1469,48 @@ def evaluate_production_beta_state(
                     "go-no-go-summary",
                 )
             )
+        if isinstance(go_no_go.get("domains"), list):
+            non_passing_domains: list[str] = []
+            malformed_domain_statuses: list[str] = []
+            for index, dashboard_domain in enumerate(go_no_go.get("domains", [])):
+                if not isinstance(dashboard_domain, dict):
+                    continue
+                domain_status = normalize_status(dashboard_domain.get("status", "missing"))
+                domain_label = non_empty_string(dashboard_domain.get("id")) or f"domains[{index}]"
+                if domain_status == "missing":
+                    malformed_domain_statuses.append(domain_label)
+                elif domain_status != "pass":
+                    non_passing_domains.append(f"{domain_label}:{domain_status}")
+            if malformed_domain_statuses:
+                blockers.append(
+                    blocker_issue(
+                        domain_id,
+                        "stable-1.0.go-no-go-decision",
+                        "Go/no-go dashboard domain status is malformed",
+                        (
+                            "Dashboard domain rows must include Stable-compatible status values; "
+                            "malformed domains: "
+                            + ", ".join(malformed_domain_statuses)
+                            + "."
+                        ),
+                        "go-no-go-summary",
+                    )
+                )
+            if non_passing_domains:
+                blockers.append(
+                    blocker_issue(
+                        domain_id,
+                        "stable-1.0.go-no-go-decision",
+                        "Go/no-go dashboard has non-passing domains",
+                        (
+                            "Stable 1.0 readiness requires the production beta dashboard domain "
+                            "breakdown to be passing; non-passing domains: "
+                            + ", ".join(non_passing_domains)
+                            + "."
+                        ),
+                        "go-no-go-summary",
+                    )
+                )
         for list_field in ("blockers", "warnings"):
             issue_errors = list_shape_errors(
                 go_no_go.get(list_field),
@@ -1638,7 +1685,12 @@ def evaluate_release_certification_summary(release_certification: dict[str, Any]
         mode = str(release_certification.get("mode", "missing"))
         release_candidate_passed = release_certification.get("releaseCandidatePassed")
         evidence_records = release_certification.get("evidence")
-        if schema_version != SCHEMA_VERSION or tool != "release-certification":
+        schema_version_valid = (
+            isinstance(schema_version, int)
+            and not isinstance(schema_version, bool)
+            and schema_version == SCHEMA_VERSION
+        )
+        if not schema_version_valid or tool != "release-certification":
             blockers.append(
                 blocker_issue(
                     domain_id,
@@ -3618,10 +3670,13 @@ def run_self_test() -> None:
         "production-missing-signing-field",
         "production-redaction-findings",
         "production-redaction-count",
+        "production-boolean-schema-version",
         "go-no-go-no-go",
         "go-no-go-stub",
         "go-no-go-wrong-release-id",
         "go-no-go-non-production-mode",
+        "go-no-go-boolean-schema-version",
+        "go-no-go-failed-domain",
         "go-no-go-redaction-findings",
         "go-no-go-redaction-count",
         "go-no-go-critical-redaction-summary-count",
@@ -3629,6 +3684,7 @@ def run_self_test() -> None:
         "release-certification-failed",
         "release-certification-not-passed",
         "release-certification-non-rc-mode",
+        "release-certification-boolean-schema-version",
         "release-certification-stub",
         "release-certification-missing-redaction",
         "release-certification-redaction-field-failed",
@@ -3820,6 +3876,21 @@ def run_self_test() -> None:
             expect_blocker="stable-1.0.redaction",
         )
 
+        def production_boolean_schema_version(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs["productionBetaSummary"]["schemaVersion"] = True
+
+        run_case(
+            root,
+            "production-boolean-schema-version",
+            production_boolean_schema_version,
+            "not-ready",
+            expect_blocker="stable-1.0.production-beta-state",
+        )
+
         def go_no_go_no_go(inputs: dict[str, Any], _limitations: dict[str, Any], _paths: dict[str, Path]) -> None:
             inputs["goNoGoSummary"]["decision"] = "no-go"
             inputs["goNoGoSummary"]["promotionReady"] = False
@@ -3861,6 +3932,36 @@ def run_self_test() -> None:
             root,
             "go-no-go-non-production-mode",
             go_no_go_non_production_mode,
+            "not-ready",
+            expect_blocker="stable-1.0.go-no-go-decision",
+        )
+
+        def go_no_go_boolean_schema_version(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs["goNoGoSummary"]["schemaVersion"] = True
+
+        run_case(
+            root,
+            "go-no-go-boolean-schema-version",
+            go_no_go_boolean_schema_version,
+            "not-ready",
+            expect_blocker="stable-1.0.go-no-go-decision",
+        )
+
+        def go_no_go_failed_domain(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs["goNoGoSummary"]["domains"][0]["status"] = "fail"
+
+        run_case(
+            root,
+            "go-no-go-failed-domain",
+            go_no_go_failed_domain,
             "not-ready",
             expect_blocker="stable-1.0.go-no-go-decision",
         )
@@ -3972,6 +4073,21 @@ def run_self_test() -> None:
             root,
             "release-certification-non-rc-mode",
             release_certification_non_rc_mode,
+            "not-ready",
+            expect_blocker="stable-1.0.release-certification",
+        )
+
+        def release_certification_boolean_schema_version(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs["releaseCertificationSummary"]["schemaVersion"] = True
+
+        run_case(
+            root,
+            "release-certification-boolean-schema-version",
+            release_certification_boolean_schema_version,
             "not-ready",
             expect_blocker="stable-1.0.release-certification",
         )

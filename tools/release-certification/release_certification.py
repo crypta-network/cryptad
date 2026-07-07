@@ -2537,6 +2537,12 @@ def stable_readiness_evidence(
     elif redaction_finding_count > 0:
         redaction_validation_errors.append(f"findingCount is {redaction_finding_count}")
     decision = str(summary.get("decision", "not-ready"))
+    valid_decisions = {"ready", "ready-with-allowed-limitations", "not-ready"}
+    decision_validation_errors: list[str] = []
+    if decision not in valid_decisions:
+        decision_validation_errors.append(
+            "decision must be ready, ready-with-allowed-limitations, or not-ready"
+        )
     stable_ready = summary.get("stableReady") is True
     main_status = normalize_evidence_status(str(summary.get("status", "missing")))
     blocker_count, malformed_blocker_count = parse_stable_readiness_count(summary.get("blockerCount", 0))
@@ -2558,6 +2564,7 @@ def stable_readiness_evidence(
         or redaction_status != "pass"
         or redaction_findings
         or redaction_validation_errors
+        or decision_validation_errors
         or count_validation_errors
     ):
         main_status = "fail"
@@ -2578,7 +2585,11 @@ def stable_readiness_evidence(
     if redaction_findings:
         redaction_details["redactionFindings"] = redaction_findings
     main_summary = f"Stable 1.0 readiness decision is {decision}."
-    main_validation_errors = [*summary_validation_errors, *count_validation_errors]
+    main_validation_errors = [
+        *summary_validation_errors,
+        *decision_validation_errors,
+        *count_validation_errors,
+    ]
     if summary_validation_errors:
         main_summary = "Stable 1.0 readiness summary schema is malformed."
     elif count_validation_errors:
@@ -14073,6 +14084,81 @@ def run_self_test(repo_root: Path) -> None:
         assert stable_missing_schema_row["releaseBlocker"] is True, stable_missing_schema_row
         assert "evidence.stable-1.0.readiness-gate" in stable_missing_schema_row["issueIds"], stable_missing_schema_row
         assert "matrix.stable-readiness.evidence-not-passing" in stable_missing_schema_row["issueIds"], stable_missing_schema_row
+
+        stable_invalid_decision_summary = workspace / "build/stable-readiness-invalid-decision.json"
+        write_json(
+            stable_invalid_decision_summary,
+            {
+                "schemaVersion": 1,
+                "kind": "stable-1.0-readiness",
+                "status": "pass",
+                "decision": "ship-it",
+                "stableReady": True,
+                "blockerCount": 0,
+                "warningCount": 0,
+                "allowedLimitationCount": 0,
+                "disallowedLimitationCount": 0,
+                "domains": [],
+                "blockers": [],
+                "warnings": [],
+                "allowedLimitations": [],
+                "disallowedLimitations": [],
+                "redaction": {"status": "pass", "findings": []},
+                "evidence": [
+                    {
+                        "id": evidence_id,
+                        "status": "pass",
+                        "summary": f"{evidence_id} passed.",
+                        "details": {"decision": "ship-it", "stableReady": True}
+                        if evidence_id == "stable-1.0.readiness-gate"
+                        else {},
+                    }
+                    for evidence_id in STABLE_1_0_READINESS_EVIDENCE_IDS
+                ],
+            },
+        )
+        stable_invalid_decision_items = stable_readiness_evidence(
+            stable_invalid_decision_summary,
+            True,
+            workspace,
+            out_dir,
+        )
+        stable_invalid_decision_statuses = {
+            item.id: item.status for item in stable_invalid_decision_items
+        }
+        assert stable_invalid_decision_statuses["stable-1.0.readiness-gate"] == "fail", (
+            stable_invalid_decision_statuses
+        )
+        stable_invalid_decision_details = next(
+            item.details
+            for item in stable_invalid_decision_items
+            if item.id == "stable-1.0.readiness-gate"
+        )
+        assert stable_invalid_decision_details["validationErrors"] == [
+            "decision must be ready, ready-with-allowed-limitations, or not-ready"
+        ], stable_invalid_decision_details
+        stable_invalid_decision_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/stable-invalid-decision-cert").resolve(),
+            stable_readiness_summary=stable_invalid_decision_summary,
+            stable_readiness_required=True,
+        )
+        stable_invalid_decision_cert, stable_invalid_decision_exit_code = run(
+            stable_invalid_decision_settings
+        )
+        assert stable_invalid_decision_exit_code == 1, stable_invalid_decision_cert
+        stable_invalid_decision_row = matrix_row_by_id(
+            stable_invalid_decision_settings.out_dir,
+            "stable-1-0-readiness",
+        )
+        assert stable_invalid_decision_row["status"] == "fail", stable_invalid_decision_row
+        assert stable_invalid_decision_row["releaseBlocker"] is True, stable_invalid_decision_row
+        assert "evidence.stable-1.0.readiness-gate" in stable_invalid_decision_row["issueIds"], (
+            stable_invalid_decision_row
+        )
+        assert "matrix.stable-readiness.evidence-not-passing" in stable_invalid_decision_row["issueIds"], (
+            stable_invalid_decision_row
+        )
 
         stable_remaining_blockers_summary = workspace / "build/stable-readiness-remaining-blockers.json"
         write_json(
