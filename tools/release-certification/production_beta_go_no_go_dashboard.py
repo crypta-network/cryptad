@@ -2321,6 +2321,15 @@ def stable_summary_domain_errors(summary: dict[str, Any]) -> list[str]:
         for field_name in ("warnings", "allowedLimitations"):
             if field_name in domain and not isinstance(domain.get(field_name), list):
                 errors.append(f"domain {domain_id} {field_name} must be a list")
+        allowed_limitations = domain.get("allowedLimitations")
+        if isinstance(allowed_limitations, list):
+            for allowed_index, limitation in enumerate(allowed_limitations):
+                errors.extend(
+                    stable_summary_allowed_limitation_metadata_errors(
+                        limitation,
+                        f"domain {domain_id} allowedLimitations[{allowed_index}]",
+                    )
+                )
     return errors
 
 
@@ -5218,6 +5227,39 @@ def assert_required_stable_readiness_release_id_matches_dashboard_candidate(root
         raise AssertionError(
             "failed Stable domain row was not reported as a required blocker: "
             f"{failed_domain_dashboard}"
+        )
+
+    malformed_allowed_domain_inputs = json.loads(json.dumps(inputs))
+    malformed_allowed_domain_inputs["stableReadinessSummary"]["domains"][0]["allowedLimitations"] = [1]
+    malformed_allowed_domain_dashboard = build_dashboard(
+        malformed_allowed_domain_inputs,
+        {},
+        [FIXTURE_DIR / "go-no-go-pass.json"],
+        None,
+        Path(__file__).resolve().parents[2],
+        root / "stable-readiness-domain-malformed-allowed-limitation",
+        "production-beta",
+        release_id,
+        generated_at,
+        now,
+        require_stable_readiness=True,
+    )
+    if malformed_allowed_domain_dashboard.get("decision") != "no-go":
+        raise AssertionError(
+            "required Stable readiness with a malformed domain allowed limitation did not block: "
+            f"{malformed_allowed_domain_dashboard}"
+        )
+    malformed_allowed_domain_blockers = [
+        blocker
+        for blocker in malformed_allowed_domain_dashboard.get("blockers", [])
+        if isinstance(blocker, dict)
+        and blocker.get("id") == "stable-1.0.readiness-summary.domain-failed"
+        and blocker.get("evidenceId") == "stable-1.0.readiness-gate"
+    ]
+    if not malformed_allowed_domain_blockers:
+        raise AssertionError(
+            "malformed Stable domain allowed limitation was not reported as a required blocker: "
+            f"{malformed_allowed_domain_dashboard}"
         )
 
     blocker_domain_inputs = json.loads(json.dumps(inputs))

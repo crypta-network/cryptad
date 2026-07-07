@@ -2561,6 +2561,15 @@ def stable_readiness_domain_errors(summary: dict[str, Any]) -> list[str]:
         for field_name in ("warnings", "allowedLimitations"):
             if field_name in domain and not isinstance(domain.get(field_name), list):
                 errors.append(f"domain {domain_id} {field_name} must be a list")
+        allowed_limitations = domain.get("allowedLimitations")
+        if isinstance(allowed_limitations, list):
+            for allowed_index, limitation in enumerate(allowed_limitations):
+                errors.extend(
+                    stable_readiness_allowed_limitation_metadata_errors(
+                        limitation,
+                        f"domain {domain_id} allowedLimitations[{allowed_index}]",
+                    )
+                )
     return errors
 
 
@@ -14163,6 +14172,90 @@ def run_self_test(repo_root: Path) -> None:
         assert stable_failed_domain_gate.details["validationErrors"] == [
             "domain production-beta-state status is fail"
         ], stable_failed_domain_gate.details
+
+        stable_malformed_allowed_domain_summary = (
+            workspace / "build/stable-readiness-malformed-domain-allowed-limitation.json"
+        )
+        write_json(
+            stable_malformed_allowed_domain_summary,
+            {
+                "schemaVersion": 1,
+                "kind": "stable-1.0-readiness",
+                "releaseId": "cryptad-production-beta-self-test",
+                "status": "pass",
+                "decision": "ready",
+                "stableReady": True,
+                "blockerCount": 0,
+                "warningCount": 0,
+                "allowedLimitationCount": 0,
+                "disallowedLimitationCount": 0,
+                "domains": [
+                    {
+                        "id": "production-beta-state",
+                        "status": "pass",
+                        "summary": "Synthetic passed Stable domain row with malformed allowed limitation.",
+                        "evidenceIds": ["stable-1.0.production-beta-state"],
+                        "blockers": [],
+                        "warnings": [],
+                        "allowedLimitations": [1],
+                    }
+                ],
+                "blockers": [],
+                "warnings": [],
+                "allowedLimitations": [],
+                "disallowedLimitations": [],
+                "redaction": {"status": "pass", "findings": []},
+                "evidence": [
+                    {
+                        "id": evidence_id,
+                        "status": "pass",
+                        "summary": f"{evidence_id} passed.",
+                        "details": {"decision": "ready", "stableReady": True}
+                        if evidence_id == "stable-1.0.readiness-gate"
+                        else {},
+                    }
+                    for evidence_id in STABLE_1_0_READINESS_EVIDENCE_IDS
+                ],
+            },
+        )
+        stable_malformed_allowed_domain_items = stable_readiness_evidence(
+            stable_malformed_allowed_domain_summary,
+            True,
+            workspace,
+            out_dir,
+            "cryptad-production-beta-self-test",
+        )
+        stable_malformed_allowed_domain_gate = next(
+            item
+            for item in stable_malformed_allowed_domain_items
+            if item.id == "stable-1.0.readiness-gate"
+        )
+        assert stable_malformed_allowed_domain_gate.status == "fail", stable_malformed_allowed_domain_gate
+        assert stable_malformed_allowed_domain_gate.details["validationErrors"] == [
+            "domain production-beta-state allowedLimitations[0] must be an object"
+        ], stable_malformed_allowed_domain_gate.details
+        stable_malformed_allowed_domain_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/stable-malformed-domain-allowed-limitation-cert").resolve(),
+            stable_readiness_summary=stable_malformed_allowed_domain_summary,
+            stable_readiness_required=True,
+        )
+        stable_malformed_allowed_domain_cert, stable_malformed_allowed_domain_exit_code = run(
+            stable_malformed_allowed_domain_settings
+        )
+        assert stable_malformed_allowed_domain_exit_code == 1, stable_malformed_allowed_domain_cert
+        stable_malformed_allowed_domain_row = matrix_row_by_id(
+            stable_malformed_allowed_domain_settings.out_dir,
+            "stable-1-0-readiness",
+        )
+        assert stable_malformed_allowed_domain_row["status"] == "fail", stable_malformed_allowed_domain_row
+        assert stable_malformed_allowed_domain_row["releaseBlocker"] is True, stable_malformed_allowed_domain_row
+        assert "evidence.stable-1.0.readiness-gate" in stable_malformed_allowed_domain_row["issueIds"], (
+            stable_malformed_allowed_domain_row
+        )
+        assert "matrix.stable-readiness.evidence-not-passing" in stable_malformed_allowed_domain_row[
+            "issueIds"
+        ], stable_malformed_allowed_domain_row
 
         stable_domain_blocker_summary = workspace / "build/stable-readiness-domain-blocker.json"
         write_json(
