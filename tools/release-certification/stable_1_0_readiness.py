@@ -166,6 +166,16 @@ NETWORK_SCALE_BUDGET_PROOF_FIELDS = (
     "concurrencyLeasesReleased",
 )
 
+ALLOWED_LIMITATION_REQUIRED_STRING_FIELDS = (
+    "id",
+    "title",
+    "category",
+    "classification",
+    "status",
+    "summary",
+    "boundedBy",
+)
+
 MULTI_NODE_SCENARIO_EVIDENCE_IDS = (
     "multi-node-beta.soak",
     "multi-node-beta.upgrade-drill",
@@ -3347,6 +3357,24 @@ def safe_limitation(limitation: dict[str, Any]) -> dict[str, Any]:
     return {key: limitation[key] for key in keys if key in limitation}
 
 
+def allowed_limitation_metadata_errors(record: Any, label: str) -> list[str]:
+    if not isinstance(record, dict):
+        return [f"{label} must be an object"]
+    errors: list[str] = []
+    for field in ALLOWED_LIMITATION_REQUIRED_STRING_FIELDS:
+        if not non_empty_string(record.get(field)):
+            errors.append(f"{label}.{field} must be a non-empty string")
+    classification = str(record.get("classification", "")).strip().lower()
+    if classification and classification != "allowed-for-stable-1.0":
+        errors.append(f"{label}.classification must be allowed-for-stable-1.0")
+    evidence_ids = record.get("evidenceIds")
+    if not isinstance(evidence_ids, list) or not evidence_ids:
+        errors.append(f"{label}.evidenceIds must be a non-empty list")
+    elif any(not non_empty_string(item) for item in evidence_ids):
+        errors.append(f"{label}.evidenceIds must contain only non-empty strings")
+    return errors
+
+
 def evaluate_known_limitations(
     limitations_doc: dict[str, Any] | None,
     waivers: list[StableWaiver],
@@ -3399,7 +3427,25 @@ def evaluate_known_limitations(
         limitation_id = str(raw.get("id", "stable-1.0.unknown-limitation"))
         category = str(raw.get("category", "")).strip()
         if classification == "allowed-for-stable-1.0":
-            if category in disallowed_categories:
+            metadata_errors = allowed_limitation_metadata_errors(
+                raw,
+                f"stableKnownLimitations.limitations[{index}]",
+            )
+            if metadata_errors:
+                disallowed.append(limitation)
+                blockers.append(
+                    blocker_issue(
+                        domain_id,
+                        "stable-1.0.known-limitations",
+                        "Allowed Stable limitation record is malformed",
+                        "Allowed Stable limitations must be explicit and bounded: "
+                        + "; ".join(metadata_errors)
+                        + ".",
+                        "stable-known-limitations",
+                        limitation_id=limitation_id,
+                    )
+                )
+            elif category in disallowed_categories:
                 disallowed.append(limitation)
                 blockers.append(
                     blocker_issue(
@@ -4282,6 +4328,7 @@ def run_self_test() -> None:
         "critical-known-issue",
         "critical-known-issue-future-fixed",
         "beta-only-limitation",
+        "allowed-limitation-missing-metadata",
         "allowed-disallowed-category",
         "unknown-limitation-classification",
         "malformed-known-limitations",
@@ -5958,6 +6005,28 @@ def run_self_test() -> None:
             )
 
         run_case(root, "beta-only-limitation", beta_only_limitation, "not-ready", expect_blocker="stable-1.0.known-limitations")
+
+        def allowed_limitation_missing_metadata(
+            _inputs: dict[str, Any],
+            limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            limitations["limitations"].append(
+                {
+                    "id": "stable-1.0.allowed-unbounded",
+                    "classification": "allowed-for-stable-1.0",
+                    "category": "trust-graph-local-scope",
+                    "status": "open",
+                }
+            )
+
+        run_case(
+            root,
+            "allowed-limitation-missing-metadata",
+            allowed_limitation_missing_metadata,
+            "not-ready",
+            expect_blocker="stable-1.0.known-limitations",
+        )
 
         def allowed_disallowed_category(_inputs: dict[str, Any], limitations: dict[str, Any], _paths: dict[str, Path]) -> None:
             limitations["limitations"].append(

@@ -2280,6 +2280,24 @@ def stable_summary_record_errors(
     return errors
 
 
+def stable_summary_allowed_limitation_metadata_errors(record: Any, label: str) -> list[str]:
+    if not isinstance(record, dict):
+        return [f"{label} must be an object"]
+    errors: list[str] = []
+    for field in ("id", "title", "category", "classification", "status", "summary", "boundedBy"):
+        if not isinstance(record.get(field), str) or not str(record.get(field)).strip():
+            errors.append(f"{label}.{field} must be a non-empty string")
+    classification = str(record.get("classification", "")).strip().lower()
+    if classification and classification != "allowed-for-stable-1.0":
+        errors.append(f"{label}.classification must be allowed-for-stable-1.0")
+    evidence_ids = record.get("evidenceIds")
+    if not isinstance(evidence_ids, list) or not evidence_ids:
+        errors.append(f"{label}.evidenceIds must be a non-empty list")
+    elif any(not isinstance(item, str) or not item.strip() for item in evidence_ids):
+        errors.append(f"{label}.evidenceIds must contain only non-empty strings")
+    return errors
+
+
 def stable_summary_domain_errors(summary: dict[str, Any]) -> list[str]:
     domains = summary.get("domains")
     if domains is None:
@@ -3624,11 +3642,19 @@ def stable_readiness_issues(
     allowed_record_errors: list[str] = []
     if not isinstance(allowed_limitations, list):
         allowed_record_errors.append("allowedLimitations must be a list")
-    elif not malformed_allowed_count and allowed_count != allowed_limitation_count:
-        allowed_record_errors.append(
-            f"allowedLimitationCount is {allowed_count} "
-            f"but allowedLimitations contains {allowed_limitation_count}"
-        )
+    else:
+        for index, limitation in enumerate(allowed_limitations):
+            allowed_record_errors.extend(
+                stable_summary_allowed_limitation_metadata_errors(
+                    limitation,
+                    f"allowedLimitations[{index}]",
+                )
+            )
+        if not malformed_allowed_count and allowed_count != allowed_limitation_count:
+            allowed_record_errors.append(
+                f"allowedLimitationCount is {allowed_count} "
+                f"but allowedLimitations contains {allowed_limitation_count}"
+            )
     record_errors = [
         *stable_summary_record_errors(
             summary,
@@ -5738,8 +5764,13 @@ def assert_required_stable_readiness_release_id_matches_dashboard_candidate(root
     allowed_record_inputs["stableReadinessSummary"]["allowedLimitations"] = [
         {
             "id": "stable-1.0.self-test-allowed-limitation",
+            "title": "Self-test allowed Stable limitation",
+            "category": "ui-polish-accessibility-warning",
             "classification": "allowed-for-stable-1.0",
+            "status": "open",
             "summary": "Synthetic bounded Stable 1.0 limitation.",
+            "evidenceIds": ["stable-1.0.known-limitations"],
+            "boundedBy": "Self-test release manager bound for a non-blocking Stable limitation.",
         }
     ]
     allowed_record_dashboard = build_dashboard(
@@ -5773,13 +5804,53 @@ def assert_required_stable_readiness_release_id_matches_dashboard_candidate(root
             f"{allowed_record_dashboard}"
         )
 
+    malformed_allowed_inputs = json.loads(json.dumps(inputs))
+    malformed_allowed_inputs["stableReadinessSummary"]["allowedLimitationCount"] = 1
+    malformed_allowed_inputs["stableReadinessSummary"]["allowedLimitations"] = [1]
+    malformed_allowed_inputs["stableReadinessSummary"]["decision"] = "ready-with-allowed-limitations"
+    malformed_allowed_dashboard = build_dashboard(
+        malformed_allowed_inputs,
+        {},
+        [FIXTURE_DIR / "go-no-go-pass.json"],
+        None,
+        Path(__file__).resolve().parents[2],
+        root / "stable-readiness-malformed-allowed-limitation",
+        "production-beta",
+        release_id,
+        generated_at,
+        now,
+        require_stable_readiness=True,
+    )
+    if malformed_allowed_dashboard.get("decision") != "no-go":
+        raise AssertionError(
+            "required Stable readiness with malformed allowed limitation records did not block: "
+            f"{malformed_allowed_dashboard}"
+        )
+    malformed_allowed_issues = [
+        blocker
+        for blocker in malformed_allowed_dashboard.get("blockers", [])
+        if isinstance(blocker, dict)
+        and blocker.get("id") == "stable-1.0.readiness-summary.allowed-limitations-invalid"
+        and blocker.get("evidenceId") == "stable-1.0.known-limitations"
+    ]
+    if not malformed_allowed_issues:
+        raise AssertionError(
+            "Stable readiness malformed allowed limitation record was not reported as a required blocker: "
+            f"{malformed_allowed_dashboard}"
+        )
+
     allowed_warning_inputs = json.loads(json.dumps(inputs))
     allowed_warning_inputs["stableReadinessSummary"]["allowedLimitationCount"] = 1
     allowed_warning_inputs["stableReadinessSummary"]["allowedLimitations"] = [
         {
             "id": "stable-1.0.self-test-allowed-limitation",
+            "title": "Self-test allowed Stable limitation",
+            "category": "ui-polish-accessibility-warning",
             "classification": "allowed-for-stable-1.0",
+            "status": "open",
             "summary": "Synthetic bounded Stable 1.0 limitation.",
+            "evidenceIds": ["stable-1.0.known-limitations"],
+            "boundedBy": "Self-test release manager bound for a non-blocking Stable limitation.",
         }
     ]
     allowed_warning_dashboard = build_dashboard(

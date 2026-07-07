@@ -2496,6 +2496,24 @@ def stable_readiness_record_errors(
     return record_count, errors
 
 
+def stable_readiness_allowed_limitation_metadata_errors(record: Any, label: str) -> list[str]:
+    if not isinstance(record, dict):
+        return [f"{label} must be an object"]
+    errors: list[str] = []
+    for field in ("id", "title", "category", "classification", "status", "summary", "boundedBy"):
+        if not isinstance(record.get(field), str) or not str(record.get(field)).strip():
+            errors.append(f"{label}.{field} must be a non-empty string")
+    classification = str(record.get("classification", "")).strip().lower()
+    if classification and classification != "allowed-for-stable-1.0":
+        errors.append(f"{label}.classification must be allowed-for-stable-1.0")
+    evidence_ids = record.get("evidenceIds")
+    if not isinstance(evidence_ids, list) or not evidence_ids:
+        errors.append(f"{label}.evidenceIds must be a non-empty list")
+    elif any(not isinstance(item, str) or not item.strip() for item in evidence_ids):
+        errors.append(f"{label}.evidenceIds must contain only non-empty strings")
+    return errors
+
+
 def stable_readiness_allowed_record_errors(
     summary: dict[str, Any],
     parsed_count: int,
@@ -2506,6 +2524,13 @@ def stable_readiness_allowed_record_errors(
         return 0, ["allowedLimitations must be a list"]
     record_count = len(value)
     errors: list[str] = []
+    for index, limitation in enumerate(value):
+        errors.extend(
+            stable_readiness_allowed_limitation_metadata_errors(
+                limitation,
+                f"allowedLimitations[{index}]",
+            )
+        )
     if not malformed_count and parsed_count != record_count:
         errors.append(
             f"allowedLimitationCount is {parsed_count} but allowedLimitations contains {record_count}"
@@ -15013,7 +15038,13 @@ def run_self_test(repo_root: Path) -> None:
                 "allowedLimitations": [
                     {
                         "id": "stable-self-test-allowed",
+                        "title": "Self-test allowed Stable limitation",
+                        "category": "ui-polish-accessibility-warning",
                         "classification": "allowed-for-stable-1.0",
+                        "status": "open",
+                        "summary": "Synthetic bounded Stable 1.0 limitation.",
+                        "evidenceIds": ["stable-1.0.known-limitations"],
+                        "boundedBy": "Self-test release manager bound for a non-blocking Stable limitation.",
                     }
                 ],
                 "disallowedLimitations": [],
@@ -15069,6 +15100,77 @@ def run_self_test(repo_root: Path) -> None:
             stable_allowed_record_row
         )
 
+        stable_malformed_allowed_record_summary = workspace / "build/stable-readiness-malformed-allowed-records.json"
+        write_json(
+            stable_malformed_allowed_record_summary,
+            {
+                "schemaVersion": 1,
+                "kind": "stable-1.0-readiness",
+                "releaseId": "cryptad-production-beta-self-test",
+                "status": "pass",
+                "decision": "ready-with-allowed-limitations",
+                "stableReady": True,
+                "blockerCount": 0,
+                "warningCount": 0,
+                "allowedLimitationCount": 1,
+                "disallowedLimitationCount": 0,
+                "domains": [],
+                "blockers": [],
+                "warnings": [],
+                "allowedLimitations": [1],
+                "disallowedLimitations": [],
+                "redaction": {"status": "pass", "findings": []},
+                "evidence": [
+                    {
+                        "id": evidence_id,
+                        "status": "pass",
+                        "summary": f"{evidence_id} passed.",
+                        "details": {"decision": "ready-with-allowed-limitations", "stableReady": True}
+                        if evidence_id == "stable-1.0.readiness-gate"
+                        else {},
+                    }
+                    for evidence_id in STABLE_1_0_READINESS_EVIDENCE_IDS
+                ],
+            },
+        )
+        stable_malformed_allowed_record_items = stable_readiness_evidence(
+            stable_malformed_allowed_record_summary,
+            True,
+            workspace,
+            out_dir,
+        )
+        stable_malformed_allowed_record_gate = next(
+            item
+            for item in stable_malformed_allowed_record_items
+            if item.id == "stable-1.0.readiness-gate"
+        )
+        assert stable_malformed_allowed_record_gate.status == "fail", stable_malformed_allowed_record_gate
+        assert stable_malformed_allowed_record_gate.details["validationErrors"] == [
+            "allowedLimitations[0] must be an object"
+        ], stable_malformed_allowed_record_gate.details
+        stable_malformed_allowed_record_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/stable-malformed-allowed-records-cert").resolve(),
+            stable_readiness_summary=stable_malformed_allowed_record_summary,
+            stable_readiness_required=True,
+        )
+        stable_malformed_allowed_record_cert, stable_malformed_allowed_record_exit_code = run(
+            stable_malformed_allowed_record_settings
+        )
+        assert stable_malformed_allowed_record_exit_code == 1, stable_malformed_allowed_record_cert
+        stable_malformed_allowed_record_row = matrix_row_by_id(
+            stable_malformed_allowed_record_settings.out_dir,
+            "stable-1-0-readiness",
+        )
+        assert stable_malformed_allowed_record_row["status"] == "fail", stable_malformed_allowed_record_row
+        assert stable_malformed_allowed_record_row["releaseBlocker"] is True, stable_malformed_allowed_record_row
+        assert "evidence.stable-1.0.readiness-gate" in stable_malformed_allowed_record_row["issueIds"], (
+            stable_malformed_allowed_record_row
+        )
+        assert "matrix.stable-readiness.evidence-not-passing" in stable_malformed_allowed_record_row["issueIds"], (
+            stable_malformed_allowed_record_row
+        )
+
         stable_allowed_warning_summary = workspace / "build/stable-readiness-allowed-warning.json"
         write_json(
             stable_allowed_warning_summary,
@@ -15089,7 +15191,13 @@ def run_self_test(repo_root: Path) -> None:
                 "allowedLimitations": [
                     {
                         "id": "stable-self-test-allowed",
+                        "title": "Self-test allowed Stable limitation",
+                        "category": "ui-polish-accessibility-warning",
                         "classification": "allowed-for-stable-1.0",
+                        "status": "open",
+                        "summary": "Synthetic bounded Stable 1.0 limitation.",
+                        "evidenceIds": ["stable-1.0.known-limitations"],
+                        "boundedBy": "Self-test release manager bound for a non-blocking Stable limitation.",
                     }
                 ],
                 "disallowedLimitations": [],

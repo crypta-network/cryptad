@@ -534,6 +534,11 @@
       "category": "negative"
     },
     {
+      "id": "allowed-limitation-missing-metadata",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
       "id": "allowed-disallowed-category",
       "expectedDecision": "not-ready",
       "category": "negative"
