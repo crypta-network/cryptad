@@ -2280,6 +2280,32 @@ def stable_summary_record_errors(
     return errors
 
 
+def stable_summary_domain_errors(summary: dict[str, Any]) -> list[str]:
+    domains = summary.get("domains")
+    if domains is None:
+        return []
+    if not isinstance(domains, list):
+        return ["domains must be a list"]
+    errors: list[str] = []
+    for index, domain in enumerate(domains):
+        if not isinstance(domain, dict):
+            errors.append(f"domains[{index}] must be an object")
+            continue
+        domain_id = str(domain.get("id") or f"domains[{index}]")
+        status = normalize_status(domain.get("status", "missing"))
+        if status in {"fail", "missing", "skip"}:
+            errors.append(f"domain {domain_id} status is {status}")
+        blockers = domain.get("blockers")
+        if blockers is not None and not isinstance(blockers, list):
+            errors.append(f"domain {domain_id} blockers must be a list")
+        elif isinstance(blockers, list) and blockers:
+            errors.append(f"domain {domain_id} contains {len(blockers)} blocker(s)")
+        for field_name in ("warnings", "allowedLimitations"):
+            if field_name in domain and not isinstance(domain.get(field_name), list):
+                errors.append(f"domain {domain_id} {field_name} must be a list")
+    return errors
+
+
 def ecosystem_matrix_issues(matrix: dict[str, Any] | None) -> list[Issue]:
     if not isinstance(matrix, dict):
         return []
@@ -3537,6 +3563,25 @@ def stable_readiness_issues(
                 source="stable-readiness-summary",
                 waivable=False,
                 category="redaction",
+            )
+        )
+    domain_errors = stable_summary_domain_errors(summary)
+    if domain_errors:
+        issues.append(
+            Issue(
+                id="stable-1.0.readiness-summary.domain-failed",
+                evidence_id="stable-1.0.readiness-gate",
+                domain_id=domain_id,
+                severity="blocker" if required else "warning",
+                title="Stable 1.0 readiness summary domains are not passing",
+                summary=(
+                    "Stable readiness domain rows are inconsistent with a ready decision: "
+                    + "; ".join(domain_errors)
+                    + "."
+                ),
+                source="stable-readiness-summary",
+                waivable=not required,
+                category="stable-readiness",
             )
         )
     if failed_evidence:
@@ -5066,6 +5111,17 @@ def assert_required_stable_readiness_release_id_matches_dashboard_candidate(root
         "blockers": [],
         "allowedLimitations": [],
         "disallowedLimitations": [],
+        "domains": [
+            {
+                "id": "production-beta-state",
+                "status": "pass",
+                "summary": "Synthetic Stable domain passed.",
+                "evidenceIds": ["stable-1.0.production-beta-state"],
+                "blockers": [],
+                "warnings": [],
+                "allowedLimitations": [],
+            }
+        ],
         "redaction": {"status": "pass", "findings": []},
         "evidence": [
             {
@@ -5101,6 +5157,81 @@ def assert_required_stable_readiness_release_id_matches_dashboard_candidate(root
     matching_stable = matching_dashboard.get("stableReadiness")
     if not isinstance(matching_stable, dict) or matching_stable.get("releaseIdMatchesDashboard") is not True:
         raise AssertionError(f"matching Stable readiness binding was not reported: {matching_dashboard}")
+
+    failed_domain_inputs = json.loads(json.dumps(inputs))
+    failed_domain_inputs["stableReadinessSummary"]["domains"][0]["status"] = "fail"
+    failed_domain_inputs["stableReadinessSummary"]["domains"][0]["summary"] = (
+        "Synthetic failed Stable domain row."
+    )
+    failed_domain_dashboard = build_dashboard(
+        failed_domain_inputs,
+        {},
+        [FIXTURE_DIR / "go-no-go-pass.json"],
+        None,
+        Path(__file__).resolve().parents[2],
+        root / "stable-readiness-failed-domain",
+        "production-beta",
+        release_id,
+        generated_at,
+        now,
+        require_stable_readiness=True,
+    )
+    if failed_domain_dashboard.get("decision") != "no-go":
+        raise AssertionError(
+            "required Stable readiness with a failed domain row did not block: "
+            f"{failed_domain_dashboard}"
+        )
+    failed_domain_blockers = [
+        blocker
+        for blocker in failed_domain_dashboard.get("blockers", [])
+        if isinstance(blocker, dict)
+        and blocker.get("id") == "stable-1.0.readiness-summary.domain-failed"
+        and blocker.get("evidenceId") == "stable-1.0.readiness-gate"
+    ]
+    if not failed_domain_blockers:
+        raise AssertionError(
+            "failed Stable domain row was not reported as a required blocker: "
+            f"{failed_domain_dashboard}"
+        )
+
+    blocker_domain_inputs = json.loads(json.dumps(inputs))
+    blocker_domain_inputs["stableReadinessSummary"]["domains"][0]["blockers"] = [
+        {
+            "id": "stable-self-test-domain-blocker",
+            "evidenceId": "stable-1.0.production-beta-state",
+            "summary": "Synthetic Stable domain blocker.",
+        }
+    ]
+    blocker_domain_dashboard = build_dashboard(
+        blocker_domain_inputs,
+        {},
+        [FIXTURE_DIR / "go-no-go-pass.json"],
+        None,
+        Path(__file__).resolve().parents[2],
+        root / "stable-readiness-domain-blocker",
+        "production-beta",
+        release_id,
+        generated_at,
+        now,
+        require_stable_readiness=True,
+    )
+    if blocker_domain_dashboard.get("decision") != "no-go":
+        raise AssertionError(
+            "required Stable readiness with a domain blocker did not block: "
+            f"{blocker_domain_dashboard}"
+        )
+    blocker_domain_blockers = [
+        blocker
+        for blocker in blocker_domain_dashboard.get("blockers", [])
+        if isinstance(blocker, dict)
+        and blocker.get("id") == "stable-1.0.readiness-summary.domain-failed"
+        and blocker.get("evidenceId") == "stable-1.0.readiness-gate"
+    ]
+    if not blocker_domain_blockers:
+        raise AssertionError(
+            "Stable domain blocker was not reported as a required blocker: "
+            f"{blocker_domain_dashboard}"
+        )
 
     missing_schema_inputs = json.loads(json.dumps(inputs))
     missing_schema_inputs["stableReadinessSummary"].pop("schemaVersion", None)

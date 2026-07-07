@@ -2515,6 +2515,32 @@ def stable_readiness_allowed_record_errors(
     return record_count, errors
 
 
+def stable_readiness_domain_errors(summary: dict[str, Any]) -> list[str]:
+    domains = summary.get("domains")
+    if domains is None:
+        return []
+    if not isinstance(domains, list):
+        return ["domains must be a list"]
+    errors: list[str] = []
+    for index, domain in enumerate(domains):
+        if not isinstance(domain, dict):
+            errors.append(f"domains[{index}] must be an object")
+            continue
+        domain_id = str(domain.get("id") or f"domains[{index}]")
+        status = normalize_evidence_status(str(domain.get("status", "missing")))
+        if status in {"fail", "missing", "skip"}:
+            errors.append(f"domain {domain_id} status is {status}")
+        blockers = domain.get("blockers")
+        if blockers is not None and not isinstance(blockers, list):
+            errors.append(f"domain {domain_id} blockers must be a list")
+        elif isinstance(blockers, list) and blockers:
+            errors.append(f"domain {domain_id} contains {len(blockers)} blocker(s)")
+        for field_name in ("warnings", "allowedLimitations"):
+            if field_name in domain and not isinstance(domain.get(field_name), list):
+                errors.append(f"domain {domain_id} {field_name} must be a list")
+    return errors
+
+
 def stable_readiness_evidence_rows(summary: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
     rows = {evidence_id: [] for evidence_id in STABLE_1_0_READINESS_EVIDENCE_IDS}
     evidence = summary.get("evidence")
@@ -2727,6 +2753,7 @@ def stable_readiness_evidence(
         allowed_validation_errors.append("allowedLimitationCount is not a non-negative integer")
     allowed_validation_errors.extend(allowed_record_errors)
     allowed_remaining_count = max(allowed_count if not malformed_allowed_count else 0, allowed_record_count)
+    domain_validation_errors = stable_readiness_domain_errors(summary)
     evidence_rows = stable_readiness_evidence_rows(summary)
     duplicate_evidence_ids = [
         evidence_id
@@ -2752,6 +2779,7 @@ def stable_readiness_evidence(
         or decision_validation_errors
         or count_validation_errors
         or allowed_validation_errors
+        or domain_validation_errors
         or evidence_validation_errors
     ):
         main_status = "fail"
@@ -2779,6 +2807,7 @@ def stable_readiness_evidence(
         *decision_validation_errors,
         *count_validation_errors,
         *allowed_validation_errors,
+        *domain_validation_errors,
         *evidence_validation_errors,
     ]
     if summary_validation_errors:
@@ -2787,6 +2816,8 @@ def stable_readiness_evidence(
         main_summary = "Stable 1.0 readiness summary reports remaining blockers or forbidden limitations."
     elif allowed_validation_errors:
         main_summary = "Stable 1.0 readiness summary allowed limitations are malformed."
+    elif domain_validation_errors:
+        main_summary = "Stable 1.0 readiness summary domains are not passing."
     elif evidence_validation_errors:
         main_summary = "Stable 1.0 readiness summary evidence rows are malformed."
     elif allowed_remaining_count > 0:
@@ -2818,6 +2849,7 @@ def stable_readiness_evidence(
                 "allowedLimitationRecordCount": allowed_record_count,
                 "allowedLimitationOpenCount": allowed_remaining_count,
                 "disallowedLimitationRecordCount": disallowed_record_count,
+                "domainValidationErrorCount": len(domain_validation_errors),
                 "validationErrors": main_validation_errors,
                 "summaryPath": source,
                 "artifactRefs": summary.get("artifactRefs", {})
@@ -14047,6 +14079,154 @@ def run_self_test(repo_root: Path) -> None:
         )
         assert "matrix.stable-readiness.evidence-not-passing" in stable_release_mismatch_row["issueIds"], (
             stable_release_mismatch_row
+        )
+
+        stable_failed_domain_summary = workspace / "build/stable-readiness-failed-domain.json"
+        write_json(
+            stable_failed_domain_summary,
+            {
+                "schemaVersion": 1,
+                "kind": "stable-1.0-readiness",
+                "releaseId": "cryptad-production-beta-self-test",
+                "status": "pass",
+                "decision": "ready",
+                "stableReady": True,
+                "blockerCount": 0,
+                "warningCount": 0,
+                "allowedLimitationCount": 0,
+                "disallowedLimitationCount": 0,
+                "domains": [
+                    {
+                        "id": "production-beta-state",
+                        "status": "fail",
+                        "summary": "Synthetic failed Stable domain row.",
+                        "evidenceIds": ["stable-1.0.production-beta-state"],
+                        "blockers": [],
+                        "warnings": [],
+                        "allowedLimitations": [],
+                    }
+                ],
+                "blockers": [],
+                "warnings": [],
+                "allowedLimitations": [],
+                "disallowedLimitations": [],
+                "redaction": {"status": "pass", "findings": []},
+                "evidence": [
+                    {
+                        "id": evidence_id,
+                        "status": "pass",
+                        "summary": f"{evidence_id} passed.",
+                        "details": {"decision": "ready", "stableReady": True}
+                        if evidence_id == "stable-1.0.readiness-gate"
+                        else {},
+                    }
+                    for evidence_id in STABLE_1_0_READINESS_EVIDENCE_IDS
+                ],
+            },
+        )
+        stable_failed_domain_items = stable_readiness_evidence(
+            stable_failed_domain_summary,
+            True,
+            workspace,
+            out_dir,
+            "cryptad-production-beta-self-test",
+        )
+        stable_failed_domain_gate = next(
+            item
+            for item in stable_failed_domain_items
+            if item.id == "stable-1.0.readiness-gate"
+        )
+        assert stable_failed_domain_gate.status == "fail", stable_failed_domain_gate
+        assert stable_failed_domain_gate.details["validationErrors"] == [
+            "domain production-beta-state status is fail"
+        ], stable_failed_domain_gate.details
+
+        stable_domain_blocker_summary = workspace / "build/stable-readiness-domain-blocker.json"
+        write_json(
+            stable_domain_blocker_summary,
+            {
+                "schemaVersion": 1,
+                "kind": "stable-1.0-readiness",
+                "releaseId": "cryptad-production-beta-self-test",
+                "status": "pass",
+                "decision": "ready",
+                "stableReady": True,
+                "blockerCount": 0,
+                "warningCount": 0,
+                "allowedLimitationCount": 0,
+                "disallowedLimitationCount": 0,
+                "domains": [
+                    {
+                        "id": "production-beta-state",
+                        "status": "pass",
+                        "summary": "Synthetic Stable domain row with hidden blocker.",
+                        "evidenceIds": ["stable-1.0.production-beta-state"],
+                        "blockers": [
+                            {
+                                "id": "stable-self-test-domain-blocker",
+                                "evidenceId": "stable-1.0.production-beta-state",
+                                "summary": "Synthetic Stable domain blocker.",
+                            }
+                        ],
+                        "warnings": [],
+                        "allowedLimitations": [],
+                    }
+                ],
+                "blockers": [],
+                "warnings": [],
+                "allowedLimitations": [],
+                "disallowedLimitations": [],
+                "redaction": {"status": "pass", "findings": []},
+                "evidence": [
+                    {
+                        "id": evidence_id,
+                        "status": "pass",
+                        "summary": f"{evidence_id} passed.",
+                        "details": {"decision": "ready", "stableReady": True}
+                        if evidence_id == "stable-1.0.readiness-gate"
+                        else {},
+                    }
+                    for evidence_id in STABLE_1_0_READINESS_EVIDENCE_IDS
+                ],
+            },
+        )
+        stable_domain_blocker_items = stable_readiness_evidence(
+            stable_domain_blocker_summary,
+            True,
+            workspace,
+            out_dir,
+            "cryptad-production-beta-self-test",
+        )
+        stable_domain_blocker_gate = next(
+            item
+            for item in stable_domain_blocker_items
+            if item.id == "stable-1.0.readiness-gate"
+        )
+        assert stable_domain_blocker_gate.status == "fail", stable_domain_blocker_gate
+        assert stable_domain_blocker_gate.details["validationErrors"] == [
+            "domain production-beta-state contains 1 blocker(s)"
+        ], stable_domain_blocker_gate.details
+        stable_domain_blocker_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/stable-domain-blocker-cert").resolve(),
+            stable_readiness_summary=stable_domain_blocker_summary,
+            stable_readiness_required=True,
+        )
+        stable_domain_blocker_cert, stable_domain_blocker_exit_code = run(
+            stable_domain_blocker_settings
+        )
+        assert stable_domain_blocker_exit_code == 1, stable_domain_blocker_cert
+        stable_domain_blocker_row = matrix_row_by_id(
+            stable_domain_blocker_settings.out_dir,
+            "stable-1-0-readiness",
+        )
+        assert stable_domain_blocker_row["status"] == "fail", stable_domain_blocker_row
+        assert stable_domain_blocker_row["releaseBlocker"] is True, stable_domain_blocker_row
+        assert "evidence.stable-1.0.readiness-gate" in stable_domain_blocker_row["issueIds"], (
+            stable_domain_blocker_row
+        )
+        assert "matrix.stable-readiness.evidence-not-passing" in stable_domain_blocker_row["issueIds"], (
+            stable_domain_blocker_row
         )
 
         stable_missing_redaction_summary = workspace / "build/stable-readiness-missing-redaction.json"
