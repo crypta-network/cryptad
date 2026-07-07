@@ -159,6 +159,11 @@
       "category": "negative"
     },
     {
+      "id": "app-platform-duplicate-evidence-failed",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
       "id": "release-certification-evidence-redaction-findings",
       "expectedDecision": "not-ready",
       "category": "negative"
@@ -175,6 +180,11 @@
     },
     {
       "id": "ecosystem-matrix-failed",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "ecosystem-matrix-failed-row",
       "expectedDecision": "not-ready",
       "category": "negative"
     },

@@ -661,7 +661,10 @@ def evidence_map_from_summaries(*summaries: dict[str, Any] | None) -> dict[str, 
             if not isinstance(entry, dict):
                 continue
             evidence_id = entry.get("id") or entry.get("evidenceId")
-            if isinstance(evidence_id, str) and evidence_id and evidence_id not in result:
+            if not isinstance(evidence_id, str) or not evidence_id:
+                continue
+            existing = result.get(evidence_id)
+            if existing is None or (entry_ok(existing) and not entry_ok(entry)):
                 result[evidence_id] = entry
     return result
 
@@ -1974,10 +1977,27 @@ def evaluate_ecosystem_matrix(matrix: dict[str, Any] | None) -> dict[str, Any]:
                 "ecosystem-certification-matrix",
             )
         )
+    failed_rows = [
+        str(row.get("id", "matrix-row"))
+        for row in rows
+        if normalize_status(row.get("status", "missing")) in {"fail", "missing", "skip"}
+    ]
+    if failed_rows:
+        blockers.append(
+            blocker_issue(
+                domain_id,
+                evidence_id,
+                "Ecosystem matrix rows are not passing",
+                "Ecosystem matrix rows are failed, missing, or skipped: "
+                + ", ".join(failed_rows)
+                + ".",
+                "ecosystem-certification-matrix",
+            )
+        )
     for row in rows:
+        row_id = str(row.get("id", "matrix-row"))
         if row.get("releaseBlocker") is not True:
             continue
-        row_id = str(row.get("id", "matrix-row"))
         blockers.append(
             blocker_issue(
                 domain_id,
@@ -3832,10 +3852,12 @@ def run_self_test() -> None:
         "release-certification-redaction-truncated-proof",
         "release-certification-redaction-count",
         "release-certification-evidence-failed",
+        "app-platform-duplicate-evidence-failed",
         "release-certification-evidence-redaction-findings",
         "release-certification-evidence-malformed-redaction-findings",
         "release-certification-evidence-nested-redaction-findings",
         "ecosystem-matrix-failed",
+        "ecosystem-matrix-failed-row",
         "ecosystem-matrix-missing-rows",
         "ecosystem-matrix-non-list-rows",
         "ecosystem-matrix-malformed-row",
@@ -4349,6 +4371,27 @@ def run_self_test() -> None:
             expect_blocker="platform-api.stable-breaking-change-check",
         )
 
+        def app_platform_duplicate_evidence_failed(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            for entry in inputs["appPlatformSummary"]["evidence"]:
+                if isinstance(entry, dict) and entry.get("id") == "platform-api.contract":
+                    entry["status"] = "fail"
+                    entry.setdefault("details", {})["errors"] = [
+                        "app-platform summary explicitly failed platform-api.contract"
+                    ]
+                    return
+
+        run_case(
+            root,
+            "app-platform-duplicate-evidence-failed",
+            app_platform_duplicate_evidence_failed,
+            "not-ready",
+            expect_blocker="platform-api.contract",
+        )
+
         def release_certification_evidence_redaction_findings(
             inputs: dict[str, Any],
             _limitations: dict[str, Any],
@@ -4432,6 +4475,27 @@ def run_self_test() -> None:
             root,
             "ecosystem-matrix-failed",
             ecosystem_matrix_failed,
+            "not-ready",
+            expect_blocker="release-certification.ecosystem-matrix",
+        )
+
+        def ecosystem_matrix_failed_row(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            rows = inputs["ecosystemMatrix"].get("rows")
+            if not isinstance(rows, list) or not rows:
+                raise AssertionError("base ecosystem matrix fixture has no rows")
+            rows[0]["status"] = "fail"
+            rows[0]["releaseBlocker"] = False
+            inputs["ecosystemMatrix"]["status"] = "pass"
+            inputs["ecosystemMatrix"]["releaseBlockerCount"] = 0
+
+        run_case(
+            root,
+            "ecosystem-matrix-failed-row",
+            ecosystem_matrix_failed_row,
             "not-ready",
             expect_blocker="release-certification.ecosystem-matrix",
         )
