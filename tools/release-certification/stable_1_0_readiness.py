@@ -805,6 +805,116 @@ def security_scenario_set(
     return scenarios, None
 
 
+def security_artifact_blockers(
+    artifacts: Any,
+    required: set[str],
+    domain_id: str,
+    now: dt.datetime,
+    maximum_age_days: int | None,
+) -> list[dict[str, Any]]:
+    blockers: list[dict[str, Any]] = []
+    if not isinstance(artifacts, list):
+        return [
+            blocker_issue(
+                domain_id,
+                "stable-1.0.security-drills",
+                "Security drill artifact evidence is missing",
+                "securityDrillsSummary.artifacts must be a non-empty list of artifact evidence objects.",
+                "security-drills-summary",
+            )
+        ]
+    if not artifacts:
+        return [
+            blocker_issue(
+                domain_id,
+                "stable-1.0.security-drills",
+                "Security drill artifact evidence is empty",
+                "Stable 1.0 requires security drill artifacts for every required drill scenario.",
+                "security-drills-summary",
+            )
+        ]
+
+    scenario_counts: dict[str, int] = {}
+    malformed_entries: list[str] = []
+    malformed_scenarios: list[str] = []
+    failing_required: list[str] = []
+    object_artifacts: list[tuple[str, dict[str, Any]]] = []
+    for index, artifact in enumerate(artifacts):
+        if not isinstance(artifact, dict):
+            malformed_entries.append(f"artifacts[{index}]")
+            continue
+        scenario = non_empty_string(artifact.get("scenario")) or non_empty_string(artifact.get("id"))
+        if not scenario:
+            malformed_scenarios.append(f"artifacts[{index}].scenario")
+            scenario = f"artifact-{index}"
+        else:
+            scenario_counts[scenario] = scenario_counts.get(scenario, 0) + 1
+            if scenario in required and not status_ok(artifact.get("status")):
+                failing_required.append(scenario)
+        object_artifacts.append((scenario, artifact))
+
+    if malformed_entries or malformed_scenarios:
+        malformed = [*malformed_entries, *malformed_scenarios]
+        blockers.append(
+            blocker_issue(
+                domain_id,
+                "stable-1.0.security-drills",
+                "Security drill artifact list is malformed",
+                "Malformed security drill artifact entries: " + ", ".join(malformed) + ".",
+                "security-drills-summary",
+            )
+        )
+
+    missing_required = sorted(required - set(scenario_counts))
+    duplicate_required = sorted(
+        scenario for scenario in required if scenario_counts.get(scenario, 0) > 1
+    )
+    if missing_required or duplicate_required:
+        details: list[str] = []
+        if missing_required:
+            details.append("missing required artifacts: " + ", ".join(missing_required))
+        if duplicate_required:
+            details.append("duplicate required artifacts: " + ", ".join(duplicate_required))
+        blockers.append(
+            blocker_issue(
+                domain_id,
+                "stable-1.0.security-drills",
+                "Security drill artifacts do not cover required scenarios",
+                "Stable 1.0 requires exactly one artifact for each required drill scenario; "
+                + "; ".join(details)
+                + ".",
+                "security-drills-summary",
+            )
+        )
+
+    if failing_required:
+        blockers.append(
+            blocker_issue(
+                domain_id,
+                "stable-1.0.security-drills",
+                "Security drill artifact status is not passing",
+                "Required security drill artifacts are not passing: "
+                + ", ".join(sorted(set(failing_required)))
+                + ".",
+                "security-drills-summary",
+            )
+        )
+
+    if maximum_age_days is not None:
+        for scenario, artifact in object_artifacts:
+            artifact_freshness = security_artifact_freshness_blocker(
+                artifact=artifact,
+                scenario=scenario,
+                domain_id=domain_id,
+                now=now,
+                maximum_age_days=maximum_age_days,
+            )
+            if artifact_freshness is not None:
+                blockers.append(artifact_freshness)
+
+    return blockers
+
+
 def add_required_evidence_blockers(
     evidence: dict[str, dict[str, Any]],
     domain_id: str,
@@ -1327,6 +1437,19 @@ def evaluate_production_beta_state(
                         "stable-1.0.go-no-go-decision",
                         "Go/no-go dashboard summary count is malformed",
                         f"goNoGoSummary.summary.{field} must be a non-negative integer.",
+                        "go-no-go-summary",
+                    )
+                )
+            elif field == "criticalRedactionFindings" and count > 0:
+                blockers.append(
+                    blocker_issue(
+                        domain_id,
+                        "stable-1.0.redaction",
+                        "Go/no-go dashboard reports critical redaction findings",
+                        (
+                            "Stable 1.0 readiness cannot depend on a redaction-unsafe dashboard; "
+                            f"goNoGoSummary.summary.criticalRedactionFindings is {count}."
+                        ),
                         "go-no-go-summary",
                     )
                 )
@@ -2141,21 +2264,15 @@ def evaluate_security(
             )
             if freshness is not None:
                 blockers.append(freshness)
-            artifacts = security_summary.get("artifacts")
-            if isinstance(artifacts, list):
-                for index, artifact in enumerate(artifacts):
-                    if not isinstance(artifact, dict):
-                        continue
-                    scenario = str(artifact.get("scenario", artifact.get("id", f"artifact-{index}")))
-                    artifact_freshness = security_artifact_freshness_blocker(
-                        artifact=artifact,
-                        scenario=scenario,
-                        domain_id=domain_id,
-                        now=now,
-                        maximum_age_days=max_age_days,
-                    )
-                    if artifact_freshness is not None:
-                        blockers.append(artifact_freshness)
+            blockers.extend(
+                security_artifact_blockers(
+                    security_summary.get("artifacts"),
+                    required,
+                    domain_id,
+                    now,
+                    max_age_days,
+                )
+            )
         scenario_sets: dict[str, set[str]] = {}
         for field in (
             "passedScenarios",
@@ -3507,6 +3624,7 @@ def run_self_test() -> None:
         "go-no-go-non-production-mode",
         "go-no-go-redaction-findings",
         "go-no-go-redaction-count",
+        "go-no-go-critical-redaction-summary-count",
         "go-no-go-redaction-malformed-findings",
         "release-certification-failed",
         "release-certification-not-passed",
@@ -3543,6 +3661,13 @@ def run_self_test() -> None:
         "network-release-id-mismatch",
         "stale-security-summary-age",
         "stale-security-artifact-age",
+        "missing-security-artifacts",
+        "non-list-security-artifacts",
+        "empty-security-artifacts",
+        "malformed-security-artifact-entry",
+        "missing-required-security-artifact",
+        "duplicate-required-security-artifact",
+        "failed-required-security-artifact",
         "missing-previous-upgrade",
         "app-data-migration-scenario-failed",
         "network-redaction-missing",
@@ -3781,6 +3906,21 @@ def run_self_test() -> None:
             root,
             "go-no-go-redaction-count",
             go_no_go_redaction_count,
+            "not-ready",
+            expect_blocker="stable-1.0.redaction",
+        )
+
+        def go_no_go_critical_redaction_summary_count(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs["goNoGoSummary"]["summary"]["criticalRedactionFindings"] = 1
+
+        run_case(
+            root,
+            "go-no-go-critical-redaction-summary-count",
+            go_no_go_critical_redaction_summary_count,
             "not-ready",
             expect_blocker="stable-1.0.redaction",
         )
@@ -4282,6 +4422,121 @@ def run_self_test() -> None:
             artifact["staleReason"] = "Artifact exceeds the Stable 1.0 freshness window."
 
         run_case(root, "stale-security-artifact-age", stale_security_artifact_age, "not-ready", expect_blocker="stable-1.0.security-drills")
+
+        def missing_security_artifacts(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs["securityDrillsSummary"].pop("artifacts", None)
+
+        run_case(
+            root,
+            "missing-security-artifacts",
+            missing_security_artifacts,
+            "not-ready",
+            expect_blocker="stable-1.0.security-drills",
+        )
+
+        def non_list_security_artifacts(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs["securityDrillsSummary"]["artifacts"] = {"scenario": "reviewer-key-compromise"}
+
+        run_case(
+            root,
+            "non-list-security-artifacts",
+            non_list_security_artifacts,
+            "not-ready",
+            expect_blocker="stable-1.0.security-drills",
+        )
+
+        def empty_security_artifacts(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs["securityDrillsSummary"]["artifacts"] = []
+
+        run_case(
+            root,
+            "empty-security-artifacts",
+            empty_security_artifacts,
+            "not-ready",
+            expect_blocker="stable-1.0.security-drills",
+        )
+
+        def malformed_security_artifact_entry(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs["securityDrillsSummary"]["artifacts"][0] = "not-an-artifact-object"
+
+        run_case(
+            root,
+            "malformed-security-artifact-entry",
+            malformed_security_artifact_entry,
+            "not-ready",
+            expect_blocker="stable-1.0.security-drills",
+        )
+
+        def missing_required_security_artifact(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs["securityDrillsSummary"]["artifacts"] = [
+                artifact
+                for artifact in inputs["securityDrillsSummary"]["artifacts"]
+                if artifact.get("scenario") != "reviewer-key-compromise"
+            ]
+
+        run_case(
+            root,
+            "missing-required-security-artifact",
+            missing_required_security_artifact,
+            "not-ready",
+            expect_blocker="stable-1.0.security-drills",
+        )
+
+        def duplicate_required_security_artifact(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            for artifact in inputs["securityDrillsSummary"]["artifacts"]:
+                if artifact.get("scenario") == "reviewer-key-compromise":
+                    inputs["securityDrillsSummary"]["artifacts"].append(copy.deepcopy(artifact))
+                    return
+
+        run_case(
+            root,
+            "duplicate-required-security-artifact",
+            duplicate_required_security_artifact,
+            "not-ready",
+            expect_blocker="stable-1.0.security-drills",
+        )
+
+        def failed_required_security_artifact(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            for artifact in inputs["securityDrillsSummary"]["artifacts"]:
+                if artifact.get("scenario") == "reviewer-key-compromise":
+                    artifact["status"] = "fail"
+                    return
+
+        run_case(
+            root,
+            "failed-required-security-artifact",
+            failed_required_security_artifact,
+            "not-ready",
+            expect_blocker="stable-1.0.security-drills",
+        )
 
         def missing_previous_upgrade(inputs: dict[str, Any], _limitations: dict[str, Any], _paths: dict[str, Path]) -> None:
             inputs["multiNodeSoakSummary"]["previousCandidateUpgrade"]["status"] = "missing"

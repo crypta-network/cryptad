@@ -79,6 +79,11 @@
       "category": "negative"
     },
     {
+      "id": "go-no-go-critical-redaction-summary-count",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
       "id": "go-no-go-redaction-malformed-findings",
       "expectedDecision": "not-ready",
       "category": "negative"
@@ -255,6 +260,41 @@
     },
     {
       "id": "stale-security-artifact-age",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "missing-security-artifacts",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "non-list-security-artifacts",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "empty-security-artifacts",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "malformed-security-artifact-entry",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "missing-required-security-artifact",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "duplicate-required-security-artifact",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "failed-required-security-artifact",
       "expectedDecision": "not-ready",
       "category": "negative"
     },
