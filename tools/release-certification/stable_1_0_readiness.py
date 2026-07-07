@@ -924,6 +924,7 @@ def security_artifact_blockers(
     malformed_entries: list[str] = []
     malformed_scenarios: list[str] = []
     malformed_digests: list[str] = []
+    missing_template_statuses: list[str] = []
     unknown_scenarios: list[str] = []
     failing_artifacts: list[str] = []
     object_artifacts: list[tuple[str, dict[str, Any]]] = []
@@ -943,6 +944,10 @@ def security_artifact_blockers(
                 unknown_scenarios.append(scenario)
         if not status_ok(artifact.get("status")):
             failing_artifacts.append(scenario)
+        if artifact.get("releaseNotesTemplateStatus") != "pass":
+            missing_template_statuses.append(f"{scenario}.releaseNotesTemplateStatus")
+        if artifact.get("advisoryTemplateStatus") != "pass":
+            missing_template_statuses.append(f"{scenario}.advisoryTemplateStatus")
         object_artifacts.append((scenario, artifact))
 
     if malformed_entries or malformed_scenarios:
@@ -1011,6 +1016,19 @@ def security_artifact_blockers(
                 "Security drill artifact status is not passing",
                 "Security drill artifacts are not passing: "
                 + ", ".join(sorted(set(failing_artifacts)))
+                + ".",
+                "security-drills-summary",
+            )
+        )
+
+    if missing_template_statuses:
+        blockers.append(
+            blocker_issue(
+                domain_id,
+                "stable-1.0.security-drills",
+                "Security drill artifact template proof is missing",
+                "Security drill artifacts must include passing release-note and advisory template proof: "
+                + ", ".join(missing_template_statuses)
                 + ".",
                 "security-drills-summary",
             )
@@ -2514,6 +2532,16 @@ def evaluate_security(
                     "security-drills-summary",
                 )
             )
+        if not schema_version_is_current(security_summary.get("schemaVersion")):
+            blockers.append(
+                blocker_issue(
+                    domain_id,
+                    "stable-1.0.security-drills",
+                    "Security drill summary schema version is unsupported",
+                    "Stable 1.0 requires securityDrillsSummary.schemaVersion=1.",
+                    "security-drills-summary",
+                )
+            )
         if not status_ok(security_summary.get("status")) or security_summary.get("promotionReady") is not True:
             blockers.append(
                 blocker_issue(
@@ -3999,6 +4027,8 @@ def run_self_test() -> None:
         "empty-third-party-sample-flow",
         "stale-security",
         "malformed-security-scenario-list",
+        "security-missing-schema-version",
+        "security-boolean-schema-version",
         "security-redaction-unsafe-flag",
         "security-redaction-count",
         "security-release-id-mismatch",
@@ -4026,6 +4056,8 @@ def run_self_test() -> None:
         "missing-required-security-artifact",
         "duplicate-required-security-artifact",
         "failed-required-security-artifact",
+        "missing-security-artifact-release-notes-template-status",
+        "missing-security-artifact-advisory-template-status",
         "extra-pass-security-artifact",
         "extra-failed-security-artifact",
         "missing-previous-upgrade",
@@ -4881,6 +4913,36 @@ def run_self_test() -> None:
             expect_blocker="stable-1.0.security-drills",
         )
 
+        def security_missing_schema_version(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs["securityDrillsSummary"].pop("schemaVersion", None)
+
+        run_case(
+            root,
+            "security-missing-schema-version",
+            security_missing_schema_version,
+            "not-ready",
+            expect_blocker="stable-1.0.security-drills",
+        )
+
+        def security_boolean_schema_version(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs["securityDrillsSummary"]["schemaVersion"] = True
+
+        run_case(
+            root,
+            "security-boolean-schema-version",
+            security_boolean_schema_version,
+            "not-ready",
+            expect_blocker="stable-1.0.security-drills",
+        )
+
         def security_redaction_unsafe_flag(inputs: dict[str, Any], _limitations: dict[str, Any], _paths: dict[str, Path]) -> None:
             inputs["securityDrillsSummary"]["redaction"] = {
                 "status": "pass",
@@ -5341,6 +5403,38 @@ def run_self_test() -> None:
             root,
             "failed-required-security-artifact",
             failed_required_security_artifact,
+            "not-ready",
+            expect_blocker="stable-1.0.security-drills",
+        )
+
+        def missing_security_artifact_release_notes_template_status(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            for artifact in inputs["securityDrillsSummary"]["artifacts"]:
+                artifact.pop("releaseNotesTemplateStatus", None)
+
+        run_case(
+            root,
+            "missing-security-artifact-release-notes-template-status",
+            missing_security_artifact_release_notes_template_status,
+            "not-ready",
+            expect_blocker="stable-1.0.security-drills",
+        )
+
+        def missing_security_artifact_advisory_template_status(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            for artifact in inputs["securityDrillsSummary"]["artifacts"]:
+                artifact.pop("advisoryTemplateStatus", None)
+
+        run_case(
+            root,
+            "missing-security-artifact-advisory-template-status",
+            missing_security_artifact_advisory_template_status,
             "not-ready",
             expect_blocker="stable-1.0.security-drills",
         )
