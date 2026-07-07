@@ -3472,9 +3472,9 @@ def stable_readiness_issues(
         if len(rows) > 1
     ]
     evidence_redaction_findings = [
-        evidence_id
-        for evidence_id, rows in stable_evidence_rows.items()
-        if rows and any(entry_has_redaction_findings(row) for row in rows)
+        str(entry.get("id") or entry.get("evidenceId") or f"evidence[{index}]")
+        for index, entry in enumerate(evidence_entries, start=1)
+        if isinstance(entry, dict) and entry_has_redaction_findings(entry)
     ]
     missing_evidence = [
         evidence_id
@@ -5280,6 +5280,55 @@ def assert_required_stable_readiness_release_id_matches_dashboard_candidate(root
         raise AssertionError(
             "Stable evidence-row redaction findings were not reported as a critical blocker: "
             f"{redaction_dashboard}"
+        )
+
+    extra_redaction_inputs = json.loads(json.dumps(inputs))
+    extra_redaction_inputs["stableReadinessSummary"]["evidence"].append(
+        {
+            "id": "stable-1.0.extra-redaction-fixture",
+            "status": "pass",
+            "summary": "Synthetic extra Stable evidence row with redaction findings.",
+            "details": {
+                "redactionFindings": [
+                    {
+                        "kind": "stable-readiness-fixture",
+                        "summary": "Synthetic extra Stable evidence redaction finding.",
+                    }
+                ]
+            },
+        }
+    )
+    extra_redaction_dashboard = build_dashboard(
+        extra_redaction_inputs,
+        {},
+        [FIXTURE_DIR / "go-no-go-pass.json"],
+        None,
+        Path(__file__).resolve().parents[2],
+        root / "stable-readiness-extra-evidence-redaction",
+        "production-beta",
+        release_id,
+        generated_at,
+        now,
+        require_stable_readiness=True,
+    )
+    if extra_redaction_dashboard.get("decision") != "no-go":
+        raise AssertionError(
+            "required Stable readiness with extra evidence-row redaction findings did not block: "
+            f"{extra_redaction_dashboard}"
+        )
+    extra_redaction_blockers = [
+        blocker
+        for blocker in extra_redaction_dashboard.get("blockers", [])
+        if isinstance(blocker, dict)
+        and blocker.get("id") == "stable-1.0.readiness-summary.evidence-redaction"
+        and blocker.get("evidenceId") == "stable-1.0.redaction"
+        and blocker.get("severity") == "critical"
+        and "stable-1.0.extra-redaction-fixture" in str(blocker.get("summary", ""))
+    ]
+    if not extra_redaction_blockers:
+        raise AssertionError(
+            "Stable extra evidence-row redaction findings were not reported as a critical blocker: "
+            f"{extra_redaction_dashboard}"
         )
 
     malformed_row_redaction_inputs = json.loads(json.dumps(inputs))
