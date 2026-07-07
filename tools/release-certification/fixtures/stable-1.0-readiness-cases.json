@@ -119,6 +119,16 @@
       "category": "negative"
     },
     {
+      "id": "go-no-go-redaction-raw-flag",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "go-no-go-domain-redaction-failure",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
       "id": "release-certification-failed",
       "expectedDecision": "not-ready",
       "category": "negative"
@@ -160,6 +170,11 @@
     },
     {
       "id": "release-certification-redaction-count",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "release-certification-redaction-raw-flag",
       "expectedDecision": "not-ready",
       "category": "negative"
     },

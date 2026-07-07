@@ -835,6 +835,11 @@ def release_certification_redaction_passed(redaction: dict[str, Any] | None) -> 
         details["validationErrors"] = ["findingCount is not a non-negative integer"]
     if malformed_findings:
         details.setdefault("validationErrors", []).append("findings is not a list")
+    unsafe_redaction_payload = recursive_redaction_failure(redaction)
+    if unsafe_redaction_payload:
+        details.setdefault("validationErrors", []).append(
+            "redaction payload contains unsafe raw or unwaivable findings"
+        )
     if status_value is not None:
         status = normalize_status(status_value)
         details["status"] = status
@@ -846,6 +851,7 @@ def release_certification_redaction_passed(redaction: dict[str, Any] | None) -> 
             and not malformed_findings
             and not missing
             and not known_false
+            and not unsafe_redaction_payload
         )
         return passed, details
     passed = (
@@ -855,6 +861,7 @@ def release_certification_redaction_passed(redaction: dict[str, Any] | None) -> 
         and finding_count == 0
         and not malformed_finding_count
         and not malformed_findings
+        and not unsafe_redaction_payload
     )
     details["status"] = "pass" if passed else "fail"
     return passed, details
@@ -1971,17 +1978,28 @@ def evaluate_production_beta_state(
         redaction_finding_count, malformed_redaction_finding_count = non_negative_count(
             redaction.get("findingCount", len(redaction_findings))
         )
+        dashboard_redaction_payload_unsafe = recursive_redaction_field_failure(go_no_go)
+        redaction_payload_unaccounted = dashboard_redaction_payload_unsafe and not (
+            normalize_status(redaction.get("status", "missing")) != "pass"
+            or redaction_findings
+            or malformed_redaction_findings
+            or malformed_redaction_finding_count
+            or redaction_finding_count > 0
+        )
         if (
             normalize_status(redaction.get("status", "missing")) != "pass"
             or redaction_findings
             or malformed_redaction_findings
             or malformed_redaction_finding_count
             or redaction_finding_count > 0
+            or dashboard_redaction_payload_unsafe
         ):
             if malformed_redaction_findings:
                 redaction_detail = "redaction.findings is not a list"
             elif malformed_redaction_finding_count:
                 redaction_detail = "findingCount is malformed"
+            elif redaction_payload_unaccounted:
+                redaction_detail = "dashboard redaction payload contains unsafe raw or unwaivable findings"
             else:
                 redaction_detail = f"findingCount is {redaction_finding_count}"
             blockers.append(
@@ -4308,6 +4326,8 @@ def run_self_test() -> None:
         "go-no-go-redaction-fractional-count",
         "go-no-go-critical-redaction-summary-count",
         "go-no-go-redaction-malformed-findings",
+        "go-no-go-redaction-raw-flag",
+        "go-no-go-domain-redaction-failure",
         "release-certification-failed",
         "release-certification-not-passed",
         "release-certification-non-rc-mode",
@@ -4317,6 +4337,7 @@ def run_self_test() -> None:
         "release-certification-redaction-field-failed",
         "release-certification-redaction-truncated-proof",
         "release-certification-redaction-count",
+        "release-certification-redaction-raw-flag",
         "release-certification-evidence-failed",
         "app-platform-duplicate-evidence-failed",
         "attached-evidence-redaction-findings",
@@ -4762,6 +4783,50 @@ def run_self_test() -> None:
             expect_blocker="stable-1.0.redaction",
         )
 
+        def go_no_go_redaction_raw_flag(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs["goNoGoSummary"]["redaction"] = {
+                "schemaVersion": 1,
+                "status": "pass",
+                "findingCount": 0,
+                "findings": [],
+                "rawFetchedContentIncluded": True,
+            }
+
+        run_case(
+            root,
+            "go-no-go-redaction-raw-flag",
+            go_no_go_redaction_raw_flag,
+            "not-ready",
+            expect_blocker="stable-1.0.redaction",
+        )
+
+        def go_no_go_domain_redaction_failure(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            domains = inputs["goNoGoSummary"].get("domains")
+            if not isinstance(domains, list) or not domains:
+                raise AssertionError("base go/no-go summary fixture has no domains")
+            domains[0]["details"] = {
+                "redaction": {
+                    "status": "fail",
+                    "findings": [],
+                }
+            }
+
+        run_case(
+            root,
+            "go-no-go-domain-redaction-failure",
+            go_no_go_domain_redaction_failure,
+            "not-ready",
+            expect_blocker="stable-1.0.redaction",
+        )
+
         def release_certification_failed(inputs: dict[str, Any], _limitations: dict[str, Any], _paths: dict[str, Path]) -> None:
             inputs["releaseCertificationSummary"]["status"] = "fail"
 
@@ -4876,6 +4941,21 @@ def run_self_test() -> None:
             root,
             "release-certification-redaction-count",
             release_certification_redaction_count,
+            "not-ready",
+            expect_blocker="stable-1.0.redaction",
+        )
+
+        def release_certification_redaction_raw_flag(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs["releaseCertificationSummary"]["redaction"]["rawFetchedContentIncluded"] = True
+
+        run_case(
+            root,
+            "release-certification-redaction-raw-flag",
+            release_certification_redaction_raw_flag,
             "not-ready",
             expect_blocker="stable-1.0.redaction",
         )
