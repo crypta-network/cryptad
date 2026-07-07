@@ -449,6 +449,11 @@ def string_array_values(value: Any, label: str, default: Iterable[str]) -> tuple
     return {item.strip() for item in value}, []
 
 
+def policy_string_set(policy: dict[str, Any], key: str) -> set[str]:
+    values, _errors = string_array_values(policy.get(key), key, ())
+    return values
+
+
 def release_id_from_beta_version(value: Any) -> str:
     version = non_empty_string(value)
     if not version:
@@ -3005,16 +3010,8 @@ def evaluate_known_limitations(
     allowed: list[dict[str, Any]] = []
     disallowed: list[dict[str, Any]] = []
     resolved: list[dict[str, Any]] = []
-    allowed_categories = {
-        str(category).strip()
-        for category in policy.get("allowedLimitationCategories", [])
-        if str(category).strip()
-    }
-    disallowed_categories = {
-        str(category).strip()
-        for category in policy.get("disallowedLimitationCategories", [])
-        if str(category).strip()
-    }
+    allowed_categories = policy_string_set(policy, "allowedLimitationCategories")
+    disallowed_categories = policy_string_set(policy, "disallowedLimitationCategories")
     malformed_limitations_doc = (
         not isinstance(limitations_doc, dict)
         or not schema_version_is_current(limitations_doc.get("schemaVersion"))
@@ -3137,7 +3134,7 @@ def validate_waivers_against_blockers(
     policy: dict[str, Any],
 ) -> list[dict[str, Any]]:
     validation: list[dict[str, Any]] = []
-    non_waivable = set(policy.get("nonWaivableBlockers", []))
+    non_waivable = policy_string_set(policy, "nonWaivableBlockers")
     for waiver in waivers:
         if waiver.validation_errors:
             validation.append(
@@ -3877,6 +3874,8 @@ def run_self_test() -> None:
         "missing-security-required-scenarios",
         "malformed-required-release-modes-policy",
         "malformed-soak-mode-policy",
+        "scalar-allowed-limitation-categories-policy",
+        "scalar-non-waivable-blockers-policy",
         "multi-node-release-id-mismatch",
         "multi-node-raw-evidence-flag",
         "multi-node-redaction-count",
@@ -4772,6 +4771,44 @@ def run_self_test() -> None:
             malformed_soak_mode_policy,
             "not-ready",
             expect_blocker="stable-1.0.live-multi-node-soak",
+        )
+
+        def scalar_allowed_limitation_categories_policy(
+            _inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            paths: dict[str, Path],
+        ) -> None:
+            policy = copy.deepcopy(read_json(DEFAULT_POLICY) or {})
+            policy["allowedLimitationCategories"] = 1
+            policy_path = paths["stableKnownLimitations"].parent / "scalar-allowed-limitation-categories-policy.json"
+            write_json(policy_path, policy)
+            paths["policy"] = policy_path
+
+        run_case(
+            root,
+            "scalar-allowed-limitation-categories-policy",
+            scalar_allowed_limitation_categories_policy,
+            "not-ready",
+            expect_blocker="stable-1.0.known-limitations",
+        )
+
+        def scalar_non_waivable_blockers_policy(
+            _inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            paths: dict[str, Path],
+        ) -> None:
+            policy = copy.deepcopy(read_json(DEFAULT_POLICY) or {})
+            policy["nonWaivableBlockers"] = 1
+            policy_path = paths["stableKnownLimitations"].parent / "scalar-non-waivable-blockers-policy.json"
+            write_json(policy_path, policy)
+            paths["policy"] = policy_path
+
+        run_case(
+            root,
+            "scalar-non-waivable-blockers-policy",
+            scalar_non_waivable_blockers_policy,
+            "not-ready",
+            expect_blocker="stable-1.0.known-limitations",
         )
 
         def multi_node_release_id_mismatch(

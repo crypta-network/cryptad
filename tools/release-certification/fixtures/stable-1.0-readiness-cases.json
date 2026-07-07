@@ -284,6 +284,16 @@
       "category": "negative"
     },
     {
+      "id": "scalar-allowed-limitation-categories-policy",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "scalar-non-waivable-blockers-policy",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
       "id": "multi-node-release-id-mismatch",
       "expectedDecision": "not-ready",
       "category": "negative"
