@@ -924,7 +924,8 @@ def security_artifact_blockers(
     malformed_entries: list[str] = []
     malformed_scenarios: list[str] = []
     malformed_digests: list[str] = []
-    failing_required: list[str] = []
+    unknown_scenarios: list[str] = []
+    failing_artifacts: list[str] = []
     object_artifacts: list[tuple[str, dict[str, Any]]] = []
     for index, artifact in enumerate(artifacts):
         if not isinstance(artifact, dict):
@@ -938,8 +939,10 @@ def security_artifact_blockers(
             scenario = f"artifact-{index}"
         else:
             scenario_counts[scenario] = scenario_counts.get(scenario, 0) + 1
-            if scenario in required and not status_ok(artifact.get("status")):
-                failing_required.append(scenario)
+            if scenario not in required:
+                unknown_scenarios.append(scenario)
+        if not status_ok(artifact.get("status")):
+            failing_artifacts.append(scenario)
         object_artifacts.append((scenario, artifact))
 
     if malformed_entries or malformed_scenarios:
@@ -961,6 +964,18 @@ def security_artifact_blockers(
                 "Security drill artifact digest is missing or malformed",
                 "Security drill artifacts must include sha256:<64 hex> digest values: "
                 + ", ".join(malformed_digests)
+                + ".",
+                "security-drills-summary",
+            )
+        )
+    if unknown_scenarios:
+        blockers.append(
+            blocker_issue(
+                domain_id,
+                "stable-1.0.security-drills",
+                "Security drill artifact scenario is not required",
+                "Security drill artifacts must only cover required production drills: "
+                + ", ".join(sorted(set(unknown_scenarios)))
                 + ".",
                 "security-drills-summary",
             )
@@ -988,14 +1003,14 @@ def security_artifact_blockers(
             )
         )
 
-    if failing_required:
+    if failing_artifacts:
         blockers.append(
             blocker_issue(
                 domain_id,
                 "stable-1.0.security-drills",
                 "Security drill artifact status is not passing",
-                "Required security drill artifacts are not passing: "
-                + ", ".join(sorted(set(failing_required)))
+                "Security drill artifacts are not passing: "
+                + ", ".join(sorted(set(failing_artifacts)))
                 + ".",
                 "security-drills-summary",
             )
@@ -4016,6 +4031,8 @@ def run_self_test() -> None:
         "missing-required-security-artifact",
         "duplicate-required-security-artifact",
         "failed-required-security-artifact",
+        "extra-pass-security-artifact",
+        "extra-failed-security-artifact",
         "missing-previous-upgrade",
         "app-data-migration-scenario-failed",
         "network-redaction-missing",
@@ -5311,6 +5328,43 @@ def run_self_test() -> None:
             root,
             "failed-required-security-artifact",
             failed_required_security_artifact,
+            "not-ready",
+            expect_blocker="stable-1.0.security-drills",
+        )
+
+        def extra_pass_security_artifact(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            artifact = copy.deepcopy(inputs["securityDrillsSummary"]["artifacts"][0])
+            artifact["scenario"] = "unrequired-production-drill"
+            artifact["artifact"] = "unrequired-production-drill.json"
+            inputs["securityDrillsSummary"]["artifacts"].append(artifact)
+
+        run_case(
+            root,
+            "extra-pass-security-artifact",
+            extra_pass_security_artifact,
+            "not-ready",
+            expect_blocker="stable-1.0.security-drills",
+        )
+
+        def extra_failed_security_artifact(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            artifact = copy.deepcopy(inputs["securityDrillsSummary"]["artifacts"][0])
+            artifact["scenario"] = "unrequired-production-drill"
+            artifact["artifact"] = "unrequired-production-drill.json"
+            artifact["status"] = "fail"
+            inputs["securityDrillsSummary"]["artifacts"].append(artifact)
+
+        run_case(
+            root,
+            "extra-failed-security-artifact",
+            extra_failed_security_artifact,
             "not-ready",
             expect_blocker="stable-1.0.security-drills",
         )

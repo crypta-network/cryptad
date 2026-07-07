@@ -404,6 +404,16 @@
       "category": "negative"
     },
     {
+      "id": "extra-pass-security-artifact",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "extra-failed-security-artifact",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
       "id": "missing-previous-upgrade",
       "expectedDecision": "not-ready",
       "category": "negative"
