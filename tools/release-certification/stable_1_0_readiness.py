@@ -2140,16 +2140,22 @@ def evaluate_policy(
                     source,
                 )
             )
-        required_scenarios = security.get("requiredScenarios")
-        if not isinstance(required_scenarios, list) or not any(
-            isinstance(item, str) and item.strip() for item in required_scenarios
-        ):
+        scenario_value = security.get("requiredScenarios")
+        if "requiredScenarios" not in security or scenario_value is None:
+            scenario_errors = ["securityDrillCriteria.requiredScenarios must be present as an array"]
+        else:
+            _, scenario_errors = string_array_values(
+                scenario_value,
+                "securityDrillCriteria.requiredScenarios",
+                (),
+            )
+        for scenario_error in scenario_errors:
             blockers.append(
                 blocker_issue(
                     domain_id,
                     "stable-1.0.security-drills",
-                    "Stable security drill scenario policy is missing",
-                    "securityDrillCriteria.requiredScenarios must be a non-empty array of scenario identifiers.",
+                    "Stable security drill scenario policy is invalid",
+                    scenario_error + ".",
                     source,
                 )
             )
@@ -3914,6 +3920,7 @@ def run_self_test() -> None:
         "security-redaction-count",
         "security-release-id-mismatch",
         "missing-security-required-scenarios",
+        "malformed-security-required-scenario-entry",
         "malformed-required-release-modes-policy",
         "malformed-soak-mode-policy",
         "fractional-stable-policy-integers",
@@ -4814,6 +4821,29 @@ def run_self_test() -> None:
             root,
             "missing-security-required-scenarios",
             missing_security_required_scenarios,
+            "not-ready",
+            expect_blocker="stable-1.0.security-drills",
+        )
+
+        def malformed_security_required_scenario_entry(
+            _inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            paths: dict[str, Path],
+        ) -> None:
+            policy = copy.deepcopy(read_json(DEFAULT_POLICY) or {})
+            if isinstance(policy.get("securityDrillCriteria"), dict):
+                policy["securityDrillCriteria"]["requiredScenarios"] = [
+                    "reviewer-key-compromise",
+                    1,
+                ]
+            policy_path = paths["stableKnownLimitations"].parent / "malformed-security-required-scenario-entry-policy.json"
+            write_json(policy_path, policy)
+            paths["policy"] = policy_path
+
+        run_case(
+            root,
+            "malformed-security-required-scenario-entry",
+            malformed_security_required_scenario_entry,
             "not-ready",
             expect_blocker="stable-1.0.security-drills",
         )

@@ -3455,29 +3455,58 @@ def stable_readiness_issues(
                 category="redaction",
             )
         )
-    stable_evidence = evidence_map(summary)
+    stable_evidence_rows: dict[str, list[dict[str, Any]]] = {
+        evidence_id: []
+        for evidence_id in STABLE_1_0_READINESS_EVIDENCE_IDS
+    }
+    evidence_entries = summary.get("evidence") if isinstance(summary.get("evidence"), list) else []
+    for entry in evidence_entries:
+        if not isinstance(entry, dict):
+            continue
+        evidence_id = str(entry.get("id", ""))
+        if evidence_id in stable_evidence_rows:
+            stable_evidence_rows[evidence_id].append(entry)
+    duplicate_evidence = [
+        evidence_id
+        for evidence_id, rows in stable_evidence_rows.items()
+        if len(rows) > 1
+    ]
     evidence_redaction_findings = [
         evidence_id
-        for evidence_id in STABLE_1_0_READINESS_EVIDENCE_IDS
-        if evidence_id in stable_evidence and entry_has_redaction_findings(stable_evidence[evidence_id])
+        for evidence_id, rows in stable_evidence_rows.items()
+        if rows and any(entry_has_redaction_findings(row) for row in rows)
     ]
     missing_evidence = [
         evidence_id
-        for evidence_id in STABLE_1_0_READINESS_EVIDENCE_IDS
-        if evidence_id not in stable_evidence
+        for evidence_id, rows in stable_evidence_rows.items()
+        if not rows
     ]
     failed_evidence = [
         evidence_id
-        for evidence_id in STABLE_1_0_READINESS_EVIDENCE_IDS
-        if evidence_id in stable_evidence
-        and normalize_status(stable_evidence[evidence_id].get("status", "missing")) in {"fail", "missing", "skip"}
+        for evidence_id, rows in stable_evidence_rows.items()
+        if rows
+        and any(normalize_status(row.get("status", "missing")) in {"fail", "missing", "skip"} for row in rows)
     ]
     warning_evidence = [
         evidence_id
-        for evidence_id in STABLE_1_0_READINESS_EVIDENCE_IDS
-        if evidence_id in stable_evidence
-        and normalize_status(stable_evidence[evidence_id].get("status", "missing")) == "warn"
+        for evidence_id, rows in stable_evidence_rows.items()
+        if rows
+        and any(normalize_status(row.get("status", "missing")) == "warn" for row in rows)
     ]
+    if duplicate_evidence:
+        issues.append(
+            Issue(
+                id="stable-1.0.readiness-summary.evidence-duplicate",
+                evidence_id="stable-1.0.readiness-gate",
+                domain_id=domain_id,
+                severity="blocker" if required else "warning",
+                title="Stable 1.0 readiness summary contains duplicate evidence",
+                summary="Stable readiness summary has duplicate evidence IDs: " + ", ".join(duplicate_evidence) + ".",
+                source="stable-readiness-summary",
+                waivable=not required,
+                category="stable-readiness",
+            )
+        )
     if missing_evidence:
         issues.append(
             Issue(
@@ -5135,6 +5164,44 @@ def assert_required_stable_readiness_release_id_matches_dashboard_candidate(root
     ]
     if not truncated_blockers:
         raise AssertionError(f"missing Stable evidence blocker was not reported: {truncated_dashboard}")
+
+    duplicate_inputs = json.loads(json.dumps(inputs))
+    duplicate_evidence = duplicate_inputs["stableReadinessSummary"]["evidence"]
+    for index, entry in enumerate(duplicate_evidence):
+        if isinstance(entry, dict) and entry.get("id") == "stable-1.0.security-drills":
+            failed_entry = json.loads(json.dumps(entry))
+            failed_entry["status"] = "fail"
+            failed_entry["summary"] = "Synthetic failed duplicate Stable security drills evidence."
+            duplicate_evidence.insert(index, failed_entry)
+            break
+    else:
+        raise AssertionError("synthetic Stable summary is missing stable-1.0.security-drills evidence")
+    duplicate_dashboard = build_dashboard(
+        duplicate_inputs,
+        {},
+        [FIXTURE_DIR / "go-no-go-pass.json"],
+        None,
+        Path(__file__).resolve().parents[2],
+        root / "stable-readiness-duplicate-evidence",
+        "production-beta",
+        release_id,
+        generated_at,
+        now,
+        require_stable_readiness=True,
+    )
+    if duplicate_dashboard.get("decision") != "no-go":
+        raise AssertionError(
+            "required Stable readiness with duplicate failed evidence did not block: "
+            f"{duplicate_dashboard}"
+        )
+    duplicate_blockers = [
+        blocker
+        for blocker in duplicate_dashboard.get("blockers", [])
+        if isinstance(blocker, dict)
+        and blocker.get("id") == "stable-1.0.readiness-summary.evidence-duplicate"
+    ]
+    if not duplicate_blockers:
+        raise AssertionError(f"duplicate Stable evidence blocker was not reported: {duplicate_dashboard}")
 
     redaction_inputs = json.loads(json.dumps(inputs))
     for entry in redaction_inputs["stableReadinessSummary"]["evidence"]:

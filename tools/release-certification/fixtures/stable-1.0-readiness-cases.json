@@ -284,6 +284,11 @@
       "category": "negative"
     },
     {
+      "id": "malformed-security-required-scenario-entry",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
       "id": "malformed-required-release-modes-policy",
       "expectedDecision": "not-ready",
       "category": "negative"
