@@ -2912,20 +2912,18 @@ def evaluate_security(
 def network_operation_count(network_summary: dict[str, Any] | None) -> int:
     if not isinstance(network_summary, dict):
         return 0
-    explicit = network_summary.get("operationCount")
-    if isinstance(explicit, int) and not isinstance(explicit, bool):
-        return explicit
     count = 0
     apps = network_summary.get("apps") if isinstance(network_summary.get("apps"), dict) else {}
-    for app_summary in apps.values():
+    for app_id in NETWORK_SCALE_REQUIRED_APPS:
+        app_summary = apps.get(app_id)
         if isinstance(app_summary, dict):
             for key in ("pollAttempts", "updatesObserved", "subscriptions"):
-                value = app_summary.get(key)
-                if isinstance(value, int) and not isinstance(value, bool):
+                value = strict_non_negative_int(app_summary.get(key))
+                if value is not None:
                     count += value
     trust = network_summary.get("trustGraph") if isinstance(network_summary.get("trustGraph"), dict) else {}
-    value = trust.get("importsAttempted")
-    if isinstance(value, int) and not isinstance(value, bool):
+    value = strict_non_negative_int(trust.get("importsAttempted"))
+    if value is not None:
         count += value
     return count
 
@@ -4451,6 +4449,7 @@ def run_self_test() -> None:
         "multi-node-redaction-count",
         "network-release-id-mismatch",
         "network-truncated-summary",
+        "network-forged-operation-count",
         "stale-security-summary-age",
         "stale-security-artifact-age",
         "missing-security-artifacts",
@@ -5879,6 +5878,32 @@ def run_self_test() -> None:
             root,
             "network-truncated-summary",
             network_truncated_summary,
+            "not-ready",
+            expect_blocker="stable-1.0.live-multi-node-soak",
+        )
+
+        def network_forged_operation_count(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            network = inputs["networkScaleSoakSummary"]
+            network["operationCount"] = 9999
+            apps = network.get("apps") if isinstance(network.get("apps"), dict) else {}
+            for app_id in NETWORK_SCALE_REQUIRED_APPS:
+                app = apps.get(app_id)
+                if isinstance(app, dict):
+                    app["pollAttempts"] = 0
+                    app["updatesObserved"] = 0
+                    app["subscriptions"] = 0
+            trust_graph = network.get("trustGraph")
+            if isinstance(trust_graph, dict):
+                trust_graph["importsAttempted"] = 0
+
+        run_case(
+            root,
+            "network-forged-operation-count",
+            network_forged_operation_count,
             "not-ready",
             expect_blocker="stable-1.0.live-multi-node-soak",
         )
