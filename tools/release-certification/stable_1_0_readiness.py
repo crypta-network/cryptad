@@ -803,13 +803,7 @@ def evidence_details(entry: dict[str, Any] | None) -> dict[str, Any]:
 
 def entry_has_redaction_findings(entry: dict[str, Any] | None) -> bool:
     details = evidence_details(entry)
-    findings = details.get("redactionFindings")
-    if "redactionFindings" in details and not isinstance(findings, list):
-        return True
-    if isinstance(findings, list) and bool(findings):
-        return True
-    redaction = details.get("redaction")
-    return recursive_redaction_failure(redaction)
+    return recursive_redaction_field_failure(details)
 
 
 def entry_ok(entry: dict[str, Any] | None) -> bool:
@@ -942,7 +936,13 @@ def security_scenario_set(
     domain_id: str,
 ) -> tuple[set[str], dict[str, Any] | None]:
     if field not in summary:
-        return set(), None
+        return set(), blocker_issue(
+            domain_id,
+            "stable-1.0.security-drills",
+            "Security drill scenario list is missing",
+            f"{field} must be present as a list of scenario identifiers.",
+            "security-drills-summary",
+        )
     value = summary.get(field)
     if not isinstance(value, list):
         return set(), blocker_issue(
@@ -1303,6 +1303,8 @@ def redaction_signal_key(key: Any) -> bool:
     return (
         "redaction" in lowered
         or lowered in {"findings", "findingcount"}
+        or lowered.endswith("excluded")
+        or lowered.endswith("excludedfromevidence")
         or (
             lowered.startswith("raw")
             and (
@@ -4423,6 +4425,7 @@ def run_self_test() -> None:
         "attached-evidence-redaction-findings",
         "release-certification-evidence-redaction-findings",
         "release-certification-evidence-excluded-from-evidence-false",
+        "release-certification-evidence-direct-excluded-from-evidence-false",
         "release-certification-evidence-malformed-redaction-findings",
         "release-certification-evidence-nested-redaction-findings",
         "app-platform-summary-missing",
@@ -4445,6 +4448,7 @@ def run_self_test() -> None:
         "empty-third-party-sample-flow",
         "stale-security",
         "malformed-security-scenario-list",
+        "missing-security-scenario-result-list",
         "security-missing-schema-version",
         "security-boolean-schema-version",
         "security-truncated-summary",
@@ -5220,6 +5224,24 @@ def run_self_test() -> None:
             expect_blocker="app-data.backup-restore-portability",
         )
 
+        def release_certification_evidence_direct_excluded_from_evidence_false(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            def mutate(entry: dict[str, Any]) -> None:
+                entry.setdefault("details", {})["rawBackupPayloadsExcludedFromEvidence"] = False
+
+            mutate_evidence(inputs, "app-data.backup-restore-portability", mutate)
+
+        run_case(
+            root,
+            "release-certification-evidence-direct-excluded-from-evidence-false",
+            release_certification_evidence_direct_excluded_from_evidence_false,
+            "not-ready",
+            expect_blocker="app-data.backup-restore-portability",
+        )
+
         def release_certification_evidence_malformed_redaction_findings(
             inputs: dict[str, Any],
             _limitations: dict[str, Any],
@@ -5500,6 +5522,21 @@ def run_self_test() -> None:
             root,
             "malformed-security-scenario-list",
             malformed_security_scenario_list,
+            "not-ready",
+            expect_blocker="stable-1.0.security-drills",
+        )
+
+        def missing_security_scenario_result_list(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs["securityDrillsSummary"].pop("failedScenarios", None)
+
+        run_case(
+            root,
+            "missing-security-scenario-result-list",
+            missing_security_scenario_result_list,
             "not-ready",
             expect_blocker="stable-1.0.security-drills",
         )

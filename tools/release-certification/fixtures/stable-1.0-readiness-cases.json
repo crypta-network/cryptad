@@ -209,6 +209,11 @@
       "category": "negative"
     },
     {
+      "id": "release-certification-evidence-direct-excluded-from-evidence-false",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
       "id": "release-certification-evidence-malformed-redaction-findings",
       "expectedDecision": "not-ready",
       "category": "negative"
@@ -315,6 +320,11 @@
     },
     {
       "id": "malformed-security-scenario-list",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "missing-security-scenario-result-list",
       "expectedDecision": "not-ready",
       "category": "negative"
     },
