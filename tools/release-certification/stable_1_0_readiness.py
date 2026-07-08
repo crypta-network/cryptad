@@ -2054,6 +2054,7 @@ def evaluate_release_certification_summary(release_certification: dict[str, Any]
         status = normalize_status(release_certification.get("status", "missing"))
         mode = str(release_certification.get("mode", "missing"))
         release_candidate_passed = release_certification.get("releaseCandidatePassed")
+        ecosystem_rc_passed = release_certification.get("ecosystemRcPassed")
         evidence_records = release_certification.get("evidence")
         if not schema_version_is_current(schema_version) or tool != "release-certification":
             blockers.append(
@@ -2116,7 +2117,7 @@ def evaluate_release_certification_summary(release_certification: dict[str, Any]
                     "release-certification-summary",
                 )
             )
-        if status != "pass" or release_candidate_passed is not True:
+        if status != "pass" or release_candidate_passed is not True or ecosystem_rc_passed is not True:
             blockers.append(
                 blocker_issue(
                     domain_id,
@@ -2124,8 +2125,9 @@ def evaluate_release_certification_summary(release_certification: dict[str, Any]
                     "Release certification summary is not passing",
                     (
                         "Stable 1.0 readiness requires release-certification status pass "
-                        f"and releaseCandidatePassed=true; status is {status}, "
-                        f"releaseCandidatePassed is {release_candidate_passed!r}."
+                        "with releaseCandidatePassed=true and ecosystemRcPassed=true; "
+                        f"status is {status}, releaseCandidatePassed is {release_candidate_passed!r}, "
+                        f"ecosystemRcPassed is {ecosystem_rc_passed!r}."
                     ),
                     "release-certification-summary",
                 )
@@ -4363,6 +4365,7 @@ def run_self_test() -> None:
         "go-no-go-domain-redaction-failure",
         "release-certification-failed",
         "release-certification-not-passed",
+        "release-certification-ecosystem-rc-not-passed",
         "release-certification-non-rc-mode",
         "release-certification-boolean-schema-version",
         "release-certification-stub",
@@ -4879,6 +4882,21 @@ def run_self_test() -> None:
             root,
             "release-certification-not-passed",
             release_certification_not_passed,
+            "not-ready",
+            expect_blocker="stable-1.0.release-certification",
+        )
+
+        def release_certification_ecosystem_rc_not_passed(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs["releaseCertificationSummary"]["ecosystemRcPassed"] = False
+
+        run_case(
+            root,
+            "release-certification-ecosystem-rc-not-passed",
+            release_certification_ecosystem_rc_not_passed,
             "not-ready",
             expect_blocker="stable-1.0.release-certification",
         )
