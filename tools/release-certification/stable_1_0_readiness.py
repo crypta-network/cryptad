@@ -213,13 +213,33 @@ LEGACY_EVIDENCE_IDS = (
 
 SUPPORT_FEEDBACK_EVIDENCE_IDS = (
     "public-beta.support-feedback-loop",
+    "public-beta.support-feedback-docs",
     "public-beta.issue-templates",
+    "public-beta.triage-taxonomy",
     "public-beta.known-issues-tracker",
     "public-beta.feedback-to-backlog",
     "public-beta.release-notes-template",
     "public-beta.support-bundle-guidance",
     "public-beta.security-reporting-handoff",
+    "public-beta.app-specific-feedback",
+    "public-beta.catalog-incident-feedback",
     "public-beta.redaction-fixtures",
+)
+
+KNOWN_ISSUE_REQUIRED_FIELDS = (
+    "knownIssueId",
+    "status",
+    "severity",
+    "area",
+    "affectedChannels",
+    "affectedAppIds",
+    "affectedVersions",
+    "firstSeenReleaseId",
+    "fixedInReleaseId",
+    "workaroundSummary",
+    "supportBundleEvidenceAllowed",
+    "redactionNotes",
+    "backlogLinkOrPlaceholder",
 )
 
 DOC_PATHS = (
@@ -3450,6 +3470,33 @@ def evaluate_support_feedback(
                     )
                 )
                 continue
+            missing_fields = [
+                field
+                for field in KNOWN_ISSUE_REQUIRED_FIELDS
+                if field not in known_issue
+                or (isinstance(known_issue.get(field), str) and not known_issue.get(field, "").strip())
+            ]
+            malformed_fields = [
+                field
+                for field in ("affectedChannels", "affectedAppIds", "affectedVersions")
+                if field in known_issue and not isinstance(known_issue.get(field), list)
+            ]
+            if missing_fields or malformed_fields:
+                detail_parts = []
+                if missing_fields:
+                    detail_parts.append("missing required fields: " + ", ".join(missing_fields))
+                if malformed_fields:
+                    detail_parts.append("fields must be lists: " + ", ".join(malformed_fields))
+                blockers.append(
+                    blocker_issue(
+                        domain_id,
+                        "public-beta.known-issues-tracker",
+                        "Public beta known issue record is missing required metadata",
+                        f"publicBetaKnownIssues.knownIssues[{index}] is malformed; " + "; ".join(detail_parts) + ".",
+                        "public-beta-known-issues",
+                    )
+                )
+                continue
             severity = str(known_issue.get("severity", "")).lower()
             status = str(known_issue.get("status", "")).lower()
             fixed = str(known_issue.get("fixedInReleaseId", "")).strip().lower()
@@ -4446,6 +4493,7 @@ def run_self_test() -> None:
         "diagnostics-nested-redaction-findings",
         "missing-third-party",
         "empty-third-party-sample-flow",
+        "missing-support-feedback-docs",
         "stale-security",
         "malformed-security-scenario-list",
         "missing-security-scenario-result-list",
@@ -4500,6 +4548,7 @@ def run_self_test() -> None:
         "known-issues-tracker-envelope-stub",
         "malformed-known-issues-tracker",
         "malformed-known-issue-entry",
+        "malformed-known-issue-metadata",
         "critical-known-issue",
         "critical-known-issue-future-fixed",
         "beta-only-limitation",
@@ -5503,6 +5552,17 @@ def run_self_test() -> None:
             expect_blocker="stable-1.0.third-party-intake",
         )
 
+        def missing_support_feedback_docs(inputs: dict[str, Any], _limitations: dict[str, Any], _paths: dict[str, Path]) -> None:
+            mutate_evidence(inputs, "public-beta.support-feedback-docs", remove=True)
+
+        run_case(
+            root,
+            "missing-support-feedback-docs",
+            missing_support_feedback_docs,
+            "not-ready",
+            expect_blocker="public-beta.support-feedback-docs",
+        )
+
         def stale_security(inputs: dict[str, Any], _limitations: dict[str, Any], _paths: dict[str, Path]) -> None:
             inputs["securityDrillsSummary"]["staleScenarios"] = ["reviewer-key-compromise"]
             inputs["securityDrillsSummary"]["passedScenarios"] = [
@@ -6418,26 +6478,65 @@ def run_self_test() -> None:
             expect_blocker="public-beta.known-issues-tracker",
         )
 
-        def critical_known_issue(inputs: dict[str, Any], _limitations: dict[str, Any], _paths: dict[str, Path]) -> None:
+        def malformed_known_issue_metadata(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
             inputs["publicBetaKnownIssues"]["knownIssues"].append(
                 {
-                    "knownIssueId": "PBKI-CRITICAL-001",
-                    "status": "open",
-                    "severity": "severity/critical",
-                    "fixedInReleaseId": "unfixed",
+                    "knownIssueId": "PBKI-TRUNCATED-001",
+                    "workaroundSummary": "Synthetic truncated record.",
                 }
+            )
+
+        run_case(
+            root,
+            "malformed-known-issue-metadata",
+            malformed_known_issue_metadata,
+            "not-ready",
+            expect_blocker="public-beta.known-issues-tracker",
+        )
+
+        def synthetic_known_issue(**overrides: Any) -> dict[str, Any]:
+            record = {
+                "knownIssueId": "PBKI-SELF-TEST-001",
+                "status": "open",
+                "severity": "severity/medium",
+                "area": "area/support",
+                "affectedChannels": ["stable-first-party"],
+                "affectedAppIds": [],
+                "affectedVersions": ["cryptad-beta-270"],
+                "firstSeenReleaseId": "cryptad-beta-270",
+                "fixedInReleaseId": "unfixed",
+                "workaroundSummary": "Synthetic redacted workaround summary.",
+                "supportBundleEvidenceAllowed": "digest-and-summary-only",
+                "redactionNotes": "Synthetic record contains metadata only.",
+                "backlogLinkOrPlaceholder": "BACKLOG-STABLE-SELF-TEST",
+            }
+            record.update(overrides)
+            return record
+
+        def critical_known_issue(inputs: dict[str, Any], _limitations: dict[str, Any], _paths: dict[str, Path]) -> None:
+            inputs["publicBetaKnownIssues"]["knownIssues"].append(
+                synthetic_known_issue(
+                    knownIssueId="PBKI-CRITICAL-001",
+                    status="open",
+                    severity="severity/critical",
+                    fixedInReleaseId="unfixed",
+                )
             )
 
         run_case(root, "critical-known-issue", critical_known_issue, "not-ready", expect_blocker="stable-1.0.critical-known-issue")
 
         def critical_known_issue_future_fixed(inputs: dict[str, Any], _limitations: dict[str, Any], _paths: dict[str, Path]) -> None:
             inputs["publicBetaKnownIssues"]["knownIssues"].append(
-                {
-                    "knownIssueId": "PBKI-CRITICAL-002",
-                    "status": "open",
-                    "severity": "severity/critical",
-                    "fixedInReleaseId": "cryptad-beta-999",
-                }
+                synthetic_known_issue(
+                    knownIssueId="PBKI-CRITICAL-002",
+                    status="open",
+                    severity="severity/critical",
+                    fixedInReleaseId="cryptad-beta-999",
+                )
             )
 
         run_case(

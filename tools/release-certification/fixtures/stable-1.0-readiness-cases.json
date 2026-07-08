@@ -314,6 +314,11 @@
       "category": "negative"
     },
     {
+      "id": "missing-support-feedback-docs",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
       "id": "stale-security",
       "expectedDecision": "not-ready",
       "category": "negative"
@@ -580,6 +585,11 @@
     },
     {
       "id": "malformed-known-issue-entry",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "malformed-known-issue-metadata",
       "expectedDecision": "not-ready",
       "category": "negative"
     },
