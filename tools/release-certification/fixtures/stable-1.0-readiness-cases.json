@@ -554,6 +554,11 @@
       "category": "negative"
     },
     {
+      "id": "known-issues-tracker-envelope-stub",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
       "id": "malformed-known-issues-tracker",
       "expectedDecision": "not-ready",
       "category": "negative"

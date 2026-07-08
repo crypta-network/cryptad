@@ -3390,6 +3390,22 @@ def evaluate_support_feedback(
             )
         )
     else:
+        if (
+            not schema_version_is_current(known_issues.get("schemaVersion"))
+            or known_issues.get("tracker") != "public-beta-known-issues"
+        ):
+            blockers.append(
+                blocker_issue(
+                    domain_id,
+                    "public-beta.known-issues-tracker",
+                    "Public beta known issues tracker envelope is malformed",
+                    (
+                        "Stable 1.0 requires publicBetaKnownIssues.schemaVersion=1 "
+                        "and tracker=public-beta-known-issues before accepting the issue list."
+                    ),
+                    "public-beta-known-issues",
+                )
+            )
         redaction_policy = known_issues.get("redactionPolicy") if isinstance(known_issues.get("redactionPolicy"), dict) else {}
         for key, expected in (
             ("rawSupportBundlesStored", False),
@@ -4476,6 +4492,7 @@ def run_self_test() -> None:
         "network-redaction-status-fail",
         "stale-soak-evidence",
         "insufficient-network",
+        "known-issues-tracker-envelope-stub",
         "malformed-known-issues-tracker",
         "malformed-known-issue-entry",
         "critical-known-issue",
@@ -6284,6 +6301,32 @@ def run_self_test() -> None:
             inputs["networkScaleSoakSummary"]["trustGraph"] = {"importsAttempted": 0}
 
         run_case(root, "insufficient-network", insufficient_network, "not-ready", expect_blocker="stable-1.0.live-multi-node-soak")
+
+        def known_issues_tracker_envelope_stub(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs["publicBetaKnownIssues"] = {
+                "schemaVersion": 1,
+                "tracker": "stub-known-issues",
+                "redactionPolicy": {
+                    "rawSupportBundlesStored": False,
+                    "rawAppDataStored": False,
+                    "rawContentStored": False,
+                    "privateInsertUrisStored": False,
+                    "absoluteLocalPathsStored": False,
+                },
+                "knownIssues": [],
+            }
+
+        run_case(
+            root,
+            "known-issues-tracker-envelope-stub",
+            known_issues_tracker_envelope_stub,
+            "not-ready",
+            expect_blocker="public-beta.known-issues-tracker",
+        )
 
         def malformed_known_issues_tracker(
             inputs: dict[str, Any],
