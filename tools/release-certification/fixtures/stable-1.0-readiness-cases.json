@@ -394,6 +394,11 @@
       "category": "negative"
     },
     {
+      "id": "multi-node-truncated-summary",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
       "id": "multi-node-raw-evidence-flag",
       "expectedDecision": "not-ready",
       "category": "negative"

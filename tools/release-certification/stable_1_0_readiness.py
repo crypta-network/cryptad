@@ -3080,6 +3080,23 @@ def evaluate_live_multi_node_soak(
                         "multi-node-beta-soak-summary",
                     )
                 )
+        validation_errors = multi_node_beta_soak.validate_summary(multi_node, strict=True)
+        if validation_errors:
+            validation_summary = "; ".join(validation_errors[:5])
+            if len(validation_errors) > 5:
+                validation_summary += f"; +{len(validation_errors) - 5} more"
+            blockers.append(
+                blocker_issue(
+                    domain_id,
+                    "stable-1.0.live-multi-node-soak",
+                    "Multi-node beta soak summary schema is invalid",
+                    (
+                        "Stable 1.0 requires a complete multi-node beta soak summary from the "
+                        f"producer schema; validation errors: {validation_summary}."
+                    ),
+                    "multi-node-beta-soak-summary",
+                )
+            )
         mode = str(multi_node.get("mode", "missing"))
         if mode not in accepted_multi:
             blockers.append(
@@ -3147,6 +3164,8 @@ def evaluate_live_multi_node_soak(
                     )
                 )
         upgrade = multi_node.get("previousCandidateUpgrade")
+        if not isinstance(upgrade, dict):
+            upgrade = multi_node_beta_soak.compact_previous_candidate_upgrade(multi_node)
         if not isinstance(upgrade, dict) or normalize_status(upgrade.get("status", "missing")) != "pass":
             blockers.append(
                 blocker_issue(
@@ -4225,10 +4244,21 @@ def base_self_test_inputs() -> tuple[dict[str, Any], dict[str, Any]]:
     security = copy.deepcopy(go_inputs["securityDrillsSummary"])
     security["releaseId"] = "cryptad-beta-270"
     security["generatedAt"] = DEFAULT_GENERATED_AT
-    multi_node = copy.deepcopy(go_inputs["multiNodeBetaSoakSummary"])
-    multi_node["mode"] = "hybrid"
+    multi_node_config_path = FIXTURE_DIR / "self-test-multi-node-beta-soak.json"
+    multi_node_config = multi_node_beta_soak.validate_config(
+        copy.deepcopy(read_json(multi_node_config_path) or {}),
+        override_mode="hybrid",
+    )
+    multi_node_config["currentCandidate"]["version"] = "270"
+    multi_node = multi_node_beta_soak.build_summary(
+        multi_node_config,
+        base_dir=multi_node_config_path.parent,
+        strict=True,
+    )
     multi_node["generatedAt"] = DEFAULT_GENERATED_AT
-    multi_node["currentCandidate"] = {"version": "270", "catalogChannel": "stable"}
+    multi_node["previousCandidateUpgrade"] = multi_node_beta_soak.compact_previous_candidate_upgrade(
+        multi_node
+    )
     scenario_statuses = (
         multi_node.get("scenarioStatuses")
         if isinstance(multi_node.get("scenarioStatuses"), dict)
@@ -4416,6 +4446,7 @@ def run_self_test() -> None:
         "scalar-non-waivable-blockers-policy",
         "malformed-category-policy-entry",
         "multi-node-release-id-mismatch",
+        "multi-node-truncated-summary",
         "multi-node-raw-evidence-flag",
         "multi-node-redaction-count",
         "network-release-id-mismatch",
@@ -5741,6 +5772,48 @@ def run_self_test() -> None:
             root,
             "multi-node-release-id-mismatch",
             multi_node_release_id_mismatch,
+            "not-ready",
+            expect_blocker="stable-1.0.live-multi-node-soak",
+        )
+
+        def multi_node_truncated_summary(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            scenario_statuses = {
+                scenario_id: "pass"
+                for scenario_id in multi_node_beta_soak.SCENARIO_EVIDENCE_IDS
+            }
+            inputs["multiNodeSoakSummary"] = {
+                "mode": "hybrid",
+                "generatedAt": DEFAULT_GENERATED_AT,
+                "releaseId": "cryptad-beta-270",
+                "status": "pass",
+                "promotionReady": True,
+                "currentCandidate": {
+                    "version": "270",
+                    "catalogChannel": "stable",
+                    "productionBetaSummaryProvided": True,
+                },
+                "scenarioStatuses": scenario_statuses,
+                "previousCandidateUpgrade": {
+                    "status": "pass",
+                    "firstPartyAppMigrationStatus": "pass",
+                    "backupBeforeUpdateStatus": "pass",
+                    "restoreIntoCleanNodeStatus": "pass",
+                    "rollbackStatus": "pass",
+                    "socialInboxMigrationStatus": "pass",
+                    "trustGraphMigrationStatus": "pass",
+                    "supportBundleRedactionStatus": "pass",
+                },
+                "redaction": {"status": "pass", "findings": []},
+            }
+
+        run_case(
+            root,
+            "multi-node-truncated-summary",
+            multi_node_truncated_summary,
             "not-ready",
             expect_blocker="stable-1.0.live-multi-node-soak",
         )
