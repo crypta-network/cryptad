@@ -1062,7 +1062,7 @@ def redaction_signal_has_unwaivable_findings(value: Any) -> bool:
             return True
         for key, child in value.items():
             lowered = str(key).lower()
-            if lowered.endswith("excluded") and child is False:
+            if (lowered.endswith("excluded") or lowered.endswith("excludedfromevidence")) and child is False:
                 return True
             if (
                 lowered.startswith("raw")
@@ -14607,6 +14607,60 @@ def run_self_test(repo_root: Path) -> None:
         assert "matrix.stable-readiness.redaction-failed" in stable_redaction_raw_flag_row[
             "issueIds"
         ], stable_redaction_raw_flag_row
+
+        stable_excluded_from_evidence_summary = (
+            workspace / "build/stable-readiness-excluded-from-evidence-redaction.json"
+        )
+        stable_excluded_from_evidence_value = read_json(stable_redaction_count_summary) or {}
+        stable_excluded_from_evidence_value["redaction"] = {
+            "status": "pass",
+            "findingCount": 0,
+            "findings": [],
+            "rawBackupPayloadsExcludedFromEvidence": False,
+        }
+        write_json(stable_excluded_from_evidence_summary, stable_excluded_from_evidence_value)
+        stable_excluded_from_evidence_items = stable_readiness_evidence(
+            stable_excluded_from_evidence_summary,
+            True,
+            workspace,
+            out_dir,
+        )
+        stable_excluded_from_evidence_statuses = {
+            item.id: item.status for item in stable_excluded_from_evidence_items
+        }
+        assert stable_excluded_from_evidence_statuses["stable-1.0.readiness-gate"] == "fail", (
+            stable_excluded_from_evidence_statuses
+        )
+        assert stable_excluded_from_evidence_statuses["stable-1.0.redaction"] == "fail", (
+            stable_excluded_from_evidence_statuses
+        )
+        stable_excluded_from_evidence_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/stable-excluded-from-evidence-redaction-cert").resolve(),
+            stable_readiness_summary=stable_excluded_from_evidence_summary,
+            stable_readiness_required=True,
+        )
+        (
+            stable_excluded_from_evidence_cert,
+            stable_excluded_from_evidence_exit_code,
+        ) = run(stable_excluded_from_evidence_settings)
+        assert stable_excluded_from_evidence_exit_code == 1, stable_excluded_from_evidence_cert
+        stable_excluded_from_evidence_row = matrix_row_by_id(
+            stable_excluded_from_evidence_settings.out_dir,
+            "stable-1-0-readiness",
+        )
+        assert stable_excluded_from_evidence_row["status"] == "fail", (
+            stable_excluded_from_evidence_row
+        )
+        assert stable_excluded_from_evidence_row["releaseBlocker"] is True, (
+            stable_excluded_from_evidence_row
+        )
+        assert "evidence.stable-1.0.redaction" in stable_excluded_from_evidence_row["issueIds"], (
+            stable_excluded_from_evidence_row
+        )
+        assert "matrix.stable-readiness.redaction-failed" in stable_excluded_from_evidence_row["issueIds"], (
+            stable_excluded_from_evidence_row
+        )
 
         stable_redaction_fractional_count_summary = workspace / "build/stable-readiness-redaction-fractional-count.json"
         write_json(

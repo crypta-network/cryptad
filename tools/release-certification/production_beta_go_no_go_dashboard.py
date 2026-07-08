@@ -1068,7 +1068,7 @@ def recursive_redaction_failure(value: Any) -> bool:
                 and child is True
             ):
                 return True
-            if lowered.endswith("excluded") and child is False:
+            if (lowered.endswith("excluded") or lowered.endswith("excludedfromevidence")) and child is False:
                 return True
             if recursive_redaction_failure(child):
                 return True
@@ -5751,6 +5751,45 @@ def assert_required_stable_readiness_release_id_matches_dashboard_candidate(root
         raise AssertionError(
             "Stable top-level raw-included redaction was not reported as a critical blocker: "
             f"{top_level_raw_redaction_dashboard}"
+        )
+
+    excluded_from_evidence_inputs = json.loads(json.dumps(inputs))
+    excluded_from_evidence_inputs["stableReadinessSummary"]["redaction"] = {
+        "status": "pass",
+        "findingCount": 0,
+        "findings": [],
+        "rawBackupPayloadsExcludedFromEvidence": False,
+    }
+    excluded_from_evidence_dashboard = build_dashboard(
+        excluded_from_evidence_inputs,
+        {},
+        [FIXTURE_DIR / "go-no-go-pass.json"],
+        None,
+        Path(__file__).resolve().parents[2],
+        root / "stable-readiness-excluded-from-evidence-redaction",
+        "production-beta",
+        release_id,
+        generated_at,
+        now,
+        require_stable_readiness=True,
+    )
+    if excluded_from_evidence_dashboard.get("decision") != "no-go":
+        raise AssertionError(
+            "required Stable readiness with ExcludedFromEvidence=false redaction did not block: "
+            f"{excluded_from_evidence_dashboard}"
+        )
+    excluded_from_evidence_blockers = [
+        blocker
+        for blocker in excluded_from_evidence_dashboard.get("blockers", [])
+        if isinstance(blocker, dict)
+        and blocker.get("id") == "stable-1.0.readiness-summary.redaction"
+        and blocker.get("evidenceId") == "stable-1.0.redaction"
+        and blocker.get("severity") == "critical"
+    ]
+    if not excluded_from_evidence_blockers:
+        raise AssertionError(
+            "Stable ExcludedFromEvidence=false redaction was not reported as a critical blocker: "
+            f"{excluded_from_evidence_dashboard}"
         )
 
     redaction_count_inputs = json.loads(json.dumps(inputs))

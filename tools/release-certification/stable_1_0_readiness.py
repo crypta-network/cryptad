@@ -1270,7 +1270,7 @@ def recursive_redaction_failure(value: Any) -> bool:
                 and child is True
             ):
                 return True
-            if lowered.endswith("excluded") and child is False:
+            if (lowered.endswith("excluded") or lowered.endswith("excludedfromevidence")) and child is False:
                 return True
             if recursive_redaction_failure(child):
                 return True
@@ -4422,6 +4422,7 @@ def run_self_test() -> None:
         "app-platform-duplicate-evidence-failed",
         "attached-evidence-redaction-findings",
         "release-certification-evidence-redaction-findings",
+        "release-certification-evidence-excluded-from-evidence-false",
         "release-certification-evidence-malformed-redaction-findings",
         "release-certification-evidence-nested-redaction-findings",
         "app-platform-summary-missing",
@@ -5195,6 +5196,28 @@ def run_self_test() -> None:
             release_certification_evidence_redaction_findings,
             "not-ready",
             expect_blocker="app-platform.signed-bundles",
+        )
+
+        def release_certification_evidence_excluded_from_evidence_false(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            def mutate(entry: dict[str, Any]) -> None:
+                entry.setdefault("details", {})["redaction"] = {
+                    "status": "pass",
+                    "findings": [],
+                    "rawBackupPayloadsExcludedFromEvidence": False,
+                }
+
+            mutate_evidence(inputs, "app-data.backup-restore-portability", mutate)
+
+        run_case(
+            root,
+            "release-certification-evidence-excluded-from-evidence-false",
+            release_certification_evidence_excluded_from_evidence_false,
+            "not-ready",
+            expect_blocker="app-data.backup-restore-portability",
         )
 
         def release_certification_evidence_malformed_redaction_findings(

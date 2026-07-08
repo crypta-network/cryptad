@@ -204,6 +204,11 @@
       "category": "negative"
     },
     {
+      "id": "release-certification-evidence-excluded-from-evidence-false",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
       "id": "release-certification-evidence-malformed-redaction-findings",
       "expectedDecision": "not-ready",
       "category": "negative"
