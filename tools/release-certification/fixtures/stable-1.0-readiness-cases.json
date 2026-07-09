@@ -274,6 +274,11 @@
       "category": "negative"
     },
     {
+      "id": "ecosystem-matrix-truncated-rows",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
       "id": "ecosystem-matrix-non-list-rows",
       "expectedDecision": "not-ready",
       "category": "negative"

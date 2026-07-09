@@ -259,8 +259,10 @@ readiness becomes `no-go`; redaction findings are always non-waivable.
 Required consumers validate more than the top-level `stableReady` boolean. The dashboard and
 release-certification matrix reject Stable summaries with the wrong `kind`, invalid
 `status`/`decision`, a mismatched `releaseId`, failing redaction, or missing/failing
-`stable-1.0.*` evidence rows. `ready-with-allowed-limitations` remains a warning state so the
-limitations stay visible in the release record.
+`stable-1.0.*` evidence rows. They also require the complete Stable domain row set, while the
+Stable gate requires the release-candidate ecosystem matrix envelope and complete producer matrix
+row set. `ready-with-allowed-limitations` remains a warning state so the limitations stay visible
+in the release record.
 
 Warnings reported by the attached production beta go/no-go dashboard remain visible as Stable
 warnings with their source warning and evidence ids. They set the affected Stable domain and

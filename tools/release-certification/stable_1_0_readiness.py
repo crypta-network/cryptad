@@ -23,6 +23,7 @@ sys.path.insert(0, str(TOOL_DIR))
 
 import production_beta_go_no_go_dashboard as dashboard  # noqa: E402
 import multi_node_beta_soak  # noqa: E402
+import release_certification as certification  # noqa: E402
 
 
 TOOL_NAME = "stable-1.0-readiness"
@@ -33,6 +34,9 @@ DEFAULT_LIMITATIONS = TOOL_DIR / "stable-1.0-known-limitations.json"
 DEFAULT_PUBLIC_BETA_KNOWN_ISSUES = TOOL_DIR / "public-beta-known-issues.json"
 FIXTURE_DIR = TOOL_DIR / "fixtures"
 DEFAULT_GENERATED_AT = "1970-01-01T00:00:00Z"
+ECOSYSTEM_MATRIX_REQUIRED_ROW_IDS = tuple(
+    spec.id for spec in certification.ecosystem_matrix_row_specs()
+)
 
 SUMMARY_FILE = "stable-1.0-readiness-summary.json"
 REPORT_FILE = "stable-1.0-readiness-report.md"
@@ -2301,6 +2305,25 @@ def evaluate_ecosystem_matrix(matrix: dict[str, Any] | None) -> dict[str, Any]:
             )
         )
         return domain_result(domain_id, "Ecosystem certification matrix", (evidence_id,), blockers, [])
+    envelope_errors = schema_tool_errors(
+        matrix,
+        expected_tool=certification.TOOL_NAME,
+        evidence_label="ecosystemMatrix",
+    )
+    if matrix.get("kind") != "ecosystem-certification-matrix":
+        envelope_errors.append("ecosystemMatrix.kind must be ecosystem-certification-matrix")
+    if matrix.get("mode") != "release-candidate":
+        envelope_errors.append("ecosystemMatrix.mode must be release-candidate")
+    if envelope_errors:
+        blockers.append(
+            blocker_issue(
+                domain_id,
+                evidence_id,
+                "Ecosystem certification matrix schema is malformed",
+                "; ".join(envelope_errors) + ".",
+                "ecosystem-certification-matrix",
+            )
+        )
     status = normalize_status(matrix.get("status"))
     release_blocker_count, malformed_release_blocker_count = dashboard.parse_release_blocker_count(
         matrix.get("releaseBlockerCount", 0)
@@ -2354,6 +2377,31 @@ def evaluate_ecosystem_matrix(matrix: dict[str, Any] | None) -> dict[str, Any]:
                     )
                 )
         rows = [row for row in rows_value if isinstance(row, dict)]
+    row_ids = [non_empty_string(row.get("id")) for row in rows if non_empty_string(row.get("id"))]
+    expected_row_ids = set(ECOSYSTEM_MATRIX_REQUIRED_ROW_IDS)
+    actual_row_ids = set(row_ids)
+    missing_row_ids = sorted(expected_row_ids - actual_row_ids)
+    duplicate_row_ids = sorted(
+        row_id for row_id in actual_row_ids if row_ids.count(row_id) > 1
+    )
+    unexpected_row_ids = sorted(actual_row_ids - expected_row_ids)
+    if missing_row_ids or duplicate_row_ids or unexpected_row_ids:
+        row_id_errors: list[str] = []
+        if missing_row_ids:
+            row_id_errors.append("missing required row IDs: " + ", ".join(missing_row_ids))
+        if duplicate_row_ids:
+            row_id_errors.append("duplicate row IDs: " + ", ".join(duplicate_row_ids))
+        if unexpected_row_ids:
+            row_id_errors.append("unexpected row IDs: " + ", ".join(unexpected_row_ids))
+        blockers.append(
+            blocker_issue(
+                domain_id,
+                evidence_id,
+                "Ecosystem certification matrix row set is incomplete",
+                "Ecosystem certification matrix " + "; ".join(row_id_errors) + ".",
+                "ecosystem-certification-matrix",
+            )
+        )
     counts = matrix.get("counts") if isinstance(matrix.get("counts"), dict) else {}
     row_count, malformed_row_count = (
         non_negative_count(counts.get("rows"))
@@ -4440,11 +4488,39 @@ def base_self_test_inputs() -> tuple[dict[str, Any], dict[str, Any]]:
     }
     network["generatedAt"] = DEFAULT_GENERATED_AT
     limitations = copy.deepcopy(read_json(DEFAULT_LIMITATIONS) or {})
+    ecosystem_matrix = copy.deepcopy(go_inputs["ecosystemMatrix"])
+    ecosystem_matrix.update(
+        {
+            "schemaVersion": certification.ECOSYSTEM_MATRIX_SCHEMA_VERSION,
+            "tool": certification.TOOL_NAME,
+            "kind": "ecosystem-certification-matrix",
+            "mode": "release-candidate",
+            "status": "pass",
+            "releaseBlockerCount": 0,
+        }
+    )
+    ecosystem_matrix["rows"] = [
+        {
+            "id": row_id,
+            "status": "pass",
+            "releaseBlocker": False,
+        }
+        for row_id in ECOSYSTEM_MATRIX_REQUIRED_ROW_IDS
+    ]
+    ecosystem_matrix["counts"] = {
+        **(
+            ecosystem_matrix.get("counts")
+            if isinstance(ecosystem_matrix.get("counts"), dict)
+            else {}
+        ),
+        "rows": len(ECOSYSTEM_MATRIX_REQUIRED_ROW_IDS),
+        "releaseBlockers": 0,
+    }
     inputs = {
         "productionBetaSummary": production,
         "goNoGoSummary": go_no_go,
         "releaseCertificationSummary": release_cert,
-        "ecosystemMatrix": copy.deepcopy(go_inputs["ecosystemMatrix"]),
+        "ecosystemMatrix": ecosystem_matrix,
         "appPlatformSummary": app_platform,
         "multiNodeSoakSummary": multi_node,
         "networkScaleSoakSummary": network,
@@ -4592,6 +4668,7 @@ def run_self_test() -> None:
         "ecosystem-matrix-failed",
         "ecosystem-matrix-failed-row",
         "ecosystem-matrix-missing-rows",
+        "ecosystem-matrix-truncated-rows",
         "ecosystem-matrix-non-list-rows",
         "ecosystem-matrix-malformed-row",
         "ecosystem-matrix-row-redaction-failure",
@@ -5699,6 +5776,28 @@ def run_self_test() -> None:
             root,
             "ecosystem-matrix-missing-rows",
             ecosystem_matrix_missing_rows,
+            "not-ready",
+            expect_blocker="release-certification.ecosystem-matrix",
+        )
+
+        def ecosystem_matrix_truncated_rows(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs["ecosystemMatrix"]["rows"] = [
+                {
+                    "id": "stub-row",
+                    "status": "pass",
+                    "releaseBlocker": False,
+                }
+            ]
+            inputs["ecosystemMatrix"]["counts"]["rows"] = 1
+
+        run_case(
+            root,
+            "ecosystem-matrix-truncated-rows",
+            ecosystem_matrix_truncated_rows,
             "not-ready",
             expect_blocker="release-certification.ecosystem-matrix",
         )

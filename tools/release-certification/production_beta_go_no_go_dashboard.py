@@ -241,6 +241,21 @@ STABLE_1_0_READINESS_EVIDENCE_IDS = (
     "stable-1.0.known-limitations",
     "stable-1.0.redaction",
 )
+STABLE_1_0_READINESS_DOMAIN_IDS = (
+    "readiness-policy",
+    "production-beta-state",
+    "release-certification-summary",
+    "ecosystem-certification-matrix",
+    "platform-api-1.0",
+    "app-ecosystem-maturity",
+    "third-party-intake",
+    "security-drills",
+    "live-multi-node-soak",
+    "legacy-plugin-migration",
+    "support-feedback-readiness",
+    "known-limitations",
+    "redaction",
+)
 
 DOMAIN_SPECS = (
     {
@@ -2318,13 +2333,39 @@ def stable_summary_allowed_limitation_metadata_errors(record: Any, label: str) -
     return errors
 
 
+def stable_summary_domain_id_errors(summary: dict[str, Any]) -> list[str]:
+    domains = summary.get("domains")
+    if not isinstance(domains, list) or not domains:
+        return []
+    domain_ids = [
+        str(domain.get("id", "")).strip()
+        for domain in domains
+        if isinstance(domain, dict) and str(domain.get("id", "")).strip()
+    ]
+    expected_ids = set(STABLE_1_0_READINESS_DOMAIN_IDS)
+    actual_ids = set(domain_ids)
+    errors: list[str] = []
+    missing_ids = sorted(expected_ids - actual_ids)
+    if missing_ids:
+        errors.append("domains are missing required IDs: " + ", ".join(missing_ids))
+    duplicate_ids = sorted(
+        domain_id for domain_id in actual_ids if domain_ids.count(domain_id) > 1
+    )
+    if duplicate_ids:
+        errors.append("domains contain duplicate IDs: " + ", ".join(duplicate_ids))
+    unexpected_ids = sorted(actual_ids - expected_ids)
+    if unexpected_ids:
+        errors.append("domains contain unexpected IDs: " + ", ".join(unexpected_ids))
+    return errors
+
+
 def stable_summary_domain_errors(summary: dict[str, Any]) -> list[str]:
     domains = summary.get("domains")
     if not isinstance(domains, list):
         return ["domains must be a non-empty list"]
     if not domains:
         return ["domains must not be empty"]
-    errors: list[str] = []
+    errors = stable_summary_domain_id_errors(summary)
     for index, domain in enumerate(domains):
         if not isinstance(domain, dict):
             errors.append(f"domains[{index}] must be an object")
@@ -5353,14 +5394,15 @@ def assert_required_stable_readiness_release_id_matches_dashboard_candidate(root
         "disallowedLimitations": [],
         "domains": [
             {
-                "id": "production-beta-state",
+                "id": domain_id,
                 "status": "pass",
                 "summary": "Synthetic Stable domain passed.",
-                "evidenceIds": ["stable-1.0.production-beta-state"],
+                "evidenceIds": [],
                 "blockers": [],
                 "warnings": [],
                 "allowedLimitations": [],
             }
+            for domain_id in STABLE_1_0_READINESS_DOMAIN_IDS
         ],
         "redaction": {"status": "pass", "findings": []},
         "evidence": [
@@ -5399,13 +5441,16 @@ def assert_required_stable_readiness_release_id_matches_dashboard_candidate(root
         raise AssertionError(f"matching Stable readiness binding was not reported: {matching_dashboard}")
 
     required_redaction_domain_warn_inputs = json.loads(json.dumps(inputs))
-    required_redaction_domain_warn_inputs["stableReadinessSummary"]["domains"].append(
+    required_redaction_domain = next(
+        domain
+        for domain in required_redaction_domain_warn_inputs["stableReadinessSummary"]["domains"]
+        if isinstance(domain, dict) and domain.get("id") == "redaction"
+    )
+    required_redaction_domain.update(
         {
-            "id": "redaction",
             "status": "warn",
             "summary": "Synthetic Stable redaction warning domain.",
             "evidenceIds": ["stable-1.0.redaction"],
-            "blockers": [],
             "warnings": [
                 {
                     "id": "stable-redaction-domain-warning",
@@ -5413,7 +5458,6 @@ def assert_required_stable_readiness_release_id_matches_dashboard_candidate(root
                     "summary": "Synthetic Stable redaction warning.",
                 }
             ],
-            "allowedLimitations": [],
         }
     )
     required_redaction_domain_warn_dashboard = build_dashboard(
@@ -5491,9 +5535,13 @@ def assert_required_stable_readiness_release_id_matches_dashboard_candidate(root
         )
 
     advisory_redaction_domain_inputs = json.loads(json.dumps(inputs))
-    advisory_redaction_domain_inputs["stableReadinessSummary"]["domains"].append(
+    advisory_redaction_domain = next(
+        domain
+        for domain in advisory_redaction_domain_inputs["stableReadinessSummary"]["domains"]
+        if isinstance(domain, dict) and domain.get("id") == "redaction"
+    )
+    advisory_redaction_domain.update(
         {
-            "id": "redaction",
             "status": "fail",
             "summary": "Synthetic failed Stable redaction domain.",
             "evidenceIds": ["stable-1.0.redaction"],
@@ -5504,8 +5552,6 @@ def assert_required_stable_readiness_release_id_matches_dashboard_candidate(root
                     "summary": "Synthetic Stable redaction domain blocker.",
                 }
             ],
-            "warnings": [],
-            "allowedLimitations": [],
         }
     )
     advisory_redaction_domain_dashboard = build_dashboard(
@@ -5572,6 +5618,49 @@ def assert_required_stable_readiness_release_id_matches_dashboard_candidate(root
         raise AssertionError(
             "omitted Stable readiness domains were not reported as a required blocker: "
             f"{missing_domains_dashboard}"
+        )
+
+    truncated_domains_inputs = json.loads(json.dumps(inputs))
+    truncated_domains_inputs["stableReadinessSummary"]["domains"] = [
+        {
+            "id": "stub-domain",
+            "status": "pass",
+            "summary": "Synthetic truncated Stable domain row.",
+            "evidenceIds": [],
+            "blockers": [],
+            "warnings": [],
+            "allowedLimitations": [],
+        }
+    ]
+    truncated_domains_dashboard = build_dashboard(
+        truncated_domains_inputs,
+        {},
+        [FIXTURE_DIR / "go-no-go-pass.json"],
+        None,
+        Path(__file__).resolve().parents[2],
+        root / "stable-readiness-truncated-domains",
+        "production-beta",
+        release_id,
+        generated_at,
+        now,
+        require_stable_readiness=True,
+    )
+    if truncated_domains_dashboard.get("decision") != "no-go":
+        raise AssertionError(
+            "required Stable readiness with truncated domains did not block: "
+            f"{truncated_domains_dashboard}"
+        )
+    truncated_domains_blockers = [
+        blocker
+        for blocker in truncated_domains_dashboard.get("blockers", [])
+        if isinstance(blocker, dict)
+        and blocker.get("id") == "stable-1.0.readiness-summary.domain-failed"
+        and blocker.get("evidenceId") == "stable-1.0.readiness-gate"
+    ]
+    if not truncated_domains_blockers:
+        raise AssertionError(
+            "truncated Stable readiness domains were not reported as a required blocker: "
+            f"{truncated_domains_dashboard}"
         )
 
     failed_domain_inputs = json.loads(json.dumps(inputs))

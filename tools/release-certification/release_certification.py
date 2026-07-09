@@ -202,6 +202,7 @@ ECOSYSTEM_RC_EVIDENCE_ID = "release-certification.ecosystem-rc-gate"
 ECOSYSTEM_RC_MATRIX_ROW_ID = "ecosystem-rc-certification-gate"
 PRODUCTION_BETA_GO_NO_GO_EVIDENCE_IDS = production_beta_go_no_go_dashboard.DASHBOARD_EVIDENCE_IDS
 STABLE_1_0_READINESS_EVIDENCE_IDS = production_beta_go_no_go_dashboard.STABLE_1_0_READINESS_EVIDENCE_IDS
+STABLE_1_0_READINESS_DOMAIN_IDS = production_beta_go_no_go_dashboard.STABLE_1_0_READINESS_DOMAIN_IDS
 STABLE_1_0_READINESS_MATRIX_ROW_ID = "stable-1-0-readiness"
 APP_SERVICE_DEPENDENCY_AND_GRANT_BUNDLE_EVIDENCE_IDS = (
     "app-services.dependency-graph",
@@ -2568,7 +2569,7 @@ def stable_readiness_domain_errors(summary: dict[str, Any]) -> list[str]:
         return ["domains must be a non-empty list"]
     if not domains:
         return ["domains must not be empty"]
-    errors: list[str] = []
+    errors = production_beta_go_no_go_dashboard.stable_summary_domain_id_errors(summary)
     for index, domain in enumerate(domains):
         if not isinstance(domain, dict):
             errors.append(f"domains[{index}] must be an object")
@@ -14229,15 +14230,27 @@ def run_self_test(repo_root: Path) -> None:
         def stable_self_test_passing_domains() -> list[dict[str, Any]]:
             return [
                 {
-                    "id": "production-beta-state",
+                    "id": domain_id,
                     "status": "pass",
                     "summary": "Synthetic Stable domain row passed.",
-                    "evidenceIds": ["stable-1.0.production-beta-state"],
+                    "evidenceIds": [],
                     "blockers": [],
                     "warnings": [],
                     "allowedLimitations": [],
                 }
+                for domain_id in STABLE_1_0_READINESS_DOMAIN_IDS
             ]
+
+        def stable_self_test_domains_with(
+            domain_id: str,
+            **updates: Any,
+        ) -> list[dict[str, Any]]:
+            domains = stable_self_test_passing_domains()
+            for domain in domains:
+                if domain.get("id") == domain_id:
+                    domain.update(updates)
+                    return domains
+            raise AssertionError(f"Stable self-test domain is missing {domain_id}")
 
         def stable_self_test_summary(
             release_id: str = "cryptad-production-beta-self-test",
@@ -14550,16 +14563,7 @@ def run_self_test(repo_root: Path) -> None:
                 "warningCount": 0,
                 "allowedLimitationCount": 0,
                 "disallowedLimitationCount": 0,
-                "domains": [
-                    {
-                        "id": "stable-1.0.readiness-gate",
-                        "status": "pass",
-                        "summary": "Stable readiness gate passed.",
-                        "blockers": [],
-                        "warnings": [],
-                        "allowedLimitations": [],
-                    }
-                ],
+                "domains": stable_self_test_passing_domains(),
                 "blockers": [],
                 "warnings": [],
                 "allowedLimitations": [],
@@ -14692,6 +14696,58 @@ def run_self_test(repo_root: Path) -> None:
             stable_missing_domains_row
         )
 
+        stable_truncated_domains_summary = (
+            workspace / "build/stable-readiness-truncated-domains.json"
+        )
+        stable_truncated_domains_value = stable_self_test_summary()
+        stable_truncated_domains_value["domains"] = [
+            {
+                "id": "stub-domain",
+                "status": "pass",
+                "summary": "Synthetic truncated Stable domain row.",
+                "evidenceIds": [],
+                "blockers": [],
+                "warnings": [],
+                "allowedLimitations": [],
+            }
+        ]
+        write_json(stable_truncated_domains_summary, stable_truncated_domains_value)
+        stable_truncated_domains_items = stable_readiness_evidence(
+            stable_truncated_domains_summary,
+            True,
+            workspace,
+            out_dir,
+            "cryptad-production-beta-self-test",
+        )
+        stable_truncated_domains_gate = next(
+            item
+            for item in stable_truncated_domains_items
+            if item.id == "stable-1.0.readiness-gate"
+        )
+        assert stable_truncated_domains_gate.status == "fail", stable_truncated_domains_gate
+        assert any(
+            error.startswith("domains are missing required IDs:")
+            for error in stable_truncated_domains_gate.details["validationErrors"]
+        ), stable_truncated_domains_gate.details
+        stable_truncated_domains_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/stable-truncated-domains-cert").resolve(),
+            stable_readiness_summary=stable_truncated_domains_summary,
+            stable_readiness_required=True,
+        )
+        stable_truncated_domains_cert, stable_truncated_domains_exit_code = run(
+            stable_truncated_domains_settings
+        )
+        assert stable_truncated_domains_exit_code == 1, stable_truncated_domains_cert
+        stable_truncated_domains_row = matrix_row_by_id(
+            stable_truncated_domains_settings.out_dir,
+            "stable-1-0-readiness",
+        )
+        assert stable_truncated_domains_row["status"] == "fail", stable_truncated_domains_row
+        assert stable_truncated_domains_row["releaseBlocker"] is True, (
+            stable_truncated_domains_row
+        )
+
         stable_failed_domain_summary = workspace / "build/stable-readiness-failed-domain.json"
         write_json(
             stable_failed_domain_summary,
@@ -14706,17 +14762,11 @@ def run_self_test(repo_root: Path) -> None:
                 "warningCount": 0,
                 "allowedLimitationCount": 0,
                 "disallowedLimitationCount": 0,
-                "domains": [
-                    {
-                        "id": "production-beta-state",
-                        "status": "fail",
-                        "summary": "Synthetic failed Stable domain row.",
-                        "evidenceIds": ["stable-1.0.production-beta-state"],
-                        "blockers": [],
-                        "warnings": [],
-                        "allowedLimitations": [],
-                    }
-                ],
+                "domains": stable_self_test_domains_with(
+                    "production-beta-state",
+                    status="fail",
+                    summary="Synthetic failed Stable domain row.",
+                ),
                 "blockers": [],
                 "warnings": [],
                 "allowedLimitations": [],
@@ -14768,17 +14818,11 @@ def run_self_test(repo_root: Path) -> None:
                 "warningCount": 0,
                 "allowedLimitationCount": 0,
                 "disallowedLimitationCount": 0,
-                "domains": [
-                    {
-                        "id": "production-beta-state",
-                        "status": "pass",
-                        "summary": "Synthetic passed Stable domain row with malformed allowed limitation.",
-                        "evidenceIds": ["stable-1.0.production-beta-state"],
-                        "blockers": [],
-                        "warnings": [],
-                        "allowedLimitations": [1],
-                    }
-                ],
+                "domains": stable_self_test_domains_with(
+                    "production-beta-state",
+                    summary="Synthetic passed Stable domain row with malformed allowed limitation.",
+                    allowedLimitations=[1],
+                ),
                 "blockers": [],
                 "warnings": [],
                 "allowedLimitations": [],
@@ -14850,23 +14894,17 @@ def run_self_test(repo_root: Path) -> None:
                 "warningCount": 0,
                 "allowedLimitationCount": 0,
                 "disallowedLimitationCount": 0,
-                "domains": [
-                    {
-                        "id": "production-beta-state",
-                        "status": "pass",
-                        "summary": "Synthetic Stable domain row with hidden blocker.",
-                        "evidenceIds": ["stable-1.0.production-beta-state"],
-                        "blockers": [
-                            {
-                                "id": "stable-self-test-domain-blocker",
-                                "evidenceId": "stable-1.0.production-beta-state",
-                                "summary": "Synthetic Stable domain blocker.",
-                            }
-                        ],
-                        "warnings": [],
-                        "allowedLimitations": [],
-                    }
-                ],
+                "domains": stable_self_test_domains_with(
+                    "production-beta-state",
+                    summary="Synthetic Stable domain row with hidden blocker.",
+                    blockers=[
+                        {
+                            "id": "stable-self-test-domain-blocker",
+                            "evidenceId": "stable-1.0.production-beta-state",
+                            "summary": "Synthetic Stable domain blocker.",
+                        }
+                    ],
+                ),
                 "blockers": [],
                 "warnings": [],
                 "allowedLimitations": [],
