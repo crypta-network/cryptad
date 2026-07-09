@@ -261,3 +261,8 @@ release-certification matrix reject Stable summaries with the wrong `kind`, inva
 `status`/`decision`, a mismatched `releaseId`, failing redaction, or missing/failing
 `stable-1.0.*` evidence rows. `ready-with-allowed-limitations` remains a warning state so the
 limitations stay visible in the release record.
+
+Warnings reported by the attached production beta go/no-go dashboard remain visible as Stable
+warnings with their source warning and evidence ids. They set the affected Stable domain and
+aggregate status to `warn`, but remain compatible with the `ready` decision when no Stable blocker
+or disallowed limitation is present.

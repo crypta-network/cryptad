@@ -665,6 +665,34 @@ def warning_issue(domain_id: str, evidence_id: str, title: str, summary: str, so
     )
 
 
+def propagated_dashboard_warning(
+    domain_id: str,
+    dashboard_warning: dict[str, Any],
+    index: int,
+) -> dict[str, Any]:
+    source_warning_id = non_empty_string(dashboard_warning.get("id")) or f"warnings[{index}]"
+    source_evidence_id = non_empty_string(dashboard_warning.get("evidenceId"))
+    title = non_empty_string(dashboard_warning.get("title")) or "Production beta dashboard warning"
+    summary = non_empty_string(dashboard_warning.get("summary")) or (
+        f"Production beta dashboard warning {source_warning_id} remains open for Stable review."
+    )
+    value = issue(
+        issue_id=f"{domain_id}.go-no-go-warning-{index + 1}",
+        evidence_id="stable-1.0.go-no-go-decision",
+        domain_id=domain_id,
+        severity="warning",
+        classification="stable-1.0-warning",
+        title=title,
+        summary=summary,
+        source="go-no-go-summary",
+        waivable=True,
+    )
+    value["sourceWarningId"] = source_warning_id
+    if source_evidence_id:
+        value["sourceEvidenceId"] = source_evidence_id
+    return value
+
+
 def blocker_issue(
     domain_id: str,
     evidence_id: str,
@@ -1983,11 +2011,16 @@ def evaluate_production_beta_state(
                     "go-no-go-summary",
                 )
             )
-        warnings_count, warnings_count_malformed = non_negative_count(dashboard_summary.get("warnings", 0))
+        dashboard_warnings = (
+            go_no_go.get("warnings") if isinstance(go_no_go.get("warnings"), list) else []
+        )
+        warnings_count, warnings_count_malformed = non_negative_count(
+            dashboard_summary.get("warnings", 0)
+        )
         if (
             isinstance(go_no_go.get("warnings"), list)
             and not warnings_count_malformed
-            and warnings_count != len(go_no_go.get("warnings", []))
+            and warnings_count != len(dashboard_warnings)
         ):
             blockers.append(
                 blocker_issue(
@@ -1996,11 +2029,16 @@ def evaluate_production_beta_state(
                     "Go/no-go dashboard warning count is inconsistent",
                     (
                         f"goNoGoSummary.summary.warnings is {warnings_count}, "
-                        f"but warnings contains {len(go_no_go.get('warnings', []))} entries."
+                        f"but warnings contains {len(dashboard_warnings)} entries."
                     ),
                     "go-no-go-summary",
                 )
             )
+        warnings.extend(
+            propagated_dashboard_warning(domain_id, dashboard_warning, index)
+            for index, dashboard_warning in enumerate(dashboard_warnings)
+            if isinstance(dashboard_warning, dict)
+        )
         if dashboard_mode != "production-beta":
             blockers.append(
                 blocker_issue(
@@ -4946,11 +4984,42 @@ def run_self_test() -> None:
             _paths: dict[str, Path],
         ) -> None:
             inputs["goNoGoSummary"]["domains"][0]["status"] = "warn"
+            inputs["goNoGoSummary"]["summary"]["warnings"] = 1
+            inputs["goNoGoSummary"]["warnings"] = [
+                {
+                    "id": "production-beta.synthetic-warning",
+                    "evidenceId": "production-beta.synthetic-evidence",
+                    "severity": "warning",
+                    "title": "Synthetic production beta warning",
+                    "summary": "Synthetic production beta warning remains open for Stable review.",
+                    "source": "production-beta-self-test",
+                    "waivable": True,
+                    "category": "self-test",
+                }
+            ]
 
         def assert_go_no_go_warning_domain(summary: dict[str, Any]) -> None:
             blocker_ids = {str(blocker.get("evidenceId")) for blocker in summary.get("blockers", [])}
             if "stable-1.0.go-no-go-decision" in blocker_ids:
                 raise AssertionError(f"go-no-go-warning-domain created blocker: {summary.get('blockers')}")
+            if summary.get("status") != "warn" or summary.get("warningCount") != 1:
+                raise AssertionError(
+                    "go-no-go-warning-domain did not preserve the Stable warning status/count: "
+                    f"{summary}"
+                )
+            propagated_warnings = [
+                warning
+                for warning in summary.get("warnings", [])
+                if isinstance(warning, dict)
+                and warning.get("sourceWarningId") == "production-beta.synthetic-warning"
+                and warning.get("sourceEvidenceId") == "production-beta.synthetic-evidence"
+                and warning.get("evidenceId") == "stable-1.0.go-no-go-decision"
+            ]
+            if len(propagated_warnings) != 1:
+                raise AssertionError(
+                    "go-no-go-warning-domain did not propagate the dashboard warning: "
+                    f"{summary.get('warnings')}"
+                )
 
         run_case(
             root,
