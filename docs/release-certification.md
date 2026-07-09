@@ -126,12 +126,15 @@ python3 tools/release-certification/release_certification.py \
   --out-dir build/release-certification \
   --mode release-candidate \
   --stable-readiness-summary build/stable-1.0-readiness/stable-1.0-readiness-summary.json \
+  --metadata candidateReleaseId=cryptad-beta-<version> \
   --require-stable-readiness
 ```
 
 Without `--require-stable-readiness`, the same summary is recorded as advisory evidence and the
 normal release-candidate behavior is unchanged. With the required flag, missing or failing Stable
-readiness makes Stable promotion impossible. Redaction failures remain non-waivable. See
+readiness makes Stable promotion impossible. Required mode also needs explicit
+`candidateReleaseId` metadata so the attached Stable summary cannot be reused from another
+production beta candidate. Redaction failures remain non-waivable. See
 [stable-1.0-readiness-gate.md](stable-1.0-readiness-gate.md).
 
 Required Stable readiness must be evidence-complete. The synthetic `stable-1-0-readiness` matrix

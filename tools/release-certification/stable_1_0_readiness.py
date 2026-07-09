@@ -9,6 +9,7 @@ import dataclasses
 import datetime as dt
 import hashlib
 import json
+import math
 import sys
 import tempfile
 from pathlib import Path
@@ -48,8 +49,6 @@ PRODUCTION_BETA_REQUIRED_PIPELINE_STAGES = (
 
 PRODUCTION_BETA_REQUIRED_ARTIFACTS = (
     "redactionReport",
-    "distArchive",
-    "checksums",
 )
 
 GO_NO_GO_SUMMARY_COUNT_FIELDS = (
@@ -839,6 +838,9 @@ def release_certification_redaction_passed(redaction: dict[str, Any] | None) -> 
     finding_count, malformed_finding_count = non_negative_count(
         redaction.get("findingCount", len(findings))
     )
+    critical_finding_count, malformed_critical_finding_count = non_negative_count(
+        redaction.get("criticalFindingCount", 0)
+    )
     status_value = redaction.get("status")
     missing = [
         field
@@ -854,11 +856,18 @@ def release_certification_redaction_passed(redaction: dict[str, Any] | None) -> 
         "findingCount": finding_count
         if not malformed_finding_count
         else redaction.get("findingCount", len(findings)),
+        "criticalFindingCount": critical_finding_count
+        if not malformed_critical_finding_count
+        else redaction.get("criticalFindingCount", 0),
         "missingFields": missing,
         "failedFields": known_false,
     }
     if malformed_finding_count:
         details["validationErrors"] = ["findingCount is not a non-negative integer"]
+    if malformed_critical_finding_count:
+        details.setdefault("validationErrors", []).append(
+            "criticalFindingCount is not a non-negative integer"
+        )
     if malformed_findings:
         details.setdefault("validationErrors", []).append("findings is not a list")
     unsafe_redaction_payload = recursive_redaction_failure(redaction)
@@ -873,7 +882,9 @@ def release_certification_redaction_passed(redaction: dict[str, Any] | None) -> 
             status == "pass"
             and not findings
             and finding_count == 0
+            and critical_finding_count == 0
             and not malformed_finding_count
+            and not malformed_critical_finding_count
             and not malformed_findings
             and not missing
             and not known_false
@@ -885,7 +896,9 @@ def release_certification_redaction_passed(redaction: dict[str, Any] | None) -> 
         and not known_false
         and not findings
         and finding_count == 0
+        and critical_finding_count == 0
         and not malformed_finding_count
+        and not malformed_critical_finding_count
         and not malformed_findings
         and not unsafe_redaction_payload
     )
@@ -924,20 +937,49 @@ def security_artifact_freshness_blocker(
         )
     age_days = artifact.get("ageDays")
     if isinstance(age_days, (int, float)) and not isinstance(age_days, bool):
-        if float(age_days) > maximum_age_days:
+        age_value = float(age_days)
+        if not math.isfinite(age_value) or age_value < 0:
+            return blocker_issue(
+                domain_id,
+                "stable-1.0.security-drills",
+                "Security drill artifact freshness evidence is malformed",
+                f"Security drill artifact {scenario} ageDays must be a non-negative finite number.",
+                "security-drills-summary",
+            )
+        if artifact.get("stale") is not False:
+            return blocker_issue(
+                domain_id,
+                "stable-1.0.security-drills",
+                "Security drill artifact freshness evidence is missing",
+                (
+                    f"Security drill artifact {scenario} must report stale=false together "
+                    "with ageDays when generatedAt is absent."
+                ),
+                "security-drills-summary",
+            )
+        if age_value > maximum_age_days:
             return blocker_issue(
                 domain_id,
                 "stable-1.0.security-drills",
                 "Security drill artifact is stale",
                 (
-                    f"Security drill artifact {scenario} age is {float(age_days):.1f} days; "
+                    f"Security drill artifact {scenario} age is {age_value:.1f} days; "
                     f"policy maximum is {maximum_age_days} days."
                 ),
                 "security-drills-summary",
             )
         return None
     if artifact.get("stale") is False:
-        return None
+        return blocker_issue(
+            domain_id,
+            "stable-1.0.security-drills",
+            "Security drill artifact freshness evidence is missing",
+            (
+                f"Security drill artifact {scenario} reports stale=false but does not include "
+                "a valid ageDays value."
+            ),
+            "security-drills-summary",
+        )
     return blocker_issue(
         domain_id,
         "stable-1.0.security-drills",
@@ -1275,10 +1317,11 @@ def recursive_redaction_failure(value: Any) -> bool:
             findings = value.get("findings")
             if not isinstance(findings, list) or bool(findings):
                 return True
-        if "findingCount" in value:
-            finding_count, malformed_finding_count = non_negative_count(value.get("findingCount"))
-            if malformed_finding_count or finding_count > 0:
-                return True
+        for count_key in ("findingCount", "criticalFindingCount"):
+            if count_key in value:
+                finding_count, malformed_finding_count = non_negative_count(value.get(count_key))
+                if malformed_finding_count or finding_count > 0:
+                    return True
         status = value.get("status")
         if isinstance(status, str) and normalize_status(status) == "fail":
             return True
@@ -1397,10 +1440,10 @@ def load_waivers(path: Path | None, now: dt.datetime, workspace_root: Path) -> l
     for index, record in enumerate(records):
         if not isinstance(record, dict):
             record = {}
-        waiver_id = str(record.get("id", f"stable-waiver-{index}")).strip()
-        evidence_id = str(record.get("evidenceId", waiver_id)).strip()
+        waiver_id = str(record.get("id", "")).strip()
+        evidence_id = str(record.get("evidenceId", "")).strip()
         scope = str(record.get("scope", "")).strip()
-        status = str(record.get("status", "approved")).strip().lower()
+        status = str(record.get("status", "")).strip().lower()
         rationale = str(record.get("rationale", record.get("reason", ""))).strip()
         approved_by = str(record.get("approvedBy", "")).strip()
         owner = str(record.get("owner", "")).strip()
@@ -1423,7 +1466,9 @@ def load_waivers(path: Path | None, now: dt.datetime, workspace_root: Path) -> l
             validation_errors.append("approvedBy is required")
         if not owner:
             validation_errors.append("owner is required")
-        if status != "approved":
+        if not status:
+            validation_errors.append("status is required")
+        elif status != "approved":
             validation_errors.append("status must be approved")
         if scope not in {"stable-1.0", "stable-1.0-only", "stable-promotion", "all", "all-modes"}:
             validation_errors.append("scope must apply to stable-1.0")
@@ -1841,11 +1886,17 @@ def evaluate_production_beta_state(
             for index, dashboard_domain in enumerate(go_no_go.get("domains", [])):
                 if not isinstance(dashboard_domain, dict):
                     continue
-                domain_status = normalize_status(dashboard_domain.get("status", "missing"))
+                raw_domain_status = str(dashboard_domain.get("status", "missing")).strip().lower()
                 domain_label = non_empty_string(dashboard_domain.get("id")) or f"domains[{index}]"
+                if raw_domain_status == "waived":
+                    if decision == "go-with-waivers":
+                        continue
+                    non_passing_domains.append(f"{domain_label}:waived")
+                    continue
+                domain_status = normalize_status(dashboard_domain.get("status", "missing"))
                 if domain_status == "missing":
                     malformed_domain_statuses.append(domain_label)
-                elif domain_status != "pass":
+                elif domain_status not in {"pass", "warn"}:
                     non_passing_domains.append(f"{domain_label}:{domain_status}")
             if malformed_domain_statuses:
                 blockers.append(
@@ -2012,6 +2063,10 @@ def evaluate_production_beta_state(
         redaction_finding_count, malformed_redaction_finding_count = non_negative_count(
             redaction.get("findingCount", len(redaction_findings))
         )
+        (
+            redaction_critical_finding_count,
+            malformed_redaction_critical_finding_count,
+        ) = non_negative_count(redaction.get("criticalFindingCount", 0))
         dashboard_redaction_payload_unsafe = recursive_redaction_field_failure(go_no_go)
         redaction_payload_unaccounted = dashboard_redaction_payload_unsafe and not (
             normalize_status(redaction.get("status", "missing")) != "pass"
@@ -2019,6 +2074,8 @@ def evaluate_production_beta_state(
             or malformed_redaction_findings
             or malformed_redaction_finding_count
             or redaction_finding_count > 0
+            or malformed_redaction_critical_finding_count
+            or redaction_critical_finding_count > 0
         )
         if (
             normalize_status(redaction.get("status", "missing")) != "pass"
@@ -2026,12 +2083,18 @@ def evaluate_production_beta_state(
             or malformed_redaction_findings
             or malformed_redaction_finding_count
             or redaction_finding_count > 0
+            or malformed_redaction_critical_finding_count
+            or redaction_critical_finding_count > 0
             or dashboard_redaction_payload_unsafe
         ):
             if malformed_redaction_findings:
                 redaction_detail = "redaction.findings is not a list"
             elif malformed_redaction_finding_count:
                 redaction_detail = "findingCount is malformed"
+            elif malformed_redaction_critical_finding_count:
+                redaction_detail = "criticalFindingCount is malformed"
+            elif redaction_critical_finding_count > 0:
+                redaction_detail = f"criticalFindingCount is {redaction_critical_finding_count}"
             elif redaction_payload_unaccounted:
                 redaction_detail = "dashboard redaction payload contains unsafe raw or unwaivable findings"
             else:
@@ -2885,7 +2948,7 @@ def evaluate_security(
         if (
             normalize_status(redaction.get("status", "missing")) != "pass"
             or redaction.get("findings")
-            or recursive_redaction_failure(security_summary)
+            or recursive_redaction_field_failure(security_summary)
         ):
             blockers.append(
                 blocker_issue(
@@ -3155,7 +3218,7 @@ def evaluate_live_multi_node_soak(
         if (
             normalize_status(redaction.get("status", "missing")) != "pass"
             or redaction.get("findings")
-            or recursive_redaction_failure(multi_node)
+            or recursive_redaction_field_failure(multi_node)
         ):
             blockers.append(
                 blocker_issue(
@@ -3304,7 +3367,7 @@ def evaluate_live_multi_node_soak(
             redaction_status != "pass"
             or (isinstance(redaction, dict) and redaction.get("findings"))
             or missing_redaction_proof_fields
-            or recursive_redaction_failure(network)
+            or recursive_redaction_field_failure(network)
         ):
             blockers.append(
                 blocker_issue(
@@ -4442,12 +4505,15 @@ def run_self_test() -> None:
         "production-redaction-count",
         "production-boolean-schema-version",
         "production-failed-gate-status",
+        "production-pre-dist-artifact-refs",
         "go-no-go-no-go",
         "go-no-go-stub",
         "go-no-go-wrong-release-id",
         "go-no-go-non-production-mode",
         "go-no-go-boolean-schema-version",
         "go-no-go-failed-domain",
+        "go-no-go-warning-domain",
+        "go-no-go-waived-domain",
         "go-no-go-listed-blocker",
         "go-no-go-redaction-findings",
         "go-no-go-redaction-count",
@@ -4495,6 +4561,7 @@ def run_self_test() -> None:
         "empty-third-party-sample-flow",
         "missing-support-feedback-docs",
         "stale-security",
+        "security-status-fail-redaction-pass",
         "malformed-security-scenario-list",
         "missing-security-scenario-result-list",
         "security-missing-schema-version",
@@ -4564,6 +4631,7 @@ def run_self_test() -> None:
         "invalid-waiver",
         "boolean-waiver-schema-version",
         "incomplete-waiver-metadata",
+        "missing-waiver-required-fields",
         "allowed-trust-graph",
         "allowed-social-inbox",
     }
@@ -4693,6 +4761,44 @@ def run_self_test() -> None:
             expect_blocker="stable-1.0.redaction",
         )
 
+        def production_redaction_critical_count(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs["productionBetaSummary"]["redaction"] = {
+                "status": "pass",
+                "findingCount": 0,
+                "criticalFindingCount": 1,
+            }
+
+        run_case(
+            root,
+            "production-redaction-critical-count",
+            production_redaction_critical_count,
+            "not-ready",
+            expect_blocker="stable-1.0.redaction",
+        )
+
+        def production_redaction_fractional_critical_count(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs["productionBetaSummary"]["redaction"] = {
+                "status": "pass",
+                "findingCount": 0,
+                "criticalFindingCount": 0.5,
+            }
+
+        run_case(
+            root,
+            "production-redaction-fractional-critical-count",
+            production_redaction_fractional_critical_count,
+            "not-ready",
+            expect_blocker="stable-1.0.redaction",
+        )
+
         def production_boolean_schema_version(
             inputs: dict[str, Any],
             _limitations: dict[str, Any],
@@ -4725,6 +4831,31 @@ def run_self_test() -> None:
             production_failed_gate_status,
             "not-ready",
             expect_blocker="stable-1.0.production-beta-state",
+        )
+
+        def production_pre_dist_artifact_refs(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            artifacts = inputs["productionBetaSummary"]["artifacts"]
+            artifacts.pop("distArchive", None)
+            artifacts.pop("checksums", None)
+
+        def assert_pre_dist_artifact_refs(summary: dict[str, Any]) -> None:
+            blocker_ids = {str(blocker.get("evidenceId")) for blocker in summary.get("blockers", [])}
+            if "stable-1.0.production-beta-state" in blocker_ids:
+                raise AssertionError(
+                    "pre-dist production beta summary created production blocker: "
+                    f"{summary.get('blockers')}"
+                )
+
+        run_case(
+            root,
+            "production-pre-dist-artifact-refs",
+            production_pre_dist_artifact_refs,
+            "ready",
+            post_check=assert_pre_dist_artifact_refs,
         )
 
         def go_no_go_no_go(inputs: dict[str, Any], _limitations: dict[str, Any], _paths: dict[str, Path]) -> None:
@@ -4802,6 +4933,53 @@ def run_self_test() -> None:
             expect_blocker="stable-1.0.go-no-go-decision",
         )
 
+        def go_no_go_warning_domain(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs["goNoGoSummary"]["domains"][0]["status"] = "warn"
+
+        def assert_go_no_go_warning_domain(summary: dict[str, Any]) -> None:
+            blocker_ids = {str(blocker.get("evidenceId")) for blocker in summary.get("blockers", [])}
+            if "stable-1.0.go-no-go-decision" in blocker_ids:
+                raise AssertionError(f"go-no-go-warning-domain created blocker: {summary.get('blockers')}")
+
+        run_case(
+            root,
+            "go-no-go-warning-domain",
+            go_no_go_warning_domain,
+            "ready",
+            post_check=assert_go_no_go_warning_domain,
+        )
+
+        def go_no_go_waived_domain(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs["goNoGoSummary"]["decision"] = "go-with-waivers"
+            inputs["goNoGoSummary"]["summary"]["waiversUsed"] = 1
+            inputs["goNoGoSummary"]["domains"][0]["status"] = "waived"
+
+        def assert_go_no_go_waived_domain(summary: dict[str, Any]) -> None:
+            if summary["status"] != "warn":
+                raise AssertionError(f"go-no-go-waived-domain expected warn status: {summary}")
+            blocker_ids = {str(blocker.get("evidenceId")) for blocker in summary.get("blockers", [])}
+            if "stable-1.0.go-no-go-decision" in blocker_ids:
+                raise AssertionError(f"go-no-go-waived-domain created blocker: {summary.get('blockers')}")
+            warning_ids = {str(warning.get("evidenceId")) for warning in summary.get("warnings", [])}
+            if "stable-1.0.go-no-go-decision" not in warning_ids:
+                raise AssertionError(f"go-no-go-waived-domain missing waiver warning: {summary.get('warnings')}")
+
+        run_case(
+            root,
+            "go-no-go-waived-domain",
+            go_no_go_waived_domain,
+            "ready",
+            post_check=assert_go_no_go_waived_domain,
+        )
+
         def go_no_go_listed_blocker(
             inputs: dict[str, Any],
             _limitations: dict[str, Any],
@@ -4869,6 +5047,26 @@ def run_self_test() -> None:
             expect_blocker="stable-1.0.redaction",
         )
 
+        def go_no_go_redaction_critical_count(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs["goNoGoSummary"]["redaction"] = {
+                "schemaVersion": 1,
+                "status": "pass",
+                "findingCount": 0,
+                "criticalFindingCount": 1,
+            }
+
+        run_case(
+            root,
+            "go-no-go-redaction-critical-count",
+            go_no_go_redaction_critical_count,
+            "not-ready",
+            expect_blocker="stable-1.0.redaction",
+        )
+
         def go_no_go_redaction_fractional_count(
             inputs: dict[str, Any],
             _limitations: dict[str, Any],
@@ -4884,6 +5082,26 @@ def run_self_test() -> None:
             root,
             "go-no-go-redaction-fractional-count",
             go_no_go_redaction_fractional_count,
+            "not-ready",
+            expect_blocker="stable-1.0.redaction",
+        )
+
+        def go_no_go_redaction_fractional_critical_count(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs["goNoGoSummary"]["redaction"] = {
+                "schemaVersion": 1,
+                "status": "pass",
+                "findingCount": 0,
+                "criticalFindingCount": 0.5,
+            }
+
+        run_case(
+            root,
+            "go-no-go-redaction-fractional-critical-count",
+            go_no_go_redaction_fractional_critical_count,
             "not-ready",
             expect_blocker="stable-1.0.redaction",
         )
@@ -5571,6 +5789,45 @@ def run_self_test() -> None:
 
         run_case(root, "stale-security", stale_security, "not-ready", expect_blocker="stable-1.0.security-drills")
 
+        def security_status_fail_redaction_pass(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs["securityDrillsSummary"]["status"] = "fail"
+            inputs["securityDrillsSummary"]["redaction"] = {
+                "status": "pass",
+                "findingCount": 0,
+                "findings": [],
+            }
+
+        def expect_security_status_fail_not_redaction(summary: dict[str, Any]) -> None:
+            blocker_ids = {str(blocker.get("evidenceId")) for blocker in summary.get("blockers", [])}
+            if "stable-1.0.redaction" in blocker_ids:
+                raise AssertionError(
+                    "ordinary security summary failure was reported as a redaction blocker: "
+                    f"{summary.get('blockers')}"
+                )
+            evidence_statuses = {
+                str(entry.get("id")): str(entry.get("status"))
+                for entry in summary.get("evidence", [])
+                if isinstance(entry, dict)
+            }
+            if evidence_statuses.get("stable-1.0.redaction") != "pass":
+                raise AssertionError(
+                    "ordinary security summary failure changed stable-1.0.redaction evidence: "
+                    f"{evidence_statuses}"
+                )
+
+        run_case(
+            root,
+            "security-status-fail-redaction-pass",
+            security_status_fail_redaction_pass,
+            "not-ready",
+            expect_blocker="stable-1.0.security-drills",
+            post_check=expect_security_status_fail_not_redaction,
+        )
+
         def malformed_security_scenario_list(
             inputs: dict[str, Any],
             _limitations: dict[str, Any],
@@ -5688,6 +5945,26 @@ def run_self_test() -> None:
             root,
             "security-redaction-count",
             security_redaction_count,
+            "not-ready",
+            expect_blocker="stable-1.0.redaction",
+            post_check=expect_stable_redaction_evidence_failed,
+        )
+
+        def security_redaction_critical_count(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs["securityDrillsSummary"]["redaction"] = {
+                "status": "pass",
+                "findingCount": 0,
+                "criticalFindingCount": 1,
+            }
+
+        run_case(
+            root,
+            "security-redaction-critical-count",
+            security_redaction_critical_count,
             "not-ready",
             expect_blocker="stable-1.0.redaction",
             post_check=expect_stable_redaction_evidence_failed,
@@ -6057,6 +6334,42 @@ def run_self_test() -> None:
             artifact["staleReason"] = "Artifact exceeds the Stable 1.0 freshness window."
 
         run_case(root, "stale-security-artifact-age", stale_security_artifact_age, "not-ready", expect_blocker="stable-1.0.security-drills")
+
+        def missing_security_artifact_age_days(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            artifact = inputs["securityDrillsSummary"]["artifacts"][0]
+            artifact.pop("generatedAt", None)
+            artifact.pop("ageDays", None)
+            artifact["stale"] = False
+
+        run_case(
+            root,
+            "missing-security-artifact-age-days",
+            missing_security_artifact_age_days,
+            "not-ready",
+            expect_blocker="stable-1.0.security-drills",
+        )
+
+        def negative_security_artifact_age_days(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            artifact = inputs["securityDrillsSummary"]["artifacts"][0]
+            artifact.pop("generatedAt", None)
+            artifact["stale"] = False
+            artifact["ageDays"] = -1
+
+        run_case(
+            root,
+            "negative-security-artifact-age-days",
+            negative_security_artifact_age_days,
+            "not-ready",
+            expect_blocker="stable-1.0.security-drills",
+        )
 
         def missing_security_artifacts(
             inputs: dict[str, Any],
@@ -6787,6 +7100,48 @@ def run_self_test() -> None:
             return waiver_path
 
         run_case(root, "incomplete-waiver-metadata", incomplete_waiver_metadata, "not-ready", expect_blocker="stable-1.0.waiver-validation")
+
+        def missing_waiver_required_fields(
+            _inputs: dict[str, Any],
+            limitations: dict[str, Any],
+            paths: dict[str, Path],
+        ) -> Path:
+            limitations["limitations"].append(
+                {
+                    "id": "stable-1.0.missing-required-waiver-fields",
+                    "title": "Missing required waiver fields follow-up",
+                    "classification": "requires-waiver-before-stable",
+                    "category": "ui-polish-accessibility-warning",
+                    "status": "open",
+                    "summary": "Self-test waiver-required limitation.",
+                }
+            )
+            waiver_path = paths["stableKnownLimitations"].parent / "missing-required-field-waivers.json"
+            write_json(
+                waiver_path,
+                {
+                    "schemaVersion": 1,
+                    "waivers": [
+                        {
+                            "scope": "stable-1.0",
+                            "rationale": "Self-test waiver with missing binding and approval status.",
+                            "approvedBy": "stable-release-manager",
+                            "owner": "stable-readiness",
+                            "expiresAt": "2999-01-01T00:00:00Z",
+                            "references": ["docs/stable-1.0-readiness-gate.md"],
+                        }
+                    ],
+                },
+            )
+            return waiver_path
+
+        run_case(
+            root,
+            "missing-waiver-required-fields",
+            missing_waiver_required_fields,
+            "not-ready",
+            expect_blocker="stable-1.0.waiver-validation",
+        )
 
         def only_trust_graph(_inputs: dict[str, Any], limitations: dict[str, Any], _paths: dict[str, Path]) -> None:
             for limitation in limitations["limitations"]:

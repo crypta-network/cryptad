@@ -59,6 +59,11 @@
       "category": "negative"
     },
     {
+      "id": "production-pre-dist-artifact-refs",
+      "expectedDecision": "ready",
+      "category": "positive"
+    },
+    {
       "id": "go-no-go-no-go",
       "expectedDecision": "not-ready",
       "category": "negative"
@@ -87,6 +92,16 @@
       "id": "go-no-go-failed-domain",
       "expectedDecision": "not-ready",
       "category": "negative"
+    },
+    {
+      "id": "go-no-go-warning-domain",
+      "expectedDecision": "ready",
+      "category": "positive"
+    },
+    {
+      "id": "go-no-go-waived-domain",
+      "expectedDecision": "ready",
+      "category": "positive"
     },
     {
       "id": "go-no-go-listed-blocker",
@@ -320,6 +335,11 @@
     },
     {
       "id": "stale-security",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "security-status-fail-redaction-pass",
       "expectedDecision": "not-ready",
       "category": "negative"
     },
@@ -665,6 +685,11 @@
     },
     {
       "id": "incomplete-waiver-metadata",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "missing-waiver-required-fields",
       "expectedDecision": "not-ready",
       "category": "negative"
     },

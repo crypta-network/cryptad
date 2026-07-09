@@ -5691,6 +5691,57 @@ def stable_readiness_args(settings: Settings) -> list[str]:
     return args
 
 
+def stable_readiness_summary_redaction_status(stable_summary: dict[str, Any] | None) -> str:
+    if not isinstance(stable_summary, dict):
+        return "missing"
+    redaction = stable_summary.get("redaction") if isinstance(stable_summary.get("redaction"), dict) else {}
+    redaction_status = release_certification.normalize_evidence_status(
+        str(redaction.get("status", "missing"))
+    )
+    if redaction_status != "pass":
+        return redaction_status
+    findings = redaction.get("findings")
+    if isinstance(findings, list) and findings:
+        return "fail"
+    if parse_int_field(redaction.get("findingCount", 0), 0, minimum=0) > 0:
+        return "fail"
+
+    evidence = stable_summary.get("evidence") if isinstance(stable_summary.get("evidence"), list) else []
+    redaction_rows = [
+        entry
+        for entry in evidence
+        if isinstance(entry, dict) and entry.get("id") == "stable-1.0.redaction"
+    ]
+    if not redaction_rows:
+        return "missing"
+    for row in redaction_rows:
+        row_status = release_certification.normalize_evidence_status(str(row.get("status", "missing")))
+        if row_status != "pass" or release_certification.evidence_entry_has_unwaivable_redaction_findings(row):
+            return "fail"
+
+    domains = stable_summary.get("domains") if isinstance(stable_summary.get("domains"), list) else []
+    for domain in domains:
+        if not isinstance(domain, dict):
+            continue
+        evidence_ids = domain.get("evidenceIds") if isinstance(domain.get("evidenceIds"), list) else []
+        if domain.get("id") != "redaction" and "stable-1.0.redaction" not in evidence_ids:
+            continue
+        domain_status = release_certification.normalize_evidence_status(
+            str(domain.get("status", "missing"))
+        )
+        if domain_status != "pass":
+            return "fail"
+        blockers = domain.get("blockers") if isinstance(domain.get("blockers"), list) else []
+        if blockers:
+            return "fail"
+
+    blockers = stable_summary.get("blockers") if isinstance(stable_summary.get("blockers"), list) else []
+    for blocker in blockers:
+        if isinstance(blocker, dict) and blocker.get("evidenceId") == "stable-1.0.redaction":
+            return "fail"
+    return "pass"
+
+
 def stable_readiness_redaction_findings(summary: dict[str, Any]) -> list[dict[str, str]]:
     stable_readiness = (
         summary.get("stableReadiness") if isinstance(summary.get("stableReadiness"), dict) else {}
@@ -5832,6 +5883,11 @@ def assert_required_stable_readiness_removes_dist_refs_from_dashboard() -> None:
         assert isinstance(stable_readiness, dict), summary
         assert stable_readiness["required"] is True, stable_readiness
         assert stable_readiness["stableReady"] is False, stable_readiness
+        stable_summary = read_json(stable_readiness_summary_path(settings))
+        assert isinstance(stable_summary, dict), stable_readiness
+        stable_blockers = json.dumps(stable_summary.get("blockers", []), sort_keys=True)
+        assert "distArchive" not in stable_blockers, stable_summary
+        assert "checksums" not in stable_blockers, stable_summary
         artifacts = summary.get("artifacts") if isinstance(summary.get("artifacts"), dict) else {}
         assert "distArchive" not in artifacts, artifacts
         assert "checksums" not in artifacts, artifacts
@@ -5877,7 +5933,6 @@ def compact_stable_readiness_for_summary(
             "redactionStatus": "missing",
             "toolExitCode": result.exit_code,
         }
-    redaction = stable_summary.get("redaction") if isinstance(stable_summary.get("redaction"), dict) else {}
     return {
         "status": str(stable_summary.get("status", "missing")),
         "decision": str(stable_summary.get("decision", "not-ready")),
@@ -5891,7 +5946,7 @@ def compact_stable_readiness_for_summary(
         "warningCount": int(stable_summary.get("warningCount", 0)),
         "allowedLimitationCount": int(stable_summary.get("allowedLimitationCount", 0)),
         "disallowedLimitationCount": int(stable_summary.get("disallowedLimitationCount", 0)),
-        "redactionStatus": str(redaction.get("status", "missing")),
+        "redactionStatus": stable_readiness_summary_redaction_status(stable_summary),
         "toolExitCode": result.exit_code,
     }
 
@@ -6038,8 +6093,7 @@ def run_pipeline(settings: Settings) -> tuple[dict[str, Any], int]:
         archive: Path | None = None
         summary: dict[str, Any] | None = None
         if redaction_report["status"] == "pass":
-            planned_archive = dist_bundle_path(settings, version)
-            summary = build_final_summary(state, promotion, redaction_report, planned_archive)
+            summary = build_final_summary(state, promotion, redaction_report, None)
             write_json(settings.out_dir / "reports/production-beta-summary.json", summary)
             write_text(settings.out_dir / "reports/production-beta-summary.md", render_markdown_summary(summary))
             summary = attach_go_no_go_dashboard(state, summary)
@@ -6061,6 +6115,17 @@ def run_pipeline(settings: Settings) -> tuple[dict[str, Any], int]:
                 )
             )
             if release_redaction_allows_dist(summary, redaction_report) and stable_allows_dist:
+                planned_archive = dist_bundle_path(settings, version)
+                summary.setdefault("artifacts", {})["distArchive"] = f"dist/{planned_archive.name}"
+                summary.setdefault("artifacts", {})["checksums"] = "dist/checksums.txt"
+                write_json(settings.out_dir / "reports/production-beta-summary.json", summary)
+                write_text(settings.out_dir / "reports/production-beta-summary.md", render_markdown_summary(summary))
+                summary = attach_go_no_go_dashboard(
+                    state,
+                    summary,
+                    stable_readiness_summary_path(settings) if settings.generate_stable_readiness else None,
+                    settings.require_stable_readiness,
+                )
                 try:
                     archive = create_dist_bundle(settings, version)
                 except ReleaseArtifactError as exc:
@@ -8726,23 +8791,70 @@ def assert_stable_readiness_redaction_failure_updates_release_report() -> None:
             release_redaction_report([]),
             archive=None,
         )
-        summary["stableReadiness"] = {
-            "required": True,
+        semantic_redaction_failure_summary = {
+            "schemaVersion": 1,
+            "kind": "stable-1.0-readiness",
             "status": "fail",
             "decision": "not-ready",
             "stableReady": False,
-            "redactionStatus": "fail",
+            "blockerCount": 1,
+            "warningCount": 0,
+            "allowedLimitationCount": 0,
+            "disallowedLimitationCount": 0,
+            "redaction": {"status": "pass", "findingCount": 0, "findings": []},
+            "domains": [
+                {
+                    "id": "redaction",
+                    "status": "fail",
+                    "summary": "Stable 1.0 readiness redaction blockers are present.",
+                    "evidenceIds": ["stable-1.0.redaction"],
+                    "blockers": [
+                        {
+                            "id": "stable-1.0.redaction.semantic-self-test",
+                            "evidenceId": "stable-1.0.redaction",
+                            "summary": "Semantic Stable redaction evidence failed.",
+                        }
+                    ],
+                    "warnings": [],
+                    "allowedLimitations": [],
+                }
+            ],
+            "blockers": [
+                {
+                    "id": "stable-1.0.redaction.semantic-self-test",
+                    "evidenceId": "stable-1.0.redaction",
+                    "summary": "Semantic Stable redaction evidence failed.",
+                }
+            ],
+            "warnings": [],
+            "allowedLimitations": [],
+            "disallowedLimitations": [],
+            "evidence": [
+                {
+                    "id": "stable-1.0.readiness-gate",
+                    "status": "fail",
+                    "summary": "Stable 1.0 readiness decision is not-ready.",
+                    "details": {"decision": "not-ready", "stableReady": False},
+                },
+                {
+                    "id": "stable-1.0.redaction",
+                    "status": "fail",
+                    "summary": "Stable 1.0 readiness redaction checks failed.",
+                    "details": {"blockerCount": 1},
+                },
+            ],
         }
+        compact = compact_stable_readiness_for_summary(
+            settings,
+            semantic_redaction_failure_summary,
+            CommandResult("stable-1.0-readiness", [], 1, 0, "", ""),
+        )
+        assert compact["required"] is False, compact
+        assert compact["redactionStatus"] == "fail", compact
+        summary["stableReadiness"] = compact
         write_json(
             stable_readiness_summary_path(settings),
-            {
-                "schemaVersion": 1,
-                "kind": "stable-1.0-readiness",
-                "status": "fail",
-                "decision": "not-ready",
-                "stableReady": False,
-                "redaction": {"status": "fail", "findingCount": 1, "findings": []},
-            },
+            semantic_redaction_failure_summary,
         )
 
         redaction_report = stable_readiness_release_redaction_report(settings, summary)

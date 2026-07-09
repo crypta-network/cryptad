@@ -1052,11 +1052,12 @@ def recursive_redaction_failure(value: Any) -> bool:
             return True
         if isinstance(findings, list) and bool(findings):
             return True
-        finding_count, malformed_finding_count = parse_release_blocker_count(
-            value.get("findingCount", 0)
-        )
-        if malformed_finding_count or finding_count > 0:
-            return True
+        for count_key in ("findingCount", "criticalFindingCount"):
+            finding_count, malformed_finding_count = parse_release_blocker_count(
+                value.get(count_key, 0)
+            )
+            if malformed_finding_count or finding_count > 0:
+                return True
         status = value.get("status")
         if isinstance(status, str) and normalize_status(status) == "fail":
             return True
@@ -2339,6 +2340,40 @@ def stable_summary_domain_errors(summary: dict[str, Any]) -> list[str]:
     return errors
 
 
+def stable_summary_redaction_domain_errors(summary: dict[str, Any]) -> list[str]:
+    domains = summary.get("domains")
+    if not isinstance(domains, list):
+        return []
+    errors: list[str] = []
+    for index, domain in enumerate(domains):
+        if not isinstance(domain, dict):
+            continue
+        domain_id = str(domain.get("id") or f"domains[{index}]")
+        evidence_ids = domain.get("evidenceIds")
+        blocker_rows = domain.get("blockers")
+        blocker_evidence_ids = [
+            str(blocker.get("evidenceId", ""))
+            for blocker in blocker_rows
+            if isinstance(blocker, dict)
+        ] if isinstance(blocker_rows, list) else []
+        redaction_domain = (
+            domain_id == "redaction"
+            or (
+                isinstance(evidence_ids, list)
+                and "stable-1.0.redaction" in [str(evidence_id) for evidence_id in evidence_ids]
+            )
+            or "stable-1.0.redaction" in blocker_evidence_ids
+        )
+        if not redaction_domain:
+            continue
+        status = normalize_status(domain.get("status", "missing"))
+        if status != "pass":
+            errors.append(f"domain {domain_id} status is {status}")
+        if isinstance(blocker_rows, list) and blocker_rows:
+            errors.append(f"domain {domain_id} contains {len(blocker_rows)} blocker(s)")
+    return errors
+
+
 def ecosystem_matrix_issues(matrix: dict[str, Any] | None) -> list[Issue]:
     if not isinstance(matrix, dict):
         return []
@@ -2420,6 +2455,35 @@ def ecosystem_matrix_issues(matrix: dict[str, Any] | None) -> list[Issue]:
     return issues
 
 
+NETWORK_SCALE_REDACTION_FLAGS = (
+    "rawFetchedContentExcluded",
+    "privateInsertUrisExcluded",
+    "tokensExcluded",
+    "absolutePathsExcluded",
+    "queueHtmlExcluded",
+)
+
+
+def network_scale_redaction_failed(redaction: Any) -> bool:
+    if not isinstance(redaction, dict):
+        return True
+    redaction_status = normalize_status(redaction.get("status"))
+    findings = redaction.get("findings")
+    findings_malformed = "findings" in redaction and not isinstance(findings, list)
+    finding_count, finding_count_malformed = parse_release_blocker_count(
+        redaction.get("findingCount", 0)
+    )
+    return (
+        redaction_status != "pass"
+        or findings_malformed
+        or bool(findings)
+        or finding_count_malformed
+        or finding_count > 0
+        or any(redaction.get(key) is not True for key in NETWORK_SCALE_REDACTION_FLAGS)
+        or recursive_redaction_failure(redaction)
+    )
+
+
 def network_scale_issues(summary: dict[str, Any] | None, mode: str) -> list[Issue]:
     if not isinstance(summary, dict):
         return []
@@ -2440,13 +2504,18 @@ def network_scale_issues(summary: dict[str, Any] | None, mode: str) -> list[Issu
             )
         )
     findings = []
-    for section, keys in (
-        ("redaction", ("rawFetchedContentExcluded", "privateInsertUrisExcluded", "tokensExcluded", "absolutePathsExcluded", "queueHtmlExcluded")),
-        ("budgets", ("globalFetchBudgetEnforced", "perAppFetchBudgetEnforced", "concurrencyLeasesReleased")),
+    if network_scale_redaction_failed(summary.get("redaction")):
+        findings.append("redaction")
+    budget = summary.get("budgets")
+    if not isinstance(budget, dict) or any(
+        budget.get(key) is not True
+        for key in (
+            "globalFetchBudgetEnforced",
+            "perAppFetchBudgetEnforced",
+            "concurrencyLeasesReleased",
+        )
     ):
-        value = summary.get(section)
-        if not isinstance(value, dict) or any(value.get(key) is not True for key in keys):
-            findings.append(section)
+        findings.append("budgets")
     if findings:
         issues.append(
             Issue(
@@ -3483,6 +3552,10 @@ def stable_readiness_issues(
     redaction_finding_count, malformed_redaction_finding_count = parse_release_blocker_count(
         redaction.get("findingCount", len(redaction_findings))
     )
+    (
+        redaction_critical_finding_count,
+        malformed_redaction_critical_finding_count,
+    ) = parse_release_blocker_count(redaction.get("criticalFindingCount", 0))
     redaction_payload_unsafe = recursive_redaction_failure(redaction)
     redaction_payload_unaccounted = redaction_payload_unsafe and not (
         normalize_status(redaction.get("status", "missing")) != "pass"
@@ -3490,6 +3563,8 @@ def stable_readiness_issues(
         or redaction_findings
         or malformed_redaction_finding_count
         or redaction_finding_count > 0
+        or malformed_redaction_critical_finding_count
+        or redaction_critical_finding_count > 0
     )
     if (
         normalize_status(redaction.get("status", "missing")) != "pass"
@@ -3497,6 +3572,8 @@ def stable_readiness_issues(
         or redaction_findings
         or malformed_redaction_finding_count
         or redaction_finding_count > 0
+        or malformed_redaction_critical_finding_count
+        or redaction_critical_finding_count > 0
         or redaction_payload_unsafe
     ):
         details: list[str] = []
@@ -3506,6 +3583,10 @@ def stable_readiness_issues(
             details.append("findingCount is not a non-negative integer")
         elif redaction_finding_count > 0:
             details.append(f"findingCount is {redaction_finding_count}")
+        if malformed_redaction_critical_finding_count:
+            details.append("criticalFindingCount is not a non-negative integer")
+        elif redaction_critical_finding_count > 0:
+            details.append(f"criticalFindingCount is {redaction_critical_finding_count}")
         if redaction_payload_unaccounted:
             details.append("redaction payload contains unsafe raw or unwaivable findings")
         issues.append(
@@ -3557,9 +3638,29 @@ def stable_readiness_issues(
         if rows
         and any(normalize_status(row.get("status", "missing")) in {"fail", "missing", "skip"} for row in rows)
     ]
+    redaction_evidence_rows = stable_evidence_rows.get("stable-1.0.redaction", [])
+    non_pass_redaction_evidence = (
+        ["stable-1.0.redaction"]
+        if redaction_evidence_rows
+        and any(
+            normalize_status(row.get("status", "missing")) != "pass"
+            for row in redaction_evidence_rows
+        )
+        else []
+    )
+    failed_redaction_evidence = [
+        evidence_id for evidence_id in failed_evidence if evidence_id == "stable-1.0.redaction"
+    ]
+    failed_redaction_evidence = sorted(
+        dict.fromkeys([*failed_redaction_evidence, *non_pass_redaction_evidence])
+    )
+    failed_evidence = [
+        evidence_id for evidence_id in failed_evidence if evidence_id not in failed_redaction_evidence
+    ]
     warning_evidence = [
         evidence_id
         for evidence_id, rows in stable_evidence_rows.items()
+        if evidence_id != "stable-1.0.redaction"
         if rows
         and any(normalize_status(row.get("status", "missing")) == "warn" for row in rows)
     ]
@@ -3610,6 +3711,26 @@ def stable_readiness_issues(
             )
         )
     domain_errors = stable_summary_domain_errors(summary)
+    redaction_domain_errors = stable_summary_redaction_domain_errors(summary)
+    domain_errors = [error for error in domain_errors if error not in redaction_domain_errors]
+    if redaction_domain_errors:
+        issues.append(
+            Issue(
+                id="stable-1.0.readiness-summary.redaction-domain-failed",
+                evidence_id="stable-1.0.redaction",
+                domain_id=domain_id,
+                severity="critical",
+                title="Stable 1.0 readiness redaction domain is not passing",
+                summary=(
+                    "Stable readiness redaction domain contains non-waivable blockers: "
+                    + "; ".join(redaction_domain_errors)
+                    + "."
+                ),
+                source="stable-readiness-summary",
+                waivable=False,
+                category="redaction",
+            )
+        )
     if domain_errors:
         issues.append(
             Issue(
@@ -3626,6 +3747,24 @@ def stable_readiness_issues(
                 source="stable-readiness-summary",
                 waivable=not required,
                 category="stable-readiness",
+            )
+        )
+    if failed_redaction_evidence:
+        issues.append(
+            Issue(
+                id="stable-1.0.readiness-summary.redaction-evidence-failed",
+                evidence_id="stable-1.0.redaction",
+                domain_id=domain_id,
+                severity="critical",
+                title="Stable 1.0 readiness redaction evidence is not passing",
+                summary=(
+                    "Stable readiness redaction evidence is non-waivable and not passing: "
+                    + ", ".join(failed_redaction_evidence)
+                    + "."
+                ),
+                source="stable-readiness-summary",
+                waivable=False,
+                category="redaction",
             )
         )
     if failed_evidence:
@@ -4358,6 +4497,42 @@ def run_self_test(quiet: bool = False) -> None:
         ):
             raise AssertionError(
                 f"required malformed Stable readiness summary did not block: {invalid_stable_issues}"
+            )
+
+    passing_network_scale_summary = {
+        "status": "success",
+        "redaction": {
+            "status": "pass",
+            "rawFetchedContentExcluded": True,
+            "privateInsertUrisExcluded": True,
+            "tokensExcluded": True,
+            "absolutePathsExcluded": True,
+            "queueHtmlExcluded": True,
+        },
+        "budgets": {
+            "globalFetchBudgetEnforced": True,
+            "perAppFetchBudgetEnforced": True,
+            "concurrencyLeasesReleased": True,
+        },
+    }
+    for case_name, redaction_patch in (
+        ("failed status", {"status": "fail"}),
+        ("declared findings", {"findings": [{"kind": "network-scale-self-test"}]}),
+        ("finding count", {"findingCount": 1}),
+    ):
+        failed_network_scale_summary = copy.deepcopy(passing_network_scale_summary)
+        failed_network_scale_summary["redaction"].update(redaction_patch)
+        redaction_issues = [
+            issue
+            for issue in network_scale_issues(failed_network_scale_summary, "production-beta")
+            if issue.id == "network-scale-soak.redaction-or-budget"
+            and issue.evidence_id == "network-scale.redaction"
+            and issue.severity == "critical"
+            and not issue.waivable
+        ]
+        if not redaction_issues:
+            raise AssertionError(
+                f"network-scale redaction {case_name} did not create a non-waivable blocker"
             )
 
     fixture_expectations = {
@@ -5210,6 +5385,149 @@ def assert_required_stable_readiness_release_id_matches_dashboard_candidate(root
     if not isinstance(matching_stable, dict) or matching_stable.get("releaseIdMatchesDashboard") is not True:
         raise AssertionError(f"matching Stable readiness binding was not reported: {matching_dashboard}")
 
+    required_redaction_domain_warn_inputs = json.loads(json.dumps(inputs))
+    required_redaction_domain_warn_inputs["stableReadinessSummary"]["domains"].append(
+        {
+            "id": "redaction",
+            "status": "warn",
+            "summary": "Synthetic Stable redaction warning domain.",
+            "evidenceIds": ["stable-1.0.redaction"],
+            "blockers": [],
+            "warnings": [
+                {
+                    "id": "stable-redaction-domain-warning",
+                    "evidenceId": "stable-1.0.redaction",
+                    "summary": "Synthetic Stable redaction warning.",
+                }
+            ],
+            "allowedLimitations": [],
+        }
+    )
+    required_redaction_domain_warn_dashboard = build_dashboard(
+        required_redaction_domain_warn_inputs,
+        {},
+        [FIXTURE_DIR / "go-no-go-pass.json"],
+        None,
+        Path(__file__).resolve().parents[2],
+        root / "stable-readiness-required-redaction-domain-warn",
+        "production-beta",
+        release_id,
+        generated_at,
+        now,
+        require_stable_readiness=True,
+    )
+    if required_redaction_domain_warn_dashboard.get("decision") != "no-go":
+        raise AssertionError(
+            "required Stable redaction domain warning did not block: "
+            f"{required_redaction_domain_warn_dashboard}"
+        )
+    required_redaction_domain_warn_blockers = [
+        blocker
+        for blocker in required_redaction_domain_warn_dashboard.get("blockers", [])
+        if isinstance(blocker, dict)
+        and blocker.get("id") == "stable-1.0.readiness-summary.redaction-domain-failed"
+        and blocker.get("evidenceId") == "stable-1.0.redaction"
+        and blocker.get("severity") == "critical"
+        and blocker.get("waivable") is False
+    ]
+    if not required_redaction_domain_warn_blockers:
+        raise AssertionError(
+            "required Stable redaction warning domain was not critical/non-waivable: "
+            f"{required_redaction_domain_warn_dashboard}"
+        )
+
+    advisory_redaction_evidence_inputs = json.loads(json.dumps(inputs))
+    for entry in advisory_redaction_evidence_inputs["stableReadinessSummary"]["evidence"]:
+        if isinstance(entry, dict) and entry.get("id") == "stable-1.0.redaction":
+            entry["status"] = "fail"
+            entry["summary"] = "Synthetic failed Stable redaction evidence."
+            break
+    else:
+        raise AssertionError("synthetic Stable summary is missing stable-1.0.redaction evidence")
+    advisory_redaction_evidence_dashboard = build_dashboard(
+        advisory_redaction_evidence_inputs,
+        {},
+        [FIXTURE_DIR / "go-no-go-pass.json"],
+        None,
+        Path(__file__).resolve().parents[2],
+        root / "stable-readiness-advisory-redaction-evidence",
+        "production-beta",
+        release_id,
+        generated_at,
+        now,
+        require_stable_readiness=False,
+    )
+    if advisory_redaction_evidence_dashboard.get("decision") != "no-go":
+        raise AssertionError(
+            "advisory Stable redaction evidence failure did not block: "
+            f"{advisory_redaction_evidence_dashboard}"
+        )
+    advisory_redaction_evidence_blockers = [
+        blocker
+        for blocker in advisory_redaction_evidence_dashboard.get("blockers", [])
+        if isinstance(blocker, dict)
+        and blocker.get("id") == "stable-1.0.readiness-summary.redaction-evidence-failed"
+        and blocker.get("evidenceId") == "stable-1.0.redaction"
+        and blocker.get("severity") == "critical"
+        and blocker.get("waivable") is False
+    ]
+    if not advisory_redaction_evidence_blockers:
+        raise AssertionError(
+            "advisory Stable redaction evidence failure was not critical/non-waivable: "
+            f"{advisory_redaction_evidence_dashboard}"
+        )
+
+    advisory_redaction_domain_inputs = json.loads(json.dumps(inputs))
+    advisory_redaction_domain_inputs["stableReadinessSummary"]["domains"].append(
+        {
+            "id": "redaction",
+            "status": "fail",
+            "summary": "Synthetic failed Stable redaction domain.",
+            "evidenceIds": ["stable-1.0.redaction"],
+            "blockers": [
+                {
+                    "id": "stable-redaction-domain-blocker",
+                    "evidenceId": "stable-1.0.redaction",
+                    "summary": "Synthetic Stable redaction domain blocker.",
+                }
+            ],
+            "warnings": [],
+            "allowedLimitations": [],
+        }
+    )
+    advisory_redaction_domain_dashboard = build_dashboard(
+        advisory_redaction_domain_inputs,
+        {},
+        [FIXTURE_DIR / "go-no-go-pass.json"],
+        None,
+        Path(__file__).resolve().parents[2],
+        root / "stable-readiness-advisory-redaction-domain",
+        "production-beta",
+        release_id,
+        generated_at,
+        now,
+        require_stable_readiness=False,
+    )
+    if advisory_redaction_domain_dashboard.get("decision") != "no-go":
+        raise AssertionError(
+            "advisory Stable redaction domain failure did not block: "
+            f"{advisory_redaction_domain_dashboard}"
+        )
+    advisory_redaction_domain_blockers = [
+        blocker
+        for blocker in advisory_redaction_domain_dashboard.get("blockers", [])
+        if isinstance(blocker, dict)
+        and blocker.get("id") == "stable-1.0.readiness-summary.redaction-domain-failed"
+        and blocker.get("evidenceId") == "stable-1.0.redaction"
+        and blocker.get("severity") == "critical"
+        and blocker.get("waivable") is False
+    ]
+    if not advisory_redaction_domain_blockers:
+        raise AssertionError(
+            "advisory Stable redaction domain failure was not critical/non-waivable: "
+            f"{advisory_redaction_domain_dashboard}"
+        )
+
     missing_domains_inputs = json.loads(json.dumps(inputs))
     missing_domains_inputs["stableReadinessSummary"].pop("domains", None)
     missing_domains_dashboard = build_dashboard(
@@ -5828,6 +6146,50 @@ def assert_required_stable_readiness_release_id_matches_dashboard_candidate(root
             "Stable top-level redaction findingCount was not reported as a critical blocker: "
             f"{redaction_count_dashboard}"
         )
+
+    for critical_count_value, critical_count_suffix in (
+        (1, "critical-count"),
+        (0.5, "fractional-critical-count"),
+    ):
+        critical_redaction_count_inputs = json.loads(json.dumps(inputs))
+        critical_redaction_count_inputs["stableReadinessSummary"]["redaction"] = {
+            "status": "pass",
+            "findings": [],
+            "findingCount": 0,
+            "criticalFindingCount": critical_count_value,
+        }
+        critical_redaction_count_dashboard = build_dashboard(
+            critical_redaction_count_inputs,
+            {},
+            [FIXTURE_DIR / "go-no-go-pass.json"],
+            None,
+            Path(__file__).resolve().parents[2],
+            root / f"stable-readiness-redaction-{critical_count_suffix}",
+            "production-beta",
+            release_id,
+            generated_at,
+            now,
+            require_stable_readiness=True,
+        )
+        if critical_redaction_count_dashboard.get("decision") != "no-go":
+            raise AssertionError(
+                "required Stable readiness with top-level redaction criticalFindingCount "
+                f"{critical_count_value!r} did not block: {critical_redaction_count_dashboard}"
+            )
+        critical_redaction_count_blockers = [
+            blocker
+            for blocker in critical_redaction_count_dashboard.get("blockers", [])
+            if isinstance(blocker, dict)
+            and blocker.get("id") == "stable-1.0.readiness-summary.redaction"
+            and blocker.get("evidenceId") == "stable-1.0.redaction"
+            and blocker.get("severity") == "critical"
+            and blocker.get("waivable") is False
+        ]
+        if not critical_redaction_count_blockers:
+            raise AssertionError(
+                "Stable top-level redaction criticalFindingCount was not reported as a "
+                f"non-waivable critical blocker: {critical_redaction_count_dashboard}"
+            )
 
     redaction_fractional_count_inputs = json.loads(json.dumps(inputs))
     redaction_fractional_count_inputs["stableReadinessSummary"]["redaction"] = {

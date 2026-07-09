@@ -247,7 +247,9 @@ The Stable gate fails on any unresolved limitation in these classes:
 
 Release certification accepts `--stable-readiness-summary` and displays a Stable 1.0 section. Add
 `--require-stable-readiness` when certification is being used as a Stable promotion gate. Without
-that flag, the Stable section is advisory.
+that flag, the Stable section is advisory. Required release-certification runs must also pass
+`--metadata candidateReleaseId=<stable-summary-releaseId>`; otherwise certification fails closed
+because the Stable summary is not bound to the candidate being promoted.
 
 The production beta go/no-go dashboard accepts `--stable-readiness-summary` and
 `--require-stable-readiness`. Without the required flag, it displays Stable readiness without

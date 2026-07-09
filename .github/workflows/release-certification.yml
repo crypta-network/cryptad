@@ -47,6 +47,11 @@ on:
         required: false
         default: ''
         type: string
+      candidate-release-id:
+        description: Stable promotion candidate releaseId; required when Stable readiness is required.
+        required: false
+        default: ''
+        type: string
       require-stable-readiness:
         description: Fail certification when Stable 1.0 readiness is missing or failing.
         required: true
@@ -74,6 +79,7 @@ jobs:
       HISTORY_LABEL: ${{ github.event.inputs['history-label'] || '' }}
       WAIVER_FILE_PATH: ${{ github.event.inputs['waiver-file-path'] || '' }}
       STABLE_READINESS_SUMMARY_PATH: ${{ github.event.inputs['stable-readiness-summary-path'] || '' }}
+      CANDIDATE_RELEASE_ID: ${{ github.event.inputs['candidate-release-id'] || '' }}
       REQUIRE_STABLE_READINESS: ${{ github.event.inputs['require-stable-readiness'] || 'false' }}
 
     steps:
@@ -171,6 +177,13 @@ jobs:
           fi
           if [[ -n "$STABLE_READINESS_SUMMARY_PATH" ]]; then
             cert_args+=(--stable-readiness-summary "$STABLE_READINESS_SUMMARY_PATH")
+          fi
+          if [[ "$REQUIRE_STABLE_READINESS" == "true" && -z "$CANDIDATE_RELEASE_ID" ]]; then
+            echo "candidate-release-id is required when require-stable-readiness is true." >&2
+            exit 2
+          fi
+          if [[ -n "$CANDIDATE_RELEASE_ID" ]]; then
+            cert_args+=(--metadata "candidateReleaseId=$CANDIDATE_RELEASE_ID")
           fi
           if [[ "$REQUIRE_STABLE_READINESS" == "true" ]]; then
             cert_args+=(--require-stable-readiness)

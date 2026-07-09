@@ -106,9 +106,10 @@ reports/stable-1.0-readiness/stable-1.0-blockers.json
 
 In advisory mode these artifacts do not change production beta go/no-go. With
 `--require-stable-readiness`, missing or failing Stable readiness marks the summary not
-promotion-ready, removes planned `distArchive` and `checksums` references, and reruns the
-go/no-go dashboard with the Stable section required so the dashboard does not advertise an archive
-that was intentionally skipped. See [stable-1.0-readiness-gate.md](stable-1.0-readiness-gate.md).
+promotion-ready, skips archive creation, leaves `distArchive` and `checksums` references absent,
+and reruns the go/no-go dashboard with the Stable section required so the dashboard does not
+advertise an archive that was intentionally skipped. See
+[stable-1.0-readiness-gate.md](stable-1.0-readiness-gate.md).
 
 The wrapper writes Stable-specific soak extracts for the readiness tool:
 
