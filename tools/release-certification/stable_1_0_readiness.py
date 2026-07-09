@@ -349,7 +349,7 @@ def read_json(path: Path | None) -> dict[str, Any] | None:
     try:
         with path.open("r", encoding="utf-8") as handle:
             value = json.load(handle)
-    except (OSError, json.JSONDecodeError):
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         return None
     return value if isinstance(value, dict) else None
 
@@ -4748,9 +4748,11 @@ def run_self_test() -> None:
         "boolean-known-limitations-schema-version",
         "malformed-known-limitation-entry",
         "missing-policy",
+        "invalid-utf8-policy",
         "boolean-policy-schema-version",
         "redaction-unsafe",
         "invalid-waiver",
+        "invalid-utf8-waiver",
         "boolean-waiver-schema-version",
         "incomplete-waiver-metadata",
         "missing-waiver-required-fields",
@@ -7172,6 +7174,23 @@ def run_self_test() -> None:
 
         run_case(root, "missing-policy", missing_policy, "not-ready", expect_blocker="stable-1.0.readiness-gate")
 
+        def invalid_utf8_policy(
+            _inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            paths: dict[str, Path],
+        ) -> None:
+            policy_path = paths["stableKnownLimitations"].parent / "invalid-utf8-policy.json"
+            policy_path.write_bytes(b"\xff\xfeinvalid-policy")
+            paths["policy"] = policy_path
+
+        run_case(
+            root,
+            "invalid-utf8-policy",
+            invalid_utf8_policy,
+            "not-ready",
+            expect_blocker="stable-1.0.readiness-gate",
+        )
+
         def boolean_policy_schema_version(
             _inputs: dict[str, Any],
             _limitations: dict[str, Any],
@@ -7217,6 +7236,23 @@ def run_self_test() -> None:
             return waiver_path
 
         run_case(root, "invalid-waiver", invalid_waiver, "not-ready", expect_blocker="stable-1.0.waiver-validation")
+
+        def invalid_utf8_waiver(
+            _inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            paths: dict[str, Path],
+        ) -> Path:
+            waiver_path = paths["stableKnownLimitations"].parent / "invalid-utf8-waivers.json"
+            waiver_path.write_bytes(b"\xff\xfeinvalid-waiver")
+            return waiver_path
+
+        run_case(
+            root,
+            "invalid-utf8-waiver",
+            invalid_utf8_waiver,
+            "not-ready",
+            expect_blocker="stable-1.0.waiver-validation",
+        )
 
         def boolean_waiver_schema_version(
             _inputs: dict[str, Any],

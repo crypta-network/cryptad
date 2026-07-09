@@ -674,6 +674,11 @@
       "category": "negative"
     },
     {
+      "id": "invalid-utf8-policy",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
       "id": "boolean-policy-schema-version",
       "expectedDecision": "not-ready",
       "category": "negative"
@@ -685,6 +690,11 @@
     },
     {
       "id": "invalid-waiver",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "invalid-utf8-waiver",
       "expectedDecision": "not-ready",
       "category": "negative"
     },
