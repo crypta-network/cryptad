@@ -1040,31 +1040,38 @@ def unique_non_empty_strings(values: Any) -> list[str]:
     return result
 
 
-def redaction_signal_has_unwaivable_findings(value: Any) -> bool:
+def redaction_signal_has_unwaivable_findings(
+    value: Any,
+    *,
+    include_summary_fields: bool = True,
+) -> bool:
     if isinstance(value, dict):
         if "redaction" in value and redaction_signal_has_unwaivable_findings(value["redaction"]):
             return True
-        redaction_findings = value.get("redactionFindings")
-        if "redactionFindings" in value and not isinstance(redaction_findings, list):
-            return True
-        if isinstance(redaction_findings, list) and bool(redaction_findings):
-            return True
-        findings = value.get("findings")
-        if "findings" in value and not isinstance(findings, list):
-            return True
-        if isinstance(findings, list) and bool(findings):
-            return True
-        for count_key in ("findingCount", "criticalFindingCount"):
-            if count_key in value:
-                finding_count, malformed_finding_count = parse_stable_readiness_count(
-                    value.get(count_key)
-                )
-                if malformed_finding_count or finding_count > 0:
-                    return True
-        status = value.get("status")
-        if normalize_evidence_status(str(status)) == "fail":
-            return True
+        if include_summary_fields:
+            redaction_findings = value.get("redactionFindings")
+            if "redactionFindings" in value and not isinstance(redaction_findings, list):
+                return True
+            if isinstance(redaction_findings, list) and bool(redaction_findings):
+                return True
+            findings = value.get("findings")
+            if "findings" in value and not isinstance(findings, list):
+                return True
+            if isinstance(findings, list) and bool(findings):
+                return True
+            for count_key in ("findingCount", "criticalFindingCount"):
+                if count_key in value:
+                    finding_count, malformed_finding_count = parse_stable_readiness_count(
+                        value.get(count_key)
+                    )
+                    if malformed_finding_count or finding_count > 0:
+                        return True
+            status = value.get("status")
+            if normalize_evidence_status(str(status)) == "fail":
+                return True
         for key, child in value.items():
+            if key == "redaction":
+                continue
             lowered = str(key).lower()
             if (lowered.endswith("excluded") or lowered.endswith("excludedfromevidence")) and child is False:
                 return True
@@ -1074,10 +1081,19 @@ def redaction_signal_has_unwaivable_findings(value: Any) -> bool:
                 and child is True
             ):
                 return True
-            if redaction_signal_has_unwaivable_findings(child):
+            if redaction_signal_has_unwaivable_findings(
+                child,
+                include_summary_fields=include_summary_fields,
+            ):
                 return True
     elif isinstance(value, list):
-        return any(redaction_signal_has_unwaivable_findings(child) for child in value)
+        return any(
+            redaction_signal_has_unwaivable_findings(
+                child,
+                include_summary_fields=include_summary_fields,
+            )
+            for child in value
+        )
     return False
 
 
@@ -1087,7 +1103,7 @@ def has_unwaivable_redaction_findings(_evidence_id: str, details: dict[str, Any]
         return True
     if isinstance(redaction_findings, list) and bool(redaction_findings):
         return True
-    return redaction_signal_has_unwaivable_findings(details.get("redaction"))
+    return redaction_signal_has_unwaivable_findings(details, include_summary_fields=False)
 
 
 def evidence_item_has_unwaivable_redaction_findings(item: EvidenceItem) -> bool:
@@ -15584,6 +15600,72 @@ def run_self_test(repo_root: Path) -> None:
         assert stable_nested_row.get("waiverIds") == [], stable_nested_row
         assert nested_redaction_evidence_id in stable_nested_row["details"]["unwaivableRedactionEvidenceIds"], stable_nested_row
         assert "matrix.stable-readiness.redaction-failed" in stable_nested_row["issueIds"], stable_nested_row
+
+        stable_direct_detail_redaction_summary = (
+            workspace / "build/stable-readiness-direct-detail-redaction.json"
+        )
+        direct_detail_redaction_evidence_id = "stable-1.0.production-beta-state"
+        stable_direct_detail_redaction_value = stable_self_test_summary()
+        for entry in stable_direct_detail_redaction_value["evidence"]:
+            if isinstance(entry, dict) and entry.get("id") == direct_detail_redaction_evidence_id:
+                entry["details"] = {"rawBackupPayloadsExcludedFromEvidence": False}
+                break
+        else:
+            raise AssertionError(
+                f"Stable self-test summary is missing {direct_detail_redaction_evidence_id}"
+            )
+        write_json(stable_direct_detail_redaction_summary, stable_direct_detail_redaction_value)
+        stable_direct_detail_redaction_items = stable_readiness_evidence(
+            stable_direct_detail_redaction_summary,
+            True,
+            workspace,
+            out_dir,
+        )
+        stable_direct_detail_redaction_statuses = {
+            item.id: item.status for item in stable_direct_detail_redaction_items
+        }
+        assert stable_direct_detail_redaction_statuses[direct_detail_redaction_evidence_id] == "fail", (
+            stable_direct_detail_redaction_statuses
+        )
+        assert stable_direct_detail_redaction_statuses["stable-1.0.redaction"] == "fail", (
+            stable_direct_detail_redaction_statuses
+        )
+        stable_direct_detail_redaction_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/stable-direct-detail-redaction-cert").resolve(),
+            stable_readiness_summary=stable_direct_detail_redaction_summary,
+            stable_readiness_required=True,
+            waivers={
+                "stable-1-0-readiness": "Attempted row waiver for direct Stable detail redaction failure.",
+                "matrix.stable-readiness.redaction-failed": "Attempted matrix issue waiver for direct Stable detail redaction failure.",
+            },
+        )
+        (
+            stable_direct_detail_redaction_cert,
+            stable_direct_detail_redaction_exit_code,
+        ) = run(stable_direct_detail_redaction_settings)
+        assert stable_direct_detail_redaction_exit_code == 1, (
+            stable_direct_detail_redaction_cert
+        )
+        stable_direct_detail_redaction_row = matrix_row_by_id(
+            stable_direct_detail_redaction_settings.out_dir,
+            "stable-1-0-readiness",
+        )
+        assert stable_direct_detail_redaction_row["status"] == "fail", (
+            stable_direct_detail_redaction_row
+        )
+        assert stable_direct_detail_redaction_row["releaseBlocker"] is True, (
+            stable_direct_detail_redaction_row
+        )
+        assert stable_direct_detail_redaction_row.get("waiverIds") == [], (
+            stable_direct_detail_redaction_row
+        )
+        assert direct_detail_redaction_evidence_id in stable_direct_detail_redaction_row["details"][
+            "unwaivableRedactionEvidenceIds"
+        ], stable_direct_detail_redaction_row
+        assert "matrix.stable-readiness.redaction-failed" in stable_direct_detail_redaction_row[
+            "issueIds"
+        ], stable_direct_detail_redaction_row
 
         stable_missing_schema_summary = workspace / "build/stable-readiness-missing-schema-version.json"
         write_json(

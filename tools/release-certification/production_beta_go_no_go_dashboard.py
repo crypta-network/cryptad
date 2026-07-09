@@ -1037,31 +1037,36 @@ def entry_has_redaction_findings(entry: dict[str, Any] | None) -> bool:
     findings = details.get("redactionFindings")
     if "redactionFindings" in details and not isinstance(findings, list):
         return True
-    return bool(findings) or recursive_redaction_failure(details.get("redaction"))
+    return bool(findings) or recursive_redaction_failure(details, include_summary_fields=False)
 
 
-def recursive_redaction_failure(value: Any) -> bool:
+def recursive_redaction_failure(value: Any, *, include_summary_fields: bool = True) -> bool:
     if isinstance(value, dict):
-        redaction_findings = value.get("redactionFindings")
-        if "redactionFindings" in value and not isinstance(redaction_findings, list):
+        if "redaction" in value and recursive_redaction_failure(value["redaction"]):
             return True
-        if isinstance(redaction_findings, list) and bool(redaction_findings):
-            return True
-        findings = value.get("findings")
-        if "findings" in value and not isinstance(findings, list):
-            return True
-        if isinstance(findings, list) and bool(findings):
-            return True
-        for count_key in ("findingCount", "criticalFindingCount"):
-            finding_count, malformed_finding_count = parse_release_blocker_count(
-                value.get(count_key, 0)
-            )
-            if malformed_finding_count or finding_count > 0:
+        if include_summary_fields:
+            redaction_findings = value.get("redactionFindings")
+            if "redactionFindings" in value and not isinstance(redaction_findings, list):
                 return True
-        status = value.get("status")
-        if isinstance(status, str) and normalize_status(status) == "fail":
-            return True
+            if isinstance(redaction_findings, list) and bool(redaction_findings):
+                return True
+            findings = value.get("findings")
+            if "findings" in value and not isinstance(findings, list):
+                return True
+            if isinstance(findings, list) and bool(findings):
+                return True
+            for count_key in ("findingCount", "criticalFindingCount"):
+                finding_count, malformed_finding_count = parse_release_blocker_count(
+                    value.get(count_key, 0)
+                )
+                if malformed_finding_count or finding_count > 0:
+                    return True
+            status = value.get("status")
+            if isinstance(status, str) and normalize_status(status) == "fail":
+                return True
         for key, child in value.items():
+            if key == "redaction":
+                continue
             lowered = str(key).lower()
             if (
                 lowered.startswith("raw")
@@ -1071,10 +1076,13 @@ def recursive_redaction_failure(value: Any) -> bool:
                 return True
             if (lowered.endswith("excluded") or lowered.endswith("excludedfromevidence")) and child is False:
                 return True
-            if recursive_redaction_failure(child):
+            if recursive_redaction_failure(child, include_summary_fields=include_summary_fields):
                 return True
     elif isinstance(value, list):
-        return any(recursive_redaction_failure(child) for child in value)
+        return any(
+            recursive_redaction_failure(child, include_summary_fields=include_summary_fields)
+            for child in value
+        )
     return False
 
 
@@ -6030,6 +6038,45 @@ def assert_required_stable_readiness_release_id_matches_dashboard_candidate(root
         raise AssertionError(
             "Stable raw-included evidence-row redaction was not reported as a critical blocker: "
             f"{raw_included_redaction_dashboard}"
+        )
+
+    direct_detail_redaction_inputs = json.loads(json.dumps(inputs))
+    for entry in direct_detail_redaction_inputs["stableReadinessSummary"]["evidence"]:
+        if isinstance(entry, dict) and entry.get("id") == "stable-1.0.production-beta-state":
+            entry["details"] = {"rawBackupPayloadsExcludedFromEvidence": False}
+            break
+    else:
+        raise AssertionError("synthetic Stable summary is missing stable-1.0.production-beta-state evidence")
+    direct_detail_redaction_dashboard = build_dashboard(
+        direct_detail_redaction_inputs,
+        {},
+        [FIXTURE_DIR / "go-no-go-pass.json"],
+        None,
+        Path(__file__).resolve().parents[2],
+        root / "stable-readiness-evidence-direct-detail-redaction",
+        "production-beta",
+        release_id,
+        generated_at,
+        now,
+        require_stable_readiness=True,
+    )
+    if direct_detail_redaction_dashboard.get("decision") != "no-go":
+        raise AssertionError(
+            "required Stable readiness with direct detail redaction proof did not block: "
+            f"{direct_detail_redaction_dashboard}"
+        )
+    direct_detail_redaction_blockers = [
+        blocker
+        for blocker in direct_detail_redaction_dashboard.get("blockers", [])
+        if isinstance(blocker, dict)
+        and blocker.get("id") == "stable-1.0.readiness-summary.evidence-redaction"
+        and blocker.get("evidenceId") == "stable-1.0.redaction"
+        and blocker.get("severity") == "critical"
+    ]
+    if not direct_detail_redaction_blockers:
+        raise AssertionError(
+            "Stable direct detail redaction proof was not reported as a critical blocker: "
+            f"{direct_detail_redaction_dashboard}"
         )
 
     top_level_raw_redaction_inputs = json.loads(json.dumps(inputs))
