@@ -1070,7 +1070,12 @@ def recursive_redaction_failure(value: Any, *, include_summary_fields: bool = Tr
             lowered = str(key).lower()
             if (
                 lowered.startswith("raw")
-                and (lowered.endswith("included") or lowered.endswith("persisted") or lowered.endswith("inevidence"))
+                and (
+                    lowered.endswith("included")
+                    or lowered.endswith("persisted")
+                    or lowered.endswith("stored")
+                    or lowered.endswith("inevidence")
+                )
                 and child is True
             ):
                 return True
@@ -5995,49 +6000,49 @@ def assert_required_stable_readiness_release_id_matches_dashboard_candidate(root
             f"{nested_redaction_dashboard}"
         )
 
-    raw_included_redaction_inputs = json.loads(json.dumps(inputs))
-    for entry in raw_included_redaction_inputs["stableReadinessSummary"]["evidence"]:
+    raw_stored_redaction_inputs = json.loads(json.dumps(inputs))
+    for entry in raw_stored_redaction_inputs["stableReadinessSummary"]["evidence"]:
         if isinstance(entry, dict) and entry.get("id") == "stable-1.0.production-beta-state":
             entry["details"] = {
                 "redaction": {
                     "status": "pass",
                     "findings": [],
-                    "rawFetchedContentIncluded": True,
+                    "rawCatalogStored": True,
                 }
             }
             break
     else:
         raise AssertionError("synthetic Stable summary is missing stable-1.0.production-beta-state evidence")
-    raw_included_redaction_dashboard = build_dashboard(
-        raw_included_redaction_inputs,
+    raw_stored_redaction_dashboard = build_dashboard(
+        raw_stored_redaction_inputs,
         {},
         [FIXTURE_DIR / "go-no-go-pass.json"],
         None,
         Path(__file__).resolve().parents[2],
-        root / "stable-readiness-evidence-raw-included-redaction",
+        root / "stable-readiness-evidence-raw-stored-redaction",
         "production-beta",
         release_id,
         generated_at,
         now,
         require_stable_readiness=True,
     )
-    if raw_included_redaction_dashboard.get("decision") != "no-go":
+    if raw_stored_redaction_dashboard.get("decision") != "no-go":
         raise AssertionError(
-            "required Stable readiness with raw-included evidence redaction did not block: "
-            f"{raw_included_redaction_dashboard}"
+            "required Stable readiness with raw-stored evidence redaction did not block: "
+            f"{raw_stored_redaction_dashboard}"
         )
-    raw_included_redaction_blockers = [
+    raw_stored_redaction_blockers = [
         blocker
-        for blocker in raw_included_redaction_dashboard.get("blockers", [])
+        for blocker in raw_stored_redaction_dashboard.get("blockers", [])
         if isinstance(blocker, dict)
         and blocker.get("id") == "stable-1.0.readiness-summary.evidence-redaction"
         and blocker.get("evidenceId") == "stable-1.0.redaction"
         and blocker.get("severity") == "critical"
     ]
-    if not raw_included_redaction_blockers:
+    if not raw_stored_redaction_blockers:
         raise AssertionError(
-            "Stable raw-included evidence-row redaction was not reported as a critical blocker: "
-            f"{raw_included_redaction_dashboard}"
+            "Stable raw-stored evidence-row redaction was not reported as a critical blocker: "
+            f"{raw_stored_redaction_dashboard}"
         )
 
     direct_detail_redaction_inputs = json.loads(json.dumps(inputs))

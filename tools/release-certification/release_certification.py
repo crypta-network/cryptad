@@ -1077,7 +1077,12 @@ def redaction_signal_has_unwaivable_findings(
                 return True
             if (
                 lowered.startswith("raw")
-                and (lowered.endswith("included") or lowered.endswith("persisted") or lowered.endswith("inevidence"))
+                and (
+                    lowered.endswith("included")
+                    or lowered.endswith("persisted")
+                    or lowered.endswith("stored")
+                    or lowered.endswith("inevidence")
+                )
                 and child is True
             ):
                 return True
@@ -15194,7 +15199,7 @@ def run_self_test(repo_root: Path) -> None:
             "status": "pass",
             "findingCount": 0,
             "findings": [],
-            "rawFetchedContentIncluded": True,
+            "rawBodiesStored": True,
         }
         write_json(stable_redaction_raw_flag_summary, stable_redaction_raw_flag_value)
         stable_redaction_raw_flag_items = stable_readiness_evidence(

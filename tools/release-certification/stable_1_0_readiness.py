@@ -1329,7 +1329,12 @@ def recursive_redaction_failure(value: Any) -> bool:
             lowered = str(key).lower()
             if (
                 lowered.startswith("raw")
-                and (lowered.endswith("included") or lowered.endswith("persisted") or lowered.endswith("inevidence"))
+                and (
+                    lowered.endswith("included")
+                    or lowered.endswith("persisted")
+                    or lowered.endswith("stored")
+                    or lowered.endswith("inevidence")
+                )
                 and child is True
             ):
                 return True
@@ -1373,6 +1378,7 @@ def redaction_signal_key(key: Any) -> bool:
             and (
                 lowered.endswith("included")
                 or lowered.endswith("persisted")
+                or lowered.endswith("stored")
                 or lowered.endswith("inevidence")
             )
         )
@@ -4537,6 +4543,7 @@ def run_self_test() -> None:
         "app-platform-duplicate-evidence-failed",
         "attached-evidence-redaction-findings",
         "release-certification-evidence-redaction-findings",
+        "release-certification-evidence-raw-stored",
         "release-certification-evidence-excluded-from-evidence-false",
         "release-certification-evidence-direct-excluded-from-evidence-false",
         "release-certification-evidence-malformed-redaction-findings",
@@ -5467,6 +5474,28 @@ def run_self_test() -> None:
             release_certification_evidence_redaction_findings,
             "not-ready",
             expect_blocker="app-platform.signed-bundles",
+        )
+
+        def release_certification_evidence_raw_stored(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            def mutate(entry: dict[str, Any]) -> None:
+                entry.setdefault("details", {})["redaction"] = {
+                    "status": "pass",
+                    "findings": [],
+                    "rawBodiesStored": True,
+                }
+
+            mutate_evidence(inputs, "live-network-beta.redaction", mutate)
+
+        run_case(
+            root,
+            "release-certification-evidence-raw-stored",
+            release_certification_evidence_raw_stored,
+            "not-ready",
+            expect_blocker="live-network-beta.redaction",
         )
 
         def release_certification_evidence_excluded_from_evidence_false(
