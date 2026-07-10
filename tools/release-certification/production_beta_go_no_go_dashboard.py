@@ -3874,6 +3874,20 @@ def stable_readiness_issues(
     warning_count, malformed_warning_count = parse_release_blocker_count(
         summary.get("warningCount", 0)
     )
+    if malformed_warning_count:
+        issues.append(
+            Issue(
+                id="stable-1.0.readiness-summary.warning-count-invalid",
+                evidence_id="stable-1.0.readiness-gate",
+                domain_id=domain_id,
+                severity="blocker" if required else "warning",
+                title="Stable 1.0 readiness warning count is invalid",
+                summary="Stable readiness warningCount is not a non-negative integer.",
+                source="stable-readiness-summary",
+                waivable=not required,
+                category="stable-readiness",
+            )
+        )
     summary_warning_labels = stable_summary_warning_labels(summary)
     summary_reports_warnings = (
         not malformed_warning_count and warning_count > 0
@@ -5489,6 +5503,43 @@ def assert_required_stable_readiness_release_id_matches_dashboard_candidate(root
     matching_stable = matching_dashboard.get("stableReadiness")
     if not isinstance(matching_stable, dict) or matching_stable.get("releaseIdMatchesDashboard") is not True:
         raise AssertionError(f"matching Stable readiness binding was not reported: {matching_dashboard}")
+
+    for count_suffix, warning_count in (
+        ("string", "bad"),
+        ("boolean", True),
+        ("fractional", 0.5),
+        ("negative", -1),
+    ):
+        malformed_warning_inputs = json.loads(json.dumps(inputs))
+        malformed_warning_inputs["stableReadinessSummary"]["warningCount"] = warning_count
+        malformed_warning_dashboard = build_dashboard(
+            malformed_warning_inputs,
+            {},
+            [FIXTURE_DIR / "go-no-go-pass.json"],
+            None,
+            Path(__file__).resolve().parents[2],
+            root / f"stable-readiness-malformed-warning-count-{count_suffix}",
+            "production-beta",
+            release_id,
+            generated_at,
+            now,
+            require_stable_readiness=True,
+        )
+        malformed_warning_blockers = [
+            blocker
+            for blocker in malformed_warning_dashboard.get("blockers", [])
+            if isinstance(blocker, dict)
+            and blocker.get("id") == "stable-1.0.readiness-summary.warning-count-invalid"
+            and blocker.get("severity") == "blocker"
+        ]
+        if (
+            malformed_warning_dashboard.get("decision") != "no-go"
+            or len(malformed_warning_blockers) != 1
+        ):
+            raise AssertionError(
+                f"malformed Stable warningCount {warning_count!r} did not block: "
+                f"{malformed_warning_dashboard}"
+            )
 
     summary_warning_inputs = json.loads(json.dumps(inputs))
     summary_warning = {
