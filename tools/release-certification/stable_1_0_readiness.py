@@ -2721,19 +2721,20 @@ def evaluate_ecosystem_matrix(matrix: dict[str, Any] | None) -> dict[str, Any]:
                 "ecosystem-certification-matrix",
             )
         )
-    failed_rows = [
-        str(row.get("id", "matrix-row"))
+    non_passing_rows = [
+        f"{row.get('id', 'matrix-row')}:{normalize_status(row.get('status', 'missing'))}"
         for row in rows
-        if normalize_status(row.get("status", "missing")) in {"fail", "missing", "skip"}
+        if normalize_status(row.get("status", "missing"))
+        in {"warn", "fail", "missing", "skip"}
     ]
-    if failed_rows:
+    if non_passing_rows:
         blockers.append(
             blocker_issue(
                 domain_id,
                 evidence_id,
                 "Ecosystem matrix rows are not passing",
-                "Ecosystem matrix rows are failed, missing, or skipped: "
-                + ", ".join(failed_rows)
+                "Ecosystem matrix rows are non-passing: "
+                + ", ".join(non_passing_rows)
                 + ".",
                 "ecosystem-certification-matrix",
             )
@@ -4973,6 +4974,7 @@ def run_self_test() -> None:
         "app-platform-summary-truncated-evidence",
         "ecosystem-matrix-failed",
         "ecosystem-matrix-failed-row",
+        "ecosystem-matrix-warning-row",
         "ecosystem-matrix-missing-rows",
         "ecosystem-matrix-truncated-rows",
         "ecosystem-matrix-non-list-rows",
@@ -6397,6 +6399,60 @@ def run_self_test() -> None:
             ecosystem_matrix_failed_row,
             "not-ready",
             expect_blocker="release-certification.ecosystem-matrix",
+        )
+
+        warning_row_id = ECOSYSTEM_MATRIX_REQUIRED_ROW_IDS[0]
+
+        def ecosystem_matrix_warning_row(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            rows = inputs["ecosystemMatrix"].get("rows")
+            if not isinstance(rows, list):
+                raise AssertionError("base ecosystem matrix fixture has no rows")
+            warning_row = next(
+                (
+                    row
+                    for row in rows
+                    if isinstance(row, dict) and row.get("id") == warning_row_id
+                ),
+                None,
+            )
+            if warning_row is None:
+                raise AssertionError(f"base ecosystem matrix fixture has no {warning_row_id} row")
+            warning_row["status"] = "warn"
+            warning_row["releaseBlocker"] = False
+            warning_row["summary"] = "Synthetic non-blocking matrix warning."
+            inputs["ecosystemMatrix"]["status"] = "pass"
+            inputs["ecosystemMatrix"]["releaseBlockerCount"] = 0
+            counts = inputs["ecosystemMatrix"].setdefault("counts", {})
+            counts["warn"] = 0
+            counts["pass"] = len(rows)
+            counts["releaseBlockers"] = 0
+
+        def assert_ecosystem_matrix_warning_row(summary: dict[str, Any]) -> None:
+            warning_row_blockers = [
+                blocker
+                for blocker in summary.get("blockers", [])
+                if isinstance(blocker, dict)
+                and blocker.get("evidenceId") == "release-certification.ecosystem-matrix"
+                and blocker.get("title") == "Ecosystem matrix rows are not passing"
+                and f"{warning_row_id}:warn" in str(blocker.get("summary", ""))
+            ]
+            if len(warning_row_blockers) != 1:
+                raise AssertionError(
+                    "ecosystem matrix warning row was not reported as non-passing: "
+                    f"{summary.get('blockers')}"
+                )
+
+        run_case(
+            root,
+            "ecosystem-matrix-warning-row",
+            ecosystem_matrix_warning_row,
+            "not-ready",
+            expect_blocker="release-certification.ecosystem-matrix",
+            post_check=assert_ecosystem_matrix_warning_row,
         )
 
         def ecosystem_matrix_missing_rows(inputs: dict[str, Any], _limitations: dict[str, Any], _paths: dict[str, Path]) -> None:
