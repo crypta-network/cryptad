@@ -142,6 +142,7 @@ jobs:
           INPUT_GENERATE_STABLE_READINESS: ${{ inputs.generate_stable_readiness || 'false' }}
           INPUT_REQUIRE_STABLE_READINESS: ${{ inputs.require_stable_readiness || 'false' }}
           INPUT_ARTIFACT_BASE_URI: ${{ inputs.artifact_base_uri || vars.CRYPTAD_PRODUCTION_BETA_ARTIFACT_BASE_URI || (github.event_name != 'pull_request' && secrets.CRYPTAD_PRODUCTION_BETA_ARTIFACT_BASE_URI) || '' }}
+          GITHUB_TOKEN: ${{ github.token }}
           GH_TOKEN: ${{ github.event_name == 'workflow_dispatch' && github.token || '' }}
           CRYPTAD_CERT_NODE_BASE_URL: ${{ github.event_name == 'workflow_dispatch' && inputs.require_live_network && secrets.CRYPTAD_CERT_NODE_BASE_URL || '' }}
           CRYPTAD_CERT_FORM_PASSWORD: ${{ github.event_name == 'workflow_dispatch' && inputs.require_live_network && secrets.CRYPTAD_CERT_FORM_PASSWORD || '' }}
@@ -459,6 +460,7 @@ jobs:
           INPUT_STABLE_READINESS_WAIVERS: ${{ inputs.stable_readiness_waivers || '' }}
           INPUT_GENERATE_STABLE_READINESS: ${{ inputs.generate_stable_readiness || 'false' }}
           INPUT_REQUIRE_STABLE_READINESS: ${{ inputs.require_stable_readiness || 'false' }}
+          GITHUB_TOKEN: ${{ github.token }}
           GH_TOKEN: ${{ github.token }}
         run: |
           materialize_secret_file() {
