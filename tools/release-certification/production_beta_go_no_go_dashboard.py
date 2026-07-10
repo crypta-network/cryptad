@@ -1058,10 +1058,10 @@ def entry_has_redaction_findings(entry: dict[str, Any] | None) -> bool:
 def redaction_proof_key(key: Any) -> bool:
     lowered = str(key).lower()
     return lowered.endswith(
-        ("excluded", "excludedfromevidence", "redacted", "sanitized")
+        ("excluded", "excludedfromevidence", "redacted", "sanitized", "stored")
     ) or (
         lowered.startswith("raw")
-        and lowered.endswith(("included", "persisted", "stored", "inevidence"))
+        and lowered.endswith(("included", "persisted", "inevidence"))
     )
 
 
@@ -1069,9 +1069,11 @@ def redaction_proof_failure(key: Any, value: Any) -> bool:
     lowered = str(key).lower()
     if lowered.endswith(("excluded", "excludedfromevidence", "redacted", "sanitized")):
         return value is False
+    if lowered.endswith("stored"):
+        return value is True
     return (
         lowered.startswith("raw")
-        and lowered.endswith(("included", "persisted", "stored", "inevidence"))
+        and lowered.endswith(("included", "persisted", "inevidence"))
         and value is True
     )
 
@@ -2401,6 +2403,31 @@ def stable_summary_domain_errors(summary: dict[str, Any]) -> list[str]:
                     )
                 )
     return errors
+
+
+def stable_summary_warning_labels(summary: dict[str, Any]) -> list[str]:
+    labels: list[str] = []
+
+    def append_warnings(value: Any, prefix: str) -> None:
+        if not isinstance(value, list):
+            return
+        for index, warning in enumerate(value):
+            fallback = f"{prefix}[{index}]"
+            if isinstance(warning, dict):
+                label = warning.get("id") or warning.get("evidenceId") or fallback
+            else:
+                label = fallback
+            labels.append(str(label))
+
+    append_warnings(summary.get("warnings"), "warnings")
+    domains = summary.get("domains")
+    if isinstance(domains, list):
+        for index, domain in enumerate(domains):
+            if not isinstance(domain, dict):
+                continue
+            domain_id = str(domain.get("id") or f"domains[{index}]")
+            append_warnings(domain.get("warnings"), f"domain {domain_id} warnings")
+    return list(dict.fromkeys(labels))
 
 
 def stable_summary_redaction_domain_errors(summary: dict[str, Any]) -> list[str]:
@@ -3844,15 +3871,29 @@ def stable_readiness_issues(
                 category="stable-readiness",
             )
         )
-    if warning_evidence:
+    warning_count, malformed_warning_count = parse_release_blocker_count(
+        summary.get("warningCount", 0)
+    )
+    summary_warning_labels = stable_summary_warning_labels(summary)
+    summary_reports_warnings = (
+        not malformed_warning_count and warning_count > 0
+    ) or bool(summary_warning_labels)
+    if warning_evidence or summary_reports_warnings:
+        warning_details: list[str] = []
+        if warning_evidence:
+            warning_details.append("warning evidence: " + ", ".join(warning_evidence))
+        if summary_warning_labels:
+            warning_details.append("warnings: " + ", ".join(summary_warning_labels))
+        elif not malformed_warning_count and warning_count > 0:
+            warning_details.append(f"warningCount is {warning_count}")
         issues.append(
             Issue(
                 id="stable-1.0.readiness-summary.evidence-warnings",
                 evidence_id="stable-1.0.readiness-gate",
                 domain_id=domain_id,
                 severity="warning",
-                title="Stable 1.0 readiness summary contains warning evidence",
-                summary="Stable readiness evidence has warnings: " + ", ".join(warning_evidence) + ".",
+                title="Stable 1.0 readiness summary contains warnings",
+                summary="Stable readiness summary has " + "; ".join(warning_details) + ".",
                 source="stable-readiness-summary",
                 waivable=True,
                 category="stable-readiness",
@@ -5449,6 +5490,68 @@ def assert_required_stable_readiness_release_id_matches_dashboard_candidate(root
     if not isinstance(matching_stable, dict) or matching_stable.get("releaseIdMatchesDashboard") is not True:
         raise AssertionError(f"matching Stable readiness binding was not reported: {matching_dashboard}")
 
+    summary_warning_inputs = json.loads(json.dumps(inputs))
+    summary_warning = {
+        "id": "stable-1.0.synthetic-warning",
+        "evidenceId": "stable-1.0.support-feedback-readiness",
+        "severity": "warning",
+        "title": "Synthetic Stable warning",
+        "summary": "Synthetic Stable warning remains open for release-manager review.",
+        "source": "stable-readiness-self-test",
+        "waivable": True,
+        "category": "self-test",
+    }
+    summary_warning_value = summary_warning_inputs["stableReadinessSummary"]
+    summary_warning_value.update(
+        {
+            "status": "warn",
+            "warningCount": 1,
+            "warnings": [summary_warning],
+        }
+    )
+    summary_warning_domain = next(
+        domain
+        for domain in summary_warning_value["domains"]
+        if isinstance(domain, dict) and domain.get("id") == "support-feedback-readiness"
+    )
+    summary_warning_domain.update(
+        {
+            "status": "warn",
+            "summary": summary_warning["summary"],
+            "warnings": [summary_warning],
+        }
+    )
+    summary_warning_dashboard = build_dashboard(
+        summary_warning_inputs,
+        {},
+        [FIXTURE_DIR / "go-no-go-pass.json"],
+        None,
+        Path(__file__).resolve().parents[2],
+        root / "stable-readiness-summary-warning",
+        "production-beta",
+        release_id,
+        generated_at,
+        now,
+        require_stable_readiness=True,
+    )
+    if summary_warning_dashboard.get("decision") != "go":
+        raise AssertionError(
+            "warning-only Stable summary blocked a passing dashboard: "
+            f"{summary_warning_dashboard}"
+        )
+    surfaced_summary_warnings = [
+        warning
+        for warning in summary_warning_dashboard.get("warnings", [])
+        if isinstance(warning, dict)
+        and warning.get("id") == "stable-1.0.readiness-summary.evidence-warnings"
+        and "stable-1.0.synthetic-warning" in str(warning.get("summary", ""))
+    ]
+    if len(surfaced_summary_warnings) != 1:
+        raise AssertionError(
+            "Stable summary warning was not surfaced exactly once: "
+            f"{summary_warning_dashboard.get('warnings')}"
+        )
+
     required_redaction_domain_warn_inputs = json.loads(json.dumps(inputs))
     required_redaction_domain = next(
         domain
@@ -6141,6 +6244,45 @@ def assert_required_stable_readiness_release_id_matches_dashboard_candidate(root
         raise AssertionError(
             "Stable raw-stored evidence-row redaction was not reported as a critical blocker: "
             f"{raw_stored_redaction_dashboard}"
+        )
+
+    sensitive_stored_redaction_inputs = json.loads(json.dumps(inputs))
+    for entry in sensitive_stored_redaction_inputs["stableReadinessSummary"]["evidence"]:
+        if isinstance(entry, dict) and entry.get("id") == "stable-1.0.redaction":
+            entry["details"] = {"privateInsertUrisStored": True}
+            break
+    else:
+        raise AssertionError("synthetic Stable summary is missing stable-1.0.redaction evidence")
+    sensitive_stored_redaction_dashboard = build_dashboard(
+        sensitive_stored_redaction_inputs,
+        {},
+        [FIXTURE_DIR / "go-no-go-pass.json"],
+        None,
+        Path(__file__).resolve().parents[2],
+        root / "stable-readiness-evidence-sensitive-stored-redaction",
+        "production-beta",
+        release_id,
+        generated_at,
+        now,
+        require_stable_readiness=True,
+    )
+    if sensitive_stored_redaction_dashboard.get("decision") != "no-go":
+        raise AssertionError(
+            "required Stable readiness with privateInsertUrisStored=true did not block: "
+            f"{sensitive_stored_redaction_dashboard}"
+        )
+    sensitive_stored_redaction_blockers = [
+        blocker
+        for blocker in sensitive_stored_redaction_dashboard.get("blockers", [])
+        if isinstance(blocker, dict)
+        and blocker.get("id") == "stable-1.0.readiness-summary.evidence-redaction"
+        and blocker.get("evidenceId") == "stable-1.0.redaction"
+        and blocker.get("severity") == "critical"
+    ]
+    if not sensitive_stored_redaction_blockers:
+        raise AssertionError(
+            "Stable sensitive-stored proof was not reported as a critical blocker: "
+            f"{sensitive_stored_redaction_dashboard}"
         )
 
     redacted_false_inputs = json.loads(json.dumps(inputs))

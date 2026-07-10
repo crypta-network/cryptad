@@ -4637,6 +4637,7 @@ def run_self_test() -> None:
         "release-certification-evidence-redaction-findings",
         "release-certification-evidence-redacted-false",
         "release-certification-evidence-raw-stored",
+        "release-certification-evidence-sensitive-stored",
         "release-certification-evidence-excluded-from-evidence-false",
         "release-certification-evidence-direct-excluded-from-evidence-false",
         "release-certification-evidence-malformed-redaction-findings",
@@ -5643,6 +5644,28 @@ def run_self_test() -> None:
             root,
             "release-certification-evidence-raw-stored",
             release_certification_evidence_raw_stored,
+            "not-ready",
+            expect_blocker="live-network-beta.redaction",
+        )
+
+        def release_certification_evidence_sensitive_stored(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            def mutate(entry: dict[str, Any]) -> None:
+                entry.setdefault("details", {})["redaction"] = {
+                    "status": "pass",
+                    "findings": [],
+                    "privateInsertUrisStored": True,
+                }
+
+            mutate_evidence(inputs, "live-network-beta.redaction", mutate)
+
+        run_case(
+            root,
+            "release-certification-evidence-sensitive-stored",
+            release_certification_evidence_sensitive_stored,
             "not-ready",
             expect_blocker="live-network-beta.redaction",
         )

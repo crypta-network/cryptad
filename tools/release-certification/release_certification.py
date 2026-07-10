@@ -15743,6 +15743,51 @@ def run_self_test(repo_root: Path) -> None:
             stable_sanitized_false_row
         )
 
+        stable_sensitive_stored_summary = (
+            workspace / "build/stable-readiness-sensitive-stored.json"
+        )
+        stable_sensitive_stored_value = stable_self_test_summary()
+        for entry in stable_sensitive_stored_value["evidence"]:
+            if isinstance(entry, dict) and entry.get("id") == "stable-1.0.redaction":
+                entry["details"] = {"privateInsertUrisStored": True}
+                break
+        else:
+            raise AssertionError("Stable self-test summary is missing stable-1.0.redaction")
+        write_json(stable_sensitive_stored_summary, stable_sensitive_stored_value)
+        stable_sensitive_stored_items = stable_readiness_evidence(
+            stable_sensitive_stored_summary,
+            True,
+            workspace,
+            out_dir,
+        )
+        stable_sensitive_stored_statuses = {
+            item.id: item.status for item in stable_sensitive_stored_items
+        }
+        assert stable_sensitive_stored_statuses["stable-1.0.readiness-gate"] == "fail", (
+            stable_sensitive_stored_statuses
+        )
+        assert stable_sensitive_stored_statuses["stable-1.0.redaction"] == "fail", (
+            stable_sensitive_stored_statuses
+        )
+        stable_sensitive_stored_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/stable-sensitive-stored-cert").resolve(),
+            stable_readiness_summary=stable_sensitive_stored_summary,
+            stable_readiness_required=True,
+        )
+        stable_sensitive_stored_cert, stable_sensitive_stored_exit_code = run(
+            stable_sensitive_stored_settings
+        )
+        assert stable_sensitive_stored_exit_code == 1, stable_sensitive_stored_cert
+        stable_sensitive_stored_row = matrix_row_by_id(
+            stable_sensitive_stored_settings.out_dir,
+            "stable-1-0-readiness",
+        )
+        assert stable_sensitive_stored_row["status"] == "fail", stable_sensitive_stored_row
+        assert stable_sensitive_stored_row["releaseBlocker"] is True, (
+            stable_sensitive_stored_row
+        )
+
         stable_missing_schema_summary = workspace / "build/stable-readiness-missing-schema-version.json"
         write_json(
             stable_missing_schema_summary,
