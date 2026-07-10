@@ -94,6 +94,16 @@
       "category": "negative"
     },
     {
+      "id": "go-no-go-truncated-domains",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "go-no-go-duplicate-domain",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
       "id": "go-no-go-warning-domain",
       "expectedDecision": "ready",
       "category": "positive"

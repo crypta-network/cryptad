@@ -62,6 +62,8 @@ GO_NO_GO_SUMMARY_COUNT_FIELDS = (
     "criticalRedactionFindings",
 )
 
+GO_NO_GO_DOMAIN_IDS = tuple(str(spec["id"]) for spec in dashboard.DOMAIN_SPECS)
+
 APP_IDS = (
     "queue-manager",
     "publisher",
@@ -1897,9 +1899,61 @@ def evaluate_production_beta_state(
                 )
             )
         if isinstance(go_no_go.get("domains"), list):
+            dashboard_domains = go_no_go["domains"]
+            domain_ids = [
+                non_empty_string(domain.get("id"))
+                for domain in dashboard_domains
+                if isinstance(domain, dict) and non_empty_string(domain.get("id"))
+            ]
+            expected_domain_ids = set(GO_NO_GO_DOMAIN_IDS)
+            actual_domain_ids = set(domain_ids)
+            missing_domain_ids = sorted(expected_domain_ids - actual_domain_ids)
+            duplicate_domain_ids = sorted(
+                domain_id
+                for domain_id in actual_domain_ids
+                if domain_ids.count(domain_id) > 1
+            )
+            unexpected_domain_ids = sorted(actual_domain_ids - expected_domain_ids)
+            missing_id_indexes = [
+                str(index)
+                for index, domain in enumerate(dashboard_domains)
+                if isinstance(domain, dict) and not non_empty_string(domain.get("id"))
+            ]
+            if (
+                missing_domain_ids
+                or duplicate_domain_ids
+                or unexpected_domain_ids
+                or missing_id_indexes
+            ):
+                domain_id_errors: list[str] = []
+                if missing_domain_ids:
+                    domain_id_errors.append(
+                        "missing required domain IDs: " + ", ".join(missing_domain_ids)
+                    )
+                if duplicate_domain_ids:
+                    domain_id_errors.append(
+                        "duplicate domain IDs: " + ", ".join(duplicate_domain_ids)
+                    )
+                if unexpected_domain_ids:
+                    domain_id_errors.append(
+                        "unexpected domain IDs: " + ", ".join(unexpected_domain_ids)
+                    )
+                if missing_id_indexes:
+                    domain_id_errors.append(
+                        "domain rows missing IDs at indexes: " + ", ".join(missing_id_indexes)
+                    )
+                blockers.append(
+                    blocker_issue(
+                        domain_id,
+                        "stable-1.0.go-no-go-decision",
+                        "Go/no-go dashboard domain set is incomplete",
+                        "Go/no-go dashboard " + "; ".join(domain_id_errors) + ".",
+                        "go-no-go-summary",
+                    )
+                )
             non_passing_domains: list[str] = []
             malformed_domain_statuses: list[str] = []
-            for index, dashboard_domain in enumerate(go_no_go.get("domains", [])):
+            for index, dashboard_domain in enumerate(dashboard_domains):
                 if not isinstance(dashboard_domain, dict):
                     continue
                 raw_domain_status = str(dashboard_domain.get("status", "missing")).strip().lower()
@@ -4413,10 +4467,11 @@ def base_self_test_inputs() -> tuple[dict[str, Any], dict[str, Any]]:
         },
         "domains": [
             {
-                "id": "production-beta-release-pipeline",
+                "id": domain_id,
                 "status": "pass",
-                "summary": "Production beta release pipeline passed.",
+                "summary": f"Synthetic dashboard domain {domain_id} passed.",
             }
+            for domain_id in GO_NO_GO_DOMAIN_IDS
         ],
         "blockers": [],
         "warnings": [],
@@ -4627,6 +4682,8 @@ def run_self_test() -> None:
         "go-no-go-non-production-mode",
         "go-no-go-boolean-schema-version",
         "go-no-go-failed-domain",
+        "go-no-go-truncated-domains",
+        "go-no-go-duplicate-domain",
         "go-no-go-warning-domain",
         "go-no-go-waived-domain",
         "go-no-go-listed-blocker",
@@ -5053,6 +5110,39 @@ def run_self_test() -> None:
             root,
             "go-no-go-failed-domain",
             go_no_go_failed_domain,
+            "not-ready",
+            expect_blocker="stable-1.0.go-no-go-decision",
+        )
+
+        def go_no_go_truncated_domains(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs["goNoGoSummary"]["domains"] = [
+                {"id": "stub-domain", "status": "pass"}
+            ]
+
+        run_case(
+            root,
+            "go-no-go-truncated-domains",
+            go_no_go_truncated_domains,
+            "not-ready",
+            expect_blocker="stable-1.0.go-no-go-decision",
+        )
+
+        def go_no_go_duplicate_domain(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            domains = inputs["goNoGoSummary"]["domains"]
+            domains.append(copy.deepcopy(domains[0]))
+
+        run_case(
+            root,
+            "go-no-go-duplicate-domain",
+            go_no_go_duplicate_domain,
             "not-ready",
             expect_blocker="stable-1.0.go-no-go-decision",
         )
