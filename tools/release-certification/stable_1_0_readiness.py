@@ -3367,15 +3367,18 @@ def evaluate_live_multi_node_soak(
                 for source, release_id in release_identities
                 if release_id != candidate_release_id
             ]
-            if mismatched_release_ids:
-                release_id_source, network_release_id = mismatched_release_ids[0]
+            if not release_identities or mismatched_release_ids:
+                if mismatched_release_ids:
+                    release_id_source, network_release_id = mismatched_release_ids[0]
+                else:
+                    release_id_source, network_release_id = "missing", "missing"
                 blockers.append(
                     blocker_issue(
                         domain_id,
                         "stable-1.0.live-multi-node-soak",
                         "Network-scale soak summary is not bound to this release",
                         "Stable 1.0 requires network-scale soak evidence to match the production beta "
-                        f"releaseId when the summary declares one; network {release_id_source}={network_release_id}, "
+                        f"releaseId; network {release_id_source}={network_release_id or 'missing'}, "
                         f"production={candidate_release_id}.",
                         "network-scale-soak-summary",
                     )
@@ -4347,6 +4350,7 @@ def base_self_test_inputs() -> tuple[dict[str, Any], dict[str, Any]]:
     network = copy.deepcopy(read_json(FIXTURE_DIR / "self-test-network-scale-soak.json") or {})
     network["mode"] = "live-rc-soak"
     network["status"] = "pass"
+    network["releaseId"] = "cryptad-beta-270"
     production = copy.deepcopy(go_inputs["productionBetaSummary"])
     production["generatedAt"] = DEFAULT_GENERATED_AT
     production["releaseId"] = "cryptad-beta-270"
@@ -4686,6 +4690,7 @@ def run_self_test() -> None:
         "multi-node-raw-evidence-flag",
         "multi-node-redaction-count",
         "network-release-id-mismatch",
+        "network-release-id-missing",
         "network-truncated-summary",
         "network-forged-operation-count",
         "stale-security-summary-age",
@@ -6490,6 +6495,24 @@ def run_self_test() -> None:
             root,
             "network-release-id-mismatch",
             network_release_id_mismatch,
+            "not-ready",
+            expect_blocker="stable-1.0.live-multi-node-soak",
+        )
+
+        def network_release_id_missing(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            network = inputs["networkScaleSoakSummary"]
+            network.pop("releaseId", None)
+            network.pop("candidateReleaseId", None)
+            network.pop("currentCandidate", None)
+
+        run_case(
+            root,
+            "network-release-id-missing",
+            network_release_id_missing,
             "not-ready",
             expect_blocker="stable-1.0.live-multi-node-soak",
         )

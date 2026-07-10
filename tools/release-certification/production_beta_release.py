@@ -3035,6 +3035,9 @@ def run_release_certification(state: PipelineState, env: dict[str, str], cert_ou
     if state.settings.waiver_file:
         args.extend(["--waiver-file", str(state.settings.waiver_file)])
     cert_env = dict(env)
+    cert_env["CRYPTAD_CERT_NETWORK_SCALE_SOAK_RELEASE_ID"] = (
+        f"cryptad-beta-{state.version}"
+    )
     if state.settings.run_multi_node_soak:
         cert_env["CRYPTAD_CERT_MULTI_NODE_SOAK_SUMMARY"] = ""
     result = run_command(
@@ -9135,6 +9138,9 @@ def assert_run_multi_node_soak_overrides_attached_env_summary() -> None:
         assert settings.run_multi_node_soak is True, settings
         assert "--multi-node-soak-summary" not in captured_args[-1], captured_args[-1]
         assert captured_envs[-1].get(env_name) == "", captured_envs[-1]
+        assert captured_envs[-1].get("CRYPTAD_CERT_NETWORK_SCALE_SOAK_RELEASE_ID") == (
+            "cryptad-beta-self-test"
+        ), captured_envs[-1]
         assert multi_node_summary_path(settings, cert_out) == cert_out / "multi-node-beta-soak/summary.json"
 
 

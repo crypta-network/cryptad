@@ -1957,6 +1957,19 @@ def network_scale_safe_bool(
     return None
 
 
+def network_scale_safe_release_id(value: Any, errors: list[str]) -> str:
+    if value is None:
+        return ""
+    if not isinstance(value, str):
+        errors.append("releaseId must be a string")
+        return ""
+    release_id = value.strip()
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", release_id):
+        errors.append("releaseId must be a non-empty candidate identifier")
+        return ""
+    return release_id
+
+
 def allowlisted_network_scale_app_summary(
     app_id: str,
     value: Any,
@@ -2052,6 +2065,7 @@ def allowlisted_network_scale_soak_summary(
             "trustGraph",
             "budgets",
             "redaction",
+            "releaseId",
         },
         errors,
         "summary",
@@ -2098,28 +2112,29 @@ def allowlisted_network_scale_soak_summary(
         "trustGraph.rawStatementsInEvidence",
         expected=False,
     )
-    return (
-        {
-            "mode": network_scale_safe_enum(
-                summary.get("mode"),
-                {"simulated-rc-soak", "live-rc-soak"},
-                errors,
-                "mode",
-            ),
-            "status": network_scale_safe_enum(summary.get("status"), {"success"}, errors, "status"),
-            "durationHoursSimulated": duration,
-            "apps": safe_apps,
-            "trustGraph": safe_trust_graph,
-            "budgets": allowlisted_network_scale_bool_section(
-                summary,
-                "budgets",
-                NETWORK_SCALE_SOAK_BUDGET_KEYS,
-                errors,
-            ),
-            "redaction": allowlisted_network_scale_redaction_section(summary, errors),
-        },
-        errors,
-    )
+    safe_summary = {
+        "mode": network_scale_safe_enum(
+            summary.get("mode"),
+            {"simulated-rc-soak", "live-rc-soak"},
+            errors,
+            "mode",
+        ),
+        "status": network_scale_safe_enum(summary.get("status"), {"success"}, errors, "status"),
+        "durationHoursSimulated": duration,
+        "apps": safe_apps,
+        "trustGraph": safe_trust_graph,
+        "budgets": allowlisted_network_scale_bool_section(
+            summary,
+            "budgets",
+            NETWORK_SCALE_SOAK_BUDGET_KEYS,
+            errors,
+        ),
+        "redaction": allowlisted_network_scale_redaction_section(summary, errors),
+    }
+    release_id = network_scale_safe_release_id(summary.get("releaseId"), errors)
+    if release_id:
+        safe_summary["releaseId"] = release_id
+    return safe_summary, errors
 
 
 def network_scale_soak_evidence(
@@ -11222,6 +11237,17 @@ def run_self_test(repo_root: Path) -> None:
                 },
             )
             return path
+
+        candidate_bound_network_soak = read_json(settings.network_scale_soak_summary)
+        assert candidate_bound_network_soak is not None
+        candidate_bound_network_soak["releaseId"] = "cryptad-beta-self-test"
+        safe_candidate_bound_network_soak, candidate_bound_network_soak_errors = (
+            allowlisted_network_scale_soak_summary(candidate_bound_network_soak)
+        )
+        assert candidate_bound_network_soak_errors == [], candidate_bound_network_soak_errors
+        assert safe_candidate_bound_network_soak["releaseId"] == "cryptad-beta-self-test", (
+            safe_candidate_bound_network_soak
+        )
 
         raw_network_soak = read_json(settings.network_scale_soak_summary)
         assert raw_network_soak is not None

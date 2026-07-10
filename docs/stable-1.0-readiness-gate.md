@@ -122,8 +122,8 @@ tests, skipped live evidence, or skipped previous-candidate upgrade evidence can
 promotion.
 
 The production beta summary's `releaseId` is the candidate identity for Stable review. The
-go/no-go dashboard, security drill summary, and attached multi-node soak summary must carry or
-derive the same `releaseId`; stale dashboards, drill summaries, or multi-node soak summaries from
+go/no-go dashboard, security drill summary, attached multi-node soak summary, and network-scale
+soak summary must carry or derive the same `releaseId`; missing identities and evidence from
 another candidate are blockers. The go/no-go summary must be from `production-beta` mode, and the
 release-certification summary must be from `release-candidate` mode with `status=pass` and
 `releaseCandidatePassed=true`.

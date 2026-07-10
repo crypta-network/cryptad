@@ -63,6 +63,14 @@ def write_json(path: Path, value: dict[str, Any]) -> None:
     path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
+def summary_for_release(release_id: str) -> dict[str, Any]:
+    summary = dict(SUMMARY)
+    normalized_release_id = release_id.strip()
+    if normalized_release_id:
+        summary["releaseId"] = normalized_release_id
+    return summary
+
+
 def validate(summary: dict[str, Any]) -> list[str]:
     errors: list[str] = []
     if summary.get("mode") not in {"simulated-rc-soak", "live-rc-soak"}:
@@ -113,6 +121,11 @@ def run_self_test() -> None:
     errors = validate(SUMMARY)
     if errors:
         raise SystemExit("network-scale soak self-test failed: " + "; ".join(errors))
+    release_summary = summary_for_release("cryptad-beta-self-test")
+    if release_summary.get("releaseId") != "cryptad-beta-self-test":
+        raise SystemExit("network-scale soak self-test did not bind the candidate release")
+    if "releaseId" in SUMMARY:
+        raise SystemExit("network-scale soak self-test mutated the base summary")
     encoded = json.dumps(SUMMARY, sort_keys=True)
     for forbidden in (
         "USK@",
@@ -134,6 +147,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--self-test", action="store_true", help="Run offline validation checks.")
     parser.add_argument("--output", type=Path, default=None, help="Write summary JSON to this path.")
+    parser.add_argument(
+        "--release-id",
+        default="",
+        help="Bind generated evidence to a candidate release ID.",
+    )
     return parser
 
 
@@ -142,10 +160,11 @@ def main() -> int:
     if args.self_test:
         run_self_test()
         return 0
+    summary = summary_for_release(args.release_id)
     if args.output:
-        write_json(args.output, SUMMARY)
+        write_json(args.output, summary)
     else:
-        print(json.dumps(SUMMARY, indent=2, sort_keys=True))
+        print(json.dumps(summary, indent=2, sort_keys=True))
     return 0
 
 
