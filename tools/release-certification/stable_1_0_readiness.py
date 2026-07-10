@@ -297,6 +297,12 @@ RELEASE_CERTIFICATION_REDACTION_BOOL_FIELDS = (
     "absolutePathsSanitized",
 )
 
+RELEASE_CERTIFICATION_REDACTION_STATUS_FIELDS = (
+    "status",
+    "findingCount",
+    "findings",
+)
+
 
 @dataclasses.dataclass(frozen=True)
 class Settings:
@@ -888,9 +894,14 @@ def release_certification_redaction_passed(redaction: dict[str, Any] | None) -> 
         redaction.get("criticalFindingCount", 0)
     )
     status_value = redaction.get("status")
+    required_fields = (
+        RELEASE_CERTIFICATION_REDACTION_STATUS_FIELDS
+        if status_value is not None
+        else RELEASE_CERTIFICATION_REDACTION_BOOL_FIELDS
+    )
     missing = [
         field
-        for field in RELEASE_CERTIFICATION_REDACTION_BOOL_FIELDS
+        for field in required_fields
         if field not in redaction
     ]
     known_false = [
@@ -4832,6 +4843,7 @@ def run_self_test() -> None:
         "release-certification-boolean-schema-version",
         "release-certification-stub",
         "release-certification-missing-redaction",
+        "release-certification-redaction-status-schema",
         "release-certification-redaction-field-failed",
         "release-certification-redaction-truncated-proof",
         "release-certification-redaction-count",
@@ -5719,6 +5731,24 @@ def run_self_test() -> None:
             release_certification_missing_redaction,
             "not-ready",
             expect_blocker="stable-1.0.redaction",
+        )
+
+        def release_certification_redaction_status_schema(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs["releaseCertificationSummary"]["redaction"] = {
+                "status": "pass",
+                "findingCount": 0,
+                "findings": [],
+            }
+
+        run_case(
+            root,
+            "release-certification-redaction-status-schema",
+            release_certification_redaction_status_schema,
+            "ready",
         )
 
         def release_certification_redaction_field_failed(inputs: dict[str, Any], _limitations: dict[str, Any], _paths: dict[str, Path]) -> None:

@@ -204,6 +204,11 @@
       "category": "negative"
     },
     {
+      "id": "release-certification-redaction-status-schema",
+      "expectedDecision": "ready",
+      "category": "positive"
+    },
+    {
       "id": "release-certification-redaction-field-failed",
       "expectedDecision": "not-ready",
       "category": "negative"
