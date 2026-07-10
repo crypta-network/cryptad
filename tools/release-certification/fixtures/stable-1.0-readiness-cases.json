@@ -114,6 +114,11 @@
       "category": "positive"
     },
     {
+      "id": "go-no-go-waiver-count-decision-mismatch",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
       "id": "go-no-go-listed-blocker",
       "expectedDecision": "not-ready",
       "category": "negative"

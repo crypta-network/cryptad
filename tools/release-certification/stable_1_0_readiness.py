@@ -1893,6 +1893,63 @@ def evaluate_production_beta_state(
                         "go-no-go-summary",
                     )
                 )
+        waivers_used_count, malformed_waivers_used_count = non_negative_count(
+            dashboard_summary.get("waiversUsed", 0)
+        )
+        waiver_records = go_no_go.get("waivers")
+        waiver_record_errors = list_shape_errors(
+            waiver_records,
+            "goNoGoSummary.waivers",
+            allow_empty=True,
+        )
+        used_waiver_record_count = 0
+        if isinstance(waiver_records, list):
+            malformed_used_by_indexes = [
+                str(index)
+                for index, waiver in enumerate(waiver_records)
+                if isinstance(waiver, dict)
+                and not isinstance(waiver.get("usedBy"), list)
+            ]
+            if malformed_used_by_indexes:
+                waiver_record_errors.append(
+                    "goNoGoSummary.waivers usedBy must be a list; malformed indexes: "
+                    + ", ".join(malformed_used_by_indexes)
+                )
+            used_waiver_record_count = sum(
+                1
+                for waiver in waiver_records
+                if isinstance(waiver, dict)
+                and isinstance(waiver.get("usedBy"), list)
+                and bool(waiver.get("usedBy"))
+            )
+        if (
+            not malformed_waivers_used_count
+            and not waiver_record_errors
+            and waivers_used_count != used_waiver_record_count
+        ):
+            waiver_record_errors.append(
+                f"goNoGoSummary.summary.waiversUsed is {waivers_used_count}, "
+                f"but waivers contains {used_waiver_record_count} used record(s)"
+            )
+        if not malformed_waivers_used_count:
+            if waivers_used_count > 0 and decision != "go-with-waivers":
+                waiver_record_errors.append(
+                    "goNoGoSummary.decision must be go-with-waivers when waiversUsed is positive"
+                )
+            elif decision == "go-with-waivers" and waivers_used_count == 0:
+                waiver_record_errors.append(
+                    "goNoGoSummary.decision is go-with-waivers but waiversUsed is zero"
+                )
+        if waiver_record_errors:
+            blockers.append(
+                blocker_issue(
+                    domain_id,
+                    "stable-1.0.go-no-go-decision",
+                    "Go/no-go dashboard waiver metadata is inconsistent",
+                    "; ".join(waiver_record_errors) + ".",
+                    "go-no-go-summary",
+                )
+            )
         domain_errors = list_shape_errors(go_no_go.get("domains"), "goNoGoSummary.domains")
         for error in domain_errors:
             blockers.append(
@@ -4502,6 +4559,7 @@ def base_self_test_inputs() -> tuple[dict[str, Any], dict[str, Any]]:
         ],
         "blockers": [],
         "warnings": [],
+        "waivers": [],
         "redaction": {"schemaVersion": 1, "status": "pass", "findingCount": 0, "findings": []},
     }
     release_cert = {
@@ -4713,6 +4771,7 @@ def run_self_test() -> None:
         "go-no-go-duplicate-domain",
         "go-no-go-warning-domain",
         "go-no-go-waived-domain",
+        "go-no-go-waiver-count-decision-mismatch",
         "go-no-go-listed-blocker",
         "go-no-go-redaction-findings",
         "go-no-go-redaction-count",
@@ -5234,6 +5293,12 @@ def run_self_test() -> None:
             inputs["goNoGoSummary"]["decision"] = "go-with-waivers"
             inputs["goNoGoSummary"]["summary"]["waiversUsed"] = 1
             inputs["goNoGoSummary"]["domains"][0]["status"] = "waived"
+            inputs["goNoGoSummary"]["waivers"] = [
+                {
+                    "id": "production-beta.synthetic-waiver",
+                    "usedBy": ["production-beta.synthetic-issue"],
+                }
+            ]
 
         def assert_go_no_go_waived_domain(summary: dict[str, Any]) -> None:
             if summary["status"] != "warn":
@@ -5251,6 +5316,28 @@ def run_self_test() -> None:
             go_no_go_waived_domain,
             "ready",
             post_check=assert_go_no_go_waived_domain,
+        )
+
+        def go_no_go_waiver_count_decision_mismatch(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs["goNoGoSummary"]["decision"] = "go"
+            inputs["goNoGoSummary"]["summary"]["waiversUsed"] = 1
+            inputs["goNoGoSummary"]["waivers"] = [
+                {
+                    "id": "production-beta.synthetic-waiver",
+                    "usedBy": ["production-beta.synthetic-issue"],
+                }
+            ]
+
+        run_case(
+            root,
+            "go-no-go-waiver-count-decision-mismatch",
+            go_no_go_waiver_count_decision_mismatch,
+            "not-ready",
+            expect_blocker="stable-1.0.go-no-go-decision",
         )
 
         def go_no_go_listed_blocker(
