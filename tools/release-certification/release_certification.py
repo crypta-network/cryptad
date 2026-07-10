@@ -2524,6 +2524,47 @@ def stable_readiness_record_errors(
     return record_count, errors
 
 
+def stable_readiness_warning_record_errors(
+    summary: dict[str, Any],
+    parsed_count: int,
+    malformed_count: bool,
+) -> tuple[int, int, list[str]]:
+    warnings = summary.get("warnings")
+    if not isinstance(warnings, list):
+        return 0, 0, ["warnings must be a list"]
+    errors = [
+        f"warnings[{index}] must be an object"
+        for index, warning in enumerate(warnings)
+        if not isinstance(warning, dict)
+    ]
+    warning_record_count = len(warnings)
+    domain_warning_record_count = 0
+    domains = summary.get("domains")
+    if isinstance(domains, list):
+        domain_warning_record_count = sum(
+            len(domain.get("warnings", []))
+            for domain in domains
+            if isinstance(domain, dict) and isinstance(domain.get("warnings", []), list)
+        )
+        errors.extend(
+            f"domains[{domain_index}].warnings[{warning_index}] must be an object"
+            for domain_index, domain in enumerate(domains)
+            if isinstance(domain, dict) and isinstance(domain.get("warnings", []), list)
+            for warning_index, warning in enumerate(domain.get("warnings", []))
+            if not isinstance(warning, dict)
+        )
+    if not malformed_count and parsed_count != warning_record_count:
+        errors.append(
+            f"warningCount is {parsed_count} but warnings contains {warning_record_count} record(s)"
+        )
+    if not malformed_count and parsed_count != domain_warning_record_count:
+        errors.append(
+            "warningCount is "
+            f"{parsed_count} but domains contain {domain_warning_record_count} warning record(s)"
+        )
+    return warning_record_count, domain_warning_record_count, errors
+
+
 def stable_readiness_allowed_limitation_metadata_errors(record: Any, label: str) -> list[str]:
     if not isinstance(record, dict):
         return [f"{label} must be an object"]
@@ -2780,6 +2821,7 @@ def stable_readiness_evidence(
     stable_ready = summary.get("stableReady") is True
     main_status = normalize_evidence_status(str(summary.get("status", "missing")))
     blocker_count, malformed_blocker_count = parse_stable_readiness_count(summary.get("blockerCount", 0))
+    warning_count, malformed_warning_count = parse_stable_readiness_count(summary.get("warningCount", 0))
     allowed_count, malformed_allowed_count = parse_stable_readiness_count(
         summary.get("allowedLimitationCount", 0)
     )
@@ -2792,6 +2834,15 @@ def stable_readiness_evidence(
         "blockerCount",
         blocker_count,
         malformed_blocker_count,
+    )
+    (
+        warning_record_count,
+        domain_warning_record_count,
+        warning_record_errors,
+    ) = stable_readiness_warning_record_errors(
+        summary,
+        warning_count,
+        malformed_warning_count,
     )
     disallowed_record_count, disallowed_record_errors = stable_readiness_record_errors(
         summary,
@@ -2816,6 +2867,15 @@ def stable_readiness_evidence(
         count_validation_errors.append(f"disallowedLimitationCount is {disallowed_count}")
     count_validation_errors.extend(blocker_record_errors)
     count_validation_errors.extend(disallowed_record_errors)
+    warning_validation_errors: list[str] = []
+    if malformed_warning_count:
+        warning_validation_errors.append("warningCount is not a non-negative integer")
+    warning_validation_errors.extend(warning_record_errors)
+    warning_remaining_count = max(
+        warning_count if not malformed_warning_count else 0,
+        warning_record_count,
+        domain_warning_record_count,
+    )
     allowed_validation_errors: list[str] = []
     if malformed_allowed_count:
         allowed_validation_errors.append("allowedLimitationCount is not a non-negative integer")
@@ -2855,6 +2915,7 @@ def stable_readiness_evidence(
         or redaction_validation_errors
         or decision_validation_errors
         or count_validation_errors
+        or warning_validation_errors
         or allowed_validation_errors
         or domain_validation_errors
         or evidence_validation_errors
@@ -2864,6 +2925,8 @@ def stable_readiness_evidence(
         decision == "ready-with-allowed-limitations"
         or allowed_remaining_count > 0
     ) and main_status == "pass":
+        main_status = "warn"
+    elif warning_remaining_count > 0 and main_status == "pass":
         main_status = "warn"
     elif not stable_ready or decision == "not-ready":
         main_status = "fail"
@@ -2904,6 +2967,7 @@ def stable_readiness_evidence(
         *summary_validation_errors,
         *decision_validation_errors,
         *count_validation_errors,
+        *warning_validation_errors,
         *allowed_validation_errors,
         *domain_validation_errors,
         *evidence_validation_errors,
@@ -2912,6 +2976,8 @@ def stable_readiness_evidence(
         main_summary = "Stable 1.0 readiness summary schema is malformed."
     elif count_validation_errors:
         main_summary = "Stable 1.0 readiness summary reports remaining blockers or forbidden limitations."
+    elif warning_validation_errors:
+        main_summary = "Stable 1.0 readiness summary warning metadata is malformed."
     elif allowed_validation_errors:
         main_summary = "Stable 1.0 readiness summary allowed limitations are malformed."
     elif domain_validation_errors:
@@ -2936,7 +3002,11 @@ def stable_readiness_evidence(
                 "blockerCount": blocker_count
                 if not malformed_blocker_count
                 else summary.get("blockerCount", 0),
-                "warningCount": summary.get("warningCount", 0),
+                "warningCount": warning_count
+                if not malformed_warning_count
+                else summary.get("warningCount", 0),
+                "warningRecordCount": warning_record_count,
+                "domainWarningRecordCount": domain_warning_record_count,
                 "allowedLimitationCount": allowed_count
                 if not malformed_allowed_count
                 else summary.get("allowedLimitationCount", 0),
@@ -14302,6 +14372,84 @@ def run_self_test(repo_root: Path) -> None:
                     if evidence_id not in omitted
                 ],
             }
+
+        stable_warning_summary = workspace / "build/stable-readiness-warning.json"
+        stable_warning_value = stable_self_test_summary()
+        stable_warning_record = {
+            "id": "stable-1.0.synthetic-warning",
+            "evidenceId": "stable-1.0.support-feedback-readiness",
+            "severity": "warning",
+            "summary": "Synthetic Stable warning remains open for release-manager review.",
+        }
+        stable_warning_value["warningCount"] = 1
+        stable_warning_value["warnings"] = [stable_warning_record]
+        for domain in stable_warning_value["domains"]:
+            if isinstance(domain, dict) and domain.get("id") == "support-feedback-readiness":
+                domain["status"] = "warn"
+                domain["warnings"] = [stable_warning_record]
+                break
+        else:
+            raise AssertionError("Stable self-test summary is missing support-feedback-readiness")
+        write_json(stable_warning_summary, stable_warning_value)
+        stable_warning_items = stable_readiness_evidence(
+            stable_warning_summary,
+            True,
+            workspace,
+            out_dir,
+            "cryptad-production-beta-self-test",
+        )
+        stable_warning_gate = next(
+            item
+            for item in stable_warning_items
+            if item.id == "stable-1.0.readiness-gate"
+        )
+        assert stable_warning_gate.status == "warn", stable_warning_gate
+        assert stable_warning_gate.details["warningRecordCount"] == 1, stable_warning_gate
+        assert stable_warning_gate.details["domainWarningRecordCount"] == 1, (
+            stable_warning_gate
+        )
+        stable_warning_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/stable-warning-cert").resolve(),
+            stable_readiness_summary=stable_warning_summary,
+            stable_readiness_required=True,
+        )
+        stable_warning_cert, stable_warning_exit_code = run(stable_warning_settings)
+        assert stable_warning_exit_code == 0, stable_warning_cert
+        stable_warning_row = matrix_row_by_id(
+            stable_warning_settings.out_dir,
+            "stable-1-0-readiness",
+        )
+        assert stable_warning_row["status"] == "warn", stable_warning_row
+        assert stable_warning_row["releaseBlocker"] is False, stable_warning_row
+
+        stable_warning_mismatch_summary = (
+            workspace / "build/stable-readiness-warning-mismatch.json"
+        )
+        stable_warning_mismatch_value = stable_self_test_summary()
+        stable_warning_mismatch_value["warningCount"] = 1
+        write_json(stable_warning_mismatch_summary, stable_warning_mismatch_value)
+        stable_warning_mismatch_items = stable_readiness_evidence(
+            stable_warning_mismatch_summary,
+            True,
+            workspace,
+            out_dir,
+            "cryptad-production-beta-self-test",
+        )
+        stable_warning_mismatch_gate = next(
+            item
+            for item in stable_warning_mismatch_items
+            if item.id == "stable-1.0.readiness-gate"
+        )
+        assert stable_warning_mismatch_gate.status == "fail", stable_warning_mismatch_gate
+        assert (
+            "warningCount is 1 but warnings contains 0 record(s)"
+            in stable_warning_mismatch_gate.details["validationErrors"]
+        ), stable_warning_mismatch_gate
+        assert (
+            "warningCount is 1 but domains contain 0 warning record(s)"
+            in stable_warning_mismatch_gate.details["validationErrors"]
+        ), stable_warning_mismatch_gate
 
         for failing_synthetic_evidence_id in (
             "stable-1.0.readiness-gate",

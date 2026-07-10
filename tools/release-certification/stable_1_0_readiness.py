@@ -134,6 +134,12 @@ THIRD_PARTY_EVIDENCE_IDS = (
     "third-party-intake.redaction",
 )
 
+THIRD_PARTY_SAMPLE_FLOW_MILESTONES = (
+    "pre review",
+    "reviewed decision",
+    "catalog candidate",
+)
+
 SECURITY_RESPONSE_EVIDENCE_IDS = (
     "catalog.security-advisories",
     "catalog.version-denylist",
@@ -2898,15 +2904,36 @@ def evaluate_third_party(evidence: dict[str, dict[str, Any]]) -> dict[str, Any]:
     )
     sample = evidence_details(evidence.get("third-party-developer.sample-app-flow"))
     sample_flow = sample.get("sampleFlow")
+    normalized_sample_flow = (
+        [str(step).strip().lower().replace("-", " ") for step in sample_flow]
+        if isinstance(sample_flow, list)
+        else []
+    )
+    missing_sample_milestones = [
+        milestone
+        for milestone in THIRD_PARTY_SAMPLE_FLOW_MILESTONES
+        if not any(milestone in step for step in normalized_sample_flow)
+    ]
     if entry_ok(evidence.get("third-party-developer.sample-app-flow")) and (
-        not isinstance(sample_flow, list) or not sample_flow
+        not isinstance(sample_flow, list)
+        or not sample_flow
+        or missing_sample_milestones
     ):
+        missing_detail = (
+            " Missing milestones: " + ", ".join(missing_sample_milestones) + "."
+            if missing_sample_milestones
+            else ""
+        )
         blockers.append(
             blocker_issue(
                 domain_id,
                 "stable-1.0.third-party-intake",
                 "Third-party sample app flow is not represented",
-                "Stable 1.0 requires a sample submission through pre-review, review, catalog candidate, and install smoke.",
+                (
+                    "Stable 1.0 requires a sample submission through pre-review, review, "
+                    "catalog candidate, and the separately required install smoke."
+                    + missing_detail
+                ),
                 "third-party-developer.sample-app-flow",
             )
         )
@@ -4735,6 +4762,7 @@ def run_self_test() -> None:
         "diagnostics-nested-redaction-findings",
         "missing-third-party",
         "empty-third-party-sample-flow",
+        "truncated-third-party-sample-flow",
         "missing-support-feedback-docs",
         "stale-security",
         "security-status-fail-redaction-pass",
@@ -6099,6 +6127,24 @@ def run_self_test() -> None:
             root,
             "empty-third-party-sample-flow",
             empty_third_party_sample_flow,
+            "not-ready",
+            expect_blocker="stable-1.0.third-party-intake",
+        )
+
+        def truncated_third_party_sample_flow(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            def mutate(entry: dict[str, Any]) -> None:
+                entry.setdefault("details", {})["sampleFlow"] = ["placeholder step"]
+
+            mutate_evidence(inputs, "third-party-developer.sample-app-flow", mutate)
+
+        run_case(
+            root,
+            "truncated-third-party-sample-flow",
+            truncated_third_party_sample_flow,
             "not-ready",
             expect_blocker="stable-1.0.third-party-intake",
         )
