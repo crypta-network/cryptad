@@ -334,6 +334,11 @@
       "category": "negative"
     },
     {
+      "id": "app-platform-summary-non-production",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
       "id": "app-platform-summary-fixture-only",
       "expectedDecision": "not-ready",
       "category": "negative"

@@ -845,7 +845,7 @@ def app_platform_summary_envelope_blockers(
         validation_errors.append(
             f"appPlatformSummary.mode must be release-candidate; got {mode}"
         )
-    for field in ("nonRelease", "fixtureOnly"):
+    for field in ("nonRelease", "nonProduction", "fixtureOnly"):
         if field in summary and summary.get(field) is not False:
             validation_errors.append(
                 f"appPlatformSummary.{field} must be false when present"
@@ -5009,6 +5009,7 @@ def run_self_test() -> None:
         "app-platform-summary-malformed-envelope",
         "app-platform-summary-non-release-mode",
         "app-platform-summary-non-release-flag",
+        "app-platform-summary-non-production",
         "app-platform-summary-fixture-only",
         "app-platform-summary-truncated-evidence",
         "app-platform-evidence-redaction-clean-false",
@@ -6130,6 +6131,21 @@ def run_self_test() -> None:
             root,
             "app-platform-summary-non-release-flag",
             app_platform_summary_non_release_flag,
+            "not-ready",
+            expect_blocker="stable-1.0.app-ecosystem-maturity",
+        )
+
+        def app_platform_summary_non_production(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs["appPlatformSummary"]["nonProduction"] = True
+
+        run_case(
+            root,
+            "app-platform-summary-non-production",
+            app_platform_summary_non_production,
             "not-ready",
             expect_blocker="stable-1.0.app-ecosystem-maturity",
         )
