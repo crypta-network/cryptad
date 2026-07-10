@@ -244,6 +244,20 @@ SUPPORT_FEEDBACK_EVIDENCE_IDS = (
     "public-beta.redaction-fixtures",
 )
 
+APP_PLATFORM_DIRECT_EVIDENCE_IDS = tuple(
+    dict.fromkeys(
+        (
+            *PLATFORM_API_EVIDENCE_IDS,
+            *APP_ECOSYSTEM_EVIDENCE_IDS,
+            *THIRD_PARTY_EVIDENCE_IDS,
+            *SECURITY_RESPONSE_EVIDENCE_IDS,
+            *NETWORK_SCALE_EVIDENCE_IDS,
+            *LEGACY_EVIDENCE_IDS,
+            *SUPPORT_FEEDBACK_EVIDENCE_IDS,
+        )
+    )
+)
+
 KNOWN_ISSUE_REQUIRED_FIELDS = (
     "knownIssueId",
     "status",
@@ -791,6 +805,18 @@ def evidence_map_from_summaries(*summaries: dict[str, Any] | None) -> dict[str, 
     return result
 
 
+def stable_evidence_map_from_summaries(
+    release_certification: dict[str, Any] | None,
+    app_platform: dict[str, Any] | None,
+) -> dict[str, dict[str, Any]]:
+    direct_app_evidence = evidence_map_from_summaries(app_platform)
+    result = evidence_map_from_summaries(app_platform, release_certification)
+    for evidence_id in APP_PLATFORM_DIRECT_EVIDENCE_IDS:
+        if evidence_id not in direct_app_evidence:
+            result.pop(evidence_id, None)
+    return result
+
+
 def app_platform_summary_envelope_blockers(
     summary: dict[str, Any] | None,
     domain_id: str,
@@ -814,6 +840,30 @@ def app_platform_summary_envelope_blockers(
     status = normalize_status(summary.get("status", "missing"))
     if status != "pass":
         validation_errors.append(f"appPlatformSummary.status must be pass; got {status}")
+    evidence_entries = summary.get("evidence")
+    validation_errors.extend(
+        list_shape_errors(evidence_entries, "appPlatformSummary.evidence")
+    )
+    direct_evidence_ids: set[str] = set()
+    if isinstance(evidence_entries, list):
+        direct_evidence_ids = {
+            non_empty_string(entry.get("id") or entry.get("evidenceId"))
+            for entry in evidence_entries
+            if isinstance(entry, dict)
+        }
+    missing_evidence_ids = [
+        evidence_id
+        for evidence_id in APP_PLATFORM_DIRECT_EVIDENCE_IDS
+        if evidence_id not in direct_evidence_ids
+    ]
+    if missing_evidence_ids:
+        displayed_missing = ", ".join(missing_evidence_ids[:12])
+        remaining = len(missing_evidence_ids) - 12
+        validation_errors.append(
+            "appPlatformSummary.evidence is missing required Stable IDs: "
+            + displayed_missing
+            + (f" (+{remaining} more)" if remaining > 0 else "")
+        )
     if validation_errors:
         return [
             blocker_issue(
@@ -4414,7 +4464,7 @@ def run(
     )
     waivers = load_waivers(settings.waivers, now, settings.workspace_root)
     redaction = dashboard.redaction_report(dashboard.scan_paths(scan_targets, settings.workspace_root, settings.out_dir))
-    evidence = evidence_map_from_summaries(
+    evidence = stable_evidence_map_from_summaries(
         inputs.get("releaseCertificationSummary"),
         inputs.get("appPlatformSummary"),
     )
@@ -4870,6 +4920,7 @@ def run_self_test() -> None:
         "app-platform-summary-missing",
         "app-platform-summary-failed",
         "app-platform-summary-malformed-envelope",
+        "app-platform-summary-truncated-evidence",
         "ecosystem-matrix-failed",
         "ecosystem-matrix-failed-row",
         "ecosystem-matrix-missing-rows",
@@ -5925,6 +5976,39 @@ def run_self_test() -> None:
             app_platform_summary_malformed_envelope,
             "not-ready",
             expect_blocker="stable-1.0.app-ecosystem-maturity",
+        )
+
+        def app_platform_summary_truncated_evidence(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs["appPlatformSummary"]["evidence"] = []
+
+        def assert_app_platform_summary_truncated_evidence(summary: dict[str, Any]) -> None:
+            domain_statuses = {
+                str(domain.get("id")): str(domain.get("status"))
+                for domain in summary.get("domains", [])
+                if isinstance(domain, dict)
+            }
+            non_failing_domains = {
+                domain_id
+                for domain_id in ("platform-api-1.0", "app-ecosystem-maturity")
+                if domain_statuses.get(domain_id) != "fail"
+            }
+            if non_failing_domains:
+                raise AssertionError(
+                    "truncated direct app-platform evidence did not fail domains: "
+                    + ", ".join(sorted(non_failing_domains))
+                )
+
+        run_case(
+            root,
+            "app-platform-summary-truncated-evidence",
+            app_platform_summary_truncated_evidence,
+            "not-ready",
+            expect_blocker="stable-1.0.app-ecosystem-maturity",
+            post_check=assert_app_platform_summary_truncated_evidence,
         )
 
         def attached_evidence_redaction_findings(
