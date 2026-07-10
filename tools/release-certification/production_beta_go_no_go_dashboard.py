@@ -2397,6 +2397,39 @@ def stable_summary_domain_id_errors(summary: dict[str, Any]) -> list[str]:
     return errors
 
 
+def stable_summary_domain_allowed_limitation_consistency_errors(
+    summary: dict[str, Any],
+) -> list[str]:
+    domains = summary.get("domains")
+    top_level_limitations = summary.get("allowedLimitations")
+    if not isinstance(domains, list) or not isinstance(top_level_limitations, list):
+        return []
+    errors: list[str] = []
+    for index, domain in enumerate(domains):
+        if not isinstance(domain, dict):
+            continue
+        domain_id = str(domain.get("id") or f"domains[{index}]")
+        allowed_limitations = domain.get("allowedLimitations")
+        if not isinstance(allowed_limitations, list):
+            continue
+        limitation_records = [
+            limitation for limitation in allowed_limitations if isinstance(limitation, dict)
+        ]
+        status = normalize_status(domain.get("status", "missing"))
+        if limitation_records and status == "pass":
+            errors.append(
+                f"domain {domain_id} status is pass but contains "
+                f"{len(limitation_records)} allowed limitation(s)"
+            )
+        for allowed_index, limitation in enumerate(allowed_limitations):
+            if isinstance(limitation, dict) and limitation not in top_level_limitations:
+                errors.append(
+                    f"domain {domain_id} allowedLimitations[{allowed_index}] "
+                    "is not present in top-level allowedLimitations"
+                )
+    return errors
+
+
 def stable_summary_domain_errors(summary: dict[str, Any]) -> list[str]:
     domains = summary.get("domains")
     if not isinstance(domains, list):
@@ -2438,6 +2471,7 @@ def stable_summary_domain_errors(summary: dict[str, Any]) -> list[str]:
                         f"domain {domain_id} allowedLimitations[{allowed_index}]",
                     )
                 )
+    errors.extend(stable_summary_domain_allowed_limitation_consistency_errors(summary))
     return errors
 
 
@@ -5981,6 +6015,57 @@ def assert_required_stable_readiness_release_id_matches_dashboard_candidate(root
         raise AssertionError(
             "malformed Stable domain allowed limitation was not reported as a required blocker: "
             f"{malformed_allowed_domain_dashboard}"
+        )
+
+    hidden_allowed_domain_inputs = json.loads(json.dumps(inputs))
+    hidden_allowed_limitation = {
+        "id": "stable-1.0.self-test-hidden-allowed-limitation",
+        "title": "Hidden self-test allowed Stable limitation",
+        "category": "ui-polish-accessibility-warning",
+        "classification": "allowed-for-stable-1.0",
+        "status": "open",
+        "summary": "Synthetic domain-scoped Stable limitation.",
+        "evidenceIds": ["stable-1.0.known-limitations"],
+        "boundedBy": "Self-test release manager bound for a non-blocking Stable limitation.",
+    }
+    hidden_allowed_domain = next(
+        domain
+        for domain in hidden_allowed_domain_inputs["stableReadinessSummary"]["domains"]
+        if isinstance(domain, dict) and domain.get("id") == "known-limitations"
+    )
+    hidden_allowed_domain.update(
+        {
+            "status": "warn",
+            "summary": "Synthetic Stable domain contains a hidden allowed limitation.",
+            "allowedLimitations": [hidden_allowed_limitation],
+        }
+    )
+    hidden_allowed_domain_dashboard = build_dashboard(
+        hidden_allowed_domain_inputs,
+        {},
+        [FIXTURE_DIR / "go-no-go-pass.json"],
+        None,
+        Path(__file__).resolve().parents[2],
+        root / "stable-readiness-domain-hidden-allowed-limitation",
+        "production-beta",
+        release_id,
+        generated_at,
+        now,
+        require_stable_readiness=True,
+    )
+    hidden_allowed_domain_blockers = [
+        blocker
+        for blocker in hidden_allowed_domain_dashboard.get("blockers", [])
+        if isinstance(blocker, dict)
+        and blocker.get("id") == "stable-1.0.readiness-summary.domain-failed"
+        and "not present in top-level allowedLimitations" in str(blocker.get("summary", ""))
+    ]
+    if hidden_allowed_domain_dashboard.get("decision") != "no-go" or len(
+        hidden_allowed_domain_blockers
+    ) != 1:
+        raise AssertionError(
+            "domain-scoped Stable allowed limitation was not surfaced as inconsistent: "
+            f"{hidden_allowed_domain_dashboard}"
         )
 
     blocker_domain_inputs = json.loads(json.dumps(inputs))

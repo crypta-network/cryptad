@@ -2674,6 +2674,11 @@ def stable_readiness_domain_errors(summary: dict[str, Any]) -> list[str]:
                         f"domain {domain_id} allowedLimitations[{allowed_index}]",
                     )
                 )
+    errors.extend(
+        production_beta_go_no_go_dashboard.stable_summary_domain_allowed_limitation_consistency_errors(
+            summary
+        )
+    )
     return errors
 
 
@@ -15129,6 +15134,45 @@ def run_self_test(repo_root: Path) -> None:
         assert "matrix.stable-readiness.evidence-not-passing" in stable_malformed_allowed_domain_row[
             "issueIds"
         ], stable_malformed_allowed_domain_row
+
+        hidden_allowed_limitation = {
+            "id": "stable-1.0.self-test-hidden-allowed-limitation",
+            "title": "Hidden self-test allowed Stable limitation",
+            "category": "ui-polish-accessibility-warning",
+            "classification": "allowed-for-stable-1.0",
+            "status": "open",
+            "summary": "Synthetic domain-scoped Stable limitation.",
+            "evidenceIds": ["stable-1.0.known-limitations"],
+            "boundedBy": "Self-test release manager bound for a non-blocking Stable limitation.",
+        }
+        hidden_allowed_domain_summary = {
+            "domains": stable_self_test_domains_with(
+                "known-limitations",
+                status="warn",
+                allowedLimitations=[hidden_allowed_limitation],
+            ),
+            "allowedLimitations": [],
+        }
+        hidden_allowed_domain_errors = stable_readiness_domain_errors(
+            hidden_allowed_domain_summary
+        )
+        assert hidden_allowed_domain_errors == [
+            "domain known-limitations allowedLimitations[0] is not present in top-level allowedLimitations"
+        ], hidden_allowed_domain_errors
+        passing_domain_with_limitation_summary = {
+            "domains": stable_self_test_domains_with(
+                "known-limitations",
+                status="pass",
+                allowedLimitations=[hidden_allowed_limitation],
+            ),
+            "allowedLimitations": [hidden_allowed_limitation],
+        }
+        passing_domain_with_limitation_errors = stable_readiness_domain_errors(
+            passing_domain_with_limitation_summary
+        )
+        assert passing_domain_with_limitation_errors == [
+            "domain known-limitations status is pass but contains 1 allowed limitation(s)"
+        ], passing_domain_with_limitation_errors
 
         stable_domain_blocker_summary = workspace / "build/stable-readiness-domain-blocker.json"
         write_json(
