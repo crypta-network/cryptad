@@ -2656,7 +2656,16 @@ def stable_readiness_domain_errors(summary: dict[str, Any]) -> list[str]:
         for field_name in ("warnings", "allowedLimitations"):
             if field_name in domain and not isinstance(domain.get(field_name), list):
                 errors.append(f"domain {domain_id} {field_name} must be a list")
+        warnings = domain.get("warnings")
         allowed_limitations = domain.get("allowedLimitations")
+        if (
+            status == "warn"
+            and not (isinstance(warnings, list) and warnings)
+            and not (isinstance(allowed_limitations, list) and allowed_limitations)
+        ):
+            errors.append(
+                f"domain {domain_id} status is warn but contains no warnings or allowed limitations"
+            )
         if isinstance(allowed_limitations, list):
             for allowed_index, limitation in enumerate(allowed_limitations):
                 errors.extend(
@@ -14448,6 +14457,59 @@ def run_self_test(repo_root: Path) -> None:
         )
         assert stable_warning_row["status"] == "warn", stable_warning_row
         assert stable_warning_row["releaseBlocker"] is False, stable_warning_row
+
+        stable_status_only_warning_summary = (
+            workspace / "build/stable-readiness-status-only-domain-warning.json"
+        )
+        stable_status_only_warning_value = stable_self_test_summary()
+        for domain in stable_status_only_warning_value["domains"]:
+            if isinstance(domain, dict) and domain.get("id") == "support-feedback-readiness":
+                domain["status"] = "warn"
+                domain["summary"] = "Synthetic Stable domain reports an unsurfaced warning."
+                break
+        else:
+            raise AssertionError("Stable self-test summary is missing support-feedback-readiness")
+        write_json(stable_status_only_warning_summary, stable_status_only_warning_value)
+        stable_status_only_warning_items = stable_readiness_evidence(
+            stable_status_only_warning_summary,
+            True,
+            workspace,
+            out_dir,
+            "cryptad-production-beta-self-test",
+        )
+        stable_status_only_warning_gate = next(
+            item
+            for item in stable_status_only_warning_items
+            if item.id == "stable-1.0.readiness-gate"
+        )
+        assert stable_status_only_warning_gate.status == "fail", (
+            stable_status_only_warning_gate
+        )
+        assert (
+            "domain support-feedback-readiness status is warn but contains no warnings or allowed limitations"
+            in stable_status_only_warning_gate.details["validationErrors"]
+        ), stable_status_only_warning_gate
+        stable_status_only_warning_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/stable-status-only-domain-warning-cert").resolve(),
+            stable_readiness_summary=stable_status_only_warning_summary,
+            stable_readiness_required=True,
+        )
+        (
+            stable_status_only_warning_cert,
+            stable_status_only_warning_exit_code,
+        ) = run(stable_status_only_warning_settings)
+        assert stable_status_only_warning_exit_code == 1, stable_status_only_warning_cert
+        stable_status_only_warning_row = matrix_row_by_id(
+            stable_status_only_warning_settings.out_dir,
+            "stable-1-0-readiness",
+        )
+        assert stable_status_only_warning_row["status"] == "fail", (
+            stable_status_only_warning_row
+        )
+        assert stable_status_only_warning_row["releaseBlocker"] is True, (
+            stable_status_only_warning_row
+        )
 
         stable_warning_mismatch_summary = (
             workspace / "build/stable-readiness-warning-mismatch.json"

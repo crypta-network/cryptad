@@ -2413,7 +2413,16 @@ def stable_summary_domain_errors(summary: dict[str, Any]) -> list[str]:
         for field_name in ("warnings", "allowedLimitations"):
             if field_name in domain and not isinstance(domain.get(field_name), list):
                 errors.append(f"domain {domain_id} {field_name} must be a list")
+        warnings = domain.get("warnings")
         allowed_limitations = domain.get("allowedLimitations")
+        if (
+            status == "warn"
+            and not (isinstance(warnings, list) and warnings)
+            and not (isinstance(allowed_limitations, list) and allowed_limitations)
+        ):
+            errors.append(
+                f"domain {domain_id} status is warn but contains no warnings or allowed limitations"
+            )
         if isinstance(allowed_limitations, list):
             for allowed_index, limitation in enumerate(allowed_limitations):
                 errors.extend(
@@ -5621,6 +5630,48 @@ def assert_required_stable_readiness_release_id_matches_dashboard_candidate(root
         raise AssertionError(
             "Stable summary warning was not surfaced exactly once: "
             f"{summary_warning_dashboard.get('warnings')}"
+        )
+
+    status_only_warning_inputs = json.loads(json.dumps(inputs))
+    status_only_warning_domain = next(
+        domain
+        for domain in status_only_warning_inputs["stableReadinessSummary"]["domains"]
+        if isinstance(domain, dict) and domain.get("id") == "support-feedback-readiness"
+    )
+    status_only_warning_domain.update(
+        {
+            "status": "warn",
+            "summary": "Synthetic Stable domain reports an unsurfaced warning.",
+        }
+    )
+    status_only_warning_dashboard = build_dashboard(
+        status_only_warning_inputs,
+        {},
+        [FIXTURE_DIR / "go-no-go-pass.json"],
+        None,
+        Path(__file__).resolve().parents[2],
+        root / "stable-readiness-status-only-domain-warning",
+        "production-beta",
+        release_id,
+        generated_at,
+        now,
+        require_stable_readiness=True,
+    )
+    status_only_warning_blockers = [
+        blocker
+        for blocker in status_only_warning_dashboard.get("blockers", [])
+        if isinstance(blocker, dict)
+        and blocker.get("id") == "stable-1.0.readiness-summary.domain-failed"
+        and blocker.get("evidenceId") == "stable-1.0.readiness-gate"
+        and blocker.get("severity") == "blocker"
+        and "support-feedback-readiness" in str(blocker.get("summary", ""))
+    ]
+    if status_only_warning_dashboard.get("decision") != "no-go" or len(
+        status_only_warning_blockers
+    ) != 1:
+        raise AssertionError(
+            "status-only Stable domain warning did not block: "
+            f"{status_only_warning_dashboard}"
         )
 
     required_redaction_domain_warn_inputs = json.loads(json.dumps(inputs))
