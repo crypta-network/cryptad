@@ -1044,15 +1044,7 @@ def normalize_status(value: Any) -> str:
 
 
 def entry_has_redaction_findings(entry: dict[str, Any] | None) -> bool:
-    if not isinstance(entry, dict):
-        return False
-    details = entry.get("details", {})
-    if not isinstance(details, dict):
-        return False
-    findings = details.get("redactionFindings")
-    if "redactionFindings" in details and not isinstance(findings, list):
-        return True
-    return bool(findings) or recursive_redaction_failure(details, include_summary_fields=False)
+    return recursive_redaction_field_failure(entry)
 
 
 def redaction_proof_key(key: Any) -> bool:
@@ -1115,6 +1107,34 @@ def recursive_redaction_failure(value: Any, *, include_summary_fields: bool = Tr
             for child in value
         )
     return False
+
+
+def recursive_redaction_field_failure(value: Any) -> bool:
+    if isinstance(value, dict):
+        redaction_payload = {
+            key: child
+            for key, child in value.items()
+            if redaction_signal_key(key)
+        }
+        if redaction_payload and recursive_redaction_failure(redaction_payload):
+            return True
+        return any(
+            recursive_redaction_field_failure(child)
+            for child in value.values()
+            if isinstance(child, (dict, list))
+        )
+    if isinstance(value, list):
+        return any(recursive_redaction_field_failure(child) for child in value)
+    return False
+
+
+def redaction_signal_key(key: Any) -> bool:
+    lowered = str(key).lower()
+    return (
+        "redaction" in lowered
+        or lowered in {"findings", "findingcount", "criticalfindingcount"}
+        or redaction_proof_key(key)
+    )
 
 
 def entry_waiver_id(entry: dict[str, Any] | None) -> str:
@@ -6413,6 +6433,52 @@ def assert_required_stable_readiness_release_id_matches_dashboard_candidate(root
             "Stable direct detail redaction proof was not reported as a critical blocker: "
             f"{direct_detail_redaction_dashboard}"
         )
+
+    for signal_name, signal_value in (
+        ("redactionFindings", [{"kind": "stable-readiness-fixture"}]),
+        ("findingCount", 1),
+        ("privateInsertUrisStored", True),
+    ):
+        top_level_row_redaction_inputs = json.loads(json.dumps(inputs))
+        for entry in top_level_row_redaction_inputs["stableReadinessSummary"]["evidence"]:
+            if isinstance(entry, dict) and entry.get("id") == "stable-1.0.production-beta-state":
+                entry[signal_name] = signal_value
+                break
+        else:
+            raise AssertionError(
+                "synthetic Stable summary is missing stable-1.0.production-beta-state evidence"
+            )
+        top_level_row_redaction_dashboard = build_dashboard(
+            top_level_row_redaction_inputs,
+            {},
+            [FIXTURE_DIR / "go-no-go-pass.json"],
+            None,
+            Path(__file__).resolve().parents[2],
+            root / f"stable-readiness-evidence-top-level-{signal_name}",
+            "production-beta",
+            release_id,
+            generated_at,
+            now,
+            require_stable_readiness=True,
+        )
+        if top_level_row_redaction_dashboard.get("decision") != "no-go":
+            raise AssertionError(
+                f"required Stable readiness with top-level {signal_name} did not block: "
+                f"{top_level_row_redaction_dashboard}"
+            )
+        top_level_row_redaction_blockers = [
+            blocker
+            for blocker in top_level_row_redaction_dashboard.get("blockers", [])
+            if isinstance(blocker, dict)
+            and blocker.get("id") == "stable-1.0.readiness-summary.evidence-redaction"
+            and blocker.get("evidenceId") == "stable-1.0.redaction"
+            and blocker.get("severity") == "critical"
+        ]
+        if not top_level_row_redaction_blockers:
+            raise AssertionError(
+                f"Stable top-level {signal_name} was not reported as a critical blocker: "
+                f"{top_level_row_redaction_dashboard}"
+            )
 
     top_level_raw_redaction_inputs = json.loads(json.dumps(inputs))
     top_level_raw_redaction_inputs["stableReadinessSummary"]["redaction"] = {

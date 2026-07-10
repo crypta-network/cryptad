@@ -1105,9 +1105,35 @@ def evidence_item_has_unwaivable_redaction_findings(item: EvidenceItem) -> bool:
 
 
 def evidence_entry_has_unwaivable_redaction_findings(entry: dict[str, Any] | None) -> bool:
-    if not isinstance(entry, dict):
-        return False
-    return has_unwaivable_redaction_findings(str(entry.get("id", "")), evidence_details(entry))
+    return recursive_redaction_field_has_unwaivable_findings(entry)
+
+
+def recursive_redaction_field_has_unwaivable_findings(value: Any) -> bool:
+    if isinstance(value, dict):
+        redaction_payload = {
+            key: child
+            for key, child in value.items()
+            if redaction_signal_key(key)
+        }
+        if redaction_payload and redaction_signal_has_unwaivable_findings(redaction_payload):
+            return True
+        return any(
+            recursive_redaction_field_has_unwaivable_findings(child)
+            for child in value.values()
+            if isinstance(child, (dict, list))
+        )
+    if isinstance(value, list):
+        return any(recursive_redaction_field_has_unwaivable_findings(child) for child in value)
+    return False
+
+
+def redaction_signal_key(key: Any) -> bool:
+    lowered = str(key).lower()
+    return (
+        "redaction" in lowered
+        or lowered in {"findings", "findingcount", "criticalfindingcount"}
+        or production_beta_go_no_go_dashboard.redaction_proof_key(key)
+    )
 
 
 def active_waivers_for_all(
@@ -15871,6 +15897,44 @@ def run_self_test(repo_root: Path) -> None:
         assert "matrix.stable-readiness.redaction-failed" in stable_direct_detail_redaction_row[
             "issueIds"
         ], stable_direct_detail_redaction_row
+
+        for signal_name, signal_value in (
+            ("redactionFindings", [{"kind": "stable-readiness-self-test"}]),
+            ("findingCount", 1),
+            ("privateInsertUrisStored", True),
+        ):
+            stable_top_level_row_redaction_summary = (
+                workspace / f"build/stable-readiness-top-level-row-{signal_name}.json"
+            )
+            stable_top_level_row_redaction_value = stable_self_test_summary()
+            for entry in stable_top_level_row_redaction_value["evidence"]:
+                if isinstance(entry, dict) and entry.get("id") == direct_detail_redaction_evidence_id:
+                    entry[signal_name] = signal_value
+                    break
+            else:
+                raise AssertionError(
+                    f"Stable self-test summary is missing {direct_detail_redaction_evidence_id}"
+                )
+            write_json(
+                stable_top_level_row_redaction_summary,
+                stable_top_level_row_redaction_value,
+            )
+            stable_top_level_row_redaction_items = stable_readiness_evidence(
+                stable_top_level_row_redaction_summary,
+                True,
+                workspace,
+                out_dir,
+            )
+            stable_top_level_row_redaction_statuses = {
+                item.id: item.status for item in stable_top_level_row_redaction_items
+            }
+            assert (
+                stable_top_level_row_redaction_statuses[direct_detail_redaction_evidence_id]
+                == "fail"
+            ), stable_top_level_row_redaction_statuses
+            assert stable_top_level_row_redaction_statuses["stable-1.0.redaction"] == "fail", (
+                stable_top_level_row_redaction_statuses
+            )
 
         stable_sanitized_false_summary = (
             workspace / "build/stable-readiness-sanitized-false.json"
