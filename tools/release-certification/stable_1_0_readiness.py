@@ -51,6 +51,12 @@ PRODUCTION_BETA_REQUIRED_PIPELINE_STAGES = (
     "first-party-app-verification",
 )
 
+PRODUCTION_BETA_REQUIRED_PROMOTION_GATES = (
+    "build.production-beta-complete",
+    "workspace.clean-production-beta",
+    "signing.production-keys",
+)
+
 PRODUCTION_BETA_REQUIRED_ARTIFACTS = (
     "redactionReport",
 )
@@ -1798,6 +1804,28 @@ def evaluate_production_beta_state(
                 )
             )
         gates_value = promotion.get("gates") if isinstance(promotion.get("gates"), list) else []
+        promotion_gate_ids = {
+            non_empty_string(gate.get("id"))
+            for gate in gates_value
+            if isinstance(gate, dict) and non_empty_string(gate.get("id"))
+        }
+        missing_promotion_gates = [
+            gate_id
+            for gate_id in PRODUCTION_BETA_REQUIRED_PROMOTION_GATES
+            if gate_id not in promotion_gate_ids
+        ]
+        if missing_promotion_gates:
+            blockers.append(
+                blocker_issue(
+                    domain_id,
+                    "stable-1.0.production-beta-state",
+                    "Production beta promotion proof is incomplete",
+                    "Missing required production promotion gates: "
+                    + ", ".join(missing_promotion_gates)
+                    + ".",
+                    "production-beta-summary",
+                )
+            )
         failed_gates = []
         for index, gate in enumerate(gates_value):
             if not isinstance(gate, dict):
@@ -1915,12 +1943,27 @@ def evaluate_production_beta_state(
                     "goNoGoSummary.waivers usedBy must be a list; malformed indexes: "
                     + ", ".join(malformed_used_by_indexes)
                 )
+            malformed_used_by_entry_indexes = [
+                f"{waiver_index}.{used_by_index}"
+                for waiver_index, waiver in enumerate(waiver_records)
+                if isinstance(waiver, dict)
+                and isinstance(waiver.get("usedBy"), list)
+                for used_by_index, issue_id in enumerate(waiver["usedBy"])
+                if not non_empty_string(issue_id)
+            ]
+            if malformed_used_by_entry_indexes:
+                waiver_record_errors.append(
+                    "goNoGoSummary.waivers usedBy entries must be non-empty strings; "
+                    "malformed waiver.entry indexes: "
+                    + ", ".join(malformed_used_by_entry_indexes)
+                )
             used_waiver_record_count = sum(
                 1
                 for waiver in waiver_records
                 if isinstance(waiver, dict)
                 and isinstance(waiver.get("usedBy"), list)
                 and bool(waiver.get("usedBy"))
+                and all(non_empty_string(issue_id) for issue_id in waiver["usedBy"])
             )
         if (
             not malformed_waivers_used_count
@@ -4760,6 +4803,7 @@ def run_self_test() -> None:
         "production-redaction-count",
         "production-boolean-schema-version",
         "production-failed-gate-status",
+        "production-missing-required-promotion-gates",
         "production-pre-dist-artifact-refs",
         "go-no-go-no-go",
         "go-no-go-stub",
@@ -4771,6 +4815,7 @@ def run_self_test() -> None:
         "go-no-go-duplicate-domain",
         "go-no-go-warning-domain",
         "go-no-go-waived-domain",
+        "go-no-go-waiver-malformed-used-by",
         "go-no-go-waiver-count-decision-mismatch",
         "go-no-go-listed-blocker",
         "go-no-go-redaction-findings",
@@ -5102,6 +5147,23 @@ def run_self_test() -> None:
             expect_blocker="stable-1.0.production-beta-state",
         )
 
+        def production_missing_required_promotion_gates(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs["productionBetaSummary"]["promotion"]["gates"] = [
+                {"id": "production-beta.synthetic-passing-gate", "status": "pass"}
+            ]
+
+        run_case(
+            root,
+            "production-missing-required-promotion-gates",
+            production_missing_required_promotion_gates,
+            "not-ready",
+            expect_blocker="stable-1.0.production-beta-state",
+        )
+
         def production_pre_dist_artifact_refs(
             inputs: dict[str, Any],
             _limitations: dict[str, Any],
@@ -5317,6 +5379,29 @@ def run_self_test() -> None:
             go_no_go_waived_domain,
             "ready",
             post_check=assert_go_no_go_waived_domain,
+        )
+
+        def go_no_go_waiver_malformed_used_by(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs["goNoGoSummary"]["decision"] = "go-with-waivers"
+            inputs["goNoGoSummary"]["summary"]["waiversUsed"] = 1
+            inputs["goNoGoSummary"]["domains"][0]["status"] = "waived"
+            inputs["goNoGoSummary"]["waivers"] = [
+                {
+                    "id": "production-beta.synthetic-waiver",
+                    "usedBy": ["", 1],
+                }
+            ]
+
+        run_case(
+            root,
+            "go-no-go-waiver-malformed-used-by",
+            go_no_go_waiver_malformed_used_by,
+            "not-ready",
+            expect_blocker="stable-1.0.go-no-go-decision",
         )
 
         def go_no_go_waiver_count_decision_mismatch(

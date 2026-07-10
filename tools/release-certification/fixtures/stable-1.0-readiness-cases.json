@@ -59,6 +59,11 @@
       "category": "negative"
     },
     {
+      "id": "production-missing-required-promotion-gates",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
       "id": "production-pre-dist-artifact-refs",
       "expectedDecision": "ready",
       "category": "positive"
@@ -112,6 +117,11 @@
       "id": "go-no-go-waived-domain",
       "expectedDecision": "ready",
       "category": "positive"
+    },
+    {
+      "id": "go-no-go-waiver-malformed-used-by",
+      "expectedDecision": "not-ready",
+      "category": "negative"
     },
     {
       "id": "go-no-go-waiver-count-decision-mismatch",
