@@ -196,7 +196,7 @@ NETWORK_SCALE_BUDGET_PROOF_FIELDS = (
     "concurrencyLeasesReleased",
 )
 
-ALLOWED_LIMITATION_REQUIRED_STRING_FIELDS = (
+AUDITABLE_LIMITATION_REQUIRED_STRING_FIELDS = (
     "id",
     "title",
     "category",
@@ -3981,16 +3981,20 @@ def safe_limitation(limitation: dict[str, Any]) -> dict[str, Any]:
     return {key: limitation[key] for key in keys if key in limitation}
 
 
-def allowed_limitation_metadata_errors(record: Any, label: str) -> list[str]:
+def auditable_limitation_metadata_errors(
+    record: Any,
+    label: str,
+    expected_classification: str,
+) -> list[str]:
     if not isinstance(record, dict):
         return [f"{label} must be an object"]
     errors: list[str] = []
-    for field in ALLOWED_LIMITATION_REQUIRED_STRING_FIELDS:
+    for field in AUDITABLE_LIMITATION_REQUIRED_STRING_FIELDS:
         if not non_empty_string(record.get(field)):
             errors.append(f"{label}.{field} must be a non-empty string")
     classification = str(record.get("classification", "")).strip().lower()
-    if classification and classification != "allowed-for-stable-1.0":
-        errors.append(f"{label}.classification must be allowed-for-stable-1.0")
+    if classification and classification != expected_classification:
+        errors.append(f"{label}.classification must be {expected_classification}")
     evidence_ids = record.get("evidenceIds")
     if not isinstance(evidence_ids, list) or not evidence_ids:
         errors.append(f"{label}.evidenceIds must be a non-empty list")
@@ -4051,9 +4055,10 @@ def evaluate_known_limitations(
         limitation_id = str(raw.get("id", "stable-1.0.unknown-limitation"))
         category = str(raw.get("category", "")).strip()
         if classification == "allowed-for-stable-1.0":
-            metadata_errors = allowed_limitation_metadata_errors(
+            metadata_errors = auditable_limitation_metadata_errors(
                 raw,
                 f"stableKnownLimitations.limitations[{index}]",
+                "allowed-for-stable-1.0",
             )
             if metadata_errors:
                 disallowed.append(limitation)
@@ -4096,29 +4101,50 @@ def evaluate_known_limitations(
             else:
                 allowed.append(limitation)
         elif classification == "requires-waiver-before-stable":
-            waiver = active_waiver_for(waivers, limitation_id, f"limitation.{limitation_id}")
-            if waiver is None:
+            metadata_errors = auditable_limitation_metadata_errors(
+                raw,
+                f"stableKnownLimitations.limitations[{index}]",
+                "requires-waiver-before-stable",
+            )
+            if metadata_errors:
+                disallowed.append(limitation)
                 blockers.append(
                     blocker_issue(
                         domain_id,
                         "stable-1.0.known-limitations",
-                        "Stable limitation requires a waiver",
-                        f"{limitation_id} is open and requires an explicit Stable 1.0 waiver.",
+                        "Waiver-required Stable limitation record is malformed",
+                        "Waiver-required Stable limitations must be explicit and bounded before "
+                        "a waiver can be honored: "
+                        + "; ".join(metadata_errors)
+                        + ".",
                         "stable-known-limitations",
-                        waivable=True,
                         limitation_id=limitation_id,
                     )
                 )
             else:
-                warnings.append(
-                    warning_issue(
-                        domain_id,
-                        "stable-1.0.known-limitations",
-                        "Stable limitation is covered by waiver",
-                        f"{limitation_id} remains open under waiver {waiver.id}.",
-                        "stable-known-limitations",
+                waiver = active_waiver_for(waivers, limitation_id, f"limitation.{limitation_id}")
+                if waiver is None:
+                    blockers.append(
+                        blocker_issue(
+                            domain_id,
+                            "stable-1.0.known-limitations",
+                            "Stable limitation requires a waiver",
+                            f"{limitation_id} is open and requires an explicit Stable 1.0 waiver.",
+                            "stable-known-limitations",
+                            waivable=True,
+                            limitation_id=limitation_id,
+                        )
                     )
-                )
+                else:
+                    warnings.append(
+                        warning_issue(
+                            domain_id,
+                            "stable-1.0.known-limitations",
+                            "Stable limitation is covered by waiver",
+                            f"{limitation_id} remains open under waiver {waiver.id}.",
+                            "stable-known-limitations",
+                        )
+                    )
         elif classification in {"blocks-stable-1.0", "beta-only"}:
             disallowed.append(limitation)
             blockers.append(
@@ -5068,6 +5094,8 @@ def run_self_test() -> None:
         "boolean-waiver-schema-version",
         "incomplete-waiver-metadata",
         "missing-waiver-required-fields",
+        "waived-limitation-missing-metadata",
+        "waived-limitation-valid",
         "allowed-trust-graph",
         "allowed-social-inbox",
     }
@@ -8135,6 +8163,131 @@ def run_self_test() -> None:
             missing_waiver_required_fields,
             "not-ready",
             expect_blocker="stable-1.0.waiver-validation",
+        )
+
+        def approved_limitation_waiver(
+            paths: dict[str, Path],
+            limitation_id: str,
+            name: str,
+        ) -> Path:
+            waiver_path = paths["stableKnownLimitations"].parent / f"{name}-waivers.json"
+            write_json(
+                waiver_path,
+                {
+                    "schemaVersion": 1,
+                    "waivers": [
+                        {
+                            "id": f"stable-waive-{name}",
+                            "evidenceId": limitation_id,
+                            "scope": "stable-1.0",
+                            "status": "approved",
+                            "rationale": "Synthetic approved Stable limitation waiver.",
+                            "approvedBy": "stable-release-manager",
+                            "owner": "stable-readiness",
+                            "expiresAt": "2999-01-01T00:00:00Z",
+                            "references": ["docs/stable-1.0-readiness-gate.md"],
+                        }
+                    ],
+                },
+            )
+            return waiver_path
+
+        malformed_waived_limitation_id = "stable-1.0.waived-metadata-missing"
+
+        def waived_limitation_missing_metadata(
+            _inputs: dict[str, Any],
+            limitations: dict[str, Any],
+            paths: dict[str, Path],
+        ) -> Path:
+            limitations["limitations"].append(
+                {
+                    "id": malformed_waived_limitation_id,
+                    "classification": "requires-waiver-before-stable",
+                    "status": "open",
+                }
+            )
+            return approved_limitation_waiver(
+                paths,
+                malformed_waived_limitation_id,
+                "metadata-missing",
+            )
+
+        def assert_waived_limitation_missing_metadata(summary: dict[str, Any]) -> None:
+            metadata_blockers = [
+                blocker
+                for blocker in summary.get("blockers", [])
+                if isinstance(blocker, dict)
+                and blocker.get("title")
+                == "Waiver-required Stable limitation record is malformed"
+                and blocker.get("limitationId") == malformed_waived_limitation_id
+            ]
+            if len(metadata_blockers) != 1:
+                raise AssertionError(
+                    "malformed waived limitation did not produce its metadata blocker: "
+                    f"{summary.get('blockers')}"
+                )
+            blocker_summary = str(metadata_blockers[0].get("summary", ""))
+            for missing_field in ("title", "category", "summary", "boundedBy", "evidenceIds"):
+                if missing_field not in blocker_summary:
+                    raise AssertionError(
+                        f"malformed waived limitation blocker omitted {missing_field}: "
+                        f"{metadata_blockers[0]}"
+                    )
+
+        run_case(
+            root,
+            "waived-limitation-missing-metadata",
+            waived_limitation_missing_metadata,
+            "not-ready",
+            expect_blocker="stable-1.0.known-limitations",
+            post_check=assert_waived_limitation_missing_metadata,
+        )
+
+        valid_waived_limitation_id = "stable-1.0.waived-metadata-complete"
+
+        def waived_limitation_valid(
+            _inputs: dict[str, Any],
+            limitations: dict[str, Any],
+            paths: dict[str, Path],
+        ) -> Path:
+            limitations["limitations"].append(
+                {
+                    "id": valid_waived_limitation_id,
+                    "title": "Bounded Stable follow-up covered by waiver",
+                    "classification": "requires-waiver-before-stable",
+                    "category": "ui-polish-accessibility-warning",
+                    "status": "open",
+                    "summary": "Synthetic auditable waiver-required limitation.",
+                    "evidenceIds": ["stable-1.0.support-feedback-readiness"],
+                    "boundedBy": "The follow-up remains bounded to non-blocking UI polish.",
+                }
+            )
+            return approved_limitation_waiver(
+                paths,
+                valid_waived_limitation_id,
+                "metadata-complete",
+            )
+
+        def assert_waived_limitation_valid(summary: dict[str, Any]) -> None:
+            matching_warnings = [
+                warning
+                for warning in summary.get("warnings", [])
+                if isinstance(warning, dict)
+                and warning.get("title") == "Stable limitation is covered by waiver"
+                and valid_waived_limitation_id in str(warning.get("summary", ""))
+            ]
+            if len(matching_warnings) != 1 or summary.get("status") != "warn":
+                raise AssertionError(
+                    "auditable waived limitation was not preserved as a Stable warning: "
+                    f"{summary}"
+                )
+
+        run_case(
+            root,
+            "waived-limitation-valid",
+            waived_limitation_valid,
+            "ready",
+            post_check=assert_waived_limitation_valid,
         )
 
         def only_trust_graph(_inputs: dict[str, Any], limitations: dict[str, Any], _paths: dict[str, Path]) -> None:

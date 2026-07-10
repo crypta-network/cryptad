@@ -804,6 +804,16 @@
       "category": "negative"
     },
     {
+      "id": "waived-limitation-missing-metadata",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "waived-limitation-valid",
+      "expectedDecision": "ready",
+      "category": "positive"
+    },
+    {
       "id": "allowed-trust-graph",
       "expectedDecision": "ready-with-allowed-limitations",
       "category": "positive"
