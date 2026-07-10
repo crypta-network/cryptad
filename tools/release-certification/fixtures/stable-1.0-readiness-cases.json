@@ -219,6 +219,11 @@
       "category": "negative"
     },
     {
+      "id": "release-certification-evidence-redacted-false",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
       "id": "release-certification-evidence-raw-stored",
       "expectedDecision": "not-ready",
       "category": "negative"

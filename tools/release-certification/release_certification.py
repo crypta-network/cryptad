@@ -1073,19 +1073,7 @@ def redaction_signal_has_unwaivable_findings(
         for key, child in value.items():
             if key == "redaction":
                 continue
-            lowered = str(key).lower()
-            if (lowered.endswith("excluded") or lowered.endswith("excludedfromevidence")) and child is False:
-                return True
-            if (
-                lowered.startswith("raw")
-                and (
-                    lowered.endswith("included")
-                    or lowered.endswith("persisted")
-                    or lowered.endswith("stored")
-                    or lowered.endswith("inevidence")
-                )
-                and child is True
-            ):
+            if production_beta_go_no_go_dashboard.redaction_proof_failure(key, child):
                 return True
             if redaction_signal_has_unwaivable_findings(
                 child,
@@ -15709,6 +15697,51 @@ def run_self_test(repo_root: Path) -> None:
         assert "matrix.stable-readiness.redaction-failed" in stable_direct_detail_redaction_row[
             "issueIds"
         ], stable_direct_detail_redaction_row
+
+        stable_sanitized_false_summary = (
+            workspace / "build/stable-readiness-sanitized-false.json"
+        )
+        stable_sanitized_false_value = stable_self_test_summary()
+        for entry in stable_sanitized_false_value["evidence"]:
+            if isinstance(entry, dict) and entry.get("id") == "stable-1.0.redaction":
+                entry["details"] = {"localPathsSanitized": False}
+                break
+        else:
+            raise AssertionError("Stable self-test summary is missing stable-1.0.redaction")
+        write_json(stable_sanitized_false_summary, stable_sanitized_false_value)
+        stable_sanitized_false_items = stable_readiness_evidence(
+            stable_sanitized_false_summary,
+            True,
+            workspace,
+            out_dir,
+        )
+        stable_sanitized_false_statuses = {
+            item.id: item.status for item in stable_sanitized_false_items
+        }
+        assert stable_sanitized_false_statuses["stable-1.0.readiness-gate"] == "fail", (
+            stable_sanitized_false_statuses
+        )
+        assert stable_sanitized_false_statuses["stable-1.0.redaction"] == "fail", (
+            stable_sanitized_false_statuses
+        )
+        stable_sanitized_false_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/stable-sanitized-false-cert").resolve(),
+            stable_readiness_summary=stable_sanitized_false_summary,
+            stable_readiness_required=True,
+        )
+        stable_sanitized_false_cert, stable_sanitized_false_exit_code = run(
+            stable_sanitized_false_settings
+        )
+        assert stable_sanitized_false_exit_code == 1, stable_sanitized_false_cert
+        stable_sanitized_false_row = matrix_row_by_id(
+            stable_sanitized_false_settings.out_dir,
+            "stable-1-0-readiness",
+        )
+        assert stable_sanitized_false_row["status"] == "fail", stable_sanitized_false_row
+        assert stable_sanitized_false_row["releaseBlocker"] is True, (
+            stable_sanitized_false_row
+        )
 
         stable_missing_schema_summary = workspace / "build/stable-readiness-missing-schema-version.json"
         write_json(

@@ -1055,6 +1055,27 @@ def entry_has_redaction_findings(entry: dict[str, Any] | None) -> bool:
     return bool(findings) or recursive_redaction_failure(details, include_summary_fields=False)
 
 
+def redaction_proof_key(key: Any) -> bool:
+    lowered = str(key).lower()
+    return lowered.endswith(
+        ("excluded", "excludedfromevidence", "redacted", "sanitized")
+    ) or (
+        lowered.startswith("raw")
+        and lowered.endswith(("included", "persisted", "stored", "inevidence"))
+    )
+
+
+def redaction_proof_failure(key: Any, value: Any) -> bool:
+    lowered = str(key).lower()
+    if lowered.endswith(("excluded", "excludedfromevidence", "redacted", "sanitized")):
+        return value is False
+    return (
+        lowered.startswith("raw")
+        and lowered.endswith(("included", "persisted", "stored", "inevidence"))
+        and value is True
+    )
+
+
 def recursive_redaction_failure(value: Any, *, include_summary_fields: bool = True) -> bool:
     if isinstance(value, dict):
         if "redaction" in value and recursive_redaction_failure(value["redaction"]):
@@ -1082,19 +1103,7 @@ def recursive_redaction_failure(value: Any, *, include_summary_fields: bool = Tr
         for key, child in value.items():
             if key == "redaction":
                 continue
-            lowered = str(key).lower()
-            if (
-                lowered.startswith("raw")
-                and (
-                    lowered.endswith("included")
-                    or lowered.endswith("persisted")
-                    or lowered.endswith("stored")
-                    or lowered.endswith("inevidence")
-                )
-                and child is True
-            ):
-                return True
-            if (lowered.endswith("excluded") or lowered.endswith("excludedfromevidence")) and child is False:
+            if redaction_proof_failure(key, child):
                 return True
             if recursive_redaction_failure(child, include_summary_fields=include_summary_fields):
                 return True
@@ -6132,6 +6141,45 @@ def assert_required_stable_readiness_release_id_matches_dashboard_candidate(root
         raise AssertionError(
             "Stable raw-stored evidence-row redaction was not reported as a critical blocker: "
             f"{raw_stored_redaction_dashboard}"
+        )
+
+    redacted_false_inputs = json.loads(json.dumps(inputs))
+    for entry in redacted_false_inputs["stableReadinessSummary"]["evidence"]:
+        if isinstance(entry, dict) and entry.get("id") == "stable-1.0.redaction":
+            entry["details"] = {"formPasswordsRedacted": False}
+            break
+    else:
+        raise AssertionError("synthetic Stable summary is missing stable-1.0.redaction evidence")
+    redacted_false_dashboard = build_dashboard(
+        redacted_false_inputs,
+        {},
+        [FIXTURE_DIR / "go-no-go-pass.json"],
+        None,
+        Path(__file__).resolve().parents[2],
+        root / "stable-readiness-evidence-redacted-false",
+        "production-beta",
+        release_id,
+        generated_at,
+        now,
+        require_stable_readiness=True,
+    )
+    if redacted_false_dashboard.get("decision") != "no-go":
+        raise AssertionError(
+            "required Stable readiness with formPasswordsRedacted=false did not block: "
+            f"{redacted_false_dashboard}"
+        )
+    redacted_false_blockers = [
+        blocker
+        for blocker in redacted_false_dashboard.get("blockers", [])
+        if isinstance(blocker, dict)
+        and blocker.get("id") == "stable-1.0.readiness-summary.evidence-redaction"
+        and blocker.get("evidenceId") == "stable-1.0.redaction"
+        and blocker.get("severity") == "critical"
+    ]
+    if not redacted_false_blockers:
+        raise AssertionError(
+            "Stable false redacted proof was not reported as a critical blocker: "
+            f"{redacted_false_dashboard}"
         )
 
     direct_detail_redaction_inputs = json.loads(json.dumps(inputs))

@@ -1358,19 +1358,7 @@ def recursive_redaction_failure(value: Any) -> bool:
         if isinstance(status, str) and normalize_status(status) == "fail":
             return True
         for key, child in value.items():
-            lowered = str(key).lower()
-            if (
-                lowered.startswith("raw")
-                and (
-                    lowered.endswith("included")
-                    or lowered.endswith("persisted")
-                    or lowered.endswith("stored")
-                    or lowered.endswith("inevidence")
-                )
-                and child is True
-            ):
-                return True
-            if (lowered.endswith("excluded") or lowered.endswith("excludedfromevidence")) and child is False:
+            if dashboard.redaction_proof_failure(key, child):
                 return True
             if recursive_redaction_failure(child):
                 return True
@@ -1403,17 +1391,7 @@ def redaction_signal_key(key: Any) -> bool:
     return (
         "redaction" in lowered
         or lowered in {"findings", "findingcount"}
-        or lowered.endswith("excluded")
-        or lowered.endswith("excludedfromevidence")
-        or (
-            lowered.startswith("raw")
-            and (
-                lowered.endswith("included")
-                or lowered.endswith("persisted")
-                or lowered.endswith("stored")
-                or lowered.endswith("inevidence")
-            )
-        )
+        or dashboard.redaction_proof_key(key)
     )
 
 
@@ -4657,6 +4635,7 @@ def run_self_test() -> None:
         "app-platform-duplicate-evidence-failed",
         "attached-evidence-redaction-findings",
         "release-certification-evidence-redaction-findings",
+        "release-certification-evidence-redacted-false",
         "release-certification-evidence-raw-stored",
         "release-certification-evidence-excluded-from-evidence-false",
         "release-certification-evidence-direct-excluded-from-evidence-false",
@@ -5622,6 +5601,28 @@ def run_self_test() -> None:
             release_certification_evidence_redaction_findings,
             "not-ready",
             expect_blocker="app-platform.signed-bundles",
+        )
+
+        def release_certification_evidence_redacted_false(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            def mutate(entry: dict[str, Any]) -> None:
+                entry.setdefault("details", {})["redaction"] = {
+                    "status": "pass",
+                    "findings": [],
+                    "formPasswordsRedacted": False,
+                }
+
+            mutate_evidence(inputs, "app-platform.content-fetch", mutate)
+
+        run_case(
+            root,
+            "release-certification-evidence-redacted-false",
+            release_certification_evidence_redacted_false,
+            "not-ready",
+            expect_blocker="stable-1.0.redaction",
         )
 
         def release_certification_evidence_raw_stored(
