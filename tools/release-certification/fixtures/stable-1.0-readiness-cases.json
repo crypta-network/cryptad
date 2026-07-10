@@ -259,6 +259,11 @@
       "category": "negative"
     },
     {
+      "id": "app-platform-evidence-redaction-clean-false",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
       "id": "release-certification-evidence-redaction-findings",
       "expectedDecision": "not-ready",
       "category": "negative"
@@ -315,6 +320,21 @@
     },
     {
       "id": "app-platform-summary-malformed-envelope",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "app-platform-summary-non-release-mode",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "app-platform-summary-non-release-flag",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "app-platform-summary-fixture-only",
       "expectedDecision": "not-ready",
       "category": "negative"
     },

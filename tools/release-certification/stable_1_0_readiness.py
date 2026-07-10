@@ -840,6 +840,16 @@ def app_platform_summary_envelope_blockers(
     status = normalize_status(summary.get("status", "missing"))
     if status != "pass":
         validation_errors.append(f"appPlatformSummary.status must be pass; got {status}")
+    mode = non_empty_string(summary.get("mode")) or "missing"
+    if mode != "release-candidate":
+        validation_errors.append(
+            f"appPlatformSummary.mode must be release-candidate; got {mode}"
+        )
+    for field in ("nonRelease", "fixtureOnly"):
+        if field in summary and summary.get(field) is not False:
+            validation_errors.append(
+                f"appPlatformSummary.{field} must be false when present"
+            )
     evidence_entries = summary.get("evidence")
     validation_errors.extend(
         list_shape_errors(evidence_entries, "appPlatformSummary.evidence")
@@ -4997,7 +5007,11 @@ def run_self_test() -> None:
         "app-platform-summary-missing",
         "app-platform-summary-failed",
         "app-platform-summary-malformed-envelope",
+        "app-platform-summary-non-release-mode",
+        "app-platform-summary-non-release-flag",
+        "app-platform-summary-fixture-only",
         "app-platform-summary-truncated-evidence",
+        "app-platform-evidence-redaction-clean-false",
         "ecosystem-matrix-failed",
         "ecosystem-matrix-failed-row",
         "ecosystem-matrix-warning-row",
@@ -6090,6 +6104,51 @@ def run_self_test() -> None:
             expect_blocker="stable-1.0.app-ecosystem-maturity",
         )
 
+        def app_platform_summary_non_release_mode(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs["appPlatformSummary"]["mode"] = "pr"
+
+        run_case(
+            root,
+            "app-platform-summary-non-release-mode",
+            app_platform_summary_non_release_mode,
+            "not-ready",
+            expect_blocker="stable-1.0.app-ecosystem-maturity",
+        )
+
+        def app_platform_summary_non_release_flag(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs["appPlatformSummary"]["nonRelease"] = True
+
+        run_case(
+            root,
+            "app-platform-summary-non-release-flag",
+            app_platform_summary_non_release_flag,
+            "not-ready",
+            expect_blocker="stable-1.0.app-ecosystem-maturity",
+        )
+
+        def app_platform_summary_fixture_only(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs["appPlatformSummary"]["fixtureOnly"] = True
+
+        run_case(
+            root,
+            "app-platform-summary-fixture-only",
+            app_platform_summary_fixture_only,
+            "not-ready",
+            expect_blocker="stable-1.0.app-ecosystem-maturity",
+        )
+
         def app_platform_summary_truncated_evidence(
             inputs: dict[str, Any],
             _limitations: dict[str, Any],
@@ -6195,6 +6254,28 @@ def run_self_test() -> None:
             "not-ready",
             expect_blocker="stable-1.0.redaction",
             post_check=assert_app_platform_evidence_top_level_redaction_signals,
+        )
+
+        def app_platform_evidence_redaction_clean_false(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            for entry in inputs["appPlatformSummary"]["evidence"]:
+                if (
+                    isinstance(entry, dict)
+                    and entry.get("id") == "app-data.backup-restore-portability"
+                ):
+                    entry.setdefault("details", {})["redactionClean"] = False
+                    return
+            raise AssertionError("app-data.backup-restore-portability evidence row missing")
+
+        run_case(
+            root,
+            "app-platform-evidence-redaction-clean-false",
+            app_platform_evidence_redaction_clean_false,
+            "not-ready",
+            expect_blocker="stable-1.0.redaction",
         )
 
         def release_certification_evidence_redaction_findings(
