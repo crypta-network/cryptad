@@ -920,8 +920,7 @@ def evidence_details(entry: dict[str, Any] | None) -> dict[str, Any]:
 
 
 def entry_has_redaction_findings(entry: dict[str, Any] | None) -> bool:
-    details = evidence_details(entry)
-    return recursive_redaction_field_failure(details)
+    return recursive_redaction_field_failure(entry)
 
 
 def entry_ok(entry: dict[str, Any] | None) -> bool:
@@ -4958,6 +4957,7 @@ def run_self_test() -> None:
         "release-certification-evidence-failed",
         "app-platform-duplicate-evidence-failed",
         "attached-evidence-redaction-findings",
+        "app-platform-evidence-top-level-redaction-signals",
         "release-certification-evidence-redaction-findings",
         "release-certification-evidence-redacted-false",
         "release-certification-evidence-raw-stored",
@@ -5080,6 +5080,21 @@ def run_self_test() -> None:
             "stable readiness fixture manifest does not match self-test cases: "
             f"missing={sorted(expected_cases - manifest_cases)} extra={sorted(manifest_cases - expected_cases)}"
         )
+    for signal_name, signal_value in (
+        ("redactionFindings", [{"kind": "stable-readiness-self-test"}]),
+        ("findingCount", 1),
+        ("privateInsertUrisStored", True),
+    ):
+        signal_entry = {
+            "id": "stable-readiness.synthetic-redaction-signal",
+            "status": "pass",
+            "details": {},
+            signal_name: signal_value,
+        }
+        if not entry_has_redaction_findings(signal_entry):
+            raise AssertionError(
+                f"top-level evidence redaction signal was not detected: {signal_name}"
+            )
     with tempfile.TemporaryDirectory(prefix="cryptad-stable-readiness-self-test-") as temp_name:
         root = Path(temp_name)
         docs_root = root / "docs"
@@ -6105,6 +6120,51 @@ def run_self_test() -> None:
             attached_evidence_redaction_findings,
             "not-ready",
             expect_blocker="stable-1.0.redaction",
+        )
+
+        def app_platform_evidence_top_level_redaction_signals(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            for entry in inputs["appPlatformSummary"]["evidence"]:
+                if isinstance(entry, dict) and entry.get("id") == "app-data.backup-restore-portability":
+                    entry["redactionFindings"] = [
+                        {
+                            "kind": "stable-readiness-fixture",
+                            "summary": "Synthetic top-level evidence redaction finding.",
+                        }
+                    ]
+                    entry["findingCount"] = 1
+                    entry["privateInsertUrisStored"] = True
+                    return
+            raise AssertionError("app-data.backup-restore-portability evidence row missing")
+
+        def assert_app_platform_evidence_top_level_redaction_signals(
+            summary: dict[str, Any],
+        ) -> None:
+            blocker_ids = {
+                str(blocker.get("evidenceId"))
+                for blocker in summary.get("blockers", [])
+                if isinstance(blocker, dict)
+            }
+            required_blockers = {
+                "app-data.backup-restore-portability",
+                "stable-1.0.redaction",
+            }
+            if not required_blockers.issubset(blocker_ids):
+                raise AssertionError(
+                    "top-level evidence redaction signals did not create both blockers: "
+                    f"{summary.get('blockers')}"
+                )
+
+        run_case(
+            root,
+            "app-platform-evidence-top-level-redaction-signals",
+            app_platform_evidence_top_level_redaction_signals,
+            "not-ready",
+            expect_blocker="stable-1.0.redaction",
+            post_check=assert_app_platform_evidence_top_level_redaction_signals,
         )
 
         def release_certification_evidence_redaction_findings(
