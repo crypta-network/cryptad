@@ -3582,6 +3582,19 @@ def evaluate_support_feedback(
                         "public-beta-known-issues",
                     )
                 )
+        if recursive_redaction_field_failure(known_issues):
+            blockers.append(
+                blocker_issue(
+                    domain_id,
+                    "stable-1.0.redaction",
+                    "Known issues tracker contains unsafe redaction signals",
+                    (
+                        "Stable 1.0 known-issues evidence must not contain raw stored data, "
+                        "unsafe redaction proofs, or redaction findings."
+                    ),
+                    "public-beta-known-issues",
+                )
+            )
         known_issue_records = known_issues.get("knownIssues")
         if not isinstance(known_issue_records, list):
             blockers.append(
@@ -4723,6 +4736,8 @@ def run_self_test() -> None:
         "malformed-known-issues-tracker",
         "malformed-known-issue-entry",
         "malformed-known-issue-metadata",
+        "known-issue-unsafe-redaction-proof",
+        "known-issue-redaction-findings",
         "critical-known-issue",
         "critical-known-issue-future-fixed",
         "beta-only-limitation",
@@ -7075,6 +7090,47 @@ def run_self_test() -> None:
             }
             record.update(overrides)
             return record
+
+        def known_issue_unsafe_redaction_proof(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs["publicBetaKnownIssues"]["knownIssues"].append(
+                synthetic_known_issue(rawSupportBundlesStored=True)
+            )
+
+        run_case(
+            root,
+            "known-issue-unsafe-redaction-proof",
+            known_issue_unsafe_redaction_proof,
+            "not-ready",
+            expect_blocker="stable-1.0.redaction",
+        )
+
+        def known_issue_redaction_findings(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs["publicBetaKnownIssues"]["knownIssues"].append(
+                synthetic_known_issue(
+                    redactionFindings=[
+                        {
+                            "kind": "raw-support-bundle",
+                            "summary": "Synthetic known-issue redaction finding.",
+                        }
+                    ]
+                )
+            )
+
+        run_case(
+            root,
+            "known-issue-redaction-findings",
+            known_issue_redaction_findings,
+            "not-ready",
+            expect_blocker="stable-1.0.redaction",
+        )
 
         def critical_known_issue(inputs: dict[str, Any], _limitations: dict[str, Any], _paths: dict[str, Path]) -> None:
             inputs["publicBetaKnownIssues"]["knownIssues"].append(

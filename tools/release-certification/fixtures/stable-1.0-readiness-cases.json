@@ -639,6 +639,16 @@
       "category": "negative"
     },
     {
+      "id": "known-issue-unsafe-redaction-proof",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "known-issue-redaction-findings",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
       "id": "critical-known-issue",
       "expectedDecision": "not-ready",
       "category": "negative"
