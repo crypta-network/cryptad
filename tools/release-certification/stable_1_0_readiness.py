@@ -1398,7 +1398,7 @@ def redaction_signal_key(key: Any) -> bool:
     lowered = str(key).lower()
     return (
         "redaction" in lowered
-        or lowered in {"findings", "findingcount"}
+        or lowered in {"findings", "findingcount", "criticalfindingcount"}
         or dashboard.redaction_proof_key(key)
     )
 
@@ -4800,6 +4800,7 @@ def run_self_test() -> None:
         "release-certification-evidence-sensitive-stored",
         "release-certification-evidence-excluded-from-evidence-false",
         "release-certification-evidence-direct-excluded-from-evidence-false",
+        "release-certification-evidence-direct-critical-redaction-count",
         "release-certification-evidence-malformed-redaction-findings",
         "release-certification-evidence-nested-redaction-findings",
         "app-platform-summary-missing",
@@ -5931,6 +5932,24 @@ def run_self_test() -> None:
             root,
             "release-certification-evidence-direct-excluded-from-evidence-false",
             release_certification_evidence_direct_excluded_from_evidence_false,
+            "not-ready",
+            expect_blocker="app-data.backup-restore-portability",
+        )
+
+        def release_certification_evidence_direct_critical_redaction_count(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            def mutate(entry: dict[str, Any]) -> None:
+                entry.setdefault("details", {})["criticalFindingCount"] = 1
+
+            mutate_evidence(inputs, "app-data.backup-restore-portability", mutate)
+
+        run_case(
+            root,
+            "release-certification-evidence-direct-critical-redaction-count",
+            release_certification_evidence_direct_critical_redaction_count,
             "not-ready",
             expect_blocker="app-data.backup-restore-portability",
         )
