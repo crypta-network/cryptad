@@ -119,6 +119,11 @@
       "category": "positive"
     },
     {
+      "id": "go-no-go-unreported-warning-domain",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
       "id": "go-no-go-waived-domain",
       "expectedDecision": "ready",
       "category": "positive"

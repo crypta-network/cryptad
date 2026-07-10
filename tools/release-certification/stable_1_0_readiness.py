@@ -2062,6 +2062,7 @@ def evaluate_production_beta_state(
                     "go-no-go-summary",
                 )
             )
+        warning_domain_ids: list[str] = []
         if isinstance(go_no_go.get("domains"), list):
             dashboard_domains = go_no_go["domains"]
             domain_ids = [
@@ -2130,6 +2131,8 @@ def evaluate_production_beta_state(
                 domain_status = normalize_status(dashboard_domain.get("status", "missing"))
                 if domain_status == "missing":
                     malformed_domain_statuses.append(domain_label)
+                elif domain_status == "warn":
+                    warning_domain_ids.append(domain_label)
                 elif domain_status not in {"pass", "warn"}:
                     non_passing_domains.append(f"{domain_label}:{domain_status}")
             if malformed_domain_statuses:
@@ -2231,6 +2234,52 @@ def evaluate_production_beta_state(
                         f"goNoGoSummary.summary.warnings is {warnings_count}, "
                         f"but warnings contains {len(dashboard_warnings)} entries."
                     ),
+                    "go-no-go-summary",
+                )
+            )
+        warning_record_domain_ids = {
+            non_empty_string(warning.get("domainId"))
+            for warning in dashboard_warnings
+            if isinstance(warning, dict) and non_empty_string(warning.get("domainId"))
+        }
+        malformed_warning_domain_indexes = [
+            str(index)
+            for index, warning in enumerate(dashboard_warnings)
+            if isinstance(warning, dict) and not non_empty_string(warning.get("domainId"))
+        ]
+        missing_warning_domain_ids = sorted(
+            set(warning_domain_ids) - warning_record_domain_ids
+        )
+        unknown_warning_domain_ids = sorted(
+            warning_record_domain_ids - set(GO_NO_GO_DOMAIN_IDS)
+        )
+        if (
+            malformed_warning_domain_indexes
+            or missing_warning_domain_ids
+            or unknown_warning_domain_ids
+        ):
+            warning_domain_errors: list[str] = []
+            if malformed_warning_domain_indexes:
+                warning_domain_errors.append(
+                    "warning records missing domainId at indexes: "
+                    + ", ".join(malformed_warning_domain_indexes)
+                )
+            if missing_warning_domain_ids:
+                warning_domain_errors.append(
+                    "warn domains without warning records: "
+                    + ", ".join(missing_warning_domain_ids)
+                )
+            if unknown_warning_domain_ids:
+                warning_domain_errors.append(
+                    "warning records with unknown domainId: "
+                    + ", ".join(unknown_warning_domain_ids)
+                )
+            blockers.append(
+                blocker_issue(
+                    domain_id,
+                    "stable-1.0.go-no-go-decision",
+                    "Go/no-go dashboard warning domains are inconsistent",
+                    "Go/no-go dashboard " + "; ".join(warning_domain_errors) + ".",
                     "go-no-go-summary",
                 )
             )
@@ -4882,6 +4931,7 @@ def run_self_test() -> None:
         "go-no-go-truncated-domains",
         "go-no-go-duplicate-domain",
         "go-no-go-warning-domain",
+        "go-no-go-unreported-warning-domain",
         "go-no-go-waived-domain",
         "go-no-go-waiver-malformed-used-by",
         "go-no-go-waiver-count-decision-mismatch",
@@ -5399,12 +5449,14 @@ def run_self_test() -> None:
             _limitations: dict[str, Any],
             _paths: dict[str, Path],
         ) -> None:
+            warning_domain_id = inputs["goNoGoSummary"]["domains"][0]["id"]
             inputs["goNoGoSummary"]["domains"][0]["status"] = "warn"
             inputs["goNoGoSummary"]["summary"]["warnings"] = 1
             inputs["goNoGoSummary"]["warnings"] = [
                 {
                     "id": "production-beta.synthetic-warning",
                     "evidenceId": "production-beta.synthetic-evidence",
+                    "domainId": warning_domain_id,
                     "severity": "warning",
                     "title": "Synthetic production beta warning",
                     "summary": "Synthetic production beta warning remains open for Stable review.",
@@ -5443,6 +5495,21 @@ def run_self_test() -> None:
             go_no_go_warning_domain,
             "ready",
             post_check=assert_go_no_go_warning_domain,
+        )
+
+        def go_no_go_unreported_warning_domain(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs["goNoGoSummary"]["domains"][0]["status"] = "warn"
+
+        run_case(
+            root,
+            "go-no-go-unreported-warning-domain",
+            go_no_go_unreported_warning_domain,
+            "not-ready",
+            expect_blocker="stable-1.0.go-no-go-decision",
         )
 
         def go_no_go_waived_domain(
