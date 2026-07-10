@@ -34,6 +34,7 @@ DEFAULT_LIMITATIONS = TOOL_DIR / "stable-1.0-known-limitations.json"
 DEFAULT_PUBLIC_BETA_KNOWN_ISSUES = TOOL_DIR / "public-beta-known-issues.json"
 FIXTURE_DIR = TOOL_DIR / "fixtures"
 DEFAULT_GENERATED_AT = "1970-01-01T00:00:00Z"
+SELF_TEST_VALIDATION_TIME = dt.datetime(1970, 1, 1, tzinfo=dt.timezone.utc)
 ECOSYSTEM_MATRIX_REQUIRED_ROW_IDS = tuple(
     spec.id for spec in certification.ecosystem_matrix_row_specs()
 )
@@ -394,12 +395,8 @@ def sha256_file(path: Path) -> str:
     return f"sha256:{digest.hexdigest()}"
 
 
-def parse_generated_at(value: str) -> tuple[str, dt.datetime]:
-    text = value.strip() if value else utc_now()
-    parsed = dashboard.parse_time(text)
-    if parsed is None:
-        return text, dt.datetime.now(dt.timezone.utc).replace(microsecond=0)
-    return text, parsed
+def parse_generated_at(value: str) -> str:
+    return value.strip() if value else utc_now()
 
 
 def resolve_path(workspace_root: Path, path: Path | None) -> Path | None:
@@ -4398,9 +4395,14 @@ def write_artifacts(summary: dict[str, Any], settings: Settings) -> None:
     )
 
 
-def run(settings: Settings) -> tuple[dict[str, Any], int]:
+def run(
+    settings: Settings,
+    *,
+    _validation_time: dt.datetime | None = None,
+) -> tuple[dict[str, Any], int]:
     settings.out_dir.mkdir(parents=True, exist_ok=True)
-    generated_at, now = parse_generated_at(settings.generated_at)
+    generated_at = parse_generated_at(settings.generated_at)
+    now = _validation_time or dt.datetime.now(dt.timezone.utc).replace(microsecond=0)
     settings = dataclasses.replace(settings, generated_at=generated_at)
     inputs, input_paths, scan_targets = build_inputs(settings)
     policy_value = inputs.get("policy")
@@ -4768,6 +4770,7 @@ def run_case(
     expect_blocker: str | None = None,
     expect_allowed: str | None = None,
     post_check: Callable[[dict[str, Any]], None] | None = None,
+    use_real_validation_time: bool = False,
 ) -> None:
     inputs, limitations = base_self_test_inputs()
     if expected_decision == "ready":
@@ -4786,7 +4789,10 @@ def run_case(
         if waiver_path is not None:
             paths["waivers"] = waiver_path
     settings = self_test_settings(root, root / "out" / name, paths, waiver_path)
-    summary, _exit_code = run(settings)
+    summary, _exit_code = run(
+        settings,
+        _validation_time=None if use_real_validation_time else SELF_TEST_VALIDATION_TIME,
+    )
     if summary["decision"] != expected_decision:
         raise AssertionError(f"{name} expected {expected_decision}, got {summary['decision']}: {summary}")
     if expect_blocker:
@@ -4805,6 +4811,7 @@ def run_self_test() -> None:
     expected_cases = {
         "ready",
         "allowed-limitations",
+        "generated-at-does-not-control-freshness",
         "missing-production",
         "production-stub",
         "production-not-ready",
@@ -4984,6 +4991,33 @@ def run_self_test() -> None:
 
         run_case(root, "ready", None, "ready")
         run_case(root, "allowed-limitations", lambda _i, _l, _p: None, "ready-with-allowed-limitations", expect_allowed="stable-1.0.trust-graph-local-scope")
+
+        def assert_generated_at_does_not_control_freshness(summary: dict[str, Any]) -> None:
+            if summary.get("generatedAt") != DEFAULT_GENERATED_AT:
+                raise AssertionError(
+                    "deterministic output timestamp was not preserved: "
+                    f"{summary.get('generatedAt')}"
+                )
+            blocker_ids = {
+                str(blocker.get("evidenceId"))
+                for blocker in summary.get("blockers", [])
+                if isinstance(blocker, dict)
+            }
+            if "stable-1.0.live-multi-node-soak" not in blocker_ids:
+                raise AssertionError(
+                    "real validation clock did not reject stale soak evidence: "
+                    f"{summary.get('blockers')}"
+                )
+
+        run_case(
+            root,
+            "generated-at-does-not-control-freshness",
+            None,
+            "not-ready",
+            expect_blocker="stable-1.0.security-drills",
+            post_check=assert_generated_at_does_not_control_freshness,
+            use_real_validation_time=True,
+        )
 
         def missing_production(inputs: dict[str, Any], _limitations: dict[str, Any], _paths: dict[str, Path]) -> None:
             inputs.pop("productionBetaSummary", None)
@@ -7858,7 +7892,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--self-test", action="store_true", help="Run offline Stable 1.0 readiness fixture tests.")
     parser.add_argument("--workspace-root", type=Path, default=Path.cwd())
     parser.add_argument("--out-dir", type=Path, default=DEFAULT_OUT_DIR)
-    parser.add_argument("--generated-at", default="")
+    parser.add_argument(
+        "--generated-at",
+        default="",
+        help="Set the output generatedAt timestamp; freshness validation always uses the current UTC time.",
+    )
     parser.add_argument("--production-beta-summary", type=Path)
     parser.add_argument("--go-no-go-summary", type=Path)
     parser.add_argument("--release-certification-summary", type=Path)

@@ -14,6 +14,11 @@
       "category": "positive"
     },
     {
+      "id": "generated-at-does-not-control-freshness",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
       "id": "missing-production",
       "expectedDecision": "not-ready",
       "category": "negative"
