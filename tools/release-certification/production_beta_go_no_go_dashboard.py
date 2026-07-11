@@ -1103,7 +1103,9 @@ def recursive_redaction_failure(value: Any, *, include_summary_fields: bool = Tr
                 if malformed_finding_count or finding_count > 0:
                     return True
             status = value.get("status")
-            if isinstance(status, str) and normalize_status(status) == "fail":
+            if "status" in value and (
+                not isinstance(status, str) or status.strip().lower() != "pass"
+            ):
                 return True
         for key, child in value.items():
             if key == "redaction":
@@ -5128,6 +5130,17 @@ def assert_redaction_proof_semantics() -> None:
             )
     if entry_has_redaction_findings({"details": {"redactionStatus": "pass"}}):
         raise AssertionError("redactionStatus=pass was treated as unsafe")
+    for unsafe_status in ("fail", "warn", "missing", "skip", "success", None, True):
+        if not entry_has_redaction_findings(
+            {"details": {"redaction": {"status": unsafe_status}}}
+        ):
+            raise AssertionError(
+                f"nested redaction status={unsafe_status!r} was not treated as unsafe"
+            )
+    if entry_has_redaction_findings(
+        {"details": {"redaction": {"status": "pass"}}}
+    ):
+        raise AssertionError("nested redaction status=pass was treated as unsafe")
     boolean_proof_cases = (
         ("privateInsertUrisExcluded", True, (False, "false", None, 1)),
         ("rawSupportBundlesStored", False, (True, "true", None, 0)),

@@ -1436,7 +1436,9 @@ def recursive_redaction_failure(value: Any) -> bool:
                 if malformed_finding_count or finding_count > 0:
                     return True
         status = value.get("status")
-        if isinstance(status, str) and normalize_status(status) == "fail":
+        if "status" in value and (
+            not isinstance(status, str) or status.strip().lower() != "pass"
+        ):
             return True
         for key, child in value.items():
             if dashboard.redaction_proof_failure(key, child):
@@ -5015,6 +5017,7 @@ def run_self_test() -> None:
         "app-platform-evidence-redaction-clean-false",
         "app-platform-evidence-redaction-status-fail",
         "app-platform-evidence-malformed-redaction-proof",
+        "app-platform-evidence-nested-redaction-status-warn",
         "ecosystem-matrix-failed",
         "ecosystem-matrix-failed-row",
         "ecosystem-matrix-warning-row",
@@ -6338,6 +6341,31 @@ def run_self_test() -> None:
             root,
             "app-platform-evidence-malformed-redaction-proof",
             app_platform_evidence_malformed_redaction_proof,
+            "not-ready",
+            expect_blocker="stable-1.0.redaction",
+        )
+
+        def app_platform_evidence_nested_redaction_status_warn(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            for entry in inputs["appPlatformSummary"]["evidence"]:
+                if (
+                    isinstance(entry, dict)
+                    and entry.get("id") == "app-data.backup-restore-portability"
+                ):
+                    entry.setdefault("details", {})["redaction"] = {
+                        "status": "warn",
+                        "findings": [],
+                    }
+                    return
+            raise AssertionError("app-data.backup-restore-portability evidence row missing")
+
+        run_case(
+            root,
+            "app-platform-evidence-nested-redaction-status-warn",
+            app_platform_evidence_nested_redaction_status_warn,
             "not-ready",
             expect_blocker="stable-1.0.redaction",
         )

@@ -274,6 +274,11 @@
       "category": "negative"
     },
     {
+      "id": "app-platform-evidence-nested-redaction-status-warn",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
       "id": "release-certification-evidence-redaction-findings",
       "expectedDecision": "not-ready",
       "category": "negative"
