@@ -3731,6 +3731,24 @@ def stable_readiness_issues(
                 category="stable-readiness",
             )
         )
+    tool = summary.get("tool")
+    if not isinstance(tool, str) or tool != "stable-1.0-readiness":
+        issues.append(
+            Issue(
+                id="stable-1.0.readiness-summary.tool",
+                evidence_id="stable-1.0.readiness-gate",
+                domain_id=domain_id,
+                severity="blocker" if required else "warning",
+                title="Stable 1.0 readiness summary producer is invalid",
+                summary=(
+                    "Stable readiness summary tool must be stable-1.0-readiness; "
+                    f"summary tool is {tool if isinstance(tool, str) and tool else 'missing'}."
+                ),
+                source="stable-readiness-summary",
+                waivable=not required,
+                category="stable-readiness",
+            )
+        )
     release_id = summary.get("releaseId")
     if expected_release_id and (not isinstance(release_id, str) or release_id != expected_release_id):
         issues.append(
@@ -5646,6 +5664,7 @@ def assert_required_stable_readiness_release_id_matches_dashboard_candidate(root
     inputs["stableReadinessSummary"] = {
         "schemaVersion": 1,
         "kind": "stable-1.0-readiness",
+        "tool": "stable-1.0-readiness",
         "generatedAt": DEFAULT_GENERATED_AT,
         "releaseId": release_id,
         "status": "pass",
@@ -5706,6 +5725,40 @@ def assert_required_stable_readiness_release_id_matches_dashboard_candidate(root
     matching_stable = matching_dashboard.get("stableReadiness")
     if not isinstance(matching_stable, dict) or matching_stable.get("releaseIdMatchesDashboard") is not True:
         raise AssertionError(f"matching Stable readiness binding was not reported: {matching_dashboard}")
+
+    for tool_suffix, tool_value in (
+        ("missing", None),
+        ("wrong", "other-stable-tool"),
+    ):
+        invalid_tool_inputs = json.loads(json.dumps(inputs))
+        if tool_value is None:
+            invalid_tool_inputs["stableReadinessSummary"].pop("tool", None)
+        else:
+            invalid_tool_inputs["stableReadinessSummary"]["tool"] = tool_value
+        invalid_tool_dashboard = build_dashboard(
+            invalid_tool_inputs,
+            {},
+            [FIXTURE_DIR / "go-no-go-pass.json"],
+            None,
+            Path(__file__).resolve().parents[2],
+            root / f"stable-readiness-{tool_suffix}-tool",
+            "production-beta",
+            release_id,
+            generated_at,
+            now,
+            require_stable_readiness=True,
+        )
+        invalid_tool_blockers = [
+            blocker
+            for blocker in invalid_tool_dashboard.get("blockers", [])
+            if isinstance(blocker, dict)
+            and blocker.get("id") == "stable-1.0.readiness-summary.tool"
+            and blocker.get("severity") == "blocker"
+        ]
+        if invalid_tool_dashboard.get("decision") != "no-go" or len(invalid_tool_blockers) != 1:
+            raise AssertionError(
+                f"Stable summary with {tool_suffix} tool did not block: {invalid_tool_dashboard}"
+            )
 
     for count_suffix, warning_count in (
         ("string", "bad"),
