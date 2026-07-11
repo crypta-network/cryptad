@@ -1864,20 +1864,27 @@ def evaluate_production_beta_state(
                 "reviewerKeyId",
                 "privateKeyMaterialIncluded",
             )
+            required_signing_string_fields = {"appKeyId", "reviewerKeyId"}
             missing_fields = [
                 field
                 for field in required_signing_fields
                 if field not in signing
                 or signing.get(field) is None
                 or (isinstance(signing.get(field), str) and not signing.get(field).strip())
+                or (
+                    field in required_signing_string_fields
+                    and not non_empty_string(signing.get(field))
+                )
             ]
             if missing_fields:
                 blockers.append(
                     blocker_issue(
                         domain_id,
                         "stable-1.0.production-beta-state",
-                        "Production beta signing evidence is incomplete",
-                        "Stable 1.0 signing profile is missing fields: " + ", ".join(missing_fields) + ".",
+                        "Production beta signing evidence is incomplete or malformed",
+                        "Stable 1.0 signing profile has missing or malformed fields: "
+                        + ", ".join(missing_fields)
+                        + ".",
                         "production-beta-summary",
                     )
                 )
@@ -3406,13 +3413,23 @@ def evaluate_security(
                     "security-drills-summary",
                 )
             )
-        if security_summary.get("fixtureOnly") is True or security_summary.get("nonRelease") is True:
+        non_release_marker_errors = [
+            f"{field} must be false"
+            for field in ("fixtureOnly", "nonRelease")
+            if field in security_summary and security_summary.get(field) is not False
+        ]
+        if non_release_marker_errors:
             blockers.append(
                 blocker_issue(
                     domain_id,
                     "stable-1.0.security-drills",
                     "Security drill summary is marked non-release",
-                    "Stable 1.0 cannot depend on fixture-only or non-release security drill evidence.",
+                    (
+                        "Stable 1.0 cannot depend on fixture-only or non-release security drill "
+                        "evidence; "
+                        + "; ".join(non_release_marker_errors)
+                        + "."
+                    ),
                     "security-drills-summary",
                 )
             )
@@ -5029,6 +5046,8 @@ def run_self_test() -> None:
         "production-workspace-status-unknown",
         "production-missing-signing-profile",
         "production-missing-signing-field",
+        "production-non-string-app-key-id",
+        "production-non-string-reviewer-key-id",
         "production-redaction-findings",
         "production-redaction-count",
         "production-boolean-schema-version",
@@ -5116,6 +5135,8 @@ def run_self_test() -> None:
         "missing-support-feedback-docs",
         "stale-security",
         "security-status-fail-redaction-pass",
+        "security-malformed-fixture-only",
+        "security-malformed-non-release",
         "malformed-security-scenario-list",
         "missing-security-scenario-result-list",
         "security-missing-schema-version",
@@ -5348,6 +5369,36 @@ def run_self_test() -> None:
             root,
             "production-missing-signing-field",
             production_missing_signing_field,
+            "not-ready",
+            expect_blocker="stable-1.0.production-beta-state",
+        )
+
+        def production_non_string_app_key_id(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs["productionBetaSummary"]["signingProfile"]["appKeyId"] = 123
+
+        run_case(
+            root,
+            "production-non-string-app-key-id",
+            production_non_string_app_key_id,
+            "not-ready",
+            expect_blocker="stable-1.0.production-beta-state",
+        )
+
+        def production_non_string_reviewer_key_id(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs["productionBetaSummary"]["signingProfile"]["reviewerKeyId"] = {}
+
+        run_case(
+            root,
+            "production-non-string-reviewer-key-id",
+            production_non_string_reviewer_key_id,
             "not-ready",
             expect_blocker="stable-1.0.production-beta-state",
         )
@@ -7067,6 +7118,36 @@ def run_self_test() -> None:
             "not-ready",
             expect_blocker="stable-1.0.security-drills",
             post_check=expect_security_status_fail_not_redaction,
+        )
+
+        def security_malformed_fixture_only(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs["securityDrillsSummary"]["fixtureOnly"] = "true"
+
+        run_case(
+            root,
+            "security-malformed-fixture-only",
+            security_malformed_fixture_only,
+            "not-ready",
+            expect_blocker="stable-1.0.security-drills",
+        )
+
+        def security_malformed_non_release(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs["securityDrillsSummary"]["nonRelease"] = "true"
+
+        run_case(
+            root,
+            "security-malformed-non-release",
+            security_malformed_non_release,
+            "not-ready",
+            expect_blocker="stable-1.0.security-drills",
         )
 
         def malformed_security_scenario_list(
