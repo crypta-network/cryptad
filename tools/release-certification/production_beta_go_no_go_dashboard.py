@@ -1057,11 +1057,15 @@ def redaction_proof_key(key: Any) -> bool:
     ) or (
         "redaction" in lowered
         and lowered.endswith(("clean", "ok", "passed", "checkspass"))
+    ) or (
+        "redaction" in lowered and lowered.endswith("status")
     )
 
 
 def redaction_proof_failure(key: Any, value: Any) -> bool:
     lowered = str(key).lower()
+    if "redaction" in lowered and lowered.endswith("status"):
+        return not isinstance(value, str) or value.strip().lower() != "pass"
     if "redaction" in lowered and lowered.endswith(
         ("clean", "ok", "passed", "checkspass")
     ):
@@ -5090,7 +5094,7 @@ def run_self_test(quiet: bool = False) -> None:
             raise AssertionError("go/no-go dashboard JSON is not deterministic for fixed fixture inputs")
         assert_supplied_waiver_file_errors_block_launch(root)
         assert_protected_secret_values_are_scanned_and_redacted(root)
-        assert_redaction_clean_proof_semantics()
+        assert_redaction_proof_semantics()
         assert_symlink_inputs_are_rejected(root)
         assert_legacy_security_response_summary_fallback_is_honored(root)
         assert_standalone_security_response_summary_is_honored(root)
@@ -5108,13 +5112,22 @@ def run_self_test(quiet: bool = False) -> None:
         print("production beta go/no-go dashboard self-test passed")
 
 
-def assert_redaction_clean_proof_semantics() -> None:
+def assert_redaction_proof_semantics() -> None:
     if not entry_has_redaction_findings({"details": {"redactionClean": False}}):
         raise AssertionError("redactionClean=false was not treated as unsafe")
     if not entry_has_redaction_findings({"details": {"redactionClean": "false"}}):
         raise AssertionError("malformed redactionClean proof was not treated as unsafe")
     if entry_has_redaction_findings({"details": {"redactionClean": True}}):
         raise AssertionError("redactionClean=true was treated as unsafe")
+    for unsafe_status in ("fail", "warn", "missing", "success", None, True):
+        if not entry_has_redaction_findings(
+            {"details": {"redactionStatus": unsafe_status}}
+        ):
+            raise AssertionError(
+                f"redactionStatus={unsafe_status!r} was not treated as unsafe"
+            )
+    if entry_has_redaction_findings({"details": {"redactionStatus": "pass"}}):
+        raise AssertionError("redactionStatus=pass was treated as unsafe")
 
 
 def assert_multi_node_release_evidence_is_not_overwritten(root: Path) -> None:

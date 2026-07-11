@@ -264,6 +264,11 @@
       "category": "negative"
     },
     {
+      "id": "app-platform-evidence-redaction-status-fail",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
       "id": "release-certification-evidence-redaction-findings",
       "expectedDecision": "not-ready",
       "category": "negative"
