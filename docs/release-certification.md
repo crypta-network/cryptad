@@ -31,6 +31,10 @@ is the stable machine-readable companion for later automation and report compari
 `live-network-beta-smoke/` files are written only when live-network beta certification is explicitly
 enabled.
 
+Release certification can also ingest a Stable 1.0 readiness summary and display a dedicated
+Stable readiness section. Stable readiness is advisory unless `--require-stable-readiness` is
+provided.
+
 ## Modes
 
 | Mode | Purpose | Behavior |
@@ -64,6 +68,7 @@ python3 tools/release-certification/app_platform_smoke.py --self-test
 python3 tools/release-certification/network_scale_soak.py --self-test
 python3 tools/release-certification/multi_node_beta_soak.py --self-test
 python3 tools/release-certification/live_network_beta_smoke.py --self-test
+python3 tools/release-certification/stable_1_0_readiness.py --self-test
 python3 tools/release-certification/production_beta_go_no_go_dashboard.py --self-test
 python3 tools/release-certification/production_beta_release.py --self-test
 ```
@@ -112,6 +117,33 @@ tools/release-certification/run-release-certification.sh \
 Use `--require-history` when the release-candidate run must fail if the previous summary is
 missing or malformed. Without `--require-history`, missing history is skipped in `pr` mode and
 recorded as a warning in `nightly` and `release-candidate` modes.
+
+Attach Stable 1.0 readiness evidence when reviewing Stable promotion:
+
+```bash
+python3 tools/release-certification/release_certification.py \
+  --workspace-root . \
+  --out-dir build/release-certification \
+  --mode release-candidate \
+  --stable-readiness-summary build/stable-1.0-readiness/stable-1.0-readiness-summary.json \
+  --metadata candidateReleaseId=cryptad-beta-<version> \
+  --require-stable-readiness
+```
+
+Without `--require-stable-readiness`, the same summary is recorded as advisory evidence and the
+normal release-candidate behavior is unchanged. With the required flag, missing or failing Stable
+readiness makes Stable promotion impossible. Required mode also needs explicit
+`candidateReleaseId` metadata so the attached Stable summary cannot be reused from another
+production beta candidate. Redaction failures remain non-waivable. See
+[stable-1.0-readiness-gate.md](stable-1.0-readiness-gate.md).
+
+Required Stable readiness must be evidence-complete. The synthetic `stable-1-0-readiness` matrix
+row fails when any expected `stable-1.0.*` evidence item is missing, `fail`, `missing`, or `skip`,
+even if the attached summary's top-level `status`, `decision`, and `stableReady` fields look
+successful. Stable redaction failures add `stable-1.0.redaction` and
+`matrix.stable-readiness.redaction-failed` as unwaivable issue targets, so row-level or matrix
+issue waivers cannot turn a redaction-unsafe Stable summary into a passing release-candidate
+certification.
 
 The wrapper consumes the existing gate outputs when present:
 

@@ -227,6 +227,35 @@ DASHBOARD_EVIDENCE_IDS = (
     "production-beta.dashboard-redaction",
     "production-beta.launch-artifact-hygiene",
 )
+STABLE_1_0_READINESS_EVIDENCE_IDS = (
+    "stable-1.0.readiness-gate",
+    "stable-1.0.production-beta-state",
+    "stable-1.0.release-certification",
+    "stable-1.0.platform-api-compatibility",
+    "stable-1.0.app-ecosystem-maturity",
+    "stable-1.0.third-party-intake",
+    "stable-1.0.security-drills",
+    "stable-1.0.live-multi-node-soak",
+    "stable-1.0.legacy-plugin-migration",
+    "stable-1.0.support-feedback-readiness",
+    "stable-1.0.known-limitations",
+    "stable-1.0.redaction",
+)
+STABLE_1_0_READINESS_DOMAIN_IDS = (
+    "readiness-policy",
+    "production-beta-state",
+    "release-certification-summary",
+    "ecosystem-certification-matrix",
+    "platform-api-1.0",
+    "app-ecosystem-maturity",
+    "third-party-intake",
+    "security-drills",
+    "live-multi-node-soak",
+    "legacy-plugin-migration",
+    "support-feedback-readiness",
+    "known-limitations",
+    "redaction",
+)
 
 DOMAIN_SPECS = (
     {
@@ -270,6 +299,12 @@ DOMAIN_SPECS = (
         "title": "Platform API 1.0 stable freeze",
         "evidenceIds": PLATFORM_API_STABLE_FREEZE_EVIDENCE_IDS,
         "artifactInputs": ("appPlatformSummary",),
+    },
+    {
+        "id": "stable-1-0-readiness",
+        "title": "Stable 1.0 readiness",
+        "evidenceIds": STABLE_1_0_READINESS_EVIDENCE_IDS,
+        "artifactInputs": ("stableReadinessSummary",),
     },
     {
         "id": "app-submission-review-workflow",
@@ -1009,10 +1044,110 @@ def normalize_status(value: Any) -> str:
 
 
 def entry_has_redaction_findings(entry: dict[str, Any] | None) -> bool:
-    if not isinstance(entry, dict):
-        return False
-    details = entry.get("details", {})
-    return isinstance(details, dict) and bool(details.get("redactionFindings"))
+    return recursive_redaction_field_failure(entry)
+
+
+def redaction_proof_key(key: Any) -> bool:
+    lowered = str(key).lower()
+    return lowered.endswith(
+        ("excluded", "excludedfromevidence", "redacted", "sanitized", "stored")
+    ) or (
+        lowered.startswith("raw")
+        and lowered.endswith(("included", "persisted", "inevidence"))
+    ) or (
+        "redaction" in lowered
+        and lowered.endswith(("clean", "ok", "passed", "checkspass"))
+    ) or (
+        "redaction" in lowered and lowered.endswith("status")
+    )
+
+
+def redaction_proof_failure(key: Any, value: Any) -> bool:
+    lowered = str(key).lower()
+    if "redaction" in lowered and lowered.endswith("status"):
+        return not isinstance(value, str) or value.strip().lower() != "pass"
+    if "redaction" in lowered and lowered.endswith(
+        ("clean", "ok", "passed", "checkspass")
+    ):
+        return value is not True
+    if lowered.endswith(("excluded", "excludedfromevidence", "redacted", "sanitized")):
+        return value is not True
+    if lowered.endswith("stored"):
+        return value is not False
+    return (
+        lowered.startswith("raw")
+        and lowered.endswith(("included", "persisted", "inevidence"))
+        and value is not False
+    )
+
+
+def recursive_redaction_failure(value: Any, *, include_summary_fields: bool = True) -> bool:
+    if isinstance(value, dict):
+        if "redaction" in value and recursive_redaction_failure(value["redaction"]):
+            return True
+        if include_summary_fields:
+            redaction_findings = value.get("redactionFindings")
+            if "redactionFindings" in value and not isinstance(redaction_findings, list):
+                return True
+            if isinstance(redaction_findings, list) and bool(redaction_findings):
+                return True
+            findings = value.get("findings")
+            if "findings" in value and not isinstance(findings, list):
+                return True
+            if isinstance(findings, list) and bool(findings):
+                return True
+            for count_key in ("findingCount", "criticalFindingCount"):
+                finding_count, malformed_finding_count = parse_release_blocker_count(
+                    value.get(count_key, 0)
+                )
+                if malformed_finding_count or finding_count > 0:
+                    return True
+            status = value.get("status")
+            if "status" in value and (
+                not isinstance(status, str) or status.strip().lower() != "pass"
+            ):
+                return True
+        for key, child in value.items():
+            if key == "redaction":
+                continue
+            if redaction_proof_failure(key, child):
+                return True
+            if recursive_redaction_failure(child, include_summary_fields=include_summary_fields):
+                return True
+    elif isinstance(value, list):
+        return any(
+            recursive_redaction_failure(child, include_summary_fields=include_summary_fields)
+            for child in value
+        )
+    return False
+
+
+def recursive_redaction_field_failure(value: Any) -> bool:
+    if isinstance(value, dict):
+        redaction_payload = {
+            key: child
+            for key, child in value.items()
+            if redaction_signal_key(key)
+        }
+        if redaction_payload and recursive_redaction_failure(redaction_payload):
+            return True
+        return any(
+            recursive_redaction_field_failure(child)
+            for child in value.values()
+            if isinstance(child, (dict, list))
+        )
+    if isinstance(value, list):
+        return any(recursive_redaction_field_failure(child) for child in value)
+    return False
+
+
+def redaction_signal_key(key: Any) -> bool:
+    lowered = str(key).lower()
+    return (
+        "redaction" in lowered
+        or lowered in {"findings", "findingcount", "criticalfindingcount"}
+        or redaction_proof_key(key)
+    )
 
 
 def entry_waiver_id(entry: dict[str, Any] | None) -> str:
@@ -1836,6 +1971,7 @@ def load_inputs_from_paths(args: argparse.Namespace, workspace_root: Path) -> tu
         "multiNodeBetaSoakSummary": args.multi_node_beta_soak_summary,
         "securityDrillsSummary": args.security_drills_summary,
         "securityResponseSummary": args.security_response_summary,
+        "stableReadinessSummary": args.stable_readiness_summary,
     }
     inputs: dict[str, Any] = {}
     paths: dict[str, Path] = {}
@@ -2190,13 +2326,259 @@ def parse_release_blocker_count(value: Any) -> tuple[int, bool]:
         return 0, False
     if isinstance(value, bool):
         return 0, True
-    try:
-        parsed = int(value)
-    except (TypeError, ValueError):
+    if isinstance(value, int):
+        parsed = value
+    elif isinstance(value, str):
+        text = value.strip()
+        if not text or not text.isdigit():
+            return 0, True
+        parsed = int(text)
+    else:
         return 0, True
     if parsed < 0:
         return 0, True
     return parsed, False
+
+
+def stable_summary_record_errors(
+    summary: dict[str, Any],
+    field_name: str,
+    count_field_name: str,
+    parsed_count: int,
+    malformed_count: bool,
+) -> list[str]:
+    value = summary.get(field_name)
+    if not isinstance(value, list):
+        return [f"{field_name} must be a list"]
+    errors: list[str] = []
+    record_count = len(value)
+    if record_count:
+        errors.append(f"{field_name} contains {record_count} record(s)")
+    if not malformed_count and parsed_count != record_count:
+        errors.append(f"{count_field_name} is {parsed_count} but {field_name} contains {record_count}")
+    return errors
+
+
+def stable_summary_allowed_limitation_metadata_errors(record: Any, label: str) -> list[str]:
+    if not isinstance(record, dict):
+        return [f"{label} must be an object"]
+    errors: list[str] = []
+    for field in ("id", "title", "category", "classification", "status", "summary", "boundedBy"):
+        if not isinstance(record.get(field), str) or not str(record.get(field)).strip():
+            errors.append(f"{label}.{field} must be a non-empty string")
+    classification = str(record.get("classification", "")).strip().lower()
+    if classification and classification != "allowed-for-stable-1.0":
+        errors.append(f"{label}.classification must be allowed-for-stable-1.0")
+    evidence_ids = record.get("evidenceIds")
+    if not isinstance(evidence_ids, list) or not evidence_ids:
+        errors.append(f"{label}.evidenceIds must be a non-empty list")
+    elif any(not isinstance(item, str) or not item.strip() for item in evidence_ids):
+        errors.append(f"{label}.evidenceIds must contain only non-empty strings")
+    return errors
+
+
+def stable_summary_domain_id_errors(summary: dict[str, Any]) -> list[str]:
+    domains = summary.get("domains")
+    if not isinstance(domains, list) or not domains:
+        return []
+    domain_ids = [
+        str(domain.get("id", "")).strip()
+        for domain in domains
+        if isinstance(domain, dict) and str(domain.get("id", "")).strip()
+    ]
+    expected_ids = set(STABLE_1_0_READINESS_DOMAIN_IDS)
+    actual_ids = set(domain_ids)
+    errors: list[str] = []
+    missing_ids = sorted(expected_ids - actual_ids)
+    if missing_ids:
+        errors.append("domains are missing required IDs: " + ", ".join(missing_ids))
+    duplicate_ids = sorted(
+        domain_id for domain_id in actual_ids if domain_ids.count(domain_id) > 1
+    )
+    if duplicate_ids:
+        errors.append("domains contain duplicate IDs: " + ", ".join(duplicate_ids))
+    unexpected_ids = sorted(actual_ids - expected_ids)
+    if unexpected_ids:
+        errors.append("domains contain unexpected IDs: " + ", ".join(unexpected_ids))
+    return errors
+
+
+def stable_summary_domain_allowed_limitation_consistency_errors(
+    summary: dict[str, Any],
+) -> list[str]:
+    domains = summary.get("domains")
+    top_level_limitations = summary.get("allowedLimitations")
+    if not isinstance(domains, list) or not isinstance(top_level_limitations, list):
+        return []
+    errors: list[str] = []
+    for index, domain in enumerate(domains):
+        if not isinstance(domain, dict):
+            continue
+        domain_id = str(domain.get("id") or f"domains[{index}]")
+        allowed_limitations = domain.get("allowedLimitations")
+        if not isinstance(allowed_limitations, list):
+            continue
+        limitation_records = [
+            limitation for limitation in allowed_limitations if isinstance(limitation, dict)
+        ]
+        status = normalize_status(domain.get("status", "missing"))
+        if limitation_records and status == "pass":
+            errors.append(
+                f"domain {domain_id} status is pass but contains "
+                f"{len(limitation_records)} allowed limitation(s)"
+            )
+        for allowed_index, limitation in enumerate(allowed_limitations):
+            if isinstance(limitation, dict) and limitation not in top_level_limitations:
+                errors.append(
+                    f"domain {domain_id} allowedLimitations[{allowed_index}] "
+                    "is not present in top-level allowedLimitations"
+                )
+    return errors
+
+
+def stable_summary_domain_errors(summary: dict[str, Any]) -> list[str]:
+    domains = summary.get("domains")
+    if not isinstance(domains, list):
+        return ["domains must be a non-empty list"]
+    if not domains:
+        return ["domains must not be empty"]
+    errors = stable_summary_domain_id_errors(summary)
+    for index, domain in enumerate(domains):
+        if not isinstance(domain, dict):
+            errors.append(f"domains[{index}] must be an object")
+            continue
+        domain_id = str(domain.get("id") or f"domains[{index}]")
+        status = normalize_status(domain.get("status", "missing"))
+        if status in {"fail", "missing", "skip"}:
+            errors.append(f"domain {domain_id} status is {status}")
+        blockers = domain.get("blockers")
+        if blockers is not None and not isinstance(blockers, list):
+            errors.append(f"domain {domain_id} blockers must be a list")
+        elif isinstance(blockers, list) and blockers:
+            errors.append(f"domain {domain_id} contains {len(blockers)} blocker(s)")
+        for field_name in ("warnings", "allowedLimitations"):
+            if field_name in domain and not isinstance(domain.get(field_name), list):
+                errors.append(f"domain {domain_id} {field_name} must be a list")
+        warnings = domain.get("warnings")
+        allowed_limitations = domain.get("allowedLimitations")
+        if (
+            status == "warn"
+            and not (isinstance(warnings, list) and warnings)
+            and not (isinstance(allowed_limitations, list) and allowed_limitations)
+        ):
+            errors.append(
+                f"domain {domain_id} status is warn but contains no warnings or allowed limitations"
+            )
+        if isinstance(allowed_limitations, list):
+            for allowed_index, limitation in enumerate(allowed_limitations):
+                errors.extend(
+                    stable_summary_allowed_limitation_metadata_errors(
+                        limitation,
+                        f"domain {domain_id} allowedLimitations[{allowed_index}]",
+                    )
+                )
+    errors.extend(stable_summary_domain_allowed_limitation_consistency_errors(summary))
+    return errors
+
+
+def stable_summary_warning_labels(summary: dict[str, Any]) -> list[str]:
+    labels: list[str] = []
+
+    def append_warnings(value: Any, prefix: str) -> None:
+        if not isinstance(value, list):
+            return
+        for index, warning in enumerate(value):
+            fallback = f"{prefix}[{index}]"
+            if isinstance(warning, dict):
+                label = warning.get("id") or warning.get("evidenceId") or fallback
+            else:
+                label = fallback
+            labels.append(str(label))
+
+    append_warnings(summary.get("warnings"), "warnings")
+    domains = summary.get("domains")
+    if isinstance(domains, list):
+        for index, domain in enumerate(domains):
+            if not isinstance(domain, dict):
+                continue
+            domain_id = str(domain.get("id") or f"domains[{index}]")
+            append_warnings(domain.get("warnings"), f"domain {domain_id} warnings")
+    return list(dict.fromkeys(labels))
+
+
+def stable_summary_warning_record_errors(
+    summary: dict[str, Any],
+    parsed_count: int,
+    malformed_count: bool,
+) -> list[str]:
+    warnings = summary.get("warnings")
+    if not isinstance(warnings, list):
+        return ["warnings must be a list"]
+    errors = [
+        f"warnings[{index}] must be an object"
+        for index, warning in enumerate(warnings)
+        if not isinstance(warning, dict)
+    ]
+    warning_record_count = len(warnings)
+    domain_warning_record_count = 0
+    domains = summary.get("domains")
+    if isinstance(domains, list):
+        domain_warning_record_count = sum(
+            len(domain.get("warnings", []))
+            for domain in domains
+            if isinstance(domain, dict) and isinstance(domain.get("warnings", []), list)
+        )
+        errors.extend(
+            f"domains[{domain_index}].warnings[{warning_index}] must be an object"
+            for domain_index, domain in enumerate(domains)
+            if isinstance(domain, dict) and isinstance(domain.get("warnings", []), list)
+            for warning_index, warning in enumerate(domain.get("warnings", []))
+            if not isinstance(warning, dict)
+        )
+    if not malformed_count and parsed_count != warning_record_count:
+        errors.append(
+            f"warningCount is {parsed_count} but warnings contains {warning_record_count} record(s)"
+        )
+    if not malformed_count and parsed_count != domain_warning_record_count:
+        errors.append(
+            "warningCount is "
+            f"{parsed_count} but domains contain {domain_warning_record_count} warning record(s)"
+        )
+    return errors
+
+
+def stable_summary_redaction_domain_errors(summary: dict[str, Any]) -> list[str]:
+    domains = summary.get("domains")
+    if not isinstance(domains, list):
+        return []
+    errors: list[str] = []
+    for index, domain in enumerate(domains):
+        if not isinstance(domain, dict):
+            continue
+        domain_id = str(domain.get("id") or f"domains[{index}]")
+        evidence_ids = domain.get("evidenceIds")
+        blocker_rows = domain.get("blockers")
+        blocker_evidence_ids = [
+            str(blocker.get("evidenceId", ""))
+            for blocker in blocker_rows
+            if isinstance(blocker, dict)
+        ] if isinstance(blocker_rows, list) else []
+        redaction_domain = (
+            domain_id == "redaction"
+            or (
+                isinstance(evidence_ids, list)
+                and "stable-1.0.redaction" in [str(evidence_id) for evidence_id in evidence_ids]
+            )
+            or "stable-1.0.redaction" in blocker_evidence_ids
+        )
+        if not redaction_domain:
+            continue
+        status = normalize_status(domain.get("status", "missing"))
+        if status != "pass":
+            errors.append(f"domain {domain_id} status is {status}")
+        if isinstance(blocker_rows, list) and blocker_rows:
+            errors.append(f"domain {domain_id} contains {len(blocker_rows)} blocker(s)")
+    return errors
 
 
 def ecosystem_matrix_issues(matrix: dict[str, Any] | None) -> list[Issue]:
@@ -2249,6 +2631,17 @@ def ecosystem_matrix_issues(matrix: dict[str, Any] | None) -> list[Issue]:
         if not isinstance(row, dict):
             continue
         status = normalize_status(row.get("status"))
+        details = row.get("details") if isinstance(row.get("details"), dict) else {}
+        if (
+            row.get("id") == "stable-1-0-readiness"
+            and status == "skip"
+            and row.get("releaseBlocker") is not True
+            and (
+                details.get("notRequested") is True
+                or "not requested" in str(row.get("summary", "")).lower()
+            )
+        ):
+            continue
         if status in {"pass", "warn"} and row.get("releaseBlocker") is not True:
             continue
         row_id = str(row.get("id", "matrix-row"))
@@ -2267,6 +2660,35 @@ def ecosystem_matrix_issues(matrix: dict[str, Any] | None) -> list[Issue]:
             )
         )
     return issues
+
+
+NETWORK_SCALE_REDACTION_FLAGS = (
+    "rawFetchedContentExcluded",
+    "privateInsertUrisExcluded",
+    "tokensExcluded",
+    "absolutePathsExcluded",
+    "queueHtmlExcluded",
+)
+
+
+def network_scale_redaction_failed(redaction: Any) -> bool:
+    if not isinstance(redaction, dict):
+        return True
+    redaction_status = normalize_status(redaction.get("status"))
+    findings = redaction.get("findings")
+    findings_malformed = "findings" in redaction and not isinstance(findings, list)
+    finding_count, finding_count_malformed = parse_release_blocker_count(
+        redaction.get("findingCount", 0)
+    )
+    return (
+        redaction_status != "pass"
+        or findings_malformed
+        or bool(findings)
+        or finding_count_malformed
+        or finding_count > 0
+        or any(redaction.get(key) is not True for key in NETWORK_SCALE_REDACTION_FLAGS)
+        or recursive_redaction_failure(redaction)
+    )
 
 
 def network_scale_issues(summary: dict[str, Any] | None, mode: str) -> list[Issue]:
@@ -2289,13 +2711,18 @@ def network_scale_issues(summary: dict[str, Any] | None, mode: str) -> list[Issu
             )
         )
     findings = []
-    for section, keys in (
-        ("redaction", ("rawFetchedContentExcluded", "privateInsertUrisExcluded", "tokensExcluded", "absolutePathsExcluded", "queueHtmlExcluded")),
-        ("budgets", ("globalFetchBudgetEnforced", "perAppFetchBudgetEnforced", "concurrencyLeasesReleased")),
+    if network_scale_redaction_failed(summary.get("redaction")):
+        findings.append("redaction")
+    budget = summary.get("budgets")
+    if not isinstance(budget, dict) or any(
+        budget.get(key) is not True
+        for key in (
+            "globalFetchBudgetEnforced",
+            "perAppFetchBudgetEnforced",
+            "concurrencyLeasesReleased",
+        )
     ):
-        value = summary.get(section)
-        if not isinstance(value, dict) or any(value.get(key) is not True for key in keys):
-            findings.append(section)
+        findings.append("budgets")
     if findings:
         issues.append(
             Issue(
@@ -2720,6 +3147,48 @@ def compact_security_drills(
     }
 
 
+def compact_stable_readiness(
+    summary: dict[str, Any] | None,
+    required: bool = False,
+    expected_release_id: str | None = None,
+) -> dict[str, Any]:
+    if not isinstance(summary, dict):
+        return {
+            "status": "missing",
+            "decision": "not-attached",
+            "stableReady": False,
+            "required": required,
+            "releaseId": "missing",
+            "expectedReleaseId": expected_release_id if required and expected_release_id else "not-required",
+            "releaseIdMatchesDashboard": False if required and expected_release_id else True,
+            "blockerCount": 0,
+            "warningCount": 0,
+            "allowedLimitationCount": 0,
+            "disallowedLimitationCount": 0,
+            "redactionStatus": "missing",
+        }
+    redaction = summary.get("redaction") if isinstance(summary.get("redaction"), dict) else {}
+    release_id = summary.get("releaseId")
+    release_id_matches = not (
+        expected_release_id
+        and (not isinstance(release_id, str) or release_id != expected_release_id)
+    )
+    return {
+        "status": normalize_status(summary.get("status")),
+        "decision": str(summary.get("decision", "not-ready")),
+        "stableReady": summary.get("stableReady") is True,
+        "required": required,
+        "releaseId": release_id if isinstance(release_id, str) else "missing",
+        "expectedReleaseId": expected_release_id or "not-required",
+        "releaseIdMatchesDashboard": release_id_matches,
+        "blockerCount": safe_int_count(summary.get("blockerCount"), 0),
+        "warningCount": safe_int_count(summary.get("warningCount"), 0),
+        "allowedLimitationCount": safe_int_count(summary.get("allowedLimitationCount"), 0),
+        "disallowedLimitationCount": safe_int_count(summary.get("disallowedLimitationCount"), 0),
+        "redactionStatus": normalize_status(redaction.get("status", "missing")),
+    }
+
+
 def safe_int_count(value: Any, fallback: int) -> int:
     if isinstance(value, bool):
         return fallback
@@ -3099,12 +3568,14 @@ def collect_issues(
     input_paths: dict[str, Path],
     now: dt.datetime,
     release_id: str,
+    require_stable_readiness: bool = False,
 ) -> tuple[list[Issue], dict[str, dict[str, Any]]]:
     all_evidence = evidence_map(
         inputs.get("releaseCertificationSummary"),
         inputs.get("appPlatformSummary"),
         inputs.get("liveNetworkSummary"),
         inputs.get("securityResponseSummary"),
+        inputs.get("stableReadinessSummary"),
     )
     for evidence_id, entry in multi_node_scenario_evidence(
         inputs.get("multiNodeBetaSoakSummary")
@@ -3166,12 +3637,20 @@ def collect_issues(
             inputs.get("productionBetaSummary") if isinstance(inputs.get("productionBetaSummary"), dict) else None,
         )
     )
+    issues.extend(
+        stable_readiness_issues(
+            inputs.get("stableReadinessSummary"),
+            require_stable_readiness,
+            release_id,
+        )
+    )
     for spec in DOMAIN_SPECS:
         domain_id = str(spec["id"])
         if domain_id in {
             "production-beta-release-pipeline",
             "release-certification",
             "ecosystem-rc-certification-matrix",
+            "stable-1-0-readiness",
             "network-scale-soak",
             "multi-node-beta-soak",
             "redaction-artifact-hygiene",
@@ -3184,6 +3663,577 @@ def collect_issues(
             if issue is not None:
                 issues.append(issue)
     return dedupe_issues(issues), all_evidence
+
+
+def stable_readiness_issues(
+    summary: dict[str, Any] | None,
+    required: bool,
+    expected_release_id: str | None = None,
+) -> list[Issue]:
+    domain_id = "stable-1-0-readiness"
+    if not isinstance(summary, dict):
+        if not required:
+            return []
+        severity = "blocker" if required else "warning"
+        return [
+            Issue(
+                id="stable-1.0.readiness-summary.missing",
+                evidence_id="stable-1.0.readiness-gate",
+                domain_id=domain_id,
+                severity=severity,
+                title="Stable 1.0 readiness summary is missing",
+                summary=(
+                    "Stable 1.0 readiness is required for this dashboard."
+                    if required
+                    else "Stable 1.0 readiness was not attached; production beta decision is unchanged."
+                ),
+                source="stable-readiness-summary",
+                waivable=not required,
+                category="stable-readiness",
+            )
+        ]
+    issues: list[Issue] = []
+    schema_version = summary.get("schemaVersion")
+    schema_version_valid = (
+        isinstance(schema_version, int)
+        and not isinstance(schema_version, bool)
+        and schema_version == 1
+    )
+    if not schema_version_valid:
+        issues.append(
+            Issue(
+                id="stable-1.0.readiness-summary.schema-version",
+                evidence_id="stable-1.0.readiness-gate",
+                domain_id=domain_id,
+                severity="blocker" if required else "warning",
+                title="Stable 1.0 readiness summary schema version is invalid",
+                summary=(
+                    "Stable readiness summary schemaVersion must be integer 1; "
+                    f"summary schemaVersion is {schema_version if schema_version is not None else 'missing'}."
+                ),
+                source="stable-readiness-summary",
+                waivable=not required,
+                category="stable-readiness",
+            )
+        )
+    kind = str(summary.get("kind", ""))
+    if kind != "stable-1.0-readiness":
+        issues.append(
+            Issue(
+                id="stable-1.0.readiness-summary.kind",
+                evidence_id="stable-1.0.readiness-gate",
+                domain_id=domain_id,
+                severity="blocker" if required else "warning",
+                title="Stable 1.0 readiness summary kind is invalid",
+                summary=f"Stable readiness summary kind is {kind or 'missing'}.",
+                source="stable-readiness-summary",
+                waivable=not required,
+                category="stable-readiness",
+            )
+        )
+    tool = summary.get("tool")
+    if not isinstance(tool, str) or tool != "stable-1.0-readiness":
+        issues.append(
+            Issue(
+                id="stable-1.0.readiness-summary.tool",
+                evidence_id="stable-1.0.readiness-gate",
+                domain_id=domain_id,
+                severity="blocker" if required else "warning",
+                title="Stable 1.0 readiness summary producer is invalid",
+                summary=(
+                    "Stable readiness summary tool must be stable-1.0-readiness; "
+                    f"summary tool is {tool if isinstance(tool, str) and tool else 'missing'}."
+                ),
+                source="stable-readiness-summary",
+                waivable=not required,
+                category="stable-readiness",
+            )
+        )
+    release_id = summary.get("releaseId")
+    if expected_release_id and (not isinstance(release_id, str) or release_id != expected_release_id):
+        issues.append(
+            Issue(
+                id="stable-1.0.readiness-summary.release-id",
+                evidence_id="stable-1.0.readiness-gate",
+                domain_id=domain_id,
+                severity="blocker" if required else "warning",
+                title="Stable 1.0 readiness summary is not bound to this release",
+                summary=(
+                    "Stable readiness releaseId must match dashboard candidate "
+                    f"{expected_release_id}; summary releaseId is "
+                    f"{release_id if isinstance(release_id, str) and release_id else 'missing'}."
+                ),
+                source="stable-readiness-summary",
+                waivable=not required,
+                category="stable-readiness",
+            )
+        )
+    redaction = summary.get("redaction") if isinstance(summary.get("redaction"), dict) else {}
+    redaction_findings_value = redaction.get("findings")
+    redaction_findings_malformed = (
+        "findings" in redaction and not isinstance(redaction_findings_value, list)
+    )
+    redaction_findings = redaction_findings_value if isinstance(redaction_findings_value, list) else []
+    redaction_finding_count, malformed_redaction_finding_count = parse_release_blocker_count(
+        redaction.get("findingCount", len(redaction_findings))
+    )
+    (
+        redaction_critical_finding_count,
+        malformed_redaction_critical_finding_count,
+    ) = parse_release_blocker_count(redaction.get("criticalFindingCount", 0))
+    redaction_payload_unsafe = recursive_redaction_failure(redaction)
+    redaction_payload_unaccounted = redaction_payload_unsafe and not (
+        normalize_status(redaction.get("status", "missing")) != "pass"
+        or redaction_findings_malformed
+        or redaction_findings
+        or malformed_redaction_finding_count
+        or redaction_finding_count > 0
+        or malformed_redaction_critical_finding_count
+        or redaction_critical_finding_count > 0
+    )
+    if (
+        normalize_status(redaction.get("status", "missing")) != "pass"
+        or redaction_findings_malformed
+        or redaction_findings
+        or malformed_redaction_finding_count
+        or redaction_finding_count > 0
+        or malformed_redaction_critical_finding_count
+        or redaction_critical_finding_count > 0
+        or redaction_payload_unsafe
+    ):
+        details: list[str] = []
+        if redaction_findings_malformed:
+            details.append("findings is not a list")
+        if malformed_redaction_finding_count:
+            details.append("findingCount is not a non-negative integer")
+        elif redaction_finding_count > 0:
+            details.append(f"findingCount is {redaction_finding_count}")
+        if malformed_redaction_critical_finding_count:
+            details.append("criticalFindingCount is not a non-negative integer")
+        elif redaction_critical_finding_count > 0:
+            details.append(f"criticalFindingCount is {redaction_critical_finding_count}")
+        if redaction_payload_unaccounted:
+            details.append("redaction payload contains unsafe raw or unwaivable findings")
+        issues.append(
+            Issue(
+                id="stable-1.0.readiness-summary.redaction",
+                evidence_id="stable-1.0.redaction",
+                domain_id=domain_id,
+                severity="critical",
+                title="Stable 1.0 readiness redaction failed",
+                summary=(
+                    "Stable readiness summary redaction findings are non-waivable"
+                    + (": " + "; ".join(details) if details else "")
+                    + "."
+                ),
+                source="stable-readiness-summary",
+                waivable=False,
+                category="redaction",
+            )
+        )
+    stable_evidence_rows: dict[str, list[dict[str, Any]]] = {
+        evidence_id: []
+        for evidence_id in STABLE_1_0_READINESS_EVIDENCE_IDS
+    }
+    evidence_entries = summary.get("evidence") if isinstance(summary.get("evidence"), list) else []
+    for entry in evidence_entries:
+        if not isinstance(entry, dict):
+            continue
+        evidence_id = str(entry.get("id", ""))
+        if evidence_id in stable_evidence_rows:
+            stable_evidence_rows[evidence_id].append(entry)
+    duplicate_evidence = [
+        evidence_id
+        for evidence_id, rows in stable_evidence_rows.items()
+        if len(rows) > 1
+    ]
+    evidence_redaction_findings = [
+        str(entry.get("id") or entry.get("evidenceId") or f"evidence[{index}]")
+        for index, entry in enumerate(evidence_entries, start=1)
+        if isinstance(entry, dict) and entry_has_redaction_findings(entry)
+    ]
+    missing_evidence = [
+        evidence_id
+        for evidence_id, rows in stable_evidence_rows.items()
+        if not rows
+    ]
+    failed_evidence = [
+        evidence_id
+        for evidence_id, rows in stable_evidence_rows.items()
+        if rows
+        and any(normalize_status(row.get("status", "missing")) in {"fail", "missing", "skip"} for row in rows)
+    ]
+    redaction_evidence_rows = stable_evidence_rows.get("stable-1.0.redaction", [])
+    non_pass_redaction_evidence = (
+        ["stable-1.0.redaction"]
+        if redaction_evidence_rows
+        and any(
+            normalize_status(row.get("status", "missing")) != "pass"
+            for row in redaction_evidence_rows
+        )
+        else []
+    )
+    failed_redaction_evidence = [
+        evidence_id for evidence_id in failed_evidence if evidence_id == "stable-1.0.redaction"
+    ]
+    failed_redaction_evidence = sorted(
+        dict.fromkeys([*failed_redaction_evidence, *non_pass_redaction_evidence])
+    )
+    failed_evidence = [
+        evidence_id for evidence_id in failed_evidence if evidence_id not in failed_redaction_evidence
+    ]
+    warning_evidence = [
+        evidence_id
+        for evidence_id, rows in stable_evidence_rows.items()
+        if evidence_id != "stable-1.0.redaction"
+        if rows
+        and any(normalize_status(row.get("status", "missing")) == "warn" for row in rows)
+    ]
+    if duplicate_evidence:
+        issues.append(
+            Issue(
+                id="stable-1.0.readiness-summary.evidence-duplicate",
+                evidence_id="stable-1.0.readiness-gate",
+                domain_id=domain_id,
+                severity="blocker" if required else "warning",
+                title="Stable 1.0 readiness summary contains duplicate evidence",
+                summary="Stable readiness summary has duplicate evidence IDs: " + ", ".join(duplicate_evidence) + ".",
+                source="stable-readiness-summary",
+                waivable=not required,
+                category="stable-readiness",
+            )
+        )
+    if missing_evidence:
+        issues.append(
+            Issue(
+                id="stable-1.0.readiness-summary.evidence-missing",
+                evidence_id="stable-1.0.readiness-gate",
+                domain_id=domain_id,
+                severity="blocker" if required else "warning",
+                title="Stable 1.0 readiness summary omits required evidence",
+                summary="Stable readiness summary is missing evidence IDs: " + ", ".join(missing_evidence) + ".",
+                source="stable-readiness-summary",
+                waivable=not required,
+                category="stable-readiness",
+            )
+        )
+    if evidence_redaction_findings:
+        issues.append(
+            Issue(
+                id="stable-1.0.readiness-summary.evidence-redaction",
+                evidence_id="stable-1.0.redaction",
+                domain_id=domain_id,
+                severity="critical",
+                title="Stable 1.0 readiness evidence has redaction findings",
+                summary=(
+                    "Stable readiness evidence rows contain non-waivable redaction findings: "
+                    + ", ".join(evidence_redaction_findings)
+                    + "."
+                ),
+                source="stable-readiness-summary",
+                waivable=False,
+                category="redaction",
+            )
+        )
+    domain_errors = stable_summary_domain_errors(summary)
+    redaction_domain_errors = stable_summary_redaction_domain_errors(summary)
+    domain_errors = [error for error in domain_errors if error not in redaction_domain_errors]
+    if redaction_domain_errors:
+        issues.append(
+            Issue(
+                id="stable-1.0.readiness-summary.redaction-domain-failed",
+                evidence_id="stable-1.0.redaction",
+                domain_id=domain_id,
+                severity="critical",
+                title="Stable 1.0 readiness redaction domain is not passing",
+                summary=(
+                    "Stable readiness redaction domain contains non-waivable blockers: "
+                    + "; ".join(redaction_domain_errors)
+                    + "."
+                ),
+                source="stable-readiness-summary",
+                waivable=False,
+                category="redaction",
+            )
+        )
+    if domain_errors:
+        issues.append(
+            Issue(
+                id="stable-1.0.readiness-summary.domain-failed",
+                evidence_id="stable-1.0.readiness-gate",
+                domain_id=domain_id,
+                severity="blocker" if required else "warning",
+                title="Stable 1.0 readiness summary domains are not passing",
+                summary=(
+                    "Stable readiness domain rows are inconsistent with a ready decision: "
+                    + "; ".join(domain_errors)
+                    + "."
+                ),
+                source="stable-readiness-summary",
+                waivable=not required,
+                category="stable-readiness",
+            )
+        )
+    if failed_redaction_evidence:
+        issues.append(
+            Issue(
+                id="stable-1.0.readiness-summary.redaction-evidence-failed",
+                evidence_id="stable-1.0.redaction",
+                domain_id=domain_id,
+                severity="critical",
+                title="Stable 1.0 readiness redaction evidence is not passing",
+                summary=(
+                    "Stable readiness redaction evidence is non-waivable and not passing: "
+                    + ", ".join(failed_redaction_evidence)
+                    + "."
+                ),
+                source="stable-readiness-summary",
+                waivable=False,
+                category="redaction",
+            )
+        )
+    if failed_evidence:
+        issues.append(
+            Issue(
+                id="stable-1.0.readiness-summary.evidence-failed",
+                evidence_id="stable-1.0.readiness-gate",
+                domain_id=domain_id,
+                severity="blocker" if required else "warning",
+                title="Stable 1.0 readiness summary contains failed evidence",
+                summary="Stable readiness evidence is not passing: " + ", ".join(failed_evidence) + ".",
+                source="stable-readiness-summary",
+                waivable=not required,
+                category="stable-readiness",
+            )
+        )
+    warning_count, malformed_warning_count = parse_release_blocker_count(
+        summary.get("warningCount", 0)
+    )
+    if malformed_warning_count:
+        issues.append(
+            Issue(
+                id="stable-1.0.readiness-summary.warning-count-invalid",
+                evidence_id="stable-1.0.readiness-gate",
+                domain_id=domain_id,
+                severity="blocker" if required else "warning",
+                title="Stable 1.0 readiness warning count is invalid",
+                summary="Stable readiness warningCount is not a non-negative integer.",
+                source="stable-readiness-summary",
+                waivable=not required,
+                category="stable-readiness",
+            )
+        )
+    warning_record_errors = stable_summary_warning_record_errors(
+        summary,
+        warning_count,
+        malformed_warning_count,
+    )
+    if warning_record_errors:
+        issues.append(
+            Issue(
+                id="stable-1.0.readiness-summary.warning-records-invalid",
+                evidence_id="stable-1.0.readiness-gate",
+                domain_id=domain_id,
+                severity="blocker" if required else "warning",
+                title="Stable 1.0 readiness warning records are invalid",
+                summary=(
+                    "Stable readiness warning records are inconsistent: "
+                    + "; ".join(warning_record_errors)
+                    + "."
+                ),
+                source="stable-readiness-summary",
+                waivable=not required,
+                category="stable-readiness",
+            )
+        )
+    summary_warning_labels = stable_summary_warning_labels(summary)
+    summary_reports_warnings = (
+        not malformed_warning_count and warning_count > 0
+    ) or bool(summary_warning_labels)
+    if warning_evidence or summary_reports_warnings:
+        warning_details: list[str] = []
+        if warning_evidence:
+            warning_details.append("warning evidence: " + ", ".join(warning_evidence))
+        if summary_warning_labels:
+            warning_details.append("warnings: " + ", ".join(summary_warning_labels))
+        elif not malformed_warning_count and warning_count > 0:
+            warning_details.append(f"warningCount is {warning_count}")
+        issues.append(
+            Issue(
+                id="stable-1.0.readiness-summary.evidence-warnings",
+                evidence_id="stable-1.0.readiness-gate",
+                domain_id=domain_id,
+                severity="warning",
+                title="Stable 1.0 readiness summary contains warnings",
+                summary="Stable readiness summary has " + "; ".join(warning_details) + ".",
+                source="stable-readiness-summary",
+                waivable=True,
+                category="stable-readiness",
+            )
+        )
+    blocker_count, malformed_blocker_count = parse_release_blocker_count(summary.get("blockerCount", 0))
+    allowed_count, malformed_allowed_count = parse_release_blocker_count(
+        summary.get("allowedLimitationCount", 0)
+    )
+    disallowed_count, malformed_disallowed_count = parse_release_blocker_count(
+        summary.get("disallowedLimitationCount", 0)
+    )
+    allowed_limitations = summary.get("allowedLimitations")
+    allowed_limitation_count = len(allowed_limitations) if isinstance(allowed_limitations, list) else 0
+    allowed_record_errors: list[str] = []
+    if not isinstance(allowed_limitations, list):
+        allowed_record_errors.append("allowedLimitations must be a list")
+    else:
+        for index, limitation in enumerate(allowed_limitations):
+            allowed_record_errors.extend(
+                stable_summary_allowed_limitation_metadata_errors(
+                    limitation,
+                    f"allowedLimitations[{index}]",
+                )
+            )
+        if not malformed_allowed_count and allowed_count != allowed_limitation_count:
+            allowed_record_errors.append(
+                f"allowedLimitationCount is {allowed_count} "
+                f"but allowedLimitations contains {allowed_limitation_count}"
+            )
+    record_errors = [
+        *stable_summary_record_errors(
+            summary,
+            "blockers",
+            "blockerCount",
+            blocker_count,
+            malformed_blocker_count,
+        ),
+        *stable_summary_record_errors(
+            summary,
+            "disallowedLimitations",
+            "disallowedLimitationCount",
+            disallowed_count,
+            malformed_disallowed_count,
+        ),
+    ]
+    if malformed_allowed_count or allowed_record_errors:
+        details: list[str] = []
+        if malformed_allowed_count:
+            details.append("allowedLimitationCount is not a non-negative integer")
+        details.extend(allowed_record_errors)
+        issues.append(
+            Issue(
+                id="stable-1.0.readiness-summary.allowed-limitations-invalid",
+                evidence_id="stable-1.0.known-limitations",
+                domain_id=domain_id,
+                severity="blocker" if required else "warning",
+                title="Stable 1.0 readiness allowed limitations are invalid",
+                summary="Stable readiness allowed limitations are inconsistent: " + "; ".join(details) + ".",
+                source="stable-readiness-summary",
+                waivable=not required,
+                category="stable-readiness",
+            )
+        )
+    if (
+        malformed_blocker_count
+        or malformed_disallowed_count
+        or blocker_count > 0
+        or disallowed_count > 0
+        or record_errors
+    ):
+        details: list[str] = []
+        if malformed_blocker_count:
+            details.append("blockerCount is not a non-negative integer")
+        elif blocker_count > 0:
+            details.append(f"blockerCount is {blocker_count}")
+        if malformed_disallowed_count:
+            details.append("disallowedLimitationCount is not a non-negative integer")
+        elif disallowed_count > 0:
+            details.append(f"disallowedLimitationCount is {disallowed_count}")
+        details.extend(record_errors)
+        issues.append(
+            Issue(
+                id="stable-1.0.readiness-summary.remaining-blockers",
+                evidence_id="stable-1.0.readiness-gate",
+                domain_id=domain_id,
+                severity="blocker" if required else "warning",
+                title="Stable 1.0 readiness summary reports remaining blockers",
+                summary="Stable readiness summary is inconsistent: " + "; ".join(details) + ".",
+                source="stable-readiness-summary",
+                waivable=not required,
+                category="stable-readiness",
+            )
+        )
+    allowed_limitations_remain = allowed_limitation_count > 0 or (
+        not malformed_allowed_count and allowed_count > 0
+    )
+    status = normalize_status(summary.get("status", "missing"))
+    decision = str(summary.get("decision", "not-ready"))
+    stable_ready = summary.get("stableReady") is True
+    valid_statuses = {"pass", "warn", "fail"}
+    valid_decisions = {"ready", "ready-with-allowed-limitations", "not-ready"}
+    if status not in valid_statuses or decision not in valid_decisions:
+        issues.append(
+            Issue(
+                id="stable-1.0.readiness-summary.invalid",
+                evidence_id="stable-1.0.readiness-gate",
+                domain_id=domain_id,
+                severity="blocker" if required else "warning",
+                title="Stable 1.0 readiness summary status is invalid",
+                summary=(
+                    f"Stable readiness status is {status}; decision is {decision}. "
+                    "Expected status pass|warn|fail and decision ready|ready-with-allowed-limitations|not-ready."
+                ),
+                source="stable-readiness-summary",
+                waivable=not required,
+                category="stable-readiness",
+            )
+        )
+    elif status == "warn" and not summary_reports_warnings and not allowed_limitations_remain:
+        issues.append(
+            Issue(
+                id="stable-1.0.readiness-summary.warning-status-invalid",
+                evidence_id="stable-1.0.readiness-gate",
+                domain_id=domain_id,
+                severity="blocker" if required else "warning",
+                title="Stable 1.0 readiness warning status is inconsistent",
+                summary=(
+                    "Stable readiness status is warn, but the summary reports no warnings or "
+                    "allowed limitations."
+                ),
+                source="stable-readiness-summary",
+                waivable=not required,
+                category="stable-readiness",
+            )
+        )
+    elif not stable_ready or decision == "not-ready" or status == "fail":
+        issues.append(
+            Issue(
+                id="stable-1.0.readiness-summary.not-ready",
+                evidence_id="stable-1.0.readiness-gate",
+                domain_id=domain_id,
+                severity="blocker" if required else "warning",
+                title="Stable 1.0 readiness is not passing",
+                summary=f"Stable readiness decision is {decision}.",
+                source="stable-readiness-summary",
+                waivable=not required,
+                category="stable-readiness",
+            )
+        )
+    if decision == "ready-with-allowed-limitations" or allowed_limitations_remain:
+        issues.append(
+            Issue(
+                id="stable-1.0.readiness-summary.allowed-limitations",
+                evidence_id="stable-1.0.known-limitations",
+                domain_id=domain_id,
+                severity="warning",
+                title="Stable 1.0 readiness has allowed limitations",
+                summary=(
+                    f"Stable readiness allows {max(allowed_count, allowed_limitation_count)} "
+                    "bounded limitation(s)."
+                ),
+                source="stable-readiness-summary",
+                waivable=True,
+                category="stable-readiness",
+            )
+        )
+    return issues
 
 
 def dedupe_issues(issues: list[Issue]) -> list[Issue]:
@@ -3243,10 +4293,18 @@ def build_dashboard(
     release_id: str,
     generated_at: str,
     now: dt.datetime,
+    require_stable_readiness: bool = False,
 ) -> dict[str, Any]:
     if mode not in MODES:
         raise SystemExit(f"--mode must be one of {', '.join(MODES)}")
-    issues, all_evidence = collect_issues(inputs, mode, input_paths, now, release_id)
+    issues, all_evidence = collect_issues(
+        inputs,
+        mode,
+        input_paths,
+        now,
+        release_id,
+        require_stable_readiness,
+    )
     imported_waivers = release_certification_waiver_records(
         inputs.get("releaseCertificationSummary") if isinstance(inputs.get("releaseCertificationSummary"), dict) else None,
         mode,
@@ -3323,6 +4381,11 @@ def build_dashboard(
         "dashboardMarkdown": OUTPUT_MARKDOWN,
         "dashboardRedactionReport": OUTPUT_REDACTION,
     }
+    stable_readiness = compact_stable_readiness(
+        inputs.get("stableReadinessSummary"),
+        require_stable_readiness,
+        release_id,
+    )
     artifacts = production_summary.get("artifacts") if isinstance(production_summary.get("artifacts"), dict) else {}
     for key in ("redactionReport", "distArchive", "checksums", "ecosystemCertification", "multiNodeBetaSoak"):
         if key in artifacts:
@@ -3348,6 +4411,7 @@ def build_dashboard(
         "waivers": [waiver.to_json() for waiver in waivers],
         "previousCandidateUpgrade": previous_upgrade,
         "securityDrills": security_drills,
+        "stableReadiness": stable_readiness,
         "redaction": redaction,
         "recommendation": recommendation_for(decision, blockers, warnings),
         "artifactRefs": artifact_refs,
@@ -3371,9 +4435,37 @@ def render_markdown(dashboard: dict[str, Any]) -> str:
         f"- Generated: `{dashboard.get('generatedAt', '')}`",
         f"- Recommendation: {dashboard.get('recommendation', '')}",
         "",
-        "## Security Drills",
+        "## Stable 1.0 Readiness",
         "",
     ]
+    stable_readiness = (
+        dashboard.get("stableReadiness")
+        if isinstance(dashboard.get("stableReadiness"), dict)
+        else {}
+    )
+    lines.extend(
+        [
+            f"- Status: `{stable_readiness.get('status', 'missing')}`",
+            f"- Decision: `{stable_readiness.get('decision', 'not-attached')}`",
+            f"- Stable ready: `{str(stable_readiness.get('stableReady', False)).lower()}`",
+            f"- Required: `{str(stable_readiness.get('required', False)).lower()}`",
+            f"- Release ID: `{stable_readiness.get('releaseId', 'missing')}`",
+            f"- Expected release ID: `{stable_readiness.get('expectedReleaseId', 'not-required')}`",
+            f"- Release ID match: `{str(stable_readiness.get('releaseIdMatchesDashboard', False)).lower()}`",
+            f"- Blockers: `{stable_readiness.get('blockerCount', 0)}`",
+            f"- Warnings: `{stable_readiness.get('warningCount', 0)}`",
+            f"- Allowed limitations: `{stable_readiness.get('allowedLimitationCount', 0)}`",
+            f"- Disallowed limitations: `{stable_readiness.get('disallowedLimitationCount', 0)}`",
+            f"- Redaction: `{stable_readiness.get('redactionStatus', 'missing')}`",
+            "",
+        ]
+    )
+    lines.extend(
+        [
+        "## Security Drills",
+        "",
+        ]
+    )
     security_drills = dashboard.get("securityDrills") if isinstance(dashboard.get("securityDrills"), dict) else {}
     lines.extend(
         [
@@ -3575,6 +4667,7 @@ def build_command(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         release_id,
         generated_at,
         now,
+        args.require_stable_readiness,
     )
     dashboard = write_dashboard_artifacts(dashboard, out_dir, workspace_root)
     return dashboard, 0 if dashboard["decision"] in {"go", "go-with-waivers"} else 1
@@ -3653,6 +4746,87 @@ def run_self_test(quiet: bool = False) -> None:
         "production-beta",
     ):
         raise AssertionError("previous-candidate binding failures must be non-waivable in production-beta")
+    optional_stable_matrix = {
+        "status": "pass",
+        "releaseBlockerCount": 0,
+        "rows": [
+            {
+                "id": "stable-1-0-readiness",
+                "status": "skip",
+                "releaseBlocker": False,
+                "summary": "Stable 1.0 readiness was not requested for this certification run.",
+                "details": {"notRequested": True, "required": False},
+            }
+        ],
+    }
+    if ecosystem_matrix_issues(optional_stable_matrix):
+        raise AssertionError("optional Stable 1.0 not-requested matrix row produced a dashboard warning")
+    unrelated_skip_matrix = copy.deepcopy(optional_stable_matrix)
+    unrelated_skip_matrix["rows"][0]["id"] = "self-test-unrelated-row"
+    unrelated_skip_issues = ecosystem_matrix_issues(unrelated_skip_matrix)
+    if not any(issue.id == "ecosystem-matrix.self-test-unrelated-row" for issue in unrelated_skip_issues):
+        raise AssertionError("non-Stable skipped matrix rows must still be surfaced by the dashboard")
+    for invalid_stable_summary in (
+        {
+            "kind": "stable-1.0-readiness",
+            "status": "skip",
+            "decision": "ready",
+            "stableReady": True,
+            "redaction": {"status": "pass", "findings": []},
+        },
+        {
+            "kind": "stable-1.0-readiness",
+            "status": "pass",
+            "decision": "ship-it",
+            "stableReady": True,
+            "redaction": {"status": "pass", "findings": []},
+        },
+    ):
+        invalid_stable_issues = stable_readiness_issues(invalid_stable_summary, True)
+        if not any(
+            issue.id == "stable-1.0.readiness-summary.invalid"
+            and issue.severity == "blocker"
+            for issue in invalid_stable_issues
+        ):
+            raise AssertionError(
+                f"required malformed Stable readiness summary did not block: {invalid_stable_issues}"
+            )
+
+    passing_network_scale_summary = {
+        "status": "success",
+        "redaction": {
+            "status": "pass",
+            "rawFetchedContentExcluded": True,
+            "privateInsertUrisExcluded": True,
+            "tokensExcluded": True,
+            "absolutePathsExcluded": True,
+            "queueHtmlExcluded": True,
+        },
+        "budgets": {
+            "globalFetchBudgetEnforced": True,
+            "perAppFetchBudgetEnforced": True,
+            "concurrencyLeasesReleased": True,
+        },
+    }
+    for case_name, redaction_patch in (
+        ("failed status", {"status": "fail"}),
+        ("declared findings", {"findings": [{"kind": "network-scale-self-test"}]}),
+        ("finding count", {"findingCount": 1}),
+    ):
+        failed_network_scale_summary = copy.deepcopy(passing_network_scale_summary)
+        failed_network_scale_summary["redaction"].update(redaction_patch)
+        redaction_issues = [
+            issue
+            for issue in network_scale_issues(failed_network_scale_summary, "production-beta")
+            if issue.id == "network-scale-soak.redaction-or-budget"
+            and issue.evidence_id == "network-scale.redaction"
+            and issue.severity == "critical"
+            and not issue.waivable
+        ]
+        if not redaction_issues:
+            raise AssertionError(
+                f"network-scale redaction {case_name} did not create a non-waivable blocker"
+            )
 
     fixture_expectations = {
         "go-no-go-pass.json": "go",
@@ -4021,6 +5195,7 @@ def run_self_test(quiet: bool = False) -> None:
             raise AssertionError("go/no-go dashboard JSON is not deterministic for fixed fixture inputs")
         assert_supplied_waiver_file_errors_block_launch(root)
         assert_protected_secret_values_are_scanned_and_redacted(root)
+        assert_redaction_proof_semantics()
         assert_symlink_inputs_are_rejected(root)
         assert_legacy_security_response_summary_fallback_is_honored(root)
         assert_standalone_security_response_summary_is_honored(root)
@@ -4029,12 +5204,57 @@ def run_self_test(quiet: bool = False) -> None:
         assert_security_drill_summary_evidence_is_not_generic_release_evidence(root)
         assert_security_drill_summary_path_requires_sibling_artifacts(root)
         assert_security_drills_release_id_matches_dashboard_candidate(root)
+        assert_required_stable_readiness_release_id_matches_dashboard_candidate(root)
         assert_validator_security_drill_redaction_findings_are_non_waivable(root)
         assert_inherited_security_drill_summary_timestamp_rebinds(root)
         assert_previous_candidate_upgrade_current_binding_is_enforced(root)
         assert_multi_node_release_evidence_is_not_overwritten(root)
     if not quiet:
         print("production beta go/no-go dashboard self-test passed")
+
+
+def assert_redaction_proof_semantics() -> None:
+    if not entry_has_redaction_findings({"details": {"redactionClean": False}}):
+        raise AssertionError("redactionClean=false was not treated as unsafe")
+    if not entry_has_redaction_findings({"details": {"redactionClean": "false"}}):
+        raise AssertionError("malformed redactionClean proof was not treated as unsafe")
+    if entry_has_redaction_findings({"details": {"redactionClean": True}}):
+        raise AssertionError("redactionClean=true was treated as unsafe")
+    for unsafe_status in ("fail", "warn", "missing", "success", None, True):
+        if not entry_has_redaction_findings(
+            {"details": {"redactionStatus": unsafe_status}}
+        ):
+            raise AssertionError(
+                f"redactionStatus={unsafe_status!r} was not treated as unsafe"
+            )
+    if entry_has_redaction_findings({"details": {"redactionStatus": "pass"}}):
+        raise AssertionError("redactionStatus=pass was treated as unsafe")
+    for unsafe_status in ("fail", "warn", "missing", "skip", "success", None, True):
+        if not entry_has_redaction_findings(
+            {"details": {"redaction": {"status": unsafe_status}}}
+        ):
+            raise AssertionError(
+                f"nested redaction status={unsafe_status!r} was not treated as unsafe"
+            )
+    if entry_has_redaction_findings(
+        {"details": {"redaction": {"status": "pass"}}}
+    ):
+        raise AssertionError("nested redaction status=pass was treated as unsafe")
+    boolean_proof_cases = (
+        ("privateInsertUrisExcluded", True, (False, "false", None, 1)),
+        ("rawSupportBundlesStored", False, (True, "true", None, 0)),
+        ("rawFetchedContentIncluded", False, (True, "true", None, 0)),
+        ("rawContentPersisted", False, (True, "true", None, 0)),
+        ("rawStatementsInEvidence", False, (True, "true", None, 0)),
+    )
+    for key, safe_value, unsafe_values in boolean_proof_cases:
+        if entry_has_redaction_findings({"details": {key: safe_value}}):
+            raise AssertionError(f"{key}={safe_value!r} was treated as unsafe")
+        for unsafe_value in unsafe_values:
+            if not entry_has_redaction_findings({"details": {key: unsafe_value}}):
+                raise AssertionError(
+                    f"{key}={unsafe_value!r} was not treated as unsafe"
+                )
 
 
 def assert_multi_node_release_evidence_is_not_overwritten(root: Path) -> None:
@@ -4437,6 +5657,1653 @@ def assert_security_drills_release_id_matches_dashboard_candidate(root: Path) ->
         raise AssertionError(f"release-id mismatch left security drills promotion-ready: {dashboard}")
 
 
+def assert_required_stable_readiness_release_id_matches_dashboard_candidate(root: Path) -> None:
+    pass_fixture = load_fixture(FIXTURE_DIR / "go-no-go-pass.json")
+    release_id = str(pass_fixture.get("releaseId", "crypta-production-beta-270"))
+    inputs = json.loads(json.dumps(pass_fixture["inputs"]))
+    inputs["stableReadinessSummary"] = {
+        "schemaVersion": 1,
+        "kind": "stable-1.0-readiness",
+        "tool": "stable-1.0-readiness",
+        "generatedAt": DEFAULT_GENERATED_AT,
+        "releaseId": release_id,
+        "status": "pass",
+        "decision": "ready",
+        "stableReady": True,
+        "blockerCount": 0,
+        "warningCount": 0,
+        "allowedLimitationCount": 0,
+        "disallowedLimitationCount": 0,
+        "blockers": [],
+        "warnings": [],
+        "allowedLimitations": [],
+        "disallowedLimitations": [],
+        "domains": [
+            {
+                "id": domain_id,
+                "status": "pass",
+                "summary": "Synthetic Stable domain passed.",
+                "evidenceIds": [],
+                "blockers": [],
+                "warnings": [],
+                "allowedLimitations": [],
+            }
+            for domain_id in STABLE_1_0_READINESS_DOMAIN_IDS
+        ],
+        "redaction": {"status": "pass", "findings": []},
+        "evidence": [
+            {
+                "id": evidence_id,
+                "status": "pass",
+                "summary": f"{evidence_id} passed.",
+                "details": {"decision": "ready", "stableReady": True}
+                if evidence_id == "stable-1.0.readiness-gate"
+                else {},
+            }
+            for evidence_id in STABLE_1_0_READINESS_EVIDENCE_IDS
+        ],
+    }
+    generated_at, now = parse_generated_at(DEFAULT_GENERATED_AT)
+    matching_dashboard = build_dashboard(
+        inputs,
+        {},
+        [FIXTURE_DIR / "go-no-go-pass.json"],
+        None,
+        Path(__file__).resolve().parents[2],
+        root / "stable-readiness-release-id-match",
+        "production-beta",
+        release_id,
+        generated_at,
+        now,
+        require_stable_readiness=True,
+    )
+    if matching_dashboard.get("decision") != "go":
+        raise AssertionError(
+            "matching required Stable readiness summary blocked a passing dashboard: "
+            f"{matching_dashboard}"
+        )
+    matching_stable = matching_dashboard.get("stableReadiness")
+    if not isinstance(matching_stable, dict) or matching_stable.get("releaseIdMatchesDashboard") is not True:
+        raise AssertionError(f"matching Stable readiness binding was not reported: {matching_dashboard}")
+
+    for tool_suffix, tool_value in (
+        ("missing", None),
+        ("wrong", "other-stable-tool"),
+    ):
+        invalid_tool_inputs = json.loads(json.dumps(inputs))
+        if tool_value is None:
+            invalid_tool_inputs["stableReadinessSummary"].pop("tool", None)
+        else:
+            invalid_tool_inputs["stableReadinessSummary"]["tool"] = tool_value
+        invalid_tool_dashboard = build_dashboard(
+            invalid_tool_inputs,
+            {},
+            [FIXTURE_DIR / "go-no-go-pass.json"],
+            None,
+            Path(__file__).resolve().parents[2],
+            root / f"stable-readiness-{tool_suffix}-tool",
+            "production-beta",
+            release_id,
+            generated_at,
+            now,
+            require_stable_readiness=True,
+        )
+        invalid_tool_blockers = [
+            blocker
+            for blocker in invalid_tool_dashboard.get("blockers", [])
+            if isinstance(blocker, dict)
+            and blocker.get("id") == "stable-1.0.readiness-summary.tool"
+            and blocker.get("severity") == "blocker"
+        ]
+        if invalid_tool_dashboard.get("decision") != "no-go" or len(invalid_tool_blockers) != 1:
+            raise AssertionError(
+                f"Stable summary with {tool_suffix} tool did not block: {invalid_tool_dashboard}"
+            )
+
+    for count_suffix, warning_count in (
+        ("string", "bad"),
+        ("boolean", True),
+        ("fractional", 0.5),
+        ("negative", -1),
+    ):
+        malformed_warning_inputs = json.loads(json.dumps(inputs))
+        malformed_warning_inputs["stableReadinessSummary"]["warningCount"] = warning_count
+        malformed_warning_dashboard = build_dashboard(
+            malformed_warning_inputs,
+            {},
+            [FIXTURE_DIR / "go-no-go-pass.json"],
+            None,
+            Path(__file__).resolve().parents[2],
+            root / f"stable-readiness-malformed-warning-count-{count_suffix}",
+            "production-beta",
+            release_id,
+            generated_at,
+            now,
+            require_stable_readiness=True,
+        )
+        malformed_warning_blockers = [
+            blocker
+            for blocker in malformed_warning_dashboard.get("blockers", [])
+            if isinstance(blocker, dict)
+            and blocker.get("id") == "stable-1.0.readiness-summary.warning-count-invalid"
+            and blocker.get("severity") == "blocker"
+        ]
+        if (
+            malformed_warning_dashboard.get("decision") != "no-go"
+            or len(malformed_warning_blockers) != 1
+        ):
+            raise AssertionError(
+                f"malformed Stable warningCount {warning_count!r} did not block: "
+                f"{malformed_warning_dashboard}"
+            )
+
+    for warning_suffix, warning_records in (
+        ("object", {}),
+        ("string", "not-a-list"),
+    ):
+        malformed_warning_inputs = json.loads(json.dumps(inputs))
+        malformed_warning_inputs["stableReadinessSummary"]["warnings"] = warning_records
+        malformed_warning_dashboard = build_dashboard(
+            malformed_warning_inputs,
+            {},
+            [FIXTURE_DIR / "go-no-go-pass.json"],
+            None,
+            Path(__file__).resolve().parents[2],
+            root / f"stable-readiness-malformed-warning-records-{warning_suffix}",
+            "production-beta",
+            release_id,
+            generated_at,
+            now,
+            require_stable_readiness=True,
+        )
+        malformed_warning_blockers = [
+            blocker
+            for blocker in malformed_warning_dashboard.get("blockers", [])
+            if isinstance(blocker, dict)
+            and blocker.get("id") == "stable-1.0.readiness-summary.warning-records-invalid"
+            and blocker.get("severity") == "blocker"
+        ]
+        if (
+            malformed_warning_dashboard.get("decision") != "no-go"
+            or len(malformed_warning_blockers) != 1
+        ):
+            raise AssertionError(
+                f"malformed Stable warnings {warning_records!r} did not block: "
+                f"{malformed_warning_dashboard}"
+            )
+
+    summary_warning_inputs = json.loads(json.dumps(inputs))
+    summary_warning = {
+        "id": "stable-1.0.synthetic-warning",
+        "evidenceId": "stable-1.0.support-feedback-readiness",
+        "severity": "warning",
+        "title": "Synthetic Stable warning",
+        "summary": "Synthetic Stable warning remains open for release-manager review.",
+        "source": "stable-readiness-self-test",
+        "waivable": True,
+        "category": "self-test",
+    }
+    summary_warning_value = summary_warning_inputs["stableReadinessSummary"]
+    summary_warning_value.update(
+        {
+            "status": "warn",
+            "warningCount": 1,
+            "warnings": [summary_warning],
+        }
+    )
+    summary_warning_domain = next(
+        domain
+        for domain in summary_warning_value["domains"]
+        if isinstance(domain, dict) and domain.get("id") == "support-feedback-readiness"
+    )
+    summary_warning_domain.update(
+        {
+            "status": "warn",
+            "summary": summary_warning["summary"],
+            "warnings": [summary_warning],
+        }
+    )
+    summary_warning_dashboard = build_dashboard(
+        summary_warning_inputs,
+        {},
+        [FIXTURE_DIR / "go-no-go-pass.json"],
+        None,
+        Path(__file__).resolve().parents[2],
+        root / "stable-readiness-summary-warning",
+        "production-beta",
+        release_id,
+        generated_at,
+        now,
+        require_stable_readiness=True,
+    )
+    if summary_warning_dashboard.get("decision") != "go":
+        raise AssertionError(
+            "warning-only Stable summary blocked a passing dashboard: "
+            f"{summary_warning_dashboard}"
+        )
+    surfaced_summary_warnings = [
+        warning
+        for warning in summary_warning_dashboard.get("warnings", [])
+        if isinstance(warning, dict)
+        and warning.get("id") == "stable-1.0.readiness-summary.evidence-warnings"
+        and "stable-1.0.synthetic-warning" in str(warning.get("summary", ""))
+    ]
+    if len(surfaced_summary_warnings) != 1:
+        raise AssertionError(
+            "Stable summary warning was not surfaced exactly once: "
+            f"{summary_warning_dashboard.get('warnings')}"
+        )
+
+    status_only_summary_warning_inputs = json.loads(json.dumps(inputs))
+    status_only_summary_warning_inputs["stableReadinessSummary"]["status"] = "warn"
+    status_only_summary_warning_dashboard = build_dashboard(
+        status_only_summary_warning_inputs,
+        {},
+        [FIXTURE_DIR / "go-no-go-pass.json"],
+        None,
+        Path(__file__).resolve().parents[2],
+        root / "stable-readiness-status-only-summary-warning",
+        "production-beta",
+        release_id,
+        generated_at,
+        now,
+        require_stable_readiness=True,
+    )
+    status_only_summary_warning_blockers = [
+        blocker
+        for blocker in status_only_summary_warning_dashboard.get("blockers", [])
+        if isinstance(blocker, dict)
+        and blocker.get("id") == "stable-1.0.readiness-summary.warning-status-invalid"
+        and blocker.get("severity") == "blocker"
+    ]
+    if status_only_summary_warning_dashboard.get("decision") != "no-go" or len(
+        status_only_summary_warning_blockers
+    ) != 1:
+        raise AssertionError(
+            "status-only Stable summary warning did not block: "
+            f"{status_only_summary_warning_dashboard}"
+        )
+
+    status_only_warning_inputs = json.loads(json.dumps(inputs))
+    status_only_warning_domain = next(
+        domain
+        for domain in status_only_warning_inputs["stableReadinessSummary"]["domains"]
+        if isinstance(domain, dict) and domain.get("id") == "support-feedback-readiness"
+    )
+    status_only_warning_domain.update(
+        {
+            "status": "warn",
+            "summary": "Synthetic Stable domain reports an unsurfaced warning.",
+        }
+    )
+    status_only_warning_dashboard = build_dashboard(
+        status_only_warning_inputs,
+        {},
+        [FIXTURE_DIR / "go-no-go-pass.json"],
+        None,
+        Path(__file__).resolve().parents[2],
+        root / "stable-readiness-status-only-domain-warning",
+        "production-beta",
+        release_id,
+        generated_at,
+        now,
+        require_stable_readiness=True,
+    )
+    status_only_warning_blockers = [
+        blocker
+        for blocker in status_only_warning_dashboard.get("blockers", [])
+        if isinstance(blocker, dict)
+        and blocker.get("id") == "stable-1.0.readiness-summary.domain-failed"
+        and blocker.get("evidenceId") == "stable-1.0.readiness-gate"
+        and blocker.get("severity") == "blocker"
+        and "support-feedback-readiness" in str(blocker.get("summary", ""))
+    ]
+    if status_only_warning_dashboard.get("decision") != "no-go" or len(
+        status_only_warning_blockers
+    ) != 1:
+        raise AssertionError(
+            "status-only Stable domain warning did not block: "
+            f"{status_only_warning_dashboard}"
+        )
+
+    required_redaction_domain_warn_inputs = json.loads(json.dumps(inputs))
+    required_redaction_domain = next(
+        domain
+        for domain in required_redaction_domain_warn_inputs["stableReadinessSummary"]["domains"]
+        if isinstance(domain, dict) and domain.get("id") == "redaction"
+    )
+    required_redaction_domain.update(
+        {
+            "status": "warn",
+            "summary": "Synthetic Stable redaction warning domain.",
+            "evidenceIds": ["stable-1.0.redaction"],
+            "warnings": [
+                {
+                    "id": "stable-redaction-domain-warning",
+                    "evidenceId": "stable-1.0.redaction",
+                    "summary": "Synthetic Stable redaction warning.",
+                }
+            ],
+        }
+    )
+    required_redaction_domain_warn_dashboard = build_dashboard(
+        required_redaction_domain_warn_inputs,
+        {},
+        [FIXTURE_DIR / "go-no-go-pass.json"],
+        None,
+        Path(__file__).resolve().parents[2],
+        root / "stable-readiness-required-redaction-domain-warn",
+        "production-beta",
+        release_id,
+        generated_at,
+        now,
+        require_stable_readiness=True,
+    )
+    if required_redaction_domain_warn_dashboard.get("decision") != "no-go":
+        raise AssertionError(
+            "required Stable redaction domain warning did not block: "
+            f"{required_redaction_domain_warn_dashboard}"
+        )
+    required_redaction_domain_warn_blockers = [
+        blocker
+        for blocker in required_redaction_domain_warn_dashboard.get("blockers", [])
+        if isinstance(blocker, dict)
+        and blocker.get("id") == "stable-1.0.readiness-summary.redaction-domain-failed"
+        and blocker.get("evidenceId") == "stable-1.0.redaction"
+        and blocker.get("severity") == "critical"
+        and blocker.get("waivable") is False
+    ]
+    if not required_redaction_domain_warn_blockers:
+        raise AssertionError(
+            "required Stable redaction warning domain was not critical/non-waivable: "
+            f"{required_redaction_domain_warn_dashboard}"
+        )
+
+    advisory_redaction_evidence_inputs = json.loads(json.dumps(inputs))
+    for entry in advisory_redaction_evidence_inputs["stableReadinessSummary"]["evidence"]:
+        if isinstance(entry, dict) and entry.get("id") == "stable-1.0.redaction":
+            entry["status"] = "fail"
+            entry["summary"] = "Synthetic failed Stable redaction evidence."
+            break
+    else:
+        raise AssertionError("synthetic Stable summary is missing stable-1.0.redaction evidence")
+    advisory_redaction_evidence_dashboard = build_dashboard(
+        advisory_redaction_evidence_inputs,
+        {},
+        [FIXTURE_DIR / "go-no-go-pass.json"],
+        None,
+        Path(__file__).resolve().parents[2],
+        root / "stable-readiness-advisory-redaction-evidence",
+        "production-beta",
+        release_id,
+        generated_at,
+        now,
+        require_stable_readiness=False,
+    )
+    if advisory_redaction_evidence_dashboard.get("decision") != "no-go":
+        raise AssertionError(
+            "advisory Stable redaction evidence failure did not block: "
+            f"{advisory_redaction_evidence_dashboard}"
+        )
+    advisory_redaction_evidence_blockers = [
+        blocker
+        for blocker in advisory_redaction_evidence_dashboard.get("blockers", [])
+        if isinstance(blocker, dict)
+        and blocker.get("id") == "stable-1.0.readiness-summary.redaction-evidence-failed"
+        and blocker.get("evidenceId") == "stable-1.0.redaction"
+        and blocker.get("severity") == "critical"
+        and blocker.get("waivable") is False
+    ]
+    if not advisory_redaction_evidence_blockers:
+        raise AssertionError(
+            "advisory Stable redaction evidence failure was not critical/non-waivable: "
+            f"{advisory_redaction_evidence_dashboard}"
+        )
+
+    advisory_redaction_domain_inputs = json.loads(json.dumps(inputs))
+    advisory_redaction_domain = next(
+        domain
+        for domain in advisory_redaction_domain_inputs["stableReadinessSummary"]["domains"]
+        if isinstance(domain, dict) and domain.get("id") == "redaction"
+    )
+    advisory_redaction_domain.update(
+        {
+            "status": "fail",
+            "summary": "Synthetic failed Stable redaction domain.",
+            "evidenceIds": ["stable-1.0.redaction"],
+            "blockers": [
+                {
+                    "id": "stable-redaction-domain-blocker",
+                    "evidenceId": "stable-1.0.redaction",
+                    "summary": "Synthetic Stable redaction domain blocker.",
+                }
+            ],
+        }
+    )
+    advisory_redaction_domain_dashboard = build_dashboard(
+        advisory_redaction_domain_inputs,
+        {},
+        [FIXTURE_DIR / "go-no-go-pass.json"],
+        None,
+        Path(__file__).resolve().parents[2],
+        root / "stable-readiness-advisory-redaction-domain",
+        "production-beta",
+        release_id,
+        generated_at,
+        now,
+        require_stable_readiness=False,
+    )
+    if advisory_redaction_domain_dashboard.get("decision") != "no-go":
+        raise AssertionError(
+            "advisory Stable redaction domain failure did not block: "
+            f"{advisory_redaction_domain_dashboard}"
+        )
+    advisory_redaction_domain_blockers = [
+        blocker
+        for blocker in advisory_redaction_domain_dashboard.get("blockers", [])
+        if isinstance(blocker, dict)
+        and blocker.get("id") == "stable-1.0.readiness-summary.redaction-domain-failed"
+        and blocker.get("evidenceId") == "stable-1.0.redaction"
+        and blocker.get("severity") == "critical"
+        and blocker.get("waivable") is False
+    ]
+    if not advisory_redaction_domain_blockers:
+        raise AssertionError(
+            "advisory Stable redaction domain failure was not critical/non-waivable: "
+            f"{advisory_redaction_domain_dashboard}"
+        )
+
+    missing_domains_inputs = json.loads(json.dumps(inputs))
+    missing_domains_inputs["stableReadinessSummary"].pop("domains", None)
+    missing_domains_dashboard = build_dashboard(
+        missing_domains_inputs,
+        {},
+        [FIXTURE_DIR / "go-no-go-pass.json"],
+        None,
+        Path(__file__).resolve().parents[2],
+        root / "stable-readiness-missing-domains",
+        "production-beta",
+        release_id,
+        generated_at,
+        now,
+        require_stable_readiness=True,
+    )
+    if missing_domains_dashboard.get("decision") != "no-go":
+        raise AssertionError(
+            "required Stable readiness with omitted domains did not block: "
+            f"{missing_domains_dashboard}"
+        )
+    missing_domains_blockers = [
+        blocker
+        for blocker in missing_domains_dashboard.get("blockers", [])
+        if isinstance(blocker, dict)
+        and blocker.get("id") == "stable-1.0.readiness-summary.domain-failed"
+        and blocker.get("evidenceId") == "stable-1.0.readiness-gate"
+    ]
+    if not missing_domains_blockers:
+        raise AssertionError(
+            "omitted Stable readiness domains were not reported as a required blocker: "
+            f"{missing_domains_dashboard}"
+        )
+
+    truncated_domains_inputs = json.loads(json.dumps(inputs))
+    truncated_domains_inputs["stableReadinessSummary"]["domains"] = [
+        {
+            "id": "stub-domain",
+            "status": "pass",
+            "summary": "Synthetic truncated Stable domain row.",
+            "evidenceIds": [],
+            "blockers": [],
+            "warnings": [],
+            "allowedLimitations": [],
+        }
+    ]
+    truncated_domains_dashboard = build_dashboard(
+        truncated_domains_inputs,
+        {},
+        [FIXTURE_DIR / "go-no-go-pass.json"],
+        None,
+        Path(__file__).resolve().parents[2],
+        root / "stable-readiness-truncated-domains",
+        "production-beta",
+        release_id,
+        generated_at,
+        now,
+        require_stable_readiness=True,
+    )
+    if truncated_domains_dashboard.get("decision") != "no-go":
+        raise AssertionError(
+            "required Stable readiness with truncated domains did not block: "
+            f"{truncated_domains_dashboard}"
+        )
+    truncated_domains_blockers = [
+        blocker
+        for blocker in truncated_domains_dashboard.get("blockers", [])
+        if isinstance(blocker, dict)
+        and blocker.get("id") == "stable-1.0.readiness-summary.domain-failed"
+        and blocker.get("evidenceId") == "stable-1.0.readiness-gate"
+    ]
+    if not truncated_domains_blockers:
+        raise AssertionError(
+            "truncated Stable readiness domains were not reported as a required blocker: "
+            f"{truncated_domains_dashboard}"
+        )
+
+    failed_domain_inputs = json.loads(json.dumps(inputs))
+    failed_domain_inputs["stableReadinessSummary"]["domains"][0]["status"] = "fail"
+    failed_domain_inputs["stableReadinessSummary"]["domains"][0]["summary"] = (
+        "Synthetic failed Stable domain row."
+    )
+    failed_domain_dashboard = build_dashboard(
+        failed_domain_inputs,
+        {},
+        [FIXTURE_DIR / "go-no-go-pass.json"],
+        None,
+        Path(__file__).resolve().parents[2],
+        root / "stable-readiness-failed-domain",
+        "production-beta",
+        release_id,
+        generated_at,
+        now,
+        require_stable_readiness=True,
+    )
+    if failed_domain_dashboard.get("decision") != "no-go":
+        raise AssertionError(
+            "required Stable readiness with a failed domain row did not block: "
+            f"{failed_domain_dashboard}"
+        )
+    failed_domain_blockers = [
+        blocker
+        for blocker in failed_domain_dashboard.get("blockers", [])
+        if isinstance(blocker, dict)
+        and blocker.get("id") == "stable-1.0.readiness-summary.domain-failed"
+        and blocker.get("evidenceId") == "stable-1.0.readiness-gate"
+    ]
+    if not failed_domain_blockers:
+        raise AssertionError(
+            "failed Stable domain row was not reported as a required blocker: "
+            f"{failed_domain_dashboard}"
+        )
+
+    malformed_allowed_domain_inputs = json.loads(json.dumps(inputs))
+    malformed_allowed_domain_inputs["stableReadinessSummary"]["domains"][0]["allowedLimitations"] = [1]
+    malformed_allowed_domain_dashboard = build_dashboard(
+        malformed_allowed_domain_inputs,
+        {},
+        [FIXTURE_DIR / "go-no-go-pass.json"],
+        None,
+        Path(__file__).resolve().parents[2],
+        root / "stable-readiness-domain-malformed-allowed-limitation",
+        "production-beta",
+        release_id,
+        generated_at,
+        now,
+        require_stable_readiness=True,
+    )
+    if malformed_allowed_domain_dashboard.get("decision") != "no-go":
+        raise AssertionError(
+            "required Stable readiness with a malformed domain allowed limitation did not block: "
+            f"{malformed_allowed_domain_dashboard}"
+        )
+    malformed_allowed_domain_blockers = [
+        blocker
+        for blocker in malformed_allowed_domain_dashboard.get("blockers", [])
+        if isinstance(blocker, dict)
+        and blocker.get("id") == "stable-1.0.readiness-summary.domain-failed"
+        and blocker.get("evidenceId") == "stable-1.0.readiness-gate"
+    ]
+    if not malformed_allowed_domain_blockers:
+        raise AssertionError(
+            "malformed Stable domain allowed limitation was not reported as a required blocker: "
+            f"{malformed_allowed_domain_dashboard}"
+        )
+
+    hidden_allowed_domain_inputs = json.loads(json.dumps(inputs))
+    hidden_allowed_limitation = {
+        "id": "stable-1.0.self-test-hidden-allowed-limitation",
+        "title": "Hidden self-test allowed Stable limitation",
+        "category": "ui-polish-accessibility-warning",
+        "classification": "allowed-for-stable-1.0",
+        "status": "open",
+        "summary": "Synthetic domain-scoped Stable limitation.",
+        "evidenceIds": ["stable-1.0.known-limitations"],
+        "boundedBy": "Self-test release manager bound for a non-blocking Stable limitation.",
+    }
+    hidden_allowed_domain = next(
+        domain
+        for domain in hidden_allowed_domain_inputs["stableReadinessSummary"]["domains"]
+        if isinstance(domain, dict) and domain.get("id") == "known-limitations"
+    )
+    hidden_allowed_domain.update(
+        {
+            "status": "warn",
+            "summary": "Synthetic Stable domain contains a hidden allowed limitation.",
+            "allowedLimitations": [hidden_allowed_limitation],
+        }
+    )
+    hidden_allowed_domain_dashboard = build_dashboard(
+        hidden_allowed_domain_inputs,
+        {},
+        [FIXTURE_DIR / "go-no-go-pass.json"],
+        None,
+        Path(__file__).resolve().parents[2],
+        root / "stable-readiness-domain-hidden-allowed-limitation",
+        "production-beta",
+        release_id,
+        generated_at,
+        now,
+        require_stable_readiness=True,
+    )
+    hidden_allowed_domain_blockers = [
+        blocker
+        for blocker in hidden_allowed_domain_dashboard.get("blockers", [])
+        if isinstance(blocker, dict)
+        and blocker.get("id") == "stable-1.0.readiness-summary.domain-failed"
+        and "not present in top-level allowedLimitations" in str(blocker.get("summary", ""))
+    ]
+    if hidden_allowed_domain_dashboard.get("decision") != "no-go" or len(
+        hidden_allowed_domain_blockers
+    ) != 1:
+        raise AssertionError(
+            "domain-scoped Stable allowed limitation was not surfaced as inconsistent: "
+            f"{hidden_allowed_domain_dashboard}"
+        )
+
+    blocker_domain_inputs = json.loads(json.dumps(inputs))
+    blocker_domain_inputs["stableReadinessSummary"]["domains"][0]["blockers"] = [
+        {
+            "id": "stable-self-test-domain-blocker",
+            "evidenceId": "stable-1.0.production-beta-state",
+            "summary": "Synthetic Stable domain blocker.",
+        }
+    ]
+    blocker_domain_dashboard = build_dashboard(
+        blocker_domain_inputs,
+        {},
+        [FIXTURE_DIR / "go-no-go-pass.json"],
+        None,
+        Path(__file__).resolve().parents[2],
+        root / "stable-readiness-domain-blocker",
+        "production-beta",
+        release_id,
+        generated_at,
+        now,
+        require_stable_readiness=True,
+    )
+    if blocker_domain_dashboard.get("decision") != "no-go":
+        raise AssertionError(
+            "required Stable readiness with a domain blocker did not block: "
+            f"{blocker_domain_dashboard}"
+        )
+    blocker_domain_blockers = [
+        blocker
+        for blocker in blocker_domain_dashboard.get("blockers", [])
+        if isinstance(blocker, dict)
+        and blocker.get("id") == "stable-1.0.readiness-summary.domain-failed"
+        and blocker.get("evidenceId") == "stable-1.0.readiness-gate"
+    ]
+    if not blocker_domain_blockers:
+        raise AssertionError(
+            "Stable domain blocker was not reported as a required blocker: "
+            f"{blocker_domain_dashboard}"
+        )
+
+    missing_schema_inputs = json.loads(json.dumps(inputs))
+    missing_schema_inputs["stableReadinessSummary"].pop("schemaVersion", None)
+    missing_schema_dashboard = build_dashboard(
+        missing_schema_inputs,
+        {},
+        [FIXTURE_DIR / "go-no-go-pass.json"],
+        None,
+        Path(__file__).resolve().parents[2],
+        root / "stable-readiness-missing-schema-version",
+        "production-beta",
+        release_id,
+        generated_at,
+        now,
+        require_stable_readiness=True,
+    )
+    if missing_schema_dashboard.get("decision") != "no-go":
+        raise AssertionError(
+            "required Stable readiness with missing schemaVersion did not block: "
+            f"{missing_schema_dashboard}"
+        )
+    missing_schema_blockers = [
+        blocker
+        for blocker in missing_schema_dashboard.get("blockers", [])
+        if isinstance(blocker, dict)
+        and blocker.get("id") == "stable-1.0.readiness-summary.schema-version"
+        and blocker.get("evidenceId") == "stable-1.0.readiness-gate"
+    ]
+    if not missing_schema_blockers:
+        raise AssertionError(
+            "missing Stable schemaVersion was not reported as a required blocker: "
+            f"{missing_schema_dashboard}"
+        )
+
+    mismatched_inputs = json.loads(json.dumps(inputs))
+    mismatched_inputs["stableReadinessSummary"]["releaseId"] = "crypta-production-beta-previous"
+    mismatched_dashboard = build_dashboard(
+        mismatched_inputs,
+        {},
+        [FIXTURE_DIR / "go-no-go-pass.json"],
+        None,
+        Path(__file__).resolve().parents[2],
+        root / "stable-readiness-release-id-mismatch",
+        "production-beta",
+        release_id,
+        generated_at,
+        now,
+        require_stable_readiness=True,
+    )
+    if mismatched_dashboard.get("decision") != "no-go":
+        raise AssertionError(
+            "Stable readiness from another release id did not block: "
+            f"{mismatched_dashboard}"
+        )
+    mismatched_stable = mismatched_dashboard.get("stableReadiness")
+    if not isinstance(mismatched_stable, dict) or mismatched_stable.get("releaseIdMatchesDashboard") is not False:
+        raise AssertionError(f"mismatched Stable readiness binding was not reported: {mismatched_dashboard}")
+    blockers = [
+        blocker
+        for blocker in mismatched_dashboard.get("blockers", [])
+        if isinstance(blocker, dict)
+        and blocker.get("evidenceId") == "stable-1.0.readiness-gate"
+        and blocker.get("id") == "stable-1.0.readiness-summary.release-id"
+    ]
+    if not blockers:
+        raise AssertionError(f"release-id mismatch did not block Stable readiness: {mismatched_dashboard}")
+
+    truncated_inputs = json.loads(json.dumps(inputs))
+    truncated_inputs["stableReadinessSummary"]["evidence"] = [
+        entry
+        for entry in truncated_inputs["stableReadinessSummary"]["evidence"]
+        if entry.get("id") != "stable-1.0.security-drills"
+    ]
+    truncated_dashboard = build_dashboard(
+        truncated_inputs,
+        {},
+        [FIXTURE_DIR / "go-no-go-pass.json"],
+        None,
+        Path(__file__).resolve().parents[2],
+        root / "stable-readiness-truncated-evidence",
+        "production-beta",
+        release_id,
+        generated_at,
+        now,
+        require_stable_readiness=True,
+    )
+    if truncated_dashboard.get("decision") != "no-go":
+        raise AssertionError(
+            "required Stable readiness with missing evidence did not block: "
+            f"{truncated_dashboard}"
+        )
+    truncated_blockers = [
+        blocker
+        for blocker in truncated_dashboard.get("blockers", [])
+        if isinstance(blocker, dict)
+        and blocker.get("id") == "stable-1.0.readiness-summary.evidence-missing"
+    ]
+    if not truncated_blockers:
+        raise AssertionError(f"missing Stable evidence blocker was not reported: {truncated_dashboard}")
+
+    duplicate_inputs = json.loads(json.dumps(inputs))
+    duplicate_evidence = duplicate_inputs["stableReadinessSummary"]["evidence"]
+    for index, entry in enumerate(duplicate_evidence):
+        if isinstance(entry, dict) and entry.get("id") == "stable-1.0.security-drills":
+            failed_entry = json.loads(json.dumps(entry))
+            failed_entry["status"] = "fail"
+            failed_entry["summary"] = "Synthetic failed duplicate Stable security drills evidence."
+            duplicate_evidence.insert(index, failed_entry)
+            break
+    else:
+        raise AssertionError("synthetic Stable summary is missing stable-1.0.security-drills evidence")
+    duplicate_dashboard = build_dashboard(
+        duplicate_inputs,
+        {},
+        [FIXTURE_DIR / "go-no-go-pass.json"],
+        None,
+        Path(__file__).resolve().parents[2],
+        root / "stable-readiness-duplicate-evidence",
+        "production-beta",
+        release_id,
+        generated_at,
+        now,
+        require_stable_readiness=True,
+    )
+    if duplicate_dashboard.get("decision") != "no-go":
+        raise AssertionError(
+            "required Stable readiness with duplicate failed evidence did not block: "
+            f"{duplicate_dashboard}"
+        )
+    duplicate_blockers = [
+        blocker
+        for blocker in duplicate_dashboard.get("blockers", [])
+        if isinstance(blocker, dict)
+        and blocker.get("id") == "stable-1.0.readiness-summary.evidence-duplicate"
+    ]
+    if not duplicate_blockers:
+        raise AssertionError(f"duplicate Stable evidence blocker was not reported: {duplicate_dashboard}")
+
+    redaction_inputs = json.loads(json.dumps(inputs))
+    for entry in redaction_inputs["stableReadinessSummary"]["evidence"]:
+        if isinstance(entry, dict) and entry.get("id") == "stable-1.0.redaction":
+            entry["details"] = {
+                "redactionFindings": [
+                    {"kind": "stable-readiness-fixture", "summary": "Synthetic Stable redaction finding."}
+                ]
+            }
+            break
+    else:
+        raise AssertionError("synthetic Stable summary is missing stable-1.0.redaction evidence")
+    redaction_dashboard = build_dashboard(
+        redaction_inputs,
+        {},
+        [FIXTURE_DIR / "go-no-go-pass.json"],
+        None,
+        Path(__file__).resolve().parents[2],
+        root / "stable-readiness-evidence-redaction",
+        "production-beta",
+        release_id,
+        generated_at,
+        now,
+        require_stable_readiness=True,
+    )
+    if redaction_dashboard.get("decision") != "no-go":
+        raise AssertionError(
+            "required Stable readiness with evidence-row redaction findings did not block: "
+            f"{redaction_dashboard}"
+        )
+    redaction_blockers = [
+        blocker
+        for blocker in redaction_dashboard.get("blockers", [])
+        if isinstance(blocker, dict)
+        and blocker.get("id") == "stable-1.0.readiness-summary.evidence-redaction"
+        and blocker.get("evidenceId") == "stable-1.0.redaction"
+        and blocker.get("severity") == "critical"
+    ]
+    if not redaction_blockers:
+        raise AssertionError(
+            "Stable evidence-row redaction findings were not reported as a critical blocker: "
+            f"{redaction_dashboard}"
+        )
+
+    extra_redaction_inputs = json.loads(json.dumps(inputs))
+    extra_redaction_inputs["stableReadinessSummary"]["evidence"].append(
+        {
+            "id": "stable-1.0.extra-redaction-fixture",
+            "status": "pass",
+            "summary": "Synthetic extra Stable evidence row with redaction findings.",
+            "details": {
+                "redactionFindings": [
+                    {
+                        "kind": "stable-readiness-fixture",
+                        "summary": "Synthetic extra Stable evidence redaction finding.",
+                    }
+                ]
+            },
+        }
+    )
+    extra_redaction_dashboard = build_dashboard(
+        extra_redaction_inputs,
+        {},
+        [FIXTURE_DIR / "go-no-go-pass.json"],
+        None,
+        Path(__file__).resolve().parents[2],
+        root / "stable-readiness-extra-evidence-redaction",
+        "production-beta",
+        release_id,
+        generated_at,
+        now,
+        require_stable_readiness=True,
+    )
+    if extra_redaction_dashboard.get("decision") != "no-go":
+        raise AssertionError(
+            "required Stable readiness with extra evidence-row redaction findings did not block: "
+            f"{extra_redaction_dashboard}"
+        )
+    extra_redaction_blockers = [
+        blocker
+        for blocker in extra_redaction_dashboard.get("blockers", [])
+        if isinstance(blocker, dict)
+        and blocker.get("id") == "stable-1.0.readiness-summary.evidence-redaction"
+        and blocker.get("evidenceId") == "stable-1.0.redaction"
+        and blocker.get("severity") == "critical"
+        and "stable-1.0.extra-redaction-fixture" in str(blocker.get("summary", ""))
+    ]
+    if not extra_redaction_blockers:
+        raise AssertionError(
+            "Stable extra evidence-row redaction findings were not reported as a critical blocker: "
+            f"{extra_redaction_dashboard}"
+        )
+
+    malformed_row_redaction_inputs = json.loads(json.dumps(inputs))
+    for entry in malformed_row_redaction_inputs["stableReadinessSummary"]["evidence"]:
+        if isinstance(entry, dict) and entry.get("id") == "stable-1.0.production-beta-state":
+            entry["details"] = {"redactionFindings": 0}
+            break
+    else:
+        raise AssertionError("synthetic Stable summary is missing stable-1.0.production-beta-state evidence")
+    malformed_row_redaction_dashboard = build_dashboard(
+        malformed_row_redaction_inputs,
+        {},
+        [FIXTURE_DIR / "go-no-go-pass.json"],
+        None,
+        Path(__file__).resolve().parents[2],
+        root / "stable-readiness-evidence-malformed-row-redaction",
+        "production-beta",
+        release_id,
+        generated_at,
+        now,
+        require_stable_readiness=True,
+    )
+    if malformed_row_redaction_dashboard.get("decision") != "no-go":
+        raise AssertionError(
+            "required Stable readiness with malformed falsey row redactionFindings did not block: "
+            f"{malformed_row_redaction_dashboard}"
+        )
+    malformed_row_redaction_blockers = [
+        blocker
+        for blocker in malformed_row_redaction_dashboard.get("blockers", [])
+        if isinstance(blocker, dict)
+        and blocker.get("id") == "stable-1.0.readiness-summary.evidence-redaction"
+        and blocker.get("evidenceId") == "stable-1.0.redaction"
+        and blocker.get("severity") == "critical"
+    ]
+    if not malformed_row_redaction_blockers:
+        raise AssertionError(
+            "Stable falsey malformed evidence-row redaction findings were not reported as a critical blocker: "
+            f"{malformed_row_redaction_dashboard}"
+        )
+
+    nested_redaction_inputs = json.loads(json.dumps(inputs))
+    for entry in nested_redaction_inputs["stableReadinessSummary"]["evidence"]:
+        if isinstance(entry, dict) and entry.get("id") == "stable-1.0.production-beta-state":
+            entry["details"] = {
+                "redaction": {
+                    "status": "pass",
+                    "findingCount": 1,
+                    "findings": [
+                        {
+                            "kind": "stable-readiness-fixture",
+                            "summary": "Synthetic nested Stable evidence redaction finding.",
+                        }
+                    ],
+                }
+            }
+            break
+    else:
+        raise AssertionError("synthetic Stable summary is missing stable-1.0.production-beta-state evidence")
+    nested_redaction_dashboard = build_dashboard(
+        nested_redaction_inputs,
+        {},
+        [FIXTURE_DIR / "go-no-go-pass.json"],
+        None,
+        Path(__file__).resolve().parents[2],
+        root / "stable-readiness-evidence-nested-redaction",
+        "production-beta",
+        release_id,
+        generated_at,
+        now,
+        require_stable_readiness=True,
+    )
+    if nested_redaction_dashboard.get("decision") != "no-go":
+        raise AssertionError(
+            "required Stable readiness with nested evidence redaction findings did not block: "
+            f"{nested_redaction_dashboard}"
+        )
+    nested_redaction_blockers = [
+        blocker
+        for blocker in nested_redaction_dashboard.get("blockers", [])
+        if isinstance(blocker, dict)
+        and blocker.get("id") == "stable-1.0.readiness-summary.evidence-redaction"
+        and blocker.get("evidenceId") == "stable-1.0.redaction"
+        and blocker.get("severity") == "critical"
+    ]
+    if not nested_redaction_blockers:
+        raise AssertionError(
+            "Stable nested evidence-row redaction findings were not reported as a critical blocker: "
+            f"{nested_redaction_dashboard}"
+        )
+
+    raw_stored_redaction_inputs = json.loads(json.dumps(inputs))
+    for entry in raw_stored_redaction_inputs["stableReadinessSummary"]["evidence"]:
+        if isinstance(entry, dict) and entry.get("id") == "stable-1.0.production-beta-state":
+            entry["details"] = {
+                "redaction": {
+                    "status": "pass",
+                    "findings": [],
+                    "rawCatalogStored": True,
+                }
+            }
+            break
+    else:
+        raise AssertionError("synthetic Stable summary is missing stable-1.0.production-beta-state evidence")
+    raw_stored_redaction_dashboard = build_dashboard(
+        raw_stored_redaction_inputs,
+        {},
+        [FIXTURE_DIR / "go-no-go-pass.json"],
+        None,
+        Path(__file__).resolve().parents[2],
+        root / "stable-readiness-evidence-raw-stored-redaction",
+        "production-beta",
+        release_id,
+        generated_at,
+        now,
+        require_stable_readiness=True,
+    )
+    if raw_stored_redaction_dashboard.get("decision") != "no-go":
+        raise AssertionError(
+            "required Stable readiness with raw-stored evidence redaction did not block: "
+            f"{raw_stored_redaction_dashboard}"
+        )
+    raw_stored_redaction_blockers = [
+        blocker
+        for blocker in raw_stored_redaction_dashboard.get("blockers", [])
+        if isinstance(blocker, dict)
+        and blocker.get("id") == "stable-1.0.readiness-summary.evidence-redaction"
+        and blocker.get("evidenceId") == "stable-1.0.redaction"
+        and blocker.get("severity") == "critical"
+    ]
+    if not raw_stored_redaction_blockers:
+        raise AssertionError(
+            "Stable raw-stored evidence-row redaction was not reported as a critical blocker: "
+            f"{raw_stored_redaction_dashboard}"
+        )
+
+    sensitive_stored_redaction_inputs = json.loads(json.dumps(inputs))
+    for entry in sensitive_stored_redaction_inputs["stableReadinessSummary"]["evidence"]:
+        if isinstance(entry, dict) and entry.get("id") == "stable-1.0.redaction":
+            entry["details"] = {"privateInsertUrisStored": True}
+            break
+    else:
+        raise AssertionError("synthetic Stable summary is missing stable-1.0.redaction evidence")
+    sensitive_stored_redaction_dashboard = build_dashboard(
+        sensitive_stored_redaction_inputs,
+        {},
+        [FIXTURE_DIR / "go-no-go-pass.json"],
+        None,
+        Path(__file__).resolve().parents[2],
+        root / "stable-readiness-evidence-sensitive-stored-redaction",
+        "production-beta",
+        release_id,
+        generated_at,
+        now,
+        require_stable_readiness=True,
+    )
+    if sensitive_stored_redaction_dashboard.get("decision") != "no-go":
+        raise AssertionError(
+            "required Stable readiness with privateInsertUrisStored=true did not block: "
+            f"{sensitive_stored_redaction_dashboard}"
+        )
+    sensitive_stored_redaction_blockers = [
+        blocker
+        for blocker in sensitive_stored_redaction_dashboard.get("blockers", [])
+        if isinstance(blocker, dict)
+        and blocker.get("id") == "stable-1.0.readiness-summary.evidence-redaction"
+        and blocker.get("evidenceId") == "stable-1.0.redaction"
+        and blocker.get("severity") == "critical"
+    ]
+    if not sensitive_stored_redaction_blockers:
+        raise AssertionError(
+            "Stable sensitive-stored proof was not reported as a critical blocker: "
+            f"{sensitive_stored_redaction_dashboard}"
+        )
+
+    redacted_false_inputs = json.loads(json.dumps(inputs))
+    for entry in redacted_false_inputs["stableReadinessSummary"]["evidence"]:
+        if isinstance(entry, dict) and entry.get("id") == "stable-1.0.redaction":
+            entry["details"] = {"formPasswordsRedacted": False}
+            break
+    else:
+        raise AssertionError("synthetic Stable summary is missing stable-1.0.redaction evidence")
+    redacted_false_dashboard = build_dashboard(
+        redacted_false_inputs,
+        {},
+        [FIXTURE_DIR / "go-no-go-pass.json"],
+        None,
+        Path(__file__).resolve().parents[2],
+        root / "stable-readiness-evidence-redacted-false",
+        "production-beta",
+        release_id,
+        generated_at,
+        now,
+        require_stable_readiness=True,
+    )
+    if redacted_false_dashboard.get("decision") != "no-go":
+        raise AssertionError(
+            "required Stable readiness with formPasswordsRedacted=false did not block: "
+            f"{redacted_false_dashboard}"
+        )
+    redacted_false_blockers = [
+        blocker
+        for blocker in redacted_false_dashboard.get("blockers", [])
+        if isinstance(blocker, dict)
+        and blocker.get("id") == "stable-1.0.readiness-summary.evidence-redaction"
+        and blocker.get("evidenceId") == "stable-1.0.redaction"
+        and blocker.get("severity") == "critical"
+    ]
+    if not redacted_false_blockers:
+        raise AssertionError(
+            "Stable false redacted proof was not reported as a critical blocker: "
+            f"{redacted_false_dashboard}"
+        )
+
+    direct_detail_redaction_inputs = json.loads(json.dumps(inputs))
+    for entry in direct_detail_redaction_inputs["stableReadinessSummary"]["evidence"]:
+        if isinstance(entry, dict) and entry.get("id") == "stable-1.0.production-beta-state":
+            entry["details"] = {"rawBackupPayloadsExcludedFromEvidence": False}
+            break
+    else:
+        raise AssertionError("synthetic Stable summary is missing stable-1.0.production-beta-state evidence")
+    direct_detail_redaction_dashboard = build_dashboard(
+        direct_detail_redaction_inputs,
+        {},
+        [FIXTURE_DIR / "go-no-go-pass.json"],
+        None,
+        Path(__file__).resolve().parents[2],
+        root / "stable-readiness-evidence-direct-detail-redaction",
+        "production-beta",
+        release_id,
+        generated_at,
+        now,
+        require_stable_readiness=True,
+    )
+    if direct_detail_redaction_dashboard.get("decision") != "no-go":
+        raise AssertionError(
+            "required Stable readiness with direct detail redaction proof did not block: "
+            f"{direct_detail_redaction_dashboard}"
+        )
+    direct_detail_redaction_blockers = [
+        blocker
+        for blocker in direct_detail_redaction_dashboard.get("blockers", [])
+        if isinstance(blocker, dict)
+        and blocker.get("id") == "stable-1.0.readiness-summary.evidence-redaction"
+        and blocker.get("evidenceId") == "stable-1.0.redaction"
+        and blocker.get("severity") == "critical"
+    ]
+    if not direct_detail_redaction_blockers:
+        raise AssertionError(
+            "Stable direct detail redaction proof was not reported as a critical blocker: "
+            f"{direct_detail_redaction_dashboard}"
+        )
+
+    for signal_name, signal_value in (
+        ("redactionFindings", [{"kind": "stable-readiness-fixture"}]),
+        ("findingCount", 1),
+        ("privateInsertUrisStored", True),
+    ):
+        top_level_row_redaction_inputs = json.loads(json.dumps(inputs))
+        for entry in top_level_row_redaction_inputs["stableReadinessSummary"]["evidence"]:
+            if isinstance(entry, dict) and entry.get("id") == "stable-1.0.production-beta-state":
+                entry[signal_name] = signal_value
+                break
+        else:
+            raise AssertionError(
+                "synthetic Stable summary is missing stable-1.0.production-beta-state evidence"
+            )
+        top_level_row_redaction_dashboard = build_dashboard(
+            top_level_row_redaction_inputs,
+            {},
+            [FIXTURE_DIR / "go-no-go-pass.json"],
+            None,
+            Path(__file__).resolve().parents[2],
+            root / f"stable-readiness-evidence-top-level-{signal_name}",
+            "production-beta",
+            release_id,
+            generated_at,
+            now,
+            require_stable_readiness=True,
+        )
+        if top_level_row_redaction_dashboard.get("decision") != "no-go":
+            raise AssertionError(
+                f"required Stable readiness with top-level {signal_name} did not block: "
+                f"{top_level_row_redaction_dashboard}"
+            )
+        top_level_row_redaction_blockers = [
+            blocker
+            for blocker in top_level_row_redaction_dashboard.get("blockers", [])
+            if isinstance(blocker, dict)
+            and blocker.get("id") == "stable-1.0.readiness-summary.evidence-redaction"
+            and blocker.get("evidenceId") == "stable-1.0.redaction"
+            and blocker.get("severity") == "critical"
+        ]
+        if not top_level_row_redaction_blockers:
+            raise AssertionError(
+                f"Stable top-level {signal_name} was not reported as a critical blocker: "
+                f"{top_level_row_redaction_dashboard}"
+            )
+
+    top_level_raw_redaction_inputs = json.loads(json.dumps(inputs))
+    top_level_raw_redaction_inputs["stableReadinessSummary"]["redaction"] = {
+        "status": "pass",
+        "findingCount": 0,
+        "findings": [],
+        "rawFetchedContentIncluded": True,
+    }
+    top_level_raw_redaction_dashboard = build_dashboard(
+        top_level_raw_redaction_inputs,
+        {},
+        [FIXTURE_DIR / "go-no-go-pass.json"],
+        None,
+        Path(__file__).resolve().parents[2],
+        root / "stable-readiness-top-level-raw-included-redaction",
+        "production-beta",
+        release_id,
+        generated_at,
+        now,
+        require_stable_readiness=True,
+    )
+    if top_level_raw_redaction_dashboard.get("decision") != "no-go":
+        raise AssertionError(
+            "required Stable readiness with top-level raw-included redaction did not block: "
+            f"{top_level_raw_redaction_dashboard}"
+        )
+    top_level_raw_redaction_blockers = [
+        blocker
+        for blocker in top_level_raw_redaction_dashboard.get("blockers", [])
+        if isinstance(blocker, dict)
+        and blocker.get("id") == "stable-1.0.readiness-summary.redaction"
+        and blocker.get("evidenceId") == "stable-1.0.redaction"
+        and blocker.get("severity") == "critical"
+    ]
+    if not top_level_raw_redaction_blockers:
+        raise AssertionError(
+            "Stable top-level raw-included redaction was not reported as a critical blocker: "
+            f"{top_level_raw_redaction_dashboard}"
+        )
+
+    excluded_from_evidence_inputs = json.loads(json.dumps(inputs))
+    excluded_from_evidence_inputs["stableReadinessSummary"]["redaction"] = {
+        "status": "pass",
+        "findingCount": 0,
+        "findings": [],
+        "rawBackupPayloadsExcludedFromEvidence": False,
+    }
+    excluded_from_evidence_dashboard = build_dashboard(
+        excluded_from_evidence_inputs,
+        {},
+        [FIXTURE_DIR / "go-no-go-pass.json"],
+        None,
+        Path(__file__).resolve().parents[2],
+        root / "stable-readiness-excluded-from-evidence-redaction",
+        "production-beta",
+        release_id,
+        generated_at,
+        now,
+        require_stable_readiness=True,
+    )
+    if excluded_from_evidence_dashboard.get("decision") != "no-go":
+        raise AssertionError(
+            "required Stable readiness with ExcludedFromEvidence=false redaction did not block: "
+            f"{excluded_from_evidence_dashboard}"
+        )
+    excluded_from_evidence_blockers = [
+        blocker
+        for blocker in excluded_from_evidence_dashboard.get("blockers", [])
+        if isinstance(blocker, dict)
+        and blocker.get("id") == "stable-1.0.readiness-summary.redaction"
+        and blocker.get("evidenceId") == "stable-1.0.redaction"
+        and blocker.get("severity") == "critical"
+    ]
+    if not excluded_from_evidence_blockers:
+        raise AssertionError(
+            "Stable ExcludedFromEvidence=false redaction was not reported as a critical blocker: "
+            f"{excluded_from_evidence_dashboard}"
+        )
+
+    redaction_count_inputs = json.loads(json.dumps(inputs))
+    redaction_count_inputs["stableReadinessSummary"]["redaction"] = {
+        "status": "pass",
+        "findingCount": 1,
+    }
+    redaction_count_dashboard = build_dashboard(
+        redaction_count_inputs,
+        {},
+        [FIXTURE_DIR / "go-no-go-pass.json"],
+        None,
+        Path(__file__).resolve().parents[2],
+        root / "stable-readiness-redaction-count",
+        "production-beta",
+        release_id,
+        generated_at,
+        now,
+        require_stable_readiness=True,
+    )
+    if redaction_count_dashboard.get("decision") != "no-go":
+        raise AssertionError(
+            "required Stable readiness with top-level redaction findingCount did not block: "
+            f"{redaction_count_dashboard}"
+        )
+    redaction_count_blockers = [
+        blocker
+        for blocker in redaction_count_dashboard.get("blockers", [])
+        if isinstance(blocker, dict)
+        and blocker.get("id") == "stable-1.0.readiness-summary.redaction"
+        and blocker.get("evidenceId") == "stable-1.0.redaction"
+        and blocker.get("severity") == "critical"
+    ]
+    if not redaction_count_blockers:
+        raise AssertionError(
+            "Stable top-level redaction findingCount was not reported as a critical blocker: "
+            f"{redaction_count_dashboard}"
+        )
+
+    for critical_count_value, critical_count_suffix in (
+        (1, "critical-count"),
+        (0.5, "fractional-critical-count"),
+    ):
+        critical_redaction_count_inputs = json.loads(json.dumps(inputs))
+        critical_redaction_count_inputs["stableReadinessSummary"]["redaction"] = {
+            "status": "pass",
+            "findings": [],
+            "findingCount": 0,
+            "criticalFindingCount": critical_count_value,
+        }
+        critical_redaction_count_dashboard = build_dashboard(
+            critical_redaction_count_inputs,
+            {},
+            [FIXTURE_DIR / "go-no-go-pass.json"],
+            None,
+            Path(__file__).resolve().parents[2],
+            root / f"stable-readiness-redaction-{critical_count_suffix}",
+            "production-beta",
+            release_id,
+            generated_at,
+            now,
+            require_stable_readiness=True,
+        )
+        if critical_redaction_count_dashboard.get("decision") != "no-go":
+            raise AssertionError(
+                "required Stable readiness with top-level redaction criticalFindingCount "
+                f"{critical_count_value!r} did not block: {critical_redaction_count_dashboard}"
+            )
+        critical_redaction_count_blockers = [
+            blocker
+            for blocker in critical_redaction_count_dashboard.get("blockers", [])
+            if isinstance(blocker, dict)
+            and blocker.get("id") == "stable-1.0.readiness-summary.redaction"
+            and blocker.get("evidenceId") == "stable-1.0.redaction"
+            and blocker.get("severity") == "critical"
+            and blocker.get("waivable") is False
+        ]
+        if not critical_redaction_count_blockers:
+            raise AssertionError(
+                "Stable top-level redaction criticalFindingCount was not reported as a "
+                f"non-waivable critical blocker: {critical_redaction_count_dashboard}"
+            )
+
+    redaction_fractional_count_inputs = json.loads(json.dumps(inputs))
+    redaction_fractional_count_inputs["stableReadinessSummary"]["redaction"] = {
+        "status": "pass",
+        "findingCount": 0.5,
+    }
+    redaction_fractional_count_dashboard = build_dashboard(
+        redaction_fractional_count_inputs,
+        {},
+        [FIXTURE_DIR / "go-no-go-pass.json"],
+        None,
+        Path(__file__).resolve().parents[2],
+        root / "stable-readiness-redaction-fractional-count",
+        "production-beta",
+        release_id,
+        generated_at,
+        now,
+        require_stable_readiness=True,
+    )
+    if redaction_fractional_count_dashboard.get("decision") != "no-go":
+        raise AssertionError(
+            "required Stable readiness with fractional top-level redaction findingCount did not block: "
+            f"{redaction_fractional_count_dashboard}"
+        )
+    redaction_fractional_count_blockers = [
+        blocker
+        for blocker in redaction_fractional_count_dashboard.get("blockers", [])
+        if isinstance(blocker, dict)
+        and blocker.get("id") == "stable-1.0.readiness-summary.redaction"
+        and blocker.get("evidenceId") == "stable-1.0.redaction"
+        and blocker.get("severity") == "critical"
+    ]
+    if not redaction_fractional_count_blockers:
+        raise AssertionError(
+            "Stable fractional top-level redaction findingCount was not reported as a critical blocker: "
+            f"{redaction_fractional_count_dashboard}"
+        )
+
+    malformed_redaction_findings_inputs = json.loads(json.dumps(inputs))
+    malformed_redaction_findings_inputs["stableReadinessSummary"]["redaction"] = {
+        "status": "pass",
+        "findings": "malformed-redaction-proof",
+    }
+    malformed_redaction_findings_dashboard = build_dashboard(
+        malformed_redaction_findings_inputs,
+        {},
+        [FIXTURE_DIR / "go-no-go-pass.json"],
+        None,
+        Path(__file__).resolve().parents[2],
+        root / "stable-readiness-malformed-redaction-findings",
+        "production-beta",
+        release_id,
+        generated_at,
+        now,
+        require_stable_readiness=True,
+    )
+    if malformed_redaction_findings_dashboard.get("decision") != "no-go":
+        raise AssertionError(
+            "required Stable readiness with malformed top-level redaction findings did not block: "
+            f"{malformed_redaction_findings_dashboard}"
+        )
+    malformed_redaction_findings_blockers = [
+        blocker
+        for blocker in malformed_redaction_findings_dashboard.get("blockers", [])
+        if isinstance(blocker, dict)
+        and blocker.get("id") == "stable-1.0.readiness-summary.redaction"
+        and blocker.get("evidenceId") == "stable-1.0.redaction"
+        and blocker.get("severity") == "critical"
+    ]
+    if not malformed_redaction_findings_blockers:
+        raise AssertionError(
+            "Stable top-level malformed redaction findings were not reported as a critical blocker: "
+            f"{malformed_redaction_findings_dashboard}"
+        )
+
+    remaining_blockers_inputs = json.loads(json.dumps(inputs))
+    remaining_blockers_inputs["stableReadinessSummary"]["blockerCount"] = 1
+    remaining_blockers_inputs["stableReadinessSummary"]["disallowedLimitationCount"] = 1
+    remaining_blockers_dashboard = build_dashboard(
+        remaining_blockers_inputs,
+        {},
+        [FIXTURE_DIR / "go-no-go-pass.json"],
+        None,
+        Path(__file__).resolve().parents[2],
+        root / "stable-readiness-remaining-blockers",
+        "production-beta",
+        release_id,
+        generated_at,
+        now,
+        require_stable_readiness=True,
+    )
+    if remaining_blockers_dashboard.get("decision") != "no-go":
+        raise AssertionError(
+            "required Stable readiness with remaining blockers did not block: "
+            f"{remaining_blockers_dashboard}"
+        )
+    remaining_blocker_issues = [
+        blocker
+        for blocker in remaining_blockers_dashboard.get("blockers", [])
+        if isinstance(blocker, dict)
+        and blocker.get("id") == "stable-1.0.readiness-summary.remaining-blockers"
+        and blocker.get("evidenceId") == "stable-1.0.readiness-gate"
+    ]
+    if not remaining_blocker_issues:
+        raise AssertionError(
+            "Stable readiness remaining blockers were not reported as a required blocker: "
+            f"{remaining_blockers_dashboard}"
+        )
+
+    blocker_record_inputs = json.loads(json.dumps(inputs))
+    blocker_record_inputs["stableReadinessSummary"]["blockers"] = [
+        {"id": "stable-self-test-blocker", "evidenceId": "stable-1.0.readiness-gate"}
+    ]
+    blocker_record_inputs["stableReadinessSummary"]["disallowedLimitations"] = [
+        {"id": "stable-self-test-disallowed"}
+    ]
+    blocker_record_dashboard = build_dashboard(
+        blocker_record_inputs,
+        {},
+        [FIXTURE_DIR / "go-no-go-pass.json"],
+        None,
+        Path(__file__).resolve().parents[2],
+        root / "stable-readiness-blocker-records",
+        "production-beta",
+        release_id,
+        generated_at,
+        now,
+        require_stable_readiness=True,
+    )
+    if blocker_record_dashboard.get("decision") != "no-go":
+        raise AssertionError(
+            "required Stable readiness with blocker records but zero counts did not block: "
+            f"{blocker_record_dashboard}"
+        )
+    blocker_record_issues = [
+        blocker
+        for blocker in blocker_record_dashboard.get("blockers", [])
+        if isinstance(blocker, dict)
+        and blocker.get("id") == "stable-1.0.readiness-summary.remaining-blockers"
+        and blocker.get("evidenceId") == "stable-1.0.readiness-gate"
+    ]
+    if not blocker_record_issues:
+        raise AssertionError(
+            "Stable readiness blocker records were not reported as a required blocker: "
+            f"{blocker_record_dashboard}"
+        )
+
+    allowed_record_inputs = json.loads(json.dumps(inputs))
+    allowed_record_inputs["stableReadinessSummary"]["allowedLimitations"] = [
+        {
+            "id": "stable-1.0.self-test-allowed-limitation",
+            "title": "Self-test allowed Stable limitation",
+            "category": "ui-polish-accessibility-warning",
+            "classification": "allowed-for-stable-1.0",
+            "status": "open",
+            "summary": "Synthetic bounded Stable 1.0 limitation.",
+            "evidenceIds": ["stable-1.0.known-limitations"],
+            "boundedBy": "Self-test release manager bound for a non-blocking Stable limitation.",
+        }
+    ]
+    allowed_record_dashboard = build_dashboard(
+        allowed_record_inputs,
+        {},
+        [FIXTURE_DIR / "go-no-go-pass.json"],
+        None,
+        Path(__file__).resolve().parents[2],
+        root / "stable-readiness-allowed-limitation-record-mismatch",
+        "production-beta",
+        release_id,
+        generated_at,
+        now,
+        require_stable_readiness=True,
+    )
+    if allowed_record_dashboard.get("decision") != "no-go":
+        raise AssertionError(
+            "required Stable readiness with allowed limitation records but zero count did not block: "
+            f"{allowed_record_dashboard}"
+        )
+    allowed_record_issues = [
+        blocker
+        for blocker in allowed_record_dashboard.get("blockers", [])
+        if isinstance(blocker, dict)
+        and blocker.get("id") == "stable-1.0.readiness-summary.allowed-limitations-invalid"
+        and blocker.get("evidenceId") == "stable-1.0.known-limitations"
+    ]
+    if not allowed_record_issues:
+        raise AssertionError(
+            "Stable readiness allowed limitation count mismatch was not reported as a required blocker: "
+            f"{allowed_record_dashboard}"
+        )
+
+    malformed_allowed_inputs = json.loads(json.dumps(inputs))
+    malformed_allowed_inputs["stableReadinessSummary"]["allowedLimitationCount"] = 1
+    malformed_allowed_inputs["stableReadinessSummary"]["allowedLimitations"] = [1]
+    malformed_allowed_inputs["stableReadinessSummary"]["decision"] = "ready-with-allowed-limitations"
+    malformed_allowed_dashboard = build_dashboard(
+        malformed_allowed_inputs,
+        {},
+        [FIXTURE_DIR / "go-no-go-pass.json"],
+        None,
+        Path(__file__).resolve().parents[2],
+        root / "stable-readiness-malformed-allowed-limitation",
+        "production-beta",
+        release_id,
+        generated_at,
+        now,
+        require_stable_readiness=True,
+    )
+    if malformed_allowed_dashboard.get("decision") != "no-go":
+        raise AssertionError(
+            "required Stable readiness with malformed allowed limitation records did not block: "
+            f"{malformed_allowed_dashboard}"
+        )
+    malformed_allowed_issues = [
+        blocker
+        for blocker in malformed_allowed_dashboard.get("blockers", [])
+        if isinstance(blocker, dict)
+        and blocker.get("id") == "stable-1.0.readiness-summary.allowed-limitations-invalid"
+        and blocker.get("evidenceId") == "stable-1.0.known-limitations"
+    ]
+    if not malformed_allowed_issues:
+        raise AssertionError(
+            "Stable readiness malformed allowed limitation record was not reported as a required blocker: "
+            f"{malformed_allowed_dashboard}"
+        )
+
+    allowed_warning_inputs = json.loads(json.dumps(inputs))
+    allowed_warning_inputs["stableReadinessSummary"]["allowedLimitationCount"] = 1
+    allowed_warning_inputs["stableReadinessSummary"]["allowedLimitations"] = [
+        {
+            "id": "stable-1.0.self-test-allowed-limitation",
+            "title": "Self-test allowed Stable limitation",
+            "category": "ui-polish-accessibility-warning",
+            "classification": "allowed-for-stable-1.0",
+            "status": "open",
+            "summary": "Synthetic bounded Stable 1.0 limitation.",
+            "evidenceIds": ["stable-1.0.known-limitations"],
+            "boundedBy": "Self-test release manager bound for a non-blocking Stable limitation.",
+        }
+    ]
+    allowed_warning_dashboard = build_dashboard(
+        allowed_warning_inputs,
+        {},
+        [FIXTURE_DIR / "go-no-go-pass.json"],
+        None,
+        Path(__file__).resolve().parents[2],
+        root / "stable-readiness-allowed-limitation-warning",
+        "production-beta",
+        release_id,
+        generated_at,
+        now,
+        require_stable_readiness=True,
+    )
+    if allowed_warning_dashboard.get("decision") != "go":
+        raise AssertionError(
+            "valid Stable readiness allowed limitations should warn without blocking: "
+            f"{allowed_warning_dashboard}"
+        )
+    allowed_warning_issues = [
+        warning
+        for warning in allowed_warning_dashboard.get("warnings", [])
+        if isinstance(warning, dict)
+        and warning.get("id") == "stable-1.0.readiness-summary.allowed-limitations"
+        and warning.get("evidenceId") == "stable-1.0.known-limitations"
+    ]
+    if not allowed_warning_issues:
+        raise AssertionError(
+            "Stable readiness allowed limitations were not reported as a dashboard warning: "
+            f"{allowed_warning_dashboard}"
+        )
+
+
 def assert_validator_security_drill_redaction_findings_are_non_waivable(root: Path) -> None:
     pass_fixture = load_fixture(FIXTURE_DIR / "go-no-go-pass.json")
     inputs = json.loads(json.dumps(pass_fixture["inputs"]))
@@ -4818,6 +7685,8 @@ def build_parser() -> argparse.ArgumentParser:
     build.add_argument("--multi-node-beta-soak-summary", type=Path)
     build.add_argument("--security-drills-summary", type=Path)
     build.add_argument("--security-response-summary", type=Path)
+    build.add_argument("--stable-readiness-summary", "--stable-1-0-readiness-summary", type=Path)
+    build.add_argument("--require-stable-readiness", action="store_true")
     build.add_argument("--waivers", type=Path)
     build.add_argument("--fixtures", type=Path, help="Build from a checked-in dashboard fixture bundle.")
     return parser

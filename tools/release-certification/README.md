@@ -18,6 +18,7 @@ python3 tools/release-certification/app_platform_smoke.py --self-test
 python3 tools/release-certification/network_scale_soak.py --self-test
 python3 tools/release-certification/multi_node_beta_soak.py --self-test
 python3 tools/release-certification/live_network_beta_smoke.py --self-test
+python3 tools/release-certification/stable_1_0_readiness.py --self-test
 python3 tools/release-certification/production_beta_go_no_go_dashboard.py --self-test
 python3 tools/release-certification/production_beta_release.py --self-test
 ```
@@ -119,6 +120,41 @@ non-release/no-go in production-beta. See
 [docs/production-beta-release-pipeline.md](../../docs/production-beta-release-pipeline.md) for
 mode semantics, required environment variables, artifact layout, failure classes, redaction rules,
 and rerun guidance.
+
+Generate a Stable 1.0 readiness report from production beta outputs:
+
+```bash
+python3 tools/release-certification/stable_1_0_readiness.py \
+  --workspace-root . \
+  --out-dir build/stable-1.0-readiness \
+  --production-beta-summary build/production-beta-release/reports/production-beta-summary.json \
+  --go-no-go-summary build/production-beta-release/reports/go-no-go-dashboard.json \
+  --release-certification-summary build/production-beta-release/evidence/ecosystem-rc-certification.json \
+  --ecosystem-matrix build/production-beta-release/evidence/ecosystem-certification-matrix.json \
+  --app-platform-summary build/production-beta-release/evidence/app-platform-smoke.json \
+  --multi-node-beta-soak-summary build/production-beta-release/evidence/stable-readiness-multi-node-beta-soak.json \
+  --network-scale-soak-summary build/production-beta-release/evidence/stable-readiness-network-scale-soak.json \
+  --security-drills-summary build/production-beta-release/security-drills/security-drills-summary.json \
+  --public-beta-known-issues tools/release-certification/public-beta-known-issues.json
+```
+
+`run-production-beta-release.sh --generate-stable-readiness` writes the same artifacts under
+`reports/stable-1.0-readiness/`. Add `--require-stable-readiness` only for a Stable promotion
+review. The default production beta pipeline remains advisory-only for Stable readiness. Use
+`--stable-readiness-waivers <path>` for Stable-scoped known-limitation waivers; production beta
+`--waiver-file` inputs remain go/no-go dashboard waivers and are not forwarded. See
+[docs/stable-1.0-readiness-gate.md](../../docs/stable-1.0-readiness-gate.md).
+
+Use the Stable-specific soak extracts shown above when rerunning the readiness tool against a
+production beta bundle. The generic compact production beta soak extracts are optimized for the
+production beta summary and may not carry the `generatedAt` freshness metadata required by the
+Stable gate. Stable readiness also binds attached go/no-go and security drill summaries to the
+production beta `releaseId`, requires Stable-specific multi-node soak extracts to carry or derive
+the same candidate release identity, requires `release-candidate` release-certification evidence,
+accepts the existing boolean release-certification redaction schema, and validates security drill
+artifact freshness from either per-artifact `generatedAt` or the existing `stale`/`ageDays` fields.
+Network-scale soak inputs must include an explicit `redaction.status=pass`; omitted redaction
+metadata fails Stable readiness.
 
 Production beta catalog descriptors also consume
 `tools/release-certification/first-party-app-maintenance-policy.json`. The pipeline copies that

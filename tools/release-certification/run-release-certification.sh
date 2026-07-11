@@ -9,6 +9,7 @@ LIVE_NETWORK_BETA="${CRYPTAD_CERT_LIVE_NETWORK_BETA:-0}"
 REQUIRE_LIVE_NETWORK_BETA="${CRYPTAD_CERT_REQUIRE_LIVE_NETWORK_BETA:-0}"
 NODE_BASE_URL="${CRYPTAD_CERT_NODE_BASE_URL:-}"
 NETWORK_SCALE_SOAK_SUMMARY="${CRYPTAD_CERT_NETWORK_SCALE_SOAK_SUMMARY:-}"
+NETWORK_SCALE_SOAK_RELEASE_ID="${CRYPTAD_CERT_NETWORK_SCALE_SOAK_RELEASE_ID:-}"
 NETWORK_SCALE_SOAK_SUMMARY_PROVIDED=0
 MULTI_NODE_SOAK_SUMMARY="${CRYPTAD_CERT_MULTI_NODE_SOAK_SUMMARY:-}"
 MULTI_NODE_SOAK_SUMMARY_PROVIDED=0
@@ -155,15 +156,15 @@ while [[ $# -gt 0 ]]; do
       echo "--form-password is not supported; set CRYPTAD_CERT_FORM_PASSWORD in the environment." >&2
       exit 2
       ;;
-    --waive|--metadata|--previous-summary|--history-dir|--history-label|--waiver-file)
+    --waive|--metadata|--previous-summary|--history-dir|--history-label|--waiver-file|--stable-readiness-summary|--stable-1-0-readiness-summary)
       CERT_ARGS+=("$1" "$2")
       shift 2
       ;;
-    --waive=*|--metadata=*|--previous-summary=*|--history-dir=*|--history-label=*|--waiver-file=*)
+    --waive=*|--metadata=*|--previous-summary=*|--history-dir=*|--history-label=*|--waiver-file=*|--stable-readiness-summary=*|--stable-1-0-readiness-summary=*)
       CERT_ARGS+=("$1")
       shift
       ;;
-    --skip-git-metadata|--require-history|--write-history)
+    --skip-git-metadata|--require-history|--write-history|--require-stable-readiness)
       CERT_ARGS+=("$1")
       shift
       ;;
@@ -377,9 +378,13 @@ fi
 
 if [[ "$NETWORK_SCALE_SOAK_SUMMARY_PROVIDED" != "1" ]]; then
   mkdir -p "$NETWORK_SCALE_SOAK_OUT_DIR"
+  NETWORK_SCALE_SOAK_ARGS=(--output "$NETWORK_SCALE_SOAK_SUMMARY")
+  if [[ -n "$NETWORK_SCALE_SOAK_RELEASE_ID" ]]; then
+    NETWORK_SCALE_SOAK_ARGS+=(--release-id "$NETWORK_SCALE_SOAK_RELEASE_ID")
+  fi
   set +e
   python3 "$ROOT_DIR/tools/release-certification/network_scale_soak.py" \
-    --output "$NETWORK_SCALE_SOAK_SUMMARY"
+    "${NETWORK_SCALE_SOAK_ARGS[@]}"
   NETWORK_SCALE_SOAK_EXIT=$?
   set -e
   if [[ "$NETWORK_SCALE_SOAK_EXIT" -ne 0 ]]; then

@@ -48,6 +48,26 @@ Use `--multi-node-soak-config <path>` for a topology config, `--multi-node-soak-
 attach existing evidence, and `--require-multi-node-soak` to make the promotion gate fail closed
 outside production beta mode.
 
+Generate Stable 1.0 readiness as an advisory report from the same production beta evidence with:
+
+```bash
+tools/release-certification/run-production-beta-release.sh \
+  --workspace-root . \
+  --out-dir build/production-beta-release \
+  --mode production-beta \
+  --catalog-channel stable \
+  --artifact-base-uri "$CRYPTAD_PRODUCTION_BETA_ARTIFACT_BASE_URI" \
+  --previous-summary "$PREVIOUS_BETA_CANDIDATE_SUMMARY" \
+  --previous-release-certification-summary "$PREVIOUS_RELEASE_CERTIFICATION_SUMMARY" \
+  --multi-node-soak-summary "$MULTI_NODE_BETA_SOAK_SUMMARY" \
+  --generate-stable-readiness
+```
+
+Use `--require-stable-readiness` only when the run is a Stable 1.0 promotion review. The default
+production beta pipeline does not require Stable readiness and remains backward-compatible. Stable
+known-limitation waivers use `--stable-readiness-waivers`; production beta `--waiver-file` inputs
+are not forwarded to the Stable gate.
+
 Protected `production-beta` workflow dispatches must provide `previous_summary`,
 `previous_release_certification_summary`, and either a passing attached multi-node summary or an
 explicit production `hybrid`/`live` multi-node topology config. The checked-in self-test topology
@@ -73,6 +93,34 @@ upload.
 
 `--use-fixture-evidence` is accepted only with `developer-dry-run` and internal self-tests. Strict
 `release-candidate` and `production-beta` runs reject fixture evidence before certification.
+
+Stable readiness is a promotion layer above production beta readiness. When generated, the wrapper
+writes:
+
+```text
+reports/stable-1.0-readiness/stable-1.0-readiness-summary.json
+reports/stable-1.0-readiness/stable-1.0-readiness-report.md
+reports/stable-1.0-readiness/stable-1.0-known-limitations.json
+reports/stable-1.0-readiness/stable-1.0-blockers.json
+```
+
+In advisory mode these artifacts do not change production beta go/no-go. With
+`--require-stable-readiness`, missing or failing Stable readiness marks the summary not
+promotion-ready, skips archive creation, leaves `distArchive` and `checksums` references absent,
+and reruns the go/no-go dashboard with the Stable section required so the dashboard does not
+advertise an archive that was intentionally skipped. See
+[stable-1.0-readiness-gate.md](stable-1.0-readiness-gate.md).
+
+The wrapper writes Stable-specific soak extracts for the readiness tool:
+
+```text
+evidence/stable-readiness-multi-node-beta-soak.json
+evidence/stable-readiness-network-scale-soak.json
+```
+
+These are the paths passed to `stable_1_0_readiness.py`. They preserve the `generatedAt`
+freshness metadata that Stable readiness requires, while the generic production beta extracts stay
+compact for production beta summary purposes.
 
 First-party beta readiness is required evidence in strict modes. The pipeline copies sanitized
 `inputs/first-party-app-beta-readiness.json` and requires
@@ -178,6 +226,11 @@ inputs through environment variables or protected files:
 | `--third-party-intake-summary "$THIRD_PARTY_INTAKE_SUMMARY"` | Optional redacted public-beta third-party intake summary. When `--require-third-party-intake` is also set, the summary must pass, include the `third-party-intake.*` evidence rows, and have passing redaction. |
 | `--require-third-party-intake` | Makes third-party app intake evidence a promotion gate. Missing or failed sample flow, failed redaction, or non-production fixture evidence fails closed. |
 | `--run-third-party-intake-sample-flow` | Generates deterministic non-production sample intake evidence for dry-runs. It must not be used as production promotion evidence because the generated summary is marked `nonRelease=true` and `nonProduction=true`. |
+| `--generate-stable-readiness` | Generates advisory Stable 1.0 readiness artifacts under `reports/stable-1.0-readiness/`. It does not make Stable readiness required. |
+| `--require-stable-readiness` | Generates Stable readiness artifacts and treats missing or failing Stable readiness as a Stable promotion blocker. Required Stable runs do not package a promotion archive unless Stable readiness passes. |
+| `--stable-readiness-policy` | Optional override for `tools/release-certification/stable-1.0-readiness-policy.json`. |
+| `--stable-known-limitations` | Optional override for `tools/release-certification/stable-1.0-known-limitations.json`. |
+| `--stable-readiness-waivers` | Optional Stable-scoped waiver JSON for `requires-waiver-before-stable` limitations. This is forwarded only to the Stable readiness gate; production beta `--waiver-file` remains a go/no-go dashboard waiver input. |
 | `--multi-node-soak-summary "$MULTI_NODE_BETA_SOAK_SUMMARY"` or `--run-multi-node-soak --multi-node-soak-config <production topology>` | Passing multi-node soak and upgrade evidence. CLI runs pass a local summary path. Manual workflow dispatches may pass a local checked-out path, an HTTPS JSON URL, or `actions-artifact://<run-id>/<artifact-name>/<path-inside-artifact>` for `multi_node_soak_summary`. Production-beta rejects the self-test topology and simulated mode as required promotion evidence. |
 
 Do not pass private keys, private insert URIs, form passwords, app tokens, or browser session tokens
@@ -251,10 +304,15 @@ baseline findings. They are safe previous-history inputs for later `crypta-app a
 must not contain local paths, private insert URIs, tokens, raw fetched content, or raw app data.
 
 The public `dist/` archive is created only after the main artifact redaction report and the
-go/no-go dashboard redaction report both pass. Archive creation rejects AppleDouble files,
-`.DS_Store`, `__MACOSX/`, secret-looking filenames, symlinks, hard links, device nodes, nested
-unsafe archives, private insert URIs, private keys, app or browser-session tokens, raw fetched
-content, raw app data, and host-local absolute paths.
+go/no-go dashboard redaction report both pass. When Stable readiness is generated, the wrapper
+folds the Stable readiness redaction status back into the release artifact redaction report before
+upload or archive decisions. Archive creation also requires the dashboard redaction status to stay
+`pass`; the pipeline keeps that status separate from the release artifact scan as
+`goNoGo.redactionStatus` and records the release tree scan as
+`goNoGo.releaseArtifactRedactionStatus`. Archive creation rejects AppleDouble files, `.DS_Store`,
+`__MACOSX/`, secret-looking filenames, symlinks, hard links, device nodes, nested unsafe archives,
+private insert URIs, private keys, app or browser-session tokens, raw fetched content, raw app
+data, and host-local absolute paths.
 
 ## Summary files
 
@@ -280,7 +338,7 @@ content, raw app data, and host-local absolute paths.
 | `previousCandidateMetadata` | Sanitized release, catalog, Platform API, first-party app, app-data, Social Inbox, Trust Graph, support-bundle, and redaction metadata copied by the next cycle's previous-summary normalizer. It contains digests, counts, schema versions, and statuses only. |
 | `artifacts.firstPartyMaintenancePolicy` | Redacted copy of the checked-in first-party maintenance policy source used to generate signed catalog descriptors. |
 | `redaction` | Final artifact scanner result and findings. |
-| `goNoGo` | Compact pointer to the final production beta go/no-go decision, dashboard JSON, dashboard Markdown, redaction report, failed gate count, waiver count, and non-release state. |
+| `goNoGo` | Compact pointer to the final production beta go/no-go decision, dashboard JSON, dashboard Markdown, dashboard redaction report, release artifact redaction status, failed gate count, waiver count, and non-release state. |
 | `commands` | Redacted command metadata, exit codes, durations, and scrubbed output tails. |
 
 ## Go/no-go dashboard

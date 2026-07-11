@@ -55,6 +55,7 @@ Load only the docs needed for the change:
 - App-platform release evidence: `docs/release-certification.md`
 - Production beta release pipeline: `docs/production-beta-release-pipeline.md`
 - Production beta go/no-go dashboard: `docs/production-beta-go-no-go-dashboard.md`
+- Stable 1.0 readiness gate: `docs/stable-1.0-readiness-gate.md`
 - Multi-node beta soak and upgrade drill: `docs/multi-node-beta-soak-and-upgrade-drill.md`
 
 ## Ownership map
@@ -349,6 +350,11 @@ Load only the docs needed for the change:
   downloads, or production credentials.
 - `release-candidate` mode treats missing required signed bundle/catalog/app-platform evidence as
   failing unless a release-manager waiver is recorded by the aggregator.
+- Stable 1.0 readiness is a stricter promotion layer over production beta evidence. App-platform
+  changes that affect Platform API stability, first-party app maturity, third-party intake,
+  security response, legacy migration, public beta support, diagnostics redaction, or app-data
+  migration/backup evidence must keep the corresponding `stable-1.0.*` readiness rows complete and
+  redaction-safe.
 - Stable API release evidence must include stable capability names, stable endpoint identities,
   stable endpoint required-capability sets, stable endpoint action labels, and stable endpoint
   app-process/app-browser access flags, compatibility-window metadata, and descriptor-level stable
@@ -424,6 +430,7 @@ python3 tools/release-certification/app_platform_smoke.py --self-test
 python3 tools/release-certification/network_scale_soak.py --self-test
 python3 tools/release-certification/multi_node_beta_soak.py --self-test
 python3 tools/release-certification/live_network_beta_smoke.py --self-test
+python3 tools/release-certification/stable_1_0_readiness.py --self-test
 python3 tools/release-certification/production_beta_go_no_go_dashboard.py --self-test
 python3 tools/release-certification/production_beta_release.py --self-test
 tools/release-certification/run-release-certification.sh --mode pr --skip-gradle --skip-git-metadata

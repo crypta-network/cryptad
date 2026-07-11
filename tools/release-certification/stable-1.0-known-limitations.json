@@ -1,0 +1,144 @@
+{
+  "schemaVersion": 1,
+  "kind": "stable-1.0-known-limitations",
+  "generatedBy": "tools/release-certification/stable_1_0_readiness.py",
+  "limitations": [
+    {
+      "id": "stable-1.0.trust-graph-local-scope",
+      "title": "Trust Graph remains local-scope",
+      "category": "trust-graph-local-scope",
+      "classification": "allowed-for-stable-1.0",
+      "status": "open",
+      "summary": "Trust Graph Local RC remains local advisory trust, not a global Web of Trust, routing policy, crawler, or legacy WoT compatibility layer.",
+      "evidenceIds": [
+        "app-platform.trust-graph-rc-scope-and-safety",
+        "reference-app.trust-graph",
+        "legacy-plugin.migration-finalization"
+      ],
+      "boundedBy": "Stable 1.0 may ship with local-scope Trust Graph wording as long as docs and release notes keep the non-goals explicit."
+    },
+    {
+      "id": "stable-1.0.social-inbox-no-legacy-protocol",
+      "title": "Social Inbox is not legacy Freetalk or Sone compatible",
+      "category": "social-inbox-local-scope",
+      "classification": "allowed-for-stable-1.0",
+      "status": "open",
+      "summary": "Social Inbox RC remains a local threaded social/message reference app and does not provide Freetalk, Sone, Freemail, or daemon-core social protocol compatibility.",
+      "evidenceIds": [
+        "reference-app.social-inbox",
+        "app-platform.trust-social-content-format-profiles",
+        "legacy-plugin.migration-finalization"
+      ],
+      "boundedBy": "Stable 1.0 may ship with this limitation when migration docs keep the legacy-protocol boundary explicit."
+    },
+    {
+      "id": "stable-1.0.freemail-future-service",
+      "title": "Freemail-like migration remains future app or service work",
+      "category": "future-mail-service",
+      "classification": "allowed-for-stable-1.0",
+      "status": "open",
+      "summary": "Freemail-like encrypted mail migration remains documented as future app or app-service work and is not a Stable 1.0 compatibility promise.",
+      "evidenceIds": [
+        "legacy-plugin.migration-finalization",
+        "third-party-developer.plugin-author-migration"
+      ],
+      "boundedBy": "Stable 1.0 release notes must avoid presenting this as shipped mail compatibility."
+    },
+    {
+      "id": "stable-1.0.third-party-intake-beta-limited",
+      "title": "Third-party app intake remains beta-limited",
+      "category": "third-party-intake-beta-limited",
+      "classification": "allowed-for-stable-1.0",
+      "status": "open",
+      "summary": "Third-party app intake may remain beta-limited if at least one stable-target sample app passes submission, pre-review, review decision, beta catalog candidate, install smoke, rejection, caution, resubmission, compatibility, docs, and redaction evidence.",
+      "evidenceIds": [
+        "third-party-intake.review-decision",
+        "third-party-intake.beta-catalog-install-smoke",
+        "third-party-developer.sample-app-flow",
+        "third-party-developer.compatibility-window"
+      ],
+      "boundedBy": "No third-party app may be promoted as stable without review receipt and compatibility evidence."
+    },
+    {
+      "id": "stable-1.0.no-rollback-path",
+      "title": "No rollback path",
+      "category": "no-rollback-path",
+      "classification": "blocks-stable-1.0",
+      "status": "resolved",
+      "summary": "Stable 1.0 cannot ship without app install/update/catalog rollback evidence.",
+      "evidenceIds": [
+        "app-update.rollback",
+        "catalog.operations-and-mirrors",
+        "multi-node-beta.app-install-update-rollback"
+      ]
+    },
+    {
+      "id": "stable-1.0.no-app-data-backup-export",
+      "title": "No app-data backup or export for stable first-party apps",
+      "category": "no-app-data-backup-export",
+      "classification": "blocks-stable-1.0",
+      "status": "resolved",
+      "summary": "Stable first-party apps with durable state must have backup, restore, migration, or an explicit not-applicable policy.",
+      "evidenceIds": [
+        "app-data.backup-restore-portability",
+        "app-update.data-migration-contract",
+        "first-party-app.beta-quality-pass"
+      ]
+    },
+    {
+      "id": "stable-1.0.no-security-advisory-denylist-response",
+      "title": "No security advisory or denylist response",
+      "category": "no-security-advisory-denylist-response",
+      "classification": "blocks-stable-1.0",
+      "status": "resolved",
+      "summary": "Stable 1.0 cannot ship without advisory, denylist, revocation, and fail-closed update evidence.",
+      "evidenceIds": [
+        "catalog.security-advisories",
+        "catalog.version-denylist",
+        "app-update.security-denylist-gates",
+        "production-security.response-runbook"
+      ]
+    },
+    {
+      "id": "stable-1.0.no-platform-api-stable-window",
+      "title": "No Platform API stable compatibility window",
+      "category": "no-platform-api-stable-window",
+      "classification": "blocks-stable-1.0",
+      "status": "resolved",
+      "summary": "Stable 1.0 cannot ship without Platform API 1.0 baseline, previous snapshot, compatibility-window, and deprecation/removal policy evidence.",
+      "evidenceIds": [
+        "platform-api.stable-baseline",
+        "platform-api.previous-contract-snapshot",
+        "platform-api.compatibility-window",
+        "platform-api.deprecation-window-policy"
+      ]
+    },
+    {
+      "id": "stable-1.0.no-support-bundle-redaction",
+      "title": "No support bundle redaction",
+      "category": "no-support-bundle-redaction",
+      "classification": "blocks-stable-1.0",
+      "status": "resolved",
+      "summary": "Stable 1.0 cannot ship without privacy-preserving diagnostics and support bundle redaction guidance.",
+      "evidenceIds": [
+        "app-platform.privacy-preserving-beta-diagnostics",
+        "public-beta.support-bundle-guidance",
+        "public-beta.redaction-fixtures"
+      ]
+    },
+    {
+      "id": "stable-1.0.no-third-party-submission-path",
+      "title": "No third-party submission path",
+      "category": "no-third-party-submission-path",
+      "classification": "beta-only",
+      "status": "resolved",
+      "summary": "Stable 1.0 cannot ship with no third-party submission, review, rejection, resubmission, and beta-catalog sample path.",
+      "evidenceIds": [
+        "app-store.third-party-sample-flow",
+        "third-party-intake.review-decision",
+        "third-party-intake.resubmission-flow",
+        "third-party-intake.beta-catalog-install-smoke"
+      ]
+    }
+  ]
+}

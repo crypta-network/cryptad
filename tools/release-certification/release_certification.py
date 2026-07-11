@@ -201,6 +201,9 @@ ECOSYSTEM_RC_GATE_ID = "ecosystem.rc-certification"
 ECOSYSTEM_RC_EVIDENCE_ID = "release-certification.ecosystem-rc-gate"
 ECOSYSTEM_RC_MATRIX_ROW_ID = "ecosystem-rc-certification-gate"
 PRODUCTION_BETA_GO_NO_GO_EVIDENCE_IDS = production_beta_go_no_go_dashboard.DASHBOARD_EVIDENCE_IDS
+STABLE_1_0_READINESS_EVIDENCE_IDS = production_beta_go_no_go_dashboard.STABLE_1_0_READINESS_EVIDENCE_IDS
+STABLE_1_0_READINESS_DOMAIN_IDS = production_beta_go_no_go_dashboard.STABLE_1_0_READINESS_DOMAIN_IDS
+STABLE_1_0_READINESS_MATRIX_ROW_ID = "stable-1-0-readiness"
 APP_SERVICE_DEPENDENCY_AND_GRANT_BUNDLE_EVIDENCE_IDS = (
     "app-services.dependency-graph",
     "app-services.grant-bundles",
@@ -623,6 +626,8 @@ class Settings:
     multi_node_soak_summary: Path = DEFAULT_OUT_DIR / "multi-node-beta-soak" / "summary.json"
     multi_node_soak_required: bool = False
     security_drills_summary: Path | None = None
+    stable_readiness_summary: Path | None = None
+    stable_readiness_required: bool = False
 
 
 def utc_now() -> str:
@@ -1036,9 +1041,65 @@ def unique_non_empty_strings(values: Any) -> list[str]:
     return result
 
 
+def redaction_signal_has_unwaivable_findings(
+    value: Any,
+    *,
+    include_summary_fields: bool = True,
+) -> bool:
+    if isinstance(value, dict):
+        if "redaction" in value and redaction_signal_has_unwaivable_findings(value["redaction"]):
+            return True
+        if include_summary_fields:
+            redaction_findings = value.get("redactionFindings")
+            if "redactionFindings" in value and not isinstance(redaction_findings, list):
+                return True
+            if isinstance(redaction_findings, list) and bool(redaction_findings):
+                return True
+            findings = value.get("findings")
+            if "findings" in value and not isinstance(findings, list):
+                return True
+            if isinstance(findings, list) and bool(findings):
+                return True
+            for count_key in ("findingCount", "criticalFindingCount"):
+                if count_key in value:
+                    finding_count, malformed_finding_count = parse_stable_readiness_count(
+                        value.get(count_key)
+                    )
+                    if malformed_finding_count or finding_count > 0:
+                        return True
+            status = value.get("status")
+            if "status" in value and (
+                not isinstance(status, str) or status.strip().lower() != "pass"
+            ):
+                return True
+        for key, child in value.items():
+            if key == "redaction":
+                continue
+            if production_beta_go_no_go_dashboard.redaction_proof_failure(key, child):
+                return True
+            if redaction_signal_has_unwaivable_findings(
+                child,
+                include_summary_fields=include_summary_fields,
+            ):
+                return True
+    elif isinstance(value, list):
+        return any(
+            redaction_signal_has_unwaivable_findings(
+                child,
+                include_summary_fields=include_summary_fields,
+            )
+            for child in value
+        )
+    return False
+
+
 def has_unwaivable_redaction_findings(_evidence_id: str, details: dict[str, Any]) -> bool:
     redaction_findings = details.get("redactionFindings")
-    return isinstance(redaction_findings, list) and bool(redaction_findings)
+    if "redactionFindings" in details and not isinstance(redaction_findings, list):
+        return True
+    if isinstance(redaction_findings, list) and bool(redaction_findings):
+        return True
+    return redaction_signal_has_unwaivable_findings(details, include_summary_fields=False)
 
 
 def evidence_item_has_unwaivable_redaction_findings(item: EvidenceItem) -> bool:
@@ -1046,9 +1107,35 @@ def evidence_item_has_unwaivable_redaction_findings(item: EvidenceItem) -> bool:
 
 
 def evidence_entry_has_unwaivable_redaction_findings(entry: dict[str, Any] | None) -> bool:
-    if not isinstance(entry, dict):
-        return False
-    return has_unwaivable_redaction_findings(str(entry.get("id", "")), evidence_details(entry))
+    return recursive_redaction_field_has_unwaivable_findings(entry)
+
+
+def recursive_redaction_field_has_unwaivable_findings(value: Any) -> bool:
+    if isinstance(value, dict):
+        redaction_payload = {
+            key: child
+            for key, child in value.items()
+            if redaction_signal_key(key)
+        }
+        if redaction_payload and redaction_signal_has_unwaivable_findings(redaction_payload):
+            return True
+        return any(
+            recursive_redaction_field_has_unwaivable_findings(child)
+            for child in value.values()
+            if isinstance(child, (dict, list))
+        )
+    if isinstance(value, list):
+        return any(recursive_redaction_field_has_unwaivable_findings(child) for child in value)
+    return False
+
+
+def redaction_signal_key(key: Any) -> bool:
+    lowered = str(key).lower()
+    return (
+        "redaction" in lowered
+        or lowered in {"findings", "findingcount", "criticalfindingcount"}
+        or production_beta_go_no_go_dashboard.redaction_proof_key(key)
+    )
 
 
 def active_waivers_for_all(
@@ -1898,6 +1985,19 @@ def network_scale_safe_bool(
     return None
 
 
+def network_scale_safe_release_id(value: Any, errors: list[str]) -> str:
+    if value is None:
+        return ""
+    if not isinstance(value, str):
+        errors.append("releaseId must be a string")
+        return ""
+    release_id = value.strip()
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", release_id):
+        errors.append("releaseId must be a non-empty candidate identifier")
+        return ""
+    return release_id
+
+
 def allowlisted_network_scale_app_summary(
     app_id: str,
     value: Any,
@@ -1944,6 +2044,39 @@ def allowlisted_network_scale_bool_section(
     }
 
 
+def allowlisted_network_scale_redaction_section(
+    summary: dict[str, Any],
+    errors: list[str],
+) -> dict[str, Any]:
+    value = summary.get("redaction", {})
+    if not isinstance(value, dict):
+        errors.append("redaction must be an object")
+        value = {}
+    else:
+        add_network_scale_unexpected_field_error(
+            value,
+            {*NETWORK_SCALE_SOAK_REDACTION_KEYS, "status"},
+            errors,
+            "redaction",
+        )
+    safe_redaction = {
+        key: network_scale_safe_bool(
+            value.get(key),
+            errors,
+            f"redaction.{key}",
+            expected=True,
+        )
+        for key in NETWORK_SCALE_SOAK_REDACTION_KEYS
+    }
+    safe_redaction["status"] = network_scale_safe_enum(
+        value.get("status"),
+        {"pass"},
+        errors,
+        "redaction.status",
+    )
+    return safe_redaction
+
+
 def allowlisted_network_scale_soak_summary(
     summary: dict[str, Any],
 ) -> tuple[dict[str, Any], list[str]]:
@@ -1960,6 +2093,7 @@ def allowlisted_network_scale_soak_summary(
             "trustGraph",
             "budgets",
             "redaction",
+            "releaseId",
         },
         errors,
         "summary",
@@ -2006,33 +2140,29 @@ def allowlisted_network_scale_soak_summary(
         "trustGraph.rawStatementsInEvidence",
         expected=False,
     )
-    return (
-        {
-            "mode": network_scale_safe_enum(
-                summary.get("mode"),
-                {"simulated-rc-soak", "live-rc-soak"},
-                errors,
-                "mode",
-            ),
-            "status": network_scale_safe_enum(summary.get("status"), {"success"}, errors, "status"),
-            "durationHoursSimulated": duration,
-            "apps": safe_apps,
-            "trustGraph": safe_trust_graph,
-            "budgets": allowlisted_network_scale_bool_section(
-                summary,
-                "budgets",
-                NETWORK_SCALE_SOAK_BUDGET_KEYS,
-                errors,
-            ),
-            "redaction": allowlisted_network_scale_bool_section(
-                summary,
-                "redaction",
-                NETWORK_SCALE_SOAK_REDACTION_KEYS,
-                errors,
-            ),
-        },
-        errors,
-    )
+    safe_summary = {
+        "mode": network_scale_safe_enum(
+            summary.get("mode"),
+            {"simulated-rc-soak", "live-rc-soak"},
+            errors,
+            "mode",
+        ),
+        "status": network_scale_safe_enum(summary.get("status"), {"success"}, errors, "status"),
+        "durationHoursSimulated": duration,
+        "apps": safe_apps,
+        "trustGraph": safe_trust_graph,
+        "budgets": allowlisted_network_scale_bool_section(
+            summary,
+            "budgets",
+            NETWORK_SCALE_SOAK_BUDGET_KEYS,
+            errors,
+        ),
+        "redaction": allowlisted_network_scale_redaction_section(summary, errors),
+    }
+    release_id = network_scale_safe_release_id(summary.get("releaseId"), errors)
+    if release_id:
+        safe_summary["releaseId"] = release_id
+    return safe_summary, errors
 
 
 def network_scale_soak_evidence(
@@ -2382,6 +2512,692 @@ def production_beta_go_no_go_evidence(workspace_root: Path, out_dir: Path) -> li
         )
         for evidence_id in PRODUCTION_BETA_GO_NO_GO_EVIDENCE_IDS
     ]
+
+
+def parse_stable_readiness_count(value: Any) -> tuple[int, bool]:
+    if value is None or value == "":
+        return 0, False
+    if isinstance(value, bool):
+        return 0, True
+    if isinstance(value, int):
+        parsed = value
+    elif isinstance(value, str):
+        text = value.strip()
+        if not text or not text.isdigit():
+            return 0, True
+        parsed = int(text)
+    else:
+        return 0, True
+    if parsed < 0:
+        return 0, True
+    return parsed, False
+
+
+def stable_readiness_record_errors(
+    summary: dict[str, Any],
+    field_name: str,
+    count_field_name: str,
+    parsed_count: int,
+    malformed_count: bool,
+) -> tuple[int, list[str]]:
+    value = summary.get(field_name)
+    if not isinstance(value, list):
+        return 0, [f"{field_name} must be a list"]
+    errors: list[str] = []
+    record_count = len(value)
+    if record_count:
+        errors.append(f"{field_name} contains {record_count} record(s)")
+    if not malformed_count and parsed_count != record_count:
+        errors.append(f"{count_field_name} is {parsed_count} but {field_name} contains {record_count}")
+    return record_count, errors
+
+
+def stable_readiness_warning_record_errors(
+    summary: dict[str, Any],
+    parsed_count: int,
+    malformed_count: bool,
+) -> tuple[int, int, list[str]]:
+    warnings = summary.get("warnings")
+    if not isinstance(warnings, list):
+        return 0, 0, ["warnings must be a list"]
+    errors = [
+        f"warnings[{index}] must be an object"
+        for index, warning in enumerate(warnings)
+        if not isinstance(warning, dict)
+    ]
+    warning_record_count = len(warnings)
+    domain_warning_record_count = 0
+    domains = summary.get("domains")
+    if isinstance(domains, list):
+        domain_warning_record_count = sum(
+            len(domain.get("warnings", []))
+            for domain in domains
+            if isinstance(domain, dict) and isinstance(domain.get("warnings", []), list)
+        )
+        errors.extend(
+            f"domains[{domain_index}].warnings[{warning_index}] must be an object"
+            for domain_index, domain in enumerate(domains)
+            if isinstance(domain, dict) and isinstance(domain.get("warnings", []), list)
+            for warning_index, warning in enumerate(domain.get("warnings", []))
+            if not isinstance(warning, dict)
+        )
+    if not malformed_count and parsed_count != warning_record_count:
+        errors.append(
+            f"warningCount is {parsed_count} but warnings contains {warning_record_count} record(s)"
+        )
+    if not malformed_count and parsed_count != domain_warning_record_count:
+        errors.append(
+            "warningCount is "
+            f"{parsed_count} but domains contain {domain_warning_record_count} warning record(s)"
+        )
+    return warning_record_count, domain_warning_record_count, errors
+
+
+def stable_readiness_allowed_limitation_metadata_errors(record: Any, label: str) -> list[str]:
+    if not isinstance(record, dict):
+        return [f"{label} must be an object"]
+    errors: list[str] = []
+    for field in ("id", "title", "category", "classification", "status", "summary", "boundedBy"):
+        if not isinstance(record.get(field), str) or not str(record.get(field)).strip():
+            errors.append(f"{label}.{field} must be a non-empty string")
+    classification = str(record.get("classification", "")).strip().lower()
+    if classification and classification != "allowed-for-stable-1.0":
+        errors.append(f"{label}.classification must be allowed-for-stable-1.0")
+    evidence_ids = record.get("evidenceIds")
+    if not isinstance(evidence_ids, list) or not evidence_ids:
+        errors.append(f"{label}.evidenceIds must be a non-empty list")
+    elif any(not isinstance(item, str) or not item.strip() for item in evidence_ids):
+        errors.append(f"{label}.evidenceIds must contain only non-empty strings")
+    return errors
+
+
+def stable_readiness_allowed_record_errors(
+    summary: dict[str, Any],
+    parsed_count: int,
+    malformed_count: bool,
+) -> tuple[int, list[str]]:
+    value = summary.get("allowedLimitations")
+    if not isinstance(value, list):
+        return 0, ["allowedLimitations must be a list"]
+    record_count = len(value)
+    errors: list[str] = []
+    for index, limitation in enumerate(value):
+        errors.extend(
+            stable_readiness_allowed_limitation_metadata_errors(
+                limitation,
+                f"allowedLimitations[{index}]",
+            )
+        )
+    if not malformed_count and parsed_count != record_count:
+        errors.append(
+            f"allowedLimitationCount is {parsed_count} but allowedLimitations contains {record_count}"
+        )
+    return record_count, errors
+
+
+def stable_readiness_domain_errors(summary: dict[str, Any]) -> list[str]:
+    domains = summary.get("domains")
+    if not isinstance(domains, list):
+        return ["domains must be a non-empty list"]
+    if not domains:
+        return ["domains must not be empty"]
+    errors = production_beta_go_no_go_dashboard.stable_summary_domain_id_errors(summary)
+    for index, domain in enumerate(domains):
+        if not isinstance(domain, dict):
+            errors.append(f"domains[{index}] must be an object")
+            continue
+        domain_id = str(domain.get("id") or f"domains[{index}]")
+        status = normalize_evidence_status(str(domain.get("status", "missing")))
+        if status in {"fail", "missing", "skip"}:
+            errors.append(f"domain {domain_id} status is {status}")
+        blockers = domain.get("blockers")
+        if blockers is not None and not isinstance(blockers, list):
+            errors.append(f"domain {domain_id} blockers must be a list")
+        elif isinstance(blockers, list) and blockers:
+            errors.append(f"domain {domain_id} contains {len(blockers)} blocker(s)")
+        for field_name in ("warnings", "allowedLimitations"):
+            if field_name in domain and not isinstance(domain.get(field_name), list):
+                errors.append(f"domain {domain_id} {field_name} must be a list")
+        warnings = domain.get("warnings")
+        allowed_limitations = domain.get("allowedLimitations")
+        if (
+            status == "warn"
+            and not (isinstance(warnings, list) and warnings)
+            and not (isinstance(allowed_limitations, list) and allowed_limitations)
+        ):
+            errors.append(
+                f"domain {domain_id} status is warn but contains no warnings or allowed limitations"
+            )
+        if isinstance(allowed_limitations, list):
+            for allowed_index, limitation in enumerate(allowed_limitations):
+                errors.extend(
+                    stable_readiness_allowed_limitation_metadata_errors(
+                        limitation,
+                        f"domain {domain_id} allowedLimitations[{allowed_index}]",
+                    )
+                )
+    errors.extend(
+        production_beta_go_no_go_dashboard.stable_summary_domain_allowed_limitation_consistency_errors(
+            summary
+        )
+    )
+    return errors
+
+
+def stable_readiness_evidence_rows(summary: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
+    rows = {evidence_id: [] for evidence_id in STABLE_1_0_READINESS_EVIDENCE_IDS}
+    evidence = summary.get("evidence")
+    if not isinstance(evidence, list):
+        return rows
+    for entry in evidence:
+        if not isinstance(entry, dict):
+            continue
+        evidence_id = str(entry.get("id", ""))
+        if evidence_id in rows:
+            rows[evidence_id].append(entry)
+    return rows
+
+
+def stable_readiness_evidence_redaction_ids(summary: dict[str, Any]) -> list[str]:
+    evidence = summary.get("evidence")
+    if not isinstance(evidence, list):
+        return []
+    return [
+        str(entry.get("id") or entry.get("evidenceId") or f"evidence[{index}]")
+        for index, entry in enumerate(evidence, start=1)
+        if isinstance(entry, dict) and evidence_entry_has_unwaivable_redaction_findings(entry)
+    ]
+
+
+def stable_readiness_row_status(rows: list[dict[str, Any]]) -> str:
+    if not rows:
+        return "missing"
+    if len(rows) > 1:
+        return "fail"
+    if any(evidence_entry_has_unwaivable_redaction_findings(row) for row in rows):
+        return "fail"
+    statuses = [normalize_evidence_status(str(row.get("status", "missing"))) for row in rows]
+    if any(status == "fail" for status in statuses):
+        return "fail"
+    if any(status == "missing" for status in statuses):
+        return "missing"
+    if any(status == "skip" for status in statuses):
+        return "skip"
+    if any(status == "warn" for status in statuses):
+        return "warn"
+    return "pass"
+
+
+def stable_readiness_release_id_from_mapping(value: Any) -> str:
+    if not isinstance(value, dict):
+        return ""
+    for key in ("releaseId", "release_id", "candidateReleaseId", "candidate_release_id"):
+        release_id = value.get(key)
+        if isinstance(release_id, str) and release_id.strip() and release_id != "missing":
+            return release_id.strip()
+    return ""
+
+
+def stable_readiness_expected_release_id(
+    settings: Settings,
+    _evidence: list[EvidenceItem],
+) -> str:
+    return stable_readiness_release_id_from_mapping(settings.metadata)
+
+
+def stable_readiness_evidence(
+    summary_path: Path | None,
+    required: bool,
+    workspace_root: Path,
+    out_dir: Path,
+    expected_release_id: str | None = None,
+) -> list[EvidenceItem]:
+    if summary_path is None:
+        if not required:
+            return []
+        return [
+            EvidenceItem(
+                evidence_id,
+                "missing",
+                False,
+                "Stable 1.0 readiness is required but no summary path was provided.",
+                "stable-readiness-summary",
+                {"required": True},
+            )
+            for evidence_id in STABLE_1_0_READINESS_EVIDENCE_IDS
+        ]
+
+    source = display_path(summary_path, workspace_root, out_dir)
+    summary = read_json(summary_path)
+    if not isinstance(summary, dict):
+        return [
+            EvidenceItem(
+                "stable-1.0.readiness-gate",
+                "fail",
+                False,
+                "Stable 1.0 readiness summary is missing or malformed.",
+                source,
+                {"required": required},
+            )
+        ]
+
+    summary_kind = str(summary.get("kind", ""))
+    summary_tool_value = summary.get("tool")
+    summary_tool = summary_tool_value if isinstance(summary_tool_value, str) else ""
+    release_id_requirement_active = expected_release_id is not None
+    expected_release_id = (expected_release_id or "").strip()
+    summary_release_id_value = summary.get("releaseId")
+    summary_release_id = (
+        summary_release_id_value.strip()
+        if isinstance(summary_release_id_value, str)
+        else ""
+    )
+    summary_schema_version = summary.get("schemaVersion")
+    summary_schema_version_valid = (
+        isinstance(summary_schema_version, int)
+        and not isinstance(summary_schema_version, bool)
+        and summary_schema_version == 1
+    )
+    summary_validation_errors: list[str] = []
+    if not summary_schema_version_valid:
+        summary_validation_errors.append(
+            "schemaVersion is not integer 1"
+            if summary_schema_version is not None
+            else "schemaVersion is missing"
+        )
+    if required and summary_tool != "stable-1.0-readiness":
+        summary_validation_errors.append(
+            "tool must be stable-1.0-readiness"
+            if summary_tool
+            else "tool is missing; expected stable-1.0-readiness"
+        )
+    if required and release_id_requirement_active and not expected_release_id:
+        summary_validation_errors.append(
+            "candidate releaseId metadata is required when Stable readiness is required"
+        )
+    elif expected_release_id:
+        if not summary_release_id:
+            summary_validation_errors.append(
+                f"releaseId is missing; expected {expected_release_id}"
+            )
+        elif summary_release_id != expected_release_id:
+            summary_validation_errors.append(
+                f"releaseId must match candidate {expected_release_id}; "
+                f"summary releaseId is {summary_release_id}"
+            )
+    redaction = summary.get("redaction") if isinstance(summary.get("redaction"), dict) else {}
+    redaction_status = normalize_evidence_status(str(redaction.get("status", "missing")))
+    redaction_findings_value = redaction.get("findings")
+    redaction_findings_malformed = (
+        "findings" in redaction and not isinstance(redaction_findings_value, list)
+    )
+    redaction_findings = redaction_findings_value if isinstance(redaction_findings_value, list) else []
+    redaction_finding_count, malformed_redaction_finding_count = parse_stable_readiness_count(
+        redaction.get("findingCount", len(redaction_findings))
+    )
+    (
+        redaction_critical_finding_count,
+        malformed_redaction_critical_finding_count,
+    ) = parse_stable_readiness_count(redaction.get("criticalFindingCount", 0))
+    redaction_validation_errors: list[str] = []
+    if redaction_findings_malformed:
+        redaction_validation_errors.append("findings is not a list")
+    if malformed_redaction_finding_count:
+        redaction_validation_errors.append("findingCount is not a non-negative integer")
+    elif redaction_finding_count > 0:
+        redaction_validation_errors.append(f"findingCount is {redaction_finding_count}")
+    if malformed_redaction_critical_finding_count:
+        redaction_validation_errors.append("criticalFindingCount is not a non-negative integer")
+    elif redaction_critical_finding_count > 0:
+        redaction_validation_errors.append(
+            f"criticalFindingCount is {redaction_critical_finding_count}"
+        )
+    redaction_payload_unsafe = redaction_signal_has_unwaivable_findings(redaction)
+    if redaction_payload_unsafe and not (
+        redaction_status != "pass"
+        or redaction_findings
+        or redaction_validation_errors
+    ):
+        redaction_validation_errors.append(
+            "redaction payload contains unsafe raw or unwaivable findings"
+        )
+    decision = str(summary.get("decision", "not-ready"))
+    valid_decisions = {"ready", "ready-with-allowed-limitations", "not-ready"}
+    decision_validation_errors: list[str] = []
+    if decision not in valid_decisions:
+        decision_validation_errors.append(
+            "decision must be ready, ready-with-allowed-limitations, or not-ready"
+        )
+    stable_ready = summary.get("stableReady") is True
+    main_status = normalize_evidence_status(str(summary.get("status", "missing")))
+    blocker_count, malformed_blocker_count = parse_stable_readiness_count(summary.get("blockerCount", 0))
+    warning_count, malformed_warning_count = parse_stable_readiness_count(summary.get("warningCount", 0))
+    allowed_count, malformed_allowed_count = parse_stable_readiness_count(
+        summary.get("allowedLimitationCount", 0)
+    )
+    disallowed_count, malformed_disallowed_count = parse_stable_readiness_count(
+        summary.get("disallowedLimitationCount", 0)
+    )
+    blocker_record_count, blocker_record_errors = stable_readiness_record_errors(
+        summary,
+        "blockers",
+        "blockerCount",
+        blocker_count,
+        malformed_blocker_count,
+    )
+    (
+        warning_record_count,
+        domain_warning_record_count,
+        warning_record_errors,
+    ) = stable_readiness_warning_record_errors(
+        summary,
+        warning_count,
+        malformed_warning_count,
+    )
+    disallowed_record_count, disallowed_record_errors = stable_readiness_record_errors(
+        summary,
+        "disallowedLimitations",
+        "disallowedLimitationCount",
+        disallowed_count,
+        malformed_disallowed_count,
+    )
+    allowed_record_count, allowed_record_errors = stable_readiness_allowed_record_errors(
+        summary,
+        allowed_count,
+        malformed_allowed_count,
+    )
+    count_validation_errors: list[str] = []
+    if malformed_blocker_count:
+        count_validation_errors.append("blockerCount is not a non-negative integer")
+    elif blocker_count > 0:
+        count_validation_errors.append(f"blockerCount is {blocker_count}")
+    if malformed_disallowed_count:
+        count_validation_errors.append("disallowedLimitationCount is not a non-negative integer")
+    elif disallowed_count > 0:
+        count_validation_errors.append(f"disallowedLimitationCount is {disallowed_count}")
+    count_validation_errors.extend(blocker_record_errors)
+    count_validation_errors.extend(disallowed_record_errors)
+    warning_validation_errors: list[str] = []
+    if malformed_warning_count:
+        warning_validation_errors.append("warningCount is not a non-negative integer")
+    warning_validation_errors.extend(warning_record_errors)
+    warning_remaining_count = max(
+        warning_count if not malformed_warning_count else 0,
+        warning_record_count,
+        domain_warning_record_count,
+    )
+    allowed_validation_errors: list[str] = []
+    if malformed_allowed_count:
+        allowed_validation_errors.append("allowedLimitationCount is not a non-negative integer")
+    allowed_validation_errors.extend(allowed_record_errors)
+    allowed_remaining_count = max(allowed_count if not malformed_allowed_count else 0, allowed_record_count)
+    status_validation_errors: list[str] = []
+    if main_status == "warn" and warning_remaining_count == 0 and allowed_remaining_count == 0:
+        status_validation_errors.append(
+            "status is warn but no warnings or allowed limitations are reported"
+        )
+    domain_validation_errors = stable_readiness_domain_errors(summary)
+    evidence_rows = stable_readiness_evidence_rows(summary)
+    missing_evidence_ids = [
+        evidence_id
+        for evidence_id, rows in evidence_rows.items()
+        if not rows
+    ]
+    duplicate_evidence_ids = [
+        evidence_id
+        for evidence_id, rows in evidence_rows.items()
+        if len(rows) > 1
+    ]
+    evidence_validation_errors: list[str] = []
+    if missing_evidence_ids:
+        evidence_validation_errors.append(
+            "evidence is missing required IDs: " + ", ".join(missing_evidence_ids)
+        )
+    if duplicate_evidence_ids:
+        evidence_validation_errors.append(
+            "evidence contains duplicate required IDs: " + ", ".join(duplicate_evidence_ids)
+        )
+    evidence_redaction_ids = stable_readiness_evidence_redaction_ids(summary)
+    if evidence_redaction_ids:
+        redaction_validation_errors.append(
+            "evidence rows contain redaction findings: " + ", ".join(evidence_redaction_ids)
+        )
+    if (
+        summary_kind != "stable-1.0-readiness"
+        or summary_validation_errors
+        or redaction_status != "pass"
+        or redaction_findings
+        or redaction_validation_errors
+        or decision_validation_errors
+        or count_validation_errors
+        or warning_validation_errors
+        or allowed_validation_errors
+        or status_validation_errors
+        or domain_validation_errors
+        or evidence_validation_errors
+    ):
+        main_status = "fail"
+    elif (
+        decision == "ready-with-allowed-limitations"
+        or allowed_remaining_count > 0
+    ) and main_status == "pass":
+        main_status = "warn"
+    elif warning_remaining_count > 0 and main_status == "pass":
+        main_status = "warn"
+    elif not stable_ready or decision == "not-ready":
+        main_status = "fail"
+
+    redaction_finding_count_value = (
+        redaction_finding_count
+        if not malformed_redaction_finding_count
+        else redaction.get("findingCount", len(redaction_findings))
+    )
+    redaction_critical_finding_count_value = (
+        redaction_critical_finding_count
+        if not malformed_redaction_critical_finding_count
+        else redaction.get("criticalFindingCount", 0)
+    )
+    redaction_signal_details = dict(redaction)
+    redaction_signal_details["reportedStatus"] = redaction_status
+    redaction_signal_details["status"] = (
+        "fail"
+        if redaction_status != "pass" or redaction_findings or redaction_validation_errors
+        else "pass"
+    )
+    redaction_signal_details["findingCount"] = redaction_finding_count_value
+    redaction_signal_details["criticalFindingCount"] = redaction_critical_finding_count_value
+    if redaction_findings:
+        redaction_signal_details["findings"] = redaction_findings
+    redaction_details: dict[str, Any] = {
+        "status": redaction_status,
+        "findingCount": redaction_finding_count_value,
+        "criticalFindingCount": redaction_critical_finding_count_value,
+        "redaction": redaction_signal_details,
+    }
+    if redaction_validation_errors:
+        redaction_details["validationErrors"] = redaction_validation_errors
+    if redaction_findings:
+        redaction_details["redactionFindings"] = redaction_findings
+    main_summary = f"Stable 1.0 readiness decision is {decision}."
+    main_validation_errors = [
+        *summary_validation_errors,
+        *decision_validation_errors,
+        *count_validation_errors,
+        *warning_validation_errors,
+        *allowed_validation_errors,
+        *status_validation_errors,
+        *domain_validation_errors,
+        *evidence_validation_errors,
+    ]
+    if summary_validation_errors:
+        main_summary = "Stable 1.0 readiness summary schema is malformed."
+    elif status_validation_errors:
+        main_summary = "Stable 1.0 readiness summary status is inconsistent."
+    elif count_validation_errors:
+        main_summary = "Stable 1.0 readiness summary reports remaining blockers or forbidden limitations."
+    elif warning_validation_errors:
+        main_summary = "Stable 1.0 readiness summary warning metadata is malformed."
+    elif allowed_validation_errors:
+        main_summary = "Stable 1.0 readiness summary allowed limitations are malformed."
+    elif domain_validation_errors:
+        main_summary = "Stable 1.0 readiness summary domains are not passing."
+    elif evidence_validation_errors:
+        main_summary = "Stable 1.0 readiness summary evidence rows are malformed."
+    elif allowed_remaining_count > 0:
+        main_summary = "Stable 1.0 readiness has bounded allowed limitations."
+    synthetic_entries: dict[str, dict[str, Any]] = {
+        "stable-1.0.readiness-gate": {
+            "id": "stable-1.0.readiness-gate",
+            "status": main_status,
+            "summary": main_summary,
+            "details": {
+                "required": required,
+                "summaryKind": summary_kind,
+                "summaryTool": summary_tool or "missing",
+                "schemaVersion": summary_schema_version if summary_schema_version is not None else "missing",
+                "releaseId": summary_release_id or "missing",
+                "expectedReleaseId": expected_release_id or "not-available",
+                "decision": decision,
+                "stableReady": stable_ready,
+                "blockerCount": blocker_count
+                if not malformed_blocker_count
+                else summary.get("blockerCount", 0),
+                "warningCount": warning_count
+                if not malformed_warning_count
+                else summary.get("warningCount", 0),
+                "warningRecordCount": warning_record_count,
+                "domainWarningRecordCount": domain_warning_record_count,
+                "allowedLimitationCount": allowed_count
+                if not malformed_allowed_count
+                else summary.get("allowedLimitationCount", 0),
+                "disallowedLimitationCount": disallowed_count
+                if not malformed_disallowed_count
+                else summary.get("disallowedLimitationCount", 0),
+                "blockerRecordCount": blocker_record_count,
+                "allowedLimitationRecordCount": allowed_record_count,
+                "allowedLimitationOpenCount": allowed_remaining_count,
+                "disallowedLimitationRecordCount": disallowed_record_count,
+                "domainValidationErrorCount": len(domain_validation_errors),
+                "validationErrors": main_validation_errors,
+                "summaryPath": source,
+                "artifactRefs": summary.get("artifactRefs", {})
+                if isinstance(summary.get("artifactRefs"), dict)
+                else {},
+            },
+        },
+        "stable-1.0.redaction": {
+            "id": "stable-1.0.redaction",
+            "status": "fail"
+            if redaction_status != "pass" or redaction_findings or redaction_validation_errors
+            else "pass",
+            "summary": (
+                "Stable 1.0 readiness redaction checks passed."
+                if redaction_status == "pass"
+                and not redaction_findings
+                and not redaction_validation_errors
+                else "Stable 1.0 readiness redaction checks failed."
+            ),
+            "details": redaction_details,
+        },
+    }
+    items: list[EvidenceItem] = []
+    for evidence_id in STABLE_1_0_READINESS_EVIDENCE_IDS:
+        rows = evidence_rows.get(evidence_id, [])
+        if not rows:
+            if evidence_id not in synthetic_entries or (
+                evidence_id == "stable-1.0.redaction"
+                and redaction_status == "pass"
+                and not redaction_findings
+                and not redaction_validation_errors
+            ):
+                items.append(
+                    EvidenceItem(
+                        evidence_id,
+                        "missing",
+                        False,
+                        f"{evidence_id} was not reported by the Stable 1.0 readiness summary.",
+                        source,
+                        {
+                            "required": required,
+                            "validationErrors": [
+                                f"{evidence_id} is missing from stable readiness evidence"
+                            ],
+                        },
+                    )
+                )
+                continue
+        synthetic_entry = synthetic_entries.get(evidence_id)
+        entry = synthetic_entry or rows[0]
+        if not isinstance(entry, dict):
+            items.append(
+                EvidenceItem(
+                    evidence_id,
+                    "missing",
+                    False,
+                    f"{evidence_id} was not reported by the Stable 1.0 readiness summary.",
+                    source,
+                    {"required": required},
+                )
+            )
+            continue
+        details = entry.get("details", {}) if isinstance(entry.get("details"), dict) else {}
+        if not rows:
+            details = dict(details)
+            validation_errors = (
+                details.get("validationErrors")
+                if isinstance(details.get("validationErrors"), list)
+                else []
+            )
+            details["validationErrors"] = [
+                *validation_errors,
+                f"{evidence_id} is missing from stable readiness evidence",
+            ]
+        status = normalize_evidence_status(str(entry.get("status", "missing")))
+        row_status = stable_readiness_row_status(rows) if rows else "missing"
+        if synthetic_entry is None:
+            status = stable_readiness_row_status(rows)
+            if len(rows) > 1:
+                details = dict(details)
+                details["duplicateStableReadinessEvidenceRows"] = len(rows)
+                details["validationErrors"] = [
+                    f"{evidence_id} appears {len(rows)} times in stable readiness evidence"
+                ]
+        elif rows and row_status != "pass":
+            if status_severity(row_status) >= status_severity(status):
+                status = row_status
+            details = dict(details)
+            validation_errors = (
+                details.get("validationErrors")
+                if isinstance(details.get("validationErrors"), list)
+                else []
+            )
+            row_validation_errors = [
+                f"{evidence_id} reported evidence row status is {row_status}"
+            ]
+            if len(rows) > 1:
+                details["duplicateStableReadinessEvidenceRows"] = len(rows)
+                row_validation_errors.append(
+                    f"{evidence_id} appears {len(rows)} times in stable readiness evidence"
+                )
+            details["reportedStableReadinessEvidenceStatus"] = row_status
+            details["validationErrors"] = [*validation_errors, *row_validation_errors]
+        elif evidence_entry_has_unwaivable_redaction_findings(entry):
+            status = "fail"
+        elif evidence_id == "stable-1.0.redaction" and (
+            redaction_status != "pass" or redaction_findings or redaction_validation_errors
+        ):
+            status = "fail"
+        items.append(
+            EvidenceItem(
+                evidence_id,
+                status,
+                False,
+                str(entry.get("summary", f"{evidence_id} status is {status}.")),
+                source,
+                dict(details),
+            )
+        )
+    return items
 
 
 def command_output(args: list[str], cwd: Path) -> str:
@@ -3055,6 +3871,21 @@ def ecosystem_matrix_row_specs() -> list[MatrixRowSpec]:
                 "tools/release-certification/README.md",
             ),
             phase="phase-10",
+        ),
+        MatrixRowSpec(
+            id="stable-1-0-readiness",
+            category="release-operations",
+            title="Stable 1.0 readiness gate",
+            optional_evidence_ids=STABLE_1_0_READINESS_EVIDENCE_IDS,
+            docs=(
+                "docs/stable-1.0-readiness-gate.md",
+                "docs/stable-1.0-known-limitations.md",
+                "docs/production-beta-go-no-go-dashboard.md",
+                "docs/release-certification.md",
+            ),
+            phase="phase-11",
+            required_for_release_candidate=False,
+            synthetic="stable-readiness",
         ),
         MatrixRowSpec(
             id="interop-smoke",
@@ -3747,6 +4578,19 @@ def ecosystem_matrix_row_specs() -> list[MatrixRowSpec]:
     ]
 
 
+def required_stable_readiness_blocking(settings: Settings, rows: Any) -> bool:
+    if not settings.stable_readiness_required:
+        return False
+    if not isinstance(rows, list):
+        return True
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        if row.get("id") == STABLE_1_0_READINESS_MATRIX_ROW_ID:
+            return bool(row.get("releaseBlocker"))
+    return True
+
+
 def matrix_status_from_counts(mode: str, counts: dict[str, int], coverage: dict[str, Any]) -> str:
     release_blockers = counts.get("releaseBlockers", 0)
     warnish_rows = sum(counts.get(status, 0) for status in ("warn", "missing", "skip"))
@@ -3838,18 +4682,28 @@ def aggregate_status_values(values: list[str], *, missing_if_empty: bool = False
     return "pass"
 
 
-def unwaivable_matrix_issue_ids(unwaivable_evidence_ids: set[str]) -> set[str]:
+def unwaivable_matrix_issue_ids(
+    unwaivable_evidence_ids: set[str],
+    extra_unwaivable_issue_ids: set[str] | None = None,
+) -> set[str]:
     unwaivable_issue_ids = set(unwaivable_evidence_ids)
     unwaivable_issue_ids.update(
         f"evidence.{evidence_id}" for evidence_id in unwaivable_evidence_ids
     )
+    if extra_unwaivable_issue_ids:
+        unwaivable_issue_ids.update(extra_unwaivable_issue_ids)
     return unwaivable_issue_ids
 
 
 def waivable_matrix_issue_ids(
-    issue_ids: list[str], unwaivable_evidence_ids: set[str]
+    issue_ids: list[str],
+    unwaivable_evidence_ids: set[str],
+    extra_unwaivable_issue_ids: set[str] | None = None,
 ) -> list[str]:
-    unwaivable_issue_ids = unwaivable_matrix_issue_ids(unwaivable_evidence_ids)
+    unwaivable_issue_ids = unwaivable_matrix_issue_ids(
+        unwaivable_evidence_ids,
+        extra_unwaivable_issue_ids,
+    )
     return [issue_id for issue_id in issue_ids if issue_id not in unwaivable_issue_ids]
 
 
@@ -3861,12 +4715,20 @@ def row_waivers(
     mode: str,
     issue_ids: list[str],
     unwaivable_evidence_ids: set[str],
+    extra_unwaivable_issue_ids: set[str] | None = None,
 ) -> tuple[list[WaiverRecord], list[str]]:
     records: dict[str, WaiverRecord] = {}
-    unwaivable_issue_ids = unwaivable_matrix_issue_ids(unwaivable_evidence_ids)
-    waivable_issue_ids = waivable_matrix_issue_ids(issue_ids, unwaivable_evidence_ids)
+    unwaivable_issue_ids = unwaivable_matrix_issue_ids(
+        unwaivable_evidence_ids,
+        extra_unwaivable_issue_ids,
+    )
+    waivable_issue_ids = waivable_matrix_issue_ids(
+        issue_ids,
+        unwaivable_evidence_ids,
+        extra_unwaivable_issue_ids,
+    )
     targets = [spec.id, *spec.evidence_ids(), *spec.all_gate_ids()]
-    if unwaivable_evidence_ids:
+    if unwaivable_evidence_ids or extra_unwaivable_issue_ids:
         targets = [
             target_id
             for target_id in targets
@@ -3904,10 +4766,17 @@ def row_release_blocker_waiver(
     issue_ids: list[str],
     blocker_targets: list[str],
     unwaivable_evidence_ids: set[str],
+    extra_unwaivable_issue_ids: set[str] | None = None,
 ) -> WaiverRecord | None:
     if unwaivable_evidence_ids.intersection(blocker_targets):
         return None
-    waivable_issue_ids = waivable_matrix_issue_ids(issue_ids, unwaivable_evidence_ids)
+    if extra_unwaivable_issue_ids and extra_unwaivable_issue_ids.intersection(issue_ids):
+        return None
+    waivable_issue_ids = waivable_matrix_issue_ids(
+        issue_ids,
+        unwaivable_evidence_ids,
+        extra_unwaivable_issue_ids,
+    )
     return active_waiver_for(
         context,
         spec.id,
@@ -3986,7 +4855,9 @@ def evaluate_matrix_row(
         for gate_id in spec.optional_gate_ids
         if gate_id in gate_entries
     }
+    stable_not_requested = False
     issue_ids: list[str] = []
+    extra_unwaivable_issue_ids: set[str] = set()
     gate_blockers: list[str] = []
     gate_warnings: list[str] = []
     for gate_id in spec.all_gate_ids():
@@ -4026,6 +4897,12 @@ def evaluate_matrix_row(
     ]
     optional_warn: list[str] = []
     for evidence_id, status in optional_statuses.items():
+        if (
+            evidence_id in STABLE_1_0_READINESS_EVIDENCE_IDS
+            and status == "missing"
+            and not settings.stable_readiness_required
+        ):
+            continue
         if status in {"fail", "warn", "missing"}:
             optional_warn.append(evidence_id)
         elif status == "skip":
@@ -4084,6 +4961,94 @@ def evaluate_matrix_row(
         summary = "Certification summaries and copied artifacts exclude private material."
         if release_blocker:
             issue_ids.append("matrix.redaction.failed")
+    elif spec.synthetic == "stable-readiness":
+        attached = any(evidence_id in evidence_entries for evidence_id in spec.evidence_ids())
+        main_entry = evidence_entries.get("stable-1.0.readiness-gate")
+        redaction_entry = evidence_entries.get("stable-1.0.redaction")
+        main_status = evidence_status(main_entry)
+        redaction_status = evidence_status(redaction_entry)
+        main_details = evidence_details(main_entry)
+        decision = str(main_details.get("decision", "not-attached"))
+        stable_ready = main_details.get("stableReady") is True
+        redaction_failed = (
+            redaction_status != "pass"
+            or bool(unwaivable_redaction_evidence_ids)
+            or evidence_entry_has_unwaivable_redaction_findings(main_entry)
+            or evidence_entry_has_unwaivable_redaction_findings(redaction_entry)
+        )
+        stable_evidence_bad = [
+            evidence_id
+            for evidence_id in spec.evidence_ids()
+            if evidence_status(evidence_entries.get(evidence_id)) in {"fail", "missing", "skip"}
+        ]
+        stable_evidence_warn = [
+            evidence_id
+            for evidence_id in spec.evidence_ids()
+            if evidence_status(evidence_entries.get(evidence_id)) == "warn"
+        ]
+        if not attached and not settings.stable_readiness_required:
+            status = "pass"
+            release_blocker = False
+            stable_not_requested = True
+            summary = "Stable 1.0 readiness was not requested for this certification run."
+            issue_ids = [
+                issue_id
+                for issue_id in issue_ids
+                if not issue_id.startswith("evidence.stable-1.0.")
+            ]
+        elif not attached:
+            status = "fail"
+            release_blocker = True
+            summary = "Stable 1.0 readiness is required but no summary was attached."
+            issue_ids.append("matrix.stable-readiness.required-missing")
+            extra_unwaivable_issue_ids.add("matrix.stable-readiness.required-missing")
+        elif redaction_failed:
+            status = "fail"
+            release_blocker = True
+            summary = "Stable 1.0 readiness redaction findings are non-waivable."
+            if redaction_status == "fail" or not unwaivable_redaction_evidence_ids:
+                unwaivable_redaction_evidence_ids.add("stable-1.0.redaction")
+            extra_unwaivable_issue_ids.add("matrix.stable-readiness.redaction-failed")
+            blocker_targets.extend(sorted(unwaivable_redaction_evidence_ids))
+            issue_ids.append("matrix.stable-readiness.redaction-failed")
+        elif stable_evidence_bad:
+            release_blocker = settings.stable_readiness_required
+            status = "fail" if release_blocker else "warn"
+            summary = (
+                "Stable 1.0 readiness is required but expected evidence is missing or failing."
+                if release_blocker
+                else "Stable 1.0 readiness advisory evidence is missing or failing."
+            )
+            issue_ids.append("matrix.stable-readiness.evidence-not-passing")
+            if release_blocker:
+                extra_unwaivable_issue_ids.add(
+                    "matrix.stable-readiness.evidence-not-passing"
+                )
+                blocker_targets.extend(stable_evidence_bad)
+        elif main_status == "fail" or not stable_ready or decision == "not-ready":
+            release_blocker = settings.stable_readiness_required
+            status = "fail" if release_blocker else "warn"
+            summary = (
+                "Stable 1.0 readiness is required and not passing."
+                if release_blocker
+                else "Stable 1.0 readiness is attached as advisory evidence and is not ready."
+            )
+            if release_blocker:
+                issue_ids.append("matrix.stable-readiness.not-ready")
+                extra_unwaivable_issue_ids.add("matrix.stable-readiness.not-ready")
+                blocker_targets.append("stable-1.0.readiness-gate")
+        elif main_status == "warn" or decision == "ready-with-allowed-limitations":
+            status = "warn"
+            release_blocker = False
+            summary = "Stable 1.0 readiness is ready with bounded allowed limitations."
+        elif stable_evidence_warn:
+            status = "warn"
+            release_blocker = False
+            summary = "Stable 1.0 readiness evidence has warnings."
+        else:
+            status = "pass"
+            release_blocker = False
+            summary = "Stable 1.0 readiness evidence passed."
     elif not spec.evidence_ids() and not spec.all_gate_ids():
         status = "missing"
         release_blocker = False
@@ -4127,6 +5092,7 @@ def evaluate_matrix_row(
         issue_ids,
         blocker_targets,
         unwaivable_redaction_evidence_ids,
+        extra_unwaivable_issue_ids,
     )
     if release_blocker and waiver_for_blocker is not None:
         status = "warn"
@@ -4140,6 +5106,7 @@ def evaluate_matrix_row(
         settings.mode,
         issue_ids,
         unwaivable_redaction_evidence_ids,
+        extra_unwaivable_issue_ids,
     )
     if waiver_for_blocker is not None and waiver_for_blocker.id not in waiver_ids:
         waiver_records = sorted([*waiver_records, waiver_for_blocker], key=lambda record: record.id)
@@ -4156,6 +5123,9 @@ def evaluate_matrix_row(
         previous_matrix_present,
         previous_row_statuses,
     )
+    if stable_not_requested:
+        previous_status = "pass"
+        regression_status = "unchanged"
     if regression_status in {"regressed-warning", "regressed-blocker"} and status == "pass":
         status = "warn"
     gate_status_value = aggregate_status_values(
@@ -4176,8 +5146,13 @@ def evaluate_matrix_row(
         details["previousMatrixPresent"] = previous_matrix_present
     if spec.synthetic == "redaction":
         details["redaction"] = redaction
+    if stable_not_requested:
+        details["notRequested"] = True
+        details["required"] = False
     if unwaivable_redaction_evidence_ids:
         details["unwaivableRedactionEvidenceIds"] = sorted(unwaivable_redaction_evidence_ids)
+    if extra_unwaivable_issue_ids:
+        details["unwaivableIssueIds"] = sorted(extra_unwaivable_issue_ids)
 
     return {
         "id": spec.id,
@@ -4426,7 +5401,10 @@ def build_ecosystem_matrix(
     release_blockers = 0
     waived_rows = 0
     for row in rows:
-        counts[row["status"]] = counts.get(row["status"], 0) + 1
+        if row["status"] == "skip" and row.get("requiredForReleaseCandidate") is False:
+            counts["optionalSkips"] = counts.get("optionalSkips", 0) + 1
+        else:
+            counts[row["status"]] = counts.get(row["status"], 0) + 1
         if row.get("releaseBlocker"):
             release_blockers += 1
         if row.get("waiverIds"):
@@ -4434,7 +5412,12 @@ def build_ecosystem_matrix(
     counts["rows"] = len(rows)
     counts["releaseBlockers"] = release_blockers
     counts["waivedRows"] = waived_rows
-    status = matrix_status_from_counts(settings.mode, counts, coverage)
+    stable_required_blocking = required_stable_readiness_blocking(settings, rows)
+    status = (
+        "fail"
+        if stable_required_blocking
+        else matrix_status_from_counts(settings.mode, counts, coverage)
+    )
     release_candidate_passed = status != "fail" and release_blockers == 0
     matrix_diffs = [
         {
@@ -4515,6 +5498,44 @@ def matrix_compact_summary(matrix: dict[str, Any] | None) -> dict[str, Any]:
         "coverage": matrix.get("coverage", {}) if isinstance(matrix.get("coverage"), dict) else {},
         "rowStatuses": row_statuses,
         "matrixDiffs": matrix.get("matrixDiffs", []) if isinstance(matrix.get("matrixDiffs"), list) else [],
+    }
+
+
+def stable_readiness_compact_summary(
+    evidence: list[EvidenceItem],
+    required: bool,
+) -> dict[str, Any]:
+    entries = evidence_map_from_items(evidence)
+    main = entries.get("stable-1.0.readiness-gate")
+    redaction = entries.get("stable-1.0.redaction")
+    if not isinstance(main, dict):
+        return {
+            "status": "missing" if required else "skip",
+            "decision": "not-attached",
+            "stableReady": False,
+            "required": required,
+            "summary": (
+                "Stable 1.0 readiness is required but not attached."
+                if required
+                else "Stable 1.0 readiness was not requested for this certification run."
+            ),
+        }
+    details = evidence_details(main)
+    redaction_details = evidence_details(redaction)
+    return {
+        "status": evidence_status(main),
+        "decision": str(details.get("decision", "not-ready")),
+        "stableReady": details.get("stableReady") is True,
+        "required": required,
+        "source": str(main.get("source", "")),
+        "summary": str(main.get("summary", "")),
+        "blockerCount": details.get("blockerCount", 0),
+        "warningCount": details.get("warningCount", 0),
+        "allowedLimitationCount": details.get("allowedLimitationCount", 0),
+        "disallowedLimitationCount": details.get("disallowedLimitationCount", 0),
+        "redactionStatus": evidence_status(redaction),
+        "redactionFindingCount": redaction_details.get("findingCount", 0),
+        "artifactRefs": details.get("artifactRefs", {}) if isinstance(details.get("artifactRefs"), dict) else {},
     }
 
 
@@ -7990,6 +9011,18 @@ def build_summary(
     ecosystem_status = aggregate_gate_status(ecosystem_gates)
     cli_waivers = sanitized_cli_waivers(settings)
     compact_matrix = matrix_compact_summary(ecosystem_matrix)
+    compact_stable_readiness = stable_readiness_compact_summary(
+        evidence,
+        settings.stable_readiness_required,
+    )
+    matrix_rows = (
+        ecosystem_matrix.get("rows")
+        if isinstance(ecosystem_matrix, dict)
+        else None
+    )
+    if required_stable_readiness_blocking(settings, matrix_rows):
+        status = "fail"
+        release_candidate_passed = False
     compact_rc_gate = ecosystem_rc_gate_summary(ecosystem_gates)
     compact_rc_gate_decision = ecosystem_rc_decision(compact_rc_gate)
     compact_rc_decision = compact_rc_gate_decision if release_candidate_passed else "FAIL"
@@ -8035,6 +9068,7 @@ def build_summary(
         "ecosystemRcPassed": ecosystem_rc_passed,
         "ecosystemRcDecision": compact_rc_decision,
         "ecosystemMatrix": compact_matrix,
+        "stableReadiness": compact_stable_readiness,
         "copiedArtifacts": copied_artifacts,
         "redaction": {
             "privateArtifactsExcluded": list(PRIVATE_ARTIFACT_NAMES),
@@ -8079,6 +9113,7 @@ def render_report(summary: dict[str, Any]) -> str:
     append_ecosystem_rc_gate(lines, summary)
     append_ecosystem_gates(lines, summary)
     append_ecosystem_matrix_summary(lines, summary)
+    append_stable_readiness_summary(lines, summary)
     append_waivers(lines, summary)
     append_regressions(lines, summary)
     lines.extend(["## Evidence Summary", "", "| Evidence | Status | Required for RC | Source | Summary |", "| --- | --- | --- | --- | --- |"])
@@ -8096,6 +9131,8 @@ def render_report(summary: dict[str, Any]) -> str:
     lines.extend(["", "## Release Operations", ""])
     append_detail(lines, summary, "release-certification.ecosystem-matrix")
     append_detail(lines, summary, ECOSYSTEM_RC_EVIDENCE_ID)
+    for evidence_id in STABLE_1_0_READINESS_EVIDENCE_IDS:
+        append_detail(lines, summary, evidence_id)
     lines.extend(["", "## Hyphanet Interop", ""])
     append_detail(lines, summary, "interop.smoke")
     append_detail(lines, summary, "interop.extended")
@@ -8353,6 +9390,29 @@ def append_ecosystem_matrix_summary(lines: list[str], summary: dict[str, Any]) -
     )
 
 
+def append_stable_readiness_summary(lines: list[str], summary: dict[str, Any]) -> None:
+    stable = summary.get("stableReadiness", {})
+    if not isinstance(stable, dict):
+        return
+    lines.extend(
+        [
+            "## Stable 1.0 Readiness",
+            "",
+            f"- Status: `{stable.get('status', 'missing')}`",
+            f"- Decision: `{stable.get('decision', 'not-attached')}`",
+            f"- Stable ready: `{str(stable.get('stableReady', False)).lower()}`",
+            f"- Required: `{str(stable.get('required', False)).lower()}`",
+            f"- Blockers: `{stable.get('blockerCount', 0)}`",
+            f"- Warnings: `{stable.get('warningCount', 0)}`",
+            f"- Allowed limitations: `{stable.get('allowedLimitationCount', 0)}`",
+            f"- Disallowed limitations: `{stable.get('disallowedLimitationCount', 0)}`",
+            f"- Redaction: `{stable.get('redactionStatus', 'missing')}`",
+            f"- Summary: {stable.get('summary', '')}",
+            "",
+        ]
+    )
+
+
 def append_ecosystem_rc_gate(lines: list[str], summary: dict[str, Any]) -> None:
     compact = summary.get("ecosystemRcGate", {})
     gates = summary.get("ecosystemGates", [])
@@ -8587,6 +9647,16 @@ def gather_evidence(settings: Settings, waiver_context: WaiverContext) -> list[E
     evidence = [item for item in evidence if item.id not in app_platform_docs_item_ids]
     evidence.extend(app_platform_docs_items)
     evidence.extend(production_beta_go_no_go_evidence(settings.workspace_root, settings.out_dir))
+    expected_stable_release_id = stable_readiness_expected_release_id(settings, evidence)
+    evidence.extend(
+        stable_readiness_evidence(
+            settings.stable_readiness_summary,
+            settings.stable_readiness_required,
+            settings.workspace_root,
+            settings.out_dir,
+            expected_stable_release_id,
+        )
+    )
     return [
         sanitize_evidence_item(
             with_waiver_record(
@@ -8832,6 +9902,11 @@ def settings_from_args(args: argparse.Namespace) -> Settings:
         or args.security_response_summary
         or os.environ.get("CRYPTAD_CERT_SECURITY_DRILLS_SUMMARY")
     )
+    stable_readiness_summary_arg = (
+        args.stable_readiness_summary
+        or args.stable_1_0_readiness_summary
+        or os.environ.get("CRYPTAD_CERT_STABLE_READINESS_SUMMARY")
+    )
     return Settings(
         workspace_root=workspace_root,
         out_dir=out_dir,
@@ -8859,6 +9934,15 @@ def settings_from_args(args: argparse.Namespace) -> Settings:
             resolve_path(workspace_root, Path(security_drills_summary_arg))
             if security_drills_summary_arg
             else None
+        ),
+        stable_readiness_summary=(
+            resolve_path(workspace_root, Path(stable_readiness_summary_arg))
+            if stable_readiness_summary_arg
+            else None
+        ),
+        stable_readiness_required=(
+            args.require_stable_readiness
+            or env_flag("CRYPTAD_CERT_REQUIRE_STABLE_READINESS")
         ),
     )
 
@@ -8908,6 +9992,19 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Deprecated alias for --security-drills-summary.",
     )
+    parser.add_argument(
+        "--stable-readiness-summary",
+        type=Path,
+        default=None,
+        help="Stable 1.0 readiness summary produced by stable_1_0_readiness.py.",
+    )
+    parser.add_argument(
+        "--stable-1-0-readiness-summary",
+        dest="stable_1_0_readiness_summary",
+        type=Path,
+        default=None,
+        help="Alias for --stable-readiness-summary.",
+    )
     parser.add_argument("--live-network-beta", action="store_true", help="Expect optional live-network beta evidence.")
     parser.add_argument(
         "--require-live-network-beta",
@@ -8918,6 +10015,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--require-multi-node-soak",
         action="store_true",
         help="Treat missing or failing multi-node beta soak evidence as release-blocking.",
+    )
+    parser.add_argument(
+        "--require-stable-readiness",
+        action="store_true",
+        help="Treat missing or failing Stable 1.0 readiness evidence as release-blocking.",
     )
     parser.add_argument("--waive", action="append", default=[], metavar="ID=REASON")
     parser.add_argument("--waiver-file", action="append", default=[], type=Path)
@@ -8932,6 +10034,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def run_self_test(repo_root: Path) -> None:
+    for unsafe_redaction_status in ("fail", "warn", "missing", "skip", "success", None, True):
+        assert redaction_signal_has_unwaivable_findings({"status": unsafe_redaction_status}), (
+            unsafe_redaction_status
+        )
+    assert not redaction_signal_has_unwaivable_findings({"status": "pass"})
     fixture_dir = repo_root / "tools/release-certification/fixtures"
     with tempfile.TemporaryDirectory(prefix="cryptad-cert-self-test-") as temp_name:
         workspace = Path(temp_name) / "repo"
@@ -9022,7 +10129,10 @@ def run_self_test(repo_root: Path) -> None:
             multi_node_soak_required=False,
             security_drills_summary=security_drills_summary,
             waivers={},
-            metadata={"selfTest": "true"},
+            metadata={
+                "selfTest": "true",
+                "candidateReleaseId": "cryptad-production-beta-self-test",
+            },
             skip_git_metadata=True,
             history_dir=workspace / "build/no-auto-history",
         )
@@ -9295,6 +10405,17 @@ def run_self_test(repo_root: Path) -> None:
             issue_id.startswith("evidence.live-network-beta.")
             for issue_id in disabled_live_row.get("issueIds", [])
         ), disabled_live_row
+        stable_not_requested_row = matrix_rows_by_id["stable-1-0-readiness"]
+        assert stable_not_requested_row["status"] == "pass", stable_not_requested_row
+        assert stable_not_requested_row["releaseBlocker"] is False, stable_not_requested_row
+        assert stable_not_requested_row["previousStatus"] == "pass", stable_not_requested_row
+        assert stable_not_requested_row["regressionStatus"] == "unchanged", stable_not_requested_row
+        assert stable_not_requested_row["details"]["notRequested"] is True, stable_not_requested_row
+        assert stable_not_requested_row["details"]["required"] is False, stable_not_requested_row
+        assert not any(
+            issue_id.startswith("evidence.stable-1.0.")
+            for issue_id in stable_not_requested_row.get("issueIds", [])
+        ), stable_not_requested_row
         covered_evidence_ids = {
             evidence_id
             for row in matrix["rows"]
@@ -10252,6 +11373,17 @@ def run_self_test(repo_root: Path) -> None:
             )
             return path
 
+        candidate_bound_network_soak = read_json(settings.network_scale_soak_summary)
+        assert candidate_bound_network_soak is not None
+        candidate_bound_network_soak["releaseId"] = "cryptad-beta-self-test"
+        safe_candidate_bound_network_soak, candidate_bound_network_soak_errors = (
+            allowlisted_network_scale_soak_summary(candidate_bound_network_soak)
+        )
+        assert candidate_bound_network_soak_errors == [], candidate_bound_network_soak_errors
+        assert safe_candidate_bound_network_soak["releaseId"] == "cryptad-beta-self-test", (
+            safe_candidate_bound_network_soak
+        )
+
         raw_network_soak = read_json(settings.network_scale_soak_summary)
         assert raw_network_soak is not None
         raw_network_soak["queueHtml"] = "<html>private queue details</html>"
@@ -10303,6 +11435,34 @@ def run_self_test(repo_root: Path) -> None:
             "private redaction field",
         ):
             assert forbidden not in encoded_raw_network_soak, encoded_raw_network_soak
+
+        missing_network_redaction_status = read_json(settings.network_scale_soak_summary)
+        assert missing_network_redaction_status is not None
+        missing_network_redaction_status["redaction"].pop("status", None)
+        missing_network_redaction_status_path = (
+            workspace / "build/network-scale-missing-redaction-status/summary.json"
+        )
+        write_json(missing_network_redaction_status_path, missing_network_redaction_status)
+        (
+            missing_network_redaction_status_summary,
+            missing_network_redaction_status_exit_code,
+        ) = run_with_previous(
+            "network-scale-missing-redaction-status-cert",
+            network_scale_soak_summary=missing_network_redaction_status_path,
+        )
+        assert missing_network_redaction_status_exit_code == 1, (
+            missing_network_redaction_status_summary
+        )
+        missing_network_redaction_status_item = evidence_by_id(
+            missing_network_redaction_status_summary,
+            NETWORK_SCALE_SOAK_EVIDENCE_ID,
+        )
+        assert missing_network_redaction_status_item["status"] == "fail", (
+            missing_network_redaction_status_item
+        )
+        assert "redaction.status must be one of the supported values" in (
+            missing_network_redaction_status_item["details"]["errors"]
+        ), missing_network_redaction_status_item
 
         fractional_network_soak = read_json(settings.network_scale_soak_summary)
         assert fractional_network_soak is not None
@@ -13215,6 +14375,2849 @@ def run_self_test(repo_root: Path) -> None:
         )
         for forbidden in ("hunter2", "USK@private", "/mnt/secrets/signing/key.pem", str(workspace)):
             assert forbidden not in sensitive_encoded, f"waiver reason leaked {forbidden}"
+
+        def stable_self_test_passing_domains() -> list[dict[str, Any]]:
+            return [
+                {
+                    "id": domain_id,
+                    "status": "pass",
+                    "summary": "Synthetic Stable domain row passed.",
+                    "evidenceIds": [],
+                    "blockers": [],
+                    "warnings": [],
+                    "allowedLimitations": [],
+                }
+                for domain_id in STABLE_1_0_READINESS_DOMAIN_IDS
+            ]
+
+        def stable_self_test_domains_with(
+            domain_id: str,
+            **updates: Any,
+        ) -> list[dict[str, Any]]:
+            domains = stable_self_test_passing_domains()
+            for domain in domains:
+                if domain.get("id") == domain_id:
+                    domain.update(updates)
+                    return domains
+            raise AssertionError(f"Stable self-test domain is missing {domain_id}")
+
+        def stable_self_test_summary(
+            release_id: str = "cryptad-production-beta-self-test",
+            *,
+            omitted_evidence_ids: set[str] | None = None,
+        ) -> dict[str, Any]:
+            omitted = omitted_evidence_ids or set()
+            return {
+                "schemaVersion": 1,
+                "kind": "stable-1.0-readiness",
+                "tool": "stable-1.0-readiness",
+                "releaseId": release_id,
+                "status": "pass",
+                "decision": "ready",
+                "stableReady": True,
+                "blockerCount": 0,
+                "warningCount": 0,
+                "allowedLimitationCount": 0,
+                "disallowedLimitationCount": 0,
+                "domains": stable_self_test_passing_domains(),
+                "blockers": [],
+                "warnings": [],
+                "allowedLimitations": [],
+                "disallowedLimitations": [],
+                "redaction": {"status": "pass", "findings": []},
+                "evidence": [
+                    {
+                        "id": evidence_id,
+                        "status": "pass",
+                        "summary": f"{evidence_id} passed.",
+                        "details": {"decision": "ready", "stableReady": True}
+                        if evidence_id == "stable-1.0.readiness-gate"
+                        else {},
+                    }
+                    for evidence_id in STABLE_1_0_READINESS_EVIDENCE_IDS
+                    if evidence_id not in omitted
+                ],
+            }
+
+        for tool_suffix, tool_value, expected_error in (
+            (
+                "missing",
+                None,
+                "tool is missing; expected stable-1.0-readiness",
+            ),
+            (
+                "wrong",
+                "other-stable-tool",
+                "tool must be stable-1.0-readiness",
+            ),
+        ):
+            stable_tool_summary = workspace / f"build/stable-readiness-{tool_suffix}-tool.json"
+            stable_tool_value = stable_self_test_summary()
+            if tool_value is None:
+                stable_tool_value.pop("tool", None)
+            else:
+                stable_tool_value["tool"] = tool_value
+            write_json(stable_tool_summary, stable_tool_value)
+            stable_tool_items = stable_readiness_evidence(
+                stable_tool_summary,
+                True,
+                workspace,
+                out_dir,
+                "cryptad-production-beta-self-test",
+            )
+            stable_tool_gate = next(
+                item
+                for item in stable_tool_items
+                if item.id == "stable-1.0.readiness-gate"
+            )
+            assert stable_tool_gate.status == "fail", stable_tool_gate
+            assert stable_tool_gate.details["validationErrors"] == [expected_error], (
+                stable_tool_gate
+            )
+
+        stable_warning_summary = workspace / "build/stable-readiness-warning.json"
+        stable_warning_value = stable_self_test_summary()
+        stable_warning_record = {
+            "id": "stable-1.0.synthetic-warning",
+            "evidenceId": "stable-1.0.support-feedback-readiness",
+            "severity": "warning",
+            "summary": "Synthetic Stable warning remains open for release-manager review.",
+        }
+        stable_warning_value["warningCount"] = 1
+        stable_warning_value["warnings"] = [stable_warning_record]
+        for domain in stable_warning_value["domains"]:
+            if isinstance(domain, dict) and domain.get("id") == "support-feedback-readiness":
+                domain["status"] = "warn"
+                domain["warnings"] = [stable_warning_record]
+                break
+        else:
+            raise AssertionError("Stable self-test summary is missing support-feedback-readiness")
+        write_json(stable_warning_summary, stable_warning_value)
+        stable_warning_items = stable_readiness_evidence(
+            stable_warning_summary,
+            True,
+            workspace,
+            out_dir,
+            "cryptad-production-beta-self-test",
+        )
+        stable_warning_gate = next(
+            item
+            for item in stable_warning_items
+            if item.id == "stable-1.0.readiness-gate"
+        )
+        assert stable_warning_gate.status == "warn", stable_warning_gate
+        assert stable_warning_gate.details["warningRecordCount"] == 1, stable_warning_gate
+        assert stable_warning_gate.details["domainWarningRecordCount"] == 1, (
+            stable_warning_gate
+        )
+        stable_warning_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/stable-warning-cert").resolve(),
+            stable_readiness_summary=stable_warning_summary,
+            stable_readiness_required=True,
+        )
+        stable_warning_cert, stable_warning_exit_code = run(stable_warning_settings)
+        assert stable_warning_exit_code == 0, stable_warning_cert
+        stable_warning_row = matrix_row_by_id(
+            stable_warning_settings.out_dir,
+            "stable-1-0-readiness",
+        )
+        assert stable_warning_row["status"] == "warn", stable_warning_row
+        assert stable_warning_row["releaseBlocker"] is False, stable_warning_row
+
+        stable_summary_status_only_warning_path = (
+            workspace / "build/stable-readiness-status-only-summary-warning.json"
+        )
+        stable_summary_status_only_warning_value = stable_self_test_summary()
+        stable_summary_status_only_warning_value["status"] = "warn"
+        write_json(
+            stable_summary_status_only_warning_path,
+            stable_summary_status_only_warning_value,
+        )
+        stable_summary_status_only_warning_items = stable_readiness_evidence(
+            stable_summary_status_only_warning_path,
+            True,
+            workspace,
+            out_dir,
+            "cryptad-production-beta-self-test",
+        )
+        stable_summary_status_only_warning_gate = next(
+            item
+            for item in stable_summary_status_only_warning_items
+            if item.id == "stable-1.0.readiness-gate"
+        )
+        assert stable_summary_status_only_warning_gate.status == "fail", (
+            stable_summary_status_only_warning_gate
+        )
+        assert stable_summary_status_only_warning_gate.details["validationErrors"] == [
+            "status is warn but no warnings or allowed limitations are reported"
+        ], stable_summary_status_only_warning_gate.details
+        stable_summary_status_only_warning_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/stable-status-only-summary-warning-cert").resolve(),
+            stable_readiness_summary=stable_summary_status_only_warning_path,
+            stable_readiness_required=True,
+        )
+        (
+            stable_summary_status_only_warning_cert,
+            stable_summary_status_only_warning_exit_code,
+        ) = run(stable_summary_status_only_warning_settings)
+        assert stable_summary_status_only_warning_exit_code == 1, (
+            stable_summary_status_only_warning_cert
+        )
+        stable_summary_status_only_warning_row = matrix_row_by_id(
+            stable_summary_status_only_warning_settings.out_dir,
+            "stable-1-0-readiness",
+        )
+        assert stable_summary_status_only_warning_row["status"] == "fail", (
+            stable_summary_status_only_warning_row
+        )
+        assert stable_summary_status_only_warning_row["releaseBlocker"] is True, (
+            stable_summary_status_only_warning_row
+        )
+
+        stable_status_only_warning_summary = (
+            workspace / "build/stable-readiness-status-only-domain-warning.json"
+        )
+        stable_status_only_warning_value = stable_self_test_summary()
+        for domain in stable_status_only_warning_value["domains"]:
+            if isinstance(domain, dict) and domain.get("id") == "support-feedback-readiness":
+                domain["status"] = "warn"
+                domain["summary"] = "Synthetic Stable domain reports an unsurfaced warning."
+                break
+        else:
+            raise AssertionError("Stable self-test summary is missing support-feedback-readiness")
+        write_json(stable_status_only_warning_summary, stable_status_only_warning_value)
+        stable_status_only_warning_items = stable_readiness_evidence(
+            stable_status_only_warning_summary,
+            True,
+            workspace,
+            out_dir,
+            "cryptad-production-beta-self-test",
+        )
+        stable_status_only_warning_gate = next(
+            item
+            for item in stable_status_only_warning_items
+            if item.id == "stable-1.0.readiness-gate"
+        )
+        assert stable_status_only_warning_gate.status == "fail", (
+            stable_status_only_warning_gate
+        )
+        assert (
+            "domain support-feedback-readiness status is warn but contains no warnings or allowed limitations"
+            in stable_status_only_warning_gate.details["validationErrors"]
+        ), stable_status_only_warning_gate
+        stable_status_only_warning_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/stable-status-only-domain-warning-cert").resolve(),
+            stable_readiness_summary=stable_status_only_warning_summary,
+            stable_readiness_required=True,
+        )
+        (
+            stable_status_only_warning_cert,
+            stable_status_only_warning_exit_code,
+        ) = run(stable_status_only_warning_settings)
+        assert stable_status_only_warning_exit_code == 1, stable_status_only_warning_cert
+        stable_status_only_warning_row = matrix_row_by_id(
+            stable_status_only_warning_settings.out_dir,
+            "stable-1-0-readiness",
+        )
+        assert stable_status_only_warning_row["status"] == "fail", (
+            stable_status_only_warning_row
+        )
+        assert stable_status_only_warning_row["releaseBlocker"] is True, (
+            stable_status_only_warning_row
+        )
+
+        stable_warning_mismatch_summary = (
+            workspace / "build/stable-readiness-warning-mismatch.json"
+        )
+        stable_warning_mismatch_value = stable_self_test_summary()
+        stable_warning_mismatch_value["warningCount"] = 1
+        write_json(stable_warning_mismatch_summary, stable_warning_mismatch_value)
+        stable_warning_mismatch_items = stable_readiness_evidence(
+            stable_warning_mismatch_summary,
+            True,
+            workspace,
+            out_dir,
+            "cryptad-production-beta-self-test",
+        )
+        stable_warning_mismatch_gate = next(
+            item
+            for item in stable_warning_mismatch_items
+            if item.id == "stable-1.0.readiness-gate"
+        )
+        assert stable_warning_mismatch_gate.status == "fail", stable_warning_mismatch_gate
+        assert (
+            "warningCount is 1 but warnings contains 0 record(s)"
+            in stable_warning_mismatch_gate.details["validationErrors"]
+        ), stable_warning_mismatch_gate
+        assert (
+            "warningCount is 1 but domains contain 0 warning record(s)"
+            in stable_warning_mismatch_gate.details["validationErrors"]
+        ), stable_warning_mismatch_gate
+
+        for failing_synthetic_evidence_id in (
+            "stable-1.0.readiness-gate",
+            "stable-1.0.redaction",
+        ):
+            stable_failed_reported_row_summary = stable_self_test_summary()
+            for entry in stable_failed_reported_row_summary["evidence"]:
+                if isinstance(entry, dict) and entry.get("id") == failing_synthetic_evidence_id:
+                    entry["status"] = "fail"
+                    entry["summary"] = (
+                        f"{failing_synthetic_evidence_id} failed in the reported evidence row."
+                    )
+                    break
+            else:
+                raise AssertionError(
+                    f"Stable self-test summary is missing {failing_synthetic_evidence_id}"
+                )
+            stable_failed_reported_row_path = (
+                workspace
+                / "build"
+                / f"stable-readiness-reported-{failing_synthetic_evidence_id.replace('.', '-')}-fail.json"
+            )
+            write_json(stable_failed_reported_row_path, stable_failed_reported_row_summary)
+            stable_failed_reported_row_items = stable_readiness_evidence(
+                stable_failed_reported_row_path,
+                True,
+                workspace,
+                out_dir,
+                "cryptad-production-beta-self-test",
+            )
+            stable_failed_reported_row_item = next(
+                item
+                for item in stable_failed_reported_row_items
+                if item.id == failing_synthetic_evidence_id
+            )
+            assert stable_failed_reported_row_item.status == "fail", (
+                stable_failed_reported_row_item
+            )
+            assert stable_failed_reported_row_item.details[
+                "reportedStableReadinessEvidenceStatus"
+            ] == "fail", stable_failed_reported_row_item.details
+
+        nested_security_drill_release_id = EvidenceItem(
+            "production-security.response-runbook",
+            "pass",
+            True,
+            "Synthetic security response runbook evidence passed.",
+            "self-test",
+            {
+                "securityDrills": {
+                    "details": {
+                        "releaseId": "cryptad-cert-release-candidate",
+                    },
+                },
+            },
+        )
+        settings_without_stable_candidate = dataclasses.replace(
+            settings,
+            metadata={"selfTest": "true"},
+        )
+        assert stable_readiness_expected_release_id(
+            settings_without_stable_candidate,
+            [nested_security_drill_release_id],
+        ) == "", "nested security drill releaseId must not bind Stable readiness"
+        top_level_security_release_id = dataclasses.replace(
+            nested_security_drill_release_id,
+            details={
+                **nested_security_drill_release_id.details,
+                "candidateReleaseId": "cryptad-beta-explicit",
+            },
+        )
+        assert stable_readiness_expected_release_id(
+            settings_without_stable_candidate,
+            [top_level_security_release_id],
+        ) == "", "production-security evidence releaseId must not implicitly bind Stable readiness"
+        metadata_bound_settings = dataclasses.replace(
+            settings_without_stable_candidate,
+            metadata={
+                **settings_without_stable_candidate.metadata,
+                "candidateReleaseId": "cryptad-beta-metadata",
+            },
+        )
+        assert stable_readiness_expected_release_id(
+            metadata_bound_settings,
+            [nested_security_drill_release_id],
+        ) == "cryptad-beta-metadata"
+
+        stable_missing_candidate_id_summary = (
+            workspace / "build/stable-readiness-missing-candidate-id.json"
+        )
+        write_json(
+            stable_missing_candidate_id_summary,
+            stable_self_test_summary("cryptad-beta-from-production"),
+        )
+        stable_missing_candidate_id_settings = dataclasses.replace(
+            settings_without_stable_candidate,
+            out_dir=(workspace / "build/stable-missing-candidate-id-cert").resolve(),
+            stable_readiness_summary=stable_missing_candidate_id_summary,
+            stable_readiness_required=True,
+        )
+        stable_missing_candidate_id_cert, stable_missing_candidate_id_exit_code = run(
+            stable_missing_candidate_id_settings
+        )
+        assert stable_missing_candidate_id_exit_code == 1, stable_missing_candidate_id_cert
+        stable_missing_candidate_id_row = matrix_row_by_id(
+            stable_missing_candidate_id_settings.out_dir,
+            "stable-1-0-readiness",
+        )
+        assert stable_missing_candidate_id_row["status"] == "fail", stable_missing_candidate_id_row
+        assert stable_missing_candidate_id_row["releaseBlocker"] is True, (
+            stable_missing_candidate_id_row
+        )
+        assert "evidence.stable-1.0.readiness-gate" in stable_missing_candidate_id_row[
+            "issueIds"
+        ], stable_missing_candidate_id_row
+        stable_missing_candidate_id_gate = next(
+            item
+            for item in stable_missing_candidate_id_cert["evidence"]
+            if item["id"] == "stable-1.0.readiness-gate"
+        )
+        assert stable_missing_candidate_id_gate["details"]["validationErrors"] == [
+            "candidate releaseId metadata is required when Stable readiness is required"
+        ], stable_missing_candidate_id_gate
+
+        stable_metadata_bound_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/stable-metadata-bound-cert").resolve(),
+            metadata={
+                **settings.metadata,
+                "candidateReleaseId": "cryptad-beta-from-production",
+            },
+            stable_readiness_summary=stable_missing_candidate_id_summary,
+            stable_readiness_required=True,
+        )
+        stable_metadata_bound_cert, stable_metadata_bound_exit_code = run(
+            stable_metadata_bound_settings
+        )
+        assert stable_metadata_bound_exit_code == 0, stable_metadata_bound_cert
+        stable_metadata_bound_row = matrix_row_by_id(
+            stable_metadata_bound_settings.out_dir,
+            "stable-1-0-readiness",
+        )
+        assert stable_metadata_bound_row["status"] == "pass", stable_metadata_bound_row
+        assert stable_metadata_bound_row["releaseBlocker"] is False, (
+            stable_metadata_bound_row
+        )
+
+        stable_missing_summary_waived_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/stable-missing-summary-waived-cert").resolve(),
+            stable_readiness_summary=None,
+            stable_readiness_required=True,
+            waivers={
+                "stable-1-0-readiness": "Attempted row waiver for missing Stable readiness.",
+                "matrix.stable-readiness.redaction-failed": (
+                    "Attempted matrix waiver for missing Stable readiness."
+                ),
+            },
+        )
+        stable_missing_summary_waived_cert, stable_missing_summary_waived_exit_code = run(
+            stable_missing_summary_waived_settings
+        )
+        assert stable_missing_summary_waived_exit_code == 1, stable_missing_summary_waived_cert
+        stable_missing_summary_waived_row = matrix_row_by_id(
+            stable_missing_summary_waived_settings.out_dir,
+            "stable-1-0-readiness",
+        )
+        assert stable_missing_summary_waived_row["status"] == "fail", (
+            stable_missing_summary_waived_row
+        )
+        assert stable_missing_summary_waived_row["releaseBlocker"] is True, (
+            stable_missing_summary_waived_row
+        )
+        assert stable_missing_summary_waived_row.get("waiverIds") == [], (
+            stable_missing_summary_waived_row
+        )
+        assert "matrix.stable-readiness.redaction-failed" in stable_missing_summary_waived_row[
+            "issueIds"
+        ], stable_missing_summary_waived_row
+        assert stable_missing_summary_waived_row["details"]["unwaivableIssueIds"] == [
+            "matrix.stable-readiness.redaction-failed"
+        ], stable_missing_summary_waived_row
+        assert stable_missing_summary_waived_row["details"][
+            "unwaivableRedactionEvidenceIds"
+        ] == ["stable-1.0.redaction"], stable_missing_summary_waived_row
+
+        def assert_required_stable_mode_failed(
+            cert: dict[str, Any],
+            exit_code: int,
+            case_settings: Settings,
+        ) -> None:
+            assert exit_code == 1, cert
+            assert cert["status"] == "fail", cert
+            assert cert["promotionDecision"] == "FAIL", cert
+            assert cert["releaseCandidatePassed"] is False, cert
+            assert cert["ecosystemMatrixStatus"] == "fail", cert
+            stable_row = matrix_row_by_id(
+                case_settings.out_dir,
+                STABLE_1_0_READINESS_MATRIX_ROW_ID,
+            )
+            assert stable_row["status"] == "fail", stable_row
+            assert stable_row["releaseBlocker"] is True, stable_row
+
+        for stable_required_mode in ("pr", "nightly"):
+            stable_required_missing_settings = dataclasses.replace(
+                settings,
+                out_dir=(
+                    workspace / f"build/stable-required-missing-{stable_required_mode}-cert"
+                ).resolve(),
+                mode=stable_required_mode,
+                stable_readiness_summary=None,
+                stable_readiness_required=True,
+            )
+            stable_required_missing_cert, stable_required_missing_exit_code = run(
+                stable_required_missing_settings
+            )
+            assert_required_stable_mode_failed(
+                stable_required_missing_cert,
+                stable_required_missing_exit_code,
+                stable_required_missing_settings,
+            )
+
+        stable_required_not_ready_summary = (
+            workspace / "build/stable-readiness-required-not-ready.json"
+        )
+        stable_required_not_ready_value = stable_self_test_summary()
+        stable_required_not_ready_value.update(
+            {
+                "status": "fail",
+                "decision": "not-ready",
+                "stableReady": False,
+                "blockerCount": 1,
+                "blockers": [
+                    {
+                        "id": "stable-required-self-test-blocker",
+                        "evidenceId": "stable-1.0.readiness-gate",
+                        "summary": "Synthetic Stable readiness blocker.",
+                    }
+                ],
+            }
+        )
+        write_json(stable_required_not_ready_summary, stable_required_not_ready_value)
+        for stable_required_mode in ("pr", "nightly"):
+            stable_required_not_ready_settings = dataclasses.replace(
+                settings,
+                out_dir=(
+                    workspace / f"build/stable-required-not-ready-{stable_required_mode}-cert"
+                ).resolve(),
+                mode=stable_required_mode,
+                stable_readiness_summary=stable_required_not_ready_summary,
+                stable_readiness_required=True,
+            )
+            stable_required_not_ready_cert, stable_required_not_ready_exit_code = run(
+                stable_required_not_ready_settings
+            )
+            assert_required_stable_mode_failed(
+                stable_required_not_ready_cert,
+                stable_required_not_ready_exit_code,
+                stable_required_not_ready_settings,
+            )
+
+        stable_release_mismatch_summary = workspace / "build/stable-readiness-release-mismatch.json"
+        write_json(
+            stable_release_mismatch_summary,
+            {
+                "schemaVersion": 1,
+                "kind": "stable-1.0-readiness",
+                "tool": "stable-1.0-readiness",
+                "releaseId": "cryptad-beta-old",
+                "status": "pass",
+                "decision": "ready",
+                "stableReady": True,
+                "blockerCount": 0,
+                "warningCount": 0,
+                "allowedLimitationCount": 0,
+                "disallowedLimitationCount": 0,
+                "domains": stable_self_test_passing_domains(),
+                "blockers": [],
+                "warnings": [],
+                "allowedLimitations": [],
+                "disallowedLimitations": [],
+                "redaction": {"status": "pass", "findings": []},
+                "evidence": [
+                    {
+                        "id": evidence_id,
+                        "status": "pass",
+                        "summary": f"{evidence_id} passed.",
+                        "details": {"decision": "ready", "stableReady": True}
+                        if evidence_id == "stable-1.0.readiness-gate"
+                        else {},
+                    }
+                    for evidence_id in STABLE_1_0_READINESS_EVIDENCE_IDS
+                ],
+            },
+        )
+        stable_release_mismatch_items = stable_readiness_evidence(
+            stable_release_mismatch_summary,
+            True,
+            workspace,
+            out_dir,
+            "cryptad-production-beta-self-test",
+        )
+        stable_release_mismatch_gate = next(
+            item
+            for item in stable_release_mismatch_items
+            if item.id == "stable-1.0.readiness-gate"
+        )
+        assert stable_release_mismatch_gate.status == "fail", stable_release_mismatch_gate
+        assert stable_release_mismatch_gate.details["validationErrors"] == [
+            "releaseId must match candidate cryptad-production-beta-self-test; summary releaseId is cryptad-beta-old"
+        ], stable_release_mismatch_gate.details
+        stable_release_mismatch_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/stable-release-mismatch-cert").resolve(),
+            metadata={
+                **settings.metadata,
+                "candidateReleaseId": "cryptad-production-beta-self-test",
+            },
+            stable_readiness_summary=stable_release_mismatch_summary,
+            stable_readiness_required=True,
+        )
+        stable_release_mismatch_cert, stable_release_mismatch_exit_code = run(
+            stable_release_mismatch_settings
+        )
+        assert stable_release_mismatch_exit_code == 1, stable_release_mismatch_cert
+        stable_release_mismatch_row = matrix_row_by_id(
+            stable_release_mismatch_settings.out_dir,
+            "stable-1-0-readiness",
+        )
+        assert stable_release_mismatch_row["status"] == "fail", stable_release_mismatch_row
+        assert stable_release_mismatch_row["releaseBlocker"] is True, stable_release_mismatch_row
+        assert "evidence.stable-1.0.readiness-gate" in stable_release_mismatch_row["issueIds"], (
+            stable_release_mismatch_row
+        )
+        assert "matrix.stable-readiness.evidence-not-passing" in stable_release_mismatch_row["issueIds"], (
+            stable_release_mismatch_row
+        )
+
+        stable_missing_domains_summary = workspace / "build/stable-readiness-missing-domains.json"
+        write_json(
+            stable_missing_domains_summary,
+            {
+                "schemaVersion": 1,
+                "kind": "stable-1.0-readiness",
+                "tool": "stable-1.0-readiness",
+                "releaseId": "cryptad-production-beta-self-test",
+                "status": "pass",
+                "decision": "ready",
+                "stableReady": True,
+                "blockerCount": 0,
+                "warningCount": 0,
+                "allowedLimitationCount": 0,
+                "disallowedLimitationCount": 0,
+                "blockers": [],
+                "warnings": [],
+                "allowedLimitations": [],
+                "disallowedLimitations": [],
+                "redaction": {"status": "pass", "findings": []},
+                "evidence": [
+                    {
+                        "id": evidence_id,
+                        "status": "pass",
+                        "summary": f"{evidence_id} passed.",
+                        "details": {"decision": "ready", "stableReady": True}
+                        if evidence_id == "stable-1.0.readiness-gate"
+                        else {},
+                    }
+                    for evidence_id in STABLE_1_0_READINESS_EVIDENCE_IDS
+                ],
+            },
+        )
+        stable_missing_domains_items = stable_readiness_evidence(
+            stable_missing_domains_summary,
+            True,
+            workspace,
+            out_dir,
+            "cryptad-production-beta-self-test",
+        )
+        stable_missing_domains_gate = next(
+            item
+            for item in stable_missing_domains_items
+            if item.id == "stable-1.0.readiness-gate"
+        )
+        assert stable_missing_domains_gate.status == "fail", stable_missing_domains_gate
+        assert stable_missing_domains_gate.details["validationErrors"] == [
+            "domains must be a non-empty list"
+        ], stable_missing_domains_gate.details
+        stable_missing_domains_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/stable-missing-domains-cert").resolve(),
+            stable_readiness_summary=stable_missing_domains_summary,
+            stable_readiness_required=True,
+        )
+        stable_missing_domains_cert, stable_missing_domains_exit_code = run(
+            stable_missing_domains_settings
+        )
+        assert stable_missing_domains_exit_code == 1, stable_missing_domains_cert
+        stable_missing_domains_row = matrix_row_by_id(
+            stable_missing_domains_settings.out_dir,
+            "stable-1-0-readiness",
+        )
+        assert stable_missing_domains_row["status"] == "fail", stable_missing_domains_row
+        assert stable_missing_domains_row["releaseBlocker"] is True, stable_missing_domains_row
+        assert "evidence.stable-1.0.readiness-gate" in stable_missing_domains_row["issueIds"], (
+            stable_missing_domains_row
+        )
+        assert "matrix.stable-readiness.evidence-not-passing" in stable_missing_domains_row["issueIds"], (
+            stable_missing_domains_row
+        )
+
+        stable_truncated_domains_summary = (
+            workspace / "build/stable-readiness-truncated-domains.json"
+        )
+        stable_truncated_domains_value = stable_self_test_summary()
+        stable_truncated_domains_value["domains"] = [
+            {
+                "id": "stub-domain",
+                "status": "pass",
+                "summary": "Synthetic truncated Stable domain row.",
+                "evidenceIds": [],
+                "blockers": [],
+                "warnings": [],
+                "allowedLimitations": [],
+            }
+        ]
+        write_json(stable_truncated_domains_summary, stable_truncated_domains_value)
+        stable_truncated_domains_items = stable_readiness_evidence(
+            stable_truncated_domains_summary,
+            True,
+            workspace,
+            out_dir,
+            "cryptad-production-beta-self-test",
+        )
+        stable_truncated_domains_gate = next(
+            item
+            for item in stable_truncated_domains_items
+            if item.id == "stable-1.0.readiness-gate"
+        )
+        assert stable_truncated_domains_gate.status == "fail", stable_truncated_domains_gate
+        assert any(
+            error.startswith("domains are missing required IDs:")
+            for error in stable_truncated_domains_gate.details["validationErrors"]
+        ), stable_truncated_domains_gate.details
+        stable_truncated_domains_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/stable-truncated-domains-cert").resolve(),
+            stable_readiness_summary=stable_truncated_domains_summary,
+            stable_readiness_required=True,
+        )
+        stable_truncated_domains_cert, stable_truncated_domains_exit_code = run(
+            stable_truncated_domains_settings
+        )
+        assert stable_truncated_domains_exit_code == 1, stable_truncated_domains_cert
+        stable_truncated_domains_row = matrix_row_by_id(
+            stable_truncated_domains_settings.out_dir,
+            "stable-1-0-readiness",
+        )
+        assert stable_truncated_domains_row["status"] == "fail", stable_truncated_domains_row
+        assert stable_truncated_domains_row["releaseBlocker"] is True, (
+            stable_truncated_domains_row
+        )
+
+        stable_failed_domain_summary = workspace / "build/stable-readiness-failed-domain.json"
+        write_json(
+            stable_failed_domain_summary,
+            {
+                "schemaVersion": 1,
+                "kind": "stable-1.0-readiness",
+                "tool": "stable-1.0-readiness",
+                "releaseId": "cryptad-production-beta-self-test",
+                "status": "pass",
+                "decision": "ready",
+                "stableReady": True,
+                "blockerCount": 0,
+                "warningCount": 0,
+                "allowedLimitationCount": 0,
+                "disallowedLimitationCount": 0,
+                "domains": stable_self_test_domains_with(
+                    "production-beta-state",
+                    status="fail",
+                    summary="Synthetic failed Stable domain row.",
+                ),
+                "blockers": [],
+                "warnings": [],
+                "allowedLimitations": [],
+                "disallowedLimitations": [],
+                "redaction": {"status": "pass", "findings": []},
+                "evidence": [
+                    {
+                        "id": evidence_id,
+                        "status": "pass",
+                        "summary": f"{evidence_id} passed.",
+                        "details": {"decision": "ready", "stableReady": True}
+                        if evidence_id == "stable-1.0.readiness-gate"
+                        else {},
+                    }
+                    for evidence_id in STABLE_1_0_READINESS_EVIDENCE_IDS
+                ],
+            },
+        )
+        stable_failed_domain_items = stable_readiness_evidence(
+            stable_failed_domain_summary,
+            True,
+            workspace,
+            out_dir,
+            "cryptad-production-beta-self-test",
+        )
+        stable_failed_domain_gate = next(
+            item
+            for item in stable_failed_domain_items
+            if item.id == "stable-1.0.readiness-gate"
+        )
+        assert stable_failed_domain_gate.status == "fail", stable_failed_domain_gate
+        assert stable_failed_domain_gate.details["validationErrors"] == [
+            "domain production-beta-state status is fail"
+        ], stable_failed_domain_gate.details
+
+        stable_malformed_allowed_domain_summary = (
+            workspace / "build/stable-readiness-malformed-domain-allowed-limitation.json"
+        )
+        write_json(
+            stable_malformed_allowed_domain_summary,
+            {
+                "schemaVersion": 1,
+                "kind": "stable-1.0-readiness",
+                "tool": "stable-1.0-readiness",
+                "releaseId": "cryptad-production-beta-self-test",
+                "status": "pass",
+                "decision": "ready",
+                "stableReady": True,
+                "blockerCount": 0,
+                "warningCount": 0,
+                "allowedLimitationCount": 0,
+                "disallowedLimitationCount": 0,
+                "domains": stable_self_test_domains_with(
+                    "production-beta-state",
+                    summary="Synthetic passed Stable domain row with malformed allowed limitation.",
+                    allowedLimitations=[1],
+                ),
+                "blockers": [],
+                "warnings": [],
+                "allowedLimitations": [],
+                "disallowedLimitations": [],
+                "redaction": {"status": "pass", "findings": []},
+                "evidence": [
+                    {
+                        "id": evidence_id,
+                        "status": "pass",
+                        "summary": f"{evidence_id} passed.",
+                        "details": {"decision": "ready", "stableReady": True}
+                        if evidence_id == "stable-1.0.readiness-gate"
+                        else {},
+                    }
+                    for evidence_id in STABLE_1_0_READINESS_EVIDENCE_IDS
+                ],
+            },
+        )
+        stable_malformed_allowed_domain_items = stable_readiness_evidence(
+            stable_malformed_allowed_domain_summary,
+            True,
+            workspace,
+            out_dir,
+            "cryptad-production-beta-self-test",
+        )
+        stable_malformed_allowed_domain_gate = next(
+            item
+            for item in stable_malformed_allowed_domain_items
+            if item.id == "stable-1.0.readiness-gate"
+        )
+        assert stable_malformed_allowed_domain_gate.status == "fail", stable_malformed_allowed_domain_gate
+        assert stable_malformed_allowed_domain_gate.details["validationErrors"] == [
+            "domain production-beta-state allowedLimitations[0] must be an object"
+        ], stable_malformed_allowed_domain_gate.details
+        stable_malformed_allowed_domain_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/stable-malformed-domain-allowed-limitation-cert").resolve(),
+            stable_readiness_summary=stable_malformed_allowed_domain_summary,
+            stable_readiness_required=True,
+        )
+        stable_malformed_allowed_domain_cert, stable_malformed_allowed_domain_exit_code = run(
+            stable_malformed_allowed_domain_settings
+        )
+        assert stable_malformed_allowed_domain_exit_code == 1, stable_malformed_allowed_domain_cert
+        stable_malformed_allowed_domain_row = matrix_row_by_id(
+            stable_malformed_allowed_domain_settings.out_dir,
+            "stable-1-0-readiness",
+        )
+        assert stable_malformed_allowed_domain_row["status"] == "fail", stable_malformed_allowed_domain_row
+        assert stable_malformed_allowed_domain_row["releaseBlocker"] is True, stable_malformed_allowed_domain_row
+        assert "evidence.stable-1.0.readiness-gate" in stable_malformed_allowed_domain_row["issueIds"], (
+            stable_malformed_allowed_domain_row
+        )
+        assert "matrix.stable-readiness.evidence-not-passing" in stable_malformed_allowed_domain_row[
+            "issueIds"
+        ], stable_malformed_allowed_domain_row
+
+        hidden_allowed_limitation = {
+            "id": "stable-1.0.self-test-hidden-allowed-limitation",
+            "title": "Hidden self-test allowed Stable limitation",
+            "category": "ui-polish-accessibility-warning",
+            "classification": "allowed-for-stable-1.0",
+            "status": "open",
+            "summary": "Synthetic domain-scoped Stable limitation.",
+            "evidenceIds": ["stable-1.0.known-limitations"],
+            "boundedBy": "Self-test release manager bound for a non-blocking Stable limitation.",
+        }
+        hidden_allowed_domain_summary = {
+            "domains": stable_self_test_domains_with(
+                "known-limitations",
+                status="warn",
+                allowedLimitations=[hidden_allowed_limitation],
+            ),
+            "allowedLimitations": [],
+        }
+        hidden_allowed_domain_errors = stable_readiness_domain_errors(
+            hidden_allowed_domain_summary
+        )
+        assert hidden_allowed_domain_errors == [
+            "domain known-limitations allowedLimitations[0] is not present in top-level allowedLimitations"
+        ], hidden_allowed_domain_errors
+        passing_domain_with_limitation_summary = {
+            "domains": stable_self_test_domains_with(
+                "known-limitations",
+                status="pass",
+                allowedLimitations=[hidden_allowed_limitation],
+            ),
+            "allowedLimitations": [hidden_allowed_limitation],
+        }
+        passing_domain_with_limitation_errors = stable_readiness_domain_errors(
+            passing_domain_with_limitation_summary
+        )
+        assert passing_domain_with_limitation_errors == [
+            "domain known-limitations status is pass but contains 1 allowed limitation(s)"
+        ], passing_domain_with_limitation_errors
+
+        stable_domain_blocker_summary = workspace / "build/stable-readiness-domain-blocker.json"
+        write_json(
+            stable_domain_blocker_summary,
+            {
+                "schemaVersion": 1,
+                "kind": "stable-1.0-readiness",
+                "tool": "stable-1.0-readiness",
+                "releaseId": "cryptad-production-beta-self-test",
+                "status": "pass",
+                "decision": "ready",
+                "stableReady": True,
+                "blockerCount": 0,
+                "warningCount": 0,
+                "allowedLimitationCount": 0,
+                "disallowedLimitationCount": 0,
+                "domains": stable_self_test_domains_with(
+                    "production-beta-state",
+                    summary="Synthetic Stable domain row with hidden blocker.",
+                    blockers=[
+                        {
+                            "id": "stable-self-test-domain-blocker",
+                            "evidenceId": "stable-1.0.production-beta-state",
+                            "summary": "Synthetic Stable domain blocker.",
+                        }
+                    ],
+                ),
+                "blockers": [],
+                "warnings": [],
+                "allowedLimitations": [],
+                "disallowedLimitations": [],
+                "redaction": {"status": "pass", "findings": []},
+                "evidence": [
+                    {
+                        "id": evidence_id,
+                        "status": "pass",
+                        "summary": f"{evidence_id} passed.",
+                        "details": {"decision": "ready", "stableReady": True}
+                        if evidence_id == "stable-1.0.readiness-gate"
+                        else {},
+                    }
+                    for evidence_id in STABLE_1_0_READINESS_EVIDENCE_IDS
+                ],
+            },
+        )
+        stable_domain_blocker_items = stable_readiness_evidence(
+            stable_domain_blocker_summary,
+            True,
+            workspace,
+            out_dir,
+            "cryptad-production-beta-self-test",
+        )
+        stable_domain_blocker_gate = next(
+            item
+            for item in stable_domain_blocker_items
+            if item.id == "stable-1.0.readiness-gate"
+        )
+        assert stable_domain_blocker_gate.status == "fail", stable_domain_blocker_gate
+        assert stable_domain_blocker_gate.details["validationErrors"] == [
+            "domain production-beta-state contains 1 blocker(s)"
+        ], stable_domain_blocker_gate.details
+        stable_domain_blocker_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/stable-domain-blocker-cert").resolve(),
+            stable_readiness_summary=stable_domain_blocker_summary,
+            stable_readiness_required=True,
+        )
+        stable_domain_blocker_cert, stable_domain_blocker_exit_code = run(
+            stable_domain_blocker_settings
+        )
+        assert stable_domain_blocker_exit_code == 1, stable_domain_blocker_cert
+        stable_domain_blocker_row = matrix_row_by_id(
+            stable_domain_blocker_settings.out_dir,
+            "stable-1-0-readiness",
+        )
+        assert stable_domain_blocker_row["status"] == "fail", stable_domain_blocker_row
+        assert stable_domain_blocker_row["releaseBlocker"] is True, stable_domain_blocker_row
+        assert "evidence.stable-1.0.readiness-gate" in stable_domain_blocker_row["issueIds"], (
+            stable_domain_blocker_row
+        )
+        assert "matrix.stable-readiness.evidence-not-passing" in stable_domain_blocker_row["issueIds"], (
+            stable_domain_blocker_row
+        )
+
+        stable_missing_redaction_summary = workspace / "build/stable-readiness-missing-redaction.json"
+        write_json(
+            stable_missing_redaction_summary,
+            {
+                "schemaVersion": 1,
+                "kind": "stable-1.0-readiness",
+                "tool": "stable-1.0-readiness",
+                "releaseId": "cryptad-production-beta-self-test",
+                "status": "pass",
+                "decision": "ready",
+                "stableReady": True,
+                "blockerCount": 0,
+                "warningCount": 0,
+                "allowedLimitationCount": 0,
+                "disallowedLimitationCount": 0,
+                "domains": stable_self_test_passing_domains(),
+                "blockers": [],
+                "warnings": [],
+                "allowedLimitations": [],
+                "disallowedLimitations": [],
+            },
+        )
+        stable_items = stable_readiness_evidence(
+            stable_missing_redaction_summary,
+            True,
+            workspace,
+            out_dir,
+        )
+        stable_statuses = {item.id: item.status for item in stable_items}
+        assert stable_statuses["stable-1.0.readiness-gate"] == "fail", stable_statuses
+        assert stable_statuses["stable-1.0.redaction"] == "fail", stable_statuses
+        stable_redaction_waived_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/stable-redaction-waived-cert").resolve(),
+            stable_readiness_summary=stable_missing_redaction_summary,
+            stable_readiness_required=True,
+            waivers={
+                "stable-1-0-readiness": "Attempted row waiver for Stable redaction failure.",
+                "matrix.stable-readiness.redaction-failed": "Attempted matrix issue waiver for Stable redaction failure.",
+            },
+        )
+        stable_redaction_waived_summary, stable_redaction_waived_exit_code = run(
+            stable_redaction_waived_settings
+        )
+        assert stable_redaction_waived_exit_code == 1, stable_redaction_waived_summary
+        stable_redaction_waived_row = matrix_row_by_id(
+            stable_redaction_waived_settings.out_dir,
+            "stable-1-0-readiness",
+        )
+        assert stable_redaction_waived_row["status"] == "fail", stable_redaction_waived_row
+        assert stable_redaction_waived_row["releaseBlocker"] is True, stable_redaction_waived_row
+        assert stable_redaction_waived_row.get("waiverIds") == [], stable_redaction_waived_row
+        assert stable_redaction_waived_row["details"]["unwaivableRedactionEvidenceIds"] == [
+            "stable-1.0.redaction"
+        ], stable_redaction_waived_row
+        assert stable_redaction_waived_row["details"]["unwaivableIssueIds"] == [
+            "matrix.stable-readiness.redaction-failed"
+        ], stable_redaction_waived_row
+
+        stable_redaction_warn_summary = workspace / "build/stable-readiness-redaction-warn.json"
+        stable_redaction_warn_value = stable_self_test_summary()
+        for entry in stable_redaction_warn_value["evidence"]:
+            if isinstance(entry, dict) and entry.get("id") == "stable-1.0.redaction":
+                entry["status"] = "warn"
+                entry["summary"] = "Synthetic Stable redaction warning."
+                break
+        else:
+            raise AssertionError("Stable self-test summary is missing stable-1.0.redaction")
+        write_json(stable_redaction_warn_summary, stable_redaction_warn_value)
+        stable_redaction_warn_items = stable_readiness_evidence(
+            stable_redaction_warn_summary,
+            True,
+            workspace,
+            out_dir,
+            "cryptad-production-beta-self-test",
+        )
+        stable_redaction_warn_statuses = {
+            item.id: item.status for item in stable_redaction_warn_items
+        }
+        assert stable_redaction_warn_statuses["stable-1.0.redaction"] == "warn", (
+            stable_redaction_warn_statuses
+        )
+        stable_redaction_warn_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/stable-redaction-warn-cert").resolve(),
+            stable_readiness_summary=stable_redaction_warn_summary,
+            stable_readiness_required=True,
+        )
+        stable_redaction_warn_cert, stable_redaction_warn_exit_code = run(
+            stable_redaction_warn_settings
+        )
+        assert stable_redaction_warn_exit_code == 1, stable_redaction_warn_cert
+        stable_redaction_warn_row = matrix_row_by_id(
+            stable_redaction_warn_settings.out_dir,
+            "stable-1-0-readiness",
+        )
+        assert stable_redaction_warn_row["status"] == "fail", stable_redaction_warn_row
+        assert stable_redaction_warn_row["releaseBlocker"] is True, stable_redaction_warn_row
+        assert stable_redaction_warn_row["details"]["unwaivableRedactionEvidenceIds"] == [
+            "stable-1.0.redaction"
+        ], stable_redaction_warn_row
+        assert "matrix.stable-readiness.redaction-failed" in stable_redaction_warn_row[
+            "issueIds"
+        ], stable_redaction_warn_row
+
+        stable_redaction_count_summary = workspace / "build/stable-readiness-redaction-count.json"
+        write_json(
+            stable_redaction_count_summary,
+            {
+                "schemaVersion": 1,
+                "kind": "stable-1.0-readiness",
+                "tool": "stable-1.0-readiness",
+                "releaseId": "cryptad-production-beta-self-test",
+                "status": "pass",
+                "decision": "ready",
+                "stableReady": True,
+                "blockerCount": 0,
+                "warningCount": 0,
+                "allowedLimitationCount": 0,
+                "disallowedLimitationCount": 0,
+                "domains": stable_self_test_passing_domains(),
+                "blockers": [],
+                "warnings": [],
+                "allowedLimitations": [],
+                "disallowedLimitations": [],
+                "redaction": {"status": "pass", "findingCount": 1},
+                "evidence": [
+                    {
+                        "id": evidence_id,
+                        "status": "pass",
+                        "summary": f"{evidence_id} passed.",
+                        "details": {"decision": "ready", "stableReady": True}
+                        if evidence_id == "stable-1.0.readiness-gate"
+                        else {},
+                    }
+                    for evidence_id in STABLE_1_0_READINESS_EVIDENCE_IDS
+                ],
+            },
+        )
+        stable_redaction_count_items = stable_readiness_evidence(
+            stable_redaction_count_summary,
+            True,
+            workspace,
+            out_dir,
+        )
+        stable_redaction_count_statuses = {item.id: item.status for item in stable_redaction_count_items}
+        assert stable_redaction_count_statuses["stable-1.0.readiness-gate"] == "fail", stable_redaction_count_statuses
+        assert stable_redaction_count_statuses["stable-1.0.redaction"] == "fail", stable_redaction_count_statuses
+        stable_redaction_count_redaction_item = next(
+            item
+            for item in stable_redaction_count_items
+            if item.id == "stable-1.0.redaction"
+        )
+        assert evidence_item_has_unwaivable_redaction_findings(stable_redaction_count_redaction_item), (
+            stable_redaction_count_redaction_item
+        )
+        assert stable_redaction_count_redaction_item.details["redaction"]["findingCount"] == 1, (
+            stable_redaction_count_redaction_item
+        )
+        stable_redaction_count_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/stable-redaction-count-cert").resolve(),
+            stable_readiness_summary=stable_redaction_count_summary,
+            stable_readiness_required=True,
+            waivers={
+                "stable-1.0.redaction": "Attempted evidence waiver for Stable redaction finding count.",
+                "stable-1-0-readiness": "Attempted row waiver for Stable redaction finding count.",
+                "matrix.stable-readiness.redaction-failed": (
+                    "Attempted matrix waiver for Stable redaction finding count."
+                ),
+            },
+        )
+        stable_redaction_count_cert, stable_redaction_count_exit_code = run(stable_redaction_count_settings)
+        assert stable_redaction_count_exit_code == 1, stable_redaction_count_cert
+        stable_redaction_count_row = matrix_row_by_id(stable_redaction_count_settings.out_dir, "stable-1-0-readiness")
+        assert stable_redaction_count_row["status"] == "fail", stable_redaction_count_row
+        assert stable_redaction_count_row["releaseBlocker"] is True, stable_redaction_count_row
+        assert stable_redaction_count_row.get("waiverIds") == [], stable_redaction_count_row
+        assert stable_redaction_count_row["details"]["unwaivableRedactionEvidenceIds"] == [
+            "stable-1.0.redaction"
+        ], stable_redaction_count_row
+        assert "evidence.stable-1.0.redaction" in stable_redaction_count_row["issueIds"], stable_redaction_count_row
+        assert "matrix.stable-readiness.redaction-failed" in stable_redaction_count_row["issueIds"], stable_redaction_count_row
+
+        for critical_count_value, critical_count_suffix in (
+            (1, "critical-count"),
+            (0.5, "fractional-critical-count"),
+        ):
+            stable_redaction_critical_count_summary = (
+                workspace / f"build/stable-readiness-redaction-{critical_count_suffix}.json"
+            )
+            stable_redaction_critical_count_value = read_json(stable_redaction_count_summary) or {}
+            stable_redaction_critical_count_value["redaction"] = {
+                "status": "pass",
+                "findings": [],
+                "findingCount": 0,
+                "criticalFindingCount": critical_count_value,
+            }
+            write_json(stable_redaction_critical_count_summary, stable_redaction_critical_count_value)
+            stable_redaction_critical_count_items = stable_readiness_evidence(
+                stable_redaction_critical_count_summary,
+                True,
+                workspace,
+                out_dir,
+            )
+            stable_redaction_critical_count_statuses = {
+                item.id: item.status for item in stable_redaction_critical_count_items
+            }
+            assert stable_redaction_critical_count_statuses["stable-1.0.readiness-gate"] == "fail", (
+                stable_redaction_critical_count_statuses
+            )
+            assert stable_redaction_critical_count_statuses["stable-1.0.redaction"] == "fail", (
+                stable_redaction_critical_count_statuses
+            )
+            stable_redaction_critical_count_redaction_item = next(
+                item
+                for item in stable_redaction_critical_count_items
+                if item.id == "stable-1.0.redaction"
+            )
+            assert evidence_item_has_unwaivable_redaction_findings(
+                stable_redaction_critical_count_redaction_item
+            ), stable_redaction_critical_count_redaction_item
+            assert stable_redaction_critical_count_redaction_item.details["redaction"][
+                "criticalFindingCount"
+            ] == critical_count_value, stable_redaction_critical_count_redaction_item
+            stable_redaction_critical_count_settings = dataclasses.replace(
+                settings,
+                out_dir=(workspace / f"build/stable-redaction-{critical_count_suffix}-cert").resolve(),
+                stable_readiness_summary=stable_redaction_critical_count_summary,
+                stable_readiness_required=True,
+                waivers={
+                    "stable-1.0.redaction": (
+                        "Attempted evidence waiver for Stable critical redaction count."
+                    ),
+                    "stable-1-0-readiness": (
+                        "Attempted row waiver for Stable critical redaction count."
+                    ),
+                    "matrix.stable-readiness.redaction-failed": (
+                        "Attempted matrix waiver for Stable critical redaction count."
+                    ),
+                },
+            )
+            stable_redaction_critical_count_cert, stable_redaction_critical_count_exit_code = run(
+                stable_redaction_critical_count_settings
+            )
+            assert stable_redaction_critical_count_exit_code == 1, (
+                stable_redaction_critical_count_cert
+            )
+            stable_redaction_critical_count_row = matrix_row_by_id(
+                stable_redaction_critical_count_settings.out_dir,
+                "stable-1-0-readiness",
+            )
+            assert stable_redaction_critical_count_row["status"] == "fail", (
+                stable_redaction_critical_count_row
+            )
+            assert stable_redaction_critical_count_row["releaseBlocker"] is True, (
+                stable_redaction_critical_count_row
+            )
+            assert stable_redaction_critical_count_row.get("waiverIds") == [], (
+                stable_redaction_critical_count_row
+            )
+            assert stable_redaction_critical_count_row["details"]["unwaivableRedactionEvidenceIds"] == [
+                "stable-1.0.redaction"
+            ], stable_redaction_critical_count_row
+            assert "evidence.stable-1.0.redaction" in stable_redaction_critical_count_row[
+                "issueIds"
+            ], stable_redaction_critical_count_row
+            assert "matrix.stable-readiness.redaction-failed" in stable_redaction_critical_count_row[
+                "issueIds"
+            ], stable_redaction_critical_count_row
+
+        stable_redaction_raw_flag_summary = workspace / "build/stable-readiness-redaction-raw-flag.json"
+        stable_redaction_raw_flag_value = read_json(stable_redaction_count_summary) or {}
+        stable_redaction_raw_flag_value["redaction"] = {
+            "status": "pass",
+            "findingCount": 0,
+            "findings": [],
+            "rawBodiesStored": True,
+        }
+        write_json(stable_redaction_raw_flag_summary, stable_redaction_raw_flag_value)
+        stable_redaction_raw_flag_items = stable_readiness_evidence(
+            stable_redaction_raw_flag_summary,
+            True,
+            workspace,
+            out_dir,
+        )
+        stable_redaction_raw_flag_statuses = {
+            item.id: item.status for item in stable_redaction_raw_flag_items
+        }
+        assert stable_redaction_raw_flag_statuses["stable-1.0.readiness-gate"] == "fail", (
+            stable_redaction_raw_flag_statuses
+        )
+        assert stable_redaction_raw_flag_statuses["stable-1.0.redaction"] == "fail", (
+            stable_redaction_raw_flag_statuses
+        )
+        stable_redaction_raw_flag_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/stable-redaction-raw-flag-cert").resolve(),
+            stable_readiness_summary=stable_redaction_raw_flag_summary,
+            stable_readiness_required=True,
+        )
+        stable_redaction_raw_flag_cert, stable_redaction_raw_flag_exit_code = run(
+            stable_redaction_raw_flag_settings
+        )
+        assert stable_redaction_raw_flag_exit_code == 1, stable_redaction_raw_flag_cert
+        stable_redaction_raw_flag_row = matrix_row_by_id(
+            stable_redaction_raw_flag_settings.out_dir,
+            "stable-1-0-readiness",
+        )
+        assert stable_redaction_raw_flag_row["status"] == "fail", stable_redaction_raw_flag_row
+        assert stable_redaction_raw_flag_row["releaseBlocker"] is True, stable_redaction_raw_flag_row
+        assert "evidence.stable-1.0.redaction" in stable_redaction_raw_flag_row["issueIds"], (
+            stable_redaction_raw_flag_row
+        )
+        assert "matrix.stable-readiness.redaction-failed" in stable_redaction_raw_flag_row[
+            "issueIds"
+        ], stable_redaction_raw_flag_row
+
+        stable_excluded_from_evidence_summary = (
+            workspace / "build/stable-readiness-excluded-from-evidence-redaction.json"
+        )
+        stable_excluded_from_evidence_value = read_json(stable_redaction_count_summary) or {}
+        stable_excluded_from_evidence_value["redaction"] = {
+            "status": "pass",
+            "findingCount": 0,
+            "findings": [],
+            "rawBackupPayloadsExcludedFromEvidence": False,
+        }
+        write_json(stable_excluded_from_evidence_summary, stable_excluded_from_evidence_value)
+        stable_excluded_from_evidence_items = stable_readiness_evidence(
+            stable_excluded_from_evidence_summary,
+            True,
+            workspace,
+            out_dir,
+        )
+        stable_excluded_from_evidence_statuses = {
+            item.id: item.status for item in stable_excluded_from_evidence_items
+        }
+        assert stable_excluded_from_evidence_statuses["stable-1.0.readiness-gate"] == "fail", (
+            stable_excluded_from_evidence_statuses
+        )
+        assert stable_excluded_from_evidence_statuses["stable-1.0.redaction"] == "fail", (
+            stable_excluded_from_evidence_statuses
+        )
+        stable_excluded_from_evidence_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/stable-excluded-from-evidence-redaction-cert").resolve(),
+            stable_readiness_summary=stable_excluded_from_evidence_summary,
+            stable_readiness_required=True,
+        )
+        (
+            stable_excluded_from_evidence_cert,
+            stable_excluded_from_evidence_exit_code,
+        ) = run(stable_excluded_from_evidence_settings)
+        assert stable_excluded_from_evidence_exit_code == 1, stable_excluded_from_evidence_cert
+        stable_excluded_from_evidence_row = matrix_row_by_id(
+            stable_excluded_from_evidence_settings.out_dir,
+            "stable-1-0-readiness",
+        )
+        assert stable_excluded_from_evidence_row["status"] == "fail", (
+            stable_excluded_from_evidence_row
+        )
+        assert stable_excluded_from_evidence_row["releaseBlocker"] is True, (
+            stable_excluded_from_evidence_row
+        )
+        assert "evidence.stable-1.0.redaction" in stable_excluded_from_evidence_row["issueIds"], (
+            stable_excluded_from_evidence_row
+        )
+        assert "matrix.stable-readiness.redaction-failed" in stable_excluded_from_evidence_row["issueIds"], (
+            stable_excluded_from_evidence_row
+        )
+
+        stable_redaction_fractional_count_summary = workspace / "build/stable-readiness-redaction-fractional-count.json"
+        write_json(
+            stable_redaction_fractional_count_summary,
+            {
+                "schemaVersion": 1,
+                "kind": "stable-1.0-readiness",
+                "tool": "stable-1.0-readiness",
+                "releaseId": "cryptad-production-beta-self-test",
+                "status": "pass",
+                "decision": "ready",
+                "stableReady": True,
+                "blockerCount": 0,
+                "warningCount": 0,
+                "allowedLimitationCount": 0,
+                "disallowedLimitationCount": 0,
+                "domains": stable_self_test_passing_domains(),
+                "blockers": [],
+                "warnings": [],
+                "allowedLimitations": [],
+                "disallowedLimitations": [],
+                "redaction": {"status": "pass", "findingCount": 0.5},
+                "evidence": [
+                    {
+                        "id": evidence_id,
+                        "status": "pass",
+                        "summary": f"{evidence_id} passed.",
+                        "details": {"decision": "ready", "stableReady": True}
+                        if evidence_id == "stable-1.0.readiness-gate"
+                        else {},
+                    }
+                    for evidence_id in STABLE_1_0_READINESS_EVIDENCE_IDS
+                ],
+            },
+        )
+        stable_redaction_fractional_count_items = stable_readiness_evidence(
+            stable_redaction_fractional_count_summary,
+            True,
+            workspace,
+            out_dir,
+        )
+        stable_redaction_fractional_count_statuses = {
+            item.id: item.status for item in stable_redaction_fractional_count_items
+        }
+        assert stable_redaction_fractional_count_statuses["stable-1.0.readiness-gate"] == "fail", (
+            stable_redaction_fractional_count_statuses
+        )
+        assert stable_redaction_fractional_count_statuses["stable-1.0.redaction"] == "fail", (
+            stable_redaction_fractional_count_statuses
+        )
+        stable_redaction_fractional_count_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/stable-redaction-fractional-count-cert").resolve(),
+            stable_readiness_summary=stable_redaction_fractional_count_summary,
+            stable_readiness_required=True,
+        )
+        stable_redaction_fractional_count_cert, stable_redaction_fractional_count_exit_code = run(
+            stable_redaction_fractional_count_settings
+        )
+        assert stable_redaction_fractional_count_exit_code == 1, stable_redaction_fractional_count_cert
+        stable_redaction_fractional_count_row = matrix_row_by_id(
+            stable_redaction_fractional_count_settings.out_dir,
+            "stable-1-0-readiness",
+        )
+        assert stable_redaction_fractional_count_row["status"] == "fail", (
+            stable_redaction_fractional_count_row
+        )
+        assert stable_redaction_fractional_count_row["releaseBlocker"] is True, (
+            stable_redaction_fractional_count_row
+        )
+        assert "evidence.stable-1.0.redaction" in stable_redaction_fractional_count_row["issueIds"], (
+            stable_redaction_fractional_count_row
+        )
+        assert "matrix.stable-readiness.redaction-failed" in stable_redaction_fractional_count_row["issueIds"], (
+            stable_redaction_fractional_count_row
+        )
+
+        stable_malformed_redaction_findings_summary = (
+            workspace / "build/stable-readiness-malformed-redaction-findings.json"
+        )
+        write_json(
+            stable_malformed_redaction_findings_summary,
+            {
+                "schemaVersion": 1,
+                "kind": "stable-1.0-readiness",
+                "tool": "stable-1.0-readiness",
+                "releaseId": "cryptad-production-beta-self-test",
+                "status": "pass",
+                "decision": "ready",
+                "stableReady": True,
+                "blockerCount": 0,
+                "warningCount": 0,
+                "allowedLimitationCount": 0,
+                "disallowedLimitationCount": 0,
+                "domains": stable_self_test_passing_domains(),
+                "blockers": [],
+                "warnings": [],
+                "allowedLimitations": [],
+                "disallowedLimitations": [],
+                "redaction": {"status": "pass", "findings": "malformed-redaction-proof"},
+                "evidence": [
+                    {
+                        "id": evidence_id,
+                        "status": "pass",
+                        "summary": f"{evidence_id} passed.",
+                        "details": {"decision": "ready", "stableReady": True}
+                        if evidence_id == "stable-1.0.readiness-gate"
+                        else {},
+                    }
+                    for evidence_id in STABLE_1_0_READINESS_EVIDENCE_IDS
+                ],
+            },
+        )
+        stable_malformed_redaction_findings_items = stable_readiness_evidence(
+            stable_malformed_redaction_findings_summary,
+            True,
+            workspace,
+            out_dir,
+        )
+        stable_malformed_redaction_findings_statuses = {
+            item.id: item.status for item in stable_malformed_redaction_findings_items
+        }
+        assert stable_malformed_redaction_findings_statuses["stable-1.0.readiness-gate"] == "fail", (
+            stable_malformed_redaction_findings_statuses
+        )
+        assert stable_malformed_redaction_findings_statuses["stable-1.0.redaction"] == "fail", (
+            stable_malformed_redaction_findings_statuses
+        )
+        stable_malformed_redaction_findings_details = next(
+            item.details
+            for item in stable_malformed_redaction_findings_items
+            if item.id == "stable-1.0.redaction"
+        )
+        assert stable_malformed_redaction_findings_details["validationErrors"] == [
+            "findings is not a list"
+        ], stable_malformed_redaction_findings_details
+        stable_malformed_redaction_findings_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/stable-malformed-redaction-findings-cert").resolve(),
+            stable_readiness_summary=stable_malformed_redaction_findings_summary,
+            stable_readiness_required=True,
+        )
+        (
+            stable_malformed_redaction_findings_cert,
+            stable_malformed_redaction_findings_exit_code,
+        ) = run(stable_malformed_redaction_findings_settings)
+        assert stable_malformed_redaction_findings_exit_code == 1, stable_malformed_redaction_findings_cert
+        stable_malformed_redaction_findings_row = matrix_row_by_id(
+            stable_malformed_redaction_findings_settings.out_dir,
+            "stable-1-0-readiness",
+        )
+        assert stable_malformed_redaction_findings_row["status"] == "fail", (
+            stable_malformed_redaction_findings_row
+        )
+        assert stable_malformed_redaction_findings_row["releaseBlocker"] is True, (
+            stable_malformed_redaction_findings_row
+        )
+        assert "evidence.stable-1.0.redaction" in stable_malformed_redaction_findings_row["issueIds"], (
+            stable_malformed_redaction_findings_row
+        )
+        assert "matrix.stable-readiness.redaction-failed" in stable_malformed_redaction_findings_row["issueIds"], (
+            stable_malformed_redaction_findings_row
+        )
+
+        stable_malformed_row_redaction_findings_summary = (
+            workspace / "build/stable-readiness-malformed-row-redaction-findings.json"
+        )
+        malformed_row_redaction_evidence_id = "stable-1.0.production-beta-state"
+        write_json(
+            stable_malformed_row_redaction_findings_summary,
+            {
+                "schemaVersion": 1,
+                "kind": "stable-1.0-readiness",
+                "tool": "stable-1.0-readiness",
+                "releaseId": "cryptad-production-beta-self-test",
+                "status": "pass",
+                "decision": "ready",
+                "stableReady": True,
+                "blockerCount": 0,
+                "warningCount": 0,
+                "allowedLimitationCount": 0,
+                "disallowedLimitationCount": 0,
+                "domains": stable_self_test_passing_domains(),
+                "blockers": [],
+                "warnings": [],
+                "allowedLimitations": [],
+                "disallowedLimitations": [],
+                "redaction": {"status": "pass", "findings": []},
+                "evidence": [
+                    {
+                        "id": evidence_id,
+                        "status": "pass",
+                        "summary": f"{evidence_id} passed.",
+                        "details": {"redactionFindings": "not-a-list"}
+                        if evidence_id == malformed_row_redaction_evidence_id
+                        else (
+                            {"decision": "ready", "stableReady": True}
+                            if evidence_id == "stable-1.0.readiness-gate"
+                            else {}
+                        ),
+                    }
+                    for evidence_id in STABLE_1_0_READINESS_EVIDENCE_IDS
+                ],
+            },
+        )
+        stable_malformed_row_items = stable_readiness_evidence(
+            stable_malformed_row_redaction_findings_summary,
+            True,
+            workspace,
+            out_dir,
+        )
+        stable_malformed_row_statuses = {item.id: item.status for item in stable_malformed_row_items}
+        assert stable_malformed_row_statuses[malformed_row_redaction_evidence_id] == "fail", (
+            stable_malformed_row_statuses
+        )
+        stable_malformed_row_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/stable-malformed-row-redaction-cert").resolve(),
+            stable_readiness_summary=stable_malformed_row_redaction_findings_summary,
+            stable_readiness_required=True,
+            waivers={
+                "stable-1-0-readiness": "Attempted row waiver for malformed Stable row redaction failure.",
+                "matrix.stable-readiness.redaction-failed": "Attempted matrix issue waiver for malformed row redaction failure.",
+            },
+        )
+        stable_malformed_row_cert, stable_malformed_row_exit_code = run(stable_malformed_row_settings)
+        assert stable_malformed_row_exit_code == 1, stable_malformed_row_cert
+        stable_malformed_row = matrix_row_by_id(
+            stable_malformed_row_settings.out_dir,
+            "stable-1-0-readiness",
+        )
+        assert stable_malformed_row["status"] == "fail", stable_malformed_row
+        assert stable_malformed_row["releaseBlocker"] is True, stable_malformed_row
+        assert stable_malformed_row.get("waiverIds") == [], stable_malformed_row
+        assert malformed_row_redaction_evidence_id in stable_malformed_row["details"]["unwaivableRedactionEvidenceIds"], (
+            stable_malformed_row
+        )
+        assert "matrix.stable-readiness.redaction-failed" in stable_malformed_row["issueIds"], (
+            stable_malformed_row
+        )
+
+        stable_nested_redaction_summary = workspace / "build/stable-readiness-nested-redaction.json"
+        nested_redaction_evidence_id = "stable-1.0.production-beta-state"
+        write_json(
+            stable_nested_redaction_summary,
+            {
+                "schemaVersion": 1,
+                "kind": "stable-1.0-readiness",
+                "tool": "stable-1.0-readiness",
+                "releaseId": "cryptad-production-beta-self-test",
+                "status": "pass",
+                "decision": "ready",
+                "stableReady": True,
+                "blockerCount": 0,
+                "warningCount": 0,
+                "allowedLimitationCount": 0,
+                "disallowedLimitationCount": 0,
+                "domains": stable_self_test_passing_domains(),
+                "blockers": [],
+                "warnings": [],
+                "allowedLimitations": [],
+                "disallowedLimitations": [],
+                "redaction": {"status": "pass", "findings": []},
+                "evidence": [
+                    {
+                        "id": evidence_id,
+                        "status": "pass",
+                        "summary": f"{evidence_id} passed.",
+                        "details": {
+                            "redaction": {
+                                "status": "pass",
+                                "findings": [
+                                    {
+                                        "kind": "stable-readiness-fixture",
+                                        "summary": "Synthetic nested Stable evidence redaction finding.",
+                                    }
+                                ],
+                            }
+                        }
+                        if evidence_id == nested_redaction_evidence_id
+                        else (
+                            {"decision": "ready", "stableReady": True}
+                            if evidence_id == "stable-1.0.readiness-gate"
+                            else {}
+                        ),
+                    }
+                    for evidence_id in STABLE_1_0_READINESS_EVIDENCE_IDS
+                ],
+            },
+        )
+        stable_nested_items = stable_readiness_evidence(
+            stable_nested_redaction_summary,
+            True,
+            workspace,
+            out_dir,
+        )
+        stable_nested_statuses = {item.id: item.status for item in stable_nested_items}
+        assert stable_nested_statuses[nested_redaction_evidence_id] == "fail", stable_nested_statuses
+        stable_nested_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/stable-nested-redaction-cert").resolve(),
+            stable_readiness_summary=stable_nested_redaction_summary,
+            stable_readiness_required=True,
+            waivers={
+                "stable-1-0-readiness": "Attempted row waiver for nested Stable redaction failure.",
+                "matrix.stable-readiness.redaction-failed": "Attempted matrix issue waiver for nested Stable redaction failure.",
+            },
+        )
+        stable_nested_cert, stable_nested_exit_code = run(stable_nested_settings)
+        assert stable_nested_exit_code == 1, stable_nested_cert
+        stable_nested_row = matrix_row_by_id(stable_nested_settings.out_dir, "stable-1-0-readiness")
+        assert stable_nested_row["status"] == "fail", stable_nested_row
+        assert stable_nested_row["releaseBlocker"] is True, stable_nested_row
+        assert stable_nested_row.get("waiverIds") == [], stable_nested_row
+        assert nested_redaction_evidence_id in stable_nested_row["details"]["unwaivableRedactionEvidenceIds"], stable_nested_row
+        assert "matrix.stable-readiness.redaction-failed" in stable_nested_row["issueIds"], stable_nested_row
+
+        stable_direct_detail_redaction_summary = (
+            workspace / "build/stable-readiness-direct-detail-redaction.json"
+        )
+        direct_detail_redaction_evidence_id = "stable-1.0.production-beta-state"
+        stable_direct_detail_redaction_value = stable_self_test_summary()
+        for entry in stable_direct_detail_redaction_value["evidence"]:
+            if isinstance(entry, dict) and entry.get("id") == direct_detail_redaction_evidence_id:
+                entry["details"] = {"rawBackupPayloadsExcludedFromEvidence": False}
+                break
+        else:
+            raise AssertionError(
+                f"Stable self-test summary is missing {direct_detail_redaction_evidence_id}"
+            )
+        write_json(stable_direct_detail_redaction_summary, stable_direct_detail_redaction_value)
+        stable_direct_detail_redaction_items = stable_readiness_evidence(
+            stable_direct_detail_redaction_summary,
+            True,
+            workspace,
+            out_dir,
+        )
+        stable_direct_detail_redaction_statuses = {
+            item.id: item.status for item in stable_direct_detail_redaction_items
+        }
+        assert stable_direct_detail_redaction_statuses[direct_detail_redaction_evidence_id] == "fail", (
+            stable_direct_detail_redaction_statuses
+        )
+        assert stable_direct_detail_redaction_statuses["stable-1.0.redaction"] == "fail", (
+            stable_direct_detail_redaction_statuses
+        )
+        stable_direct_detail_redaction_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/stable-direct-detail-redaction-cert").resolve(),
+            stable_readiness_summary=stable_direct_detail_redaction_summary,
+            stable_readiness_required=True,
+            waivers={
+                "stable-1-0-readiness": "Attempted row waiver for direct Stable detail redaction failure.",
+                "matrix.stable-readiness.redaction-failed": "Attempted matrix issue waiver for direct Stable detail redaction failure.",
+            },
+        )
+        (
+            stable_direct_detail_redaction_cert,
+            stable_direct_detail_redaction_exit_code,
+        ) = run(stable_direct_detail_redaction_settings)
+        assert stable_direct_detail_redaction_exit_code == 1, (
+            stable_direct_detail_redaction_cert
+        )
+        stable_direct_detail_redaction_row = matrix_row_by_id(
+            stable_direct_detail_redaction_settings.out_dir,
+            "stable-1-0-readiness",
+        )
+        assert stable_direct_detail_redaction_row["status"] == "fail", (
+            stable_direct_detail_redaction_row
+        )
+        assert stable_direct_detail_redaction_row["releaseBlocker"] is True, (
+            stable_direct_detail_redaction_row
+        )
+        assert stable_direct_detail_redaction_row.get("waiverIds") == [], (
+            stable_direct_detail_redaction_row
+        )
+        assert direct_detail_redaction_evidence_id in stable_direct_detail_redaction_row["details"][
+            "unwaivableRedactionEvidenceIds"
+        ], stable_direct_detail_redaction_row
+        assert "matrix.stable-readiness.redaction-failed" in stable_direct_detail_redaction_row[
+            "issueIds"
+        ], stable_direct_detail_redaction_row
+
+        for signal_name, signal_value in (
+            ("redactionFindings", [{"kind": "stable-readiness-self-test"}]),
+            ("findingCount", 1),
+            ("privateInsertUrisStored", True),
+        ):
+            stable_top_level_row_redaction_summary = (
+                workspace / f"build/stable-readiness-top-level-row-{signal_name}.json"
+            )
+            stable_top_level_row_redaction_value = stable_self_test_summary()
+            for entry in stable_top_level_row_redaction_value["evidence"]:
+                if isinstance(entry, dict) and entry.get("id") == direct_detail_redaction_evidence_id:
+                    entry[signal_name] = signal_value
+                    break
+            else:
+                raise AssertionError(
+                    f"Stable self-test summary is missing {direct_detail_redaction_evidence_id}"
+                )
+            write_json(
+                stable_top_level_row_redaction_summary,
+                stable_top_level_row_redaction_value,
+            )
+            stable_top_level_row_redaction_items = stable_readiness_evidence(
+                stable_top_level_row_redaction_summary,
+                True,
+                workspace,
+                out_dir,
+            )
+            stable_top_level_row_redaction_statuses = {
+                item.id: item.status for item in stable_top_level_row_redaction_items
+            }
+            assert (
+                stable_top_level_row_redaction_statuses[direct_detail_redaction_evidence_id]
+                == "fail"
+            ), stable_top_level_row_redaction_statuses
+            assert stable_top_level_row_redaction_statuses["stable-1.0.redaction"] == "fail", (
+                stable_top_level_row_redaction_statuses
+            )
+
+        stable_sanitized_false_summary = (
+            workspace / "build/stable-readiness-sanitized-false.json"
+        )
+        stable_sanitized_false_value = stable_self_test_summary()
+        for entry in stable_sanitized_false_value["evidence"]:
+            if isinstance(entry, dict) and entry.get("id") == "stable-1.0.redaction":
+                entry["details"] = {"localPathsSanitized": False}
+                break
+        else:
+            raise AssertionError("Stable self-test summary is missing stable-1.0.redaction")
+        write_json(stable_sanitized_false_summary, stable_sanitized_false_value)
+        stable_sanitized_false_items = stable_readiness_evidence(
+            stable_sanitized_false_summary,
+            True,
+            workspace,
+            out_dir,
+        )
+        stable_sanitized_false_statuses = {
+            item.id: item.status for item in stable_sanitized_false_items
+        }
+        assert stable_sanitized_false_statuses["stable-1.0.readiness-gate"] == "fail", (
+            stable_sanitized_false_statuses
+        )
+        assert stable_sanitized_false_statuses["stable-1.0.redaction"] == "fail", (
+            stable_sanitized_false_statuses
+        )
+        stable_sanitized_false_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/stable-sanitized-false-cert").resolve(),
+            stable_readiness_summary=stable_sanitized_false_summary,
+            stable_readiness_required=True,
+        )
+        stable_sanitized_false_cert, stable_sanitized_false_exit_code = run(
+            stable_sanitized_false_settings
+        )
+        assert stable_sanitized_false_exit_code == 1, stable_sanitized_false_cert
+        stable_sanitized_false_row = matrix_row_by_id(
+            stable_sanitized_false_settings.out_dir,
+            "stable-1-0-readiness",
+        )
+        assert stable_sanitized_false_row["status"] == "fail", stable_sanitized_false_row
+        assert stable_sanitized_false_row["releaseBlocker"] is True, (
+            stable_sanitized_false_row
+        )
+
+        stable_sensitive_stored_summary = (
+            workspace / "build/stable-readiness-sensitive-stored.json"
+        )
+        stable_sensitive_stored_value = stable_self_test_summary()
+        for entry in stable_sensitive_stored_value["evidence"]:
+            if isinstance(entry, dict) and entry.get("id") == "stable-1.0.redaction":
+                entry["details"] = {"privateInsertUrisStored": True}
+                break
+        else:
+            raise AssertionError("Stable self-test summary is missing stable-1.0.redaction")
+        write_json(stable_sensitive_stored_summary, stable_sensitive_stored_value)
+        stable_sensitive_stored_items = stable_readiness_evidence(
+            stable_sensitive_stored_summary,
+            True,
+            workspace,
+            out_dir,
+        )
+        stable_sensitive_stored_statuses = {
+            item.id: item.status for item in stable_sensitive_stored_items
+        }
+        assert stable_sensitive_stored_statuses["stable-1.0.readiness-gate"] == "fail", (
+            stable_sensitive_stored_statuses
+        )
+        assert stable_sensitive_stored_statuses["stable-1.0.redaction"] == "fail", (
+            stable_sensitive_stored_statuses
+        )
+        stable_sensitive_stored_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/stable-sensitive-stored-cert").resolve(),
+            stable_readiness_summary=stable_sensitive_stored_summary,
+            stable_readiness_required=True,
+        )
+        stable_sensitive_stored_cert, stable_sensitive_stored_exit_code = run(
+            stable_sensitive_stored_settings
+        )
+        assert stable_sensitive_stored_exit_code == 1, stable_sensitive_stored_cert
+        stable_sensitive_stored_row = matrix_row_by_id(
+            stable_sensitive_stored_settings.out_dir,
+            "stable-1-0-readiness",
+        )
+        assert stable_sensitive_stored_row["status"] == "fail", stable_sensitive_stored_row
+        assert stable_sensitive_stored_row["releaseBlocker"] is True, (
+            stable_sensitive_stored_row
+        )
+
+        stable_missing_schema_summary = workspace / "build/stable-readiness-missing-schema-version.json"
+        write_json(
+            stable_missing_schema_summary,
+            {
+                "kind": "stable-1.0-readiness",
+                "tool": "stable-1.0-readiness",
+                "releaseId": "cryptad-production-beta-self-test",
+                "status": "pass",
+                "decision": "ready",
+                "stableReady": True,
+                "blockerCount": 0,
+                "warningCount": 0,
+                "allowedLimitationCount": 0,
+                "disallowedLimitationCount": 0,
+                "domains": stable_self_test_passing_domains(),
+                "blockers": [],
+                "warnings": [],
+                "allowedLimitations": [],
+                "disallowedLimitations": [],
+                "redaction": {"status": "pass", "findings": []},
+                "evidence": [
+                    {
+                        "id": evidence_id,
+                        "status": "pass",
+                        "summary": f"{evidence_id} passed.",
+                        "details": {"decision": "ready", "stableReady": True}
+                        if evidence_id == "stable-1.0.readiness-gate"
+                        else {},
+                    }
+                    for evidence_id in STABLE_1_0_READINESS_EVIDENCE_IDS
+                ],
+            },
+        )
+        stable_missing_schema_items = stable_readiness_evidence(
+            stable_missing_schema_summary,
+            True,
+            workspace,
+            out_dir,
+        )
+        stable_missing_schema_statuses = {item.id: item.status for item in stable_missing_schema_items}
+        assert stable_missing_schema_statuses["stable-1.0.readiness-gate"] == "fail", stable_missing_schema_statuses
+        stable_missing_schema_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/stable-missing-schema-cert").resolve(),
+            stable_readiness_summary=stable_missing_schema_summary,
+            stable_readiness_required=True,
+        )
+        stable_missing_schema_cert, stable_missing_schema_exit_code = run(stable_missing_schema_settings)
+        assert stable_missing_schema_exit_code == 1, stable_missing_schema_cert
+        stable_missing_schema_row = matrix_row_by_id(stable_missing_schema_settings.out_dir, "stable-1-0-readiness")
+        assert stable_missing_schema_row["status"] == "fail", stable_missing_schema_row
+        assert stable_missing_schema_row["releaseBlocker"] is True, stable_missing_schema_row
+        assert "evidence.stable-1.0.readiness-gate" in stable_missing_schema_row["issueIds"], stable_missing_schema_row
+        assert "matrix.stable-readiness.evidence-not-passing" in stable_missing_schema_row["issueIds"], stable_missing_schema_row
+
+        stable_invalid_decision_summary = workspace / "build/stable-readiness-invalid-decision.json"
+        write_json(
+            stable_invalid_decision_summary,
+            {
+                "schemaVersion": 1,
+                "kind": "stable-1.0-readiness",
+                "tool": "stable-1.0-readiness",
+                "releaseId": "cryptad-production-beta-self-test",
+                "status": "pass",
+                "decision": "ship-it",
+                "stableReady": True,
+                "blockerCount": 0,
+                "warningCount": 0,
+                "allowedLimitationCount": 0,
+                "disallowedLimitationCount": 0,
+                "domains": stable_self_test_passing_domains(),
+                "blockers": [],
+                "warnings": [],
+                "allowedLimitations": [],
+                "disallowedLimitations": [],
+                "redaction": {"status": "pass", "findings": []},
+                "evidence": [
+                    {
+                        "id": evidence_id,
+                        "status": "pass",
+                        "summary": f"{evidence_id} passed.",
+                        "details": {"decision": "ship-it", "stableReady": True}
+                        if evidence_id == "stable-1.0.readiness-gate"
+                        else {},
+                    }
+                    for evidence_id in STABLE_1_0_READINESS_EVIDENCE_IDS
+                ],
+            },
+        )
+        stable_invalid_decision_items = stable_readiness_evidence(
+            stable_invalid_decision_summary,
+            True,
+            workspace,
+            out_dir,
+        )
+        stable_invalid_decision_statuses = {
+            item.id: item.status for item in stable_invalid_decision_items
+        }
+        assert stable_invalid_decision_statuses["stable-1.0.readiness-gate"] == "fail", (
+            stable_invalid_decision_statuses
+        )
+        stable_invalid_decision_details = next(
+            item.details
+            for item in stable_invalid_decision_items
+            if item.id == "stable-1.0.readiness-gate"
+        )
+        assert stable_invalid_decision_details["validationErrors"] == [
+            "decision must be ready, ready-with-allowed-limitations, or not-ready"
+        ], stable_invalid_decision_details
+        stable_invalid_decision_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/stable-invalid-decision-cert").resolve(),
+            stable_readiness_summary=stable_invalid_decision_summary,
+            stable_readiness_required=True,
+        )
+        stable_invalid_decision_cert, stable_invalid_decision_exit_code = run(
+            stable_invalid_decision_settings
+        )
+        assert stable_invalid_decision_exit_code == 1, stable_invalid_decision_cert
+        stable_invalid_decision_row = matrix_row_by_id(
+            stable_invalid_decision_settings.out_dir,
+            "stable-1-0-readiness",
+        )
+        assert stable_invalid_decision_row["status"] == "fail", stable_invalid_decision_row
+        assert stable_invalid_decision_row["releaseBlocker"] is True, stable_invalid_decision_row
+        assert "evidence.stable-1.0.readiness-gate" in stable_invalid_decision_row["issueIds"], (
+            stable_invalid_decision_row
+        )
+        assert "matrix.stable-readiness.evidence-not-passing" in stable_invalid_decision_row["issueIds"], (
+            stable_invalid_decision_row
+        )
+
+        stable_remaining_blockers_summary = workspace / "build/stable-readiness-remaining-blockers.json"
+        write_json(
+            stable_remaining_blockers_summary,
+            {
+                "schemaVersion": 1,
+                "kind": "stable-1.0-readiness",
+                "tool": "stable-1.0-readiness",
+                "releaseId": "cryptad-production-beta-self-test",
+                "status": "pass",
+                "decision": "ready",
+                "stableReady": True,
+                "blockerCount": 1,
+                "warningCount": 0,
+                "allowedLimitationCount": 0,
+                "disallowedLimitationCount": 1,
+                "domains": stable_self_test_passing_domains(),
+                "blockers": [
+                    {
+                        "id": "stable-self-test-blocker",
+                        "evidenceId": "stable-1.0.test",
+                    }
+                ],
+                "warnings": [],
+                "allowedLimitations": [],
+                "disallowedLimitations": [
+                    {
+                        "id": "stable-self-test-disallowed",
+                    }
+                ],
+                "redaction": {"status": "pass", "findings": []},
+                "evidence": [
+                    {
+                        "id": evidence_id,
+                        "status": "pass",
+                        "summary": f"{evidence_id} passed.",
+                        "details": {"decision": "ready", "stableReady": True}
+                        if evidence_id == "stable-1.0.readiness-gate"
+                        else {},
+                    }
+                    for evidence_id in STABLE_1_0_READINESS_EVIDENCE_IDS
+                ],
+            },
+        )
+        stable_remaining_items = stable_readiness_evidence(
+            stable_remaining_blockers_summary,
+            True,
+            workspace,
+            out_dir,
+        )
+        stable_remaining_statuses = {item.id: item.status for item in stable_remaining_items}
+        assert stable_remaining_statuses["stable-1.0.readiness-gate"] == "fail", stable_remaining_statuses
+        stable_remaining_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/stable-remaining-blockers-cert").resolve(),
+            stable_readiness_summary=stable_remaining_blockers_summary,
+            stable_readiness_required=True,
+        )
+        stable_remaining_cert, stable_remaining_exit_code = run(stable_remaining_settings)
+        assert stable_remaining_exit_code == 1, stable_remaining_cert
+        stable_remaining_row = matrix_row_by_id(stable_remaining_settings.out_dir, "stable-1-0-readiness")
+        assert stable_remaining_row["status"] == "fail", stable_remaining_row
+        assert stable_remaining_row["releaseBlocker"] is True, stable_remaining_row
+        assert "evidence.stable-1.0.readiness-gate" in stable_remaining_row["issueIds"], stable_remaining_row
+        assert "matrix.stable-readiness.evidence-not-passing" in stable_remaining_row["issueIds"], stable_remaining_row
+
+        stable_fractional_remaining_counts_summary = (
+            workspace / "build/stable-readiness-fractional-remaining-counts.json"
+        )
+        write_json(
+            stable_fractional_remaining_counts_summary,
+            {
+                "schemaVersion": 1,
+                "kind": "stable-1.0-readiness",
+                "tool": "stable-1.0-readiness",
+                "releaseId": "cryptad-production-beta-self-test",
+                "status": "pass",
+                "decision": "ready",
+                "stableReady": True,
+                "blockerCount": 0.5,
+                "warningCount": 0,
+                "allowedLimitationCount": 0,
+                "disallowedLimitationCount": 0.5,
+                "domains": stable_self_test_passing_domains(),
+                "blockers": [],
+                "warnings": [],
+                "allowedLimitations": [],
+                "disallowedLimitations": [],
+                "redaction": {"status": "pass", "findings": []},
+                "evidence": [
+                    {
+                        "id": evidence_id,
+                        "status": "pass",
+                        "summary": f"{evidence_id} passed.",
+                        "details": {"decision": "ready", "stableReady": True}
+                        if evidence_id == "stable-1.0.readiness-gate"
+                        else {},
+                    }
+                    for evidence_id in STABLE_1_0_READINESS_EVIDENCE_IDS
+                ],
+            },
+        )
+        stable_fractional_remaining_count_items = stable_readiness_evidence(
+            stable_fractional_remaining_counts_summary,
+            True,
+            workspace,
+            out_dir,
+        )
+        stable_fractional_remaining_count_statuses = {
+            item.id: item.status for item in stable_fractional_remaining_count_items
+        }
+        assert stable_fractional_remaining_count_statuses["stable-1.0.readiness-gate"] == "fail", (
+            stable_fractional_remaining_count_statuses
+        )
+        stable_fractional_remaining_count_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/stable-fractional-remaining-counts-cert").resolve(),
+            stable_readiness_summary=stable_fractional_remaining_counts_summary,
+            stable_readiness_required=True,
+        )
+        stable_fractional_remaining_count_cert, stable_fractional_remaining_count_exit_code = run(
+            stable_fractional_remaining_count_settings
+        )
+        assert stable_fractional_remaining_count_exit_code == 1, stable_fractional_remaining_count_cert
+        stable_fractional_remaining_count_row = matrix_row_by_id(
+            stable_fractional_remaining_count_settings.out_dir,
+            "stable-1-0-readiness",
+        )
+        assert stable_fractional_remaining_count_row["status"] == "fail", (
+            stable_fractional_remaining_count_row
+        )
+        assert stable_fractional_remaining_count_row["releaseBlocker"] is True, (
+            stable_fractional_remaining_count_row
+        )
+        assert "evidence.stable-1.0.readiness-gate" in stable_fractional_remaining_count_row["issueIds"], (
+            stable_fractional_remaining_count_row
+        )
+
+        stable_blocker_records_summary = workspace / "build/stable-readiness-blocker-records.json"
+        write_json(
+            stable_blocker_records_summary,
+            {
+                "schemaVersion": 1,
+                "kind": "stable-1.0-readiness",
+                "tool": "stable-1.0-readiness",
+                "releaseId": "cryptad-production-beta-self-test",
+                "status": "pass",
+                "decision": "ready",
+                "stableReady": True,
+                "blockerCount": 0,
+                "warningCount": 0,
+                "allowedLimitationCount": 0,
+                "disallowedLimitationCount": 0,
+                "domains": stable_self_test_passing_domains(),
+                "blockers": [
+                    {
+                        "id": "stable-self-test-blocker",
+                        "evidenceId": "stable-1.0.readiness-gate",
+                    }
+                ],
+                "warnings": [],
+                "allowedLimitations": [],
+                "disallowedLimitations": [
+                    {
+                        "id": "stable-self-test-disallowed",
+                    }
+                ],
+                "redaction": {"status": "pass", "findings": []},
+                "evidence": [
+                    {
+                        "id": evidence_id,
+                        "status": "pass",
+                        "summary": f"{evidence_id} passed.",
+                        "details": {"decision": "ready", "stableReady": True}
+                        if evidence_id == "stable-1.0.readiness-gate"
+                        else {},
+                    }
+                    for evidence_id in STABLE_1_0_READINESS_EVIDENCE_IDS
+                ],
+            },
+        )
+        stable_blocker_record_items = stable_readiness_evidence(
+            stable_blocker_records_summary,
+            True,
+            workspace,
+            out_dir,
+        )
+        stable_blocker_record_statuses = {
+            item.id: item.status for item in stable_blocker_record_items
+        }
+        assert stable_blocker_record_statuses["stable-1.0.readiness-gate"] == "fail", (
+            stable_blocker_record_statuses
+        )
+        stable_blocker_record_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/stable-blocker-records-cert").resolve(),
+            stable_readiness_summary=stable_blocker_records_summary,
+            stable_readiness_required=True,
+        )
+        stable_blocker_record_cert, stable_blocker_record_exit_code = run(stable_blocker_record_settings)
+        assert stable_blocker_record_exit_code == 1, stable_blocker_record_cert
+        stable_blocker_record_row = matrix_row_by_id(
+            stable_blocker_record_settings.out_dir,
+            "stable-1-0-readiness",
+        )
+        assert stable_blocker_record_row["status"] == "fail", stable_blocker_record_row
+        assert stable_blocker_record_row["releaseBlocker"] is True, stable_blocker_record_row
+        assert "evidence.stable-1.0.readiness-gate" in stable_blocker_record_row["issueIds"], (
+            stable_blocker_record_row
+        )
+        assert "matrix.stable-readiness.evidence-not-passing" in stable_blocker_record_row["issueIds"], (
+            stable_blocker_record_row
+        )
+
+        stable_allowed_record_summary = workspace / "build/stable-readiness-allowed-records.json"
+        write_json(
+            stable_allowed_record_summary,
+            {
+                "schemaVersion": 1,
+                "kind": "stable-1.0-readiness",
+                "tool": "stable-1.0-readiness",
+                "releaseId": "cryptad-production-beta-self-test",
+                "status": "pass",
+                "decision": "ready",
+                "stableReady": True,
+                "blockerCount": 0,
+                "warningCount": 0,
+                "allowedLimitationCount": 0,
+                "disallowedLimitationCount": 0,
+                "domains": stable_self_test_passing_domains(),
+                "blockers": [],
+                "warnings": [],
+                "allowedLimitations": [
+                    {
+                        "id": "stable-self-test-allowed",
+                        "title": "Self-test allowed Stable limitation",
+                        "category": "ui-polish-accessibility-warning",
+                        "classification": "allowed-for-stable-1.0",
+                        "status": "open",
+                        "summary": "Synthetic bounded Stable 1.0 limitation.",
+                        "evidenceIds": ["stable-1.0.known-limitations"],
+                        "boundedBy": "Self-test release manager bound for a non-blocking Stable limitation.",
+                    }
+                ],
+                "disallowedLimitations": [],
+                "redaction": {"status": "pass", "findings": []},
+                "evidence": [
+                    {
+                        "id": evidence_id,
+                        "status": "pass",
+                        "summary": f"{evidence_id} passed.",
+                        "details": {"decision": "ready", "stableReady": True}
+                        if evidence_id == "stable-1.0.readiness-gate"
+                        else {},
+                    }
+                    for evidence_id in STABLE_1_0_READINESS_EVIDENCE_IDS
+                ],
+            },
+        )
+        stable_allowed_record_items = stable_readiness_evidence(
+            stable_allowed_record_summary,
+            True,
+            workspace,
+            out_dir,
+        )
+        stable_allowed_record_gate = next(
+            item
+            for item in stable_allowed_record_items
+            if item.id == "stable-1.0.readiness-gate"
+        )
+        assert stable_allowed_record_gate.status == "fail", stable_allowed_record_gate
+        assert stable_allowed_record_gate.details["validationErrors"] == [
+            "allowedLimitationCount is 0 but allowedLimitations contains 1"
+        ], stable_allowed_record_gate.details
+        stable_allowed_record_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/stable-allowed-records-cert").resolve(),
+            stable_readiness_summary=stable_allowed_record_summary,
+            stable_readiness_required=True,
+        )
+        stable_allowed_record_cert, stable_allowed_record_exit_code = run(
+            stable_allowed_record_settings
+        )
+        assert stable_allowed_record_exit_code == 1, stable_allowed_record_cert
+        stable_allowed_record_row = matrix_row_by_id(
+            stable_allowed_record_settings.out_dir,
+            "stable-1-0-readiness",
+        )
+        assert stable_allowed_record_row["status"] == "fail", stable_allowed_record_row
+        assert stable_allowed_record_row["releaseBlocker"] is True, stable_allowed_record_row
+        assert "evidence.stable-1.0.readiness-gate" in stable_allowed_record_row["issueIds"], (
+            stable_allowed_record_row
+        )
+        assert "matrix.stable-readiness.evidence-not-passing" in stable_allowed_record_row["issueIds"], (
+            stable_allowed_record_row
+        )
+
+        stable_malformed_allowed_record_summary = workspace / "build/stable-readiness-malformed-allowed-records.json"
+        write_json(
+            stable_malformed_allowed_record_summary,
+            {
+                "schemaVersion": 1,
+                "kind": "stable-1.0-readiness",
+                "tool": "stable-1.0-readiness",
+                "releaseId": "cryptad-production-beta-self-test",
+                "status": "pass",
+                "decision": "ready-with-allowed-limitations",
+                "stableReady": True,
+                "blockerCount": 0,
+                "warningCount": 0,
+                "allowedLimitationCount": 1,
+                "disallowedLimitationCount": 0,
+                "domains": stable_self_test_passing_domains(),
+                "blockers": [],
+                "warnings": [],
+                "allowedLimitations": [1],
+                "disallowedLimitations": [],
+                "redaction": {"status": "pass", "findings": []},
+                "evidence": [
+                    {
+                        "id": evidence_id,
+                        "status": "pass",
+                        "summary": f"{evidence_id} passed.",
+                        "details": {"decision": "ready-with-allowed-limitations", "stableReady": True}
+                        if evidence_id == "stable-1.0.readiness-gate"
+                        else {},
+                    }
+                    for evidence_id in STABLE_1_0_READINESS_EVIDENCE_IDS
+                ],
+            },
+        )
+        stable_malformed_allowed_record_items = stable_readiness_evidence(
+            stable_malformed_allowed_record_summary,
+            True,
+            workspace,
+            out_dir,
+        )
+        stable_malformed_allowed_record_gate = next(
+            item
+            for item in stable_malformed_allowed_record_items
+            if item.id == "stable-1.0.readiness-gate"
+        )
+        assert stable_malformed_allowed_record_gate.status == "fail", stable_malformed_allowed_record_gate
+        assert stable_malformed_allowed_record_gate.details["validationErrors"] == [
+            "allowedLimitations[0] must be an object"
+        ], stable_malformed_allowed_record_gate.details
+        stable_malformed_allowed_record_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/stable-malformed-allowed-records-cert").resolve(),
+            stable_readiness_summary=stable_malformed_allowed_record_summary,
+            stable_readiness_required=True,
+        )
+        stable_malformed_allowed_record_cert, stable_malformed_allowed_record_exit_code = run(
+            stable_malformed_allowed_record_settings
+        )
+        assert stable_malformed_allowed_record_exit_code == 1, stable_malformed_allowed_record_cert
+        stable_malformed_allowed_record_row = matrix_row_by_id(
+            stable_malformed_allowed_record_settings.out_dir,
+            "stable-1-0-readiness",
+        )
+        assert stable_malformed_allowed_record_row["status"] == "fail", stable_malformed_allowed_record_row
+        assert stable_malformed_allowed_record_row["releaseBlocker"] is True, stable_malformed_allowed_record_row
+        assert "evidence.stable-1.0.readiness-gate" in stable_malformed_allowed_record_row["issueIds"], (
+            stable_malformed_allowed_record_row
+        )
+        assert "matrix.stable-readiness.evidence-not-passing" in stable_malformed_allowed_record_row["issueIds"], (
+            stable_malformed_allowed_record_row
+        )
+
+        stable_allowed_warning_summary = workspace / "build/stable-readiness-allowed-warning.json"
+        write_json(
+            stable_allowed_warning_summary,
+            {
+                "schemaVersion": 1,
+                "kind": "stable-1.0-readiness",
+                "tool": "stable-1.0-readiness",
+                "releaseId": "cryptad-production-beta-self-test",
+                "status": "pass",
+                "decision": "ready",
+                "stableReady": True,
+                "blockerCount": 0,
+                "warningCount": 0,
+                "allowedLimitationCount": 1,
+                "disallowedLimitationCount": 0,
+                "domains": stable_self_test_passing_domains(),
+                "blockers": [],
+                "warnings": [],
+                "allowedLimitations": [
+                    {
+                        "id": "stable-self-test-allowed",
+                        "title": "Self-test allowed Stable limitation",
+                        "category": "ui-polish-accessibility-warning",
+                        "classification": "allowed-for-stable-1.0",
+                        "status": "open",
+                        "summary": "Synthetic bounded Stable 1.0 limitation.",
+                        "evidenceIds": ["stable-1.0.known-limitations"],
+                        "boundedBy": "Self-test release manager bound for a non-blocking Stable limitation.",
+                    }
+                ],
+                "disallowedLimitations": [],
+                "redaction": {"status": "pass", "findings": []},
+                "evidence": [
+                    {
+                        "id": evidence_id,
+                        "status": "pass",
+                        "summary": f"{evidence_id} passed.",
+                        "details": {"decision": "ready", "stableReady": True}
+                        if evidence_id == "stable-1.0.readiness-gate"
+                        else {},
+                    }
+                    for evidence_id in STABLE_1_0_READINESS_EVIDENCE_IDS
+                ],
+            },
+        )
+        stable_allowed_warning_items = stable_readiness_evidence(
+            stable_allowed_warning_summary,
+            True,
+            workspace,
+            out_dir,
+        )
+        stable_allowed_warning_gate = next(
+            item
+            for item in stable_allowed_warning_items
+            if item.id == "stable-1.0.readiness-gate"
+        )
+        assert stable_allowed_warning_gate.status == "warn", stable_allowed_warning_gate
+        stable_allowed_warning_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/stable-allowed-warning-cert").resolve(),
+            stable_readiness_summary=stable_allowed_warning_summary,
+            stable_readiness_required=True,
+        )
+        stable_allowed_warning_cert, stable_allowed_warning_exit_code = run(
+            stable_allowed_warning_settings
+        )
+        assert stable_allowed_warning_exit_code == 0, stable_allowed_warning_cert
+        stable_allowed_warning_row = matrix_row_by_id(
+            stable_allowed_warning_settings.out_dir,
+            "stable-1-0-readiness",
+        )
+        assert stable_allowed_warning_row["status"] == "warn", stable_allowed_warning_row
+        assert stable_allowed_warning_row["releaseBlocker"] is False, stable_allowed_warning_row
+
+        stable_extra_redaction_summary = workspace / "build/stable-readiness-extra-evidence-redaction.json"
+        write_json(
+            stable_extra_redaction_summary,
+            {
+                "schemaVersion": 1,
+                "kind": "stable-1.0-readiness",
+                "tool": "stable-1.0-readiness",
+                "releaseId": "cryptad-production-beta-self-test",
+                "status": "pass",
+                "decision": "ready",
+                "stableReady": True,
+                "blockerCount": 0,
+                "warningCount": 0,
+                "allowedLimitationCount": 0,
+                "disallowedLimitationCount": 0,
+                "domains": stable_self_test_passing_domains(),
+                "blockers": [],
+                "warnings": [],
+                "allowedLimitations": [],
+                "disallowedLimitations": [],
+                "redaction": {"status": "pass", "findings": []},
+                "evidence": [
+                    *[
+                        {
+                            "id": evidence_id,
+                            "status": "pass",
+                            "summary": f"{evidence_id} passed.",
+                            "details": {"decision": "ready", "stableReady": True}
+                            if evidence_id == "stable-1.0.readiness-gate"
+                            else {},
+                        }
+                        for evidence_id in STABLE_1_0_READINESS_EVIDENCE_IDS
+                    ],
+                    {
+                        "id": "stable-1.0.extra-redaction-fixture",
+                        "status": "pass",
+                        "summary": "Synthetic extra Stable evidence row with redaction findings.",
+                        "details": {
+                            "redactionFindings": [
+                                {
+                                    "kind": "stable-readiness-fixture",
+                                    "summary": "Synthetic extra Stable evidence redaction finding.",
+                                }
+                            ]
+                        },
+                    },
+                ],
+            },
+        )
+        stable_extra_redaction_items = stable_readiness_evidence(
+            stable_extra_redaction_summary,
+            True,
+            workspace,
+            out_dir,
+        )
+        stable_extra_redaction_statuses = {
+            item.id: item.status for item in stable_extra_redaction_items
+        }
+        assert stable_extra_redaction_statuses["stable-1.0.readiness-gate"] == "fail", (
+            stable_extra_redaction_statuses
+        )
+        assert stable_extra_redaction_statuses["stable-1.0.redaction"] == "fail", (
+            stable_extra_redaction_statuses
+        )
+        stable_extra_redaction_details = next(
+            item.details
+            for item in stable_extra_redaction_items
+            if item.id == "stable-1.0.redaction"
+        )
+        assert stable_extra_redaction_details["validationErrors"] == [
+            "evidence rows contain redaction findings: stable-1.0.extra-redaction-fixture"
+        ], stable_extra_redaction_details
+        stable_extra_redaction_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/stable-extra-evidence-redaction-cert").resolve(),
+            stable_readiness_summary=stable_extra_redaction_summary,
+            stable_readiness_required=True,
+        )
+        stable_extra_redaction_cert, stable_extra_redaction_exit_code = run(
+            stable_extra_redaction_settings
+        )
+        assert stable_extra_redaction_exit_code == 1, stable_extra_redaction_cert
+        stable_extra_redaction_row = matrix_row_by_id(
+            stable_extra_redaction_settings.out_dir,
+            "stable-1-0-readiness",
+        )
+        assert stable_extra_redaction_row["status"] == "fail", stable_extra_redaction_row
+        assert stable_extra_redaction_row["releaseBlocker"] is True, stable_extra_redaction_row
+        assert "evidence.stable-1.0.redaction" in stable_extra_redaction_row["issueIds"], (
+            stable_extra_redaction_row
+        )
+        assert "matrix.stable-readiness.redaction-failed" in stable_extra_redaction_row["issueIds"], (
+            stable_extra_redaction_row
+        )
+
+        stable_extra_status_redaction_summary = (
+            workspace / "build/stable-readiness-extra-evidence-status-redaction.json"
+        )
+        write_json(
+            stable_extra_status_redaction_summary,
+            {
+                "schemaVersion": 1,
+                "kind": "stable-1.0-readiness",
+                "tool": "stable-1.0-readiness",
+                "releaseId": "cryptad-production-beta-self-test",
+                "status": "pass",
+                "decision": "ready",
+                "stableReady": True,
+                "blockerCount": 0,
+                "warningCount": 0,
+                "allowedLimitationCount": 0,
+                "disallowedLimitationCount": 0,
+                "domains": stable_self_test_passing_domains(),
+                "blockers": [],
+                "warnings": [],
+                "allowedLimitations": [],
+                "disallowedLimitations": [],
+                "redaction": {"status": "pass", "findings": []},
+                "evidence": [
+                    *[
+                        {
+                            "id": evidence_id,
+                            "status": "pass",
+                            "summary": f"{evidence_id} passed.",
+                            "details": {"decision": "ready", "stableReady": True}
+                            if evidence_id == "stable-1.0.readiness-gate"
+                            else {},
+                        }
+                        for evidence_id in STABLE_1_0_READINESS_EVIDENCE_IDS
+                    ],
+                    {
+                        "id": "stable-1.0.extra-status-redaction-fixture",
+                        "status": "pass",
+                        "summary": "Synthetic extra Stable evidence row with non-pass redaction status.",
+                        "details": {"redaction": {"status": "warn"}},
+                    },
+                ],
+            },
+        )
+        stable_extra_status_redaction_items = stable_readiness_evidence(
+            stable_extra_status_redaction_summary,
+            True,
+            workspace,
+            out_dir,
+        )
+        stable_extra_status_redaction_statuses = {
+            item.id: item.status for item in stable_extra_status_redaction_items
+        }
+        assert stable_extra_status_redaction_statuses["stable-1.0.readiness-gate"] == "fail", (
+            stable_extra_status_redaction_statuses
+        )
+        assert stable_extra_status_redaction_statuses["stable-1.0.redaction"] == "fail", (
+            stable_extra_status_redaction_statuses
+        )
+        stable_extra_status_redaction_details = next(
+            item.details
+            for item in stable_extra_status_redaction_items
+            if item.id == "stable-1.0.redaction"
+        )
+        assert stable_extra_status_redaction_details["validationErrors"] == [
+            "evidence rows contain redaction findings: stable-1.0.extra-status-redaction-fixture"
+        ], stable_extra_status_redaction_details
+        stable_extra_status_redaction_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/stable-extra-evidence-status-redaction-cert").resolve(),
+            stable_readiness_summary=stable_extra_status_redaction_summary,
+            stable_readiness_required=True,
+        )
+        stable_extra_status_redaction_cert, stable_extra_status_redaction_exit_code = run(
+            stable_extra_status_redaction_settings
+        )
+        assert stable_extra_status_redaction_exit_code == 1, stable_extra_status_redaction_cert
+        stable_extra_status_redaction_row = matrix_row_by_id(
+            stable_extra_status_redaction_settings.out_dir,
+            "stable-1-0-readiness",
+        )
+        assert stable_extra_status_redaction_row["status"] == "fail", (
+            stable_extra_status_redaction_row
+        )
+        assert stable_extra_status_redaction_row["releaseBlocker"] is True, (
+            stable_extra_status_redaction_row
+        )
+        assert "evidence.stable-1.0.redaction" in stable_extra_status_redaction_row["issueIds"], (
+            stable_extra_status_redaction_row
+        )
+        assert "matrix.stable-readiness.redaction-failed" in stable_extra_status_redaction_row["issueIds"], (
+            stable_extra_status_redaction_row
+        )
+
+        stable_duplicate_evidence_summary = workspace / "build/stable-readiness-duplicate-evidence.json"
+        stable_duplicate_evidence_rows = [
+            {
+                "id": evidence_id,
+                "status": "pass",
+                "summary": f"{evidence_id} passed.",
+                "details": {"decision": "ready", "stableReady": True}
+                if evidence_id == "stable-1.0.readiness-gate"
+                else {},
+            }
+            for evidence_id in STABLE_1_0_READINESS_EVIDENCE_IDS
+        ]
+        for index, entry in enumerate(stable_duplicate_evidence_rows):
+            if entry["id"] == "stable-1.0.security-drills":
+                stable_duplicate_evidence_rows.insert(
+                    index,
+                    {
+                        "id": "stable-1.0.security-drills",
+                        "status": "fail",
+                        "summary": "Synthetic failed duplicate Stable security drills evidence.",
+                        "details": {},
+                    },
+                )
+                break
+        else:
+            raise AssertionError("stable-1.0.security-drills evidence missing from self-test fixture")
+        write_json(
+            stable_duplicate_evidence_summary,
+            {
+                "schemaVersion": 1,
+                "kind": "stable-1.0-readiness",
+                "tool": "stable-1.0-readiness",
+                "releaseId": "cryptad-production-beta-self-test",
+                "status": "pass",
+                "decision": "ready",
+                "stableReady": True,
+                "blockerCount": 0,
+                "warningCount": 0,
+                "allowedLimitationCount": 0,
+                "disallowedLimitationCount": 0,
+                "domains": stable_self_test_passing_domains(),
+                "blockers": [],
+                "warnings": [],
+                "allowedLimitations": [],
+                "disallowedLimitations": [],
+                "redaction": {"status": "pass", "findings": []},
+                "evidence": stable_duplicate_evidence_rows,
+            },
+        )
+        stable_duplicate_items = stable_readiness_evidence(
+            stable_duplicate_evidence_summary,
+            True,
+            workspace,
+            out_dir,
+        )
+        stable_duplicate_statuses = {item.id: item.status for item in stable_duplicate_items}
+        assert stable_duplicate_statuses["stable-1.0.readiness-gate"] == "fail", (
+            stable_duplicate_statuses
+        )
+        assert stable_duplicate_statuses["stable-1.0.security-drills"] == "fail", (
+            stable_duplicate_statuses
+        )
+        stable_duplicate_details = next(
+            item.details
+            for item in stable_duplicate_items
+            if item.id == "stable-1.0.readiness-gate"
+        )
+        assert stable_duplicate_details["validationErrors"] == [
+            "evidence contains duplicate required IDs: stable-1.0.security-drills"
+        ], stable_duplicate_details
+        stable_duplicate_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/stable-duplicate-evidence-cert").resolve(),
+            stable_readiness_summary=stable_duplicate_evidence_summary,
+            stable_readiness_required=True,
+        )
+        stable_duplicate_cert, stable_duplicate_exit_code = run(stable_duplicate_settings)
+        assert stable_duplicate_exit_code == 1, stable_duplicate_cert
+        stable_duplicate_row = matrix_row_by_id(stable_duplicate_settings.out_dir, "stable-1-0-readiness")
+        assert stable_duplicate_row["status"] == "fail", stable_duplicate_row
+        assert stable_duplicate_row["releaseBlocker"] is True, stable_duplicate_row
+        assert "evidence.stable-1.0.security-drills" in stable_duplicate_row["issueIds"], stable_duplicate_row
+        assert "matrix.stable-readiness.evidence-not-passing" in stable_duplicate_row["issueIds"], (
+            stable_duplicate_row
+        )
+
+        for omitted_stable_evidence_id in (
+            "stable-1.0.readiness-gate",
+            "stable-1.0.redaction",
+        ):
+            stable_missing_compact_row_summary = (
+                workspace
+                / "build"
+                / f"stable-readiness-missing-{omitted_stable_evidence_id.replace('.', '-')}.json"
+            )
+            write_json(
+                stable_missing_compact_row_summary,
+                stable_self_test_summary(
+                    omitted_evidence_ids={omitted_stable_evidence_id},
+                ),
+            )
+            stable_missing_compact_items = stable_readiness_evidence(
+                stable_missing_compact_row_summary,
+                True,
+                workspace,
+                out_dir,
+            )
+            stable_missing_compact_statuses = {
+                item.id: item.status for item in stable_missing_compact_items
+            }
+            expected_missing_compact_status = (
+                "fail"
+                if omitted_stable_evidence_id == "stable-1.0.readiness-gate"
+                else "missing"
+            )
+            assert stable_missing_compact_statuses[omitted_stable_evidence_id] == expected_missing_compact_status, (
+                omitted_stable_evidence_id,
+                stable_missing_compact_statuses,
+            )
+            stable_missing_compact_details = next(
+                item.details
+                for item in stable_missing_compact_items
+                if item.id == omitted_stable_evidence_id
+            )
+            assert (
+                f"{omitted_stable_evidence_id} is missing from stable readiness evidence"
+                in stable_missing_compact_details["validationErrors"]
+            ), stable_missing_compact_details
+            if omitted_stable_evidence_id != "stable-1.0.readiness-gate":
+                assert stable_missing_compact_statuses["stable-1.0.readiness-gate"] == "fail", (
+                    omitted_stable_evidence_id,
+                    stable_missing_compact_statuses,
+                )
+
+        stable_truncated_summary = workspace / "build/stable-readiness-truncated.json"
+        write_json(
+            stable_truncated_summary,
+            {
+                "schemaVersion": 1,
+                "kind": "stable-1.0-readiness",
+                "tool": "stable-1.0-readiness",
+                "releaseId": "cryptad-production-beta-self-test",
+                "status": "pass",
+                "decision": "ready",
+                "stableReady": True,
+                "blockerCount": 0,
+                "warningCount": 0,
+                "allowedLimitationCount": 0,
+                "disallowedLimitationCount": 0,
+                "domains": stable_self_test_passing_domains(),
+                "blockers": [],
+                "warnings": [],
+                "allowedLimitations": [],
+                "disallowedLimitations": [],
+                "redaction": {"status": "pass", "findings": []},
+                "evidence": [
+                    {
+                        "id": evidence_id,
+                        "status": "pass",
+                        "summary": f"{evidence_id} passed.",
+                        "details": {"decision": "ready", "stableReady": True}
+                        if evidence_id == "stable-1.0.readiness-gate"
+                        else {},
+                    }
+                    for evidence_id in STABLE_1_0_READINESS_EVIDENCE_IDS
+                    if evidence_id != "stable-1.0.security-drills"
+                ],
+            },
+        )
+        stable_truncated_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/stable-truncated-cert").resolve(),
+            stable_readiness_summary=stable_truncated_summary,
+            stable_readiness_required=True,
+            waivers={
+                "stable-1-0-readiness": "Attempted row waiver for truncated Stable evidence.",
+                "matrix.stable-readiness.evidence-not-passing": (
+                    "Attempted matrix waiver for truncated Stable evidence."
+                ),
+            },
+        )
+        stable_truncated_cert, stable_truncated_exit_code = run(stable_truncated_settings)
+        assert stable_truncated_exit_code == 1, stable_truncated_cert
+        stable_truncated_row = matrix_row_by_id(
+            stable_truncated_settings.out_dir,
+            "stable-1-0-readiness",
+        )
+        assert stable_truncated_row["status"] == "fail", stable_truncated_row
+        assert stable_truncated_row["releaseBlocker"] is True, stable_truncated_row
+        assert stable_truncated_row.get("waiverIds") == [], stable_truncated_row
+        assert "evidence.stable-1.0.security-drills" in stable_truncated_row[
+            "issueIds"
+        ], stable_truncated_row
+        assert "matrix.stable-readiness.evidence-not-passing" in stable_truncated_row[
+            "issueIds"
+        ], stable_truncated_row
+        assert stable_truncated_row["details"]["unwaivableIssueIds"] == [
+            "matrix.stable-readiness.evidence-not-passing"
+        ], stable_truncated_row
 
 
 def main(argv: list[str] | None = None) -> int:

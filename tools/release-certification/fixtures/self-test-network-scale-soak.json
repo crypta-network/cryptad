@@ -29,6 +29,7 @@
     "privateInsertUrisExcluded": true,
     "queueHtmlExcluded": true,
     "rawFetchedContentExcluded": true,
+    "status": "pass",
     "tokensExcluded": true
   },
   "status": "success",

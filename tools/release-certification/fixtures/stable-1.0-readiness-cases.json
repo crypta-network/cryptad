@@ -1,0 +1,917 @@
+{
+  "schemaVersion": 1,
+  "kind": "stable-1.0-readiness-fixture-cases",
+  "generatedBy": "stable_1_0_readiness.py --self-test",
+  "cases": [
+    {
+      "id": "ready",
+      "expectedDecision": "ready",
+      "category": "positive"
+    },
+    {
+      "id": "allowed-limitations",
+      "expectedDecision": "ready-with-allowed-limitations",
+      "category": "positive"
+    },
+    {
+      "id": "generated-at-does-not-control-freshness",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "missing-production",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "production-stub",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "production-not-ready",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "production-dirty-workspace",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "production-workspace-status-unknown",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "production-missing-signing-profile",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "production-missing-signing-field",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "production-non-string-app-key-id",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "production-non-string-reviewer-key-id",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "production-redaction-findings",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "production-redaction-count",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "production-boolean-schema-version",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "production-failed-gate-status",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "production-missing-required-promotion-gates",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "production-pre-dist-artifact-refs",
+      "expectedDecision": "ready",
+      "category": "positive"
+    },
+    {
+      "id": "go-no-go-no-go",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "go-no-go-stub",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "go-no-go-wrong-release-id",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "go-no-go-non-production-mode",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "go-no-go-boolean-schema-version",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "go-no-go-failed-domain",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "go-no-go-truncated-domains",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "go-no-go-duplicate-domain",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "go-no-go-warning-domain",
+      "expectedDecision": "ready",
+      "category": "positive"
+    },
+    {
+      "id": "go-no-go-unreported-warning-domain",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "go-no-go-waived-domain",
+      "expectedDecision": "ready",
+      "category": "positive"
+    },
+    {
+      "id": "go-no-go-waiver-malformed-used-by",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "go-no-go-waiver-count-decision-mismatch",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "go-no-go-listed-blocker",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "go-no-go-critical-summary-count",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "go-no-go-malformed-critical-summary-count",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "go-no-go-redaction-findings",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "go-no-go-redaction-count",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "go-no-go-redaction-fractional-count",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "go-no-go-critical-redaction-summary-count",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "go-no-go-redaction-malformed-findings",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "go-no-go-redaction-raw-flag",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "go-no-go-domain-redaction-failure",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "release-certification-failed",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "release-certification-not-passed",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "release-certification-ecosystem-rc-not-passed",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "release-certification-non-rc-mode",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "release-certification-boolean-schema-version",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "release-certification-stub",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "release-certification-missing-redaction",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "release-certification-redaction-status-schema",
+      "expectedDecision": "ready",
+      "category": "positive"
+    },
+    {
+      "id": "release-certification-redaction-field-failed",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "release-certification-redaction-truncated-proof",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "release-certification-redaction-count",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "release-certification-redaction-raw-flag",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "release-certification-evidence-failed",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "app-platform-duplicate-evidence-failed",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "attached-evidence-redaction-findings",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "app-platform-evidence-top-level-redaction-signals",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "app-platform-evidence-redaction-clean-false",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "app-platform-evidence-redaction-status-fail",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "app-platform-evidence-malformed-redaction-proof",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "app-platform-evidence-nested-redaction-status-warn",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "release-certification-evidence-redaction-findings",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "release-certification-evidence-redacted-false",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "release-certification-evidence-raw-stored",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "release-certification-evidence-sensitive-stored",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "release-certification-evidence-excluded-from-evidence-false",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "release-certification-evidence-direct-excluded-from-evidence-false",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "release-certification-evidence-direct-critical-redaction-count",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "release-certification-evidence-malformed-redaction-findings",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "release-certification-evidence-nested-redaction-findings",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "app-platform-summary-missing",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "app-platform-summary-failed",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "app-platform-summary-malformed-envelope",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "app-platform-summary-non-release-mode",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "app-platform-summary-non-release-flag",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "app-platform-summary-non-production",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "app-platform-summary-fixture-only",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "app-platform-summary-truncated-evidence",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "ecosystem-matrix-failed",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "ecosystem-matrix-failed-row",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "ecosystem-matrix-warning-row",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "ecosystem-matrix-missing-rows",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "ecosystem-matrix-truncated-rows",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "ecosystem-matrix-non-list-rows",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "ecosystem-matrix-malformed-row",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "ecosystem-matrix-row-redaction-failure",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "missing-platform-baseline",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "malformed-platform-baseline-count",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "missing-compatibility-window-details",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "stable-api-breaking-change",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "platform-api-status-only-redaction-failure",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "missing-first-party",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "diagnostics-nested-redaction-findings",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "missing-third-party",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "empty-third-party-sample-flow",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "truncated-third-party-sample-flow",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "missing-support-feedback-docs",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "stale-security",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "security-status-fail-redaction-pass",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "security-malformed-fixture-only",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "security-malformed-non-release",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "malformed-security-scenario-list",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "missing-security-scenario-result-list",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "security-missing-schema-version",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "security-boolean-schema-version",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "security-truncated-summary",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "security-redaction-unsafe-flag",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "security-redaction-count",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "security-release-id-mismatch",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "missing-security-required-scenarios",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "malformed-security-required-scenario-entry",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "malformed-required-release-modes-policy",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "malformed-soak-mode-policy",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "fractional-stable-policy-integers",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "scalar-platform-api-policy",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "scalar-allowed-limitation-categories-policy",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "scalar-non-waivable-blockers-policy",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "malformed-category-policy-entry",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "multi-node-release-id-mismatch",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "multi-node-truncated-summary",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "multi-node-raw-evidence-flag",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "multi-node-redaction-count",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "network-release-id-mismatch",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "network-release-id-missing",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "network-truncated-summary",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "network-forged-operation-count",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "stale-security-summary-age",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "stale-security-artifact-age",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "missing-security-artifacts",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "non-list-security-artifacts",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "empty-security-artifacts",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "malformed-security-artifact-entry",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "missing-security-artifact-digest",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "malformed-security-artifact-digest",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "missing-required-security-artifact",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "duplicate-required-security-artifact",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "failed-required-security-artifact",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "missing-security-artifact-release-notes-template-status",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "missing-security-artifact-advisory-template-status",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "extra-pass-security-artifact",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "extra-failed-security-artifact",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "missing-live-network-evidence",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "missing-previous-upgrade",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "app-data-migration-scenario-failed",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "network-redaction-missing",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "network-redaction-truncated-proof",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "network-redaction-status-missing",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "network-redaction-findings",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "network-redaction-count",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "network-redaction-status-fail",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "stale-soak-evidence",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "insufficient-network",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "known-issues-tracker-envelope-stub",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "malformed-known-issues-tracker",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "malformed-known-issue-entry",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "malformed-known-issue-metadata",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "non-string-known-issue-metadata",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "known-issue-unsafe-redaction-proof",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "known-issue-redaction-findings",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "critical-known-issue",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "critical-known-issue-future-fixed",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "beta-only-limitation",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "allowed-limitation-missing-metadata",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "allowed-disallowed-category",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "unknown-limitation-classification",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "malformed-known-limitations",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "boolean-known-limitations-schema-version",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "malformed-known-limitation-entry",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "missing-policy",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "invalid-utf8-policy",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "boolean-policy-schema-version",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "redaction-unsafe",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "invalid-waiver",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "invalid-utf8-waiver",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "boolean-waiver-schema-version",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "incomplete-waiver-metadata",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "non-string-waiver-metadata",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "missing-waiver-required-fields",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "waived-limitation-missing-metadata",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "waived-limitation-valid",
+      "expectedDecision": "ready",
+      "category": "positive"
+    },
+    {
+      "id": "allowed-trust-graph",
+      "expectedDecision": "ready-with-allowed-limitations",
+      "category": "positive"
+    },
+    {
+      "id": "allowed-social-inbox",
+      "expectedDecision": "ready-with-allowed-limitations",
+      "category": "positive"
+    }
+  ]
+}
