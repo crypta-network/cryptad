@@ -2921,6 +2921,11 @@ def stable_readiness_evidence(
         allowed_validation_errors.append("allowedLimitationCount is not a non-negative integer")
     allowed_validation_errors.extend(allowed_record_errors)
     allowed_remaining_count = max(allowed_count if not malformed_allowed_count else 0, allowed_record_count)
+    status_validation_errors: list[str] = []
+    if main_status == "warn" and warning_remaining_count == 0 and allowed_remaining_count == 0:
+        status_validation_errors.append(
+            "status is warn but no warnings or allowed limitations are reported"
+        )
     domain_validation_errors = stable_readiness_domain_errors(summary)
     evidence_rows = stable_readiness_evidence_rows(summary)
     missing_evidence_ids = [
@@ -2957,6 +2962,7 @@ def stable_readiness_evidence(
         or count_validation_errors
         or warning_validation_errors
         or allowed_validation_errors
+        or status_validation_errors
         or domain_validation_errors
         or evidence_validation_errors
     ):
@@ -3009,11 +3015,14 @@ def stable_readiness_evidence(
         *count_validation_errors,
         *warning_validation_errors,
         *allowed_validation_errors,
+        *status_validation_errors,
         *domain_validation_errors,
         *evidence_validation_errors,
     ]
     if summary_validation_errors:
         main_summary = "Stable 1.0 readiness summary schema is malformed."
+    elif status_validation_errors:
+        main_summary = "Stable 1.0 readiness summary status is inconsistent."
     elif count_validation_errors:
         main_summary = "Stable 1.0 readiness summary reports remaining blockers or forbidden limitations."
     elif warning_validation_errors:
@@ -14462,6 +14471,57 @@ def run_self_test(repo_root: Path) -> None:
         )
         assert stable_warning_row["status"] == "warn", stable_warning_row
         assert stable_warning_row["releaseBlocker"] is False, stable_warning_row
+
+        stable_summary_status_only_warning_path = (
+            workspace / "build/stable-readiness-status-only-summary-warning.json"
+        )
+        stable_summary_status_only_warning_value = stable_self_test_summary()
+        stable_summary_status_only_warning_value["status"] = "warn"
+        write_json(
+            stable_summary_status_only_warning_path,
+            stable_summary_status_only_warning_value,
+        )
+        stable_summary_status_only_warning_items = stable_readiness_evidence(
+            stable_summary_status_only_warning_path,
+            True,
+            workspace,
+            out_dir,
+            "cryptad-production-beta-self-test",
+        )
+        stable_summary_status_only_warning_gate = next(
+            item
+            for item in stable_summary_status_only_warning_items
+            if item.id == "stable-1.0.readiness-gate"
+        )
+        assert stable_summary_status_only_warning_gate.status == "fail", (
+            stable_summary_status_only_warning_gate
+        )
+        assert stable_summary_status_only_warning_gate.details["validationErrors"] == [
+            "status is warn but no warnings or allowed limitations are reported"
+        ], stable_summary_status_only_warning_gate.details
+        stable_summary_status_only_warning_settings = dataclasses.replace(
+            settings,
+            out_dir=(workspace / "build/stable-status-only-summary-warning-cert").resolve(),
+            stable_readiness_summary=stable_summary_status_only_warning_path,
+            stable_readiness_required=True,
+        )
+        (
+            stable_summary_status_only_warning_cert,
+            stable_summary_status_only_warning_exit_code,
+        ) = run(stable_summary_status_only_warning_settings)
+        assert stable_summary_status_only_warning_exit_code == 1, (
+            stable_summary_status_only_warning_cert
+        )
+        stable_summary_status_only_warning_row = matrix_row_by_id(
+            stable_summary_status_only_warning_settings.out_dir,
+            "stable-1-0-readiness",
+        )
+        assert stable_summary_status_only_warning_row["status"] == "fail", (
+            stable_summary_status_only_warning_row
+        )
+        assert stable_summary_status_only_warning_row["releaseBlocker"] is True, (
+            stable_summary_status_only_warning_row
+        )
 
         stable_status_only_warning_summary = (
             workspace / "build/stable-readiness-status-only-domain-warning.json"

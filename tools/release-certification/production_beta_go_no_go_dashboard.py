@@ -4142,6 +4142,9 @@ def stable_readiness_issues(
                 category="stable-readiness",
             )
         )
+    allowed_limitations_remain = allowed_limitation_count > 0 or (
+        not malformed_allowed_count and allowed_count > 0
+    )
     status = normalize_status(summary.get("status", "missing"))
     decision = str(summary.get("decision", "not-ready"))
     stable_ready = summary.get("stableReady") is True
@@ -4164,6 +4167,23 @@ def stable_readiness_issues(
                 category="stable-readiness",
             )
         )
+    elif status == "warn" and not summary_reports_warnings and not allowed_limitations_remain:
+        issues.append(
+            Issue(
+                id="stable-1.0.readiness-summary.warning-status-invalid",
+                evidence_id="stable-1.0.readiness-gate",
+                domain_id=domain_id,
+                severity="blocker" if required else "warning",
+                title="Stable 1.0 readiness warning status is inconsistent",
+                summary=(
+                    "Stable readiness status is warn, but the summary reports no warnings or "
+                    "allowed limitations."
+                ),
+                source="stable-readiness-summary",
+                waivable=not required,
+                category="stable-readiness",
+            )
+        )
     elif not stable_ready or decision == "not-ready" or status == "fail":
         issues.append(
             Issue(
@@ -4178,9 +4198,6 @@ def stable_readiness_issues(
                 category="stable-readiness",
             )
         )
-    allowed_limitations_remain = allowed_limitation_count > 0 or (
-        not malformed_allowed_count and allowed_count > 0
-    )
     if decision == "ready-with-allowed-limitations" or allowed_limitations_remain:
         issues.append(
             Issue(
@@ -5822,6 +5839,36 @@ def assert_required_stable_readiness_release_id_matches_dashboard_candidate(root
         raise AssertionError(
             "Stable summary warning was not surfaced exactly once: "
             f"{summary_warning_dashboard.get('warnings')}"
+        )
+
+    status_only_summary_warning_inputs = json.loads(json.dumps(inputs))
+    status_only_summary_warning_inputs["stableReadinessSummary"]["status"] = "warn"
+    status_only_summary_warning_dashboard = build_dashboard(
+        status_only_summary_warning_inputs,
+        {},
+        [FIXTURE_DIR / "go-no-go-pass.json"],
+        None,
+        Path(__file__).resolve().parents[2],
+        root / "stable-readiness-status-only-summary-warning",
+        "production-beta",
+        release_id,
+        generated_at,
+        now,
+        require_stable_readiness=True,
+    )
+    status_only_summary_warning_blockers = [
+        blocker
+        for blocker in status_only_summary_warning_dashboard.get("blockers", [])
+        if isinstance(blocker, dict)
+        and blocker.get("id") == "stable-1.0.readiness-summary.warning-status-invalid"
+        and blocker.get("severity") == "blocker"
+    ]
+    if status_only_summary_warning_dashboard.get("decision") != "no-go" or len(
+        status_only_summary_warning_blockers
+    ) != 1:
+        raise AssertionError(
+            "status-only Stable summary warning did not block: "
+            f"{status_only_summary_warning_dashboard}"
         )
 
     status_only_warning_inputs = json.loads(json.dumps(inputs))
