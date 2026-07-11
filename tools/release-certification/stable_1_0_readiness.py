@@ -1547,17 +1547,17 @@ def load_waivers(path: Path | None, now: dt.datetime, workspace_root: Path) -> l
     for index, record in enumerate(records):
         if not isinstance(record, dict):
             record = {}
-        waiver_id = str(record.get("id", "")).strip()
-        evidence_id = str(record.get("evidenceId", "")).strip()
-        scope = str(record.get("scope", "")).strip()
-        status = str(record.get("status", "")).strip().lower()
-        rationale = str(record.get("rationale", record.get("reason", ""))).strip()
-        approved_by = str(record.get("approvedBy", "")).strip()
-        owner = str(record.get("owner", "")).strip()
-        expires_at = str(record.get("expiresAt", "")).strip()
+        waiver_id = non_empty_string(record.get("id"))
+        evidence_id = non_empty_string(record.get("evidenceId"))
+        scope = non_empty_string(record.get("scope"))
+        status = non_empty_string(record.get("status")).lower()
+        rationale = non_empty_string(record.get("rationale", record.get("reason")))
+        approved_by = non_empty_string(record.get("approvedBy"))
+        owner = non_empty_string(record.get("owner"))
+        expires_at = non_empty_string(record.get("expiresAt"))
         references_value = record.get("references")
         references = (
-            tuple(str(item).strip() for item in references_value if str(item).strip())
+            tuple(non_empty_string(item) for item in references_value if non_empty_string(item))
             if isinstance(references_value, list)
             else ()
         )
@@ -1581,6 +1581,8 @@ def load_waivers(path: Path | None, now: dt.datetime, workspace_root: Path) -> l
             validation_errors.append("scope must apply to stable-1.0")
         if not isinstance(references_value, list):
             validation_errors.append("references is required and must be an array")
+        elif any(not non_empty_string(item) for item in references_value):
+            validation_errors.append("references must contain only non-empty strings")
         elif not references:
             validation_errors.append("references must include at least one approval reference")
         if not expires_at:
@@ -5137,6 +5139,7 @@ def run_self_test() -> None:
         "invalid-utf8-waiver",
         "boolean-waiver-schema-version",
         "incomplete-waiver-metadata",
+        "non-string-waiver-metadata",
         "missing-waiver-required-fields",
         "waived-limitation-missing-metadata",
         "waived-limitation-valid",
@@ -8336,6 +8339,81 @@ def run_self_test() -> None:
             return waiver_path
 
         run_case(root, "incomplete-waiver-metadata", incomplete_waiver_metadata, "not-ready", expect_blocker="stable-1.0.waiver-validation")
+
+        non_string_waiver_limitation_id = "stable-1.0.non-string-waiver-metadata"
+
+        def non_string_waiver_metadata(
+            _inputs: dict[str, Any],
+            limitations: dict[str, Any],
+            paths: dict[str, Path],
+        ) -> Path:
+            limitations["limitations"].append(
+                {
+                    "id": non_string_waiver_limitation_id,
+                    "title": "Non-string Stable waiver metadata follow-up",
+                    "classification": "requires-waiver-before-stable",
+                    "category": "ui-polish-accessibility-warning",
+                    "status": "open",
+                    "summary": "Self-test limitation requiring typed waiver approval metadata.",
+                    "evidenceIds": ["stable-1.0.support-feedback-readiness"],
+                    "boundedBy": "The follow-up is bounded to non-blocking UI polish.",
+                }
+            )
+            waiver_path = paths["stableKnownLimitations"].parent / "non-string-metadata-waivers.json"
+            write_json(
+                waiver_path,
+                {
+                    "schemaVersion": 1,
+                    "waivers": [
+                        {
+                            "id": "stable-waive-non-string-metadata",
+                            "evidenceId": non_string_waiver_limitation_id,
+                            "scope": "stable-1.0",
+                            "status": "approved",
+                            "rationale": None,
+                            "approvedBy": None,
+                            "owner": None,
+                            "expiresAt": "2999-01-01T00:00:00Z",
+                            "references": [None],
+                        }
+                    ],
+                },
+            )
+            return waiver_path
+
+        def assert_non_string_waiver_metadata(summary: dict[str, Any]) -> None:
+            waiver = next(
+                (
+                    record
+                    for record in summary.get("waivers", [])
+                    if isinstance(record, dict)
+                    and record.get("id") == "stable-waive-non-string-metadata"
+                ),
+                None,
+            )
+            if not isinstance(waiver, dict) or waiver.get("active") is not False:
+                raise AssertionError(f"malformed Stable waiver became active: {waiver}")
+            validation_errors = set(waiver.get("validationErrors", []))
+            expected_errors = {
+                "rationale is required",
+                "approvedBy is required",
+                "owner is required",
+                "references must contain only non-empty strings",
+            }
+            if not expected_errors.issubset(validation_errors):
+                raise AssertionError(
+                    "malformed Stable waiver omitted type validation errors: "
+                    f"{waiver.get('validationErrors')}"
+                )
+
+        run_case(
+            root,
+            "non-string-waiver-metadata",
+            non_string_waiver_metadata,
+            "not-ready",
+            expect_blocker="stable-1.0.waiver-validation",
+            post_check=assert_non_string_waiver_metadata,
+        )
 
         def missing_waiver_required_fields(
             _inputs: dict[str, Any],

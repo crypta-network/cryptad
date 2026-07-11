@@ -1068,7 +1068,9 @@ def redaction_signal_has_unwaivable_findings(
                     if malformed_finding_count or finding_count > 0:
                         return True
             status = value.get("status")
-            if normalize_evidence_status(str(status)) == "fail":
+            if "status" in value and (
+                not isinstance(status, str) or status.strip().lower() != "pass"
+            ):
                 return True
         for key, child in value.items():
             if key == "redaction":
@@ -10023,6 +10025,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def run_self_test(repo_root: Path) -> None:
+    for unsafe_redaction_status in ("fail", "warn", "missing", "skip", "success", None, True):
+        assert redaction_signal_has_unwaivable_findings({"status": unsafe_redaction_status}), (
+            unsafe_redaction_status
+        )
+    assert not redaction_signal_has_unwaivable_findings({"status": "pass"})
     fixture_dir = repo_root / "tools/release-certification/fixtures"
     with tempfile.TemporaryDirectory(prefix="cryptad-cert-self-test-") as temp_name:
         workspace = Path(temp_name) / "repo"
@@ -16889,8 +16896,8 @@ def run_self_test(repo_root: Path) -> None:
                     {
                         "id": "stable-1.0.extra-status-redaction-fixture",
                         "status": "pass",
-                        "summary": "Synthetic extra Stable evidence row with failed redaction status.",
-                        "details": {"redaction": {"status": "fail"}},
+                        "summary": "Synthetic extra Stable evidence row with non-pass redaction status.",
+                        "details": {"redaction": {"status": "warn"}},
                     },
                 ],
             },

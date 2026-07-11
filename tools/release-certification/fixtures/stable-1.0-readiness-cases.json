@@ -844,6 +844,11 @@
       "category": "negative"
     },
     {
+      "id": "non-string-waiver-metadata",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
       "id": "missing-waiver-required-fields",
       "expectedDecision": "not-ready",
       "category": "negative"
