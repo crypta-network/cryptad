@@ -34,6 +34,16 @@
       "category": "negative"
     },
     {
+      "id": "production-dirty-workspace",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "production-workspace-status-unknown",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
       "id": "production-missing-signing-profile",
       "expectedDecision": "not-ready",
       "category": "negative"
@@ -140,6 +150,16 @@
     },
     {
       "id": "go-no-go-listed-blocker",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "go-no-go-critical-summary-count",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
+      "id": "go-no-go-malformed-critical-summary-count",
       "expectedDecision": "not-ready",
       "category": "negative"
     },

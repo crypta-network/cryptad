@@ -67,6 +67,7 @@ GO_NO_GO_SUMMARY_COUNT_FIELDS = (
     "warnings",
     "waiversUsed",
     "criticalRedactionFindings",
+    "criticalFindings",
 )
 
 GO_NO_GO_DOMAIN_IDS = tuple(str(spec["id"]) for spec in dashboard.DOMAIN_SPECS)
@@ -1705,6 +1706,33 @@ def evaluate_production_beta_state(
                     "production-beta-summary",
                 )
             )
+        workspace_marker_errors: list[str] = []
+        if (
+            "workspaceStatusKnown" in production
+            and production.get("workspaceStatusKnown") is not True
+        ):
+            workspace_marker_errors.append(
+                f"workspaceStatusKnown is {production.get('workspaceStatusKnown')!r}"
+            )
+        if "dirtyWorkspace" in production and production.get("dirtyWorkspace") is not False:
+            workspace_marker_errors.append(
+                f"dirtyWorkspace is {production.get('dirtyWorkspace')!r}"
+            )
+        if workspace_marker_errors:
+            blockers.append(
+                blocker_issue(
+                    domain_id,
+                    "stable-1.0.production-beta-state",
+                    "Production beta workspace status is not clean",
+                    (
+                        "Stable 1.0 requires workspaceStatusKnown=true and dirtyWorkspace=false "
+                        "when those production summary markers are present; "
+                        + "; ".join(workspace_marker_errors)
+                        + "."
+                    ),
+                    "production-beta-summary",
+                )
+            )
         pipeline_stages = production.get("pipelineStages")
         if not isinstance(pipeline_stages, dict) or not pipeline_stages:
             blockers.append(
@@ -1976,7 +2004,11 @@ def evaluate_production_beta_state(
                 )
             )
         for field in GO_NO_GO_SUMMARY_COUNT_FIELDS:
-            count, malformed_count = non_negative_count(dashboard_summary.get(field, 0))
+            if field == "criticalFindings":
+                parsed_count = strict_non_negative_int(dashboard_summary.get(field, 0))
+                count, malformed_count = (parsed_count or 0), parsed_count is None
+            else:
+                count, malformed_count = non_negative_count(dashboard_summary.get(field, 0))
             if malformed_count:
                 blockers.append(
                     blocker_issue(
@@ -1996,6 +2028,19 @@ def evaluate_production_beta_state(
                         (
                             "Stable 1.0 readiness cannot depend on a redaction-unsafe dashboard; "
                             f"goNoGoSummary.summary.criticalRedactionFindings is {count}."
+                        ),
+                        "go-no-go-summary",
+                    )
+                )
+            elif field == "criticalFindings" and count > 0:
+                blockers.append(
+                    blocker_issue(
+                        domain_id,
+                        "stable-1.0.go-no-go-decision",
+                        "Go/no-go dashboard reports critical findings",
+                        (
+                            "Stable 1.0 readiness cannot depend on a dashboard with unresolved "
+                            f"critical findings; goNoGoSummary.summary.criticalFindings is {count}."
                         ),
                         "go-no-go-summary",
                     )
@@ -4724,6 +4769,8 @@ def base_self_test_inputs() -> tuple[dict[str, Any], dict[str, Any]]:
     production["generatedAt"] = DEFAULT_GENERATED_AT
     production["releaseId"] = "cryptad-beta-270"
     production["version"] = "270"
+    production["workspaceStatusKnown"] = True
+    production["dirtyWorkspace"] = False
     production["signingProfile"] = {
         "kind": "production",
         "generatedTestKeys": False,
@@ -4766,6 +4813,7 @@ def base_self_test_inputs() -> tuple[dict[str, Any], dict[str, Any]]:
             "warnings": 0,
             "waiversUsed": 0,
             "criticalRedactionFindings": 0,
+            "criticalFindings": 0,
         },
         "domains": [
             {
@@ -4977,6 +5025,8 @@ def run_self_test() -> None:
         "missing-production",
         "production-stub",
         "production-not-ready",
+        "production-dirty-workspace",
+        "production-workspace-status-unknown",
         "production-missing-signing-profile",
         "production-missing-signing-field",
         "production-redaction-findings",
@@ -4999,6 +5049,8 @@ def run_self_test() -> None:
         "go-no-go-waiver-malformed-used-by",
         "go-no-go-waiver-count-decision-mismatch",
         "go-no-go-listed-blocker",
+        "go-no-go-critical-summary-count",
+        "go-no-go-malformed-critical-summary-count",
         "go-no-go-redaction-findings",
         "go-no-go-redaction-count",
         "go-no-go-redaction-fractional-count",
@@ -5247,6 +5299,36 @@ def run_self_test() -> None:
             inputs["productionBetaSummary"]["promotionReady"] = False
 
         run_case(root, "production-not-ready", production_not_ready, "not-ready", expect_blocker="stable-1.0.production-beta-state")
+
+        def production_dirty_workspace(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs["productionBetaSummary"]["dirtyWorkspace"] = True
+
+        run_case(
+            root,
+            "production-dirty-workspace",
+            production_dirty_workspace,
+            "not-ready",
+            expect_blocker="stable-1.0.production-beta-state",
+        )
+
+        def production_workspace_status_unknown(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs["productionBetaSummary"]["workspaceStatusKnown"] = False
+
+        run_case(
+            root,
+            "production-workspace-status-unknown",
+            production_workspace_status_unknown,
+            "not-ready",
+            expect_blocker="stable-1.0.production-beta-state",
+        )
 
         def production_missing_signing_profile(inputs: dict[str, Any], _limitations: dict[str, Any], _paths: dict[str, Path]) -> None:
             inputs["productionBetaSummary"].pop("signingProfile", None)
@@ -5700,6 +5782,36 @@ def run_self_test() -> None:
             root,
             "go-no-go-listed-blocker",
             go_no_go_listed_blocker,
+            "not-ready",
+            expect_blocker="stable-1.0.go-no-go-decision",
+        )
+
+        def go_no_go_critical_summary_count(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs["goNoGoSummary"]["summary"]["criticalFindings"] = 1
+
+        run_case(
+            root,
+            "go-no-go-critical-summary-count",
+            go_no_go_critical_summary_count,
+            "not-ready",
+            expect_blocker="stable-1.0.go-no-go-decision",
+        )
+
+        def go_no_go_malformed_critical_summary_count(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs["goNoGoSummary"]["summary"]["criticalFindings"] = 0.5
+
+        run_case(
+            root,
+            "go-no-go-malformed-critical-summary-count",
+            go_no_go_malformed_critical_summary_count,
             "not-ready",
             expect_blocker="stable-1.0.go-no-go-decision",
         )
