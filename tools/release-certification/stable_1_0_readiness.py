@@ -273,6 +273,14 @@ KNOWN_ISSUE_REQUIRED_FIELDS = (
     "redactionNotes",
     "backlogLinkOrPlaceholder",
 )
+KNOWN_ISSUE_REQUIRED_LIST_FIELDS = (
+    "affectedChannels",
+    "affectedAppIds",
+    "affectedVersions",
+)
+KNOWN_ISSUE_REQUIRED_STRING_FIELDS = tuple(
+    field for field in KNOWN_ISSUE_REQUIRED_FIELDS if field not in KNOWN_ISSUE_REQUIRED_LIST_FIELDS
+)
 
 DOC_PATHS = (
     "docs/stable-1.0-readiness-gate.md",
@@ -3923,19 +3931,34 @@ def evaluate_support_feedback(
                 field
                 for field in KNOWN_ISSUE_REQUIRED_FIELDS
                 if field not in known_issue
-                or (isinstance(known_issue.get(field), str) and not known_issue.get(field, "").strip())
+                or (
+                    field in KNOWN_ISSUE_REQUIRED_STRING_FIELDS
+                    and isinstance(known_issue.get(field), str)
+                    and not known_issue.get(field, "").strip()
+                )
             ]
-            malformed_fields = [
+            malformed_string_fields = [
                 field
-                for field in ("affectedChannels", "affectedAppIds", "affectedVersions")
+                for field in KNOWN_ISSUE_REQUIRED_STRING_FIELDS
+                if field in known_issue and not isinstance(known_issue.get(field), str)
+            ]
+            malformed_list_fields = [
+                field
+                for field in KNOWN_ISSUE_REQUIRED_LIST_FIELDS
                 if field in known_issue and not isinstance(known_issue.get(field), list)
             ]
-            if missing_fields or malformed_fields:
+            if missing_fields or malformed_string_fields or malformed_list_fields:
                 detail_parts = []
                 if missing_fields:
                     detail_parts.append("missing required fields: " + ", ".join(missing_fields))
-                if malformed_fields:
-                    detail_parts.append("fields must be lists: " + ", ".join(malformed_fields))
+                if malformed_string_fields:
+                    detail_parts.append(
+                        "fields must be non-empty strings: " + ", ".join(malformed_string_fields)
+                    )
+                if malformed_list_fields:
+                    detail_parts.append(
+                        "fields must be lists: " + ", ".join(malformed_list_fields)
+                    )
                 blockers.append(
                     blocker_issue(
                         domain_id,
@@ -5094,6 +5117,7 @@ def run_self_test() -> None:
         "malformed-known-issues-tracker",
         "malformed-known-issue-entry",
         "malformed-known-issue-metadata",
+        "non-string-known-issue-metadata",
         "known-issue-unsafe-redaction-proof",
         "known-issue-redaction-findings",
         "critical-known-issue",
@@ -7949,6 +7973,23 @@ def run_self_test() -> None:
             }
             record.update(overrides)
             return record
+
+        def non_string_known_issue_metadata(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            inputs["publicBetaKnownIssues"]["knownIssues"].append(
+                synthetic_known_issue(severity=None)
+            )
+
+        run_case(
+            root,
+            "non-string-known-issue-metadata",
+            non_string_known_issue_metadata,
+            "not-ready",
+            expect_blocker="public-beta.known-issues-tracker",
+        )
 
         def known_issue_unsafe_redaction_proof(
             inputs: dict[str, Any],

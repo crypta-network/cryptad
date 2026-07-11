@@ -2506,6 +2506,47 @@ def stable_summary_warning_labels(summary: dict[str, Any]) -> list[str]:
     return list(dict.fromkeys(labels))
 
 
+def stable_summary_warning_record_errors(
+    summary: dict[str, Any],
+    parsed_count: int,
+    malformed_count: bool,
+) -> list[str]:
+    warnings = summary.get("warnings")
+    if not isinstance(warnings, list):
+        return ["warnings must be a list"]
+    errors = [
+        f"warnings[{index}] must be an object"
+        for index, warning in enumerate(warnings)
+        if not isinstance(warning, dict)
+    ]
+    warning_record_count = len(warnings)
+    domain_warning_record_count = 0
+    domains = summary.get("domains")
+    if isinstance(domains, list):
+        domain_warning_record_count = sum(
+            len(domain.get("warnings", []))
+            for domain in domains
+            if isinstance(domain, dict) and isinstance(domain.get("warnings", []), list)
+        )
+        errors.extend(
+            f"domains[{domain_index}].warnings[{warning_index}] must be an object"
+            for domain_index, domain in enumerate(domains)
+            if isinstance(domain, dict) and isinstance(domain.get("warnings", []), list)
+            for warning_index, warning in enumerate(domain.get("warnings", []))
+            if not isinstance(warning, dict)
+        )
+    if not malformed_count and parsed_count != warning_record_count:
+        errors.append(
+            f"warningCount is {parsed_count} but warnings contains {warning_record_count} record(s)"
+        )
+    if not malformed_count and parsed_count != domain_warning_record_count:
+        errors.append(
+            "warningCount is "
+            f"{parsed_count} but domains contain {domain_warning_record_count} warning record(s)"
+        )
+    return errors
+
+
 def stable_summary_redaction_domain_errors(summary: dict[str, Any]) -> list[str]:
     domains = summary.get("domains")
     if not isinstance(domains, list):
@@ -3959,6 +4000,29 @@ def stable_readiness_issues(
                 severity="blocker" if required else "warning",
                 title="Stable 1.0 readiness warning count is invalid",
                 summary="Stable readiness warningCount is not a non-negative integer.",
+                source="stable-readiness-summary",
+                waivable=not required,
+                category="stable-readiness",
+            )
+        )
+    warning_record_errors = stable_summary_warning_record_errors(
+        summary,
+        warning_count,
+        malformed_warning_count,
+    )
+    if warning_record_errors:
+        issues.append(
+            Issue(
+                id="stable-1.0.readiness-summary.warning-records-invalid",
+                evidence_id="stable-1.0.readiness-gate",
+                domain_id=domain_id,
+                severity="blocker" if required else "warning",
+                title="Stable 1.0 readiness warning records are invalid",
+                summary=(
+                    "Stable readiness warning records are inconsistent: "
+                    + "; ".join(warning_record_errors)
+                    + "."
+                ),
                 source="stable-readiness-summary",
                 waivable=not required,
                 category="stable-readiness",
@@ -5575,6 +5639,7 @@ def assert_required_stable_readiness_release_id_matches_dashboard_candidate(root
         "allowedLimitationCount": 0,
         "disallowedLimitationCount": 0,
         "blockers": [],
+        "warnings": [],
         "allowedLimitations": [],
         "disallowedLimitations": [],
         "domains": [
@@ -5659,6 +5724,41 @@ def assert_required_stable_readiness_release_id_matches_dashboard_candidate(root
         ):
             raise AssertionError(
                 f"malformed Stable warningCount {warning_count!r} did not block: "
+                f"{malformed_warning_dashboard}"
+            )
+
+    for warning_suffix, warning_records in (
+        ("object", {}),
+        ("string", "not-a-list"),
+    ):
+        malformed_warning_inputs = json.loads(json.dumps(inputs))
+        malformed_warning_inputs["stableReadinessSummary"]["warnings"] = warning_records
+        malformed_warning_dashboard = build_dashboard(
+            malformed_warning_inputs,
+            {},
+            [FIXTURE_DIR / "go-no-go-pass.json"],
+            None,
+            Path(__file__).resolve().parents[2],
+            root / f"stable-readiness-malformed-warning-records-{warning_suffix}",
+            "production-beta",
+            release_id,
+            generated_at,
+            now,
+            require_stable_readiness=True,
+        )
+        malformed_warning_blockers = [
+            blocker
+            for blocker in malformed_warning_dashboard.get("blockers", [])
+            if isinstance(blocker, dict)
+            and blocker.get("id") == "stable-1.0.readiness-summary.warning-records-invalid"
+            and blocker.get("severity") == "blocker"
+        ]
+        if (
+            malformed_warning_dashboard.get("decision") != "no-go"
+            or len(malformed_warning_blockers) != 1
+        ):
+            raise AssertionError(
+                f"malformed Stable warnings {warning_records!r} did not block: "
                 f"{malformed_warning_dashboard}"
             )
 

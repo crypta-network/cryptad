@@ -744,6 +744,11 @@
       "category": "negative"
     },
     {
+      "id": "non-string-known-issue-metadata",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
       "id": "known-issue-unsafe-redaction-proof",
       "expectedDecision": "not-ready",
       "category": "negative"
