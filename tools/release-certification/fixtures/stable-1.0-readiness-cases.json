@@ -269,6 +269,11 @@
       "category": "negative"
     },
     {
+      "id": "app-platform-evidence-malformed-redaction-proof",
+      "expectedDecision": "not-ready",
+      "category": "negative"
+    },
+    {
       "id": "release-certification-evidence-redaction-findings",
       "expectedDecision": "not-ready",
       "category": "negative"

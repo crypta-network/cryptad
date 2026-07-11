@@ -1071,13 +1071,13 @@ def redaction_proof_failure(key: Any, value: Any) -> bool:
     ):
         return value is not True
     if lowered.endswith(("excluded", "excludedfromevidence", "redacted", "sanitized")):
-        return value is False
+        return value is not True
     if lowered.endswith("stored"):
-        return value is True
+        return value is not False
     return (
         lowered.startswith("raw")
         and lowered.endswith(("included", "persisted", "inevidence"))
-        and value is True
+        and value is not False
     )
 
 
@@ -5128,6 +5128,21 @@ def assert_redaction_proof_semantics() -> None:
             )
     if entry_has_redaction_findings({"details": {"redactionStatus": "pass"}}):
         raise AssertionError("redactionStatus=pass was treated as unsafe")
+    boolean_proof_cases = (
+        ("privateInsertUrisExcluded", True, (False, "false", None, 1)),
+        ("rawSupportBundlesStored", False, (True, "true", None, 0)),
+        ("rawFetchedContentIncluded", False, (True, "true", None, 0)),
+        ("rawContentPersisted", False, (True, "true", None, 0)),
+        ("rawStatementsInEvidence", False, (True, "true", None, 0)),
+    )
+    for key, safe_value, unsafe_values in boolean_proof_cases:
+        if entry_has_redaction_findings({"details": {key: safe_value}}):
+            raise AssertionError(f"{key}={safe_value!r} was treated as unsafe")
+        for unsafe_value in unsafe_values:
+            if not entry_has_redaction_findings({"details": {key: unsafe_value}}):
+                raise AssertionError(
+                    f"{key}={unsafe_value!r} was not treated as unsafe"
+                )
 
 
 def assert_multi_node_release_evidence_is_not_overwritten(root: Path) -> None:

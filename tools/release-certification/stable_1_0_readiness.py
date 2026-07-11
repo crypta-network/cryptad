@@ -5014,6 +5014,7 @@ def run_self_test() -> None:
         "app-platform-summary-truncated-evidence",
         "app-platform-evidence-redaction-clean-false",
         "app-platform-evidence-redaction-status-fail",
+        "app-platform-evidence-malformed-redaction-proof",
         "ecosystem-matrix-failed",
         "ecosystem-matrix-failed-row",
         "ecosystem-matrix-warning-row",
@@ -6313,6 +6314,30 @@ def run_self_test() -> None:
             root,
             "app-platform-evidence-redaction-status-fail",
             app_platform_evidence_redaction_status_fail,
+            "not-ready",
+            expect_blocker="stable-1.0.redaction",
+        )
+
+        def app_platform_evidence_malformed_redaction_proof(
+            inputs: dict[str, Any],
+            _limitations: dict[str, Any],
+            _paths: dict[str, Path],
+        ) -> None:
+            for entry in inputs["appPlatformSummary"]["evidence"]:
+                if (
+                    isinstance(entry, dict)
+                    and entry.get("id") == "app-data.backup-restore-portability"
+                ):
+                    entry.setdefault("details", {})[
+                        "privateInsertUrisExcluded"
+                    ] = "false"
+                    return
+            raise AssertionError("app-data.backup-restore-portability evidence row missing")
+
+        run_case(
+            root,
+            "app-platform-evidence-malformed-redaction-proof",
+            app_platform_evidence_malformed_redaction_proof,
             "not-ready",
             expect_blocker="stable-1.0.redaction",
         )
