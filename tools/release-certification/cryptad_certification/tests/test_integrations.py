@@ -256,6 +256,59 @@ class AdapterIntegrationTest(unittest.TestCase):
             engine.assert_not_called()
             self.assertEqual([], list(external.iterdir()))
 
+    def test_symlinked_extracted_input_directory_is_rejected_before_writing(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            envelope = EvidenceEnvelope(
+                kind="app-platform-smoke",
+                generated_at="2026-01-01T00:00:00Z",
+                subject={
+                    "releaseId": "self-test-release",
+                    "version": "self-test",
+                    "profile": "pr",
+                    "component": "app-platform",
+                },
+                result={
+                    "status": "pass",
+                    "decision": None,
+                    "promotionReady": None,
+                    "exitCode": 0,
+                },
+                counts={"evidence": 0, "blockers": 0, "warnings": 0, "waivers": 0},
+                redaction={
+                    "status": "pass",
+                    "findingCount": 0,
+                    "findings": [],
+                    "guarantees": {},
+                },
+                payload={"legacy": {"schemaVersion": 1, "status": "pass"}},
+            ).to_json()
+            write_json(root / "app-platform-v2.json", envelope)
+            manifest = load_manifest(
+                write_manifest(
+                    root,
+                    inputs={"appPlatform": "app-platform-v2.json"},
+                ),
+                root,
+            )
+            prepare_run_root(manifest)
+            context = prepare_context(root, manifest, "release-certification")
+            external = root / "external-inputs"
+            external.mkdir()
+            input_dir = context.component_dir / "artifacts/inputs"
+            try:
+                input_dir.symlink_to(external, target_is_directory=True)
+            except OSError as exc:
+                self.skipTest(f"directory symlinks are unavailable: {exc}")
+
+            with self.assertRaisesRegex(
+                ValueError,
+                "extracted input path contains a symlink",
+            ):
+                legacy._legacy_input_path(context, "appPlatform")
+
+            self.assertEqual([], list(external.iterdir()))
+
     def test_required_missing_history_reaches_the_release_gate(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

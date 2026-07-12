@@ -193,6 +193,36 @@ class ManifestTest(unittest.TestCase):
             )
 
 
+class SchemaContractTest(unittest.TestCase):
+    def test_passing_redaction_schema_requires_zero_findings(self) -> None:
+        schema = read_json(
+            workspace_root()
+            / "tools/release-certification/schemas/evidence-envelope-v2.schema.json"
+        )
+        passing_redaction = schema["properties"]["redaction"]["allOf"][0]["then"][
+            "properties"
+        ]
+
+        self.assertEqual({"const": 0}, passing_redaction["findingCount"])
+        self.assertEqual({"maxItems": 0}, passing_redaction["findings"])
+
+    def test_manifest_schema_requires_runtime_non_empty_strings(self) -> None:
+        schema = read_json(
+            workspace_root()
+            / "tools/release-certification/schemas/release-run-v1.schema.json"
+        )
+        properties = schema["properties"]
+
+        self.assertEqual(1, properties["release"]["properties"]["version"]["minLength"])
+        self.assertEqual(1, properties["output"]["properties"]["root"]["minLength"])
+        self.assertEqual(
+            1,
+            properties["commands"]["additionalProperties"]["properties"]["mode"][
+                "minLength"
+            ],
+        )
+
+
 class EnvelopeTest(unittest.TestCase):
     def test_common_envelope_validates_release_binding(self) -> None:
         value = EvidenceEnvelope(
@@ -206,6 +236,24 @@ class EnvelopeTest(unittest.TestCase):
         validate_envelope(value, "test", "candidate")
         with self.assertRaises(ValueError):
             validate_envelope(value, "test", "another-candidate")
+
+    def test_passing_redaction_rejects_reported_findings(self) -> None:
+        value = EvidenceEnvelope(
+            kind="test",
+            generated_at="2026-01-01T00:00:00Z",
+            subject={"releaseId": "candidate", "version": "1", "profile": "pr", "component": "test"},
+            result={"status": "pass", "decision": None, "promotionReady": None, "exitCode": 0},
+            counts={"evidence": 0, "blockers": 0, "warnings": 0, "waivers": 0},
+            redaction={
+                "status": "pass",
+                "findingCount": 1,
+                "findings": [{"category": "secret-material"}],
+                "guarantees": {},
+            },
+        ).to_json()
+
+        with self.assertRaisesRegex(ValueError, "passing redaction requires zero findings"):
+            validate_envelope(value, "test", "candidate")
 
     def test_complete_envelope_contract_rejects_missing_or_inconsistent_fields(self) -> None:
         value = EvidenceEnvelope(

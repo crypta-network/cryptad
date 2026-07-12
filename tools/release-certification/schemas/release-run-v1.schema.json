@@ -22,7 +22,7 @@
       "required": ["id", "version", "profile"],
       "properties": {
         "id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"},
-        "version": {"type": ["string", "null"]},
+        "version": {"type": ["string", "null"], "minLength": 1},
         "profile": {
           "enum": ["pr", "nightly", "developer-dry-run", "release-candidate", "production-beta", "stable-review"]
         }
@@ -32,7 +32,7 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "root": {"type": "string"},
+        "root": {"type": "string", "minLength": 1},
         "reset": {"type": "boolean"}
       }
     },
@@ -135,7 +135,7 @@
         "additionalProperties": false,
         "properties": {
           "args": {"type": "array", "items": {"type": "string"}},
-          "mode": {"type": "string"}
+          "mode": {"type": "string", "minLength": 1}
         }
       }
     }

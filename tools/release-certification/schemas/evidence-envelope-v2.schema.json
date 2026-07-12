@@ -88,6 +88,8 @@
           "if": {"properties": {"status": {"const": "pass"}}},
           "then": {
             "properties": {
+              "findingCount": {"const": 0},
+              "findings": {"maxItems": 0},
               "guarantees": {"additionalProperties": {"const": true}}
             }
           }

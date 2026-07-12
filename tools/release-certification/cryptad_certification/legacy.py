@@ -215,6 +215,16 @@ def _legacy_dir(context: RunContext) -> Path:
     return path
 
 
+def _input_dir(context: RunContext) -> Path:
+    """Create the confined directory used for unwrapped external evidence."""
+
+    path = context.component_dir / "artifacts" / "inputs"
+    _require_confined_directory(path, context.run_root, "extracted input")
+    path.mkdir(parents=True, exist_ok=True)
+    _require_confined_directory(path, context.run_root, "extracted input")
+    return path
+
+
 def _resolve_input_path(context: RunContext, key: str) -> Path | None:
     raw = context.manifest.inputs.get(key)
     if not isinstance(raw, str) or not raw:
@@ -276,7 +286,7 @@ def _legacy_input_path(
     legacy = payload.get("legacy") if isinstance(payload, dict) else None
     if not isinstance(legacy, dict):
         raise ValueError(f"inputs.{key} v2 envelope is missing payload.legacy")
-    extracted = context.component_dir / "artifacts" / "inputs" / f"{key}.json"
+    extracted = _input_dir(context) / f"{key}.json"
     write_json(extracted, legacy)
     if key == "securityDrills":
         _copy_security_drill_artifacts(path, legacy, extracted.parent)

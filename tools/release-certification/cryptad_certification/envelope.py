@@ -327,6 +327,8 @@ def validate_envelope(value: Any, expected_kind: str | None = None, release_id: 
         raise ValueError("evidence redaction findings or guarantees are malformed")
     if redaction["findingCount"] != len(redaction["findings"]):
         raise ValueError("evidence redaction findingCount does not match findings")
+    if redaction["status"] == "pass" and redaction["findings"]:
+        raise ValueError("passing redaction requires zero findings")
     if not all(
         isinstance(key, str) and isinstance(item, bool)
         for key, item in redaction["guarantees"].items()
