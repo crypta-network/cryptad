@@ -804,18 +804,65 @@ RUNNERS: dict[str, Callable[[RunContext], tuple[int, Path, Path | None]]] = {
 }
 
 
+def _write_early_exit_evidence(
+    context: RunContext,
+    command: str,
+    error: SystemExit,
+) -> int:
+    """Publish sanitized failed evidence when a legacy engine exits before its summary."""
+
+    exit_code = error.code if type(error.code) is int and error.code > 0 else 1
+    summary = {
+        "schemaVersion": 1,
+        "releaseId": context.manifest.release.release_id,
+        "status": "fail",
+        "promotionReady": False,
+        "blockers": [
+            {
+                "id": f"{command}.setup",
+                "status": "fail",
+                "summary": "The legacy engine exited during setup before writing its summary.",
+            }
+        ],
+        "redaction": {
+            "status": "pass",
+            "findings": [],
+            "guarantees": {"engineExitDetailExcluded": True},
+        },
+    }
+    artifact_summary = context.component_dir / "artifacts" / "legacy-summary.json"
+    write_json(artifact_summary, summary)
+    envelope = from_legacy(
+        context,
+        KIND_BY_COMMAND[command],
+        summary,
+        exit_code,
+        {"legacySummary": relative_to_run(artifact_summary, context)},
+    )
+    report = (
+        f"# {command}\n\n"
+        "The legacy engine exited during setup before writing its expected summary. "
+        "The engine-provided exit detail was excluded from public evidence."
+    )
+    write_envelope(context, envelope, report)
+    return int(envelope.result["exitCode"])
+
+
 def execute(context: RunContext, command: str, action: str | None = None) -> int:
     """Run one established engine and publish its result as a v2 envelope."""
 
     component_summary = context.component_dir / "summary.json"
     if component_summary.is_symlink() or component_summary.exists():
         raise ValueError(f"component already has a summary; reset the run before rerunning: {context.component}")
-    if command in RUNNERS:
-        code, legacy_summary_path, legacy_report_path = RUNNERS[command](context)
-    elif command in {"multi-node-beta", "security-response"}:
-        code, legacy_summary_path, legacy_report_path = _run_passthrough(context, command, action)
-    else:
-        raise ValueError(f"unsupported certification command: {command}")
+    try:
+        if command in RUNNERS:
+            code, legacy_summary_path, legacy_report_path = RUNNERS[command](context)
+        elif command in {"multi-node-beta", "security-response"}:
+            code, legacy_summary_path, legacy_report_path = _run_passthrough(context, command, action)
+        else:
+            raise ValueError(f"unsupported certification command: {command}")
+    except SystemExit as error:
+        return _write_early_exit_evidence(context, command, error)
     if not legacy_summary_path.is_file():
         raise ValueError(f"{command} did not write its expected summary: {legacy_summary_path}")
     legacy = read_json(legacy_summary_path)

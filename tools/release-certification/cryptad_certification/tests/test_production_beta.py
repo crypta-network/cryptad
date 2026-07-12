@@ -71,6 +71,47 @@ class ProductionBetaCharacterizationTest(unittest.TestCase):
                 ).is_file()
             )
 
+    def test_unified_adapter_writes_failed_evidence_for_an_early_engine_exit(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = load_manifest(
+                write_manifest(
+                    root,
+                    release={
+                        "id": "early-exit-candidate",
+                        "version": "self-test",
+                        "profile": "release-candidate",
+                    },
+                    policies={"catalogChannel": "beta"},
+                ),
+                root,
+            )
+            prepare_run_root(manifest)
+            context = prepare_context(root, manifest, "production-beta")
+
+            with mock.patch.dict(
+                "os.environ",
+                {"CRYPTAD_PRODUCTION_BETA_ARTIFACT_BASE_URI": ""},
+            ):
+                code = execute_engine(context, "production-beta")
+
+            self.assertEqual(1, code)
+            summary = read_json(context.component_dir / "summary.json")
+            self.assertEqual("production-beta-release", summary["kind"])
+            self.assertEqual("early-exit-candidate", summary["subject"]["releaseId"])
+            self.assertEqual("fail", summary["result"]["status"])
+            self.assertFalse(summary["result"]["promotionReady"])
+            self.assertEqual(1, summary["result"]["exitCode"])
+            self.assertEqual("pass", summary["redaction"]["status"])
+            self.assertEqual(
+                "production-beta.setup",
+                summary["issues"]["blockers"][0]["id"],
+            )
+            self.assertTrue((context.component_dir / "report.md").is_file())
+            self.assertTrue((context.component_dir / "redaction-report.json").is_file())
+            legacy_summary = context.run_root / summary["artifacts"]["legacySummary"]
+            self.assertTrue(legacy_summary.is_file())
+
     def test_unified_adapter_stages_an_external_production_output_root(self) -> None:
         with (
             tempfile.TemporaryDirectory() as workspace_directory,
