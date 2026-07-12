@@ -5,15 +5,37 @@ from __future__ import annotations
 import json
 import re
 from typing import Any
+from urllib.parse import unquote, urlsplit
 
 PRIVATE_URI_RE = re.compile(r"\b(?:SSK|USK)@[A-Za-z0-9~_-]+,[A-Za-z0-9~_-]+,AQECAAE/")
 PRIVATE_KEY_RE = re.compile(r"-----BEGIN (?:[A-Z ]+ )?PRIVATE KEY-----")
-AUTH_RE = re.compile(r"(?i)\b(?:authorization\s*[:=]\s*(?:bearer|basic)|bearer\s+[A-Za-z0-9._~+/-]{12,})")
+AUTH_RE = re.compile(
+    r"(?i)\b(?:authorization\s*[:=]\s*(?:bearer|basic)"
+    r"|bearer\s+[A-Za-z0-9._~+/=-]{12,}"
+    r"|basic\s+(?:(?:[A-Za-z0-9+/]{4})+"
+    r"|(?:[A-Za-z0-9+/]{4})*[A-Za-z0-9+/]{2}=="
+    r"|(?:[A-Za-z0-9+/]{4})*[A-Za-z0-9+/]{3}=)"
+    r"(?![A-Za-z0-9+/=]))"
+)
 SECRET_ASSIGNMENT_RE = re.compile(r"(?i)\b(?:password|token|secret|private[_-]?key)\s*[:=]\s*[^<\s][^\s,;]{3,}")
 UNIX_PATH_RE = re.compile(r"(?<![A-Za-z0-9:/])/(?!/)[^\s\"'<>]+")
 WINDOWS_PATH_RE = re.compile(r"(?i)(?<![A-Za-z0-9])[A-Z]:[\\/][^\s\"'<>]+")
 WINDOWS_UNC_PATH_RE = re.compile(r"(?i)(?<![A-Za-z0-9])\\\\[^\\\s\"'<>]+\\[^\s\"'<>]+")
-SAFE_ABSOLUTE_ROUTES = ("/api/v1/", "/apps/", "/app/node/", "/core-update/")
+SAFE_PUBLIC_ROUTE_ROOTS = ("/api/v1", "/apps", "/app/node", "/core-update")
+PUBLIC_ROUTE_FIELD_MARKERS = ("route", "endpoint", "url", "href")
+LOCAL_PATH_FIELD_MARKERS = (
+    "archive",
+    "artifact",
+    "directory",
+    "file",
+    "output",
+    "report",
+    "root",
+    "source",
+    "summary",
+    "workspace",
+)
+PUBLIC_ROUTE_FRAGMENT_RE = re.compile(r"[A-Za-z0-9._~-]+")
 REPO_PLACEHOLDER_PREFIX = "<repo>/"
 REPO_PATH_SEGMENT_RE = re.compile(r"[A-Za-z0-9._+@=-]+")
 SENSITIVE_FIELD_FRAGMENTS = (
@@ -129,17 +151,21 @@ def _contains_sensitive_field(value: Any) -> bool:
     return False
 
 
-def _string_values(value: Any):
-    """Yield every nested JSON string for path scanning before serialization escaping."""
+def _string_contexts(
+    value: Any,
+    field_path: tuple[Any, ...] = (),
+    parent: dict[Any, Any] | None = None,
+):
+    """Yield nested strings with their field path and nearest containing object."""
 
     if isinstance(value, str):
-        yield value
+        yield field_path, parent, value
     elif isinstance(value, dict):
-        for child in value.values():
-            yield from _string_values(child)
+        for key, child in value.items():
+            yield from _string_contexts(child, field_path + (key,), value)
     elif isinstance(value, list):
         for child in value:
-            yield from _string_values(child)
+            yield from _string_contexts(child, field_path, parent)
 
 
 def _is_safe_repo_placeholder(value: str) -> bool:
@@ -161,24 +187,80 @@ def _is_safe_repo_placeholder(value: str) -> bool:
     )
 
 
+def _field_allows_public_route(
+    field_path: tuple[Any, ...],
+    parent: dict[Any, Any] | None,
+) -> bool:
+    """Return whether the JSON field context explicitly represents a public route."""
+
+    normalized = tuple(_normalized_field_name(field) for field in field_path)
+    if normalized and any(marker in normalized[-1] for marker in LOCAL_PATH_FIELD_MARKERS):
+        return False
+    if any(
+        marker in field
+        for field in normalized
+        for marker in PUBLIC_ROUTE_FIELD_MARKERS
+    ):
+        return True
+    return bool(
+        normalized
+        and normalized[-1] == "path"
+        and isinstance(parent, dict)
+        and isinstance(parent.get("method"), str)
+    )
+
+
+def _is_normalized_public_route(
+    field_path: tuple[Any, ...],
+    parent: dict[Any, Any] | None,
+    value: str,
+) -> bool:
+    """Return whether a context-bound string is one canonical public HTTP route."""
+
+    if not _field_allows_public_route(field_path, parent):
+        return False
+    if not value.startswith("/") or "\\" in value or "\x00" in value or any(
+        character.isspace() for character in value
+    ):
+        return False
+    parsed = urlsplit(value)
+    if parsed.scheme or parsed.netloc or parsed.query:
+        return False
+    decoded_path = parsed.path
+    while True:
+        unquoted = unquote(decoded_path)
+        if unquoted == decoded_path:
+            break
+        decoded_path = unquoted
+    if "\\" in decoded_path or "\x00" in decoded_path:
+        return False
+    segments = decoded_path.split("/")[1:]
+    if segments and segments[-1] == "":
+        segments.pop()
+    if any(segment in {"", ".", ".."} for segment in segments):
+        return False
+    if parsed.fragment and PUBLIC_ROUTE_FRAGMENT_RE.fullmatch(parsed.fragment) is None:
+        return False
+    return any(
+        decoded_path == route or decoded_path.startswith(f"{route}/")
+        for route in SAFE_PUBLIC_ROUTE_ROOTS
+    )
+
+
 def _contains_local_absolute_path(value: Any) -> tuple[bool, bool]:
     """Return whether nested strings contain POSIX or Windows filesystem paths."""
 
     unix_found = False
     windows_found = False
-    for text in _string_values(value):
+    for field_path, parent, text in _string_contexts(value):
         if _is_safe_repo_placeholder(text):
             continue
         if text.startswith(REPO_PLACEHOLDER_PREFIX):
             unix_found = True
-        for match in UNIX_PATH_RE.finditer(text):
-            candidate = match.group(0)
-            if not any(
-                candidate == route.rstrip("/") or candidate.startswith(route)
-                for route in SAFE_ABSOLUTE_ROUTES
-            ):
-                unix_found = True
-                break
+        if _is_normalized_public_route(field_path, parent, text):
+            continue
+        if UNIX_PATH_RE.search(text):
+            unix_found = True
         if WINDOWS_PATH_RE.search(text) or WINDOWS_UNC_PATH_RE.search(text):
             windows_found = True
         if unix_found and windows_found:

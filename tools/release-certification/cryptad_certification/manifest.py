@@ -238,6 +238,9 @@ def load_manifest(path: Path, workspace_root: Path, out_root: Path | None = None
     unknown_release = sorted(set(release) - allowed_release)
     if unknown_release:
         raise ManifestError(f"unknown release fields: {', '.join(unknown_release)}")
+    missing_release = sorted(allowed_release - set(release))
+    if missing_release:
+        raise ManifestError(f"missing release fields: {', '.join(missing_release)}")
     release_id = release.get("id")
     if not isinstance(release_id, str) or not RELEASE_ID_RE.fullmatch(release_id):
         raise ManifestError("release.id must be a path-safe slug")

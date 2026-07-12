@@ -37,6 +37,17 @@ class ManifestTest(unittest.TestCase):
                 with self.assertRaisesRegex(ManifestError, "schemaVersion must be 1"):
                     load_manifest(path, root)
 
+    def test_manifest_requires_the_release_version_field(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = write_manifest(
+                root,
+                release={"id": "missing-version", "profile": "pr"},
+            )
+
+            with self.assertRaisesRegex(ManifestError, "missing release fields: version"):
+                load_manifest(path, root)
+
     def test_secret_like_manifest_field_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -730,6 +741,7 @@ class MigrationTest(unittest.TestCase):
 
     def test_rejects_v1_history_with_nested_sensitive_payload_fields(self) -> None:
         sensitive_payloads = {
+            "basic-authorization": {"headerValue": "Basic dXNlcjpwYXNzd29yZA=="},
             "form-password": {"formPassword": "hunter2"},
             "api-token": {"apiToken": "synthetic-token-value"},
             "private-key": {"privateKey": "opaque-private-key-material"},
@@ -756,6 +768,41 @@ class MigrationTest(unittest.TestCase):
                 context = prepare_context(root, manifest, "migration/previous-candidate")
 
                 with self.assertRaisesRegex(ValueError, "private-material and absolute-path scan"):
+                    migrate(context, "previous-candidate")
+
+                self.assertFalse(
+                    (context.component_dir / "artifacts/migrated-summary.json").exists()
+                )
+                self.assertFalse((context.component_dir / "summary.json").exists())
+
+    def test_migration_rejects_misclassified_or_malformed_public_routes(self) -> None:
+        unsafe_routes = {
+            "route-shaped-workspace": {"workspaceRoot": "/apps/cryptad/build"},
+            "route-traversal": {"routes": ["/api/v1/../../etc/passwd"]},
+            "encoded-route-traversal": {"routes": ["/api/v1/%2e%2e/etc/passwd"]},
+            "nested-encoded-route-traversal": {
+                "routes": ["/api/v1/%2525252e%2525252e/etc/passwd"]
+            },
+        }
+        for case, details in unsafe_routes.items():
+            with self.subTest(case=case), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                legacy = root / "legacy.json"
+                write_json(
+                    legacy,
+                    {
+                        "schemaVersion": 1,
+                        "status": "pass",
+                        "details": details,
+                        "redaction": {"status": "pass", "findings": []},
+                    },
+                )
+                path = write_manifest(root, inputs={"previousCandidate": "legacy.json"})
+                manifest = load_manifest(path, root)
+                prepare_run_root(manifest)
+                context = prepare_context(root, manifest, "migration/previous-candidate")
+
+                with self.assertRaisesRegex(ValueError, "absolute-path scan"):
                     migrate(context, "previous-candidate")
 
                 self.assertFalse(
