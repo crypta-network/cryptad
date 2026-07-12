@@ -828,6 +828,38 @@ class AdapterIntegrationTest(unittest.TestCase):
                     ):
                         legacy._args(context, command)
 
+    def test_alternate_evidence_sources_are_reserved_from_passthrough_args(self) -> None:
+        commands = {
+            "release-certification": {
+                "args": [
+                    "--security-response-summary",
+                    "unbound-security.json",
+                    "--stable-1-0-readiness-summary=unbound-stable.json",
+                ]
+            },
+            "go-no-go": {
+                "args": [
+                    "--fixtures",
+                    "go-no-go-pass.json",
+                    "--security-response-summary=unbound-security.json",
+                    "--stable-1-0-readiness-summary",
+                    "unbound-stable.json",
+                ]
+            },
+            "stable-readiness": {
+                "args": ["--multi-node-soak-summary=unbound-soak.json"]
+            },
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = load_manifest(write_manifest(root, commands=commands), root)
+            prepare_run_root(manifest)
+            context = prepare_context(root, manifest, "alternate-input-validation")
+
+            for command in commands:
+                with self.subTest(command=command):
+                    self.assertEqual([], legacy._args(context, command))
+
     def test_security_drill_run_ignores_external_output_arguments(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

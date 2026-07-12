@@ -28,6 +28,15 @@ class ManifestTest(unittest.TestCase):
             self.assertEqual(run_root, context.run_root)
             self.assertTrue((run_root / ".cryptad-certification-run.json").is_file())
 
+    def test_manifest_schema_version_requires_the_exact_integer_type(self) -> None:
+        for schema_version in (True, False, 1.0, "1", None):
+            with self.subTest(schema_version=schema_version), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                path = write_manifest(root, schemaVersion=schema_version)
+
+                with self.assertRaisesRegex(ManifestError, "schemaVersion must be 1"):
+                    load_manifest(path, root)
+
     def test_secret_like_manifest_field_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -595,6 +604,50 @@ class MigrationTest(unittest.TestCase):
             self.assertEqual(2, summary["schemaVersion"])
             self.assertEqual("migrated-v1-previous-candidate", summary["kind"])
 
+    def test_migration_rejects_present_non_integer_schema_versions(self) -> None:
+        for schema_version in (True, False, 1.0, "1", None, 2):
+            with self.subTest(schema_version=schema_version), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                legacy = root / "legacy.json"
+                write_json(
+                    legacy,
+                    {
+                        "schemaVersion": schema_version,
+                        "status": "pass",
+                        "redaction": {"status": "pass", "findings": []},
+                    },
+                )
+                path = write_manifest(root, inputs={"previousCandidate": "legacy.json"})
+                manifest = load_manifest(path, root)
+                prepare_run_root(manifest)
+                context = prepare_context(root, manifest, "migration/previous-candidate")
+
+                with self.assertRaisesRegex(ValueError, "legacy schemaVersion 1"):
+                    migrate(context, "previous-candidate")
+
+                self.assertFalse((context.component_dir / "summary.json").exists())
+
+    def test_migration_allows_an_omitted_schema_version(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            legacy = root / "legacy.json"
+            write_json(
+                legacy,
+                {
+                    "status": "pass",
+                    "redaction": {"status": "pass", "findings": []},
+                },
+            )
+            path = write_manifest(root, inputs={"previousCandidate": "legacy.json"})
+            manifest = load_manifest(path, root)
+            prepare_run_root(manifest)
+            context = prepare_context(root, manifest, "migration/previous-candidate")
+
+            self.assertEqual(0, migrate(context, "previous-candidate"))
+
+            summary = read_json(context.component_dir / "summary.json")
+            self.assertEqual(1, summary["payload"]["migration"]["sourceSchemaVersion"])
+
     def test_rejects_v1_history_with_common_absolute_local_paths(self) -> None:
         local_paths = (
             "/home/operator/release",
@@ -796,6 +849,16 @@ class MigrationTest(unittest.TestCase):
             "failed-status": {"status": "fail", "findings": []},
             "nonempty-findings": {"status": "pass", "findings": ["unsafe evidence"]},
             "failed-guarantee": {"secretMaterialRedacted": False},
+            "failed-nested-guarantee": {
+                "status": "pass",
+                "findings": [],
+                "guarantees": {"rawBodiesExcluded": False},
+            },
+            "malformed-nested-guarantee": {
+                "status": "pass",
+                "findings": [],
+                "guarantees": {"rawBodiesExcluded": "true"},
+            },
             "no-passing-signal": {"findings": []},
             "unknown-boolean": {"unrelated": True},
             "malformed-status": {"status": [], "findings": []},

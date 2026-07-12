@@ -228,7 +228,8 @@ def load_manifest(path: Path, workspace_root: Path, out_root: Path | None = None
     missing = sorted(TOP_LEVEL_FIELDS - set(value))
     if missing:
         raise ManifestError(f"missing manifest fields: {', '.join(missing)}")
-    if value.get("schemaVersion") != MANIFEST_SCHEMA_VERSION:
+    schema_version = value.get("schemaVersion")
+    if type(schema_version) is not int or schema_version != MANIFEST_SCHEMA_VERSION:
         raise ManifestError(f"schemaVersion must be {MANIFEST_SCHEMA_VERSION}")
     _reject_secret_fields(value)
 

@@ -71,7 +71,16 @@ def _require_passing_redaction(value: dict[str, Any]) -> None:
         for key in LEGACY_BOOLEAN_REDACTION_GUARANTEES
         if isinstance(redaction.get(key), bool)
     ]
-    if status is None and not recognized_guarantees:
+    nested_guarantees = redaction.get("guarantees")
+    if nested_guarantees is not None:
+        if not isinstance(nested_guarantees, dict) or not all(
+            isinstance(key, str) and isinstance(item, bool)
+            for key, item in nested_guarantees.items()
+        ):
+            raise ValueError("legacy history redaction guarantees are malformed")
+        if any(item is False for item in nested_guarantees.values()):
+            raise ValueError("legacy history contains a failed redaction guarantee")
+    if status is None and not recognized_guarantees and not nested_guarantees:
         raise ValueError("legacy history redaction metadata has no explicit passing signal")
 
 
@@ -81,7 +90,10 @@ def execute(context: RunContext, migration_kind: str) -> int:
     source = _source_path(context, migration_kind)
     raw = source.read_bytes()
     value: Any = read_json(source)
-    if not isinstance(value, dict) or value.get("schemaVersion") not in {1, None}:
+    if not isinstance(value, dict):
+        raise ValueError("migrate-v1 requires a legacy schemaVersion 1 JSON object")
+    schema_version = value.get("schemaVersion")
+    if "schemaVersion" in value and (type(schema_version) is not int or schema_version != 1):
         raise ValueError("migrate-v1 requires a legacy schemaVersion 1 JSON object")
     if normalize_status(value.get("status", value.get("decision"))) != "pass":
         raise ValueError("legacy history must have a passing status before migration")
@@ -117,4 +129,4 @@ def execute(context: RunContext, migration_kind: str) -> int:
         envelope,
         f"# V1 {migration_kind} migration\n\nValidated and converted source SHA-256: `{digest}`.",
     )
-    return 0
+    return int(envelope.result["exitCode"])
