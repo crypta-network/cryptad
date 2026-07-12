@@ -360,6 +360,58 @@ class AdapterIntegrationTest(unittest.TestCase):
             self.assertEqual("fail", envelope["result"]["status"])
             self.assertTrue((context.component_dir / "report.md").is_file())
 
+    def test_release_adapter_preserves_the_shared_history_directory_default(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = load_manifest(
+                write_manifest(
+                    root,
+                    execution={"writeHistory": True},
+                ),
+                root,
+            )
+            prepare_run_root(manifest)
+            context = prepare_context(root, manifest, "release-certification")
+            captured: list[str] = []
+
+            with mock.patch.object(
+                release_certification,
+                "main",
+                side_effect=lambda args: captured.extend(args) or 0,
+            ):
+                legacy._run_release_certification(context)
+
+            self.assertIn("--write-history", captured)
+            self.assertNotIn("--history-dir", captured)
+
+    def test_release_adapter_honors_an_explicit_history_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = load_manifest(
+                write_manifest(
+                    root,
+                    policies={"historyDir": "build/shared-certification-history"},
+                    execution={"writeHistory": True},
+                ),
+                root,
+            )
+            prepare_run_root(manifest)
+            context = prepare_context(root, manifest, "release-certification")
+            captured: list[str] = []
+
+            with mock.patch.object(
+                release_certification,
+                "main",
+                side_effect=lambda args: captured.extend(args) or 0,
+            ):
+                legacy._run_release_certification(context)
+
+            history_dir_index = captured.index("--history-dir")
+            self.assertEqual(
+                root / "build/shared-certification-history",
+                Path(captured[history_dir_index + 1]),
+            )
+
     def test_live_network_safe_negative_redaction_fields_remain_reusable(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

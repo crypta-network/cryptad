@@ -454,10 +454,11 @@ def _run_release_certification(context: RunContext) -> tuple[int, Path, Path | N
         args.extend(["--previous-summary", str(_missing_input(context, "release-history"))])
 
     history_dir = context.manifest.policies.get("historyDir")
-    history_path = Path(history_dir) if isinstance(history_dir, str) else context.run_root / "history"
-    if not history_path.is_absolute():
-        history_path = context.workspace_root / history_path
-    args.extend(["--history-dir", str(history_path.resolve())])
+    if isinstance(history_dir, str):
+        history_path = Path(history_dir)
+        if not history_path.is_absolute():
+            history_path = context.workspace_root / history_path
+        args.extend(["--history-dir", str(history_path.resolve())])
     if context.manifest.requirements.get("history") is True:
         args.append("--require-history")
     if context.manifest.requirements.get("liveNetwork") is True:
