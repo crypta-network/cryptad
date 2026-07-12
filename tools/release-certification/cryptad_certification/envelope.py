@@ -160,6 +160,8 @@ def from_legacy(
         status = "fail"
         if exit_code == 0:
             exit_code = 1
+    if status == "fail":
+        promotion_ready = False
     release_id = context.manifest.release.release_id
     version = context.manifest.release.version
     legacy_release_id = legacy.get("releaseId")

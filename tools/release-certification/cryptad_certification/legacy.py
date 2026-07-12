@@ -10,6 +10,7 @@ from typing import Any, Callable
 from .envelope import from_legacy, validate_envelope, write_envelope
 from .io import read_json, write_json
 from .models import RunContext
+from .redaction import scan_value
 from .workspace import _require_confined_directory, relative_to_run
 
 KIND_BY_COMMAND = {
@@ -295,6 +296,8 @@ def _legacy_input_path(
     legacy = payload.get("legacy") if isinstance(payload, dict) else None
     if not isinstance(legacy, dict):
         raise ValueError(f"inputs.{key} v2 envelope is missing payload.legacy")
+    if scan_value(legacy):
+        raise ValueError(f"inputs.{key} payload.legacy failed the v2 redaction scan")
     extracted = _input_dir(context) / f"{key}.json"
     write_json(extracted, legacy)
     if key == "securityDrills":

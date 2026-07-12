@@ -356,6 +356,7 @@ class EnvelopeTest(unittest.TestCase):
                 {
                     "schemaVersion": 1,
                     "status": "pass",
+                    "promotionReady": True,
                     "redaction": {"status": "pass", "findings": []},
                 },
                 7,
@@ -364,6 +365,7 @@ class EnvelopeTest(unittest.TestCase):
 
             self.assertEqual("fail", envelope.result["status"])
             self.assertEqual(7, envelope.result["exitCode"])
+            self.assertFalse(envelope.result["promotionReady"])
             validate_envelope(envelope.to_json(), "test", "self-test-release")
 
     def test_missing_redaction_scans_the_complete_legacy_payload(self) -> None:
@@ -386,6 +388,7 @@ class EnvelopeTest(unittest.TestCase):
                 {
                     "schemaVersion": 1,
                     "status": "pass",
+                    "promotionReady": True,
                     "operatorPath": "/home/alice/private-summary.json",
                 },
                 0,
@@ -397,6 +400,7 @@ class EnvelopeTest(unittest.TestCase):
             self.assertEqual("fail", unsafe.redaction["status"])
             self.assertEqual("fail", unsafe.result["status"])
             self.assertEqual(1, unsafe.result["exitCode"])
+            self.assertFalse(unsafe.result["promotionReady"])
             self.assertEqual("absolute-path", unsafe.redaction["findings"][0]["category"])
 
     def test_missing_redaction_rejects_nested_sensitive_field_names(self) -> None:

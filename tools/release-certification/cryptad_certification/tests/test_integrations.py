@@ -309,6 +309,60 @@ class AdapterIntegrationTest(unittest.TestCase):
 
             self.assertEqual([], list(external.iterdir()))
 
+    def test_attached_v2_payload_is_scanned_before_extraction(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            envelope = EvidenceEnvelope(
+                kind="app-platform-smoke",
+                generated_at="2026-01-01T00:00:00Z",
+                subject={
+                    "releaseId": "self-test-release",
+                    "version": "self-test",
+                    "profile": "pr",
+                    "component": "app-platform",
+                },
+                result={
+                    "status": "pass",
+                    "decision": None,
+                    "promotionReady": True,
+                    "exitCode": 0,
+                },
+                counts={"evidence": 0, "blockers": 0, "warnings": 0, "waivers": 0},
+                redaction={
+                    "status": "pass",
+                    "findingCount": 0,
+                    "findings": [],
+                    "guarantees": {},
+                },
+                payload={
+                    "legacy": {
+                        "schemaVersion": 1,
+                        "status": "pass",
+                        "headerValue": "Basic dXNlcjpwYXNzd29yZA==",
+                    }
+                },
+            ).to_json()
+            write_json(root / "app-platform-v2.json", envelope)
+            manifest = load_manifest(
+                write_manifest(
+                    root,
+                    inputs={"appPlatform": "app-platform-v2.json"},
+                ),
+                root,
+            )
+            prepare_run_root(manifest)
+            context = prepare_context(root, manifest, "release-certification")
+
+            with self.assertRaisesRegex(
+                ValueError,
+                r"inputs\.appPlatform payload\.legacy failed the v2 redaction scan",
+            ):
+                legacy._legacy_input_path(context, "appPlatform")
+
+            self.assertFalse(
+                (context.component_dir / "artifacts/inputs/appPlatform.json").exists()
+            )
+
     def test_required_missing_history_reaches_the_release_gate(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
