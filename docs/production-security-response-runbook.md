@@ -265,26 +265,18 @@ malformed advisory or denylist records.
    rollback to that digest after re-verification. Rollback does not uninstall apps, change app
    data, or bypass signed advisories and denylists.
 9. Produce security release notes from [docs/templates/security-release-notes.md](templates/security-release-notes.md), and keep public beta support guidance aligned with [templates/beta-release-notes.md](templates/beta-release-notes.md) and [public-beta/support-and-feedback.md](public-beta/support-and-feedback.md).
-10. Run `python3 tools/release-certification/security_response_runbook.py verify`.
+10. Run `python3 tools/release-certification/certify.py security-response verify --manifest build/release-candidate.json`.
 11. Generate the operational drill evidence. Use `release-candidate` for release-candidate
    certification, or `production-beta` when the summary will be attached to a protected
    production-beta pipeline run:
    ```bash
-   DRILL_MODE=production-beta
-   python3 tools/release-certification/security_response_runbook.py drill run-all \
-     --out-dir build/security-drills \
-     --release-id cryptad-beta-<version> \
-     --mode "$DRILL_MODE" \
-     --summary-out build/security-drills/security-drills-summary.json \
-     --release-notes-out build/security/security-release-notes-draft.md
-   python3 tools/release-certification/security_response_runbook.py drill verify-all \
-     --input-dir build/security-drills \
-     --release-id cryptad-beta-<version> \
-     --mode "$DRILL_MODE" \
-     --summary-out build/security-drills/security-drills-summary.json
+   python3 tools/release-certification/certify.py security-response drill-run-all \
+     --manifest build/production-beta.json
+   python3 tools/release-certification/certify.py security-response drill-verify-all \
+     --manifest build/production-beta.json
    ```
-12. Run `python3 tools/release-certification/app_platform_smoke.py --self-test`.
-13. Run `python3 tools/release-certification/release_certification.py --self-test` before release
+12. Run `python3 tools/release-certification/certify.py app-platform --self-test`.
+13. Run `python3 tools/release-certification/certify.py release-certification --self-test` before release
    candidate certification.
 14. Publish only the signed emergency catalog and redacted release artifacts.
 

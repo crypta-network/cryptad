@@ -142,7 +142,7 @@ offline-safe.
 CRYPTAD_CERT_APP_SMOKE_LIVE=1 \
 CRYPTAD_CERT_NODE_BASE_URL=http://127.0.0.1:<port> \
 CRYPTAD_CERT_FORM_PASSWORD=<redacted> \
-tools/release-certification/run-release-certification.sh --mode nightly
+python3 tools/release-certification/certify.py release-certification --manifest build/release-candidate.json
 ```
 
 The smoke installs, reads runtime status, starts, stops, updates, uninstalls, and reads diagnostics
@@ -165,10 +165,7 @@ CRYPTAD_CERT_LIVE_CATALOG_EXPECTED_KEY_ID=crypta-first-party-beta \
 CRYPTAD_CERT_LIVE_CONTENT_FETCH_URI=crypta:CHK@<artifact-key> \
 CRYPTAD_CERT_LIVE_FEED_USK_URI=crypta:USK@<feed-key>/feed.json \
 CRYPTAD_CERT_LIVE_TEST_INSERT_URI_FILE=<protected-insert-uri-file> \
-tools/release-certification/run-release-certification.sh \
-  --mode release-candidate \
-  --live-network-beta \
-  --require-live-network-beta
+python3 tools/release-certification/certify.py release-certification --manifest build/release-candidate.json
 ```
 
 Use disposable fixture catalog keys for rehearsals. Public fixture URIs may use
@@ -208,24 +205,24 @@ Use this runbook to decide whether the ecosystem beta is ready for a release can
 
    ```bash
    ./gradlew :platform-devtools:installDist
-   python3 tools/release-certification/app_platform_docs_check.py --self-test
-   python3 tools/release-certification/app_platform_smoke.py --self-test
-   python3 tools/release-certification/network_scale_soak.py --self-test
-   python3 tools/release-certification/production_beta_go_no_go_dashboard.py --self-test
+   python3 tools/release-certification/certify.py app-platform-docs --self-test
+   python3 tools/release-certification/certify.py app-platform --self-test
+   python3 tools/release-certification/certify.py network-scale-soak --self-test
+   python3 tools/release-certification/certify.py go-no-go --self-test
    ```
 
 3. Run release certification self-tests.
 
    ```bash
-   python3 tools/release-certification/release_certification.py --self-test
+   python3 tools/release-certification/certify.py release-certification --self-test
    ```
 
 4. Run release certification in the mode that matches the release stage.
 
    ```bash
-   tools/release-certification/run-release-certification.sh --mode pr --skip-gradle --skip-git-metadata
-   tools/release-certification/run-release-certification.sh --mode nightly --out-dir build/release-certification
-   tools/release-certification/run-release-certification.sh --mode release-candidate --out-dir build/release-certification
+   python3 tools/release-certification/certify.py release-certification --manifest build/release-candidate.json
+   python3 tools/release-certification/certify.py release-certification --manifest build/release-candidate.json
+   python3 tools/release-certification/certify.py release-certification --manifest build/release-candidate.json
    ```
 
 5. Run live-network beta certification when the release will claim public first-party beta catalog

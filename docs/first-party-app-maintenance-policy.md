@@ -165,5 +165,5 @@ When adding or changing a first-party app:
 4. Keep owner, support, and URI text single-line and free of secrets, local paths, private insert
    URIs, tokens, raw fetched content, raw app-data payloads, and private key material.
 5. Update this document if the support table changes.
-6. Run `python3 -u tools/release-certification/app_platform_smoke.py --self-test` and
-   `python3 -u tools/release-certification/release_certification.py --self-test`.
+6. Run `python3 -u tools/release-certification/certify.py app-platform --self-test` and
+   `python3 -u tools/release-certification/certify.py release-certification --self-test`.

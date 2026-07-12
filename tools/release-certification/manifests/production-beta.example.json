@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "release": {
+    "id": "cryptad-beta-REPLACE_ME",
+    "version": "REPLACE_ME",
+    "profile": "production-beta"
+  },
+  "output": {
+    "root": "build/release-certification",
+    "reset": false
+  },
+  "requirements": {
+    "history": true,
+    "liveNetwork": true,
+    "multiNodeSoak": true,
+    "sandboxProviderTests": true,
+    "stableReadiness": false,
+    "thirdPartyIntake": true
+  },
+  "inputs": {
+    "interopSmoke": "build/interop-smoke/summary.json",
+    "multiNodeSoakConfig": "REPLACE_ME.json",
+    "performanceSmoke": "build/perf-smoke/summary.json",
+    "previousCandidate": "REPLACE_ME.json",
+    "releaseHistory": "REPLACE_ME.json"
+  },
+  "policies": {
+    "artifactBaseUri": "https://REPLACE_ME.invalid/releases/",
+    "catalogChannel": "stable"
+  },
+  "execution": {
+    "collectEvidence": true,
+    "fixtureEvidence": false,
+    "runMultiNodeSoak": true,
+    "skipGradle": false
+  },
+  "commands": {}
+}

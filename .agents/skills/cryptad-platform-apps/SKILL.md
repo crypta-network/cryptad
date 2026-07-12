@@ -317,7 +317,7 @@ Load only the docs needed for the change:
 
 ## Release certification smoke
 
-- `tools/release-certification/app_platform_smoke.py` is the app-platform evidence collector for
+- `tools/release-certification/certify.py app-platform` is the app-platform evidence collector for
   release certification. It validates first-party staged bundles, static UI/SDK coherence,
   design-system adoption, strict UI lint JSON evidence, `crypta-app init/validate/pack/dev/test`,
   Platform API contract snapshots, Platform API 1.0 stable-baseline and target-stability evidence,
@@ -338,12 +338,12 @@ Load only the docs needed for the change:
   production security response runbook evidence,
   legacy-admin retirement Wave 1-5/final-surface state, and optional localhost-only live AppHost
   lifecycle evidence.
-- `tools/release-certification/live_network_beta_smoke.py` is the explicit release-manager
+- `tools/release-certification/certify.py live-network-beta` is the explicit release-manager
   live-network beta evidence collector. It validates a prepared localhost node, live catalog
   source/key metadata, app-principal browser-session workflows, content/feed/profile/trust
   fixtures, optional app-service scoring, timing metadata, cleanup, and redaction without leaking
   secrets or becoming a normal CI dependency.
-- `tools/release-certification/app_platform_docs_check.py` is the deterministic docs evidence
+- `tools/release-certification/certify.py app-platform-docs` is the deterministic docs evidence
   collector for the app ecosystem beta portal, tutorials, beta program, issue templates, internal
   Markdown links, and docs redaction checks.
 - `pr` mode must stay fast and offline-safe. It must not require a live node, signing keys, Hyphanet
@@ -394,13 +394,13 @@ Use `$cryptad-build-test` for Gradle rules and timeouts. Common focused checks:
 ./gradlew :apps:feed-reader:test
 ./gradlew :apps:trust-graph:test
 ./gradlew stageFirstPartyApps
-python3 tools/release-certification/app_platform_docs_check.py --self-test
-python3 tools/release-certification/security_response_runbook.py verify
-python3 tools/release-certification/app_platform_smoke.py --self-test
-python3 tools/release-certification/network_scale_soak.py --self-test
-python3 tools/release-certification/multi_node_beta_soak.py --self-test
-python3 tools/release-certification/live_network_beta_smoke.py --self-test
-python3 tools/release-certification/production_beta_go_no_go_dashboard.py --self-test
+python3 tools/release-certification/certify.py app-platform-docs --self-test
+python3 tools/release-certification/certify.py security-response verify --manifest build/release-candidate.json
+python3 tools/release-certification/certify.py app-platform --self-test
+python3 tools/release-certification/certify.py network-scale-soak --self-test
+python3 tools/release-certification/certify.py multi-node-beta --self-test
+python3 tools/release-certification/certify.py live-network-beta --self-test
+python3 tools/release-certification/certify.py go-no-go --self-test
 ```
 
 When changing route contracts or bridge wiring, also run the relevant root router/toadlet tests
@@ -424,14 +424,14 @@ platform beta docs evidence,
 operator RC recovery/support behavior, or legacy-admin retirement evidence behavior, also run:
 
 ```bash
-python3 tools/release-certification/app_platform_docs_check.py --self-test
-python3 tools/release-certification/security_response_runbook.py verify
-python3 tools/release-certification/app_platform_smoke.py --self-test
-python3 tools/release-certification/network_scale_soak.py --self-test
-python3 tools/release-certification/multi_node_beta_soak.py --self-test
-python3 tools/release-certification/live_network_beta_smoke.py --self-test
-python3 tools/release-certification/stable_1_0_readiness.py --self-test
-python3 tools/release-certification/production_beta_go_no_go_dashboard.py --self-test
-python3 tools/release-certification/production_beta_release.py --self-test
-tools/release-certification/run-release-certification.sh --mode pr --skip-gradle --skip-git-metadata
+python3 tools/release-certification/certify.py app-platform-docs --self-test
+python3 tools/release-certification/certify.py security-response verify --manifest build/release-candidate.json
+python3 tools/release-certification/certify.py app-platform --self-test
+python3 tools/release-certification/certify.py network-scale-soak --self-test
+python3 tools/release-certification/certify.py multi-node-beta --self-test
+python3 tools/release-certification/certify.py live-network-beta --self-test
+python3 tools/release-certification/certify.py stable-readiness --self-test
+python3 tools/release-certification/certify.py go-no-go --self-test
+python3 tools/release-certification/certify.py production-beta --self-test
+python3 tools/release-certification/certify.py release-certification --manifest build/release-candidate.json
 ```

@@ -66,30 +66,30 @@ git checkout -b release/<build-number>
 
    Before promotion, generate or verify the release-candidate certification artifacts:
    ```sh
-   tools/release-certification/run-release-certification.sh \
-     --mode release-candidate \
-     --out-dir build/release-certification
+   python3 tools/release-certification/certify.py release-certification \
+     --manifest tools/release-certification/manifests/release-candidate.example.json
    ```
-   Preserve `build/release-certification/release-certification-summary.json`,
-   `build/release-certification/release-certification-report.md`,
-   `build/release-certification/network-scale-soak/summary.json`,
-   `build/release-certification/multi-node-beta-soak/summary.json`, and sanitized
-   `build/release-certification/artifacts/`.
+   Preserve the complete marked `<out-root>/<release-id>/` workspace. With the example output root,
+   preserve `build/release-certification/<release-id>/`, including
+   `build/release-certification/<release-id>/release-certification/summary.json`,
+   `build/release-certification/<release-id>/release-certification/report.md`,
+   `build/release-certification/<release-id>/release-certification/redaction-report.json`,
+   `build/release-certification/<release-id>/release-certification/artifacts/`,
+   `build/release-certification/<release-id>/network-scale-soak/summary.json`,
+   `build/release-certification/<release-id>/multi-node-beta/run/summary.json`, and
+   `build/release-certification/<release-id>/security-response/`. Replace `<release-id>` with the
+   finalized manifest `release.id`.
 
    When the release includes production beta app-ecosystem artifacts, run the top-level production
    beta pipeline instead of manually assembling app bundles, catalogs, review receipts, lower-level
    certification output, and the public archive:
    ```sh
-   tools/release-certification/run-production-beta-release.sh \
-     --workspace-root . \
-     --out-dir build/production-beta-release \
-     --mode production-beta \
-     --catalog-channel stable \
-     --artifact-base-uri "$CRYPTAD_PRODUCTION_BETA_ARTIFACT_BASE_URI" \
-     --require-live-network \
-     --require-multi-node-soak \
-     --require-sandbox-provider-tests
+   python3 tools/release-certification/certify.py production-beta \
+     --manifest tools/release-certification/manifests/production-beta.example.json \
+     --workspace-root .
    ```
+   Set the release identity, output root, production profile, catalog channel, artifact base URI,
+   required gates, and evidence inputs in the manifest before running either command.
    Preserve the JSON/Markdown summaries, production redaction report, go/no-go dashboard JSON,
    go/no-go dashboard Markdown, go/no-go redaction report, extracted `evidence/`, and
    `dist/checksums.txt`. Any summary with `nonRelease=true`, `promotionReady=false`, `goNoGo`

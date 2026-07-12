@@ -657,7 +657,7 @@ maximum-tested version, optional capabilities, and warnings in app/catalog revie
 
 ## Release certification
 
-`tools/release-certification/app_platform_smoke.py` now emits required
+`tools/release-certification/certify.py app-platform` now emits required
 `platform-api.contract`, `platform-api.stable-baseline`,
 `platform-api.stable-breaking-change-check`, `platform-api.compatibility-window`,
 `platform-api.previous-contract-snapshot`, `platform-api.deprecation-window-policy`,
@@ -667,7 +667,7 @@ evidence. It generates a contract snapshot with `crypta-app api snapshot`, recor
 counts, stable baseline counts, non-stable entries, stable descriptor deprecation metadata, and
 runs offline `crypta-app compat verify` checks for first-party staged apps and the generated sample
 app. Release certification compares the current stable baseline against previous production
-release evidence; production beta runs pass `--require-history`, so missing previous
+release evidence; production beta manifests set `requirements.history=true`, so missing previous
 stable-baseline or compatibility-window evidence is a release blocker unless the existing release
 waiver mechanism records an approved waiver. Profile publishing also has
 separate release evidence: `app-platform.identity-profile-publish` for the profile-document route,

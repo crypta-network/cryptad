@@ -124,8 +124,8 @@ signing risk.
 Run deterministic checks with:
 
 ```bash
-python3 tools/release-certification/app_platform_smoke.py --self-test
-python3 tools/release-certification/release_certification.py --self-test
-python3 tools/release-certification/production_beta_go_no_go_dashboard.py --self-test
-python3 tools/release-certification/production_beta_release.py --self-test
+python3 tools/release-certification/certify.py app-platform --self-test
+python3 tools/release-certification/certify.py release-certification --self-test
+python3 tools/release-certification/certify.py go-no-go --self-test
+python3 tools/release-certification/certify.py production-beta --self-test
 ```

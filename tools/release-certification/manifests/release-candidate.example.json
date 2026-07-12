@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "release": {
+    "id": "cryptad-candidate-REPLACE_ME",
+    "version": "REPLACE_ME",
+    "profile": "release-candidate"
+  },
+  "output": {
+    "root": "build/release-certification",
+    "reset": false
+  },
+  "requirements": {
+    "history": true,
+    "liveNetwork": false,
+    "multiNodeSoak": true,
+    "sandboxProviderTests": true,
+    "stableReadiness": false,
+    "thirdPartyIntake": true
+  },
+  "inputs": {
+    "interopSmoke": "build/interop-smoke/summary.json",
+    "performanceSmoke": "build/perf-smoke/summary.json",
+    "releaseHistory": "REPLACE_ME.json"
+  },
+  "policies": {
+    "catalogChannel": "stable"
+  },
+  "execution": {
+    "collectEvidence": true,
+    "fixtureEvidence": false,
+    "skipGradle": false
+  },
+  "commands": {}
+}

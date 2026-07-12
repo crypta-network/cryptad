@@ -138,7 +138,7 @@
               "build/production-beta-release/evidence/platform-api-stable-diff.json"
             ],
             "errors": [],
-            "productionMode": "release_certification.py fails closed without previous contract history"
+            "productionMode": "certify.py release-certification fails closed without previous contract history"
           },
           "id": "platform-api.previous-contract-snapshot",
           "requiredForReleaseCandidate": true,

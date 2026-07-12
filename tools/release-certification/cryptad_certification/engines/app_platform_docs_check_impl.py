@@ -1636,7 +1636,7 @@ def run_check(workspace_root: Path) -> dict[str, Any]:
                 if docs_redaction_passed
                 else "Docs or issue templates failed local Markdown link or redaction checks."
             ),
-            "tools/release-certification/app_platform_docs_check.py",
+            "tools/release-certification/certify.py",
             {
                 "internalLinksOk": not broken_links,
                 "brokenLinks": broken_links,
@@ -1752,7 +1752,7 @@ def run_check(workspace_root: Path) -> dict[str, Any]:
                 if public_beta_links_redaction_passed
                 else "Public beta onboarding docs or support template failed local link or redaction checks."
             ),
-            "tools/release-certification/app_platform_docs_check.py",
+            "tools/release-certification/certify.py",
             {
                 "internalLinksOk": not public_beta_broken_links,
                 "brokenLinks": public_beta_broken_links,

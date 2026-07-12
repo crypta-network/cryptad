@@ -709,31 +709,30 @@ not require a live node.
 Fast self-tests:
 
 ```bash
-python3 tools/release-certification/app_platform_docs_check.py --self-test
-python3 tools/release-certification/release_certification.py --self-test
-python3 tools/release-certification/app_platform_smoke.py --self-test
-python3 tools/release-certification/network_scale_soak.py --self-test
-python3 tools/release-certification/multi_node_beta_soak.py --self-test
-python3 tools/release-certification/production_beta_go_no_go_dashboard.py --self-test
-python3 tools/release-certification/production_beta_release.py --self-test
+python3 tools/release-certification/certify.py app-platform-docs --self-test
+python3 tools/release-certification/certify.py release-certification --self-test
+python3 tools/release-certification/certify.py app-platform --self-test
+python3 tools/release-certification/certify.py network-scale-soak --self-test
+python3 tools/release-certification/certify.py multi-node-beta --self-test
+python3 tools/release-certification/certify.py go-no-go --self-test
+python3 tools/release-certification/certify.py production-beta --self-test
 ```
 
 Generate a local report:
 
 ```bash
-tools/release-certification/run-release-certification.sh
+python3 tools/release-certification/certify.py release-certification \
+  --manifest tools/release-certification/manifests/developer-dry-run.json
 ```
 
 Generate release-candidate evidence:
 
 ```bash
-tools/release-certification/run-release-certification.sh \
-  --mode release-candidate \
-  --out-dir build/release-certification
+python3 tools/release-certification/certify.py release-certification --manifest build/release-candidate.json
 ```
 
-Add `--previous-summary build/release-certification-history/latest-summary.json` when the previous
-release's sanitized summary has been restored locally or in CI.
+Set `inputs.previousCandidate` and `inputs.releaseHistory` in the manifest when the previous
+release's sanitized v2 summaries have been restored locally or in CI.
 
 See [docs/release-certification.md](docs/release-certification.md) for required evidence,
 including `app-review.trusted-receipts`, `app-review.policy`,

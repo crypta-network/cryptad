@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "release": {
+    "id": "cryptad-stable-REPLACE_ME",
+    "version": "REPLACE_ME",
+    "profile": "stable-review"
+  },
+  "output": {
+    "root": "build/release-certification",
+    "reset": false
+  },
+  "requirements": {
+    "history": true,
+    "liveNetwork": true,
+    "multiNodeSoak": true,
+    "sandboxProviderTests": true,
+    "stableReadiness": true,
+    "thirdPartyIntake": true
+  },
+  "inputs": {
+    "previousCandidate": "REPLACE_ME.json",
+    "releaseHistory": "REPLACE_ME.json"
+  },
+  "policies": {
+    "catalogChannel": "stable"
+  },
+  "execution": {
+    "collectEvidence": false,
+    "fixtureEvidence": false,
+    "skipGradle": false
+  },
+  "commands": {}
+}

@@ -409,7 +409,7 @@
       "details": {
         "currentContractVersion": 20,
         "errors": [],
-        "historyGate": "release_certification.py compares previous stable baseline summaries",
+        "historyGate": "certify.py release-certification compares previous stable baseline summaries",
         "productionMode": "requires previous release summary through release certification history",
         "stableCapabilityCount": 9,
         "stableEndpointAppAccess": {
@@ -624,7 +624,7 @@
           "build/production-beta-release/evidence/platform-api-stable-diff.json"
         ],
         "errors": [],
-        "productionMode": "release_certification.py fails closed without previous contract history"
+        "productionMode": "certify.py release-certification fails closed without previous contract history"
       },
       "id": "platform-api.previous-contract-snapshot",
       "requiredForReleaseCandidate": true,
@@ -3955,7 +3955,7 @@
           "runbook": "docs/production-security-response-runbook.md",
           "supportRedactionTests": "platform-api/src/test/java/network/crypta/platform/api/operator/OperatorSupportRedactorTest.java",
           "template": "docs/templates/security-release-notes.md",
-          "verifier": "tools/release-certification/security_response_runbook.py",
+          "verifier": "tools/release-certification/certify.py",
           "webShell": "platform-web-shell/src/main/resources/network/crypta/platform/webshell/static/web-shell.js"
         }
       },
