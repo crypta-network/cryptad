@@ -70,6 +70,14 @@ class ProductionBetaCharacterizationTest(unittest.TestCase):
                     / "artifacts/legacy/.cryptad-production-beta-release-output"
                 ).is_file()
             )
+            consumer_manifest = dataclasses.replace(
+                manifest,
+                inputs={"productionBeta": str(context.component_dir / "summary.json")},
+            )
+            consumer_context = prepare_context(root, consumer_manifest, "go-no-go")
+            extracted = legacy._legacy_input_path(consumer_context, "productionBeta")
+            self.assertIsNotNone(extracted)
+            self.assertEqual(summary["payload"]["legacy"], read_json(extracted))
 
     def test_unified_adapter_writes_failed_evidence_for_an_early_engine_exit(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

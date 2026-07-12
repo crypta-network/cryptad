@@ -13,6 +13,7 @@ from cryptad_certification.manifest import ManifestError, load_manifest
 from cryptad_certification.migration import execute as migrate
 from cryptad_certification.models import EvidenceEnvelope
 from cryptad_certification.legacy import execute as execute_engine
+from cryptad_certification.redaction import scan_value
 from cryptad_certification.tests.support import workspace_root, write_manifest
 from cryptad_certification.workspace import WorkspaceError, prepare_context, prepare_run_root
 
@@ -429,6 +430,61 @@ class EnvelopeTest(unittest.TestCase):
                 "sensitive-field",
                 envelope.redaction["findings"][0]["category"],
             )
+
+    def test_scanner_accepts_canonical_sanitized_engine_output(self) -> None:
+        value = {
+            "commands": {
+                "args": [
+                    "<path>/python3",
+                    "<repo>/tools/release-certification/engine_entry.py",
+                ],
+                "stdout_tail": "warn: <workdir>/candidate/report.md",
+            },
+            "source": "<repo>/first/summary.json; <repo>/second/summary.json",
+            "scripts": ["./crypta-platform.js", "./app.js"],
+            "routes": [
+                "POST /api/v1/content/fetch",
+                "GET /app-data/status",
+                "/trust-graph/audit",
+                "/apps/publisher/",
+            ],
+            "negativeFindingsByPath": {
+                "fixtures/redaction-authorization-header.json": ["authorization-header"],
+                "fixtures/redaction-app-token.json": "<redacted>",
+            },
+            "negativeFixtureResults": {
+                "fixtures/redaction-private-insert-uri.json": {
+                    "detectedKinds": ["credential-or-path marker", "private insert URI"],
+                    "expectedKind": "private insert URI",
+                    "passes": True,
+                }
+            },
+            "checks": {"safeErrorsAndNoRawContentCovered": True},
+            "privateKeySource": "missing",
+            "redacted": {
+                "privateInsertUri": "<redacted-uri>",
+                "rawRequestBody": "<redacted>",
+            },
+        }
+
+        self.assertEqual([], scan_value(value))
+
+    def test_scanner_rejects_malformed_sanitized_engine_output(self) -> None:
+        cases = {
+            "placeholder-traversal": {"path": "<path>/../private/key.pem"},
+            "local-path-in-route-like-root": {"workspaceRoot": "/apps/cryptad/build"},
+            "unredacted-sensitive-source": {"privateKeySource": "operator-key.pem"},
+            "absence-word-as-secret": {"formPassword": "missing"},
+            "malformed-negative-fixture": {
+                "negativeFindingsByPath": {
+                    "fixtures/redaction-app-token.json": "hunter2",
+                }
+            },
+        }
+
+        for name, value in cases.items():
+            with self.subTest(name=name):
+                self.assertTrue(scan_value(value))
 
     def test_false_or_malformed_redaction_metadata_fails_closed(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

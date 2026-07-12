@@ -18,10 +18,26 @@ AUTH_RE = re.compile(
     r"(?![A-Za-z0-9+/=]))"
 )
 SECRET_ASSIGNMENT_RE = re.compile(r"(?i)\b(?:password|token|secret|private[_-]?key)\s*[:=]\s*[^<\s][^\s,;]{3,}")
-UNIX_PATH_RE = re.compile(r"(?<![A-Za-z0-9:/])/(?!/)[^\s\"'<>]+")
+UNIX_PATH_RE = re.compile(r"(?<![A-Za-z0-9:/.}\]])/(?!/)[^\s\"'<>]+")
 WINDOWS_PATH_RE = re.compile(r"(?i)(?<![A-Za-z0-9])[A-Z]:[\\/][^\s\"'<>]+")
 WINDOWS_UNC_PATH_RE = re.compile(r"(?i)(?<![A-Za-z0-9])\\\\[^\\\s\"'<>]+\\[^\s\"'<>]+")
-SAFE_PUBLIC_ROUTE_ROOTS = ("/api/v1", "/apps", "/app/node", "/core-update")
+SAFE_PUBLIC_ROUTE_ROOTS = (
+    "/api/v1",
+    "/apps",
+    "/app/node",
+    "/app-data",
+    "/app-vault",
+    "/content",
+    "/core-update",
+    "/filterfile",
+    "/identity-vault",
+    "/operator",
+    "/platform",
+    "/queue",
+    "/trust-graph",
+    "/.well-known",
+    "/{CHK,SSK,USK,KSK}@...",
+)
 PUBLIC_ROUTE_FIELD_MARKERS = ("route", "endpoint", "url", "href")
 LOCAL_PATH_FIELD_MARKERS = (
     "archive",
@@ -37,7 +53,38 @@ LOCAL_PATH_FIELD_MARKERS = (
 )
 PUBLIC_ROUTE_FRAGMENT_RE = re.compile(r"[A-Za-z0-9._~-]+")
 REPO_PLACEHOLDER_PREFIX = "<repo>/"
-REPO_PATH_SEGMENT_RE = re.compile(r"[A-Za-z0-9._+@=-]+")
+REPO_PATH_SEGMENT_RE = re.compile(r"[A-Za-z0-9._+@={}-]+")
+SANITIZED_PATH_PLACEHOLDER_RE = re.compile(
+    r"(?:file://)?<(?:repo|home|workdir|path)>[^\s\"'<>),;:\]]*"
+)
+SAFE_REDACTED_VALUES = {
+    "<redacted>",
+    "<redacted-private-artifact>",
+    "<redacted-private-key>",
+    "<redacted-uri>",
+    "<token-redacted>",
+    "redacted",
+}
+SAFE_ABSENCE_VALUES = {
+    "absent",
+    "disabled",
+    "missing",
+    "none",
+    "not-observed",
+    "not-provided",
+    "unavailable",
+}
+SAFE_NEGATIVE_FINDING_LABELS = {
+    "authorization-header",
+    "cookie",
+    "credential-or-path marker",
+    "local path",
+    "local-absolute-path",
+    "migration-raw-artifact",
+    "private insert URI",
+    "private-insert-uri",
+    "raw migration artifact",
+}
 SENSITIVE_FIELD_FRAGMENTS = (
     "authorization",
     "cookie",
@@ -88,6 +135,7 @@ SAFE_SENSITIVE_FIELD_SUFFIXES = (
 )
 SAFE_BOOLEAN_FIELD_MARKERS = (
     "checked",
+    "covered",
     "enabled",
     "failon",
     "present",
@@ -120,6 +168,16 @@ def _field_can_contain_sensitive_payload(key: Any, value: Any) -> bool:
         return False
     if value is None or value is False:
         return False
+    if isinstance(value, str) and value in SAFE_REDACTED_VALUES:
+        return False
+    if (
+        isinstance(value, str)
+        and value in SAFE_ABSENCE_VALUES
+        and normalized.endswith(("source", "status"))
+    ):
+        return False
+    if isinstance(key, str) and key.endswith(".json") and _is_safe_negative_fixture_result(value):
+        return False
     if any(marker in normalized for marker in SAFE_SENSITIVE_FIELD_MARKERS):
         return False
     if normalized.endswith(SAFE_SENSITIVE_FIELD_SUFFIXES):
@@ -135,6 +193,27 @@ def _field_can_contain_sensitive_payload(key: Any, value: Any) -> bool:
     ):
         return False
     return True
+
+
+def _is_safe_negative_fixture_result(value: Any) -> bool:
+    """Recognize sanitized negative-test outcomes without accepting fixture payloads."""
+
+    if isinstance(value, str):
+        return value in SAFE_REDACTED_VALUES
+    if isinstance(value, list):
+        return bool(value) and all(item in SAFE_NEGATIVE_FINDING_LABELS for item in value)
+    if not isinstance(value, dict) or set(value) != {"detectedKinds", "expectedKind", "passes"}:
+        return False
+    detected = value.get("detectedKinds")
+    expected = value.get("expectedKind")
+    return (
+        value.get("passes") is True
+        and isinstance(detected, list)
+        and bool(detected)
+        and all(item in SAFE_NEGATIVE_FINDING_LABELS for item in detected)
+        and expected in SAFE_NEGATIVE_FINDING_LABELS
+        and expected in detected
+    )
 
 
 def _contains_sensitive_field(value: Any) -> bool:
@@ -168,23 +247,52 @@ def _string_contexts(
             yield from _string_contexts(child, field_path, parent)
 
 
-def _is_safe_repo_placeholder(value: str) -> bool:
-    """Return whether one complete string is a canonical redacted repository path."""
+def _is_safe_path_placeholder(value: str) -> bool:
+    """Return whether one complete string is a canonical sanitized filesystem placeholder."""
 
-    if not value.startswith(REPO_PLACEHOLDER_PREFIX):
+    candidate = value.removeprefix("file://")
+    match = re.fullmatch(r"<(repo|home|workdir|path)>(.*)", candidate)
+    if match is None:
         return False
-    relative = value.removeprefix(REPO_PLACEHOLDER_PREFIX)
-    if relative in {"", "."}:
+    relative = match.group(2)
+    if relative == "":
         return True
+    if not relative.startswith("/"):
+        return False
+    relative = relative[1:]
+    if relative == ".":
+        return match.group(1) == "repo"
     if relative.endswith("/"):
         relative = relative[:-1]
-    if not relative or relative.startswith("/") or "\\" in relative or "\x00" in relative:
+    if not relative or "\\" in relative or "\x00" in relative:
         return False
     return all(
         part not in {"", ".", ".."}
         and REPO_PATH_SEGMENT_RE.fullmatch(part) is not None
         for part in relative.split("/")
     )
+
+
+def _is_safe_repo_placeholder(value: str) -> bool:
+    """Return whether one complete string is a canonical redacted repository path."""
+
+    return value.startswith("<repo>") and _is_safe_path_placeholder(value)
+
+
+def _strip_safe_path_placeholders(value: str) -> tuple[str, bool]:
+    """Remove canonical placeholders and report malformed placeholder-shaped values."""
+
+    malformed = False
+
+    def replace(match: re.Match[str]) -> str:
+        nonlocal malformed
+        candidate = match.group(0)
+        if _is_safe_path_placeholder(candidate):
+            return "<sanitized-path>"
+        malformed = True
+        return candidate
+
+    return SANITIZED_PATH_PLACEHOLDER_RE.sub(replace, value), malformed
 
 
 def _field_allows_public_route(
@@ -194,7 +302,21 @@ def _field_allows_public_route(
     """Return whether the JSON field context explicitly represents a public route."""
 
     normalized = tuple(_normalized_field_name(field) for field in field_path)
-    if normalized and any(marker in normalized[-1] for marker in LOCAL_PATH_FIELD_MARKERS):
+    last_has_public_marker = bool(
+        normalized
+        and any(marker in normalized[-1] for marker in PUBLIC_ROUTE_FIELD_MARKERS)
+    )
+    ancestor_has_public_marker = any(
+        marker in field
+        for field in normalized[:-1]
+        for marker in PUBLIC_ROUTE_FIELD_MARKERS
+    )
+    if (
+        normalized
+        and any(marker in normalized[-1] for marker in LOCAL_PATH_FIELD_MARKERS)
+        and not last_has_public_marker
+        and not ancestor_has_public_marker
+    ):
         return False
     if any(
         marker in field
@@ -253,15 +375,13 @@ def _contains_local_absolute_path(value: Any) -> tuple[bool, bool]:
     unix_found = False
     windows_found = False
     for field_path, parent, text in _string_contexts(value):
-        if _is_safe_repo_placeholder(text):
-            continue
-        if text.startswith(REPO_PLACEHOLDER_PREFIX):
+        scan_text, malformed_placeholder = _strip_safe_path_placeholders(text)
+        if malformed_placeholder:
             unix_found = True
-        if _is_normalized_public_route(field_path, parent, text):
-            continue
-        if UNIX_PATH_RE.search(text):
-            unix_found = True
-        if WINDOWS_PATH_RE.search(text) or WINDOWS_UNC_PATH_RE.search(text):
+        for match in UNIX_PATH_RE.finditer(scan_text):
+            if not _is_normalized_public_route(field_path, parent, match.group(0)):
+                unix_found = True
+        if WINDOWS_PATH_RE.search(scan_text) or WINDOWS_UNC_PATH_RE.search(scan_text):
             windows_found = True
         if unix_found and windows_found:
             break
