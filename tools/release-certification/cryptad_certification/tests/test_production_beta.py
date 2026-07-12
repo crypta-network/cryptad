@@ -8,6 +8,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+from cryptad_certification import legacy
 from cryptad_certification.engines import production_beta_release
 from cryptad_certification.io import read_json, write_json, write_text
 from cryptad_certification.legacy import execute as execute_engine
@@ -119,6 +120,49 @@ class ProductionBetaCharacterizationTest(unittest.TestCase):
             self.assertTrue(
                 (public_out / ".cryptad-production-beta-release-output").is_file()
             )
+
+    def test_unified_adapter_rejects_a_symlinked_production_output(self) -> None:
+        root = workspace_root()
+        build_dir = root / "build"
+        build_dir.mkdir(exist_ok=True)
+        with (
+            tempfile.TemporaryDirectory(prefix="certify-production-", dir=build_dir) as output,
+            tempfile.TemporaryDirectory(prefix="production-beta-target-", dir=build_dir) as target,
+        ):
+            output_root = Path(output)
+            target_dir = Path(target)
+            preserved = target_dir / "keep.json"
+            write_json(preserved, {"preserved": True})
+            manifest = load_manifest(write_manifest(output_root), root, output_root)
+            prepare_run_root(manifest)
+            context = prepare_context(root, manifest, "production-beta")
+            public_out = context.component_dir / "artifacts/legacy"
+            try:
+                public_out.symlink_to(target_dir, target_is_directory=True)
+            except OSError as exc:
+                self.skipTest(f"directory symlinks are unavailable: {exc}")
+
+            with mock.patch.object(production_beta_release, "main") as engine:
+                with self.assertRaisesRegex(
+                    ValueError,
+                    "production output path contains a symlink",
+                ):
+                    legacy._run_production_beta(context)
+
+            engine.assert_not_called()
+            self.assertEqual({"preserved": True}, read_json(preserved))
+
+    def test_production_manifest_binds_required_third_party_intake(self) -> None:
+        manifest = read_json(
+            workspace_root()
+            / "tools/release-certification/manifests/production-beta.example.json"
+        )
+
+        self.assertIsInstance(manifest, dict)
+        self.assertIsInstance(manifest.get("requirements"), dict)
+        self.assertIsInstance(manifest.get("inputs"), dict)
+        self.assertIs(True, manifest["requirements"]["thirdPartyIntake"])
+        self.assertEqual("REPLACE_ME.json", manifest["inputs"]["thirdPartyIntake"])
 
     def test_required_live_evidence_is_collected_and_bound_to_aggregation(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

@@ -502,6 +502,7 @@ def _run_production_beta(context: RunContext) -> tuple[int, Path, Path | None]:
     # inside the source workspace, so an external unified output root is staged under build/ and
     # copied into the already confined release workspace after the engine finishes.
     public_out = context.component_dir / "artifacts" / "legacy"
+    _require_confined_directory(public_out, context.run_root, "production output")
     args = [
         "--mode",
         _mode(context, "production-beta"),

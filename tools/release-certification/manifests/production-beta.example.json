@@ -22,7 +22,8 @@
     "multiNodeSoakConfig": "REPLACE_ME.json",
     "performanceSmoke": "build/perf-smoke/summary.json",
     "previousCandidate": "REPLACE_ME.json",
-    "releaseHistory": "REPLACE_ME.json"
+    "releaseHistory": "REPLACE_ME.json",
+    "thirdPartyIntake": "REPLACE_ME.json"
   },
   "policies": {
     "artifactBaseUri": "https://REPLACE_ME.invalid/releases/",
