@@ -225,6 +225,7 @@ jobs:
           name: release-certification-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             build/release-certification/
+            build/release-certification-history/
             !**/private-insert-uris.json
           if-no-files-found: warn
           retention-days: 30

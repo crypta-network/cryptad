@@ -199,9 +199,12 @@ def _mode(context: RunContext, command: str) -> str:
                 "release-candidate", "production-beta", "stable-review"
             } else "pr"
     elif command in {"production-beta", "go-no-go"}:
-        expected = profile if profile in {
-            "developer-dry-run", "release-candidate", "production-beta"
-        } else "developer-dry-run"
+        if profile == "stable-review":
+            expected = "production-beta"
+        else:
+            expected = profile if profile in {
+                "developer-dry-run", "release-candidate", "production-beta"
+            } else "developer-dry-run"
     else:
         expected = profile
     configured = _config(context, command).get("mode")

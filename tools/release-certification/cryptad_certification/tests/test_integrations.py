@@ -544,6 +544,27 @@ class AdapterIntegrationTest(unittest.TestCase):
 
             self.assertEqual("nightly", captured[captured.index("--mode") + 1])
 
+    def test_stable_review_uses_production_pipeline_policy(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = load_manifest(
+                write_manifest(
+                    root,
+                    release={
+                        "id": "stable-review-candidate",
+                        "version": "self-test",
+                        "profile": "stable-review",
+                    },
+                ),
+                root,
+            )
+            prepare_run_root(manifest)
+            context = prepare_context(root, manifest, "stable-review-mode")
+
+            for command in ("production-beta", "go-no-go"):
+                with self.subTest(command=command):
+                    self.assertEqual("production-beta", legacy._mode(context, command))
+
     def test_command_modes_cannot_override_the_manifest_release_policy(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -1304,6 +1325,7 @@ class WorkflowIntegrationTest(unittest.TestCase):
         self.assertIn("interopSmoke: $interop_smoke", release)
         self.assertIn("interopExtended: $interop_extended", release)
         self.assertIn("performanceSmoke: $performance_smoke", release)
+        self.assertIn("build/release-certification-history/", release)
         self.assertNotIn(
             'interopSmoke: "build/interop-smoke/summary.json"',
             release,
