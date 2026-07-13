@@ -31,8 +31,11 @@ COOKIE_HEADER_RE = re.compile(
 # local path. Normal URLs remain excluded by their ``://`` authority separator and by the
 # alphanumeric lookbehind on later URL path segments. Colon-adjacent matches are rejected before
 # public-route exemptions are considered below.
-UNIX_PATH_RE = re.compile(r"(?<![A-Za-z0-9/.}\]])/(?!/)[^\s\"'<>]+")
-WINDOWS_PATH_RE = re.compile(r"(?i)(?<![A-Za-z0-9])[A-Z]:[\\/][^\s\"'<>]+")
+UNIX_PATH_RE = re.compile(r"(?<![A-Za-z0-9/.}\]])/(?!/)[^\s\"'<>]*")
+UNIX_REPEATED_SEPARATOR_RE = re.compile(
+    r"(?<![A-Za-z0-9:/.}\]])/{2,}[^\s\"'<>]*"
+)
+WINDOWS_PATH_RE = re.compile(r"(?i)(?<![A-Za-z0-9])[A-Z]:[\\/][^\s\"'<>]*")
 WINDOWS_UNC_PATH_RE = re.compile(r"(?i)(?<![A-Za-z0-9])\\\\[^\\\s\"'<>]+\\[^\s\"'<>]+")
 FILE_URI_RE = re.compile(
     r"(?i)(?<![A-Za-z0-9+.-])file:(?://[^/\\\s\"'<>]*)?[/\\][^\s\"'<>]*"
@@ -413,6 +416,8 @@ def _contains_local_absolute_path(value: Any) -> tuple[bool, bool]:
     for field_path, parent, text in _string_contexts(value):
         scan_text, malformed_placeholder = _strip_safe_path_placeholders(text)
         if malformed_placeholder or FILE_URI_RE.search(scan_text):
+            unix_found = True
+        if UNIX_REPEATED_SEPARATOR_RE.search(scan_text):
             unix_found = True
         for match in UNIX_PATH_RE.finditer(scan_text):
             colon_prefixed = match.start() > 0 and scan_text[match.start() - 1] == ":"

@@ -413,6 +413,57 @@ class CollectionIntegrationTest(unittest.TestCase):
 
 
 class AdapterIntegrationTest(unittest.TestCase):
+    def test_failed_fallback_scan_removes_raw_legacy_output(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = load_manifest(write_manifest(root), root)
+            prepare_run_root(manifest)
+            context = prepare_context(root, manifest, "app-platform")
+
+            def write_unsafe_output(
+                configured: RunContext,
+            ) -> tuple[int, Path, Path]:
+                output = legacy._legacy_dir(configured)
+                summary = output / "summary.json"
+                report = output / "report.md"
+                write_json(
+                    summary,
+                    {
+                        "schemaVersion": 1,
+                        "status": "pass",
+                        "promotionReady": True,
+                        "operatorPath": "/home/alice/private-summary.json",
+                    },
+                )
+                write_text(report, "password=hunter2")
+                write_json(
+                    output / "supporting-artifact.json",
+                    {"formPassword": "hunter2"},
+                )
+                return 0, summary, report
+
+            with mock.patch.dict(
+                legacy.RUNNERS,
+                {"app-platform": write_unsafe_output},
+            ):
+                self.assertEqual(1, legacy.execute(context, "app-platform"))
+
+            self.assertFalse((context.component_dir / "artifacts/legacy").exists())
+            envelope = read_json(context.component_dir / "summary.json")
+            self.assertEqual("fail", envelope["result"]["status"])
+            self.assertEqual("fail", envelope["redaction"]["status"])
+            self.assertFalse(envelope["result"]["promotionReady"])
+            self.assertEqual(
+                "fail",
+                envelope["payload"]["legacy"]["status"],
+            )
+            self.assertNotIn("operatorPath", envelope["payload"]["legacy"])
+            for path in context.component_dir.rglob("*"):
+                if path.is_file():
+                    public_value = path.read_text(encoding="utf-8")
+                    self.assertNotIn("hunter2", public_value)
+                    self.assertNotIn("/home/alice", public_value)
+
     def test_symlinked_legacy_output_is_rejected_before_engine_execution(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

@@ -566,6 +566,26 @@ class EnvelopeTest(unittest.TestCase):
                 categories = {finding["category"] for finding in scan_value(value)}
                 self.assertIn(expected_category, categories)
 
+    def test_scanner_rejects_filesystem_roots_and_repeated_separators(self) -> None:
+        cases = {
+            "posix-root": ({"source": "/"}, "absolute-path"),
+            "double-posix-separator": (
+                {"source": "//home/alice/private"},
+                "absolute-path",
+            ),
+            "triple-posix-separator": (
+                {"source": "///home/alice/private"},
+                "absolute-path",
+            ),
+            "windows-forward-root": ({"source": "C:/"}, "windows-path"),
+            "windows-backslash-root": ({"source": "C:\\"}, "windows-path"),
+        }
+
+        for name, (value, expected_category) in cases.items():
+            with self.subTest(name=name):
+                categories = {finding["category"] for finding in scan_value(value)}
+                self.assertIn(expected_category, categories)
+
     def test_false_or_malformed_redaction_metadata_fails_closed(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -841,12 +861,17 @@ class MigrationTest(unittest.TestCase):
 
     def test_rejects_v1_history_with_common_absolute_local_paths(self) -> None:
         local_paths = (
+            "/",
+            "//home/operator/release",
+            "///home/operator/release",
             "/home/operator/release",
             "/etc/cryptad/form-password",
             "/srv/runner/work/release-summary.json",
             "/root/.crypta/history.json",
             "/app/secrets/catalog-key",
             "workspace:/home/runner/private",
+            "C:/",
+            "C:\\",
             r"C:\ProgramData\Cryptad\release-summary.json",
             "<repo>/../../etc/passwd",
             "<repo>//etc/passwd",

@@ -8,7 +8,12 @@ import tempfile
 from pathlib import Path
 from typing import Any, Callable
 
-from .envelope import from_legacy, validate_envelope, write_envelope
+from .envelope import (
+    from_legacy,
+    redaction_from_legacy,
+    validate_envelope,
+    write_envelope,
+)
 from .io import read_json, write_json
 from .models import RunContext
 from .redaction import scan_value
@@ -251,6 +256,19 @@ def _legacy_dir(context: RunContext) -> Path:
     path.mkdir(parents=True, exist_ok=True)
     _require_confined_directory(path, context.run_root, "legacy output")
     return path
+
+
+def _remove_legacy_output(context: RunContext) -> None:
+    """Remove candidate-scoped raw engine output without following a replaced symlink."""
+
+    artifacts = context.component_dir / "artifacts"
+    _require_confined_directory(artifacts, context.run_root, "component artifacts")
+    path = artifacts / "legacy"
+    if path.is_symlink() or (path.exists() and not path.is_dir()):
+        path.unlink()
+    elif path.exists():
+        _require_confined_directory(path, context.run_root, "legacy output")
+        shutil.rmtree(path)
 
 
 def _input_dir(context: RunContext) -> Path:
@@ -897,6 +915,7 @@ def _write_early_exit_evidence(
 ) -> int:
     """Publish sanitized failed evidence when a legacy engine exits before its summary."""
 
+    _remove_legacy_output(context)
     exit_code = error.code if type(error.code) is int and error.code > 0 else 1
     summary = {
         "schemaVersion": 1,
@@ -934,6 +953,65 @@ def _write_early_exit_evidence(
     return int(envelope.result["exitCode"])
 
 
+def _write_redaction_failure_evidence(
+    context: RunContext,
+    command: str,
+    legacy: dict[str, Any],
+    exit_code: int,
+) -> int:
+    """Remove unsafe legacy output and publish only a sanitized failed envelope."""
+
+    findings = scan_value(legacy)
+    if not findings:
+        findings = [
+            {
+                "category": "redaction-metadata",
+                "summary": "legacy engine redaction validation failed",
+            }
+        ]
+    _remove_legacy_output(context)
+    summary = {
+        "schemaVersion": 1,
+        "releaseId": context.manifest.release.release_id,
+        "status": "fail",
+        "promotionReady": False,
+        "blockers": [
+            {
+                "id": f"{command}.redaction",
+                "status": "fail",
+                "summary": (
+                    "The legacy engine output failed redaction validation and was removed."
+                ),
+            }
+        ],
+        "redaction": {
+            "status": "fail",
+            "findingCount": len(findings),
+            "findings": findings,
+            "guarantees": {
+                "legacyPayloadScanned": True,
+                "unsafeLegacyOutputRemoved": True,
+            },
+        },
+    }
+    artifact_summary = context.component_dir / "artifacts" / "legacy-summary.json"
+    write_json(artifact_summary, summary)
+    envelope = from_legacy(
+        context,
+        KIND_BY_COMMAND[command],
+        summary,
+        exit_code if exit_code != 0 else 1,
+        {"legacySummary": relative_to_run(artifact_summary, context)},
+    )
+    report = (
+        f"# {command}\n\n"
+        "The legacy engine output failed redaction validation. Its raw summary, report, and "
+        "supporting artifacts were removed from the publishable release workspace."
+    )
+    write_envelope(context, envelope, report)
+    return int(envelope.result["exitCode"])
+
+
 def execute(context: RunContext, command: str, action: str | None = None) -> int:
     """Run one established engine and publish its result as a v2 envelope."""
 
@@ -954,6 +1032,9 @@ def execute(context: RunContext, command: str, action: str | None = None) -> int
     legacy = read_json(legacy_summary_path)
     if not isinstance(legacy, dict):
         raise ValueError(f"{command} summary must be a JSON object")
+    redaction = redaction_from_legacy(legacy.get("redaction"), legacy)
+    if redaction["status"] == "fail":
+        return _write_redaction_failure_evidence(context, command, legacy, code)
     artifact_summary = context.component_dir / "artifacts" / "legacy-summary.json"
     write_json(artifact_summary, legacy)
     if (
