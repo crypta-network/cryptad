@@ -225,17 +225,20 @@ jobs:
   release-certification-self-test:
     name: release certification self-test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    timeout-minutes: ${{ matrix.timeout_minutes }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
             python_cmd: python3
+            timeout_minutes: 30
           - os: macos-latest
             python_cmd: python3
+            timeout_minutes: 30
           - os: windows-latest
             python_cmd: py -3.12
+            timeout_minutes: 60
 
     steps:
       - uses: actions/checkout@v6

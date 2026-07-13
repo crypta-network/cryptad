@@ -736,7 +736,7 @@ class AdapterIntegrationTest(unittest.TestCase):
 
             history_dir_index = captured.index("--history-dir")
             self.assertEqual(
-                root / "build/shared-certification-history",
+                (root / "build/shared-certification-history").resolve(),
                 Path(captured[history_dir_index + 1]),
             )
 
