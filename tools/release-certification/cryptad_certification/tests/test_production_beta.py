@@ -461,6 +461,52 @@ class ProductionBetaCharacterizationTest(unittest.TestCase):
             ),
         )
 
+    def test_evidence_extracts_read_attached_live_and_network_scale_summaries(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Path(directory) / "repo"
+            workspace.mkdir()
+            out_dir = workspace / "build/production-beta"
+            cert_out = workspace / "build/certification"
+            live_summary_path = workspace / "attached/live-network.json"
+            network_summary_path = workspace / "attached/network-scale.json"
+            live_summary = {"status": "pass", "source": "attached-live"}
+            network_summary = {
+                "status": "pass",
+                "releaseId": "cryptad-candidate-custom",
+                "source": "attached-network-scale",
+            }
+            write_json(live_summary_path, live_summary)
+            write_json(network_summary_path, network_summary)
+            settings = dataclasses.replace(
+                production_beta_release.cleanup_test_settings(workspace, out_dir),
+                live_network_summary=live_summary_path,
+                network_scale_soak_summary=network_summary_path,
+            )
+
+            extracts = production_beta_release.write_evidence_extracts(
+                settings,
+                cert_out,
+            )
+
+            self.assertEqual(live_summary, extracts["liveNetwork"])
+            self.assertEqual(network_summary, extracts["networkScale"])
+            self.assertEqual(
+                live_summary,
+                read_json(out_dir / "evidence/live-network-beta-smoke.json"),
+            )
+            self.assertEqual(
+                network_summary,
+                read_json(out_dir / "evidence/network-scale-soak.json"),
+            )
+            self.assertEqual(
+                network_summary,
+                read_json(
+                    production_beta_release.stable_readiness_network_scale_soak_path(
+                        settings
+                    )
+                ),
+            )
+
     def test_release_candidate_collects_multi_node_soak_with_default_topology(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             workspace = Path(directory) / "repo"

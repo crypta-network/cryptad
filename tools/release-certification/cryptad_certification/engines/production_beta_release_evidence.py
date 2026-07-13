@@ -1133,8 +1133,14 @@ def missing_platform_api_snapshot(which: str, summary: str) -> dict[str, Any]:
 
 def write_evidence_extracts(settings: Settings, cert_out: Path) -> dict[str, Any]:
     app_summary_path = cert_out / "app-platform-smoke/summary.json"
-    live_summary_path = cert_out / "live-network-beta-smoke/summary.json"
-    network_summary_path = cert_out / "network-scale-soak/summary.json"
+    live_summary_path = (
+        settings.live_network_summary
+        or cert_out / "live-network-beta-smoke/summary.json"
+    )
+    network_summary_path = (
+        settings.network_scale_soak_summary
+        or cert_out / "network-scale-soak/summary.json"
+    )
     resolved_multi_node_summary_path = multi_node_summary_path(settings, cert_out)
     cert_summary_path = cert_out / release_certification.SUMMARY_FILE_NAME
     matrix_path = cert_out / release_certification.ECOSYSTEM_MATRIX_FILE_NAME

@@ -344,6 +344,15 @@ def _legacy_input_path(
         raise ValueError(f"inputs.{key} v2 envelope is missing payload.legacy")
     if scan_value(legacy):
         raise ValueError(f"inputs.{key} payload.legacy failed the v2 redaction scan")
+    if key == "multiNodeSoak":
+        legacy = dict(legacy)
+        release_id = value["subject"]["releaseId"]
+        legacy_release_id = legacy.get("releaseId")
+        if legacy_release_id is not None and legacy_release_id != release_id:
+            raise ValueError(
+                "inputs.multiNodeSoak payload releaseId does not match its v2 subject"
+            )
+        legacy["releaseId"] = release_id
     extracted = _input_dir(context) / f"{key}.json"
     write_json(extracted, legacy)
     if key == "securityDrills":

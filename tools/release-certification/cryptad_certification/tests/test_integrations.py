@@ -1362,6 +1362,73 @@ class AdapterIntegrationTest(unittest.TestCase):
             extracted = Path(captured[captured.index("--go-no-go-summary") + 1])
             self.assertEqual(legacy_dashboard, read_json(extracted))
 
+    def test_stable_adapter_preserves_v2_multi_node_candidate_identity(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            release_id = "cryptad-candidate-custom"
+            legacy_soak = {
+                "schemaVersion": 1,
+                "status": "pass",
+                "currentCandidate": {"version": "3"},
+            }
+            envelope = EvidenceEnvelope(
+                kind="multi-node-beta-soak",
+                generated_at="2026-01-01T00:00:00Z",
+                subject={
+                    "releaseId": release_id,
+                    "version": "3",
+                    "profile": "stable-review",
+                    "component": "multi-node-beta/run",
+                },
+                result={
+                    "status": "pass",
+                    "decision": None,
+                    "promotionReady": True,
+                    "exitCode": 0,
+                },
+                counts={"evidence": 0, "blockers": 0, "warnings": 0, "waivers": 0},
+                redaction={
+                    "status": "pass",
+                    "findingCount": 0,
+                    "findings": [],
+                    "guarantees": {},
+                },
+                payload={"legacy": legacy_soak},
+            ).to_json()
+            write_json(root / "multi-node-v2.json", envelope)
+            manifest = load_manifest(
+                write_manifest(
+                    root,
+                    release={
+                        "id": release_id,
+                        "version": "3",
+                        "profile": "stable-review",
+                    },
+                    inputs={"multiNodeSoak": "multi-node-v2.json"},
+                ),
+                root,
+            )
+            prepare_run_root(manifest)
+            context = prepare_context(root, manifest, "stable-readiness")
+            captured: list[str] = []
+
+            with mock.patch.object(
+                stable_1_0_readiness,
+                "main",
+                side_effect=lambda args: captured.extend(args) or 0,
+            ):
+                legacy._run_stable_readiness(context)
+
+            extracted = Path(
+                captured[captured.index("--multi-node-beta-soak-summary") + 1]
+            )
+            extracted_soak = read_json(extracted)
+            self.assertEqual(release_id, extracted_soak["releaseId"])
+            self.assertEqual(
+                [("releaseId", release_id)],
+                stable_1_0_readiness.multi_node_candidate_release_ids(extracted_soak),
+            )
+
     def test_every_v2_component_input_requires_its_mapped_kind(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
