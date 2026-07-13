@@ -1848,6 +1848,33 @@ class AdapterIntegrationTest(unittest.TestCase):
 
 
 class WorkflowIntegrationTest(unittest.TestCase):
+    def test_release_workflows_bind_the_checked_out_project_version(self) -> None:
+        root = workspace_root()
+        production = (root / ".github/workflows/production-beta-release.yml").read_text(
+            encoding="utf-8"
+        )
+        release = (root / ".github/workflows/release-certification.yml").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertNotIn("version: null", production)
+        self.assertEqual(2, production.count('release_version="$(./gradlew -q printVersion)"'))
+        self.assertEqual(2, production.count('--arg release_version "$release_version"'))
+        self.assertEqual(2, production.count("version: $release_version"))
+        self.assertEqual(
+            2,
+            production.count('if [[ ! "$release_version" =~ ^[0-9]+$ ]]'),
+        )
+
+        self.assertNotIn("version: null", release)
+        self.assertEqual(1, release.count('release_version="$(./gradlew -q printVersion)"'))
+        self.assertEqual(1, release.count('--arg release_version "$release_version"'))
+        self.assertEqual(1, release.count("version: $release_version"))
+        self.assertEqual(
+            1,
+            release.count('if [[ ! "$release_version" =~ ^[0-9]+$ ]]'),
+        )
+
     def test_protected_production_workflow_requires_third_party_intake(self) -> None:
         production = (
             workspace_root() / ".github/workflows/production-beta-release.yml"

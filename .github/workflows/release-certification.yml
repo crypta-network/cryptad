@@ -166,6 +166,11 @@ jobs:
             exit 2
           fi
           release_id="${CANDIDATE_RELEASE_ID:-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}}"
+          release_version="$(./gradlew -q printVersion)"
+          if [[ ! "$release_version" =~ ^[0-9]+$ ]]; then
+            echo "::error::Expected a numeric project version from ./gradlew -q printVersion, got '$release_version'."
+            exit 2
+          fi
           interop_smoke=""
           interop_extended=""
           performance_smoke=""
@@ -181,6 +186,7 @@ jobs:
           manifest="$RUNNER_TEMP/release-certification-manifest.json"
           jq -n \
             --arg release_id "$release_id" \
+            --arg release_version "$release_version" \
             --arg profile "$CERT_MODE" \
             --arg interop_smoke "$interop_smoke" \
             --arg interop_extended "$interop_extended" \
@@ -194,7 +200,7 @@ jobs:
             --argjson require_stable "$REQUIRE_STABLE_READINESS" \
             '{
               schemaVersion: 1,
-              release: {id: $release_id, version: null, profile: $profile},
+              release: {id: $release_id, version: $release_version, profile: $profile},
               output: {root: "build/release-certification", reset: true},
               requirements: {
                 history: $require_history,

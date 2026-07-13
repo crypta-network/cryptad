@@ -188,6 +188,8 @@ build/release-certification/<release-id>/security-response/
   release summaries without accepting traversal, malformed separators, or mixed absolute paths.
   Workflow dispatches that attach candidate-bound multi-node, security-drill, history, or Stable
   v2 summaries must require the matching explicit candidate release ID before generating a manifest.
+  Generate workflow manifest `release.version` from the checked-out build with
+  `./gradlew -q printVersion`; require attached v2 evidence to carry that same candidate version.
   Required-but-missing evidence remains an engine gate: for example,
   `requirements.history=true` without `inputs.releaseHistory` must load successfully and produce a
   failed release-candidate certification aggregate and report.

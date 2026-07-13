@@ -322,9 +322,15 @@ jobs:
             exit 1
           fi
           release_id="${INPUT_CANDIDATE_RELEASE_ID:-ci-beta-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}}"
+          release_version="$(./gradlew -q printVersion)"
+          if [[ ! "$release_version" =~ ^[0-9]+$ ]]; then
+            echo "::error::Expected a numeric project version from ./gradlew -q printVersion, got '$release_version'."
+            exit 2
+          fi
           manifest="$RUNNER_TEMP/production-beta-manifest.json"
           jq -n \
             --arg release_id "$release_id" \
+            --arg release_version "$release_version" \
             --arg profile "$mode" \
             --arg catalog_channel "$INPUT_CATALOG_CHANNEL" \
             --arg artifact_base_uri "$INPUT_ARTIFACT_BASE_URI" \
@@ -347,7 +353,7 @@ jobs:
             --args \
             '{
               schemaVersion: 1,
-              release: {id: $release_id, version: null, profile: $profile},
+              release: {id: $release_id, version: $release_version, profile: $profile},
               output: {root: "build/release-certification", reset: true},
               requirements: {
                 history: $require_history,
@@ -740,9 +746,15 @@ jobs:
           fi
           run_multi_node="$([[ -z "$INPUT_MULTI_NODE_SOAK_SUMMARY" ]] && echo true || echo false)"
           release_id="$INPUT_CANDIDATE_RELEASE_ID"
+          release_version="$(./gradlew -q printVersion)"
+          if [[ ! "$release_version" =~ ^[0-9]+$ ]]; then
+            echo "::error::Expected a numeric project version from ./gradlew -q printVersion, got '$release_version'."
+            exit 2
+          fi
           manifest="$RUNNER_TEMP/production-beta-manifest.json"
           jq -n \
             --arg release_id "$release_id" \
+            --arg release_version "$release_version" \
             --arg catalog_channel "${{ inputs.catalog_channel }}" \
             --arg artifact_base_uri "$INPUT_ARTIFACT_BASE_URI" \
             --arg previous_candidate "$INPUT_PREVIOUS_SUMMARY" \
@@ -759,7 +771,7 @@ jobs:
             --args \
             '{
               schemaVersion: 1,
-              release: {id: $release_id, version: null, profile: "production-beta"},
+              release: {id: $release_id, version: $release_version, profile: "production-beta"},
               output: {root: "build/release-certification", reset: true},
               requirements: {
                 history: true,

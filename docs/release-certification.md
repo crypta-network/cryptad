@@ -158,6 +158,9 @@ candidate identity, passing result, and redaction status.
 Keep `release.id` unchanged between the migration manifest and the consuming certification or
 production manifest. When dispatching the protected production workflow, enter that same value as
 `candidate_release_id`; the workflow does not generate a new identity for migrated inputs.
+Both release workflows set `release.version` from the checked-out build with
+`./gradlew -q printVersion`. Prepare attached v2 evidence and migration records with that same
+build version; matching only the candidate release ID is not sufficient.
 When dispatching `.github/workflows/release-certification.yml`, supplying
 `previous-summary-path` likewise requires `candidate-release-id` with that same value.
 Supplying an optional `stable-readiness-summary-path` also requires that candidate ID because every

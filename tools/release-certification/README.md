@@ -242,6 +242,9 @@ The migration manifest and the consuming run manifest must use the same `release
 protected production workflow dispatch, set `candidate_release_id` to that value. Do not use a
 workflow run number as the candidate identity because the migration artifacts must be prepared
 before the consuming workflow starts.
+The release workflows derive `release.version` from `./gradlew -q printVersion`. Bind migrated and
+attached v2 evidence to that checked-out build version; a matching release ID does not authorize
+evidence for another build version.
 For a release-certification workflow dispatch, set `candidate-release-id` whenever
 `previous-summary-path` is supplied; the workflow rejects migrated history without its bound
 candidate identity. The same explicit identity is required for any attached candidate-bound v2

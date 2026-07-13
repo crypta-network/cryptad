@@ -87,6 +87,9 @@ Choose the production candidate release ID before migration and use it as `relea
 migration manifest and the production manifest. For a protected workflow dispatch, supply the same
 value through `candidate_release_id`. This stable ID lets the workflow validate artifacts prepared
 before its GitHub run ID exists.
+The workflow derives `release.version` from the checked-out project with
+`./gradlew -q printVersion`. Every attached v2 envelope must bind its `subject.version` to that
+build version as well as bind its `subject.releaseId` to `candidate_release_id`.
 Developer and release-candidate workflow dispatches must also supply `candidate_release_id` when
 attaching a pre-generated multi-node or security-drill v2 summary; those summaries carry the same
 candidate binding even when history is not attached.
