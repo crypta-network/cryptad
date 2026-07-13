@@ -1517,6 +1517,151 @@ class AdapterIntegrationTest(unittest.TestCase):
                     with self.assertRaisesRegex(ValueError, f"expected evidence kind {expected_kind}"):
                         legacy._legacy_input_path(context, key)
 
+    def test_v2_component_inputs_reject_incompatible_subjects(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+
+            def envelope(**subject_overrides: object) -> dict[str, object]:
+                subject: dict[str, object] = {
+                    "releaseId": "self-test-release",
+                    "version": "candidate-version",
+                    "profile": "release-candidate",
+                    "component": "app-platform",
+                }
+                subject.update(subject_overrides)
+                return EvidenceEnvelope(
+                    kind="app-platform-smoke",
+                    generated_at="2026-01-01T00:00:00Z",
+                    subject=subject,
+                    result={
+                        "status": "pass",
+                        "decision": None,
+                        "promotionReady": True,
+                        "exitCode": 0,
+                    },
+                    counts={"evidence": 0, "blockers": 0, "warnings": 0, "waivers": 0},
+                    redaction={
+                        "status": "pass",
+                        "findingCount": 0,
+                        "findings": [],
+                        "guarantees": {},
+                    },
+                    payload={"legacy": {"schemaVersion": 1, "status": "pass"}},
+                ).to_json()
+
+            manifest = load_manifest(
+                write_manifest(
+                    root,
+                    release={
+                        "id": "self-test-release",
+                        "version": "candidate-version",
+                        "profile": "release-candidate",
+                    },
+                    inputs={"appPlatform": "app-platform-v2.json"},
+                ),
+                root,
+            )
+            prepare_run_root(manifest)
+            context = prepare_context(root, manifest, "release-certification")
+            invalid_subjects = (
+                (
+                    {"profile": "developer-dry-run"},
+                    "evidence profile developer-dry-run is incompatible",
+                ),
+                ({"version": "another-version"}, "evidence version does not match"),
+                ({"component": "go-no-go"}, "evidence component must be app-platform"),
+            )
+
+            for subject_overrides, expected_error in invalid_subjects:
+                with self.subTest(subject_overrides=subject_overrides):
+                    write_json(root / "app-platform-v2.json", envelope(**subject_overrides))
+                    with self.assertRaisesRegex(ValueError, expected_error):
+                        legacy._legacy_input_path(context, "appPlatform")
+
+            self.assertFalse(
+                (context.component_dir / "artifacts/inputs/appPlatform.json").exists()
+            )
+
+    def test_v2_component_inputs_allow_documented_profile_transitions(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+
+            def write_envelope(
+                path: Path,
+                *,
+                kind: str,
+                profile: str,
+                component: str,
+            ) -> None:
+                write_json(
+                    path,
+                    EvidenceEnvelope(
+                        kind=kind,
+                        generated_at="2026-01-01T00:00:00Z",
+                        subject={
+                            "releaseId": "self-test-release",
+                            "version": "candidate-version",
+                            "profile": profile,
+                            "component": component,
+                        },
+                        result={
+                            "status": "pass",
+                            "decision": None,
+                            "promotionReady": True,
+                            "exitCode": 0,
+                        },
+                        counts={"evidence": 0, "blockers": 0, "warnings": 0, "waivers": 0},
+                        redaction={
+                            "status": "pass",
+                            "findingCount": 0,
+                            "findings": [],
+                            "guarantees": {},
+                        },
+                        payload={"legacy": {"schemaVersion": 1, "status": "pass"}},
+                    ).to_json(),
+                )
+
+            production_path = root / "production-v2.json"
+            write_envelope(
+                production_path,
+                kind="production-beta-release",
+                profile="production-beta",
+                component="production-beta",
+            )
+            stable_path = root / "stable-v2.json"
+            write_envelope(
+                stable_path,
+                kind="stable-1.0-readiness",
+                profile="stable-review",
+                component="stable-readiness",
+            )
+            cases = (
+                ("stable-review", "productionBeta", production_path.name),
+                ("release-candidate", "stableReadiness", stable_path.name),
+                ("production-beta", "stableReadiness", stable_path.name),
+            )
+
+            for profile, key, input_path in cases:
+                with self.subTest(profile=profile, key=key):
+                    output_root = root / f"output-{profile}-{key}"
+                    manifest = load_manifest(
+                        write_manifest(
+                            root,
+                            release={
+                                "id": "self-test-release",
+                                "version": "candidate-version",
+                                "profile": profile,
+                            },
+                            output={"root": str(output_root), "reset": False},
+                            inputs={key: input_path},
+                        ),
+                        root,
+                    )
+                    prepare_run_root(manifest)
+                    context = prepare_context(root, manifest, f"consumer-{profile}-{key}")
+
+                    self.assertIsNotNone(legacy._legacy_input_path(context, key))
+
     def test_v2_component_inputs_reject_raw_v1_summaries(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -1629,12 +1774,12 @@ class AdapterIntegrationTest(unittest.TestCase):
     def test_dashboard_and_stable_adapters_propagate_summary_inputs(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            input_kinds = {
-                "production.json": "production-beta-release",
-                "dashboard.json": "production-beta-go-no-go",
-                "certification.json": "release-certification",
+            input_contracts = {
+                "production.json": ("production-beta-release", "production-beta"),
+                "dashboard.json": ("production-beta-go-no-go", "go-no-go"),
+                "certification.json": ("release-certification", "release-certification"),
             }
-            for name, kind in input_kinds.items():
+            for name, (kind, component) in input_contracts.items():
                 write_json(
                     root / name,
                     EvidenceEnvelope(
@@ -1644,7 +1789,7 @@ class AdapterIntegrationTest(unittest.TestCase):
                             "releaseId": "self-test-release",
                             "version": "self-test",
                             "profile": "pr",
-                            "component": kind,
+                            "component": component,
                         },
                         result={
                             "status": "pass",

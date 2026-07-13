@@ -86,8 +86,12 @@ intermediate symlinks without removing their targets.
 Nested engine output directories, including `artifacts/legacy`, receive the same symlink and
 resolved-path confinement checks before an engine can write through them.
 Inputs produced by unified components must be candidate-bound evidence envelope v2 records of the
-expected kind. Explicit external or non-envelope interop, performance, ecosystem-matrix, and
-third-party-intake artifacts retain their native JSON contracts.
+expected kind, component, compatible profile, and declared candidate version. Strict profiles
+reject evidence produced under PR, nightly, or developer-dry-run policy even when its kind and
+release ID match. Stable review may consume production-beta evidence, while release or production
+aggregation may consume an explicit Stable-review summary. Explicit external or non-envelope
+interop, performance, ecosystem-matrix, and third-party-intake artifacts retain their native JSON
+contracts.
 Command-specific policy modes cannot override the policy derived from `release.profile`.
 
 Attached v2 payloads are scanned again before extraction instead of trusting their claimed outer

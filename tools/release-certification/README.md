@@ -169,7 +169,11 @@ contains:
 - component-specific data under `payload`.
 
 Consumers validate every required envelope field, nested field type, evidence kind, candidate
-identity, array count, result consistency, and redaction status before unwrapping `payload.legacy`.
+identity, profile compatibility, component identity, declared version, array count, result
+consistency, and redaction status before unwrapping `payload.legacy`. Strict profiles reject
+evidence produced by PR, nightly, or developer-dry-run policy. Stable review may consume the
+production-beta evidence it evaluates, and release or production aggregation may consume an
+explicit Stable-review summary; these are the only cross-profile input transitions.
 Relative and absolute manifest inputs are resolved against the workspace before publication and
 rendered only as `<repo>/...` or `<external-input>`. A component process with a nonzero exit always
 produces failed evidence; `pass` and `warn` envelopes require `exitCode: 0`.

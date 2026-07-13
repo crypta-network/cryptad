@@ -171,9 +171,13 @@ build/release-certification/<release-id>/security-response/
   intermediate symlinks are never followed, and preserve production `goNoGo.decision` in the
   common envelope result.
   Inputs mapped to unified components must require candidate-bound v2 envelopes of their assigned
-  kind. Explicit external or non-envelope interop, performance, ecosystem-matrix, and third-party
-  intake inputs retain their native JSON contracts. Policy command modes must match the mode derived
-  from `release.profile` so command configuration cannot weaken or mislabel strict evidence. An
+  kind, profile-compatible policy, component identity, and declared candidate version. Strict
+  profiles must reject PR, nightly, and developer-dry-run evidence even when the kind and release ID
+  match. Stable review may consume production-beta evidence, and release or production aggregation
+  may consume an explicit Stable-review summary; do not add other cross-profile transitions.
+  Explicit external or non-envelope interop, performance, ecosystem-matrix, and third-party intake
+  inputs retain their native JSON contracts. Policy command modes must match the mode derived from
+  `release.profile` so command configuration cannot weaken or mislabel strict evidence. An
   explicitly attached optional live-network summary enables the live gate without making it
   required. Reject argparse abbreviations of every adapter-controlled option before forwarding
   command escape-hatch arguments. Normalize known negative live redaction facts such as

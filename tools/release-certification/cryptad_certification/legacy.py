@@ -42,6 +42,17 @@ V2_KIND_BY_INPUT = {
     "securityDrills": "production-security-response",
     "stableReadiness": "stable-1.0-readiness",
 }
+V2_COMPONENT_BY_INPUT = {
+    "appPlatform": "app-platform",
+    "goNoGo": "go-no-go",
+    "liveNetwork": "live-network-beta",
+    "multiNodeSoak": "multi-node-beta/run",
+    "networkScaleSoak": "network-scale-soak",
+    "productionBeta": "production-beta",
+    "releaseCertification": "release-certification",
+    "securityDrills": "security-response/drill-verify-all",
+    "stableReadiness": "stable-readiness",
+}
 COMMON_CONTROLLED_VALUE_OPTIONS = {"--workspace-root", "--out-dir", "--mode", "--release-id"}
 STRUCTURED_VALUE_OPTIONS = {
     "multi-node-beta": {
@@ -291,6 +302,49 @@ def _resolve_input_path(context: RunContext, key: str) -> Path | None:
     return path.resolve()
 
 
+def _input_profile_is_compatible(key: str, producer: str, consumer: str) -> bool:
+    """Return whether reusable evidence was produced under an equally strict policy."""
+
+    if producer == consumer:
+        return True
+    if consumer == "stable-review" and producer == "production-beta":
+        return True
+    return key == "stableReadiness" and producer == "stable-review" and consumer in {
+        "release-candidate",
+        "production-beta",
+    }
+
+
+def _validate_input_subject(
+    context: RunContext,
+    key: str,
+    value: dict[str, Any],
+    migrated_kind: str | None,
+) -> None:
+    """Bind an attached envelope to the consuming manifest and expected component."""
+
+    subject = value["subject"]
+    producer_profile = subject["profile"]
+    consumer_profile = context.manifest.release.profile
+    if not _input_profile_is_compatible(key, producer_profile, consumer_profile):
+        raise ValueError(
+            f"inputs.{key} evidence profile {producer_profile} is incompatible with "
+            f"release.profile {consumer_profile}"
+        )
+    expected_version = context.manifest.release.version
+    if expected_version is not None and subject["version"] != expected_version:
+        raise ValueError(f"inputs.{key} evidence version does not match release.version")
+    expected_component = (
+        f"migration/{migrated_kind}"
+        if migrated_kind is not None
+        else V2_COMPONENT_BY_INPUT[key]
+    )
+    if subject["component"] != expected_component:
+        raise ValueError(
+            f"inputs.{key} evidence component must be {expected_component}"
+        )
+
+
 def _legacy_input_path(
     context: RunContext,
     key: str,
@@ -329,6 +383,7 @@ def _legacy_input_path(
     if expected_kind is None:
         raise ValueError(f"inputs.{key} does not accept a v2 evidence envelope")
     validate_envelope(value, expected_kind, context.manifest.release.release_id)
+    _validate_input_subject(context, key, value, migrated_kind)
     status = value["result"]["status"]
     if (
         value["result"]["exitCode"] != 0
