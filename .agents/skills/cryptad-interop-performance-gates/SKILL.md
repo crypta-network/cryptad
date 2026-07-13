@@ -190,6 +190,8 @@ build/release-certification/<release-id>/security-response/
   v2 summaries must require the matching explicit candidate release ID before generating a manifest.
   Generate workflow manifest `release.version` from the checked-out build with
   `./gradlew -q printVersion`; require attached v2 evidence to carry that same candidate version.
+  Reject attached v2 inputs for strict hand-authored manifests when `release.version` is null;
+  never treat an absent strict candidate version as a wildcard.
   Required-but-missing evidence remains an engine gate: for example,
   `requirements.history=true` without `inputs.releaseHistory` must load successfully and produce a
   failed release-candidate certification aggregate and report.

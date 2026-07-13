@@ -174,6 +174,9 @@ consistency, and redaction status before unwrapping `payload.legacy`. Strict pro
 evidence produced by PR, nightly, or developer-dry-run policy. Stable review may consume the
 production-beta evidence it evaluates, and release or production aggregation may consume an
 explicit Stable-review summary; these are the only cross-profile input transitions.
+For `release-candidate`, `production-beta`, and `stable-review`, an attached v2 input also requires
+a non-null manifest `release.version`. The adapter rejects the input instead of treating an absent
+expected version as a wildcard.
 Relative and absolute manifest inputs are resolved against the workspace before publication and
 rendered only as `<repo>/...` or `<external-input>`. A component process with a nonzero exit always
 produces failed evidence; `pass` and `warn` envelopes require `exitCode: 0`.

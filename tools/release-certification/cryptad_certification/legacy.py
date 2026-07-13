@@ -53,6 +53,9 @@ V2_COMPONENT_BY_INPUT = {
     "securityDrills": "security-response/drill-verify-all",
     "stableReadiness": "stable-readiness",
 }
+STRICT_V2_INPUT_PROFILES = frozenset(
+    {"release-candidate", "production-beta", "stable-review"}
+)
 COMMON_CONTROLLED_VALUE_OPTIONS = {"--workspace-root", "--out-dir", "--mode", "--release-id"}
 STRUCTURED_VALUE_OPTIONS = {
     "multi-node-beta": {
@@ -332,6 +335,11 @@ def _validate_input_subject(
             f"release.profile {consumer_profile}"
         )
     expected_version = context.manifest.release.version
+    if expected_version is None and consumer_profile in STRICT_V2_INPUT_PROFILES:
+        raise ValueError(
+            f"inputs.{key} requires release.version for strict release.profile "
+            f"{consumer_profile}"
+        )
     if expected_version is not None and subject["version"] != expected_version:
         raise ValueError(f"inputs.{key} evidence version does not match release.version")
     expected_component = (

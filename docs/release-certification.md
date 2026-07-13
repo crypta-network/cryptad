@@ -92,6 +92,9 @@ release ID match. Stable review may consume production-beta evidence, while rele
 aggregation may consume an explicit Stable-review summary. Explicit external or non-envelope
 interop, performance, ecosystem-matrix, and third-party-intake artifacts retain their native JSON
 contracts.
+Any `release-candidate`, `production-beta`, or `stable-review` manifest that attaches a unified v2
+input must set a non-null `release.version`. The adapter rejects the input before extraction when
+the expected version is absent; `null` is never a wildcard for strict reusable evidence.
 Command-specific policy modes cannot override the policy derived from `release.profile`.
 
 Attached v2 payloads are scanned again before extraction instead of trusting their claimed outer

@@ -1582,6 +1582,119 @@ class AdapterIntegrationTest(unittest.TestCase):
                 (context.component_dir / "artifacts/inputs/appPlatform.json").exists()
             )
 
+    def test_strict_v2_component_inputs_require_a_manifest_version(self) -> None:
+        for profile in ("release-candidate", "production-beta", "stable-review"):
+            with self.subTest(profile=profile), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                write_json(
+                    root / "app-platform-v2.json",
+                    EvidenceEnvelope(
+                        kind="app-platform-smoke",
+                        generated_at="2026-01-01T00:00:00Z",
+                        subject={
+                            "releaseId": "self-test-release",
+                            "version": "candidate-version",
+                            "profile": profile,
+                            "component": "app-platform",
+                        },
+                        result={
+                            "status": "pass",
+                            "decision": None,
+                            "promotionReady": True,
+                            "exitCode": 0,
+                        },
+                        counts={
+                            "evidence": 0,
+                            "blockers": 0,
+                            "warnings": 0,
+                            "waivers": 0,
+                        },
+                        redaction={
+                            "status": "pass",
+                            "findingCount": 0,
+                            "findings": [],
+                            "guarantees": {},
+                        },
+                        payload={"legacy": {"schemaVersion": 1, "status": "pass"}},
+                    ).to_json(),
+                )
+                manifest = load_manifest(
+                    write_manifest(
+                        root,
+                        release={
+                            "id": "self-test-release",
+                            "version": None,
+                            "profile": profile,
+                        },
+                        inputs={"appPlatform": "app-platform-v2.json"},
+                    ),
+                    root,
+                )
+                prepare_run_root(manifest)
+                context = prepare_context(root, manifest, "strict-version-validation")
+
+                with self.assertRaisesRegex(
+                    ValueError,
+                    rf"inputs\.appPlatform requires release\.version for strict "
+                    rf"release\.profile {profile}",
+                ):
+                    legacy._legacy_input_path(context, "appPlatform")
+
+                self.assertFalse(
+                    (context.component_dir / "artifacts/inputs/appPlatform.json").exists()
+                )
+
+    def test_non_strict_v2_input_allows_an_undeclared_manifest_version(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            legacy_payload = {"schemaVersion": 1, "status": "pass"}
+            write_json(
+                root / "app-platform-v2.json",
+                EvidenceEnvelope(
+                    kind="app-platform-smoke",
+                    generated_at="2026-01-01T00:00:00Z",
+                    subject={
+                        "releaseId": "self-test-release",
+                        "version": "developer-version",
+                        "profile": "developer-dry-run",
+                        "component": "app-platform",
+                    },
+                    result={
+                        "status": "pass",
+                        "decision": None,
+                        "promotionReady": False,
+                        "exitCode": 0,
+                    },
+                    counts={"evidence": 0, "blockers": 0, "warnings": 0, "waivers": 0},
+                    redaction={
+                        "status": "pass",
+                        "findingCount": 0,
+                        "findings": [],
+                        "guarantees": {},
+                    },
+                    payload={"legacy": legacy_payload},
+                ).to_json(),
+            )
+            manifest = load_manifest(
+                write_manifest(
+                    root,
+                    release={
+                        "id": "self-test-release",
+                        "version": None,
+                        "profile": "developer-dry-run",
+                    },
+                    inputs={"appPlatform": "app-platform-v2.json"},
+                ),
+                root,
+            )
+            prepare_run_root(manifest)
+            context = prepare_context(root, manifest, "developer-version-validation")
+
+            extracted = legacy._legacy_input_path(context, "appPlatform")
+
+            self.assertIsNotNone(extracted)
+            self.assertEqual(legacy_payload, read_json(extracted))
+
     def test_v2_component_inputs_allow_documented_profile_transitions(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
