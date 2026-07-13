@@ -17,10 +17,22 @@ AUTH_RE = re.compile(
     r"|(?:[A-Za-z0-9+/]{4})*[A-Za-z0-9+/]{3}=)"
     r"(?![A-Za-z0-9+/=]))"
 )
-SECRET_ASSIGNMENT_RE = re.compile(r"(?i)\b(?:password|token|secret|private[_-]?key)\s*[:=]\s*[^<\s][^\s,;]{3,}")
+SECRET_ASSIGNMENT_RE = re.compile(
+    r"(?i)(?<![a-z0-9])"
+    r"(?:[a-z][a-z0-9_-]*)?"
+    r"(?:password|passphrase|token|secret|private[_-]?key|api[_-]?key|credential)"
+    r"\s*[:=]\s*(?!<|redacted\b)[^\s,;]{3,}"
+)
+COOKIE_HEADER_RE = re.compile(
+    r"(?i)\b(?:cookie|set-cookie)\s*:\s*"
+    r"[^\s=;,]+\s*=\s*(?!<|redacted\b)[^\s;,]{3,}"
+)
 UNIX_PATH_RE = re.compile(r"(?<![A-Za-z0-9:/.}\]])/(?!/)[^\s\"'<>]+")
 WINDOWS_PATH_RE = re.compile(r"(?i)(?<![A-Za-z0-9])[A-Z]:[\\/][^\s\"'<>]+")
 WINDOWS_UNC_PATH_RE = re.compile(r"(?i)(?<![A-Za-z0-9])\\\\[^\\\s\"'<>]+\\[^\s\"'<>]+")
+FILE_URI_RE = re.compile(
+    r"(?i)(?<![A-Za-z0-9+.-])file:(?://[^/\\\s\"'<>]*)?[/\\][^\s\"'<>]*"
+)
 SAFE_PUBLIC_ROUTE_ROOTS = (
     "/api/v1",
     "/apps",
@@ -396,7 +408,7 @@ def _contains_local_absolute_path(value: Any) -> tuple[bool, bool]:
     windows_found = False
     for field_path, parent, text in _string_contexts(value):
         scan_text, malformed_placeholder = _strip_safe_path_placeholders(text)
-        if malformed_placeholder:
+        if malformed_placeholder or FILE_URI_RE.search(scan_text):
             unix_found = True
         for match in UNIX_PATH_RE.finditer(scan_text):
             if not _is_normalized_public_route(field_path, parent, match.group(0)):
@@ -416,7 +428,9 @@ def scan_value(value: Any) -> list[dict[str, str]]:
         ("private-insert-uri", PRIVATE_URI_RE),
         ("private-key", PRIVATE_KEY_RE),
         ("authorization", AUTH_RE),
+        ("cookie", COOKIE_HEADER_RE),
         ("secret-assignment", SECRET_ASSIGNMENT_RE),
+        ("url-credential", URL_CREDENTIAL_RE),
     )
     categories = {category for category, pattern in checks if pattern.search(text)}
     if _contains_sensitive_field(value):

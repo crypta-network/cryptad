@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 
 from cryptad_certification.envelope import from_legacy, validate_envelope
-from cryptad_certification.io import read_json, write_json
+from cryptad_certification.io import read_json, write_json, write_text
 from cryptad_certification.manifest import ManifestError, load_manifest
 from cryptad_certification.migration import execute as migrate
 from cryptad_certification.models import EvidenceEnvelope
@@ -212,6 +212,31 @@ class ManifestTest(unittest.TestCase):
             self.assertFalse(
                 (manifest.output.root / "outside-component").exists()
             )
+
+
+class IoSafetyTest(unittest.TestCase):
+    def test_shared_writers_refuse_symlinked_output_files(self) -> None:
+        writers = {
+            "json": lambda path: write_json(path, {"status": "pass"}),
+            "text": lambda path: write_text(path, "replacement"),
+        }
+        for name, writer in writers.items():
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                external = root / f"external-{name}"
+                external.write_text("preserved\n", encoding="utf-8")
+                target = root / "artifacts" / f"summary.{name}"
+                target.parent.mkdir()
+                try:
+                    target.symlink_to(external)
+                except OSError as exc:
+                    self.skipTest(f"file symlinks are unavailable: {exc}")
+
+                with self.assertRaisesRegex(ValueError, "symlinked output file"):
+                    writer(target)
+
+                self.assertTrue(target.is_symlink())
+                self.assertEqual("preserved\n", external.read_text(encoding="utf-8"))
 
 
 class SchemaContractTest(unittest.TestCase):
@@ -441,6 +466,7 @@ class EnvelopeTest(unittest.TestCase):
                 "stdout_tail": "warn: <workdir>/candidate/report.md",
             },
             "source": "<repo>/first/summary.json; <repo>/second/summary.json",
+            "repoFileUri": "file://<repo>/build/summary.json",
             "scripts": ["./crypta-platform.js", "./app.js"],
             "routes": [
                 "POST /api/v1/content/fetch",
@@ -498,6 +524,47 @@ class EnvelopeTest(unittest.TestCase):
         for name, value in cases.items():
             with self.subTest(name=name):
                 self.assertTrue(scan_value(value))
+
+    def test_scanner_rejects_compound_credentials_and_file_uris(self) -> None:
+        cases = {
+            "simple-password": (
+                {"log": "password=hunter2"},
+                "secret-assignment",
+            ),
+            "environment-password": (
+                {"log": "CRYPTAD_CERT_FORM_PASSWORD=hunter2"},
+                "secret-assignment",
+            ),
+            "camel-case-token": (
+                {"log": "appSessionToken=abcdef123456"},
+                "secret-assignment",
+            ),
+            "cookie-header": (
+                {"log": "Cookie: session=abcdef123456"},
+                "cookie",
+            ),
+            "credential-url": (
+                {"source": "https://alice:hunter2@example.invalid/evidence"},
+                "url-credential",
+            ),
+            "file-uri": (
+                {"source": "file:///home/alice/private.json"},
+                "absolute-path",
+            ),
+            "short-file-uri": (
+                {"source": "file:/home/alice/private.json"},
+                "absolute-path",
+            ),
+            "localhost-file-uri": (
+                {"source": "file://localhost/home/alice/private.json"},
+                "absolute-path",
+            ),
+        }
+
+        for name, (value, expected_category) in cases.items():
+            with self.subTest(name=name):
+                categories = {finding["category"] for finding in scan_value(value)}
+                self.assertIn(expected_category, categories)
 
     def test_false_or_malformed_redaction_metadata_fails_closed(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

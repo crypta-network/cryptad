@@ -45,6 +45,7 @@ STRUCTURED_VALUE_OPTIONS = {
         "--report",
     },
     "security-response": {
+        "--input-dir",
         "--out",
         "--release-notes-out",
         "--summary-out",
@@ -187,6 +188,32 @@ def _args(context: RunContext, command: str) -> list[str]:
     return filtered
 
 
+def _configured_value_argument(
+    context: RunContext,
+    command: str,
+    option: str,
+) -> str | None:
+    """Return the last exact configured value for one adapter-owned option."""
+
+    value = _config(context, command).get("args", [])
+    raw = list(value) if isinstance(value, list) else []
+    configured: str | None = None
+    for index, argument in enumerate(raw):
+        if argument == option:
+            if index + 1 >= len(raw) or raw[index + 1].startswith("--"):
+                raise ValueError(
+                    f"commands.{command}.args requires a value after {option}"
+                )
+            configured = raw[index + 1]
+        elif argument.startswith(f"{option}="):
+            configured = argument.partition("=")[2]
+            if not configured:
+                raise ValueError(
+                    f"commands.{command}.args requires a value for {option}"
+                )
+    return configured
+
+
 def _mode(context: RunContext, command: str) -> str:
     profile = context.manifest.release.profile
     if command in {"app-platform", "live-network-beta"}:
@@ -313,18 +340,33 @@ def _copy_security_drill_artifacts(
 ) -> None:
     """Copy the public drill files referenced by a reusable security envelope."""
 
+    _copy_security_drill_files(
+        envelope_path.parent / "artifacts",
+        legacy_summary,
+        target_dir,
+        "inputs.securityDrills",
+    )
+
+
+def _copy_security_drill_files(
+    source_dir: Path,
+    legacy_summary: dict[str, Any],
+    target_dir: Path,
+    description: str,
+) -> None:
+    """Validate and copy exactly the public drill files named by a summary."""
+
     artifacts = legacy_summary.get("artifacts")
     if not isinstance(artifacts, list):
-        raise ValueError("inputs.securityDrills payload.legacy.artifacts must be an array")
-    source_dir = envelope_path.parent / "artifacts"
+        raise ValueError(f"{description} artifacts must be an array")
     if source_dir.is_symlink() or not source_dir.is_dir():
-        raise ValueError("inputs.securityDrills v2 envelope artifact directory is missing or unsafe")
+        raise ValueError(f"{description} artifact directory is missing or unsafe")
     resolved_source_dir = source_dir.resolve()
     validated_copies: list[tuple[Path, Path]] = []
     for index, entry in enumerate(artifacts):
         if not isinstance(entry, dict):
             raise ValueError(
-                f"inputs.securityDrills artifact entry {index} must be an object"
+                f"{description} artifact entry {index} must be an object"
             )
         artifact_name = entry.get("artifact")
         if (
@@ -334,23 +376,23 @@ def _copy_security_drill_artifacts(
             or not artifact_name.endswith(".json")
         ):
             raise ValueError(
-                f"inputs.securityDrills artifact entry {index} has an unsafe file name"
+                f"{description} artifact entry {index} has an unsafe file name"
             )
         source = source_dir / artifact_name
         if source.is_symlink() or not source.is_file():
             raise ValueError(
-                f"inputs.securityDrills referenced artifact is missing or unsafe: {artifact_name}"
+                f"{description} referenced artifact is missing or unsafe: {artifact_name}"
             )
         try:
             source.resolve().relative_to(resolved_source_dir)
         except ValueError as exc:
             raise ValueError(
-                f"inputs.securityDrills artifact escapes its envelope: {artifact_name}"
+                f"{description} artifact escapes its source directory: {artifact_name}"
             ) from exc
         target = target_dir / artifact_name
         if target.is_symlink():
             raise ValueError(
-                f"inputs.securityDrills extraction target is unsafe: {artifact_name}"
+                f"{description} copy target is unsafe: {artifact_name}"
             )
         digest = hashlib.sha256()
         try:
@@ -359,32 +401,49 @@ def _copy_security_drill_artifacts(
                     digest.update(chunk)
         except OSError as exc:
             raise ValueError(
-                f"inputs.securityDrills referenced artifact could not be read: {artifact_name}"
+                f"{description} referenced artifact could not be read: {artifact_name}"
             ) from exc
         expected_digest = entry.get("digest")
         actual_digest = f"sha256:{digest.hexdigest()}"
         if expected_digest != actual_digest:
             raise ValueError(
-                f"inputs.securityDrills artifact digest mismatch: {artifact_name}"
+                f"{description} artifact digest mismatch: {artifact_name}"
             )
         try:
             artifact = read_json(source)
         except (OSError, ValueError) as exc:
             raise ValueError(
-                f"inputs.securityDrills artifact is not valid JSON: {artifact_name}"
+                f"{description} artifact is not valid JSON: {artifact_name}"
             ) from exc
         if not isinstance(artifact, dict):
             raise ValueError(
-                f"inputs.securityDrills artifact must be a JSON object: {artifact_name}"
+                f"{description} artifact must be a JSON object: {artifact_name}"
             )
         if scan_value(artifact):
             raise ValueError(
-                f"inputs.securityDrills artifact failed the v2 redaction scan: {artifact_name}"
+                f"{description} artifact failed the v2 redaction scan: {artifact_name}"
             )
         validated_copies.append((source, target))
 
     for source, target in validated_copies:
         shutil.copy2(source, target)
+
+
+def _security_drill_verification_input(context: RunContext) -> Path:
+    """Return the exact directory selected for a drill-verify-all action."""
+
+    configured = _configured_value_argument(
+        context,
+        "security-response",
+        "--input-dir",
+    )
+    if configured is None:
+        return (
+            context.run_root
+            / "security-response/drill-run-all/artifacts/legacy/drills"
+        )
+    path = Path(configured)
+    return path if path.is_absolute() else context.workspace_root / path
 
 
 def _option_path(args: list[str], option: str, path: Path | None) -> None:
@@ -796,16 +855,9 @@ def _run_passthrough(context: RunContext, command: str, action: str | None) -> t
                 ]
             )
         elif action == "drill-verify-all":
-            if "--input-dir" not in configured:
-                args.extend(
-                    [
-                        "--input-dir",
-                        str(
-                            context.run_root
-                            / "security-response/drill-run-all/artifacts/legacy/drills"
-                        ),
-                    ]
-                )
+            args.extend(
+                ["--input-dir", str(_security_drill_verification_input(context))]
+            )
             args.extend(["--summary-out", str(out / "summary.json")])
         elif action == "advisory-template":
             args.extend(["--out", str(out / "advisory.md")])
@@ -904,13 +956,17 @@ def execute(context: RunContext, command: str, action: str | None = None) -> int
         raise ValueError(f"{command} summary must be a JSON object")
     artifact_summary = context.component_dir / "artifacts" / "legacy-summary.json"
     write_json(artifact_summary, legacy)
-    if command == "security-response" and action == "drill-verify-all":
-        drill_dir = (
-            context.run_root
-            / "security-response/drill-run-all/artifacts/legacy/drills"
+    if (
+        command == "security-response"
+        and action == "drill-verify-all"
+        and code == 0
+    ):
+        _copy_security_drill_files(
+            _security_drill_verification_input(context),
+            legacy,
+            artifact_summary.parent,
+            "security-response drill verification",
         )
-        for drill in sorted(drill_dir.glob("*.json")):
-            shutil.copy2(drill, artifact_summary.parent / drill.name)
     report = f"# {command}\n\nThe command completed with legacy exit code `{code}`."
     if legacy_report_path is not None and legacy_report_path.is_file():
         report = legacy_report_path.read_text(encoding="utf-8")

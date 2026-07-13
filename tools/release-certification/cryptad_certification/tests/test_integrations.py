@@ -233,6 +233,69 @@ class CollectionIntegrationTest(unittest.TestCase):
             for name in artifact_names:
                 self.assertTrue((extracted.parent / name).is_file())
 
+    def test_security_drill_verification_copies_its_configured_input_set(self) -> None:
+        root = workspace_root()
+        build_dir = root / "build"
+        build_dir.mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=build_dir) as directory:
+            output = Path(directory)
+            external_drills = output / "external-drills"
+            external_summary = output / "external-summary.json"
+            security_response_runbook.drill_run_all(
+                security_response_runbook.DEFAULT_MODEL,
+                external_drills,
+                external_summary,
+                release_id="self-test-release",
+                mode="pr",
+            )
+            manifest = load_manifest(
+                write_manifest(
+                    output / "manifest",
+                    commands={
+                        "security-response": {
+                            "args": [f"--input-dir={external_drills}"],
+                        }
+                    },
+                ),
+                root,
+                output / "candidate-output",
+            )
+            prepare_run_root(manifest)
+            context = prepare_context(
+                root,
+                manifest,
+                "security-response/drill-verify-all",
+            )
+
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(
+                    0,
+                    legacy.execute(
+                        context,
+                        "security-response",
+                        "drill-verify-all",
+                    ),
+                )
+
+            summary = read_json(context.component_dir / "artifacts/legacy-summary.json")
+            artifact_names = {
+                entry["artifact"]
+                for entry in summary["artifacts"]
+                if isinstance(entry, dict) and isinstance(entry.get("artifact"), str)
+            }
+            self.assertEqual(7, len(artifact_names))
+            self.assertFalse(
+                (
+                    context.run_root
+                    / "security-response/drill-run-all/artifacts/legacy/drills"
+                ).exists()
+            )
+            for name in artifact_names:
+                self.assertEqual(
+                    (external_drills / name).read_bytes(),
+                    (context.component_dir / "artifacts" / name).read_bytes(),
+                )
+
     def test_security_drill_sidecars_require_matching_digests(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
