@@ -2,8 +2,8 @@
 
 This page is the human-readable companion to
 `tools/release-certification/stable-1.0-known-limitations.json`. The JSON file is the
-machine-readable input used by `stable_1_0_readiness.py`; this page explains how release managers
-should interpret each classification.
+machine-readable input used by the unified `certify.py stable-readiness` component; this page
+explains how release managers should interpret each classification.
 
 Stable 1.0 known limitations are not a place to hide blockers. Every open limitation must be one
 of these classifications:

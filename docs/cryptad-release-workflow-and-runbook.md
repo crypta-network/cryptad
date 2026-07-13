@@ -1,12 +1,11 @@
 # Cryptad Release Workflow and Runbook
 
-> Updated June 27, 2026, to cover the production beta app-ecosystem release pipeline, catalog
-> operations and mirrors, the production beta go/no-go dashboard, and the release certification
-> report that aggregates interop, performance, app-platform, third-party developer beta,
-> multi-node beta soak and upgrade drills, beta documentation, public-beta hardening, operator beta
-> recovery, network-scale soak, ecosystem RC certification, optional live-network beta
-> certification, app-review governance, catalog, app-owned UI, legacy-admin retirement, and CI
-> evidence for a release candidate.
+> Updated July 13, 2026, for the manifest-driven certification CLI, candidate-bound v2 evidence,
+> release-scoped workspaces, shared history archives, and the production beta pipeline. The release
+> report aggregates interop, performance, app-platform, third-party developer beta, multi-node beta
+> soak and upgrade drills, beta documentation, public-beta hardening, operator beta recovery,
+> network-scale soak, ecosystem RC certification, optional live-network beta certification,
+> app-review governance, catalog, app-owned UI, legacy-admin retirement, and CI evidence.
 
 ## Overview
 - Purpose: publish a Cryptad release so running nodes discover a new `info/<edition>` descriptor, download OS-specific installers, and guide operators through installation without self-replacing the running JAR.
@@ -58,6 +57,9 @@ Treat these as release blockers, in order:
    signed catalog output, review receipts, live-network beta evidence, and a redacted public app
    artifact archive:
    ```bash
+   cp tools/release-certification/manifests/production-beta.example.json \
+     build/production-beta.json
+   # Replace every placeholder before running the protected pipeline.
    python3 tools/release-certification/certify.py production-beta --manifest build/production-beta.json
    ```
    Select `developer-dry-run` in the manifest for local or PR-safe rehearsal and
@@ -73,10 +75,11 @@ Treat these as release blockers, in order:
    `report.md`, `redaction-report.json`, `artifacts/`, checksums, and public archive. The workflow,
    modes, required secrets, artifact layout, cleanup guard, and rerun rules are documented in
    [production-beta-release-pipeline.md](production-beta-release-pipeline.md).
-   Read `go-no-go-dashboard.md` first. It is the release-manager launch surface that rolls the
-   production beta summary, ecosystem matrix, redaction report, waivers, live-network evidence, and
-   multi-node evidence into `go`, `no-go`, or `go-with-waivers`; drill into the detailed summaries
-   only after reviewing that decision. Treat `go-with-waivers` as launchable only when every
+   Read [production-beta-go-no-go-dashboard.md](production-beta-go-no-go-dashboard.md) first. It is
+   the release-manager launch surface that rolls the production beta summary, ecosystem matrix,
+   redaction report, waivers, live-network evidence, and multi-node evidence into `go`, `no-go`, or
+   `go-with-waivers`; drill into the detailed summaries only after reviewing that decision. Treat
+   `go-with-waivers` as launchable only when every
    residual blocker has a valid, scoped, approved, and unexpired waiver and no non-waivable
    redaction, signing, fixture-evidence, live-network, sandbox, multi-node, production summary, or
    artifact-hygiene gate failed.
@@ -96,6 +99,9 @@ Treat these as release blockers, in order:
 3. **Release certification report** - generate the release-candidate report after the source gates
    below have produced their summaries:
    ```bash
+   cp tools/release-certification/manifests/release-candidate.example.json \
+     build/release-candidate.json
+   # Replace every placeholder and bind all v2 inputs to release.id.
    python3 tools/release-certification/certify.py release-certification --manifest build/release-candidate.json
    ```
    Preserve the marked `<out-root>/<release-id>/` workspace, especially the

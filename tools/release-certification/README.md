@@ -53,6 +53,28 @@ The public entry point is `tools/release-certification/certify.py`.
 
 Use `--help` on the entry point or a command for its exact syntax.
 
+## Source layout
+
+`certify.py` is a thin entry point. Keep the public contract and shared safety boundaries in the
+`cryptad_certification` package:
+
+```text
+cryptad_certification/
+  cli.py                 command tree and collection orchestration
+  manifest.py            strict release-run manifest loading
+  workspace.py           marked, candidate-scoped workspace confinement
+  envelope.py            evidence envelope v2 normalization and validation
+  redaction.py           reusable evidence and migration scanning
+  migration.py           one-time v1 history conversion
+  legacy.py              controlled adapters for the split engines
+  engines/               component implementations, split by responsibility
+  tests/                 contract, characterization, workflow, and safety tests
+```
+
+Do not restore the removed top-level per-engine scripts or shell wrappers. Split an engine by
+responsibility before a Python source file exceeds 5,000 lines; `self-test core` enforces that
+limit.
+
 ## Release-run manifest
 
 The manifest schema is `schemas/release-run-v1.schema.json`. A manifest contains:
@@ -108,7 +130,9 @@ Every command writes below one release-scoped directory:
 
 Nested operations use nested component names, for example `multi-node-beta/run/` and
 `security-response/drill-run-all/`. JSON and Markdown artifact references are relative to the run
-root.
+root. The common `summary.json`, `report.md`, and `redaction-report.json` are the public component
+surface. Component-specific engine output remains below `artifacts/legacy/`; extracted reusable
+inputs remain below `artifacts/inputs/`.
 
 A manifest with `output.reset=true` may replace only a directory containing a matching run marker.
 The command rejects unmarked directories and markers for another release, version, or profile.
@@ -124,6 +148,9 @@ Before replacing an internally collected component, every path segment is checke
 workspace confinement so cleanup cannot follow an intermediate link into another component.
 Nested legacy-engine output directories are checked before and after creation so a restored or
 tampered `artifacts/legacy` symlink cannot redirect engine writes outside the marked run.
+The shared JSON and text writers also reject symlinked file targets. Extracted-input directories,
+security-drill sidecars, and production output staging receive the same resolved-path confinement
+checks before a write or cleanup.
 When an aggregate `release-certification/summary.json` already exists, recollection is rejected
 before any component is deleted or rebuilt; use `output.reset=true` for a complete rerun.
 
@@ -166,7 +193,22 @@ passing redaction so Stable waiver evaluation can run. Failed results and failed
 rejected, and migrated previous-candidate/history evidence remains pass-only. Reused
 `inputs.securityDrills` envelopes also restore the referenced public drill JSON files beside the
 extracted legacy summary so downstream digest and scenario validation sees the same complete
-artifact set that the v2 producer published.
+artifact set that the v2 producer published. Every referenced drill sidecar is parsed, scanned,
+and checked against its recorded digest before it is copied. The verification adapter copies from
+the effective configured input directory, not from a previous internally generated drill run.
+
+Attached v2 payloads are scanned before extraction even when their outer redaction record says
+`pass`. Safety-labelled fields are exempt only when their value has the expected scalar, boolean,
+or digest shape; containers are still traversed. Credential assignments, cookie or authorization
+values, credential-bearing URLs, local `file:` URIs, filesystem roots, and labelled absolute paths
+remain findings. Canonical sanitizer output such as `<repo>/...`, `<path>/python3`, relative app
+assets, and public API routes remains reusable.
+
+If an engine writes unsafe output, the adapter removes the raw legacy copies from the publishable
+workspace and emits only sanitized failed evidence. Early engine `SystemExit`, nonzero exits, and
+redaction failures all produce a failed common envelope with `promotionReady=false`. Common
+normalization preserves production failure reasons as blockers and release-certification
+`waiverRecords` as auditable v2 waivers.
 
 ## V1 history migration
 
@@ -184,8 +226,8 @@ shape, release binding, status, and redaction state, records its SHA-256 digest,
 converted artifact under the marked release workspace. It does not run automatically.
 
 Redaction must use either an explicit passing status with an empty findings array or the older
-recognized boolean-guarantee form with every guarantee set to true; missing, malformed, or
-contradictory redaction metadata is rejected.
+recognized boolean-guarantee form with every recognized guarantee set to true; missing,
+unrecognized, malformed, or contradictory redaction metadata is rejected.
 
 For the subsequent certification or production run, point `inputs.previousCandidate` or
 `inputs.releaseHistory` at the corresponding migration component’s v2 `summary.json`. Normal
@@ -201,6 +243,21 @@ For a release-certification workflow dispatch, set `candidate-release-id` whenev
 candidate identity. The same explicit identity is required for any attached candidate-bound v2
 multi-node, security-drill, or Stable-readiness summary, even when the corresponding gate is
 optional.
+
+Migration output is immutable within a completed marked workspace. A second migration for the
+same release and kind is rejected when `output.reset=false`; use an explicit matching reset to
+replace the candidate-bound record and its source digest.
+
+## Release history output
+
+Set `execution.writeHistory=true` to archive a completed certification result. Unless
+`policies.historyDir` is set, the legacy aggregator keeps its shared default at
+`build/release-certification-history/`, outside the per-candidate run root. Passing runs update
+`latest-summary.json`, `latest-history-comparison.json`, and
+`releases/<history-label>/`; failed candidates are retained under `failed/<history-label>/`
+without replacing the last passing summary. Set `policies.historyLabel` when the release label
+cannot be derived safely. The release-certification workflow uploads both the candidate workspace
+and this shared history directory.
 
 ## Failure and redaction policy
 
@@ -224,6 +281,11 @@ The multi-OS CI job runs:
 ```bash
 python3 tools/release-certification/certify.py self-test all
 ```
+
+The characterization suite runs on Ubuntu, macOS, and Windows with Python 3.12. Ubuntu and macOS
+retain a 30-minute job limit; Windows has a 60-minute limit because the same subprocess-heavy
+scenarios run materially slower there. Integration assertions compare canonical paths so macOS
+aliases such as `/var` and Windows temporary-directory aliases do not create false failures.
 
 Release workflows generate their runtime manifest with `jq` from workflow-dispatch inputs. Secret
 values remain in protected environment variables or files and are never serialized into the

@@ -64,11 +64,21 @@ git checkout -b release/<build-number>
    `$cryptad-build-test`, `$cryptad-platform-apps`, and `$cryptad-interop-performance-gates` when
    those areas are involved.
 
-   Before promotion, generate or verify the release-candidate certification artifacts:
+   Before promotion, run the unified certification suite, copy the example manifest, and replace
+   every placeholder. The checked-in example is a template and must not be executed directly.
    ```sh
+   python3 tools/release-certification/certify.py self-test all
+   cp tools/release-certification/manifests/release-candidate.example.json \
+     build/release-candidate.json
+   # Set release.id, release.version, inputs, policies, requirements, and execution controls.
    python3 tools/release-certification/certify.py release-certification \
-     --manifest tools/release-certification/manifests/release-candidate.example.json
+     --manifest build/release-candidate.json
    ```
+   Unified component inputs must be expected-kind, candidate-bound v2 envelopes. For the first v2
+   release, use `certify.py migrate-v1` with the finalized candidate ID, then point
+   `inputs.previousCandidate` and `inputs.releaseHistory` at those immutable migration summaries.
+   Keep manifest values non-secret; signing keys, credentials, private URIs, and other private
+   material belong only in protected environment variables or files.
    Preserve the complete marked `<out-root>/<release-id>/` workspace. With the example output root,
    preserve `build/release-certification/<release-id>/`, including
    `build/release-certification/<release-id>/release-certification/summary.json`,
@@ -78,21 +88,27 @@ git checkout -b release/<build-number>
    `build/release-certification/<release-id>/network-scale-soak/summary.json`,
    `build/release-certification/<release-id>/multi-node-beta/run/summary.json`, and
    `build/release-certification/<release-id>/security-response/`. Replace `<release-id>` with the
-   finalized manifest `release.id`.
+   finalized manifest `release.id`. If `execution.writeHistory=true`, also preserve the shared
+   `build/release-certification-history/` archive; failed candidates do not replace its latest
+   passing summary.
 
    When the release includes production beta app-ecosystem artifacts, run the top-level production
    beta pipeline instead of manually assembling app bundles, catalogs, review receipts, lower-level
    certification output, and the public archive:
    ```sh
+   cp tools/release-certification/manifests/production-beta.example.json \
+     build/production-beta.json
+   # Replace every placeholder and bind every v2 input to the same release.id.
    python3 tools/release-certification/certify.py production-beta \
-     --manifest tools/release-certification/manifests/production-beta.example.json \
-     --workspace-root .
+     --manifest build/production-beta.json
    ```
    Set the release identity, output root, production profile, catalog channel, artifact base URI,
    required gates, and evidence inputs in the manifest before running either command.
-   Preserve the JSON/Markdown summaries, production redaction report, go/no-go dashboard JSON,
-   go/no-go dashboard Markdown, go/no-go redaction report, extracted `evidence/`, and
-   `dist/checksums.txt`. Any summary with `nonRelease=true`, `promotionReady=false`, `goNoGo`
+   Preserve the common JSON/Markdown summaries and production redaction report. Detailed go/no-go
+   dashboard JSON/Markdown, dashboard redaction, extracted evidence, and checksums live under
+   `<out-root>/<release-id>/production-beta/artifacts/legacy/`, including `reports/`, `evidence/`,
+   and `dist/checksums.txt`. Validated attached extracts live under `artifacts/inputs/`. Any summary
+   with `nonRelease=true`, `promotionReady=false`, `goNoGo`
    decision `no-go`, failed production or dashboard redaction, dirty workspace, fixture evidence,
    test signing, skipped production-beta build stages, or an emergency live-network skip is not
    promotable. A `go-with-waivers` decision is launchable only when every residual blocker has a

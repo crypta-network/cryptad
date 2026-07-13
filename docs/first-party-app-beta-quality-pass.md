@@ -111,13 +111,13 @@ Operator support bundle guidance stays in
 
 ## Release evidence
 
-`app_platform_smoke.py` validates `first-party-app.beta-quality-pass` offline. Production beta mode
-requires the evidence id and treats missing evidence as a blocker. Redaction findings are
-unwaivable blockers. Copy-only or wording polish warnings may be shown by the go/no-go dashboard,
-but they must be visible in the first-party beta quality domain.
+The unified `certify.py app-platform` collector validates `first-party-app.beta-quality-pass`
+offline. Production beta mode requires the evidence id and treats missing evidence as a blocker.
+Redaction findings are unwaivable blockers. Copy-only or wording polish warnings may be shown by
+the go/no-go dashboard, but they must be visible in the first-party beta quality domain.
 
-`production_beta_release.py` copies a sanitized readiness input as
-`inputs/first-party-app-beta-readiness.json`. `production_beta_go_no_go_dashboard.py` summarizes
+The `certify.py production-beta` pipeline copies a sanitized readiness input below its
+engine-native `artifacts/legacy/inputs/` directory. The `certify.py go-no-go` component summarizes
 the first-party app beta quality risk separately from first-party maintenance policy and catalog
 signing risk.
 

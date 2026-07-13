@@ -208,13 +208,10 @@ Public beta readiness treats these workstreams as one ecosystem beta release sto
 Release candidates should run the normal build/test gates plus release certification:
 
 ```bash
-python3 tools/release-certification/certify.py app-platform-docs --self-test
-python3 tools/release-certification/certify.py release-certification --self-test
-python3 tools/release-certification/certify.py app-platform --self-test
-python3 tools/release-certification/certify.py network-scale-soak --self-test
-python3 tools/release-certification/certify.py multi-node-beta --self-test
-python3 tools/release-certification/certify.py live-network-beta --self-test
-python3 tools/release-certification/certify.py go-no-go --self-test
+python3 tools/release-certification/certify.py self-test all
+cp tools/release-certification/manifests/release-candidate.example.json \
+  build/release-candidate.json
+# Replace every placeholder before running the candidate.
 python3 tools/release-certification/certify.py release-certification --manifest build/release-candidate.json
 ```
 

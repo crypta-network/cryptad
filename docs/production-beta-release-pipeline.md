@@ -57,6 +57,12 @@ The pipeline orchestrates:
 
 All component summaries use evidence envelope v2 and carry the same release ID. Consumers reject
 wrong-candidate, wrong-kind, malformed, incomplete, stale, or redaction-unsafe summaries.
+Attached unified evidence must use the expected envelope kind and the manifest's candidate ID;
+native interop, performance, ecosystem-matrix, and third-party-intake inputs keep their documented
+legacy contracts. The adapter scans an attached envelope's legacy payload before extraction rather
+than trusting the outer redaction claim. It also verifies and scans every referenced security-drill
+sidecar before copying it into the release workspace. Configured live-network and network-scale
+summary paths remain the source for their production evidence extracts.
 
 ## Previous-candidate evidence
 
@@ -79,12 +85,28 @@ candidate binding even when history is not attached.
 
 ## Output and reruns
 
-Outputs live under `<out-root>/<release-id>/production-beta/`. The component writes the common
-`summary.json`, `report.md`, `redaction-report.json`, and its catalog, review, evidence, security,
-distribution, checksum, and archive files below `artifacts/`.
+Outputs live under `<out-root>/<release-id>/production-beta/`. The component writes the common v2
+`summary.json`, `report.md`, and `redaction-report.json`. Engine-native catalog, review, evidence,
+security, distribution, checksum, archive, and detailed dashboard output lives below
+`artifacts/legacy/`. In particular, release managers should inspect:
+
+```text
+<out-root>/<release-id>/production-beta/artifacts/legacy/reports/go-no-go-dashboard.json
+<out-root>/<release-id>/production-beta/artifacts/legacy/reports/go-no-go-dashboard.md
+<out-root>/<release-id>/production-beta/artifacts/legacy/reports/go-no-go-redaction-report.json
+<out-root>/<release-id>/production-beta/artifacts/legacy/evidence/
+<out-root>/<release-id>/production-beta/artifacts/legacy/dist/checksums.txt
+```
+
+Validated attached input extracts live under `artifacts/inputs/`. Those extracts are diagnostic
+copies, not a way to bypass candidate binding or redaction checks.
 
 A rerun must use `output.reset=true` and a matching release marker. The command refuses unmarked
 directories and never reuses stale dashboard, soak, Stable, archive, or checksum artifacts.
+All output directories and files are checked for symlinks before use. If production setup exits
+early, an engine returns nonzero, or a fallback payload scan finds unsafe material, the adapter
+removes the unsafe raw output and writes only a sanitized failed v2 envelope with
+`promotionReady=false`.
 
 ## Publication gates
 

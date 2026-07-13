@@ -264,8 +264,13 @@ malformed advisory or denylist records.
 8. If the emergency catalog is bad but a previous verified revision remains safe, use explicit
    rollback to that digest after re-verification. Rollback does not uninstall apps, change app
    data, or bypass signed advisories and denylists.
-9. Produce security release notes from [docs/templates/security-release-notes.md](templates/security-release-notes.md), and keep public beta support guidance aligned with [templates/beta-release-notes.md](templates/beta-release-notes.md) and [public-beta/support-and-feedback.md](public-beta/support-and-feedback.md).
-10. Run `python3 tools/release-certification/certify.py security-response verify --manifest build/release-candidate.json`.
+9. Produce security release notes from
+   [docs/templates/security-release-notes.md](templates/security-release-notes.md), and keep public
+   beta support guidance aligned with [templates/beta-release-notes.md](templates/beta-release-notes.md)
+   and [public-beta/support-and-feedback.md](public-beta/support-and-feedback.md).
+10. Prepare the candidate manifest as described in
+    [release-certification.md](release-certification.md), then run
+    `python3 tools/release-certification/certify.py security-response verify --manifest build/release-candidate.json`.
 11. Generate the operational drill evidence. Use `release-candidate` for release-candidate
    certification, or `production-beta` when the summary will be attached to a protected
    production-beta pipeline run:
@@ -275,10 +280,9 @@ malformed advisory or denylist records.
    python3 tools/release-certification/certify.py security-response drill-verify-all \
      --manifest build/production-beta.json
    ```
-12. Run `python3 tools/release-certification/certify.py app-platform --self-test`.
-13. Run `python3 tools/release-certification/certify.py release-certification --self-test` before release
-   candidate certification.
-14. Publish only the signed emergency catalog and redacted release artifacts.
+12. Run `python3 tools/release-certification/certify.py self-test all` before release-candidate
+   certification.
+13. Publish only the signed emergency catalog and redacted release artifacts.
 
 No production private key is required for deterministic tests. Fixture and dry-run artifacts use
 synthetic ids, digests, and test keys only.
@@ -311,6 +315,12 @@ requires this summary to be present, schema-valid, fresh, `promotionReady=true`,
 redaction findings. Missing scenarios, failed scenarios, stale artifacts, malformed envelopes,
 fixture-only production drills, and redaction failures are production blockers. Redaction failures
 are critical and non-waivable.
+
+When the summary is reused as candidate-bound v2 evidence, keep the seven JSON sidecars beside the
+source envelope's artifact set. The adapter reads each referenced file, rejects redaction findings,
+and verifies the recorded SHA-256 digest before copying it below the consuming component's
+`artifacts/inputs/` directory. Verification commands copy sidecars from their effective configured
+input directory; they never substitute a stale internal drill run.
 
 ## Certification checklist
 

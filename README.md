@@ -706,7 +706,13 @@ previous certified summary is provided. `legacy-admin.removal-wave-1` through
 `app-data.backup-restore-portability` are release-candidate-blocking deterministic evidence and do
 not require a live node.
 
-Fast self-tests:
+Run the complete offline certification suite:
+
+```bash
+python3 tools/release-certification/certify.py self-test all
+```
+
+Focused self-tests are also available:
 
 ```bash
 python3 tools/release-certification/certify.py app-platform-docs --self-test
@@ -728,11 +734,17 @@ python3 tools/release-certification/certify.py release-certification \
 Generate release-candidate evidence:
 
 ```bash
+cp tools/release-certification/manifests/release-candidate.example.json \
+  build/release-candidate.json
+# Replace every REPLACE_ME value and select the candidate release ID before running.
 python3 tools/release-certification/certify.py release-certification --manifest build/release-candidate.json
 ```
 
 Set `inputs.previousCandidate` and `inputs.releaseHistory` in the manifest when the previous
-release's sanitized v2 summaries have been restored locally or in CI.
+release's candidate-bound v2 summaries have been restored locally or in CI. Use `migrate-v1` for
+the first v2 candidate; normal component inputs reject legacy summaries. The command writes the
+common evidence envelope, report, redaction report, and supporting artifacts below
+`<out-root>/<release-id>/release-certification/`.
 
 See [docs/release-certification.md](docs/release-certification.md) for required evidence,
 including `app-review.trusted-receipts`, `app-review.policy`,

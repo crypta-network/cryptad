@@ -87,7 +87,8 @@ build/release-certification/<release-id>/security-response/
   staging/signing/verification, signed catalog and review receipt generation, app-platform smoke,
   live-network beta smoke when required, network-scale soak, multi-node beta soak and upgrade
   evidence, ecosystem RC certification, final artifact redaction, the production beta go/no-go
-  dashboard, and public archive creation under `build/production-beta-release/`.
+  dashboard, and public archive creation below
+  `<out-root>/<release-id>/production-beta/artifacts/legacy/`.
   `developer-dry-run` is CI-safe and non-release; `release-candidate` is strict but may use
   non-production signing labels; `production-beta` requires production signing, a complete
   in-pipeline Gradle build/stage/sign run, a public HTTPS artifact base URI, live-network evidence
@@ -186,22 +187,30 @@ build/release-certification/<release-id>/security-response/
   Required-but-missing evidence remains an engine gate: for example,
   `requirements.history=true` without `inputs.releaseHistory` must load successfully and produce a
   failed release-candidate certification aggregate and report.
+  Before extracting an attached v2 input, scan its legacy payload independently of the claimed
+  outer redaction result. Scan and digest-check every referenced security-drill sidecar, copying
+  sidecars from the effective verification input directory. Preserve the validated envelope
+  identity when unwrapping multi-node evidence, and use configured live-network and network-scale
+  input paths when producing downstream production extracts.
+  If a legacy engine exits early, returns nonzero, or emits unsafe fallback content, remove unsafe
+  raw copies from the publishable workspace and emit only sanitized failed evidence with
+  `promotionReady=false`. Shared output writers and extracted-input directories must reject
+  symlinks and paths outside the marked workspace. Completed component and migration summaries are
+  immutable unless the manifest explicitly requests a safe reset.
+  Keep `certify.py` as a thin entry point and split engine modules before they exceed 5,000 lines;
+  `self-test core` enforces the source-size boundary.
 - Normal local commands:
 
 ```bash
-python3 tools/release-certification/certify.py app-platform-docs --self-test
-python3 tools/release-certification/certify.py release-certification --self-test
-python3 tools/release-certification/certify.py app-platform --self-test
+python3 tools/release-certification/certify.py self-test all
+cp tools/release-certification/manifests/release-candidate.example.json \
+  build/release-candidate.json
+# Replace every placeholder before running candidate-bound commands.
 python3 tools/release-certification/certify.py security-response verify --manifest build/release-candidate.json
-python3 tools/release-certification/certify.py network-scale-soak --self-test
-python3 tools/release-certification/certify.py multi-node-beta --self-test
-python3 tools/release-certification/certify.py live-network-beta --self-test
-python3 tools/release-certification/certify.py stable-readiness --self-test
-python3 tools/release-certification/certify.py go-no-go --self-test
-python3 tools/release-certification/certify.py production-beta --self-test
 python3 tools/release-certification/certify.py release-certification --manifest build/release-candidate.json
-python3 tools/release-certification/certify.py release-certification --manifest build/release-candidate.json
-python3 tools/release-certification/certify.py release-certification --manifest build/release-candidate.json
+cp tools/release-certification/manifests/production-beta.example.json \
+  build/production-beta.json
+# Replace every placeholder before running the protected pipeline.
 python3 tools/release-certification/certify.py production-beta --manifest build/production-beta.json
 ```
 
@@ -345,7 +354,8 @@ python3 tools/release-certification/certify.py production-beta --manifest build/
 - `.github/workflows/ci.yml` runs `interop-smoke` on push/PR, `interop-extended` on schedule/manual,
   interop self-tests on the multi-OS matrix, performance self-tests on the multi-OS matrix,
   release-certification self-tests on the multi-OS matrix, and `performance-smoke` on
-  schedule/manual.
+  schedule/manual. Certification self-tests allow 30 minutes on Ubuntu and macOS and 60 minutes on
+  Windows; keep workspace paths canonical before comparing absolute paths across those runners.
 - `.github/workflows/release-certification.yml` runs scheduled/manual/release-ref certification,
   uploads sanitized certification artifacts, and uses `release-candidate` mode for `release/**`
   branches and `v*` tags. When the manual extended gate produces

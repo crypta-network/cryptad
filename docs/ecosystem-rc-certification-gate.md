@@ -5,9 +5,11 @@ security, recovery, soak, documentation, legacy migration, and release-operation
 
 ## Run the gate
 
-Complete a release-candidate manifest and run:
+Copy the template, replace every placeholder, and run:
 
 ```bash
+cp tools/release-certification/manifests/release-candidate.example.json \
+  build/release-candidate.json
 python3 tools/release-certification/certify.py release-certification \
   --manifest build/release-candidate.json
 ```

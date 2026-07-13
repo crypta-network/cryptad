@@ -5,7 +5,8 @@ final `go`, `no-go`, or `go-with-waivers` decision.
 
 ## Generate the dashboard
 
-Configure the input summaries and waiver file in the release-run manifest, then run:
+Use the completed production manifest created for the pipeline, configure the input summaries and
+waiver file, then run:
 
 ```bash
 python3 tools/release-certification/certify.py go-no-go \

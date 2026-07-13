@@ -505,13 +505,13 @@ active `beta` support phase, and publishes the support policy used by release ce
 - production beta requires previous snapshot history;
 - experimental-to-stable graduation requires review evidence and stable reference updates.
 
-Release artifacts store redacted snapshots at
-`build/production-beta-release/evidence/platform-api-contract-current.json`,
-`build/production-beta-release/evidence/platform-api-contract-previous.json`, and
-`build/production-beta-release/evidence/platform-api-stable-diff.json`. The checked-in baseline
-reference is `docs/platform-api/contracts/platform-api-1.0-baseline.json`. The current and previous
-files are parseable contract snapshot JSON, not only evidence-row summaries, so later
-`crypta-app api diff` runs can use them as previous-history inputs.
+Release artifacts store redacted snapshots below
+`<out-root>/<release-id>/production-beta/artifacts/legacy/evidence/` as
+`platform-api-contract-current.json`, `platform-api-contract-previous.json`, and
+`platform-api-stable-diff.json`. The checked-in baseline reference is
+`docs/platform-api/contracts/platform-api-1.0-baseline.json`. The current and previous files are
+parseable contract snapshot JSON, not only evidence-row summaries, so later `crypta-app api diff`
+runs can use them as previous-history inputs.
 
 The stable-baseline diff emits deterministic finding codes including
 `stable_api_capability_removed`, `stable_api_endpoint_removed`,

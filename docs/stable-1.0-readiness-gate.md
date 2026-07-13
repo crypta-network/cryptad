@@ -6,10 +6,14 @@ Stable 1.0.
 
 ## Run the gate
 
-Configure production, dashboard, certification, app-platform, soak, security, known-issue, policy,
-known-limitation, and Stable-scoped waiver inputs in a `stable-review` manifest. Then run:
+Copy the Stable review template, then configure production, dashboard, certification,
+app-platform, soak, security, known-issue, policy, known-limitation, and Stable-scoped waiver inputs.
+Every v2 input must be bound to the same finalized release ID.
 
 ```bash
+cp tools/release-certification/manifests/stable-review.example.json \
+  build/stable-review.json
+# Replace every placeholder before running the review.
 python3 tools/release-certification/certify.py stable-readiness \
   --manifest build/stable-review.json
 ```

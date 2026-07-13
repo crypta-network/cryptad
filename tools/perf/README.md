@@ -179,7 +179,7 @@ password-like values, private URIs, and local workspace or home-directory prefix
 
 The release certification workflow consumes `build/perf-smoke/summary.json` as required
 `performance.smoke` evidence and copies the sanitized `artifacts/perf-report.md` into
-`build/release-certification/artifacts/` when present.
+`<out-root>/<release-id>/release-certification/artifacts/legacy/` when present.
 
 ## Baselines
 
@@ -216,8 +216,8 @@ Regular pull requests get the Python self-test without the full node smoke. That
 PR path low-flake while preserving scheduled/manual evidence for release candidates.
 
 The separate `release-certification` workflow can run the performance smoke before generating
-`build/release-certification/release-certification-report.md` and
-`build/release-certification/release-certification-summary.json`.
+`<out-root>/<release-id>/release-certification/report.md` and
+`<out-root>/<release-id>/release-certification/summary.json`.
 
 ## Interpreting results
 

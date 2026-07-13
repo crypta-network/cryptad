@@ -5,10 +5,13 @@ multi-node topology and a previous-candidate upgrade.
 
 ## Commands
 
-Configure topology, mode, candidate inputs, freshness, and output options under
-`commands.multi-node-beta` in the release-run manifest.
+Copy the release-candidate template and configure topology, mode, candidate inputs, freshness, and
+output options under `commands.multi-node-beta` in the release-run manifest. Replace every
+placeholder before running a candidate-bound action.
 
 ```bash
+cp tools/release-certification/manifests/release-candidate.example.json \
+  build/release-candidate.json
 python3 tools/release-certification/certify.py multi-node-beta plan \
   --manifest build/release-candidate.json
 python3 tools/release-certification/certify.py multi-node-beta run \

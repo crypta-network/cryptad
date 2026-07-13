@@ -35,6 +35,7 @@ files, never in the manifest.
 | --- | --- | --- |
 | `pr` | Local and normal pull-request checks. | Missing release-only evidence is skipped or warned. |
 | `nightly` | Scheduled evidence collection. | Optional evidence remains visible as warnings. |
+| `developer-dry-run` | End-to-end local or PR-safe rehearsal. | May use fixtures or skip expensive build stages, but can never become promotion-ready. |
 | `release-candidate` | Strict candidate certification. | Missing, stale, skipped, malformed, or failing required evidence blocks promotion unless policy permits a valid waiver. |
 | `production-beta` | Protected beta candidate. | Adds production signing, live-network, previous-candidate, sandbox, archive, and dashboard requirements. |
 | `stable-review` | Stable 1.0 promotion review. | Requires production-beta evidence plus the Stable readiness policy and complete Stable domain rows. |
@@ -60,7 +61,8 @@ Each run writes:
 
 Each component contains `summary.json`, `report.md`, `redaction-report.json`, and `artifacts/`.
 Artifact references are relative to the release-run root. Reset is allowed only for a directory
-with a matching marker, release ID, version, and profile.
+with a matching marker, release ID, version, and profile. Detailed engine-native output lives
+below `artifacts/legacy/`; validated attached input extracts live below `artifacts/inputs/`.
 
 Manifests are non-secret configuration: both secret-like field names and scalar values containing
 private keys or URIs, authorization data, credentials, or secret assignments are rejected before
@@ -87,6 +89,13 @@ Inputs produced by unified components must be candidate-bound evidence envelope 
 expected kind. Explicit external or non-envelope interop, performance, ecosystem-matrix, and
 third-party-intake artifacts retain their native JSON contracts.
 Command-specific policy modes cannot override the policy derived from `release.profile`.
+
+Attached v2 payloads are scanned again before extraction instead of trusting their claimed outer
+redaction status. Security-drill sidecars are scanned and digest-checked before copying. Unsafe
+legacy engine output is removed from the publishable tree, and early exits, nonzero exits, or
+redaction failures still produce a sanitized failed envelope with `promotionReady=false`.
+Completed migration records and component summaries cannot be overwritten with
+`output.reset=false`.
 
 ## Required evidence
 
@@ -134,8 +143,8 @@ migration record contains the source digest and sanitized converted artifact; it
 normal consumers accept v1 indefinitely.
 
 The legacy redaction block must contain either a passing status with an empty findings array or a
-recognized set of all-true boolean guarantees. Missing, malformed, or contradictory redaction
-metadata fails migration.
+recognized set of all-true boolean guarantees. Missing, unrecognized, malformed, or contradictory
+redaction metadata fails migration.
 
 Use a second run manifest for certification. Its `inputs.previousCandidate` and
 `inputs.releaseHistory` fields must point to the candidate-bound v2 migration summaries, not the
@@ -149,6 +158,18 @@ When dispatching `.github/workflows/release-certification.yml`, supplying
 `previous-summary-path` likewise requires `candidate-release-id` with that same value.
 Supplying an optional `stable-readiness-summary-path` also requires that candidate ID because every
 Stable v2 envelope is candidate-bound regardless of whether the Stable gate is mandatory.
+Production workflow dispatches require the same explicit ID when attaching multi-node or
+security-drill v2 evidence. The adapter preserves the validated envelope release ID when extracting
+multi-node evidence, so custom candidate IDs are not reconstructed from version text.
+
+## History archives
+
+Set `execution.writeHistory=true` to write the current sanitized certification record. The default
+shared store remains `build/release-certification-history/`; configure `policies.historyDir` only
+when the release process preserves a different shared location. Passing runs update
+`latest-summary.json` and `releases/<history-label>/`. Failed runs are retained under
+`failed/<history-label>/` and do not replace the latest passing record. The GitHub workflow uploads
+the shared history directory together with the release workspace.
 
 ## Waivers and redaction
 
