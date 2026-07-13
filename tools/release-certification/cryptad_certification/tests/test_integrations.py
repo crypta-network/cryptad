@@ -233,6 +233,121 @@ class CollectionIntegrationTest(unittest.TestCase):
             for name in artifact_names:
                 self.assertTrue((extracted.parent / name).is_file())
 
+    def test_security_drill_sidecars_require_matching_digests(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "source"
+            artifact_dir = source / "artifacts"
+            artifact_path = artifact_dir / "drill.json"
+            write_json(artifact_path, {"scenario": "redacted-drill", "status": "pass"})
+            legacy_summary = {
+                "schemaVersion": 1,
+                "status": "pass",
+                "redaction": {"status": "pass", "findings": []},
+                "artifacts": [
+                    {
+                        "artifact": artifact_path.name,
+                        "digest": f"sha256:{'0' * 64}",
+                    }
+                ],
+            }
+            envelope = EvidenceEnvelope(
+                kind="production-security-response",
+                generated_at="2026-01-01T00:00:00Z",
+                subject={
+                    "releaseId": "self-test-release",
+                    "version": "self-test",
+                    "profile": "pr",
+                    "component": "security-response/drill-verify-all",
+                },
+                result={
+                    "status": "pass",
+                    "decision": None,
+                    "promotionReady": None,
+                    "exitCode": 0,
+                },
+                counts={"evidence": 0, "blockers": 0, "warnings": 0, "waivers": 0},
+                redaction={
+                    "status": "pass",
+                    "findingCount": 0,
+                    "findings": [],
+                    "guarantees": {},
+                },
+                payload={"legacy": legacy_summary},
+            ).to_json()
+            envelope_path = source / "summary.json"
+            write_json(envelope_path, envelope)
+            manifest = load_manifest(
+                write_manifest(root, inputs={"securityDrills": str(envelope_path)}),
+                root,
+            )
+            prepare_run_root(manifest)
+            context = prepare_context(root, manifest, "release-certification")
+
+            with self.assertRaisesRegex(ValueError, "artifact digest mismatch"):
+                legacy._legacy_input_path(context, "securityDrills")
+
+            self.assertFalse((context.component_dir / "artifacts/inputs/drill.json").exists())
+
+    def test_security_drill_sidecars_are_scanned_before_copying(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "source"
+            artifact_dir = source / "artifacts"
+            artifact_path = artifact_dir / "drill.json"
+            write_json(
+                artifact_path,
+                {"scenario": "redacted-drill", "rawBody": "private message body"},
+            )
+            legacy_summary = {
+                "schemaVersion": 1,
+                "status": "pass",
+                "redaction": {"status": "pass", "findings": []},
+                "artifacts": [
+                    {
+                        "artifact": artifact_path.name,
+                        "digest": security_response_runbook.sha256_path(artifact_path),
+                    }
+                ],
+            }
+            envelope = EvidenceEnvelope(
+                kind="production-security-response",
+                generated_at="2026-01-01T00:00:00Z",
+                subject={
+                    "releaseId": "self-test-release",
+                    "version": "self-test",
+                    "profile": "pr",
+                    "component": "security-response/drill-verify-all",
+                },
+                result={
+                    "status": "pass",
+                    "decision": None,
+                    "promotionReady": None,
+                    "exitCode": 0,
+                },
+                counts={"evidence": 0, "blockers": 0, "warnings": 0, "waivers": 0},
+                redaction={
+                    "status": "pass",
+                    "findingCount": 0,
+                    "findings": [],
+                    "guarantees": {},
+                },
+                payload={"legacy": legacy_summary},
+            ).to_json()
+            envelope_path = source / "summary.json"
+            write_json(envelope_path, envelope)
+            manifest = load_manifest(
+                write_manifest(root, inputs={"securityDrills": str(envelope_path)}),
+                root,
+            )
+            prepare_run_root(manifest)
+            context = prepare_context(root, manifest, "release-certification")
+
+            with self.assertRaisesRegex(ValueError, "artifact failed the v2 redaction scan"):
+                legacy._legacy_input_path(context, "securityDrills")
+
+            self.assertFalse((context.component_dir / "artifacts/inputs/drill.json").exists())
+
 
 class AdapterIntegrationTest(unittest.TestCase):
     def test_symlinked_legacy_output_is_rejected_before_engine_execution(self) -> None:

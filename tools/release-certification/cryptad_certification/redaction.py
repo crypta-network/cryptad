@@ -110,29 +110,6 @@ SENSITIVE_FIELD_FRAGMENTS = (
     "secret",
     "token",
 )
-SAFE_SENSITIVE_FIELD_MARKERS = (
-    "digest",
-    "excluded",
-    "fingerprint",
-    "notincluded",
-    "notpersisted",
-    "notstored",
-    "redacted",
-    "sanitized",
-)
-SAFE_SENSITIVE_FIELD_SUFFIXES = (
-    "bytes",
-    "count",
-    "counts",
-    "hash",
-    "id",
-    "ids",
-    "length",
-    "sha256",
-    "shape",
-    "size",
-    "status",
-)
 SAFE_BOOLEAN_FIELD_MARKERS = (
     "checked",
     "covered",
@@ -142,6 +119,20 @@ SAFE_BOOLEAN_FIELD_MARKERS = (
     "provided",
     "required",
 )
+SHA256_METADATA_RE = re.compile(r"(?:sha256:)?[0-9a-fA-F]{64}")
+SAFE_METADATA_IDENTIFIER_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:@/+~-]{0,127}")
+SAFE_METADATA_STATUS_VALUES = {
+    "clean",
+    "fail",
+    "failed",
+    "pass",
+    "passed",
+    "redacted",
+    "safe",
+    "skipped",
+    "warn",
+    "warning",
+}
 MANIFEST_PRIVATE_MARKER_RE = re.compile(
     r"\b(?:SSK|USK)@|-----BEGIN (?:[A-Z ]+ )?PRIVATE KEY-----"
 )
@@ -158,6 +149,36 @@ def _normalized_field_name(value: Any) -> str:
     """Return a case-insensitive field name without punctuation or separators."""
 
     return re.sub(r"[^a-z0-9]", "", str(value).lower())
+
+
+def _is_safe_sensitive_metadata(normalized: str, value: Any) -> bool:
+    """Recognize scalar safety metadata without exempting nested payloads."""
+
+    if isinstance(value, (dict, list)):
+        return False
+    if any(
+        marker in normalized
+        for marker in ("excluded", "notincluded", "notpersisted", "notstored")
+    ):
+        return value is True
+    if any(marker in normalized for marker in ("redacted", "sanitized")):
+        return value is True or value in SAFE_REDACTED_VALUES
+    if normalized.endswith(("hash", "sha256")) or any(
+        marker in normalized for marker in ("digest", "fingerprint")
+    ):
+        return isinstance(value, str) and SHA256_METADATA_RE.fullmatch(value) is not None
+    if normalized.endswith(("bytes", "count", "counts", "length", "size")):
+        return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+    if normalized.endswith(("id", "ids", "shape")):
+        return (
+            isinstance(value, str)
+            and SAFE_METADATA_IDENTIFIER_RE.fullmatch(value) is not None
+        )
+    if normalized.endswith("status"):
+        return isinstance(value, str) and value.lower() in (
+            SAFE_METADATA_STATUS_VALUES | SAFE_ABSENCE_VALUES
+        )
+    return False
 
 
 def _field_can_contain_sensitive_payload(key: Any, value: Any) -> bool:
@@ -178,12 +199,9 @@ def _field_can_contain_sensitive_payload(key: Any, value: Any) -> bool:
         return False
     if isinstance(key, str) and key.endswith(".json") and _is_safe_negative_fixture_result(value):
         return False
-    if any(marker in normalized for marker in SAFE_SENSITIVE_FIELD_MARKERS):
-        return False
-    if normalized.endswith(SAFE_SENSITIVE_FIELD_SUFFIXES):
-        return False
     if (
         isinstance(value, dict)
+        and set(value) == {"const"}
         and value.get("const") is False
         and normalized.endswith(("included", "persisted", "present", "stored"))
     ):
@@ -191,6 +209,8 @@ def _field_can_contain_sensitive_payload(key: Any, value: Any) -> bool:
     if isinstance(value, bool) and any(
         marker in normalized for marker in SAFE_BOOLEAN_FIELD_MARKERS
     ):
+        return False
+    if _is_safe_sensitive_metadata(normalized, value):
         return False
     return True
 

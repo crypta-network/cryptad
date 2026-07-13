@@ -461,6 +461,9 @@ class EnvelopeTest(unittest.TestCase):
             },
             "checks": {"safeErrorsAndNoRawContentCovered": True},
             "privateKeySource": "missing",
+            "privateKeyFingerprint": f"sha256:{'a' * 64}",
+            "rawBodyHash": "b" * 64,
+            "rawRequestBodyCount": 0,
             "redacted": {
                 "privateInsertUri": "<redacted-uri>",
                 "rawRequestBody": "<redacted>",
@@ -475,6 +478,16 @@ class EnvelopeTest(unittest.TestCase):
             "local-path-in-route-like-root": {"workspaceRoot": "/apps/cryptad/build"},
             "unredacted-sensitive-source": {"privateKeySource": "operator-key.pem"},
             "absence-word-as-secret": {"formPassword": "missing"},
+            "container-under-fingerprint": {
+                "privateKeyFingerprint": {"content": "private key material"}
+            },
+            "container-under-hash": {
+                "rawBodyHash": {"content": "private message body"}
+            },
+            "container-under-redacted": {
+                "rawBodyRedacted": {"content": "private message body"}
+            },
+            "malformed-hash": {"rawBodyHash": "not-a-sha256-digest"},
             "malformed-negative-fixture": {
                 "negativeFindingsByPath": {
                     "fixtures/redaction-app-token.json": "hunter2",

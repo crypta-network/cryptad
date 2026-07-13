@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import shutil
 import tempfile
 from pathlib import Path
@@ -319,6 +320,7 @@ def _copy_security_drill_artifacts(
     if source_dir.is_symlink() or not source_dir.is_dir():
         raise ValueError("inputs.securityDrills v2 envelope artifact directory is missing or unsafe")
     resolved_source_dir = source_dir.resolve()
+    validated_copies: list[tuple[Path, Path]] = []
     for index, entry in enumerate(artifacts):
         if not isinstance(entry, dict):
             raise ValueError(
@@ -350,6 +352,38 @@ def _copy_security_drill_artifacts(
             raise ValueError(
                 f"inputs.securityDrills extraction target is unsafe: {artifact_name}"
             )
+        digest = hashlib.sha256()
+        try:
+            with source.open("rb") as handle:
+                for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                    digest.update(chunk)
+        except OSError as exc:
+            raise ValueError(
+                f"inputs.securityDrills referenced artifact could not be read: {artifact_name}"
+            ) from exc
+        expected_digest = entry.get("digest")
+        actual_digest = f"sha256:{digest.hexdigest()}"
+        if expected_digest != actual_digest:
+            raise ValueError(
+                f"inputs.securityDrills artifact digest mismatch: {artifact_name}"
+            )
+        try:
+            artifact = read_json(source)
+        except (OSError, ValueError) as exc:
+            raise ValueError(
+                f"inputs.securityDrills artifact is not valid JSON: {artifact_name}"
+            ) from exc
+        if not isinstance(artifact, dict):
+            raise ValueError(
+                f"inputs.securityDrills artifact must be a JSON object: {artifact_name}"
+            )
+        if scan_value(artifact):
+            raise ValueError(
+                f"inputs.securityDrills artifact failed the v2 redaction scan: {artifact_name}"
+            )
+        validated_copies.append((source, target))
+
+    for source, target in validated_copies:
         shutil.copy2(source, target)
 
 
