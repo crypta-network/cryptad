@@ -15,9 +15,17 @@ python3 tools/release-certification/certify.py production-beta \
 ```
 
 The manifest selects the profile, candidate identity, catalog channel, public HTTPS artifact base
-URI, previous-candidate/history inputs, soak inputs, Stable requirement, waivers, and execution
-controls. Signing keys, reviewer keys, form passwords, live insert material, and other secrets stay
-in protected environment variables or protected files.
+URI, previous-candidate/history inputs, third-party intake summary, soak inputs, Stable requirement,
+waivers, and execution controls. Signing keys, reviewer keys, form passwords, live insert material,
+and other secrets stay in protected environment variables or protected files.
+
+For a protected `.github/workflows/production-beta-release.yml` dispatch, set
+`third_party_intake_summary` to a release-capable intake summary. The workflow accepts a checked-out
+path, HTTPS JSON URL, or `actions-artifact://<run-id>/<artifact-name>/<path>` reference. It refuses
+to construct the production manifest when the summary is absent, sets
+`requirements.thirdPartyIntake=true`, and binds the materialized path as
+`inputs.thirdPartyIntake`. The deterministic sample-flow option is non-release evidence and cannot
+replace this production input.
 
 For a local CI-safe exercise, use:
 
@@ -32,7 +40,7 @@ python3 tools/release-certification/certify.py production-beta \
 | --- | --- | --- |
 | `developer-dry-run` | May use generated fixture keys and omit live evidence. | Always remains non-release and not promotion-ready. |
 | `release-candidate` | Requires staged/signed/verified apps, catalog and review artifacts, certification, and a public HTTPS artifact base URI. | Fails on critical missing evidence; candidate signing labels may remain non-production. |
-| `production-beta` | Requires production signing, a complete in-pipeline Gradle build/stage/sign/verify run, live-network evidence, sandbox evidence, previous-candidate upgrade evidence, and a clean workspace. | Promotion is ready only when every mandatory gate and redaction result passes. |
+| `production-beta` | Requires production signing, a complete in-pipeline Gradle build/stage/sign/verify run, live-network evidence, third-party intake, sandbox evidence, previous-candidate upgrade evidence, and a clean workspace. | Promotion is ready only when every mandatory gate and redaction result passes. |
 | `stable-review` | Adds the Stable policy, limitations, freshness, and complete Stable domain requirements. | Stable readiness must pass before archive publication. |
 
 Fixture evidence, skipped Gradle stages, emergency build skips, dirty or unknown workspace state,

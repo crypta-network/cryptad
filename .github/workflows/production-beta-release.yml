@@ -57,6 +57,11 @@ on:
         required: false
         default: ''
         type: string
+      third_party_intake_summary:
+        description: Required production third-party intake summary path, HTTPS JSON URL, or actions-artifact://run/artifact/path reference for protected production-beta promotion.
+        required: false
+        default: ''
+        type: string
       previous_summary:
         description: Candidate-bound migrate-v1 previous-candidate v2 summary path, HTTPS JSON URL, or actions-artifact://run/artifact/path reference.
         required: false
@@ -512,6 +517,7 @@ jobs:
           INPUT_MULTI_NODE_SOAK_CONFIG: ${{ inputs.multi_node_soak_config || '' }}
           INPUT_MULTI_NODE_SOAK_SUMMARY: ${{ inputs.multi_node_soak_summary || '' }}
           INPUT_SECURITY_DRILLS_SUMMARY: ${{ inputs.security_drills_summary || '' }}
+          INPUT_THIRD_PARTY_INTAKE_SUMMARY: ${{ inputs.third_party_intake_summary || '' }}
           INPUT_PREVIOUS_SUMMARY: ${{ inputs.previous_summary || '' }}
           INPUT_PREVIOUS_RELEASE_CERTIFICATION_SUMMARY: ${{ inputs.previous_release_certification_summary || '' }}
           INPUT_WAIVER_FILE: ${{ inputs.waiver_file || '' }}
@@ -650,6 +656,7 @@ jobs:
           materialize_input_file "$INPUT_PREVIOUS_RELEASE_CERTIFICATION_SUMMARY" INPUT_PREVIOUS_RELEASE_CERTIFICATION_SUMMARY previous-release-certification-summary.json "Previous release-certification summary"
           materialize_input_file "$INPUT_MULTI_NODE_SOAK_SUMMARY" INPUT_MULTI_NODE_SOAK_SUMMARY multi-node-beta-soak-summary.json "Multi-node soak summary"
           materialize_security_drills_summary "$INPUT_SECURITY_DRILLS_SUMMARY"
+          materialize_input_file "$INPUT_THIRD_PARTY_INTAKE_SUMMARY" INPUT_THIRD_PARTY_INTAKE_SUMMARY third-party-intake-summary.json "Third-party intake summary"
           materialize_input_file "$INPUT_WAIVER_FILE" INPUT_WAIVER_FILE go-no-go-waivers.json "Go/no-go waiver file"
           materialize_input_file "$INPUT_STABLE_READINESS_WAIVERS" INPUT_STABLE_READINESS_WAIVERS stable-readiness-waivers.json "Stable readiness waiver file"
 
@@ -704,6 +711,11 @@ jobs:
           if [[ -n "$INPUT_SECURITY_DRILLS_SUMMARY" ]]; then
             require_file "$INPUT_SECURITY_DRILLS_SUMMARY" "Security response drills summary"
           fi
+          if [[ -z "$INPUT_THIRD_PARTY_INTAKE_SUMMARY" ]]; then
+            echo "::error::production-beta requires third_party_intake_summary with release-capable intake evidence."
+            exit 1
+          fi
+          require_file "$INPUT_THIRD_PARTY_INTAKE_SUMMARY" "Third-party intake summary"
           if [[ -n "$INPUT_MULTI_NODE_SOAK_CONFIG" ]]; then
             require_file "$INPUT_MULTI_NODE_SOAK_CONFIG" "Multi-node soak topology config"
           fi
@@ -738,6 +750,7 @@ jobs:
             --arg multi_node_summary "$INPUT_MULTI_NODE_SOAK_SUMMARY" \
             --arg multi_node_config "$INPUT_MULTI_NODE_SOAK_CONFIG" \
             --arg security_drills "$INPUT_SECURITY_DRILLS_SUMMARY" \
+            --arg third_party_intake "$INPUT_THIRD_PARTY_INTAKE_SUMMARY" \
             --arg waiver_file "$INPUT_WAIVER_FILE" \
             --arg stable_waivers "$INPUT_STABLE_READINESS_WAIVERS" \
             --argjson generate_stable "$INPUT_GENERATE_STABLE_READINESS" \
@@ -754,13 +767,14 @@ jobs:
                 multiNodeSoak: true,
                 sandboxProviderTests: true,
                 stableReadiness: $require_stable,
-                thirdPartyIntake: false
+                thirdPartyIntake: true
               },
               inputs: ({
                 interopSmoke: "build/interop-smoke/summary.json",
                 performanceSmoke: "build/perf-smoke/summary.json",
                 previousCandidate: $previous_candidate,
-                releaseHistory: $release_history
+                releaseHistory: $release_history,
+                thirdPartyIntake: $third_party_intake
               }
                 + (if $multi_node_summary == "" then {} else {multiNodeSoak: $multi_node_summary} end)
                 + (if $multi_node_config == "" then {} else {multiNodeSoakConfig: $multi_node_config} end)

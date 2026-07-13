@@ -370,7 +370,10 @@ python3 tools/release-certification/certify.py production-beta --manifest build/
 - `.github/workflows/production-beta-release.yml` runs the production beta pipeline in
   `developer-dry-run` for PR-safe checks, `release-candidate` for release refs/manual dispatch, and
   protected `production-beta` only when release secrets, live-node inputs, and a real artifact base
-  URI are available. Artifact uploads and job-summary dashboard publication must stay gated on the
+  URI are available. Protected production dispatches must also require and materialize
+  `third_party_intake_summary`, bind it as `inputs.thirdPartyIntake`, and set
+  `requirements.thirdPartyIntake=true`; the non-release sample flow cannot satisfy this gate.
+  Artifact uploads and job-summary dashboard publication must stay gated on the
   production-beta redaction summary, `go-no-go-redaction-report.json`, and any generated Stable
   readiness redaction status passing. PR and developer-dry-run manifests must omit interop and
   performance input paths when those producer steps did not run. Release-candidate history is

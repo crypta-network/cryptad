@@ -1848,6 +1848,36 @@ class AdapterIntegrationTest(unittest.TestCase):
 
 
 class WorkflowIntegrationTest(unittest.TestCase):
+    def test_protected_production_workflow_requires_third_party_intake(self) -> None:
+        production = (
+            workspace_root() / ".github/workflows/production-beta-release.yml"
+        ).read_text(encoding="utf-8")
+        protected = production.split("  production-beta:", maxsplit=1)[1]
+
+        self.assertIn("third_party_intake_summary:", production)
+        self.assertIn(
+            "INPUT_THIRD_PARTY_INTAKE_SUMMARY: ${{ inputs.third_party_intake_summary || '' }}",
+            protected,
+        )
+        self.assertIn(
+            'materialize_input_file "$INPUT_THIRD_PARTY_INTAKE_SUMMARY" '
+            "INPUT_THIRD_PARTY_INTAKE_SUMMARY third-party-intake-summary.json",
+            protected,
+        )
+        self.assertIn('if [[ -z "$INPUT_THIRD_PARTY_INTAKE_SUMMARY" ]]', protected)
+        self.assertIn(
+            "production-beta requires third_party_intake_summary with release-capable intake evidence.",
+            protected,
+        )
+        self.assertIn(
+            'require_file "$INPUT_THIRD_PARTY_INTAKE_SUMMARY" "Third-party intake summary"',
+            protected,
+        )
+        self.assertIn('--arg third_party_intake "$INPUT_THIRD_PARTY_INTAKE_SUMMARY"', protected)
+        self.assertIn("thirdPartyIntake: true", protected)
+        self.assertIn("thirdPartyIntake: $third_party_intake", protected)
+        self.assertNotIn("thirdPartyIntake: false", protected)
+
     def test_workflows_delimit_jq_arguments_and_publish_dashboard_artifacts(self) -> None:
         root = workspace_root()
         production = (root / ".github/workflows/production-beta-release.yml").read_text(
