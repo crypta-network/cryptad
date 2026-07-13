@@ -149,6 +149,13 @@ def _legacy_decision(legacy: dict[str, Any]) -> Any:
     return go_no_go.get("decision") if isinstance(go_no_go, dict) else None
 
 
+def _legacy_list(legacy: dict[str, Any], key: str) -> list[Any]:
+    """Return a detached copy of one list-valued legacy field."""
+
+    value = legacy.get(key)
+    return list(value) if isinstance(value, list) else []
+
+
 def from_legacy(
     context: RunContext,
     kind: str,
@@ -161,10 +168,20 @@ def from_legacy(
 ) -> EvidenceEnvelope:
     """Wrap one validated legacy result in the common v2 envelope."""
 
-    evidence = legacy.get("evidence") if isinstance(legacy.get("evidence"), list) else []
-    blockers = legacy.get("blockers") if isinstance(legacy.get("blockers"), list) else []
-    warnings = legacy.get("warnings") if isinstance(legacy.get("warnings"), list) else []
-    waivers = legacy.get("waivers") if isinstance(legacy.get("waivers"), list) else []
+    evidence = _legacy_list(legacy, "evidence")
+    blockers = _legacy_list(legacy, "blockers")
+    if kind == "production-beta-release":
+        for failure in _legacy_list(legacy, "failures"):
+            if failure not in blockers:
+                blockers.append(failure)
+    warnings = _legacy_list(legacy, "warnings")
+    waivers = _legacy_list(legacy, "waivers")
+    if (
+        kind == "release-certification"
+        and not isinstance(legacy.get("waivers"), list)
+        and isinstance(legacy.get("waiverRecords"), list)
+    ):
+        waivers = _legacy_list(legacy, "waiverRecords")
     decision = _legacy_decision(legacy)
     promotion_ready = legacy.get("promotionReady")
     if promotion_ready is None:

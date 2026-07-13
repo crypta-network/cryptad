@@ -757,6 +757,88 @@ class EnvelopeTest(unittest.TestCase):
 
             self.assertEqual("go-with-waivers", envelope.result["decision"])
 
+    def test_release_certification_waiver_records_are_preserved(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = load_manifest(write_manifest(root), root)
+            prepare_run_root(manifest)
+            context = prepare_context(root, manifest, "release-certification")
+            waiver_record = {
+                "id": "accepted-gate-waiver",
+                "evidenceId": "example.release-gate",
+                "active": True,
+                "reason": "Release manager accepted the bounded limitation.",
+            }
+
+            envelope = from_legacy(
+                context,
+                "release-certification",
+                {
+                    "schemaVersion": 1,
+                    "status": "pass",
+                    "waivers": {"example.release-gate": "accepted"},
+                    "waiverRecords": [waiver_record],
+                    "redaction": {"status": "pass", "findings": []},
+                },
+                0,
+                {},
+            )
+
+            self.assertEqual([waiver_record], envelope.waivers)
+            self.assertEqual(1, envelope.counts["waivers"])
+            validate_envelope(
+                envelope.to_json(),
+                "release-certification",
+                "self-test-release",
+            )
+            list_waiver = {"id": "legacy-list-waiver"}
+            list_envelope = from_legacy(
+                context,
+                "release-certification",
+                {
+                    "schemaVersion": 1,
+                    "status": "pass",
+                    "waivers": [list_waiver],
+                    "waiverRecords": [waiver_record],
+                    "redaction": {"status": "pass", "findings": []},
+                },
+                0,
+                {},
+            )
+            self.assertEqual([list_waiver], list_envelope.waivers)
+
+    def test_production_failures_are_preserved_as_common_blockers(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = load_manifest(write_manifest(root), root)
+            prepare_run_root(manifest)
+            context = prepare_context(root, manifest, "production-beta")
+            failures = [
+                "Gradle build stage failed.",
+                "First-party signing stage failed.",
+            ]
+
+            envelope = from_legacy(
+                context,
+                "production-beta-release",
+                {
+                    "schemaVersion": 1,
+                    "status": "fail",
+                    "failures": failures,
+                    "redaction": {"status": "pass", "findings": []},
+                },
+                1,
+                {},
+            )
+
+            self.assertEqual(failures, envelope.issues["blockers"])
+            self.assertEqual(2, envelope.counts["blockers"])
+            validate_envelope(
+                envelope.to_json(),
+                "production-beta-release",
+                "self-test-release",
+            )
+
     def test_manifest_input_paths_are_resolved_before_envelope_redaction(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
