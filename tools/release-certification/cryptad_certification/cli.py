@@ -169,6 +169,7 @@ def _run_command(args: argparse.Namespace) -> int:
         os.chdir(workspace_root)
         if command == "migrate-v1":
             component = f"migration/{args.migration_kind}"
+            _require_pending_component(manifest, component)
             context = prepare_context(workspace_root, manifest, component)
             code = execute_migration(context, args.migration_kind)
         else:

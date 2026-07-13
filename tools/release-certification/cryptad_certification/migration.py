@@ -78,6 +78,14 @@ def _require_passing_redaction(value: dict[str, Any]) -> None:
             for key, item in nested_guarantees.items()
         ):
             raise ValueError("legacy history redaction guarantees are malformed")
+        unknown_nested_guarantees = sorted(
+            set(nested_guarantees) - LEGACY_BOOLEAN_REDACTION_GUARANTEES
+        )
+        if unknown_nested_guarantees:
+            raise ValueError(
+                "legacy history redaction guarantees contain unrecognized fields: "
+                + ", ".join(unknown_nested_guarantees)
+            )
         if any(item is False for item in nested_guarantees.values()):
             raise ValueError("legacy history contains a failed redaction guarantee")
     if status is None and not recognized_guarantees and not nested_guarantees:

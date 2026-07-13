@@ -159,6 +159,51 @@ class CollectionIntegrationTest(unittest.TestCase):
             self.assertFalse((aggregate_dir / "artifacts").exists())
             self.assertEqual({"candidate": "original"}, read_json(preserved))
 
+    def test_completed_migration_is_rejected_without_reset(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "legacy.json"
+            original = {
+                "schemaVersion": 1,
+                "status": "pass",
+                "marker": "original",
+                "redaction": {"status": "pass", "findings": []},
+            }
+            write_json(source, original)
+            manifest_path = write_manifest(
+                root,
+                inputs={"previousCandidate": source.name},
+            )
+            arguments = [
+                "migrate-v1",
+                "previous-candidate",
+                "--manifest",
+                str(manifest_path),
+                "--workspace-root",
+                str(root),
+            ]
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(0, cli.main(arguments))
+            component = (
+                root
+                / "build/release-certification/self-test-release/migration/previous-candidate"
+            )
+            original_summary = read_json(component / "summary.json")
+            original_artifact = read_json(component / "artifacts/migrated-summary.json")
+            replacement = dict(original)
+            replacement["marker"] = "replacement"
+            write_json(source, replacement)
+
+            with contextlib.redirect_stderr(io.StringIO()):
+                code = cli.main(arguments)
+
+            self.assertEqual(2, code)
+            self.assertEqual(original_summary, read_json(component / "summary.json"))
+            self.assertEqual(
+                original_artifact,
+                read_json(component / "artifacts/migrated-summary.json"),
+            )
+
     def test_security_drill_summary_keeps_its_redacted_artifact_set(self) -> None:
         root = workspace_root()
         build_dir = root / "build"

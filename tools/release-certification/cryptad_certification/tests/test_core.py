@@ -1116,6 +1116,9 @@ class MigrationTest(unittest.TestCase):
                 "findings": [],
                 "guarantees": {"rawBodiesExcluded": "true"},
             },
+            "unknown-nested-guarantee": {
+                "guarantees": {"unrelated": True},
+            },
             "no-passing-signal": {"findings": []},
             "unknown-boolean": {"unrelated": True},
             "malformed-status": {"status": [], "findings": []},
