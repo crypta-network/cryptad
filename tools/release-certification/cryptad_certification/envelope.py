@@ -62,6 +62,21 @@ def _malformed_legacy_redaction(summary: str) -> dict[str, Any]:
     }
 
 
+def _merge_legacy_guarantee(
+    guarantees: dict[str, bool],
+    key: str,
+    value: bool,
+) -> bool:
+    """Normalize one legacy guarantee and reject contradictory aliases."""
+
+    guarantee = NEGATED_LEGACY_REDACTION_FIELDS.get(key, key)
+    normalized = not value if key in NEGATED_LEGACY_REDACTION_FIELDS else value
+    if guarantee in guarantees and guarantees[guarantee] != normalized:
+        return False
+    guarantees[guarantee] = normalized
+    return True
+
+
 def redaction_from_legacy(value: Any, legacy: dict[str, Any]) -> dict[str, Any]:
     """Normalize explicit redaction metadata or scan the complete legacy payload."""
 
@@ -83,8 +98,10 @@ def redaction_from_legacy(value: Any, legacy: dict[str, Any]) -> dict[str, Any]:
     for key, item in value.items():
         if not isinstance(item, bool):
             continue
-        guarantee = NEGATED_LEGACY_REDACTION_FIELDS.get(key, key)
-        guarantees[guarantee] = not item if key in NEGATED_LEGACY_REDACTION_FIELDS else item
+        if not _merge_legacy_guarantee(guarantees, key, item):
+            return _malformed_legacy_redaction(
+                "legacy redaction guarantees are contradictory"
+            )
     nested_guarantees = value.get("guarantees")
     if nested_guarantees is not None:
         if not isinstance(nested_guarantees, dict) or not all(
@@ -92,7 +109,11 @@ def redaction_from_legacy(value: Any, legacy: dict[str, Any]) -> dict[str, Any]:
             for key, item in nested_guarantees.items()
         ):
             return _malformed_legacy_redaction("legacy redaction guarantees are malformed")
-        guarantees.update(nested_guarantees)
+        for key, item in nested_guarantees.items():
+            if not _merge_legacy_guarantee(guarantees, key, item):
+                return _malformed_legacy_redaction(
+                    "legacy redaction guarantees are contradictory"
+                )
     if explicit is None and not guarantees:
         return _scanned_legacy_redaction(legacy)
     explicit_pass = explicit is None or (

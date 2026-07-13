@@ -584,6 +584,19 @@ class EnvelopeTest(unittest.TestCase):
                     "findings": [],
                     "guarantees": {"secretMaterialRedacted": False},
                 },
+                "unsafe-nested-negative-guarantee": {
+                    "status": "pass",
+                    "findingCount": 0,
+                    "findings": [],
+                    "guarantees": {"rawBodiesStored": True},
+                },
+                "contradictory-direct-and-nested-guarantees": {
+                    "status": "pass",
+                    "findingCount": 0,
+                    "findings": [],
+                    "rawBodiesStored": True,
+                    "guarantees": {"rawBodiesNotStored": True},
+                },
                 "malformed-block": "pass",
                 "malformed-findings": {"status": "pass", "findings": "none"},
                 "malformed-status": {"status": [], "findings": []},
@@ -674,6 +687,33 @@ class EnvelopeTest(unittest.TestCase):
             self.assertEqual(1, unsafe.result["exitCode"])
             self.assertEqual("fail", unsafe.redaction["status"])
             self.assertFalse(unsafe.redaction["guarantees"]["rawBodiesNotStored"])
+
+            nested_safe_redaction = {
+                "status": "pass",
+                "findings": [],
+                "guarantees": {
+                    "rawBodiesStored": False,
+                    "privateInsertUrisStored": False,
+                },
+            }
+            nested_safe = from_legacy(
+                context,
+                "live-network-beta-smoke",
+                {
+                    "schemaVersion": 1,
+                    "status": "pass",
+                    "redaction": nested_safe_redaction,
+                },
+                0,
+                {},
+            )
+            self.assertEqual("pass", nested_safe.redaction["status"])
+            self.assertTrue(
+                nested_safe.redaction["guarantees"]["rawBodiesNotStored"]
+            )
+            self.assertTrue(
+                nested_safe.redaction["guarantees"]["privateInsertUrisNotStored"]
+            )
 
     def test_production_launch_decision_is_promoted_into_the_common_result(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -806,6 +846,7 @@ class MigrationTest(unittest.TestCase):
             "/srv/runner/work/release-summary.json",
             "/root/.crypta/history.json",
             "/app/secrets/catalog-key",
+            "workspace:/home/runner/private",
             r"C:\ProgramData\Cryptad\release-summary.json",
             "<repo>/../../etc/passwd",
             "<repo>//etc/passwd",
@@ -918,6 +959,9 @@ class MigrationTest(unittest.TestCase):
     def test_migration_rejects_misclassified_or_malformed_public_routes(self) -> None:
         unsafe_routes = {
             "route-shaped-workspace": {"workspaceRoot": "/apps/cryptad/build"},
+            "route-shaped-colon-label": {
+                "routes": ["workspace:/apps/cryptad/build"]
+            },
             "route-traversal": {"routes": ["/api/v1/../../etc/passwd"]},
             "encoded-route-traversal": {"routes": ["/api/v1/%2e%2e/etc/passwd"]},
             "nested-encoded-route-traversal": {
@@ -970,6 +1014,7 @@ class MigrationTest(unittest.TestCase):
                             "/app/node/",
                             "/core-update/",
                         ],
+                        "publicEndpoint": "https://example.invalid/api/v1/apps",
                     },
                     "redaction": {"status": "pass", "findings": []},
                 },

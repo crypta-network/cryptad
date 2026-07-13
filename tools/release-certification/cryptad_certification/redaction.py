@@ -27,7 +27,11 @@ COOKIE_HEADER_RE = re.compile(
     r"(?i)\b(?:cookie|set-cookie)\s*:\s*"
     r"[^\s=;,]+\s*=\s*(?!<|redacted\b)[^\s;,]{3,}"
 )
-UNIX_PATH_RE = re.compile(r"(?<![A-Za-z0-9:/.}\]])/(?!/)[^\s\"'<>]+")
+# A colon is intentionally not excluded: labels such as ``workspace:/home/...`` must not hide a
+# local path. Normal URLs remain excluded by their ``://`` authority separator and by the
+# alphanumeric lookbehind on later URL path segments. Colon-adjacent matches are rejected before
+# public-route exemptions are considered below.
+UNIX_PATH_RE = re.compile(r"(?<![A-Za-z0-9/.}\]])/(?!/)[^\s\"'<>]+")
 WINDOWS_PATH_RE = re.compile(r"(?i)(?<![A-Za-z0-9])[A-Z]:[\\/][^\s\"'<>]+")
 WINDOWS_UNC_PATH_RE = re.compile(r"(?i)(?<![A-Za-z0-9])\\\\[^\\\s\"'<>]+\\[^\s\"'<>]+")
 FILE_URI_RE = re.compile(
@@ -411,7 +415,10 @@ def _contains_local_absolute_path(value: Any) -> tuple[bool, bool]:
         if malformed_placeholder or FILE_URI_RE.search(scan_text):
             unix_found = True
         for match in UNIX_PATH_RE.finditer(scan_text):
-            if not _is_normalized_public_route(field_path, parent, match.group(0)):
+            colon_prefixed = match.start() > 0 and scan_text[match.start() - 1] == ":"
+            if colon_prefixed or not _is_normalized_public_route(
+                field_path, parent, match.group(0)
+            ):
                 unix_found = True
         if WINDOWS_PATH_RE.search(scan_text) or WINDOWS_UNC_PATH_RE.search(scan_text):
             windows_found = True
