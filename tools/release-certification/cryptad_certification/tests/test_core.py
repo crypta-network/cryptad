@@ -477,6 +477,14 @@ class EnvelopeTest(unittest.TestCase):
             "negativeFindingsByPath": {
                 "fixtures/redaction-authorization-header.json": ["authorization-header"],
                 "fixtures/redaction-app-token.json": "<redacted>",
+                "fixtures/redaction-browser-session-token.json": [
+                    "token-assignment"
+                ],
+                "fixtures/redaction-partial-token.json": ["partial-redaction"],
+                "fixtures/redaction-private-key.json": [
+                    "private-key-block",
+                    "private-key-assignment",
+                ],
             },
             "negativeFixtureResults": {
                 "fixtures/redaction-private-insert-uri.json": {

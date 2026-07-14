@@ -100,9 +100,13 @@ SAFE_NEGATIVE_FINDING_LABELS = {
     "local path",
     "local-absolute-path",
     "migration-raw-artifact",
+    "partial-redaction",
     "private insert URI",
     "private-insert-uri",
+    "private-key-assignment",
+    "private-key-block",
     "raw migration artifact",
+    "token-assignment",
 }
 SENSITIVE_FIELD_FRAGMENTS = (
     "authorization",
