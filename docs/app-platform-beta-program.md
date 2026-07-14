@@ -142,7 +142,7 @@ offline-safe.
 CRYPTAD_CERT_APP_SMOKE_LIVE=1 \
 CRYPTAD_CERT_NODE_BASE_URL=http://127.0.0.1:<port> \
 CRYPTAD_CERT_FORM_PASSWORD=<redacted> \
-tools/release-certification/run-release-certification.sh --mode nightly
+python3 tools/release-certification/certify.py release-certification --manifest build/release-candidate.json
 ```
 
 The smoke installs, reads runtime status, starts, stops, updates, uninstalls, and reads diagnostics
@@ -165,10 +165,7 @@ CRYPTAD_CERT_LIVE_CATALOG_EXPECTED_KEY_ID=crypta-first-party-beta \
 CRYPTAD_CERT_LIVE_CONTENT_FETCH_URI=crypta:CHK@<artifact-key> \
 CRYPTAD_CERT_LIVE_FEED_USK_URI=crypta:USK@<feed-key>/feed.json \
 CRYPTAD_CERT_LIVE_TEST_INSERT_URI_FILE=<protected-insert-uri-file> \
-tools/release-certification/run-release-certification.sh \
-  --mode release-candidate \
-  --live-network-beta \
-  --require-live-network-beta
+python3 tools/release-certification/certify.py release-certification --manifest build/release-candidate.json
 ```
 
 Use disposable fixture catalog keys for rehearsals. Public fixture URIs may use
@@ -204,78 +201,72 @@ Use this runbook to decide whether the ecosystem beta is ready for a release can
    ./gradlew test
    ```
 
-2. Build the developer CLI and run app-platform smoke self-tests.
+2. Build the developer CLI and run the unified certification self-test suite.
 
    ```bash
    ./gradlew :platform-devtools:installDist
-   python3 tools/release-certification/app_platform_docs_check.py --self-test
-   python3 tools/release-certification/app_platform_smoke.py --self-test
-   python3 tools/release-certification/network_scale_soak.py --self-test
-   python3 tools/release-certification/production_beta_go_no_go_dashboard.py --self-test
+   python3 tools/release-certification/certify.py self-test all
    ```
 
-3. Run release certification self-tests.
+3. Copy the release-candidate manifest, replace every placeholder, and run release certification.
+   Keep secrets in protected environment variables or files, never in the manifest.
 
    ```bash
-   python3 tools/release-certification/release_certification.py --self-test
+   cp tools/release-certification/manifests/release-candidate.example.json \
+     build/release-candidate.json
+   python3 tools/release-certification/certify.py release-certification --manifest build/release-candidate.json
    ```
 
-4. Run release certification in the mode that matches the release stage.
-
-   ```bash
-   tools/release-certification/run-release-certification.sh --mode pr --skip-gradle --skip-git-metadata
-   tools/release-certification/run-release-certification.sh --mode nightly --out-dir build/release-certification
-   tools/release-certification/run-release-certification.sh --mode release-candidate --out-dir build/release-certification
-   ```
-
-5. Run live-network beta certification when the release will claim public first-party beta catalog
+4. Run live-network beta certification when the release will claim public first-party beta catalog
    readiness. Use the command above with disposable fixture keys unless the release manager is
    intentionally publishing the candidate catalog.
 
-6. Inspect the release summary and report. When the production beta wrapper runs, also inspect the
-   dashboard artifacts under `build/production-beta-release/reports/`.
+5. Inspect the release summary and report. Replace `<out-root>` and `<release-id>` with the values
+   selected by the manifest. When the production beta pipeline runs, inspect its detailed
+   engine-native dashboard too.
 
    ```text
-   build/release-certification/release-certification-summary.json
-   build/release-certification/release-certification-report.md
-   build/release-certification/ecosystem-certification-matrix.json
-   build/release-certification/ecosystem-certification-matrix.md
-   build/release-certification/app-platform-smoke/summary.json
-   build/release-certification/app-platform-smoke/app-platform-smoke-report.md
-   build/release-certification/network-scale-soak/summary.json
-   build/production-beta-release/reports/go-no-go-dashboard.json
-   build/production-beta-release/reports/go-no-go-dashboard.md
-   build/production-beta-release/reports/go-no-go-redaction-report.json
+   <out-root>/<release-id>/release-certification/summary.json
+   <out-root>/<release-id>/release-certification/report.md
+   <out-root>/<release-id>/release-certification/redaction-report.json
+   <out-root>/<release-id>/release-certification/artifacts/legacy/ecosystem-certification-matrix.json
+   <out-root>/<release-id>/release-certification/artifacts/legacy/ecosystem-certification-matrix.md
+   <out-root>/<release-id>/app-platform/summary.json
+   <out-root>/<release-id>/app-platform/report.md
+   <out-root>/<release-id>/network-scale-soak/summary.json
+   <out-root>/<release-id>/production-beta/artifacts/legacy/reports/go-no-go-dashboard.json
+   <out-root>/<release-id>/production-beta/artifacts/legacy/reports/go-no-go-dashboard.md
+   <out-root>/<release-id>/production-beta/artifacts/legacy/reports/go-no-go-redaction-report.json
    ```
 
-7. Confirm the app-review governance evidence passes: review receipts, reviewer key lifecycle,
+6. Confirm the app-review governance evidence passes: review receipts, reviewer key lifecycle,
    local transparency log, review-history API, and first-party review chain.
-8. Confirm the legacy plugin freeze and migration evidence passes:
+7. Confirm the legacy plugin freeze and migration evidence passes:
    `legacy-plugin.freeze-policy`, `legacy-plugin.migration-guide`, and
    `legacy-plugin.social-inbox-spike`.
-9. Confirm legacy retirement evidence passes, including `legacy-admin.removal-wave-3`,
+8. Confirm legacy retirement evidence passes, including `legacy-admin.removal-wave-3`,
    `legacy-admin.removal-wave-4`, `legacy-admin.removal-wave-5`,
    `legacy-admin.final-admin-surface`, `legacy-admin.browse-retained`, and
    `legacy-admin.emergency-fallback-retained`. Confirm FProxy browse/content rendering, content
    filter, startup wizard, security recovery fallback, and pending chat/translation/help/node-to-node
    routes remain retained or pending.
-10. Confirm app-update evidence passes, including `app-update.lifecycle`, `app-update.scheduler`,
+9. Confirm app-update evidence passes, including `app-update.lifecycle`, `app-update.scheduler`,
    `app-update.rollback`, `app-update.live-catalog-refresh`, and
    `app-update.data-migration-contract`.
-11. Confirm network-scale evidence passes, including `network-scale.app-network-budget`,
+10. Confirm network-scale evidence passes, including `network-scale.app-network-budget`,
    `network-scale.content-fetch-budget`, `network-scale.subscription-budget`,
    `network-scale.queue-pressure-backoff`, `network-scale.trust-graph-import-budget`,
    `network-scale.social-inbox-multi-source-soak`, `network-scale.redaction`, and
    `network-scale.rc-soak-summary`.
-12. Confirm the [Operator beta dashboard](operator-beta-dashboard.md) evidence passes, including
+11. Confirm the [Operator beta dashboard](operator-beta-dashboard.md) evidence passes, including
    `operator-beta.dashboard`, `operator-beta.subscription-recovery`,
    `operator-beta.support-bundle-redaction`, and `operator-beta.web-shell`.
-13. Confirm docs evidence passes: portal, beta tutorials, beta program, known limitations, issue
+12. Confirm docs evidence passes: portal, beta tutorials, beta program, known limitations, issue
    templates, internal links, and redaction checks.
-14. Confirm the ecosystem certification matrix includes `app-platform-beta-docs-and-program`,
+13. Confirm the ecosystem certification matrix includes `app-platform-beta-docs-and-program`,
    `operator-beta-ux-and-recovery`, `network-scale-soak-and-subscription-budget`, and no active
    blocker remains unless a release manager recorded an explicit waiver.
-15. Publish release notes with the known beta limitations and any accepted waivers or residual
+14. Publish release notes with the known beta limitations and any accepted waivers or residual
     risks.
 
 Release-candidate mode should require docs and beta evidence unless a release-manager waiver

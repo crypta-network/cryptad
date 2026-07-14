@@ -67,49 +67,48 @@ PERF_MODE=collect PERF_SKIP_BUILD=1 tools/perf/run-performance-smoke.sh
 
 ## Release certification gate
 
-- `tools/release-certification/release_certification.py` aggregates interop, performance,
+- `tools/release-certification/certify.py release-certification` aggregates interop, performance,
   app-platform, network-scale soak, multi-node beta soak, catalog, app-owned UI, operator beta
   recovery, optional live-network beta certification, legacy-admin retirement, and CI metadata into:
 
 ```text
-build/release-certification/release-certification-summary.json
-build/release-certification/release-certification-report.md
-build/release-certification/ecosystem-certification-matrix.json
-build/release-certification/ecosystem-certification-matrix.md
-build/release-certification/artifacts/
-build/release-certification/network-scale-soak/summary.json
-build/release-certification/multi-node-beta-soak/summary.json
-build/release-certification/multi-node-beta-soak/multi-node-beta-soak-summary.md
-build/release-certification/live-network-beta-smoke/summary.json
-build/release-certification/live-network-beta-smoke/live-network-beta-smoke-report.md
+build/release-certification/<release-id>/release-certification/summary.json
+build/release-certification/<release-id>/release-certification/report.md
+build/release-certification/<release-id>/release-certification/redaction-report.json
+build/release-certification/<release-id>/release-certification/artifacts/
+build/release-certification/<release-id>/network-scale-soak/summary.json
+build/release-certification/<release-id>/multi-node-beta/run/summary.json
+build/release-certification/<release-id>/live-network-beta/summary.json
+build/release-certification/<release-id>/security-response/
 ```
 
-- `tools/release-certification/production_beta_release.py` is the top-level production beta
+- `tools/release-certification/certify.py production-beta` is the top-level production beta
   app-ecosystem release pipeline. It orchestrates Gradle build/install tasks, first-party app
   staging/signing/verification, signed catalog and review receipt generation, app-platform smoke,
   live-network beta smoke when required, network-scale soak, multi-node beta soak and upgrade
   evidence, ecosystem RC certification, final artifact redaction, the production beta go/no-go
-  dashboard, and public archive creation under `build/production-beta-release/`.
+  dashboard, and public archive creation below
+  `<out-root>/<release-id>/production-beta/artifacts/legacy/`.
   `developer-dry-run` is CI-safe and non-release; `release-candidate` is strict but may use
   non-production signing labels; `production-beta` requires production signing, a complete
   in-pipeline Gradle build/stage/sign run, a public HTTPS artifact base URI, live-network evidence
   unless the explicit emergency skip is used, passing multi-node beta evidence, and a clean
   workspace before `promotionReady` can become true. Emergency build skips must leave
   `nonRelease=true` and fail the build-complete promotion gate.
-- `tools/release-certification/production_beta_go_no_go_dashboard.py` is the final release-manager
+- `tools/release-certification/certify.py go-no-go` is the final release-manager
   dashboard generator for production beta launch candidates. It consumes sanitized production beta,
   release-certification, ecosystem matrix, app-platform, live-network, network-scale, multi-node,
   security-response, and waiver inputs; emits JSON, Markdown, and a dashboard redaction report; and
   decides only `go`, `no-go`, or `go-with-waivers`. Production-beta mode fails closed for
   mandatory launch evidence, invalid or expired waivers, unsafe artifact hygiene, fixture/test
   signing, non-release summaries, dirty workspaces, and redaction findings.
-- `tools/release-certification/stable_1_0_readiness.py` is the Stable 1.0 readiness gate. It
+- `tools/release-certification/certify.py stable-readiness` is the Stable 1.0 readiness gate. It
   consumes production beta outputs, go/no-go output, release certification, app-platform evidence,
   multi-node and network-scale soak, security drill summaries, public beta known issues, policy,
   known limitations, and Stable-scoped waivers. Required consumers must reject malformed summaries,
   mismatched `releaseId`, missing `stable-1.0.*` evidence rows, failed redaction, stale security or
   soak evidence, and non-release production beta inputs.
-- `tools/release-certification/app_platform_smoke.py` produces the app-platform summary consumed by
+- `tools/release-certification/certify.py app-platform` produces the app-platform summary consumed by
   the aggregator. It keeps `--self-test` offline and Python-only, including source/test evidence
   for the Platform API contract, Platform API 1.0 stable baseline, compatibility-window metadata,
   previous contract snapshot policy, stable descriptor deprecation/removal windows,
@@ -133,45 +132,94 @@ build/release-certification/live-network-beta-smoke/live-network-beta-smoke-repo
   evidence, operator beta dashboard/recovery/support-bundle evidence, legacy-admin
   retirement/removal Wave 1-5 and final-surface evidence, production security response runbook
   evidence, sandbox provider selection, and app-update lifecycle/scheduler/rollback.
-- `tools/release-certification/network_scale_soak.py` produces the deterministic simulated
+- `tools/release-certification/certify.py network-scale-soak` produces the deterministic simulated
   network-scale soak summary consumed by the aggregator. Normal PR and CI runs must use simulated
   time instead of a literal 24-hour test. Release-candidate runs may attach an external
   `simulated-rc-soak` or `live-rc-soak` summary with the same redacted schema.
-- `tools/release-certification/multi_node_beta_soak.py` produces deterministic multi-node beta
+- `tools/release-certification/certify.py multi-node-beta` produces deterministic multi-node beta
   soak and upgrade/rollback/backup drill evidence consumed by the aggregator and production beta
   pipeline. Normal PR and CI runs use the checked-in simulated topology. Release-manager runs may
   attach an external `simulated`, `hybrid`, or `live` summary with the same redacted schema.
-- `tools/release-certification/live_network_beta_smoke.py` is the explicit release-manager live
+- `tools/release-certification/certify.py live-network-beta` is the explicit release-manager live
   network collector. Its self-test is offline and deterministic, but normal runs may call only a
   validated localhost node and use env/protected-file fixtures for form passwords, catalog expected
   key ids, content/feed/profile/trust URIs, and private insert material. Required mode must fail
   closed for missing fixtures, failed required evidence, stale app principals, cleanup failures, or
   redaction findings.
-- `tools/release-certification/app_platform_docs_check.py` produces deterministic app-platform
+- `tools/release-certification/certify.py app-platform-docs` produces deterministic app-platform
   beta docs evidence for the developer portal, tutorials, beta program, third-party developer beta
   docs, issue templates, relative Markdown links, and docs redaction checks.
-- The wrapper resolves relative `--out-dir` values under the repository root, runs the
-  app-platform smoke collector, regenerates the default network-scale soak summary unless an
-  explicit summary path or `CRYPTAD_CERT_NETWORK_SCALE_SOAK_SUMMARY` is set, regenerates the
-  default multi-node beta soak summary unless `--multi-node-soak-summary` or
-  `CRYPTAD_CERT_MULTI_NODE_SOAK_SUMMARY` is set, then aggregates the evidence.
+- With `execution.collectEvidence=true`, the unified command runs candidate-scoped app-platform,
+  network-scale, multi-node, and security-drill collectors before aggregation. Set the matching
+  `inputs` path to attach external evidence instead. `requirements.liveNetwork=true` or
+  `execution.collectLiveNetwork=true` also runs the candidate-scoped live collector.
+  Internally collected component directories are rebuilt on every invocation, including runs with
+  `output.reset=false`; only explicit manifest inputs are reusable. Strict release-candidate and
+  production-beta app-platform collection normally runs the first-party Gradle sign/verify tasks.
+  PR-mode collection automatically skips those tasks; other modes may use an explicit
+  `execution.skipGradle=true`. Strict runs with that explicit skip remain non-promotable or
+  emergency evidence as enforced by production policy. Reused run workspaces must reject
+  symlinked component or artifact directories and any resolved path outside the marked run root.
+  Apply the same confinement checks to nested engine output directories such as
+  `artifacts/legacy`. Before recollecting evidence, reject an already completed aggregate so a
+  failed rerun cannot leave old aggregate output beside newly rebuilt component evidence.
+  Manifests must remain non-secret in both field names and scalar values, published input paths
+  must be reduced to `<repo>/...` or `<external-input>`, and a nonzero component process exit must
+  always produce and require failed evidence.
+  Legacy outputs without explicit redaction metadata require a complete safe payload scan; false
+  direct or nested guarantees fail closed. Validate every component path segment before cleanup so
+  intermediate symlinks are never followed, and preserve production `goNoGo.decision` in the
+  common envelope result.
+  Inputs mapped to unified components must require candidate-bound v2 envelopes of their assigned
+  kind, profile-compatible policy, component identity, and declared candidate version. Strict
+  profiles must reject PR, nightly, and developer-dry-run evidence even when the kind and release ID
+  match. Stable review may consume production-beta evidence, and release or production aggregation
+  may consume an explicit Stable-review summary; do not add other cross-profile transitions.
+  Explicit external or non-envelope interop, performance, ecosystem-matrix, and third-party intake
+  inputs retain their native JSON contracts. Policy command modes must match the mode derived from
+  `release.profile` so command configuration cannot weaken or mislabel strict evidence. An
+  explicitly attached optional live-network summary enables the live gate without making it
+  required. Reject argparse abbreviations of every adapter-controlled option before forwarding
+  command escape-hatch arguments. Normalize known negative live redaction facts such as
+  `rawBodiesStored: false` into true positive v2 guarantees without accepting unsafe true values.
+  Migration and fallback scans must recursively reject payload-bearing sensitive JSON field names
+  and all local POSIX, Windows drive, and UNC absolute path forms outside public API route shapes.
+  They must accept complete canonical `<repo>/relative/path` placeholders produced by existing
+  release summaries without accepting traversal, malformed separators, or mixed absolute paths.
+  Workflow dispatches that attach candidate-bound multi-node, security-drill, history, or Stable
+  v2 summaries must require the matching explicit candidate release ID before generating a manifest.
+  Generate workflow manifest `release.version` from the checked-out build with
+  `./gradlew -q printVersion`; require attached v2 evidence to carry that same candidate version.
+  Reject attached v2 inputs for strict hand-authored manifests when `release.version` is null;
+  never treat an absent strict candidate version as a wildcard.
+  Required-but-missing evidence remains an engine gate: for example,
+  `requirements.history=true` without `inputs.releaseHistory` must load successfully and produce a
+  failed release-candidate certification aggregate and report.
+  Before extracting an attached v2 input, scan its legacy payload independently of the claimed
+  outer redaction result. Scan and digest-check every referenced security-drill sidecar, copying
+  sidecars from the effective verification input directory. Preserve the validated envelope
+  identity when unwrapping multi-node evidence, and use configured live-network and network-scale
+  input paths when producing downstream production extracts.
+  If a legacy engine exits early, returns nonzero, or emits unsafe fallback content, remove unsafe
+  raw copies from the publishable workspace and emit only sanitized failed evidence with
+  `promotionReady=false`. Shared output writers and extracted-input directories must reject
+  symlinks and paths outside the marked workspace. Completed component and migration summaries are
+  immutable unless the manifest explicitly requests a safe reset.
+  Keep `certify.py` as a thin entry point and split engine modules before they exceed 5,000 lines;
+  `self-test core` enforces the source-size boundary.
 - Normal local commands:
 
 ```bash
-python3 tools/release-certification/app_platform_docs_check.py --self-test
-python3 tools/release-certification/release_certification.py --self-test
-python3 tools/release-certification/app_platform_smoke.py --self-test
-python3 tools/release-certification/security_response_runbook.py verify
-python3 tools/release-certification/network_scale_soak.py --self-test
-python3 tools/release-certification/multi_node_beta_soak.py --self-test
-python3 tools/release-certification/live_network_beta_smoke.py --self-test
-python3 tools/release-certification/stable_1_0_readiness.py --self-test
-python3 tools/release-certification/production_beta_go_no_go_dashboard.py --self-test
-python3 tools/release-certification/production_beta_release.py --self-test
-tools/release-certification/run-release-certification.sh
-tools/release-certification/run-release-certification.sh --mode release-candidate --out-dir build/release-certification
-tools/release-certification/run-release-certification.sh --mode release-candidate --multi-node-mode simulated --out-dir build/release-certification
-tools/release-certification/run-production-beta-release.sh --mode developer-dry-run --out-dir build/production-beta-dry-run
+python3 tools/release-certification/certify.py self-test all
+cp tools/release-certification/manifests/release-candidate.example.json \
+  build/release-candidate.json
+# Replace every placeholder before running candidate-bound commands.
+python3 tools/release-certification/certify.py security-response verify --manifest build/release-candidate.json
+python3 tools/release-certification/certify.py release-certification --manifest build/release-candidate.json
+cp tools/release-certification/manifests/production-beta.example.json \
+  build/production-beta.json
+# Replace every placeholder before running the protected pipeline.
+python3 tools/release-certification/certify.py production-beta --manifest build/production-beta.json
 ```
 
 - Release-candidate mode fails when required evidence is missing, skipped, malformed, wrong-mode,
@@ -265,16 +313,30 @@ tools/release-certification/run-production-beta-release.sh --mode developer-dry-
   explicitly. Do not use the checked-in self-test topology as production promotion evidence, and do
   not let the aggregator reuse stale default `multi-node-beta-soak/summary.json` files across
   release workspaces.
+  For developer and release-candidate production-pipeline runs, `runMultiNodeSoak=true` without an
+  explicit topology config invokes `multi-node-beta run` without `--config`, which selects the
+  checked-in PR-safe default topology. When `inputs.multiNodeSoakConfig` is set, unified
+  multi-node `plan` and `run` actions must pass that exact path as `--config`; command escape-hatch
+  arguments cannot replace the structured topology. Multi-node and security-response passthrough
+  output flags are likewise reserved: manifests cannot override `--out`, `--out-dir`, `--report`,
+  `--summary-out`, or `--release-notes-out`, and generated files must remain candidate-scoped.
+  A required multi-node run whose effective configured or overridden mode is `live` must propagate
+  `--require-live`; deterministic fallback evidence with zero reachable localhost nodes cannot be
+  promotion-ready.
+  Protected `production-beta` promotion still requires a production topology config or attached
+  summary.
 - Stable readiness generated by the production beta wrapper must use
   `evidence/stable-readiness-multi-node-beta-soak.json` and
   `evidence/stable-readiness-network-scale-soak.json`, not the compact generic soak extracts. Those
-  Stable-specific files preserve freshness metadata for the readiness gate.
+  Stable-specific files preserve freshness metadata for the readiness gate. Generated multi-node
+  Stable extracts must also carry the selected manifest `release.id`; do not derive candidate
+  identity from `currentCandidate.version` when an explicit release ID exists.
 - Stable readiness redaction is non-waivable. Keep dashboard redaction status separate from release
   artifact redaction status, and gate archive/upload decisions on both plus Stable readiness
   redaction when Stable artifacts are generated. Do not forward production beta go/no-go waiver
   files into Stable validation unless the waiver file is explicitly Stable-scoped.
-- `live-network-beta.*` evidence is release-blocking only when `--require-live-network-beta` or
-  `CRYPTAD_CERT_REQUIRE_LIVE_NETWORK_BETA=1` is set. When live-network beta is disabled, the
+- `live-network-beta.*` evidence is release-blocking only when manifest
+  `requirements.liveNetwork=true`. When live-network beta is disabled, the
   aggregator must ignore stale live summaries and must not copy stale live artifacts into the
   release record.
 - Live-network beta runs must use only `http://127.0.0.1:<port>`,
@@ -300,15 +362,26 @@ tools/release-certification/run-production-beta-release.sh --mode developer-dry-
 - `.github/workflows/ci.yml` runs `interop-smoke` on push/PR, `interop-extended` on schedule/manual,
   interop self-tests on the multi-OS matrix, performance self-tests on the multi-OS matrix,
   release-certification self-tests on the multi-OS matrix, and `performance-smoke` on
-  schedule/manual.
+  schedule/manual. Certification self-tests allow 30 minutes on Ubuntu and macOS and 60 minutes on
+  Windows; keep workspace paths canonical before comparing absolute paths across those runners.
 - `.github/workflows/release-certification.yml` runs scheduled/manual/release-ref certification,
   uploads sanitized certification artifacts, and uses `release-candidate` mode for `release/**`
-  branches and `v*` tags.
+  branches and `v*` tags. When the manual extended gate produces
+  `build/interop-extended/summary.json`, the generated manifest must bind it as
+  `inputs.interopExtended`. Interop smoke, extended interop, and performance inputs must be omitted
+  when their tolerated producer step did not write a summary so aggregation can record the missing
+  gate instead of failing during manifest input loading.
 - `.github/workflows/production-beta-release.yml` runs the production beta pipeline in
   `developer-dry-run` for PR-safe checks, `release-candidate` for release refs/manual dispatch, and
   protected `production-beta` only when release secrets, live-node inputs, and a real artifact base
-  URI are available. Artifact uploads and job-summary dashboard publication must stay gated on the
+  URI are available. Protected production dispatches must also require and materialize
+  `third_party_intake_summary`, bind it as `inputs.thirdPartyIntake`, and set
+  `requirements.thirdPartyIntake=true`; the non-release sample flow cannot satisfy this gate.
+  Artifact uploads and job-summary dashboard publication must stay gated on the
   production-beta redaction summary, `go-no-go-redaction-report.json`, and any generated Stable
-  readiness redaction status passing.
+  readiness redaction status passing. PR and developer-dry-run manifests must omit interop and
+  performance input paths when those producer steps did not run. Release-candidate history is
+  required only when a history artifact is supplied or policy explicitly requires it; protected
+  production-beta runs continue to require candidate-bound history.
 - Release notes should mention interop, performance, or certification gate changes only when they
   affect release readiness, operator confidence, app/platform behavior, or packager workflows.

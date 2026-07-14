@@ -295,7 +295,7 @@ scope:
   path-free Platform API/Web Shell summaries, Feed Reader and Trust Graph Local RC examples, and
   raw app-data/token/path/private-URI redaction.
 
-The evidence is collected by `tools/release-certification/app_platform_smoke.py` and aggregated by
-`tools/release-certification/release_certification.py`. It does not require a live node. Release
+The evidence is collected by `tools/release-certification/certify.py app-platform` and aggregated by
+`tools/release-certification/certify.py release-certification`. It does not require a live node. Release
 candidates fail when any required app-update evidence item is missing, failing, skipped, or
 wrong-mode unless a release manager records a waiver.

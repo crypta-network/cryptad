@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "kind": "stable-1.0-readiness-policy",
-  "generatedBy": "tools/release-certification/stable_1_0_readiness.py",
+  "generatedBy": "tools/release-certification/certify.py stable-readiness",
   "owner": "crypta-release-engineering",
   "requiredReleaseModes": [
     "production-beta"

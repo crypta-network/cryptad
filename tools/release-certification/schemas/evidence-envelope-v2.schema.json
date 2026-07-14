@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://crypta.network/schemas/evidence-envelope-v2.schema.json",
+  "title": "Cryptad release certification evidence envelope",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "kind",
+    "generatedAt",
+    "subject",
+    "result",
+    "counts",
+    "evidence",
+    "issues",
+    "waivers",
+    "redaction",
+    "inputs",
+    "artifacts",
+    "payload"
+  ],
+  "properties": {
+    "schemaVersion": {"const": 2},
+    "kind": {"type": "string", "minLength": 1},
+    "generatedAt": {"type": "string", "minLength": 1},
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["releaseId", "version", "profile", "component"],
+      "properties": {
+        "releaseId": {"type": "string", "minLength": 1},
+        "version": {"type": ["string", "null"], "minLength": 1},
+        "profile": {"type": "string", "minLength": 1},
+        "component": {"type": "string", "minLength": 1}
+      }
+    },
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "decision", "promotionReady", "exitCode"],
+      "properties": {
+        "status": {"enum": ["pass", "warn", "fail"]},
+        "decision": {"type": ["string", "null"]},
+        "promotionReady": {"type": ["boolean", "null"]},
+        "exitCode": {"type": "integer"}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"status": {"enum": ["pass", "warn"]}}},
+          "then": {"properties": {"exitCode": {"const": 0}}}
+        }
+      ]
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["evidence", "blockers", "warnings", "waivers"],
+      "properties": {
+        "evidence": {"type": "integer", "minimum": 0},
+        "blockers": {"type": "integer", "minimum": 0},
+        "warnings": {"type": "integer", "minimum": 0},
+        "waivers": {"type": "integer", "minimum": 0}
+      }
+    },
+    "evidence": {"type": "array"},
+    "issues": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["blockers", "warnings"],
+      "properties": {
+        "blockers": {"type": "array"},
+        "warnings": {"type": "array"}
+      }
+    },
+    "waivers": {"type": "array"},
+    "redaction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "findingCount", "findings", "guarantees"],
+      "properties": {
+        "status": {"enum": ["pass", "fail"]},
+        "findingCount": {"type": "integer", "minimum": 0},
+        "findings": {"type": "array"},
+        "guarantees": {"type": "object", "additionalProperties": {"type": "boolean"}}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"status": {"const": "pass"}}},
+          "then": {
+            "properties": {
+              "findingCount": {"const": 0},
+              "findings": {"maxItems": 0},
+              "guarantees": {"additionalProperties": {"const": true}}
+            }
+          }
+        }
+      ]
+    },
+    "inputs": {"type": "object"},
+    "artifacts": {"type": "object", "additionalProperties": {"type": "string"}},
+    "payload": {"type": "object"}
+  }
+}

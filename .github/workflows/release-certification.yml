@@ -18,7 +18,7 @@ on:
         default: false
         type: boolean
       previous-summary-path:
-        description: Optional local path to a previous release-certification-summary.json checked out or restored before this job.
+        description: Optional local path to a candidate-bound migrate-v1 release-history v2 summary; candidate-release-id is required when set.
         required: false
         default: ''
         type: string
@@ -43,12 +43,12 @@ on:
         default: ''
         type: string
       stable-readiness-summary-path:
-        description: Optional local path to stable-1.0-readiness-summary.json.
+        description: Optional local path to a candidate-bound Stable readiness v2 summary; candidate-release-id is required when set.
         required: false
         default: ''
         type: string
       candidate-release-id:
-        description: Stable promotion candidate releaseId; required when Stable readiness is required.
+        description: Stable promotion candidate releaseId; required with previous-summary-path, any Stable readiness summary, or required Stable readiness.
         required: false
         default: ''
         type: string
@@ -103,10 +103,7 @@ jobs:
         uses: ./.github/actions/setup-gradle-properties
 
       - name: Run release certification self-tests
-        run: |
-          python3 tools/release-certification/release_certification.py --self-test
-          python3 tools/release-certification/stable_1_0_readiness.py --self-test
-          python3 tools/release-certification/app_platform_smoke.py --self-test
+        run: python3 tools/release-certification/certify.py self-test all
 
       - name: Run Hyphanet interop smoke
         continue-on-error: true
@@ -156,39 +153,76 @@ jobs:
           CRYPTAD_APP_REVIEW_POLICY_ID: ${{ secrets.CRYPTAD_APP_REVIEW_POLICY_ID }}
           CRYPTAD_APP_REVIEW_POLICY_VERSION: ${{ secrets.CRYPTAD_APP_REVIEW_POLICY_VERSION }}
         run: |
-          cert_args=(
-            --mode "$CERT_MODE"
-            --out-dir build/release-certification
-          )
-          if [[ -n "$PREVIOUS_SUMMARY_PATH" ]]; then
-            cert_args+=(--previous-summary "$PREVIOUS_SUMMARY_PATH")
-          fi
-          if [[ "$REQUIRE_HISTORY" == "true" ]]; then
-            cert_args+=(--require-history)
-          fi
-          if [[ "$WRITE_HISTORY" == "true" ]]; then
-            cert_args+=(--write-history)
-          fi
-          if [[ -n "$HISTORY_LABEL" ]]; then
-            cert_args+=(--history-label "$HISTORY_LABEL")
-          fi
-          if [[ -n "$WAIVER_FILE_PATH" ]]; then
-            cert_args+=(--waiver-file "$WAIVER_FILE_PATH")
-          fi
-          if [[ -n "$STABLE_READINESS_SUMMARY_PATH" ]]; then
-            cert_args+=(--stable-readiness-summary "$STABLE_READINESS_SUMMARY_PATH")
-          fi
           if [[ "$REQUIRE_STABLE_READINESS" == "true" && -z "$CANDIDATE_RELEASE_ID" ]]; then
             echo "candidate-release-id is required when require-stable-readiness is true." >&2
             exit 2
           fi
-          if [[ -n "$CANDIDATE_RELEASE_ID" ]]; then
-            cert_args+=(--metadata "candidateReleaseId=$CANDIDATE_RELEASE_ID")
+          if [[ -n "$STABLE_READINESS_SUMMARY_PATH" && -z "$CANDIDATE_RELEASE_ID" ]]; then
+            echo "candidate-release-id is required when stable-readiness-summary-path is supplied." >&2
+            exit 2
           fi
-          if [[ "$REQUIRE_STABLE_READINESS" == "true" ]]; then
-            cert_args+=(--require-stable-readiness)
+          if [[ -n "$PREVIOUS_SUMMARY_PATH" && -z "$CANDIDATE_RELEASE_ID" ]]; then
+            echo "candidate-release-id is required when previous-summary-path is supplied." >&2
+            exit 2
           fi
-          tools/release-certification/run-release-certification.sh "${cert_args[@]}"
+          release_id="${CANDIDATE_RELEASE_ID:-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}}"
+          release_version="$(./gradlew -q printVersion)"
+          if [[ ! "$release_version" =~ ^[0-9]+$ ]]; then
+            echo "::error::Expected a numeric project version from ./gradlew -q printVersion, got '$release_version'."
+            exit 2
+          fi
+          interop_smoke=""
+          interop_extended=""
+          performance_smoke=""
+          if [[ -f "build/interop-smoke/summary.json" ]]; then
+            interop_smoke="build/interop-smoke/summary.json"
+          fi
+          if [[ -f "build/interop-extended/summary.json" ]]; then
+            interop_extended="build/interop-extended/summary.json"
+          fi
+          if [[ -f "build/perf-smoke/summary.json" ]]; then
+            performance_smoke="build/perf-smoke/summary.json"
+          fi
+          manifest="$RUNNER_TEMP/release-certification-manifest.json"
+          jq -n \
+            --arg release_id "$release_id" \
+            --arg release_version "$release_version" \
+            --arg profile "$CERT_MODE" \
+            --arg interop_smoke "$interop_smoke" \
+            --arg interop_extended "$interop_extended" \
+            --arg performance_smoke "$performance_smoke" \
+            --arg release_history "$PREVIOUS_SUMMARY_PATH" \
+            --arg waiver_file "$WAIVER_FILE_PATH" \
+            --arg stable_readiness "$STABLE_READINESS_SUMMARY_PATH" \
+            --arg history_label "$HISTORY_LABEL" \
+            --argjson require_history "$REQUIRE_HISTORY" \
+            --argjson write_history "$WRITE_HISTORY" \
+            --argjson require_stable "$REQUIRE_STABLE_READINESS" \
+            '{
+              schemaVersion: 1,
+              release: {id: $release_id, version: $release_version, profile: $profile},
+              output: {root: "build/release-certification", reset: true},
+              requirements: {
+                history: $require_history,
+                liveNetwork: false,
+                multiNodeSoak: true,
+                sandboxProviderTests: true,
+                stableReadiness: $require_stable,
+                thirdPartyIntake: true
+              },
+              inputs: ({}
+                + (if $interop_smoke == "" then {} else {interopSmoke: $interop_smoke} end)
+                + (if $interop_extended == "" then {} else {interopExtended: $interop_extended} end)
+                + (if $performance_smoke == "" then {} else {performanceSmoke: $performance_smoke} end)
+                + (if $release_history == "" then {} else {releaseHistory: $release_history} end)
+                + (if $waiver_file == "" then {} else {waiverFile: $waiver_file} end)
+                + (if $stable_readiness == "" then {} else {stableReadiness: $stable_readiness} end)),
+              policies: ({metadata: {candidateReleaseId: $release_id}}
+                + (if $history_label == "" then {} else {historyLabel: $history_label} end)),
+              execution: {collectEvidence: true, writeHistory: $write_history},
+              commands: {}
+            }' > "$manifest"
+          python3 tools/release-certification/certify.py release-certification --manifest "$manifest"
 
       - name: Upload release certification artifacts
         if: always()
@@ -196,16 +230,7 @@ jobs:
         with:
           name: release-certification-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
-            build/release-certification/release-certification-summary.json
-            build/release-certification/release-certification-report.md
-            build/release-certification/history-comparison.json
-            build/release-certification/history-comparison.md
-            build/release-certification/ecosystem-certification-matrix.json
-            build/release-certification/ecosystem-certification-matrix.md
-            build/release-certification/artifacts/
-            build/release-certification/app-platform-smoke/summary.json
-            build/release-certification/app-platform-smoke/app-platform-smoke-report.md
-            build/release-certification/app-platform-smoke/artifacts/
+            build/release-certification/
             build/release-certification-history/
             !**/private-insert-uris.json
           if-no-files-found: warn

@@ -208,14 +208,11 @@ Public beta readiness treats these workstreams as one ecosystem beta release sto
 Release candidates should run the normal build/test gates plus release certification:
 
 ```bash
-python3 tools/release-certification/app_platform_docs_check.py --self-test
-python3 tools/release-certification/release_certification.py --self-test
-python3 tools/release-certification/app_platform_smoke.py --self-test
-python3 tools/release-certification/network_scale_soak.py --self-test
-python3 tools/release-certification/multi_node_beta_soak.py --self-test
-python3 tools/release-certification/live_network_beta_smoke.py --self-test
-python3 tools/release-certification/production_beta_go_no_go_dashboard.py --self-test
-tools/release-certification/run-release-certification.sh --mode release-candidate --out-dir build/release-certification
+python3 tools/release-certification/certify.py self-test all
+cp tools/release-certification/manifests/release-candidate.example.json \
+  build/release-candidate.json
+# Replace every placeholder before running the candidate.
+python3 tools/release-certification/certify.py release-certification --manifest build/release-candidate.json
 ```
 
 The generated release summary, release report, app-platform smoke report, review transparency-log

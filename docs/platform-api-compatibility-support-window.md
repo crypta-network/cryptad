@@ -160,14 +160,14 @@ Canonical locations are:
 ```text
 docs/platform-api/contracts/platform-api-1.0-baseline.json
 docs/platform-api/contracts/previous-production-beta-contract.json
-build/production-beta-release/evidence/platform-api-contract-current.json
-build/production-beta-release/evidence/platform-api-contract-previous.json
-build/production-beta-release/evidence/platform-api-stable-diff.json
+<out-root>/<release-id>/production-beta/artifacts/legacy/evidence/platform-api-contract-current.json
+<out-root>/<release-id>/production-beta/artifacts/legacy/evidence/platform-api-contract-previous.json
+<out-root>/<release-id>/production-beta/artifacts/legacy/evidence/platform-api-stable-diff.json
 ```
 
 Release managers can provide previous history through:
 
-- `--previous-summary` on `release_certification.py`;
+- `inputs.releaseHistory` in the release-run manifest;
 - the previous release-certification summary stored in history;
 - a previous production beta release artifact;
 - a local JSON path used by `crypta-app api diff` during dry-run review.

@@ -406,7 +406,7 @@ blocked until the project pins a portable baseline artifact for those platforms.
 A release record should name the host OS, baseline, command line, timeout settings, whether opennet
 was enabled, the `SubscribeUSK` duration, persistent replay identifier, and the final
 `summary.json` path. The release certification report copies sanitized interop summaries into
-`build/release-certification/artifacts/`. Release records must not include
+`<out-root>/<release-id>/release-certification/artifacts/legacy/`. Release records must not include
 `artifacts/private-insert-uris.json`.
 
 ## Release-readiness expectations

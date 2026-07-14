@@ -1,12 +1,11 @@
 # Cryptad Release Workflow and Runbook
 
-> Updated June 27, 2026, to cover the production beta app-ecosystem release pipeline, catalog
-> operations and mirrors, the production beta go/no-go dashboard, and the release certification
-> report that aggregates interop, performance, app-platform, third-party developer beta,
-> multi-node beta soak and upgrade drills, beta documentation, public-beta hardening, operator beta
-> recovery, network-scale soak, ecosystem RC certification, optional live-network beta
-> certification, app-review governance, catalog, app-owned UI, legacy-admin retirement, and CI
-> evidence for a release candidate.
+> Updated July 13, 2026, for the manifest-driven certification CLI, candidate-bound v2 evidence,
+> release-scoped workspaces, shared history archives, and the production beta pipeline. The release
+> report aggregates interop, performance, app-platform, third-party developer beta, multi-node beta
+> soak and upgrade drills, beta documentation, public-beta hardening, operator beta recovery,
+> network-scale soak, ecosystem RC certification, optional live-network beta certification,
+> app-review governance, catalog, app-owned UI, legacy-admin retirement, and CI evidence.
 
 ## Overview
 - Purpose: publish a Cryptad release so running nodes discover a new `info/<edition>` descriptor, download OS-specific installers, and guide operators through installation without self-replacing the running JAR.
@@ -58,50 +57,40 @@ Treat these as release blockers, in order:
    signed catalog output, review receipts, live-network beta evidence, and a redacted public app
    artifact archive:
    ```bash
-   tools/release-certification/run-production-beta-release.sh \
-     --workspace-root . \
-     --out-dir build/production-beta-release \
-     --mode production-beta \
-     --catalog-channel stable \
-     --artifact-base-uri "$CRYPTAD_PRODUCTION_BETA_ARTIFACT_BASE_URI" \
-     --require-live-network \
-     --require-multi-node-soak \
-     --require-sandbox-provider-tests
+   cp tools/release-certification/manifests/production-beta.example.json \
+     build/production-beta.json
+   # Replace every placeholder before running the protected pipeline.
+   python3 tools/release-certification/certify.py production-beta --manifest build/production-beta.json
    ```
-   Use `--mode developer-dry-run` for local or PR-safe rehearsal and `--mode release-candidate`
-   for release-branch evidence that does not have production signing or protected live inputs yet.
+   Select `developer-dry-run` in the manifest for local or PR-safe rehearsal and
+   `release-candidate` for release-branch evidence without production signing or protected live
+   inputs.
    A promotable `production-beta` run requires production signing inputs, a complete in-pipeline
    Gradle build/stage/sign run, a clean git workspace, a public HTTPS artifact base URI, required
    live-network beta evidence, required multi-node beta soak evidence, ecosystem RC certification,
    a passing final artifact redaction scan, and a passing go/no-go dashboard redaction report.
    Signed catalog bundle URLs resolve under the published artifact root, for example
    `<base>/build/app-bundles/<app>-<version>.zip`. Preserve
-   `build/production-beta-release/reports/production-beta-summary.json`,
-   `build/production-beta-release/reports/production-beta-summary.md`,
-   `build/production-beta-release/reports/redaction-report.json`,
-   `build/production-beta-release/reports/go-no-go-dashboard.json`,
-   `build/production-beta-release/reports/go-no-go-dashboard.md`,
-   `build/production-beta-release/reports/go-no-go-redaction-report.json`,
-   `build/production-beta-release/evidence/`, and
-   `build/production-beta-release/dist/checksums.txt`. The public archive is
-   `build/production-beta-release/dist/crypta-production-beta-<version>.tar.gz`. The workflow,
+   the marked `<out-root>/<release-id>/production-beta/` workspace, including its `summary.json`,
+   `report.md`, `redaction-report.json`, `artifacts/`, checksums, and public archive. The workflow,
    modes, required secrets, artifact layout, cleanup guard, and rerun rules are documented in
    [production-beta-release-pipeline.md](production-beta-release-pipeline.md).
-   Read `go-no-go-dashboard.md` first. It is the release-manager launch surface that rolls the
-   production beta summary, ecosystem matrix, redaction report, waivers, live-network evidence, and
-   multi-node evidence into `go`, `no-go`, or `go-with-waivers`; drill into the detailed summaries
-   only after reviewing that decision. Treat `go-with-waivers` as launchable only when every
+   Read [production-beta-go-no-go-dashboard.md](production-beta-go-no-go-dashboard.md) first. It is
+   the release-manager launch surface that rolls the production beta summary, ecosystem matrix,
+   redaction report, waivers, live-network evidence, and multi-node evidence into `go`, `no-go`, or
+   `go-with-waivers`; drill into the detailed summaries only after reviewing that decision. Treat
+   `go-with-waivers` as launchable only when every
    residual blocker has a valid, scoped, approved, and unexpired waiver and no non-waivable
    redaction, signing, fixture-evidence, live-network, sandbox, multi-node, production summary, or
    artifact-hygiene gate failed.
    Confirm `production-security.response-runbook` passes in the production beta summary, and review
    the compact `multiNodeBetaSoak` and `developerBetaProgram` sections before promotion. Security
    releases or app ecosystem incident responses must also run
-   `python3 tools/release-certification/security_response_runbook.py verify`,
-   `python3 tools/release-certification/security_response_runbook.py drill run-all --out-dir build/security-drills --release-id cryptad-beta-<version> --summary-out build/security-drills/security-drills-summary.json`,
+   `python3 tools/release-certification/certify.py security-response verify --manifest build/release-candidate.json`,
+   `python3 tools/release-certification/certify.py security-response drill-run-all --manifest build/release-candidate.json`,
    and
-   `python3 tools/release-certification/security_response_runbook.py drill verify-all --input-dir build/security-drills --summary-out build/security-drills/security-drills-summary.json`.
-   Preserve `build/security-drills/security-drills-summary.json`, the seven per-scenario drill
+   `python3 tools/release-certification/certify.py security-response drill-verify-all --manifest build/release-candidate.json`.
+   Preserve the `security-response/drill-run-all/` component, the seven per-scenario drill
    artifacts, and any generated redacted security release notes draft as release evidence. Draft
    public notes from [templates/security-release-notes.md](templates/security-release-notes.md).
    Missing, failed, stale, fixture-only production, malformed, or redaction-unsafe drills are
@@ -110,23 +99,16 @@ Treat these as release blockers, in order:
 3. **Release certification report** - generate the release-candidate report after the source gates
    below have produced their summaries:
    ```bash
-   tools/release-certification/run-release-certification.sh \
-     --mode release-candidate \
-     --out-dir build/release-certification
+   cp tools/release-certification/manifests/release-candidate.example.json \
+     build/release-candidate.json
+   # Replace every placeholder and bind all v2 inputs to release.id.
+   python3 tools/release-certification/certify.py release-certification --manifest build/release-candidate.json
    ```
-   Preserve `build/release-certification/release-certification-summary.json`,
-   `build/release-certification/release-certification-report.md`,
-   `build/release-certification/history-comparison.json`,
-   `build/release-certification/history-comparison.md`,
-   `build/release-certification/ecosystem-certification-matrix.json`,
-   `build/release-certification/ecosystem-certification-matrix.md`,
-   `build/release-certification/network-scale-soak/summary.json`,
-   `build/release-certification/multi-node-beta-soak/summary.json`, and the sanitized
-   `build/release-certification/artifacts/` directory as release-candidate evidence. Restore the
-   previous release's sanitized summary and add
-   `--previous-summary build/release-certification-history/latest-summary.json` when it is
-   available. If the previous summary is not available, record that limitation in the release log;
-   use `--require-history` for promotion runs where historical regression context is mandatory.
+   Preserve the marked `<out-root>/<release-id>/` workspace, especially the
+   `release-certification/`, `network-scale-soak/`, and `multi-node-beta/` components. Restore the
+   previous release's sanitized summaries through the manifest and use `migrate-v1` for the first
+   v2 candidate. If history is unavailable, record that limitation in the release log; set
+   `requirements.history=true` for promotion runs where regression context is mandatory.
    Treat the ecosystem certification matrix as the release-manager checklist for required
    evidence coverage, ecosystem gate coverage, first-party app coverage, docs coverage, waivers,
    and row-level regressions. The workflow is documented in
@@ -142,15 +124,14 @@ Treat these as release blockers, in order:
    final launch decision artifact for app-ecosystem production beta candidates.
    Confirm the `network-scale-soak-and-subscription-budget` row and
    `network-scale.rc-soak-summary` evidence are present. The wrapper generates a fresh simulated
-   summary by default. Use `--network-scale-soak-summary <path>` or
-   `CRYPTAD_CERT_NETWORK_SCALE_SOAK_SUMMARY` only for an externally collected
+   summary by default. Set manifest `inputs.networkScaleSoak` only for an externally collected
    `simulated-rc-soak` or `live-rc-soak` summary that uses the same redacted schema. Record any
    external soak source and redaction status in the release log.
    Confirm the `multi-node-beta-soak-and-upgrade-drill` row and `multi-node-beta.*` evidence are
-   present. The wrapper generates a fresh deterministic summary by default. Use
-   `--multi-node-soak-summary <path>` or `CRYPTAD_CERT_MULTI_NODE_SOAK_SUMMARY` only for an
-   externally collected redacted summary, and use `--multi-node-mode simulated|hybrid|live` plus
-   `--multi-node-soak-config <path>` when generating a release-specific topology. Production beta
+   present. The unified command generates a fresh deterministic summary by default. Set
+   `inputs.multiNodeSoak` only for an externally collected redacted summary. Set
+   `inputs.multiNodeSoakConfig` and `commands.multi-node-beta.mode` when generating a
+   release-specific topology. Production beta
    promotion requires passing multi-node evidence unless the run is explicitly non-promotable.
    Confirm the `third-party-developer-beta-program` row and `third-party-developer.*` evidence are
    present. The evidence must cover the public developer beta docs, `hello-stable` template,
@@ -165,8 +146,7 @@ Treat these as release blockers, in order:
    evidence ids, `operator-rc.*` evidence ids, `operator-beta-ux-and-recovery` and
    `operator-rc-recovery-and-support-workflow` matrix rows, and disabled-or-passing
    `live-network-beta-certification` row match the release plan. Live-network beta evidence is
-   optional unless the release manager explicitly enables required live-network beta mode with
-   `--require-live-network-beta` or `CRYPTAD_CERT_REQUIRE_LIVE_NETWORK_BETA=1`; stale live-network
+   optional unless the release manager sets manifest `requirements.liveNetwork=true`; stale live-network
    summaries must not be copied when the mode is disabled.
 4. **First-party app staging** - stage repo-owned AppHost bundles with the app module tasks or `./gradlew stageFirstPartyApps`. The app workflow source of truth is [app-distribution.md](app-distribution.md).
 5. **First-party app signing and verification** - sign with the intended release or staging key inputs, then verify with the matching trusted public key inputs. Gate promotion on successful `./gradlew signFirstPartyApps` and `./gradlew verifyFirstPartyApps` runs. Keep private signing keys outside the repository.
@@ -199,10 +179,7 @@ Treat these as release blockers, in order:
    CRYPTAD_CERT_LIVE_CONTENT_FETCH_URI=crypta:CHK@<artifact-key> \
    CRYPTAD_CERT_LIVE_FEED_USK_URI=crypta:USK@<feed-key>/feed.json \
    CRYPTAD_CERT_LIVE_TEST_INSERT_URI_FILE=<protected-insert-uri-file> \
-   tools/release-certification/run-release-certification.sh \
-     --mode release-candidate \
-     --live-network-beta \
-     --require-live-network-beta
+   python3 tools/release-certification/certify.py release-certification --manifest build/release-candidate.json
    ```
    The private insert URI must be the bare private USK directory insert URI for the same catalog
    parent as the public `crypta:USK@<catalog-key>/cryptad-app-catalog.properties` fixture source.
@@ -459,24 +436,12 @@ Treat these as release blockers, in order:
 - Generate the release certification report after the interop, performance, app-platform,
   app-review, and beta documentation evidence exists:
   ```bash
-  tools/release-certification/run-release-certification.sh \
-    --mode release-candidate \
-    --out-dir build/release-certification
+  python3 tools/release-certification/certify.py release-certification --manifest build/release-candidate.json
   ```
-  If the production beta pipeline already ran for this candidate, inspect
-  `build/production-beta-release/reports/production-beta-summary.json` first. Its extracted
-  `evidence/ecosystem-rc-certification.json` and `evidence/ecosystem-certification-matrix.json`
-  are the lower-level release certification outputs used by the app artifact archive. Rerun
-  `run-release-certification.sh` separately only when debugging or regenerating that lower-level
-  evidence.
-  Add `--previous-summary build/release-certification-history/latest-summary.json` after restoring
-  the previous release's sanitized summary locally or in CI.
-  Inspect `build/release-certification/release-certification-report.md` and
-  `build/release-certification/release-certification-summary.json`,
-  `build/release-certification/history-comparison.md`, and
-  `build/release-certification/history-comparison.json`. Then inspect
-  `build/release-certification/ecosystem-certification-matrix.md` for row status, previous
-  status, regression status, release blockers, waiver ids, coverage checks, and recommendations.
+  If the production beta pipeline already ran, inspect its marked release workspace first. Set
+  the previous candidate and history paths in the manifest before rerunning lower-level evidence.
+  Inspect the `release-certification/summary.json`, `report.md`, and `artifacts/` files for matrix
+  row status, regressions, release blockers, waiver IDs, coverage checks, and recommendations.
   Missing required evidence, failed required evidence, missing signed bundle/catalog/review
   evidence, missing app UI design-system/lint evidence, missing beta documentation evidence,
   failing docs redaction, missing `apphost.sandbox-provider` evidence, required evidence
@@ -498,7 +463,7 @@ Treat these as release blockers, in order:
   CRYPTAD_CERT_APP_SMOKE_LIVE=1 \
   CRYPTAD_CERT_NODE_BASE_URL=http://127.0.0.1:<port> \
   CRYPTAD_CERT_FORM_PASSWORD=<redacted> \
-  tools/release-certification/run-release-certification.sh --mode nightly
+  python3 tools/release-certification/certify.py release-certification --manifest build/release-candidate.json
   ```
   This proves local install/start/status/stop/update/uninstall paths for the generated sample app;
   it does not prove live network publication or global app safety. The smoke attempts stop/delete

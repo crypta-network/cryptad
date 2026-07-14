@@ -134,11 +134,11 @@ network-scale.redaction
 network-scale.rc-soak-summary
 ```
 
-`tools/release-certification/network_scale_soak.py` emits deterministic simulated soak evidence for
+`tools/release-certification/certify.py network-scale-soak` emits deterministic simulated soak evidence for
 normal PR and CI use. The fixture
 `tools/release-certification/fixtures/self-test-network-scale-soak.json` validates the summary
 schema. Release-candidate runs can attach a live or external 24-hour summary with the same redacted
-shape through `release_certification.py --network-scale-soak-summary <path>`.
+shape through manifest `inputs.networkScaleSoak`.
 
 A literal 24-hour live soak is an RC release activity. It is not required for ordinary unit tests,
 normal PR tests, or the Python self-tests.

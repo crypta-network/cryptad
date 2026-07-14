@@ -135,8 +135,8 @@ stable-supported apps just because they have maintenance metadata.
 
 ## Release certification
 
-`app_platform_smoke.py` records `app-catalog.first-party-maintenance-policy` evidence. The
-deterministic check verifies:
+The unified `certify.py app-platform` collector records
+`app-catalog.first-party-maintenance-policy` evidence. The deterministic check verifies:
 
 - the policy file exists and covers exactly the seven current first-party apps;
 - each app declares owner, owner URI, support level, data schema policy, migration policy,
@@ -148,11 +148,12 @@ deterministic check verifies:
 - production beta tooling consumes the policy when generating signed first-party catalog entries;
 - docs explain the local-RC and legacy-protocol non-goals.
 
-`production_beta_release.py` copies the policy into `inputs/first-party-app-maintenance-policy.json`
-and includes a redacted per-app maintenance summary in `catalog/channel-metadata.json`. Strict
-release-candidate and production-beta modes fail when a required first-party app is absent from the
-policy or has an incomplete maintenance block. Developer dry-runs warn so maintainers see the
-problem without needing release credentials.
+The `certify.py production-beta` pipeline copies the policy into
+`<out-root>/<release-id>/production-beta/artifacts/legacy/inputs/first-party-app-maintenance-policy.json`
+and includes a redacted per-app maintenance summary in the engine-native
+`catalog/channel-metadata.json`. Strict release-candidate and production-beta modes fail when a
+required first-party app is absent from the policy or has an incomplete maintenance block.
+Developer dry-runs warn so maintainers see the problem without needing release credentials.
 
 ## Updating the policy
 
@@ -165,5 +166,5 @@ When adding or changing a first-party app:
 4. Keep owner, support, and URI text single-line and free of secrets, local paths, private insert
    URIs, tokens, raw fetched content, raw app-data payloads, and private key material.
 5. Update this document if the support table changes.
-6. Run `python3 -u tools/release-certification/app_platform_smoke.py --self-test` and
-   `python3 -u tools/release-certification/release_certification.py --self-test`.
+6. Run `python3 -u tools/release-certification/certify.py app-platform --self-test` and
+   `python3 -u tools/release-certification/certify.py release-certification --self-test`.

@@ -505,13 +505,13 @@ active `beta` support phase, and publishes the support policy used by release ce
 - production beta requires previous snapshot history;
 - experimental-to-stable graduation requires review evidence and stable reference updates.
 
-Release artifacts store redacted snapshots at
-`build/production-beta-release/evidence/platform-api-contract-current.json`,
-`build/production-beta-release/evidence/platform-api-contract-previous.json`, and
-`build/production-beta-release/evidence/platform-api-stable-diff.json`. The checked-in baseline
-reference is `docs/platform-api/contracts/platform-api-1.0-baseline.json`. The current and previous
-files are parseable contract snapshot JSON, not only evidence-row summaries, so later
-`crypta-app api diff` runs can use them as previous-history inputs.
+Release artifacts store redacted snapshots below
+`<out-root>/<release-id>/production-beta/artifacts/legacy/evidence/` as
+`platform-api-contract-current.json`, `platform-api-contract-previous.json`, and
+`platform-api-stable-diff.json`. The checked-in baseline reference is
+`docs/platform-api/contracts/platform-api-1.0-baseline.json`. The current and previous files are
+parseable contract snapshot JSON, not only evidence-row summaries, so later `crypta-app api diff`
+runs can use them as previous-history inputs.
 
 The stable-baseline diff emits deterministic finding codes including
 `stable_api_capability_removed`, `stable_api_endpoint_removed`,
@@ -657,7 +657,7 @@ maximum-tested version, optional capabilities, and warnings in app/catalog revie
 
 ## Release certification
 
-`tools/release-certification/app_platform_smoke.py` now emits required
+`tools/release-certification/certify.py app-platform` now emits required
 `platform-api.contract`, `platform-api.stable-baseline`,
 `platform-api.stable-breaking-change-check`, `platform-api.compatibility-window`,
 `platform-api.previous-contract-snapshot`, `platform-api.deprecation-window-policy`,
@@ -667,7 +667,7 @@ evidence. It generates a contract snapshot with `crypta-app api snapshot`, recor
 counts, stable baseline counts, non-stable entries, stable descriptor deprecation metadata, and
 runs offline `crypta-app compat verify` checks for first-party staged apps and the generated sample
 app. Release certification compares the current stable baseline against previous production
-release evidence; production beta runs pass `--require-history`, so missing previous
+release evidence; production beta manifests set `requirements.history=true`, so missing previous
 stable-baseline or compatibility-window evidence is a release blocker unless the existing release
 waiver mechanism records an approved waiver. Profile publishing also has
 separate release evidence: `app-platform.identity-profile-publish` for the profile-document route,

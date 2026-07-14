@@ -1,0 +1,143 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://crypta.network/schemas/release-run-v1.schema.json",
+  "title": "Cryptad release certification run manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "release",
+    "output",
+    "requirements",
+    "inputs",
+    "policies",
+    "execution",
+    "commands"
+  ],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "release": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "version", "profile"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"},
+        "version": {"type": ["string", "null"], "minLength": 1},
+        "profile": {
+          "enum": ["pr", "nightly", "developer-dry-run", "release-candidate", "production-beta", "stable-review"]
+        }
+      }
+    },
+    "output": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "root": {"type": "string", "minLength": 1},
+        "reset": {"type": "boolean"}
+      }
+    },
+    "requirements": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "history": {"type": "boolean"},
+        "liveNetwork": {"type": "boolean"},
+        "multiNodeSoak": {"type": "boolean"},
+        "sandboxProviderTests": {"type": "boolean"},
+        "stableReadiness": {"type": "boolean"},
+        "thirdPartyIntake": {"type": "boolean"}
+      }
+    },
+    "inputs": {
+      "type": "object",
+      "propertyNames": {
+        "enum": [
+          "appPlatform",
+          "ecosystemMatrix",
+          "goNoGo",
+          "interopExtended",
+          "interopSmoke",
+          "liveNetwork",
+          "multiNodeSoak",
+          "multiNodeSoakConfig",
+          "networkScaleSoak",
+          "performanceSmoke",
+          "previousCandidate",
+          "productionBeta",
+          "publicBetaKnownIssues",
+          "releaseCertification",
+          "releaseHistory",
+          "securityDrills",
+          "stableKnownLimitations",
+          "stableReadiness",
+          "stableReadinessPolicy",
+          "stableReadinessWaivers",
+          "thirdPartyIntake",
+          "waiverFile"
+        ]
+      },
+      "additionalProperties": {"type": "string", "minLength": 1}
+    },
+    "policies": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "artifactBaseUri": {"type": "string", "minLength": 1},
+        "catalogChannel": {"enum": ["stable", "beta", "nightly", "deprecated"]},
+        "expectedPreviousReleaseId": {"type": "string", "minLength": 1},
+        "historyDir": {"type": "string", "minLength": 1},
+        "historyLabel": {"type": "string", "minLength": 1},
+        "metadata": {
+          "type": "object",
+          "additionalProperties": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "allowDirtyWorkspace": {"type": "boolean"},
+        "allowTestSigningInProduction": {"type": "boolean"},
+        "collectEvidence": {"type": "boolean"},
+        "collectLiveNetwork": {"type": "boolean"},
+        "emergencySkipBuild": {"type": "boolean"},
+        "emergencySkipLiveNetwork": {"type": "boolean"},
+        "fixtureEvidence": {"type": "boolean"},
+        "generateStableReadiness": {"type": "boolean"},
+        "runMultiNodeSoak": {"type": "boolean"},
+        "runThirdPartyIntakeSampleFlow": {"type": "boolean"},
+        "skipFullBuild": {"type": "boolean"},
+        "skipGitMetadata": {"type": "boolean"},
+        "skipGradle": {"type": "boolean"},
+        "timeoutSeconds": {"type": "integer", "minimum": 1},
+        "writeHistory": {"type": "boolean"}
+      }
+    },
+    "commands": {
+      "type": "object",
+      "propertyNames": {
+        "enum": [
+          "app-platform",
+          "app-platform-docs",
+          "network-scale-soak",
+          "live-network-beta",
+          "release-certification",
+          "production-beta",
+          "go-no-go",
+          "stable-readiness",
+          "multi-node-beta",
+          "security-response"
+        ]
+      },
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "args": {"type": "array", "items": {"type": "string"}},
+          "mode": {"type": "string", "minLength": 1}
+        }
+      }
+    }
+  }
+}

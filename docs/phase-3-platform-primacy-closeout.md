@@ -176,10 +176,10 @@ Treat these gates as blockers before promoting a release that ships the platform
    persistence, restart behavior, USK/SSK request handling, packaging layout, or node startup.
 10. Run or verify the packaged-node performance smoke when release readiness or
    performance-sensitive changes require it.
-11. Generate `build/release-certification/release-certification-report.md` and
-   `build/release-certification/release-certification-summary.json` after the source gates have
-   produced their summaries. The report aggregates interop, performance, app-platform, catalog,
-   app-owned UI, legacy-admin retirement, and CI evidence for the release candidate.
+11. Generate `<out-root>/<release-id>/release-certification/report.md` and
+   `<out-root>/<release-id>/release-certification/summary.json` after the source gates have produced
+   their summaries. The report aggregates interop, performance, app-platform, catalog, app-owned
+   UI, legacy-admin retirement, and CI evidence for the release candidate.
 12. Preserve `build/interop-smoke/` or `build/interop-extended/` diagnostics when an interop run
    fails or when Tier 2 evidence is part of the release record. Shared diagnostics must exclude
    `artifacts/private-insert-uris.json`.

@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "release": {
+    "id": "local-developer-dry-run",
+    "version": null,
+    "profile": "developer-dry-run"
+  },
+  "output": {
+    "root": "build/release-certification",
+    "reset": true
+  },
+  "requirements": {
+    "history": false,
+    "liveNetwork": false,
+    "multiNodeSoak": false,
+    "sandboxProviderTests": false,
+    "stableReadiness": false,
+    "thirdPartyIntake": false
+  },
+  "inputs": {},
+  "policies": {
+    "catalogChannel": "stable"
+  },
+  "execution": {
+    "collectEvidence": true,
+    "fixtureEvidence": true,
+    "skipFullBuild": true,
+    "skipGradle": true
+  },
+  "commands": {}
+}

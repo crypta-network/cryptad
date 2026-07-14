@@ -53,6 +53,7 @@ Load only the docs needed for the change:
 - Operator beta dashboard and redacted support bundle: `docs/operator-beta-dashboard.md`
 - Operator RC recovery and support workflow: `docs/operator-rc-recovery-and-support-workflow.md`
 - App-platform release evidence: `docs/release-certification.md`
+- Unified release-certification tooling and artifact layout: `tools/release-certification/README.md`
 - Production beta release pipeline: `docs/production-beta-release-pipeline.md`
 - Production beta go/no-go dashboard: `docs/production-beta-go-no-go-dashboard.md`
 - Stable 1.0 readiness gate: `docs/stable-1.0-readiness-gate.md`
@@ -314,10 +315,20 @@ Load only the docs needed for the change:
   `CRYPTAD_CERT_FORM_PASSWORD`; do not pass it as a command-line argument. Dedicated live-network
   beta certification must stay localhost-only, env/protected-file driven for secrets, and disabled
   for normal PR/nightly/offline release-candidate runs unless explicitly requested.
+- Unified app-platform, live-network, multi-node, security, production, dashboard, Stable, and
+  release-certification inputs are candidate-bound v2 envelopes. Do not bypass kind, release-ID,
+  exit-code, or common-redaction validation through legacy aliases, fixture switches, or command
+  passthrough arguments. Attached legacy payloads are scanned again before extraction, and
+  security-drill sidecars are scanned and digest-checked before copying.
+- Release artifacts live under `<out-root>/<release-id>/<component>/`. Common v2 files are at the
+  component root, engine-native output is under `artifacts/legacy/`, and validated attached inputs
+  are under `artifacts/inputs/`. All writers must remain symlink-safe and confined to the marked
+  workspace. If engine output fails the fallback scan, remove the unsafe raw copies and emit only a
+  sanitized failed envelope with `promotionReady=false`.
 
 ## Release certification smoke
 
-- `tools/release-certification/app_platform_smoke.py` is the app-platform evidence collector for
+- `tools/release-certification/certify.py app-platform` is the app-platform evidence collector for
   release certification. It validates first-party staged bundles, static UI/SDK coherence,
   design-system adoption, strict UI lint JSON evidence, `crypta-app init/validate/pack/dev/test`,
   Platform API contract snapshots, Platform API 1.0 stable-baseline and target-stability evidence,
@@ -338,12 +349,12 @@ Load only the docs needed for the change:
   production security response runbook evidence,
   legacy-admin retirement Wave 1-5/final-surface state, and optional localhost-only live AppHost
   lifecycle evidence.
-- `tools/release-certification/live_network_beta_smoke.py` is the explicit release-manager
+- `tools/release-certification/certify.py live-network-beta` is the explicit release-manager
   live-network beta evidence collector. It validates a prepared localhost node, live catalog
   source/key metadata, app-principal browser-session workflows, content/feed/profile/trust
   fixtures, optional app-service scoring, timing metadata, cleanup, and redaction without leaking
   secrets or becoming a normal CI dependency.
-- `tools/release-certification/app_platform_docs_check.py` is the deterministic docs evidence
+- `tools/release-certification/certify.py app-platform-docs` is the deterministic docs evidence
   collector for the app ecosystem beta portal, tutorials, beta program, issue templates, internal
   Markdown links, and docs redaction checks.
 - `pr` mode must stay fast and offline-safe. It must not require a live node, signing keys, Hyphanet
@@ -394,13 +405,7 @@ Use `$cryptad-build-test` for Gradle rules and timeouts. Common focused checks:
 ./gradlew :apps:feed-reader:test
 ./gradlew :apps:trust-graph:test
 ./gradlew stageFirstPartyApps
-python3 tools/release-certification/app_platform_docs_check.py --self-test
-python3 tools/release-certification/security_response_runbook.py verify
-python3 tools/release-certification/app_platform_smoke.py --self-test
-python3 tools/release-certification/network_scale_soak.py --self-test
-python3 tools/release-certification/multi_node_beta_soak.py --self-test
-python3 tools/release-certification/live_network_beta_smoke.py --self-test
-python3 tools/release-certification/production_beta_go_no_go_dashboard.py --self-test
+python3 tools/release-certification/certify.py self-test all
 ```
 
 When changing route contracts or bridge wiring, also run the relevant root router/toadlet tests
@@ -424,14 +429,9 @@ platform beta docs evidence,
 operator RC recovery/support behavior, or legacy-admin retirement evidence behavior, also run:
 
 ```bash
-python3 tools/release-certification/app_platform_docs_check.py --self-test
-python3 tools/release-certification/security_response_runbook.py verify
-python3 tools/release-certification/app_platform_smoke.py --self-test
-python3 tools/release-certification/network_scale_soak.py --self-test
-python3 tools/release-certification/multi_node_beta_soak.py --self-test
-python3 tools/release-certification/live_network_beta_smoke.py --self-test
-python3 tools/release-certification/stable_1_0_readiness.py --self-test
-python3 tools/release-certification/production_beta_go_no_go_dashboard.py --self-test
-python3 tools/release-certification/production_beta_release.py --self-test
-tools/release-certification/run-release-certification.sh --mode pr --skip-gradle --skip-git-metadata
+python3 tools/release-certification/certify.py self-test all
 ```
+
+Run a candidate-bound component only after copying the appropriate example manifest to `build/`,
+replacing every placeholder, and arranging any required v2 migration or attached evidence with the
+same finalized `release.id`.

@@ -225,17 +225,20 @@ jobs:
   release-certification-self-test:
     name: release certification self-test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    timeout-minutes: ${{ matrix.timeout_minutes }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
             python_cmd: python3
+            timeout_minutes: 30
           - os: macos-latest
             python_cmd: python3
+            timeout_minutes: 30
           - os: windows-latest
             python_cmd: py -3.12
+            timeout_minutes: 60
 
     steps:
       - uses: actions/checkout@v6
@@ -247,11 +250,7 @@ jobs:
 
       - name: Run release certification self-tests
         shell: bash
-        run: |
-          ${{ matrix.python_cmd }} tools/release-certification/release_certification.py --self-test
-          ${{ matrix.python_cmd }} tools/release-certification/stable_1_0_readiness.py --self-test
-          ${{ matrix.python_cmd }} tools/release-certification/app_platform_smoke.py --self-test
-          ${{ matrix.python_cmd }} tools/release-certification/production_beta_release.py --self-test
+        run: ${{ matrix.python_cmd }} tools/release-certification/certify.py self-test all
 
   dependency-submission:
     if: github.event_name == 'pull_request' || github.event_name == 'push'
