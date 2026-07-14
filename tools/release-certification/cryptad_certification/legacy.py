@@ -690,9 +690,10 @@ def _run_production_beta(context: RunContext) -> tuple[int, Path, Path | None]:
     # copied into the already confined release workspace after the engine finishes.
     public_out = context.component_dir / "artifacts" / "legacy"
     _require_confined_directory(public_out, context.run_root, "production output")
+    mode = _mode(context, "production-beta")
     args = [
         "--mode",
-        _mode(context, "production-beta"),
+        mode,
         "--release-id",
         context.manifest.release.release_id,
     ]
@@ -713,7 +714,8 @@ def _run_production_beta(context: RunContext) -> tuple[int, Path, Path | None]:
     )
     _flag(
         args,
-        context.manifest.requirements.get("thirdPartyIntake"),
+        mode == "production-beta"
+        or context.manifest.requirements.get("thirdPartyIntake"),
         "--require-third-party-intake",
     )
     _flag(args, context.manifest.requirements.get("stableReadiness"), "--require-stable-readiness")

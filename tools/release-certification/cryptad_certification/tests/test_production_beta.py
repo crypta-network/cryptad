@@ -253,6 +253,39 @@ class ProductionBetaCharacterizationTest(unittest.TestCase):
         self.assertIs(True, manifest["requirements"]["thirdPartyIntake"])
         self.assertEqual("REPLACE_ME.json", manifest["inputs"]["thirdPartyIntake"])
 
+    def test_production_profile_requires_third_party_intake_without_manifest_switch(self) -> None:
+        root = workspace_root()
+        build_dir = root / "build"
+        build_dir.mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(
+            prefix="certify-production-", dir=build_dir
+        ) as directory:
+            output_root = Path(directory)
+            manifest = load_manifest(
+                write_manifest(
+                    output_root,
+                    release={
+                        "id": "self-test-production-intake",
+                        "version": "self-test",
+                        "profile": "production-beta",
+                    },
+                ),
+                root,
+                output_root,
+            )
+            prepare_run_root(manifest)
+            context = prepare_context(root, manifest, "production-beta")
+            captured: list[str] = []
+
+            def run(arguments: list[str]) -> int:
+                captured.extend(arguments)
+                return 0
+
+            with mock.patch.object(production_beta_release, "main", side_effect=run):
+                legacy._run_production_beta(context)
+
+            self.assertIn("--require-third-party-intake", captured)
+
     def test_required_live_evidence_is_collected_and_bound_to_aggregation(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             workspace = Path(directory) / "repo"

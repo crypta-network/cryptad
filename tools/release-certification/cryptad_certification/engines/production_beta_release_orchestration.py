@@ -1149,7 +1149,9 @@ def settings_from_args(args: argparse.Namespace) -> Settings:
         multi_node_mode=args.multi_node_mode,
         previous_release_certification_summary=previous_release_certification_summary,
         third_party_intake_summary=third_party_intake_summary,
-        require_third_party_intake=args.require_third_party_intake,
+        require_third_party_intake=(
+            args.require_third_party_intake or args.mode == "production-beta"
+        ),
         run_third_party_intake_sample_flow=args.run_third_party_intake_sample_flow,
         security_drills_summary=security_drills_summary,
         generate_stable_readiness=generate_stable_readiness,
