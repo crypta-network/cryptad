@@ -79,6 +79,46 @@ class ProductionBetaCharacterizationTest(unittest.TestCase):
             self.assertIsNotNone(extracted)
             self.assertEqual(summary["payload"]["legacy"], read_json(extracted))
 
+    def test_unified_adapter_owns_production_output_cleanup(self) -> None:
+        root = workspace_root()
+        build_dir = root / "build"
+        build_dir.mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(
+            prefix="certify-production-", dir=build_dir
+        ) as directory:
+            output_root = Path(directory)
+            manifest_path = write_manifest(
+                output_root,
+                release={
+                    "id": "self-test-production-cleanup",
+                    "version": None,
+                    "profile": "developer-dry-run",
+                },
+                policies={"catalogChannel": "stable"},
+                execution={
+                    "fixtureEvidence": True,
+                    "skipGradle": True,
+                    "skipFullBuild": True,
+                },
+                commands={
+                    "production-beta": {"args": ["--no-clean-out-dir"]},
+                },
+            )
+            manifest = load_manifest(manifest_path, root, output_root)
+            prepare_run_root(manifest)
+            context = prepare_context(root, manifest, "production-beta")
+            legacy_out = context.component_dir / "artifacts/legacy"
+            stale_artifact = legacy_out / "stale-release-artifact.json"
+            write_json(stale_artifact, {"candidate": "interrupted-run"})
+            write_text(
+                legacy_out / ".cryptad-production-beta-release-output",
+                "Crypta production beta release output directory.\n",
+            )
+
+            self.assertEqual(0, execute_engine(context, "production-beta"))
+
+            self.assertFalse(stale_artifact.exists())
+
     def test_unified_adapter_writes_failed_evidence_for_an_early_engine_exit(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

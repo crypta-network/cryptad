@@ -154,6 +154,7 @@ STRUCTURED_FLAG_OPTIONS = {
         "--emergency-skip-build",
         "--emergency-skip-live-network",
         "--generate-stable-readiness",
+        "--no-clean-out-dir",
         "--require-history",
         "--require-live-network",
         "--require-multi-node-soak",
