@@ -340,7 +340,7 @@ def _readiness_summary(mutation: str) -> dict[str, object]:
 class StableRcFreezeTest(unittest.TestCase):
     def test_candidate_built_launcher_is_selected_for_the_host_platform(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             launchers = root / "build/crypta-app-launcher/bin"
             launchers.mkdir(parents=True)
             posix = launchers / "crypta-app"
@@ -362,7 +362,7 @@ class StableRcFreezeTest(unittest.TestCase):
 
     def test_candidate_built_posix_launcher_must_be_executable(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             launcher = root / "build/crypta-app-launcher/bin/crypta-app"
             launcher.parent.mkdir(parents=True)
             launcher.write_text("#!/bin/sh\n", encoding="utf-8")
@@ -376,7 +376,7 @@ class StableRcFreezeTest(unittest.TestCase):
 
     def test_candidate_loader_rejects_every_external_same_run_override(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             for key in SAME_RUN_INPUT_KEYS:
                 with self.subTest(key=key):
                     context = SimpleNamespace(
@@ -389,7 +389,7 @@ class StableRcFreezeTest(unittest.TestCase):
     def test_candidate_loader_rejects_symlinked_embedded_evidence_parents(self) -> None:
         for linked_parent in ("evidence", "reports"):
             with self.subTest(linked_parent=linked_parent), tempfile.TemporaryDirectory() as directory:
-                root = Path(directory)
+                root = Path(directory).resolve()
                 native_root = root / "native"
                 native_root.mkdir()
                 outside = root / "outside"
@@ -572,7 +572,7 @@ class StableRcFreezeTest(unittest.TestCase):
 
     def test_platform_api_freeze_rejects_symlinked_compatibility_policy(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             contracts = root / "docs/platform-api/contracts"
             contracts.mkdir(parents=True)
             (contracts / "platform-api-1.0-baseline.json").write_text("{}\n", encoding="utf-8")
@@ -974,7 +974,7 @@ class StableRcFreezeTest(unittest.TestCase):
 
     def test_provenance_binds_the_exact_previous_freeze(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             component = root / "run/stable-rc"
             out = component / "artifacts/legacy"
             out.mkdir(parents=True)
@@ -1068,7 +1068,7 @@ class StableRcFreezeTest(unittest.TestCase):
 
     def test_release_notes_reject_an_incomplete_template(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            template = Path(directory) / "stable-1.0-rc-release-notes.md"
+            template = Path(directory).resolve() / "stable-1.0-rc-release-notes.md"
             source = stable_1_0_rc_artifacts._RELEASE_NOTES_TEMPLATE.read_text(encoding="utf-8")  # noqa: SLF001
             template.write_text(source.replace("{{known_issues}}", "None."), encoding="utf-8")
 
@@ -1178,7 +1178,7 @@ class StableRcFreezeTest(unittest.TestCase):
 
     def test_passing_offline_candidate_executes_freeze_packaging_and_final_go_no_go(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             component = root / "run" / "stable-rc"
             out = component / "artifacts" / "legacy"
             out.mkdir(parents=True)
@@ -1298,7 +1298,7 @@ class StableRcFreezeTest(unittest.TestCase):
 
     def test_engine_structural_error_writes_sanitized_no_go_artifacts(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             component = root / "stable-rc"
             (component / "artifacts").mkdir(parents=True)
             external = root / "external-sentinel.txt"
@@ -1583,7 +1583,7 @@ class StableRcFreezeTest(unittest.TestCase):
 class StableRcArchiveTest(unittest.TestCase):
     def test_configured_input_rejects_a_symlinked_parent_before_resolution(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            workspace = Path(directory)
+            workspace = Path(directory).resolve()
             evidence = workspace / "evidence"
             evidence.mkdir()
             (evidence / "policy.json").write_text("{}\n", encoding="utf-8")
@@ -1599,7 +1599,7 @@ class StableRcArchiveTest(unittest.TestCase):
 
     def test_archive_is_reproducible_and_payload_checksums_bind_every_member(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             payload = root / "payload.bin"
             metadata = root / "freeze.json"
             payload.write_bytes(b"production distribution")
@@ -1618,7 +1618,7 @@ class StableRcArchiveTest(unittest.TestCase):
 
     def test_production_stable_rc_product_distribution_is_reproducible(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             files = {
                 "inputs/first-party-app-maintenance-policy.json": "{}\n",
                 "inputs/first-party-app-beta-readiness.json": "{}\n",
@@ -1724,7 +1724,7 @@ class StableRcArchiveTest(unittest.TestCase):
 
     def test_production_checksum_must_name_and_bind_the_copied_archive(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             native_root = root / "native"
             distribution = native_root / "dist"
             distribution.mkdir(parents=True)
@@ -1768,7 +1768,7 @@ class StableRcArchiveTest(unittest.TestCase):
 
     def test_stable_rc_freezes_the_deterministic_product_distribution(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             native_root = root / "native"
             output = root / "stable-output"
             product = native_root / "dist/crypta-stable-1.0-rc-283-product.tar.gz"
@@ -1797,7 +1797,7 @@ class StableRcArchiveTest(unittest.TestCase):
 
     def test_archive_verifier_rejects_wrong_embedded_checksum(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             payload = root / "payload.bin"
             payload.write_bytes(b"candidate")
             checksums = root / "payload-checksums.txt"
@@ -1809,7 +1809,7 @@ class StableRcArchiveTest(unittest.TestCase):
 
     def test_symlink_sources_are_rejected_before_resolution(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             target = root / "target.bin"
             target.write_bytes(b"candidate")
             link = root / "linked.bin"
@@ -1822,11 +1822,14 @@ class StableRcArchiveTest(unittest.TestCase):
 
     def test_forbidden_appledouble_member_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            source = Path(directory) / "source"
+            source = Path(directory).resolve() / "source"
             source.write_text("unsafe", encoding="utf-8")
 
             with self.assertRaisesRegex(ValueError, "forbidden"):
-                create_deterministic_archive(Path(directory) / "candidate.tar.gz", [("metadata/._freeze.json", source)])
+                create_deterministic_archive(
+                    Path(directory).resolve() / "candidate.tar.gz",
+                    [("metadata/._freeze.json", source)],
+                )
 
 
 class StableRcFixtureInventoryTest(unittest.TestCase):
@@ -1972,7 +1975,7 @@ class StableRcFixtureInventoryTest(unittest.TestCase):
             return ("fail" if error else "pass"), str(error or "")
         if validator == "archive":
             with tempfile.TemporaryDirectory() as directory:
-                root = Path(directory)
+                root = Path(directory).resolve()
                 payload = root / "payload.bin"
                 payload.write_bytes(b"candidate")
                 archive = root / "candidate.tar.gz"
