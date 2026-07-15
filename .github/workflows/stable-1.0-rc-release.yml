@@ -48,7 +48,7 @@ on:
         required: true
         type: string
       third_party_intake_summary:
-        description: Candidate-bound production third-party intake summary path, HTTPS URL, or actions-artifact reference.
+        description: Candidate release/build-bound production third-party intake summary path, HTTPS URL, or actions-artifact reference.
         required: true
         type: string
       public_beta_known_issues:

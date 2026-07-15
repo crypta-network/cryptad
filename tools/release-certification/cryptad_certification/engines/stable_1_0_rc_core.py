@@ -597,7 +597,13 @@ def validate_prerequisites(
         )
 
     validate_stable_readiness(inputs["stableReadiness"].value, release_id, now, inputs, state)
-    validate_live_inputs(inputs, release_id, now, state)
+    validate_live_inputs(
+        inputs,
+        release_id,
+        str(build_version or ""),
+        now,
+        state,
+    )
     validate_catalog_operations(
         catalog_operations.value,
         release_id,
@@ -735,6 +741,7 @@ def validate_stable_readiness(
 def validate_live_inputs(
     inputs: dict[str, LoadedInput],
     release_id: str,
+    build_version: str,
     now: dt.datetime,
     state: ValidationState,
 ) -> None:
@@ -763,6 +770,8 @@ def validate_live_inputs(
             errors.extend(explicit_production_classification_errors(value, key))
             if value.get("releaseId") != release_id:
                 errors.append(f"{key} releaseId is missing or does not match the candidate")
+            if value.get("buildVersion") != build_version:
+                errors.append(f"{key} buildVersion is missing or does not match the candidate")
         elif (
             key not in HISTORICAL_RELEASE_INPUT_KEYS
             and value.get("releaseId") not in {None, release_id}

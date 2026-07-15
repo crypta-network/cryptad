@@ -29,8 +29,9 @@ The protected run requires all of the following:
   Stable-readiness results;
 - real live-network, sandbox-provider, multi-node, previous-candidate upgrade, network-scale,
   security-drill, third-party-intake, and catalog-operations evidence;
-- third-party intake evidence that explicitly records `fixtureOnly=false`, `simulatedOnly=false`,
-  `nonRelease=false`, and `nonProduction=false`; omitted classification flags fail closed;
+- third-party intake evidence whose `releaseId` and `buildVersion` exactly match the candidate and
+  that explicitly records `fixtureOnly=false`, `simulatedOnly=false`, `nonRelease=false`, and
+  `nonProduction=false`; omitted identity or classification fields fail closed;
 - the Stable readiness policy, public beta known issues, Stable known limitations, and required
   first-party app maintenance/readiness data;
 - a stable catalog channel with verified primary or mirror transport, signature trust, rollback,

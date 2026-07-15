@@ -1126,7 +1126,7 @@ def _write_deterministic_tar_gzip(
     sources: Iterable[tuple[str, Path]],
 ) -> None:
     ordered_sources = sorted(sources)
-    migration_commands = _staged_migration_command_members(ordered_sources)
+    staged_executables = _staged_executable_members(ordered_sources)
     temporary = archive_path.with_name(f".{archive_path.name}.tmp")
     archive_path.parent.mkdir(parents=True, exist_ok=True)
     try:
@@ -1137,7 +1137,7 @@ def _write_deterministic_tar_gzip(
                         data = path.read_bytes()
                         info = tarfile.TarInfo(name=name)
                         info.size = len(data)
-                        info.mode = _deterministic_archive_mode(name, migration_commands)
+                        info.mode = _deterministic_archive_mode(name, staged_executables)
                         info.mtime = 0
                         info.uid = 0
                         info.gid = 0
@@ -1148,10 +1148,10 @@ def _write_deterministic_tar_gzip(
     finally:
         temporary.unlink(missing_ok=True)
 
-def _staged_migration_command_members(
+def _staged_executable_members(
     sources: Iterable[tuple[str, Path]],
 ) -> frozenset[str]:
-    """Return archive members declared as executable app-data migration commands."""
+    """Return staged app launchers and migration commands that require executable mode."""
 
     source_by_name = dict(sources)
     commands: set[str] = set()
@@ -1166,11 +1166,11 @@ def _staged_migration_command_members(
         for line in path.read_text(encoding="utf-8").splitlines():
             key, separator, raw_value = line.partition("=")
             key = key.strip()
-            if (
-                not separator
-                or not key.startswith("app.data.migration.")
-                or not key.endswith(".command")
-            ):
+            migration_command = (
+                key.startswith("app.data.migration.")
+                and key.endswith(".command")
+            )
+            if not separator or (key != "app.exec" and not migration_command):
                 continue
             command = raw_value.strip()
             command_parts = command.split("/")
@@ -1180,23 +1180,23 @@ def _staged_migration_command_members(
                 or any(part in {"", ".", ".."} for part in command_parts)
             ):
                 raise ReleaseArtifactError(
-                    f"staged app declares an unsafe migration command: {name}"
+                    f"staged app declares an unsafe executable command: {name}"
                 )
             member = PurePosixPath(*parts[:-1], *command_parts).as_posix()
             if member not in source_by_name:
                 raise ReleaseArtifactError(
-                    f"staged app migration command is missing from the archive: {member}"
+                    f"staged app executable command is missing from the archive: {member}"
                 )
             commands.add(member)
     return frozenset(commands)
 
 def _deterministic_archive_mode(
     name: str,
-    migration_commands: frozenset[str],
+    staged_executables: frozenset[str],
 ) -> int:
     windows_command = name.lower().endswith((".bat", ".cmd", ".ps1"))
     launcher = name.startswith("build/crypta-app-launcher/bin/")
-    executable = launcher or name in migration_commands
+    executable = launcher or name in staged_executables
     return 0o755 if executable and not windows_command else 0o644
 
 def create_stable_rc_product_bundle(settings: Settings, version: str) -> Path:

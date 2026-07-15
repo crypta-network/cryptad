@@ -77,6 +77,9 @@ STABLE_READINESS_SAME_RUN_REFERENCES = {
     "productionBetaSummary": "productionBeta",
     "releaseCertificationSummary": "releaseCertification",
 }
+TEMPORARY_WORKDIR_PATH_RE = re.compile(
+    r"<workdir>[/\\](cryptad-[A-Za-z0-9_.-]*?)-[a-z0-9_]{8}(?=[/\\]|$)"
+)
 NON_WAIVABLE_EXCEPTION_TARGETS = {
     "platformApi": frozenset(
         {
@@ -155,6 +158,11 @@ def _normalize_producer_value(
             _normalize_producer_value(child, producer, referenced_producers, path)
             for child in value
         ]
+    if isinstance(value, str):
+        return TEMPORARY_WORKDIR_PATH_RE.sub(
+            lambda match: f"<workdir>/{match.group(1)}-<temporary>",
+            value,
+        )
     return value
 
 

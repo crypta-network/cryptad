@@ -593,7 +593,12 @@ class StableRcFreezeTest(unittest.TestCase):
         digest_one = "sha256:" + "1" * 64
         digest_two = "sha256:" + "2" * 64
 
-        def inputs(generated_at: str, digest: str, duration: int) -> dict[str, LoadedInput]:
+        def inputs(
+            generated_at: str,
+            digest: str,
+            duration: int,
+            temporary_suffix: str,
+        ) -> dict[str, LoadedInput]:
             values = {
                 key: {"status": "pass", "generatedAt": generated_at}
                 for key in SAME_RUN_INPUT_KEYS
@@ -602,6 +607,20 @@ class StableRcFreezeTest(unittest.TestCase):
             values["productionBeta"]["commands"] = [
                 {
                     "name": "gradle-build",
+                    "args": [
+                        "<path>/python3",
+                        "--out-dir",
+                        (
+                            "<workdir>/cryptad-production-beta-"
+                            f"{temporary_suffix}/release-certification"
+                        ),
+                        "--app-platform-summary",
+                        (
+                            "<workdir>\\cryptad-production-beta-"
+                            f"{temporary_suffix}\\release-certification\\"
+                            "app-platform-smoke\\summary.json"
+                        ),
+                    ],
                     "exit_code": 0,
                     "duration_ms": duration,
                     "stdout_tail": "BUILD SUCCESSFUL in a volatile duration",
@@ -612,13 +631,17 @@ class StableRcFreezeTest(unittest.TestCase):
                 reference: {"status": "present", "sha256": digest}
                 for reference in stable_1_0_rc_freeze.STABLE_READINESS_SAME_RUN_REFERENCES
             }
+            values["productionBeta"]["materializedInput"] = (
+                "<workdir>/cryptad-production-beta-"
+                f"{temporary_suffix}/release-certification/inputs/third-party.json"
+            )
             return {
                 key: LoadedInput(key, Path(f"{key}.json"), value, digest)
                 for key, value in values.items()
             }
 
-        first = inputs("2026-07-14T00:00:00Z", digest_one, 1)
-        second = inputs("2026-07-14T00:05:00Z", digest_two, 999)
+        first = inputs("2026-07-14T00:00:00Z", digest_one, 1, "t3hwetmy")
+        second = inputs("2026-07-14T00:05:00Z", digest_two, 999, "a9b8c7d6")
         first["releaseCertification"].value["metadata"] = {
             "gitCommit": "a" * 40,
             "gitDirty": "false",
@@ -640,6 +663,15 @@ class StableRcFreezeTest(unittest.TestCase):
         first_identities = producer_identity_digests(first)
         second_identities = producer_identity_digests(second)
         self.assertEqual(first_identities, second_identities)
+
+        second["productionBeta"].value["commands"][0]["args"].append(  # type: ignore[index]
+            "--semantic-option-change"
+        )
+        self.assertNotEqual(
+            first_identities["productionBeta"],
+            producer_identity_digests(second)["productionBeta"],
+        )
+        second["productionBeta"].value["commands"][0]["args"].pop()  # type: ignore[index]
 
         external_keys = (
             "liveNetwork",
@@ -744,7 +776,7 @@ class StableRcFreezeTest(unittest.TestCase):
             )
         )
 
-    def test_historical_inputs_do_not_expire_when_current_upgrade_evidence_is_fresh(self) -> None:
+    def test_current_evidence_is_candidate_bound_without_expiring_historical_inputs(self) -> None:
         now = datetime.now(timezone.utc)
         fresh = (now - timedelta(hours=1)).isoformat()
         historical = (now - timedelta(days=365)).isoformat()
@@ -775,6 +807,7 @@ class StableRcFreezeTest(unittest.TestCase):
                 {
                     "status": "pass",
                     "releaseId": "stable-rc-283",
+                    "buildVersion": "283",
                     "generatedAt": fresh,
                     "fixtureOnly": False,
                     "simulatedOnly": False,
@@ -809,12 +842,12 @@ class StableRcFreezeTest(unittest.TestCase):
         }
         state = ValidationState()
 
-        validate_live_inputs(inputs, "stable-rc-283", now, state)
+        validate_live_inputs(inputs, "stable-rc-283", "283", now, state)
 
         self.assertEqual([], state.blockers)
         inputs["multiNodeSoak"].value["generatedAt"] = historical
         stale_state = ValidationState()
-        validate_live_inputs(inputs, "stable-rc-283", now, stale_state)
+        validate_live_inputs(inputs, "stable-rc-283", "283", now, stale_state)
         self.assertTrue(
             any(
                 blocker["id"] == "stable-1.0-rc.evidence.multiNodeSoak"
@@ -824,11 +857,52 @@ class StableRcFreezeTest(unittest.TestCase):
         inputs["multiNodeSoak"].value["generatedAt"] = fresh
         inputs["liveNetwork"].value["releaseId"] = "wrong-current-candidate"
         wrong_candidate_state = ValidationState()
-        validate_live_inputs(inputs, "stable-rc-283", now, wrong_candidate_state)
+        validate_live_inputs(
+            inputs,
+            "stable-rc-283",
+            "283",
+            now,
+            wrong_candidate_state,
+        )
         self.assertTrue(
             any(
                 blocker["id"] == "stable-1.0-rc.evidence.liveNetwork"
                 for blocker in wrong_candidate_state.blockers
+            )
+        )
+
+        inputs["liveNetwork"].value["releaseId"] = "stable-rc-283"
+        inputs["thirdPartyIntake"].value["buildVersion"] = "282"
+        wrong_build_state = ValidationState()
+        validate_live_inputs(
+            inputs,
+            "stable-rc-283",
+            "283",
+            now,
+            wrong_build_state,
+        )
+        self.assertTrue(
+            any(
+                blocker["id"] == "stable-1.0-rc.evidence.thirdPartyIntake"
+                and "buildVersion" in blocker["summary"]
+                for blocker in wrong_build_state.blockers
+            )
+        )
+
+        del inputs["thirdPartyIntake"].value["buildVersion"]
+        missing_build_state = ValidationState()
+        validate_live_inputs(
+            inputs,
+            "stable-rc-283",
+            "283",
+            now,
+            missing_build_state,
+        )
+        self.assertTrue(
+            any(
+                blocker["id"] == "stable-1.0-rc.evidence.thirdPartyIntake"
+                and "buildVersion" in blocker["summary"]
+                for blocker in missing_build_state.blockers
             )
         )
 
@@ -1548,16 +1622,24 @@ class StableRcArchiveTest(unittest.TestCase):
             files = {
                 "inputs/first-party-app-maintenance-policy.json": "{}\n",
                 "inputs/first-party-app-beta-readiness.json": "{}\n",
-                "build/staged-apps/queue-manager/cryptad-app.properties": "app.id=queue-manager\n",
+                "build/staged-apps/queue-manager/cryptad-app.properties": (
+                    "app.id=queue-manager\n"
+                    "app.exec=bin/start-queue.sh\n"
+                ),
+                "build/staged-apps/queue-manager/bin/start-queue.sh": "#!/bin/sh\nexit 0\n",
                 "build/staged-apps/feed-reader/cryptad-app.properties": (
                     "app.id=feed-reader\n"
+                    "app.exec=bin/start-feed.sh\n"
                     "app.data.migration.ui-state-v1-v2.command=bin/migrate-feed-data.sh\n"
                 ),
+                "build/staged-apps/feed-reader/bin/start-feed.sh": "#!/bin/sh\nexit 0\n",
                 "build/staged-apps/feed-reader/bin/migrate-feed-data.sh": "#!/bin/sh\nexit 0\n",
                 "build/staged-apps/trust-graph/cryptad-app.properties": (
                     "app.id=trust-graph\n"
+                    "app.exec=bin/start-trust.bat\n"
                     "app.data.migration.ui-state-v1-v2.command=bin/migrate-preview-data.sh\n"
                 ),
+                "build/staged-apps/trust-graph/bin/start-trust.bat": "@exit /b 0\n",
                 "build/staged-apps/trust-graph/bin/migrate-preview-data.sh": "#!/bin/sh\nexit 0\n",
                 "build/app-bundles/queue-manager-283.zip": "bundle bytes\n",
                 "build/crypta-app-launcher/bin/crypta-app": "#!/bin/sh\nexit 0\n",
@@ -1576,8 +1658,17 @@ class StableRcArchiveTest(unittest.TestCase):
                 "build/staged-apps/feed-reader/bin/migrate-feed-data.sh",
                 "build/staged-apps/trust-graph/bin/migrate-preview-data.sh",
             }
-            for migration_member in migration_members:
-                (root / migration_member).chmod(0o644)
+            posix_app_launchers = {
+                "build/staged-apps/queue-manager/bin/start-queue.sh",
+                "build/staged-apps/feed-reader/bin/start-feed.sh",
+            }
+            staged_commands = {
+                *migration_members,
+                *posix_app_launchers,
+                "build/staged-apps/trust-graph/bin/start-trust.bat",
+            }
+            for staged_command in staged_commands:
+                (root / staged_command).chmod(0o644)
             settings = SimpleNamespace(
                 out_dir=root,
                 stable_rc_artifact_timestamp="2026-07-14T00:00:00Z",
@@ -1590,8 +1681,8 @@ class StableRcArchiveTest(unittest.TestCase):
             for relative, contents in reversed(tuple(files.items())):
                 (root / relative).write_text(contents, encoding="utf-8")
             launcher.chmod(0o755)
-            for migration_member in migration_members:
-                (root / migration_member).chmod(0o644)
+            for staged_command in staged_commands:
+                (root / staged_command).chmod(0o644)
             product_archive = production_beta_release.create_stable_rc_product_bundle(
                 settings,
                 "283",
@@ -1618,6 +1709,7 @@ class StableRcArchiveTest(unittest.TestCase):
                 expected_executables = {
                     "build/crypta-app-launcher/bin/crypta-app",
                     *migration_members,
+                    *posix_app_launchers,
                 }
                 self.assertTrue(
                     all(modes[name] == 0o755 for name in expected_executables)
