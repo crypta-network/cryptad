@@ -40,6 +40,8 @@ import network.crypta.platform.api.PlatformApiContractVerifier.CompatibilityFind
 import network.crypta.platform.api.PlatformApiContractVerifier.CompatibilityFindingSeverity;
 import network.crypta.platform.api.PlatformApiContractVerifier.CompatibilityVerificationResult;
 import network.crypta.platform.api.PlatformApiContractVerifier;
+import network.crypta.platform.api.contentformats.ContentFormatProfile;
+import network.crypta.platform.api.contentformats.ContentFormatProfileRegistry;
 import network.crypta.platform.api.json.PlatformApiJsonWriter;
 import network.crypta.platform.appcatalog.AppCatalog;
 import network.crypta.platform.appcatalog.AppCatalogBuildRequest;
@@ -635,7 +637,12 @@ public final class CryptaAppCli implements Runnable {
   @Command(
       name = "api",
       description = "Inspect the Platform API compatibility contract.",
-      subcommands = {ApiSnapshotCommand.class, ApiPolicyCommand.class, ApiDiffCommand.class})
+      subcommands = {
+        ApiSnapshotCommand.class,
+        ApiPolicyCommand.class,
+        ApiDiffCommand.class,
+        ApiContentFormatsCommand.class
+      })
   static final class ApiCommand extends SpecAwareCommand implements Runnable {
     @Override
     public void run() {
@@ -662,6 +669,73 @@ public final class CryptaAppCli implements Runnable {
           StandardCharsets.UTF_8);
       super.commandLine().getOut().println("Wrote Platform API contract: " + normalizedOutput);
       return CommandLine.ExitCode.OK;
+    }
+  }
+
+  /** Implements {@code crypta-app api content-formats}. */
+  @Command(
+      name = "content-formats",
+      description = "Export authoritative first-party content-format profile metadata.")
+  static final class ApiContentFormatsCommand extends SpecAwareCommand
+      implements Callable<Integer> {
+    @Option(names = "--output", required = true, description = "Profile registry JSON to write.")
+    private Path output;
+
+    /**
+     * Writes the current immutable profile registry in its evidence order.
+     *
+     * <p>The export contains only public descriptor metadata. It is generated directly from {@link
+     * ContentFormatProfileRegistry} so release certification never has to maintain a second list of
+     * profile identifiers, lifecycle states, byte limits, or signing domains.
+     *
+     * @return the command-line success status after the complete registry is written
+     * @throws IOException if the destination cannot be created or written
+     */
+    @Override
+    public Integer call() throws IOException {
+      LinkedHashMap<String, Object> report = LinkedHashMap.newLinkedHashMap(3);
+      report.put(FIELD_SCHEMA_VERSION, 1);
+      report.put("kind", "content-format-profile-registry");
+      report.put(
+          "profiles",
+          ContentFormatProfileRegistry.profiles().stream()
+              .map(ApiContentFormatsCommand::profileJson)
+              .toList());
+      writeJsonOutput(output, report);
+      super.commandLine()
+          .getOut()
+          .println(
+              "Wrote content-format profile registry: "
+                  + ContentFormatProfileRegistry.profiles().size()
+                  + " profile(s)");
+      return CommandLine.ExitCode.OK;
+    }
+
+    /**
+     * Converts one validated registry descriptor into stable public JSON metadata.
+     *
+     * @param profile immutable authoritative profile descriptor
+     * @return deterministic descriptor fields used by Stable release certification
+     */
+    private static Map<String, Object> profileJson(ContentFormatProfile profile) {
+      LinkedHashMap<String, Object> value = LinkedHashMap.newLinkedHashMap(12);
+      value.put("id", profile.id());
+      value.put("majorVersion", profile.majorVersion());
+      value.put("contentType", profile.contentType());
+      value.put("defaultFilename", profile.defaultFilename());
+      value.put(FIELD_STATUS, profile.status().jsonValue());
+      value.put("maxDocumentBytes", profile.maxDocumentBytes());
+      value.put("maxSignedPayloadBytes", profile.maxSignedPayloadBytes());
+      value.put("signed", profile.signed());
+      value.put("signingDomain", profile.signingDomain());
+      value.put("canonicalizationKind", profile.canonicalizationKind());
+      LinkedHashMap<String, Object> versionPolicy = LinkedHashMap.newLinkedHashMap(3);
+      versionPolicy.put("unknownFieldPolicy", profile.versionPolicy().unknownFieldPolicy());
+      versionPolicy.put("futureVersionPolicy", profile.versionPolicy().futureVersionPolicy());
+      versionPolicy.put("deprecationPolicy", profile.versionPolicy().deprecationPolicy());
+      value.put("versionPolicy", versionPolicy);
+      value.put("replacementProfileId", profile.replacementProfileId());
+      return value;
     }
   }
 

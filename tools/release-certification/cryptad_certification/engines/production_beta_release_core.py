@@ -10,6 +10,8 @@ import dataclasses
 
 import datetime as dt
 
+import gzip
+
 import hashlib
 
 import io
@@ -40,7 +42,7 @@ import urllib.parse
 
 import zipfile
 
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from typing import Any, BinaryIO, Iterable, Iterator
 
@@ -85,6 +87,16 @@ RELEASE_OUTPUT_ROOTS = (
     "reports",
     "security-drills",
     "security",
+)
+
+STABLE_RC_PRODUCT_PATHS = (
+    "inputs/first-party-app-maintenance-policy.json",
+    "inputs/first-party-app-beta-readiness.json",
+    "build/staged-apps",
+    "build/app-bundles",
+    "build/crypta-app-launcher",
+    "catalog",
+    "reviews",
 )
 
 GO_NO_GO_DASHBOARD_JSON = "reports/go-no-go-dashboard.json"
@@ -265,7 +277,8 @@ MAINTENANCE_REQUIRED_FIELDS = (
 
 FIRST_PARTY_MAINTENANCE_OWNER = "crypta-core"
 
-FIRST_PARTY_MAINTENANCE_OWNER_URI = "https://example.invalid/crypta/owners/core"
+FIRST_PARTY_MAINTENANCE_OWNER_URI = "https://github.com/crypta-network/cryptad"
+FIRST_PARTY_SUPPORT_URI = "https://github.com/crypta-network/cryptad/issues"
 
 MAINTENANCE_ALLOWED_VALUES = {
     "supportLevel": {
@@ -658,6 +671,7 @@ class Settings:
     stable_readiness_policy: Path | None = None
     stable_known_limitations: Path | None = None
     stable_readiness_waivers: Path | None = None
+    public_beta_known_issues: Path | None = None
     release_id: str | None = None
     interop_smoke_summary: Path | None = None
     interop_extended_summary: Path | None = None
@@ -665,6 +679,7 @@ class Settings:
     live_network_summary: Path | None = None
     network_scale_soak_summary: Path | None = None
     require_history: bool = False
+    stable_rc_artifact_timestamp: str | None = None
 
 @dataclasses.dataclass
 class CommandResult:
@@ -1856,7 +1871,7 @@ def expected_first_party_maintenance_uri(app_id: str, field: str) -> str | None:
     if field == "ownerUri":
         return FIRST_PARTY_MAINTENANCE_OWNER_URI
     if field == "supportUri":
-        return f"https://example.invalid/crypta/apps/{app_id}/support"
+        return FIRST_PARTY_SUPPORT_URI
     return None
 
 def safe_single_line(value: Any) -> str | None:
@@ -2184,7 +2199,7 @@ def package_catalog_and_reviews(
     descriptor_dir.mkdir(parents=True, exist_ok=True)
     trusted_reviewers = work_dir / "trusted-reviewers.properties"
     write_trusted_reviewer_keys(trusted_reviewers, profile, state.settings.workspace_root)
-    artifact_timestamp = state.started_at
+    artifact_timestamp = state.settings.stable_rc_artifact_timestamp or state.started_at
 
     descriptors: list[Path] = []
     receipts: list[Path] = []
@@ -2502,6 +2517,7 @@ def release_config(state: PipelineState) -> dict[str, Any]:
         "schemaVersion": SCHEMA_VERSION,
         "tool": TOOL_NAME,
         "generatedAt": utc_now(),
+        "stableRcArtifactTimestamp": settings.stable_rc_artifact_timestamp,
         "mode": settings.mode,
         "version": state.version,
         "catalogChannel": settings.catalog_channel,

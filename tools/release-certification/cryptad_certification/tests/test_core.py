@@ -19,6 +19,33 @@ from cryptad_certification.workspace import WorkspaceError, prepare_context, pre
 
 
 class ManifestTest(unittest.TestCase):
+    def test_manifest_accepts_stable_rc_command_and_additive_inputs(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = write_manifest(
+                root,
+                inputs={
+                    "previousStableRcFreeze": "previous-freeze.json",
+                    "stableRcFreezeExceptions": "freeze-exceptions.json",
+                    "stableCatalogOperations": "catalog-operations.json",
+                },
+                policies={"stableRcFreezeMode": "refreeze"},
+                commands={"stable-rc": {}},
+            )
+
+            manifest = load_manifest(path, root)
+
+            self.assertEqual(
+                {
+                    "previousStableRcFreeze",
+                    "stableRcFreezeExceptions",
+                    "stableCatalogOperations",
+                },
+                set(manifest.inputs),
+            )
+            self.assertIn("stable-rc", manifest.commands)
+            self.assertEqual("refreeze", manifest.policies["stableRcFreezeMode"])
+
     def test_valid_manifest_creates_marked_release_workspace(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

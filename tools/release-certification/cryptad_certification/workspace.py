@@ -93,6 +93,22 @@ def _require_confined_directory(path: Path, run_root: Path, description: str) ->
         raise WorkspaceError(f"{description} path is not a directory: {path}")
 
 
+def reset_confined_directory(path: Path, run_root: Path, description: str) -> Path:
+    """Remove and recreate one confined directory without following replacement symlinks."""
+
+    resolved_root = run_root.resolve()
+    _require_confined_directory(path.parent, resolved_root, f"{description} parent")
+    if path.is_symlink() or (path.exists() and not path.is_dir()):
+        path.unlink()
+    elif path.exists():
+        _require_confined_directory(path, resolved_root, description)
+        shutil.rmtree(path)
+    _require_confined_directory(path.parent, resolved_root, f"{description} parent")
+    path.mkdir()
+    _require_confined_directory(path, resolved_root, description)
+    return path.resolve()
+
+
 def relative_to_run(path: Path, context: RunContext) -> str:
     """Return a portable artifact reference below the release-run root."""
 

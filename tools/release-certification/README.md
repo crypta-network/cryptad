@@ -19,6 +19,7 @@ Run one focused suite:
 python3 tools/release-certification/certify.py app-platform --self-test
 python3 tools/release-certification/certify.py release-certification --self-test
 python3 tools/release-certification/certify.py production-beta --self-test
+python3 tools/release-certification/certify.py stable-rc --self-test
 ```
 
 Run a CI-safe app-platform collection with the checked-in manifest:
@@ -48,6 +49,7 @@ The public entry point is `tools/release-certification/certify.py`.
 | `production-beta` | Build, certify, redact, and package a production-beta candidate. |
 | `go-no-go` | Build the release-manager launch dashboard. |
 | `stable-readiness` | Evaluate the Stable 1.0 promotion gate. |
+| `stable-rc` | Execute, freeze, package, and verify a protected Stable 1.0 release candidate. |
 | `migrate-v1` | Convert validated v1 previous-candidate or history summaries for the first v2 release. |
 | `self-test` | Run one focused `unittest` suite or all suites. |
 
@@ -92,8 +94,8 @@ the release workspace is prepared:
 | Map | Supported fields |
 | --- | --- |
 | `requirements` | Boolean `history`, `liveNetwork`, `multiNodeSoak`, `sandboxProviderTests`, `stableReadiness`, and `thirdPartyIntake` gates. |
-| `inputs` | Non-empty paths for interop, performance, app-platform, live-network, network-scale, multi-node, security-drill, production, dashboard, certification, Stable, waiver, policy, known-limitation, previous-candidate, and release-history artifacts. |
-| `policies` | `artifactBaseUri`, `catalogChannel`, `expectedPreviousReleaseId`, `historyDir`, `historyLabel`, and string-valued `metadata`. |
+| `inputs` | Non-empty paths for interop, performance, app-platform, live-network, network-scale, multi-node, security-drill, production, dashboard, certification, Stable, waiver, policy, known-limitation, previous-candidate, release-history, stable catalog operations, previous Stable RC freeze, and Stable RC freeze-exception artifacts. |
+| `policies` | `artifactBaseUri`, `catalogChannel`, `expectedPreviousReleaseId`, `historyDir`, `historyLabel`, `stableRcFreezeMode` (`first-freeze` or `refreeze`), and string-valued `metadata`. |
 | `execution` | Boolean collection/build/test controls plus positive integer `timeoutSeconds`. |
 
 `commands.<name>.args` remains an advanced engine-specific escape hatch. The unified command owns
@@ -127,6 +129,45 @@ Every command writes below one release-scoped directory:
     redaction-report.json
     artifacts/
 ```
+
+For Stable 1.0 RC execution, copy
+`manifests/stable-1.0-rc.example.json`, replace every placeholder, and run:
+
+```bash
+python3 tools/release-certification/certify.py stable-rc \
+  --manifest build/stable-1.0-rc.json
+```
+
+The manifest retains the `stable-review` profile and integer build number. The command generates a
+unified production-beta component inside the same marked run; that protected pipeline produces and
+binds its go/no-go, release-certification, app-platform, ecosystem-matrix, and Stable-readiness
+native artifacts for the Stable RC engine. Do not attach unrelated precomputed copies to the
+canonical manifest. External prerequisites use the coordinated `stableCatalogOperations`,
+`previousStableRcFreeze`, and `stableRcFreezeExceptions` input names. Stable RC output lives under
+`<out-root>/<release-id>/stable-rc/`; see the
+[Stable RC runbook](../../docs/stable-1.0-rc-execution-and-release-freeze.md) for its freeze schema,
+artifact inventory, drift and exception semantics, and protected workflow.
+
+`stableCatalogOperations.artifactTimestamp` is the immutable producer timestamp for the signed
+catalog and first-party review receipts. The same protected value is used on every refreeze. The
+production pipeline emits `crypta-stable-1.0-rc-<build>-product.tar.gz` with normalized member
+metadata and no run-specific evidence reports; this is the exact distribution bound by the Stable
+RC freeze. The ordinary production-beta evidence archive remains available to its existing
+consumers. These requirements apply only when `stable-rc` orchestrates the production stage; a
+direct `production-beta` run with the `stable-review` profile keeps the pre-existing manifest and
+intake contracts.
+
+Set `policies.stableRcFreezeMode=first-freeze` only for the initial candidate baseline and omit
+`inputs.previousStableRcFreeze`. Every later run uses `stableRcFreezeMode=refreeze` and must supply
+the exact freeze from the latest successful protected workflow run. The workflow authenticates
+that parent against the latest uploaded artifact when available. Each successful protected run
+also creates a commit-bound check-run lineage anchor for the exact freeze file digest, release,
+build, run, and attempt. After the uploaded artifact expires, a retained freeze is accepted only
+when its digest matches that latest authenticated anchor; stale or unauthenticated lineage fails
+closed. The canonical freeze binds the exact deterministic product-distribution digest. Rebuilding
+the unchanged candidate must produce identical bytes; a catalog, review receipt, bundle, launcher,
+policy, or product member change remains candidate drift even when semantic producer summaries are
+unchanged.
 
 Nested operations use nested component names, for example `multi-node-beta/run/` and
 `security-response/drill-run-all/`. JSON and Markdown artifact references are relative to the run
@@ -300,6 +341,14 @@ aliases such as `/var` and Windows temporary-directory aliases do not create fal
 Release workflows generate their runtime manifest with `jq` from workflow-dispatch inputs. Secret
 values remain in protected environment variables or files and are never serialized into the
 manifest or uploaded workspace.
+
+`.github/workflows/stable-1.0-rc-release.yml` is manual and protected. It requires an explicit
+candidate release ID and integer build, JDK 25, a clean candidate commit, production
+signing/reviewer material, full build/stage/sign/verify, and real live, sandbox, multi-node,
+previous-candidate, network-scale, security-drill, third-party-intake, and catalog-operations
+evidence. It verifies the post-package freeze, checksums, archive hygiene, final v2 redaction, and
+`go`/`go-with-waivers` result before uploading only the public RC component. It does not tag,
+release, merge, or publish Stable 1.0 GA.
 
 Follow the [production security response runbook](../../docs/production-security-response-runbook.md)
 when collecting release-blocking drill evidence or responding to an app ecosystem incident.

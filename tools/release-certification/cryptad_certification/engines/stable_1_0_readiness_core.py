@@ -228,6 +228,7 @@ AUDITABLE_LIMITATION_REQUIRED_STRING_FIELDS = (
     "classification",
     "status",
     "summary",
+    "owner",
     "boundedBy",
 )
 

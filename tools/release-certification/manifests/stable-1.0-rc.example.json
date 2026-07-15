@@ -1,0 +1,62 @@
+{
+  "schemaVersion": 1,
+  "release": {
+    "id": "cryptad-stable-1-0-rc-REPLACE_ME",
+    "version": "REPLACE_WITH_INTEGER_BUILD",
+    "profile": "stable-review"
+  },
+  "output": {
+    "root": "build/release-certification",
+    "reset": true
+  },
+  "requirements": {
+    "history": true,
+    "liveNetwork": true,
+    "multiNodeSoak": true,
+    "sandboxProviderTests": true,
+    "stableReadiness": true,
+    "thirdPartyIntake": true
+  },
+  "inputs": {
+    "interopSmoke": "build/interop-smoke/summary.json",
+    "liveNetwork": "build/protected-inputs/live-network-beta-summary.json",
+    "multiNodeSoak": "build/protected-inputs/multi-node-beta-soak-summary.json",
+    "networkScaleSoak": "build/protected-inputs/network-scale-soak-summary.json",
+    "performanceSmoke": "build/perf-smoke/summary.json",
+    "previousCandidate": "build/protected-inputs/previous-candidate-summary.json",
+    "previousStableRcFreeze": "build/protected-inputs/previous-stable-1.0-rc-freeze.json",
+    "publicBetaKnownIssues": "build/protected-inputs/public-beta-known-issues.json",
+    "releaseHistory": "build/protected-inputs/release-history-summary.json",
+    "securityDrills": "build/protected-inputs/security-drills-summary.json",
+    "stableCatalogOperations": "build/protected-inputs/stable-catalog-operations-summary.json",
+    "stableKnownLimitations": "tools/release-certification/stable-1.0-known-limitations.json",
+    "stableReadinessPolicy": "tools/release-certification/stable-1.0-readiness-policy.json",
+    "stableReadinessWaivers": "build/protected-inputs/stable-readiness-waivers.json",
+    "stableRcFreezeExceptions": "build/protected-inputs/stable-1.0-rc-freeze-exceptions.json",
+    "thirdPartyIntake": "build/protected-inputs/third-party-intake-summary.json"
+  },
+  "policies": {
+    "artifactBaseUri": "https://REPLACE_ME.invalid/stable-1.0-rc/",
+    "catalogChannel": "stable",
+    "expectedPreviousReleaseId": "REPLACE_WITH_PREVIOUS_CANDIDATE_RELEASE_ID",
+    "stableRcFreezeMode": "refreeze"
+  },
+  "execution": {
+    "allowDirtyWorkspace": false,
+    "allowTestSigningInProduction": false,
+    "collectEvidence": true,
+    "emergencySkipBuild": false,
+    "emergencySkipLiveNetwork": false,
+    "fixtureEvidence": false,
+    "generateStableReadiness": true,
+    "skipFullBuild": false,
+    "skipGitMetadata": false,
+    "skipGradle": false,
+    "writeHistory": false
+  },
+  "commands": {
+    "stable-rc": {
+      "args": []
+    }
+  }
+}

@@ -63,12 +63,15 @@
           "networkScaleSoak",
           "performanceSmoke",
           "previousCandidate",
+          "previousStableRcFreeze",
           "productionBeta",
           "publicBetaKnownIssues",
           "releaseCertification",
           "releaseHistory",
           "securityDrills",
+          "stableCatalogOperations",
           "stableKnownLimitations",
+          "stableRcFreezeExceptions",
           "stableReadiness",
           "stableReadinessPolicy",
           "stableReadinessWaivers",
@@ -87,6 +90,7 @@
         "expectedPreviousReleaseId": {"type": "string", "minLength": 1},
         "historyDir": {"type": "string", "minLength": 1},
         "historyLabel": {"type": "string", "minLength": 1},
+        "stableRcFreezeMode": {"enum": ["first-freeze", "refreeze"]},
         "metadata": {
           "type": "object",
           "additionalProperties": {"type": "string", "minLength": 1}
@@ -126,6 +130,7 @@
           "production-beta",
           "go-no-go",
           "stable-readiness",
+          "stable-rc",
           "multi-node-beta",
           "security-response"
         ]

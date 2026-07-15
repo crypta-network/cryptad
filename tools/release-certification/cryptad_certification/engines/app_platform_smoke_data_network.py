@@ -2553,7 +2553,8 @@ def collect_trust_graph_reference_app_evidence(settings: Settings) -> EvidenceIt
         )
         checks["manifestUsesContractV22"] = (
             manifest.get("api.minimumVersion") == "22"
-            and manifest.get("api.maximumTestedVersion") == "22"
+            and manifest.get("api.maximumTestedVersion")
+            == str(FIRST_PARTY_CERTIFIED_MAX_CONTRACT_VERSION)
             and manifest.get("api.experimentalCapabilitiesAccepted") == "true"
         )
         checks["manifestAdvertisesTrustScoreService"] = (
@@ -2630,7 +2631,8 @@ def collect_trust_graph_app_data_preview_evidence(settings: Settings) -> Evidenc
     checks = details["checks"]
     checks["manifestUsesAppDataContract"] = (
         manifest.get("api.minimumVersion") == "22"
-        and manifest.get("api.maximumTestedVersion") == "22"
+        and manifest.get("api.maximumTestedVersion")
+        == str(FIRST_PARTY_CERTIFIED_MAX_CONTRACT_VERSION)
         and {"app.data.read", "app.data.write"}.issubset(permissions)
     )
     checks["usesSdkJsonRecordHelpers"] = (
@@ -3352,7 +3354,8 @@ def collect_trust_graph_durable_exchange_reference_app_evidence(
     checks = details["checks"]
     checks["manifestUsesContractV22"] = (
         manifest.get("api.minimumVersion") == "22"
-        and manifest.get("api.maximumTestedVersion") == "22"
+        and manifest.get("api.maximumTestedVersion")
+        == str(FIRST_PARTY_CERTIFIED_MAX_CONTRACT_VERSION)
     )
     checks["manifestDeclaresExchangePermissions"] = {
         "trust.read",

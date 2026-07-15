@@ -1679,10 +1679,10 @@
               "deprecationPolicy": "none",
               "migrationPolicy": "dry-run-required",
               "owner": "crypta-core",
-              "ownerUri": "https://example.invalid/crypta/owners/core",
+              "ownerUri": "https://github.com/crypta-network/cryptad",
               "securityPolicy": "catalog-advisories",
               "supportLevel": "maintained",
-              "supportUri": "https://example.invalid/crypta/apps/feed-reader/support"
+              "supportUri": "https://github.com/crypta-network/cryptad/issues"
             }
           },
           "profile-publisher": {
@@ -1692,10 +1692,10 @@
               "deprecationPolicy": "none",
               "migrationPolicy": "declared",
               "owner": "crypta-core",
-              "ownerUri": "https://example.invalid/crypta/owners/core",
+              "ownerUri": "https://github.com/crypta-network/cryptad",
               "securityPolicy": "catalog-advisories",
               "supportLevel": "maintained",
-              "supportUri": "https://example.invalid/crypta/apps/profile-publisher/support"
+              "supportUri": "https://github.com/crypta-network/cryptad/issues"
             }
           },
           "publisher": {
@@ -1705,10 +1705,10 @@
               "deprecationPolicy": "none",
               "migrationPolicy": "none",
               "owner": "crypta-core",
-              "ownerUri": "https://example.invalid/crypta/owners/core",
+              "ownerUri": "https://github.com/crypta-network/cryptad",
               "securityPolicy": "catalog-advisories",
               "supportLevel": "core",
-              "supportUri": "https://example.invalid/crypta/apps/publisher/support"
+              "supportUri": "https://github.com/crypta-network/cryptad/issues"
             }
           },
           "queue-manager": {
@@ -1718,10 +1718,10 @@
               "deprecationPolicy": "none",
               "migrationPolicy": "none",
               "owner": "crypta-core",
-              "ownerUri": "https://example.invalid/crypta/owners/core",
+              "ownerUri": "https://github.com/crypta-network/cryptad",
               "securityPolicy": "catalog-advisories",
               "supportLevel": "core",
-              "supportUri": "https://example.invalid/crypta/apps/queue-manager/support"
+              "supportUri": "https://github.com/crypta-network/cryptad/issues"
             }
           },
           "site-publisher": {
@@ -1731,10 +1731,10 @@
               "deprecationPolicy": "none",
               "migrationPolicy": "none",
               "owner": "crypta-core",
-              "ownerUri": "https://example.invalid/crypta/owners/core",
+              "ownerUri": "https://github.com/crypta-network/cryptad",
               "securityPolicy": "catalog-advisories",
               "supportLevel": "maintained",
-              "supportUri": "https://example.invalid/crypta/apps/site-publisher/support"
+              "supportUri": "https://github.com/crypta-network/cryptad/issues"
             }
           },
           "social-inbox": {
@@ -1744,10 +1744,10 @@
               "deprecationPolicy": "none",
               "migrationPolicy": "operator-approved",
               "owner": "crypta-core",
-              "ownerUri": "https://example.invalid/crypta/owners/core",
+              "ownerUri": "https://github.com/crypta-network/cryptad",
               "securityPolicy": "catalog-advisories",
               "supportLevel": "local-rc",
-              "supportUri": "https://example.invalid/crypta/apps/social-inbox/support"
+              "supportUri": "https://github.com/crypta-network/cryptad/issues"
             }
           },
           "trust-graph": {
@@ -1757,10 +1757,10 @@
               "deprecationPolicy": "none",
               "migrationPolicy": "dry-run-required",
               "owner": "crypta-core",
-              "ownerUri": "https://example.invalid/crypta/owners/core",
+              "ownerUri": "https://github.com/crypta-network/cryptad",
               "securityPolicy": "catalog-advisories",
               "supportLevel": "local-rc",
-              "supportUri": "https://example.invalid/crypta/apps/trust-graph/support"
+              "supportUri": "https://github.com/crypta-network/cryptad/issues"
             }
           }
         },

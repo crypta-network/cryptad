@@ -990,7 +990,9 @@ def run_self_test(repo_root: Path) -> None:
         "app.data.read,app.data.write"
     )
     assert catalog["app.trust-graph.api.minimumVersion"] == "22"
-    assert catalog["app.trust-graph.api.maximumTestedVersion"] == "22"
+    assert catalog["app.trust-graph.api.maximumTestedVersion"] == str(
+        FIRST_PARTY_CERTIFIED_MAX_CONTRACT_VERSION
+    )
     registry_text = registry_fixture.read_text(encoding="utf-8")
     counts = legacy_counts_from_registry_text(registry_text)
     assert counts == {
@@ -2273,7 +2275,9 @@ def run_self_test(repo_root: Path) -> None:
         assert evidence_by_id["reference-app.feed-reader"]["status"] == "pass"
         assert evidence_by_id["reference-app.feed-reader-subscriptions"]["status"] == "pass"
         assert evidence_by_id["reference-app.feed-reader-app-data"]["status"] == "pass"
-        assert evidence_by_id["reference-app.trust-graph"]["status"] == "pass"
+        assert evidence_by_id["reference-app.trust-graph"]["status"] == "pass", evidence_by_id[
+            "reference-app.trust-graph"
+        ]
         assert evidence_by_id["reference-app.trust-graph-durable-exchange"]["status"] == "pass"
         assert evidence_by_id["reference-app.trust-graph-app-data-preview"]["status"] == "pass"
         assert evidence_by_id["app-platform.trust-graph-preview"]["status"] == "pass"

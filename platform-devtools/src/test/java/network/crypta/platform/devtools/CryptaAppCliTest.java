@@ -1695,6 +1695,26 @@ class CryptaAppCliTest {
   }
 
   @Test
+  void apiContentFormats_whenOutputRequested_expectAuthoritativeRegistryWritten() throws Exception {
+    Path output = tempDir.resolve("content-format-profiles.json");
+
+    CliResult result = runCli("api", "content-formats", "--output", output.toString());
+
+    assertEquals(CommandLine.ExitCode.OK, result.exitCode());
+    assertTrue(result.out().contains("5 profile(s)"));
+    String json = Files.readString(output, StandardCharsets.UTF_8);
+    assertTrue(json.contains("\"kind\":\"content-format-profile-registry\""));
+    assertTrue(json.contains("\"id\":\"crypta.profile.v1\""));
+    assertTrue(json.contains("\"id\":\"crypta.feed.snapshot.v1\""));
+    assertTrue(json.contains("\"id\":\"crypta.trust.statement.v1\""));
+    assertTrue(json.contains("\"id\":\"crypta.social.message.v1\""));
+    assertTrue(json.contains("\"id\":\"crypta.social.outbox.v1\""));
+    assertTrue(json.contains("\"canonicalizationKind\""));
+    assertTrue(json.contains("\"versionPolicy\""));
+    assertFalse(json.contains(tempDir.toString()));
+  }
+
+  @Test
   void apiPolicy_whenRequested_expectCompatibilityWindowSummary() {
     CliResult result = runCli("api", "policy");
 

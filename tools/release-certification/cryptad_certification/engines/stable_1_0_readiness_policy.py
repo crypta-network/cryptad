@@ -1236,6 +1236,7 @@ def safe_limitation(limitation: dict[str, Any]) -> dict[str, Any]:
         "classification",
         "status",
         "summary",
+        "owner",
         "evidenceIds",
         "boundedBy",
     )

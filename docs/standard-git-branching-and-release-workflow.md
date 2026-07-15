@@ -19,6 +19,13 @@ This document captures the Cryptad team’s standard Git branching and release w
 
 Rationale: Using a single, monotonically increasing integer keeps updater compatibility straightforward (USK subscriptions, minimum build checks) and avoids semantic-version drift.
 
+Stable 1.0 is a product and Platform API compatibility milestone, not a semantic version in the Git
+model. A Stable 1.0 release candidate still belongs to the intended integer build and, if later
+published, follows the normal `release/<build-number>` and `v<build-number>` workflow. The
+[Stable RC release-freeze command](stable-1.0-rc-execution-and-release-freeze.md) prepares evidence
+for review only; it does not create a branch or tag, merge code, publish a GitHub Release, or
+declare GA.
+
 ## Branching Model (GitFlow‑inspired)
 
 - Primary branches

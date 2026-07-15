@@ -9,6 +9,7 @@
       "category": "trust-graph-local-scope",
       "classification": "allowed-for-stable-1.0",
       "status": "open",
+      "owner": "crypta-core",
       "summary": "Trust Graph Local RC remains local advisory trust, not a global Web of Trust, routing policy, crawler, or legacy WoT compatibility layer.",
       "evidenceIds": [
         "app-platform.trust-graph-rc-scope-and-safety",
@@ -23,6 +24,7 @@
       "category": "social-inbox-local-scope",
       "classification": "allowed-for-stable-1.0",
       "status": "open",
+      "owner": "crypta-core",
       "summary": "Social Inbox RC remains a local threaded social/message reference app and does not provide Freetalk, Sone, Freemail, or daemon-core social protocol compatibility.",
       "evidenceIds": [
         "reference-app.social-inbox",
@@ -37,6 +39,7 @@
       "category": "future-mail-service",
       "classification": "allowed-for-stable-1.0",
       "status": "open",
+      "owner": "crypta-core",
       "summary": "Freemail-like encrypted mail migration remains documented as future app or app-service work and is not a Stable 1.0 compatibility promise.",
       "evidenceIds": [
         "legacy-plugin.migration-finalization",
@@ -50,6 +53,7 @@
       "category": "third-party-intake-beta-limited",
       "classification": "allowed-for-stable-1.0",
       "status": "open",
+      "owner": "crypta-core",
       "summary": "Third-party app intake may remain beta-limited if at least one stable-target sample app passes submission, pre-review, review decision, beta catalog candidate, install smoke, rejection, caution, resubmission, compatibility, docs, and redaction evidence.",
       "evidenceIds": [
         "third-party-intake.review-decision",

@@ -22,6 +22,13 @@ The command writes evidence envelope v2 under `<out-root>/<release-id>/stable-re
 summary, report, redaction report, blocker list, and known-limitations artifact contain only
 sanitized metadata and relative references.
 
+A passing readiness decision measures whether the candidate is eligible for Stable review; it
+does not freeze, package, tag, or publish the candidate. To cut a reviewable release candidate, use
+the one-command [Stable 1.0 RC execution and release-freeze workflow](stable-1.0-rc-execution-and-release-freeze.md).
+That protected workflow generates Stable readiness inside the same `stable-review` run, copies
+every allowed limitation into the freeze and RC notes, and verifies the packaged candidate for
+post-freeze drift.
+
 ## Decisions
 
 - `ready` means all required Stable domains pass and no allowed limitation remains open.

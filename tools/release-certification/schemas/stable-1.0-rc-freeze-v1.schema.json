@@ -1,0 +1,218 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/crypta-network/cryptad/tools/release-certification/schemas/stable-1.0-rc-freeze-v1.schema.json",
+  "title": "Cryptad Stable 1.0 RC freeze manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "kind",
+    "stableMilestone",
+    "contentDigest",
+    "candidate",
+    "platformApi",
+    "stableCatalog",
+    "firstPartyApps",
+    "contentFormatProfiles",
+    "limitationsAndPolicy",
+    "acceptedFreezeExceptions"
+  ],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "kind": {"const": "stable-1.0-rc-freeze"},
+    "stableMilestone": {"const": "1.0"},
+    "contentDigest": {"$ref": "#/$defs/digest"},
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "releaseId", "buildVersion", "sourceCommit", "sourceRef", "sourceProvenanceDigest",
+        "generationTool", "generationToolVersion", "productionBetaSummaryDigest",
+        "productionDistributionDigest",
+        "stableReadinessSummaryDigest", "releaseCertificationSummaryDigest", "goNoGoSummaryDigest",
+        "ecosystemMatrixDigest", "releaseHistoryDigest", "previousCandidateDigest", "liveNetworkDigest",
+        "multiNodeSoakDigest", "networkScaleSoakDigest", "securityDrillDigest",
+        "thirdPartyIntakeDigest", "catalogOperationsDigest"
+      ],
+      "properties": {
+        "releaseId": {"$ref": "#/$defs/nonEmpty"},
+        "buildVersion": {"type": "string", "pattern": "^[1-9][0-9]*$"},
+        "sourceCommit": {"type": "string", "pattern": "^[0-9a-f]{40,64}$"},
+        "sourceRef": {"$ref": "#/$defs/nonEmpty"},
+        "sourceProvenanceDigest": {"$ref": "#/$defs/digest"},
+        "generationTool": {"const": "stable-1.0-rc"},
+        "generationToolVersion": {"const": 1},
+        "productionBetaSummaryDigest": {"$ref": "#/$defs/digest"},
+        "productionDistributionDigest": {"$ref": "#/$defs/digest"},
+        "stableReadinessSummaryDigest": {"$ref": "#/$defs/digest"},
+        "releaseCertificationSummaryDigest": {"$ref": "#/$defs/digest"},
+        "goNoGoSummaryDigest": {"$ref": "#/$defs/digest"},
+        "ecosystemMatrixDigest": {"$ref": "#/$defs/digest"},
+        "releaseHistoryDigest": {"$ref": "#/$defs/digest"},
+        "previousCandidateDigest": {"$ref": "#/$defs/digest"},
+        "liveNetworkDigest": {"$ref": "#/$defs/digest"},
+        "multiNodeSoakDigest": {"$ref": "#/$defs/digest"},
+        "networkScaleSoakDigest": {"$ref": "#/$defs/digest"},
+        "securityDrillDigest": {"$ref": "#/$defs/digest"},
+        "thirdPartyIntakeDigest": {"$ref": "#/$defs/digest"},
+        "catalogOperationsDigest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "platformApi": {"$ref": "#/$defs/platformApi"},
+    "stableCatalog": {"$ref": "#/$defs/stableCatalog"},
+    "firstPartyApps": {
+      "type": "array",
+      "minItems": 7,
+      "maxItems": 7,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/firstPartyApp"}
+    },
+    "contentFormatProfiles": {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 5,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/contentProfile"}
+    },
+    "limitationsAndPolicy": {"$ref": "#/$defs/limitationsAndPolicy"},
+    "acceptedFreezeExceptions": {
+      "type": "array",
+      "items": {"$ref": "stable-1.0-rc-freeze-exceptions-v1.schema.json#/$defs/exception"}
+    }
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "nonEmpty": {"type": "string", "minLength": 1},
+    "health": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "signatureVerified", "revision", "digest"],
+      "properties": {
+        "status": {"const": "pass"},
+        "signatureVerified": {"const": true},
+        "revision": {"type": "integer", "minimum": 0},
+        "digest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "mirrorHealth": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "signatureVerified", "revision", "digest", "transportFallbackOnly"],
+      "properties": {
+        "status": {"const": "pass"},
+        "signatureVerified": {"const": true},
+        "revision": {"type": "integer", "minimum": 0},
+        "digest": {"$ref": "#/$defs/digest"},
+        "transportFallbackOnly": {"const": true}
+      }
+    },
+    "platformApi": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["baselineName", "baselineContractVersion", "baselineDigest", "currentContractVersion", "currentContractDigest", "compatibilityWindowPolicyDigest", "stableCapabilityCount", "stableEndpointCount", "experimentalCapabilityCount", "experimentalEndpointCount", "stableBreakingChangeVerification", "verificationReportDigest"],
+      "properties": {
+        "baselineName": {"const": "1.0"},
+        "baselineContractVersion": {"type": "integer", "minimum": 1},
+        "baselineDigest": {"$ref": "#/$defs/digest"},
+        "currentContractVersion": {"type": "integer", "minimum": 1},
+        "currentContractDigest": {"$ref": "#/$defs/digest"},
+        "compatibilityWindowPolicyDigest": {"$ref": "#/$defs/digest"},
+        "stableCapabilityCount": {"type": "integer", "minimum": 1},
+        "stableEndpointCount": {"type": "integer", "minimum": 1},
+        "experimentalCapabilityCount": {"type": "integer", "minimum": 0},
+        "experimentalEndpointCount": {"type": "integer", "minimum": 0},
+        "stableBreakingChangeVerification": {"const": "pass"},
+        "verificationReportDigest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "stableCatalog": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["catalogId", "channel", "catalogVersion", "edition", "revision", "catalogDigest", "signatureDigest", "signatureAliasDigest", "catalogSigningKeyId", "artifactTimestamp", "keyRotationStatus", "primaryHealth", "mirrorHealth", "verifiedRollback", "securityAdvisoryCount", "denylistCount", "orderedEntries"],
+      "properties": {
+        "catalogId": {"$ref": "#/$defs/nonEmpty"},
+        "channel": {"const": "stable"},
+        "catalogVersion": {"type": "integer", "minimum": 1},
+        "edition": {"type": "integer", "minimum": 0},
+        "revision": {"type": "integer", "minimum": 0},
+        "catalogDigest": {"$ref": "#/$defs/digest"},
+        "signatureDigest": {"$ref": "#/$defs/digest"},
+        "signatureAliasDigest": {"$ref": "#/$defs/digest"},
+        "catalogSigningKeyId": {"$ref": "#/$defs/nonEmpty"},
+        "artifactTimestamp": {"type": "string", "format": "date-time"},
+        "keyRotationStatus": {"type": "object", "additionalProperties": false, "required": ["status", "compromised"], "properties": {"status": {"const": "complete"}, "compromised": {"const": false}}},
+        "primaryHealth": {"$ref": "#/$defs/health"},
+        "mirrorHealth": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/mirrorHealth"}},
+        "verifiedRollback": {"$ref": "#/$defs/health"},
+        "securityAdvisoryCount": {"type": "integer", "minimum": 0},
+        "denylistCount": {"type": "integer", "minimum": 0},
+        "orderedEntries": {"type": "array", "minItems": 7, "maxItems": 7, "uniqueItems": true, "items": {"type": "object", "additionalProperties": false, "required": ["appId", "version"], "properties": {"appId": {"enum": ["queue-manager", "publisher", "site-publisher", "profile-publisher", "social-inbox", "feed-reader", "trust-graph"]}, "version": {"$ref": "#/$defs/nonEmpty"}}}}
+      }
+    },
+    "firstPartyApp": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["appId", "version", "channel", "supportStatus", "deprecationStatus", "supportLevel", "replacementAppId", "bundleDigest", "bundleSizeBytes", "appSigningKeyId", "reviewReceiptDigest", "reviewerKeyId", "manifestDigest", "declaredPermissionSetDigest", "targetApiStability", "apiCompatibilityResult", "apiCompatibilityEvidenceDigest", "appDataSchemaVersion", "migrationReadiness", "backupRestore", "betaReadinessEvidenceDigest", "supportMetadataDigest", "supportUri", "redactedDiagnosticsReadiness", "allowedStableLimitationId"],
+      "properties": {
+        "appId": {"enum": ["queue-manager", "publisher", "site-publisher", "profile-publisher", "social-inbox", "feed-reader", "trust-graph"]},
+        "version": {"$ref": "#/$defs/nonEmpty"},
+        "channel": {"const": "stable"},
+        "supportStatus": {"const": "supported"},
+        "deprecationStatus": {"enum": ["none", "deprecated"]},
+        "supportLevel": {"enum": ["core", "maintained", "local-rc"]},
+        "replacementAppId": {"type": ["string", "null"]},
+        "bundleDigest": {"$ref": "#/$defs/digest"},
+        "bundleSizeBytes": {"type": "integer", "minimum": 1},
+        "appSigningKeyId": {"$ref": "#/$defs/nonEmpty"},
+        "reviewReceiptDigest": {"$ref": "#/$defs/digest"},
+        "reviewerKeyId": {"$ref": "#/$defs/nonEmpty"},
+        "manifestDigest": {"$ref": "#/$defs/digest"},
+        "declaredPermissionSetDigest": {"$ref": "#/$defs/digest"},
+        "targetApiStability": {"enum": ["stable", "experimental"]},
+        "apiCompatibilityResult": {"const": "pass"},
+        "apiCompatibilityEvidenceDigest": {"$ref": "#/$defs/digest"},
+        "appDataSchemaVersion": {"oneOf": [{"type": "integer", "minimum": 1}, {"const": "not-applicable"}]},
+        "migrationReadiness": {"$ref": "#/$defs/nonEmpty"},
+        "backupRestore": {"$ref": "#/$defs/nonEmpty"},
+        "betaReadinessEvidenceDigest": {"$ref": "#/$defs/digest"},
+        "supportMetadataDigest": {"$ref": "#/$defs/digest"},
+        "supportUri": {"type": "string", "format": "uri"},
+        "redactedDiagnosticsReadiness": {"const": "redacted-summary-only"},
+        "allowedStableLimitationId": {"type": ["string", "null"]}
+      }
+    },
+    "contentProfile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profileId", "version", "status", "descriptorDigest", "canonicalizationRulesDigest", "maximumSizePolicy", "signaturePayloadRules", "parserValidatorCompatibilityEvidenceDigest"],
+      "properties": {
+        "profileId": {"enum": ["crypta.profile.v1", "crypta.feed.snapshot.v1", "crypta.trust.statement.v1", "crypta.social.message.v1", "crypta.social.outbox.v1"]},
+        "version": {"type": "integer", "minimum": 1},
+        "status": {"enum": ["stable", "beta", "experimental", "deprecated"]},
+        "descriptorDigest": {"$ref": "#/$defs/digest"},
+        "canonicalizationRulesDigest": {"$ref": "#/$defs/digest"},
+        "maximumSizePolicy": {"type": "object", "additionalProperties": false, "required": ["documentBytes", "signedPayloadBytes"], "properties": {"documentBytes": {"type": "integer", "minimum": 1}, "signedPayloadBytes": {"type": ["integer", "null"], "minimum": 1}}},
+        "signaturePayloadRules": {"type": "object", "additionalProperties": false, "required": ["signed", "signingDomain"], "properties": {"signed": {"type": "boolean"}, "signingDomain": {"type": ["string", "null"]}}},
+        "parserValidatorCompatibilityEvidenceDigest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "limitationsAndPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stableReadinessPolicyDigest", "allowedLimitations", "allowedLimitationsDigest", "allowedLimitationCount", "disallowedLimitationCount", "betaOnlyLimitationCount", "publicBetaKnownIssuesDigest", "stableKnownLimitationsDigest", "securityDrillSummaryDigest", "legacyPluginAdminFreezeEvidenceDigest", "supportFeedbackReadinessEvidenceDigest"],
+      "properties": {
+        "stableReadinessPolicyDigest": {"$ref": "#/$defs/digest"},
+        "allowedLimitations": {"type": "array", "uniqueItems": true, "items": {"type": "object", "additionalProperties": false, "required": ["id", "title", "summary", "category", "classification", "status", "owner", "boundedBy", "evidenceIds"], "properties": {"id": {"$ref": "#/$defs/nonEmpty"}, "title": {"$ref": "#/$defs/nonEmpty"}, "summary": {"$ref": "#/$defs/nonEmpty"}, "category": {"$ref": "#/$defs/nonEmpty"}, "classification": {"const": "allowed-for-stable-1.0"}, "status": {"const": "open"}, "owner": {"$ref": "#/$defs/nonEmpty"}, "boundedBy": {"$ref": "#/$defs/nonEmpty"}, "evidenceIds": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/nonEmpty"}}}}},
+        "allowedLimitationsDigest": {"$ref": "#/$defs/digest"},
+        "allowedLimitationCount": {"type": "integer", "minimum": 0},
+        "disallowedLimitationCount": {"const": 0},
+        "betaOnlyLimitationCount": {"const": 0},
+        "publicBetaKnownIssuesDigest": {"$ref": "#/$defs/digest"},
+        "stableKnownLimitationsDigest": {"$ref": "#/$defs/digest"},
+        "securityDrillSummaryDigest": {"$ref": "#/$defs/digest"},
+        "legacyPluginAdminFreezeEvidenceDigest": {"$ref": "#/$defs/digest"},
+        "supportFeedbackReadinessEvidenceDigest": {"$ref": "#/$defs/digest"}
+      }
+    }
+  }
+}
