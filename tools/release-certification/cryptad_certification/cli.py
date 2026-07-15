@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import shutil
 import sys
 from pathlib import Path
 
 from . import selftest
+from .engines.stable_1_0_rc_core import SAME_RUN_INPUT_KEYS
 from .legacy import execute as execute_engine
 from .manifest import load_manifest
 from .migration import execute as execute_migration
@@ -24,6 +26,7 @@ COMMANDS = (
     "production-beta",
     "go-no-go",
     "stable-readiness",
+    "stable-rc",
 )
 MULTI_NODE_ACTIONS = (
     "plan",
@@ -54,6 +57,7 @@ SELF_TEST_SUITES = (
     "production-beta",
     "go-no-go",
     "stable-readiness",
+    "stable-rc",
     "migration",
 )
 
@@ -153,6 +157,37 @@ def _require_pending_component(manifest: RunManifest, component: str) -> None:
         )
 
 
+def _validate_stable_rc_manifest(manifest: RunManifest) -> None:
+    """Reject Stable RC orchestration outside the protected Stable review profile."""
+
+    if manifest.release.profile != "stable-review":
+        raise ValueError("stable-rc requires release.profile stable-review")
+    version = manifest.release.version
+    if version is None or re.fullmatch(r"[1-9][0-9]*", version) is None:
+        raise ValueError("stable-rc requires a canonical positive integer release.version")
+    freeze_mode = manifest.policies.get("stableRcFreezeMode")
+    has_previous_freeze = "previousStableRcFreeze" in manifest.inputs
+    if freeze_mode not in {"first-freeze", "refreeze"}:
+        raise ValueError(
+            "stable-rc requires policies.stableRcFreezeMode first-freeze or refreeze"
+        )
+    if freeze_mode == "first-freeze" and has_previous_freeze:
+        raise ValueError(
+            "stable-rc first-freeze mode cannot include inputs.previousStableRcFreeze"
+        )
+    if freeze_mode == "refreeze" and not has_previous_freeze:
+        raise ValueError(
+            "stable-rc refreeze mode requires inputs.previousStableRcFreeze"
+        )
+    configured_same_run = [key for key in SAME_RUN_INPUT_KEYS if key in manifest.inputs]
+    if configured_same_run:
+        names = ", ".join(f"inputs.{key}" for key in configured_same_run)
+        raise ValueError(
+            "stable-rc generates production-beta and its promotion inputs in the same "
+            f"protected run; externally supplied same-run inputs are not accepted: {names}"
+        )
+
+
 def _run_command(args: argparse.Namespace) -> int:
     command = str(args.command)
     if getattr(args, "self_test", False):
@@ -162,6 +197,8 @@ def _run_command(args: argparse.Namespace) -> int:
         raise ValueError(f"{command} requires --manifest")
     workspace_root = args.workspace_root.resolve()
     manifest = load_manifest(manifest_path.resolve(), workspace_root, args.out_root)
+    if command == "stable-rc":
+        _validate_stable_rc_manifest(manifest)
     prepare_run_root(manifest)
 
     previous = Path.cwd()
@@ -179,6 +216,9 @@ def _run_command(args: argparse.Namespace) -> int:
             if command == "release-certification" and manifest.execution.get("collectEvidence") is True:
                 _require_pending_component(manifest, "release-certification")
                 _collect_release_evidence(workspace_root, manifest)
+            if command == "stable-rc":
+                _require_pending_component(manifest, "stable-rc")
+                _execute_component(workspace_root, manifest, "production-beta")
             component = command if action is None else f"{command}/{action}"
             context = prepare_context(workspace_root, manifest, component)
             code = execute_engine(context, command, action)

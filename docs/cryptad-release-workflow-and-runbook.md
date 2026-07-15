@@ -51,6 +51,18 @@
 ## Platform Release Gates
 Treat these as release blockers, in order:
 
+When the candidate targets the Stable 1.0 product milestone, run the protected
+[Stable 1.0 RC execution and release-freeze workflow](stable-1.0-rc-execution-and-release-freeze.md)
+after the prerequisite production evidence passes and before generating release descriptors,
+tags, or publication material. The RC command uses the existing `stable-review` profile and the
+repository's integer build identity; it does not replace the `v<build-number>` tag policy. A
+blocker fix after freeze invalidates the old archive, checksums, provenance, and freeze and requires
+a complete authorized re-freeze to final `no-drift`.
+
+An RC `go` or policy-compliant `go-with-waivers` authorizes review of the frozen candidate. It does
+not authorize a tag, GitHub Release, merge, update-descriptor insertion, or Stable 1.0 GA
+publication. Those remain separate release-manager operations later in this runbook.
+
 1. **Normal Gradle checks** - run the standard repository build and test path before any publish step. For release readiness, this means the usual Gradle verification path for the branch, including `./gradlew clean build` and any project-required test tasks used in CI.
 2. **Production beta app-ecosystem pipeline, when shipping production beta app artifacts** - use
    the top-level production beta wrapper when the release includes first-party app bundles,

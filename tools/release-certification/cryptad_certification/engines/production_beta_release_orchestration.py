@@ -353,6 +353,9 @@ def attach_go_no_go_dashboard(
     return summary
 
 def stable_readiness_args(settings: Settings) -> list[str]:
+    public_beta_known_issues = settings.public_beta_known_issues or (
+        settings.workspace_root / "tools/release-certification/public-beta-known-issues.json"
+    )
     args = [
         sys.executable,
         str(TOOL_DIR / "cryptad_certification/engine_entry.py"),
@@ -378,7 +381,7 @@ def stable_readiness_args(settings: Settings) -> list[str]:
         "--security-drills-summary",
         str(security_drills_summary_path(settings)),
         "--public-beta-known-issues",
-        str(settings.workspace_root / "tools/release-certification/public-beta-known-issues.json"),
+        str(public_beta_known_issues),
     ]
     if settings.stable_readiness_policy is not None:
         args.extend(["--policy", str(settings.stable_readiness_policy)])
@@ -507,6 +510,7 @@ def assert_stable_readiness_args_use_stable_waiver_file_only() -> None:
         workspace.mkdir(parents=True)
         waiver_file = workspace / "release-waivers.json"
         stable_waivers = workspace / "stable-waivers.json"
+        reviewed_known_issues = workspace / "reviewed-public-beta-known-issues.json"
         settings = Settings(
             workspace_root=workspace,
             out_dir=workspace / "build/production-beta",
@@ -530,11 +534,13 @@ def assert_stable_readiness_args_use_stable_waiver_file_only() -> None:
             stable_readiness_policy=workspace / "tools/release-certification/stable-1.0-readiness-policy.json",
             stable_known_limitations=workspace / "tools/release-certification/stable-1.0-known-limitations.json",
             stable_readiness_waivers=stable_waivers,
+            public_beta_known_issues=reviewed_known_issues,
         )
         args = stable_readiness_args(settings)
         assert str(waiver_file) not in args, args
         assert "--waivers" in args, args
         assert str(stable_waivers) in args, args
+        assert args[args.index("--public-beta-known-issues") + 1] == str(reviewed_known_issues), args
 
 def assert_required_stable_readiness_removes_dist_refs_from_dashboard() -> None:
     with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-stable-dist-") as temp_name:
@@ -778,6 +784,7 @@ def run_pipeline(settings: Settings) -> tuple[dict[str, Any], int]:
         redaction_report = release_redaction_report(pre_dist_findings)
         write_json(settings.out_dir / "reports/redaction-report.json", redaction_report)
         archive: Path | None = None
+        stable_rc_archive: Path | None = None
         summary: dict[str, Any] | None = None
         if redaction_report["status"] == "pass":
             summary = build_final_summary(state, promotion, redaction_report, None)
@@ -805,6 +812,11 @@ def run_pipeline(settings: Settings) -> tuple[dict[str, Any], int]:
                 planned_archive = dist_bundle_path(settings, version)
                 summary.setdefault("artifacts", {})["distArchive"] = f"dist/{planned_archive.name}"
                 summary.setdefault("artifacts", {})["checksums"] = "dist/checksums.txt"
+                if settings.stable_rc_artifact_timestamp:
+                    planned_stable_rc_archive = stable_rc_product_bundle_path(settings, version)
+                    summary.setdefault("artifacts", {})["stableRcDistribution"] = (
+                        f"dist/{planned_stable_rc_archive.name}"
+                    )
                 write_json(settings.out_dir / "reports/production-beta-summary.json", summary)
                 write_text(settings.out_dir / "reports/production-beta-summary.md", render_markdown_summary(summary))
                 summary = attach_go_no_go_dashboard(
@@ -814,20 +826,36 @@ def run_pipeline(settings: Settings) -> tuple[dict[str, Any], int]:
                     settings.require_stable_readiness,
                 )
                 try:
-                    archive = create_dist_bundle(settings, version)
+                    if settings.stable_rc_artifact_timestamp:
+                        stable_rc_archive = create_stable_rc_product_bundle(settings, version)
+                    archive = create_dist_bundle(
+                        settings,
+                        version,
+                        [stable_rc_archive] if stable_rc_archive is not None else [],
+                    )
                 except ReleaseArtifactError as exc:
                     tar_findings = [{"kind": "forbidden-tar-entry", "path": "dist", "detail": str(exc)}]
                     partial_archive = dist_bundle_path(settings, version)
-                    remove_dist_bundle(settings, partial_archive)
+                    remove_dist_bundle(
+                        settings,
+                        partial_archive,
+                        [stable_rc_archive]
+                        if stable_rc_archive is not None
+                        else [stable_rc_product_bundle_path(settings, version)],
+                    )
                     archive = None
+                    stable_rc_archive = None
                 else:
                     tar_findings = scan_tarball(archive, settings)
+                    if stable_rc_archive is not None:
+                        tar_findings.extend(scan_tarball(stable_rc_archive, settings))
             else:
                 tar_findings = []
                 archive = None
                 artifacts = summary.get("artifacts") if isinstance(summary.get("artifacts"), dict) else {}
                 artifacts.pop("distArchive", None)
                 artifacts.pop("checksums", None)
+                artifacts.pop("stableRcDistribution", None)
                 summary["artifacts"] = artifacts
                 write_json(settings.out_dir / "reports/production-beta-summary.json", summary)
                 write_text(settings.out_dir / "reports/production-beta-summary.md", render_markdown_summary(summary))
@@ -846,8 +874,13 @@ def run_pipeline(settings: Settings) -> tuple[dict[str, Any], int]:
                 redaction_report = release_redaction_report(tar_findings)
                 write_json(settings.out_dir / "reports/redaction-report.json", redaction_report)
                 if archive is not None:
-                    remove_dist_bundle(settings, archive)
+                    remove_dist_bundle(
+                        settings,
+                        archive,
+                        [stable_rc_archive] if stable_rc_archive is not None else [],
+                    )
                 archive = None
+                stable_rc_archive = None
                 summary = None
         if redaction_report["status"] != "pass":
             if summary is not None:
@@ -885,6 +918,14 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Public base URI for app bundle artifacts. Required for release-candidate and "
             "production-beta unless CRYPTAD_PRODUCTION_BETA_ARTIFACT_BASE_URI is set."
+        ),
+    )
+    parser.add_argument(
+        "--stable-rc-artifact-timestamp",
+        default="",
+        help=(
+            "Protected timestamp already bound by Stable RC catalog-operations evidence; "
+            "used only to reproduce signed catalog, review, and product-distribution bytes."
         ),
     )
     parser.add_argument("--require-live-network", action="store_true", help="Require live-network beta evidence.")
@@ -958,6 +999,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--stable-readiness-policy",
         type=Path,
         help="Stable 1.0 readiness policy JSON. Defaults to tools/release-certification/stable-1.0-readiness-policy.json.",
+    )
+    parser.add_argument(
+        "--public-beta-known-issues",
+        type=Path,
+        help="Reviewed public beta known-issues JSON forwarded to the Stable readiness gate.",
     )
     parser.add_argument(
         "--stable-known-limitations",
@@ -1041,6 +1087,11 @@ def settings_from_args(args: argparse.Namespace) -> Settings:
         workspace,
     )
     stable_readiness_waivers = resolve_workspace_path_arg(args.stable_readiness_waivers, workspace)
+    public_beta_known_issues = resolve_workspace_path_arg(
+        args.public_beta_known_issues
+        or Path("tools/release-certification/public-beta-known-issues.json"),
+        workspace,
+    )
     if args.third_party_intake_summary is not None and args.run_third_party_intake_sample_flow:
         raise SystemExit("--run-third-party-intake-sample-flow cannot be combined with --third-party-intake-summary.")
     artifact_base_uri = args.artifact_base_uri.strip() or os.environ.get(
@@ -1054,6 +1105,25 @@ def settings_from_args(args: argparse.Namespace) -> Settings:
             )
         artifact_base_uri = f"https://downloads.crypta.invalid/production-beta/{read_project_version(workspace)}"
     validate_artifact_base_uri(args.mode, artifact_base_uri)
+    stable_rc_artifact_timestamp = args.stable_rc_artifact_timestamp.strip()
+    if stable_rc_artifact_timestamp:
+        try:
+            parsed_artifact_timestamp = dt.datetime.fromisoformat(
+                stable_rc_artifact_timestamp.replace("Z", "+00:00")
+            )
+        except ValueError as exc:
+            raise SystemExit(
+                "--stable-rc-artifact-timestamp must be an ISO-8601 timestamp"
+            ) from exc
+        if parsed_artifact_timestamp.tzinfo is None:
+            raise SystemExit(
+                "--stable-rc-artifact-timestamp must include a timezone"
+            )
+        if args.mode != "production-beta" or args.catalog_channel != "stable":
+            raise SystemExit(
+                "--stable-rc-artifact-timestamp is restricted to production-beta mode "
+                "with the stable catalog channel"
+            )
     if args.use_fixture_evidence and args.mode != "developer-dry-run":
         raise SystemExit("--use-fixture-evidence is only allowed with --mode developer-dry-run or internal self-tests.")
     require_live = args.require_live_network or (
@@ -1159,6 +1229,7 @@ def settings_from_args(args: argparse.Namespace) -> Settings:
         stable_readiness_policy=stable_readiness_policy,
         stable_known_limitations=stable_known_limitations,
         stable_readiness_waivers=stable_readiness_waivers,
+        public_beta_known_issues=public_beta_known_issues,
         release_id=args.release_id.strip() or None,
         interop_smoke_summary=resolve_workspace_path_arg(args.interop_smoke_summary, workspace),
         interop_extended_summary=resolve_workspace_path_arg(args.interop_extended_summary, workspace),
@@ -1169,6 +1240,7 @@ def settings_from_args(args: argparse.Namespace) -> Settings:
             workspace,
         ),
         require_history=args.require_history or args.mode == "production-beta",
+        stable_rc_artifact_timestamp=stable_rc_artifact_timestamp or None,
     )
 
 def normalized_artifact_hostname(hostname: str) -> str:

@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/crypta-network/cryptad/tools/release-certification/schemas/stable-1.0-rc-catalog-operations-v1.schema.json",
+  "title": "Cryptad Stable 1.0 RC protected catalog-operations evidence v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "kind", "generatedAt", "artifactTimestamp", "releaseId", "buildVersion", "sourceCommit",
+    "status", "fixtureOnly", "simulatedOnly", "nonRelease", "catalogId", "channel", "revision",
+    "catalogDigest", "signatureDigest", "signingKeyId", "keyRotation", "primary", "mirrors",
+    "rollback", "advisoryCount", "denylistCount", "redaction"
+  ],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "kind": {"const": "stable-1.0-rc-catalog-operations"},
+    "generatedAt": {"type": "string", "format": "date-time"},
+    "artifactTimestamp": {"type": "string", "format": "date-time"},
+    "releaseId": {"type": "string", "minLength": 1},
+    "buildVersion": {"type": "string", "pattern": "^[1-9][0-9]*$"},
+    "sourceCommit": {"type": "string", "pattern": "^[0-9a-f]{40,64}$"},
+    "status": {"const": "pass"},
+    "fixtureOnly": {"const": false},
+    "simulatedOnly": {"const": false},
+    "nonRelease": {"const": false},
+    "catalogId": {"type": "string", "minLength": 1},
+    "channel": {"const": "stable"},
+    "revision": {"type": "integer", "minimum": 0},
+    "catalogDigest": {"$ref": "#/$defs/digest"},
+    "signatureDigest": {"$ref": "#/$defs/digest"},
+    "signingKeyId": {"type": "string", "minLength": 1},
+    "keyRotation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "compromised"],
+      "properties": {"status": {"const": "complete"}, "compromised": {"const": false}}
+    },
+    "primary": {"$ref": "#/$defs/health"},
+    "mirrors": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/mirrorHealth"}},
+    "rollback": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "revision", "digest", "signatureVerified"],
+      "properties": {
+        "status": {"const": "pass"},
+        "revision": {"type": "integer", "minimum": 0},
+        "digest": {"$ref": "#/$defs/digest"},
+        "signatureVerified": {"const": true}
+      }
+    },
+    "advisoryCount": {"type": "integer", "minimum": 0},
+    "denylistCount": {"type": "integer", "minimum": 0},
+    "redaction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "findingCount", "findings"],
+      "properties": {
+        "status": {"const": "pass"},
+        "findingCount": {"const": 0},
+        "findings": {"type": "array", "maxItems": 0}
+      }
+    }
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "health": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "signatureVerified", "revision", "digest"],
+      "properties": {
+        "status": {"const": "pass"},
+        "signatureVerified": {"const": true},
+        "revision": {"type": "integer", "minimum": 0},
+        "digest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "mirrorHealth": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "signatureVerified", "revision", "digest", "transportFallbackOnly"],
+      "properties": {
+        "status": {"const": "pass"},
+        "signatureVerified": {"const": true},
+        "revision": {"type": "integer", "minimum": 0},
+        "digest": {"$ref": "#/$defs/digest"},
+        "transportFallbackOnly": {"const": true}
+      }
+    }
+  }
+}

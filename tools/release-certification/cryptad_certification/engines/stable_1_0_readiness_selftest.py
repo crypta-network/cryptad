@@ -224,7 +224,28 @@ def run_self_test() -> None:
             target.write_text(f"# {Path(path).stem}\n", encoding="utf-8")
 
         run_case(root, "ready", None, "ready")
-        run_case(root, "allowed-limitations", lambda _i, _l, _p: None, "ready-with-allowed-limitations", expect_allowed="stable-1.0.trust-graph-local-scope")
+
+        def assert_allowed_limitation_owner(summary: dict[str, Any]) -> None:
+            allowed = {
+                str(record.get("id")): record
+                for record in summary.get("allowedLimitations", [])
+                if isinstance(record, dict)
+            }
+            trust_graph = allowed.get("stable-1.0.trust-graph-local-scope")
+            if not isinstance(trust_graph, dict) or trust_graph.get("owner") != "crypta-core":
+                raise AssertionError(
+                    "Stable readiness did not preserve the allowed limitation owner: "
+                    f"{trust_graph}"
+                )
+
+        run_case(
+            root,
+            "allowed-limitations",
+            lambda _i, _l, _p: None,
+            "ready-with-allowed-limitations",
+            expect_allowed="stable-1.0.trust-graph-local-scope",
+            post_check=assert_allowed_limitation_owner,
+        )
 
         def assert_generated_at_does_not_control_freshness(summary: dict[str, Any]) -> None:
             if summary.get("generatedAt") != DEFAULT_GENERATED_AT:
@@ -3711,6 +3732,7 @@ def run_self_test() -> None:
                     "category": "ui-polish-accessibility-warning",
                     "status": "open",
                     "summary": "Synthetic auditable waiver-required limitation.",
+                    "owner": "stable-readiness",
                     "evidenceIds": ["stable-1.0.support-feedback-readiness"],
                     "boundedBy": "The follow-up remains bounded to non-blocking UI polish.",
                 }

@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/crypta-network/cryptad/tools/release-certification/schemas/stable-1.0-rc-freeze-exceptions-v1.schema.json",
+  "title": "Cryptad Stable 1.0 RC freeze exception collection v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "kind", "authorizationRole", "redaction", "exceptions"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "kind": {"const": "stable-1.0-rc-freeze-exceptions"},
+    "authorizationRole": {"const": "stable-release-manager"},
+    "redaction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "findingCount", "findings"],
+      "properties": {
+        "status": {"const": "pass"},
+        "findingCount": {"const": 0},
+        "findings": {"type": "array", "maxItems": 0}
+      }
+    },
+    "exceptions": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/exception"}
+    }
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "nonEmpty": {"type": "string", "minLength": 1},
+    "timestamp": {"type": "string", "format": "date-time"},
+    "exception": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "exceptionId", "releaseId", "buildVersion", "affectedSection", "affectedItem",
+        "beforeDigest", "afterDigest", "reason", "issueKind", "issueReference", "owner", "approver",
+        "createdAt", "expiresAt", "requiredRerunScope", "finalVerificationResult"
+      ],
+      "properties": {
+        "exceptionId": {"$ref": "#/$defs/nonEmpty"},
+        "releaseId": {"$ref": "#/$defs/nonEmpty"},
+        "buildVersion": {"type": "string", "pattern": "^[1-9][0-9]*$"},
+        "affectedSection": {"enum": ["candidate", "platformApi", "stableCatalog", "firstPartyApps", "contentFormatProfiles", "limitationsAndPolicy"]},
+        "affectedItem": {"$ref": "#/$defs/nonEmpty"},
+        "beforeDigest": {"$ref": "#/$defs/digest"},
+        "afterDigest": {"$ref": "#/$defs/digest"},
+        "reason": {"$ref": "#/$defs/nonEmpty"},
+        "issueKind": {"enum": ["blocker", "security"]},
+        "issueReference": {"$ref": "#/$defs/nonEmpty"},
+        "owner": {"$ref": "#/$defs/nonEmpty"},
+        "approver": {"$ref": "#/$defs/nonEmpty"},
+        "createdAt": {"$ref": "#/$defs/timestamp"},
+        "expiresAt": {"$ref": "#/$defs/timestamp"},
+        "requiredRerunScope": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/nonEmpty"}
+        },
+        "finalVerificationResult": {"const": "pass"}
+      }
+    }
+  }
+}

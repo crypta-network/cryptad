@@ -50,6 +50,13 @@ a promotable production-beta result.
 Security drill operations and incident-response evidence follow the
 [production security response runbook](production-security-response-runbook.md).
 
+For Stable 1.0 RC execution, do not run a normal production-beta manifest and then assemble an RC
+with a separate script. The canonical
+[Stable RC release-freeze workflow](stable-1.0-rc-execution-and-release-freeze.md) uses one
+`stable-review` manifest and invokes this production pipeline, go/no-go, release certification,
+and Stable readiness inside the same marked workspace. Normal production-beta runs do not create
+a Stable freeze and retain their existing behavior.
+
 ## Pipeline stages
 
 The pipeline orchestrates:
@@ -109,6 +116,19 @@ security, distribution, checksum, archive, and detailed dashboard output lives b
 <out-root>/<release-id>/production-beta/artifacts/legacy/dist/checksums.txt
 ```
 
+When the canonical `stable-rc` command invokes this pipeline as its production stage, it also
+writes `dist/crypta-stable-1.0-rc-<build>-product.tar.gz`. The protected catalog-operations
+`artifactTimestamp` controls the signed catalog and review-receipt timestamps. The product archive
+contains only public product inputs and uses normalized gzip/tar metadata, so the same source,
+signing identities, artifact URI, catalog revision, and app payloads reproduce the same bytes.
+POSIX launcher entries and app-data migration commands declared by staged app manifests are
+normalized to executable mode; Windows command files and all other regular members are normalized
+to non-executable mode. A missing or path-unsafe declared migration command fails packaging.
+`dist/crypta-production-beta-<build>.tar.gz` remains the broader production-beta evidence archive
+and keeps its existing consumers; the Stable RC freeze binds the deterministic product archive.
+A direct `production-beta` command using the `stable-review` profile retains its existing input
+contract and does not require Stable RC catalog operations or create this product archive.
+
 Validated attached input extracts live under `artifacts/inputs/`. Those extracts are diagnostic
 copies, not a way to bypass candidate binding or redaction checks.
 
@@ -125,3 +145,9 @@ CI may upload or publish the workspace only when release artifact redaction, go/
 and any required Stable redaction all pass. Private interop insert URIs, raw support bundles, raw
 diagnostics, AppleDouble files, `.DS_Store`, `__MACOSX`, secret-like filenames, symlinks, and unsafe
 nested archives remain excluded.
+
+Stable RC upload is stricter: the protected workflow uploads only the public `stable-rc/`
+component after the final v2 envelope says `promotionReady=true`, the regenerated freeze verifies
+as `no-drift`, checksums and provenance match the package, redaction passes, and the decision is
+`go` or policy-compliant `go-with-waivers`. See the Stable RC runbook for the exact artifact set and
+non-publication boundary.

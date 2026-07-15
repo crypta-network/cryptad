@@ -108,7 +108,8 @@ FIRST_PARTY_MAINTENANCE_POLICY_METADATA_EXPECTATIONS = {
 
 FIRST_PARTY_MAINTENANCE_OWNER = "crypta-core"
 
-FIRST_PARTY_MAINTENANCE_OWNER_URI = "https://example.invalid/crypta/owners/core"
+FIRST_PARTY_MAINTENANCE_OWNER_URI = "https://github.com/crypta-network/cryptad"
+FIRST_PARTY_SUPPORT_URI = "https://github.com/crypta-network/cryptad/issues"
 
 FIRST_PARTY_MAINTENANCE_COMMON_EXPECTATIONS = {
     "securityPolicy": "catalog-advisories",
@@ -1601,7 +1602,7 @@ def first_party_app_specs(settings: Settings) -> list[dict[str, Any]]:
             "launcher": "bin/trust-graph.sh",
             "permissions": TRUST_GRAPH_PERMISSIONS,
             "apiMinimumVersion": 22,
-            "apiMaximumTestedVersion": 22,
+            "apiMaximumTestedVersion": 23,
             "apiTargetStability": "experimental",
             "experimentalCapabilitiesAccepted": True,
         },

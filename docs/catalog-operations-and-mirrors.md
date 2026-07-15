@@ -91,6 +91,10 @@ separate from ordinary refresh:
 5. Cryptad records the current revision in history and replaces the active catalog sidecars with
    the selected verified revision.
 
+The selected rollback target must precede the active catalog revision and bind different signed
+catalog bytes. A same-revision, newer-revision, or same-digest target is not rollback evidence and
+must fail release verification.
+
 Rollback does not uninstall apps, change app data, bypass advisories, bypass denylists, or change
 app-update policy. Installed apps remain under the normal AppHost and app-update rollback rules.
 

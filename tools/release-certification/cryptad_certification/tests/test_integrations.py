@@ -457,6 +457,380 @@ class CollectionIntegrationTest(unittest.TestCase):
             self.assertFalse((context.component_dir / "artifacts/inputs/drill.json").exists())
 
 
+class StableRcOrchestrationIntegrationTest(unittest.TestCase):
+    @staticmethod
+    def _write_production_envelope(
+        path: Path,
+        *,
+        release_id: str = "stable-candidate",
+        version: str = "283",
+        profile: str = "stable-review",
+    ) -> None:
+        write_json(
+            path,
+            EvidenceEnvelope(
+                kind="production-beta-release",
+                generated_at="2026-01-01T00:00:00Z",
+                subject={
+                    "releaseId": release_id,
+                    "version": version,
+                    "profile": profile,
+                    "component": "production-beta",
+                },
+                result={
+                    "status": "pass",
+                    "decision": "go",
+                    "promotionReady": True,
+                    "exitCode": 0,
+                },
+                counts={"evidence": 0, "blockers": 0, "warnings": 0, "waivers": 0},
+                redaction={
+                    "status": "pass",
+                    "findingCount": 0,
+                    "findings": [],
+                    "guarantees": {},
+                },
+                payload={
+                    "legacy": {
+                        "schemaVersion": 1,
+                        "releaseId": release_id,
+                        "version": version,
+                        "status": "pass",
+                        "promotionReady": True,
+                        "nonRelease": False,
+                    }
+                },
+            ).to_json(),
+        )
+
+    def test_stable_rc_runs_production_beta_before_the_native_engine_when_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest_path = write_manifest(
+                root,
+                release={
+                    "id": "stable-candidate",
+                    "version": "283",
+                    "profile": "stable-review",
+                },
+                policies={"stableRcFreezeMode": "first-freeze"},
+            )
+
+            with (
+                mock.patch.object(cli, "_execute_component", return_value=1) as execute_component,
+                mock.patch.object(cli, "execute_engine", return_value=1) as execute_engine,
+                contextlib.redirect_stdout(io.StringIO()),
+            ):
+                code = cli.main(
+                    [
+                        "stable-rc",
+                        "--manifest",
+                        str(manifest_path),
+                        "--workspace-root",
+                        str(root),
+                    ]
+                )
+
+            self.assertEqual(1, code)
+            execute_component.assert_called_once()
+            self.assertEqual("production-beta", execute_component.call_args.args[2])
+            execute_engine.assert_called_once()
+            context, command, action = execute_engine.call_args.args
+            self.assertEqual("stable-rc", context.component)
+            self.assertEqual("stable-rc", command)
+            self.assertIsNone(action)
+
+    def test_stable_rc_production_stage_uses_catalog_operations_artifact_timestamp(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            artifact_timestamp = "2026-07-14T00:00:00Z"
+            write_json(
+                root / "catalog-operations.json",
+                {"artifactTimestamp": artifact_timestamp},
+            )
+            manifest = load_manifest(
+                write_manifest(
+                    root,
+                    release={
+                        "id": "stable-candidate",
+                        "version": "283",
+                        "profile": "stable-review",
+                    },
+                    inputs={"stableCatalogOperations": "catalog-operations.json"},
+                    policies={
+                        "artifactBaseUri": "https://downloads.crypta.invalid/stable/",
+                        "catalogChannel": "stable",
+                        "stableRcFreezeMode": "first-freeze",
+                    },
+                ),
+                root,
+            )
+            prepare_run_root(manifest)
+            context = prepare_context(root, manifest, "production-beta")
+            captured: list[str] = []
+
+            with mock.patch.object(
+                production_beta_release,
+                "main",
+                side_effect=lambda arguments: captured.extend(arguments) or 0,
+            ):
+                legacy._run_production_beta(context)
+
+            self.assertEqual(
+                artifact_timestamp,
+                captured[captured.index("--stable-rc-artifact-timestamp") + 1],
+            )
+
+    def test_direct_stable_review_production_does_not_require_stable_rc_inputs(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = load_manifest(
+                write_manifest(
+                    root,
+                    release={
+                        "id": "stable-candidate",
+                        "version": "283",
+                        "profile": "stable-review",
+                    },
+                    policies={"catalogChannel": "stable"},
+                ),
+                root,
+            )
+            prepare_run_root(manifest)
+            context = prepare_context(root, manifest, "production-beta")
+            captured: list[str] = []
+
+            with mock.patch.object(
+                production_beta_release,
+                "main",
+                side_effect=lambda arguments: captured.extend(arguments) or 0,
+            ):
+                legacy._run_production_beta(context)
+
+            self.assertNotIn("--stable-rc-artifact-timestamp", captured)
+
+    def test_stable_rc_regenerates_existing_candidate_bound_production_envelope(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest_path = write_manifest(
+                root,
+                release={
+                    "id": "stable-candidate",
+                    "version": "283",
+                    "profile": "stable-review",
+                },
+                policies={"stableRcFreezeMode": "first-freeze"},
+            )
+            manifest = load_manifest(manifest_path, root)
+            run_root = prepare_run_root(manifest)
+            summary = run_root / "production-beta/summary.json"
+            summary.parent.mkdir()
+            self._write_production_envelope(summary)
+
+            with (
+                mock.patch.object(cli, "_execute_component") as execute_component,
+                mock.patch.object(cli, "execute_engine", return_value=0) as execute_engine,
+                contextlib.redirect_stdout(io.StringIO()),
+            ):
+                code = cli.main(
+                    [
+                        "stable-rc",
+                        "--manifest",
+                        str(manifest_path),
+                        "--workspace-root",
+                        str(root),
+                    ]
+                )
+
+            self.assertEqual(0, code)
+            execute_component.assert_called_once()
+            execute_engine.assert_called_once()
+
+    def test_stable_rc_rejects_every_configured_same_run_input(self) -> None:
+        same_run_inputs = (
+            "productionBeta",
+            "goNoGo",
+            "appPlatform",
+            "ecosystemMatrix",
+            "releaseCertification",
+            "stableReadiness",
+        )
+        for key in same_run_inputs:
+            with self.subTest(key=key), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                manifest = load_manifest(
+                    write_manifest(
+                        root,
+                        release={
+                            "id": "stable-candidate",
+                            "version": "283",
+                            "profile": "stable-review",
+                        },
+                        inputs={key: f"{key}.json"},
+                        policies={"stableRcFreezeMode": "first-freeze"},
+                    ),
+                    root,
+                )
+
+                with self.assertRaisesRegex(ValueError, rf"inputs\.{key}"):
+                    cli._validate_stable_rc_manifest(manifest)
+
+    def test_stable_rc_requires_explicit_freeze_lineage_pairing(self) -> None:
+        cases = (
+            ("first-freeze", {}, None),
+            (
+                "first-freeze",
+                {"previousStableRcFreeze": "previous-freeze.json"},
+                "first-freeze mode cannot include",
+            ),
+            ("refreeze", {}, "refreeze mode requires"),
+            (
+                "refreeze",
+                {"previousStableRcFreeze": "previous-freeze.json"},
+                None,
+            ),
+        )
+        for mode, inputs, expected_error in cases:
+            with self.subTest(mode=mode, inputs=inputs), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                manifest = load_manifest(
+                    write_manifest(
+                        root,
+                        release={
+                            "id": "stable-candidate",
+                            "version": "283",
+                            "profile": "stable-review",
+                        },
+                        inputs=inputs,
+                        policies={"stableRcFreezeMode": mode},
+                    ),
+                    root,
+                )
+
+                if expected_error is None:
+                    cli._validate_stable_rc_manifest(manifest)
+                else:
+                    with self.assertRaisesRegex(ValueError, expected_error):
+                        cli._validate_stable_rc_manifest(manifest)
+
+    def test_stable_rc_rejects_missing_or_unknown_freeze_mode(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = load_manifest(
+                write_manifest(
+                    root,
+                    release={
+                        "id": "stable-candidate",
+                        "version": "283",
+                        "profile": "stable-review",
+                    },
+                ),
+                root,
+            )
+
+            with self.assertRaisesRegex(ValueError, "policies.stableRcFreezeMode"):
+                cli._validate_stable_rc_manifest(manifest)
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            with self.assertRaisesRegex(ValueError, "stableRcFreezeMode"):
+                load_manifest(
+                    write_manifest(
+                        root,
+                        policies={"stableRcFreezeMode": "verify"},
+                    ),
+                    root,
+                )
+
+    def test_stable_rc_regenerates_wrong_candidate_internal_production_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest_path = write_manifest(
+                root,
+                release={
+                    "id": "stable-candidate",
+                    "version": "283",
+                    "profile": "stable-review",
+                },
+                policies={"stableRcFreezeMode": "first-freeze"},
+            )
+            manifest = load_manifest(manifest_path, root)
+            run_root = prepare_run_root(manifest)
+            summary = run_root / "production-beta/summary.json"
+            summary.parent.mkdir()
+            self._write_production_envelope(summary, release_id="another-candidate")
+
+            with (
+                mock.patch.object(cli, "_execute_component", return_value=0) as execute_component,
+                mock.patch.object(cli, "execute_engine", return_value=0),
+                contextlib.redirect_stdout(io.StringIO()),
+            ):
+                code = cli.main(
+                    [
+                        "stable-rc",
+                        "--manifest",
+                        str(manifest_path),
+                        "--workspace-root",
+                        str(root),
+                    ]
+                )
+
+            self.assertEqual(0, code)
+            execute_component.assert_called_once()
+
+    def test_stable_rc_rejects_non_stable_profile_before_execution(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest_path = write_manifest(
+                root,
+                release={
+                    "id": "stable-candidate",
+                    "version": "283",
+                    "profile": "production-beta",
+                },
+                policies={"stableRcFreezeMode": "first-freeze"},
+            )
+
+            with (
+                mock.patch.object(cli, "_execute_component") as execute_component,
+                mock.patch.object(cli, "execute_engine") as execute_engine,
+                contextlib.redirect_stderr(io.StringIO()),
+            ):
+                code = cli.main(
+                    [
+                        "stable-rc",
+                        "--manifest",
+                        str(manifest_path),
+                        "--workspace-root",
+                        str(root),
+                    ]
+                )
+
+            self.assertEqual(2, code)
+            execute_component.assert_not_called()
+            execute_engine.assert_not_called()
+            self.assertFalse((root / "build/release-certification/stable-candidate").exists())
+
+    def test_stable_rc_rejects_noncanonical_integer_versions(self) -> None:
+        for version in ("0", "00", "03", "+3", "3.0"):
+            with self.subTest(version=version), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                manifest = load_manifest(
+                    write_manifest(
+                        root,
+                        release={
+                            "id": "stable-candidate",
+                            "version": version,
+                            "profile": "stable-review",
+                        },
+                        policies={"stableRcFreezeMode": "first-freeze"},
+                    ),
+                    root,
+                )
+                with self.assertRaisesRegex(ValueError, "canonical positive integer"):
+                    cli._validate_stable_rc_manifest(manifest)
+
+
 class AdapterIntegrationTest(unittest.TestCase):
     def test_failed_fallback_scan_removes_raw_legacy_output(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -1826,6 +2200,8 @@ class AdapterIntegrationTest(unittest.TestCase):
         build_dir.mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(dir=build_dir) as directory:
             output = Path(directory)
+            reviewed_known_issues = output / "reviewed-public-beta-known-issues.json"
+            write_json(reviewed_known_issues, {"schemaVersion": 1, "knownIssues": []})
             manifest = load_manifest(
                 write_manifest(
                     output,
@@ -1835,6 +2211,9 @@ class AdapterIntegrationTest(unittest.TestCase):
                         "catalogChannel": "beta",
                     },
                     requirements={"liveNetwork": True, "sandboxProviderTests": True},
+                    inputs={
+                        "publicBetaKnownIssues": reviewed_known_issues.relative_to(root).as_posix()
+                    },
                     execution={
                         "fixtureEvidence": True,
                         "skipGradle": True,
@@ -1881,6 +2260,10 @@ class AdapterIntegrationTest(unittest.TestCase):
             ):
                 self.assertIn(option, captured)
             self.assertEqual("75", captured[captured.index("--timeout-seconds") + 1])
+            self.assertEqual(
+                reviewed_known_issues.resolve(),
+                Path(captured[captured.index("--public-beta-known-issues") + 1]),
+            )
             self.assertNotIn("unsafe-v1.json", captured)
             self.assertEqual("simulated", captured[captured.index("--multi-node-mode") + 1])
 
@@ -1961,6 +2344,75 @@ class AdapterIntegrationTest(unittest.TestCase):
 
 
 class WorkflowIntegrationTest(unittest.TestCase):
+    def test_stable_rc_workflow_binds_reviewed_issues_and_previous_freeze(self) -> None:
+        workflow = (
+            workspace_root() / ".github/workflows/stable-1.0-rc-release.yml"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn(
+            '_option_path(\n        args,\n        "--public-beta-known-issues"',
+            (workspace_root() / "tools/release-certification/cryptad_certification/legacy.py").read_text(
+                encoding="utf-8"
+            ),
+        )
+        self.assertIn('"comparisonBaseline",', workflow)
+        self.assertIn('provenance_inputs.get("previousStableRcFreeze")', workflow)
+        self.assertIn('drift.get("comparisonBaseline")', workflow)
+        self.assertIn("stable_rc_freeze_mode:", workflow)
+        self.assertIn("GITHUB_RUN_ATTEMPT", workflow)
+        self.assertIn("latest_successful_run_id", workflow)
+        self.assertIn("latest_successful_head_sha", workflow)
+        self.assertIn("verify_latest_refreeze_parent", workflow)
+        self.assertIn("verify_refreeze_lineage_anchor", workflow)
+        self.assertIn("checks: write", workflow)
+        self.assertIn(
+            '"repos/$GITHUB_REPOSITORY/actions/runs/$candidate_run_id/attempts/$attempt"',
+            workflow,
+        )
+        self.assertIn('.conclusion == "success"', workflow)
+        self.assertIn(
+            '.path == $workflow_path or (.path | startswith($workflow_path + "@"))',
+            workflow,
+        )
+        self.assertIn(
+            'cmp --silent "$supplied_freeze" "${authenticated_freezes[0]}"',
+            workflow,
+        )
+        self.assertIn('if ! gh run download "$run_id"', workflow)
+        self.assertIn(
+            '"repos/$GITHUB_REPOSITORY/commits/$parent_sha/check-runs"',
+            workflow,
+        )
+        self.assertIn('.app.slug == "github-actions"', workflow)
+        self.assertIn(
+            "Persist authenticated Stable RC freeze lineage",
+            workflow,
+        )
+        self.assertIn(
+            '"repos/$GITHUB_REPOSITORY/check-runs"',
+            workflow,
+        )
+        self.assertIn(
+            "stable-1.0-rc-freeze:$INPUT_RELEASE_ID:$INPUT_BUILD_VERSION:$GITHUB_RUN_ID:$GITHUB_RUN_ATTEMPT:$digest",
+            workflow,
+        )
+        self.assertIn('stableRcFreezeMode: $freeze_mode', workflow)
+        self.assertIn('provenance.get("freezeMode") != freeze_mode', workflow)
+        self.assertIn(
+            'candidate_freeze.get("productionDistributionDigest")',
+            workflow,
+        )
+        self.assertIn(
+            'distribution_name = f"crypta-stable-1.0-rc-{build_version}-product.tar.gz"',
+            workflow,
+        )
+        self.assertIn(
+            'f"crypta-stable-1.0-rc-{build_version}-product.tar.gz"',
+            workflow,
+        )
+        self.assertNotIn('distribution_name = f"crypta-production-beta-', workflow)
+        self.assertNotIn("expected_build", workflow)
+
     def test_release_workflows_bind_the_checked_out_project_version(self) -> None:
         root = workspace_root()
         production = (root / ".github/workflows/production-beta-release.yml").read_text(

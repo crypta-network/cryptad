@@ -1830,6 +1830,11 @@ def assert_catalog_signature_and_timestamps_are_canonical() -> None:
             timeout_seconds=60,
             clean_out_dir=True,
         )
+        artifact_timestamp = "2026-06-14T01:02:03Z"
+        settings = dataclasses.replace(
+            settings,
+            stable_rc_artifact_timestamp=artifact_timestamp,
+        )
         state = PipelineState(settings, "self-test", started_at, [], [], [])
         profile = SigningProfile(
             kind="test",
@@ -1854,7 +1859,8 @@ def assert_catalog_signature_and_timestamps_are_canonical() -> None:
             canonical.read_bytes() == alias.read_bytes()
         ), "catalog signature alias diverged from canonical sidecar"
         catalog_text = (out_dir / "catalog/first-party-catalog.properties").read_text(encoding="utf-8")
-        assert f"generatedAt={started_at}" in catalog_text
+        assert f"generatedAt={artifact_timestamp}" in catalog_text
+        assert f"generatedAt={started_at}" not in catalog_text
         assert (
             "bundle.uri=https://downloads.crypta.invalid/self-test/build/app-bundles/queue-manager-1.2.3.zip"
             in catalog_text
@@ -1871,7 +1877,7 @@ def assert_catalog_signature_and_timestamps_are_canonical() -> None:
         assert channel_metadata["apps"][0]["maintenance"]["owner"] == "crypta-core", (
             channel_metadata
         )
-        assert f"reviewedAt={started_at}" in (
+        assert f"reviewedAt={artifact_timestamp}" in (
             out_dir / "reviews/review-receipts/queue-manager-review-receipt.properties"
         ).read_text(encoding="utf-8")
 
@@ -2479,6 +2485,7 @@ def run_self_test() -> None:
     assert_failed_final_summary_clears_promotion_ready()
     assert_required_third_party_intake_requires_summary()
     assert_required_third_party_intake_uses_attached_summary_rows()
+    assert_existing_production_intake_classification_remains_compatible()
     assert_production_third_party_intake_rejects_non_release_summary()
     assert_production_third_party_intake_rejects_optional_non_release_summary()
     assert_release_candidate_third_party_intake_rejects_non_release_summary()

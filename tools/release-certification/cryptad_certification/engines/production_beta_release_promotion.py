@@ -101,7 +101,10 @@ def evaluate_promotion(state: PipelineState, summaries: dict[str, Any]) -> dict[
         add_gate(
             "third-party-intake.production-evidence",
             third_party_intake_summary is not None
-            and not third_party_intake_summary_is_non_release(third_party_intake_summary),
+            and not third_party_intake_summary_is_non_release(
+                third_party_intake_summary,
+                stable_rc=settings.stable_rc_artifact_timestamp is not None,
+            ),
             "Attached or required third-party intake evidence must not be marked non-release or non-production.",
             "third-party-intake",
         )
@@ -319,7 +322,10 @@ def evaluate_promotion(state: PipelineState, summaries: dict[str, Any]) -> dict[
             "summaryPath": "evidence/third-party-intake-summary.json",
             "redaction": redaction_status,
             "missingOrFailedEvidence": missing_or_failed_intake,
-            "nonRelease": third_party_intake_summary_is_non_release(third_party_intake_summary),
+            "nonRelease": third_party_intake_summary_is_non_release(
+                third_party_intake_summary,
+                stable_rc=settings.stable_rc_artifact_timestamp is not None,
+            ),
         },
         "knownLimitations": [],
     }
@@ -1028,6 +1034,9 @@ def render_markdown_summary(summary: dict[str, Any]) -> str:
 def dist_bundle_path(settings: Settings, version: str) -> Path:
     return settings.out_dir / "dist" / f"crypta-production-beta-{version}.tar.gz"
 
+def stable_rc_product_bundle_path(settings: Settings, version: str) -> Path:
+    return settings.out_dir / "dist" / f"crypta-stable-1.0-rc-{version}-product.tar.gz"
+
 def dist_checksums_path(settings: Settings) -> Path:
     return settings.out_dir / "dist" / "checksums.txt"
 
@@ -1048,35 +1057,179 @@ def reset_release_output_roots(settings: Settings) -> None:
     for root_name in RELEASE_OUTPUT_ROOTS:
         reset_output_subtree(settings.out_dir / root_name)
 
-def remove_dist_bundle(settings: Settings, archive: Path) -> None:
-    for path in (archive, dist_checksums_path(settings)):
+def remove_dist_bundle(
+    settings: Settings,
+    archive: Path,
+    additional_archives: Iterable[Path] = (),
+) -> None:
+    for path in (archive, *additional_archives, dist_checksums_path(settings)):
         try:
             path.unlink()
         except FileNotFoundError:
             pass
 
-def create_dist_bundle(settings: Settings, version: str) -> Path:
+def _confined_archive_sources(
+    settings: Settings,
+    relative_roots: Iterable[str],
+    *,
+    require_roots: bool,
+) -> list[tuple[str, Path]]:
+    output_root = settings.out_dir.resolve()
+    sources: list[tuple[str, Path]] = []
+    for relative_root in relative_roots:
+        root = settings.out_dir / relative_root
+        current = settings.out_dir
+        for part in Path(relative_root).parts:
+            current /= part
+            if current.is_symlink():
+                raise ReleaseArtifactError(
+                    f"dist archive source contains a symlink component: {relative_root}"
+                )
+        if not root.exists():
+            if require_roots:
+                raise ReleaseArtifactError(
+                    f"Stable RC product archive source is missing: {relative_root}"
+                )
+            continue
+        candidates = [root] if root.is_file() else sorted(root.rglob("*"))
+        for candidate in candidates:
+            relative = candidate.relative_to(settings.out_dir).as_posix()
+            if candidate.is_symlink():
+                raise ReleaseArtifactError(
+                    f"dist archive would include a link entry, which is not allowed: {relative}"
+                )
+            if candidate.is_dir():
+                continue
+            if not candidate.is_file():
+                raise ReleaseArtifactError(
+                    f"dist archive would include a non-regular entry: {relative}"
+                )
+            try:
+                candidate.resolve().relative_to(output_root)
+            except ValueError as exc:
+                raise ReleaseArtifactError(
+                    f"dist archive source escapes its output directory: {relative}"
+                ) from exc
+            reason = bad_artifact_name(relative)
+            if reason:
+                raise ReleaseArtifactError(
+                    f"dist archive would include forbidden artifact {relative}: {reason}"
+                )
+            sources.append((relative, candidate))
+    names = [name for name, _path in sources]
+    if len(names) != len(set(names)):
+        raise ReleaseArtifactError("dist archive source paths overlap")
+    return sorted(sources)
+
+def _write_deterministic_tar_gzip(
+    archive_path: Path,
+    sources: Iterable[tuple[str, Path]],
+) -> None:
+    ordered_sources = sorted(sources)
+    staged_executables = _staged_executable_members(ordered_sources)
+    temporary = archive_path.with_name(f".{archive_path.name}.tmp")
+    archive_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with temporary.open("wb") as raw:
+            with gzip.GzipFile(filename="", mode="wb", fileobj=raw, mtime=0) as compressed:
+                with tarfile.open(fileobj=compressed, mode="w", format=tarfile.PAX_FORMAT) as archive:
+                    for name, path in ordered_sources:
+                        data = path.read_bytes()
+                        info = tarfile.TarInfo(name=name)
+                        info.size = len(data)
+                        info.mode = _deterministic_archive_mode(name, staged_executables)
+                        info.mtime = 0
+                        info.uid = 0
+                        info.gid = 0
+                        info.uname = "root"
+                        info.gname = "root"
+                        archive.addfile(info, io.BytesIO(data))
+        os.replace(temporary, archive_path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+def _staged_executable_members(
+    sources: Iterable[tuple[str, Path]],
+) -> frozenset[str]:
+    """Return staged app launchers and migration commands that require executable mode."""
+
+    source_by_name = dict(sources)
+    commands: set[str] = set()
+    for name, path in source_by_name.items():
+        parts = PurePosixPath(name).parts
+        if (
+            len(parts) != 4
+            or parts[:2] != ("build", "staged-apps")
+            or parts[-1] != "cryptad-app.properties"
+        ):
+            continue
+        for line in path.read_text(encoding="utf-8").splitlines():
+            key, separator, raw_value = line.partition("=")
+            key = key.strip()
+            migration_command = (
+                key.startswith("app.data.migration.")
+                and key.endswith(".command")
+            )
+            if not separator or (key != "app.exec" and not migration_command):
+                continue
+            command = raw_value.strip()
+            command_parts = command.split("/")
+            if (
+                not command
+                or "\\" in command
+                or any(part in {"", ".", ".."} for part in command_parts)
+            ):
+                raise ReleaseArtifactError(
+                    f"staged app declares an unsafe executable command: {name}"
+                )
+            member = PurePosixPath(*parts[:-1], *command_parts).as_posix()
+            if member not in source_by_name:
+                raise ReleaseArtifactError(
+                    f"staged app executable command is missing from the archive: {member}"
+                )
+            commands.add(member)
+    return frozenset(commands)
+
+def _deterministic_archive_mode(
+    name: str,
+    staged_executables: frozenset[str],
+) -> int:
+    windows_command = name.lower().endswith((".bat", ".cmd", ".ps1"))
+    launcher = name.startswith("build/crypta-app-launcher/bin/")
+    executable = launcher or name in staged_executables
+    return 0o755 if executable and not windows_command else 0o644
+
+def create_stable_rc_product_bundle(settings: Settings, version: str) -> Path:
+    if not settings.stable_rc_artifact_timestamp:
+        raise ReleaseArtifactError(
+            "Stable RC product packaging requires its protected artifact timestamp"
+        )
+    archive = stable_rc_product_bundle_path(settings, version)
+    sources = _confined_archive_sources(
+        settings,
+        STABLE_RC_PRODUCT_PATHS,
+        require_roots=True,
+    )
+    _write_deterministic_tar_gzip(archive, sources)
+    return archive
+
+def create_dist_bundle(
+    settings: Settings,
+    version: str,
+    additional_archives: Iterable[Path] = (),
+) -> Path:
     dist_dir = settings.out_dir / "dist"
     dist_dir.mkdir(parents=True, exist_ok=True)
     tar_path = dist_bundle_path(settings, version)
-
-    def tar_filter(info: tarfile.TarInfo) -> tarfile.TarInfo:
-        reason = bad_artifact_name(info.name)
-        if reason:
-            raise ReleaseArtifactError(f"dist archive would include forbidden artifact {info.name}: {reason}")
-        if info.issym() or info.islnk():
-            raise ReleaseArtifactError(f"dist archive would include a link entry, which is not allowed: {info.name}")
-        if info.isdev():
-            raise ReleaseArtifactError(f"dist archive would include a device entry, which is not allowed: {info.name}")
-        return info
-
-    with tarfile.open(tar_path, "w:gz", format=tarfile.PAX_FORMAT) as archive:
-        for root_name in RELEASE_OUTPUT_ROOTS:
-            root_path = settings.out_dir / root_name
-            if root_path.exists():
-                archive.add(root_path, arcname=root_name, recursive=True, filter=tar_filter)
+    sources = _confined_archive_sources(
+        settings,
+        RELEASE_OUTPUT_ROOTS,
+        require_roots=False,
+    )
+    _write_deterministic_tar_gzip(tar_path, sources)
     checksums = dist_checksums_path(settings)
-    checksum_lines = [f"{sha256_file(tar_path)}  {tar_path.name}"]
+    checksum_targets = [tar_path, *additional_archives]
+    checksum_lines = [f"{sha256_file(path)}  {path.name}" for path in checksum_targets]
     write_text(checksums, "\n".join(checksum_lines) + "\n")
     return tar_path
 
@@ -1145,6 +1298,7 @@ def build_final_summary(
         "mode": settings.mode,
         "releaseId": state.settings.release_id or f"cryptad-beta-{state.version}",
         "version": state.version,
+        "stableRcArtifactTimestamp": settings.stable_rc_artifact_timestamp,
         "artifactBaseUri": settings.artifact_base_uri,
         "status": status,
         "promotionReady": summary_promotion_ready,

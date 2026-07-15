@@ -1049,6 +1049,44 @@ def assert_required_third_party_intake_uses_attached_summary_rows() -> None:
             "missingOrFailedEvidence"
         ], promotion
 
+def assert_existing_production_intake_classification_remains_compatible() -> None:
+    with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-intake-contract-") as temp_name:
+        workspace = Path(temp_name) / "repo"
+        workspace.mkdir(parents=True)
+        out_dir = workspace / "build/production-beta"
+        settings = dataclasses.replace(
+            cleanup_test_settings(workspace, out_dir),
+            mode="production-beta",
+            require_third_party_intake=True,
+        )
+        intake = third_party_intake_sample_summary()
+        intake["nonRelease"] = False
+        intake["nonProduction"] = False
+        summaries = passing_promotion_summaries()
+        summaries["thirdPartyIntake"] = intake
+        state = PipelineState(settings, "self-test", utc_now(), [], [], [])
+
+        promotion = evaluate_promotion(state, summaries)
+
+        gate = promotion_gate_by_id(promotion, "third-party-intake.production-evidence")
+        assert gate["status"] == "pass", promotion
+        assert promotion["thirdPartyIntake"]["nonRelease"] is False, promotion
+
+        stable_settings = dataclasses.replace(
+            settings,
+            stable_rc_artifact_timestamp="2026-07-14T00:00:00Z",
+        )
+        stable_promotion = evaluate_promotion(
+            PipelineState(stable_settings, "self-test", utc_now(), [], [], []),
+            summaries,
+        )
+        stable_gate = promotion_gate_by_id(
+            stable_promotion,
+            "third-party-intake.production-evidence",
+        )
+        assert stable_gate["status"] == "fail", stable_promotion
+        assert stable_promotion["thirdPartyIntake"]["nonRelease"] is True, stable_promotion
+
 def assert_production_third_party_intake_rejects_non_release_summary() -> None:
     with tempfile.TemporaryDirectory(prefix="cryptad-production-beta-intake-nonrelease-") as temp_name:
         workspace = Path(temp_name) / "repo"

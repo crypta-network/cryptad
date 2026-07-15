@@ -874,10 +874,27 @@ def third_party_intake_redaction_status(
     item = evidence.get("third-party-intake.redaction")
     return str(item.get("status", "missing")).strip().lower() if isinstance(item, dict) else "missing"
 
-def third_party_intake_summary_is_non_release(intake_summary: dict[str, Any] | None) -> bool:
+def third_party_intake_summary_is_non_release(
+    intake_summary: dict[str, Any] | None,
+    *,
+    stable_rc: bool = False,
+) -> bool:
+    """Classify intake evidence under its applicable production contract.
+
+    Existing release-candidate and production-beta inputs explicitly classify only non-release
+    and non-production state. Stable RC adds explicit fixture and simulation classifications,
+    but that additive requirement must not reinterpret earlier production input contracts.
+    """
+
     if not isinstance(intake_summary, dict):
         return False
-    return intake_summary.get("nonRelease") is True or intake_summary.get("nonProduction") is True
+    fields = ["nonRelease", "nonProduction"]
+    if stable_rc:
+        fields.extend(("fixtureOnly", "simulatedOnly"))
+    return any(
+        intake_summary.get(field) is not False
+        for field in fields
+    )
 
 def multi_node_summary_path(settings: Settings, cert_out: Path) -> Path:
     if settings.multi_node_soak_summary is not None and not settings.run_multi_node_soak:

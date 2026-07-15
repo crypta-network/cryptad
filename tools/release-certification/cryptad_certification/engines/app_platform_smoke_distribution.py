@@ -934,7 +934,7 @@ def maintenance_policy_evidence_value(
             else "<redacted>"
         )
     if field == "supportUri":
-        expected = f"https://example.invalid/crypta/apps/{app_id}/support"
+        expected = FIRST_PARTY_SUPPORT_URI
         return (
             stripped
             if stripped == expected and scrub_text(stripped, workspace) == stripped
@@ -1140,7 +1140,7 @@ def collect_first_party_maintenance_policy_evidence(settings: Settings) -> Evide
             app_checks["urisAreMetadataOnly"] = (
                 maintenance.get("ownerUri") == FIRST_PARTY_MAINTENANCE_OWNER_URI
                 and maintenance.get("supportUri")
-                == f"https://example.invalid/crypta/apps/{app_id}/support"
+                == FIRST_PARTY_SUPPORT_URI
             )
             app_checks["maintenanceEvidenceValuesSafe"] = all(
                 value != "<redacted>" and value is not None
@@ -1299,7 +1299,7 @@ def collect_first_party_beta_quality_evidence(settings: Settings) -> EvidenceIte
             isinstance(maintenance, dict)
             and maintenance.get("owner") == FIRST_PARTY_MAINTENANCE_OWNER
             and maintenance.get("supportUri")
-            == f"https://example.invalid/crypta/apps/{app_id}/support"
+            == FIRST_PARTY_SUPPORT_URI
             and (not isinstance(beta_readiness, dict)
                  or maintenance.get("backupRestore") == beta_readiness.get("backupRestore"))
         )
@@ -1337,7 +1337,7 @@ def collect_first_party_beta_quality_evidence(settings: Settings) -> EvidenceIte
             )
             app_checks["supportUriMatchesPolicy"] = (
                 manifest.get("app.beta.support.uri")
-                == f"https://example.invalid/crypta/apps/{app_id}/support"
+                == FIRST_PARTY_SUPPORT_URI
             )
             permissions = {part.strip() for part in manifest.get("app.permissions", "").split(",") if part.strip()}
             app_checks["permissionRationalesPresent"] = all(

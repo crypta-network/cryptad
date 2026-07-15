@@ -10,14 +10,14 @@
       "maximumCryptaVersion": null,
       "maintenance": {
         "owner": "crypta-core",
-        "ownerUri": "https://example.invalid/crypta/owners/core",
+        "ownerUri": "https://github.com/crypta-network/cryptad",
         "supportLevel": "core",
         "dataSchemaPolicy": "stateless",
         "migrationPolicy": "none",
         "backupRestore": "not-applicable",
         "securityPolicy": "catalog-advisories",
         "deprecationPolicy": "none",
-        "supportUri": "https://example.invalid/crypta/apps/queue-manager/support"
+        "supportUri": "https://github.com/crypta-network/cryptad/issues"
       }
     },
     "publisher": {
@@ -28,14 +28,14 @@
       "maximumCryptaVersion": null,
       "maintenance": {
         "owner": "crypta-core",
-        "ownerUri": "https://example.invalid/crypta/owners/core",
+        "ownerUri": "https://github.com/crypta-network/cryptad",
         "supportLevel": "core",
         "dataSchemaPolicy": "stateless",
         "migrationPolicy": "none",
         "backupRestore": "not-applicable",
         "securityPolicy": "catalog-advisories",
         "deprecationPolicy": "none",
-        "supportUri": "https://example.invalid/crypta/apps/publisher/support"
+        "supportUri": "https://github.com/crypta-network/cryptad/issues"
       }
     },
     "site-publisher": {
@@ -46,14 +46,14 @@
       "maximumCryptaVersion": null,
       "maintenance": {
         "owner": "crypta-core",
-        "ownerUri": "https://example.invalid/crypta/owners/core",
+        "ownerUri": "https://github.com/crypta-network/cryptad",
         "supportLevel": "maintained",
         "dataSchemaPolicy": "stateless",
         "migrationPolicy": "none",
         "backupRestore": "not-applicable",
         "securityPolicy": "catalog-advisories",
         "deprecationPolicy": "none",
-        "supportUri": "https://example.invalid/crypta/apps/site-publisher/support"
+        "supportUri": "https://github.com/crypta-network/cryptad/issues"
       }
     },
     "profile-publisher": {
@@ -64,14 +64,14 @@
       "maximumCryptaVersion": null,
       "maintenance": {
         "owner": "crypta-core",
-        "ownerUri": "https://example.invalid/crypta/owners/core",
+        "ownerUri": "https://github.com/crypta-network/cryptad",
         "supportLevel": "maintained",
         "dataSchemaPolicy": "declared",
         "migrationPolicy": "declared",
         "backupRestore": "operator-supported",
         "securityPolicy": "catalog-advisories",
         "deprecationPolicy": "none",
-        "supportUri": "https://example.invalid/crypta/apps/profile-publisher/support"
+        "supportUri": "https://github.com/crypta-network/cryptad/issues"
       }
     },
     "social-inbox": {
@@ -82,14 +82,14 @@
       "maximumCryptaVersion": null,
       "maintenance": {
         "owner": "crypta-core",
-        "ownerUri": "https://example.invalid/crypta/owners/core",
+        "ownerUri": "https://github.com/crypta-network/cryptad",
         "supportLevel": "local-rc",
         "dataSchemaPolicy": "declared",
         "migrationPolicy": "operator-approved",
         "backupRestore": "operator-supported",
         "securityPolicy": "catalog-advisories",
         "deprecationPolicy": "none",
-        "supportUri": "https://example.invalid/crypta/apps/social-inbox/support"
+        "supportUri": "https://github.com/crypta-network/cryptad/issues"
       }
     },
     "feed-reader": {
@@ -100,14 +100,14 @@
       "maximumCryptaVersion": null,
       "maintenance": {
         "owner": "crypta-core",
-        "ownerUri": "https://example.invalid/crypta/owners/core",
+        "ownerUri": "https://github.com/crypta-network/cryptad",
         "supportLevel": "maintained",
         "dataSchemaPolicy": "migratable",
         "migrationPolicy": "dry-run-required",
         "backupRestore": "export-import",
         "securityPolicy": "catalog-advisories",
         "deprecationPolicy": "none",
-        "supportUri": "https://example.invalid/crypta/apps/feed-reader/support"
+        "supportUri": "https://github.com/crypta-network/cryptad/issues"
       }
     },
     "trust-graph": {
@@ -118,14 +118,14 @@
       "maximumCryptaVersion": null,
       "maintenance": {
         "owner": "crypta-core",
-        "ownerUri": "https://example.invalid/crypta/owners/core",
+        "ownerUri": "https://github.com/crypta-network/cryptad",
         "supportLevel": "local-rc",
         "dataSchemaPolicy": "migratable",
         "migrationPolicy": "dry-run-required",
         "backupRestore": "operator-supported",
         "securityPolicy": "catalog-advisories",
         "deprecationPolicy": "none",
-        "supportUri": "https://example.invalid/crypta/apps/trust-graph/support"
+        "supportUri": "https://github.com/crypta-network/cryptad/issues"
       }
     }
   }

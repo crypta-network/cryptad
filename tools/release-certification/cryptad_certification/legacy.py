@@ -30,6 +30,7 @@ KIND_BY_COMMAND = {
     "production-beta": "production-beta-release",
     "go-no-go": "production-beta-go-no-go",
     "stable-readiness": "stable-1.0-readiness",
+    "stable-rc": "stable-1.0-rc",
 }
 V2_KIND_BY_INPUT = {
     "appPlatform": "app-platform-smoke",
@@ -99,8 +100,10 @@ STRUCTURED_VALUE_OPTIONS = {
         "--perf-smoke-summary",
         "--previous-release-certification-summary",
         "--previous-summary",
+        "--public-beta-known-issues",
         "--security-drills-summary",
         "--stable-known-limitations",
+        "--stable-rc-artifact-timestamp",
         "--stable-readiness-policy",
         "--stable-readiness-waivers",
         "--third-party-intake-summary",
@@ -703,6 +706,26 @@ def _run_production_beta(context: RunContext) -> tuple[int, Path, Path | None]:
     artifact_base_uri = context.manifest.policies.get("artifactBaseUri")
     if isinstance(artifact_base_uri, str):
         args.extend(["--artifact-base-uri", artifact_base_uri])
+    stable_rc_orchestration = context.manifest.policies.get(
+        "stableRcFreezeMode"
+    ) in {"first-freeze", "refreeze"}
+    if stable_rc_orchestration:
+        operations_path = _resolve_input_path(context, "stableCatalogOperations")
+        if operations_path is None:
+            raise ValueError(
+                "Stable RC production execution requires inputs.stableCatalogOperations"
+            )
+        operations = read_json(operations_path)
+        if not isinstance(operations, dict):
+            raise ValueError("stable catalog-operations evidence is malformed")
+        artifact_timestamp = operations.get("artifactTimestamp")
+        if not isinstance(artifact_timestamp, str) or not artifact_timestamp.strip():
+            raise ValueError(
+                "stable catalog-operations evidence omits artifactTimestamp"
+            )
+        args.extend(
+            ["--stable-rc-artifact-timestamp", artifact_timestamp.strip()]
+        )
 
     _flag(args, context.manifest.requirements.get("liveNetwork"), "--require-live-network")
     _flag(args, context.manifest.requirements.get("history"), "--require-history")
@@ -747,6 +770,11 @@ def _run_production_beta(context: RunContext) -> tuple[int, Path, Path | None]:
     _option_path(args, "--third-party-intake-summary", _legacy_input_path(context, "thirdPartyIntake"))
     _option_path(args, "--security-drills-summary", _legacy_input_path(context, "securityDrills"))
     _option_path(args, "--waiver-file", _resolve_input_path(context, "waiverFile"))
+    _option_path(
+        args,
+        "--public-beta-known-issues",
+        _resolve_input_path(context, "publicBetaKnownIssues"),
+    )
     _option_path(args, "--stable-readiness-policy", _resolve_input_path(context, "stableReadinessPolicy"))
     _option_path(args, "--stable-known-limitations", _resolve_input_path(context, "stableKnownLimitations"))
     _option_path(args, "--stable-readiness-waivers", _resolve_input_path(context, "stableReadinessWaivers"))
@@ -866,6 +894,16 @@ def _run_stable_readiness(context: RunContext) -> tuple[int, Path, Path | None]:
     return code, out / "stable-1.0-readiness-summary.json", out / "stable-1.0-readiness-report.md"
 
 
+def _run_stable_rc(context: RunContext) -> tuple[int, Path, Path | None]:
+    """Run the native Stable 1.0 RC freeze and promotion engine."""
+
+    if context.manifest.release.profile != "stable-review":
+        raise ValueError("stable-rc requires release.profile stable-review")
+    from .engines import stable_1_0_rc as engine
+
+    return engine.run(context)
+
+
 def _run_passthrough(context: RunContext, command: str, action: str | None) -> tuple[int, Path, Path | None]:
     engine: Any
     out = _legacy_dir(context)
@@ -980,6 +1018,7 @@ RUNNERS: dict[str, Callable[[RunContext], tuple[int, Path, Path | None]]] = {
     "production-beta": _run_production_beta,
     "go-no-go": _run_go_no_go,
     "stable-readiness": _run_stable_readiness,
+    "stable-rc": _run_stable_rc,
 }
 
 

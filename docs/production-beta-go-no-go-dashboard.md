@@ -29,6 +29,13 @@ ecosystem matrix, app-platform, live-network, network-scale, multi-node, securit
 candidate, waiver, and optional Stable evidence. It does not trust `promotionReady` without
 validating the underlying rows.
 
+This is the production-beta launch decision, not by itself the final Stable 1.0 RC decision. The
+[Stable RC release-freeze workflow](stable-1.0-rc-execution-and-release-freeze.md) preserves the
+same `go`, `no-go`, and `go-with-waivers` vocabulary, then adds passing Stable readiness, immutable
+freeze generation, post-package `no-drift`, provenance/checksum binding, and RC-wide redaction as
+mandatory final gates. Allowed Stable limitations are reported separately and are not converted
+into hidden dashboard waivers.
+
 ## Waivers
 
 Waivers require an ID, evidence ID, severity, exact scope, rationale, approver, owner, references,

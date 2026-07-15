@@ -70,6 +70,18 @@ Redaction findings, critical security failures, missing Platform API stable base
 breaking changes without deprecation/migration, missing previous-candidate upgrade evidence, and
 unresolved critical known issues are non-waivable.
 
+## Stable RC copy-through
+
+The [Stable 1.0 RC release-freeze workflow](stable-1.0-rc-execution-and-release-freeze.md) freezes
+the exact policy-recognized allowed-limitation records produced by Stable readiness. Each record
+must also appear in `stable-1.0-rc-known-limitations.json` and prominently in the generated RC
+release-note draft with its boundary, owner, and review or exit condition intact. A missing or
+changed copy is freeze drift and makes the RC `no-go`.
+
+Allowed limitations remain separate from `go-with-waivers`. A beta-only or disallowed limitation
+cannot be copied into the RC as an allowed limitation, and a freeze exception cannot reclassify or
+waive it.
+
 ## Redaction
 
 Known limitations and release notes must never include private insert URIs, private keys, app

@@ -57,6 +57,7 @@ Each run writes:
   production-beta/
   go-no-go/
   stable-readiness/
+  stable-rc/
 ```
 
 Each component contains `summary.json`, `report.md`, `redaction-report.json`, and `artifacts/`.
@@ -103,6 +104,13 @@ legacy engine output is removed from the publishable tree, and early exits, nonz
 redaction failures still produce a sanitized failed envelope with `promotionReady=false`.
 Completed migration records and component summaries cannot be overwritten with
 `output.reset=false`.
+
+The `stable-rc/` component is created only by the canonical Stable 1.0 RC command under the
+`stable-review` profile. It contains the common v2 summary/report/redaction surface plus the
+versioned freeze, drift report, promotion summary, RC go/no-go report, known limitations, release
+notes, checksums, provenance, and deterministic public archive. Its schema and release-manager
+procedure are documented in
+[Stable 1.0 RC execution and release freeze](stable-1.0-rc-execution-and-release-freeze.md).
 
 ## Required evidence
 

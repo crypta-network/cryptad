@@ -1,0 +1,1385 @@
+name: Stable 1.0 RC Release Freeze
+run-name: Stable 1.0 RC ${{ inputs.candidate_release_id }} build ${{ inputs.integer_build_version }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_release_id:
+        description: Path-safe release ID shared by every candidate-bound evidence envelope.
+        required: true
+        type: string
+      integer_build_version:
+        description: Integer Cryptad build; must match ./gradlew -q printVersion.
+        required: true
+        type: string
+      stable_rc_freeze_mode:
+        description: Select first-freeze only for the initial candidate baseline; all later runs are refreeze.
+        required: true
+        type: choice
+        options:
+          - first-freeze
+          - refreeze
+      artifact_base_uri:
+        description: Reviewed public HTTPS base URI for staged Stable RC app artifacts.
+        required: true
+        type: string
+      live_network_summary:
+        description: Candidate-bound live-network summary path, HTTPS URL, or actions-artifact reference.
+        required: true
+        type: string
+      multi_node_soak_summary:
+        description: Candidate-bound production multi-node soak summary path, HTTPS URL, or actions-artifact reference.
+        required: true
+        type: string
+      network_scale_soak_summary:
+        description: Candidate-bound live network-scale soak summary path, HTTPS URL, or actions-artifact reference.
+        required: true
+        type: string
+      previous_candidate_summary:
+        description: Candidate-bound previous-candidate upgrade summary path, HTTPS URL, or actions-artifact reference.
+        required: true
+        type: string
+      release_history_summary:
+        description: Candidate-bound release-history summary path, HTTPS URL, or actions-artifact reference.
+        required: true
+        type: string
+      security_drills_summary:
+        description: Security-drill summary path or actions-artifact reference with all scenario sidecars.
+        required: true
+        type: string
+      third_party_intake_summary:
+        description: Candidate release/build-bound production third-party intake summary path, HTTPS URL, or actions-artifact reference.
+        required: true
+        type: string
+      public_beta_known_issues:
+        description: Reviewed public beta known-issues data path, HTTPS URL, or actions-artifact reference.
+        required: true
+        type: string
+      stable_catalog_operations:
+        description: Candidate-bound stable catalog operations summary with the frozen artifactTimestamp.
+        required: true
+        type: string
+      previous_stable_rc_freeze:
+        description: Retained latest successful freeze path, HTTPS URL, or artifact reference; required in refreeze and forbidden in first-freeze.
+        required: false
+        default: ''
+        type: string
+      go_no_go_waivers:
+        description: Optional policy-compliant go/no-go waiver collection path, HTTPS URL, or actions-artifact reference.
+        required: false
+        default: ''
+        type: string
+      stable_readiness_waivers:
+        description: Optional policy-compliant Stable-readiness waiver collection path, HTTPS URL, or actions-artifact reference.
+        required: false
+        default: ''
+        type: string
+      stable_rc_freeze_exceptions:
+        description: Optional Stable RC freeze-exception collection path, HTTPS URL, or actions-artifact reference.
+        required: false
+        default: ''
+        type: string
+
+concurrency:
+  group: stable-1-0-rc-${{ inputs.candidate_release_id }}-${{ inputs.integer_build_version }}
+  cancel-in-progress: false
+
+jobs:
+  stable-rc:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    environment: stable-1-0-rc
+    permissions:
+      contents: read
+      actions: read
+      checks: write
+
+    steps:
+      - name: Check out the candidate commit
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v5
+        with:
+          java-version: '25'
+          distribution: temurin
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@f29f5a9d7b09a7c6b29859002d29d24e1674c884 # v5
+
+      - name: Install Gradle properties
+        uses: ./.github/actions/setup-gradle-properties
+
+      - name: Validate candidate identity and clean checkout
+        env:
+          INPUT_RELEASE_ID: ${{ inputs.candidate_release_id }}
+          INPUT_BUILD_VERSION: ${{ inputs.integer_build_version }}
+          INPUT_ARTIFACT_BASE_URI: ${{ inputs.artifact_base_uri }}
+        run: |
+          if [[ ! "$INPUT_RELEASE_ID" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+            echo "::error::candidate_release_id must be a path-safe release ID."
+            exit 1
+          fi
+          if [[ ! "$INPUT_BUILD_VERSION" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::integer_build_version must be a positive decimal integer."
+            exit 1
+          fi
+          if [[ ! "$INPUT_ARTIFACT_BASE_URI" =~ ^https:// ]]; then
+            echo "::error::artifact_base_uri must use HTTPS."
+            exit 1
+          fi
+          if [[ "$INPUT_ARTIFACT_BASE_URI" == *"REPLACE_ME"* || "$INPUT_ARTIFACT_BASE_URI" == *"example.invalid"* ]]; then
+            echo "::error::artifact_base_uri contains a placeholder."
+            exit 1
+          fi
+          if [[ "$(git rev-parse HEAD)" != "$GITHUB_SHA" ]]; then
+            echo "::error::The checked-out commit does not match the workflow candidate commit."
+            exit 1
+          fi
+          if [[ -n "$(git status --porcelain=v1 --untracked-files=all)" ]]; then
+            echo "::error::Stable RC execution requires a clean workspace."
+            git status --short
+            exit 1
+          fi
+
+      - name: Verify the integer project build
+        env:
+          INPUT_BUILD_VERSION: ${{ inputs.integer_build_version }}
+        run: |
+          project_version="$(./gradlew -q printVersion)"
+          if [[ ! "$project_version" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::Expected an integer project version, got '$project_version'."
+            exit 1
+          fi
+          if [[ "$project_version" != "$INPUT_BUILD_VERSION" ]]; then
+            echo "::error::Manifest build $INPUT_BUILD_VERSION does not match project build $project_version."
+            exit 1
+          fi
+
+      - name: Run Stable RC deterministic self-test
+        run: python3 tools/release-certification/certify.py stable-rc --self-test
+
+      - name: Run full candidate build
+        run: ./gradlew build
+
+      - name: Run Hyphanet interop smoke
+        env:
+          INTEROP_SKIP_BUILD: '1'
+        run: tools/interop/run-hyphanet-interop-smoke.sh
+
+      - name: Run performance smoke
+        env:
+          PERF_SKIP_BUILD: '1'
+        run: tools/perf/run-performance-smoke.sh
+
+      - name: Execute and freeze the Stable 1.0 release candidate
+        env:
+          INPUT_RELEASE_ID: ${{ inputs.candidate_release_id }}
+          INPUT_BUILD_VERSION: ${{ inputs.integer_build_version }}
+          INPUT_STABLE_RC_FREEZE_MODE: ${{ inputs.stable_rc_freeze_mode }}
+          INPUT_ARTIFACT_BASE_URI: ${{ inputs.artifact_base_uri }}
+          INPUT_LIVE_NETWORK_SUMMARY: ${{ inputs.live_network_summary }}
+          INPUT_MULTI_NODE_SOAK_SUMMARY: ${{ inputs.multi_node_soak_summary }}
+          INPUT_NETWORK_SCALE_SOAK_SUMMARY: ${{ inputs.network_scale_soak_summary }}
+          INPUT_PREVIOUS_CANDIDATE_SUMMARY: ${{ inputs.previous_candidate_summary }}
+          INPUT_RELEASE_HISTORY_SUMMARY: ${{ inputs.release_history_summary }}
+          INPUT_SECURITY_DRILLS_SUMMARY: ${{ inputs.security_drills_summary }}
+          INPUT_THIRD_PARTY_INTAKE_SUMMARY: ${{ inputs.third_party_intake_summary }}
+          INPUT_PUBLIC_BETA_KNOWN_ISSUES: ${{ inputs.public_beta_known_issues }}
+          INPUT_STABLE_CATALOG_OPERATIONS: ${{ inputs.stable_catalog_operations }}
+          INPUT_PREVIOUS_STABLE_RC_FREEZE: ${{ inputs.previous_stable_rc_freeze }}
+          INPUT_GO_NO_GO_WAIVERS: ${{ inputs.go_no_go_waivers }}
+          INPUT_STABLE_READINESS_WAIVERS: ${{ inputs.stable_readiness_waivers }}
+          INPUT_STABLE_RC_FREEZE_EXCEPTIONS: ${{ inputs.stable_rc_freeze_exceptions }}
+          CRYPTAD_APP_SIGNING_KEY_ID: ${{ secrets.CRYPTAD_APP_SIGNING_KEY_ID }}
+          CRYPTAD_APP_SIGNING_PRIVATE_KEY_FILE: ${{ secrets.CRYPTAD_APP_SIGNING_PRIVATE_KEY_FILE }}
+          CRYPTAD_APP_SIGNING_PRIVATE_KEY_BASE64: ${{ secrets.CRYPTAD_APP_SIGNING_PRIVATE_KEY_BASE64 }}
+          CRYPTAD_APP_SIGNING_PUBLIC_KEY_FILE: ${{ secrets.CRYPTAD_APP_SIGNING_PUBLIC_KEY_FILE }}
+          CRYPTAD_APP_SIGNING_PUBLIC_KEY_BASE64: ${{ secrets.CRYPTAD_APP_SIGNING_PUBLIC_KEY_BASE64 }}
+          CRYPTAD_APP_REVIEWER_KEY_ID: ${{ secrets.CRYPTAD_APP_REVIEWER_KEY_ID }}
+          CRYPTAD_APP_REVIEWER_PRIVATE_KEY_FILE: ${{ secrets.CRYPTAD_APP_REVIEWER_PRIVATE_KEY_FILE }}
+          CRYPTAD_APP_REVIEWER_PRIVATE_KEY_BASE64: ${{ secrets.CRYPTAD_APP_REVIEWER_PRIVATE_KEY_BASE64 }}
+          CRYPTAD_APP_REVIEWER_PUBLIC_KEY_FILE: ${{ secrets.CRYPTAD_APP_REVIEWER_PUBLIC_KEY_FILE }}
+          CRYPTAD_APP_REVIEWER_PUBLIC_KEY_BASE64: ${{ secrets.CRYPTAD_APP_REVIEWER_PUBLIC_KEY_BASE64 }}
+          CRYPTAD_APP_REVIEW_POLICY_ID: ${{ secrets.CRYPTAD_APP_REVIEW_POLICY_ID }}
+          CRYPTAD_APP_REVIEW_POLICY_VERSION: ${{ secrets.CRYPTAD_APP_REVIEW_POLICY_VERSION }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          require_env() {
+            local name="$1"
+            local description="$2"
+            if [[ -z "${!name:-}" ]]; then
+              echo "::error::$description ($name) is required for protected Stable RC execution."
+              exit 1
+            fi
+          }
+
+          require_file() {
+            local path="$1"
+            local description="$2"
+            if [[ -z "$path" || ! -f "$path" ]]; then
+              echo "::error::$description must be a readable regular file."
+              exit 1
+            fi
+            if [[ -L "$path" ]]; then
+              echo "::error::$description cannot be a symlink."
+              exit 1
+            fi
+          }
+
+          materialize_secret_file() {
+            local encoded="$1"
+            local env_name="$2"
+            local file_name="$3"
+            if [[ -z "$encoded" ]]; then
+              return 0
+            fi
+            local path="$RUNNER_TEMP/cryptad-stable-rc-secrets/$file_name"
+            mkdir -p "$(dirname "$path")"
+            printf '%s' "$encoded" | base64 --decode > "$path"
+            chmod 600 "$path"
+            export "$env_name=$path"
+          }
+
+          materialize_actions_artifact_file() {
+            local value="$1"
+            local env_name="$2"
+            local file_name="$3"
+            local description="$4"
+            local rest="${value#actions-artifact://}"
+            local run_id="${rest%%/*}"
+            if [[ ! "$run_id" =~ ^[0-9]+$ || "$run_id" == "$rest" ]]; then
+              echo "::error::$description reference must start actions-artifact://<run-id>/."
+              exit 1
+            fi
+            rest="${rest#*/}"
+            local artifact_name="${rest%%/*}"
+            if [[ ! "$artifact_name" =~ ^[A-Za-z0-9._-]+$ || "$artifact_name" == "." || "$artifact_name" == ".." || "$artifact_name" == "$rest" ]]; then
+              echo "::error::$description reference must contain a path-safe artifact name and relative file path."
+              exit 1
+            fi
+            local artifact_path="${rest#*/}"
+            if [[ -z "$artifact_path" || "$artifact_path" == /* || "$artifact_path" == ".." || "$artifact_path" == ../* || "$artifact_path" == */../* || "$artifact_path" == */.. ]]; then
+              echo "::error::$description artifact path is unsafe."
+              exit 1
+            fi
+            local download_dir="build/stable-rc-protected-inputs/$file_name-artifact"
+            rm -rf "$download_dir"
+            mkdir -p "$download_dir"
+            gh run download "$run_id" --repo "$GITHUB_REPOSITORY" --name "$artifact_name" --dir "$download_dir"
+            if [[ -L "$download_dir" ]]; then
+              echo "::error::$description download directory became a symlink."
+              exit 1
+            fi
+            local path="$download_dir/$artifact_path"
+            if [[ ! -f "$path" && -f "$download_dir/$artifact_name/$artifact_path" ]]; then
+              path="$download_dir/$artifact_name/$artifact_path"
+            fi
+            require_file "$path" "$description"
+            local requested_relative="${path#"$download_dir"/}"
+            local current_path="$download_dir"
+            IFS='/' read -r -a path_parts <<< "$requested_relative"
+            for path_part in "${path_parts[@]}"; do
+              current_path="$current_path/$path_part"
+              if [[ -L "$current_path" ]]; then
+                echo "::error::$description contains a symlinked path component."
+                exit 1
+              fi
+            done
+            local download_root
+            local resolved_path
+            download_root="$(realpath -e "$download_dir")"
+            resolved_path="$(realpath -e "$path")"
+            if [[ "$resolved_path" != "$download_root"/* ]]; then
+              echo "::error::$description resolved outside its downloaded artifact directory."
+              exit 1
+            fi
+            chmod 600 "$path"
+            export "$env_name=$path"
+          }
+
+          materialize_input_file() {
+            local value="$1"
+            local env_name="$2"
+            local file_name="$3"
+            local description="$4"
+            if [[ -z "$value" ]]; then
+              return 0
+            fi
+            case "$value" in
+              https://*)
+                local path="build/stable-rc-protected-inputs/$file_name"
+                mkdir -p "$(dirname "$path")"
+                curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --tlsv1.2 --retry 3 --output "$path" "$value"
+                chmod 600 "$path"
+                export "$env_name=$path"
+                ;;
+              http://*)
+                echo "::error::$description URL must use HTTPS."
+                exit 1
+                ;;
+              actions-artifact://*)
+                materialize_actions_artifact_file "$value" "$env_name" "$file_name" "$description"
+                ;;
+              *)
+                if [[ "$value" == /* || "$value" == ".." || "$value" == ../* || "$value" == */../* || "$value" == */.. || "$value" == *'\'* ]]; then
+                  echo "::error::$description must use a safe repository-relative path."
+                  exit 1
+                fi
+                local current_path="$GITHUB_WORKSPACE"
+                local -a path_parts=()
+                IFS='/' read -r -a path_parts <<< "$value"
+                for path_part in "${path_parts[@]}"; do
+                  current_path="$current_path/$path_part"
+                  if [[ -L "$current_path" ]]; then
+                    echo "::error::$description contains a symlinked path component."
+                    exit 1
+                  fi
+                done
+                require_file "$value" "$description"
+                local workspace_root
+                local resolved_path
+                workspace_root="$(realpath -e "$GITHUB_WORKSPACE")"
+                resolved_path="$(realpath -e "$value")"
+                if [[ "$resolved_path" != "$workspace_root"/* ]]; then
+                  echo "::error::$description resolved outside the checked-out workspace."
+                  exit 1
+                fi
+                export "$env_name=$value"
+                ;;
+            esac
+          }
+
+          freeze_lineage_anchor_name() {
+            printf 'Stable 1.0 RC freeze lineage / %s / build %s' \
+              "$INPUT_RELEASE_ID" \
+              "$INPUT_BUILD_VERSION"
+          }
+
+          verify_refreeze_lineage_anchor() {
+            local run_id="$1"
+            local run_attempt="$2"
+            local parent_sha="$3"
+            local supplied_freeze="$4"
+            if [[ ! "$parent_sha" =~ ^[0-9a-fA-F]{40}$ ]]; then
+              echo "::error::The latest successful Stable RC source commit is malformed."
+              exit 1
+            fi
+            local digest_hex
+            digest_hex="$(sha256sum "$supplied_freeze" | awk '{print $1}')"
+            if [[ ! "$digest_hex" =~ ^[0-9a-f]{64}$ ]]; then
+              echo "::error::The supplied previous freeze digest is malformed."
+              exit 1
+            fi
+            local expected_external_id
+            expected_external_id="stable-1.0-rc-freeze:$INPUT_RELEASE_ID:$INPUT_BUILD_VERSION:$run_id:$run_attempt:sha256:$digest_hex"
+            local anchor_name
+            anchor_name="$(freeze_lineage_anchor_name)"
+            local matching_anchors
+            matching_anchors="$(
+              gh api --paginate --method GET \
+                "repos/$GITHUB_REPOSITORY/commits/$parent_sha/check-runs" \
+                -f check_name="$anchor_name" \
+                -f per_page=100 \
+              | jq -s -r \
+                  --arg anchor_name "$anchor_name" \
+                  --arg expected_external_id "$expected_external_id" \
+                  --arg parent_sha "${parent_sha,,}" \
+                  '[.[].check_runs[]
+                    | select(.name == $anchor_name
+                        and .status == "completed"
+                        and .conclusion == "success"
+                        and (.head_sha | ascii_downcase) == $parent_sha
+                        and .app.slug == "github-actions"
+                        and .external_id == $expected_external_id)]
+                   | length'
+            )"
+            if [[ "$matching_anchors" != "1" ]]; then
+              echo "::error::The supplied previous freeze does not match the authenticated lineage anchor from the latest successful protected run."
+              exit 1
+            fi
+          }
+
+          verify_latest_refreeze_parent() {
+            local run_id="$1"
+            local run_attempt="$2"
+            local parent_sha="$3"
+            local supplied_freeze="$4"
+            local artifact_name="stable-1-0-rc-$INPUT_RELEASE_ID-$INPUT_BUILD_VERSION-$run_id-$run_attempt"
+            local download_dir="build/stable-rc-protected-inputs/latest-successful-freeze"
+            rm -rf "$download_dir"
+            mkdir -p "$download_dir"
+            if ! gh run download "$run_id" \
+                --repo "$GITHUB_REPOSITORY" \
+                --name "$artifact_name" \
+                --dir "$download_dir"; then
+              echo "::warning::The latest Stable RC artifact is unavailable; verifying the retained freeze against its authenticated check-run lineage anchor."
+              verify_refreeze_lineage_anchor \
+                "$run_id" \
+                "$run_attempt" \
+                "$parent_sha" \
+                "$supplied_freeze"
+              return
+            fi
+            if [[ -n "$(find "$download_dir" -type l -print -quit)" ]]; then
+              echo "::error::The latest successful Stable RC artifact contains a symlink."
+              exit 1
+            fi
+            local -a authenticated_freezes=()
+            mapfile -t authenticated_freezes < <(
+              find "$download_dir" -type f -name stable-1.0-rc-freeze.json -print | sort
+            )
+            if [[ "${#authenticated_freezes[@]}" -ne 1 ]]; then
+              echo "::error::The latest successful Stable RC artifact must contain exactly one freeze manifest."
+              exit 1
+            fi
+            require_file "${authenticated_freezes[0]}" "Latest successful Stable RC freeze"
+            if ! cmp --silent "$supplied_freeze" "${authenticated_freezes[0]}"; then
+              echo "::error::The supplied previous freeze is not the exact freeze from the latest successful protected run."
+              exit 1
+            fi
+          }
+
+          materialize_security_drills() {
+            local value="$1"
+            case "$value" in
+              http://*|https://*)
+                echo "::error::Security drills require a local or actions-artifact input with all scenario sidecars; a summary-only URL is insufficient."
+                exit 1
+                ;;
+              *)
+                materialize_input_file "$value" INPUT_SECURITY_DRILLS_SUMMARY security-drills-summary.json "Security drills summary"
+                ;;
+            esac
+          }
+
+          display_title="Stable 1.0 RC $INPUT_RELEASE_ID build $INPUT_BUILD_VERSION"
+          if [[ "$GITHUB_RUN_ATTEMPT" != "1" ]]; then
+            echo "::error::Stable RC workflow runs are immutable. Dispatch a new run instead of rerunning an existing run."
+            exit 1
+          fi
+          local_workflow_path=".github/workflows/stable-1.0-rc-release.yml"
+          candidate_runs=()
+          mapfile -t candidate_runs < <(
+            gh api --paginate --method GET \
+              "repos/$GITHUB_REPOSITORY/actions/workflows/stable-1.0-rc-release.yml/runs" \
+              -f event=workflow_dispatch \
+              -f per_page=100 \
+            | jq -s -r \
+                --arg display_title "$display_title" \
+                --arg current_run "$GITHUB_RUN_ID" \
+                '[.[].workflow_runs[] | select((.id | tostring) != $current_run and .display_title == $display_title)]
+                 | unique_by(.id)
+                 | .[]
+                 | [.id, .run_attempt]
+                 | @tsv'
+          )
+          latest_successful_run_id=""
+          latest_successful_run_attempt=""
+          latest_successful_head_sha=""
+          for candidate_run in "${candidate_runs[@]}"; do
+            IFS=$'\t' read -r candidate_run_id candidate_run_attempts <<< "$candidate_run"
+            if [[ ! "$candidate_run_id" =~ ^[0-9]+$ || ! "$candidate_run_attempts" =~ ^[1-9][0-9]*$ ]]; then
+              echo "::error::A Stable RC workflow history entry is malformed."
+              exit 1
+            fi
+            for ((attempt = 1; attempt <= candidate_run_attempts; attempt++)); do
+              attempt_json="$(
+                gh api --method GET \
+                  "repos/$GITHUB_REPOSITORY/actions/runs/$candidate_run_id/attempts/$attempt"
+              )"
+              if jq -e \
+                --arg display_title "$display_title" \
+                --arg workflow_path "$local_workflow_path" \
+                --arg repository "$GITHUB_REPOSITORY" \
+                '.conclusion == "success"
+                  and .event == "workflow_dispatch"
+                  and .display_title == $display_title
+                  and (.head_sha | test("^[0-9a-fA-F]{40}$"))
+                  and (.path == $workflow_path or (.path | startswith($workflow_path + "@")))
+                  and .repository.full_name == $repository' \
+                <<< "$attempt_json" >/dev/null; then
+                if [[ -z "$latest_successful_run_id" \
+                      || "$candidate_run_id" -gt "$latest_successful_run_id" \
+                      || ("$candidate_run_id" -eq "$latest_successful_run_id" \
+                          && "$attempt" -gt "$latest_successful_run_attempt") ]]; then
+                  latest_successful_run_id="$candidate_run_id"
+                  latest_successful_run_attempt="$attempt"
+                  latest_successful_head_sha="$(jq -r '.head_sha | ascii_downcase' <<< "$attempt_json")"
+                fi
+              fi
+            done
+          done
+
+          case "$INPUT_STABLE_RC_FREEZE_MODE" in
+            first-freeze)
+              if [[ -n "$INPUT_PREVIOUS_STABLE_RC_FREEZE" ]]; then
+                echo "::error::first-freeze mode forbids a previous_stable_rc_freeze input."
+                exit 1
+              fi
+              if [[ -n "$latest_successful_run_id" ]]; then
+                echo "::error::A successful Stable RC baseline already exists for this release ID and build. Use refreeze mode with the exact prior freeze."
+                exit 1
+              fi
+              ;;
+            refreeze)
+              if [[ -z "$INPUT_PREVIOUS_STABLE_RC_FREEZE" ]]; then
+                echo "::error::refreeze mode requires previous_stable_rc_freeze."
+                exit 1
+              fi
+              if [[ -z "$latest_successful_run_id" ]]; then
+                echo "::error::refreeze mode requires a prior successful protected Stable RC run. Use first-freeze for the initial baseline."
+                exit 1
+              fi
+              ;;
+            *)
+              echo "::error::stable_rc_freeze_mode must be first-freeze or refreeze."
+              exit 1
+              ;;
+          esac
+
+          materialize_input_file "$INPUT_LIVE_NETWORK_SUMMARY" INPUT_LIVE_NETWORK_SUMMARY live-network-summary.json "Live-network summary"
+          materialize_input_file "$INPUT_MULTI_NODE_SOAK_SUMMARY" INPUT_MULTI_NODE_SOAK_SUMMARY multi-node-soak-summary.json "Multi-node soak summary"
+          materialize_input_file "$INPUT_NETWORK_SCALE_SOAK_SUMMARY" INPUT_NETWORK_SCALE_SOAK_SUMMARY network-scale-soak-summary.json "Network-scale soak summary"
+          materialize_input_file "$INPUT_PREVIOUS_CANDIDATE_SUMMARY" INPUT_PREVIOUS_CANDIDATE_SUMMARY previous-candidate-summary.json "Previous-candidate summary"
+          materialize_input_file "$INPUT_RELEASE_HISTORY_SUMMARY" INPUT_RELEASE_HISTORY_SUMMARY release-history-summary.json "Release-history summary"
+          materialize_security_drills "$INPUT_SECURITY_DRILLS_SUMMARY"
+          materialize_input_file "$INPUT_THIRD_PARTY_INTAKE_SUMMARY" INPUT_THIRD_PARTY_INTAKE_SUMMARY third-party-intake-summary.json "Third-party intake summary"
+          materialize_input_file "$INPUT_PUBLIC_BETA_KNOWN_ISSUES" INPUT_PUBLIC_BETA_KNOWN_ISSUES public-beta-known-issues.json "Public beta known issues"
+          materialize_input_file "$INPUT_STABLE_CATALOG_OPERATIONS" INPUT_STABLE_CATALOG_OPERATIONS stable-catalog-operations-summary.json "Stable catalog operations summary"
+          materialize_input_file "$INPUT_PREVIOUS_STABLE_RC_FREEZE" INPUT_PREVIOUS_STABLE_RC_FREEZE previous-stable-rc-freeze.json "Previous Stable RC freeze"
+          if [[ "$INPUT_STABLE_RC_FREEZE_MODE" == "refreeze" ]]; then
+            verify_latest_refreeze_parent \
+              "$latest_successful_run_id" \
+              "$latest_successful_run_attempt" \
+              "$latest_successful_head_sha" \
+              "$INPUT_PREVIOUS_STABLE_RC_FREEZE"
+          fi
+          materialize_input_file "$INPUT_GO_NO_GO_WAIVERS" INPUT_GO_NO_GO_WAIVERS go-no-go-waivers.json "Go/no-go waivers"
+          materialize_input_file "$INPUT_STABLE_READINESS_WAIVERS" INPUT_STABLE_READINESS_WAIVERS stable-readiness-waivers.json "Stable readiness waivers"
+          materialize_input_file "$INPUT_STABLE_RC_FREEZE_EXCEPTIONS" INPUT_STABLE_RC_FREEZE_EXCEPTIONS stable-rc-freeze-exceptions.json "Stable RC freeze exceptions"
+          unset GH_TOKEN
+
+          materialize_secret_file "${CRYPTAD_APP_SIGNING_PRIVATE_KEY_BASE64:-}" CRYPTAD_APP_SIGNING_PRIVATE_KEY_FILE app-signing-private.der
+          materialize_secret_file "${CRYPTAD_APP_SIGNING_PUBLIC_KEY_BASE64:-}" CRYPTAD_APP_SIGNING_PUBLIC_KEY_FILE app-signing-public.der
+          materialize_secret_file "${CRYPTAD_APP_REVIEWER_PRIVATE_KEY_BASE64:-}" CRYPTAD_APP_REVIEWER_PRIVATE_KEY_FILE reviewer-private.der
+          materialize_secret_file "${CRYPTAD_APP_REVIEWER_PUBLIC_KEY_BASE64:-}" CRYPTAD_APP_REVIEWER_PUBLIC_KEY_FILE reviewer-public.der
+
+          require_env CRYPTAD_APP_SIGNING_KEY_ID "Production app signing key ID"
+          require_file "${CRYPTAD_APP_SIGNING_PRIVATE_KEY_FILE:-}" "Production app signing private key"
+          require_file "${CRYPTAD_APP_SIGNING_PUBLIC_KEY_FILE:-}" "Production app signing public key"
+          require_env CRYPTAD_APP_REVIEWER_KEY_ID "Production reviewer key ID"
+          require_file "${CRYPTAD_APP_REVIEWER_PRIVATE_KEY_FILE:-}" "Production reviewer private key"
+          require_file "${CRYPTAD_APP_REVIEWER_PUBLIC_KEY_FILE:-}" "Production reviewer public key"
+          require_env CRYPTAD_APP_REVIEW_POLICY_ID "Production app review policy ID"
+          require_env CRYPTAD_APP_REVIEW_POLICY_VERSION "Production app review policy version"
+          for required_input in \
+            INPUT_LIVE_NETWORK_SUMMARY \
+            INPUT_MULTI_NODE_SOAK_SUMMARY \
+            INPUT_NETWORK_SCALE_SOAK_SUMMARY \
+            INPUT_PREVIOUS_CANDIDATE_SUMMARY \
+            INPUT_RELEASE_HISTORY_SUMMARY \
+            INPUT_SECURITY_DRILLS_SUMMARY \
+            INPUT_THIRD_PARTY_INTAKE_SUMMARY \
+            INPUT_PUBLIC_BETA_KNOWN_ISSUES \
+            INPUT_STABLE_CATALOG_OPERATIONS; do
+            require_file "${!required_input:-}" "$required_input"
+          done
+          for optional_input in \
+            INPUT_PREVIOUS_STABLE_RC_FREEZE \
+            INPUT_GO_NO_GO_WAIVERS \
+            INPUT_STABLE_READINESS_WAIVERS \
+            INPUT_STABLE_RC_FREEZE_EXCEPTIONS; do
+            if [[ -n "${!optional_input:-}" ]]; then
+              require_file "${!optional_input}" "$optional_input"
+            fi
+          done
+
+          manifest="$RUNNER_TEMP/stable-1.0-rc-manifest.json"
+          jq -n \
+            --arg release_id "$INPUT_RELEASE_ID" \
+            --arg release_version "$INPUT_BUILD_VERSION" \
+            --arg freeze_mode "$INPUT_STABLE_RC_FREEZE_MODE" \
+            --arg artifact_base_uri "$INPUT_ARTIFACT_BASE_URI" \
+            --arg live_network "$INPUT_LIVE_NETWORK_SUMMARY" \
+            --arg multi_node "$INPUT_MULTI_NODE_SOAK_SUMMARY" \
+            --arg network_scale "$INPUT_NETWORK_SCALE_SOAK_SUMMARY" \
+            --arg previous_candidate "$INPUT_PREVIOUS_CANDIDATE_SUMMARY" \
+            --arg release_history "$INPUT_RELEASE_HISTORY_SUMMARY" \
+            --arg security_drills "$INPUT_SECURITY_DRILLS_SUMMARY" \
+            --arg third_party "$INPUT_THIRD_PARTY_INTAKE_SUMMARY" \
+            --arg public_known_issues "$INPUT_PUBLIC_BETA_KNOWN_ISSUES" \
+            --arg catalog_operations "$INPUT_STABLE_CATALOG_OPERATIONS" \
+            --arg previous_freeze "$INPUT_PREVIOUS_STABLE_RC_FREEZE" \
+            --arg go_no_go_waivers "$INPUT_GO_NO_GO_WAIVERS" \
+            --arg stable_waivers "$INPUT_STABLE_READINESS_WAIVERS" \
+            --arg freeze_exceptions "$INPUT_STABLE_RC_FREEZE_EXCEPTIONS" \
+            '{
+              schemaVersion: 1,
+              release: {id: $release_id, version: $release_version, profile: "stable-review"},
+              output: {root: "build/release-certification", reset: true},
+              requirements: {
+                history: true,
+                liveNetwork: true,
+                multiNodeSoak: true,
+                sandboxProviderTests: true,
+                stableReadiness: true,
+                thirdPartyIntake: true
+              },
+              inputs: ({
+                interopSmoke: "build/interop-smoke/summary.json",
+                liveNetwork: $live_network,
+                multiNodeSoak: $multi_node,
+                networkScaleSoak: $network_scale,
+                performanceSmoke: "build/perf-smoke/summary.json",
+                previousCandidate: $previous_candidate,
+                publicBetaKnownIssues: $public_known_issues,
+                releaseHistory: $release_history,
+                securityDrills: $security_drills,
+                stableCatalogOperations: $catalog_operations,
+                stableKnownLimitations: "tools/release-certification/stable-1.0-known-limitations.json",
+                stableReadinessPolicy: "tools/release-certification/stable-1.0-readiness-policy.json",
+                thirdPartyIntake: $third_party
+              }
+                + (if $previous_freeze == "" then {} else {previousStableRcFreeze: $previous_freeze} end)
+                + (if $go_no_go_waivers == "" then {} else {waiverFile: $go_no_go_waivers} end)
+                + (if $stable_waivers == "" then {} else {stableReadinessWaivers: $stable_waivers} end)
+                + (if $freeze_exceptions == "" then {} else {stableRcFreezeExceptions: $freeze_exceptions} end)),
+              policies: {
+                artifactBaseUri: $artifact_base_uri,
+                catalogChannel: "stable",
+                stableRcFreezeMode: $freeze_mode
+              },
+              execution: {
+                allowDirtyWorkspace: false,
+                allowTestSigningInProduction: false,
+                collectEvidence: true,
+                collectLiveNetwork: false,
+                emergencySkipBuild: false,
+                emergencySkipLiveNetwork: false,
+                fixtureEvidence: false,
+                generateStableReadiness: true,
+                runMultiNodeSoak: false,
+                skipFullBuild: false,
+                skipGitMetadata: false,
+                skipGradle: false,
+                writeHistory: false
+              },
+              commands: {"stable-rc": {args: []}}
+            }' > "$manifest"
+
+          python3 tools/release-certification/certify.py stable-rc --manifest "$manifest"
+
+      - name: Verify final Stable RC decision and candidate binding
+        id: final_gate
+        env:
+          INPUT_RELEASE_ID: ${{ inputs.candidate_release_id }}
+          INPUT_BUILD_VERSION: ${{ inputs.integer_build_version }}
+          INPUT_STABLE_RC_FREEZE_MODE: ${{ inputs.stable_rc_freeze_mode }}
+        run: |
+          component="build/release-certification/$INPUT_RELEASE_ID/stable-rc"
+          summary="$component/summary.json"
+          if [[ ! -f "$summary" || -L "$summary" ]]; then
+            echo "::error::Stable RC v2 summary is missing or unsafe."
+            exit 1
+          fi
+          for common_artifact in report.md redaction-report.json; do
+            if [[ ! -f "$component/$common_artifact" || -L "$component/$common_artifact" ]]; then
+              echo "::error::Required common Stable RC artifact $common_artifact is missing or unsafe."
+              exit 1
+            fi
+          done
+          jq -e \
+            --arg release_id "$INPUT_RELEASE_ID" \
+            --arg version "$INPUT_BUILD_VERSION" \
+            --arg freeze_mode "$INPUT_STABLE_RC_FREEZE_MODE" \
+            '.payload.legacy.decision as $decision
+              | .schemaVersion == 2
+              and .kind == "stable-1.0-rc"
+              and .subject.releaseId == $release_id
+              and .subject.version == $version
+              and .subject.profile == "stable-review"
+              and .subject.component == "stable-rc"
+              and .result.status == "pass"
+              and .result.promotionReady == true
+              and .result.exitCode == 0
+              and .redaction.status == "pass"
+              and .redaction.findingCount == 0
+              and .payload.legacy.nonRelease == false
+              and .payload.legacy.stableReady == true
+              and .payload.legacy.freeze.status == "pass"
+              and .payload.legacy.freeze.mode == $freeze_mode
+              and .payload.legacy.freeze.driftStatus == "no-drift"
+              and (["go", "go-with-waivers"] | index($decision) != null)' \
+            "$summary" >/dev/null
+
+          legacy="$component/artifacts/legacy"
+          if [[ ! -d "$legacy" || -L "$legacy" ]]; then
+            echo "::error::Stable RC native artifact directory is missing or unsafe."
+            exit 1
+          fi
+          for native_artifact in \
+            stable-1.0-rc-freeze.json \
+            stable-1.0-rc-freeze.sha256 \
+            stable-1.0-rc-freeze-report.md \
+            stable-1.0-rc-drift-report.json \
+            stable-1.0-rc-promotion-summary.json \
+            stable-1.0-rc-go-no-go.md \
+            stable-1.0-rc-known-limitations.json \
+            stable-1.0-rc-release-notes.md \
+            checksums.txt \
+            provenance.json \
+            redaction-report.json; do
+            if [[ ! -f "$legacy/$native_artifact" || -L "$legacy/$native_artifact" ]]; then
+              echo "::error::Required native Stable RC artifact $native_artifact is missing or unsafe."
+              exit 1
+            fi
+            expected_occurrences=1
+            if [[ "$native_artifact" == "redaction-report.json" ]]; then
+              expected_occurrences=2
+            fi
+            actual_occurrences="$(find "$component" -type f -name "$native_artifact" -print | wc -l)"
+            if [[ "$actual_occurrences" -ne "$expected_occurrences" ]]; then
+              echo "::error::Stable RC artifact $native_artifact has an unexpected duplicate or location."
+              exit 1
+            fi
+          done
+          promotion_summary="$legacy/stable-1.0-rc-promotion-summary.json"
+          jq -e \
+            --arg release_id "$INPUT_RELEASE_ID" \
+            --arg version "$INPUT_BUILD_VERSION" \
+            --arg freeze_mode "$INPUT_STABLE_RC_FREEZE_MODE" '
+            .decision as $decision
+              | .kind == "stable-1.0-rc"
+              and .releaseId == $release_id
+              and .buildVersion == $version
+              and .status == "pass"
+              and .promotionReady == true
+              and .nonRelease == false
+              and .stableReady == true
+              and .freeze.status == "pass"
+              and .freeze.mode == $freeze_mode
+              and .freeze.driftStatus == "no-drift"
+              and .redactionStatus == "pass"
+              and .redaction.status == "pass"
+              and .redaction.findingCount == 0
+              and .blockerCount == 0
+              and (["go", "go-with-waivers"] | index($decision) != null)' \
+            "$promotion_summary" >/dev/null
+          echo "component=$component" >> "$GITHUB_OUTPUT"
+          echo "promotable=true" >> "$GITHUB_OUTPUT"
+
+      - name: Verify post-package freeze, checksums, and archive hygiene
+        env:
+          COMPONENT: ${{ steps.final_gate.outputs.component }}
+          INPUT_RELEASE_ID: ${{ inputs.candidate_release_id }}
+          INPUT_BUILD_VERSION: ${{ inputs.integer_build_version }}
+          INPUT_STABLE_RC_FREEZE_MODE: ${{ inputs.stable_rc_freeze_mode }}
+          MANIFEST: ${{ runner.temp }}/stable-1.0-rc-manifest.json
+        run: |
+          set -euo pipefail
+          if [[ -z "$COMPONENT" || ! -d "$COMPONENT" || -L "$COMPONENT" ]]; then
+            echo "::error::Stable RC component directory is missing or unsafe."
+            exit 1
+          fi
+          unsafe_link="$(find "$COMPONENT" -type l -print -quit)"
+          if [[ -n "$unsafe_link" ]]; then
+            echo "::error::Stable RC public output contains a symlink."
+            exit 1
+          fi
+          unsafe_special="$(find "$COMPONENT" -mindepth 1 ! -type f ! -type d -print -quit)"
+          if [[ -n "$unsafe_special" ]]; then
+            echo "::error::Stable RC public output contains a non-regular filesystem entry."
+            exit 1
+          fi
+          unsafe_name="$(find "$COMPONENT" \( -iname '._*' -o -iname '.DS_Store' -o -iname '__MACOSX' \) -print -quit)"
+          if [[ -n "$unsafe_name" ]]; then
+            echo "::error::Stable RC public output contains an unsafe platform metadata name."
+            exit 1
+          fi
+
+          unsafe_secret_name="$(find "$COMPONENT" -regextype posix-extended -type f \
+            \( -iregex '.*/[^/]*(credentials|password|cookie|authorization|auth|secret|token|private)[^/]*' \
+               -o -iregex '.*\.(pem|der|p12|pfx|key)' \) -print -quit)"
+          if [[ -n "$unsafe_secret_name" ]]; then
+            echo "::error::Stable RC public output contains a secret-like filename."
+            exit 1
+          fi
+
+          drift_report="$COMPONENT/artifacts/legacy/stable-1.0-rc-drift-report.json"
+          jq -e '
+            .schemaVersion == 1
+              and .kind == "stable-1.0-rc-freeze-drift"
+              and .status == "no-drift"
+              and (.changes | type) == "array"
+              and .driftCount == (.changes | length)
+              and (.approvedChanges | type) == "array"
+              and .unapprovedChanges == []
+              and .errors == []
+              and (
+                (.initialStatus == "no-drift" and .regenerated == false and .driftCount == 0 and .approvedChanges == [])
+                or (.initialStatus == "approved-freeze-exception" and .regenerated == true and (.approvedChanges | length) > 0)
+              )' "$drift_report" >/dev/null
+
+          export LEGACY="$COMPONENT/artifacts/legacy"
+          python3 - <<'PY'
+          from __future__ import annotations
+
+          import gzip
+          import hashlib
+          import io
+          import json
+          import os
+          import re
+          import stat
+          import tarfile
+          import zipfile
+          from pathlib import Path, PurePosixPath
+
+          legacy = Path(os.environ["LEGACY"]).resolve()
+          workspace = Path(os.environ["GITHUB_WORKSPACE"]).resolve()
+          manifest_path = Path(os.environ["MANIFEST"])
+          release_id = os.environ["INPUT_RELEASE_ID"]
+          build_version = os.environ["INPUT_BUILD_VERSION"]
+          freeze_mode = os.environ["INPUT_STABLE_RC_FREEZE_MODE"]
+          source_commit = os.environ["GITHUB_SHA"].lower()
+          archive_name = f"cryptad-stable-1.0-rc-{build_version}.tar.gz"
+          distribution_name = f"crypta-stable-1.0-rc-{build_version}-product.tar.gz"
+
+          metadata_names = (
+              "stable-1.0-rc-freeze.json",
+              "stable-1.0-rc-freeze.sha256",
+              "stable-1.0-rc-freeze-report.md",
+              "stable-1.0-rc-promotion-summary.json",
+              "stable-1.0-rc-go-no-go.md",
+              "stable-1.0-rc-known-limitations.json",
+              "stable-1.0-rc-release-notes.md",
+              "stable-1.0-rc-drift-report.json",
+              "provenance.json",
+              "redaction-report.json",
+              "content-format-profiles.json",
+              "feed-reader-api-compatibility.json",
+              "platform-api-current-contract.json",
+              "platform-api-stable-diff.json",
+              "profile-publisher-api-compatibility.json",
+              "publisher-api-compatibility.json",
+              "queue-manager-api-compatibility.json",
+              "site-publisher-api-compatibility.json",
+              "social-inbox-api-compatibility.json",
+              "trust-graph-api-compatibility.json",
+          )
+          checksum_names = tuple(sorted((archive_name, distribution_name, *metadata_names)))
+          provenance_members = tuple(
+              sorted(
+                  (
+                      f"payload/{distribution_name}",
+                      *(f"metadata/{name}" for name in metadata_names),
+                      "payload-checksums.txt",
+                  )
+              )
+          )
+          archive_relative_members = provenance_members
+          archive_members = tuple(f"stable-1.0-rc/{name}" for name in archive_relative_members)
+
+          digest_pattern = re.compile(r"sha256:[0-9a-f]{64}\Z")
+          raw_digest_pattern = re.compile(r"[0-9a-f]{64}\Z")
+          forbidden_platform_names = {".ds_store", "__macosx"}
+          forbidden_key_suffixes = {".pem", ".der", ".p12", ".pfx", ".key"}
+
+
+          def fail(message: str) -> None:
+              raise SystemExit(f"Stable RC post-package verification failed: {message}")
+
+
+          def sha256_path(path: Path) -> str:
+              value = hashlib.sha256()
+              with path.open("rb") as handle:
+                  for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                      value.update(chunk)
+              return "sha256:" + value.hexdigest()
+
+
+          def sha256_stream(handle: object) -> str:
+              value = hashlib.sha256()
+              while True:
+                  chunk = handle.read(1024 * 1024)
+                  if not chunk:
+                      break
+                  value.update(chunk)
+              return "sha256:" + value.hexdigest()
+
+
+          def require_regular(path: Path, label: str) -> None:
+              if path.is_symlink() or not path.is_file():
+                  fail(f"{label} is missing or is not a regular file")
+              try:
+                  path.resolve().relative_to(legacy)
+              except ValueError:
+                  fail(f"{label} resolves outside the Stable RC artifact directory")
+
+
+          def load_json(path: Path, label: str) -> dict[str, object]:
+              require_regular(path, label)
+              try:
+                  value = json.loads(path.read_text(encoding="utf-8"))
+              except (OSError, UnicodeError, json.JSONDecodeError):
+                  fail(f"{label} is malformed")
+              if not isinstance(value, dict):
+                  fail(f"{label} must be a JSON object")
+              return value
+
+
+          def load_workspace_json(path_text: str, label: str) -> tuple[Path, dict[str, object]]:
+              supplied = Path(path_text)
+              if supplied.is_absolute() or "\\" in path_text or ".." in supplied.parts:
+                  fail(f"{label} path is unsafe")
+              current = workspace
+              for part in supplied.parts:
+                  current /= part
+                  if current.is_symlink():
+                      fail(f"{label} path contains a symlink")
+              resolved = current.resolve()
+              try:
+                  resolved.relative_to(workspace)
+              except ValueError:
+                  fail(f"{label} path escapes the checked-out workspace")
+              if not resolved.is_file():
+                  fail(f"{label} is missing or is not a regular file")
+              try:
+                  value = json.loads(resolved.read_text(encoding="utf-8"))
+              except (OSError, UnicodeError, json.JSONDecodeError):
+                  fail(f"{label} is malformed")
+              if not isinstance(value, dict):
+                  fail(f"{label} must be a JSON object")
+              return resolved, value
+
+
+          def safe_member_name(name: str, *, allow_directory: bool) -> PurePosixPath:
+              if "\\" in name or not name:
+                  fail(f"archive member has an unsafe path: {name!r}")
+              raw_parts = name.split("/")
+              if allow_directory and raw_parts[-1] == "":
+                  raw_parts = raw_parts[:-1]
+              if (
+                  not raw_parts
+                  or any(part in {"", ".", ".."} for part in raw_parts)
+                  or re.fullmatch(r"[A-Za-z]:", raw_parts[0]) is not None
+              ):
+                  fail(f"archive member has an unsafe path: {name!r}")
+              path = PurePosixPath(name)
+              if path.is_absolute() or not path.parts or ".." in path.parts:
+                  fail(f"archive member has an unsafe path: {name!r}")
+              for part in path.parts:
+                  lower = part.lower()
+                  if part.startswith("._") or lower in forbidden_platform_names:
+                      fail(f"archive contains forbidden platform metadata: {name}")
+              if not allow_directory and name.endswith("/"):
+                  fail(f"outer archive contains a directory member: {name}")
+              return path
+
+
+          for name in checksum_names:
+              require_regular(legacy / name, name)
+          require_regular(legacy / "checksums.txt", "checksums.txt")
+          rc_archives = sorted(legacy.glob("cryptad-stable-1.0-rc-*.tar.gz"))
+          if rc_archives != [legacy / archive_name]:
+              fail("the native output must contain exactly one correctly named Stable RC archive")
+
+          if manifest_path.is_symlink() or not manifest_path.is_file():
+              fail("Stable RC execution manifest is missing or unsafe")
+          try:
+              execution_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+          except (OSError, UnicodeError, json.JSONDecodeError):
+              fail("Stable RC execution manifest is malformed")
+          if not isinstance(execution_manifest, dict):
+              fail("Stable RC execution manifest must be a JSON object")
+          manifest_policies = execution_manifest.get("policies")
+          if not isinstance(manifest_policies, dict):
+              fail("Stable RC execution manifest policies are malformed")
+          if manifest_policies.get("stableRcFreezeMode") != freeze_mode:
+              fail("execution manifest freeze mode does not match the protected workflow selection")
+
+          freeze = load_json(legacy / "stable-1.0-rc-freeze.json", "freeze manifest")
+          drift = load_json(legacy / "stable-1.0-rc-drift-report.json", "drift report")
+          provenance = load_json(legacy / "provenance.json", "provenance")
+          if drift.get("freezeMode") != freeze_mode:
+              fail("drift report freeze mode does not match the protected workflow selection")
+          if set(provenance) != {
+              "schemaVersion",
+              "kind",
+              "releaseId",
+              "buildVersion",
+              "freezeMode",
+              "source",
+              "freeze",
+              "comparisonBaseline",
+              "productionDistribution",
+              "inputs",
+              "archiveLayout",
+              "redaction",
+          }:
+              fail("provenance fields do not match the Stable RC v1 contract")
+          if provenance.get("schemaVersion") != 1 or provenance.get("kind") != "stable-1.0-rc-provenance":
+              fail("provenance kind or schema version is invalid")
+          if provenance.get("releaseId") != release_id or provenance.get("buildVersion") != build_version:
+              fail("provenance release or integer build does not match the workflow candidate")
+          if provenance.get("freezeMode") != freeze_mode:
+              fail("provenance freeze mode does not match the protected workflow selection")
+
+          source = provenance.get("source")
+          if not isinstance(source, dict) or set(source) != {"commit", "ref", "digest"}:
+              fail("provenance source binding is malformed")
+          if source.get("commit") != source_commit or not isinstance(source.get("ref"), str) or not source["ref"]:
+              fail("provenance source commit or ref does not match the checked-out candidate")
+          canonical_source = json.dumps(
+              {"commit": source_commit, "ref": source["ref"]},
+              ensure_ascii=False,
+              sort_keys=True,
+              separators=(",", ":"),
+          ).encode("utf-8")
+          expected_source_digest = "sha256:" + hashlib.sha256(canonical_source).hexdigest()
+          if source.get("digest") != expected_source_digest:
+              fail("provenance source digest is invalid")
+
+          freeze_binding = provenance.get("freeze")
+          if not isinstance(freeze_binding, dict) or set(freeze_binding) != {
+              "contentDigest",
+              "fileDigest",
+              "file",
+          }:
+              fail("provenance freeze binding is malformed")
+          if freeze_binding.get("file") != "stable-1.0-rc-freeze.json":
+              fail("provenance freeze filename is not canonical")
+          if freeze_binding.get("contentDigest") != freeze.get("contentDigest"):
+              fail("provenance freeze content digest does not match the freeze manifest")
+          if freeze_binding.get("fileDigest") != sha256_path(legacy / "stable-1.0-rc-freeze.json"):
+              fail("provenance freeze file digest does not match the frozen bytes")
+          if not digest_pattern.fullmatch(str(freeze_binding.get("contentDigest", ""))):
+              fail("provenance freeze content digest is malformed")
+
+          distribution_binding = provenance.get("productionDistribution")
+          if not isinstance(distribution_binding, dict) or set(distribution_binding) != {"file", "digest"}:
+              fail("provenance production distribution binding is malformed")
+          expected_distribution_name = (
+              f"crypta-stable-1.0-rc-{build_version}-product.tar.gz"
+          )
+          if distribution_name != expected_distribution_name:
+              fail("Stable RC did not package the canonical deterministic product distribution")
+          if distribution_binding.get("file") != f"payload/{distribution_name}":
+              fail("provenance production distribution path is not canonical")
+          if distribution_binding.get("digest") != sha256_path(legacy / distribution_name):
+              fail("provenance production distribution digest does not match the packaged bytes")
+          candidate_freeze = freeze.get("candidate")
+          if not isinstance(candidate_freeze, dict):
+              fail("freeze candidate identity is malformed")
+          if candidate_freeze.get("productionDistributionDigest") != distribution_binding.get("digest"):
+              fail("canonical freeze does not bind the exact production distribution bytes")
+
+          provenance_inputs = provenance.get("inputs")
+          if not isinstance(provenance_inputs, dict) or not provenance_inputs:
+              fail("provenance input digest map is missing")
+          if any(not isinstance(key, str) or not key or not digest_pattern.fullmatch(str(value)) for key, value in provenance_inputs.items()):
+              fail("provenance input digest map is malformed")
+
+          manifest_inputs = execution_manifest.get("inputs")
+          if not isinstance(manifest_inputs, dict):
+              fail("Stable RC execution manifest inputs are malformed")
+          previous_freeze_path = manifest_inputs.get("previousStableRcFreeze")
+          comparison_baseline = provenance.get("comparisonBaseline")
+          if freeze_mode == "first-freeze" and previous_freeze_path is not None:
+              fail("first-freeze mode unexpectedly includes a comparison baseline")
+          if freeze_mode == "refreeze" and previous_freeze_path is None:
+              fail("refreeze mode is missing its required comparison baseline")
+          if previous_freeze_path is None:
+              if comparison_baseline is not None or "previousStableRcFreeze" in provenance_inputs:
+                  fail("provenance records an unexpected previous Stable RC freeze")
+              if drift.get("comparisonBaseline") is not None:
+                  fail("drift report records an unexpected previous Stable RC freeze")
+          else:
+              if not isinstance(previous_freeze_path, str) or not previous_freeze_path:
+                  fail("previous Stable RC freeze manifest input is malformed")
+              previous_path, previous_freeze = load_workspace_json(
+                  previous_freeze_path,
+                  "previous Stable RC freeze",
+              )
+              expected_baseline = {
+                  "fileDigest": sha256_path(previous_path),
+                  "contentDigest": previous_freeze.get("contentDigest"),
+              }
+              if (
+                  not digest_pattern.fullmatch(str(expected_baseline["contentDigest"]))
+                  or comparison_baseline != expected_baseline
+              ):
+                  fail("provenance comparison baseline does not match the supplied previous freeze")
+              if provenance_inputs.get("previousStableRcFreeze") != expected_baseline["fileDigest"]:
+                  fail("provenance input digest does not bind the supplied previous freeze")
+              if drift.get("comparisonBaseline") != expected_baseline:
+                  fail("drift report comparison baseline does not match the supplied previous freeze")
+
+          archive_layout = provenance.get("archiveLayout")
+          if not isinstance(archive_layout, dict) or set(archive_layout) != {
+              "format",
+              "root",
+              "normalized",
+              "members",
+          }:
+              fail("provenance archive layout is malformed")
+          if (
+              archive_layout.get("format") != "deterministic-tar-gzip-v1"
+              or archive_layout.get("root") != "stable-1.0-rc"
+              or archive_layout.get("normalized") is not True
+              or archive_layout.get("members") != list(provenance_members)
+          ):
+              fail("provenance archive layout does not match the exact Stable RC allowlist")
+          provenance_redaction = provenance.get("redaction")
+          if not isinstance(provenance_redaction, dict) or provenance_redaction.get("status") != "pass" or provenance_redaction.get("findingCount") != 0:
+              fail("provenance redaction did not pass with zero findings")
+
+          sidecar_text = (legacy / "stable-1.0-rc-freeze.sha256").read_text(encoding="utf-8")
+          expected_sidecar = f"{sha256_path(legacy / 'stable-1.0-rc-freeze.json').removeprefix('sha256:')}  stable-1.0-rc-freeze.json\n"
+          if sidecar_text != expected_sidecar:
+              fail("freeze SHA-256 sidecar is malformed or does not match the freeze bytes")
+
+          checksum_text = (legacy / "checksums.txt").read_text(encoding="utf-8")
+          if not checksum_text.endswith("\n"):
+              fail("checksums.txt must end with one newline")
+          checksum_rows: dict[str, str] = {}
+          checksum_order: list[str] = []
+          for line in checksum_text.splitlines():
+              digest, separator, relative = line.partition("  ")
+              path = PurePosixPath(relative)
+              if (
+                  separator != "  "
+                  or not raw_digest_pattern.fullmatch(digest)
+                  or path.is_absolute()
+                  or ".." in path.parts
+                  or len(path.parts) != 1
+                  or relative in checksum_rows
+              ):
+                  fail("checksums.txt contains a malformed, duplicate, or unsafe row")
+              checksum_rows[relative] = "sha256:" + digest
+              checksum_order.append(relative)
+          if tuple(checksum_order) != checksum_names or set(checksum_rows) != set(checksum_names):
+              fail("checksums.txt does not contain the exact sorted Stable RC public artifact allowlist")
+          for relative, recorded in checksum_rows.items():
+              if recorded != sha256_path(legacy / relative):
+                  fail(f"checksum mismatch for {relative}")
+
+          archive_path = legacy / archive_name
+          with archive_path.open("rb") as archive_raw:
+              header = archive_raw.read(10)
+          if len(header) != 10 or header[:2] != b"\x1f\x8b" or header[4:8] != b"\x00\x00\x00\x00":
+              fail("outer archive gzip header is not deterministic")
+
+          archived_digests: dict[str, str] = {}
+          payload_checksums = ""
+          try:
+              with tarfile.open(archive_path, mode="r:gz") as archive:
+                  members = archive.getmembers()
+                  if tuple(member.name for member in members) != archive_members:
+                      fail("outer archive member order or allowlist is not exact")
+                  if len({member.name for member in members}) != len(members):
+                      fail("outer archive contains duplicate members")
+                  for member in members:
+                      safe_member_name(member.name, allow_directory=False)
+                      if not member.isfile():
+                          fail(f"outer archive contains a non-regular member: {member.name}")
+                      if (
+                          member.mtime != 0
+                          or member.uid != 0
+                          or member.gid != 0
+                          or member.uname != "root"
+                          or member.gname != "root"
+                          or member.mode != 0o644
+                      ):
+                          fail(f"outer archive member metadata is not normalized: {member.name}")
+                      extracted = archive.extractfile(member)
+                      if extracted is None:
+                          fail(f"outer archive member cannot be read: {member.name}")
+                      if member.name.endswith("/payload-checksums.txt"):
+                          payload_checksums = extracted.read().decode("utf-8")
+                          archived_digests[member.name.removeprefix("stable-1.0-rc/")] = (
+                              "sha256:" + hashlib.sha256(payload_checksums.encode("utf-8")).hexdigest()
+                          )
+                      else:
+                          archived_digests[member.name.removeprefix("stable-1.0-rc/")] = sha256_stream(extracted)
+          except (OSError, UnicodeError, tarfile.TarError):
+              fail("outer Stable RC archive is malformed")
+
+          source_by_member = {f"payload/{distribution_name}": legacy / distribution_name}
+          source_by_member.update({f"metadata/{name}": legacy / name for name in metadata_names})
+          for relative, source_path in source_by_member.items():
+              if archived_digests.get(relative) != sha256_path(source_path):
+                  fail(f"outer archive member does not match its reviewed source: {relative}")
+
+          if not payload_checksums.endswith("\n"):
+              fail("payload-checksums.txt must end with one newline")
+          payload_rows: dict[str, str] = {}
+          payload_order: list[str] = []
+          for line in payload_checksums.splitlines():
+              digest, separator, relative = line.partition("  ")
+              path = PurePosixPath(relative)
+              if (
+                  separator != "  "
+                  or not raw_digest_pattern.fullmatch(digest)
+                  or path.is_absolute()
+                  or ".." in path.parts
+                  or relative in payload_rows
+              ):
+                  fail("payload-checksums.txt contains a malformed, duplicate, or unsafe row")
+              payload_rows[relative] = "sha256:" + digest
+              payload_order.append(relative)
+          expected_payload_names = tuple(name for name in archive_relative_members if name != "payload-checksums.txt")
+          if tuple(payload_order) != expected_payload_names or set(payload_rows) != set(expected_payload_names):
+              fail("payload-checksums.txt does not cover the exact archive payload allowlist")
+          for relative, recorded in payload_rows.items():
+              if recorded != archived_digests.get(relative):
+                  fail(f"archive payload checksum mismatch for {relative}")
+
+
+          def inspect_zip_stream(handle: object, label: str) -> None:
+              data = handle.read()
+              try:
+                  with zipfile.ZipFile(io.BytesIO(data)) as nested:
+                      seen: set[str] = set()
+                      for entry in nested.infolist():
+                          safe_member_name(entry.filename, allow_directory=True)
+                          if entry.filename in seen:
+                              fail(f"nested ZIP contains a duplicate member: {label}:{entry.filename}")
+                          seen.add(entry.filename)
+                          mode = (entry.external_attr >> 16) & 0o170000
+                          if mode not in {0, stat.S_IFREG, stat.S_IFDIR}:
+                              fail(f"nested ZIP contains a link or special member: {label}:{entry.filename}")
+                          if not entry.is_dir() and PurePosixPath(entry.filename).suffix.lower() in forbidden_key_suffixes:
+                              fail(f"nested ZIP contains a key-like file: {label}:{entry.filename}")
+              except zipfile.BadZipFile:
+                  fail(f"nested ZIP is malformed: {label}")
+
+
+          try:
+              with tarfile.open(legacy / distribution_name, mode="r:gz") as distribution:
+                  seen_distribution: set[str] = set()
+                  for member in distribution.getmembers():
+                      path = safe_member_name(member.name, allow_directory=True)
+                      if member.name in seen_distribution:
+                          fail(f"production distribution contains a duplicate member: {member.name}")
+                      seen_distribution.add(member.name)
+                      if not (member.isdir() or member.isfile()):
+                          fail(f"production distribution contains a link or special member: {member.name}")
+                      if member.isfile() and path.suffix.lower() in forbidden_key_suffixes:
+                          fail(f"production distribution contains a key-like file: {member.name}")
+                      if member.isfile() and path.suffix.lower() in {".zip", ".jar"}:
+                          extracted = distribution.extractfile(member)
+                          if extracted is None:
+                              fail(f"nested archive cannot be read: {member.name}")
+                          inspect_zip_stream(extracted, member.name)
+          except (OSError, tarfile.TarError):
+              fail("nested production distribution archive is malformed")
+          PY
+
+      - name: Add the redacted Stable RC decision to the job summary
+        if: steps.final_gate.outputs.promotable == 'true'
+        env:
+          COMPONENT: ${{ steps.final_gate.outputs.component }}
+        run: |
+          report="$COMPONENT/artifacts/legacy/stable-1.0-rc-go-no-go.md"
+          if [[ -z "$report" || ! -f "$report" || -L "$report" ]]; then
+            echo "::error::The redacted Stable RC go/no-go report is missing or unsafe."
+            exit 1
+          fi
+          cat "$report" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload redacted Stable RC artifacts
+        if: steps.final_gate.outputs.promotable == 'true'
+        uses: actions/upload-artifact@v6
+        with:
+          name: stable-1-0-rc-${{ inputs.candidate_release_id }}-${{ inputs.integer_build_version }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ steps.final_gate.outputs.component }}/
+            !**/*credentials*
+            !**/*password*
+            !**/*cookie*
+            !**/*authorization*
+            !**/*auth*
+            !**/private-insert-uris.json
+            !**/*private*key*
+            !**/*secret*
+            !**/*token*
+            !**/*.pem
+            !**/*.der
+            !**/*.p12
+            !**/*.pfx
+            !**/*.key
+            !**/payload-checksums.txt
+            !**/raw-support-bundle/**
+            !**/raw-support-bundle*
+            !**/raw-diagnostics/**
+            !**/raw-diagnostics*
+            !**/.DS_Store
+            !**/._*
+            !**/__MACOSX/**
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Persist authenticated Stable RC freeze lineage
+        if: steps.final_gate.outputs.promotable == 'true'
+        env:
+          COMPONENT: ${{ steps.final_gate.outputs.component }}
+          INPUT_RELEASE_ID: ${{ inputs.candidate_release_id }}
+          INPUT_BUILD_VERSION: ${{ inputs.integer_build_version }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          freeze="$COMPONENT/artifacts/legacy/stable-1.0-rc-freeze.json"
+          if [[ ! -f "$freeze" || -L "$freeze" ]]; then
+            echo "::error::The canonical Stable RC freeze is missing or unsafe."
+            exit 1
+          fi
+          digest_hex="$(sha256sum "$freeze" | awk '{print $1}')"
+          if [[ ! "$digest_hex" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "::error::The canonical Stable RC freeze digest is malformed."
+            exit 1
+          fi
+          digest="sha256:$digest_hex"
+          anchor_name="Stable 1.0 RC freeze lineage / $INPUT_RELEASE_ID / build $INPUT_BUILD_VERSION"
+          external_id="stable-1.0-rc-freeze:$INPUT_RELEASE_ID:$INPUT_BUILD_VERSION:$GITHUB_RUN_ID:$GITHUB_RUN_ATTEMPT:$digest"
+          details_url="https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          jq -n \
+            --arg name "$anchor_name" \
+            --arg head_sha "$GITHUB_SHA" \
+            --arg external_id "$external_id" \
+            --arg details_url "$details_url" \
+            --arg digest "$digest" \
+            --arg run_id "$GITHUB_RUN_ID" \
+            --arg run_attempt "$GITHUB_RUN_ATTEMPT" \
+            '{
+              name: $name,
+              head_sha: $head_sha,
+              status: "completed",
+              conclusion: "success",
+              external_id: $external_id,
+              details_url: $details_url,
+              output: {
+                title: "Authenticated Stable RC freeze lineage",
+                summary: ("Freeze `" + $digest + "` was produced by protected workflow run `" + $run_id + "`, attempt `" + $run_attempt + "`.")
+              }
+            }' \
+          | gh api --method POST \
+              "repos/$GITHUB_REPOSITORY/check-runs" \
+              --input - \
+              >/dev/null
+
+      - name: Confirm non-publication boundary
+        if: steps.final_gate.outputs.promotable == 'true'
+        run: |
+          echo "Stable 1.0 RC artifacts are frozen for review. This workflow did not create a tag, GitHub Release, merge, update descriptor, or GA publication." >> "$GITHUB_STEP_SUMMARY"

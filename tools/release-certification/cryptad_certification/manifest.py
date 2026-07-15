@@ -27,6 +27,7 @@ COMMAND_NAMES = {
     "production-beta",
     "go-no-go",
     "stable-readiness",
+    "stable-rc",
     "multi-node-beta",
     "security-response",
 }
@@ -50,12 +51,15 @@ INPUT_FIELDS = {
     "networkScaleSoak",
     "performanceSmoke",
     "previousCandidate",
+    "previousStableRcFreeze",
     "productionBeta",
     "publicBetaKnownIssues",
     "releaseCertification",
     "releaseHistory",
     "securityDrills",
     "stableKnownLimitations",
+    "stableCatalogOperations",
+    "stableRcFreezeExceptions",
     "stableReadiness",
     "stableReadinessPolicy",
     "stableReadinessWaivers",
@@ -69,6 +73,7 @@ POLICY_FIELDS = {
     "historyDir",
     "historyLabel",
     "metadata",
+    "stableRcFreezeMode",
 }
 EXECUTION_BOOLEAN_FIELDS = {
     "allowDirtyWorkspace",
@@ -182,6 +187,11 @@ def _validate_policies(value: Any) -> dict[str, Any]:
         "deprecated",
     }:
         raise ManifestError("policies.catalogChannel is invalid")
+    if "stableRcFreezeMode" in policies and policies["stableRcFreezeMode"] not in {
+        "first-freeze",
+        "refreeze",
+    }:
+        raise ManifestError("policies.stableRcFreezeMode is invalid")
     metadata = policies.get("metadata")
     if metadata is not None and (
         not isinstance(metadata, dict)

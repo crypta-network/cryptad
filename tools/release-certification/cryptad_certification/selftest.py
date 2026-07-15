@@ -21,6 +21,7 @@ SUITE_MODULES = {
     "production-beta": ["cryptad_certification.tests.test_production_beta"],
     "go-no-go": ["cryptad_certification.tests.test_dashboard"],
     "stable-readiness": ["cryptad_certification.tests.test_stable"],
+    "stable-rc": ["cryptad_certification.tests.test_stable_rc"],
     "migration": ["cryptad_certification.tests.test_core"],
 }
 
