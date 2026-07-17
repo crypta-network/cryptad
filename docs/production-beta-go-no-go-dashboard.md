@@ -36,6 +36,13 @@ freeze generation, post-package `no-drift`, provenance/checksum binding, and RC-
 mandatory final gates. Allowed Stable limitations are reported separately and are not converted
 into hidden dashboard waivers.
 
+The RC decision is likewise not a GA authorization. The side-effect-free `stable-ga` command
+re-authenticates the selected RC and latest freeze lineage, verifies production scenarios that
+started after that freeze against the exact product/catalog/archive digests, and validates an
+explicit protected authorization. The protected publication workflow reruns those checks before
+each mutation and records a separate publication receipt; a passing dashboard or GA validation
+record alone never means publication occurred.
+
 ## Waivers
 
 Waivers require an ID, evidence ID, severity, exact scope, rationale, approver, owner, references,

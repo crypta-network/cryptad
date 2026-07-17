@@ -140,3 +140,16 @@ Phase 10 adds `app-catalog.first-party-maintenance-policy` evidence. That eviden
 checked-in first-party maintenance policy source, catalog v5 parser/writer/descriptor support,
 developer CLI flags, Platform API exposure, Web Shell display, production beta pipeline
 integration, and docs coverage for first-party app support commitments.
+
+## Stable RC freeze and GA promotion
+
+The Stable RC freeze records the exact signed stable catalog and signature digests, revision,
+generated timestamp, signing key id, stable-channel entry set, artifact URLs, first-party bundle
+digests, and trusted review-receipt digests. Stable GA promotion reuses those identities without
+rewriting the catalog or re-signing an app. A channel, revision, URL, app set, bundle, receipt, or
+signature change after freeze requires a new RC freeze; it cannot be authorized as GA metadata.
+
+The Stable GA publication receipt verifies the primary and every authorized mirror against the
+same catalog and signature bytes and records rollback/key-rotation/advisory state. Mirrors remain
+transport fallbacks, not trust authorities. The resulting Stable 1.0 maintenance baseline carries
+the frozen app set and signed maintenance commitments into later maintenance and hotfix comparison.

@@ -1,7 +1,6 @@
 ---
 name: cryptad-git-workflow
-description: "Canonical Cryptad Git workflow guide for branching/release rules, integer build versioning/tags, merge policy, PR rules, and strict git identity safeguards."
-compatibility: opencode
+description: "Canonical Cryptad Git workflow guide for branching/release rules, integer build versioning/tags, Stable 1.0 protected GA publication, merge policy, PR rules, and strict git identity safeguards."
 metadata:
   area: git
   domain: cryptad
@@ -24,6 +23,9 @@ Use this skill whenever you:
 - The build number is a single integer in `build.gradle.kts` (example: `version = 2`).
 - Release/hotfix tags must use `v<build-number>` (example: `v2`).
 - If a release/hotfix changes the shipped build, bump `version` to the intended build number.
+- Stable 1.0 is a product/API milestone within this integer model. Do not create a `1.0.0` project
+  version, semantic-version tag, replacement branch model, or a second build with the same integer
+  version but different product bytes.
 
 ### Branching model (GitFlow-inspired)
 - Primary branches:
@@ -42,6 +44,10 @@ Use this skill whenever you:
   - Do not squash or rebase these merges.
   - Merge into `main` with `--no-ff`.
   - Back-merge into `develop` with `--no-ff`.
+- The Stable 1.0 protected GA workflow may create or verify the annotated `v<build-number>` tag and
+  GitHub Release only after exact-RC validation and environment approval. It never merges the
+  release branch. Continue to use explicit release-manager-approved `--no-ff` merges into `main`
+  and `develop`.
 - PR policy: require green CI and at least one approval.
 - **Always ask before creating a GitHub pull request.** Do not open PRs without explicit approval.
 
@@ -52,6 +58,18 @@ Use this skill whenever you:
 - [ ] Merged to `main` with `--no-ff` (no squash), then back-merged to `develop` with `--no-ff`.
 - [ ] Branches and tags are pushed.
 - [ ] Release notes updated (if applicable).
+
+For Stable 1.0, also verify:
+
+- [ ] The selected RC is the latest successful protected freeze/refreeze for the release/build and
+      commit.
+- [ ] The protected authorization, promotion plan, and publication receipt bind the same source,
+      freeze, archive, product, catalog, validation, notes, and maintenance-baseline digests.
+- [ ] An existing tag/Release is accepted only when its target, notes, planned assets, sizes, and
+      digests match exactly; conflicting or partial state is recorded as
+      `publication-verification-failed` without recovery code mutating it.
+- [ ] No test, local default, pull-request workflow, or validate-only run can create a tag, Release,
+      branch, public catalog update, update descriptor, or network insert.
 
 ## Git identity policy (must follow)
 ### GitHub operation identity

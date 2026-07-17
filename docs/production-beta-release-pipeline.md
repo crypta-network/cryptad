@@ -57,6 +57,12 @@ with a separate script. The canonical
 and Stable readiness inside the same marked workspace. Normal production-beta runs do not create
 a Stable freeze and retain their existing behavior.
 
+Stable GA does not invoke this pipeline again. The canonical
+[Stable GA promotion process](stable-1.0-rc-validation-and-ga-promotion.md) consumes the exact
+deterministic product archive, signed catalog, app bundles, API snapshot, content profiles,
+checksums, provenance, and freeze produced by `stable-rc`. If any payload byte or frozen release
+input must change, stop GA validation, fix the candidate, and complete a new authorized RC refreeze.
+
 ## Pipeline stages
 
 The pipeline orchestrates:
@@ -151,3 +157,12 @@ component after the final v2 envelope says `promotionReady=true`, the regenerate
 as `no-drift`, checksums and provenance match the package, redaction passes, and the decision is
 `go` or policy-compliant `go-with-waivers`. See the Stable RC runbook for the exact artifact set and
 non-publication boundary.
+
+Stable GA publication is a separate explicitly dispatched job in
+`.github/workflows/stable-1.0-ga-promotion.yml`. Its validation job has no tag or Release write
+permission. The protected publication job downloads the exact validated GA artifact, refreshes RC
+lineage and release-branch identity, revalidates expiring evidence and authorization at mutation
+boundaries, verifies the declared public artifact base and catalog targets, and then creates or
+idempotently verifies only the authorized tag, GitHub Release, and assets while verifying the
+authorized catalog state. A conflict or partial publication produces
+`publication-verification-failed`, not a successful GA summary.

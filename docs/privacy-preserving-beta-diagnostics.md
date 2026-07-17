@@ -182,6 +182,12 @@ nested backup material, private insert URIs, tokens, private keys, or local path
 failed, stale, malformed, fixture-only production, or redaction-unsafe drill blocks production beta
 promotion through the go/no-go dashboard.
 
+Stable GA additionally requires support and diagnostics evidence generated after the selected
+protected RC freeze and explicitly bound to its product, freeze, archive, and catalog digests. The
+record must cover support-bundle generation after a deliberately failed upgrade or recovery and
+must remain fresh through protected publication. Raw bundle content cannot be copied into GA
+validation, release notes, provenance, the maintenance baseline, or the publication receipt.
+
 ## Limitations
 
 The support bundle is not telemetry, crash-report upload, analytics, remote logging, or automatic

@@ -156,3 +156,16 @@ crypta-app compat verify \
   --target-stability stable \
   --strict
 ```
+
+## Stable 1.0 release baseline
+
+The canonical Stable RC freeze records `platform-api-current-contract.json`,
+`platform-api-stable-diff.json`, the Platform API 1.0 baseline identity, and their digests beside
+the deterministic product archive. Stable GA re-authenticates those files and requires the GA
+payload to retain the same API snapshot. Promotion cannot add, remove, graduate, deprecate, or
+otherwise change Platform API 1.0 membership.
+
+After verified publication, `stable-1.0-maintenance-baseline.json` becomes the release-comparison
+anchor for the GA build. Future maintenance and hotfix candidates compare their current contract,
+stable surface, access flags, required capabilities, action labels, and support-window metadata
+against that baseline. Any API change needed before GA must return to the Stable RC refreeze path.

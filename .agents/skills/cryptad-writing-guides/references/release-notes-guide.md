@@ -13,6 +13,31 @@ Prerequisite: read `writing-guide.md` first.
 - Each build gets its own release body. Do not design the notes around semver minor/patch files.
 - For pre-release drafting, if `v<build-number>` does not exist yet, use `release/<build-number>` as the working source branch.
 
+## Stable 1.0 generated notes
+
+Stable 1.0 keeps its product/API milestone name while retaining the integer build/tag model. Use
+`Stable 1.0` together with `build <build-number>` and `v<build-number>`; do not introduce a
+`1.0.0` project version or tag.
+
+The Stable RC and GA note files are generated release artifacts, not independent hand-written
+changelogs:
+
+- `stable-rc` renders `docs/templates/stable-1.0-rc-release-notes.md` from the authenticated freeze.
+- `stable-ga` renders `docs/templates/stable-1.0-ga-release-notes.md` from the authenticated RC,
+  post-freeze validation, authorization, exact limitations, and maintenance baseline.
+- Required template tokens have a fixed order and cardinality. Missing, duplicated, unknown, or
+  reordered tokens are release blockers.
+- Before verified publication, do not claim that the tag, GitHub Release, update descriptor,
+  catalog publication, or network insert exists. Publication state belongs in the separate receipt.
+- Escape untrusted Markdown text and link destinations. Frozen limitation/support metadata must
+  render as literal audited text, not active injected headings, links, or images.
+- Publish only the planned public assets. The public checksum file must not reference internal
+  authorization, validation, redaction, or input files that are absent from the Release assets.
+- Preserve the generated note digest through protected publication and verify it in the receipt.
+
+When the template needs editorial changes, edit the checked-in template and rerun the command.
+Never patch generated notes inside a release workspace.
+
 ## Audience split
 
 - `changelog-full.md`: Markdown changelog for non-technical readers. Focus on user-visible changes, upgrade impact, supported platforms, and known limitations.

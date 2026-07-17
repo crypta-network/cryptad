@@ -29,6 +29,13 @@ That protected workflow generates Stable readiness inside the same `stable-revie
 every allowed limitation into the freeze and RC notes, and verifies the packaged candidate for
 post-freeze drift.
 
+Stable readiness is also not post-freeze validation or GA authorization. After one protected RC
+freeze has been selected, use the
+[Stable 1.0 RC validation and GA promotion runbook](stable-1.0-rc-validation-and-ga-promotion.md).
+The `stable-ga` command rejects pre-freeze, fixture, simulated-only, stale, or wrong-digest
+evidence; authenticates the latest successful freeze lineage; and requires explicit protected
+authorization before it can report `promotionReady=true`. It does not publish by itself.
+
 ## Decisions
 
 - `ready` means all required Stable domains pass and no allowed limitation remains open.

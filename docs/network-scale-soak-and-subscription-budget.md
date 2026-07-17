@@ -143,6 +143,14 @@ shape through manifest `inputs.networkScaleSoak`.
 A literal 24-hour live soak is an RC release activity. It is not required for ordinary unit tests,
 normal PR tests, or the Python self-tests.
 
+The Stable GA post-freeze record must identify the exact frozen product/catalog/archive digests
+used by every node. Its `longSoak` scenario interval, not merely the enclosing evidence interval or
+a claimed duration field, must meet the authoritative Stable GA policy minimum and begin after the
+selected protected freeze completed. The record must also carry production live-network,
+interoperability, performance-baseline, memory/thread/queue, restart, corruption, and bounded
+subscription-growth outcomes. Stale, simulated-only, fixture, or wrong-candidate soak evidence is
+not GA proof.
+
 ## Redaction boundary
 
 Network-scale budget and soak evidence must not include raw fetched content, raw request bodies,

@@ -1,6 +1,6 @@
 ---
 name: cryptad-platform-apps
-description: "Work on Cryptad's app platform: Platform API v1/contract, unified operator consent, AppHost runtime/rollback, signed app bundles/catalogs, catalog operations and mirrors, app-store submission review, trusted app-review receipts, third-party developer beta program, production security response runbooks, Trust Graph Local RC, Social Inbox RC, app-update lifecycle, durable app data, app-data backup/restore, content subscriptions, app-network budgets, multi-node beta soak evidence, local app-service discovery/dependencies/grant bundles, app-owned static UI, browser sessions, the browser SDK, the app UI design system/linter, developer CLI, app permissions/audit, sandbox providers, operator beta dashboard/support evidence, operator RC recovery/support workflows, live-network beta certification evidence, production beta go/no-go evidence, legacy plugin freeze, and legacy admin retirement routing."
+description: "Work on Cryptad's app platform: Platform API v1/contract, signed app bundles/catalogs and mirrors, app review, production security, Trust Graph/Social Inbox RCs, app update/data/backup/services/UI/SDK, sandbox and support evidence, production beta gates, Stable 1.0 RC freeze and exact-byte GA maintenance baseline, legacy plugin freeze, and legacy admin retirement routing."
 ---
 
 # Cryptad platform apps
@@ -57,6 +57,9 @@ Load only the docs needed for the change:
 - Production beta release pipeline: `docs/production-beta-release-pipeline.md`
 - Production beta go/no-go dashboard: `docs/production-beta-go-no-go-dashboard.md`
 - Stable 1.0 readiness gate: `docs/stable-1.0-readiness-gate.md`
+- Stable 1.0 RC execution and freeze: `docs/stable-1.0-rc-execution-and-release-freeze.md`
+- Stable 1.0 RC validation and GA promotion:
+  `docs/stable-1.0-rc-validation-and-ga-promotion.md`
 - Multi-node beta soak and upgrade drill: `docs/multi-node-beta-soak-and-upgrade-drill.md`
 
 ## Ownership map
@@ -254,6 +257,16 @@ Load only the docs needed for the change:
   parser/security-advisory checks, digest/revision calculation, and stale/downgrade prevention.
   Mirror refresh must not silently roll back to older bytes; only an explicit operator rollback to
   a previously verified revision may move backward.
+- Stable GA must publish or confirm the exact frozen signed stable catalog, signature, revision,
+  artifact URLs, first-party app bundles, trusted review receipts, signing identities, maintenance
+  policy, Platform API snapshot, and content-format profile registry. Do not rewrite, re-sign,
+  relabel, or substitute any of those bytes after RC freeze. A required change returns to the
+  authorized RC exception/refreeze path and restarts post-freeze validation.
+- Stable catalog publication targets must be canonical, public HTTPS locations with a distinct
+  primary and mirrors. Resolve and pin public addresses at the protected fetch boundary; verify the
+  current and rollback signed catalog bytes before any public release mutation and again afterward.
+  A mirror is never a trust authority. Never serialize private insert URIs or publication
+  credentials in the plan, maintenance baseline, or receipt.
 - Catalog operation routes under `/api/v1/app-catalogs/{catalogId}/mirrors` and
   `/api/v1/app-catalogs/{catalogId}/operations/*` are host/operator-only local-management routes.
   They must deny app-process and app-browser principals, and mutating bridge requests must pass the
@@ -366,6 +379,15 @@ Load only the docs needed for the change:
   security response, legacy migration, public beta support, diagnostics redaction, or app-data
   migration/backup evidence must keep the corresponding `stable-1.0.*` readiness rows complete and
   redaction-safe.
+- Stable RC freezes the selected signed catalog/app set, maintenance metadata, API contract/diff,
+  content profiles, limitations, product archive, and provenance. Stable GA consumes those exact
+  identities plus protected post-freeze install/upgrade/rollback/migration/backup/live/security/
+  support evidence. It must prove `rcProductDigest == gaProductDigest`; it cannot regenerate app or
+  catalog payloads.
+- `stable-1.0-maintenance-baseline.json` is the post-publication comparison anchor for the Platform
+  API 1.0 surface, stable catalog revision/key, app versions/bundles/reviews/data schemas,
+  content-profile canonicalization, limitations, advisory/denylist/reviewer state, support, and
+  legacy boundaries. Future maintenance or hotfix work compares against it rather than mutating it.
 - Stable API release evidence must include stable capability names, stable endpoint identities,
   stable endpoint required-capability sets, stable endpoint action labels, and stable endpoint
   app-process/app-browser access flags, compatibility-window metadata, and descriptor-level stable
@@ -406,6 +428,8 @@ Use `$cryptad-build-test` for Gradle rules and timeouts. Common focused checks:
 ./gradlew :apps:trust-graph:test
 ./gradlew stageFirstPartyApps
 python3 tools/release-certification/certify.py self-test all
+python3 tools/release-certification/certify.py stable-rc --self-test
+python3 tools/release-certification/certify.py stable-ga --self-test
 ```
 
 When changing route contracts or bridge wiring, also run the relevant root router/toadlet tests

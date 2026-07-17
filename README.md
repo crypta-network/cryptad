@@ -614,6 +614,15 @@ drills, documents the external third-party developer beta program with the stabl
 decision artifact. These gates do not create a hosted public app store or introduce production
 signing material into local tests.
 
+Stable 1.0 release work keeps readiness, RC freezing, GA authorization, and publication separate.
+The canonical `stable-rc` command builds and freezes one reviewable candidate with deterministic
+product and evidence archives. The side-effect-free `stable-ga` command then authenticates that
+exact freeze, requires post-freeze production evidence and an explicit protected authorization,
+and proves that the GA product digest is identical to the RC product digest. Only the explicitly
+dispatched protected workflow may create or verify `v<build-number>` and the GitHub Release, and it
+must verify the public catalog state; neither command merges the release branch or publishes during
+local tests.
+
 Key docs:
 
 - [Phase 3 Platform Primacy closeout](docs/phase-3-platform-primacy-closeout.md)
@@ -633,6 +642,9 @@ Key docs:
 - [First-party beta app catalog](docs/first-party-beta-catalog.md)
 - [Production beta release pipeline](docs/production-beta-release-pipeline.md)
 - [Production beta go/no-go dashboard](docs/production-beta-go-no-go-dashboard.md)
+- [Stable 1.0 readiness gate](docs/stable-1.0-readiness-gate.md)
+- [Stable 1.0 RC execution and release freeze](docs/stable-1.0-rc-execution-and-release-freeze.md)
+- [Stable 1.0 RC validation and GA promotion](docs/stable-1.0-rc-validation-and-ga-promotion.md)
 - [Multi-node beta soak and upgrade drill](docs/multi-node-beta-soak-and-upgrade-drill.md)
 - [App-owned static UI](docs/app-owned-ui.md)
 - [App UI design system](docs/app-ui-design-system.md)
@@ -722,6 +734,8 @@ python3 tools/release-certification/certify.py network-scale-soak --self-test
 python3 tools/release-certification/certify.py multi-node-beta --self-test
 python3 tools/release-certification/certify.py go-no-go --self-test
 python3 tools/release-certification/certify.py production-beta --self-test
+python3 tools/release-certification/certify.py stable-rc --self-test
+python3 tools/release-certification/certify.py stable-ga --self-test
 ```
 
 Generate a local report:
@@ -745,6 +759,17 @@ release's candidate-bound v2 summaries have been restored locally or in CI. Use 
 the first v2 candidate; normal component inputs reject legacy summaries. The command writes the
 common evidence envelope, report, redaction report, and supporting artifacts below
 `<out-root>/<release-id>/release-certification/`.
+
+Stable 1.0 uses two additional candidate-bound components under the same release workspace:
+
+- `stable-rc` executes the protected production stages, freezes the candidate, verifies
+  post-package drift, and emits deterministic product/archive checksums and provenance.
+- `stable-ga` selects and authenticates the latest successful freeze, validates exact-RC-bound
+  post-freeze evidence and authorization, and emits a promotion plan and maintenance baseline
+  without creating a tag, Release, branch, catalog update, or network insert.
+
+Use the checked-in example manifests only as templates. Copy them below `build/`, replace every
+placeholder, and follow the protected workflow instructions in the linked RC and GA runbooks.
 
 See [docs/release-certification.md](docs/release-certification.md) for required evidence,
 including `app-review.trusted-receipts`, `app-review.policy`,
