@@ -689,7 +689,15 @@ jobs:
           input_root="build/stable-ga-inputs"
           rm -rf "$input_root"
           mkdir -p "$input_root"
-          cp -a "$freeze_dir/." "$input_root/"
+          for source in \
+            "$freeze" \
+            "$freeze_sidecar" \
+            "$rc_archive" \
+            "$rc_product" \
+            "$rc_checksums" \
+            "$rc_provenance"; do
+            cp "$source" "$input_root/$(basename "$source")"
+          done
           cp "$selected_summary" "$input_root/summary.json"
           cp "$previous_candidate" "$input_root/previous-candidate-summary.json"
           cp "$validation" "$input_root/stable-1.0-rc-validation.json"
@@ -1237,7 +1245,26 @@ jobs:
             "crypta-stable-1.0-rc-$INPUT_BUILD_VERSION-product.tar.gz"; do
             cp "$COMPONENT/artifacts/legacy/$name" "$stage/component/artifacts/legacy/$name"
           done
-          cp -a build/stable-ga-inputs/. "$stage/publication-inputs/"
+          for name in \
+            summary.json \
+            stable-1.0-rc-freeze.json \
+            stable-1.0-rc-freeze.sha256 \
+            "cryptad-stable-1.0-rc-$INPUT_BUILD_VERSION.tar.gz" \
+            "crypta-stable-1.0-rc-$INPUT_BUILD_VERSION-product.tar.gz" \
+            checksums.txt \
+            provenance.json \
+            stable-1.0-rc-lineage.json \
+            previous-candidate-summary.json \
+            stable-1.0-rc-validation.json \
+            stable-1.0-ga-authorization.json \
+            stable-1.0-ga-policy.json; do
+            source="build/stable-ga-inputs/$name"
+            if [[ -L "$source" || ! -f "$source" ]]; then
+              echo "::error::Authenticated Stable GA publication input $name is missing or unsafe."
+              exit 1
+            fi
+            cp "$source" "$stage/publication-inputs/$name"
+          done
           cp "$COMPONENT/artifacts/legacy/stable-1.0-ga-validation-authorization-identity.json" \
             "$stage/publication-inputs/stable-1.0-ga-validation-authorization-identity.json"
           cp build/stable-1.0-ga.json "$stage/stable-1.0-ga.json"
@@ -2125,9 +2152,10 @@ jobs:
             tag_object="$(jq -r '.object.sha' <<< "$ref_json")"
             local object_json
             object_json="$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$tag_object")"
-            if [[ "$(jq -r '.object.type' <<< "$object_json")" != commit \
+            if [[ "$(jq -r '.tag' <<< "$object_json")" != "$tag" \
+                  || "$(jq -r '.object.type' <<< "$object_json")" != commit \
                   || "$(jq -r '.object.sha' <<< "$object_json")" != "$INPUT_CANDIDATE_COMMIT" ]]; then
-              echo "::error::Existing $tag does not resolve to the authorized commit."
+              echo "::error::Existing $tag annotated-tag identity or target conflicts with the authorization."
               exit 1
             fi
           }
@@ -2719,8 +2747,10 @@ jobs:
                   "repos/$GITHUB_REPOSITORY/git/tags/$tag_object" \
                   > "$observation_root/tag-object.json" \
                   2> "$observation_root/tag-object.error"; then
-                if jq -e --arg commit "$INPUT_CANDIDATE_COMMIT" '
-                    .object.type == "commit" and .object.sha == $commit' \
+                if jq -e --arg tag "$tag" --arg commit "$INPUT_CANDIDATE_COMMIT" '
+                    .tag == $tag
+                    and .object.type == "commit"
+                    and .object.sha == $commit' \
                     "$observation_root/tag-object.json" >/dev/null; then
                   tag_observation=verified
                   tag_status=pass

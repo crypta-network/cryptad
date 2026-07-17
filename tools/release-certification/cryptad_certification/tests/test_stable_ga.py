@@ -3047,6 +3047,98 @@ class StableGaPublicationReceiptTest(unittest.TestCase):
 
 
 class StableGaSecurityAndDeterminismTest(unittest.TestCase):
+    def test_protected_workflow_stages_only_authenticated_publication_inputs(self) -> None:
+        workflow = (
+            workspace_root() / ".github/workflows/stable-1.0-ga-promotion.yml"
+        ).read_text(encoding="utf-8")
+        materialize_start = workflow.index('\n          input_root="build/stable-ga-inputs"')
+        materialize_end = workflow.index(
+            "\n          freeze_digest=",
+            materialize_start,
+        )
+        materialize = workflow[materialize_start:materialize_end]
+        stage_start = workflow.index(
+            "\n      - name: Stage exact public validation and publication inputs"
+        )
+        stage_end = workflow.index(
+            "\n      - name: Upload exact redaction-safe Stable GA validation artifact",
+            stage_start,
+        )
+        stage = workflow[stage_start:stage_end]
+        publication_inputs_start = stage.index(
+            "\n          for name in \\" "\n            summary.json"
+        )
+        publication_inputs_end = stage.index(
+            "\n          cp \"$COMPONENT/artifacts/legacy/"
+            "stable-1.0-ga-validation-authorization-identity.json\"",
+            publication_inputs_start,
+        )
+        publication_inputs = stage[
+            publication_inputs_start:publication_inputs_end
+        ]
+        required_rc_sources = (
+            "$freeze",
+            "$freeze_sidecar",
+            "$rc_archive",
+            "$rc_product",
+            "$rc_checksums",
+            "$rc_provenance",
+        )
+        required_publication_inputs = (
+            "summary.json",
+            "stable-1.0-rc-freeze.json",
+            "stable-1.0-rc-freeze.sha256",
+            '"cryptad-stable-1.0-rc-$INPUT_BUILD_VERSION.tar.gz"',
+            '"crypta-stable-1.0-rc-$INPUT_BUILD_VERSION-product.tar.gz"',
+            "checksums.txt",
+            "provenance.json",
+            "stable-1.0-rc-lineage.json",
+            "previous-candidate-summary.json",
+            "stable-1.0-rc-validation.json",
+            "stable-1.0-ga-authorization.json",
+            "stable-1.0-ga-policy.json",
+        )
+
+        self.assertNotIn('cp -a "$freeze_dir/."', workflow)
+        self.assertNotIn("cp -a build/stable-ga-inputs/.", workflow)
+        for source in required_rc_sources:
+            with self.subTest(source=source):
+                self.assertIn(source, materialize)
+        for name in required_publication_inputs:
+            with self.subTest(name=name):
+                self.assertIn(name, publication_inputs)
+        self.assertIn('source="build/stable-ga-inputs/$name"', publication_inputs)
+        self.assertIn(
+            '[[ -L "$source" || ! -f "$source" ]]',
+            publication_inputs,
+        )
+
+    def test_protected_workflow_authenticates_annotated_tag_object_name(self) -> None:
+        workflow = (
+            workspace_root() / ".github/workflows/stable-1.0-ga-promotion.yml"
+        ).read_text(encoding="utf-8")
+        verify_start = workflow.index("\n          verify_tag() {")
+        verify_end = workflow.index(
+            "\n          reauthenticate_latest_stable_rc() {",
+            verify_start,
+        )
+        verify_tag = workflow[verify_start:verify_end]
+        recovery_start = workflow.index(
+            "\n      - name: Record publication conflict or partial state without side effects"
+        )
+        recovery_end = workflow.index(
+            "\n      - name: Verify the publication receipt through Stable GA",
+            recovery_start,
+        )
+        recovery = workflow[recovery_start:recovery_end]
+
+        self.assertIn(
+            '"$(jq -r \'.tag\' <<< "$object_json")" != "$tag"',
+            verify_tag,
+        )
+        self.assertIn('--arg tag "$tag"', recovery)
+        self.assertIn(".tag == $tag", recovery)
+
     def test_protected_workflow_cannot_publish_from_pr_or_default_validation(self) -> None:
         workflow = (
             workspace_root() / ".github/workflows/stable-1.0-ga-promotion.yml"
