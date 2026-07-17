@@ -1619,23 +1619,33 @@ class StableGaSchemaAndTemplateTest(unittest.TestCase):
             POLICY_FIELDS,
             set(properties["policies"]["properties"]),
         )
-        example = json.loads(
+        ga_example = json.loads(
             (
                 workspace_root()
                 / "tools/release-certification/manifests/stable-1.0-ga.example.json"
             ).read_text(encoding="utf-8")
         )
+        rc_example = json.loads(
+            (
+                workspace_root()
+                / "tools/release-certification/manifests/stable-1.0-rc.example.json"
+            ).read_text(encoding="utf-8")
+        )
         self.assertLessEqual(
-            set(example["inputs"]),
+            set(ga_example["inputs"]),
             set(properties["inputs"]["propertyNames"]["enum"]),
         )
         self.assertLessEqual(
-            set(example["commands"]),
+            set(ga_example["commands"]),
             set(properties["commands"]["propertyNames"]["enum"]),
         )
         self.assertLessEqual(
-            set(example["policies"]),
+            set(ga_example["policies"]),
             set(properties["policies"]["properties"]),
+        )
+        self.assertEqual(
+            rc_example["release"]["id"],
+            ga_example["release"]["id"],
         )
 
     def test_all_stable_ga_object_schemas_are_closed(self) -> None:

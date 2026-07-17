@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "release": {
-    "id": "cryptad-stable-1-0-ga-REPLACE_ME",
+    "id": "cryptad-stable-1-0-rc-REPLACE_ME",
     "version": "REPLACE_WITH_INTEGER_BUILD",
     "profile": "stable-review"
   },
