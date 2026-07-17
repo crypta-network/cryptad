@@ -219,7 +219,17 @@ jobs:
                           ))
                       )
                       if catalog
-                      else parsed.path.endswith("/")
+                      else (
+                          parsed.path.startswith("/")
+                          and "//" not in parsed.path
+                          and "%" not in parsed.path
+                          and "\\" not in value
+                          and all(
+                              segment not in {".", ".."}
+                              for segment in parsed.path.split("/")
+                          )
+                          and parsed.path.endswith("/")
+                      )
                   )
                   and resolves_only_global_addresses(parsed.hostname)
                   and not any(character.isspace() or ord(character) < 32 for character in value)
@@ -680,7 +690,7 @@ jobs:
           rm -rf "$input_root"
           mkdir -p "$input_root"
           cp -a "$freeze_dir/." "$input_root/"
-          cp "$selected_summary" "$input_root/selected-stable-rc-summary.json"
+          cp "$selected_summary" "$input_root/summary.json"
           cp "$previous_candidate" "$input_root/previous-candidate-summary.json"
           cp "$validation" "$input_root/stable-1.0-rc-validation.json"
           cp "$authorization" "$input_root/stable-1.0-ga-authorization.json"
@@ -881,7 +891,7 @@ jobs:
                 thirdPartyIntake: true
               },
               inputs: {
-                selectedStableRcSummary: "build/stable-ga-inputs/selected-stable-rc-summary.json",
+                selectedStableRcSummary: "build/stable-ga-inputs/summary.json",
                 selectedStableRcFreeze: "build/stable-ga-inputs/stable-1.0-rc-freeze.json",
                 selectedStableRcFreezeSidecar: "build/stable-ga-inputs/stable-1.0-rc-freeze.sha256",
                 selectedStableRcArchive: ("build/stable-ga-inputs/cryptad-stable-1.0-rc-" + $build + ".tar.gz"),
@@ -2253,7 +2263,7 @@ jobs:
               --arg build "$INPUT_BUILD_VERSION" '
                 .output.root = $output_root
                 | .output.reset = true
-                | .inputs.selectedStableRcSummary = ($input_root + "/selected-stable-rc-summary.json")
+                | .inputs.selectedStableRcSummary = ($input_root + "/summary.json")
                 | .inputs.selectedStableRcFreeze = ($input_root + "/stable-1.0-rc-freeze.json")
                 | .inputs.selectedStableRcFreezeSidecar = ($input_root + "/stable-1.0-rc-freeze.sha256")
                 | .inputs.selectedStableRcArchive = ($input_root + "/cryptad-stable-1.0-rc-" + $build + ".tar.gz")
@@ -2951,7 +2961,7 @@ jobs:
             --arg input_root "$input_root" \
             --arg build "${{ inputs.build_version }}" '
              .output.reset = true
-             | .inputs.selectedStableRcSummary = ($input_root + "/selected-stable-rc-summary.json")
+             | .inputs.selectedStableRcSummary = ($input_root + "/summary.json")
              | .inputs.selectedStableRcFreeze = ($input_root + "/stable-1.0-rc-freeze.json")
              | .inputs.selectedStableRcFreezeSidecar = ($input_root + "/stable-1.0-rc-freeze.sha256")
              | .inputs.selectedStableRcArchive = ($input_root + "/cryptad-stable-1.0-rc-" + $build + ".tar.gz")

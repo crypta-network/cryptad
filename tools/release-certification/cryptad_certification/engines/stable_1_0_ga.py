@@ -47,7 +47,7 @@ from .stable_1_0_ga_core import (
     canonical_publication_targets,
     file_digest,
     ga_validation_authorization_identity,
-    is_public_https_uri,
+    is_supported_artifact_base_uri,
     is_supported_catalog_publication_uri,
     load_json_input,
     parse_timestamp,
@@ -177,7 +177,7 @@ def _block_errors(
 
 
 def _safe_https(value: Any) -> bool:
-    return is_public_https_uri(value)
+    return is_supported_artifact_base_uri(value)
 
 
 def _catalog_targets(context: RunContext) -> tuple[dict[str, Any], list[str]]:

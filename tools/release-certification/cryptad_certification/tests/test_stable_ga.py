@@ -36,6 +36,7 @@ from cryptad_certification.engines.stable_1_0_ga_core import (
     canonical_publication_targets,
     configured_input_path,
     ga_validation_authorization_identity,
+    is_supported_artifact_base_uri,
     load_json_input,
     publication_receipt_errors,
     sanitized_public_asset_observation,
@@ -1018,6 +1019,59 @@ class StableGaExactRcAuthenticationTest(unittest.TestCase):
             self.assertEqual(selected.product_digest, selected.freeze["candidate"]["productionDistributionDigest"])
             self.assertEqual(selected.archive_digest, file_digest(selected.archive_path))
 
+    def test_renamed_outer_archive_is_rejected_even_when_checksums_match(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            context, paths = _write_exact_rc_fixture(Path(directory))
+            archive = paths["selectedStableRcArchive"]
+            renamed = archive.with_name("renamed.tar.gz")
+            archive.rename(renamed)
+            checksum_names = [
+                row.partition("  ")[2]
+                for row in paths["selectedStableRcChecksums"]
+                .read_text(encoding="utf-8")
+                .splitlines()
+            ]
+            checksum_names = [
+                renamed.name if name == archive.name else name
+                for name in checksum_names
+            ]
+            write_named_checksums(
+                paths["selectedStableRcChecksums"],
+                [
+                    (name, renamed if name == renamed.name else archive.parent / name)
+                    for name in checksum_names
+                ],
+            )
+            context.manifest.inputs["selectedStableRcArchive"] = (
+                renamed.relative_to(context.workspace_root).as_posix()
+            )
+            state = ValidationState()
+
+            authenticate_selected_rc(context, state)
+
+            summaries = " ".join(str(row["summary"]) for row in state.blockers)
+            self.assertIn(
+                "selectedStableRcArchive basename is not canonical",
+                summaries,
+            )
+            self.assertIn("canonical PR-283 artifact set", summaries)
+
+    def test_external_checksum_rows_require_canonical_order(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            context, paths = _write_exact_rc_fixture(Path(directory))
+            checksums = paths["selectedStableRcChecksums"]
+            rows = checksums.read_text(encoding="utf-8").splitlines()
+            checksums.write_text(
+                "\n".join(reversed(rows)) + "\n",
+                encoding="utf-8",
+            )
+            state = ValidationState()
+
+            authenticate_selected_rc(context, state)
+
+            summaries = " ".join(str(row["summary"]) for row in state.blockers)
+            self.assertIn("not in canonical deterministic order", summaries)
+
     def test_upgrade_predecessor_must_match_the_exact_pr283_frozen_envelope(self) -> None:
         workspace = workspace_root()
         (workspace / "build").mkdir(exist_ok=True)
@@ -1054,6 +1108,53 @@ class StableGaExactRcAuthenticationTest(unittest.TestCase):
                 "differ from the exact predecessor frozen by PR-283",
                 " ".join(str(row["summary"]) for row in rejected.blockers),
             )
+
+    def test_upgrade_predecessor_must_be_older_and_byte_distinct(self) -> None:
+        workspace = workspace_root()
+        (workspace / "build").mkdir(exist_ok=True)
+        cases = (
+            ("same-build", BUILD_VERSION, PREVIOUS_PRODUCT_DIGEST, "must be older"),
+            ("newer-build", str(int(BUILD_VERSION) + 1), PREVIOUS_PRODUCT_DIGEST, "must be older"),
+            (
+                "same-product",
+                PREVIOUS_BUILD_VERSION,
+                None,
+                "identical to the selected Stable GA product",
+            ),
+        )
+        for name, predecessor_build, predecessor_product, expected_error in cases:
+            with self.subTest(name=name), tempfile.TemporaryDirectory(
+                dir=workspace / "build"
+            ) as directory:
+                run_context, paths, selected = _authorized_ga_run_context(
+                    Path(directory),
+                    workspace,
+                )
+                envelope = json.loads(
+                    paths["previousCandidate"].read_text(encoding="utf-8")
+                )
+                envelope["payload"]["legacy"]["version"] = predecessor_build
+                write_json(paths["previousCandidate"], envelope)
+                predecessor_digest = file_digest(paths["previousCandidate"])
+                selected.freeze["candidate"][
+                    "previousCandidateDigest"
+                ] = predecessor_digest
+                selected.provenance["inputs"][
+                    "previousCandidate"
+                ] = predecessor_digest
+                run_context.manifest.policies["expectedPreviousProductDigest"] = (
+                    selected.product_digest
+                    if predecessor_product is None
+                    else predecessor_product
+                )
+                state = ValidationState()
+
+                authenticate_upgrade_predecessor(run_context, selected, state)
+
+                summaries = " ".join(
+                    str(row["summary"]) for row in state.blockers
+                )
+                self.assertIn(expected_error, summaries)
 
     def test_selected_rc_payload_is_rescanned_despite_passing_redaction_claim(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -2283,13 +2384,92 @@ class StableGaLineageAndAuthorizationTest(unittest.TestCase):
             "stable-ga.archive-integrity"
         ]
         blocked_state = ValidationState()
-        validate_carried_waivers(selected, policy, NOW, blocked_state)
+        blocked_carried = validate_carried_waivers(
+            selected,
+            policy,
+            NOW,
+            blocked_state,
+        )
         self.assertTrue(blocked_state.blockers)
+        self.assertEqual([], blocked_carried)
 
         policy["allowedRcWaiverIds"] = []
         unlisted_state = ValidationState()
-        validate_carried_waivers(selected, policy, NOW, unlisted_state)
+        unlisted_carried = validate_carried_waivers(
+            selected,
+            policy,
+            NOW,
+            unlisted_state,
+        )
         self.assertTrue(unlisted_state.blockers)
+        self.assertEqual([], unlisted_carried)
+
+    def test_rejected_rc_waivers_are_absent_from_ga_audit_records(self) -> None:
+        waiver_id = "stable-support-limitation-284"
+        valid_row = {
+            "id": waiver_id,
+            "active": True,
+            "validationErrors": [],
+            "usedBy": ["stable-support-documentation"],
+            "scope": "Document one bounded non-security support limitation.",
+            "expiresAt": _timestamp(NOW + timedelta(days=1)),
+        }
+        cases = {
+            "not-allowlisted": ({}, []),
+            "expired": (
+                {"expiresAt": _timestamp(NOW - timedelta(seconds=1))},
+                [waiver_id],
+            ),
+            "inactive": ({"active": False}, [waiver_id]),
+            "non-waivable": (
+                {"usedBy": ["stable-ga.archive-integrity"]},
+                [waiver_id],
+            ),
+        }
+
+        for name, (changes, allowed_ids) in cases.items():
+            with self.subTest(name=name):
+                selected = _selected_rc()
+                selected.summary["acceptedWaivers"] = [
+                    {**valid_row, **changes}
+                ]
+                policy = _policy()
+                policy["allowedRcWaiverIds"] = allowed_ids
+                state = ValidationState()
+
+                carried = validate_carried_waivers(
+                    selected,
+                    policy,
+                    NOW,
+                    state,
+                )
+                identity = ga_validation_authorization_identity(
+                    _context(),
+                    selected,
+                    _digest("1"),
+                    _post_freeze_validation(selected, policy),
+                    _digest("2"),
+                    _upgrade_predecessor(selected),
+                    carried,
+                )
+                validation = build_ga_validation_record(
+                    _context(),
+                    selected,
+                    _digest("1"),
+                    _post_freeze_validation(selected, policy),
+                    _digest("2"),
+                    _upgrade_predecessor(selected),
+                    None,
+                    _digest("3"),
+                    False,
+                    carried,
+                    state,
+                )
+
+                self.assertTrue(state.blockers)
+                self.assertEqual([], carried)
+                self.assertEqual([], identity["acceptedRcWaivers"])
+                self.assertEqual([], validation["acceptedRcWaivers"])
 
 
 class StableGaPublicationReceiptTest(unittest.TestCase):
@@ -2441,7 +2621,7 @@ class StableGaPublicationReceiptTest(unittest.TestCase):
         )
         for raw_base in (
             "https://downloads.crypta.network/stable",
-            "https://downloads.crypta.network/stable///",
+            "https://downloads.crypta.network/stable/",
         ):
             with self.subTest(raw_base=raw_base):
                 context = _context()
@@ -2484,6 +2664,47 @@ class StableGaPublicationReceiptTest(unittest.TestCase):
                     plan["artifactBaseUri"],
                 )
                 self.assertEqual([], errors)
+
+    def test_artifact_base_rejects_ambiguous_paths(self) -> None:
+        for path in (
+            "/staging/../stable/",
+            "/stable///",
+            "/%73table/",
+            "/stable\\release/",
+        ):
+            with self.subTest(path=path):
+                self.assertFalse(
+                    is_supported_artifact_base_uri(f"https://9.9.9.9{path}")
+                )
+                self.assertFalse(
+                    stable_1_0_ga._safe_https(  # noqa: SLF001
+                        f"https://9.9.9.9{path}"
+                    )
+                )
+                context = _context()
+                context.manifest.policies["artifactBaseUri"] = (
+                    f"https://9.9.9.9{path}"
+                )
+                selected = _selected_rc()
+                planned_assets = _planned_assets()
+                errors = publication_receipt_errors(
+                    _receipt(
+                        selected,
+                        _digest("c"),
+                        _digest("d"),
+                        planned_assets,
+                    ),
+                    context,
+                    selected,
+                    _lineage(selected),
+                    _digest("c"),
+                    _digest("d"),
+                    planned_assets,
+                )
+                self.assertIn(
+                    "publication receipt artifact base URI path is ambiguous",
+                    errors,
+                )
 
     def test_receipt_requires_the_actual_protected_environment_name(self) -> None:
         selected = _selected_rc()
@@ -3151,6 +3372,23 @@ class StableGaSecurityAndDeterminismTest(unittest.TestCase):
             "-path \"$rc_root/summary.json\")\"",
             workflow,
         )
+        self.assertIn(
+            'cp "$selected_summary" "$input_root/summary.json"',
+            workflow,
+        )
+        self.assertEqual(
+            3,
+            workflow.count("selectedStableRcSummary"),
+        )
+        self.assertEqual(
+            2,
+            workflow.count('selectedStableRcSummary = ($input_root + "/summary.json")'),
+        )
+        self.assertIn(
+            'selectedStableRcSummary: "build/stable-ga-inputs/summary.json"',
+            workflow,
+        )
+        self.assertNotIn("selected-stable-rc-summary.json", workflow)
         self.assertNotIn("-path '*/stable-rc/summary.json'", workflow)
         self.assertIn(
             "path: |\n            ${{ steps.final_gate.outputs.component }}/",
@@ -3457,6 +3695,86 @@ class StableGaSecurityAndDeterminismTest(unittest.TestCase):
             r"x86\_64",
             stable_1_0_ga_artifacts._safe_markdown_text("x86_64"),  # noqa: SLF001
         )
+
+    def test_release_note_code_spans_use_collision_free_fences(self) -> None:
+        cases = {
+            "plain": "`plain`",
+            "1` [text](https://example.org)": "``1` [text](https://example.org)``",
+            "`edge`": "`` `edge` ``",
+            "two `` ticks": "```two `` ticks```",
+        }
+
+        for value, expected in cases.items():
+            with self.subTest(value=value):
+                self.assertEqual(
+                    expected,
+                    stable_1_0_ga_artifacts._code_span(value),  # noqa: SLF001
+                )
+
+    def test_release_note_scalars_reject_unicode_line_separators(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            context, _paths = _write_exact_rc_fixture(Path(directory))
+            state = ValidationState()
+            selected = authenticate_selected_rc(context, state)
+            validation = _post_freeze_validation(selected, _policy())
+
+            self.assertEqual([], state.blockers)
+            for separator in ("\x85", "\u2028", "\u2029"):
+                with self.subTest(code_point=f"U+{ord(separator):04X}"):
+                    injected = f"1{separator}# injected heading"
+                    selected.freeze["firstPartyApps"][0]["version"] = injected
+                    self.assertEqual(
+                        ["1", "# injected heading"],
+                        injected.splitlines(),
+                    )
+                    self.assertEqual(
+                        [],
+                        validate_schema(
+                            selected.freeze,
+                            "stable-1.0-rc-freeze-v1.schema.json",
+                        ),
+                    )
+                    with self.assertRaisesRegex(
+                        ValueError,
+                        "controls or line separators",
+                    ):
+                        stable_1_0_ga_artifacts.render_release_notes(
+                            selected.freeze,
+                            validation,
+                            {"publicationState": "validated"},
+                        )
+
+    def test_release_note_app_version_cannot_terminate_its_code_span(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            context, _paths = _write_exact_rc_fixture(Path(directory))
+            state = ValidationState()
+            selected = authenticate_selected_rc(context, state)
+            validation = _post_freeze_validation(selected, _policy())
+            injected = "1` [text](https://example.org)"
+            selected.freeze["firstPartyApps"][0]["version"] = injected
+            public = [(None, None, None, None, ("93.184.216.34", 443))]
+
+            self.assertEqual([], state.blockers)
+            self.assertEqual(
+                [],
+                validate_schema(
+                    selected.freeze,
+                    "stable-1.0-rc-freeze-v1.schema.json",
+                ),
+            )
+            with mock.patch.object(
+                stable_1_0_ga_core.socket,
+                "getaddrinfo",
+                return_value=public,
+            ):
+                notes = stable_1_0_ga_artifacts.render_release_notes(
+                    selected.freeze,
+                    validation,
+                    {"publicationState": "validated"},
+                )
+
+        self.assertIn(f"``{injected}``", notes)
+        self.assertNotIn(r"1\` [text](https://example.org)", notes)
 
     def test_manifest_authorization_field_exemption_is_exactly_scoped(self) -> None:
         value = {

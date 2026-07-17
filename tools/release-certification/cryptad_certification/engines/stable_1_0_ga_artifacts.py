@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from pathlib import Path
 from typing import Any, Iterable
 from urllib.parse import quote, urlsplit, urlunsplit
@@ -47,21 +48,32 @@ def _scalar_text(value: Any) -> str:
 
     if value is None or isinstance(value, (dict, list, bool)):
         raise ValueError("Stable GA release-note scalar is missing or malformed")
-    text = str(value).strip()
-    if not text or any(ord(character) < 32 for character in text):
+    raw = str(value)
+    if any(
+        unicodedata.category(character).startswith("C")
+        or unicodedata.category(character) in {"Zl", "Zp"}
+        for character in raw
+    ):
+        raise ValueError(
+            "Stable GA release-note scalar is empty or contains controls or line separators"
+        )
+    text = raw.strip()
+    if not text:
         raise ValueError("Stable GA release-note scalar is empty or contains controls")
     return text
 
 
-def _safe(value: Any) -> str:
+def _code_span(value: Any) -> str:
+    """Render one scalar in a CommonMark code span with a collision-free fence."""
+
     text = _scalar_text(value)
-    return (
-        text.replace("\\", "\\\\")
-        .replace("`", "\\`")
-        .replace("|", "\\|")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
+    longest_run = max(
+        (len(match.group(0)) for match in re.finditer(r"`+", text)),
+        default=0,
     )
+    fence = "`" * (longest_run + 1)
+    padding = " " if text.startswith("`") or text.endswith("`") else ""
+    return f"{fence}{padding}{text}{padding}{fence}"
 
 
 def _public_https_link(value: Any) -> str:
@@ -115,8 +127,9 @@ def _limitations_block(limitations: list[dict[str, Any]]) -> str:
 
 def _catalog_apps_block(catalog: dict[str, Any], apps: list[dict[str, Any]]) -> str:
     lines = [
-        f"The signed `{_safe(catalog.get('catalogId'))}` stable catalog remains at edition "
-        f"`{_safe(catalog.get('edition'))}` and revision `{_safe(catalog.get('revision'))}`. "
+        f"The signed {_code_span(catalog.get('catalogId'))} stable catalog remains at edition "
+        f"{_code_span(catalog.get('edition'))} and revision "
+        f"{_code_span(catalog.get('revision'))}. "
         "GA uses the exact catalog and signature bytes frozen by the selected RC; it does not "
         "rewrite entries, artifact URLs, review receipts, or signing metadata.",
         "",
@@ -125,9 +138,9 @@ def _catalog_apps_block(catalog: dict[str, Any], apps: list[dict[str, Any]]) -> 
     ]
     for app in apps:
         lines.append(
-            f"- `{_safe(app.get('appId'))}` `{_safe(app.get('version'))}` — "
-            f"support `{_safe(app.get('supportLevel'))}`, app-data schema "
-            f"`{_safe(app.get('appDataSchemaVersion'))}`; "
+            f"- {_code_span(app.get('appId'))} {_code_span(app.get('version'))} — "
+            f"support {_code_span(app.get('supportLevel'))}, app-data schema "
+            f"{_code_span(app.get('appDataSchemaVersion'))}; "
             f"[support]({_public_https_link(app.get('supportUri'))})"
         )
     return "\n".join(lines)
@@ -140,8 +153,8 @@ def _profiles_block(profiles: list[dict[str, Any]]) -> str:
         "",
     ]
     lines.extend(
-        f"- `{_safe(row.get('profileId'))}` version `{_safe(row.get('version'))}` — "
-        f"`{_safe(row.get('status'))}`"
+        f"- {_code_span(row.get('profileId'))} version {_code_span(row.get('version'))} — "
+        f"{_code_span(row.get('status'))}"
         for row in profiles
     )
     return "\n".join(lines)
@@ -179,33 +192,35 @@ def render_release_notes(
         if prior.get("previousReleaseId") and prior.get("previousBuildVersion")
         else "the required previous published candidate"
     )
+    build_version = _scalar_text(candidate.get("buildVersion"))
     blocks = {
         "milestone_identity": (
             f"This material promotes Stable milestone `1.0` for integer Cryptad build "
-            f"`{_safe(candidate.get('buildVersion'))}`. The expected annotated tag is "
-            f"`v{_safe(candidate.get('buildVersion'))}` and the expected stabilization branch "
-            f"is `release/{_safe(candidate.get('buildVersion'))}`."
+            f"{_code_span(build_version)}. The expected annotated tag is "
+            f"{_code_span(f'v{build_version}')} and the expected stabilization branch "
+            f"is {_code_span(f'release/{build_version}')}."
         ),
         "exact_rc_provenance": (
-            f"The selected source commit is `{_safe(candidate.get('sourceCommit'))}`. The "
-            f"canonical RC freeze digest is `{_safe(freeze.get('contentDigest'))}` and the exact "
-            f"immutable product digest is `{_safe(candidate.get('productionDistributionDigest'))}`. "
+            f"The selected source commit is {_code_span(candidate.get('sourceCommit'))}. The "
+            f"canonical RC freeze digest is {_code_span(freeze.get('contentDigest'))} and the exact "
+            f"immutable product digest is "
+            f"{_code_span(candidate.get('productionDistributionDigest'))}. "
             "Post-freeze validation exercised those bytes; GA does not rebuild the daemon, "
             "catalog, or first-party app bundles."
         ),
         "upgrade_recovery_backup": (
             f"Protected validation covered clean install and lifecycle behavior on {target_names}. "
-            f"Upgrade and recovery started from `{_safe(previous_candidate)}` "
+            f"Upgrade and recovery started from {_code_span(previous_candidate)} "
             "and passed daemon recovery, stable-catalog rollback, first-party app rollback, "
             "app-data migration, backup-before-migration, restore, and deliberately failed-update "
             "support-bundle scenarios. Operators should take a backup before upgrade and retain "
             "the previous published package until post-upgrade checks pass."
         ),
         "platform_api": (
-            f"Platform API baseline `{_safe(platform.get('baselineName'))}` remains frozen at "
-            f"contract `{_safe(platform.get('baselineContractVersion'))}` with digest "
-            f"`{_safe(platform.get('baselineDigest'))}`. The current contract is "
-            f"`{_safe(platform.get('currentContractVersion'))}` and stable breaking-change "
+            f"Platform API baseline {_code_span(platform.get('baselineName'))} remains frozen at "
+            f"contract {_code_span(platform.get('baselineContractVersion'))} with digest "
+            f"{_code_span(platform.get('baselineDigest'))}. The current contract is "
+            f"{_code_span(platform.get('currentContractVersion'))} and stable breaking-change "
             "verification passed. Stable compatibility and deprecation windows remain governed "
             "by the published Platform API support policy."
         ),
@@ -230,7 +245,8 @@ def render_release_notes(
             "any mismatch requires a new PR-283 refreeze and complete validation."
         ),
         "publication_status": (
-            f"Current prepared state: `{_safe(promotion.get('publicationState'))}`. Validation or "
+            "Current prepared state: "
+            f"{_code_span(promotion.get('publicationState'))}. Validation or "
             "authorization alone does not mean the tag, GitHub Release, catalog, update descriptor, "
             "or network publication exists. Actual publication requires the protected Stable GA "
             "job and an independently verified publication receipt."

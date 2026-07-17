@@ -25,8 +25,20 @@ from cryptad_certification.schema_validation import validate_schema
 from .stable_1_0_rc_artifacts import verify_deterministic_archive
 from .stable_1_0_rc_core import (
     BUILD_VERSION_RE,
+    CHECKSUMS_FILE as RC_CHECKSUMS_FILE,
     COMMIT_RE,
     DIGEST_RE,
+    DRIFT_REPORT_FILE as RC_DRIFT_REPORT_FILE,
+    FREEZE_FILE as RC_FREEZE_FILE,
+    FREEZE_REPORT_FILE as RC_FREEZE_REPORT_FILE,
+    FREEZE_SIDECAR_FILE as RC_FREEZE_SIDECAR_FILE,
+    KNOWN_LIMITATIONS_FILE as RC_KNOWN_LIMITATIONS_FILE,
+    PROVENANCE_FILE as RC_PROVENANCE_FILE,
+    REDACTION_REPORT_FILE as RC_REDACTION_REPORT_FILE,
+    RELEASE_NOTES_FILE as RC_RELEASE_NOTES_FILE,
+    REPORT_FILE as RC_REPORT_FILE,
+    SUMMARY_FILE as RC_SUMMARY_FILE,
+    SUPPORTING_VERIFIER_FILES as RC_SUPPORTING_VERIFIER_FILES,
     ValidationState,
     _configured_path,
     file_digest,
@@ -86,8 +98,70 @@ PUBLICATION_STATES = (
 )
 
 
+def _canonical_rc_artifact_names(build_version: str) -> dict[str, str]:
+    """Return the immutable PR-283 input basenames for one integer build."""
+
+    return {
+        "selectedStableRcSummary": "summary.json",
+        "selectedStableRcFreeze": RC_FREEZE_FILE,
+        "selectedStableRcFreezeSidecar": RC_FREEZE_SIDECAR_FILE,
+        "selectedStableRcArchive": f"cryptad-stable-1.0-rc-{build_version}.tar.gz",
+        "selectedStableRcProduct": (
+            f"crypta-stable-1.0-rc-{build_version}-product.tar.gz"
+        ),
+        "selectedStableRcChecksums": RC_CHECKSUMS_FILE,
+        "selectedStableRcProvenance": RC_PROVENANCE_FILE,
+    }
+
+
+def _canonical_rc_metadata_names() -> tuple[str, ...]:
+    """Return the exact metadata member set emitted by the PR-283 packager."""
+
+    return (
+        RC_FREEZE_FILE,
+        RC_FREEZE_SIDECAR_FILE,
+        RC_FREEZE_REPORT_FILE,
+        RC_SUMMARY_FILE,
+        RC_REPORT_FILE,
+        RC_KNOWN_LIMITATIONS_FILE,
+        RC_RELEASE_NOTES_FILE,
+        RC_DRIFT_REPORT_FILE,
+        RC_PROVENANCE_FILE,
+        RC_REDACTION_REPORT_FILE,
+        *RC_SUPPORTING_VERIFIER_FILES,
+    )
+
+
+def _canonical_rc_archive_members(build_version: str) -> list[str]:
+    """Return the sorted deterministic outer-archive member allowlist."""
+
+    names = _canonical_rc_artifact_names(build_version)
+    return sorted(
+        [
+            f"payload/{names['selectedStableRcProduct']}",
+            *(f"metadata/{name}" for name in _canonical_rc_metadata_names()),
+            "payload-checksums.txt",
+        ]
+    )
+
+
+def _canonical_rc_checksum_names(build_version: str) -> set[str]:
+    """Return the exact external checksum target set emitted by PR-283."""
+
+    names = _canonical_rc_artifact_names(build_version)
+    return {
+        names["selectedStableRcArchive"],
+        names["selectedStableRcProduct"],
+        *_canonical_rc_metadata_names(),
+    }
+
+
 def canonical_artifact_base_uri(value: Any) -> str:
-    """Return the publication plan's canonical public artifact base URI."""
+    """Return the publication plan's canonical artifact base spelling.
+
+    Callers must separately require :func:`is_supported_artifact_base_uri` before
+    treating the result as an authorized public destination.
+    """
 
     return str(value or "").rstrip("/") + "/"
 
@@ -128,25 +202,49 @@ def canonical_public_https_uri(value: Any) -> str:
     return urlunsplit(("https", netloc, parsed.path, "", ""))
 
 
+def _has_unambiguous_publication_path(value: Any) -> bool:
+    """Return whether one URI path has a single transport-independent spelling."""
+
+    text = str(value or "")
+    if "\\" in text:
+        return False
+    try:
+        path = urlsplit(text).path
+    except ValueError:
+        return False
+    segments = path.split("/")
+    return (
+        "//" not in path
+        and "%" not in path
+        and all(segment not in {".", ".."} for segment in segments)
+    )
+
+
+def is_supported_artifact_base_uri(value: Any) -> bool:
+    """Return whether an artifact base is public and cannot be path-normalized."""
+
+    canonical = canonical_public_https_uri(value)
+    if not is_public_https_uri(canonical) or not _has_unambiguous_publication_path(
+        canonical
+    ):
+        return False
+    path = urlsplit(canonical).path
+    return path in {"", "/"} or path.startswith("/")
+
+
 def is_supported_catalog_publication_uri(value: Any) -> bool:
     """Return whether a catalog URI has one unambiguous supported HTTPS path."""
 
     canonical = canonical_public_https_uri(value)
-    if not is_public_https_uri(canonical) or "\\" in canonical:
+    if not is_public_https_uri(canonical) or not _has_unambiguous_publication_path(
+        canonical
+    ):
         return False
-    parsed = urlsplit(canonical)
-    path = parsed.path
-    segments = path.split("/")
-    return (
-        path.startswith("/")
-        and "//" not in path
-        and "%" not in path
-        and all(segment not in {".", ".."} for segment in segments)
-        and path.endswith(
-            (
-                "/cryptad-app-catalog.properties",
-                "/first-party-catalog.properties",
-            )
+    path = urlsplit(canonical).path
+    return path.startswith("/") and path.endswith(
+        (
+            "/cryptad-app-catalog.properties",
+            "/first-party-catalog.properties",
         )
     )
 
@@ -483,6 +581,14 @@ def _parse_external_checksums(path: Path, root: Path) -> tuple[dict[str, str], l
         parsed[name] = normalized
         if file_digest(target) != normalized:
             errors.append(f"selected Stable RC checksum mismatch: {name}")
+    canonical_rows = [
+        f"{digest.removeprefix('sha256:')}  {name}"
+        for name, digest in sorted(parsed.items())
+    ]
+    if rows != canonical_rows:
+        errors.append(
+            "selected Stable RC checksums are not in canonical deterministic order"
+        )
     return parsed, errors
 
 
@@ -500,20 +606,25 @@ def _validate_archive_identity(
     checksum_names: set[str],
 ) -> list[str]:
     errors = verify_deterministic_archive(selected.archive_path)
+    candidate = selected.freeze.get("candidate")
+    build_version = str(
+        candidate.get("buildVersion", "") if isinstance(candidate, dict) else ""
+    )
+    canonical_names = _canonical_rc_artifact_names(build_version)
+    canonical_members = _canonical_rc_archive_members(build_version)
     layout = selected.provenance.get("archiveLayout")
     members = layout.get("members") if isinstance(layout, dict) else None
     if not isinstance(members, list) or any(not isinstance(item, str) for item in members):
         return [*errors, "selected Stable RC provenance archive layout is malformed"]
-    expected_members = {f"stable-1.0-rc/{item}" for item in members}
-    expected_external = {
-        selected.archive_path.name,
-        selected.product_path.name,
-        *(
-            Path(item).name
-            for item in members
-            if item.startswith("metadata/")
-        ),
-    }
+    if (
+        layout.get("format") != "deterministic-tar-gzip-v1"
+        or layout.get("root") != "stable-1.0-rc"
+        or layout.get("normalized") is not True
+        or members != canonical_members
+    ):
+        errors.append("selected Stable RC provenance archive layout is not canonical")
+    expected_members = {f"stable-1.0-rc/{item}" for item in canonical_members}
+    expected_external = _canonical_rc_checksum_names(build_version)
     if checksum_names != expected_external:
         errors.append("selected Stable RC external checksum allowlist does not match provenance")
     try:
@@ -522,7 +633,7 @@ def _validate_archive_identity(
             if actual_members != expected_members:
                 errors.append("selected Stable RC archive member allowlist does not match provenance")
             artifact_root = selected.freeze_path.parent
-            native_summary_name = "stable-1.0-rc-promotion-summary.json"
+            native_summary_name = RC_SUMMARY_FILE
             nested_native_summary = (
                 selected.summary_path.parent
                 / "artifacts"
@@ -536,13 +647,16 @@ def _validate_archive_identity(
                 else flat_native_summary
             )
             comparisons = {
-                f"stable-1.0-rc/payload/{selected.product_path.name}": selected.product_path,
-                "stable-1.0-rc/metadata/stable-1.0-rc-freeze.json": selected.freeze_path,
-                "stable-1.0-rc/metadata/stable-1.0-rc-freeze.sha256": selected.sidecar_path,
+                (
+                    "stable-1.0-rc/payload/"
+                    + canonical_names["selectedStableRcProduct"]
+                ): selected.product_path,
+                f"stable-1.0-rc/metadata/{RC_FREEZE_FILE}": selected.freeze_path,
+                f"stable-1.0-rc/metadata/{RC_FREEZE_SIDECAR_FILE}": selected.sidecar_path,
                 f"stable-1.0-rc/metadata/{native_summary_name}": native_summary_source,
-                "stable-1.0-rc/metadata/provenance.json": selected.provenance_path,
+                f"stable-1.0-rc/metadata/{RC_PROVENANCE_FILE}": selected.provenance_path,
             }
-            for item in members:
+            for item in canonical_members:
                 if not item.startswith("metadata/"):
                     continue
                 member_name = f"stable-1.0-rc/{item}"
@@ -605,6 +719,22 @@ def authenticate_selected_rc(context: RunContext, state: ValidationState) -> Sel
     paths = {key: configured_input_path(context, key) for key in RC_ARTIFACT_INPUTS}
     if any(path is None for path in paths.values()):
         raise ValueError("selected Stable RC artifact set is incomplete")
+    canonical_names = _canonical_rc_artifact_names(expected["buildVersion"])
+    artifact_name_errors = [
+        f"selected Stable RC artifact {key} basename is not canonical"
+        for key, path in {
+            "selectedStableRcSummary": summary_path,
+            **paths,
+        }.items()
+        if path is not None and path.name != canonical_names[key]
+    ]
+    _block_errors(
+        state,
+        "stable-1.0-ga.selected-rc-artifact-names",
+        "stable-1.0-ga.archive-integrity",
+        artifact_name_errors,
+        "Use the exact canonical filenames emitted by the PR-283 workflow.",
+    )
     freeze_path = paths["selectedStableRcFreeze"]
     assert freeze_path is not None
     artifact_root = freeze_path.parent.resolve()
@@ -665,12 +795,19 @@ def authenticate_selected_rc(context: RunContext, state: ValidationState) -> Sel
     if source.get("commit") != expected["sourceCommit"] or source.get("ref") != expected["sourceRef"]:
         provenance_errors.append("selected Stable RC provenance source binding differs")
     freeze_binding = provenance.get("freeze") if isinstance(provenance.get("freeze"), dict) else {}
-    if freeze_binding.get("contentDigest") != freeze.get("contentDigest") or freeze_binding.get("fileDigest") != file_digest(freeze_path):
+    if (
+        freeze_binding.get("file") != RC_FREEZE_FILE
+        or freeze_binding.get("contentDigest") != freeze.get("contentDigest")
+        or freeze_binding.get("fileDigest") != file_digest(freeze_path)
+    ):
         provenance_errors.append("selected Stable RC provenance freeze binding differs")
     distribution = provenance.get("productionDistribution") if isinstance(provenance.get("productionDistribution"), dict) else {}
     if distribution.get("digest") != product_digest or candidate.get("productionDistributionDigest") != product_digest:
         provenance_errors.append("selected Stable RC product digest differs across freeze/provenance/file")
-    if distribution.get("file") != f"payload/{product_path.name}":
+    if (
+        distribution.get("file")
+        != f"payload/{canonical_names['selectedStableRcProduct']}"
+    ):
         provenance_errors.append("selected Stable RC provenance product filename is not canonical")
     if provenance.get("redaction") != {"status": "pass", "findingCount": 0}:
         provenance_errors.append("selected Stable RC provenance redaction did not pass")
@@ -682,12 +819,18 @@ def authenticate_selected_rc(context: RunContext, state: ValidationState) -> Sel
         "Use the provenance generated with the selected RC artifact.",
     )
     checksums, checksum_errors = _parse_external_checksums(checksums_path, artifact_root)
-    for name, digest in (
-        (archive_path.name, archive_digest),
-        (product_path.name, product_digest),
-        (freeze_path.name, file_digest(freeze_path)),
-        (provenance_path.name, file_digest(provenance_path)),
+    expected_checksum_names = _canonical_rc_checksum_names(expected["buildVersion"])
+    if set(checksums) != expected_checksum_names:
+        checksum_errors.append(
+            "selected Stable RC checksums do not name the canonical PR-283 artifact set"
+        )
+    for input_key, digest in (
+        ("selectedStableRcArchive", archive_digest),
+        ("selectedStableRcProduct", product_digest),
+        ("selectedStableRcFreeze", file_digest(freeze_path)),
+        ("selectedStableRcProvenance", file_digest(provenance_path)),
     ):
+        name = canonical_names[input_key]
         if checksums.get(name) != digest:
             checksum_errors.append(f"selected Stable RC checksums do not bind {name}")
     _block_errors(
@@ -891,6 +1034,10 @@ def authenticate_upgrade_predecessor(
     if not isinstance(build_version, str) or BUILD_VERSION_RE.fullmatch(build_version) is None:
         errors.append("frozen predecessor build version is malformed")
         build_version = "1"
+    elif int(build_version) >= int(expected["buildVersion"]):
+        errors.append(
+            "frozen predecessor build must be older than the selected Stable GA build"
+        )
     expected_release_id = context.manifest.policies.get("expectedPreviousReleaseId")
     if release_id != expected_release_id:
         errors.append("frozen predecessor releaseId differs from the manifest selection")
@@ -898,6 +1045,10 @@ def authenticate_upgrade_predecessor(
     if not isinstance(product_digest, str) or DIGEST_RE.fullmatch(product_digest) is None:
         errors.append("required predecessor product digest is missing or malformed")
         product_digest = "sha256:" + "0" * 64
+    elif product_digest == selected.product_digest:
+        errors.append(
+            "required predecessor product digest is identical to the selected Stable GA product"
+        )
     _block_errors(
         state,
         "stable-1.0-ga.upgrade-predecessor",
@@ -1426,16 +1577,23 @@ def validate_carried_waivers(
     errors: list[str] = []
     carried: list[dict[str, Any]] = []
     for row in raw:
+        row_errors: list[str] = []
         waiver_id = row.get("id") or row.get("waiverId")
-        if waiver_id not in allowed_ids:
-            errors.append("an accepted RC waiver is not explicitly allowed for Stable GA")
+        if not isinstance(waiver_id, str) or waiver_id not in allowed_ids:
+            row_errors.append("an accepted RC waiver is not explicitly allowed for Stable GA")
         expires = parse_timestamp(row.get("expiresAt") or row.get("reviewBy"))
         if expires is None or expires <= now:
-            errors.append("an accepted RC waiver expired before Stable GA authorization")
-        if row.get("validationErrors") not in (None, []) or row.get("active") is False:
-            errors.append("an accepted RC waiver is no longer valid")
+            row_errors.append("an accepted RC waiver expired before Stable GA authorization")
+        if row.get("validationErrors") != [] or row.get("active") is not True:
+            row_errors.append("an accepted RC waiver is no longer valid")
         used_by = row.get("usedBy")
-        if isinstance(used_by, list) and any(
+        if (
+            not isinstance(used_by, list)
+            or not used_by
+            or any(not isinstance(item, str) or not item for item in used_by)
+        ):
+            row_errors.append("an accepted RC waiver usage scope is malformed")
+        elif any(
             isinstance(item, str)
             and any(
                 marker in item.lower()
@@ -1464,8 +1622,11 @@ def validate_carried_waivers(
             )
             for item in used_by
         ):
-            errors.append("an accepted RC waiver attempts to cover a non-waivable GA blocker")
-        if isinstance(waiver_id, str) and expires is not None:
+            row_errors.append(
+                "an accepted RC waiver attempts to cover a non-waivable GA blocker"
+            )
+        errors.extend(row_errors)
+        if not row_errors and isinstance(waiver_id, str) and expires is not None:
             carried.append(
                 {
                     "id": waiver_id,
@@ -1544,9 +1705,10 @@ def publication_receipt_errors(
         or receipt_workflow.get("repository") != expected_repository
     ):
         errors.append("publication receipt workflow repository does not match the selected RC lineage")
-    artifact_base_uri = canonical_artifact_base_uri(
-        context.manifest.policies.get("artifactBaseUri")
-    )
+    raw_artifact_base_uri = context.manifest.policies.get("artifactBaseUri")
+    artifact_base_uri = canonical_artifact_base_uri(raw_artifact_base_uri)
+    if not _has_unambiguous_publication_path(raw_artifact_base_uri):
+        errors.append("publication receipt artifact base URI path is ambiguous")
     if receipt.get("artifactBaseUri") != artifact_base_uri:
         errors.append("publication receipt artifact base URI differs from the publication plan")
     expected_assets = {
