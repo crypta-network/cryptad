@@ -81,7 +81,7 @@ on:
         type: string
 
 concurrency:
-  group: stable-1-0-rc-${{ inputs.candidate_release_id }}-${{ inputs.integer_build_version }}
+  group: stable-1-0-release-${{ inputs.integer_build_version }}
   cancel-in-progress: false
 
 jobs:

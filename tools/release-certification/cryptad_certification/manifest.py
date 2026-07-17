@@ -28,6 +28,7 @@ COMMAND_NAMES = {
     "go-no-go",
     "stable-readiness",
     "stable-rc",
+    "stable-ga",
     "multi-node-beta",
     "security-response",
 }
@@ -56,10 +57,22 @@ INPUT_FIELDS = {
     "publicBetaKnownIssues",
     "releaseCertification",
     "releaseHistory",
+    "selectedStableRcArchive",
+    "selectedStableRcChecksums",
+    "selectedStableRcFreeze",
+    "selectedStableRcFreezeSidecar",
+    "selectedStableRcLineage",
+    "selectedStableRcProduct",
+    "selectedStableRcProvenance",
+    "selectedStableRcSummary",
     "securityDrills",
     "stableKnownLimitations",
+    "stableGaAuthorization",
+    "stableGaPolicy",
+    "stableGaPublicationReceipt",
     "stableCatalogOperations",
     "stableRcFreezeExceptions",
+    "stableRcValidation",
     "stableReadiness",
     "stableReadinessPolicy",
     "stableReadinessWaivers",
@@ -68,11 +81,15 @@ INPUT_FIELDS = {
 }
 POLICY_FIELDS = {
     "artifactBaseUri",
+    "candidateSourceCommit",
+    "candidateSourceRef",
     "catalogChannel",
     "expectedPreviousReleaseId",
+    "expectedPreviousProductDigest",
     "historyDir",
     "historyLabel",
     "metadata",
+    "publicationIntent",
     "stableRcFreezeMode",
 }
 EXECUTION_BOOLEAN_FIELDS = {
@@ -113,6 +130,7 @@ SECRET_KEY_FRAGMENTS = (
     "inserturi",
     "insert_uri",
 )
+PUBLIC_AUTHORIZATION_INPUT_PATH = "manifest.inputs.stableGaAuthorization"
 
 
 class ManifestError(ValueError):
@@ -129,12 +147,16 @@ def _reject_secret_fields(value: Any, path: str = "manifest") -> None:
     if isinstance(value, dict):
         for key, child in value.items():
             normalized = str(key).lower().replace("-", "_")
-            if any(fragment in normalized for fragment in SECRET_KEY_FRAGMENTS):
+            child_path = f"{path}.{key}"
+            if (
+                child_path != PUBLIC_AUTHORIZATION_INPUT_PATH
+                and any(fragment in normalized for fragment in SECRET_KEY_FRAGMENTS)
+            ):
                 raise ManifestError(
                     f"{path} contains a secret-like field name; "
                     "use a protected environment or file input"
                 )
-            _reject_secret_fields(child, f"{path}.{key}")
+            _reject_secret_fields(child, child_path)
     elif isinstance(value, list):
         for index, child in enumerate(value):
             _reject_secret_fields(child, f"{path}[{index}]")
@@ -192,6 +214,20 @@ def _validate_policies(value: Any) -> dict[str, Any]:
         "refreeze",
     }:
         raise ManifestError("policies.stableRcFreezeMode is invalid")
+    if "candidateSourceCommit" in policies and re.fullmatch(
+        r"[0-9a-f]{40,64}", policies["candidateSourceCommit"]
+    ) is None:
+        raise ManifestError("policies.candidateSourceCommit must be a lowercase Git commit id")
+    if "expectedPreviousProductDigest" in policies and re.fullmatch(
+        r"sha256:[0-9a-f]{64}", policies["expectedPreviousProductDigest"]
+    ) is None:
+        raise ManifestError(
+            "policies.expectedPreviousProductDigest must be a SHA-256 digest"
+        )
+    if "publicationIntent" in policies and policies["publicationIntent"] != (
+        "prepare-explicit-protected-publication"
+    ):
+        raise ManifestError("policies.publicationIntent is invalid")
     metadata = policies.get("metadata")
     if metadata is not None and (
         not isinstance(metadata, dict)

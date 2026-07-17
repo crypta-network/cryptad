@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/crypta-network/cryptad/tools/release-certification/schemas/stable-1.0-rc-lineage-v1.schema.json",
+  "title": "Cryptad Stable 1.0 RC protected freeze lineage v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "kind", "generatedAt", "releaseId", "buildVersion", "profile", "component",
+    "sourceCommit", "sourceRef", "status", "selectedFreeze", "latestSuccessfulFreeze", "history",
+    "acceptedFreezeExceptionHistoryDigest", "redaction"
+  ],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "kind": {"const": "stable-1.0-rc-lineage"},
+    "generatedAt": {"type": "string", "format": "date-time"},
+    "releaseId": {"$ref": "#/$defs/releaseId"},
+    "buildVersion": {"$ref": "#/$defs/buildVersion"},
+    "profile": {"const": "stable-review"},
+    "component": {"const": "stable-rc"},
+    "sourceCommit": {"$ref": "#/$defs/commit"},
+    "sourceRef": {"$ref": "#/$defs/nonEmpty"},
+    "status": {"const": "pass"},
+    "selectedFreeze": {"$ref": "#/$defs/freezeSelection"},
+    "latestSuccessfulFreeze": {"$ref": "#/$defs/freezeSelection"},
+    "history": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/historyEntry"}
+    },
+    "acceptedFreezeExceptionHistoryDigest": {"$ref": "#/$defs/digest"},
+    "redaction": {"$ref": "#/$defs/redaction"}
+  },
+  "$defs": {
+    "nonEmpty": {"type": "string", "minLength": 1},
+    "releaseId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"},
+    "buildVersion": {"type": "string", "pattern": "^[1-9][0-9]*$"},
+    "commit": {"type": "string", "pattern": "^[0-9a-f]{40,64}$"},
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "workflow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "provider", "repository", "workflowName", "workflowRef", "runId", "runAttempt",
+        "artifactName", "artifactDigest", "environment", "conclusion"
+      ],
+      "properties": {
+        "provider": {"const": "github-actions"},
+        "repository": {"type": "string", "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"},
+        "workflowName": {"const": "Stable 1.0 RC Release Freeze"},
+        "workflowRef": {"$ref": "#/$defs/nonEmpty"},
+        "runId": {"type": "integer", "minimum": 1},
+        "runAttempt": {"type": "integer", "minimum": 1},
+        "artifactName": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"},
+        "artifactDigest": {"$ref": "#/$defs/digest"},
+        "environment": {"const": "stable-1-0-rc"},
+        "conclusion": {"const": "success"}
+      }
+    },
+    "freezeSelection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "freezeDigest", "freezeFileDigest", "archiveDigest", "productDistributionDigest",
+        "sourceCommit", "workflow"
+      ],
+      "properties": {
+        "freezeDigest": {"$ref": "#/$defs/digest"},
+        "freezeFileDigest": {"$ref": "#/$defs/digest"},
+        "archiveDigest": {"$ref": "#/$defs/digest"},
+        "productDistributionDigest": {"$ref": "#/$defs/digest"},
+        "sourceCommit": {"$ref": "#/$defs/commit"},
+        "workflow": {"$ref": "#/$defs/workflow"}
+      }
+    },
+    "historyEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ordinal", "freezeMode", "successful", "freezeDigest", "freezeFileDigest", "archiveDigest",
+        "productDistributionDigest", "sourceCommit", "workflow"
+      ],
+      "properties": {
+        "ordinal": {"type": "integer", "minimum": 1},
+        "freezeMode": {"enum": ["first-freeze", "refreeze"]},
+        "successful": {"const": true},
+        "freezeDigest": {"$ref": "#/$defs/digest"},
+        "freezeFileDigest": {"$ref": "#/$defs/digest"},
+        "archiveDigest": {"$ref": "#/$defs/digest"},
+        "productDistributionDigest": {"$ref": "#/$defs/digest"},
+        "sourceCommit": {"$ref": "#/$defs/commit"},
+        "workflow": {"$ref": "#/$defs/workflow"}
+      }
+    },
+    "redaction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "findingCount", "findings"],
+      "properties": {
+        "status": {"const": "pass"},
+        "findingCount": {"const": 0},
+        "findings": {"type": "array", "maxItems": 0}
+      }
+    }
+  }
+}

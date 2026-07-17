@@ -20,6 +20,7 @@ python3 tools/release-certification/certify.py app-platform --self-test
 python3 tools/release-certification/certify.py release-certification --self-test
 python3 tools/release-certification/certify.py production-beta --self-test
 python3 tools/release-certification/certify.py stable-rc --self-test
+python3 tools/release-certification/certify.py stable-ga --self-test
 ```
 
 Run a CI-safe app-platform collection with the checked-in manifest:
@@ -50,6 +51,7 @@ The public entry point is `tools/release-certification/certify.py`.
 | `go-no-go` | Build the release-manager launch dashboard. |
 | `stable-readiness` | Evaluate the Stable 1.0 promotion gate. |
 | `stable-rc` | Execute, freeze, package, and verify a protected Stable 1.0 release candidate. |
+| `stable-ga` | Validate and prepare explicit promotion of one exact frozen Stable 1.0 RC without rebuilding or publishing it. |
 | `migrate-v1` | Convert validated v1 previous-candidate or history summaries for the first v2 release. |
 | `self-test` | Run one focused `unittest` suite or all suites. |
 
@@ -94,8 +96,8 @@ the release workspace is prepared:
 | Map | Supported fields |
 | --- | --- |
 | `requirements` | Boolean `history`, `liveNetwork`, `multiNodeSoak`, `sandboxProviderTests`, `stableReadiness`, and `thirdPartyIntake` gates. |
-| `inputs` | Non-empty paths for interop, performance, app-platform, live-network, network-scale, multi-node, security-drill, production, dashboard, certification, Stable, waiver, policy, known-limitation, previous-candidate, release-history, stable catalog operations, previous Stable RC freeze, and Stable RC freeze-exception artifacts. |
-| `policies` | `artifactBaseUri`, `catalogChannel`, `expectedPreviousReleaseId`, `historyDir`, `historyLabel`, `stableRcFreezeMode` (`first-freeze` or `refreeze`), and string-valued `metadata`. |
+| `inputs` | Non-empty paths for interop, performance, app-platform, live-network, network-scale, multi-node, security-drill, production, dashboard, certification, Stable, waiver, policy, known-limitation, previous-candidate, release-history, stable catalog operations, previous Stable RC freeze, Stable RC freeze exceptions, and the selected Stable RC/GA validation, authorization, policy, lineage, or optional publication-receipt artifacts. |
+| `policies` | `artifactBaseUri`, `catalogChannel`, `candidateSourceCommit`, `candidateSourceRef`, `expectedPreviousReleaseId`, `expectedPreviousProductDigest`, `historyDir`, `historyLabel`, `publicationIntent`, `stableRcFreezeMode` (`first-freeze` or `refreeze`), and string-valued `metadata`. |
 | `execution` | Boolean collection/build/test controls plus positive integer `timeoutSeconds`. |
 
 `commands.<name>.args` remains an advanced engine-specific escape hatch. The unified command owns
@@ -168,6 +170,127 @@ closed. The canonical freeze binds the exact deterministic product-distribution 
 the unchanged candidate must produce identical bytes; a catalog, review receipt, bundle, launcher,
 policy, or product member change remains candidate drift even when semantic producer summaries are
 unchanged.
+
+For Stable 1.0 GA validation, copy
+`manifests/stable-1.0-ga.example.json`, replace every placeholder, and run:
+
+```bash
+python3 tools/release-certification/certify.py stable-ga \
+  --manifest build/stable-1.0-ga.json
+```
+
+`stable-ga` retains the `stable-review` profile and writes to
+`<out-root>/<release-id>/stable-ga/`. It is side-effect-free: the command authenticates one exact
+successful Stable RC, evaluates post-freeze production validation and explicit GA authorization,
+and prepares promotion records. It does not rebuild the product, create a branch or tag, publish a
+GitHub Release, change a catalog, insert an update descriptor, or perform a network insert.
+
+The GA manifest uses these exact input names:
+
+```text
+selectedStableRcSummary
+selectedStableRcFreeze
+selectedStableRcFreezeSidecar
+selectedStableRcArchive
+selectedStableRcProduct
+selectedStableRcChecksums
+selectedStableRcProvenance
+selectedStableRcLineage
+previousCandidate
+stableRcValidation
+stableGaAuthorization
+stableGaPolicy
+stableGaPublicationReceipt
+```
+
+`stableGaPublicationReceipt` is optional and is used only to verify a returned protected
+publication result. `stableGaPolicy` normally points to the checked-in
+`stable-1.0-ga-policy.json`. The non-secret policy values bind the public HTTPS artifact base,
+stable catalog primary/mirror/rollback confirmation URIs, stable catalog channel, exact candidate
+source commit/ref, and publication intent. The canonical metadata keys are
+`catalogPrimaryUri`, `catalogMirrorUris`, and `catalogRollbackUri`; all three are included in the
+authorized publication-target digest. Stable GA also requires `expectedPreviousReleaseId` and
+`expectedPreviousProductDigest`. The exact migrated `previousCandidate` envelope authenticates the
+predecessor release/build against the PR-283 freeze and provenance, while the manifest supplies the
+published predecessor product digest; the authorization identity binds all four predecessor
+fields. Signing keys,
+private insert URIs, GitHub credentials, authorization headers, tokens, and publication credentials
+remain protected environment or file inputs and must never appear in the manifest.
+
+The selected RC files must form one authenticated, symlink-free artifact set. Stable GA verifies
+the common RC envelope; freeze schema, canonical digest, and sidecar; exact checksums; provenance;
+outer archive; immutable product; catalog, app, Platform API, content-profile, limitation, waiver,
+and freeze-exception bindings; and latest protected refreeze lineage. The post-freeze
+`stable-1.0-rc-validation` record must bind every scenario to the exact frozen product digest and
+meet the checked-in policy, including at least 24 hours of real production soak measured from the
+long-soak scenario's own timestamps. Top-level validation and scenario start times must not precede
+the authenticated protected RC run completion in the selected lineage.
+
+For the explicit authorization review pass, set `commands.stable-ga.mode` to
+`prepare-authorization` and omit `stableGaAuthorization`. The command validates the exact RC and
+writes `stable-1.0-ga-validation-authorization-identity.json`, but it does not report promotion
+readiness. The protected authorization's `gaValidationDigest` is the canonical semantic SHA-256 of
+that identity. The identity and authorization also bind a canonical publication-target digest for
+the expected tag and release branch, artifact base, catalog primary, ordered mirror list, and
+rollback catalog location.
+Changing any destination requires a new preparation, authorization, and protected evidence pass.
+Rerun in `validate-only` mode with the authorization input. This two-pass contract prevents an
+authorization/final-record circular digest and rejects authorization or publication receipt inputs
+during the preparation pass.
+
+Input acquisition and producer authentication are separate controls. A confined repository path,
+public HTTPS URL, or `actions-artifact://` reference only determines how the workflow obtains a
+record. Before publication, run `.github/workflows/stable-1.0-ga-promotion.yml` with
+`publish=false` on the exact `release/<build-number>` candidate. The protected
+`stable-1-0-ga-evidence` job attests the exact validation, authorization, and canonical
+publication-target identity bytes. A later `publish=true` dispatch accepts only identical bytes and
+destinations with attestations from that workflow, release ref, candidate commit, and a
+GitHub-hosted runner. After protected publication approval, it reruns `stable-ga` before every
+tag, Release, asset-upload, or finalization mutation and again before recording completion. Thus,
+evidence, waivers, authorization, or targets that expire or change during a lengthy publication
+attempt fail closed at the next mutation boundary.
+
+The protected publication environment also supplies `STABLE_CATALOG_TRUSTED_KEYS_BASE64`, a
+base64-encoded production trusted catalog public-key properties registry. The workflow uses it
+only to verify freshly fetched primary, mirror, and rollback catalog signatures and deletes the
+decoded file before job exit. It must not contain private signing keys and is never a manifest or
+public artifact input. The retained rollback revision must verify under the catalog signing-key
+identity frozen by the selected RC.
+
+The native public output includes:
+
+```text
+stable-1.0-ga-validation.json
+stable-1.0-ga-validation-authorization-identity.json
+stable-1.0-ga-authorization-summary.json
+stable-1.0-ga-promotion-summary.json
+stable-1.0-ga-go-no-go.md
+stable-1.0-ga-known-limitations.json
+stable-1.0-ga-release-notes.md
+stable-1.0-ga-publication-plan.json
+stable-1.0-ga-publication-receipt.json
+stable-1.0-ga-checksums.txt
+stable-1.0-ga-provenance.json
+stable-1.0-maintenance-baseline.json
+```
+
+The public checksum file names the six non-checksum Release assets. The checksum file is the
+seventh planned asset and is itself bound by its size and digest in the publication plan,
+provenance, and receipt. Internal validation, authorization, and redaction records are not added to
+the public checksum rows because they are not public Release assets.
+
+All seven planned assets must already exist at the independently populated `artifactBaseUri`
+before a protected `publish=true` dispatch. The publication job verifies them immediately before
+its first mutation and again after GitHub publication. The canonical publication receipt is
+generated only when a returned publication result is independently verified. A
+passing pre-publication run records `validated` or `publication-authorized`; it must not claim
+`publication-complete`. Publication verification fetches every planned asset from both the GitHub
+Release and its exact `artifactBaseUri + <asset-name>` public location. The receipt binds that base
+and each asset's exact public URI, size, and digest, and rejects every unplanned or non-passing
+asset row. See the
+[Stable GA runbook](../../docs/stable-1.0-rc-validation-and-ga-promotion.md) for exact-RC selection,
+24-hour validation, authorization, protected publication, conflict recovery, catalog verification,
+receipt semantics, and the post-1.0 maintenance baseline.
 
 Nested operations use nested component names, for example `multi-node-beta/run/` and
 `security-response/drill-run-all/`. JSON and Markdown artifact references are relative to the run
@@ -349,6 +472,34 @@ previous-candidate, network-scale, security-drill, third-party-intake, and catal
 evidence. It verifies the post-package freeze, checksums, archive hygiene, final v2 redaction, and
 `go`/`go-with-waivers` result before uploading only the public RC component. It does not tag,
 release, merge, or publish Stable 1.0 GA.
+
+`.github/workflows/stable-1.0-ga-promotion.yml` keeps validation, protected evidence attestation,
+and publication in separate jobs. The validation job authenticates the latest protected Stable RC
+run and has no tag or GitHub Release permission. Protected HTTPS acquisition rejects redirects,
+URL credentials, query strings, fragments, non-public DNS results, and local/private targets;
+repository and Actions-artifact inputs remain path-confined and reject symlinks and special files.
+The evidence job requires `stable-1-0-ga-evidence` approval and attests the exact validation,
+authorization, and canonical publication-target identity bytes. The publication job requires an
+explicit dispatch selection, passing validation, prior evidence attestations, and approval in the
+`stable-1-0-ga` environment. It reruns
+the gate at every publication mutation boundary, uses the required `leumor` GitHub identity,
+creates or verifies the annotated `v<build-number>` tag and exact GitHub Release assets, fetches the
+same assets from the declared artifact base, and verifies the unchanged stable catalog at the
+primary, mirrors, and authorized rollback URI. It never merges a release branch automatically.
+Matching existing public state is idempotent only after a fresh latest-RC lineage query;
+conflicting state fails closed. The failure audit path is read-only and uploads a sanitized failed
+receipt even when no side-effect marker or GitHub Release exists. Recovery distinguishes an
+observed absence from an unavailable GitHub observation and records only counts and SHA-256
+identifiers for unplanned remote asset names. The receipt must pass its closed schema, placeholder,
+and redaction checks before upload. Only a verified publication receipt may record
+`publication-complete`.
+
+The Stable RC and Stable GA workflows share one integer-build concurrency group across validation,
+protected approval waits, and publication. Cancel a waiting GA run before an urgent refreeze and
+inspect the shared build queue, because GitHub retains at most one pending run for the group. During
+publication the workflow also rereads `release/<build-number>` at every side-effect boundary,
+before creating a tag reference from a newly created tag object, and before accepting idempotent or
+new public state as `publication-complete`.
 
 Follow the [production security response runbook](../../docs/production-security-response-runbook.md)
 when collecting release-blocking drill evidence or responding to an app ecosystem incident.

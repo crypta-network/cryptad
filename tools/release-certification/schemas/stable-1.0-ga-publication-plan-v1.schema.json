@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/crypta-network/cryptad/tools/release-certification/schemas/stable-1.0-ga-publication-plan-v1.schema.json",
+  "title": "Cryptad Stable 1.0 GA publication plan v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "kind", "generatedAt", "releaseId", "buildVersion",
+    "sourceCommit", "expectedTag", "expectedReleaseBranch", "artifactBaseUri",
+    "publicationTargetsDigest",
+    "publicationState", "promotionIdentityDigest", "releaseNotesDigest", "catalog",
+    "assets", "sideEffectsPerformed", "redaction"
+  ],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "kind": {"const": "stable-1.0-ga-publication-plan"},
+    "generatedAt": {"type": "string", "format": "date-time"},
+    "releaseId": {"$ref": "#/$defs/releaseId"},
+    "buildVersion": {"$ref": "#/$defs/buildVersion"},
+    "sourceCommit": {"$ref": "#/$defs/commit"},
+    "expectedTag": {"type": "string", "pattern": "^v[1-9][0-9]*$"},
+    "expectedReleaseBranch": {"type": "string", "pattern": "^release/[1-9][0-9]*$"},
+    "artifactBaseUri": {"type": "string", "pattern": "^https://[^?#]+/$"},
+    "publicationTargetsDigest": {"$ref": "#/$defs/digest"},
+    "publicationState": {"enum": ["validated", "publication-authorized"]},
+    "promotionIdentityDigest": {"$ref": "#/$defs/digest"},
+    "releaseNotesDigest": {"$ref": "#/$defs/digest"},
+    "catalog": {"$ref": "#/$defs/catalog"},
+    "assets": {
+      "type": "array",
+      "minItems": 7,
+      "maxItems": 7,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/asset"}
+    },
+    "sideEffectsPerformed": {"const": false},
+    "redaction": {"$ref": "#/$defs/redaction"}
+  },
+  "$defs": {
+    "nonEmpty": {"type": "string", "minLength": 1},
+    "releaseId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"},
+    "buildVersion": {"type": "string", "pattern": "^[1-9][0-9]*$"},
+    "commit": {"type": "string", "pattern": "^[0-9a-f]{40,64}$"},
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "location": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["locationId", "publicUri"],
+      "properties": {
+        "locationId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"},
+        "publicUri": {"type": "string", "pattern": "^https://[^?#]+$"}
+      }
+    },
+    "catalog": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "catalogId", "channel", "revision", "catalogDigest", "signatureDigest",
+        "signingKeyId", "artifactTimestamp", "primary", "mirrors", "rollbackUri", "rollbackRevision",
+        "rollbackDigest", "keyRotationState", "advisoryCount", "denylistCount",
+        "publicationOperation"
+      ],
+      "properties": {
+        "catalogId": {"$ref": "#/$defs/nonEmpty"},
+        "channel": {"const": "stable"},
+        "revision": {"type": "integer", "minimum": 0},
+        "catalogDigest": {"$ref": "#/$defs/digest"},
+        "signatureDigest": {"$ref": "#/$defs/digest"},
+        "signingKeyId": {"$ref": "#/$defs/nonEmpty"},
+        "artifactTimestamp": {"type": "string", "format": "date-time"},
+        "primary": {"$ref": "#/$defs/location"},
+        "mirrors": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/location"}
+        },
+        "rollbackUri": {"type": "string", "pattern": "^https://[^?#]+$"},
+        "rollbackRevision": {"type": "integer", "minimum": 0},
+        "rollbackDigest": {"$ref": "#/$defs/digest"},
+        "keyRotationState": {"const": "complete"},
+        "advisoryCount": {"type": "integer", "minimum": 0},
+        "denylistCount": {"type": "integer", "minimum": 0},
+        "publicationOperation": {"const": "verify-exact-frozen-bytes"}
+      }
+    },
+    "asset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "sizeBytes", "digest", "role", "sourceKind"],
+      "properties": {
+        "name": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"},
+        "sizeBytes": {"type": "integer", "minimum": 1},
+        "digest": {"$ref": "#/$defs/digest"},
+        "role": {
+          "enum": [
+            "rc-archive", "rc-product", "release-notes", "known-limitations",
+            "provenance", "maintenance-baseline", "checksums"
+          ]
+        },
+        "sourceKind": {"enum": ["immutable-rc", "ga-metadata"]}
+      }
+    },
+    "redaction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "findingCount", "findings"],
+      "properties": {
+        "status": {"const": "pass"},
+        "findingCount": {"const": 0},
+        "findings": {"type": "array", "maxItems": 0}
+      }
+    }
+  }
+}

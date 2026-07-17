@@ -1,0 +1,3081 @@
+name: Stable 1.0 GA Promotion
+run-name: Stable 1.0 GA ${{ inputs.release_id }} build ${{ inputs.build_version }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_id:
+        description: Path-safe release ID bound to the selected Stable RC and all GA evidence.
+        required: true
+        type: string
+      build_version:
+        description: Positive integer Cryptad build; must match the selected RC and project build.
+        required: true
+        type: string
+      candidate_commit:
+        description: Exact lowercase 40-character source commit frozen by the selected Stable RC.
+        required: true
+        type: string
+      selected_rc_run_id:
+        description: Protected Stable RC workflow run that produced the selected final freeze.
+        required: true
+        type: string
+      selected_rc_run_attempt:
+        description: Exact immutable attempt of the selected Stable RC workflow run.
+        required: true
+        type: string
+      selected_rc_artifact_name:
+        description: Exact retained Stable RC artifact name from the selected run and attempt.
+        required: true
+        type: string
+      previous_candidate:
+        description: Exact migrated previous-candidate envelope whose digest was frozen by the selected RC.
+        required: true
+        type: string
+      previous_product_digest:
+        description: SHA-256 digest of the exact published predecessor product exercised by the upgrade drill.
+        required: true
+        type: string
+      post_freeze_validation:
+        description: Exact-RC validation JSON; publication requires a prior protected attestation of these bytes.
+        required: true
+        type: string
+      ga_authorization:
+        description: Explicit GA authorization JSON; publication requires a prior protected attestation of these bytes.
+        required: true
+        type: string
+      artifact_base_uri:
+        description: Public HTTPS base URI planned for the exact authorized Stable GA assets.
+        required: true
+        type: string
+      catalog_primary_uri:
+        description: Public HTTPS location of the exact frozen stable catalog bytes.
+        required: true
+        type: string
+      catalog_mirror_uris:
+        description: Comma-separated, unique public HTTPS mirror locations for that exact catalog.
+        required: true
+        type: string
+      catalog_rollback_uri:
+        description: Public HTTPS location of the exact retained signed rollback catalog revision.
+        required: true
+        type: string
+      publish:
+        description: Explicitly request protected tag and GitHub Release publication after validation.
+        required: true
+        default: false
+        type: boolean
+
+concurrency:
+  group: stable-1-0-release-${{ inputs.build_version }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate exact frozen RC for Stable 1.0 GA
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      actions: read
+      checks: read
+      deployments: read
+    outputs:
+      publication_artifact_name: ${{ steps.stage_publication.outputs.artifact_name }}
+      publication_artifact_digest: ${{ steps.upload_publication.outputs.artifact-digest }}
+      component: ${{ steps.final_gate.outputs.component }}
+
+    steps:
+      - name: Check out the exact candidate commit
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.candidate_commit }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v5
+        with:
+          java-version: '25'
+          distribution: temurin
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@f29f5a9d7b09a7c6b29859002d29d24e1674c884 # v5
+
+      - name: Install Gradle properties
+        uses: ./.github/actions/setup-gradle-properties
+
+      - name: Validate dispatch identity and clean checkout
+        env:
+          INPUT_RELEASE_ID: ${{ inputs.release_id }}
+          INPUT_BUILD_VERSION: ${{ inputs.build_version }}
+          INPUT_CANDIDATE_COMMIT: ${{ inputs.candidate_commit }}
+          INPUT_RC_RUN_ID: ${{ inputs.selected_rc_run_id }}
+          INPUT_RC_RUN_ATTEMPT: ${{ inputs.selected_rc_run_attempt }}
+          INPUT_RC_ARTIFACT_NAME: ${{ inputs.selected_rc_artifact_name }}
+          INPUT_PREVIOUS_PRODUCT_DIGEST: ${{ inputs.previous_product_digest }}
+          INPUT_ARTIFACT_BASE_URI: ${{ inputs.artifact_base_uri }}
+          INPUT_CATALOG_PRIMARY_URI: ${{ inputs.catalog_primary_uri }}
+          INPUT_CATALOG_MIRROR_URIS: ${{ inputs.catalog_mirror_uris }}
+          INPUT_CATALOG_ROLLBACK_URI: ${{ inputs.catalog_rollback_uri }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$INPUT_RELEASE_ID" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+            echo "::error::release_id must be path-safe."
+            exit 1
+          fi
+          if [[ ! "$INPUT_BUILD_VERSION" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::build_version must be a positive decimal integer."
+            exit 1
+          fi
+          if [[ ! "$INPUT_CANDIDATE_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::candidate_commit must be an exact lowercase 40-character commit."
+            exit 1
+          fi
+          if [[ "$GITHUB_REF" != "refs/heads/release/$INPUT_BUILD_VERSION" \
+                || "$GITHUB_SHA" != "$INPUT_CANDIDATE_COMMIT" ]]; then
+            echo "::error::Stable GA must be dispatched on the exact release/$INPUT_BUILD_VERSION candidate ref."
+            exit 1
+          fi
+          if [[ ! "$INPUT_RC_RUN_ID" =~ ^[1-9][0-9]*$ || ! "$INPUT_RC_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::selected RC run and attempt must be positive decimal integers."
+            exit 1
+          fi
+          expected_artifact="stable-1-0-rc-$INPUT_RELEASE_ID-$INPUT_BUILD_VERSION-$INPUT_RC_RUN_ID-$INPUT_RC_RUN_ATTEMPT"
+          if [[ "$INPUT_RC_ARTIFACT_NAME" != "$expected_artifact" ]]; then
+            echo "::error::selected_rc_artifact_name is not the canonical artifact for the selected run."
+            exit 1
+          fi
+          if [[ ! "$INPUT_PREVIOUS_PRODUCT_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::previous_product_digest must be an exact SHA-256 digest."
+            exit 1
+          fi
+          if [[ ! "$INPUT_ARTIFACT_BASE_URI" =~ ^https://[^[:space:]@?#]+/$ \
+                || "$INPUT_ARTIFACT_BASE_URI" == *"REPLACE_ME"* \
+                || "$INPUT_ARTIFACT_BASE_URI" == *"example.invalid"* ]]; then
+            echo "::error::artifact_base_uri must be a public HTTPS base URI ending in /."
+            exit 1
+          fi
+          python3 - <<'PY'
+          import ipaddress
+          import os
+          import socket
+          import urllib.parse
+
+          def resolves_only_global_addresses(hostname: str) -> bool:
+              try:
+                  return ipaddress.ip_address(hostname).is_global
+              except ValueError:
+                  try:
+                      addresses = {
+                          row[4][0]
+                          for row in socket.getaddrinfo(
+                              hostname,
+                              443,
+                              type=socket.SOCK_STREAM,
+                          )
+                      }
+                  except OSError:
+                      return False
+                  return bool(addresses) and all(
+                      ipaddress.ip_address(address).is_global
+                      for address in addresses
+                  )
+
+          def valid_public_https(value: str, *, catalog: bool) -> bool:
+              parsed = urllib.parse.urlsplit(value)
+              try:
+                  safe_port = parsed.port in (None, 443)
+              except ValueError:
+                  safe_port = False
+              return (
+                  parsed.scheme == "https"
+                  and parsed.hostname is not None
+                  and parsed.username is None
+                  and parsed.password is None
+                  and safe_port
+                  and not parsed.query
+                  and not parsed.fragment
+                  and parsed.hostname != "example.invalid"
+                  and "REPLACE_ME" not in value
+                  and (
+                      (
+                          parsed.path.startswith("/")
+                          and "//" not in parsed.path
+                          and "%" not in parsed.path
+                          and "\\" not in value
+                          and all(
+                              segment not in {".", ".."}
+                              for segment in parsed.path.split("/")
+                          )
+                          and parsed.path.endswith((
+                              "/cryptad-app-catalog.properties",
+                              "/first-party-catalog.properties",
+                          ))
+                      )
+                      if catalog
+                      else parsed.path.endswith("/")
+                  )
+                  and resolves_only_global_addresses(parsed.hostname)
+                  and not any(character.isspace() or ord(character) < 32 for character in value)
+              )
+
+          def canonical_public_https(value: str) -> str:
+              parsed = urllib.parse.urlsplit(value)
+              hostname = parsed.hostname or ""
+              try:
+                  address = ipaddress.ip_address(hostname)
+                  canonical_hostname = str(address)
+                  netloc = (
+                      f"[{canonical_hostname}]" if address.version == 6 else canonical_hostname
+                  )
+              except ValueError:
+                  canonical_hostname = hostname.rstrip(".").encode("idna").decode("ascii").lower()
+                  netloc = canonical_hostname
+              return urllib.parse.urlunsplit(("https", netloc, parsed.path, "", ""))
+
+          artifact_base = os.environ["INPUT_ARTIFACT_BASE_URI"]
+          primary = os.environ["INPUT_CATALOG_PRIMARY_URI"]
+          mirrors = [item.strip() for item in os.environ["INPUT_CATALOG_MIRROR_URIS"].split(",") if item.strip()]
+          rollback = os.environ["INPUT_CATALOG_ROLLBACK_URI"]
+          primary_identity = canonical_public_https(primary)
+          mirror_identities = [canonical_public_https(item) for item in mirrors]
+          rollback_identity = canonical_public_https(rollback)
+          if (
+              not valid_public_https(artifact_base, catalog=False)
+              or not valid_public_https(primary, catalog=True)
+              or not mirrors
+              or any(not valid_public_https(item, catalog=True) for item in mirrors)
+              or not valid_public_https(rollback, catalog=True)
+              or len(mirror_identities) != len(set(mirror_identities))
+              or primary_identity in mirror_identities
+              or rollback_identity == primary_identity
+              or rollback_identity in mirror_identities
+          ):
+              raise SystemExit("artifact, current catalog, and rollback targets must resolve only to distinct, credential-free public HTTPS locations")
+          PY
+          if [[ "$(git rev-parse HEAD)" != "$INPUT_CANDIDATE_COMMIT" ]]; then
+            echo "::error::Checked-out HEAD does not match candidate_commit."
+            exit 1
+          fi
+          if [[ -n "$(git status --porcelain=v1 --untracked-files=all)" ]]; then
+            echo "::error::Stable GA validation requires a clean checkout."
+            git status --short
+            exit 1
+          fi
+          project_version="$(./gradlew -q printVersion)"
+          if [[ "$project_version" != "$INPUT_BUILD_VERSION" ]]; then
+            echo "::error::Project build $project_version does not match requested build $INPUT_BUILD_VERSION."
+            exit 1
+          fi
+
+      - name: Run Stable GA deterministic self-test
+        run: python3 tools/release-certification/certify.py stable-ga --self-test
+
+      - name: Authenticate and materialize the selected Stable RC and GA inputs
+        id: materialize
+        env:
+          INPUT_RELEASE_ID: ${{ inputs.release_id }}
+          INPUT_BUILD_VERSION: ${{ inputs.build_version }}
+          INPUT_CANDIDATE_COMMIT: ${{ inputs.candidate_commit }}
+          INPUT_RC_RUN_ID: ${{ inputs.selected_rc_run_id }}
+          INPUT_RC_RUN_ATTEMPT: ${{ inputs.selected_rc_run_attempt }}
+          INPUT_RC_ARTIFACT_NAME: ${{ inputs.selected_rc_artifact_name }}
+          INPUT_PREVIOUS_CANDIDATE: ${{ inputs.previous_candidate }}
+          INPUT_PREVIOUS_PRODUCT_DIGEST: ${{ inputs.previous_product_digest }}
+          INPUT_POST_FREEZE_VALIDATION: ${{ inputs.post_freeze_validation }}
+          INPUT_GA_AUTHORIZATION: ${{ inputs.ga_authorization }}
+          INPUT_ARTIFACT_BASE_URI: ${{ inputs.artifact_base_uri }}
+          INPUT_CATALOG_PRIMARY_URI: ${{ inputs.catalog_primary_uri }}
+          INPUT_CATALOG_MIRROR_URIS: ${{ inputs.catalog_mirror_uris }}
+          INPUT_CATALOG_ROLLBACK_URI: ${{ inputs.catalog_rollback_uri }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          require_regular() {
+            local path="$1"
+            local description="$2"
+            if [[ -L "$path" || ! -f "$path" ]]; then
+              echo "::error::$description must be a regular non-symlink file."
+              exit 1
+            fi
+          }
+
+          require_confined_file() {
+            local root="$1"
+            local path="$2"
+            local description="$3"
+            require_regular "$path" "$description"
+            local resolved_root resolved_path relative current part
+            resolved_root="$(realpath -e "$root")"
+            resolved_path="$(realpath -e "$path")"
+            if [[ "$resolved_path" != "$resolved_root"/* ]]; then
+              echo "::error::$description resolves outside its confined input root."
+              exit 1
+            fi
+            relative="${resolved_path#"$resolved_root"/}"
+            current="$resolved_root"
+            IFS='/' read -r -a parts <<< "$relative"
+            for part in "${parts[@]}"; do
+              current="$current/$part"
+              if [[ -L "$current" ]]; then
+                echo "::error::$description contains a symlinked path component."
+                exit 1
+              fi
+            done
+          }
+
+          display_title="Stable 1.0 RC $INPUT_RELEASE_ID build $INPUT_BUILD_VERSION"
+          attempt_json="$(gh api --method GET \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$INPUT_RC_RUN_ID/attempts/$INPUT_RC_RUN_ATTEMPT")"
+          jq -e \
+            --arg repository "$GITHUB_REPOSITORY" \
+            --arg workflow_path ".github/workflows/stable-1.0-rc-release.yml" \
+            --arg sha "$INPUT_CANDIDATE_COMMIT" \
+            --arg branch "release/$INPUT_BUILD_VERSION" \
+            --arg display_title "$display_title" \
+            --argjson run_id "$INPUT_RC_RUN_ID" \
+            --argjson attempt "$INPUT_RC_RUN_ATTEMPT" '
+              .id == $run_id
+              and .run_attempt == $attempt
+              and .status == "completed"
+              and .event == "workflow_dispatch"
+              and .conclusion == "success"
+              and .display_title == $display_title
+              and .head_sha == $sha
+              and .head_branch == $branch
+              and .repository.full_name == $repository
+              and (.updated_at | type == "string" and test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"))
+              and (.path == $workflow_path or (.path | startswith($workflow_path + "@")))' \
+            <<< "$attempt_json" >/dev/null
+          selected_attempt_completed_at="$(jq -er '.updated_at' <<< "$attempt_json")"
+
+          jobs_json="$(gh api --paginate --method GET \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$INPUT_RC_RUN_ID/attempts/$INPUT_RC_RUN_ATTEMPT/jobs" \
+            -f per_page=100 | jq -s '{jobs: [.[].jobs[]]}')"
+          jq -e --arg sha "$INPUT_CANDIDATE_COMMIT" '
+            [.jobs[]
+              | select(.name == "stable-rc"
+                  and .conclusion == "success"
+                  and .head_sha == $sha)]
+            | length == 1' <<< "$jobs_json" >/dev/null
+          selected_job_started_at="$(jq -er --arg sha "$INPUT_CANDIDATE_COMMIT" '
+            .jobs[]
+            | select(.name == "stable-rc"
+                and .conclusion == "success"
+                and .head_sha == $sha)
+            | .started_at
+            | select(type == "string" and length > 0)' <<< "$jobs_json")"
+          selected_job_completed_at="$(jq -er --arg sha "$INPUT_CANDIDATE_COMMIT" '
+            .jobs[]
+            | select(.name == "stable-rc"
+                and .conclusion == "success"
+                and .head_sha == $sha)
+            | .completed_at
+            | select(type == "string" and length > 0)' <<< "$jobs_json")"
+
+          deployment_verified=false
+          deployments="$(gh api --paginate --method GET \
+            "repos/$GITHUB_REPOSITORY/deployments" \
+            -f sha="$INPUT_CANDIDATE_COMMIT" \
+            -f environment=stable-1-0-rc \
+            -f per_page=100 | jq -s '[.[][]]')"
+          while IFS= read -r deployment_id; do
+            [[ -n "$deployment_id" ]] || continue
+            statuses="$(gh api --paginate --method GET \
+              "repos/$GITHUB_REPOSITORY/deployments/$deployment_id/statuses" \
+              -f per_page=100 | jq -s '[.[][]]')"
+            if jq -e \
+              --arg run_id "$INPUT_RC_RUN_ID" \
+              --arg started_at "$selected_job_started_at" \
+              --arg completed_at "$selected_job_completed_at" '
+              any(.[];
+                .state == "success"
+                and .created_at >= $started_at
+                and .created_at <= $completed_at
+                and ((.log_url // "") | contains("/actions/runs/" + $run_id + "/")))' \
+              <<< "$statuses" >/dev/null; then
+              deployment_verified=true
+              break
+            fi
+          done < <(jq -r '
+            .[]
+            | select(.environment == "stable-1-0-rc"
+                and .creator.login == "github-actions[bot]")
+            | .id' <<< "$deployments")
+          if [[ "$deployment_verified" != true ]]; then
+            echo "::error::The selected RC run is not bound to a successful stable-1-0-rc environment deployment."
+            exit 1
+          fi
+
+          artifacts_json="$(gh api --paginate --method GET \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$INPUT_RC_RUN_ID/artifacts" \
+            -f per_page=100 | jq -s '{artifacts: [.[].artifacts[]]}')"
+          artifact_count="$(jq -r --arg name "$INPUT_RC_ARTIFACT_NAME" '
+            [.artifacts[] | select(.name == $name and .expired == false)] | length' \
+            <<< "$artifacts_json")"
+          if [[ "$artifact_count" != 1 ]]; then
+            echo "::error::Expected exactly one retained selected Stable RC artifact."
+            exit 1
+          fi
+          artifact_id="$(jq -r --arg name "$INPUT_RC_ARTIFACT_NAME" '
+            .artifacts[] | select(.name == $name and .expired == false) | .id' \
+            <<< "$artifacts_json")"
+          artifact_digest="$(jq -r --arg name "$INPUT_RC_ARTIFACT_NAME" '
+            .artifacts[] | select(.name == $name and .expired == false) | (.digest // "")' \
+            <<< "$artifacts_json")"
+          if [[ ! "$artifact_id" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::Selected Stable RC artifact identity is malformed."
+            exit 1
+          fi
+          if [[ ! "$artifact_digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::Selected Stable RC workflow artifact digest is malformed."
+            exit 1
+          fi
+
+          rc_root="build/stable-ga-protected-inputs/selected-rc"
+          rm -rf "$rc_root"
+          mkdir -p "$rc_root"
+          gh run download "$INPUT_RC_RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name "$INPUT_RC_ARTIFACT_NAME" \
+            --dir "$rc_root"
+          if [[ -n "$(find "$rc_root" -type l -print -quit)" ]]; then
+            echo "::error::Selected Stable RC artifact contains a symlink."
+            exit 1
+          fi
+          if [[ -n "$(find "$rc_root" -mindepth 1 ! -type f ! -type d -print -quit)" ]]; then
+            echo "::error::Selected Stable RC artifact contains a special filesystem entry."
+            exit 1
+          fi
+          if [[ -n "$(find "$rc_root" \( -iname '._*' -o -iname '.DS_Store' -o -iname '__MACOSX' \) -print -quit)" ]]; then
+            echo "::error::Selected Stable RC artifact contains forbidden platform metadata."
+            exit 1
+          fi
+
+          find_one() {
+            local description="$1"
+            shift
+            local -a matches=()
+            mapfile -t matches < <(find "$rc_root" -type f "$@" -print | sort)
+            if [[ "${#matches[@]}" -ne 1 ]]; then
+              echo "::error::Selected Stable RC artifact must contain exactly one $description."
+              exit 1
+            fi
+            require_confined_file "$rc_root" "${matches[0]}" "$description"
+            printf '%s\n' "${matches[0]}"
+          }
+
+          selected_summary="$(find_one 'Stable RC v2 summary' -path "$rc_root/summary.json")"
+          freeze="$(find_one 'Stable RC freeze' -name stable-1.0-rc-freeze.json)"
+          freeze_dir="$(dirname "$freeze")"
+          freeze_sidecar="$freeze_dir/stable-1.0-rc-freeze.sha256"
+          rc_archive="$freeze_dir/cryptad-stable-1.0-rc-$INPUT_BUILD_VERSION.tar.gz"
+          rc_product="$freeze_dir/crypta-stable-1.0-rc-$INPUT_BUILD_VERSION-product.tar.gz"
+          rc_checksums="$freeze_dir/checksums.txt"
+          rc_provenance="$freeze_dir/provenance.json"
+          for required in "$freeze_sidecar" "$rc_archive" "$rc_product" "$rc_checksums" "$rc_provenance"; do
+            require_confined_file "$rc_root" "$required" "Stable RC native artifact"
+          done
+
+          external_root="build/stable-ga-protected-inputs/external"
+          mkdir -p "$external_root"
+
+          materialize_artifact_reference() {
+            local value="$1"
+            local output="$2"
+            local description="$3"
+            local rest="${value#actions-artifact://}"
+            local run_id="${rest%%/*}"
+            if [[ ! "$run_id" =~ ^[1-9][0-9]*$ || "$run_id" == "$rest" ]]; then
+              echo "::error::$description reference must start actions-artifact://<run-id>/."
+              exit 1
+            fi
+            rest="${rest#*/}"
+            local artifact_name="${rest%%/*}"
+            if [[ ! "$artifact_name" =~ ^[A-Za-z0-9._-]+$ || "$artifact_name" == "$rest" ]]; then
+              echo "::error::$description artifact name is unsafe."
+              exit 1
+            fi
+            local member="${rest#*/}"
+            if [[ -z "$member" || "$member" == /* || "$member" == *'\'* || "$member" == ".." || "$member" == ../* || "$member" == */../* || "$member" == */.. ]]; then
+              echo "::error::$description artifact member path is unsafe."
+              exit 1
+            fi
+            local download="$external_root/$(basename "$output")-artifact"
+            rm -rf "$download"
+            mkdir -p "$download"
+            gh run download "$run_id" --repo "$GITHUB_REPOSITORY" --name "$artifact_name" --dir "$download"
+            local source="$download/$member"
+            if [[ ! -f "$source" && -f "$download/$artifact_name/$member" ]]; then
+              source="$download/$artifact_name/$member"
+            fi
+            require_confined_file "$download" "$source" "$description"
+            cp "$source" "$output"
+          }
+
+          materialize_external() {
+            local value="$1"
+            local output="$2"
+            local description="$3"
+            case "$value" in
+              https://*)
+                local resolution_rows host address resolution_mode resolve_address
+                local resolve_addresses=""
+                local -a curl_resolution
+                resolution_rows="$(python3 - "$value" <<'PY'
+          import ipaddress
+          import socket
+          import sys
+          import urllib.parse
+
+          value = sys.argv[1]
+          parsed = urllib.parse.urlsplit(value)
+          hostname = parsed.hostname or ""
+          try:
+              safe_port = parsed.port in {None, 443}
+          except ValueError:
+              safe_port = False
+          if (
+              parsed.scheme != "https"
+              or not hostname
+              or parsed.username is not None
+              or parsed.password is not None
+              or parsed.query
+              or parsed.fragment
+              or not safe_port
+              or hostname in {"localhost", "localhost.localdomain"}
+              or hostname.endswith(".local")
+              or "\\" in value
+              or any(character.isspace() or ord(character) < 32 for character in value)
+          ):
+              raise SystemExit("protected evidence URL is not credential-free public HTTPS")
+          try:
+              literal_address = ipaddress.ip_address(hostname)
+          except ValueError:
+              literal_address = None
+          if literal_address is None:
+              try:
+                  addresses = {
+                      row[4][0]
+                      for row in socket.getaddrinfo(hostname, 443, type=socket.SOCK_STREAM)
+                  }
+              except OSError as error:
+                  raise SystemExit("protected evidence URL hostname cannot be resolved") from error
+              resolution_mode = "dns"
+          else:
+              addresses = {str(literal_address)}
+              resolution_mode = "literal"
+          if not addresses or any(not ipaddress.ip_address(address).is_global for address in addresses):
+              raise SystemExit("protected evidence URL resolves to a non-public address")
+          for address in sorted(
+              addresses,
+              key=lambda item: (ipaddress.ip_address(item).version, ipaddress.ip_address(item)),
+          ):
+              print(f"{hostname}\t{address}\t{resolution_mode}")
+          PY
+                )" || exit 1
+                if [[ -z "$resolution_rows" ]]; then
+                  echo "::error::$description HTTPS source has no approved public address."
+                  exit 1
+                fi
+                host="$(head -n 1 <<< "$resolution_rows" | cut -f1)"
+                resolution_mode="$(head -n 1 <<< "$resolution_rows" | cut -f3)"
+                curl_resolution=()
+                if [[ "$resolution_mode" == "dns" ]]; then
+                  while IFS=$'\t' read -r _ address _; do
+                    resolve_address="$address"
+                    if [[ "$resolve_address" == *:* ]]; then
+                      resolve_address="[$resolve_address]"
+                    fi
+                    resolve_addresses="${resolve_addresses:+$resolve_addresses,}$resolve_address"
+                  done <<< "$resolution_rows"
+                  curl_resolution=(--resolve "${host}:443:${resolve_addresses}")
+                fi
+                local http_status
+                if ! http_status="$(curl --disable --fail --silent --show-error \
+                  --noproxy '*' --proto '=https' --tlsv1.2 --max-redirs 0 \
+                  --connect-timeout 15 --max-time 180 --max-filesize 16777216 \
+                  "${curl_resolution[@]}" --write-out '%{http_code}' \
+                  --output "$output.partial" "$value")"; then
+                  rm -f "$output.partial"
+                  echo "::error::$description HTTPS source could not be fetched from an approved address."
+                  exit 1
+                fi
+                if [[ ! "$http_status" =~ ^2[0-9]{2}$ ]]; then
+                  rm -f "$output.partial"
+                  echo "::error::$description HTTPS source returned a non-success status."
+                  exit 1
+                fi
+                mv "$output.partial" "$output"
+                ;;
+              http://*)
+                echo "::error::$description URL must use HTTPS."
+                exit 1
+                ;;
+              actions-artifact://*)
+                materialize_artifact_reference "$value" "$output" "$description"
+                ;;
+              *)
+                if [[ "$value" == /* || "$value" == *'\'* || "$value" == ".." || "$value" == ../* || "$value" == */../* || "$value" == */.. ]]; then
+                  echo "::error::$description must use a safe repository-relative path."
+                  exit 1
+                fi
+                require_confined_file "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE/$value" "$description"
+                cp "$GITHUB_WORKSPACE/$value" "$output"
+                ;;
+            esac
+            require_regular "$output" "$description"
+            if [[ "$(stat -c%s "$output")" -gt 16777216 ]]; then
+              echo "::error::$description exceeds the 16 MiB structured-evidence limit."
+              exit 1
+            fi
+            chmod 600 "$output"
+          }
+
+          validation="$external_root/stable-1.0-rc-validation.json"
+          authorization="$external_root/stable-1.0-ga-authorization.json"
+          previous_candidate="$external_root/previous-candidate-summary.json"
+          materialize_external "$INPUT_PREVIOUS_CANDIDATE" "$previous_candidate" "Frozen previous candidate"
+          materialize_external "$INPUT_POST_FREEZE_VALIDATION" "$validation" "Post-freeze validation"
+          materialize_external "$INPUT_GA_AUTHORIZATION" "$authorization" "Stable GA authorization"
+          previous_candidate_digest="sha256:$(sha256sum "$previous_candidate" | awk '{print $1}')"
+          if [[ "$previous_candidate_digest" != "$(jq -r '.candidate.previousCandidateDigest' "$freeze")" \
+                || "$previous_candidate_digest" != "$(jq -r '.inputs.previousCandidate' "$rc_provenance")" ]]; then
+            echo "::error::Previous-candidate bytes differ from the exact input frozen by the selected RC."
+            exit 1
+          fi
+          previous_release_id="$(jq -er '.payload.legacy.releaseId | select(type == "string" and length > 0)' "$previous_candidate")"
+          previous_build_version="$(jq -er '.payload.legacy.version | tostring | select(test("^[1-9][0-9]*$"))' "$previous_candidate")"
+          jq -e --arg release "$INPUT_RELEASE_ID" --arg build "$INPUT_BUILD_VERSION" --arg commit "$INPUT_CANDIDATE_COMMIT" '
+            .schemaVersion == 1
+            and .kind == "stable-1.0-rc-validation"
+            and .releaseId == $release
+            and .buildVersion == $build
+            and .sourceCommit == $commit' "$validation" >/dev/null
+          jq -e \
+            --arg candidate_digest "$previous_candidate_digest" \
+            --arg release "$previous_release_id" \
+            --arg build "$previous_build_version" \
+            --arg product_digest "$INPUT_PREVIOUS_PRODUCT_DIGEST" '
+              .scenarios.upgradeRollbackStatePreservation.previousCandidateDigest == $candidate_digest
+              and .scenarios.upgradeRollbackStatePreservation.previousReleaseId == $release
+              and .scenarios.upgradeRollbackStatePreservation.previousBuildVersion == $build
+              and .scenarios.upgradeRollbackStatePreservation.previousProductDigest == $product_digest' \
+            "$validation" >/dev/null
+          jq -e --arg release "$INPUT_RELEASE_ID" --arg build "$INPUT_BUILD_VERSION" --arg commit "$INPUT_CANDIDATE_COMMIT" '
+            .schemaVersion == 1
+            and .kind == "stable-1.0-ga-authorization"
+            and .releaseId == $release
+            and .buildVersion == $build
+            and .sourceCommit == $commit' "$authorization" >/dev/null
+
+          input_root="build/stable-ga-inputs"
+          rm -rf "$input_root"
+          mkdir -p "$input_root"
+          cp -a "$freeze_dir/." "$input_root/"
+          cp "$selected_summary" "$input_root/selected-stable-rc-summary.json"
+          cp "$previous_candidate" "$input_root/previous-candidate-summary.json"
+          cp "$validation" "$input_root/stable-1.0-rc-validation.json"
+          cp "$authorization" "$input_root/stable-1.0-ga-authorization.json"
+          cp tools/release-certification/stable-1.0-ga-policy.json "$input_root/stable-1.0-ga-policy.json"
+
+          freeze_digest="$(jq -r '.contentDigest' "$freeze")"
+          freeze_file_digest="sha256:$(sha256sum "$freeze" | awk '{print $1}')"
+          archive_digest="sha256:$(sha256sum "$rc_archive" | awk '{print $1}')"
+          product_digest="sha256:$(sha256sum "$rc_product" | awk '{print $1}')"
+          provenance_product_digest="$(jq -r '.productionDistribution.digest' "$rc_provenance")"
+          if [[ ! "$freeze_digest" =~ ^sha256:[0-9a-f]{64}$ \
+                || "$product_digest" != "$provenance_product_digest" \
+                || "$product_digest" != "$(jq -r '.candidate.productionDistributionDigest' "$freeze")" ]]; then
+            echo "::error::Selected RC freeze, product, and provenance identity do not agree."
+            exit 1
+          fi
+          exception_history_digest="sha256:$(
+            printf '%s' "$(jq -cS '.acceptedFreezeExceptions' "$freeze")" | sha256sum | awk '{print $1}'
+          )"
+          freeze_mode="$(jq -r '.freezeMode' "$rc_provenance")"
+          if [[ "$freeze_mode" != first-freeze && "$freeze_mode" != refreeze ]]; then
+            echo "::error::Selected RC provenance has an invalid freeze mode."
+            exit 1
+          fi
+
+          later_success=false
+          ambiguous_success=false
+          active_rc_attempt=false
+          mapfile -t candidate_runs < <(
+            gh api --paginate --method GET \
+              "repos/$GITHUB_REPOSITORY/actions/workflows/stable-1.0-rc-release.yml/runs" \
+              -f event=workflow_dispatch -f per_page=100 \
+            | jq -s -r --arg title "$display_title" '
+                [.[].workflow_runs[] | select(.display_title == $title)]
+                | unique_by(.id)
+                | .[]
+                | [.id, .run_attempt]
+                | @tsv'
+          )
+          for candidate_run in "${candidate_runs[@]}"; do
+            IFS=$'\t' read -r candidate_run_id candidate_attempt_count <<< "$candidate_run"
+            if [[ ! "$candidate_run_id" =~ ^[1-9][0-9]*$ \
+                  || ! "$candidate_attempt_count" =~ ^[1-9][0-9]*$ ]]; then
+              echo "::error::Stable RC workflow history contains malformed run identity."
+              exit 1
+            fi
+            for ((candidate_attempt = 1; candidate_attempt <= candidate_attempt_count; candidate_attempt++)); do
+              if [[ "$candidate_run_id" -eq "$INPUT_RC_RUN_ID" \
+                    && "$candidate_attempt" -eq "$INPUT_RC_RUN_ATTEMPT" ]]; then
+                continue
+              fi
+              candidate_attempt_json="$(gh api --method GET \
+                "repos/$GITHUB_REPOSITORY/actions/runs/$candidate_run_id/attempts/$candidate_attempt")"
+              if ! jq -e \
+                  --arg repository "$GITHUB_REPOSITORY" \
+                  --arg workflow_path ".github/workflows/stable-1.0-rc-release.yml" \
+                  --arg display_title "$display_title" \
+                  --argjson run_id "$candidate_run_id" \
+                  --argjson attempt "$candidate_attempt" '
+                    .id == $run_id
+                    and .run_attempt == $attempt
+                    and .event == "workflow_dispatch"
+                    and .display_title == $display_title
+                    and .repository.full_name == $repository
+                    and (.path == $workflow_path or (.path | startswith($workflow_path + "@")))' \
+                  <<< "$candidate_attempt_json" >/dev/null; then
+                echo "::error::A Stable RC workflow attempt has malformed candidate identity."
+                exit 1
+              fi
+              candidate_status="$(jq -r '.status // ""' <<< "$candidate_attempt_json")"
+              candidate_conclusion="$(jq -r '.conclusion // ""' <<< "$candidate_attempt_json")"
+              if [[ "$candidate_status" != completed ]]; then
+                active_rc_attempt=true
+                break 2
+              fi
+              if [[ "$candidate_conclusion" == success ]]; then
+                candidate_attempt_completed_at="$(jq -er '
+                  .updated_at
+                  | select(type == "string" and test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"))' \
+                  <<< "$candidate_attempt_json")"
+                if [[ "$candidate_attempt_completed_at" > "$selected_attempt_completed_at" ]]; then
+                  later_success=true
+                  break 2
+                fi
+                if [[ "$candidate_attempt_completed_at" == "$selected_attempt_completed_at" ]]; then
+                  ambiguous_success=true
+                  break 2
+                fi
+              fi
+            done
+          done
+          if [[ "$active_rc_attempt" == true ]]; then
+            echo "::error::A matching Stable RC freeze/refreeze attempt is still active."
+            exit 1
+          fi
+          if [[ "$ambiguous_success" == true ]]; then
+            echo "::error::Stable RC completion chronology is ambiguous at GitHub timestamp precision."
+            exit 1
+          fi
+          if [[ "$later_success" == true ]]; then
+            echo "::error::A newer successful Stable RC freeze/refreeze exists for this release and build."
+            exit 1
+          fi
+
+          jq -n \
+            --arg release_id "$INPUT_RELEASE_ID" \
+            --arg build "$INPUT_BUILD_VERSION" \
+            --arg commit "$INPUT_CANDIDATE_COMMIT" \
+            --arg ref "$(jq -r '.candidate.sourceRef' "$freeze")" \
+            --arg workflow_ref "$(jq -r '.path' <<< "$attempt_json")" \
+            --arg artifact_name "$INPUT_RC_ARTIFACT_NAME" \
+            --arg artifact_digest "$artifact_digest" \
+            --arg repository "$GITHUB_REPOSITORY" \
+            --arg generated_at "$(jq -r '.updated_at' <<< "$attempt_json")" \
+            --arg freeze_digest "$freeze_digest" \
+            --arg freeze_file_digest "$freeze_file_digest" \
+            --arg archive_digest "$archive_digest" \
+            --arg product_digest "$product_digest" \
+            --arg exception_history_digest "$exception_history_digest" \
+            --arg freeze_mode "$freeze_mode" \
+            --argjson run_id "$INPUT_RC_RUN_ID" \
+            --argjson attempt "$INPUT_RC_RUN_ATTEMPT" '
+            def workflow: {
+              provider: "github-actions",
+              repository: $repository,
+              workflowName: "Stable 1.0 RC Release Freeze",
+              workflowRef: $workflow_ref,
+              runId: $run_id,
+              runAttempt: $attempt,
+              artifactName: $artifact_name,
+              artifactDigest: $artifact_digest,
+              environment: "stable-1-0-rc",
+              conclusion: "success"
+            };
+            def selection: {
+              freezeDigest: $freeze_digest,
+              freezeFileDigest: $freeze_file_digest,
+              archiveDigest: $archive_digest,
+              productDistributionDigest: $product_digest,
+              sourceCommit: $commit,
+              workflow: workflow
+            };
+            {
+              schemaVersion: 1,
+              kind: "stable-1.0-rc-lineage",
+              generatedAt: $generated_at,
+              releaseId: $release_id,
+              buildVersion: $build,
+              profile: "stable-review",
+              component: "stable-rc",
+              sourceCommit: $commit,
+              sourceRef: $ref,
+              status: "pass",
+              selectedFreeze: selection,
+              latestSuccessfulFreeze: selection,
+              history: [selection + {
+                ordinal: 1,
+                freezeMode: $freeze_mode,
+                successful: true
+              }],
+              acceptedFreezeExceptionHistoryDigest: $exception_history_digest,
+              redaction: {status: "pass", findingCount: 0, findings: []}
+            }' > "$input_root/stable-1.0-rc-lineage.json"
+
+          manifest="build/stable-1.0-ga.json"
+          candidate_ref="$(jq -r '.candidate.sourceRef' "$freeze")"
+          if [[ "$candidate_ref" != "commit:$INPUT_CANDIDATE_COMMIT" ]]; then
+            echo "::error::Selected Stable RC source ref is not its immutable commit identity."
+            exit 1
+          fi
+          artifact_base_uri="$(python3 - "$INPUT_ARTIFACT_BASE_URI" <<'PY'
+          import sys
+
+          print(sys.argv[1].rstrip("/") + "/")
+          PY
+          )"
+          jq -n \
+            --arg release_id "$INPUT_RELEASE_ID" \
+            --arg build "$INPUT_BUILD_VERSION" \
+            --arg commit "$INPUT_CANDIDATE_COMMIT" \
+            --arg source_ref "$candidate_ref" \
+            --arg previous_release_id "$previous_release_id" \
+            --arg previous_product_digest "$INPUT_PREVIOUS_PRODUCT_DIGEST" \
+            --arg artifact_base_uri "$artifact_base_uri" \
+            --arg catalog_primary_uri "$INPUT_CATALOG_PRIMARY_URI" \
+            --arg catalog_mirror_uris "$INPUT_CATALOG_MIRROR_URIS" \
+            --arg catalog_rollback_uri "$INPUT_CATALOG_ROLLBACK_URI" '
+            {
+              schemaVersion: 1,
+              release: {id: $release_id, version: $build, profile: "stable-review"},
+              output: {root: "build/release-certification", reset: true},
+              requirements: {
+                history: true,
+                liveNetwork: true,
+                multiNodeSoak: true,
+                sandboxProviderTests: true,
+                stableReadiness: true,
+                thirdPartyIntake: true
+              },
+              inputs: {
+                selectedStableRcSummary: "build/stable-ga-inputs/selected-stable-rc-summary.json",
+                selectedStableRcFreeze: "build/stable-ga-inputs/stable-1.0-rc-freeze.json",
+                selectedStableRcFreezeSidecar: "build/stable-ga-inputs/stable-1.0-rc-freeze.sha256",
+                selectedStableRcArchive: ("build/stable-ga-inputs/cryptad-stable-1.0-rc-" + $build + ".tar.gz"),
+                selectedStableRcProduct: ("build/stable-ga-inputs/crypta-stable-1.0-rc-" + $build + "-product.tar.gz"),
+                selectedStableRcChecksums: "build/stable-ga-inputs/checksums.txt",
+                selectedStableRcProvenance: "build/stable-ga-inputs/provenance.json",
+                selectedStableRcLineage: "build/stable-ga-inputs/stable-1.0-rc-lineage.json",
+                previousCandidate: "build/stable-ga-inputs/previous-candidate-summary.json",
+                stableRcValidation: "build/stable-ga-inputs/stable-1.0-rc-validation.json",
+                stableGaAuthorization: "build/stable-ga-inputs/stable-1.0-ga-authorization.json",
+                stableGaPolicy: "build/stable-ga-inputs/stable-1.0-ga-policy.json"
+              },
+              policies: {
+                artifactBaseUri: $artifact_base_uri,
+                catalogChannel: "stable",
+                candidateSourceCommit: $commit,
+                candidateSourceRef: $source_ref,
+                expectedPreviousReleaseId: $previous_release_id,
+                expectedPreviousProductDigest: $previous_product_digest,
+                metadata: {
+                  catalogPrimaryUri: $catalog_primary_uri,
+                  catalogMirrorUris: $catalog_mirror_uris,
+                  catalogRollbackUri: $catalog_rollback_uri
+                },
+                publicationIntent: "prepare-explicit-protected-publication"
+              },
+              execution: {
+                allowDirtyWorkspace: false,
+                allowTestSigningInProduction: false,
+                collectEvidence: false,
+                collectLiveNetwork: false,
+                emergencySkipBuild: false,
+                emergencySkipLiveNetwork: false,
+                fixtureEvidence: false,
+                generateStableReadiness: false,
+                runMultiNodeSoak: false,
+                runThirdPartyIntakeSampleFlow: false,
+                skipFullBuild: true,
+                skipGitMetadata: false,
+                skipGradle: true,
+                writeHistory: false
+              },
+              commands: {"stable-ga": {args: [], mode: "validate-only"}}
+            }' > "$manifest"
+          echo "manifest=$manifest" >> "$GITHUB_OUTPUT"
+          echo "input_root=$input_root" >> "$GITHUB_OUTPUT"
+
+      - name: Validate and prepare Stable 1.0 GA promotion
+        env:
+          MANIFEST: ${{ steps.materialize.outputs.manifest }}
+        run: python3 tools/release-certification/certify.py stable-ga --manifest "$MANIFEST"
+
+      - name: Verify final Stable GA envelope and native artifacts
+        id: final_gate
+        env:
+          INPUT_RELEASE_ID: ${{ inputs.release_id }}
+          INPUT_BUILD_VERSION: ${{ inputs.build_version }}
+          INPUT_CANDIDATE_COMMIT: ${{ inputs.candidate_commit }}
+        run: |
+          set -euo pipefail
+          component="build/release-certification/$INPUT_RELEASE_ID/stable-ga"
+          legacy="$component/artifacts/legacy"
+          for path in "$component/summary.json" "$component/report.md" "$component/redaction-report.json"; do
+            if [[ -L "$path" || ! -f "$path" ]]; then
+              echo "::error::Required common Stable GA artifact is missing or unsafe."
+              exit 1
+            fi
+          done
+          jq -e --arg release "$INPUT_RELEASE_ID" --arg build "$INPUT_BUILD_VERSION" '
+            .schemaVersion == 2
+            and .kind == "stable-1.0-ga-promotion"
+            and .subject.releaseId == $release
+            and .subject.version == $build
+            and .subject.profile == "stable-review"
+            and .subject.component == "stable-ga"
+            and .result.status == "pass"
+            and .result.promotionReady == true
+            and .result.exitCode == 0
+            and .redaction.status == "pass"
+            and .redaction.findingCount == 0' "$component/summary.json" >/dev/null
+          jq -e '.status == "pass" and .findingCount == 0 and .findings == []' \
+            "$component/redaction-report.json" >/dev/null
+
+          required_native=(
+            stable-1.0-ga-validation.json
+            stable-1.0-ga-validation-authorization-identity.json
+            stable-1.0-ga-authorization-summary.json
+            stable-1.0-ga-promotion-summary.json
+            stable-1.0-ga-go-no-go.md
+            stable-1.0-ga-known-limitations.json
+            stable-1.0-ga-release-notes.md
+            stable-1.0-ga-publication-plan.json
+            stable-1.0-maintenance-baseline.json
+            stable-1.0-ga-checksums.txt
+            stable-1.0-ga-provenance.json
+          )
+          if [[ -L "$legacy" || ! -d "$legacy" ]]; then
+            echo "::error::Stable GA native artifact directory is missing or unsafe."
+            exit 1
+          fi
+          for name in "${required_native[@]}"; do
+            if [[ -L "$legacy/$name" || ! -f "$legacy/$name" ]]; then
+              echo "::error::Required Stable GA native artifact $name is missing or unsafe."
+              exit 1
+            fi
+          done
+          if [[ -n "$(find "$component" -type l -print -quit)" || -n "$(find "$component" -mindepth 1 ! -type f ! -type d -print -quit)" ]]; then
+            echo "::error::Stable GA output contains a link or special filesystem entry."
+            exit 1
+          fi
+          if [[ -n "$(find "$component" \( -iname '._*' -o -iname '.DS_Store' -o -iname '__MACOSX' \) -print -quit)" ]]; then
+            echo "::error::Stable GA output contains forbidden platform metadata."
+            exit 1
+          fi
+
+          promotion="$legacy/stable-1.0-ga-promotion-summary.json"
+          validation="$legacy/stable-1.0-ga-validation.json"
+          validation_identity="$legacy/stable-1.0-ga-validation-authorization-identity.json"
+          authorization="$legacy/stable-1.0-ga-authorization-summary.json"
+          plan="$legacy/stable-1.0-ga-publication-plan.json"
+          authorization_input="build/stable-ga-inputs/stable-1.0-ga-authorization.json"
+          authorization_input_digest="sha256:$(sha256sum "$authorization_input" | awk '{print $1}')"
+          publication_targets_digest="$(jq -er '.publicationTargetsDigest' "$validation_identity")"
+          jq -e \
+            --arg release "$INPUT_RELEASE_ID" \
+            --arg build "$INPUT_BUILD_VERSION" \
+            --arg commit "$INPUT_CANDIDATE_COMMIT" \
+            --arg tag "v$INPUT_BUILD_VERSION" \
+            --arg branch "release/$INPUT_BUILD_VERSION" \
+            --arg publication_targets_digest "$publication_targets_digest" '
+            .decision as $decision
+            | .kind == "stable-1.0-ga-promotion"
+              and .releaseId == $release
+              and .buildVersion == $build
+              and .sourceCommit == $commit
+              and .stableMilestone == "1.0"
+              and .expectedTag == $tag
+              and .expectedReleaseBranch == $branch
+              and .status == "pass"
+              and .promotionReady == true
+              and .nonRelease == false
+              and .blockers == []
+              and .validationState == "publication-authorized"
+              and .publicationState == "publication-authorized"
+              and .publicationReadiness.status == "pass"
+              and .publicationReadiness.authorizationStatus == "pass"
+              and .publicationReadiness.sideEffectsPerformed == false
+              and .publicationTargetsDigest == $publication_targets_digest
+              and .redaction.status == "pass"
+              and .redaction.findingCount == 0
+              and .payloadIdentity.rcProductDigest == .payloadIdentity.gaProductDigest
+              and .payloadIdentity.bitIdentical == true
+              and .payloadIdentity.rebuildPerformed == false
+              and (["go", "go-with-waivers"] | index($decision) != null)' \
+            "$promotion" >/dev/null
+          jq -e \
+            --arg release "$INPUT_RELEASE_ID" \
+            --arg build "$INPUT_BUILD_VERSION" \
+            --arg commit "$INPUT_CANDIDATE_COMMIT" \
+            --arg publication_targets_digest "$publication_targets_digest" \
+            --arg authorization_digest "$authorization_input_digest" \
+            --argjson promotion "$(jq -c . "$promotion")" '
+              .kind == "stable-1.0-ga-validation"
+              and .releaseId == $release
+              and .buildVersion == $build
+              and .sourceCommit == $commit
+              and .profile == "stable-review"
+              and .component == "stable-ga"
+              and .state == "publication-authorized"
+              and .status == "pass"
+              and .promotionReady == true
+              and .nonRelease == false
+              and (.decision == "go" or .decision == "go-with-waivers")
+              and .blockers == []
+              and .selectedRc.status == "pass"
+              and .selectedRc.promotionReady == true
+              and .selectedRc.nonRelease == false
+              and .selectedRc.driftStatus == "no-drift"
+              and (.selectedRc.finalDecision == "go" or .selectedRc.finalDecision == "go-with-waivers")
+              and .postFreezeValidation.status == "pass"
+              and .postFreezeValidation.exactRcBinding == true
+              and .authorization.status == "authorized"
+              and .authorization.authorizationDigest == $authorization_digest
+              and .authorization.publicationTargetsDigest == $publication_targets_digest
+              and .payloadIdentity.bitIdentical == true
+              and .payloadIdentity.rebuildPerformed == false
+              and .payloadIdentity.rcProductDigest == .payloadIdentity.gaProductDigest
+              and .selectedRc.freezeDigest == $promotion.selectedRc.freezeDigest
+              and .selectedRc.archiveDigest == $promotion.selectedRc.archiveDigest
+              and .selectedRc.productDistributionDigest == $promotion.selectedRc.productDistributionDigest
+              and .selectedRc.lineageDigest == $promotion.selectedRc.lineageDigest
+              and .payloadIdentity == $promotion.payloadIdentity
+              and all(.frozenSurfaces[]; .status == "pass" and .drift == false)
+              and .redaction.status == "pass"
+              and .redaction.findingCount == 0' "$validation" >/dev/null
+          if ! jq -e \
+              --arg authorization_digest "$authorization_input_digest" \
+              --argjson predecessor "$(jq -c '.requiredUpgradePredecessor' "$validation_identity")" '
+                .postFreezeValidation.requiredUpgradePredecessor == $predecessor
+                and .authorization.authorizationDigest == $authorization_digest' \
+              "$validation" >/dev/null; then
+            echo "::error::Stable GA validation does not bind the frozen predecessor and exact authorization bytes."
+            exit 1
+          fi
+          validation_identity_digest="$(python3 - "$validation_identity" <<'PY'
+          import hashlib
+          import json
+          import pathlib
+          import sys
+
+          value = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+          canonical = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+          print("sha256:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest())
+          PY
+          )"
+          calculated_publication_targets_digest="$(python3 - "$validation_identity" <<'PY'
+          import hashlib
+          import json
+          import pathlib
+          import sys
+
+          value = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+          canonical = json.dumps(
+              value["publicationTargets"],
+              ensure_ascii=False,
+              sort_keys=True,
+              separators=(",", ":"),
+          )
+          print("sha256:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest())
+          PY
+          )"
+          if [[ "$calculated_publication_targets_digest" != "$publication_targets_digest" ]]; then
+            echo "::error::Stable GA publication target identity digest is not canonical."
+            exit 1
+          fi
+          if ! jq -e \
+              --arg digest "$validation_identity_digest" \
+              --arg targets_digest "$publication_targets_digest" \
+              --argjson targets "$(jq -c '.publicationTargets' "$validation_identity")" '
+                .kind == "stable-1.0-ga-authorization"
+                and .gaValidationDigest == $digest
+                and .publicationTargetsDigest == $targets_digest
+                and .publicationTargets == $targets' \
+              "$authorization" >/dev/null; then
+            echo "::error::Stable GA authorization does not bind the canonical validation identity and publication targets."
+            exit 1
+          fi
+          if ! jq -e --arg digest "$publication_targets_digest" \
+              '.publicationTargetsDigest == $digest' "$plan" >/dev/null; then
+            echo "::error::Stable GA publication plan does not bind the authorized publication targets."
+            exit 1
+          fi
+
+          provenance="$legacy/stable-1.0-ga-provenance.json"
+          jq -e --arg release "$INPUT_RELEASE_ID" --arg build "$INPUT_BUILD_VERSION" --arg commit "$INPUT_CANDIDATE_COMMIT" --arg authorization_digest "$authorization_input_digest" '
+            .kind == "stable-1.0-ga-provenance"
+            and
+            .releaseId == $release
+            and .buildVersion == $build
+            and .source.commit == $commit
+            and .ga.authorizationDigest == $authorization_digest
+            and .redaction.status == "pass"
+            and .payloadIdentity.rcProductDigest == .payloadIdentity.gaProductDigest' \
+            "$provenance" >/dev/null
+          jq -e --arg authorization_digest "$authorization_input_digest" \
+            '.gaAuthorizationDigest == $authorization_digest' "$promotion" >/dev/null
+
+          selected_product="build/stable-ga-inputs/crypta-stable-1.0-rc-$INPUT_BUILD_VERSION-product.tar.gz"
+          mapfile -t ga_products < <(find "$legacy" -type f -name "crypta-stable-1.0-rc-$INPUT_BUILD_VERSION-product.tar.gz" -print | sort)
+          if [[ "${#ga_products[@]}" -ne 1 ]] || ! cmp --silent "$selected_product" "${ga_products[0]}"; then
+            echo "::error::GA output does not carry the exact selected Stable RC product bytes."
+            exit 1
+          fi
+
+          checksums="$legacy/stable-1.0-ga-checksums.txt"
+          if [[ -n "$(awk '
+            BEGIN {bad=0}
+            !/^[0-9a-f]{64}  [A-Za-z0-9][A-Za-z0-9._-]*$/ {bad=1}
+            {if (seen[$2]++) bad=1}
+            END {if (bad) print "invalid"}' "$checksums")" ]]; then
+            echo "::error::Stable GA checksum set contains an unsafe or duplicate row."
+            exit 1
+          fi
+          while read -r digest name; do
+            if [[ -L "$legacy/$name" || ! -f "$legacy/$name" ]]; then
+              echo "::error::Stable GA checksum target $name is missing or unsafe."
+              exit 1
+            fi
+            actual="$(sha256sum "$legacy/$name" | awk '{print $1}')"
+            if [[ "$actual" != "$digest" ]]; then
+              echo "::error::Stable GA checksum mismatch for $name."
+              exit 1
+            fi
+          done < "$checksums"
+          if ! jq -e --rawfile checksums "$checksums" '
+              ([$checksums
+                | split("\n")[]
+                | select(length > 0)
+                | capture("^[0-9a-f]{64}  (?<name>[A-Za-z0-9][A-Za-z0-9._-]*)$").name]
+                | sort)
+              == ([.assets[] | select(.role != "checksums") | .name] | sort)' \
+              "$plan" >/dev/null; then
+            echo "::error::Stable GA public checksum rows differ from the publication asset allowlist."
+            exit 1
+          fi
+
+          if rg -n -i --hidden --glob '!stable-1.0-ga-checksums.txt' \
+            '(authorization:[[:space:]]*bearer|private[ _-]*insert[ _-]*uri|BEGIN [A-Z ]*PRIVATE KEY|/home/runner/|/Users/runner/|[A-Za-z]:\\\\)' \
+            "$component"; then
+            echo "::error::Stable GA public artifacts contain forbidden sensitive or runner-local text."
+            exit 1
+          fi
+          echo "component=$component" >> "$GITHUB_OUTPUT"
+
+      - name: Stage exact public validation and publication inputs
+        id: stage_publication
+        env:
+          COMPONENT: ${{ steps.final_gate.outputs.component }}
+          INPUT_RELEASE_ID: ${{ inputs.release_id }}
+          INPUT_BUILD_VERSION: ${{ inputs.build_version }}
+        run: |
+          set -euo pipefail
+          stage="build/stable-ga-publication-artifact"
+          rm -rf "$stage"
+          mkdir -p "$stage/component/artifacts/legacy" "$stage/publication-inputs"
+          cp "$COMPONENT/summary.json" "$stage/component/summary.json"
+          cp "$COMPONENT/report.md" "$stage/component/report.md"
+          cp "$COMPONENT/redaction-report.json" "$stage/component/redaction-report.json"
+          for name in \
+            stable-1.0-ga-validation.json \
+            stable-1.0-ga-validation-authorization-identity.json \
+            stable-1.0-ga-authorization-summary.json \
+            stable-1.0-ga-promotion-summary.json \
+            stable-1.0-ga-go-no-go.md \
+            stable-1.0-ga-known-limitations.json \
+            stable-1.0-ga-release-notes.md \
+            stable-1.0-ga-publication-plan.json \
+            stable-1.0-maintenance-baseline.json \
+            stable-1.0-ga-checksums.txt \
+            stable-1.0-ga-provenance.json \
+            redaction-report.json \
+            "cryptad-stable-1.0-rc-$INPUT_BUILD_VERSION.tar.gz" \
+            "crypta-stable-1.0-rc-$INPUT_BUILD_VERSION-product.tar.gz"; do
+            cp "$COMPONENT/artifacts/legacy/$name" "$stage/component/artifacts/legacy/$name"
+          done
+          cp -a build/stable-ga-inputs/. "$stage/publication-inputs/"
+          cp "$COMPONENT/artifacts/legacy/stable-1.0-ga-validation-authorization-identity.json" \
+            "$stage/publication-inputs/stable-1.0-ga-validation-authorization-identity.json"
+          cp build/stable-1.0-ga.json "$stage/stable-1.0-ga.json"
+          artifact_name="stable-1-0-ga-validated-$INPUT_RELEASE_ID-$INPUT_BUILD_VERSION-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          echo "artifact_name=$artifact_name" >> "$GITHUB_OUTPUT"
+
+      - name: Upload exact redaction-safe Stable GA validation artifact
+        id: upload_publication
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ steps.stage_publication.outputs.artifact_name }}
+          path: build/stable-ga-publication-artifact/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish validation decision to the job summary
+        env:
+          COMPONENT: ${{ steps.final_gate.outputs.component }}
+        run: |
+          cat "$COMPONENT/artifacts/legacy/stable-1.0-ga-go-no-go.md" >> "$GITHUB_STEP_SUMMARY"
+          echo >> "$GITHUB_STEP_SUMMARY"
+          echo "Validation prepared exact-byte GA promotion material. No tag, GitHub Release, catalog insert, update descriptor, network insert, or merge occurred in this job." >> "$GITHUB_STEP_SUMMARY"
+
+  attest-evidence:
+    name: Attest protected Stable GA evidence bytes
+    if: inputs.publish == false
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: stable-1-0-ga-evidence
+    permissions:
+      actions: read
+      attestations: write
+      artifact-metadata: write
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Download exact validated Stable GA artifact from this run
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.validate.outputs.publication_artifact_name }}
+          path: build/stable-ga-evidence-attestation
+          digest-mismatch: error
+
+      - name: Verify the exact protected attestation subjects
+        env:
+          EXPECTED_ARTIFACT_DIGEST: ${{ needs.validate.outputs.publication_artifact_digest }}
+          EXPECTED_ARTIFACT_NAME: ${{ needs.validate.outputs.publication_artifact_name }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          expected_digest="$EXPECTED_ARTIFACT_DIGEST"
+          if [[ "$expected_digest" =~ ^[0-9a-f]{64}$ ]]; then
+            expected_digest="sha256:$expected_digest"
+          fi
+          artifacts="$(gh api --paginate --method GET \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts" \
+            -f per_page=100 | jq -s '{artifacts: [.[].artifacts[]]}')"
+          jq -e --arg name "$EXPECTED_ARTIFACT_NAME" --arg digest "$expected_digest" '
+            [.artifacts[] | select(.name == $name and .expired == false and .digest == $digest)]
+            | length == 1' <<< "$artifacts" >/dev/null
+          root="build/stable-ga-evidence-attestation"
+          validation="$root/publication-inputs/stable-1.0-rc-validation.json"
+          authorization="$root/publication-inputs/stable-1.0-ga-authorization.json"
+          validation_identity="$root/publication-inputs/stable-1.0-ga-validation-authorization-identity.json"
+          for path in "$validation" "$authorization" "$validation_identity"; do
+            if [[ -L "$path" || ! -f "$path" ]]; then
+              echo "::error::Protected Stable GA attestation subject is missing or unsafe."
+              exit 1
+            fi
+          done
+          jq -e '
+            .result.status == "pass"
+            and .result.exitCode == 0
+            and .result.promotionReady == true
+            and .redaction.status == "pass"
+            and .redaction.findingCount == 0' "$root/component/summary.json" >/dev/null
+          cmp --silent \
+            "$validation_identity" \
+            "$root/component/artifacts/legacy/stable-1.0-ga-validation-authorization-identity.json"
+          target_digest="$(jq -er '.publicationTargetsDigest' "$validation_identity")"
+          jq -e \
+            --arg target_digest "$target_digest" \
+            --argjson targets "$(jq -c '.publicationTargets' "$validation_identity")" '
+              .kind == "stable-1.0-ga-authorization"
+              and .publicationTargetsDigest == $target_digest
+              and .publicationTargets == $targets' "$authorization" >/dev/null
+
+      - name: Attest exact validation, authorization, and publication-target identity
+        id: attest_evidence
+        uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
+        with:
+          subject-path: |
+            build/stable-ga-evidence-attestation/publication-inputs/stable-1.0-rc-validation.json
+            build/stable-ga-evidence-attestation/publication-inputs/stable-1.0-ga-authorization.json
+            build/stable-ga-evidence-attestation/publication-inputs/stable-1.0-ga-validation-authorization-identity.json
+
+      - name: Summarize protected evidence attestation
+        run: |
+          echo "Protected evidence environment approved and attested the exact Stable RC validation, Stable GA authorization, and publication-target identity bytes." >> "$GITHUB_STEP_SUMMARY"
+          echo "Attestation: ${{ steps.attest_evidence.outputs.attestation-url }}" >> "$GITHUB_STEP_SUMMARY"
+
+  publish:
+    name: Explicitly publish authorized Stable 1.0 GA assets
+    if: inputs.publish == true
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: stable-1-0-ga
+    permissions:
+      attestations: read
+      contents: write
+      actions: read
+
+    steps:
+      - name: Check out the exact authorized candidate
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.candidate_commit }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v5
+        with:
+          java-version: '25'
+          distribution: temurin
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@f29f5a9d7b09a7c6b29859002d29d24e1674c884 # v5
+
+      - name: Install Gradle properties
+        uses: ./.github/actions/setup-gradle-properties
+
+      - name: Build the signed-catalog verifier
+        run: ./gradlew :platform-devtools:installDist
+
+      - name: Download exact validated Stable GA artifact from this run
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.validate.outputs.publication_artifact_name }}
+          path: build/stable-ga-publication
+          digest-mismatch: error
+
+      - name: Reverify exact validated bytes and protected GitHub identity
+        env:
+          INPUT_RELEASE_ID: ${{ inputs.release_id }}
+          INPUT_BUILD_VERSION: ${{ inputs.build_version }}
+          INPUT_CANDIDATE_COMMIT: ${{ inputs.candidate_commit }}
+          EXPECTED_ARTIFACT_DIGEST: ${{ needs.validate.outputs.publication_artifact_digest }}
+          ACTIONS_GITHUB_TOKEN: ${{ github.token }}
+          LEUMOR_GITHUB_TOKEN: ${{ secrets.LEUMOR_GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ "$EXPECTED_ARTIFACT_DIGEST" =~ ^[0-9a-f]{64}$ ]]; then
+            EXPECTED_ARTIFACT_DIGEST="sha256:$EXPECTED_ARTIFACT_DIGEST"
+          fi
+          if [[ ! "$EXPECTED_ARTIFACT_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::The validation job did not provide a valid workflow artifact digest."
+            exit 1
+          fi
+          if [[ -z "$LEUMOR_GITHUB_TOKEN" ]]; then
+            echo "::error::The protected LEUMOR_GITHUB_TOKEN secret is required for publication."
+            exit 1
+          fi
+          export GH_TOKEN="$LEUMOR_GITHUB_TOKEN"
+          if [[ "$(gh api user --jq .login)" != "leumor" ]]; then
+            echo "::error::Protected GitHub publication identity must be exactly leumor."
+            exit 1
+          fi
+          downloaded_artifact_name="${{ needs.validate.outputs.publication_artifact_name }}"
+          current_artifacts="$(gh api --paginate --method GET \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts" \
+            -f per_page=100 | jq -s '{artifacts: [.[].artifacts[]]}')"
+          if ! jq -e --arg name "$downloaded_artifact_name" --arg digest "$EXPECTED_ARTIFACT_DIGEST" '
+              [.artifacts[]
+                | select(.name == $name and .expired == false and .digest == $digest)]
+              | length == 1' <<< "$current_artifacts" >/dev/null; then
+            echo "::error::Downloaded validation material is not the exact same-run workflow artifact."
+            exit 1
+          fi
+          root="build/stable-ga-publication"
+          if [[ -n "$(find "$root" -type l -print -quit)" || -n "$(find "$root" -mindepth 1 ! -type f ! -type d -print -quit)" ]]; then
+            echo "::error::Downloaded Stable GA artifact contains a link or special entry."
+            exit 1
+          fi
+          component="$root/component"
+          legacy="$component/artifacts/legacy"
+          signer_workflow="$GITHUB_REPOSITORY/.github/workflows/stable-1.0-ga-promotion.yml"
+          source_ref="refs/heads/release/$INPUT_BUILD_VERSION"
+          attestation_dir="build/stable-ga-evidence-attestation-verification"
+          rm -rf "$attestation_dir"
+          mkdir -p "$attestation_dir"
+          for evidence_name in \
+            stable-1.0-rc-validation.json \
+            stable-1.0-ga-authorization.json \
+            stable-1.0-ga-validation-authorization-identity.json; do
+            evidence="$root/publication-inputs/$evidence_name"
+            if [[ -L "$evidence" || ! -f "$evidence" ]]; then
+              echo "::error::Protected Stable GA evidence subject is missing or unsafe."
+              exit 1
+            fi
+            GH_TOKEN="$ACTIONS_GITHUB_TOKEN" gh attestation verify "$evidence" \
+              --repo "$GITHUB_REPOSITORY" \
+              --signer-workflow "$signer_workflow" \
+              --source-digest "$INPUT_CANDIDATE_COMMIT" \
+              --source-ref "$source_ref" \
+              --deny-self-hosted-runners \
+              --format json > "$attestation_dir/$evidence_name.json"
+            jq -e 'type == "array" and length >= 1' \
+              "$attestation_dir/$evidence_name.json" >/dev/null
+          done
+          jq -e --arg release "$INPUT_RELEASE_ID" --arg build "$INPUT_BUILD_VERSION" '
+            .schemaVersion == 2
+            and .kind == "stable-1.0-ga-promotion"
+            and .subject.releaseId == $release
+            and .subject.version == $build
+            and .subject.profile == "stable-review"
+            and .subject.component == "stable-ga"
+            and .result.status == "pass"
+            and .result.promotionReady == true
+            and .redaction.status == "pass"
+            and .redaction.findingCount == 0' "$component/summary.json" >/dev/null
+          promotion="$legacy/stable-1.0-ga-promotion-summary.json"
+          validation="$legacy/stable-1.0-ga-validation.json"
+          validation_identity="$legacy/stable-1.0-ga-validation-authorization-identity.json"
+          authorization="$root/publication-inputs/stable-1.0-ga-authorization.json"
+          plan="$legacy/stable-1.0-ga-publication-plan.json"
+          if ! cmp --silent \
+              "$root/publication-inputs/stable-1.0-ga-validation-authorization-identity.json" \
+              "$validation_identity"; then
+            echo "::error::Attested and generated Stable GA publication-target identities differ."
+            exit 1
+          fi
+          publication_targets_digest="$(jq -er '.publicationTargetsDigest' "$validation_identity")"
+          if ! jq -e \
+              --arg digest "$publication_targets_digest" \
+              --argjson targets "$(jq -c '.publicationTargets' "$validation_identity")" '
+                .publicationTargetsDigest == $digest
+                and .publicationTargets == $targets' "$authorization" >/dev/null; then
+            echo "::error::Attested Stable GA authorization does not bind current publication targets."
+            exit 1
+          fi
+          jq -e --arg commit "$INPUT_CANDIDATE_COMMIT" --arg targets_digest "$publication_targets_digest" '
+            .sourceCommit == $commit
+            and .status == "pass"
+            and .promotionReady == true
+            and .nonRelease == false
+            and .blockers == []
+            and (.decision == "go" or .decision == "go-with-waivers")
+            and .validationState == "publication-authorized"
+            and .publicationState == "publication-authorized"
+            and .publicationReadiness.status == "pass"
+            and .publicationReadiness.authorizationStatus == "pass"
+            and .publicationReadiness.sideEffectsPerformed == false
+            and .publicationTargetsDigest == $targets_digest
+            and .payloadIdentity.bitIdentical == true
+            and .payloadIdentity.rebuildPerformed == false
+            and .payloadIdentity.rcProductDigest == .payloadIdentity.gaProductDigest' \
+            "$promotion" >/dev/null
+          jq -e \
+            --arg commit "$INPUT_CANDIDATE_COMMIT" \
+            --arg targets_digest "$publication_targets_digest" \
+            --argjson promotion "$(jq -c . "$promotion")" '
+            .sourceCommit == $commit
+            and .status == "pass"
+            and .promotionReady == true
+            and .nonRelease == false
+            and .state == "publication-authorized"
+            and (.decision == "go" or .decision == "go-with-waivers")
+            and .blockers == []
+            and .selectedRc.status == "pass"
+            and .selectedRc.promotionReady == true
+            and .selectedRc.nonRelease == false
+            and .selectedRc.driftStatus == "no-drift"
+            and .postFreezeValidation.status == "pass"
+            and .postFreezeValidation.exactRcBinding == true
+            and .authorization.status == "authorized"
+            and .authorization.publicationTargetsDigest == $targets_digest
+            and .payloadIdentity == $promotion.payloadIdentity
+            and .selectedRc.freezeDigest == $promotion.selectedRc.freezeDigest
+            and .selectedRc.archiveDigest == $promotion.selectedRc.archiveDigest
+            and .selectedRc.productDistributionDigest == $promotion.selectedRc.productDistributionDigest
+            and .selectedRc.lineageDigest == $promotion.selectedRc.lineageDigest
+            and all(.frozenSurfaces[]; .status == "pass" and .drift == false)' \
+            "$validation" >/dev/null
+          jq -e --arg digest "$publication_targets_digest" \
+            '.publicationTargetsDigest == $digest' "$plan" >/dev/null
+          while read -r digest name; do
+            [[ "$name" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || exit 1
+            [[ -f "$legacy/$name" && ! -L "$legacy/$name" ]] || exit 1
+            [[ "$(sha256sum "$legacy/$name" | awk '{print $1}')" == "$digest" ]] || exit 1
+          done < "$legacy/stable-1.0-ga-checksums.txt"
+          if ! jq -e --rawfile checksums "$legacy/stable-1.0-ga-checksums.txt" '
+              ([$checksums
+                | split("\n")[]
+                | select(length > 0)
+                | capture("^[0-9a-f]{64}  (?<name>[A-Za-z0-9][A-Za-z0-9._-]*)$").name]
+                | sort)
+              == ([.assets[] | select(.role != "checksums") | .name] | sort)' \
+              "$plan" >/dev/null; then
+            echo "::error::Stable GA checksum rows are not the exact public asset allowlist."
+            exit 1
+          fi
+          if ! cmp --silent \
+              "$root/publication-inputs/crypta-stable-1.0-rc-$INPUT_BUILD_VERSION-product.tar.gz" \
+              "$legacy/crypta-stable-1.0-rc-$INPUT_BUILD_VERSION-product.tar.gz"; then
+            echo "::error::Downloaded GA product bytes differ from the selected Stable RC product."
+            exit 1
+          fi
+
+      - name: Publish or verify exact authorized tag, Release, and assets
+        id: publication
+        env:
+          INPUT_RELEASE_ID: ${{ inputs.release_id }}
+          INPUT_BUILD_VERSION: ${{ inputs.build_version }}
+          INPUT_CANDIDATE_COMMIT: ${{ inputs.candidate_commit }}
+          INPUT_RC_RUN_ID: ${{ inputs.selected_rc_run_id }}
+          INPUT_RC_RUN_ATTEMPT: ${{ inputs.selected_rc_run_attempt }}
+          INPUT_ARTIFACT_BASE_URI: ${{ inputs.artifact_base_uri }}
+          ACTIONS_GITHUB_TOKEN: ${{ github.token }}
+          LEUMOR_GITHUB_TOKEN: ${{ secrets.LEUMOR_GITHUB_TOKEN }}
+          STABLE_CATALOG_TRUSTED_KEYS_BASE64: ${{ secrets.STABLE_CATALOG_TRUSTED_KEYS_BASE64 }}
+        run: |
+          set -euo pipefail
+          export GH_TOKEN="$LEUMOR_GITHUB_TOKEN"
+          root="build/stable-ga-publication"
+          legacy="$root/component/artifacts/legacy"
+          plan="$legacy/stable-1.0-ga-publication-plan.json"
+          tag="v$INPUT_BUILD_VERSION"
+          branch="release/$INPUT_BUILD_VERSION"
+          promotion="$legacy/stable-1.0-ga-promotion-summary.json"
+          provenance="$legacy/stable-1.0-ga-provenance.json"
+          authorization="$root/publication-inputs/stable-1.0-ga-authorization.json"
+          validation_identity="$legacy/stable-1.0-ga-validation-authorization-identity.json"
+          freeze="$root/publication-inputs/stable-1.0-rc-freeze.json"
+          notes="$legacy/stable-1.0-ga-release-notes.md"
+          catalog_verifier="platform-devtools/build/install/crypta-app/bin/crypta-app"
+          trusted_keys_dir="build/stable-ga-private-catalog-trust"
+          trusted_keys="$trusted_keys_dir/trusted-catalog-keys.properties"
+          if [[ -z "$STABLE_CATALOG_TRUSTED_KEYS_BASE64" || ! -x "$catalog_verifier" ]]; then
+            echo "::error::Protected catalog trust material or verifier is unavailable."
+            exit 1
+          fi
+          rm -rf "$trusted_keys_dir"
+          mkdir -p "$trusted_keys_dir"
+          if ! printf '%s' "$STABLE_CATALOG_TRUSTED_KEYS_BASE64" | base64 --decode > "$trusted_keys"; then
+            echo "::error::Protected catalog trusted-key registry is malformed."
+            exit 1
+          fi
+          chmod 600 "$trusted_keys"
+          trap 'rm -rf "$trusted_keys_dir"' EXIT
+          promotion_digest="$(jq -r '.promotionIdentityDigest // empty' "$plan")"
+          publication_targets_digest="$(jq -er '.publicationTargetsDigest' "$validation_identity")"
+          notes_digest="sha256:$(sha256sum "$notes" | awk '{print $1}')"
+          artifact_base_uri="$(jq -er '.artifactBaseUri' "$plan")"
+          canonical_dispatch_base="$(python3 - "$INPUT_ARTIFACT_BASE_URI" <<'PY'
+          import sys
+
+          print(sys.argv[1].rstrip("/") + "/")
+          PY
+          )"
+          if [[ "$artifact_base_uri" != "$canonical_dispatch_base" ]]; then
+            echo "::error::Stable GA publication plan uses a different canonical artifact base."
+            exit 1
+          fi
+
+          if ! jq -e \
+              --arg release "$INPUT_RELEASE_ID" \
+              --arg build "$INPUT_BUILD_VERSION" \
+              --arg commit "$INPUT_CANDIDATE_COMMIT" \
+              --arg tag "$tag" \
+              --arg branch "$branch" \
+              --arg base "$artifact_base_uri" \
+              --arg rollback_uri "$(jq -r '.publicationTargets.catalog.rollbackUri' "$validation_identity")" \
+              --arg targets_digest "$publication_targets_digest" \
+              --arg notes_digest "$notes_digest" '
+                (keys | sort) == ([
+                  "artifactBaseUri", "assets", "buildVersion", "catalog", "expectedReleaseBranch",
+                  "expectedTag", "generatedAt", "kind", "promotionIdentityDigest", "publicationState",
+                  "publicationTargetsDigest", "redaction", "releaseId", "releaseNotesDigest",
+                  "schemaVersion", "sideEffectsPerformed", "sourceCommit"
+                ] | sort)
+                and .schemaVersion == 1
+                and .kind == "stable-1.0-ga-publication-plan"
+                and .releaseId == $release
+                and .buildVersion == $build
+                and .sourceCommit == $commit
+                and .expectedTag == $tag
+                and .expectedReleaseBranch == $branch
+                and .artifactBaseUri == $base
+                and .publicationTargetsDigest == $targets_digest
+                and .publicationState == "publication-authorized"
+                and (.promotionIdentityDigest | test("^sha256:[0-9a-f]{64}$"))
+                and .releaseNotesDigest == $notes_digest
+                and .sideEffectsPerformed == false
+                and .redaction.status == "pass"
+                and .redaction.findingCount == 0
+                and .redaction.findings == []
+                and (.assets | type) == "array"
+                and (.assets | length) == 7
+                and all(.assets[];
+                  (keys | sort) == (["digest", "name", "role", "sizeBytes", "sourceKind"] | sort)
+                  and (.name | test("^[A-Za-z0-9][A-Za-z0-9._-]*$"))
+                  and (.sizeBytes | type) == "number"
+                  and .sizeBytes >= 1
+                  and (.digest | test("^sha256:[0-9a-f]{64}$"))
+                  and (.role | IN(
+                    "rc-archive", "rc-product", "release-notes", "known-limitations",
+                    "provenance", "maintenance-baseline", "checksums"))
+                  and (
+                    ((.role == "rc-archive" or .role == "rc-product") and .sourceKind == "immutable-rc")
+                    or
+                    ((.role != "rc-archive" and .role != "rc-product") and .sourceKind == "ga-metadata")
+                  ))
+                and ([.assets[].name] | unique | length) == 7
+                and ([.assets[].role] | unique | length) == 7
+                and (.catalog | keys | sort) == ([
+                  "advisoryCount", "artifactTimestamp", "catalogDigest", "catalogId", "channel",
+                  "denylistCount", "keyRotationState", "mirrors", "primary", "publicationOperation",
+                  "revision", "rollbackDigest", "rollbackRevision", "rollbackUri", "signatureDigest", "signingKeyId"
+                ] | sort)
+                and .catalog.channel == "stable"
+                and .catalog.keyRotationState == "complete"
+                and .catalog.publicationOperation == "verify-exact-frozen-bytes"
+                and (.catalog.catalogDigest | test("^sha256:[0-9a-f]{64}$"))
+                and (.catalog.signatureDigest | test("^sha256:[0-9a-f]{64}$"))
+                and (.catalog.rollbackDigest | test("^sha256:[0-9a-f]{64}$"))
+                and .catalog.rollbackUri == $rollback_uri
+                and (.catalog.primary | keys | sort) == (["locationId", "publicUri"] | sort)
+                and .catalog.primary.locationId == "primary"
+                and (.catalog.mirrors | type) == "array"
+                and (.catalog.mirrors | length) >= 1
+                and all(.catalog.mirrors[];
+                  (keys | sort) == (["locationId", "publicUri"] | sort)
+                  and (.locationId | test("^[A-Za-z0-9][A-Za-z0-9._-]*$")))
+                and ([.catalog.mirrors[].locationId] | unique | length) == (.catalog.mirrors | length)
+                and ([.catalog.mirrors[].publicUri] | unique | length) == (.catalog.mirrors | length)
+                and all(.catalog.mirrors[]; .publicUri != $.catalog.primary.publicUri)' \
+              "$plan" >/dev/null; then
+            echo "::error::Stable GA publication plan is malformed or differs from the authorized identity."
+            exit 1
+          fi
+
+          if ! jq -e \
+              --arg digest "$publication_targets_digest" \
+              --argjson targets "$(jq -c '.publicationTargets' "$validation_identity")" '
+                .publicationTargetsDigest == $digest
+                and .publicationTargets == $targets' "$authorization" >/dev/null; then
+            echo "::error::Stable GA authorization does not bind the exact publication targets."
+            exit 1
+          fi
+          if ! jq -e --arg digest "$publication_targets_digest" '
+              .publicationTargetsDigest == $digest' "$promotion" >/dev/null; then
+            echo "::error::Stable GA promotion does not bind the exact publication targets."
+            exit 1
+          fi
+
+          if ! jq -e --argjson catalog "$(jq -c '.catalog' "$plan")" '
+              .stableCatalog.catalogId == $catalog.catalogId
+              and .stableCatalog.channel == $catalog.channel
+              and .stableCatalog.revision == $catalog.revision
+              and .stableCatalog.catalogDigest == $catalog.catalogDigest
+              and .stableCatalog.signatureDigest == $catalog.signatureDigest
+              and .stableCatalog.catalogSigningKeyId == $catalog.signingKeyId
+              and .stableCatalog.artifactTimestamp == $catalog.artifactTimestamp
+              and .stableCatalog.keyRotationStatus.status == $catalog.keyRotationState
+              and .stableCatalog.verifiedRollback.revision == $catalog.rollbackRevision
+              and .stableCatalog.verifiedRollback.digest == $catalog.rollbackDigest
+              and .stableCatalog.securityAdvisoryCount == $catalog.advisoryCount
+              and .stableCatalog.denylistCount == $catalog.denylistCount
+              and (.stableCatalog.mirrorHealth | length) == ($catalog.mirrors | length)' \
+              "$freeze" >/dev/null; then
+            echo "::error::Catalog publication plan differs from the exact frozen Stable RC catalog."
+            exit 1
+          fi
+          if ! jq -e \
+              --arg promotion_digest "$promotion_digest" \
+              --arg targets_digest "$publication_targets_digest" '
+              .kind == "stable-1.0-ga-provenance"
+              and .ga.promotionIdentityDigest == $promotion_digest
+              and .publicationSemantics.publicationTargetsDigest == $targets_digest' \
+              "$provenance" >/dev/null; then
+            echo "::error::Publication plan promotion identity differs from Stable GA provenance."
+            exit 1
+          fi
+
+          catalog_resolution_rows() {
+            local uri="$1"
+            python3 - "$uri" <<'PY'
+          import ipaddress
+          import socket
+          import sys
+          import urllib.parse
+
+          uri = sys.argv[1]
+          parsed = urllib.parse.urlsplit(uri)
+          try:
+              safe_port = parsed.port in {None, 443}
+          except ValueError:
+              safe_port = False
+          hostname = parsed.hostname or ""
+          try:
+              literal_address = ipaddress.ip_address(hostname)
+          except ValueError:
+              literal_address = None
+          if literal_address is None:
+              canonical_hostname = hostname.rstrip(".").encode("idna").decode("ascii").lower()
+              canonical_netloc = canonical_hostname
+              try:
+                  addresses = {
+                      row[4][0]
+                      for row in socket.getaddrinfo(
+                          canonical_hostname,
+                          443,
+                          type=socket.SOCK_STREAM,
+                      )
+                  }
+              except OSError:
+                  addresses = set()
+              resolution_mode = "dns"
+          else:
+              canonical_hostname = str(literal_address)
+              canonical_netloc = (
+                  f"[{canonical_hostname}]" if literal_address.version == 6 else canonical_hostname
+              )
+              addresses = {canonical_hostname}
+              resolution_mode = "literal"
+          canonical_uri = urllib.parse.urlunsplit(
+              ("https", canonical_netloc, parsed.path, "", "")
+          )
+          segments = parsed.path.split("/")
+          if not (
+              parsed.scheme == "https"
+              and hostname
+              and canonical_hostname not in {"localhost", "localhost.localdomain"}
+              and not canonical_hostname.endswith(".local")
+              and parsed.username is None
+              and parsed.password is None
+              and safe_port
+              and not parsed.query
+              and not parsed.fragment
+              and addresses
+              and all(ipaddress.ip_address(address).is_global for address in addresses)
+              and not any(character.isspace() or ord(character) < 32 for character in uri)
+              and uri == canonical_uri
+              and "\\" not in uri
+              and parsed.path.startswith("/")
+              and "//" not in parsed.path
+              and "%" not in parsed.path
+              and all(segment not in {".", ".."} for segment in segments)
+              and parsed.path.endswith((
+                  "/cryptad-app-catalog.properties",
+                  "/first-party-catalog.properties",
+              ))
+          ):
+              raise SystemExit("catalog URI is not a canonical public HTTPS location")
+          for address in sorted(
+              addresses,
+              key=lambda item: (ipaddress.ip_address(item).version, ipaddress.ip_address(item)),
+          ):
+              print(f"{canonical_hostname}\t{address}\t{resolution_mode}")
+          PY
+          }
+
+          validate_catalog_uri() {
+            catalog_resolution_rows "$1" >/dev/null
+          }
+
+          primary_uri="$(jq -r '.catalog.primary.publicUri' "$plan")"
+          rollback_uri="$(jq -r '.catalog.rollbackUri' "$plan")"
+          if ! validate_catalog_uri "$primary_uri"; then
+            echo "::error::Catalog primary URI is not a public, credential-free HTTPS catalog location."
+            exit 1
+          fi
+          if ! validate_catalog_uri "$rollback_uri"; then
+            echo "::error::Catalog rollback URI is not a public, credential-free HTTPS catalog location."
+            exit 1
+          fi
+          while IFS=$'\t' read -r location_id mirror_uri; do
+            if ! validate_catalog_uri "$mirror_uri"; then
+              echo "::error::Catalog mirror URI is not a public, credential-free HTTPS catalog location."
+              exit 1
+            fi
+          done < <(jq -r '.catalog.mirrors[] | [.locationId, .publicUri] | @tsv' "$plan")
+
+          catalog_digest="$(jq -r '.catalog.catalogDigest' "$plan")"
+          signature_digest="$(jq -r '.catalog.signatureDigest' "$plan")"
+          rollback_digest="$(jq -r '.catalog.rollbackDigest' "$plan")"
+          catalog_id="$(jq -r '.catalog.catalogId' "$plan")"
+          catalog_signing_key="$(jq -r '.catalog.signingKeyId' "$plan")"
+          catalog_verify_dir="build/stable-ga-catalog-verification"
+          verify_catalog_location() {
+            local uri="$1"
+            local identifier="$2"
+            local phase="$3"
+            local expected_catalog_digest="$4"
+            local expected_signature_digest="$5"
+            local expected_signing_key="$6"
+            local signature_uri resolution_rows host address resolution_mode resolve_address
+            local resolve_addresses=""
+            local -a curl_resolution
+            case "$uri" in
+              */cryptad-app-catalog.properties)
+                signature_uri="${uri%/cryptad-app-catalog.properties}/cryptad-app-catalog.signature"
+                ;;
+              */first-party-catalog.properties)
+                signature_uri="${uri%/first-party-catalog.properties}/first-party-catalog.sig"
+                ;;
+              *)
+                echo "::error::Catalog URI does not identify a supported signed catalog filename."
+                return 1
+                ;;
+            esac
+            local directory="$catalog_verify_dir/$phase/$identifier"
+            rm -rf "$directory"
+            mkdir -p "$directory"
+            resolution_rows="$(catalog_resolution_rows "$uri")" || return 1
+            if [[ -z "$resolution_rows" ]]; then
+              echo "::error::Catalog location did not resolve to an approved public address."
+              return 1
+            fi
+            host="$(head -n 1 <<< "$resolution_rows" | cut -f1)"
+            resolution_mode="$(head -n 1 <<< "$resolution_rows" | cut -f3)"
+            curl_resolution=()
+            if [[ "$resolution_mode" == "dns" ]]; then
+              while IFS=$'\t' read -r _ address _; do
+                resolve_address="$address"
+                if [[ "$resolve_address" == *:* ]]; then
+                  resolve_address="[$resolve_address]"
+                fi
+                resolve_addresses="${resolve_addresses:+$resolve_addresses,}$resolve_address"
+              done <<< "$resolution_rows"
+              curl_resolution=(--resolve "${host}:443:${resolve_addresses}")
+            fi
+            local catalog_status signature_status
+            if ! catalog_status="$(curl --disable --fail --silent --show-error \
+                --noproxy '*' --proto '=https' --tlsv1.2 --max-redirs 0 \
+                --connect-timeout 15 --max-time 180 --max-filesize 16777216 \
+                "${curl_resolution[@]}" --write-out '%{http_code}' \
+                --output "$directory/cryptad-app-catalog.properties.partial" "$uri")"; then
+              rm -f "$directory/cryptad-app-catalog.properties.partial"
+              echo "::error::Catalog bytes could not be fetched from the approved address set."
+              return 1
+            fi
+            if [[ ! "$catalog_status" =~ ^2[0-9]{2}$ ]]; then
+              rm -f "$directory/cryptad-app-catalog.properties.partial"
+              echo "::error::Catalog location returned a non-success status."
+              return 1
+            fi
+            if ! signature_status="$(curl --disable --fail --silent --show-error \
+                --noproxy '*' --proto '=https' --tlsv1.2 --max-redirs 0 \
+                --connect-timeout 15 --max-time 180 --max-filesize 1048576 \
+                "${curl_resolution[@]}" --write-out '%{http_code}' \
+                --output "$directory/cryptad-app-catalog.signature.partial" "$signature_uri")"; then
+              rm -f "$directory/cryptad-app-catalog.properties.partial" \
+                "$directory/cryptad-app-catalog.signature.partial"
+              echo "::error::Catalog signature could not be fetched from the approved address set."
+              return 1
+            fi
+            if [[ ! "$signature_status" =~ ^2[0-9]{2}$ ]]; then
+              rm -f "$directory/cryptad-app-catalog.properties.partial" \
+                "$directory/cryptad-app-catalog.signature.partial"
+              echo "::error::Catalog signature location returned a non-success status."
+              return 1
+            fi
+            mv "$directory/cryptad-app-catalog.properties.partial" \
+              "$directory/cryptad-app-catalog.properties"
+            mv "$directory/cryptad-app-catalog.signature.partial" \
+              "$directory/cryptad-app-catalog.signature"
+            [[ "sha256:$(sha256sum "$directory/cryptad-app-catalog.properties" | awk '{print $1}')" == "$expected_catalog_digest" ]]
+            if [[ -n "$expected_signature_digest" ]]; then
+              [[ "sha256:$(sha256sum "$directory/cryptad-app-catalog.signature" | awk '{print $1}')" == "$expected_signature_digest" ]]
+            fi
+            verified_catalog="$("$catalog_verifier" catalog verify \
+              --catalog-file "$directory/cryptad-app-catalog.properties" \
+              --trusted-keys-file "$trusted_keys")"
+            [[ "$verified_catalog" == "Verified catalog: $catalog_id" ]]
+            [[ "$(awk -F= '$1 == "catalog.signature.key.id" {print $2}' \
+              "$directory/cryptad-app-catalog.signature")" == "$expected_signing_key" ]]
+          }
+
+          verify_catalog_location \
+            "$primary_uri" primary preflight "$catalog_digest" "$signature_digest" "$catalog_signing_key"
+          while IFS=$'\t' read -r location_id mirror_uri; do
+            verify_catalog_location \
+              "$mirror_uri" "$location_id" preflight "$catalog_digest" "$signature_digest" "$catalog_signing_key"
+          done < <(jq -r '.catalog.mirrors[] | [.locationId, .publicUri] | @tsv' "$plan")
+          verify_catalog_location \
+            "$rollback_uri" rollback preflight "$rollback_digest" "" "$catalog_signing_key"
+
+          asset_source_for_role() {
+            case "$1" in
+              rc-archive) printf '%s\n' "cryptad-stable-1.0-rc-$INPUT_BUILD_VERSION.tar.gz" ;;
+              rc-product) printf '%s\n' "crypta-stable-1.0-rc-$INPUT_BUILD_VERSION-product.tar.gz" ;;
+              release-notes) printf '%s\n' stable-1.0-ga-release-notes.md ;;
+              known-limitations) printf '%s\n' stable-1.0-ga-known-limitations.json ;;
+              provenance) printf '%s\n' stable-1.0-ga-provenance.json ;;
+              maintenance-baseline) printf '%s\n' stable-1.0-maintenance-baseline.json ;;
+              checksums) printf '%s\n' stable-1.0-ga-checksums.txt ;;
+              *) return 1 ;;
+            esac
+          }
+          assets_json="$(jq -c '.assets' "$plan")"
+          while IFS=$'\t' read -r name role size digest; do
+            source="$(asset_source_for_role "$role")" || exit 1
+            source_path="$legacy/$source"
+            if [[ -L "$source_path" || ! -f "$source_path" \
+                  || "$(stat -c%s "$source_path")" != "$size" \
+                  || "sha256:$(sha256sum "$source_path" | awk '{print $1}')" != "$digest" ]]; then
+              echo "::error::Authorized release asset $name does not match its exact local source."
+              exit 1
+            fi
+          done < <(jq -r '.[] | [.name, .role, (.sizeBytes | tostring), .digest] | @tsv' <<< "$assets_json")
+
+          assets_dir="build/stable-ga-release-assets"
+          rm -rf "$assets_dir"
+          mkdir -p "$assets_dir"
+          while IFS=$'\t' read -r name role size digest; do
+            source="$(asset_source_for_role "$role")" || exit 1
+            source_path="$legacy/$source"
+            cp "$source_path" "$assets_dir/$name"
+            if [[ "$(stat -c%s "$assets_dir/$name")" != "$size" \
+                  || "sha256:$(sha256sum "$assets_dir/$name" | awk '{print $1}')" != "$digest" ]]; then
+              echo "::error::Staged release asset $name differs from its authorized source."
+              exit 1
+            fi
+          done < <(jq -r '.[] | [.name, .role, (.sizeBytes | tostring), .digest] | @tsv' <<< "$assets_json")
+          if [[ "$(jq -r '.releaseNotesDigest' "$plan")" != "$notes_digest" ]]; then
+            echo "::error::Release notes do not match the authorized publication plan."
+            exit 1
+          fi
+
+          verify_artifact_base_assets() {
+            local phase="$1"
+            local verification_root="build/stable-ga-artifact-base-verification/$phase"
+            local resolution_rows host address resolution_mode resolve_address
+            local -a curl_resolution
+            local receipts='[]'
+            local http_status
+            rm -rf "$verification_root"
+            mkdir -p "$verification_root"
+            resolution_rows="$(python3 - "$artifact_base_uri" <<'PY'
+          import ipaddress
+          import socket
+          import sys
+          import urllib.parse
+
+          uri = sys.argv[1]
+          parsed = urllib.parse.urlsplit(uri)
+          try:
+              safe_port = parsed.port in (None, 443)
+          except ValueError:
+              safe_port = False
+          if (
+              parsed.scheme != "https"
+              or parsed.hostname is None
+              or parsed.username is not None
+              or parsed.password is not None
+              or not safe_port
+              or parsed.query
+              or parsed.fragment
+              or not parsed.path.endswith("/")
+              or any(character.isspace() or ord(character) < 32 for character in uri)
+          ):
+              raise SystemExit("artifact base is not credential-free canonical HTTPS")
+          try:
+              literal_address = ipaddress.ip_address(parsed.hostname)
+          except ValueError:
+              literal_address = None
+          if literal_address is None:
+              try:
+                  addresses = {
+                      row[4][0]
+                      for row in socket.getaddrinfo(
+                          parsed.hostname,
+                          443,
+                          type=socket.SOCK_STREAM,
+                      )
+                  }
+              except OSError as error:
+                  raise SystemExit("artifact base hostname cannot be resolved") from error
+              resolution_mode = "dns"
+          else:
+              addresses = {str(literal_address)}
+              resolution_mode = "literal"
+          if not addresses or any(
+              not ipaddress.ip_address(address).is_global for address in addresses
+          ):
+              raise SystemExit("artifact base resolves to a non-public address")
+          for address in sorted(addresses, key=lambda item: (ipaddress.ip_address(item).version, ipaddress.ip_address(item))):
+              print(f"{parsed.hostname}\t{address}\t{resolution_mode}")
+          PY
+            )" || return 1
+            if [[ -z "$resolution_rows" ]]; then
+              echo "::error::Artifact base did not resolve to an approved public address."
+              return 1
+            fi
+            host="$(head -n 1 <<< "$resolution_rows" | cut -f1)"
+            while IFS=$'\t' read -r name role size digest; do
+              local public_uri="${artifact_base_uri}${name}"
+              local output="$verification_root/$name"
+              local downloaded=false
+              while IFS=$'\t' read -r _ address resolution_mode; do
+                curl_resolution=()
+                if [[ "$resolution_mode" == "dns" ]]; then
+                  resolve_address="$address"
+                  if [[ "$resolve_address" == *:* ]]; then
+                    resolve_address="[$resolve_address]"
+                  fi
+                  curl_resolution=(--resolve "${host}:443:${resolve_address}")
+                fi
+                http_status=""
+                if http_status="$(curl --disable --fail --silent --show-error --noproxy '*' \
+                    --proto '=https' --tlsv1.2 --max-redirs 0 \
+                    --connect-timeout 15 --max-time 180 --max-filesize "$size" \
+                    "${curl_resolution[@]}" \
+                    --write-out '%{http_code}' --output "$output" "$public_uri")"; then
+                  if [[ ! "$http_status" =~ ^2[0-9]{2}$ ]]; then
+                    rm -f "$output"
+                    echo "::error::Declared artifact base returned a non-success status for $name."
+                    return 1
+                  fi
+                  downloaded=true
+                  break
+                fi
+                rm -f "$output"
+                if [[ -n "$http_status" && "$http_status" != 000 ]]; then
+                  echo "::error::Declared artifact base returned a non-success status for $name."
+                  return 1
+                fi
+              done <<< "$resolution_rows"
+              if [[ "$downloaded" != true ]]; then
+                echo "::error::Declared artifact base did not return $name during $phase verification."
+                return 1
+              fi
+              if [[ "$(stat -c%s "$output")" != "$size" \
+                    || "sha256:$(sha256sum "$output" | awk '{print $1}')" != "$digest" ]]; then
+                echo "::error::Declared artifact base returned different bytes for $name during $phase verification."
+                return 1
+              fi
+              receipts="$(jq -c \
+                --arg name "$name" \
+                --argjson size "$size" \
+                --arg digest "$digest" \
+                --arg public_uri "$public_uri" '
+                  . + [{
+                    name: $name,
+                    sizeBytes: $size,
+                    digest: $digest,
+                    publicUri: $public_uri,
+                    verificationStatus: "pass"
+                  }]' <<< "$receipts")"
+            done < <(jq -r '.[] | [.name, .role, (.sizeBytes | tostring), .digest] | @tsv' <<< "$assets_json")
+            printf '%s\n' "$receipts" > "$verification_root/receipts.json"
+            asset_receipts="$receipts"
+          }
+
+          verify_release_branch_head() {
+            local branch_sha
+            branch_sha="$(gh api --method GET \
+              "repos/$GITHUB_REPOSITORY/git/ref/heads/release%2F$INPUT_BUILD_VERSION" \
+              --jq '.object.sha')"
+            if [[ "$branch_sha" != "$INPUT_CANDIDATE_COMMIT" ]]; then
+              echo "::error::Expected release branch $branch no longer points to the authorized commit."
+              return 1
+            fi
+          }
+
+          verify_release_branch_head
+
+          verify_tag() {
+            local ref_json="$1"
+            if [[ "$(jq -r '.object.type' <<< "$ref_json")" != tag ]]; then
+              echo "::error::Existing $tag is not an annotated tag."
+              exit 1
+            fi
+            local tag_object
+            tag_object="$(jq -r '.object.sha' <<< "$ref_json")"
+            local object_json
+            object_json="$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$tag_object")"
+            if [[ "$(jq -r '.object.type' <<< "$object_json")" != commit \
+                  || "$(jq -r '.object.sha' <<< "$object_json")" != "$INPUT_CANDIDATE_COMMIT" ]]; then
+              echo "::error::Existing $tag does not resolve to the authorized commit."
+              exit 1
+            fi
+          }
+
+          reauthenticate_latest_stable_rc() {
+            local workflow_path=".github/workflows/stable-1.0-rc-release.yml"
+            local display_title="Stable 1.0 RC $INPUT_RELEASE_ID build $INPUT_BUILD_VERSION"
+            local lineage="$root/publication-inputs/stable-1.0-rc-lineage.json"
+            local selected_attempt_json selected_attempt_completed_at cached_completed_at
+            if [[ ! "$INPUT_RC_RUN_ID" =~ ^[1-9][0-9]*$ \
+                  || ! "$INPUT_RC_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ \
+                  || -z "$ACTIONS_GITHUB_TOKEN" ]]; then
+              echo "::error::Selected Stable RC lineage refresh inputs are malformed."
+              return 1
+            fi
+            selected_attempt_json="$(GH_TOKEN="$ACTIONS_GITHUB_TOKEN" gh api --method GET \
+              "repos/$GITHUB_REPOSITORY/actions/runs/$INPUT_RC_RUN_ID/attempts/$INPUT_RC_RUN_ATTEMPT")"
+            if ! jq -e \
+                --arg repository "$GITHUB_REPOSITORY" \
+                --arg workflow_path "$workflow_path" \
+                --arg display_title "$display_title" \
+                --arg sha "$INPUT_CANDIDATE_COMMIT" \
+                --arg branch "release/$INPUT_BUILD_VERSION" \
+                --argjson run_id "$INPUT_RC_RUN_ID" \
+                --argjson attempt "$INPUT_RC_RUN_ATTEMPT" '
+                  .id == $run_id
+                  and .run_attempt == $attempt
+                  and .status == "completed"
+                  and .conclusion == "success"
+                  and .event == "workflow_dispatch"
+                  and .display_title == $display_title
+                  and .head_sha == $sha
+                  and .head_branch == $branch
+                  and .repository.full_name == $repository
+                  and (.updated_at | type == "string" and test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"))
+                  and (.path == $workflow_path or (.path | startswith($workflow_path + "@")))' \
+                <<< "$selected_attempt_json" >/dev/null; then
+              echo "::error::Selected Stable RC attempt no longer has its authenticated protected identity."
+              return 1
+            fi
+            selected_attempt_completed_at="$(jq -er '.updated_at' <<< "$selected_attempt_json")"
+            cached_completed_at="$(jq -er \
+              --argjson run_id "$INPUT_RC_RUN_ID" \
+              --argjson attempt "$INPUT_RC_RUN_ATTEMPT" '
+                select(
+                  .selectedFreeze.workflow.runId == $run_id
+                  and .selectedFreeze.workflow.runAttempt == $attempt
+                  and .latestSuccessfulFreeze.workflow.runId == $run_id
+                  and .latestSuccessfulFreeze.workflow.runAttempt == $attempt
+                )
+                | .generatedAt' "$lineage")"
+            if [[ "$cached_completed_at" != "$selected_attempt_completed_at" ]]; then
+              echo "::error::Cached Stable RC lineage completion does not match the fresh selected attempt."
+              return 1
+            fi
+
+            local -a candidate_runs=()
+            mapfile -t candidate_runs < <(
+              GH_TOKEN="$ACTIONS_GITHUB_TOKEN" gh api --paginate --method GET \
+                "repos/$GITHUB_REPOSITORY/actions/workflows/stable-1.0-rc-release.yml/runs" \
+                -f event=workflow_dispatch -f per_page=100 \
+              | jq -s -r --arg title "$display_title" '
+                  [.[].workflow_runs[] | select(.display_title == $title)]
+                  | unique_by(.id)
+                  | .[]
+                  | [.id, .run_attempt]
+                  | @tsv'
+            )
+            local candidate_run candidate_run_id candidate_attempt_count candidate_attempt
+            local candidate_attempt_json candidate_status candidate_conclusion candidate_completed_at
+            for candidate_run in "${candidate_runs[@]}"; do
+              IFS=$'\t' read -r candidate_run_id candidate_attempt_count <<< "$candidate_run"
+              if [[ ! "$candidate_run_id" =~ ^[1-9][0-9]*$ \
+                    || ! "$candidate_attempt_count" =~ ^[1-9][0-9]*$ ]]; then
+                echo "::error::Fresh Stable RC workflow history contains malformed run identity."
+                return 1
+              fi
+              for ((candidate_attempt = 1; candidate_attempt <= candidate_attempt_count; candidate_attempt++)); do
+                if [[ "$candidate_run_id" -eq "$INPUT_RC_RUN_ID" \
+                      && "$candidate_attempt" -eq "$INPUT_RC_RUN_ATTEMPT" ]]; then
+                  continue
+                fi
+                candidate_attempt_json="$(GH_TOKEN="$ACTIONS_GITHUB_TOKEN" gh api --method GET \
+                  "repos/$GITHUB_REPOSITORY/actions/runs/$candidate_run_id/attempts/$candidate_attempt")"
+                if ! jq -e \
+                    --arg repository "$GITHUB_REPOSITORY" \
+                    --arg workflow_path "$workflow_path" \
+                    --arg display_title "$display_title" \
+                    --argjson run_id "$candidate_run_id" \
+                    --argjson attempt "$candidate_attempt" '
+                      .id == $run_id
+                      and .run_attempt == $attempt
+                      and .event == "workflow_dispatch"
+                      and .display_title == $display_title
+                      and .repository.full_name == $repository
+                      and (.path == $workflow_path or (.path | startswith($workflow_path + "@")))' \
+                    <<< "$candidate_attempt_json" >/dev/null; then
+                  echo "::error::Fresh Stable RC workflow history contains malformed candidate identity."
+                  return 1
+                fi
+                candidate_status="$(jq -r '.status // ""' <<< "$candidate_attempt_json")"
+                candidate_conclusion="$(jq -r '.conclusion // ""' <<< "$candidate_attempt_json")"
+                if [[ "$candidate_status" != completed ]]; then
+                  echo "::error::A matching Stable RC freeze/refreeze attempt is still active."
+                  return 1
+                fi
+                if [[ "$candidate_conclusion" == success ]]; then
+                  candidate_completed_at="$(jq -er '
+                    .updated_at
+                    | select(type == "string" and test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"))' \
+                    <<< "$candidate_attempt_json")"
+                  if [[ "$candidate_completed_at" > "$selected_attempt_completed_at" ]]; then
+                    echo "::error::A newer successful Stable RC freeze/refreeze completed after the selected attempt."
+                    return 1
+                  fi
+                  if [[ "$candidate_completed_at" == "$selected_attempt_completed_at" ]]; then
+                    echo "::error::Stable RC completion chronology is ambiguous at GitHub timestamp precision."
+                    return 1
+                  fi
+                fi
+              done
+            done
+          }
+
+          revalidate_publication_inputs() {
+            local revalidation_root="build/stable-ga-prepublication-revalidation"
+            local revalidation_manifest="build/stable-1.0-ga-prepublication-revalidation.json"
+            local input_root="$root/publication-inputs"
+            rm -rf "$revalidation_root"
+            jq \
+              --arg input_root "$input_root" \
+              --arg output_root "$revalidation_root" \
+              --arg build "$INPUT_BUILD_VERSION" '
+                .output.root = $output_root
+                | .output.reset = true
+                | .inputs.selectedStableRcSummary = ($input_root + "/selected-stable-rc-summary.json")
+                | .inputs.selectedStableRcFreeze = ($input_root + "/stable-1.0-rc-freeze.json")
+                | .inputs.selectedStableRcFreezeSidecar = ($input_root + "/stable-1.0-rc-freeze.sha256")
+                | .inputs.selectedStableRcArchive = ($input_root + "/cryptad-stable-1.0-rc-" + $build + ".tar.gz")
+                | .inputs.selectedStableRcProduct = ($input_root + "/crypta-stable-1.0-rc-" + $build + "-product.tar.gz")
+                | .inputs.selectedStableRcChecksums = ($input_root + "/checksums.txt")
+                | .inputs.selectedStableRcProvenance = ($input_root + "/provenance.json")
+                | .inputs.selectedStableRcLineage = ($input_root + "/stable-1.0-rc-lineage.json")
+                | .inputs.previousCandidate = ($input_root + "/previous-candidate-summary.json")
+                | .inputs.stableRcValidation = ($input_root + "/stable-1.0-rc-validation.json")
+                | .inputs.stableGaAuthorization = ($input_root + "/stable-1.0-ga-authorization.json")
+                | .inputs.stableGaPolicy = ($input_root + "/stable-1.0-ga-policy.json")
+                | del(.inputs.stableGaPublicationReceipt)' \
+              "$root/stable-1.0-ga.json" > "$revalidation_manifest"
+            python3 tools/release-certification/certify.py stable-ga \
+              --manifest "$revalidation_manifest"
+            local component="$revalidation_root/$INPUT_RELEASE_ID/stable-ga"
+            local native="$component/artifacts/legacy"
+            jq -e '
+              .result.status == "pass"
+              and .result.exitCode == 0
+              and .result.promotionReady == true
+              and .redaction.status == "pass"
+              and .redaction.findingCount == 0' "$component/summary.json" >/dev/null
+            for name in \
+              stable-1.0-ga-validation.json \
+              stable-1.0-ga-validation-authorization-identity.json \
+              stable-1.0-ga-authorization-summary.json \
+              stable-1.0-ga-promotion-summary.json \
+              stable-1.0-ga-publication-plan.json \
+              stable-1.0-maintenance-baseline.json \
+              stable-1.0-ga-provenance.json; do
+              if ! cmp --silent "$native/$name" "$legacy/$name"; then
+                echo "::error::Immediate pre-publication revalidation changed authorized artifact $name."
+                return 1
+              fi
+            done
+          }
+
+          exact_tag_refs() {
+            gh api --method GET \
+              "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/$tag" \
+              | jq -c --arg ref "refs/tags/$tag" '
+                  if type != "array" then error("tag reference collection is malformed")
+                  else [.[] | select(.ref == $ref)]
+                  | if length <= 1 then . else error("duplicate exact tag references") end
+                  end'
+          }
+
+          exact_releases() {
+            gh api --paginate --method GET \
+              "repos/$GITHUB_REPOSITORY/releases" -f per_page=100 \
+              | jq -s -c --arg tag "$tag" '
+                  if any(.[]; type != "array") then error("Release collection is malformed")
+                  else [.[] | .[] | select(.tag_name == $tag)]
+                  | if length <= 1 then . else error("duplicate exact Releases") end
+                  end'
+          }
+
+          validate_publication_boundary() {
+            reauthenticate_latest_stable_rc
+            revalidate_publication_inputs
+            verify_release_branch_head
+          }
+
+          begin_publication_side_effect() {
+            validate_publication_boundary
+            : > build/stable-ga-publication-side-effect-started
+          }
+
+          validate_publication_boundary
+          verify_artifact_base_assets preflight
+
+          publication_created=false
+          tag_refs="$(exact_tag_refs)"
+          if [[ "$(jq -r 'length' <<< "$tag_refs")" == 1 ]]; then
+            ref_json="$(jq -c '.[0]' <<< "$tag_refs")"
+            verify_tag "$ref_json"
+          else
+            begin_publication_side_effect
+            tag_object_json="$(jq -n \
+              --arg tag "$tag" \
+              --arg message "Cryptad Stable 1.0 GA build $INPUT_BUILD_VERSION" \
+              --arg object "$INPUT_CANDIDATE_COMMIT" \
+              '{tag: $tag, message: $message, object: $object, type: "commit"}' \
+              | gh api --method POST "repos/$GITHUB_REPOSITORY/git/tags" --input -)"
+            tag_object="$(jq -r '.sha' <<< "$tag_object_json")"
+            if [[ ! "$tag_object" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "::error::GitHub did not create a valid annotated tag object."
+              exit 1
+            fi
+            printf '%s\n' "$tag_object" > build/stable-ga-publication-side-effect-started
+            validate_publication_boundary
+            jq -n --arg ref "refs/tags/$tag" --arg sha "$tag_object" '{ref: $ref, sha: $sha}' \
+              | gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" --input - >/dev/null
+            verify_tag "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag")"
+            publication_created=true
+          fi
+
+          release_json=""
+          exact_release_rows="$(exact_releases)"
+          if [[ "$(jq -r 'length' <<< "$exact_release_rows")" == 1 ]]; then
+            release_json="$(jq -c '.[0]' <<< "$exact_release_rows")"
+          else
+            begin_publication_side_effect
+            release_json="$(jq -n \
+              --arg tag "$tag" \
+              --arg target "$INPUT_CANDIDATE_COMMIT" \
+              --rawfile body "$notes" '
+              {
+                tag_name: $tag,
+                target_commitish: $target,
+                name: ("Cryptad Stable 1.0 (" + $tag + ")"),
+                body: $body,
+                draft: true,
+                prerelease: false
+              }' | gh api --method POST "repos/$GITHUB_REPOSITORY/releases" --input -)"
+            publication_created=true
+          fi
+          release_id="$(jq -r '.id' <<< "$release_json")"
+          expected_release_name="Cryptad Stable 1.0 ($tag)"
+          if [[ ! "$release_id" =~ ^[1-9][0-9]*$ \
+                || "$(jq -r '.tag_name' <<< "$release_json")" != "$tag" \
+                || "$(jq -r '.name' <<< "$release_json")" != "$expected_release_name" ]]; then
+            echo "::error::GitHub Release identity is malformed or conflicts with the authorized tag."
+            exit 1
+          fi
+          if [[ "$(jq -r '.prerelease' <<< "$release_json")" != false ]]; then
+            echo "::error::Existing GitHub Release has conflicting prerelease state."
+            exit 1
+          fi
+          existing_body="$(jq -r '.body' <<< "$release_json")"
+          normalized_existing="$(printf '%s\n' "$existing_body" | sed 's/\r$//')"
+          normalized_expected="$(sed 's/\r$//' "$notes")"
+          if [[ "$normalized_existing" != "$normalized_expected" ]]; then
+            echo "::error::Existing GitHub Release notes differ from the authorized notes."
+            exit 1
+          fi
+
+          existing_assets="$(gh api --paginate --method GET \
+            "repos/$GITHUB_REPOSITORY/releases/$release_id/assets" \
+            -f per_page=100 | jq -s '[.[] | .[]]')"
+          if jq -e --argjson planned "$assets_json" '
+            ([.[].name] - [$planned[].name]) | length > 0' <<< "$existing_assets" >/dev/null; then
+            echo "::error::Existing GitHub Release contains an unexpected asset."
+            exit 1
+          fi
+          verify_dir="build/stable-ga-release-verification"
+          rm -rf "$verify_dir"
+          mkdir -p "$verify_dir"
+          while IFS=$'\t' read -r name role size digest; do
+            matches="$(jq -r --arg name "$name" '[.[] | select(.name == $name)] | length' <<< "$existing_assets")"
+            if [[ "$matches" -gt 1 ]]; then
+              echo "::error::Existing GitHub Release has duplicate asset $name."
+              exit 1
+            fi
+            if [[ "$matches" == 1 ]]; then
+              asset_id="$(jq -r --arg name "$name" '.[] | select(.name == $name) | .id' <<< "$existing_assets")"
+              gh api -H 'Accept: application/octet-stream' \
+                "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id" > "$verify_dir/$name"
+              if [[ "$(stat -c%s "$verify_dir/$name")" != "$size" \
+                    || "sha256:$(sha256sum "$verify_dir/$name" | awk '{print $1}')" != "$digest" ]]; then
+                echo "::error::Existing GitHub Release asset $name differs from the authorized bytes."
+                exit 1
+              fi
+            else
+              begin_publication_side_effect
+              gh release upload "$tag" "$assets_dir/$name"
+              publication_created=true
+            fi
+          done < <(jq -r '.[] | [.name, .role, (.sizeBytes | tostring), .digest] | @tsv' <<< "$assets_json")
+
+          release_json="$(gh api "repos/$GITHUB_REPOSITORY/releases/$release_id")"
+          existing_assets="$(gh api --paginate --method GET \
+            "repos/$GITHUB_REPOSITORY/releases/$release_id/assets" \
+            -f per_page=100 | jq -s '[.[] | .[]]')"
+          if [[ "$(jq -r 'length' <<< "$existing_assets")" != "$(jq -r 'length' <<< "$assets_json")" ]]; then
+            echo "::error::GitHub Release asset count differs from the authorized plan."
+            exit 1
+          fi
+          rm -rf "$verify_dir"
+          mkdir -p "$verify_dir"
+          while IFS=$'\t' read -r name role size digest; do
+            asset_id="$(jq -r --arg name "$name" '[.[] | select(.name == $name)] | if length == 1 then .[0].id else empty end' <<< "$existing_assets")"
+            [[ -n "$asset_id" ]] || exit 1
+            gh api -H 'Accept: application/octet-stream' \
+              "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id" > "$verify_dir/$name"
+            [[ "$(stat -c%s "$verify_dir/$name")" == "$size" ]] || exit 1
+            [[ "sha256:$(sha256sum "$verify_dir/$name" | awk '{print $1}')" == "$digest" ]] || exit 1
+          done < <(jq -r '.[] | [.name, .role, (.sizeBytes | tostring), .digest] | @tsv' <<< "$assets_json")
+
+          verify_catalog_location \
+            "$primary_uri" primary pre-finalization "$catalog_digest" "$signature_digest" "$catalog_signing_key"
+          while IFS=$'\t' read -r location_id mirror_uri; do
+            verify_catalog_location \
+              "$mirror_uri" "$location_id" pre-finalization "$catalog_digest" "$signature_digest" "$catalog_signing_key"
+          done < <(jq -r '.catalog.mirrors[] | [.locationId, .publicUri] | @tsv' "$plan")
+
+          if [[ "$(jq -r '.draft' <<< "$release_json")" == true ]]; then
+            begin_publication_side_effect
+            release_json="$(jq -n '{draft: false}' | gh api --method PATCH \
+              "repos/$GITHUB_REPOSITORY/releases/$release_id" --input -)"
+            publication_created=true
+          else
+            release_json="$(gh api "repos/$GITHUB_REPOSITORY/releases/$release_id")"
+          fi
+          published_at="$(jq -r '.published_at // empty' <<< "$release_json")"
+          release_url="$(jq -r '.html_url // empty' <<< "$release_json")"
+          if [[ -z "$published_at" || ! "$release_url" =~ ^https:// ]]; then
+            echo "::error::GitHub Release did not reach a public, verifiable published state."
+            exit 1
+          fi
+
+          verify_tag "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag")"
+          release_json="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$tag")"
+          if [[ "$(jq -r '.id' <<< "$release_json")" != "$release_id" \
+                || "$(jq -r '.draft' <<< "$release_json")" != false \
+                || "$(jq -r '.prerelease' <<< "$release_json")" != false \
+                || "$(jq -r '.name' <<< "$release_json")" != "$expected_release_name" \
+                || "$(jq -r '.html_url' <<< "$release_json")" != "$release_url" \
+                || "$(jq -r '.body // ""' <<< "$release_json" | sed 's/\r$//')" != "$(sed 's/\r$//' "$notes")" ]]; then
+            echo "::error::Published GitHub Release does not match the exact authorized state."
+            exit 1
+          fi
+          existing_assets="$(gh api --paginate --method GET \
+            "repos/$GITHUB_REPOSITORY/releases/$release_id/assets" \
+            -f per_page=100 | jq -s '[.[] | .[]]')"
+          if ! jq -e --argjson planned "$assets_json" '
+              length == 7
+              and ([.[].name] | unique | length) == 7
+              and ([.[].name] | sort) == ([$planned[].name] | sort)' \
+              <<< "$existing_assets" >/dev/null; then
+            echo "::error::Published GitHub Release asset names differ from the exact allowlist."
+            exit 1
+          fi
+          rm -rf "$verify_dir"
+          mkdir -p "$verify_dir"
+          while IFS=$'\t' read -r name role size digest; do
+            asset_id="$(jq -r --arg name "$name" '.[] | select(.name == $name) | .id' <<< "$existing_assets")"
+            gh api -H 'Accept: application/octet-stream' \
+              "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id" > "$verify_dir/$name"
+            if [[ "$(stat -c%s "$verify_dir/$name")" != "$size" \
+                  || "sha256:$(sha256sum "$verify_dir/$name" | awk '{print $1}')" != "$digest" ]]; then
+              echo "::error::Published GitHub Release asset $name differs from the authorized bytes."
+              exit 1
+            fi
+          done < <(jq -r '.[] | [.name, .role, (.sizeBytes | tostring), .digest] | @tsv' <<< "$assets_json")
+
+          verify_artifact_base_assets final
+
+          verify_catalog_location \
+            "$primary_uri" primary final "$catalog_digest" "$signature_digest" "$catalog_signing_key"
+          mirror_receipts='[]'
+          while IFS=$'\t' read -r location_id mirror_uri; do
+            verify_catalog_location \
+              "$mirror_uri" "$location_id" final "$catalog_digest" "$signature_digest" "$catalog_signing_key"
+            mirror_receipts="$(jq -c \
+              --arg location_id "$location_id" \
+              --arg uri "$mirror_uri" \
+              --arg digest "$catalog_digest" '
+                . + [{
+                  locationId: $location_id,
+                  publicUri: $uri,
+                  digest: $digest,
+                  signatureVerified: true,
+                  transportFallbackOnly: true,
+                  verificationStatus: "pass"
+                }]' <<< "$mirror_receipts")"
+          done < <(jq -r '.catalog.mirrors[] | [.locationId, .publicUri] | @tsv' "$plan")
+          verify_catalog_location \
+            "$rollback_uri" rollback final "$rollback_digest" "" "$catalog_signing_key"
+          rollback_signature_digest="sha256:$(sha256sum \
+            "$catalog_verify_dir/final/rollback/cryptad-app-catalog.signature" | awk '{print $1}')"
+
+          operation=verified-existing
+          if [[ "$publication_created" == true ]]; then
+            operation=created
+          fi
+
+          # Recheck current authorization, evidence freshness, lineage, and branch state after all
+          # potentially lengthy verification, including the fully idempotent path, before receipt.
+          validate_publication_boundary
+
+          receipt="build/stable-1.0-ga-publication-receipt-candidate.json"
+          jq -n \
+            --arg generated_at "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+            --arg release_id "$INPUT_RELEASE_ID" \
+            --arg build "$INPUT_BUILD_VERSION" \
+            --arg commit "$INPUT_CANDIDATE_COMMIT" \
+            --arg operation "$operation" \
+            --arg tag "$tag" \
+            --argjson github_release_id "$release_id" \
+            --arg release_url "$release_url" \
+            --arg freeze_digest "$(jq -r '.contentDigest' "$freeze")" \
+            --arg product_digest "$(jq -r '.selectedRc.productDistributionDigest' "$promotion")" \
+            --arg archive_digest "$(jq -r '.selectedRc.archiveDigest' "$promotion")" \
+            --arg promotion_digest "$promotion_digest" \
+            --arg notes_digest "$notes_digest" \
+            --arg artifact_base_uri "$artifact_base_uri" \
+            --arg published_at "$published_at" \
+            --arg repository "$GITHUB_REPOSITORY" \
+            --argjson run_id "$GITHUB_RUN_ID" \
+            --argjson run_attempt "$GITHUB_RUN_ATTEMPT" \
+            --arg catalog_id "$(jq -r '.catalog.catalogId' "$plan")" \
+            --argjson catalog_revision "$(jq -r '.catalog.revision' "$plan")" \
+            --arg catalog_digest "$catalog_digest" \
+            --arg signature_digest "$signature_digest" \
+            --arg signing_key "$(jq -r '.catalog.signingKeyId' "$plan")" \
+            --arg artifact_timestamp "$(jq -r '.catalog.artifactTimestamp' "$plan")" \
+            --arg primary_uri "$primary_uri" \
+            --argjson mirror_receipts "$mirror_receipts" \
+            --argjson rollback_revision "$(jq -r '.stableCatalog.verifiedRollback.revision' "$freeze")" \
+            --arg rollback_digest "$(jq -r '.stableCatalog.verifiedRollback.digest' "$freeze")" \
+            --arg rollback_uri "$rollback_uri" \
+            --arg rollback_signature_digest "$rollback_signature_digest" \
+            --arg rollback_signing_key "$catalog_signing_key" \
+            --argjson advisory_count "$(jq -r '.stableCatalog.securityAdvisoryCount' "$freeze")" \
+            --argjson denylist_count "$(jq -r '.stableCatalog.denylistCount' "$freeze")" \
+            --argjson assets "$asset_receipts" '
+            {
+              schemaVersion: 1,
+              kind: "stable-1.0-ga-publication-receipt",
+              generatedAt: $generated_at,
+              releaseId: $release_id,
+              buildVersion: $build,
+              sourceCommit: $commit,
+              publicationState: "publication-complete",
+              operation: $operation,
+              artifactBaseUri: $artifact_base_uri,
+              tag: {
+                name: $tag,
+                targetCommit: $commit,
+                annotated: true,
+                verificationStatus: "pass"
+              },
+              githubRelease: {
+                releaseId: $github_release_id,
+                publicUrl: $release_url,
+                releaseNotesDigest: $notes_digest,
+                verificationStatus: "pass"
+              },
+              assets: $assets,
+              freezeDigest: $freeze_digest,
+              productDistributionDigest: $product_digest,
+              archiveDigest: $archive_digest,
+              gaPromotionSummaryDigest: $promotion_digest,
+              catalog: {
+                catalogId: $catalog_id,
+                channel: "stable",
+                revision: $catalog_revision,
+                catalogDigest: $catalog_digest,
+                signatureDigest: $signature_digest,
+                signingKeyId: $signing_key,
+                artifactTimestamp: $artifact_timestamp,
+                primary: {
+                  locationId: "primary",
+                  publicUri: $primary_uri,
+                  digest: $catalog_digest,
+                  signatureVerified: true,
+                  verificationStatus: "pass"
+                },
+                mirrors: $mirror_receipts,
+                rollback: {
+                  revision: $rollback_revision,
+                  digest: $rollback_digest,
+                  publicUri: $rollback_uri,
+                  signatureDigest: $rollback_signature_digest,
+                  signingKeyId: $rollback_signing_key,
+                  signatureVerified: true,
+                  verificationStatus: "pass"
+                },
+                keyRotationStatus: "complete",
+                advisoryCount: $advisory_count,
+                denylistCount: $denylist_count,
+                verificationStatus: "pass"
+              },
+              releaseNotesDigest: $notes_digest,
+              publishedAt: $published_at,
+              workflow: {
+                provider: "github-actions",
+                repository: $repository,
+                workflowName: "Stable 1.0 GA Promotion",
+                runId: $run_id,
+                runAttempt: $run_attempt,
+                environment: "stable-1-0-ga"
+              },
+              publicStateObservation: {
+                tag: {status: "verified"},
+                githubRelease: {status: "verified"},
+                releaseAssets: {
+                  status: "verified",
+                  observedCount: ($assets | length),
+                  missingPlannedAssets: [],
+                  unexpectedCount: 0,
+                  unexpectedNameDigests: []
+                }
+              },
+              finalVerificationStatus: "pass",
+              redaction: {status: "pass", findingCount: 0, findings: []}
+            }' > "$receipt"
+          echo "receipt=$receipt" >> "$GITHUB_OUTPUT"
+          echo "state=publication-observed" >> "$GITHUB_OUTPUT"
+
+      - name: Record publication conflict or partial state without side effects
+        if: failure() && steps.publication.outcome == 'failure'
+        env:
+          INPUT_RELEASE_ID: ${{ inputs.release_id }}
+          INPUT_BUILD_VERSION: ${{ inputs.build_version }}
+          INPUT_CANDIDATE_COMMIT: ${{ inputs.candidate_commit }}
+          LEUMOR_GITHUB_TOKEN: ${{ secrets.LEUMOR_GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          marker="build/stable-ga-publication-side-effect-started"
+          receipt="build/stable-1.0-ga-publication-receipt.json"
+          failure_category="pre-publication-verification-failure"
+          if [[ -f "$marker" ]]; then
+            failure_category="side-effecting-publication-failure"
+          fi
+          export GH_TOKEN="$LEUMOR_GITHUB_TOKEN"
+          root="build/stable-ga-publication"
+          legacy="$root/component/artifacts/legacy"
+          plan="$legacy/stable-1.0-ga-publication-plan.json"
+          promotion="$legacy/stable-1.0-ga-promotion-summary.json"
+          freeze="$root/publication-inputs/stable-1.0-rc-freeze.json"
+          tag="v$INPUT_BUILD_VERSION"
+          generated_at="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          artifact_base_uri="$(jq -er '.artifactBaseUri' "$plan")"
+          observation_root="build/stable-ga-public-state-observation"
+          rm -rf "$observation_root"
+          mkdir -p "$observation_root"
+          chmod 700 "$observation_root"
+          trap 'rm -rf "$observation_root"' EXIT
+
+          tag_status=fail
+          tag_observation=unavailable
+          if gh api --method GET \
+              "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/$tag" \
+              2> "$observation_root/tag-refs.error" \
+              | jq -c --arg ref "refs/tags/$tag" '
+                  if type != "array" then error("malformed")
+                  else [.[] | select(.ref == $ref)]
+                  | if length <= 1 then . else error("duplicate") end
+                  end' > "$observation_root/tag-refs.json"; then
+            if [[ "$(jq -r 'length' "$observation_root/tag-refs.json")" == 0 ]]; then
+              tag_observation=absent
+            else
+              ref_json="$(jq -c '.[0]' "$observation_root/tag-refs.json")"
+              tag_object="$(jq -r '
+                if .object.type == "tag" and (.object.sha | test("^[0-9a-f]{40}$"))
+                then .object.sha else empty end' <<< "$ref_json")"
+              if [[ -z "$tag_object" ]]; then
+                tag_observation=conflict
+              elif gh api --method GET \
+                  "repos/$GITHUB_REPOSITORY/git/tags/$tag_object" \
+                  > "$observation_root/tag-object.json" \
+                  2> "$observation_root/tag-object.error"; then
+                if jq -e --arg commit "$INPUT_CANDIDATE_COMMIT" '
+                    .object.type == "commit" and .object.sha == $commit' \
+                    "$observation_root/tag-object.json" >/dev/null; then
+                  tag_observation=verified
+                  tag_status=pass
+                else
+                  tag_observation=conflict
+                fi
+              else
+                tag_observation=unavailable
+              fi
+            fi
+          fi
+
+          release_observation=unavailable
+          release_id_json=null
+          release_url=""
+          recorded_at=""
+          if gh api --paginate --method GET \
+              "repos/$GITHUB_REPOSITORY/releases" -f per_page=100 \
+              2> "$observation_root/releases.error" \
+              | jq -s -c --arg tag "$tag" '
+                  if any(.[]; type != "array") then error("malformed")
+                  else [.[] | .[] | select(.tag_name == $tag)]
+                  | if length <= 1 then . else error("duplicate") end
+                  end' > "$observation_root/releases.json"; then
+            if [[ "$(jq -r 'length' "$observation_root/releases.json")" == 0 ]]; then
+              release_observation=absent
+            else
+              release_json="$(jq -c '.[0]' "$observation_root/releases.json")"
+              release_id="$(jq -r '.id // empty' <<< "$release_json")"
+              release_url="$(jq -r '.html_url // empty' <<< "$release_json")"
+              recorded_at="$(jq -r '.published_at // .created_at // empty' <<< "$release_json")"
+              expected_release_url="https://github.com/$GITHUB_REPOSITORY/releases/tag/$tag"
+              if [[ "$release_id" =~ ^[1-9][0-9]*$ \
+                    && "$release_url" == "$expected_release_url" \
+                    && "$recorded_at" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]]; then
+                release_observation=observed
+                release_id_json="$release_id"
+              else
+                release_observation=conflict
+                release_id_json=null
+                release_url=""
+                recorded_at=""
+              fi
+            fi
+          fi
+
+          assets_json="$(jq -c '.assets' "$plan")"
+          asset_observation='{
+            "status":"unavailable",
+            "observedCount":null,
+            "missingPlannedAssets":[],
+            "unexpectedCount":null,
+            "unexpectedNameDigests":[]
+          }'
+          if [[ "$release_observation" == absent ]]; then
+            asset_observation='{
+              "status":"not-applicable",
+              "observedCount":null,
+              "missingPlannedAssets":[],
+              "unexpectedCount":null,
+              "unexpectedNameDigests":[]
+            }'
+          elif [[ "$release_observation" == observed ]]; then
+            if gh api --paginate --method GET \
+              "repos/$GITHUB_REPOSITORY/releases/$release_id/assets" \
+              -f per_page=100 2> "$observation_root/assets.error" \
+              | jq -s -c '
+                  if any(.[]; type != "array") then error("malformed")
+                  else [.[] | .[]]
+                  end' > "$observation_root/assets.json"; then
+              if PYTHONPATH=tools/release-certification python3 - \
+                  "$observation_root/assets.json" "$plan" \
+                  > "$observation_root/asset-observation.json" 2>/dev/null <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          from cryptad_certification.engines.stable_1_0_ga_core import (
+              sanitized_public_asset_observation,
+          )
+
+          observed = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          plan = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
+          result = sanitized_public_asset_observation(observed, plan.get("assets"))
+          print(json.dumps(result, sort_keys=True, separators=(",", ":")))
+          PY
+              then
+                asset_observation="$(cat "$observation_root/asset-observation.json")"
+              fi
+            fi
+          fi
+          receipt_assets="$(jq -c --arg base "$artifact_base_uri" \
+            '[.[] | {name, sizeBytes, digest, publicUri: ($base + .name), verificationStatus: "fail"}]' \
+            <<< "$assets_json")"
+          receipt_mirrors="$(jq -c \
+            --arg digest "$(jq -r '.catalog.catalogDigest' "$plan")" '
+              [.catalog.mirrors[] | {
+                locationId,
+                publicUri,
+                digest: $digest,
+                signatureVerified: false,
+                transportFallbackOnly: true,
+                verificationStatus: "fail"
+              }]' "$plan")"
+
+          jq -n \
+            --arg generated_at "$generated_at" \
+            --arg release_id "$INPUT_RELEASE_ID" \
+            --arg build "$INPUT_BUILD_VERSION" \
+            --arg commit "$INPUT_CANDIDATE_COMMIT" \
+            --arg tag "$tag" \
+            --arg tag_status "$tag_status" \
+            --arg failure_category "$failure_category" \
+            --argjson github_release_id "$release_id_json" \
+            --arg release_url "$release_url" \
+            --arg freeze_digest "$(jq -r '.contentDigest' "$freeze")" \
+            --arg product_digest "$(jq -r '.selectedRc.productDistributionDigest' "$promotion")" \
+            --arg archive_digest "$(jq -r '.selectedRc.archiveDigest' "$promotion")" \
+            --arg promotion_digest "$(jq -r '.promotionIdentityDigest' "$plan")" \
+            --arg notes_digest "$(jq -r '.releaseNotesDigest' "$plan")" \
+            --arg artifact_base_uri "$artifact_base_uri" \
+            --arg recorded_at "$recorded_at" \
+            --arg repository "$GITHUB_REPOSITORY" \
+            --argjson run_id "$GITHUB_RUN_ID" \
+            --argjson run_attempt "$GITHUB_RUN_ATTEMPT" \
+            --arg catalog_id "$(jq -r '.catalog.catalogId' "$plan")" \
+            --argjson catalog_revision "$(jq -r '.catalog.revision' "$plan")" \
+            --arg catalog_digest "$(jq -r '.catalog.catalogDigest' "$plan")" \
+            --arg signature_digest "$(jq -r '.catalog.signatureDigest' "$plan")" \
+            --arg signing_key "$(jq -r '.catalog.signingKeyId' "$plan")" \
+            --arg artifact_timestamp "$(jq -r '.catalog.artifactTimestamp' "$plan")" \
+            --arg primary_uri "$(jq -r '.catalog.primary.publicUri' "$plan")" \
+            --argjson receipt_mirrors "$receipt_mirrors" \
+            --argjson rollback_revision "$(jq -r '.catalog.rollbackRevision' "$plan")" \
+            --arg rollback_digest "$(jq -r '.catalog.rollbackDigest' "$plan")" \
+            --arg rollback_uri "$(jq -r '.catalog.rollbackUri' "$plan")" \
+            --arg rollback_signing_key "$(jq -r '.catalog.signingKeyId' "$plan")" \
+            --argjson advisory_count "$(jq -r '.catalog.advisoryCount' "$plan")" \
+            --argjson denylist_count "$(jq -r '.catalog.denylistCount' "$plan")" \
+            --argjson receipt_assets "$receipt_assets" \
+            --arg tag_observation "$tag_observation" \
+            --arg release_observation "$release_observation" \
+            --argjson asset_observation "$asset_observation" '
+            {
+              schemaVersion: 1,
+              kind: "stable-1.0-ga-publication-receipt",
+              generatedAt: $generated_at,
+              releaseId: $release_id,
+              buildVersion: $build,
+              sourceCommit: $commit,
+              publicationState: "publication-verification-failed",
+              operation: "partial",
+              failureCategory: $failure_category,
+              artifactBaseUri: $artifact_base_uri,
+              tag: {
+                name: $tag,
+                targetCommit: $commit,
+                annotated: true,
+                verificationStatus: $tag_status
+              },
+              githubRelease: (
+                if $github_release_id == null then null
+                else {
+                  releaseId: $github_release_id,
+                  publicUrl: $release_url,
+                  releaseNotesDigest: $notes_digest,
+                  verificationStatus: "fail"
+                }
+                end
+              ),
+              assets: $receipt_assets,
+              freezeDigest: $freeze_digest,
+              productDistributionDigest: $product_digest,
+              archiveDigest: $archive_digest,
+              gaPromotionSummaryDigest: $promotion_digest,
+              catalog: {
+                catalogId: $catalog_id,
+                channel: "stable",
+                revision: $catalog_revision,
+                catalogDigest: $catalog_digest,
+                signatureDigest: $signature_digest,
+                signingKeyId: $signing_key,
+                artifactTimestamp: $artifact_timestamp,
+                primary: {
+                  locationId: "primary",
+                  publicUri: $primary_uri,
+                  digest: $catalog_digest,
+                  signatureVerified: false,
+                  verificationStatus: "fail"
+                },
+                mirrors: $receipt_mirrors,
+                rollback: {
+                  revision: $rollback_revision,
+                  digest: $rollback_digest,
+                  publicUri: $rollback_uri,
+                  signatureDigest: null,
+                  signingKeyId: $rollback_signing_key,
+                  signatureVerified: false,
+                  verificationStatus: "fail"
+                },
+                keyRotationStatus: "complete",
+                advisoryCount: $advisory_count,
+                denylistCount: $denylist_count,
+                verificationStatus: "fail"
+              },
+              releaseNotesDigest: $notes_digest,
+              publishedAt: (if $github_release_id == null then null else $recorded_at end),
+              workflow: {
+                provider: "github-actions",
+                repository: $repository,
+                workflowName: "Stable 1.0 GA Promotion",
+                runId: $run_id,
+                runAttempt: $run_attempt,
+                environment: "stable-1-0-ga"
+              },
+              publicStateObservation: {
+                tag: {status: $tag_observation},
+                githubRelease: {status: $release_observation},
+                releaseAssets: $asset_observation
+              },
+              finalVerificationStatus: "fail",
+              redaction: {status: "pass", findingCount: 0, findings: []}
+            }' > "$receipt"
+
+      - name: Verify the publication receipt through Stable GA
+        id: receipt_verification
+        continue-on-error: true
+        env:
+          INPUT_RELEASE_ID: ${{ inputs.release_id }}
+          RECEIPT: ${{ steps.publication.outputs.receipt }}
+        run: |
+          set -euo pipefail
+          root="build/stable-ga-publication"
+          cp "$RECEIPT" "$root/publication-inputs/stable-1.0-ga-publication-receipt.json"
+          manifest="build/stable-1.0-ga-publication-verification.json"
+          input_root="$root/publication-inputs"
+          jq \
+            --arg input_root "$input_root" \
+            --arg build "${{ inputs.build_version }}" '
+             .output.reset = true
+             | .inputs.selectedStableRcSummary = ($input_root + "/selected-stable-rc-summary.json")
+             | .inputs.selectedStableRcFreeze = ($input_root + "/stable-1.0-rc-freeze.json")
+             | .inputs.selectedStableRcFreezeSidecar = ($input_root + "/stable-1.0-rc-freeze.sha256")
+             | .inputs.selectedStableRcArchive = ($input_root + "/cryptad-stable-1.0-rc-" + $build + ".tar.gz")
+             | .inputs.selectedStableRcProduct = ($input_root + "/crypta-stable-1.0-rc-" + $build + "-product.tar.gz")
+             | .inputs.selectedStableRcChecksums = ($input_root + "/checksums.txt")
+             | .inputs.selectedStableRcProvenance = ($input_root + "/provenance.json")
+             | .inputs.selectedStableRcLineage = ($input_root + "/stable-1.0-rc-lineage.json")
+             | .inputs.previousCandidate = ($input_root + "/previous-candidate-summary.json")
+             | .inputs.stableRcValidation = ($input_root + "/stable-1.0-rc-validation.json")
+             | .inputs.stableGaAuthorization = ($input_root + "/stable-1.0-ga-authorization.json")
+             | .inputs.stableGaPolicy = ($input_root + "/stable-1.0-ga-policy.json")
+             | .inputs.stableGaPublicationReceipt = ($input_root + "/stable-1.0-ga-publication-receipt.json")' \
+            "$root/stable-1.0-ga.json" > "$manifest"
+          python3 tools/release-certification/certify.py stable-ga --manifest "$manifest"
+          component="build/release-certification/$INPUT_RELEASE_ID/stable-ga"
+          jq -e '
+            .result.status == "pass"
+            and .result.exitCode == 0
+            and .redaction.status == "pass"
+            and .redaction.findingCount == 0' "$component/summary.json" >/dev/null
+          jq -e '.publicationState == "publication-complete"' \
+            "$component/artifacts/legacy/stable-1.0-ga-publication-receipt.json" >/dev/null
+          jq -e '
+            .publicationState == "publication-complete"
+            and .status == "pass"
+            and .promotionReady == true
+            and .blockers == []' \
+            "$component/artifacts/legacy/stable-1.0-ga-promotion-summary.json" >/dev/null
+          cp "$component/artifacts/legacy/stable-1.0-ga-publication-receipt.json" \
+            build/stable-1.0-ga-publication-receipt.json
+          echo "state=publication-complete" >> "$GITHUB_OUTPUT"
+
+      - name: Downgrade a rejected completion receipt
+        if: >-
+          always()
+          && steps.publication.outcome == 'success'
+          && steps.receipt_verification.outcome != 'success'
+          && hashFiles('build/stable-1.0-ga-publication-receipt-candidate.json') != ''
+        run: |
+          set -euo pipefail
+          candidate="build/stable-1.0-ga-publication-receipt-candidate.json"
+          receipt="build/stable-1.0-ga-publication-receipt.json"
+          jq \
+            --arg generated_at "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" '
+              .generatedAt = $generated_at
+              | .publicationState = "publication-verification-failed"
+              | .operation = "partial"
+              | .failureCategory = "post-publication-verification-failure"
+              | .finalVerificationStatus = "fail"' \
+            "$candidate" > "$receipt"
+
+      - name: Validate the redaction-safe publication audit record
+        id: audit_receipt_validation
+        if: always() && hashFiles('build/stable-1.0-ga-publication-receipt.json') != ''
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          receipt="build/stable-1.0-ga-publication-receipt.json"
+          if ! PYTHONPATH=tools/release-certification python3 - "$receipt" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          from cryptad_certification.engines.stable_1_0_ga_core import (
+              PUBLICATION_RECEIPT_SCHEMA,
+          )
+          from cryptad_certification.redaction import scan_value
+          from cryptad_certification.schema_validation import validate_schema
+          from cryptad_certification.engines.stable_1_0_rc_core import placeholder_findings
+
+          value = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          errors = validate_schema(value, PUBLICATION_RECEIPT_SCHEMA)
+          if (
+              errors
+              or scan_value(value)
+              or placeholder_findings(value)
+              or value.get("publicationState") not in {
+                  "publication-complete",
+                  "publication-verification-failed",
+              }
+              or value.get("redaction")
+              != {"status": "pass", "findingCount": 0, "findings": []}
+          ):
+              raise SystemExit("publication audit record failed closed validation")
+          PY
+          then
+            rm -f "$receipt"
+            echo "::error::Publication audit record is not schema-valid and redaction-safe."
+            exit 1
+          fi
+
+      - name: Upload publication receipt or partial-state audit record
+        if: >-
+          always()
+          && steps.audit_receipt_validation.outcome == 'success'
+          && hashFiles('build/stable-1.0-ga-publication-receipt.json') != ''
+        uses: actions/upload-artifact@v6
+        with:
+          name: stable-1-0-ga-publication-receipt-${{ inputs.release_id }}-${{ inputs.build_version }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            build/stable-1.0-ga-publication-receipt.json
+            build/release-certification/${{ inputs.release_id }}/stable-ga/summary.json
+            build/release-certification/${{ inputs.release_id }}/stable-ga/report.md
+            build/release-certification/${{ inputs.release_id }}/stable-ga/redaction-report.json
+            build/release-certification/${{ inputs.release_id }}/stable-ga/artifacts/legacy/stable-1.0-ga-promotion-summary.json
+            build/release-certification/${{ inputs.release_id }}/stable-ga/artifacts/legacy/stable-1.0-ga-go-no-go.md
+            build/release-certification/${{ inputs.release_id }}/stable-ga/artifacts/legacy/stable-1.0-ga-publication-receipt.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Summarize protected publication
+        if: always()
+        env:
+          RECEIPT_VERIFICATION_OUTCOME: ${{ steps.receipt_verification.outcome }}
+        run: |
+          PUBLICATION_STATE="missing-failure-receipt"
+          if [[ -f build/stable-1.0-ga-publication-receipt.json ]]; then
+            PUBLICATION_STATE="$(jq -r '.publicationState // "publication-verification-failed"' \
+              build/stable-1.0-ga-publication-receipt.json)"
+          fi
+          echo "Stable 1.0 GA publication state: \`$PUBLICATION_STATE\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "This workflow never merges release branches or publishes a core update descriptor." >> "$GITHUB_STEP_SUMMARY"
+          if [[ "$PUBLICATION_STATE" != publication-complete \
+                || "$RECEIPT_VERIFICATION_OUTCOME" != success ]]; then
+            echo "Publication is incomplete or failed verification and must not be announced as Stable 1.0 GA." >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi

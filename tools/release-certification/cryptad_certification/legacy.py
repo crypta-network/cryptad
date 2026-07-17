@@ -31,6 +31,7 @@ KIND_BY_COMMAND = {
     "go-no-go": "production-beta-go-no-go",
     "stable-readiness": "stable-1.0-readiness",
     "stable-rc": "stable-1.0-rc",
+    "stable-ga": "stable-1.0-ga-promotion",
 }
 V2_KIND_BY_INPUT = {
     "appPlatform": "app-platform-smoke",
@@ -409,8 +410,14 @@ def _legacy_input_path(
     legacy = payload.get("legacy") if isinstance(payload, dict) else None
     if not isinstance(legacy, dict):
         raise ValueError(f"inputs.{key} v2 envelope is missing payload.legacy")
-    if scan_value(legacy):
-        raise ValueError(f"inputs.{key} payload.legacy failed the v2 redaction scan")
+    redaction_findings = scan_value(legacy)
+    if redaction_findings:
+        categories = ", ".join(
+            sorted({finding["category"] for finding in redaction_findings})
+        )
+        raise ValueError(
+            f"inputs.{key} payload.legacy failed the v2 redaction scan: {categories}"
+        )
     if key == "multiNodeSoak":
         legacy = dict(legacy)
         release_id = value["subject"]["releaseId"]
@@ -904,6 +911,16 @@ def _run_stable_rc(context: RunContext) -> tuple[int, Path, Path | None]:
     return engine.run(context)
 
 
+def _run_stable_ga(context: RunContext) -> tuple[int, Path, Path | None]:
+    """Run side-effect-free Stable 1.0 GA validation and promotion preparation."""
+
+    if context.manifest.release.profile != "stable-review":
+        raise ValueError("stable-ga requires release.profile stable-review")
+    from .engines import stable_1_0_ga as engine
+
+    return engine.run(context)
+
+
 def _run_passthrough(context: RunContext, command: str, action: str | None) -> tuple[int, Path, Path | None]:
     engine: Any
     out = _legacy_dir(context)
@@ -1019,6 +1036,7 @@ RUNNERS: dict[str, Callable[[RunContext], tuple[int, Path, Path | None]]] = {
     "go-no-go": _run_go_no_go,
     "stable-readiness": _run_stable_readiness,
     "stable-rc": _run_stable_rc,
+    "stable-ga": _run_stable_ga,
 }
 
 

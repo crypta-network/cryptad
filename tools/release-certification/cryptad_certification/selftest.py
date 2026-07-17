@@ -22,6 +22,7 @@ SUITE_MODULES = {
     "go-no-go": ["cryptad_certification.tests.test_dashboard"],
     "stable-readiness": ["cryptad_certification.tests.test_stable"],
     "stable-rc": ["cryptad_certification.tests.test_stable_rc"],
+    "stable-ga": ["cryptad_certification.tests.test_stable_ga"],
     "migration": ["cryptad_certification.tests.test_core"],
 }
 

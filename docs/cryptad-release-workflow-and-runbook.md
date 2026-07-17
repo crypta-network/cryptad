@@ -63,6 +63,73 @@ An RC `go` or policy-compliant `go-with-waivers` authorizes review of the frozen
 not authorize a tag, GitHub Release, merge, update-descriptor insertion, or Stable 1.0 GA
 publication. Those remain separate release-manager operations later in this runbook.
 
+After selecting the final RC, follow the
+[Stable 1.0 RC validation and GA promotion runbook](stable-1.0-rc-validation-and-ga-promotion.md).
+The `stable-ga` command authenticates the latest successful protected RC lineage and consumes the
+exact RC summary, freeze, sidecar, outer archive, product, checksums, and provenance. It never
+rebuilds the candidate. Its protected post-freeze evidence must include at least 24 hours of real
+soak bound to the frozen product digest plus the required install, upgrade, rollback, migration,
+backup/restore, live-network, interop, performance, security, sandbox, and support results.
+
+Keep these Stable GA stages separate:
+
+1. side-effect-free validation in the `stable-ga` component;
+2. explicit GA authorization bound to the final immutable validation identity and exact RC digests;
+3. attestation of the exact validation and authorization bytes through the protected
+   `stable-1-0-ga-evidence` environment; and
+4. explicitly dispatched publication through the protected `stable-1-0-ga` environment.
+
+The Stable RC and Stable GA workflows use the same integer-build concurrency group. The lock spans
+validation, protected-environment waits, and publication; do not run a refreeze concurrently with
+GA. If a blocker requires an urgent refreeze while GA is waiting for approval, cancel GA, inspect
+the shared build queue, and only then dispatch the refreeze. GitHub keeps at most one pending run
+for a concurrency group, so do not treat a queued run as an audit log or rely on it to preempt the
+currently running operation.
+
+Run the Stable GA workflow with `publish=false` first. The protected evidence job attests the exact
+post-freeze validation and authorization files from that passing run. A later `publish=true`
+dispatch must use the identical attested bytes and the exact `release/<build-number>` ref and
+candidate commit. The publication job verifies those attestations and reruns `stable-ga` after its
+environment approval and before every public-state mutation. It repeats the current-time gate
+before recording completion. Repository paths, HTTPS downloads, and Actions artifacts are input
+transports; they are not sufficient producer authentication by themselves.
+
+Supply the exact migrated previous-candidate envelope whose digest was frozen by PR-283, plus the
+SHA-256 of the published predecessor product exercised by the upgrade drill. The workflow rejects
+an envelope that differs from either the selected freeze or RC provenance. Stable GA derives the
+predecessor release ID and integer build from that envelope and binds them, the envelope digest,
+and the product digest into the authorization identity.
+
+After publication approval, the job also refreshes the selected Stable RC workflow run and every
+matching freeze/refreeze attempt directly from GitHub. It orders completed attempts by their
+GitHub completion/update timestamps, rejects an active, ambiguous, or newer attempt, and verifies
+that the retained lineage record still identifies the latest successful freeze before any tag or
+Release operation begins. It performs this refresh even when all matching public state already
+exists, and repeats it before recording a successful receipt.
+
+A validation `go` does not claim publication. The publication job must verify the release branch
+`release/<build-number>`, use the repository-required `leumor` identity for GitHub operations,
+create or verify the annotated `v<build-number>` tag and exact GitHub Release assets, and verify
+every asset at the declared public artifact base and the frozen stable catalog independently at its
+primary, mirrors, and authorized rollback location. Configure the `stable-1-0-ga` environment's
+`STABLE_CATALOG_TRUSTED_KEYS_BASE64` secret with the production trusted catalog public-key
+properties registry; never put private signing material in it. It never merges the release branch
+automatically. The final receipt must be
+`publication-complete`; a partial or mismatched result is `publication-verification-failed` and
+must not be announced as GA. Its failure audit path only observes remote state and writes a
+sanitized receipt; it never resumes a tag or draft-Release mutation after a failed lineage or
+conflict check.
+
+All seven assets must already be staged at the independently managed public artifact base before
+the `publish=true` dispatch. The workflow freshly resolves and verifies every exact byte at that
+base before its first tag or Release mutation, and repeats the check after GitHub publication. Do
+not configure a GitHub Release URL that does not exist until this same workflow publishes it.
+
+The release branch is not a one-time preflight assertion. The job rereads it at every publication
+mutation boundary, before creating the tag reference after an annotated tag object was created,
+and before writing `publication-complete`. Any movement away from the authorized candidate commit
+fails closed and is recorded without resuming publication from the audit path.
+
 1. **Normal Gradle checks** - run the standard repository build and test path before any publish step. For release readiness, this means the usual Gradle verification path for the branch, including `./gradlew clean build` and any project-required test tasks used in CI.
 2. **Production beta app-ecosystem pipeline, when shipping production beta app artifacts** - use
    the top-level production beta wrapper when the release includes first-party app bundles,
@@ -482,6 +549,13 @@ publication. Those remain separate release-manager operations later in this runb
   cleanup for `cert-smoke` after failures.
 
 ## Production Rollout
+- For Stable 1.0, complete the protected GA validation, authorization, publication, and receipt
+  verification in
+  [the Stable GA runbook](stable-1.0-rc-validation-and-ga-promotion.md) before announcing GA.
+  Promote the exact frozen RC product and catalog bytes; do not rebuild them during rollout.
+- Treat matching existing tag, GitHub Release, and catalog state as idempotent only when the
+  commit, notes, asset names, sizes, digests, catalog revision, signature, and mirror results all
+  match the authorization. Stop on conflicts instead of overwriting public state.
 - Publish descriptor and artifacts to the production USK.
 - Announce the release with links to installers, release notes, and any manual installation guidance.
 - Monitor:

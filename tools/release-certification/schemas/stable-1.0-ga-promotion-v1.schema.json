@@ -1,0 +1,218 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/crypta-network/cryptad/tools/release-certification/schemas/stable-1.0-ga-promotion-v1.schema.json",
+  "title": "Cryptad Stable 1.0 GA promotion record v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "kind", "generatedAt", "validationState", "publicationState", "stableMilestone",
+    "releaseId", "buildVersion", "expectedTag", "expectedReleaseBranch", "sourceCommit", "sourceRef",
+    "status", "promotionReady", "nonRelease", "decision", "selectedRc", "payloadIdentity", "platformApi",
+    "stableCatalog", "firstPartyApps", "contentProfilesDigest", "gaValidationDigest", "gaAuthorizationDigest",
+    "publicationTargetsDigest",
+    "acceptedRcWaivers", "allowedLimitations", "publicationReadiness", "plannedPublicArtifacts",
+    "releaseNotesDigest", "maintenanceBaselineDigest", "redaction", "blockers"
+  ],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "kind": {"const": "stable-1.0-ga-promotion"},
+    "generatedAt": {"type": "string", "format": "date-time"},
+    "validationState": {"enum": ["validated", "publication-authorized"]},
+    "publicationState": {
+      "enum": [
+        "validated",
+        "publication-authorized",
+        "publication-complete",
+        "publication-verification-failed"
+      ]
+    },
+    "stableMilestone": {"const": "1.0"},
+    "releaseId": {"$ref": "#/$defs/releaseId"},
+    "buildVersion": {"$ref": "#/$defs/buildVersion"},
+    "expectedTag": {"type": "string", "pattern": "^v[1-9][0-9]*$"},
+    "expectedReleaseBranch": {"type": "string", "pattern": "^release/[1-9][0-9]*$"},
+    "sourceCommit": {"$ref": "#/$defs/commit"},
+    "sourceRef": {"$ref": "#/$defs/nonEmpty"},
+    "status": {"enum": ["pass", "fail"]},
+    "promotionReady": {"type": "boolean"},
+    "nonRelease": {"const": false},
+    "decision": {"enum": ["go", "no-go", "go-with-waivers"]},
+    "selectedRc": {"$ref": "#/$defs/selectedRc"},
+    "payloadIdentity": {"$ref": "#/$defs/payloadIdentity"},
+    "platformApi": {"$ref": "#/$defs/platformApi"},
+    "stableCatalog": {"$ref": "#/$defs/stableCatalog"},
+    "firstPartyApps": {
+      "type": "array",
+      "minItems": 7,
+      "maxItems": 7,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/appIdentity"}
+    },
+    "contentProfilesDigest": {"$ref": "#/$defs/digest"},
+    "gaValidationDigest": {"$ref": "#/$defs/digest"},
+    "gaAuthorizationDigest": {"$ref": "#/$defs/digest"},
+    "publicationTargetsDigest": {"$ref": "#/$defs/digest"},
+    "acceptedRcWaivers": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/waiver"}},
+    "allowedLimitations": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/limitation"}},
+    "publicationReadiness": {"$ref": "#/$defs/publicationReadiness"},
+    "plannedPublicArtifacts": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/artifact"}
+    },
+    "releaseNotesDigest": {"$ref": "#/$defs/digest"},
+    "maintenanceBaselineDigest": {"$ref": "#/$defs/digest"},
+    "redaction": {"$ref": "#/$defs/redaction"},
+    "blockers": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/blocker"}
+    }
+  },
+  "$defs": {
+    "nonEmpty": {"type": "string", "minLength": 1},
+    "releaseId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"},
+    "buildVersion": {"type": "string", "pattern": "^[1-9][0-9]*$"},
+    "commit": {"type": "string", "pattern": "^[0-9a-f]{40,64}$"},
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "selectedRc": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["freezeDigest", "freezeFileDigest", "archiveDigest", "productDistributionDigest", "lineageDigest"],
+      "properties": {
+        "freezeDigest": {"$ref": "#/$defs/digest"},
+        "freezeFileDigest": {"$ref": "#/$defs/digest"},
+        "archiveDigest": {"$ref": "#/$defs/digest"},
+        "productDistributionDigest": {"$ref": "#/$defs/digest"},
+        "lineageDigest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "payloadIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rcProductDigest", "gaProductDigest", "bitIdentical", "rebuildPerformed"],
+      "properties": {
+        "rcProductDigest": {"$ref": "#/$defs/digest"},
+        "gaProductDigest": {"$ref": "#/$defs/digest"},
+        "bitIdentical": {"const": true},
+        "rebuildPerformed": {"const": false}
+      }
+    },
+    "platformApi": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["baselineName", "baselineContractVersion", "baselineDigest", "currentContractVersion", "currentContractDigest", "compatibilityWindowPolicyDigest", "stableBreakingChangeVerification"],
+      "properties": {
+        "baselineName": {"const": "1.0"},
+        "baselineContractVersion": {"type": "integer", "minimum": 1},
+        "baselineDigest": {"$ref": "#/$defs/digest"},
+        "currentContractVersion": {"type": "integer", "minimum": 1},
+        "currentContractDigest": {"$ref": "#/$defs/digest"},
+        "compatibilityWindowPolicyDigest": {"$ref": "#/$defs/digest"},
+        "stableBreakingChangeVerification": {"const": "pass"}
+      }
+    },
+    "stableCatalog": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["catalogId", "channel", "revision", "catalogDigest", "signatureDigest", "signingKeyId", "artifactTimestamp"],
+      "properties": {
+        "catalogId": {"$ref": "#/$defs/nonEmpty"},
+        "channel": {"const": "stable"},
+        "revision": {"type": "integer", "minimum": 0},
+        "catalogDigest": {"$ref": "#/$defs/digest"},
+        "signatureDigest": {"$ref": "#/$defs/digest"},
+        "signingKeyId": {"$ref": "#/$defs/nonEmpty"},
+        "artifactTimestamp": {"type": "string", "format": "date-time"}
+      }
+    },
+    "appIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["appId", "version", "bundleDigest", "reviewReceiptDigest", "appSigningKeyId", "reviewerKeyId"],
+      "properties": {
+        "appId": {"enum": ["queue-manager", "publisher", "site-publisher", "profile-publisher", "social-inbox", "feed-reader", "trust-graph"]},
+        "version": {"$ref": "#/$defs/nonEmpty"},
+        "bundleDigest": {"$ref": "#/$defs/digest"},
+        "reviewReceiptDigest": {"$ref": "#/$defs/digest"},
+        "appSigningKeyId": {"$ref": "#/$defs/nonEmpty"},
+        "reviewerKeyId": {"$ref": "#/$defs/nonEmpty"}
+      }
+    },
+    "waiver": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "source", "scope", "expiresAt", "stableGaAllowed"],
+      "properties": {
+        "id": {"$ref": "#/$defs/nonEmpty"},
+        "source": {"const": "stable-rc"},
+        "scope": {"$ref": "#/$defs/nonEmpty"},
+        "expiresAt": {"type": "string", "format": "date-time"},
+        "stableGaAllowed": {"const": true}
+      }
+    },
+    "limitation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "summary", "category", "classification", "status", "owner", "boundedBy", "evidenceIds"],
+      "properties": {
+        "id": {"$ref": "#/$defs/nonEmpty"},
+        "title": {"$ref": "#/$defs/nonEmpty"},
+        "summary": {"$ref": "#/$defs/nonEmpty"},
+        "category": {"$ref": "#/$defs/nonEmpty"},
+        "classification": {"const": "allowed-for-stable-1.0"},
+        "status": {"const": "open"},
+        "owner": {"$ref": "#/$defs/nonEmpty"},
+        "boundedBy": {"$ref": "#/$defs/nonEmpty"},
+        "evidenceIds": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/nonEmpty"}}
+      }
+    },
+    "publicationReadiness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "authorizationStatus", "targetConflictStatus", "catalogConfirmationStatus", "sideEffectsPerformed"],
+      "properties": {
+        "status": {"enum": ["pass", "fail"]},
+        "authorizationStatus": {"enum": ["pass", "fail"]},
+        "targetConflictStatus": {"enum": ["pass", "fail", "not-checked"]},
+        "catalogConfirmationStatus": {"enum": ["pass", "fail", "planned"]},
+        "sideEffectsPerformed": {"const": false}
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "sizeBytes", "digest", "sourceKind"],
+      "properties": {
+        "name": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"},
+        "sizeBytes": {"type": "integer", "minimum": 1},
+        "digest": {"$ref": "#/$defs/digest"},
+        "sourceKind": {"enum": ["immutable-rc", "ga-metadata"]}
+      }
+    },
+    "blocker": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "evidenceId", "severity", "summary", "remediation", "waivable"],
+      "properties": {
+        "id": {"$ref": "#/$defs/nonEmpty"},
+        "evidenceId": {"$ref": "#/$defs/nonEmpty"},
+        "severity": {"const": "blocker"},
+        "summary": {"$ref": "#/$defs/nonEmpty"},
+        "remediation": {"$ref": "#/$defs/nonEmpty"},
+        "waivable": {"const": false}
+      }
+    },
+    "redaction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "findingCount", "findings"],
+      "properties": {
+        "status": {"const": "pass"},
+        "findingCount": {"const": 0},
+        "findings": {"type": "array", "maxItems": 0}
+      }
+    }
+  }
+}
