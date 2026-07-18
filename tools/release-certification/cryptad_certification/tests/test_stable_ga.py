@@ -3450,6 +3450,25 @@ class StableGaSecurityAndDeterminismTest(unittest.TestCase):
             '\n                    --resolve "${host}:443:${resolve_address}"',
             artifact_base_helper,
         )
+        address_loop_start = artifact_base_helper.index(
+            "while IFS=$'\\t' read -r _ address resolution_mode; do"
+        )
+        address_loop_end = artifact_base_helper.index(
+            'done <<< "$resolution_rows"',
+            address_loop_start,
+        )
+        per_address_verification = artifact_base_helper[
+            address_loop_start:address_loop_end
+        ]
+        for required in (
+            '--max-filesize "$size"',
+            'stat -c%s "$output"',
+            'sha256sum "$output"',
+            '"$digest"',
+            "verified_address=true",
+        ):
+            self.assertIn(required, per_address_verification)
+        self.assertNotIn("break", per_address_verification)
         resolver_marker = "<<'PY'\n"
         resolver_start = artifact_base_helper.index(resolver_marker) + len(
             resolver_marker

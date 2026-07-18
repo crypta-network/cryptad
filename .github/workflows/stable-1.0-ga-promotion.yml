@@ -2114,7 +2114,7 @@ jobs:
             while IFS=$'\t' read -r name role size digest; do
               local public_uri="${artifact_base_uri}${name}"
               local output="$verification_root/$name"
-              local downloaded=false
+              local verified_address=false
               while IFS=$'\t' read -r _ address resolution_mode; do
                 curl_resolution=()
                 if [[ "$resolution_mode" == "dns" ]]; then
@@ -2125,32 +2125,33 @@ jobs:
                   curl_resolution=(--resolve "${host}:443:${resolve_address}")
                 fi
                 http_status=""
-                if http_status="$(curl --disable --fail --silent --show-error --noproxy '*' \
+                if ! http_status="$(curl --disable --fail --silent --show-error --noproxy '*' \
                     --proto '=https' --tlsv1.2 --max-redirs 0 \
                     --connect-timeout 15 --max-time 180 --max-filesize "$size" \
                     "${curl_resolution[@]}" \
                     --write-out '%{http_code}' --output "$output" "$public_uri")"; then
-                  if [[ ! "$http_status" =~ ^2[0-9]{2}$ ]]; then
-                    rm -f "$output"
+                  rm -f "$output"
+                  if [[ -n "$http_status" && "$http_status" != 000 ]]; then
                     echo "::error::Declared artifact base returned a non-success status for $name."
-                    return 1
+                  else
+                    echo "::error::Declared artifact base did not return $name from an approved address during $phase verification."
                   fi
-                  downloaded=true
-                  break
+                  return 1
                 fi
-                rm -f "$output"
-                if [[ -n "$http_status" && "$http_status" != 000 ]]; then
+                if [[ ! "$http_status" =~ ^2[0-9]{2}$ ]]; then
+                  rm -f "$output"
                   echo "::error::Declared artifact base returned a non-success status for $name."
                   return 1
                 fi
+                if [[ "$(stat -c%s "$output")" != "$size" \
+                      || "sha256:$(sha256sum "$output" | awk '{print $1}')" != "$digest" ]]; then
+                  echo "::error::Declared artifact base returned different bytes for $name during $phase verification."
+                  return 1
+                fi
+                verified_address=true
               done <<< "$resolution_rows"
-              if [[ "$downloaded" != true ]]; then
+              if [[ "$verified_address" != true ]]; then
                 echo "::error::Declared artifact base did not return $name during $phase verification."
-                return 1
-              fi
-              if [[ "$(stat -c%s "$output")" != "$size" \
-                    || "sha256:$(sha256sum "$output" | awk '{print $1}')" != "$digest" ]]; then
-                echo "::error::Declared artifact base returned different bytes for $name during $phase verification."
                 return 1
               fi
               receipts="$(jq -c \
