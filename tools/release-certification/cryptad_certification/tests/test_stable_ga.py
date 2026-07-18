@@ -122,7 +122,7 @@ def _policy_digest() -> str:
 
 
 def _context(root: Path | None = None, inputs: dict[str, str] | None = None) -> RunContext:
-    workspace = root or workspace_root()
+    workspace = (root or workspace_root()).resolve()
     manifest = RunManifest(
         path=workspace / "stable-1.0-ga.json",
         release=ReleaseSpec(RELEASE_ID, BUILD_VERSION, "stable-review"),
@@ -293,6 +293,7 @@ def _upgrade_predecessor(selected: SelectedRc) -> dict[str, str]:
 def _write_exact_rc_fixture(root: Path) -> tuple[RunContext, dict[str, Path]]:
     """Materialize one complete PR-283-shaped artifact set for GA authentication tests."""
 
+    root = root.resolve()
     artifact_root = root / "protected-rc"
     artifact_root.mkdir(parents=True)
     previous_candidate = artifact_root / "previous-candidate-summary.json"
