@@ -3094,6 +3094,27 @@ class StableGaSecurityAndDeterminismTest(unittest.TestCase):
             "$rc_checksums",
             "$rc_provenance",
         )
+        required_rc_checksum_metadata = (
+            "stable-1.0-rc-freeze-report.md",
+            "stable-1.0-rc-promotion-summary.json",
+            "stable-1.0-rc-go-no-go.md",
+            "stable-1.0-rc-known-limitations.json",
+            "stable-1.0-rc-release-notes.md",
+            "stable-1.0-rc-drift-report.json",
+            "redaction-report.json",
+            *SUPPORTING_VERIFIER_FILES,
+        )
+        self.assertEqual(
+            stable_1_0_ga_core._canonical_rc_checksum_names(BUILD_VERSION),
+            {
+                f"cryptad-stable-1.0-rc-{BUILD_VERSION}.tar.gz",
+                f"crypta-stable-1.0-rc-{BUILD_VERSION}-product.tar.gz",
+                "stable-1.0-rc-freeze.json",
+                "stable-1.0-rc-freeze.sha256",
+                "provenance.json",
+                *required_rc_checksum_metadata,
+            },
+        )
         required_publication_inputs = (
             "summary.json",
             "stable-1.0-rc-freeze.json",
@@ -3114,6 +3135,11 @@ class StableGaSecurityAndDeterminismTest(unittest.TestCase):
         for source in required_rc_sources:
             with self.subTest(source=source):
                 self.assertIn(source, materialize)
+        for name in required_rc_checksum_metadata:
+            with self.subTest(boundary="materialize", name=name):
+                self.assertIn(name, materialize)
+            with self.subTest(boundary="publication", name=name):
+                self.assertIn(name, publication_inputs)
         for name in required_publication_inputs:
             with self.subTest(name=name):
                 self.assertIn(name, publication_inputs)

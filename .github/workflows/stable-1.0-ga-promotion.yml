@@ -698,6 +698,28 @@ jobs:
             "$rc_provenance"; do
             cp "$source" "$input_root/$(basename "$source")"
           done
+          for name in \
+            stable-1.0-rc-freeze-report.md \
+            stable-1.0-rc-promotion-summary.json \
+            stable-1.0-rc-go-no-go.md \
+            stable-1.0-rc-known-limitations.json \
+            stable-1.0-rc-release-notes.md \
+            stable-1.0-rc-drift-report.json \
+            redaction-report.json \
+            content-format-profiles.json \
+            feed-reader-api-compatibility.json \
+            platform-api-current-contract.json \
+            platform-api-stable-diff.json \
+            profile-publisher-api-compatibility.json \
+            publisher-api-compatibility.json \
+            queue-manager-api-compatibility.json \
+            site-publisher-api-compatibility.json \
+            social-inbox-api-compatibility.json \
+            trust-graph-api-compatibility.json; do
+            source="$freeze_dir/$name"
+            require_confined_file "$freeze_dir" "$source" "Stable RC checksummed metadata $name"
+            cp "$source" "$input_root/$name"
+          done
           cp "$selected_summary" "$input_root/summary.json"
           cp "$previous_candidate" "$input_root/previous-candidate-summary.json"
           cp "$validation" "$input_root/stable-1.0-rc-validation.json"
@@ -1253,6 +1275,23 @@ jobs:
             "crypta-stable-1.0-rc-$INPUT_BUILD_VERSION-product.tar.gz" \
             checksums.txt \
             provenance.json \
+            stable-1.0-rc-freeze-report.md \
+            stable-1.0-rc-promotion-summary.json \
+            stable-1.0-rc-go-no-go.md \
+            stable-1.0-rc-known-limitations.json \
+            stable-1.0-rc-release-notes.md \
+            stable-1.0-rc-drift-report.json \
+            redaction-report.json \
+            content-format-profiles.json \
+            feed-reader-api-compatibility.json \
+            platform-api-current-contract.json \
+            platform-api-stable-diff.json \
+            profile-publisher-api-compatibility.json \
+            publisher-api-compatibility.json \
+            queue-manager-api-compatibility.json \
+            site-publisher-api-compatibility.json \
+            social-inbox-api-compatibility.json \
+            trust-graph-api-compatibility.json \
             stable-1.0-rc-lineage.json \
             previous-candidate-summary.json \
             stable-1.0-rc-validation.json \
