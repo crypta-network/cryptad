@@ -3504,7 +3504,8 @@ class StableGaSecurityAndDeterminismTest(unittest.TestCase):
         for required in (
             "socket.getaddrinfo",
             "ipaddress.ip_address(address).is_global",
-            'curl_resolution=(--resolve "${host}:443:${resolve_addresses}")',
+            "while IFS=$'\\t' read -r _ address resolution_mode; do",
+            'curl_resolution=(--resolve "${host}:443:${resolve_address}")',
             '"${curl_resolution[@]}"',
             "curl --disable",
             "--noproxy '*'",
@@ -3514,9 +3515,31 @@ class StableGaSecurityAndDeterminismTest(unittest.TestCase):
             "--max-filesize 16777216",
             "--max-filesize 1048576",
             "--write-out '%{http_code}'",
+            "verified_address=true",
+            'done <<< "$resolution_rows"',
         ):
             self.assertIn(required, catalog_verification)
+        self.assertNotIn("resolve_addresses", catalog_verification)
         self.assertNotIn("--retry", catalog_verification)
+        address_loop_start = catalog_verification.index(
+            "while IFS=$'\\t' read -r _ address resolution_mode; do"
+        )
+        address_loop_end = catalog_verification.index(
+            'done <<< "$resolution_rows"',
+            address_loop_start,
+        )
+        per_address_verification = catalog_verification[
+            address_loop_start:address_loop_end
+        ]
+        for required in (
+            "--max-filesize 16777216",
+            "--max-filesize 1048576",
+            "expected_catalog_digest",
+            "expected_signature_digest",
+            '"$catalog_verifier" catalog verify',
+            "expected_signing_key",
+        ):
+            self.assertIn(required, per_address_verification)
         self.assertIn(
             'candidate_ref" != "commit:$INPUT_CANDIDATE_COMMIT"',
             workflow,

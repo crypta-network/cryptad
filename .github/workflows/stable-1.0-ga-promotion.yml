@@ -1910,7 +1910,6 @@ jobs:
             local expected_signature_digest="$5"
             local expected_signing_key="$6"
             local signature_uri resolution_rows host address resolution_mode resolve_address
-            local resolve_addresses=""
             local -a curl_resolution
             case "$uri" in
               */cryptad-app-catalog.properties)
@@ -1933,63 +1932,66 @@ jobs:
               return 1
             fi
             host="$(head -n 1 <<< "$resolution_rows" | cut -f1)"
-            resolution_mode="$(head -n 1 <<< "$resolution_rows" | cut -f3)"
-            curl_resolution=()
-            if [[ "$resolution_mode" == "dns" ]]; then
-              while IFS=$'\t' read -r _ address _; do
+            local catalog_status signature_status verified_catalog
+            local verified_address=false
+            while IFS=$'\t' read -r _ address resolution_mode; do
+              curl_resolution=()
+              if [[ "$resolution_mode" == "dns" ]]; then
                 resolve_address="$address"
                 if [[ "$resolve_address" == *:* ]]; then
                   resolve_address="[$resolve_address]"
                 fi
-                resolve_addresses="${resolve_addresses:+$resolve_addresses,}$resolve_address"
-              done <<< "$resolution_rows"
-              curl_resolution=(--resolve "${host}:443:${resolve_addresses}")
-            fi
-            local catalog_status signature_status
-            if ! catalog_status="$(curl --disable --fail --silent --show-error \
-                --noproxy '*' --proto '=https' --tlsv1.2 --max-redirs 0 \
-                --connect-timeout 15 --max-time 180 --max-filesize 16777216 \
-                "${curl_resolution[@]}" --write-out '%{http_code}' \
-                --output "$directory/cryptad-app-catalog.properties.partial" "$uri")"; then
-              rm -f "$directory/cryptad-app-catalog.properties.partial"
-              echo "::error::Catalog bytes could not be fetched from the approved address set."
-              return 1
-            fi
-            if [[ ! "$catalog_status" =~ ^2[0-9]{2}$ ]]; then
-              rm -f "$directory/cryptad-app-catalog.properties.partial"
-              echo "::error::Catalog location returned a non-success status."
-              return 1
-            fi
-            if ! signature_status="$(curl --disable --fail --silent --show-error \
-                --noproxy '*' --proto '=https' --tlsv1.2 --max-redirs 0 \
-                --connect-timeout 15 --max-time 180 --max-filesize 1048576 \
-                "${curl_resolution[@]}" --write-out '%{http_code}' \
-                --output "$directory/cryptad-app-catalog.signature.partial" "$signature_uri")"; then
+                curl_resolution=(--resolve "${host}:443:${resolve_address}")
+              fi
               rm -f "$directory/cryptad-app-catalog.properties.partial" \
                 "$directory/cryptad-app-catalog.signature.partial"
-              echo "::error::Catalog signature could not be fetched from the approved address set."
-              return 1
-            fi
-            if [[ ! "$signature_status" =~ ^2[0-9]{2}$ ]]; then
-              rm -f "$directory/cryptad-app-catalog.properties.partial" \
-                "$directory/cryptad-app-catalog.signature.partial"
-              echo "::error::Catalog signature location returned a non-success status."
-              return 1
-            fi
-            mv "$directory/cryptad-app-catalog.properties.partial" \
-              "$directory/cryptad-app-catalog.properties"
-            mv "$directory/cryptad-app-catalog.signature.partial" \
-              "$directory/cryptad-app-catalog.signature"
-            [[ "sha256:$(sha256sum "$directory/cryptad-app-catalog.properties" | awk '{print $1}')" == "$expected_catalog_digest" ]]
-            if [[ -n "$expected_signature_digest" ]]; then
-              [[ "sha256:$(sha256sum "$directory/cryptad-app-catalog.signature" | awk '{print $1}')" == "$expected_signature_digest" ]]
-            fi
-            verified_catalog="$("$catalog_verifier" catalog verify \
-              --catalog-file "$directory/cryptad-app-catalog.properties" \
-              --trusted-keys-file "$trusted_keys")"
-            [[ "$verified_catalog" == "Verified catalog: $catalog_id" ]]
-            [[ "$(awk -F= '$1 == "catalog.signature.key.id" {print $2}' \
-              "$directory/cryptad-app-catalog.signature")" == "$expected_signing_key" ]]
+              if ! catalog_status="$(curl --disable --fail --silent --show-error \
+                  --noproxy '*' --proto '=https' --tlsv1.2 --max-redirs 0 \
+                  --connect-timeout 15 --max-time 180 --max-filesize 16777216 \
+                  "${curl_resolution[@]}" --write-out '%{http_code}' \
+                  --output "$directory/cryptad-app-catalog.properties.partial" "$uri")"; then
+                rm -f "$directory/cryptad-app-catalog.properties.partial"
+                echo "::error::Catalog bytes could not be fetched from an approved address."
+                return 1
+              fi
+              if [[ ! "$catalog_status" =~ ^2[0-9]{2}$ ]]; then
+                rm -f "$directory/cryptad-app-catalog.properties.partial"
+                echo "::error::Catalog location returned a non-success status."
+                return 1
+              fi
+              if ! signature_status="$(curl --disable --fail --silent --show-error \
+                  --noproxy '*' --proto '=https' --tlsv1.2 --max-redirs 0 \
+                  --connect-timeout 15 --max-time 180 --max-filesize 1048576 \
+                  "${curl_resolution[@]}" --write-out '%{http_code}' \
+                  --output "$directory/cryptad-app-catalog.signature.partial" "$signature_uri")"; then
+                rm -f "$directory/cryptad-app-catalog.properties.partial" \
+                  "$directory/cryptad-app-catalog.signature.partial"
+                echo "::error::Catalog signature could not be fetched from an approved address."
+                return 1
+              fi
+              if [[ ! "$signature_status" =~ ^2[0-9]{2}$ ]]; then
+                rm -f "$directory/cryptad-app-catalog.properties.partial" \
+                  "$directory/cryptad-app-catalog.signature.partial"
+                echo "::error::Catalog signature location returned a non-success status."
+                return 1
+              fi
+              mv "$directory/cryptad-app-catalog.properties.partial" \
+                "$directory/cryptad-app-catalog.properties"
+              mv "$directory/cryptad-app-catalog.signature.partial" \
+                "$directory/cryptad-app-catalog.signature"
+              [[ "sha256:$(sha256sum "$directory/cryptad-app-catalog.properties" | awk '{print $1}')" == "$expected_catalog_digest" ]]
+              if [[ -n "$expected_signature_digest" ]]; then
+                [[ "sha256:$(sha256sum "$directory/cryptad-app-catalog.signature" | awk '{print $1}')" == "$expected_signature_digest" ]]
+              fi
+              verified_catalog="$("$catalog_verifier" catalog verify \
+                --catalog-file "$directory/cryptad-app-catalog.properties" \
+                --trusted-keys-file "$trusted_keys")"
+              [[ "$verified_catalog" == "Verified catalog: $catalog_id" ]]
+              [[ "$(awk -F= '$1 == "catalog.signature.key.id" {print $2}' \
+                "$directory/cryptad-app-catalog.signature")" == "$expected_signing_key" ]]
+              verified_address=true
+            done <<< "$resolution_rows"
+            [[ "$verified_address" == true ]]
           }
 
           verify_catalog_location \
