@@ -2524,12 +2524,16 @@ jobs:
             [[ "sha256:$(sha256sum "$verify_dir/$name" | awk '{print $1}')" == "$digest" ]] || exit 1
           done < <(jq -r '.[] | [.name, .role, (.sizeBytes | tostring), .digest] | @tsv' <<< "$assets_json")
 
+          verify_artifact_base_assets pre-finalization
+
           verify_catalog_location \
             "$primary_uri" primary pre-finalization "$catalog_digest" "$signature_digest" "$catalog_signing_key"
           while IFS=$'\t' read -r location_id mirror_uri; do
             verify_catalog_location \
               "$mirror_uri" "$location_id" pre-finalization "$catalog_digest" "$signature_digest" "$catalog_signing_key"
           done < <(jq -r '.catalog.mirrors[] | [.locationId, .publicUri] | @tsv' "$plan")
+          verify_catalog_location \
+            "$rollback_uri" rollback pre-finalization "$rollback_digest" "" "$catalog_signing_key"
 
           if [[ "$(jq -r '.draft' <<< "$release_json")" == true ]]; then
             begin_publication_side_effect

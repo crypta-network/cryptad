@@ -3490,7 +3490,38 @@ class StableGaSecurityAndDeterminismTest(unittest.TestCase):
             literal_result.stdout.strip(),
         )
         self.assertEqual(1, workflow.count("verify_artifact_base_assets preflight"))
+        self.assertEqual(
+            1,
+            workflow.count("verify_artifact_base_assets pre-finalization"),
+        )
         self.assertEqual(1, workflow.count("verify_artifact_base_assets final"))
+        pre_finalization_artifact_base = workflow.index(
+            "\n          verify_artifact_base_assets pre-finalization\n"
+        )
+        pre_finalization_primary = workflow.index(
+            '"$primary_uri" primary pre-finalization',
+            pre_finalization_artifact_base,
+        )
+        pre_finalization_rollback = workflow.index(
+            '"$rollback_uri" rollback pre-finalization',
+            pre_finalization_primary,
+        )
+        undraft_condition = workflow.index(
+            '\n          if [[ "$(jq -r \'.draft\' <<< "$release_json")" == true ]]; then',
+            pre_finalization_rollback,
+        )
+        undraft_boundary = workflow.index(
+            "\n            begin_publication_side_effect\n",
+            undraft_condition,
+        )
+        undraft_patch = workflow.index(
+            "gh api --method PATCH",
+            undraft_boundary,
+        )
+        self.assertLess(pre_finalization_artifact_base, pre_finalization_primary)
+        self.assertLess(pre_finalization_primary, pre_finalization_rollback)
+        self.assertLess(pre_finalization_rollback, undraft_boundary)
+        self.assertLess(undraft_boundary, undraft_patch)
         final_artifact_base = workflow.index("verify_artifact_base_assets final")
         self.assertLess(final_artifact_base, final_boundary_refresh)
         materializer_start = workflow.index("\n          materialize_external() {")
