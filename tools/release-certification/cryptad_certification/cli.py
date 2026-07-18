@@ -27,6 +27,7 @@ COMMANDS = (
     "go-no-go",
     "stable-readiness",
     "stable-rc",
+    "stable-ga",
 )
 MULTI_NODE_ACTIONS = (
     "plan",
@@ -58,6 +59,7 @@ SELF_TEST_SUITES = (
     "go-no-go",
     "stable-readiness",
     "stable-rc",
+    "stable-ga",
     "migration",
 )
 
@@ -188,6 +190,79 @@ def _validate_stable_rc_manifest(manifest: RunManifest) -> None:
         )
 
 
+def _validate_stable_ga_manifest(manifest: RunManifest) -> None:
+    """Reject Stable GA validation unless every immutable input is explicit."""
+
+    if manifest.release.profile != "stable-review":
+        raise ValueError("stable-ga requires release.profile stable-review")
+    version = manifest.release.version
+    if version is None or re.fullmatch(r"[1-9][0-9]*", version) is None:
+        raise ValueError("stable-ga requires a canonical positive integer release.version")
+    required_inputs = {
+        "selectedStableRcSummary",
+        "selectedStableRcFreeze",
+        "selectedStableRcFreezeSidecar",
+        "selectedStableRcArchive",
+        "selectedStableRcProduct",
+        "selectedStableRcChecksums",
+        "selectedStableRcProvenance",
+        "selectedStableRcLineage",
+        "previousCandidate",
+        "stableRcValidation",
+        "stableGaPolicy",
+    }
+    missing = sorted(required_inputs.difference(manifest.inputs))
+    if missing:
+        raise ValueError(
+            "stable-ga requires explicit immutable inputs: " + ", ".join(missing)
+        )
+    mode = manifest.commands.get("stable-ga", {}).get("mode", "validate-only")
+    if mode not in {"validate-only", "prepare-authorization"}:
+        raise ValueError(
+            "stable-ga command mode must be validate-only or prepare-authorization"
+        )
+    if mode == "validate-only" and "stableGaAuthorization" not in manifest.inputs:
+        raise ValueError("stable-ga validate-only requires inputs.stableGaAuthorization")
+    if mode == "prepare-authorization" and "stableGaAuthorization" in manifest.inputs:
+        raise ValueError(
+            "stable-ga prepare-authorization must not include inputs.stableGaAuthorization"
+        )
+    if mode == "prepare-authorization" and "stableGaPublicationReceipt" in manifest.inputs:
+        raise ValueError(
+            "stable-ga prepare-authorization cannot verify a publication receipt"
+        )
+    expected_policies = {
+        "catalogChannel": "stable",
+        "publicationIntent": "prepare-explicit-protected-publication",
+    }
+    for field, expected in expected_policies.items():
+        if manifest.policies.get(field) != expected:
+            raise ValueError(f"stable-ga requires policies.{field} {expected}")
+    commit = manifest.policies.get("candidateSourceCommit")
+    if not isinstance(commit, str) or re.fullmatch(r"[0-9a-f]{40,64}", commit) is None:
+        raise ValueError("stable-ga requires a canonical policies.candidateSourceCommit")
+    source_ref = manifest.policies.get("candidateSourceRef")
+    if source_ref != f"commit:{commit}":
+        raise ValueError(
+            "stable-ga requires policies.candidateSourceRef to be the selected immutable "
+            "commit:<sha> identity"
+        )
+    previous_release = manifest.policies.get("expectedPreviousReleaseId")
+    if not isinstance(previous_release, str) or not previous_release:
+        raise ValueError("stable-ga requires policies.expectedPreviousReleaseId")
+    previous_product = manifest.policies.get("expectedPreviousProductDigest")
+    if not isinstance(previous_product, str) or re.fullmatch(
+        r"sha256:[0-9a-f]{64}", previous_product
+    ) is None:
+        raise ValueError("stable-ga requires policies.expectedPreviousProductDigest")
+    metadata = manifest.policies.get("metadata")
+    required_metadata = {"catalogPrimaryUri", "catalogMirrorUris"}
+    if not isinstance(metadata, dict) or not required_metadata.issubset(metadata):
+        raise ValueError(
+            "stable-ga requires public catalog primary and mirror URIs in policies.metadata"
+        )
+
+
 def _run_command(args: argparse.Namespace) -> int:
     command = str(args.command)
     if getattr(args, "self_test", False):
@@ -199,6 +274,8 @@ def _run_command(args: argparse.Namespace) -> int:
     manifest = load_manifest(manifest_path.resolve(), workspace_root, args.out_root)
     if command == "stable-rc":
         _validate_stable_rc_manifest(manifest)
+    if command == "stable-ga":
+        _validate_stable_ga_manifest(manifest)
     prepare_run_root(manifest)
 
     previous = Path.cwd()

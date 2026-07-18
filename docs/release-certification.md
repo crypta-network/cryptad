@@ -38,7 +38,7 @@ files, never in the manifest.
 | `developer-dry-run` | End-to-end local or PR-safe rehearsal. | May use fixtures or skip expensive build stages, but can never become promotion-ready. |
 | `release-candidate` | Strict candidate certification. | Missing, stale, skipped, malformed, or failing required evidence blocks promotion unless policy permits a valid waiver. |
 | `production-beta` | Protected beta candidate. | Adds production signing, live-network, previous-candidate, sandbox, archive, and dashboard requirements. |
-| `stable-review` | Stable 1.0 promotion review. | Requires production-beta evidence plus the Stable readiness policy and complete Stable domain rows. |
+| `stable-review` | Stable 1.0 readiness, RC freeze, and GA review. | Requires production evidence, complete Stable domains, immutable RC lineage, and the command-specific authorization policy. |
 
 ## Release workspace
 
@@ -58,6 +58,7 @@ Each run writes:
   go-no-go/
   stable-readiness/
   stable-rc/
+  stable-ga/
 ```
 
 Each component contains `summary.json`, `report.md`, `redaction-report.json`, and `artifacts/`.
@@ -66,10 +67,12 @@ with a matching marker, release ID, version, and profile. Detailed engine-native
 below `artifacts/legacy/`; validated attached input extracts live below `artifacts/inputs/`.
 
 Manifests are non-secret configuration: both secret-like field names and scalar values containing
-private keys or URIs, authorization data, credentials, or secret assignments are rejected before
-workspace creation. Published input references are resolved first and represented only as
-`<repo>/...` or `<external-input>`. Evidence from a nonzero component exit is always failed and
-cannot be reused as a passing or warning input.
+private keys or URIs, credentials, private authorization material, or secret assignments are
+rejected before workspace creation. The only GA authorization field is the exact
+`inputs.stableGaAuthorization` path to a redaction-safe protected record; a similarly named field
+elsewhere does not bypass manifest scanning. Published input references are resolved first and
+represented only as `<repo>/...` or `<external-input>`. Evidence from a nonzero component exit is
+always failed and cannot be reused as a passing or warning input.
 
 Legacy outputs that lack a redaction block are scanned in full before the common envelope can pass;
 malformed metadata, detected private/path material, and false direct or nested guarantees fail
@@ -111,6 +114,16 @@ versioned freeze, drift report, promotion summary, RC go/no-go report, known lim
 notes, checksums, provenance, and deterministic public archive. Its schema and release-manager
 procedure are documented in
 [Stable 1.0 RC execution and release freeze](stable-1.0-rc-execution-and-release-freeze.md).
+
+The `stable-ga/` component is created only by the side-effect-free Stable 1.0 GA command. It
+authenticates the selected RC summary, freeze, sidecar, outer archive, deterministic product,
+checksums, provenance, latest successful freeze/refreeze lineage, and frozen catalog/app/API/profile
+identities. It then validates protected post-freeze evidence and an explicit GA authorization bound
+to those exact digests. Its native output includes GA validation and promotion records, release
+notes, known limitations, a publication plan, checksums, provenance, and the post-1.0 maintenance
+baseline. Publication remains a separate protected operation and is successful only after a
+matching receipt passes a fresh `stable-ga` verification. See
+[Stable 1.0 RC validation and GA promotion](stable-1.0-rc-validation-and-ga-promotion.md).
 
 ## Required evidence
 
@@ -192,8 +205,11 @@ the shared history directory together with the release workspace.
 ## Waivers and redaction
 
 Waivers remain evidence-specific, approved, owned, scoped, referenced, and time-bounded. A waiver
-for release-candidate scope does not apply to production beta or Stable review. Malformed,
-expired, under-severity, unknown-evidence, or incomplete waivers fail validation.
+for release-candidate scope does not apply to production beta or Stable review. Existing RC
+waivers carry into GA only when the frozen policy explicitly permits Stable GA scope and the waiver
+remains valid. GA cannot create a broader waiver for lineage, archive identity, API/profile drift,
+catalog/app trust, security, sandbox, live-network, upgrade, backup/restore, or redaction failures.
+Malformed, expired, under-severity, unknown-evidence, or incomplete waivers fail validation.
 
 Redaction findings involving secrets, private insert URIs, private or signing keys, tokens,
 cookies, authorization headers, raw fetched content, raw app data, raw trust/social/profile/feed

@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/crypta-network/cryptad/tools/release-certification/schemas/stable-1.0-ga-authorization-v1.schema.json",
+  "title": "Cryptad Stable 1.0 GA protected publication authorization v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "kind", "generatedAt", "authorizationId", "releaseId", "buildVersion",
+    "sourceCommit", "freezeDigest", "archiveDigest", "productDistributionDigest", "catalogDigest",
+    "catalogRevision", "gaValidationDigest", "publicationTargets", "publicationTargetsDigest",
+    "status", "authorizationRole", "approverIdentity",
+    "approvedAt", "expiresAt", "reviewWindowHours", "allowedPublicationScope", "redaction"
+  ],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "kind": {"const": "stable-1.0-ga-authorization"},
+    "generatedAt": {"type": "string", "format": "date-time"},
+    "authorizationId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"},
+    "releaseId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"},
+    "buildVersion": {"$ref": "#/$defs/buildVersion"},
+    "sourceCommit": {"$ref": "#/$defs/commit"},
+    "freezeDigest": {"$ref": "#/$defs/digest"},
+    "archiveDigest": {"$ref": "#/$defs/digest"},
+    "productDistributionDigest": {"$ref": "#/$defs/digest"},
+    "catalogDigest": {"$ref": "#/$defs/digest"},
+    "catalogRevision": {"type": "integer", "minimum": 0},
+    "gaValidationDigest": {"$ref": "#/$defs/digest"},
+    "publicationTargets": {"$ref": "#/$defs/publicationTargets"},
+    "publicationTargetsDigest": {"$ref": "#/$defs/digest"},
+    "status": {"const": "authorized"},
+    "authorizationRole": {"const": "stable-release-manager"},
+    "approverIdentity": {
+      "type": "string",
+      "pattern": "^(?!.*(?:[Rr][Ee][Pp][Ll][Aa][Cc][Ee][_ -]?[Mm][Ee]|[Pp][Ll][Aa][Cc][Ee][Hh][Oo][Ll][Dd][Ee][Rr]|[Ee][Xx][Aa][Mm][Pp][Ll][Ee]|[Uu][Nn][Kk][Nn][Oo][Ww][Nn]|[Aa][Nn][Oo][Nn][Yy][Mm][Oo][Uu][Ss]|[Nn]/?[Aa])).{3,}$"
+    },
+    "approvedAt": {"type": "string", "format": "date-time"},
+    "expiresAt": {"type": "string", "format": "date-time"},
+    "reviewWindowHours": {"type": "integer", "minimum": 1},
+    "allowedPublicationScope": {
+      "const": [
+        "git-tag",
+        "github-release",
+        "release-assets",
+        "stable-catalog-confirmation",
+        "post-publication-verification"
+      ]
+    },
+    "redaction": {"$ref": "#/$defs/redaction"}
+  },
+  "$defs": {
+    "buildVersion": {"type": "string", "pattern": "^[1-9][0-9]*$"},
+    "commit": {"type": "string", "pattern": "^[0-9a-f]{40,64}$"},
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "publicationTargets": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "expectedTag", "expectedReleaseBranch", "artifactBaseUri", "catalog"
+      ],
+      "properties": {
+        "expectedTag": {"type": "string", "pattern": "^v[1-9][0-9]*$"},
+        "expectedReleaseBranch": {
+          "type": "string",
+          "pattern": "^release/[1-9][0-9]*$"
+        },
+        "artifactBaseUri": {"type": "string", "pattern": "^https://[^?#]+/$"},
+        "catalog": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["channel", "primaryUri", "mirrorUris", "rollbackUri"],
+          "properties": {
+            "channel": {"const": "stable"},
+            "primaryUri": {"type": "string", "pattern": "^https://[^?#]+$"},
+            "mirrorUris": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {"type": "string", "pattern": "^https://[^?#]+$"}
+            },
+            "rollbackUri": {"type": "string", "pattern": "^https://[^?#]+$"}
+          }
+        }
+      }
+    },
+    "redaction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "findingCount", "findings"],
+      "properties": {
+        "status": {"const": "pass"},
+        "findingCount": {"const": 0},
+        "findings": {"type": "array", "maxItems": 0}
+      }
+    }
+  }
+}

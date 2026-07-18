@@ -2,7 +2,8 @@
 name: cryptad-release-workflow
 description: |
   Cut and stabilize a Cryptad release branch using integer build-number versioning, v-number tags,
-  and no-squash --no-ff merges into main and develop.
+  no-squash --no-ff merges into main and develop, and the protected Stable 1.0 RC/GA path when the
+  release targets that product milestone.
 ---
 
 # Release workflow (release/<build-number>)
@@ -28,6 +29,11 @@ Build: 2
 - Merge `release/*` into `main` and back-merge into `develop` using **no squash** and `--no-ff`.
 - Stabilization only: allow critical fixes/docs/release tasks; avoid large refactors.
 - Do not rebase/squash release merges.
+- Stable 1.0 is a product/API milestone, not a semantic project version. Keep the integer build and
+  `v<build-number>` tag model; never introduce `1.0.0`.
+- For Stable 1.0, freeze with `stable-rc` and promote that exact product with `stable-ga`. Do not
+  rebuild, re-sign, rewrite the catalog, or create the GA tag/Release outside the explicitly
+  protected publication operation.
 - Use `docs/cryptad-release-workflow-and-runbook.md` as the detailed release-readiness source of
   truth. Current release gates include the release certification report, first-party app
   staging/signing/verification, first-party beta catalog and trusted app-review receipt smoke,
@@ -115,12 +121,41 @@ git checkout -b release/<build-number>
    valid, scoped, approved, unexpired waiver and none of the non-waivable production-beta evidence,
    redaction, signing, live-network, sandbox, multi-node, or artifact-hygiene gates failed.
 
+   For the Stable 1.0 milestone, continue with the canonical freeze and promotion path:
+
+   ```sh
+   cp tools/release-certification/manifests/stable-1.0-rc.example.json \
+     build/stable-1.0-rc.json
+   # Replace every placeholder and provide protected production inputs.
+   python3 tools/release-certification/certify.py stable-rc \
+     --manifest build/stable-1.0-rc.json
+
+   cp tools/release-certification/manifests/stable-1.0-ga.example.json \
+     build/stable-1.0-ga.json
+   # Bind the latest successful freeze, exact product, post-freeze evidence, and authorization.
+   python3 tools/release-certification/certify.py stable-ga \
+     --manifest build/stable-1.0-ga.json
+   ```
+
+   Treat the commands above as validation/preparation boundaries. `stable-rc` does not publish GA,
+   and `stable-ga` never publishes by itself. Dispatch
+   `.github/workflows/stable-1.0-ga-promotion.yml` with publication explicitly enabled only after
+   protected approval. The workflow must revalidate the exact RC, authorization, release branch,
+   public artifact base, catalog targets, and any existing tag/Release/assets before side effects.
+   Retain the verified publication receipt and `stable-1.0-maintenance-baseline.json`. If any frozen
+   payload or release input needs a fix, stop and complete an authorized RC refreeze, then restart
+   post-freeze validation.
+
 3) Stabilize on `release/<build-number>` (critical fixes only). Keep diffs minimal.
 
-4) Tag the release on the release branch:
+4) Tag the release on the release branch. For an ordinary release, create the tag manually:
 ```sh
 git tag v<build-number>
 ```
+
+For Stable 1.0 GA, do not run that command manually. The explicitly authorized protected
+publication job creates or idempotently verifies the annotated `v<build-number>` tag at the exact
+authorized commit. It does not merge the release branch.
 
 5) Merge forward to `main` (no squash; preserve branch context):
 ```sh
@@ -136,11 +171,15 @@ git pull
 git merge --no-ff release/<build-number>
 ```
 
-7) Push branches and tag:
+7) Push branches and tag for an ordinary release:
 ```sh
 git push origin main develop release/<build-number>
 git push origin v<build-number>
 ```
+
+For Stable 1.0, push the branches after the release-manager-approved merges and verify the tag
+against the retained publication receipt; the protected GA publication job already owns tag and
+GitHub Release creation.
 
 ---
 
@@ -179,6 +218,13 @@ git push origin v<build-number>
       compatibility-sensitive behavior changed.
 - [ ] Performance smoke passed or scheduled/manual CI evidence recorded when release readiness or
       performance-sensitive changes require it.
+- [ ] For Stable 1.0, the selected RC is the latest successful protected freeze/refreeze;
+      freeze/product/archive/catalog/app/API/profile digests match; post-freeze production
+      validation and explicit GA authorization pass; `rcProductDigest == gaProductDigest`; and the
+      protected publication receipt verifies the tag, Release assets, notes, artifact base, and
+      catalog primary/mirrors before publication is called complete.
+- [ ] For Stable 1.0, retain `stable-1.0-maintenance-baseline.json`; do not create the tag or
+      GitHub Release from tests, local validation, or an ordinary PR workflow.
 - [ ] Release record excludes `artifacts/private-insert-uris.json`, private signing keys, private
       reviewer keys, form passwords, app tokens, browser-session tokens, raw request bodies, raw
       feed bodies, raw social message bodies, raw trust documents, raw app-data values, raw

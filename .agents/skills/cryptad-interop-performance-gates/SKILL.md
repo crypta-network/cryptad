@@ -1,6 +1,6 @@
 ---
 name: cryptad-interop-performance-gates
-description: "Maintain Cryptad's Hyphanet interop, performance regression, release-certification evidence gates, and production beta release pipeline under tools/interop, tools/perf, tools/release-certification, CI jobs, and release-readiness documentation."
+description: "Maintain Cryptad's Hyphanet interop, performance regression, release-certification evidence gates, production beta pipeline, Stable 1.0 RC freeze, and exact-byte GA promotion under tools/interop, tools/perf, tools/release-certification, CI, and release-readiness documentation."
 ---
 
 # Cryptad interop and performance gates
@@ -16,6 +16,9 @@ related CI jobs, or release-gate documentation.
 - Production beta release pipeline: `docs/production-beta-release-pipeline.md`
 - Production beta go/no-go dashboard: `docs/production-beta-go-no-go-dashboard.md`
 - Stable 1.0 readiness gate: `docs/stable-1.0-readiness-gate.md`
+- Stable 1.0 RC execution and freeze: `docs/stable-1.0-rc-execution-and-release-freeze.md`
+- Stable 1.0 RC validation and GA promotion:
+  `docs/stable-1.0-rc-validation-and-ga-promotion.md`
 - Multi-node beta soak and upgrade drill: `docs/multi-node-beta-soak-and-upgrade-drill.md`
 - Ecosystem RC certification gate: `docs/ecosystem-rc-certification-gate.md`
 - Release certification tooling: `tools/release-certification/README.md`
@@ -108,6 +111,20 @@ build/release-certification/<release-id>/security-response/
   known limitations, and Stable-scoped waivers. Required consumers must reject malformed summaries,
   mismatched `releaseId`, missing `stable-1.0.*` evidence rows, failed redaction, stale security or
   soak evidence, and non-release production beta inputs.
+- `tools/release-certification/certify.py stable-rc` is the only canonical Stable 1.0 RC execution
+  and freeze command. It reuses the `stable-review` profile, executes the required production and
+  readiness stages, freezes the candidate, emits the deterministic product and outer RC archives,
+  records checksums/provenance/limitations/API/content-profile/catalog/app identities, and verifies
+  post-package drift. Do not create a second RC format or promote any result with
+  `promotionReady=false`, `nonRelease=true`, incomplete freeze, drift other than `no-drift`, or a
+  decision outside `go` and policy-compliant `go-with-waivers`.
+- `tools/release-certification/certify.py stable-ga` is side-effect-free. It authenticates the
+  selected RC summary, freeze/sidecar, product/archive/checksums/provenance, latest successful
+  protected freeze/refreeze lineage, and frozen catalog/app/API/profile identities. It requires
+  production post-freeze evidence and an explicit protected authorization bound to the exact
+  digests, emits deterministic promotion/publication/maintenance records, and verifies a supplied
+  publication receipt. It never creates a tag, GitHub Release, branch, catalog update, or network
+  insert. Any payload change must return to `stable-rc` refreeze.
 - `tools/release-certification/certify.py app-platform` produces the app-platform summary consumed by
   the aggregator. It keeps `--self-test` offline and Python-only, including source/test evidence
   for the Platform API contract, Platform API 1.0 stable baseline, compatibility-window metadata,
@@ -220,6 +237,16 @@ cp tools/release-certification/manifests/production-beta.example.json \
   build/production-beta.json
 # Replace every placeholder before running the protected pipeline.
 python3 tools/release-certification/certify.py production-beta --manifest build/production-beta.json
+cp tools/release-certification/manifests/stable-1.0-rc.example.json \
+  build/stable-1.0-rc.json
+# Replace every placeholder and use protected production inputs.
+python3 tools/release-certification/certify.py stable-rc \
+  --manifest build/stable-1.0-rc.json
+cp tools/release-certification/manifests/stable-1.0-ga.example.json \
+  build/stable-1.0-ga.json
+# Bind the selected exact RC, post-freeze evidence, and protected authorization.
+python3 tools/release-certification/certify.py stable-ga \
+  --manifest build/stable-1.0-ga.json
 ```
 
 - Release-candidate mode fails when required evidence is missing, skipped, malformed, wrong-mode,
@@ -383,5 +410,16 @@ python3 tools/release-certification/certify.py production-beta --manifest build/
   performance input paths when those producer steps did not run. Release-candidate history is
   required only when a history artifact is supplied or policy explicitly requires it; protected
   production-beta runs continue to require candidate-bound history.
+- `.github/workflows/stable-1.0-rc-release.yml` is the protected RC producer. It authenticates
+  candidate-bound inputs, runs `stable-rc`, uploads only the passing public component, and performs
+  no GA tag/Release/catalog publication. Its concurrency key is shared with Stable GA for the same
+  release/build so a refreeze cannot race publication.
+- `.github/workflows/stable-1.0-ga-promotion.yml` separates a read-only validation job from an
+  explicitly dispatched protected publication job. Treat external validation and authorization
+  evidence as protected producer artifacts with attested digests. Reauthenticate the latest RC
+  lineage, release branch, evidence freshness, authorization expiry, artifact base, and catalog
+  targets immediately before mutation boundaries. Conflict and recovery paths must inspect and
+  record public state without creating or repairing it. Matching existing tag/Release/assets are
+  idempotent only after the same checks pass; mismatches produce a verified failure receipt.
 - Release notes should mention interop, performance, or certification gate changes only when they
   affect release readiness, operator confidence, app/platform behavior, or packager workflows.

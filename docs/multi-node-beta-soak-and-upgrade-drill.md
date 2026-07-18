@@ -57,6 +57,14 @@ Release-candidate and production evidence must be fresh, explicitly attached or 
 current run, candidate-bound, and redaction-safe. A stale default summary from another workspace
 must never be reused.
 
+For Stable GA, general beta evidence is not sufficient unless a protected post-freeze validation
+record binds every required scenario to the selected RC source commit, freeze digest, deterministic
+product digest, outer archive digest, and stable catalog digest. Scenario start times must be at or
+after the authenticated protected freeze completion. The production matrix must cover the required
+clean install, previous-candidate upgrade, rollback/recovery, app-data migration, backup/restore,
+first-party state preservation, and deliberately failed-upgrade support-bundle drill; simulated or
+fixture-only topology results cannot satisfy that gate.
+
 Private insert URIs, tokens, browser sessions, raw app data, raw messages, raw trust documents,
 node profile paths, rollback backup paths, and local absolute paths are excluded from release
 artifacts.

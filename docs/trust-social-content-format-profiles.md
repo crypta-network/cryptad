@@ -165,6 +165,18 @@ offline evidence proves:
 Missing or failing content-profile evidence is a production-beta blocker when it indicates signed
 or canonical format drift.
 
+## Stable 1.0 freeze and maintenance baseline
+
+The Stable RC freeze records `content-format-profiles.json` and the registry/canonicalization
+digests exercised by the product and first-party apps. Stable GA re-authenticates those exact
+bytes. A profile id, version, content type, filename, size limit, signing domain, canonicalization
+rule, or app binding cannot change between the selected RC and GA authorization.
+
+The post-GA maintenance baseline retains the frozen profile versions and canonicalization digests
+for future maintenance and hotfix comparison. If a content-profile defect requires a change before
+GA, stop validation and complete a new authorized RC refreeze; do not patch the GA metadata or
+waive format drift.
+
 ## Non-goals
 
 These profiles do not implement WoT, Freetalk, Sone, Freemail, or old plugin ABI/protocol

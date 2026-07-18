@@ -82,6 +82,25 @@ Allowed limitations remain separate from `go-with-waivers`. A beta-only or disal
 cannot be copied into the RC as an allowed limitation, and a freeze exception cannot reclassify or
 waive it.
 
+## Stable GA copy-through
+
+The [Stable GA promotion workflow](stable-1.0-rc-validation-and-ga-promotion.md) copies the exact
+allowed limitations from the selected RC into `stable-1.0-ga-known-limitations.json`, the generated
+GA release notes, promotion record, and Stable 1.0 maintenance baseline. It does not remove,
+reorder, broaden, or reclassify them.
+
+Post-freeze validation must confirm that no new Stable blocker, beta-only limitation, or disallowed
+limitation appeared during the required real soak and release drills. Existing RC waivers may be
+carried only when they remain current, scoped, policy-compliant, and explicitly allowed for GA.
+A GA waiver cannot hide digest drift, archive failure, API or content-profile drift, catalog or app
+trust failure, compromised keys, failed upgrade or restore, failed security/live/sandbox evidence,
+or redaction findings.
+
+If a limitation requires a change to the frozen payload or catalog, stop GA promotion and use the
+Stable RC authorized exception and refreeze path. Validate the new exact freeze from the beginning.
+After publication, the maintenance baseline remains the authoritative carried-limitation set for
+future compatible maintenance and hotfix comparisons.
+
 ## Redaction
 
 Known limitations and release notes must never include private insert URIs, private keys, app

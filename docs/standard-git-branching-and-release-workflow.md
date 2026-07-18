@@ -24,7 +24,16 @@ model. A Stable 1.0 release candidate still belongs to the intended integer buil
 published, follows the normal `release/<build-number>` and `v<build-number>` workflow. The
 [Stable RC release-freeze command](stable-1.0-rc-execution-and-release-freeze.md) prepares evidence
 for review only; it does not create a branch or tag, merge code, publish a GitHub Release, or
-declare GA.
+declare GA. The subsequent
+[Stable GA validation and promotion process](stable-1.0-rc-validation-and-ga-promotion.md) preserves
+the same integer model and promotes the exact frozen RC bytes.
+
+For Stable 1.0 GA, validation, authorization, and publication are separate. The side-effect-free
+`stable-ga` command does not create Git state. The protected publication operation verifies the
+expected `release/<build-number>` branch and authorized commit, then creates or verifies an
+annotated `v<build-number>` tag through the required `leumor` GitHub identity. It never creates a
+`v1.0.0` tag and never merges the release branch automatically. Complete the normal no-squash
+`--no-ff` merge into `main` and back-merge into `develop` as explicit maintainer operations.
 
 ## Branching Model (GitFlow‑inspired)
 
@@ -116,6 +125,15 @@ Outcome: Production receives `v3`; `develop` is updated to include the hotfix.
 - [ ] Merged to `main` (no squash), then back‑merged to `develop`.
 - [ ] Pushed tags and branches.
 - [ ] Release notes updated (if applicable).
+
+For a Stable 1.0 GA publication, also confirm:
+
+- [ ] The latest successful frozen RC completed exact-byte post-freeze validation.
+- [ ] Explicit GA authorization binds the final immutable validation identity and publication scope.
+- [ ] The protected publication receipt verifies the annotated tag, GitHub Release assets, notes,
+      and exact stable catalog bytes at the primary, mirrors, and authorized rollback location.
+- [ ] Publication state is `publication-complete`, not merely `validated` or
+      `publication-authorized`.
 
 ## Notes on Updater Compatibility
 

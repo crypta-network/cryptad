@@ -10,7 +10,7 @@ Use this skill when the task is mostly about words rather than code.
 ## Scope
 
 - Repo docs in repo-root `README.md`, `docs/**/*.md`, and changelog artifacts such as `changelog-full.md`, `changelog-short.txt`, and `changelog-full.txt`.
-- GitHub release bodies and operator-facing upgrade notes.
+- GitHub release bodies, generated Stable RC/GA note templates, and operator-facing upgrade notes.
 - Technical deep dives, architecture notes, and wiki/blog-style articles about Cryptad.
 
 ## Workflow
@@ -25,3 +25,5 @@ Use this skill when the task is mostly about words rather than code.
 - Keep prose aligned with repo conventions from `AGENTS.md`: `python3`, `./gradlew`, no `--no-daemon`, no `--parallel`, and no CLI JVM tuning.
 - Treat GitHub Releases as the authoritative changelog unless the task explicitly targets repo-root `docs/legacy/NEWS.md`.
 - Prefer concrete commands, file paths, build numbers, and platform names over broad claims.
+- Keep validation, authorization, and publication distinct in Stable release prose. Never write
+  that GA was published unless a verified publication receipt proves the public state.

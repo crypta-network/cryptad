@@ -1,0 +1,122 @@
+{
+  "schemaVersion": 1,
+  "kind": "stable-1.0-ga-policy",
+  "stableMilestone": "1.0",
+  "component": "stable-ga",
+  "profile": "stable-review",
+  "owner": "crypta-release-engineering",
+  "postFreezeValidation": {
+    "minimumLiveSoakDurationSeconds": 86400,
+    "maximumEvidenceAgeDays": 14,
+    "minimumNodeCount": 2,
+    "minimumOperationCount": 500,
+    "requiredOperatingSystems": [
+      "linux",
+      "macos",
+      "windows"
+    ],
+    "requiredPackageTypesByOperatingSystem": {
+      "linux": [
+        "deb",
+        "rpm"
+      ],
+      "macos": [
+        "dmg"
+      ],
+      "windows": [
+        "exe"
+      ]
+    },
+    "requiresExactRcBinding": true,
+    "requiresProductionEvidence": true,
+    "fixtureEvidenceAllowed": false,
+    "simulatedOnlyEvidenceAllowed": false,
+    "skippedEvidenceAllowed": false,
+    "requiredEvidenceWindows": {
+      "longSoakDays": 14,
+      "installationPackagingDays": 14,
+      "upgradeRollbackMigrationDays": 14,
+      "liveNetworkDays": 14,
+      "interoperabilityDays": 14,
+      "performanceDays": 14,
+      "sandboxDays": 14,
+      "securityDrillsDays": 14,
+      "supportDiagnosticsDays": 14,
+      "catalogOperationsDays": 14
+    },
+    "requiredScenarioIds": [
+      "post-freeze.long-soak",
+      "post-freeze.installation-packaging-matrix",
+      "post-freeze.upgrade-rollback-state-preservation",
+      "post-freeze.live-network",
+      "post-freeze.interoperability",
+      "post-freeze.performance",
+      "post-freeze.sandbox-provider",
+      "post-freeze.security-response",
+      "post-freeze.support-diagnostics",
+      "post-freeze.catalog-operations"
+    ]
+  },
+  "authorization": {
+    "requiredRole": "stable-release-manager",
+    "allowedPublicationScope": [
+      "git-tag",
+      "github-release",
+      "release-assets",
+      "stable-catalog-confirmation",
+      "post-publication-verification"
+    ],
+    "wildcardScopeAllowed": false,
+    "requiresExpiration": true,
+    "requiresPublicAuditIdentity": true,
+    "requiresRedactionPass": true
+  },
+  "allowedRcWaiverIds": [],
+  "publication": {
+    "intent": "prepare-explicit-protected-publication",
+    "validationIsSideEffectFree": true,
+    "protectedPublicationRequired": true,
+    "requiredStates": [
+      "validated",
+      "publication-authorized",
+      "publication-complete",
+      "publication-verification-failed"
+    ],
+    "allowedDecisions": [
+      "go",
+      "no-go",
+      "go-with-waivers"
+    ]
+  },
+  "nonWaivableBlockers": [
+    "stable-ga.rc-lineage",
+    "stable-ga.archive-integrity",
+    "stable-ga.payload-identity",
+    "stable-ga.platform-api-drift",
+    "stable-ga.catalog-app-drift",
+    "stable-ga.content-profile-drift",
+    "stable-ga.long-soak",
+    "stable-ga.installation-packaging",
+    "stable-ga.upgrade-rollback-migration-backup",
+    "stable-ga.live-network-interoperability",
+    "stable-ga.performance",
+    "stable-ga.sandbox",
+    "stable-ga.security",
+    "stable-ga.support-redaction",
+    "stable-ga.authorization",
+    "stable-ga.publication-conflict",
+    "stable-ga.disallowed-limitation"
+  ],
+  "maintenanceEvidenceWindows": {
+    "securityAndHotfixDays": 14,
+    "catalogAndAppPatchDays": 14,
+    "upgradeRollbackDays": 14,
+    "liveNetworkInteropPerformanceDays": 14,
+    "supportDiagnosticsDays": 14
+  },
+  "maintenanceBaseline": {
+    "minimumDeprecationWindowContractVersions": 2,
+    "minimumRemovalWindowContractVersions": 2,
+    "criticalStableRemovalWaiverAllowed": false
+  }
+}

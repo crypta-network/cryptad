@@ -185,6 +185,19 @@ reports must be redacted and must not include local absolute paths, private inse
 keys, app tokens, browser session tokens, raw fetched content, raw app data, or raw submission ZIP
 contents.
 
+## Stable 1.0 maintenance baseline
+
+The Stable RC freeze authenticates the current contract, the immutable Platform API 1.0 baseline,
+the stable diff, and this compatibility-window policy by digest. Stable GA must carry those exact
+identities into `stable-1.0-maintenance-baseline.json`; authorization cannot waive a changed stable
+surface or substitute a newer contract snapshot.
+
+For later maintenance and hotfix releases, compare the candidate against the GA maintenance
+baseline as well as any immediately previous production snapshot. Compatible additions and
+deprecations still follow this support window, and Platform API 1.0 removals or access/capability
+regressions remain non-waivable. A pre-GA API fix requires a new Stable RC freeze and a complete
+post-freeze validation cycle.
+
 ## Experimental-To-Stable Graduation
 
 The experimental-to-stable graduation process is a future-baseline process. It does not mutate Platform API

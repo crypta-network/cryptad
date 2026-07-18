@@ -183,3 +183,23 @@ Production beta release artifacts must remain redacted. The certification row ma
 statuses, ids, route names, booleans, digests, and bounded error codes, but it must not include
 private insert URI values, private keys, tokens, raw content, raw app data, scratch paths, staged
 paths, or absolute local paths.
+
+## Stable GA publication
+
+The Stable RC freeze binds the exact signed stable catalog bytes, signature sidecar, catalog id,
+revision, generated timestamp, signing key id, first-party app entries, bundle/review digests,
+rollback revision, and accepted exception history. Stable GA publishes or confirms those same
+bytes; it does not rewrite the catalog, change an artifact URL, advance the revision, or re-sign a
+bundle between RC selection and promotion.
+
+The protected GA publication plan names one canonical public primary and distinct canonical public
+mirrors. Before any tag or Release mutation, the workflow resolves each target to public addresses,
+pins the fetch to the validated address set, and verifies that the current catalog, signature, and
+rollback revision already match the authorized digests. It repeats the fetch after publication.
+A stale mirror, duplicate location, missing sidecar, wrong rollback revision, untrusted signature,
+or byte mismatch produces `publication-verification-failed`.
+
+The redaction-safe publication receipt records public location ids/URIs and verification results.
+It never records private insert URIs, credentials, authorization headers, raw catalog content,
+private signing material, or runner-local paths. See
+[Stable 1.0 RC validation and GA promotion](stable-1.0-rc-validation-and-ga-promotion.md).

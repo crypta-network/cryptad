@@ -94,9 +94,12 @@ GitHub Actions check-run lineage anchor tied to the run, attempt, candidate, bui
 commit. If the short-lived artifact has expired or is otherwise unavailable, a retained copy of
 the freeze is accepted only when its digest matches that exact anchor for the latest successful
 run. A stale parent, missing or mismatched anchor, or unavailable workflow history fails closed.
-The protected workflow also serializes executions for the same candidate and rejects reruns in
-`first-freeze` mode. Release managers must retain the canonical freeze outside the expiring
-workflow artifact when future refreezes may be required.
+The protected workflow shares an integer-build concurrency lock with Stable GA promotion, so a
+freeze/refreeze cannot run while GA validation, approval, or publication for that build is active.
+It also rejects reruns in `first-freeze` mode. Release managers must retain the canonical freeze
+outside the expiring workflow artifact when future refreezes may be required. If an urgent
+refreeze is required while GA is waiting for approval, cancel the GA run first and confirm the
+shared build queue before dispatching the refreeze.
 
 Signing secrets and live insert material must be supplied through the protected environment
 described by the workflow. The manifest contains only paths to sanitized evidence and public-safe
@@ -323,7 +326,7 @@ envelope, and uploads only the public RC component after final go and redaction 
 runner path is serialized into the release manifest or public artifacts.
 
 Select `first-freeze` for the candidate's first successful workflow only. The workflow records the
-release ID and build in its run title, serializes that candidate's executions, and refuses another
+release ID and build in its run title, acquires the build-scoped RC/GA lock, and refuses another
 first freeze after a successful baseline. Select `refreeze` for verification, blocker repair, or
 any later run and provide the freeze from the latest successful protected run. The workflow rejects
 an older lineage parent even when its release ID and build match. It authenticates the exact
@@ -338,6 +341,24 @@ must bind different catalog bytes, and must pass signature verification.
 
 The workflow does not tag, create a GitHub Release, merge a release branch, insert release
 descriptors, or publish GA. If the reviewed RC is later selected for release, follow
+[the Stable 1.0 RC validation and GA promotion runbook](stable-1.0-rc-validation-and-ga-promotion.md)
+first. That process authenticates the latest successful freeze lineage, requires at least 24 hours
+of real post-freeze validation bound to the exact product digest, and records explicit GA
+authorization before any publication operation.
+
+GA promotes the exact frozen RC product and stable catalog bytes. It does not rebuild the
+candidate, patch an RC label inside the product, re-sign apps, or change Platform API 1.0 or
+content-profile membership. A blocker that changes a frozen artifact returns here through the
+authorized exception and complete refreeze path; the new exact freeze must then repeat GA
+validation from the beginning.
+
+The protected GA workflow keeps validation separate from the explicitly dispatched publication
+job. A passing RC or GA validation does not by itself create `release/<build-number>`, an annotated
+`v<build-number>` tag, a GitHub Release, an update descriptor, a stable catalog publication, or a
+network insert. Publication is complete only after the returned receipt verifies the authorized
+public bytes.
+
+Continue to follow
 [the Cryptad release workflow](cryptad-release-workflow-and-runbook.md) and
 [the standard Git workflow](standard-git-branching-and-release-workflow.md) as a separate,
 authorized operation.

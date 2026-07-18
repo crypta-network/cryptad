@@ -1,6 +1,6 @@
 ---
 name: cryptad-packaging
-description: "Build and troubleshoot distributions and installers (assembleCryptadDist, jpackage, Windows wrapper assets, Flatpak, Linux DEB/RPM behavior)."
+description: "Build and troubleshoot distributions and installers, including Stable 1.0 deterministic RC product archives and exact-byte GA promotion (assembleCryptadDist, jpackage, Windows wrapper assets, Flatpak, and Linux DEB/RPM behavior)."
 metadata:
   area: packaging
   domain: cryptad
@@ -14,6 +14,7 @@ Use this skill when working on:
 - Linux installer behavior (DEB/RPM), systemd service, desktop integration
 - Flatpak build and packaging files
 - Windows wrapper asset sourcing/pinning
+- Stable RC deterministic product/archive identity and no-rebuild GA packaging
 
 ## Ownership in the partial multi-project build
 - Packaging remains root-owned.
@@ -122,6 +123,26 @@ Use this skill when working on:
 - `distZipCryptad` / `distTarCryptad` → `build/distributions/cryptad-v<version>.(zip|tar.gz)`
 - `distJlinkCryptad` → `build/distributions/cryptad-jlink-v<version>.(zip|tar.gz)`
 - Both include Windows launchers and binaries.
+
+## Stable 1.0 RC and GA archives
+
+- Use `python3 tools/release-certification/certify.py stable-rc --manifest <copied-manifest>` as the
+  canonical Stable RC packaging boundary. It consumes the production pipeline output and writes
+  `crypta-stable-1.0-rc-<build>-product.tar.gz` plus the outer
+  `cryptad-stable-1.0-rc-<build>.tar.gz`, checksums, provenance, and freeze records.
+- The deterministic product archive is the immutable payload selected for GA. Its tar/gzip
+  ordering, timestamps, uid/gid, names, modes, members, and content digests are part of the freeze.
+  Do not reproduce it by rerunning Gradle, extracting/repacking it, changing an RC marker, or
+  generating a same-version replacement.
+- `stable-ga` copies or references the exact frozen product and verifies its digest before and after
+  GA metadata generation. GA labels, promotion records, notes, checksums, provenance, and the
+  maintenance baseline stay outside the immutable product payload.
+- If a platform package, launcher, migration command, catalog/app member, file mode, or any other
+  payload member must change after freeze, stop promotion and complete a new authorized RC refreeze.
+  A GA waiver cannot hide payload drift.
+- Keep tests and ordinary PR/local runs side-effect-free. They may validate deterministic fixtures
+  and mocked publication receipts, but they must not create tags, Releases, public catalog updates,
+  update descriptors, or network inserts.
 
 ## Installers (jpackage)
 We ship Gradle tasks that build a desktop app image and (on macOS/Linux) native installers via `jpackage`.

@@ -155,6 +155,20 @@ and includes a redacted per-app maintenance summary in the engine-native
 required first-party app is absent from the policy or has an incomplete maintenance block.
 Developer dry-runs warn so maintainers see the problem without needing release credentials.
 
+## Stable 1.0 maintenance baseline
+
+The Stable RC freeze binds this policy to the signed stable catalog and to the exact first-party
+bundle and review-receipt digests. Stable GA does not regenerate, relax, or reinterpret those
+commitments. Its deterministic `stable-1.0-maintenance-baseline.json` copies the frozen owner,
+support, app-data schema, migration, backup/restore, security, deprecation, app version, bundle,
+and review identities for every first-party app.
+
+Future maintenance and hotfix candidates compare against that published baseline. Compatible app
+patches still require signed catalog/app review, migration and backup/restore evidence, rollback
+coverage, and any applicable Platform API/content-profile compatibility evidence. If a commitment
+or bundle must change before the initial Stable GA, stop promotion and complete a new Stable RC
+refreeze instead of patching the GA record.
+
 ## Updating the policy
 
 When adding or changing a first-party app:
@@ -168,3 +182,5 @@ When adding or changing a first-party app:
 5. Update this document if the support table changes.
 6. Run `python3 -u tools/release-certification/certify.py app-platform --self-test` and
    `python3 -u tools/release-certification/certify.py release-certification --self-test`.
+7. If Stable RC bytes have already been frozen, treat the policy change as payload drift and start
+   the authorized refreeze path before any new GA validation.

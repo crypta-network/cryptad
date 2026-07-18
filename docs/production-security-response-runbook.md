@@ -322,6 +322,18 @@ and verifies the recorded SHA-256 digest before copying it below the consuming c
 `artifacts/inputs/` directory. Verification commands copy sidecars from their effective configured
 input directory; they never substitute a stale internal drill run.
 
+For Stable GA, the protected post-freeze validation record must bind every mandatory scenario and
+sidecar digest to the selected RC source commit, freeze, deterministic product, outer archive, and
+stable catalog. Scenario times must begin after the authenticated protected freeze completed and
+remain inside the Stable GA freshness policy at every publication mutation boundary. A
+compromised/unknown catalog, app-signing, or reviewer identity; failed denylist/advisory behavior;
+failed sandbox evidence; or redaction finding is non-waivable.
+
+If a drill exposes a defect that requires code, catalog, bundle, signature, profile, or product
+changes, stop GA validation. Apply the fix through the authorized Stable RC exception/refreeze
+path, then rerun all post-freeze validation against the new exact bytes. Do not relabel earlier
+production-beta drills or copy final digests into pre-freeze evidence.
+
 ## Certification checklist
 
 `production-security.response-runbook` passes only when release certification can prove:

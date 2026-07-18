@@ -1,0 +1,319 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/crypta-network/cryptad/tools/release-certification/schemas/stable-1.0-rc-validation-v1.schema.json",
+  "title": "Cryptad Stable 1.0 exact-RC post-freeze validation v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "kind", "generatedAt", "validationStartedAt", "validationEndedAt", "releaseId",
+    "buildVersion", "profile", "sourceCommit", "sourceRef", "freezeDigest", "productDistributionDigest",
+    "archiveDigest", "stableCatalog", "status", "exactRcBinding", "fixtureOnly", "simulatedOnly",
+    "nonRelease", "policy", "scenarios", "redaction"
+  ],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "kind": {"const": "stable-1.0-rc-validation"},
+    "generatedAt": {"type": "string", "format": "date-time"},
+    "validationStartedAt": {"type": "string", "format": "date-time"},
+    "validationEndedAt": {"type": "string", "format": "date-time"},
+    "releaseId": {"$ref": "#/$defs/releaseId"},
+    "buildVersion": {"$ref": "#/$defs/buildVersion"},
+    "profile": {"const": "stable-review"},
+    "sourceCommit": {"$ref": "#/$defs/commit"},
+    "sourceRef": {"$ref": "#/$defs/nonEmpty"},
+    "freezeDigest": {"$ref": "#/$defs/digest"},
+    "productDistributionDigest": {"$ref": "#/$defs/digest"},
+    "archiveDigest": {"$ref": "#/$defs/digest"},
+    "stableCatalog": {"$ref": "#/$defs/stableCatalog"},
+    "status": {"const": "pass"},
+    "exactRcBinding": {"const": true},
+    "fixtureOnly": {"const": false},
+    "simulatedOnly": {"const": false},
+    "nonRelease": {"const": false},
+    "policy": {"$ref": "#/$defs/policy"},
+    "scenarios": {"$ref": "#/$defs/scenarios"},
+    "redaction": {"$ref": "#/$defs/redaction"}
+  },
+  "$defs": {
+    "nonEmpty": {"type": "string", "minLength": 1},
+    "releaseId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"},
+    "buildVersion": {"type": "string", "pattern": "^[1-9][0-9]*$"},
+    "commit": {"type": "string", "pattern": "^[0-9a-f]{40,64}$"},
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "stableCatalog": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["catalogId", "channel", "revision", "catalogDigest", "signatureDigest", "signingKeyId"],
+      "properties": {
+        "catalogId": {"$ref": "#/$defs/nonEmpty"},
+        "channel": {"const": "stable"},
+        "revision": {"type": "integer", "minimum": 0},
+        "catalogDigest": {"$ref": "#/$defs/digest"},
+        "signatureDigest": {"$ref": "#/$defs/digest"},
+        "signingKeyId": {"$ref": "#/$defs/nonEmpty"}
+      }
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "policyDigest", "minimumLiveSoakDurationSeconds", "maximumEvidenceAgeDays",
+        "minimumNodeCount", "minimumOperationCount"
+      ],
+      "properties": {
+        "policyDigest": {"$ref": "#/$defs/digest"},
+        "minimumLiveSoakDurationSeconds": {"const": 86400},
+        "maximumEvidenceAgeDays": {"const": 14},
+        "minimumNodeCount": {"type": "integer", "minimum": 2},
+        "minimumOperationCount": {"type": "integer", "minimum": 500}
+      }
+    },
+    "binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "releaseId", "buildVersion", "sourceCommit", "freezeDigest", "productDistributionDigest",
+        "archiveDigest", "catalogDigest", "catalogRevision"
+      ],
+      "properties": {
+        "releaseId": {"$ref": "#/$defs/releaseId"},
+        "buildVersion": {"$ref": "#/$defs/buildVersion"},
+        "sourceCommit": {"$ref": "#/$defs/commit"},
+        "freezeDigest": {"$ref": "#/$defs/digest"},
+        "productDistributionDigest": {"$ref": "#/$defs/digest"},
+        "archiveDigest": {"$ref": "#/$defs/digest"},
+        "catalogDigest": {"$ref": "#/$defs/digest"},
+        "catalogRevision": {"type": "integer", "minimum": 0}
+      }
+    },
+    "evidenceBase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status", "classification", "fixtureOnly", "simulatedOnly", "skipped", "startedAt", "endedAt",
+        "binding", "evidenceDigest"
+      ],
+      "properties": {
+        "status": {"const": "pass"},
+        "classification": {"const": "protected-production"},
+        "fixtureOnly": {"const": false},
+        "simulatedOnly": {"const": false},
+        "skipped": {"const": false},
+        "startedAt": {"type": "string", "format": "date-time"},
+        "endedAt": {"type": "string", "format": "date-time"},
+        "binding": {"$ref": "#/$defs/binding"},
+        "evidenceDigest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "longSoak": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status", "classification", "fixtureOnly", "simulatedOnly", "skipped", "startedAt", "endedAt",
+        "binding", "evidenceDigest", "actualDurationSeconds", "nodeCount", "operationCount", "liveNetwork",
+        "stableMemory", "stableThreads", "stableQueues", "unexpectedRestartCount", "stateCorruptionCount",
+        "unboundedSubscriptionGrowth", "interoperability", "performanceComparison"
+      ],
+      "properties": {
+        "status": {"const": "pass"},
+        "classification": {"const": "protected-production"},
+        "fixtureOnly": {"const": false},
+        "simulatedOnly": {"const": false},
+        "skipped": {"const": false},
+        "startedAt": {"type": "string", "format": "date-time"},
+        "endedAt": {"type": "string", "format": "date-time"},
+        "binding": {"$ref": "#/$defs/binding"},
+        "evidenceDigest": {"$ref": "#/$defs/digest"},
+        "actualDurationSeconds": {"type": "integer", "minimum": 86400},
+        "nodeCount": {"type": "integer", "minimum": 2},
+        "operationCount": {"type": "integer", "minimum": 500},
+        "liveNetwork": {"const": "pass"},
+        "stableMemory": {"const": "pass"},
+        "stableThreads": {"const": "pass"},
+        "stableQueues": {"const": "pass"},
+        "unexpectedRestartCount": {"const": 0},
+        "stateCorruptionCount": {"const": 0},
+        "unboundedSubscriptionGrowth": {"const": false},
+        "interoperability": {"const": "pass"},
+        "performanceComparison": {"const": "pass"}
+      }
+    },
+    "installationTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "targetId", "operatingSystem", "architecture", "packageType", "artifactName", "artifactDigest",
+        "status", "classification", "fixtureOnly", "simulatedOnly", "skipped", "startedAt", "endedAt",
+        "binding", "evidenceDigest", "cleanInstall", "packageMetadataVerified", "checksumVerified",
+        "launcherRuntimeDiscovery", "firstRunStateCreation", "startup", "shutdown", "operatorAccess",
+        "diagnostics", "uninstallCleanup"
+      ],
+      "properties": {
+        "targetId": {"$ref": "#/$defs/nonEmpty"},
+        "operatingSystem": {"enum": ["linux", "macos", "windows"]},
+        "architecture": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+        },
+        "packageType": {"enum": ["tar", "deb", "rpm", "dmg", "pkg", "exe", "msi", "flatpak", "snap", "app-image"]},
+        "artifactName": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"},
+        "artifactDigest": {"$ref": "#/$defs/digest"},
+        "status": {"const": "pass"},
+        "classification": {"const": "protected-production"},
+        "fixtureOnly": {"const": false},
+        "simulatedOnly": {"const": false},
+        "skipped": {"const": false},
+        "startedAt": {"type": "string", "format": "date-time"},
+        "endedAt": {"type": "string", "format": "date-time"},
+        "binding": {"$ref": "#/$defs/binding"},
+        "evidenceDigest": {"$ref": "#/$defs/digest"},
+        "cleanInstall": {"const": "pass"},
+        "packageMetadataVerified": {"const": "pass"},
+        "checksumVerified": {"const": "pass"},
+        "launcherRuntimeDiscovery": {"const": "pass"},
+        "firstRunStateCreation": {"const": "pass"},
+        "startup": {"const": "pass"},
+        "shutdown": {"const": "pass"},
+        "operatorAccess": {"const": "pass"},
+        "diagnostics": {"const": "pass"},
+        "uninstallCleanup": {"const": "pass"}
+      }
+    },
+    "installationPackaging": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "requiredTargetCount", "validatedTargetCount", "targets"],
+      "properties": {
+        "status": {"const": "pass"},
+        "requiredTargetCount": {"type": "integer", "minimum": 1},
+        "validatedTargetCount": {"type": "integer", "minimum": 1},
+        "targets": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/installationTarget"}}
+      }
+    },
+    "upgradeRollback": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status", "classification", "fixtureOnly", "simulatedOnly", "skipped", "startedAt", "endedAt",
+        "binding", "evidenceDigest", "previousCandidateDigest", "previousReleaseId", "previousBuildVersion", "previousProductDigest",
+        "daemonUpgrade", "daemonRollbackRecovery", "catalogUpdateRollback", "firstPartyAppInstallUpdateRollback",
+        "appDataMigration", "backupBeforeMigration", "backupRestore", "socialInboxStatePreservation",
+        "trustGraphStatePreservation", "feedReaderStatePreservation", "profilePublisherStatePreservation",
+        "failedUpgradeSupportBundle"
+      ],
+      "properties": {
+        "status": {"const": "pass"},
+        "classification": {"const": "protected-production"},
+        "fixtureOnly": {"const": false},
+        "simulatedOnly": {"const": false},
+        "skipped": {"const": false},
+        "startedAt": {"type": "string", "format": "date-time"},
+        "endedAt": {"type": "string", "format": "date-time"},
+        "binding": {"$ref": "#/$defs/binding"},
+        "evidenceDigest": {"$ref": "#/$defs/digest"},
+        "previousCandidateDigest": {"$ref": "#/$defs/digest"},
+        "previousReleaseId": {"$ref": "#/$defs/releaseId"},
+        "previousBuildVersion": {"$ref": "#/$defs/buildVersion"},
+        "previousProductDigest": {"$ref": "#/$defs/digest"},
+        "daemonUpgrade": {"const": "pass"},
+        "daemonRollbackRecovery": {"const": "pass"},
+        "catalogUpdateRollback": {"const": "pass"},
+        "firstPartyAppInstallUpdateRollback": {"const": "pass"},
+        "appDataMigration": {"const": "pass"},
+        "backupBeforeMigration": {"const": "pass"},
+        "backupRestore": {"const": "pass"},
+        "socialInboxStatePreservation": {"const": "pass"},
+        "trustGraphStatePreservation": {"const": "pass"},
+        "feedReaderStatePreservation": {"const": "pass"},
+        "profilePublisherStatePreservation": {"const": "pass"},
+        "failedUpgradeSupportBundle": {"const": "pass"}
+      }
+    },
+    "securityResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status", "classification", "fixtureOnly", "simulatedOnly", "skipped", "startedAt", "endedAt",
+        "binding", "evidenceDigest", "mandatoryDrills", "catalogSigningIdentityUncompromised",
+        "appSigningIdentitiesUncompromised", "reviewerIdentitiesUncompromised", "denylistAdvisory",
+        "failClosedUpdate", "noNewStableBlocker", "noDisallowedLimitation"
+      ],
+      "properties": {
+        "status": {"const": "pass"},
+        "classification": {"const": "protected-production"},
+        "fixtureOnly": {"const": false},
+        "simulatedOnly": {"const": false},
+        "skipped": {"const": false},
+        "startedAt": {"type": "string", "format": "date-time"},
+        "endedAt": {"type": "string", "format": "date-time"},
+        "binding": {"$ref": "#/$defs/binding"},
+        "evidenceDigest": {"$ref": "#/$defs/digest"},
+        "mandatoryDrills": {"const": "pass"},
+        "catalogSigningIdentityUncompromised": {"const": true},
+        "appSigningIdentitiesUncompromised": {"const": true},
+        "reviewerIdentitiesUncompromised": {"const": true},
+        "denylistAdvisory": {"const": "pass"},
+        "failClosedUpdate": {"const": "pass"},
+        "noNewStableBlocker": {"const": true},
+        "noDisallowedLimitation": {"const": true}
+      }
+    },
+    "catalogOperations": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status", "classification", "fixtureOnly", "simulatedOnly", "skipped", "startedAt", "endedAt",
+        "binding", "evidenceDigest", "primary", "mirrors", "rollback", "keyRotation", "advisoryDenylist",
+        "exactFrozenBytes"
+      ],
+      "properties": {
+        "status": {"const": "pass"},
+        "classification": {"const": "protected-production"},
+        "fixtureOnly": {"const": false},
+        "simulatedOnly": {"const": false},
+        "skipped": {"const": false},
+        "startedAt": {"type": "string", "format": "date-time"},
+        "endedAt": {"type": "string", "format": "date-time"},
+        "binding": {"$ref": "#/$defs/binding"},
+        "evidenceDigest": {"$ref": "#/$defs/digest"},
+        "primary": {"const": "pass"},
+        "mirrors": {"const": "pass"},
+        "rollback": {"const": "pass"},
+        "keyRotation": {"const": "pass"},
+        "advisoryDenylist": {"const": "pass"},
+        "exactFrozenBytes": {"const": true}
+      }
+    },
+    "scenarios": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "longSoak", "installationPackaging", "upgradeRollbackStatePreservation", "liveNetwork",
+        "interoperability", "performance", "sandboxProvider", "securityResponse", "supportDiagnostics",
+        "catalogOperations"
+      ],
+      "properties": {
+        "longSoak": {"$ref": "#/$defs/longSoak"},
+        "installationPackaging": {"$ref": "#/$defs/installationPackaging"},
+        "upgradeRollbackStatePreservation": {"$ref": "#/$defs/upgradeRollback"},
+        "liveNetwork": {"$ref": "#/$defs/evidenceBase"},
+        "interoperability": {"$ref": "#/$defs/evidenceBase"},
+        "performance": {"$ref": "#/$defs/evidenceBase"},
+        "sandboxProvider": {"$ref": "#/$defs/evidenceBase"},
+        "securityResponse": {"$ref": "#/$defs/securityResponse"},
+        "supportDiagnostics": {"$ref": "#/$defs/evidenceBase"},
+        "catalogOperations": {"$ref": "#/$defs/catalogOperations"}
+      }
+    },
+    "redaction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "findingCount", "findings"],
+      "properties": {
+        "status": {"const": "pass"},
+        "findingCount": {"const": 0},
+        "findings": {"type": "array", "maxItems": 0}
+      }
+    }
+  }
+}

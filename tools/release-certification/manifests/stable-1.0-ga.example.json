@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "release": {
+    "id": "cryptad-stable-1-0-rc-REPLACE_ME",
+    "version": "REPLACE_WITH_INTEGER_BUILD",
+    "profile": "stable-review"
+  },
+  "output": {
+    "root": "build/release-certification",
+    "reset": true
+  },
+  "requirements": {
+    "history": true,
+    "liveNetwork": true,
+    "multiNodeSoak": true,
+    "sandboxProviderTests": true,
+    "stableReadiness": true,
+    "thirdPartyIntake": true
+  },
+  "inputs": {
+    "selectedStableRcSummary": "build/protected-inputs/stable-rc/summary.json",
+    "selectedStableRcFreeze": "build/protected-inputs/stable-rc/stable-1.0-rc-freeze.json",
+    "selectedStableRcFreezeSidecar": "build/protected-inputs/stable-rc/stable-1.0-rc-freeze.sha256",
+    "selectedStableRcArchive": "build/protected-inputs/stable-rc/cryptad-stable-1.0-rc-REPLACE_WITH_INTEGER_BUILD.tar.gz",
+    "selectedStableRcProduct": "build/protected-inputs/stable-rc/crypta-stable-1.0-rc-REPLACE_WITH_INTEGER_BUILD-product.tar.gz",
+    "selectedStableRcChecksums": "build/protected-inputs/stable-rc/checksums.txt",
+    "selectedStableRcProvenance": "build/protected-inputs/stable-rc/provenance.json",
+    "selectedStableRcLineage": "build/protected-inputs/stable-rc/stable-1.0-rc-lineage.json",
+    "previousCandidate": "build/protected-inputs/stable-rc/previous-candidate-summary.json",
+    "stableRcValidation": "build/protected-inputs/stable-ga/stable-1.0-rc-validation.json",
+    "stableGaAuthorization": "build/protected-inputs/stable-ga/stable-1.0-ga-authorization.json",
+    "stableGaPolicy": "tools/release-certification/stable-1.0-ga-policy.json"
+  },
+  "policies": {
+    "artifactBaseUri": "https://REPLACE_ME.invalid/stable-1.0/",
+    "catalogChannel": "stable",
+    "candidateSourceCommit": "REPLACE_WITH_EXACT_LOWERCASE_SOURCE_COMMIT",
+    "candidateSourceRef": "commit:REPLACE_WITH_EXACT_LOWERCASE_SOURCE_COMMIT",
+    "expectedPreviousReleaseId": "REPLACE_WITH_PREVIOUS_PUBLISHED_RELEASE_ID",
+    "expectedPreviousProductDigest": "sha256:REPLACE_WITH_PREVIOUS_PRODUCT_SHA256",
+    "metadata": {
+      "catalogPrimaryUri": "https://REPLACE_ME.invalid/catalog/first-party-catalog.properties",
+      "catalogMirrorUris": "https://REPLACE_ME_MIRROR.invalid/catalog/first-party-catalog.properties",
+      "catalogRollbackUri": "https://REPLACE_ME.invalid/catalog/history/REPLACE_WITH_ROLLBACK_REVISION/first-party-catalog.properties"
+    },
+    "publicationIntent": "prepare-explicit-protected-publication"
+  },
+  "execution": {
+    "allowDirtyWorkspace": false,
+    "allowTestSigningInProduction": false,
+    "collectEvidence": false,
+    "collectLiveNetwork": false,
+    "emergencySkipBuild": false,
+    "emergencySkipLiveNetwork": false,
+    "fixtureEvidence": false,
+    "generateStableReadiness": false,
+    "runMultiNodeSoak": false,
+    "runThirdPartyIntakeSampleFlow": false,
+    "skipFullBuild": true,
+    "skipGitMetadata": false,
+    "skipGradle": true,
+    "writeHistory": false
+  },
+  "commands": {
+    "stable-ga": {
+      "args": [],
+      "mode": "validate-only"
+    }
+  }
+}
