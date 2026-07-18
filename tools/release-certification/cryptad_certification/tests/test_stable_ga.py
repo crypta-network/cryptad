@@ -3175,6 +3175,31 @@ class StableGaSecurityAndDeterminismTest(unittest.TestCase):
         self.assertIn('--arg tag "$tag"', recovery)
         self.assertIn(".tag == $tag", recovery)
 
+    def test_protected_workflow_uses_actions_token_for_artifact_reads(self) -> None:
+        workflow = (
+            workspace_root() / ".github/workflows/stable-1.0-ga-promotion.yml"
+        ).read_text(encoding="utf-8")
+        step_start = workflow.index(
+            "\n      - name: Reverify exact validated bytes and protected GitHub identity"
+        )
+        step_end = workflow.index(
+            "\n      - name: Publish or verify exact authorized tag, Release, and assets",
+            step_start,
+        )
+        step = workflow[step_start:step_end]
+
+        self.assertIn("ACTIONS_GITHUB_TOKEN: ${{ github.token }}", step)
+        self.assertIn('export GH_TOKEN="$LEUMOR_GITHUB_TOKEN"', step)
+        self.assertIn(
+            'current_artifacts="$(GH_TOKEN="$ACTIONS_GITHUB_TOKEN" '
+            "gh api --paginate --method GET",
+            step,
+        )
+        self.assertIn(
+            '"repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts"',
+            step,
+        )
+
     def test_protected_workflow_cannot_publish_from_pr_or_default_validation(self) -> None:
         workflow = (
             workspace_root() / ".github/workflows/stable-1.0-ga-promotion.yml"

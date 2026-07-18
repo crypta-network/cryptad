@@ -1481,7 +1481,7 @@ jobs:
             exit 1
           fi
           downloaded_artifact_name="${{ needs.validate.outputs.publication_artifact_name }}"
-          current_artifacts="$(gh api --paginate --method GET \
+          current_artifacts="$(GH_TOKEN="$ACTIONS_GITHUB_TOKEN" gh api --paginate --method GET \
             "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts" \
             -f per_page=100 | jq -s '{artifacts: [.[].artifacts[]]}')"
           if ! jq -e --arg name "$downloaded_artifact_name" --arg digest "$EXPECTED_ARTIFACT_DIGEST" '
