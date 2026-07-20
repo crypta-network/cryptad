@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/crypta-network/cryptad/tools/release-certification/schemas/stable-1.0-hotfix-follow-up-closure-v1.schema.json",
+  "title": "Cryptad Stable 1.0 hotfix follow-up closure v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "kind", "generatedAt", "closedAt", "status", "releaseId",
+    "buildVersion", "releaseClass", "productDigest", "candidateIdentityDigest",
+    "predecessorBuild", "predecessorProductDigest",
+    "successorBaselineDigest", "publicationReceiptDigest",
+    "publicationReceiptIdentityDigest", "authorizationDigest", "latestPublishedPointerDigest",
+    "obligationDigest", "fullEvidenceDigest", "owner", "approver", "redaction"
+  ],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "kind": {"const": "stable-1.0-hotfix-follow-up-closure"},
+    "generatedAt": {"type": "string", "format": "date-time"},
+    "closedAt": {"type": "string", "format": "date-time"},
+    "status": {"enum": ["closed", "rejected"]},
+    "releaseId": {"$ref": "#/$defs/releaseId"},
+    "buildVersion": {"$ref": "#/$defs/buildVersion"},
+    "releaseClass": {"const": "security-hotfix"},
+    "productDigest": {"$ref": "#/$defs/digest"},
+    "candidateIdentityDigest": {"$ref": "#/$defs/digest"},
+    "predecessorBuild": {"$ref": "#/$defs/buildVersion"},
+    "predecessorProductDigest": {"$ref": "#/$defs/digest"},
+    "successorBaselineDigest": {"$ref": "#/$defs/digest"},
+    "publicationReceiptDigest": {"$ref": "#/$defs/digest"},
+    "publicationReceiptIdentityDigest": {"$ref": "#/$defs/digest"},
+    "authorizationDigest": {"$ref": "#/$defs/digest"},
+    "latestPublishedPointerDigest": {"$ref": "#/$defs/digest"},
+    "obligationDigest": {"$ref": "#/$defs/digest"},
+    "fullEvidenceDigest": {"$ref": "#/$defs/digest"},
+    "owner": {"$ref": "#/$defs/nonEmpty"},
+    "approver": {"$ref": "#/$defs/nonEmpty"},
+    "redaction": {"$ref": "#/$defs/redaction"}
+  },
+  "$defs": {
+    "nonEmpty": {"type": "string", "minLength": 1},
+    "releaseId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"},
+    "buildVersion": {"type": "string", "pattern": "^[1-9][0-9]*$"},
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "redaction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "findingCount", "findings"],
+      "properties": {
+        "status": {"const": "pass"},
+        "findingCount": {"const": 0},
+        "findings": {"type": "array", "maxItems": 0}
+      }
+    }
+  }
+}

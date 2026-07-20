@@ -348,3 +348,16 @@ production-beta drills or copy final digests into pre-freeze evidence.
 - fixtures and docs contain no obvious private keys, private insert URIs, bearer/session/app
   tokens, raw fetched content, raw app data, local absolute paths, command lines with secrets, CI
   secret values, reporter private data, or raw support payloads.
+
+## Stable 1.0 security hotfix release class
+
+An urgent Stable 1.0 fix uses `policies.releaseClass=security-hotfix` on
+`hotfix/<build-number>` from the currently published `main` state. It requires a public-safe
+incident or advisory id, policy-qualified severity and affected scope, a Stable security release
+manager authorization, an exact frozen candidate, and all non-waivable compatibility, signing,
+redaction, updater, packaging, upgrade, rollback, migration, backup, and publication-conflict gates.
+
+The dedicated hotfix policy may shorten only closed prepublication observation windows. It creates
+a deterministic full-window follow-up obligation and blocks the next routine publication if that
+obligation becomes overdue. There is no generic skip or waiver. Follow the [Stable 1.0 maintenance
+release and security hotfix path](stable-1.0-maintenance-release-and-hotfix-path.md).

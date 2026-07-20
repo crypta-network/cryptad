@@ -90,10 +90,35 @@ public final class AppCatalogVerifier {
   public static AppCatalog verify(
       byte[] catalogBytes, byte[] signatureBytes, TrustedAppKeys trustedKeys)
       throws AppCatalogException {
+    return verify(catalogBytes, signatureBytes, trustedKeys, null);
+  }
+
+  /**
+   * Verifies a catalog under one explicitly declared trusted signing-key identity.
+   *
+   * <p>This overload is intended for release boundaries that have already frozen the expected key
+   * id separately from the detached signature. It rejects a structurally valid signature made by
+   * any other trusted key before checking the signature bytes, preventing a broad trusted-key
+   * registry from weakening the release's exact signer binding.
+   *
+   * @param catalogBytes exact bytes from {@code cryptad-app-catalog.properties}
+   * @param signatureBytes exact bytes from {@code cryptad-app-catalog.signature}
+   * @param trustedKeys explicit trusted Ed25519 public keys
+   * @param expectedKeyId exact key id declared by the release candidate
+   * @return authenticated catalog content in declared entry order
+   * @throws AppCatalogException if the signer identity, signature, trust, or catalog parsing fails
+   */
+  public static AppCatalog verify(
+      byte[] catalogBytes, byte[] signatureBytes, TrustedAppKeys trustedKeys, String expectedKeyId)
+      throws AppCatalogException {
     Objects.requireNonNull(catalogBytes, "catalogBytes");
     Objects.requireNonNull(signatureBytes, "signatureBytes");
     Objects.requireNonNull(trustedKeys, "trustedKeys");
     AppCatalogSignature signature = readSignature(signatureBytes);
+    if (expectedKeyId != null && !signature.keyId().equals(expectedKeyId)) {
+      throw AppCatalogSidecars.invalidSignature(
+          "catalog signature key id does not match expected key id");
+    }
     TrustedAppKey trustedKey =
         trustedKeys
             .find(signature.keyId())
@@ -127,6 +152,36 @@ public final class AppCatalogVerifier {
   public static AppCatalog verify(Path catalogFile, TrustedAppKeys trustedKeys) throws IOException {
     Path normalizedCatalogFile =
         Objects.requireNonNull(catalogFile, "catalogFile").toAbsolutePath().normalize();
+    return verify(
+        normalizedCatalogFile,
+        normalizedCatalogFile.resolveSibling(AppCatalogSignature.SIGNATURE_FILE_NAME),
+        trustedKeys,
+        null);
+  }
+
+  /**
+   * Verifies exact catalog and detached-signature files under a declared signing-key identity.
+   *
+   * <p>Release workflows use this overload because their authenticated candidate can give the
+   * detached sidecar a public artifact filename that differs from the runtime source filename. Both
+   * files are read as exact bounded byte sequences and the signature sidecar's key id must equal
+   * {@code expectedKeyId}.
+   *
+   * @param catalogFile exact catalog-properties file
+   * @param signatureFile exact detached signature sidecar
+   * @param trustedKeys explicit trusted Ed25519 public keys
+   * @param expectedKeyId exact key id declared by the release candidate
+   * @return authenticated catalog content in declared entry order
+   * @throws IOException if either sidecar cannot be read
+   * @throws AppCatalogException if the signer identity, signature, trust, or catalog parsing fails
+   */
+  public static AppCatalog verify(
+      Path catalogFile, Path signatureFile, TrustedAppKeys trustedKeys, String expectedKeyId)
+      throws IOException {
+    Path normalizedCatalogFile =
+        Objects.requireNonNull(catalogFile, "catalogFile").toAbsolutePath().normalize();
+    Path normalizedSignatureFile =
+        Objects.requireNonNull(signatureFile, "signatureFile").toAbsolutePath().normalize();
     byte[] catalogBytes =
         AppCatalogSidecars.readRequiredBytes(
             normalizedCatalogFile,
@@ -135,11 +190,11 @@ public final class AppCatalogVerifier {
             AppCatalogSidecars.INVALID_CATALOG_ENTRY);
     byte[] signatureBytes =
         AppCatalogSidecars.readRequiredBytes(
-            normalizedCatalogFile.resolveSibling(AppCatalogSignature.SIGNATURE_FILE_NAME),
+            normalizedSignatureFile,
             AppCatalogSidecars.MAX_SIGNATURE_BYTES,
             "catalog signature",
             AppCatalogSidecars.INVALID_CATALOG_SIGNATURE);
-    return verify(catalogBytes, signatureBytes, trustedKeys);
+    return verify(catalogBytes, signatureBytes, trustedKeys, expectedKeyId);
   }
 
   private static void verifySignature(

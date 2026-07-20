@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/crypta-network/cryptad/tools/release-certification/schemas/stable-1.0-maintenance-evidence-v1.schema.json",
+  "title": "Cryptad Stable 1.0 maintenance evidence v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "kind", "generatedAt", "releaseId", "buildVersion", "releaseClass",
+    "candidateProductDigest", "candidateFreezeDigest", "predecessorBuild", "predecessorProductDigest", "windowClass",
+    "validationStartedAt", "validationEndedAt", "productionEvidence", "fixtureOnly",
+    "simulatedOnly", "skipped", "evidenceRows", "redaction"
+  ],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "kind": {"const": "stable-1.0-maintenance-evidence"},
+    "generatedAt": {"type": "string", "format": "date-time"},
+    "releaseId": {"$ref": "#/$defs/releaseId"},
+    "buildVersion": {"$ref": "#/$defs/buildVersion"},
+    "releaseClass": {"$ref": "#/$defs/releaseClass"},
+    "candidateProductDigest": {"$ref": "#/$defs/digest"},
+    "candidateFreezeDigest": {"$ref": "#/$defs/digest"},
+    "predecessorBuild": {"$ref": "#/$defs/buildVersion"},
+    "predecessorProductDigest": {"$ref": "#/$defs/digest"},
+    "windowClass": {"enum": ["normal", "shortened-security-hotfix"]},
+    "validationStartedAt": {"type": "string", "format": "date-time"},
+    "validationEndedAt": {"type": "string", "format": "date-time"},
+    "productionEvidence": {"const": true},
+    "fixtureOnly": {"const": false},
+    "simulatedOnly": {"const": false},
+    "skipped": {"const": false},
+    "evidenceRows": {
+      "type": "array", "minItems": 10, "uniqueItems": true,
+      "items": {"$ref": "#/$defs/evidenceRow"}
+    },
+    "redaction": {"$ref": "#/$defs/redaction"}
+  },
+  "$defs": {
+    "nonEmpty": {"type": "string", "minLength": 1},
+    "releaseId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"},
+    "buildVersion": {"type": "string", "pattern": "^[1-9][0-9]*$"},
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "releaseClass": {"enum": ["maintenance", "security-hotfix"]},
+    "evidenceId": {
+      "enum": [
+        "stable-maintenance.ga-baseline-authentication",
+        "stable-maintenance.predecessor-lineage",
+        "stable-maintenance.candidate-identity",
+        "stable-maintenance.archive-integrity",
+        "stable-maintenance.platform-api-compatibility",
+        "stable-maintenance.catalog-app-compatibility",
+        "stable-maintenance.content-profile-compatibility",
+        "stable-maintenance.direct-ga-upgrade",
+        "stable-maintenance.installation-packaging",
+        "stable-maintenance.upgrade-rollback-migration-backup",
+        "stable-maintenance.live-network-interoperability",
+        "stable-maintenance.performance",
+        "stable-maintenance.sandbox",
+        "stable-maintenance.security",
+        "stable-maintenance.support-redaction",
+        "stable-maintenance.core-update-descriptor",
+        "stable-maintenance.authorization",
+        "stable-maintenance.publication-conflict",
+        "stable-maintenance.publication-verification",
+        "stable-maintenance.successor-baseline",
+        "stable-maintenance.hotfix-follow-up"
+      ]
+    },
+    "evidenceRow": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "evidenceId", "status", "candidateReleaseId", "candidateBuild", "candidateProductDigest", "candidateFreezeDigest",
+        "predecessorBuild", "predecessorProductDigest", "gaReleaseId", "gaBuild", "gaProductDigest",
+        "startedAt", "endedAt", "environmentClass",
+        "production", "nodeCount", "operationCount", "evidenceDigest", "fresh", "redactionStatus"
+      ],
+      "properties": {
+        "evidenceId": {"$ref": "#/$defs/evidenceId"},
+        "status": {"enum": ["pass", "warn", "fail"]},
+        "candidateReleaseId": {"$ref": "#/$defs/releaseId"},
+        "candidateBuild": {"$ref": "#/$defs/buildVersion"},
+        "candidateProductDigest": {"$ref": "#/$defs/digest"},
+        "candidateFreezeDigest": {"$ref": "#/$defs/digest"},
+        "predecessorBuild": {"$ref": "#/$defs/buildVersion"},
+        "predecessorProductDigest": {"$ref": "#/$defs/digest"},
+        "gaReleaseId": {
+          "oneOf": [{"$ref": "#/$defs/releaseId"}, {"type": "null"}]
+        },
+        "gaBuild": {
+          "oneOf": [{"$ref": "#/$defs/buildVersion"}, {"type": "null"}]
+        },
+        "gaProductDigest": {
+          "oneOf": [{"$ref": "#/$defs/digest"}, {"type": "null"}]
+        },
+        "startedAt": {"type": "string", "format": "date-time"},
+        "endedAt": {"type": "string", "format": "date-time"},
+        "environmentClass": {"enum": ["production", "protected-production"]},
+        "production": {"const": true},
+        "nodeCount": {"type": "integer", "minimum": 0},
+        "operationCount": {"type": "integer", "minimum": 0},
+        "evidenceDigest": {"$ref": "#/$defs/digest"},
+        "fresh": {"const": true},
+        "redactionStatus": {"const": "pass"}
+      }
+    },
+    "redaction": {
+      "type": "object", "additionalProperties": false,
+      "required": ["status", "findingCount", "findings"],
+      "properties": {
+        "status": {"const": "pass"}, "findingCount": {"const": 0},
+        "findings": {"type": "array", "maxItems": 0}
+      }
+    }
+  }
+}

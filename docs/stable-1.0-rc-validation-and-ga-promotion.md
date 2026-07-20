@@ -596,3 +596,14 @@ non-waivable.
 - [ ] Public tag, release assets, notes, and catalog state match the authorization.
 - [ ] The publication receipt says `publication-complete`; otherwise GA is not complete.
 - [ ] The Stable 1.0 maintenance baseline is retained with the release record.
+
+## Later Stable 1.0 releases
+
+The GA baseline remains the immutable compatibility root. Later integer-build maintenance releases
+and security hotfixes authenticate the GA publication receipt and those exact baseline bytes; they
+do not refreeze the RC, rerun GA promotion, or replace the GA baseline. They also authenticate the
+immediately preceding published Stable 1.0 release and advance a separate successor-baseline chain.
+
+Use the [Stable 1.0 maintenance release and security hotfix
+path](stable-1.0-maintenance-release-and-hotfix-path.md) for candidate freeze, compatibility
+comparison, authorization, protected exact-byte publication, and hotfix follow-up closure.

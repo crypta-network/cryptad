@@ -162,3 +162,17 @@ If the release is still on `release/<build-number>` and untagged, say so clearly
 
 For Stable RC or GA, update the template or authoritative source data and rerun the corresponding
 certification command. Do not manually patch generated output inside a release workspace.
+
+## Stable 1.0 maintenance and security-hotfix notes
+
+Generate maintenance notes through `stable-maintenance`, using integer build/tag identity and the
+authenticated predecessor. Include the release class, user-visible fixes, Platform API
+compatibility statement, catalog/app delta, migration/backup/rollback guidance, package matrix,
+CoreUpdater availability, known-limitations delta, support guidance, and checksum/provenance links.
+A security hotfix also names the public-safe advisory and accurately describes any outstanding
+full-window follow-up without exposing embargoed details or private evidence.
+
+Treat the rendered note digest as part of candidate authorization. Reject placeholders, unsafe
+Markdown/control text, private URIs, tokens, raw content/data, and local paths. Before a verified
+publication-complete receipt, describe the notes and assets as prepared or authorized, never as
+published. Follow `docs/stable-1.0-maintenance-release-and-hotfix-path.md`.

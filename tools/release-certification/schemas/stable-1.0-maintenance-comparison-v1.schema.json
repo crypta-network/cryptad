@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/crypta-network/cryptad/tools/release-certification/schemas/stable-1.0-maintenance-comparison-v1.schema.json",
+  "title": "Cryptad Stable 1.0 maintenance comparison v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "kind", "generatedAt", "releaseId", "buildVersion", "releaseClass",
+    "gaBaselineDigest", "predecessorBaselineDigest", "candidateIdentityDigest", "sections",
+    "compatible", "decision", "blockers", "warnings", "redaction"
+  ],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "kind": {"const": "stable-1.0-maintenance-comparison"},
+    "generatedAt": {"type": "string", "format": "date-time"},
+    "releaseId": {"$ref": "#/$defs/releaseId"},
+    "buildVersion": {"$ref": "#/$defs/buildVersion"},
+    "releaseClass": {"$ref": "#/$defs/releaseClass"},
+    "gaBaselineDigest": {"$ref": "#/$defs/digest"},
+    "predecessorBaselineDigest": {"$ref": "#/$defs/digest"},
+    "candidateIdentityDigest": {"$ref": "#/$defs/digest"},
+    "sections": {"$ref": "#/$defs/sections"},
+    "compatible": {"type": "boolean"},
+    "decision": {"$ref": "#/$defs/decision"},
+    "blockers": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/issue"}},
+    "warnings": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/issue"}},
+    "redaction": {"$ref": "#/$defs/redaction"}
+  },
+  "$defs": {
+    "nonEmpty": {"type": "string", "minLength": 1},
+    "releaseId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"},
+    "buildVersion": {"type": "string", "pattern": "^[1-9][0-9]*$"},
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "releaseClass": {"enum": ["maintenance", "security-hotfix"]},
+    "decision": {"enum": ["go", "no-go", "go-with-waivers"]},
+    "sections": {
+      "type": "object", "additionalProperties": false,
+      "required": ["platformApi", "catalogAndApps", "contentProfiles", "limitations", "security", "support", "legacyBoundaries"],
+      "properties": {
+        "platformApi": {"$ref": "#/$defs/section"},
+        "catalogAndApps": {"$ref": "#/$defs/section"},
+        "contentProfiles": {"$ref": "#/$defs/section"},
+        "limitations": {"$ref": "#/$defs/section"},
+        "security": {"$ref": "#/$defs/section"},
+        "support": {"$ref": "#/$defs/section"},
+        "legacyBoundaries": {"$ref": "#/$defs/section"}
+      }
+    },
+    "section": {
+      "type": "object", "additionalProperties": false,
+      "required": ["status", "gaDeltaDigest", "predecessorDeltaDigest", "blockerCount", "warningCount"],
+      "properties": {
+        "status": {"enum": ["pass", "warn", "fail"]},
+        "gaDeltaDigest": {"$ref": "#/$defs/digest"},
+        "predecessorDeltaDigest": {"$ref": "#/$defs/digest"},
+        "blockerCount": {"type": "integer", "minimum": 0},
+        "warningCount": {"type": "integer", "minimum": 0}
+      }
+    },
+    "issue": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "category", "message", "waivable"],
+      "properties": {
+        "id": {"$ref": "#/$defs/nonEmpty"},
+        "category": {"$ref": "#/$defs/nonEmpty"},
+        "message": {"$ref": "#/$defs/nonEmpty"},
+        "waivable": {"type": "boolean"}
+      }
+    },
+    "redaction": {
+      "type": "object", "additionalProperties": false,
+      "required": ["status", "findingCount", "findings"],
+      "properties": {"status": {"const": "pass"}, "findingCount": {"const": 0}, "findings": {"type": "array", "maxItems": 0}}
+    }
+  }
+}

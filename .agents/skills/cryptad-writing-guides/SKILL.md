@@ -27,3 +27,8 @@ Use this skill when the task is mostly about words rather than code.
 - Prefer concrete commands, file paths, build numbers, and platform names over broad claims.
 - Keep validation, authorization, and publication distinct in Stable release prose. Never write
   that GA was published unless a verified publication receipt proves the public state.
+- For later Stable 1.0 maintenance or security-hotfix prose, use
+  `docs/stable-1.0-maintenance-release-and-hotfix-path.md` as the canonical runbook. Preserve
+  integer builds and `v<build-number>` tags, distinguish the immutable GA v1 root from successor v2
+  baselines, state Windows EXE producer limitations honestly, and never claim publication or
+  follow-up closure without the applicable verified receipt.

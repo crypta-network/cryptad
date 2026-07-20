@@ -503,3 +503,111 @@ new public state as `publication-complete`.
 
 Follow the [production security response runbook](../../docs/production-security-response-runbook.md)
 when collecting release-blocking drill evidence or responding to an app ecosystem incident.
+
+## Stable 1.0 maintenance and security hotfix certification
+
+Use one command and policy family for both release classes:
+
+```bash
+python3 tools/release-certification/certify.py stable-maintenance \
+  --manifest build/stable-1.0-maintenance.json
+```
+
+The manifest selects `maintenance` or `security-hotfix` and one side-effect-free mode:
+`validate-only`, `prepare-authorization`, or `close-hotfix-follow-up`. Output is release-scoped
+under `build/release-certification/<release-id>/stable-maintenance/`. Self-tests and ordinary local
+execution never tag, publish, insert a CoreUpdater descriptor, or update the latest baseline.
+The generated `stable-1.0-maintenance-checksums.txt` names only noncircular public payloads:
+product and package bytes, the stable catalog and detached signature, release notes, the
+known-limitations delta, provenance, and `core-info.json`. It does not name internal certification
+records. The checksum file itself and the public authorization are separately bound by exact size
+and digest in the publication plan and receipt because including either would introduce a checksum
+or authorization cycle. The separate
+`stable-1.0-maintenance-audit-checksums.txt` deterministically inventories every other file in the
+component output for internal audit and recovery and is never a planned public asset.
+Candidate construction has a separate protected `freeze-candidate` boundary. Its versioned
+`stable-1.0-maintenance-candidate-freeze.json` records the one-build producer and source identities,
+toolchain and dependency-verification state, latest predecessor observation, exact checksum digest,
+and the complete product, catalog, and package byte/signing/notarization receipt set. Subsequent
+validation supplies that file as `inputs.maintenanceCandidateFreeze`; the candidate declaration,
+candidate provenance, authorization, evidence envelope, and every evidence row bind its exact file
+digest. Evidence must start after the recorded `frozenAt`. A rebuild, stale predecessor, extra or
+replaced asset, or pre-freeze evidence requires a new freeze and cannot be repaired during
+authorization preparation.
+
+Production evidence rows bind the immediate predecessor build and product. The
+`stable-maintenance.direct-ga-upgrade` row also binds the separately authenticated immutable GA
+release id, build, and product digest; all non-GA rows forbid those GA fields. Normal validation and
+hotfix follow-up closure enforce both identities, so a later successor cannot relabel its immediate
+predecessor as the direct-GA upgrade source.
+
+The protected maintenance workflow uses four closed operations in four runs:
+`freeze-candidate`, `prepare-authorization`, `validate-authorization`, and `publish`. Freeze is the
+only operation that builds packages; it signs, notarizes, staples, and verifies the DMG before
+recording any digest. Prepare consumes the exact attested freeze plus later candidate-bound evidence
+and cannot replace an asset. Authorization validation consumes the exact prepared artifact plus an
+approval artifact containing only the authorization JSON. Publish consumes the exact authorized
+bundle and rejects separately supplied candidate, evidence, package, manifest, or authorization
+inputs. Its provider is one protected, attested wheel pinned by producer run, artifact digest,
+source commit, wheel digest, signer workflow, and entry point, then installed on each clean hosted
+runner without dependency resolution. Publication and latest-baseline activation reread the remote
+release/hotfix ref at their mutation boundaries. Publication requires the original authorization to
+remain current before every public target. After the protected activation environment gate, the
+workflow issues a separate activation-only authorization, valid for at most one hour and bound to
+the exact verified receipt, successor, history, original authorization, and predecessor pointer.
+That renewable grant prevents an environment wait from stranding already-published exact bytes;
+activation audit state is uploaded even if post-mutation verification fails.
+
+Hotfix closure authenticates the already published successor baseline, publication receipt,
+latest-published pointer, original authorization, and obligation, then emits a separately versioned
+closure overlay. The next release lineage binds that overlay digest; closure never changes the
+published hotfix bytes or rewrites an activated baseline. When a later hotfix carries the
+obligation, candidate-freeze authentication uses the original predecessor observation in the exact
+authorized freeze while the latest baseline, receipt, and pointer independently authenticate the
+current carrier.
+Protected publication writes `stable-1.0-maintenance-publication-receipt.json` only for a complete,
+independently verified result. Failure and partial state use the closed
+`stable-1.0-maintenance-publication-failure-audit.json` schema so unavailable observations and
+possible side effects are recorded without manufacturing a canonical receipt.
+An interrupted operation can resume only when the observed public targets are an exact matching
+prefix in canonical mutation order followed solely by absent targets; any other partial topology is
+a conflict and is never overwritten or deleted automatically.
+The protected evidence environment must configure exact input and Windows signer-workflow
+identities. It must also configure `STABLE_CATALOG_TRUSTED_KEYS_BASE64` as a base64-encoded
+`TrustedAppKeys` properties registry containing production catalog public keys only. Before
+freezing, the workflow decodes that registry into a mode-`0600` temporary file, verifies the exact
+candidate catalog and detached signature with `AppCatalogVerifier`, and requires the signature key
+id to equal the candidate's declared `signingKeyId`. The workflow deletes the registry before job
+exit and records only the catalog digest, signature digest, key id, trusted-key-registry SHA-256,
+algorithm, verifier identity, and passing status. It never writes public-key bytes or raw signature
+bytes to a public artifact.
+
+Configure the approved publication backend source commit, wheel digest, signer workflow,
+and entry point as repository-level Actions variables so the evidence-scoped independent verifier
+and both publication environments receive the same immutable, public-safe identity pins. Do not
+scope those four backend identity variables only to a publication environment. Keep the separate
+catalog, CoreUpdater, and maintenance-state protected inputs in their purpose-specific publication
+environments. Private target values are environment indirections only and are forbidden in
+manifests, component outputs, failure audits, and receipts.
+The adapter materializes each target input, permanently scrubs all target-input names from its
+local and ambient environments before importing the provider, and passes an opaque value only to
+the one matching target operation. It also expands every concrete artifact, catalog/signature,
+mirror/rollback, GitHub Release, and update-descriptor URI before authorization and rejects any
+canonical cross-role collision.
+The canonical signer workflows are
+`.github/workflows/stable-1.0-maintenance-input-producer.yml` and
+`.github/workflows/stable-1.0-maintenance-windows-package-producer.yml`. The former authenticates an
+exact-digest public-safe phase ZIP from a secret protected-environment HTTPS locator. It rejects any
+non-global DNS answer, pins the connection to the validated numeric endpoints, verifies the actual
+peer, and uses the original hostname for TLS certificate verification before transmitting an
+optional bearer credential. The complete extracted tree is allowlisted: only the canonical phase
+manifest and its referenced protected inputs may survive into the attested artifact, so unrelated
+root-level or sibling files fail intake. The latter builds the Windows EXE once,
+Authenticode-signs and verifies it, rechecks the immutable tracked source, and attests the exact
+EXE and producer receipt. Neither
+workflow publishes release state.
+
+The protected workflow performs current-time revalidation before exact-byte public mutations and
+independent receipt verification afterward. See the [Stable 1.0 maintenance release and security
+hotfix path](../../docs/stable-1.0-maintenance-release-and-hotfix-path.md) for required inputs,
+lineage, evidence, authorization, private secret boundaries, idempotency, and recovery.

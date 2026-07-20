@@ -194,3 +194,14 @@ The support bundle is not telemetry, crash-report upload, analytics, remote logg
 support intake. It does not prove that an operator has reviewed the JSON before sharing it. It also
 does not replace release certification, live-network evidence, multi-node soak evidence, security
 response drills, or the direct local diagnostics endpoint.
+
+## Stable 1.0 maintenance support evidence
+
+Maintenance validation requires a redacted support bundle from an exact-candidate upgrade or
+recovery failure scenario. The evidence binds safe counts, environment class, times, statuses, and
+digests to the candidate and predecessor. Raw content, raw app data, identity material, secrets,
+private insert URIs, support payloads, and absolute runner paths remain forbidden. Redaction is a
+non-waivable gate for both routine maintenance and security hotfixes.
+
+See the [Stable 1.0 maintenance release and security hotfix
+path](stable-1.0-maintenance-release-and-hotfix-path.md).

@@ -299,3 +299,15 @@ The evidence is collected by `tools/release-certification/certify.py app-platfor
 `tools/release-certification/certify.py release-certification`. It does not require a live node. Release
 candidates fail when any required app-update evidence item is missing, failing, skipped, or
 wrong-mode unless a release manager records a waiver.
+
+## Stable 1.0 maintenance evidence
+
+Maintenance certification binds catalog refresh, exact bundle selection, update, rollback, and
+state-preservation scenarios to the frozen core product digest, the exact predecessor digest, and
+the reviewed catalog/app digests. Changing an app bundle or catalog entry after authorization
+invalidates the candidate. A security hotfix cannot waive app migration, backup, restore, or
+rollback gates for affected apps.
+
+Core package discovery remains a separate package-based CoreUpdater operation. See the [Stable 1.0
+maintenance release and security hotfix
+path](stable-1.0-maintenance-release-and-hotfix-path.md).

@@ -208,3 +208,14 @@ Release certification records this surface with:
 Those checks verify the backup envelope, operator-only route design, app-principal denial,
 metadata-only restore planning, merge and replacement modes, Web Shell controls, first-party app
 backup-scope docs, and support-bundle redaction without writing raw backup values to evidence.
+
+## Maintenance-release evidence
+
+Stable maintenance certification binds backup and restore results to the exact frozen candidate,
+the immediate predecessor, the app bundle and schema identities, and each tested environment. It
+requires recovery from failed update and migration scenarios without publishing raw backup content,
+raw app data, identity material, or runner paths. These gates remain mandatory for security
+hotfixes.
+
+See the [Stable 1.0 maintenance release and security hotfix
+path](stable-1.0-maintenance-release-and-hotfix-path.md).

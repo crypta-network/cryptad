@@ -678,3 +678,15 @@ edition number. If the incident is a confirmed performance regression, link the 
 
 ---
 Keep this runbook synchronized with future CoreUpdater/AppEnv changes. Update references whenever package selection logic or descriptor schema evolves.
+
+## Stable 1.0 maintenance and security hotfix publication
+
+After Stable 1.0 GA, routine work stabilizes on `release/<build-number>` from `develop`; an
+emergency security fix stabilizes on `hotfix/<build-number>` from the published `main` state. Both
+use the next suitable integer build, the `stable-maintenance` command, and the same exact-byte
+candidate, package, catalog, and CoreUpdater trust model.
+
+The protected workflow owns annotated `v<build-number>` tag creation and publication. It never
+creates or merges branches. After a verified publication receipt, complete the existing release or
+hotfix merge-back with no squash and `--no-ff` merges. See the [Stable 1.0 maintenance release and
+security hotfix path](stable-1.0-maintenance-release-and-hotfix-path.md).

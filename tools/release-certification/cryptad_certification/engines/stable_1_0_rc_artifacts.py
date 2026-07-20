@@ -7,8 +7,12 @@ import hashlib
 import io
 import os
 import re
+import shutil
+import stat
 import tarfile
+import zipfile
 from pathlib import Path
+from pathlib import PurePosixPath
 from typing import Any, Iterable
 
 from cryptad_certification.io import write_json, write_text
@@ -624,6 +628,175 @@ def create_deterministic_archive(
     finally:
         if temporary.exists():
             temporary.unlink()
+
+
+def normalize_portable_distribution_archive(archive_path: Path) -> None:
+    """Normalize one Gradle portable archive without extracting or rebuilding its payload."""
+
+    source = _regular_source(archive_path, archive_path.name)
+    temporary = source.with_name(f".{source.name}.normalized.tmp")
+    try:
+        if source.name.lower().endswith((".tar.gz", ".tgz", ".tar")):
+            _normalize_portable_tar(source, temporary)
+        elif source.name.lower().endswith(".zip"):
+            _normalize_portable_zip(source, temporary)
+        else:
+            raise ValueError(f"unsupported portable archive: {source.name}")
+        os.replace(temporary, source)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+
+
+def _portable_member_name(name: str) -> str:
+    """Return one safe normalized POSIX member name."""
+
+    normalized = name.replace("\\", "/").rstrip("/")
+    path = PurePosixPath(normalized)
+    if (
+        not normalized
+        or re.match(r"^[A-Za-z]:", normalized)
+        or normalized.startswith("//")
+        or path.is_absolute()
+        or ".." in path.parts
+        or any(
+            part in {"__MACOSX", ".DS_Store"} or part.startswith("._")
+            for part in path.parts
+        )
+    ):
+        raise ValueError(f"unsafe portable archive member: {name}")
+    return normalized
+
+
+def _portable_mode(name: str, *, directory: bool, symlink: bool = False) -> int:
+    """Return the deterministic mode for one canonical portable member path."""
+
+    if symlink:
+        return 0o777
+    if directory:
+        return 0o755
+    normalized = name.lower()
+    executable_bin_member = (
+        normalized.startswith("bin/")
+        and not normalized.endswith(".bat")
+        and not normalized.endswith(".exe")
+    )
+    executable_library_member = (
+        normalized in {"lib/jexec", "lib/jspawnhelper"}
+        or normalized.startswith("lib/libwrapper-linux-")
+        or normalized.startswith("lib/libwrapper-macosx-")
+    )
+    return 0o755 if executable_bin_member or executable_library_member else 0o644
+
+
+def _normalize_portable_tar(source: Path, destination: Path) -> None:
+    """Write canonical tar/gzip order, time, ownership, types, modes, and header metadata."""
+
+    with tarfile.open(source, "r:*") as original:
+        members = original.getmembers()
+        names = [_portable_member_name(member.name) for member in members]
+        if len(names) != len(set(names)):
+            raise ValueError("portable tar contains duplicate members")
+        by_name = dict(zip(names, members, strict=True))
+
+        def write_normalized(output: Any) -> None:
+            with tarfile.open(
+                fileobj=output,
+                mode="w",
+                format=tarfile.PAX_FORMAT,
+            ) as normalized:
+                for name in sorted(names):
+                    member = by_name[name]
+                    info = tarfile.TarInfo(name=name)
+                    info.mtime = 0
+                    info.uid = 0
+                    info.gid = 0
+                    info.uname = "root"
+                    info.gname = "root"
+                    if member.isfile():
+                        stream = original.extractfile(member)
+                        if stream is None:
+                            raise ValueError(
+                                f"portable tar member cannot be read: {name}"
+                            )
+                        info.type = tarfile.REGTYPE
+                        info.size = member.size
+                        info.mode = _portable_mode(name, directory=False)
+                        normalized.addfile(info, stream)
+                    elif member.isdir():
+                        info.type = tarfile.DIRTYPE
+                        info.size = 0
+                        info.mode = _portable_mode(name, directory=True)
+                        normalized.addfile(info)
+                    elif member.issym():
+                        link = _portable_member_name(member.linkname)
+                        resolved = PurePosixPath(name).parent / PurePosixPath(link)
+                        if ".." in resolved.parts:
+                            raise ValueError(
+                                f"portable tar symlink escapes its root: {name}"
+                            )
+                        info.type = tarfile.SYMTYPE
+                        info.linkname = link
+                        info.size = 0
+                        info.mode = _portable_mode(
+                            name, directory=False, symlink=True
+                        )
+                        normalized.addfile(info)
+                    else:
+                        raise ValueError(
+                            f"portable tar contains a special member: {name}"
+                        )
+
+        with destination.open("wb") as raw:
+            if source.name.lower().endswith(".tar"):
+                write_normalized(raw)
+            else:
+                with gzip.GzipFile(
+                    filename="", mode="wb", fileobj=raw, mtime=0
+                ) as compressed:
+                    write_normalized(compressed)
+
+
+def _normalize_portable_zip(source: Path, destination: Path) -> None:
+    """Write canonical ZIP order, timestamp, Unix modes, metadata, and compression."""
+
+    with zipfile.ZipFile(source) as original:
+        members = original.infolist()
+        names = [_portable_member_name(member.filename) for member in members]
+        if len(names) != len(set(names)):
+            raise ValueError("portable ZIP contains duplicate members")
+        by_name = dict(zip(names, members, strict=True))
+        with zipfile.ZipFile(
+            destination,
+            mode="w",
+            compression=zipfile.ZIP_DEFLATED,
+            compresslevel=9,
+            strict_timestamps=True,
+        ) as normalized:
+            normalized.comment = b""
+            for name in sorted(names):
+                member = by_name[name]
+                mode = member.external_attr >> 16
+                if stat.S_ISLNK(mode):
+                    raise ValueError(f"portable ZIP contains a symlink: {name}")
+                directory = member.is_dir()
+                target_name = f"{name}/" if directory else name
+                info = zipfile.ZipInfo(target_name, (1980, 1, 1, 0, 0, 0))
+                info.create_system = 3
+                permissions = _portable_mode(name, directory=directory)
+                file_type = stat.S_IFDIR if directory else stat.S_IFREG
+                info.external_attr = (file_type | permissions) << 16
+                if directory:
+                    info.external_attr |= 0x10
+                info.compress_type = zipfile.ZIP_DEFLATED
+                info.extra = b""
+                info.comment = b""
+                if directory:
+                    normalized.writestr(info, b"")
+                else:
+                    with original.open(member) as input_stream:
+                        with normalized.open(info, mode="w", force_zip64=True) as output_stream:
+                            shutil.copyfileobj(input_stream, output_stream, length=1024 * 1024)
 
 
 def verify_deterministic_archive(archive_path: Path) -> list[str]:

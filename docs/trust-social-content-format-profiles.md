@@ -183,3 +183,14 @@ These profiles do not implement WoT, Freetalk, Sone, Freemail, or old plugin ABI
 compatibility. They do not add global moderation, daemon-core crawling, arbitrary browser signing,
 remote scripts, analytics, direct HTTP fetch, or generic network-message storage. They do not
 expose AppVault private key material or raw identity envelopes.
+
+## Stable 1.0 maintenance compatibility
+
+Maintenance validation compares all frozen v1 profile identities, descriptor digests,
+canonicalization rules, signature payload rules, field meanings, and size semantics against both
+the immutable GA baseline and the immediate predecessor. Parser, bounds, diagnostic, and verifier
+bug fixes are allowed only when previously valid signed documents remain valid. An incompatible
+change requires a separately versioned profile and an explicit migration plan.
+
+See the [Stable 1.0 maintenance release and security hotfix
+path](stable-1.0-maintenance-release-and-hotfix-path.md).

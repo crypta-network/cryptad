@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/crypta-network/cryptad/tools/release-certification/schemas/cryptad-core-update-publication-plan-v1.schema.json",
+  "title": "Cryptad CoreUpdater publication plan v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "kind", "generatedAt", "releaseId", "buildVersion", "releaseClass",
+    "candidateIdentityDigest", "descriptorDigest", "descriptorSizeBytes", "packageMapDigest",
+    "edition", "publicFetchUri", "protectedInsertInputName", "authorizationDigest",
+    "publicationTargetDigest", "preInsertionConflictStatus", "sideEffectsPerformed", "redaction"
+  ],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "kind": {"const": "cryptad-core-update-publication-plan"},
+    "generatedAt": {"type": "string", "format": "date-time"},
+    "releaseId": {"$ref": "#/$defs/releaseId"},
+    "buildVersion": {"$ref": "#/$defs/buildVersion"},
+    "releaseClass": {"$ref": "#/$defs/releaseClass"},
+    "candidateIdentityDigest": {"$ref": "#/$defs/digest"},
+    "descriptorDigest": {"$ref": "#/$defs/digest"},
+    "descriptorSizeBytes": {"type": "integer", "minimum": 1},
+    "packageMapDigest": {"$ref": "#/$defs/digest"},
+    "edition": {"type": "integer", "minimum": 1},
+    "publicFetchUri": {"type": "string", "format": "uri"},
+    "protectedInsertInputName": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]*$"},
+    "authorizationDigest": {"$ref": "#/$defs/digest"},
+    "publicationTargetDigest": {"$ref": "#/$defs/digest"},
+    "preInsertionConflictStatus": {"const": "clear"},
+    "sideEffectsPerformed": {"const": false},
+    "redaction": {"$ref": "#/$defs/redaction"}
+  },
+  "$defs": {
+    "releaseId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"},
+    "buildVersion": {"type": "string", "pattern": "^[1-9][0-9]*$"},
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "releaseClass": {"enum": ["maintenance", "security-hotfix"]},
+    "redaction": {
+      "type": "object", "additionalProperties": false,
+      "required": ["status", "findingCount", "findings"],
+      "properties": {"status": {"const": "pass"}, "findingCount": {"const": 0}, "findings": {"type": "array", "maxItems": 0}}
+    }
+  }
+}

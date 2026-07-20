@@ -286,3 +286,15 @@ api.experimentalCapabilitiesAccepted=true
 Keep compatibility reports and digests in submission records. Do not attach raw private data,
 local paths, raw fetched content, raw app data, submission ZIP contents, keys, tokens, or private
 insert URIs.
+
+## Maintenance-release enforcement
+
+The canonical maintenance command compares the current Platform API contract and stable surface
+against both the immutable GA baseline and the immediate predecessor. It carries original
+deprecation clocks into each successor baseline; a release cannot reset a clock, relabel an
+experimental surface as stable, waive a critical stable removal, or use a new baseline to conceal a
+breaking change. Candidate-bound, fresh contract and stable-diff evidence is required even for a
+security hotfix.
+
+See the [Stable 1.0 maintenance release and security hotfix
+path](stable-1.0-maintenance-release-and-hotfix-path.md).

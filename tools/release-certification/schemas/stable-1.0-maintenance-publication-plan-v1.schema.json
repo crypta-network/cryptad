@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/crypta-network/cryptad/tools/release-certification/schemas/stable-1.0-maintenance-publication-plan-v1.schema.json",
+  "title": "Cryptad Stable 1.0 maintenance publication plan v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "kind", "generatedAt", "releaseId", "buildVersion", "releaseClass",
+    "sourceBranch", "sourceCommit", "expectedTag", "githubReleasePageUri", "artifactBaseUri",
+    "deploymentServicePublicUri", "latestPointerPublicUri", "candidateIdentityDigest",
+    "productDigest", "checksumsDigest", "provenanceDigest", "authorizationDigest",
+    "releaseNotesDigest", "coreInfoDigest", "stableCatalogDigest", "knownLimitationsDeltaDigest",
+    "publicationTargetsDigest", "assets", "stableCatalogTarget", "coreUpdateTarget",
+    "sideEffectsPerformed", "publicationState", "redaction"
+  ],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "kind": {"const": "stable-1.0-maintenance-publication-plan"},
+    "generatedAt": {"type": "string", "format": "date-time"},
+    "releaseId": {"$ref": "#/$defs/releaseId"},
+    "buildVersion": {"$ref": "#/$defs/buildVersion"},
+    "releaseClass": {"$ref": "#/$defs/releaseClass"},
+    "sourceBranch": {"type": "string", "pattern": "^(release|hotfix)/[1-9][0-9]*$"},
+    "sourceCommit": {"$ref": "#/$defs/commit"},
+    "expectedTag": {"type": "string", "pattern": "^v[1-9][0-9]*$"},
+    "githubReleasePageUri": {"type": "string", "format": "uri"},
+    "artifactBaseUri": {"type": "string", "format": "uri"},
+    "deploymentServicePublicUri": {"type": "string", "format": "uri"},
+    "latestPointerPublicUri": {"type": "string", "format": "uri"},
+    "candidateIdentityDigest": {"$ref": "#/$defs/digest"},
+    "productDigest": {"$ref": "#/$defs/digest"},
+    "checksumsDigest": {"$ref": "#/$defs/digest"},
+    "provenanceDigest": {"$ref": "#/$defs/digest"},
+    "authorizationDigest": {"$ref": "#/$defs/digest"},
+    "releaseNotesDigest": {"$ref": "#/$defs/digest"},
+    "coreInfoDigest": {"$ref": "#/$defs/digest"},
+    "stableCatalogDigest": {"$ref": "#/$defs/digest"},
+    "knownLimitationsDeltaDigest": {"$ref": "#/$defs/digest"},
+    "publicationTargetsDigest": {"$ref": "#/$defs/digest"},
+    "assets": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/asset"}},
+    "stableCatalogTarget": {"$ref": "#/$defs/catalogTarget"},
+    "coreUpdateTarget": {"$ref": "#/$defs/coreUpdateTarget"},
+    "sideEffectsPerformed": {"const": false},
+    "publicationState": {"enum": ["validated", "publication-authorized"]},
+    "redaction": {"$ref": "#/$defs/redaction"}
+  },
+  "$defs": {
+    "nonEmpty": {"type": "string", "minLength": 1},
+    "releaseId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"},
+    "buildVersion": {"type": "string", "pattern": "^[1-9][0-9]*$"},
+    "commit": {"type": "string", "pattern": "^[0-9a-f]{40,64}$"},
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "releaseClass": {"enum": ["maintenance", "security-hotfix"]},
+    "asset": {
+      "type": "object", "additionalProperties": false,
+      "required": ["role", "fileName", "digest", "sizeBytes", "publicUri"],
+      "properties": {
+        "role": {"enum": ["product", "package", "release-notes", "known-limitations", "checksums", "provenance", "authorization", "core-info", "stable-catalog", "stable-catalog-signature"]},
+        "fileName": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"},
+        "digest": {"$ref": "#/$defs/digest"},
+        "sizeBytes": {"type": "integer", "minimum": 1},
+        "publicUri": {"type": "string", "format": "uri"}
+      }
+    },
+    "catalogTarget": {
+      "type": "object", "additionalProperties": false,
+      "required": ["catalogId", "channel", "revision", "edition", "digest", "signatureDigest", "publicUri", "signaturePublicUri", "mirrorUris", "rollbackUri", "mirrorSetDigest", "rollbackStateDigest"],
+      "properties": {
+        "catalogId": {"$ref": "#/$defs/nonEmpty"}, "channel": {"const": "stable"},
+        "revision": {"type": "integer", "minimum": 0}, "edition": {"type": "integer", "minimum": 0},
+        "digest": {"$ref": "#/$defs/digest"}, "signatureDigest": {"$ref": "#/$defs/digest"},
+        "publicUri": {"type": "string", "format": "uri"}, "signaturePublicUri": {"type": "string", "format": "uri"},
+        "mirrorUris": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "format": "uri"}},
+        "rollbackUri": {"type": "string", "format": "uri"},
+        "mirrorSetDigest": {"$ref": "#/$defs/digest"}, "rollbackStateDigest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "coreUpdateTarget": {
+      "type": "object", "additionalProperties": false,
+      "required": ["edition", "descriptorDigest", "publicUri", "protectedInsertInputName"],
+      "properties": {
+        "edition": {"type": "integer", "minimum": 1},
+        "descriptorDigest": {"$ref": "#/$defs/digest"},
+        "publicUri": {"type": "string", "format": "uri"},
+        "protectedInsertInputName": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]*$"}
+      }
+    },
+    "redaction": {
+      "type": "object", "additionalProperties": false,
+      "required": ["status", "findingCount", "findings"],
+      "properties": {"status": {"const": "pass"}, "findingCount": {"const": 0}, "findings": {"type": "array", "maxItems": 0}}
+    }
+  }
+}

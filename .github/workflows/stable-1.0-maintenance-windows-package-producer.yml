@@ -1,0 +1,342 @@
+name: Stable 1.0 Maintenance Windows Package Producer
+run-name: >-
+  Stable 1.0 Windows EXE ${{ inputs.release_id }} build ${{ inputs.build_version }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_id:
+        description: Path-safe Stable 1.0 maintenance release ID.
+        required: true
+        type: string
+      build_version:
+        description: Positive integer Cryptad build.
+        required: true
+        type: string
+      release_class:
+        description: Closed Stable 1.0 release class.
+        required: true
+        type: choice
+        options:
+          - maintenance
+          - security-hotfix
+      candidate_commit:
+        description: Exact candidate commit; dispatch this workflow at the same ref.
+        required: true
+        type: string
+      exe_file_name:
+        description: Exact path-safe EXE filename declared by the maintenance candidate.
+        required: true
+        type: string
+
+concurrency:
+  group: stable-1-0-maintenance-windows-${{ inputs.release_id }}-${{ inputs.build_version }}
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  build-sign-and-attest:
+    name: Build, Authenticode-sign, verify, and attest exact EXE
+    runs-on: windows-latest
+    environment: stable-1.0-maintenance-evidence
+    timeout-minutes: 360
+    permissions:
+      contents: read
+      attestations: write
+      artifact-metadata: write
+      id-token: write
+
+    steps:
+      - name: Check out exact candidate
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.candidate_commit }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v5
+        with:
+          java-version: '25'
+          distribution: temurin
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@f29f5a9d7b09a7c6b29859002d29d24e1674c884 # v5
+
+      - name: Install Gradle properties
+        uses: ./.github/actions/setup-gradle-properties
+
+      - name: Validate release identity and pristine tracked source
+        shell: pwsh
+        env:
+          INPUT_RELEASE_ID: ${{ inputs.release_id }}
+          INPUT_BUILD_VERSION: ${{ inputs.build_version }}
+          INPUT_RELEASE_CLASS: ${{ inputs.release_class }}
+          INPUT_CANDIDATE_COMMIT: ${{ inputs.candidate_commit }}
+          INPUT_EXE_FILE_NAME: ${{ inputs.exe_file_name }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:INPUT_RELEASE_ID -cnotmatch '^[A-Za-z0-9][A-Za-z0-9._-]*$' -or
+              $env:INPUT_BUILD_VERSION -cnotmatch '^[1-9][0-9]*$' -or
+              $env:INPUT_CANDIDATE_COMMIT -cnotmatch '^[0-9a-f]{40}$' -or
+              $env:INPUT_EXE_FILE_NAME -cnotmatch '^[A-Za-z0-9][A-Za-z0-9._-]*\.exe$') {
+            throw 'The Windows producer release identity is malformed.'
+          }
+          if ($env:RUNNER_ARCH -cne 'X64') {
+            throw 'The amd64 package producer requires a GitHub-hosted X64 runner.'
+          }
+          if ($env:GITHUB_SHA -cne $env:INPUT_CANDIDATE_COMMIT) {
+            throw 'The workflow_dispatch head SHA is not the candidate commit.'
+          }
+          $expectedBranch = if ($env:INPUT_RELEASE_CLASS -ceq 'maintenance') {
+            "release/$($env:INPUT_BUILD_VERSION)"
+          } else {
+            "hotfix/$($env:INPUT_BUILD_VERSION)"
+          }
+          if ($env:GITHUB_REF -cne "refs/heads/$expectedBranch") {
+            throw 'The producer must be dispatched from the exact release/hotfix branch.'
+          }
+          $remote = (git ls-remote --exit-code origin "refs/heads/$expectedBranch") -split "`t"
+          if ($LASTEXITCODE -ne 0 -or $remote[0] -cne $env:INPUT_CANDIDATE_COMMIT) {
+            throw 'The expected release/hotfix branch does not point at the candidate commit.'
+          }
+          if ((git rev-parse 'HEAD^{commit}').Trim() -cne $env:INPUT_CANDIDATE_COMMIT) {
+            throw 'The checked-out HEAD is not the candidate commit.'
+          }
+          git diff-index --quiet --cached HEAD --
+          if ($LASTEXITCODE -ne 0) { throw 'The source index is dirty before the build.' }
+          git diff-files --quiet --
+          if ($LASTEXITCODE -ne 0) { throw 'Tracked source files are dirty before the build.' }
+          $version = (./gradlew.bat -q printVersion).Trim()
+          if ($LASTEXITCODE -ne 0 -or $version -cne $env:INPUT_BUILD_VERSION) {
+            throw 'The checked-out integer build does not match the dispatch.'
+          }
+
+      - name: Build one Windows EXE installer
+        shell: pwsh
+        env:
+          INPUT_BUILD_VERSION: ${{ inputs.build_version }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $hasWix3 = $null -ne (Get-Command candle.exe -ErrorAction SilentlyContinue) -and
+            $null -ne (Get-Command light.exe -ErrorAction SilentlyContinue)
+          $hasWix4 = $null -ne (Get-Command wix.exe -ErrorAction SilentlyContinue)
+          if (-not $hasWix3 -and -not $hasWix4) {
+            throw 'No jpackage-supported WiX toolchain is available on the hosted runner.'
+          }
+          ./gradlew.bat jpackageInstallerWindowsExeCryptad
+          if ($LASTEXITCODE -ne 0) { throw 'The Windows EXE installer build failed.' }
+          $installers = @(Get-ChildItem -LiteralPath 'build/jpackage' -File -Filter '*.exe')
+          if ($installers.Count -ne 1) { throw 'jpackage did not emit exactly one EXE installer.' }
+
+      - name: Authenticode-sign and verify the exact installer
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE_P12_BASE64: ${{ secrets.CRYPTAD_WINDOWS_CODE_SIGNING_P12_BASE64 }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.CRYPTAD_WINDOWS_CODE_SIGNING_P12_PASSWORD }}
+          WINDOWS_CERTIFICATE_SHA1: ${{ vars.CRYPTAD_WINDOWS_CODE_SIGNING_CERTIFICATE_SHA1 }}
+          WINDOWS_TIMESTAMP_URI: ${{ vars.CRYPTAD_WINDOWS_CODE_SIGNING_TIMESTAMP_URI }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_P12_BASE64) -or
+              [string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_PASSWORD) -or
+              $env:WINDOWS_CERTIFICATE_SHA1 -cnotmatch '^[0-9A-F]{40}$' -or
+              $env:WINDOWS_TIMESTAMP_URI -cnotmatch '^https://[^\s@?#]+(?:/[^\s?#]*)?$') {
+            throw 'Protected Windows Authenticode inputs are incomplete or unsafe.'
+          }
+          $certificatePath = Join-Path $env:RUNNER_TEMP 'cryptad-maintenance-signing.p12'
+          $importedCertificates = @()
+          try {
+            [IO.File]::WriteAllBytes(
+              $certificatePath,
+              [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE_P12_BASE64)
+            )
+            $password = ConvertTo-SecureString $env:WINDOWS_CERTIFICATE_PASSWORD -AsPlainText -Force
+            $importedCertificates = @(Import-PfxCertificate -FilePath $certificatePath `
+              -CertStoreLocation Cert:\CurrentUser\My -Password $password -Exportable:$false
+            )
+            $matchingCertificates = @($importedCertificates | Where-Object {
+              $_.HasPrivateKey -and $_.Thumbprint -ceq $env:WINDOWS_CERTIFICATE_SHA1
+            })
+            if ($matchingCertificates.Count -ne 1) {
+              throw 'The imported certificate is not the reviewed Authenticode identity.'
+            }
+            $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" `
+              -Recurse -File -Filter signtool.exe |
+              Where-Object { $_.FullName -match '\\x64\\signtool\.exe$' } |
+              Sort-Object FullName -Descending |
+              Select-Object -First 1
+            if ($null -eq $signtool) { throw 'Windows SDK signtool.exe is unavailable.' }
+            $installers = @(Get-ChildItem 'build/jpackage' -File -Filter '*.exe')
+            if ($installers.Count -ne 1) { throw 'The signing boundary requires exactly one EXE.' }
+            $installer = $installers[0]
+            & $signtool.FullName sign /fd SHA256 /td SHA256 /tr $env:WINDOWS_TIMESTAMP_URI `
+              /sha1 $env:WINDOWS_CERTIFICATE_SHA1 $installer.FullName | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw 'Authenticode signing failed.' }
+            & $signtool.FullName verify /pa /all $installer.FullName | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw 'Authenticode verification failed.' }
+            & $signtool.FullName verify /pa /all /tw $installer.FullName | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw 'Authenticode timestamp verification failed.' }
+            $signature = Get-AuthenticodeSignature -LiteralPath $installer.FullName
+            if ($signature.Status -cne 'Valid' -or
+                $null -eq $signature.SignerCertificate -or
+                $signature.SignerCertificate.Thumbprint -cne $env:WINDOWS_CERTIFICATE_SHA1 -or
+                $null -eq $signature.TimeStamperCertificate) {
+              throw 'The final EXE lacks the exact valid signer and timestamp identity.'
+            }
+          } finally {
+            foreach ($importedCertificate in $importedCertificates) {
+              Remove-Item -LiteralPath "Cert:\CurrentUser\My\$($importedCertificate.Thumbprint)" -Force `
+                -ErrorAction SilentlyContinue
+            }
+            Remove-Item -LiteralPath $certificatePath -Force -ErrorAction SilentlyContinue
+          }
+
+      - name: Verify post-build source identity and stage the exact PE
+        shell: pwsh
+        env:
+          INPUT_RELEASE_ID: ${{ inputs.release_id }}
+          INPUT_BUILD_VERSION: ${{ inputs.build_version }}
+          INPUT_RELEASE_CLASS: ${{ inputs.release_class }}
+          INPUT_CANDIDATE_COMMIT: ${{ inputs.candidate_commit }}
+          INPUT_EXE_FILE_NAME: ${{ inputs.exe_file_name }}
+          EXPECTED_SIGNER_SHA1: ${{ vars.CRYPTAD_WINDOWS_CODE_SIGNING_CERTIFICATE_SHA1 }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ((git rev-parse 'HEAD^{commit}').Trim() -cne $env:INPUT_CANDIDATE_COMMIT) {
+            throw 'HEAD changed while building the Windows package.'
+          }
+          git diff-index --quiet --cached HEAD --
+          if ($LASTEXITCODE -ne 0) { throw 'The source index changed while building the package.' }
+          git diff-files --quiet --
+          if ($LASTEXITCODE -ne 0) { throw 'Tracked source changed while building the package.' }
+          $installers = @(Get-ChildItem 'build/jpackage' -File -Filter '*.exe')
+          if ($installers.Count -ne 1) { throw 'The staging boundary requires exactly one EXE.' }
+          $installer = $installers[0]
+          $stream = [IO.File]::OpenRead($installer.FullName)
+          try {
+            $reader = [IO.BinaryReader]::new($stream)
+            if ($reader.ReadUInt16() -ne 0x5A4D) { throw 'Installer lacks the MZ signature.' }
+            $stream.Position = 0x3C
+            $peOffset = $reader.ReadUInt32()
+            if ($peOffset -lt 0x40 -or $peOffset + 6 -gt $stream.Length) {
+              throw 'Installer PE header offset is invalid.'
+            }
+            $stream.Position = $peOffset
+            if ($reader.ReadUInt32() -ne 0x00004550 -or $reader.ReadUInt16() -ne 0x8664) {
+              throw 'Installer is not an amd64 PE image.'
+            }
+          } finally {
+            $stream.Dispose()
+          }
+          $output = 'build/stable-maintenance-windows-package-producer'
+          Remove-Item -Recurse -Force $output -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path $output | Out-Null
+          Copy-Item -LiteralPath $installer.FullName `
+            -Destination (Join-Path $output $env:INPUT_EXE_FILE_NAME)
+          $env:EXPECTED_BRANCH = if ($env:INPUT_RELEASE_CLASS -ceq 'maintenance') {
+            "release/$($env:INPUT_BUILD_VERSION)"
+          } else {
+            "hotfix/$($env:INPUT_BUILD_VERSION)"
+          }
+          $env:OUTPUT_EXE = (Resolve-Path (Join-Path $output $env:INPUT_EXE_FILE_NAME)).Path
+          $env:OUTPUT_RECEIPT = (Join-Path (Resolve-Path $output).Path `
+            'stable-1.0-maintenance-windows-package-producer.json')
+          @'
+          import hashlib
+          import json
+          import os
+          import re
+          import subprocess
+          from pathlib import Path
+
+          def digest(path):
+              return "sha256:" + hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+          def tree_digest(*pathspec):
+              data = subprocess.check_output(
+                  ["git", "ls-tree", "-r", "--full-tree", "HEAD", *pathspec]
+              )
+              return "sha256:" + hashlib.sha256(data).hexdigest()
+
+          java_version = subprocess.check_output(
+              ["java", "--version"], stderr=subprocess.STDOUT, text=True
+          ).splitlines()[0]
+          match = re.search(r"(?<![0-9])([0-9]+)(?:\.[0-9]+)*", java_version)
+          if match is None:
+              raise SystemExit("Java runtime version token is missing")
+          gradle_lines = subprocess.check_output(
+              ["cmd.exe", "/d", "/c", "gradlew.bat", "--version"], text=True
+          ).splitlines()
+          gradle_version = next(line.split()[1] for line in gradle_lines if line.startswith("Gradle "))
+          exe = Path(os.environ["OUTPUT_EXE"])
+          value = {
+              "schemaVersion": 1,
+              "kind": "stable-1.0-maintenance-external-package-producer",
+              "releaseId": os.environ["INPUT_RELEASE_ID"],
+              "buildVersion": os.environ["INPUT_BUILD_VERSION"],
+              "sourceCommit": os.environ["INPUT_CANDIDATE_COMMIT"],
+              "source": {
+                  "branch": os.environ["EXPECTED_BRANCH"],
+                  "ref": "commit:" + os.environ["INPUT_CANDIDATE_COMMIT"],
+                  "commit": os.environ["INPUT_CANDIDATE_COMMIT"],
+                  "sourceTreeDigest": tree_digest(),
+              },
+              "toolchain": {
+                  "javaVersion": java_version,
+                  "javaMajorVersion": int(match.group(1)),
+                  "gradleVersion": gradle_version,
+                  "gradleWrapperDigest": digest("gradle/wrapper/gradle-wrapper.jar"),
+                  "dependencyVerificationDigest": digest("gradle/verification-metadata.xml"),
+                  "dependencyVerificationStatus": "pass",
+                  "buildLogicDigest": tree_digest("--", "build-logic"),
+                  "buildTasks": [
+                      "jpackageInstallerWindowsExeCryptad",
+                      "signtool sign", "signtool verify"
+                  ],
+                  "productionSigning": True,
+                  "testSigning": False,
+              },
+              "packageClass": "windows-exe",
+              "assetArchitectures": {exe.name: "amd64"},
+              "assetDigest": digest(exe),
+              "assetSizeBytes": exe.stat().st_size,
+              "authenticode": {
+                  "status": "pass",
+                  "verificationPolicy": "windows-authenticode",
+                  "signerCertificateIdentityDigest": "sha256:" + hashlib.sha256(
+                      os.environ["EXPECTED_SIGNER_SHA1"].encode("ascii")
+                  ).hexdigest(),
+                  "timestampStatus": "pass",
+              },
+              "buildCount": 1,
+              "redaction": {"status": "pass", "findingCount": 0, "findings": []},
+          }
+          Path(os.environ["OUTPUT_RECEIPT"]).write_text(
+              json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          '@ | python3 -
+          if ($LASTEXITCODE -ne 0) { throw 'The Windows producer receipt could not be generated.' }
+
+      - name: Attest exact Windows EXE and producer receipt
+        uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
+        with:
+          subject-path: |
+            build/stable-maintenance-windows-package-producer/*.exe
+            build/stable-maintenance-windows-package-producer/stable-1.0-maintenance-windows-package-producer.json
+
+      - name: Upload exact authenticated Windows producer artifact
+        id: upload
+        uses: actions/upload-artifact@v6
+        with:
+          name: stable-1-0-maintenance-windows-${{ inputs.release_id }}-${{ inputs.build_version }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build/stable-maintenance-windows-package-producer/
+          if-no-files-found: error
+          retention-days: 30

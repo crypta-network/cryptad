@@ -203,3 +203,15 @@ The redaction-safe publication receipt records public location ids/URIs and veri
 It never records private insert URIs, credentials, authorization headers, raw catalog content,
 private signing material, or runner-local paths. See
 [Stable 1.0 RC validation and GA promotion](stable-1.0-rc-validation-and-ga-promotion.md).
+
+## Maintenance publication and recovery
+
+The Stable maintenance publication plan binds the exact signed catalog bytes, revision, primary,
+mirrors, rollback state, and trust-transition evidence to the frozen candidate. A matching public
+state is idempotent success only after every location is independently verified. A downgrade,
+untrusted signature, stale mirror, partial conflict, or unavailable observation blocks completion;
+the workflow does not overwrite or delete conflicting public state.
+
+Catalog publication and the package-based CoreUpdater descriptor remain separate protected
+mutations with separate receipts. See the [Stable 1.0 maintenance release and security hotfix
+path](stable-1.0-maintenance-release-and-hotfix-path.md).

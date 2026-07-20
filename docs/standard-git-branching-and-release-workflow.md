@@ -139,3 +139,15 @@ For a Stable 1.0 GA publication, also confirm:
 
 - The integer build number participates in network compatibility checks and update gating.
 - Update-over-Mandatory (UOM) for the core JAR is disabled in favor of the package‑based CoreUpdater. Tags and build numbers still identify releases for packaging and distribution.
+
+## Stable 1.0 maintenance and security hotfix branches
+
+Stable 1.0 maintenance keeps the same branch model: `release/<build-number>` starts from
+`develop`, while an urgent `hotfix/<build-number>` starts from the currently published `main` state.
+The protected maintenance workflow validates the immutable ref and creates the annotated
+`v<build-number>` tag only when exact-byte publication is authorized. It never merges either branch.
+Release and hotfix merge-backs remain explicit, no-squash, `--no-ff` operations.
+
+See the [Stable 1.0 maintenance release and security hotfix
+path](stable-1.0-maintenance-release-and-hotfix-path.md) for the complete lineage, authorization,
+publication, and recovery rules.

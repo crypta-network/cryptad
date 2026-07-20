@@ -11,9 +11,20 @@ from typing import Any
 
 
 def read_json(path: Path) -> Any:
-    """Read one UTF-8 JSON document."""
+    """Read one UTF-8 JSON document and reject ambiguous duplicate object keys."""
 
-    return json.loads(path.read_text(encoding="utf-8"))
+    def reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        value: dict[str, Any] = {}
+        for key, item in pairs:
+            if key in value:
+                raise ValueError(f"JSON document contains duplicate field {key!r}: {path}")
+            value[key] = item
+        return value
+
+    return json.loads(
+        path.read_text(encoding="utf-8"),
+        object_pairs_hook=reject_duplicate_keys,
+    )
 
 
 def _write_utf8(path: Path, value: str) -> None:

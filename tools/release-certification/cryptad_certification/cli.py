@@ -28,6 +28,7 @@ COMMANDS = (
     "stable-readiness",
     "stable-rc",
     "stable-ga",
+    "stable-maintenance",
 )
 MULTI_NODE_ACTIONS = (
     "plan",
@@ -60,6 +61,7 @@ SELF_TEST_SUITES = (
     "stable-readiness",
     "stable-rc",
     "stable-ga",
+    "stable-maintenance",
     "migration",
 )
 
@@ -263,6 +265,144 @@ def _validate_stable_ga_manifest(manifest: RunManifest) -> None:
         )
 
 
+def _validate_stable_maintenance_manifest(manifest: RunManifest) -> None:
+    """Reject Stable maintenance runs whose class, mode, or immutable inputs are ambiguous."""
+
+    if manifest.release.profile != "stable-review":
+        raise ValueError("stable-maintenance requires release.profile stable-review")
+    version = manifest.release.version
+    if version is None or re.fullmatch(r"[1-9][0-9]*", version) is None:
+        raise ValueError(
+            "stable-maintenance requires a canonical positive integer release.version"
+        )
+    release_class = manifest.policies.get("releaseClass")
+    if release_class not in {"maintenance", "security-hotfix"}:
+        raise ValueError(
+            "stable-maintenance requires policies.releaseClass maintenance or security-hotfix"
+        )
+    expected_branch = f"{'release' if release_class == 'maintenance' else 'hotfix'}/{version}"
+    if manifest.policies.get("candidateSourceBranch") != expected_branch:
+        raise ValueError(
+            f"stable-maintenance {release_class} requires policies.candidateSourceBranch "
+            f"{expected_branch}"
+        )
+    commit = manifest.policies.get("candidateSourceCommit")
+    if not isinstance(commit, str) or re.fullmatch(r"[0-9a-f]{40,64}", commit) is None:
+        raise ValueError(
+            "stable-maintenance requires a canonical policies.candidateSourceCommit"
+        )
+    if manifest.policies.get("candidateSourceRef") != f"commit:{commit}":
+        raise ValueError(
+            "stable-maintenance requires policies.candidateSourceRef to be commit:<sha>"
+        )
+    base_commit = manifest.policies.get("candidateBaseCommit")
+    if (
+        not isinstance(base_commit, str)
+        or re.fullmatch(r"[0-9a-f]{40,64}", base_commit) is None
+        or base_commit == commit
+    ):
+        raise ValueError(
+            "stable-maintenance requires a distinct canonical policies.candidateBaseCommit"
+        )
+    if manifest.policies.get("catalogChannel") != "stable":
+        raise ValueError("stable-maintenance requires policies.catalogChannel stable")
+    if manifest.policies.get("publicationIntent") != (
+        "prepare-explicit-protected-publication"
+    ):
+        raise ValueError(
+            "stable-maintenance requires explicit protected publication intent"
+        )
+    required_inputs = {
+        "stableGaPromotionSummary",
+        "stableGaValidation",
+        "stableGaAuthorizationSummary",
+        "stableGaPublicationPlan",
+        "stableGaPublicationReceipt",
+        "stableGaChecksums",
+        "stableGaProvenance",
+        "stableGaMaintenanceBaseline",
+        "predecessorPublicationReceipt",
+        "predecessorBaseline",
+        "maintenanceCandidate",
+        "maintenanceCandidateFreeze",
+        "maintenanceCandidateAssets",
+        "maintenanceCandidateChecksums",
+        "maintenanceCandidateProvenance",
+        "maintenanceEvidence",
+        "maintenancePolicy",
+    }
+    missing = sorted(required_inputs.difference(manifest.inputs))
+    if missing:
+        raise ValueError(
+            "stable-maintenance requires explicit immutable inputs: "
+            + ", ".join(missing)
+        )
+    mode = manifest.commands.get("stable-maintenance", {}).get(
+        "mode", "validate-only"
+    )
+    allowed_modes = {
+        "validate-only",
+        "prepare-authorization",
+        "close-hotfix-follow-up",
+    }
+    if mode not in allowed_modes:
+        raise ValueError(
+            "stable-maintenance command mode must be validate-only, "
+            "prepare-authorization, or close-hotfix-follow-up"
+        )
+    has_authorization = "stableMaintenanceAuthorization" in manifest.inputs
+    if mode == "prepare-authorization" and has_authorization:
+        raise ValueError(
+            "stable-maintenance prepare-authorization must not include authorization"
+        )
+    if mode == "prepare-authorization" and (
+        "stableMaintenancePublicationReceipt" in manifest.inputs
+        or "coreUpdatePublicationReceipt" in manifest.inputs
+    ):
+        raise ValueError(
+            "stable-maintenance prepare-authorization cannot verify publication receipts"
+        )
+    if mode == "validate-only" and not has_authorization:
+        raise ValueError(
+            "stable-maintenance validate-only requires inputs.stableMaintenanceAuthorization"
+        )
+    if mode == "close-hotfix-follow-up":
+        required_closure = {
+            "stableMaintenanceAuthorization",
+            "hotfixFollowUpObligation",
+            "hotfixFollowUpEvidence",
+        }
+        missing_closure = sorted(required_closure.difference(manifest.inputs))
+        if release_class != "security-hotfix" or missing_closure:
+            raise ValueError(
+                "stable-maintenance close-hotfix-follow-up requires security-hotfix and inputs: "
+                + ", ".join(missing_closure)
+            )
+    receipt_inputs = {
+        "stableMaintenancePublicationReceipt",
+        "coreUpdatePublicationReceipt",
+    }
+    present_receipts = receipt_inputs.intersection(manifest.inputs)
+    if present_receipts and present_receipts != receipt_inputs:
+        raise ValueError(
+            "stable-maintenance publication verification requires both maintenance and "
+            "CoreUpdater receipts"
+        )
+    predecessor_build = manifest.policies.get("expectedPredecessorBuild")
+    if (
+        not isinstance(predecessor_build, str)
+        or re.fullmatch(r"[1-9][0-9]*", predecessor_build) is None
+        or (
+            mode != "close-hotfix-follow-up"
+            and int(version) <= int(predecessor_build)
+        )
+    ):
+        raise ValueError(
+            "stable-maintenance requires a canonical latest predecessor and a strictly "
+            "higher release build outside follow-up closure"
+        )
+
+
 def _run_command(args: argparse.Namespace) -> int:
     command = str(args.command)
     if getattr(args, "self_test", False):
@@ -276,6 +416,8 @@ def _run_command(args: argparse.Namespace) -> int:
         _validate_stable_rc_manifest(manifest)
     if command == "stable-ga":
         _validate_stable_ga_manifest(manifest)
+    if command == "stable-maintenance":
+        _validate_stable_maintenance_manifest(manifest)
     prepare_run_root(manifest)
 
     previous = Path.cwd()

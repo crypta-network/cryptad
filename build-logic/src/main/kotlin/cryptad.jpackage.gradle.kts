@@ -1,5 +1,9 @@
+import java.io.OutputStream
+import java.nio.ByteBuffer
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
+import java.nio.file.LinkOption
+import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 import java.util.Locale
 import java.util.jar.JarOutputStream as JJarOutputStream
@@ -54,29 +58,35 @@ fun clearXattrsQuiet(target: File, timeoutSeconds: Long) {
 val appName = "Crypta"
 val vendor = "crypta.network"
 val appId = "network.crypta.cryptad"
-
-// Windows installer support removed; no UpgradeCode needed.
+// This identity is part of the Windows upgrade contract. Do not change it between integer builds.
+val windowsUpgradeUuid = "779872cd-ca9b-5a0e-8260-7d372a550fb7"
 
 // jpackage --app-version is strict (e.g., macOS CFBundleVersion must be 1..3 integers separated by
 // dots).
 
-/** Returns a numeric app version accepted by jpackage (platform compliant). */
-fun numericAppVersion(): String {
-  val raw = project.version.toString()
+/** Returns the portable numeric app version accepted by Linux and macOS jpackage. */
+fun numericAppVersion(rawVersion: String = project.version.toString()): String {
+  val raw = rawVersion
   val m = Regex("\\d+(?:\\.\\d+){0,3}").find(raw)
-  var v = (m?.value ?: raw.filter { it.isDigit() }.ifBlank { "1" })
-  // Windows installers (MSI/EXE) require 2..4 components in ProductVersion
-  if (currentOs() == "win") {
-    val parts = v.split('.')
-    v =
-      when {
-        parts.size < 2 -> parts.firstOrNull()?.let { "$it.0" } ?: "1.0"
-        parts.size > 4 -> parts.take(4).joinToString(".")
-        else -> v
-      }
-  }
-  return v
+  return (m?.value ?: raw.filter { it.isDigit() }.ifBlank { "1" })
 }
+
+/** Maps the canonical integer release build to MSI's 16-bit build-version component. */
+fun windowsMsiAppVersion(releaseBuild: String): String {
+  val build = releaseBuild.toIntOrNull()
+  if (build == null || build <= 0 || build > 65_535 || build.toString() != releaseBuild) {
+    throw GradleException(
+      "Windows Stable release builds must be canonical integers from 1 through 65535"
+    )
+  }
+  return "1.0.$build"
+}
+
+/** Returns the OS-specific jpackage version without changing Cryptad's integer release version. */
+fun jpackageAppVersion(
+  os: String = currentOs(),
+  releaseBuild: String = project.version.toString(),
+): String = if (os == "win") windowsMsiAppVersion(releaseBuild) else numericAppVersion(releaseBuild)
 
 // Prepare resources for jpackage from root files and src/jpackage assets
 val prepareJpackageResources by
@@ -375,7 +385,7 @@ val jpackageImageCryptad by
           "--name",
           imageName,
           "--app-version",
-          numericAppVersion(),
+          jpackageAppVersion(),
           "--dest",
           destDir.absolutePath,
           "--input",
@@ -650,7 +660,7 @@ val enrichAppImageWithDist by
           ?.forEach { f -> out += "app.classpath=${cpPrefix}${f.name}" }
         out += ""
         out += "[JavaOptions]"
-        out += "java-options=-Djpackage.app-version=${numericAppVersion()}"
+        out += "java-options=-Djpackage.app-version=${jpackageAppVersion()}"
         cfg.writeText(out.joinToString(System.lineSeparator()))
         logger.lifecycle("Patched launcher cfg -> {}", cfg.absolutePath)
       } else {
@@ -659,12 +669,342 @@ val enrichAppImageWithDist by
     }
   }
 
+/** Returns the opt-in Developer ID Application identity used only by protected macOS packaging. */
+fun macSigningKeyUserName(): String =
+  providers.gradleProperty("macSigningKeyUserName").orNull?.trim().orEmpty()
+
+/** Builds one restricted codesign command for the explicit inside-out signing sequence. */
+fun macCodeSigningArgs(
+  codesignPath: String,
+  targetPath: String,
+  signingKeyUserName: String,
+  preserveExistingMetadata: Boolean,
+): List<String> = buildList {
+  add(codesignPath)
+  add("--force")
+  add("--options")
+  add("runtime")
+  add("--timestamp")
+  if (preserveExistingMetadata) {
+    // jpackage signs the JVM launchers and native runtime before enrichment. Retain their
+    // identifiers and executable entitlements while replacing the ad-hoc identity.
+    add("--preserve-metadata=identifier,entitlements")
+  }
+  add("--sign")
+  add(signingKeyUserName)
+  add(targetPath)
+}
+
+/** Returns whether the target currently has a signature whose metadata can be preserved. */
+fun hasMacCodeSignature(codesign: File, target: File): Boolean =
+  try {
+    val process =
+      ProcessBuilder(codesign.absolutePath, "--display", target.absolutePath)
+        .redirectErrorStream(true)
+        .start()
+    process.inputStream.use { it.copyTo(OutputStream.nullOutputStream()) }
+    process.waitFor() == 0
+  } catch (_: Exception) {
+    false
+  }
+
+/** Returns whether a target belongs to the jpackage-created JVM/native bundle surface. */
+fun requiresExistingMacCodeSignature(appImage: File, target: File): Boolean {
+  val appPath = appImage.toPath().toAbsolutePath().normalize()
+  val targetPath = target.toPath().toAbsolutePath().normalize()
+  return targetPath == appPath ||
+    targetPath.startsWith(appPath.resolve("Contents/runtime")) ||
+    targetPath.startsWith(appPath.resolve("Contents/Frameworks"))
+}
+
+/** Returns whether the regular file starts with a recognized thin or universal Mach-O magic. */
+fun isMachOCodeFile(path: Path): Boolean {
+  if (!Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) return false
+  val header = ByteArray(Int.SIZE_BYTES)
+  val bytesRead =
+    Files.newInputStream(path).use { input ->
+      var offset = 0
+      while (offset < header.size) {
+        val count = input.read(header, offset, header.size - offset)
+        if (count < 0) break
+        offset += count
+      }
+      offset
+    }
+  if (bytesRead != header.size) return false
+  return ByteBuffer.wrap(header).int in
+    setOf(
+      0xFEEDFACE.toInt(), // 32-bit Mach-O
+      0xCEFAEDFE.toInt(), // byte-swapped 32-bit Mach-O
+      0xFEEDFACF.toInt(), // 64-bit Mach-O
+      0xCFFAEDFE.toInt(), // byte-swapped 64-bit Mach-O
+      0xCAFEBABE.toInt(), // universal Mach-O
+      0xBEBAFECA.toInt(), // byte-swapped universal Mach-O
+      0xCAFEBABF.toInt(), // 64-bit universal Mach-O
+      0xBFBAFECA.toInt(), // byte-swapped 64-bit universal Mach-O
+    )
+}
+
+/** Returns whether the directory is a nested native bundle that codesign must seal explicitly. */
+fun isNestedMacCodeBundle(appPath: Path, path: Path): Boolean {
+  if (!Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS) || path == appPath) return false
+  if (path == appPath.resolve("Contents/runtime")) return true
+  val name = path.fileName.toString().lowercase(Locale.ROOT)
+  return when {
+    name.endsWith(".framework") ->
+      Files.isDirectory(path.resolve("Versions"), LinkOption.NOFOLLOW_LINKS)
+    name.endsWith(".app") ||
+      name.endsWith(".appex") ||
+      name.endsWith(".xpc") ||
+      name.endsWith(".plugin") ||
+      name.endsWith(".bundle") ->
+      Files.isRegularFile(path.resolve("Contents/Info.plist"), LinkOption.NOFOLLOW_LINKS)
+    else -> false
+  }
+}
+
+/**
+ * Selects nested macOS code in inside-out order, leaving the main launcher for the app-root
+ * signature as jpackage does.
+ */
+fun macNestedCodeSigningTargets(appImage: File, mainLauncherName: String): List<File> {
+  val appPath = appImage.toPath().toAbsolutePath().normalize()
+  val mainLauncher = appPath.resolve("Contents/MacOS/$mainLauncherName")
+  val nestedFiles =
+    Files.walk(appPath).use { paths ->
+      paths
+        .filter { path -> path != mainLauncher && isMachOCodeFile(path) }
+        .sorted(compareByDescending<Path> { it.nameCount }.thenBy { it.toString() })
+        .map(Path::toFile)
+        .toList()
+    }
+
+  val bundleRoots =
+    Files.walk(appPath).use { paths ->
+      paths
+        .filter { path -> isNestedMacCodeBundle(appPath, path) }
+        .sorted(compareByDescending<Path> { it.nameCount }.thenBy { it.toString() })
+        .map(Path::toFile)
+        .toList()
+    }
+  return nestedFiles + bundleRoots
+}
+
+/** Verifies one nested code object without relying on recursive signing behavior. */
+fun macCodeVerificationArgs(codesignPath: String, targetPath: String): List<String> =
+  listOf(codesignPath, "--verify", "--strict", "--verbose=2", targetPath)
+
+// jpackage does not apply installer-stage signing to a predefined app image, and it rejects using
+// --app-image with --type app-image. Sign the final enriched bundle directly, after cryptad-dist
+// and the rewritten launcher config have been added, then package those exact signed bytes.
+// Ordinary local packaging skips this task when no identity is supplied.
+val signFinalMacAppImageCryptad by
+  tasks.registering {
+    group = "jpackage"
+    description = "Developer ID signs the final enriched macOS app image when explicitly enabled"
+    dependsOn(enrichAppImageWithDist)
+    onlyIf { currentOs() == "mac" && macSigningKeyUserName().isNotEmpty() }
+    doLast {
+      val app = jpackageOutDir.get().asFile.resolve("$appName.app")
+      if (!app.isDirectory) {
+        throw GradleException("Final enriched macOS app image not found: ${app.absolutePath}")
+      }
+      val codesign = File("/usr/bin/codesign")
+      if (!codesign.canExecute()) {
+        throw GradleException("codesign tool not available for protected macOS packaging")
+      }
+
+      // Enrichment changes the app payload after the initial app-image build. Clear resource-fork
+      // metadata before replacing the ad-hoc image signature with the protected Developer ID.
+      clearXattrsQuiet(app, 10)
+      val signingIdentity = macSigningKeyUserName()
+      val nestedTargets = macNestedCodeSigningTargets(app, appName)
+      logger.lifecycle(
+        "Developer ID signing {} nested macOS code objects before the final app root",
+        nestedTargets.size,
+      )
+      for (target in nestedTargets) {
+        val hasExistingSignature = hasMacCodeSignature(codesign, target)
+        if (requiresExistingMacCodeSignature(app, target) && !hasExistingSignature) {
+          throw GradleException(
+            "jpackage nested code lacks the signature metadata required for safe replacement: " +
+              target.absolutePath
+          )
+        }
+        execAndLog(
+          macCodeSigningArgs(
+            codesign.absolutePath,
+            target.absolutePath,
+            signingIdentity,
+            hasExistingSignature,
+          )
+        )
+        execAndLog(macCodeVerificationArgs(codesign.absolutePath, target.absolutePath))
+      }
+
+      // The enclosing app is always last so its resource seal authenticates every replacement
+      // nested signature and the enriched application payload.
+      if (!hasMacCodeSignature(codesign, app)) {
+        throw GradleException(
+          "Final enriched macOS app lacks the jpackage signature metadata required for safe replacement"
+        )
+      }
+      execAndLog(macCodeSigningArgs(codesign.absolutePath, app.absolutePath, signingIdentity, true))
+      execAndLog(
+        listOf(
+          codesign.absolutePath,
+          "--verify",
+          "--deep",
+          "--strict",
+          "--verbose=2",
+          app.absolutePath,
+        )
+      )
+    }
+  }
+
+val verifyMacAppImageSigningArguments by
+  tasks.registering {
+    group = "verification"
+    description = "Verifies the restricted final macOS app-image signing command"
+    doLast {
+      val args =
+        macCodeSigningArgs(
+          "codesign",
+          "Crypta.app/Contents/runtime/Contents/Home/bin/java",
+          "Developer ID Application: Crypta (ABCDEFGHIJ)",
+          true,
+        )
+      val expected =
+        listOf(
+          "codesign",
+          "--force",
+          "--options",
+          "runtime",
+          "--timestamp",
+          "--preserve-metadata=identifier,entitlements",
+          "--sign",
+          "Developer ID Application: Crypta (ABCDEFGHIJ)",
+          "Crypta.app/Contents/runtime/Contents/Home/bin/java",
+        )
+      check(args == expected) { "Unexpected nested app-image signing arguments: $args" }
+      check("--deep" !in args) { "Recursive codesign is forbidden at the signing boundary" }
+      val unsignedArgs =
+        macCodeSigningArgs(
+          "codesign",
+          "Crypta.app/Contents/app/cryptad-dist/bin/cryptad",
+          "Developer ID Application: Crypta (ABCDEFGHIJ)",
+          false,
+        )
+      check(unsignedArgs.none { it.startsWith("--preserve-metadata") }) {
+        "Unsigned enriched code cannot claim pre-existing entitlement metadata"
+      }
+      val verifyArgs = macCodeVerificationArgs("codesign", "nested-code")
+      check(verifyArgs == listOf("codesign", "--verify", "--strict", "--verbose=2", "nested-code"))
+      val forbidden =
+        setOf(
+          "--name",
+          "--dest",
+          "--resource-dir",
+          "--runtime-image",
+          "--input",
+          "--main-jar",
+          "--main-class",
+          "--icon",
+          "--mac-package-identifier",
+          "--app-image",
+          "--type",
+        )
+      check(args.none(forbidden::contains)) {
+        "Installer or app-construction options reached the predefined app-image signing boundary"
+      }
+
+      val fixture = temporaryDir.resolve("Crypta.app")
+      val runtimeJava = fixture.resolve("Contents/runtime/Contents/Home/bin/java")
+      val runtimeLibrary = fixture.resolve("Contents/runtime/Contents/Home/lib/libjli.dylib")
+      val frameworkLibrary =
+        fixture.resolve("Contents/Frameworks/Crypta.framework/Versions/A/Crypta")
+      val mainLauncher = fixture.resolve("Contents/MacOS/Crypta")
+      val embeddedMacLibrary =
+        fixture.resolve("Contents/app/cryptad-dist/lib/libwrapper-macosx-universal-64.dylib")
+      val embeddedLinuxWrapper =
+        fixture.resolve("Contents/app/cryptad-dist/bin/wrapper-linux-x86-64")
+      val embeddedWindowsWrapper = fixture.resolve("Contents/app/cryptad-dist/bin/wrapper.exe")
+      val embeddedScript = fixture.resolve("Contents/app/cryptad-dist/bin/cryptad")
+      val resource = fixture.resolve("Contents/app/cryptad-dist/conf/cryptad.ini")
+      val fakeMacLibrary = fixture.resolve("Contents/app/cryptad-dist/lib/not-really-native.dylib")
+      for (file in
+        listOf(
+          runtimeJava,
+          runtimeLibrary,
+          frameworkLibrary,
+          mainLauncher,
+          embeddedMacLibrary,
+          embeddedLinuxWrapper,
+          embeddedWindowsWrapper,
+          embeddedScript,
+          resource,
+          fakeMacLibrary,
+        )) {
+        file.parentFile.mkdirs()
+      }
+      val machO64Magic = byteArrayOf(0xCF.toByte(), 0xFA.toByte(), 0xED.toByte(), 0xFE.toByte())
+      for (file in
+        listOf(runtimeJava, runtimeLibrary, frameworkLibrary, mainLauncher, embeddedMacLibrary)) {
+        file.writeBytes(machO64Magic)
+      }
+      embeddedLinuxWrapper.writeBytes(
+        byteArrayOf(0x7F, 'E'.code.toByte(), 'L'.code.toByte(), 'F'.code.toByte())
+      )
+      embeddedWindowsWrapper.writeBytes(byteArrayOf('M'.code.toByte(), 'Z'.code.toByte(), 0, 0))
+      embeddedScript.writeText("#!/bin/sh\n")
+      resource.writeText("not native code\n")
+      fakeMacLibrary.writeText("a suffix is not a file format\n")
+      embeddedLinuxWrapper.setExecutable(true)
+      embeddedWindowsWrapper.setExecutable(true)
+      embeddedScript.setExecutable(true)
+      val ordered = macNestedCodeSigningTargets(fixture, "Crypta")
+      check(mainLauncher !in ordered) { "The app-root signature must own the main launcher" }
+      check(embeddedMacLibrary in ordered) { "An embedded Mach-O library must be signed" }
+      check(embeddedLinuxWrapper !in ordered) {
+        "An embedded ELF executable must not be codesigned"
+      }
+      check(embeddedWindowsWrapper !in ordered) {
+        "An embedded PE executable must not be codesigned"
+      }
+      check(embeddedScript !in ordered) { "An executable script must not be codesigned" }
+      check(resource !in ordered) { "An ordinary resource must not be codesigned" }
+      check(fakeMacLibrary !in ordered) { "A fake .dylib resource must not be codesigned" }
+      check(ordered.indexOf(runtimeJava) < ordered.indexOf(fixture.resolve("Contents/runtime"))) {
+        "Runtime code must be signed before the runtime bundle root"
+      }
+      check(
+        ordered.indexOf(frameworkLibrary) <
+          ordered.indexOf(fixture.resolve("Contents/Frameworks/Crypta.framework"))
+      ) {
+        "Framework code must be signed before the framework bundle root"
+      }
+      check((ordered + fixture).last() == fixture) { "The app root must be signed last" }
+      check(requiresExistingMacCodeSignature(fixture, runtimeJava))
+      check(requiresExistingMacCodeSignature(fixture, frameworkLibrary))
+      check(requiresExistingMacCodeSignature(fixture, fixture))
+      check(
+        !requiresExistingMacCodeSignature(
+          fixture,
+          fixture.resolve("Contents/app/cryptad-dist/bin/cryptad"),
+        )
+      )
+    }
+  }
+
+tasks.named("check") { dependsOn(verifyMacAppImageSigningArguments) }
+
 // Build an OS-native installer (dmg/msi/deb) using the image created above.
 val jpackageInstallerCryptad by
   tasks.registering {
     group = "jpackage"
     description = "Creates a native installer for the current OS"
-    dependsOn(enrichAppImageWithDist)
+    dependsOn(signFinalMacAppImageCryptad)
     onlyIf {
       when (currentOs()) {
         "linux" -> hasExe("dpkg-deb") || hasExe("rpmbuild")
@@ -695,7 +1035,7 @@ val jpackageInstallerCryptad by
           "--name",
           appName,
           "--app-version",
-          numericAppVersion(),
+          jpackageAppVersion(),
           "--dest",
           outDir.absolutePath,
           "--resource-dir",
@@ -706,7 +1046,13 @@ val jpackageInstallerCryptad by
           vendor,
         )
       if (providers.gradleProperty("jpackageDebug").orNull == "true") args += "--verbose"
-      if (os == "mac") args.addAll(listOf("--mac-package-identifier", appId))
+      if (os == "mac") {
+        args.addAll(listOf("--mac-package-identifier", appId))
+        val signingKeyUserName = macSigningKeyUserName()
+        if (signingKeyUserName.isNotEmpty()) {
+          args.addAll(listOf("--mac-sign", "--mac-signing-key-user-name", signingKeyUserName))
+        }
+      }
       if (os == "linux") {
         // Install under a stable path used by our service/scripts and tests
         args.addAll(listOf("--install-dir", "/opt/cryptad"))
@@ -740,7 +1086,7 @@ val jpackageInstallerRpm by
           "--name",
           appName,
           "--app-version",
-          numericAppVersion(),
+          jpackageAppVersion(),
           "--dest",
           outDir.absolutePath,
           "--resource-dir",
@@ -779,7 +1125,7 @@ val jpackageInstallerDeb by
           "--name",
           appName,
           "--app-version",
-          numericAppVersion(),
+          jpackageAppVersion(),
           "--dest",
           outDir.absolutePath,
           "--resource-dir",
@@ -809,11 +1155,108 @@ val jpackageInstallerLinuxAll by
     onlyIf { currentOs() == "linux" && (hasExe("dpkg-deb") || hasExe("rpmbuild")) }
   }
 
-// Windows MSI installer task removed
+/** Builds the closed jpackage command used by the protected Windows EXE producer. */
+fun windowsExeInstallerArgs(
+  jpackagePath: String,
+  appVersion: String,
+  outputPath: String,
+  resourcesPath: String,
+  appImagePath: String,
+  iconPath: String,
+  verbose: Boolean,
+): List<String> = buildList {
+  addAll(
+    listOf(
+      jpackagePath,
+      "--type",
+      "exe",
+      "--name",
+      appName,
+      "--app-version",
+      appVersion,
+      "--dest",
+      outputPath,
+      "--resource-dir",
+      resourcesPath,
+      "--app-image",
+      appImagePath,
+      "--vendor",
+      vendor,
+      "--icon",
+      iconPath,
+      "--win-upgrade-uuid",
+      windowsUpgradeUuid,
+      "--win-dir-chooser",
+      "--win-menu",
+      "--win-shortcut",
+    )
+  )
+  if (verbose) add("--verbose")
+}
 
-// Windows EXE installer task removed
+/** Builds the protected Windows EXE from the final enriched app image. */
+val jpackageInstallerWindowsExeCryptad by
+  tasks.registering {
+    group = "jpackage"
+    description = "Creates the Stable maintenance Windows EXE installer"
+    dependsOn(enrichAppImageWithDist)
+    doLast {
+      if (currentOs() != "win") {
+        throw GradleException("jpackageInstallerWindowsExeCryptad requires a Windows host")
+      }
+      val jpackage = resolveJpackageExecutable()
+      val outDir = jpackageOutDir.get().asFile.also { it.mkdirs() }
+      val imagePath = outDir.resolve(appName)
+      if (!imagePath.isDirectory) {
+        throw GradleException(
+          "Final enriched Windows app image not found: ${imagePath.absolutePath}"
+        )
+      }
+      val args =
+        windowsExeInstallerArgs(
+          jpackage.absolutePath,
+          jpackageAppVersion(),
+          outDir.absolutePath,
+          jpackageResourcesDir.get().asFile.absolutePath,
+          imagePath.absolutePath,
+          iconPathForOs(),
+          providers.gradleProperty("jpackageDebug").orNull == "true",
+        )
+      logger.lifecycle("Executing jpackage Windows EXE installer")
+      execAndLog(args)
+    }
+  }
 
-// Aggregate Windows installer task removed
+val verifyWindowsExeInstallerArguments by
+  tasks.registering {
+    group = "verification"
+    description = "Verifies the protected Windows EXE jpackage command"
+    doLast {
+      val args =
+        windowsExeInstallerArgs(
+          "jpackage.exe",
+          jpackageAppVersion("win", "301"),
+          "jpackage-output",
+          "jpackage-resources",
+          "Crypta",
+          "cryptad.ico",
+          true,
+        )
+      check(args.take(3) == listOf("jpackage.exe", "--type", "exe"))
+      check(args.windowed(2).contains(listOf("--app-version", "1.0.301")))
+      check(jpackageAppVersion("win", "301") == "1.0.301")
+      check(jpackageAppVersion("linux", "301") == "301")
+      check(jpackageAppVersion("mac", "301") == "301")
+      check(args.containsAll(listOf("--app-image", "--win-upgrade-uuid", windowsUpgradeUuid)))
+      check(args.count { it == "--win-upgrade-uuid" } == 1)
+      check(args.last() == "--verbose")
+      for (invalidBuild in listOf("0", "065", "65536", "1.0", "not-a-build")) {
+        check(runCatching { windowsMsiAppVersion(invalidBuild) }.isFailure)
+      }
+    }
+  }
+
+tasks.named("check") { dependsOn(verifyWindowsExeInstallerArguments) }
 
 // WiX relink task removed
 

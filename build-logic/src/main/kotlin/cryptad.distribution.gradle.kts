@@ -1,3 +1,4 @@
+import cryptad.PortableArchiveNormalizer
 import java.net.HttpURLConnection
 import java.net.URI
 import java.nio.file.Files
@@ -621,8 +622,14 @@ tasks.register<Tar>("distTarCryptad") {
   archiveFileName.set("cryptad-v${project.version}.tar.gz")
   from(wrapperDistDir)
   destinationDirectory.set(layout.buildDirectory.dir("distributions"))
-  isPreserveFileTimestamps = true
+  isPreserveFileTimestamps = false
   isReproducibleFileOrder = true
+  eachFile {
+    val memberPermissions = PortableArchiveNormalizer.unixPermissionsForMember(path)
+    permissions { unix(memberPermissions) }
+  }
+  dirPermissions { unix("0755") }
+  doLast { PortableArchiveNormalizer.normalize(archiveFile.get().asFile.toPath()) }
 }
 
 // Package the same distribution as a ZIP for broad platform compatibility
@@ -636,8 +643,14 @@ tasks.register<Zip>("distZipCryptad") {
   archiveFileName.set("cryptad-v${project.version}.zip")
   from(wrapperDistDir)
   destinationDirectory.set(layout.buildDirectory.dir("distributions"))
-  isPreserveFileTimestamps = true
+  isPreserveFileTimestamps = false
   isReproducibleFileOrder = true
+  eachFile {
+    val memberPermissions = PortableArchiveNormalizer.unixPermissionsForMember(path)
+    permissions { unix(memberPermissions) }
+  }
+  dirPermissions { unix("0755") }
+  doLast { PortableArchiveNormalizer.normalize(archiveFile.get().asFile.toPath()) }
 }
 
 // Aggregate distribution lifecycle task
