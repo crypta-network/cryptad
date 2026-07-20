@@ -212,6 +212,12 @@ state is idempotent success only after every location is independently verified.
 untrusted signature, stale mirror, partial conflict, or unavailable observation blocks completion;
 the workflow does not overwrite or delete conflicting public state.
 
+The catalog properties and detached signature are separate frozen and published assets. Protected
+verification supplies both exact files and the candidate's independently declared signing-key id
+to `crypta-app catalog verify`; a valid signature from another key in the trusted registry is not
+an identity match. If the catalog bytes, signature bytes, or signing-key id changes, the edition or
+revision must advance. Equal counters are allowed only when all three identities are unchanged.
+
 Catalog publication and the package-based CoreUpdater descriptor remain separate protected
 mutations with separate receipts. See the [Stable 1.0 maintenance release and security hotfix
 path](stable-1.0-maintenance-release-and-hotfix-path.md).

@@ -580,7 +580,8 @@ candidate catalog and detached signature with `AppCatalogVerifier`, and requires
 id to equal the candidate's declared `signingKeyId`. The workflow deletes the registry before job
 exit and records only the catalog digest, signature digest, key id, trusted-key-registry SHA-256,
 algorithm, verifier identity, and passing status. It never writes public-key bytes or raw signature
-bytes to a public artifact.
+content into a JSON verification record. The exact detached signature sidecar remains a separately
+frozen and published asset.
 
 Configure the approved publication backend source commit, wheel digest, signer workflow,
 and entry point as repository-level Actions variables so the evidence-scoped independent verifier
@@ -589,6 +590,18 @@ scope those four backend identity variables only to a publication environment. K
 catalog, CoreUpdater, and maintenance-state protected inputs in their purpose-specific publication
 environments. Private target values are environment indirections only and are forbidden in
 manifests, component outputs, failure audits, and receipts.
+
+Build that backend only through
+`.github/workflows/stable-1.0-maintenance-publication-backend-producer.yml` at a reviewed `main`
+commit. The consumer pins the producer run, artifact name and digest, source commit, deterministic
+wheel digest, signer workflow, and `cryptad_stable_maintenance_backend:factory` entry point before
+installing it outside the candidate import path. The deployment service accepts canonical public
+HTTPS roots with or without a trailing slash and non-root endpoints with at most one terminal
+slash; it rejects internal empty or dot segments and non-global destinations. Its
+`verify-publication` request receives the closed, digest-bound `verificationInputs` record set
+needed to construct receipts, successor state, and history without out-of-band candidate data.
+See [the publication-backend protocol](publication-backend/README.md).
+
 The adapter materializes each target input, permanently scrubs all target-input names from its
 local and ambient environments before importing the provider, and passes an opaque value only to
 the one matching target operation. It also expands every concrete artifact, catalog/signature,

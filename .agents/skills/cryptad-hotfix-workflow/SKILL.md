@@ -101,7 +101,10 @@ or waiver. Declare a nonempty `affectedPackageKeys` subset even when publishing 
 package matrix. A narrowed matrix requires a passing unaffected-target proof and must equal that
 affected set exactly; a complete matrix uses `unaffectedPackageProofStatus=not-applicable`. Close
 the obligation later with the side-effect-free `close-hotfix-follow-up` mode; do not rebuild or
-mutate the published hotfix. When another authorized hotfix carries an open
+mutate the published hotfix. The aggregate interval and every obligated row must independently
+meet the normal duration and freshness policy, must have completed by the validation time, and must
+bind both the original hotfix predecessor and the immutable GA identity where the scenario is a
+direct-GA upgrade. When another authorized hotfix carries an open or overdue
 obligation, closure evidence and authorization remain bound to the originally obligated build and
 bytes. The latest activated baseline, receipt, and pointer separately authenticate where that
 obligation is currently carried; do not substitute the superseding hotfix's evidence or

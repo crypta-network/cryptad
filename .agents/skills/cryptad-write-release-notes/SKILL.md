@@ -18,8 +18,11 @@ This skill covers how to draft or review a Cryptad GitHub release body and match
 - Repo-root `docs/cryptad-release-workflow-and-runbook.md`
 - Repo-root `docs/stable-1.0-rc-execution-and-release-freeze.md` for Stable RC notes
 - Repo-root `docs/stable-1.0-rc-validation-and-ga-promotion.md` for Stable GA notes
+- Repo-root `docs/stable-1.0-maintenance-release-and-hotfix-path.md` for later Stable 1.0 notes
 - Repo-root `docs/templates/stable-1.0-rc-release-notes.md` or
   `docs/templates/stable-1.0-ga-release-notes.md` when that generated contract is in scope
+- Repo-root `docs/templates/stable-1.0-maintenance-release-notes.md` for a maintenance or
+  security-hotfix generated-note contract
 - Repo-root `build.gradle.kts`
 
 ## Process
@@ -175,4 +178,7 @@ full-window follow-up without exposing embargoed details or private evidence.
 Treat the rendered note digest as part of candidate authorization. Reject placeholders, unsafe
 Markdown/control text, private URIs, tokens, raw content/data, and local paths. Before a verified
 publication-complete receipt, describe the notes and assets as prepared or authorized, never as
-published. Follow `docs/stable-1.0-maintenance-release-and-hotfix-path.md`.
+published. Link only to the planned public checksum/provenance assets. The public checksum file
+does not enumerate internal candidate, lineage, comparison, evidence, follow-up, activation, or
+history records; those belong only to the audit checksum inventory. Follow
+`docs/stable-1.0-maintenance-release-and-hotfix-path.md`.

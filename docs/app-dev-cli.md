@@ -755,12 +755,20 @@ Verify the catalog and sibling signature:
 ```bash
 crypta-app catalog verify \
   --catalog-file dist/catalog/cryptad-app-catalog.properties \
+  --catalog-signature-file dist/catalog/cryptad-app-catalog.signature \
+  --expected-key-id dev-local \
   --trusted-key-id dev-local \
   --trusted-public-key-file /abs/path/to/dev-app-signing-public.pem
 ```
 
 The sign command writes `cryptad-app-catalog.signature` beside
 `cryptad-app-catalog.properties`. Do not rewrite, sort, or reformat the catalog after signing.
+
+By default, `catalog verify` derives that canonical sibling signature filename and accepts the
+signer named by any trusted key. Use `--catalog-signature-file` to verify an exact detached sidecar
+at another path and `--expected-key-id` to require a separately declared signer identity. Stable
+release verification uses both options so another key in a broad trusted registry cannot replace
+the candidate's frozen catalog signer.
 
 `crypta-app` does not publish catalogs or signatures to Crypta. To offer a public
 catalog-over-Crypta source, create and sign the catalog locally, then publish

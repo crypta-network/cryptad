@@ -240,6 +240,25 @@ Use this skill when you need to:
   platform, FCP, and HTTP boundary suites also require `package-info.java` in the production
   packages they own.
 
+## Release-tooling boundary
+
+- `tools/release-certification/cryptad_certification/engines/` owns side-effect-free policy and
+  evidence evaluation. Stable 1.0 GA remains in `stable_1_0_ga*`; later routine maintenance and
+  security hotfixes share the `stable_1_0_maintenance*` engine family and one closed policy.
+- `tools/release-certification/protected/stable_maintenance_publication.py` owns protected-boundary
+  materialization, exact-state revalidation, publication receipt verification, and successor
+  activation. Do not import a publication client into the certification engine.
+- `tools/release-certification/publication-backend/` is the separately built, attested provider
+  wheel. Hosted publication jobs load it only from the authenticated installation directory; the
+  candidate checkout is not a provider source.
+- `.github/workflows/stable-1.0-maintenance-*.yml` owns the protected input, Windows package,
+  backend-wheel, candidate-freeze, authorization, publication, independent-verification, and
+  activation orchestration. These workflows validate refs and exact artifacts but never create or
+  merge release/hotfix branches.
+- `build-logic/src/main/kotlin/cryptad/PortableArchiveNormalizer.kt` and the distribution/runtime
+  convention plugins own deterministic portable archive construction. The independent Python
+  archive gate verifies those bytes; neither layer is a substitute for the other.
+
 ## Architecture overview (by package)
 ### Core network layer (`network.crypta.node`)
 - Node coordination: `Node.java`

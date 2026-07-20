@@ -690,3 +690,22 @@ The protected workflow owns annotated `v<build-number>` tag creation and publica
 creates or merges branches. After a verified publication receipt, complete the existing release or
 hotfix merge-back with no squash and `--no-ff` merges. See the [Stable 1.0 maintenance release and
 security hotfix path](stable-1.0-maintenance-release-and-hotfix-path.md).
+
+For this Stable path, do not use the earlier manual `core-info.json`, tag, GitHub Release, catalog,
+or update-key steps in this general runbook. The four protected maintenance operations are
+`freeze-candidate`, `prepare-authorization`, `validate-authorization`, and `publish`; each consumes
+the prior phase's exact run id, artifact name, and Actions artifact digest. Only freeze builds
+packages. Publish additionally authenticates the reviewed publication-backend wheel, requires an
+exact pre-staged artifact base, verifies public state independently, and activates the successor
+baseline with a separate short-lived activation authorization.
+
+Use Java 25 or newer for local packaging checks. The focused side-effect-free validation is:
+
+```bash
+python3 tools/release-certification/certify.py stable-maintenance --self-test
+./gradlew verifyMacAppImageSigningArguments verifyWindowsExeInstallerArguments
+```
+
+Those commands do not replace hosted Windows Authenticode production, macOS Developer ID signing
+and notarization, Linux package production, protected catalog-signature verification, or public
+publication verification.

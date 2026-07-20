@@ -14,6 +14,20 @@ dispatch additionally supplies the exact producer run id and Actions artifact di
 action verifies all six bindings and the GitHub attestation before installing the wheel without
 dependency resolution.
 
+Configure these immutable public-safe identity pins where the evidence verifier and both
+publication environments can read the same values:
+
+- `CRYPTAD_STABLE_MAINTENANCE_PUBLICATION_BACKEND_SOURCE_COMMIT`;
+- `CRYPTAD_STABLE_MAINTENANCE_PUBLICATION_BACKEND_WHEEL_SHA256`;
+- `CRYPTAD_STABLE_MAINTENANCE_PUBLICATION_BACKEND_SIGNER_WORKFLOW`;
+- `CRYPTAD_STABLE_MAINTENANCE_PUBLICATION_BACKEND`, fixed to
+  `cryptad_stable_maintenance_backend:factory`.
+
+Each `publish` dispatch separately supplies the producer run id, fixed artifact name, and Actions
+artifact digest. Keep the catalog, CoreUpdater, and latest-pointer capability values in their
+purpose-specific protected environments; they are not provider identity configuration and must not
+be visible while the wheel is imported or while an unrelated target is observed or mutated.
+
 ## Protected deployment-service protocol
 
 GitHub annotated tags, Releases, and assets are observed and mutated directly through the GitHub

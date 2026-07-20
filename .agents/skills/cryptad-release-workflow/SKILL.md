@@ -2,8 +2,8 @@
 name: cryptad-release-workflow
 description: |
   Cut and stabilize a Cryptad release branch using integer build-number versioning, v-number tags,
-  no-squash --no-ff merges into main and develop, and the protected Stable 1.0 RC/GA path when the
-  release targets that product milestone.
+  no-squash --no-ff merges into main and develop, and the protected Stable 1.0 RC/GA or later
+  maintenance path when the release targets that product milestone.
 ---
 
 # Release workflow (release/<build-number>)
@@ -284,11 +284,22 @@ staple, and verify its DMG before the freeze record is written. Publication jobs
 install the pinned provider wheel on the clean runner and recheck the remote release/hotfix ref and
 authorization before mutation. Never collapse the four operations into one run or accept a
 replacement candidate/evidence/authorization input at publication time.
+Record the exact producing run id, artifact name, and Actions artifact digest at every handoff.
+Freeze additionally requires the protected Windows producer coordinates and exact EXE SHA-256;
+publish additionally requires the reviewed publication-backend producer coordinates. A path,
+artifact name, run id, or digest by itself is not a complete producer identity.
 
 Configure `LEUMOR_GITHUB_TOKEN` on both maintenance publication environments. The protected
 workflow must verify that token's `/user` login is exactly `leumor` and give it, rather than the
 job-scoped Actions token, to tag, GitHub Release, and release-asset mutations. Keep the Actions
 token read-only and use it only to authenticate workflow artifacts and attestations.
+
+The canonical provider verifies a separately pre-staged artifact base and uses a closed deployment
+service for catalog, CoreUpdater, publication verification, and latest-pointer state. Its
+`verify-publication` request carries the digest-bound records needed to build the receipt,
+successor, and history; do not provision an undocumented service-side candidate copy. Follow
+`tools/release-certification/publication-backend/README.md` for the exact protocol and accepted
+public-HTTPS endpoint forms.
 
 Follow `docs/stable-1.0-maintenance-release-and-hotfix-path.md`. Preserve manual no-squash,
 `--no-ff` merges into `main` and `develop` after the release-manager-approved publication flow.

@@ -1,6 +1,6 @@
 ---
 name: cryptad-platform-apps
-description: "Work on Cryptad's app platform: Platform API v1/contract, signed app bundles/catalogs and mirrors, app review, production security, Trust Graph/Social Inbox RCs, app update/data/backup/services/UI/SDK, sandbox and support evidence, production beta gates, Stable 1.0 RC freeze and exact-byte GA maintenance baseline, legacy plugin freeze, and legacy admin retirement routing."
+description: "Work on Cryptad's app platform: Platform API v1/contract, signed app bundles/catalogs and mirrors, app review, production security, Trust Graph/Social Inbox RCs, app update/data/backup/services/UI/SDK, sandbox and support evidence, production beta gates, Stable 1.0 RC/GA and later maintenance compatibility, legacy plugin freeze, and legacy admin retirement routing."
 ---
 
 # Cryptad platform apps
@@ -60,6 +60,8 @@ Load only the docs needed for the change:
 - Stable 1.0 RC execution and freeze: `docs/stable-1.0-rc-execution-and-release-freeze.md`
 - Stable 1.0 RC validation and GA promotion:
   `docs/stable-1.0-rc-validation-and-ga-promotion.md`
+- Stable 1.0 maintenance and security hotfix path:
+  `docs/stable-1.0-maintenance-release-and-hotfix-path.md`
 - Multi-node beta soak and upgrade drill: `docs/multi-node-beta-soak-and-upgrade-drill.md`
 
 ## Ownership map
@@ -233,6 +235,10 @@ Load only the docs needed for the change:
   permission-disclosure, and design-system checks.
 - Signed catalogs and bundles must verify before install/update. Unsigned live-node installs require
   the explicit development-only escape hatch.
+- At a release boundary, verify the exact detached catalog sidecar and the independently frozen
+  signer id. `crypta-app catalog verify --catalog-signature-file <path> --expected-key-id <id>`
+  prevents another key in a broad trusted registry from satisfying that binding. Do not replace
+  this with a digest-only check or infer signer identity from the registry.
 - Trusted app-review receipts are independent reviewer evidence. Do not treat publisher advisory
   `review.status`, app signing keys, or catalog signing keys as reviewer trust.
 - App-store submission packages are review inputs, not install approvals. Keep package bodies,
@@ -473,6 +479,11 @@ or revision to advance. Validate known-limitations added/resolved/unchanged ids 
 canonical partition of the authenticated predecessor membership; retain the sorted current ids in
 each successor baseline so a later release cannot replace membership with an unauthenticated
 digest.
+
+Treat app support as a closed ordered commitment: promotion is allowed, downgrade or an unknown
+level is not. Compare app versions with the canonical dotted-numeric `AppUpdateService` semantics.
+A version cannot regress below GA or the predecessor, and changed bundle bytes require a strict
+version increase so an installed node can discover the patch.
 
 Bind all app/catalog/update and durable-state scenarios to the exact candidate and predecessor
 digests. A security hotfix cannot waive these gates; only policy-listed observation windows may be

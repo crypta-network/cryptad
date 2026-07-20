@@ -30,5 +30,6 @@ Use this skill when the task is mostly about words rather than code.
 - For later Stable 1.0 maintenance or security-hotfix prose, use
   `docs/stable-1.0-maintenance-release-and-hotfix-path.md` as the canonical runbook. Preserve
   integer builds and `v<build-number>` tags, distinguish the immutable GA v1 root from successor v2
-  baselines, state Windows EXE producer limitations honestly, and never claim publication or
-  follow-up closure without the applicable verified receipt.
+  baselines, state the hosted Windows, macOS, Linux, protected-input, and publication-provider
+  boundaries honestly, and never claim publication, latest-baseline activation, or follow-up
+  closure without the applicable independently verified receipt.

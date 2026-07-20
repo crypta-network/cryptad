@@ -203,6 +203,14 @@ ownership, safe regular files/directories/symlinks, deterministic gzip metadata,
 traversal paths, no special files, no AppleDouble, `__MACOSX`, or `.DS_Store`, and recursive
 inspection of nested archives.
 
+The independent gate also rejects path aliases such as `a`, `a/`, or `bin/./x`, Windows drive and
+UNC absolute paths, duplicate members at every nesting level, escaping symlink targets, optional
+gzip header fields, noncanonical PAX records, ZIP comments or extra fields, and ZIP members without
+explicit Unix type and mode metadata. Nested archives are read through a bounded stream before
+materialization. Package rows must agree with their AppEnv selector, producer architecture,
+suffix, container magic, and authenticated DEB, RPM, or PE architecture where that metadata is
+available; a renamed or mislabeled installer is not an acceptable package.
+
 After authorization, any changed product, package, signature, catalog, descriptor, checksum,
 provenance, note source, archive member, or file mode invalidates the authorization. Produce a new
 candidate freeze; a waiver cannot authorize byte drift.
@@ -237,6 +245,11 @@ revoked or compromised keys, unexplained permission expansion, incompatible API 
 missing migration/restore paths, stale catalog editions, untrusted mirrors, rollback conflicts,
 and advisory or denylist regressions. An approved signing-key rotation must include the complete
 trust transition. The comparison artifact lists every exact catalog and app delta.
+
+App support commitments are ordered rather than fixed: a promotion to a stronger defined support
+level is allowed, but a downgrade or unknown level is not. App versions use the same canonical
+dotted-numeric comparison as `AppUpdateService`; versions cannot regress below either anchor, and
+changed bundle bytes require a strictly newer version so installed nodes can select the update.
 
 ### Content-format profiles
 
@@ -385,6 +398,11 @@ cover lineage, byte identity, API/profile compatibility, signing, catalog/app tr
 upgrade/recovery, affected-platform install, sandbox/security, redaction, authorization, public
 conflict, or receipt verification.
 
+Every warning-bearing evidence row must have an exact frozen `operationalWarnings` entry with the
+same warning id and evidence digest. The authorization request carries those ids in
+`acceptedWarningIds` and requires `go-with-waivers`; a warning omitted from the frozen set, a
+declared warning without a matching `warn` row, or a plain `go` decision is a blocker.
+
 ## Protected publication
 
 Dispatch `.github/workflows/stable-1.0-maintenance-release.yml` only after protected evidence and
@@ -413,6 +431,16 @@ evidence, package, manifest, or authorization inputs are rejected. This ordering
 post-freeze evidence can describe the bytes actually produced without requiring a speculative
 earlier build or rebuilding native installers after authorization.
 
+Use this handoff sequence; every artifact coordinate means the producing run id, exact artifact
+name, and `sha256:<hex>` Actions artifact digest:
+
+| Consumer operation | Authenticated inputs | Output for the next phase |
+| --- | --- | --- |
+| `freeze-candidate` | `freeze-candidate` phase bundle plus the Windows producer artifact and EXE SHA-256 | Attested frozen-candidate artifact containing the one built asset set. |
+| `prepare-authorization` | `prepare-authorization` phase bundle plus the exact frozen-candidate artifact | Attested prepared-candidate artifact; its candidate asset directory is reconstructed only from the prior freeze. |
+| `validate-authorization` | `validate-authorization` phase bundle plus the exact prepared-candidate artifact | Attested authorized-candidate artifact. |
+| `publish` | Exact authorized-candidate artifact plus the authenticated publication-backend wheel | Publication audit, independent verification, and activation artifacts; no replacement phase bundle is accepted. |
+
 Use the protected environments `stable-1.0-maintenance-evidence`,
 `stable-1.0-maintenance-publication`, and `stable-1.0-security-hotfix-publication` with
 least-privilege job permissions. The workflow validates branch/ref/commit identity but never
@@ -429,16 +457,21 @@ key registry in `TrustedAppKeys` properties format; it must never contain a priv
 job builds the checked-out `crypta-app` verifier, rechecks that the build did not change tracked
 source, and verifies the exact catalog and detached-signature bytes under the candidate's declared
 `signingKeyId`. The temporary registry is mode `0600`, is deleted before job exit, and neither its
-key bytes nor the detached signature bytes enter the candidate freeze or another public artifact.
-The freeze records the registry's SHA-256 beside the signer ID so a same-ID trust-material change
-is auditable without publishing any public-key material.
+key bytes nor raw signature content is serialized into a candidate JSON record. The detached
+signature file itself remains a separately frozen and published exact-byte asset. The freeze
+records the registry's SHA-256 beside the signer ID so a same-ID trust-material change is auditable
+without publishing any public-key material.
 
 The macOS freeze job also requires the reviewed
-`CRYPTAD_MACOS_DEVELOPER_ID_APPLICATION` identity and protected Developer ID P12 and Apple notary
-credentials. The protected Gradle property signs and strictly verifies the final enriched
-`Crypta.app` after `cryptad-dist` and the launcher configuration are installed. It replaces
-jpackage signatures in explicit inside-out order with `codesign --options runtime --timestamp`,
-preserves the JVM/framework identifier and entitlement metadata, and signs the app root last.
+`CRYPTAD_MACOS_DEVELOPER_ID_APPLICATION` identity; the protected
+`CRYPTAD_MACOS_DEVELOPER_ID_APPLICATION_P12_BASE64` and
+`CRYPTAD_MACOS_DEVELOPER_ID_APPLICATION_P12_PASSWORD` secrets; and the protected
+`CRYPTAD_MACOS_NOTARY_APPLE_ID`, `CRYPTAD_MACOS_NOTARY_APP_PASSWORD`, and
+`CRYPTAD_MACOS_NOTARY_TEAM_ID` secrets. The protected Gradle property signs and strictly verifies
+the final enriched `Crypta.app` after `cryptad-dist` and the launcher configuration are installed.
+It replaces jpackage signatures in explicit inside-out order with
+`codesign --options runtime --timestamp`, preserves the JVM/framework identifier and entitlement
+metadata, and signs the app root last.
 Missing pre-existing jpackage metadata or any recursive signing attempt is a blocker. Jpackage then
 uses that predefined image to create the DMG.
 Installer-stage mac signing remains enabled, but the workflow does not treat it as proof that the
@@ -477,14 +510,14 @@ credential are never uploaded or serialized. Environment approval, exact bundle 
 digests, and the same-commit workflow attestation authenticate the producer; a URL alone does not.
 
 Publication dispatches identify an exact protected provider artifact by run id, artifact name, and
-artifact digest. Configure the provider's reviewed source commit, wheel digest, signer workflow,
-and `module:factory` entry point as repository-level Actions variables in
-The canonical provider wheel is produced only by
+artifact digest. The canonical provider wheel is produced only by
 `.github/workflows/stable-1.0-maintenance-publication-backend-producer.yml` from the current reviewed
 `main` commit. Its fixed artifact is `stable-1.0-maintenance-publication-backend` and its fixed
 entrypoint is `cryptad_stable_maintenance_backend:factory`; see
 `tools/release-certification/publication-backend/README.md` for the closed deployment-service and
-capability protocol. Configure `CRYPTAD_STABLE_MAINTENANCE_PUBLICATION_BACKEND_SOURCE_COMMIT`,
+capability protocol. Configure the reviewed source commit, wheel digest, signer workflow, and entry
+point as repository-level Actions variables:
+`CRYPTAD_STABLE_MAINTENANCE_PUBLICATION_BACKEND_SOURCE_COMMIT`,
 `CRYPTAD_STABLE_MAINTENANCE_PUBLICATION_BACKEND_WHEEL_SHA256`,
 `CRYPTAD_STABLE_MAINTENANCE_PUBLICATION_BACKEND_SIGNER_WORKFLOW`, and
 `CRYPTAD_STABLE_MAINTENANCE_PUBLICATION_BACKEND`. These four immutable, public-safe identity pins
@@ -502,6 +535,17 @@ missing signer identity, provider, or target-specific protected input fails befo
 adapter materializes these opaque values before provider construction, removes their names from
 both its environment snapshot and ambient process environment, and passes only the intended value
 to the corresponding target method; imports, observations, and unrelated targets see none of them.
+
+The provider's `deploymentServicePublicUri` follows the same canonical public-HTTPS contract as
+authorization: an authority root may appear with or without its trailing slash, and a non-root
+endpoint may end in one slash, but internal empty segments, dot segments, credentials, fragments,
+ambiguous whitespace, redirects, and non-global addresses are rejected. Independent
+`verify-publication` calls are self-contained. They send a closed `verificationInputs` map with
+the authenticated plan, candidate and candidate input, lineage, CoreUpdater plan and descriptor,
+GA and predecessor baselines, evidence summary, provenance, and nullable follow-up records. Each
+entry binds the canonical physical JSON digest to the parsed record. The deployment service does
+not rely on undocumented out-of-band candidate state, and the adapter independently validates
+every returned receipt, successor baseline, and history entry.
 
 Configure `LEUMOR_GITHUB_TOKEN` as a secret in both Stable maintenance publication environments.
 The protected job verifies `/user` resolves to exactly `leumor` before it gives that credential to
@@ -598,6 +642,25 @@ Inputs with duplicate JSON keys, unsafe strings, symlinks, workspace escapes, un
 members, or placeholders fail before comparison. Public release notes describe validation and
 availability only after the independently verified receipt proves publication. Checked-in docs,
 templates, fixtures, and self-tests never claim that a maintenance build or hotfix was published.
+
+## Local verification
+
+Run the focused offline suite after changing the maintenance policy, schemas, engine, workflows,
+provider, packaging logic, or this contract:
+
+```bash
+python3 tools/release-certification/certify.py stable-maintenance --self-test
+python3 tools/release-certification/certify.py stable-ga --self-test
+python3 tools/release-certification/certify.py stable-rc --self-test
+./gradlew verifyMacAppImageSigningArguments verifyWindowsExeInstallerArguments
+```
+
+When portable archive construction changes, also build the affected `distZipCryptad`,
+`distTarCryptad`, and `distJlinkCryptad` outputs and run the maintenance self-test so the Python
+hygiene gate checks the Java-normalized bytes. These commands are validation only. Developer ID,
+Authenticode, notarization, multi-OS installer production, public artifact staging, catalog or USK
+insertion, and latest-pointer activation remain protected operations and must not be claimed from a
+local run.
 
 ## Branch and merge completion
 

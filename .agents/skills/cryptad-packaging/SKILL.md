@@ -1,6 +1,6 @@
 ---
 name: cryptad-packaging
-description: "Build and troubleshoot distributions and installers, including Stable 1.0 deterministic RC product archives and exact-byte GA promotion (assembleCryptadDist, jpackage, Windows wrapper assets, Flatpak, and Linux DEB/RPM behavior)."
+description: "Build and troubleshoot distributions and installers, including Stable 1.0 deterministic RC archives, exact-byte GA promotion, and built-once maintenance/hotfix packages (assembleCryptadDist, jpackage, Windows wrapper assets, Flatpak, and Linux DEB/RPM behavior)."
 metadata:
   area: packaging
   domain: cryptad
@@ -132,6 +132,12 @@ Use this skill when working on:
 - The Python maintenance archive rewriter and independent hygiene gate must apply that same
   member-path policy. They must not preserve a source archive's execute bits or accept both `0644`
   and `0755` indiscriminately for regular files.
+- Treat canonical member names as extraction identities. Reject raw `.` or empty components,
+  trailing-slash file/directory aliases, duplicate canonical paths at every nested level, POSIX,
+  drive-qualified, and UNC absolute paths, escaping symlink targets, and special files. Require
+  closed gzip headers, only necessary canonical PAX extensions, empty ZIP archive/member comments
+  and extra fields, and explicit Unix type/mode metadata for every ZIP member. Bound a nested
+  member before reading or decompressing its bytes.
 
 ## Stable 1.0 RC and GA archives
 
@@ -317,5 +323,25 @@ staple and verify those resulting bytes again before computing the frozen digest
 DMG into the frozen asset set. Also verify the app, stapling ticket, and Gatekeeper assessment. Do
 not freeze a DMG based only on declared signing metadata.
 
+The workflow variable is `CRYPTAD_MACOS_DEVELOPER_ID_APPLICATION`. Keep the P12 and notary values
+only in the evidence environment secrets
+`CRYPTAD_MACOS_DEVELOPER_ID_APPLICATION_P12_BASE64`,
+`CRYPTAD_MACOS_DEVELOPER_ID_APPLICATION_P12_PASSWORD`,
+`CRYPTAD_MACOS_NOTARY_APPLE_ID`, `CRYPTAD_MACOS_NOTARY_APP_PASSWORD`, and
+`CRYPTAD_MACOS_NOTARY_TEAM_ID`. Never place those values in Gradle properties files, workflow
+inputs, command output, receipts, or retained artifacts.
+
 Publication copies the frozen assets; it never reruns Gradle, jpackage, signing, notarization, or
 archive creation. Follow `docs/stable-1.0-maintenance-release-and-hotfix-path.md`.
+
+Focused cross-platform argument checks are:
+
+```bash
+./gradlew verifyMacAppImageSigningArguments verifyWindowsExeInstallerArguments
+```
+
+When portable archive logic changes, build the affected `distZipCryptad`, `distTarCryptad`, and
+`distJlinkCryptad` tasks, then run
+`python3 tools/release-certification/certify.py stable-maintenance --self-test` so the independent
+Python hygiene rules are exercised against the Java normalizer contract. These checks do not
+replace protected signing, notarization, multi-OS packaging, or publication.

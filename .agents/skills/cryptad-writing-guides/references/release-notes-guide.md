@@ -25,6 +25,9 @@ changelogs:
 - `stable-rc` renders `docs/templates/stable-1.0-rc-release-notes.md` from the authenticated freeze.
 - `stable-ga` renders `docs/templates/stable-1.0-ga-release-notes.md` from the authenticated RC,
   post-freeze validation, authorization, exact limitations, and maintenance baseline.
+- `stable-maintenance` renders `docs/templates/stable-1.0-maintenance-release-notes.md` from the
+  authenticated GA root, latest predecessor, frozen integer-build candidate, compatibility delta,
+  evidence, package/updater state, limitations delta, and release class.
 - Required template tokens have a fixed order and cardinality. Missing, duplicated, unknown, or
   reordered tokens are release blockers.
 - Before verified publication, do not claim that the tag, GitHub Release, update descriptor,
@@ -33,6 +36,9 @@ changelogs:
   render as literal audited text, not active injected headings, links, or images.
 - Publish only the planned public assets. The public checksum file must not reference internal
   authorization, validation, redaction, or input files that are absent from the Release assets.
+- Maintenance notes must describe a shortened hotfix window and its outstanding follow-up
+  obligation accurately. Do not claim closure until the side-effect-free closure record is
+  authenticated through the current successor lineage.
 - Preserve the generated note digest through protected publication and verify it in the receipt.
 
 When the template needs editorial changes, edit the checked-in template and rerun the command.

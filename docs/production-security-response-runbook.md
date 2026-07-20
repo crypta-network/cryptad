@@ -361,3 +361,12 @@ The dedicated hotfix policy may shorten only closed prepublication observation w
 a deterministic full-window follow-up obligation and blocks the next routine publication if that
 obligation becomes overdue. There is no generic skip or waiver. Follow the [Stable 1.0 maintenance
 release and security hotfix path](stable-1.0-maintenance-release-and-hotfix-path.md).
+
+Every security hotfix declares a nonempty `affectedPackageKeys` subset, including a full-window
+hotfix that still publishes the complete package matrix. A complete matrix records the unaffected
+target proof as `not-applicable`; a narrowed matrix must exactly equal the affected set and carry a
+passing proof that omitted targets do not ship the vulnerable code. Follow-up closure requires the
+normal duration and freshness on the aggregate and on every obligated evidence row, with completed
+timestamps and the original hotfix predecessor identity. A later superseding hotfix may carry an
+open or overdue obligation, but it cannot relabel or clear that obligation with its own bytes,
+authorization, or predecessor evidence.
