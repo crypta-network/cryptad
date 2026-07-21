@@ -2345,7 +2345,11 @@ def build_core_info(
     metadata = context.manifest.policies.get("metadata")
     metadata = metadata if isinstance(metadata, dict) else {}
     release_page = metadata.get("githubReleasePageUri")
-    if not _public_reference(release_page):
+    expected_release_page = (
+        "https://github.com/crypta-network/cryptad/releases/tag/"
+        f"v{context.manifest.release.version}"
+    )
+    if release_page != expected_release_page:
         errors.append("CoreUpdater release page URL is not public-safe")
     descriptor: dict[str, Any] = {
         "version": str(context.manifest.release.version),

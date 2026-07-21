@@ -2206,6 +2206,39 @@ class StableMaintenanceCoreInfoTest(unittest.TestCase):
             self.assertEqual(identity["candidateIdentityDigest"], candidate.identity_digest)
             self.assertEqual(validate_schema(descriptor, core.CORE_INFO_SCHEMA), [])
 
+    def test_core_info_keeps_fixed_github_release_page_offline(self) -> None:
+        with tempfile.TemporaryDirectory() as directory, mock.patch.object(
+            stable_1_0_ga_core.socket,
+            "getaddrinfo",
+            side_effect=OSError("offline"),
+        ):
+            root = Path(directory)
+            context = _context(root)
+            state = ValidationState()
+
+            descriptor, _identity = build_core_info(
+                context, _candidate(root), state
+            )
+
+            self.assertEqual(state.blockers, [])
+            self.assertEqual(
+                descriptor["release_page_url"],
+                "https://github.com/crypta-network/cryptad/releases/tag/v301",
+            )
+
+            context.manifest.policies["metadata"]["githubReleasePageUri"] = (
+                "https://github.com/crypta-network/cryptad/releases/tag/v302"
+            )
+            invalid_state = ValidationState()
+            build_core_info(context, _candidate(root), invalid_state)
+            self.assertTrue(
+                any(
+                    "release page URL is not public-safe" in row["summary"]
+                    for row in invalid_state.blockers
+                ),
+                invalid_state.blockers,
+            )
+
     def test_core_info_rejects_ambiguous_or_private_package_reference(self) -> None:
         mutations = (
             ("both references", lambda row: row.__setitem__("storeUrl", "https://store.crypta.network/app")),
