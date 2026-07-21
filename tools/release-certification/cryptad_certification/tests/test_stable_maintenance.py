@@ -1761,6 +1761,7 @@ class StableMaintenanceInputSecurityTest(unittest.TestCase):
             path = Path(directory) / "safe.zip"
             with zipfile.ZipFile(path, "w") as archive:
                 info = zipfile.ZipInfo("cryptad/readme.txt", (1980, 1, 1, 0, 0, 0))
+                info.create_system = 3
                 info.external_attr = 0o100644 << 16
                 archive.writestr(info, "safe")
             self.assertEqual(archive_hygiene_errors(path), [])
@@ -3418,9 +3419,11 @@ class StableMaintenanceAuthorizationAndPublicationTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "authorization.json"
             value = {"approverIdentity": "José stable-release-manager"}
-            path.write_text(
-                json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-                encoding="utf-8",
+            path.write_bytes(
+                (
+                    json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True)
+                    + "\n"
+                ).encode("utf-8")
             )
 
             self.assertTrue(
@@ -3429,9 +3432,11 @@ class StableMaintenanceAuthorizationAndPublicationTest(unittest.TestCase):
             self.assertIn("José", path.read_text(encoding="utf-8"))
             self.assertNotIn(r"\u00e9", path.read_text(encoding="utf-8"))
 
-            path.write_text(
-                json.dumps(value, ensure_ascii=True, indent=2, sort_keys=True) + "\n",
-                encoding="utf-8",
+            path.write_bytes(
+                (
+                    json.dumps(value, ensure_ascii=True, indent=2, sort_keys=True)
+                    + "\n"
+                ).encode("utf-8")
             )
             self.assertFalse(
                 stable_1_0_maintenance._canonical_json_input(path, value)  # noqa: SLF001

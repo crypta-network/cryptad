@@ -9,6 +9,7 @@ import os
 import re
 import shutil
 import stat
+import sys
 import tarfile
 import zipfile
 from pathlib import Path
@@ -889,6 +890,22 @@ def _regular_source(path: Path, label: str) -> Path:
     absolute = path.absolute()
     for component in (absolute, *absolute.parents):
         if component.is_symlink():
+            # macOS exposes its temporary directory through the root-level /var
+            # compatibility alias.  That operating-system alias precedes every
+            # caller-controlled path component and is safe to canonicalize; a
+            # symlink at the source or below that platform boundary remains
+            # forbidden.
+            darwin_root_aliases = {
+                Path("/tmp"): Path("/private/tmp"),
+                Path("/var"): Path("/private/var"),
+            }
+            if (
+                sys.platform == "darwin"
+                and component != absolute
+                and darwin_root_aliases.get(component)
+                == component.resolve(strict=True)
+            ):
+                continue
             raise ValueError(f"archive source is missing or unsafe: {label}")
     if not absolute.is_file():
         raise ValueError(f"archive source is missing or unsafe: {label}")

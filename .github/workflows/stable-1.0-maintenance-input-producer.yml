@@ -483,6 +483,7 @@ jobs:
                           raise SystemExit(
                               "maintenancePolicy is not the exact checked-in policy path"
                           )
+                      checkout = Path.cwd().resolve(strict=True)
                       expected = Path(canonical_policy).absolute()
                       try:
                           resolved = expected.resolve(strict=True)
@@ -490,11 +491,21 @@ jobs:
                           raise SystemExit(
                               "maintenancePolicy is missing from the authenticated checkout"
                           ) from None
-                      if resolved != expected or expected.is_symlink() or not expected.is_file():
+                      try:
+                          relative = resolved.relative_to(checkout)
+                      except ValueError:
+                          raise SystemExit(
+                              "maintenancePolicy is unsafe in the authenticated checkout"
+                          ) from None
+                      if (
+                          relative.as_posix() != canonical_policy
+                          or expected.is_symlink()
+                          or not resolved.is_file()
+                      ):
                           raise SystemExit(
                               "maintenancePolicy is unsafe in the authenticated checkout"
                           )
-                      return expected
+                      return resolved
                   prefix = "build/protected-inputs/"
                   if not value.startswith(prefix):
                       raise SystemExit(f"{key} does not use the canonical protected-input root")

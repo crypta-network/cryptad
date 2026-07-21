@@ -76,17 +76,24 @@ def prepare_context(workspace_root: Path, manifest: RunManifest, component: str)
 def _require_confined_directory(path: Path, run_root: Path, description: str) -> None:
     """Reject symlinks, non-directories, and paths resolving outside the release root."""
 
+    resolved_root = run_root.resolve()
     current = run_root
     try:
         relative = path.relative_to(run_root)
     except ValueError as exc:
-        raise WorkspaceError(f"{description} path is outside release workspace: {path}") from exc
+        try:
+            relative = path.resolve().relative_to(resolved_root)
+        except ValueError:
+            raise WorkspaceError(
+                f"{description} path is outside release workspace: {path}"
+            ) from exc
+        current = resolved_root
     for part in relative.parts:
         current /= part
         if current.is_symlink():
             raise WorkspaceError(f"{description} path contains a symlink: {current}")
     try:
-        path.resolve().relative_to(run_root)
+        path.resolve().relative_to(resolved_root)
     except ValueError as exc:
         raise WorkspaceError(f"{description} path escapes release workspace: {path}") from exc
     if path.exists() and not path.is_dir():
@@ -96,16 +103,15 @@ def _require_confined_directory(path: Path, run_root: Path, description: str) ->
 def reset_confined_directory(path: Path, run_root: Path, description: str) -> Path:
     """Remove and recreate one confined directory without following replacement symlinks."""
 
-    resolved_root = run_root.resolve()
-    _require_confined_directory(path.parent, resolved_root, f"{description} parent")
+    _require_confined_directory(path.parent, run_root, f"{description} parent")
     if path.is_symlink() or (path.exists() and not path.is_dir()):
         path.unlink()
     elif path.exists():
-        _require_confined_directory(path, resolved_root, description)
+        _require_confined_directory(path, run_root, description)
         shutil.rmtree(path)
-    _require_confined_directory(path.parent, resolved_root, f"{description} parent")
+    _require_confined_directory(path.parent, run_root, f"{description} parent")
     path.mkdir()
-    _require_confined_directory(path, resolved_root, description)
+    _require_confined_directory(path, run_root, description)
     return path.resolve()
 
 
