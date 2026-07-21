@@ -1,0 +1,609 @@
+name: Stable 1.0 Maintenance Protected Input Producer
+run-name: >-
+  Stable 1.0 protected ${{ inputs.phase }} inputs ${{ inputs.release_id }} build ${{ inputs.build_version }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_id:
+        description: Path-safe Stable 1.0 maintenance release ID.
+        required: true
+        type: string
+      build_version:
+        description: Positive integer Cryptad build.
+        required: true
+        type: string
+      release_class:
+        description: Closed Stable 1.0 release class.
+        required: true
+        type: choice
+        options:
+          - maintenance
+          - security-hotfix
+      candidate_commit:
+        description: Exact candidate commit; dispatch this workflow at the same ref.
+        required: true
+        type: string
+      phase:
+        description: Consumer phase for this one immutable public-safe input bundle.
+        required: true
+        type: choice
+        options:
+          - freeze-candidate
+          - prepare-authorization
+          - validate-authorization
+      input_bundle_sha256:
+        description: Exact sha256:<hex> of the reviewed ZIP at the protected environment URI.
+        required: true
+        type: string
+
+concurrency:
+  group: >-
+    stable-1-0-maintenance-input-${{ inputs.release_id }}-${{ inputs.build_version }}-${{ inputs.phase }}
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  authenticate-stage-and-attest:
+    name: Authenticate, validate, and attest public-safe inputs
+    runs-on: ubuntu-latest
+    environment: stable-1.0-maintenance-evidence
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      attestations: write
+      artifact-metadata: write
+      id-token: write
+
+    steps:
+      - name: Check out exact candidate
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.candidate_commit }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Validate dispatch identity and pristine source
+        env:
+          INPUT_RELEASE_ID: ${{ inputs.release_id }}
+          INPUT_BUILD_VERSION: ${{ inputs.build_version }}
+          INPUT_RELEASE_CLASS: ${{ inputs.release_class }}
+          INPUT_CANDIDATE_COMMIT: ${{ inputs.candidate_commit }}
+          INPUT_BUNDLE_SHA256: ${{ inputs.input_bundle_sha256 }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$INPUT_RELEASE_ID" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ \
+                || ! "$INPUT_BUILD_VERSION" =~ ^[1-9][0-9]*$ \
+                || ! "$INPUT_CANDIDATE_COMMIT" =~ ^[0-9a-f]{40}$ \
+                || ! "$INPUT_BUNDLE_SHA256" =~ ^sha256:[0-9a-f]{64}$ \
+                || "$GITHUB_SHA" != "$INPUT_CANDIDATE_COMMIT" ]]; then
+            echo "::error::Protected input producer identity is malformed or dispatched at the wrong SHA."
+            exit 1
+          fi
+          expected_branch="release/$INPUT_BUILD_VERSION"
+          if [[ "$INPUT_RELEASE_CLASS" == security-hotfix ]]; then
+            expected_branch="hotfix/$INPUT_BUILD_VERSION"
+          fi
+          if [[ "$GITHUB_REF" != "refs/heads/$expected_branch" ]]; then
+            echo "::error::The producer must be dispatched from the exact release/hotfix branch."
+            exit 1
+          fi
+          remote_commit="$(git ls-remote --exit-code origin "refs/heads/$expected_branch" \
+            | awk 'NR == 1 {print $1}')"
+          if [[ "$remote_commit" != "$INPUT_CANDIDATE_COMMIT" \
+                || "$(git rev-parse 'HEAD^{commit}')" != "$INPUT_CANDIDATE_COMMIT" ]]; then
+            echo "::error::The expected release/hotfix branch does not point at this input producer."
+            exit 1
+          fi
+          git diff-index --quiet --cached HEAD --
+          git diff-files --quiet --
+
+      - name: Fetch exact reviewed bundle without exposing its protected locator
+        env:
+          INPUT_BUNDLE_SHA256: ${{ inputs.input_bundle_sha256 }}
+          PROTECTED_BUNDLE_URL: ${{ secrets.CRYPTAD_STABLE_MAINTENANCE_INPUT_BUNDLE_URL }}
+          PROTECTED_BUNDLE_BEARER_TOKEN: ${{ secrets.CRYPTAD_STABLE_MAINTENANCE_INPUT_BUNDLE_BEARER_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/stable-maintenance-input"
+          python3 - <<'PY'
+          import hashlib
+          import http.client
+          import ipaddress
+          import os
+          import socket
+          import ssl
+          import urllib.error
+          import urllib.parse
+          import urllib.request
+          from pathlib import Path
+
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, req, fp, code, msg, headers, newurl):
+                  raise urllib.error.HTTPError(req.full_url, code, "redirect forbidden", headers, fp)
+
+          def canonical_hostname(value):
+              return value.rstrip(".").encode("idna").decode("ascii").lower()
+
+
+          def resolve_global_endpoints(hostname, port):
+              try:
+                  rows = socket.getaddrinfo(
+                      hostname,
+                      port,
+                      type=socket.SOCK_STREAM,
+                      proto=socket.IPPROTO_TCP,
+                  )
+              except OSError as exc:
+                  raise SystemExit("protected bundle locator cannot be resolved") from exc
+              endpoints = []
+              seen = set()
+              for family, socktype, proto, _canonname, sockaddr in rows:
+                  try:
+                      address = ipaddress.ip_address(sockaddr[0])
+                  except ValueError as exc:
+                      raise SystemExit(
+                          "protected bundle locator returned a malformed address"
+                      ) from exc
+                  if not address.is_global:
+                      raise SystemExit("protected bundle locator does not resolve publicly")
+                  endpoint = (family, socktype, proto, sockaddr)
+                  if endpoint not in seen:
+                      seen.add(endpoint)
+                      endpoints.append(endpoint)
+              if not endpoints:
+                  raise SystemExit("protected bundle locator does not resolve publicly")
+              return tuple(endpoints)
+
+
+          def connect_to_pinned(endpoints, timeout, source_address):
+              errors = []
+              for family, socktype, proto, sockaddr in endpoints:
+                  connection = socket.socket(family, socktype, proto)
+                  try:
+                      if timeout is not socket._GLOBAL_DEFAULT_TIMEOUT:
+                          connection.settimeout(timeout)
+                      if source_address:
+                          connection.bind(source_address)
+                      connection.connect(sockaddr)
+                      expected_peer = ipaddress.ip_address(sockaddr[0])
+                      actual_peer = ipaddress.ip_address(connection.getpeername()[0])
+                      if actual_peer != expected_peer or not actual_peer.is_global:
+                          raise OSError("connected peer does not match the validated address")
+                      return connection
+                  except OSError as exc:
+                      errors.append(exc)
+                      connection.close()
+              raise OSError("could not connect to any validated public address") from (
+                  errors[-1] if errors else None
+              )
+
+
+          class PinnedHTTPSConnection(http.client.HTTPSConnection):
+              def __init__(
+                  self,
+                  host,
+                  *,
+                  pinned_endpoints,
+                  tls_hostname,
+                  tls_port,
+                  context,
+                  **kwargs,
+              ):
+                  super().__init__(host, context=context, **kwargs)
+                  self._pinned_endpoints = pinned_endpoints
+                  self._tls_hostname = tls_hostname
+                  self._tls_port = tls_port
+
+              def connect(self):
+                  if self._tunnel_host is not None:
+                      raise OSError("HTTPS tunnels are forbidden for protected bundle retrieval")
+                  if (
+                      canonical_hostname(self.host) != canonical_hostname(self._tls_hostname)
+                      or self.port != self._tls_port
+                  ):
+                      raise OSError("HTTPS connection target differs from the validated locator")
+                  raw_socket = connect_to_pinned(
+                      self._pinned_endpoints, self.timeout, self.source_address
+                  )
+                  try:
+                      self.sock = self._context.wrap_socket(
+                          raw_socket, server_hostname=self._tls_hostname
+                      )
+                  except BaseException:
+                      raw_socket.close()
+                      raise
+
+
+          class PinnedHTTPSHandler(urllib.request.HTTPSHandler):
+              def __init__(self, *, endpoints, hostname, port, context):
+                  super().__init__(context=context)
+                  self._endpoints = endpoints
+                  self._hostname = hostname
+                  self._port = port
+                  self._context = context
+
+              def https_open(self, request):
+                  def connection_factory(host, **kwargs):
+                      return PinnedHTTPSConnection(
+                          host,
+                          pinned_endpoints=self._endpoints,
+                          tls_hostname=self._hostname,
+                          tls_port=self._port,
+                          context=self._context,
+                          **kwargs,
+                      )
+
+                  return self.do_open(connection_factory, request)
+
+
+          def main():
+              url = os.environ.get("PROTECTED_BUNDLE_URL", "")
+              expected = os.environ["INPUT_BUNDLE_SHA256"]
+              parsed = urllib.parse.urlsplit(url)
+              try:
+                  port = parsed.port or 443
+              except ValueError as exc:
+                  raise SystemExit("protected bundle locator is missing or unsafe") from exc
+              if (
+                  parsed.scheme != "https"
+                  or not parsed.hostname
+                  or parsed.username is not None
+                  or parsed.password is not None
+                  or parsed.fragment
+              ):
+                  raise SystemExit("protected bundle locator is missing or unsafe")
+              endpoints = resolve_global_endpoints(parsed.hostname, port)
+
+              headers = {
+                  "Accept": "application/zip",
+                  "User-Agent": "cryptad-maintenance-input/1",
+              }
+              token = os.environ.get("PROTECTED_BUNDLE_BEARER_TOKEN", "")
+              if token:
+                  if "\r" in token or "\n" in token:
+                      raise SystemExit("protected bundle credential is malformed")
+                  headers["Authorization"] = "Bearer " + token
+              request = urllib.request.Request(url, headers=headers, method="GET")
+              tls_context = ssl.create_default_context()
+              tls_context.set_alpn_protocols(["http/1.1"])
+              opener = urllib.request.build_opener(
+                  urllib.request.ProxyHandler({}),
+                  NoRedirect(),
+                  PinnedHTTPSHandler(
+                      endpoints=endpoints,
+                      hostname=parsed.hostname,
+                      port=port,
+                      context=tls_context,
+                  ),
+              )
+              destination = (
+                  Path(os.environ["RUNNER_TEMP"])
+                  / "stable-maintenance-input"
+                  / "bundle.zip"
+              )
+              digest = hashlib.sha256()
+              total = 0
+              try:
+                  with opener.open(request, timeout=60) as response, destination.open(
+                      "wb"
+                  ) as output:
+                      if response.status != 200 or response.geturl() != url:
+                          raise OSError(
+                              "protected bundle fetch was not one exact HTTPS response"
+                          )
+                      while True:
+                          chunk = response.read(1024 * 1024)
+                          if not chunk:
+                              break
+                          total += len(chunk)
+                          if total > 2 * 1024 * 1024 * 1024:
+                              raise OSError("protected bundle exceeds the two-GiB bound")
+                          digest.update(chunk)
+                          output.write(chunk)
+              except (OSError, urllib.error.URLError) as exc:
+                  destination.unlink(missing_ok=True)
+                  raise SystemExit("protected bundle fetch failed") from exc
+              if total == 0 or "sha256:" + digest.hexdigest() != expected:
+                  destination.unlink(missing_ok=True)
+                  raise SystemExit(
+                      "protected bundle digest does not match the reviewed dispatch"
+                  )
+
+
+          if __name__ == "__main__":
+              main()
+          PY
+
+      - name: Extract safely and validate the exact phase layout
+        env:
+          INPUT_RELEASE_ID: ${{ inputs.release_id }}
+          INPUT_BUILD_VERSION: ${{ inputs.build_version }}
+          INPUT_RELEASE_CLASS: ${{ inputs.release_class }}
+          INPUT_CANDIDATE_COMMIT: ${{ inputs.candidate_commit }}
+          INPUT_PHASE: ${{ inputs.phase }}
+        run: |
+          set -euo pipefail
+          PYTHONPATH=tools/release-certification python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          import re
+          import shutil
+          import stat
+          import zipfile
+          from pathlib import Path, PurePosixPath
+
+          from cryptad_certification.schema_validation import validate_schema
+          from cryptad_certification.engines.stable_1_0_maintenance_core import (
+              _maintenance_public_redaction_findings,
+          )
+          from cryptad_certification.engines.stable_1_0_rc_core import placeholder_findings
+
+          archive = Path(os.environ["RUNNER_TEMP"]) / "stable-maintenance-input" / "bundle.zip"
+          output = Path("build/stable-maintenance-protected-input-producer")
+          shutil.rmtree(output, ignore_errors=True)
+          output.mkdir(parents=True)
+          seen = set()
+          total = 0
+          with zipfile.ZipFile(archive) as bundle:
+              members = bundle.infolist()
+              if not members or len(members) > 10_000:
+                  raise SystemExit("protected bundle has an invalid member count")
+              for member in members:
+                  raw = member.filename
+                  path = PurePosixPath(raw)
+                  parts = path.parts
+                  mode = member.external_attr >> 16
+                  if (
+                      "\\" in raw
+                      or path.is_absolute()
+                      or not parts
+                      or any(part in {"", ".", ".."} for part in parts)
+                      or re.match(r"^[A-Za-z]:", parts[0])
+                      or raw in seen
+                      or member.flag_bits & 0x1
+                      or (mode and stat.S_ISLNK(mode))
+                      or (
+                          mode
+                          and not member.is_dir()
+                          and not stat.S_ISREG(mode)
+                      )
+                      or member.file_size > 512 * 1024 * 1024
+                  ):
+                      raise SystemExit("protected bundle contains an unsafe member")
+                  seen.add(raw)
+                  total += member.file_size
+                  if total > 2 * 1024 * 1024 * 1024:
+                      raise SystemExit("protected bundle expands beyond the two-GiB bound")
+                  target = output.joinpath(*parts)
+                  if member.is_dir():
+                      target.mkdir(parents=True, exist_ok=True)
+                      continue
+                  target.parent.mkdir(parents=True, exist_ok=True)
+                  with bundle.open(member) as source, target.open("xb") as destination:
+                      shutil.copyfileobj(source, destination, length=1024 * 1024)
+                  target.chmod(0o644)
+
+          def load_json(path):
+              raw = path.read_bytes()
+
+              def reject_duplicates(pairs):
+                  value = {}
+                  for key, item in pairs:
+                      if key in value:
+                          raise SystemExit(f"duplicate JSON key in {path.name}")
+                      value[key] = item
+                  return value
+              value = json.loads(raw.decode("utf-8"), object_pairs_hook=reject_duplicates)
+              canonical = (
+                  json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+              ).encode("utf-8")
+              if raw != canonical:
+                  raise SystemExit(f"noncanonical JSON bytes in {path.name}")
+              return value
+
+          files = sorted(path for path in output.rglob("*") if path.is_file())
+          if not files or any(path.is_symlink() for path in output.rglob("*")):
+              raise SystemExit("protected input output is missing or unsafe")
+          unsafe = re.compile(
+              rb"(?i)(BEGIN [A-Z ]*PRIVATE KEY|authorization\s*:\s*bearer|"
+              rb"private[ _-]*insert[ _-]*uri|cookie\s*:|/home/runner/|/Users/runner/|"
+              rb"[A-Za-z]:\\(?:Users|Windows)\\|REPLACE_ME|\.invalid(?:/|\b))"
+          )
+          for path in files:
+              if unsafe.search(path.read_bytes()):
+                  raise SystemExit("protected input contains a secret, placeholder, or runner path")
+              if path.suffix.lower() == ".json":
+                  value = load_json(path)
+                  if _maintenance_public_redaction_findings(value) or placeholder_findings(value):
+                      raise SystemExit("protected JSON input failed the maintenance public scan")
+
+          phase = os.environ["INPUT_PHASE"]
+          if phase == "validate-authorization":
+              expected = output / "stable-1.0-maintenance-authorization.json"
+              if files != [expected]:
+                  raise SystemExit("authorization phase must contain exactly one canonical JSON")
+              value = load_json(expected)
+              errors = validate_schema(value, "stable-1.0-maintenance-authorization-v1.schema.json")
+              if errors:
+                  raise SystemExit("authorization input failed its closed schema")
+              expected_role = (
+                  "stable-maintenance-release-manager"
+                  if os.environ["INPUT_RELEASE_CLASS"] == "maintenance"
+                  else "stable-security-release-manager"
+              )
+              if (
+                  value.get("releaseId") != os.environ["INPUT_RELEASE_ID"]
+                  or value.get("buildVersion") != os.environ["INPUT_BUILD_VERSION"]
+                  or value.get("releaseClass") != os.environ["INPUT_RELEASE_CLASS"]
+                  or value.get("role") != expected_role
+              ):
+                  raise SystemExit("authorization identity does not match the dispatch")
+          else:
+              manifest_path = output / "stable-1.0-maintenance.json"
+              protected = output / "protected-inputs"
+              if not manifest_path.is_file() or not protected.is_dir():
+                  raise SystemExit("phase bundle lacks the canonical manifest/input layout")
+              manifest = load_json(manifest_path)
+              expected_branch = (
+                  "release/" if os.environ["INPUT_RELEASE_CLASS"] == "maintenance" else "hotfix/"
+              ) + os.environ["INPUT_BUILD_VERSION"]
+              expected_mode = "prepare-authorization" if phase == "prepare-authorization" else "validate-only"
+              if (
+                  manifest.get("release", {}).get("id") != os.environ["INPUT_RELEASE_ID"]
+                  or manifest.get("release", {}).get("version") != os.environ["INPUT_BUILD_VERSION"]
+                  or manifest.get("release", {}).get("profile") != "stable-review"
+                  or manifest.get("policies", {}).get("releaseClass") != os.environ["INPUT_RELEASE_CLASS"]
+                  or manifest.get("policies", {}).get("candidateSourceBranch") != expected_branch
+                  or manifest.get("policies", {}).get("candidateSourceCommit") != os.environ["INPUT_CANDIDATE_COMMIT"]
+                  or manifest.get("policies", {}).get("candidateSourceRef") != "commit:" + os.environ["INPUT_CANDIDATE_COMMIT"]
+                  or manifest.get("commands", {}).get("stable-maintenance", {}).get("mode") != expected_mode
+                  or manifest.get("execution", {}).get("allowDirtyWorkspace") is not False
+                  or manifest.get("execution", {}).get("fixtureEvidence") is not False
+                  or manifest.get("execution", {}).get("allowTestSigningInProduction") is not False
+              ):
+                  raise SystemExit("protected manifest identity or side-effect-free mode is invalid")
+              inputs = manifest.get("inputs", {})
+              def staged_input(key):
+                  value = inputs.get(key)
+                  if not isinstance(value, str):
+                      return None
+                  canonical_policy = (
+                      "tools/release-certification/stable-1.0-maintenance-policy.json"
+                  )
+                  if key == "maintenancePolicy":
+                      if value != canonical_policy:
+                          raise SystemExit(
+                              "maintenancePolicy is not the exact checked-in policy path"
+                          )
+                      checkout = Path.cwd().resolve(strict=True)
+                      expected = Path(canonical_policy).absolute()
+                      try:
+                          resolved = expected.resolve(strict=True)
+                      except OSError:
+                          raise SystemExit(
+                              "maintenancePolicy is missing from the authenticated checkout"
+                          ) from None
+                      try:
+                          relative = resolved.relative_to(checkout)
+                      except ValueError:
+                          raise SystemExit(
+                              "maintenancePolicy is unsafe in the authenticated checkout"
+                          ) from None
+                      if (
+                          relative.as_posix() != canonical_policy
+                          or expected.is_symlink()
+                          or not resolved.is_file()
+                      ):
+                          raise SystemExit(
+                              "maintenancePolicy is unsafe in the authenticated checkout"
+                          )
+                      return resolved
+                  prefix = "build/protected-inputs/"
+                  if not value.startswith(prefix):
+                      raise SystemExit(f"{key} does not use the canonical protected-input root")
+                  relative = PurePosixPath(value.removeprefix(prefix))
+                  if any(part in {"", ".", ".."} for part in relative.parts):
+                      raise SystemExit(f"{key} has an unsafe protected-input path")
+                  return output.joinpath("protected-inputs", *relative.parts)
+              if phase == "prepare-authorization" and "stableMaintenanceAuthorization" in inputs:
+                  raise SystemExit("authorization preparation cannot contain an authorization")
+              allowed_files = {manifest_path}
+              allowed_directories = []
+              for key in sorted(inputs):
+                  candidate = staged_input(key)
+                  if candidate is None or not candidate.exists():
+                      continue
+                  if candidate.is_dir():
+                      allowed_directories.append(candidate)
+                  elif candidate.is_file():
+                      allowed_files.add(candidate)
+                  else:
+                      raise SystemExit(f"{key} is not a safe regular input")
+              for candidate in files:
+                  if candidate in allowed_files:
+                      continue
+                  if any(directory in candidate.parents for directory in allowed_directories):
+                      continue
+                  raise SystemExit("phase bundle contains an unreferenced input")
+              if phase == "freeze-candidate":
+                  forbidden = {
+                      "maintenanceEvidence", "stableMaintenanceAuthorization",
+                      "stableMaintenancePublicationReceipt", "coreUpdatePublicationReceipt",
+                  }
+                  for key in forbidden:
+                      path = staged_input(key) if key in inputs else None
+                      if path is not None and path.exists():
+                          raise SystemExit(f"freeze phase supplied forbidden material: {key}")
+                  assets = staged_input("maintenanceCandidateAssets")
+                  if assets is None:
+                      raise SystemExit("freeze phase lacks a candidate asset path")
+                  if not assets.is_dir() or assets.is_symlink():
+                      raise SystemExit("freeze phase lacks its catalog/signature candidate asset directory")
+                  candidate_path = staged_input("maintenanceCandidate")
+                  if candidate_path is None or not candidate_path.is_file():
+                      raise SystemExit("freeze phase lacks its maintenance candidate declaration")
+                  candidate_value = load_json(candidate_path)
+                  catalog = candidate_value.get("stableCatalog", {})
+                  expected_assets = {
+                      catalog.get("fileName"): (
+                          catalog.get("digest"), catalog.get("sizeBytes")
+                      ),
+                      catalog.get("signatureFileName"): (
+                          catalog.get("signatureDigest"),
+                          catalog.get("signatureSizeBytes"),
+                      ),
+                  }
+                  asset_entries = list(assets.iterdir())
+                  if (
+                      len(expected_assets) != 2
+                      or {path.name for path in asset_entries} != set(expected_assets)
+                      or any(path.is_symlink() or not path.is_file() for path in asset_entries)
+                  ):
+                      raise SystemExit(
+                          "freeze phase asset directory is not the exact catalog/signature pair"
+                      )
+                  for path in asset_entries:
+                      expected_digest, expected_size = expected_assets[path.name]
+                      actual_digest = "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
+                      if actual_digest != expected_digest or path.stat().st_size != expected_size:
+                          raise SystemExit(
+                              "freeze phase catalog/signature bytes do not match the candidate"
+                          )
+          PY
+
+      - name: Recheck immutable checkout after intake validation
+        env:
+          INPUT_CANDIDATE_COMMIT: ${{ inputs.candidate_commit }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse 'HEAD^{commit}')" = "$INPUT_CANDIDATE_COMMIT"
+          git diff-index --quiet --cached HEAD --
+          git diff-files --quiet --
+
+      - name: Attest exact phase subject
+        uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
+        with:
+          subject-path: >-
+            build/stable-maintenance-protected-input-producer/${{
+              inputs.phase == 'validate-authorization'
+              && 'stable-1.0-maintenance-authorization.json'
+              || 'stable-1.0-maintenance.json'
+            }}
+
+      - name: Upload exact protected input artifact
+        id: upload
+        uses: actions/upload-artifact@v6
+        with:
+          name: stable-1-0-maintenance-input-${{ inputs.phase }}-${{ inputs.release_id }}-${{ inputs.build_version }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build/stable-maintenance-protected-input-producer/
+          if-no-files-found: error
+          include-hidden-files: false
+          retention-days: 30

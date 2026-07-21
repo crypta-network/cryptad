@@ -255,7 +255,7 @@ def is_public_https_uri(value: Any) -> bool:
     if not isinstance(value, str) or not value:
         return False
     parsed = urlparse(value)
-    hostname = parsed.hostname or ""
+    hostname = (parsed.hostname or "").rstrip(".").casefold()
     try:
         safe_port = parsed.port in {None, 443}
     except ValueError:
@@ -265,7 +265,9 @@ def is_public_https_uri(value: Any) -> bool:
         or not parsed.netloc
         or not hostname
         or hostname in {"localhost", "localhost.localdomain"}
-        or hostname.endswith(".local")
+        or hostname.endswith(
+            (".localhost", ".local", ".invalid", ".test", ".example")
+        )
         or parsed.username is not None
         or parsed.password is not None
         or not safe_port
@@ -277,6 +279,8 @@ def is_public_https_uri(value: Any) -> bool:
     try:
         return ipaddress.ip_address(hostname).is_global
     except ValueError:
+        if "." not in hostname:
+            return False
         try:
             addresses = {
                 row[4][0]
@@ -288,9 +292,12 @@ def is_public_https_uri(value: Any) -> bool:
             }
         except OSError:
             return False
-        return bool(addresses) and all(
-            ipaddress.ip_address(address).is_global for address in addresses
-        )
+        try:
+            return bool(addresses) and all(
+                ipaddress.ip_address(address).is_global for address in addresses
+            )
+        except ValueError:
+            return False
 
 
 def canonical_publication_targets(context: RunContext) -> dict[str, Any]:

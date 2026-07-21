@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/crypta-network/cryptad/tools/release-certification/schemas/stable-1.0-hotfix-follow-up-obligation-v1.schema.json",
+  "title": "Cryptad Stable 1.0 security hotfix follow-up obligation v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "kind", "generatedAt", "releaseId", "buildVersion", "releaseClass",
+    "productDigest", "candidateIdentityDigest", "candidateFreezeDigest", "candidateFrozenAt",
+    "predecessorBuild", "predecessorProductDigest",
+    "incidentId", "advisoryId", "severity", "shortenedEvidenceIds",
+    "fullEvidenceRequired", "deadline", "owner", "approver", "expectedEvidenceKinds",
+    "closureCriteria", "failureBehavior", "blocksRoutineMaintenance", "status",
+    "closureEvidenceDigest", "redaction"
+  ],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "kind": {"const": "stable-1.0-hotfix-follow-up-obligation"},
+    "generatedAt": {"type": "string", "format": "date-time"},
+    "releaseId": {"$ref": "#/$defs/releaseId"},
+    "buildVersion": {"$ref": "#/$defs/buildVersion"},
+    "releaseClass": {"const": "security-hotfix"},
+    "productDigest": {"$ref": "#/$defs/digest"},
+    "candidateIdentityDigest": {"$ref": "#/$defs/digest"},
+    "candidateFreezeDigest": {"$ref": "#/$defs/digest"},
+    "candidateFrozenAt": {"type": "string", "format": "date-time"},
+    "predecessorBuild": {"$ref": "#/$defs/buildVersion"},
+    "predecessorProductDigest": {"$ref": "#/$defs/digest"},
+    "incidentId": {"$ref": "#/$defs/nonEmpty"},
+    "advisoryId": {"$ref": "#/$defs/nonEmpty"},
+    "severity": {"const": "critical"},
+    "shortenedEvidenceIds": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/evidenceId"}},
+    "fullEvidenceRequired": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/evidenceId"}},
+    "deadline": {"type": "string", "format": "date-time"},
+    "owner": {"$ref": "#/$defs/nonEmpty"},
+    "approver": {"$ref": "#/$defs/nonEmpty"},
+    "expectedEvidenceKinds": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/nonEmpty"}},
+    "closureCriteria": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/nonEmpty"}},
+    "failureBehavior": {"const": "open-release-incident-and-block-next-routine-maintenance"},
+    "blocksRoutineMaintenance": {"const": true},
+    "status": {"enum": ["open", "closed", "overdue"]},
+    "closureEvidenceDigest": {"oneOf": [{"$ref": "#/$defs/digest"}, {"type": "null"}]},
+    "redaction": {"$ref": "#/$defs/redaction"}
+  },
+  "$defs": {
+    "nonEmpty": {"type": "string", "minLength": 1},
+    "releaseId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"},
+    "buildVersion": {"type": "string", "pattern": "^[1-9][0-9]*$"},
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "evidenceId": {
+      "enum": [
+        "stable-maintenance.installation-packaging",
+        "stable-maintenance.direct-ga-upgrade",
+        "stable-maintenance.upgrade-rollback-migration-backup",
+        "stable-maintenance.live-network-interoperability",
+        "stable-maintenance.performance",
+        "stable-maintenance.sandbox",
+        "stable-maintenance.security",
+        "stable-maintenance.support-redaction"
+      ]
+    },
+    "redaction": {
+      "type": "object", "additionalProperties": false,
+      "required": ["status", "findingCount", "findings"],
+      "properties": {"status": {"const": "pass"}, "findingCount": {"const": 0}, "findings": {"type": "array", "maxItems": 0}}
+    }
+  }
+}

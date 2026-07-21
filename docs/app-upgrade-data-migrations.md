@@ -214,3 +214,14 @@ logs, private insert URIs, private keys, app process tokens, browser session tok
 passwords, catalog scratch paths, staged bundle paths, rollback paths, or AppHost filesystem
 paths. Use schema versions, namespaces, step ids, booleans, counts, stable status strings, and
 redacted error codes instead.
+
+## Maintenance and hotfix migration gates
+
+The maintenance path requires candidate-bound migration dry-run and apply evidence, a backup before
+the update, restore after a failed update, and rollback behavior against the immediate predecessor.
+It also requires a direct-GA upgrade path while policy says that path remains supported. Evidence
+records only safe metadata and digests; raw app-data values and backup payloads remain private.
+
+An expedited security hotfix may shorten only policy-listed observation windows. It cannot omit
+migration, backup, restore, or rollback gates. See the [Stable 1.0 maintenance release and security
+hotfix path](stable-1.0-maintenance-release-and-hotfix-path.md).

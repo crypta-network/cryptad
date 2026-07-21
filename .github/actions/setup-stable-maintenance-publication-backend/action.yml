@@ -1,0 +1,168 @@
+name: Set up Stable maintenance publication backend
+description: Authenticate and install one reviewed publication-provider wheel without network dependency resolution.
+
+inputs:
+  run-id:
+    description: Exact protected producer workflow run id.
+    required: true
+  artifact-name:
+    description: Exact Actions artifact name containing one wheel.
+    required: true
+  artifact-digest:
+    description: Exact sha256:<hex> Actions artifact digest.
+    required: true
+  source-commit:
+    description: Exact reviewed provider source commit.
+    required: true
+  wheel-sha256:
+    description: Exact sha256:<hex> wheel digest.
+    required: true
+  signer-workflow:
+    description: Exact repository-qualified protected producer workflow.
+    required: true
+  entrypoint:
+    description: Reviewed module.path:factory entrypoint supplied by the protected environment.
+    required: true
+  github-token:
+    description: Token used only for run, artifact, and attestation authentication.
+    required: true
+
+outputs:
+  python-path:
+    description: Canonical path containing the authenticated installed provider.
+    value: ${{ steps.materialize.outputs.python-path }}
+  site-directory:
+    description: Canonical authenticated site root enforced by the publication adapter.
+    value: ${{ steps.materialize.outputs.site-directory }}
+  entrypoint:
+    description: Authenticated provider entrypoint.
+    value: ${{ steps.materialize.outputs.entrypoint }}
+
+runs:
+  using: composite
+  steps:
+    - name: Authenticate and install reviewed provider
+      id: materialize
+      shell: bash
+      env:
+        INPUT_RUN_ID: ${{ inputs.run-id }}
+        INPUT_ARTIFACT_NAME: ${{ inputs.artifact-name }}
+        INPUT_ARTIFACT_DIGEST: ${{ inputs.artifact-digest }}
+        INPUT_SOURCE_COMMIT: ${{ inputs.source-commit }}
+        INPUT_WHEEL_SHA256: ${{ inputs.wheel-sha256 }}
+        INPUT_SIGNER_WORKFLOW: ${{ inputs.signer-workflow }}
+        INPUT_ENTRYPOINT: ${{ inputs.entrypoint }}
+        GH_TOKEN: ${{ inputs.github-token }}
+      run: |
+        set -euo pipefail
+        canonical_artifact="stable-1.0-maintenance-publication-backend"
+        canonical_signer="crypta-network/cryptad/.github/workflows/stable-1.0-maintenance-publication-backend-producer.yml"
+        canonical_entrypoint="cryptad_stable_maintenance_backend:factory"
+        if [[ ! "$INPUT_RUN_ID" =~ ^[1-9][0-9]*$ \
+              || "$INPUT_ARTIFACT_NAME" != "$canonical_artifact" \
+              || ! "$INPUT_ARTIFACT_DIGEST" =~ ^sha256:[0-9a-f]{64}$ \
+              || ! "$INPUT_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ \
+              || ! "$INPUT_WHEEL_SHA256" =~ ^sha256:[0-9a-f]{64}$ \
+              || "$INPUT_SIGNER_WORKFLOW" != "$canonical_signer" \
+              || "$INPUT_ENTRYPOINT" != "$canonical_entrypoint" ]]; then
+          echo "::error::Publication-provider identity is incomplete or unsafe."
+          exit 1
+        fi
+        expected_workflow_path="${INPUT_SIGNER_WORKFLOW#crypta-network/cryptad/}"
+        run_json="$(gh api --method GET "repos/$GITHUB_REPOSITORY/actions/runs/$INPUT_RUN_ID")"
+        jq -e \
+          --arg repository "$GITHUB_REPOSITORY" \
+          --arg commit "$INPUT_SOURCE_COMMIT" \
+          --arg workflow_path "$expected_workflow_path" '
+            .repository.full_name == $repository
+            and .head_sha == $commit
+            and .path == $workflow_path
+            and .event == "workflow_dispatch"
+            and .status == "completed"
+            and .conclusion == "success"' <<< "$run_json" >/dev/null
+        artifacts="$(gh api --paginate --method GET \
+          "repos/$GITHUB_REPOSITORY/actions/runs/$INPUT_RUN_ID/artifacts" \
+          -f per_page=100 | jq -s '{artifacts: [.[].artifacts[]]}')"
+        jq -e --arg name "$INPUT_ARTIFACT_NAME" --arg digest "$INPUT_ARTIFACT_DIGEST" '
+          [.artifacts[] | select(.name == $name and .expired == false and .digest == $digest)]
+          | length == 1' <<< "$artifacts" >/dev/null
+        download="build/stable-maintenance-publication-backend/download"
+        site="build/stable-maintenance-publication-backend/site-packages"
+        rm -rf "${download%/download}"
+        mkdir -p "$download" "$site"
+        download="$(cd "$download" && pwd -P)"
+        site="$(cd "$site" && pwd -P)"
+        gh run download "$INPUT_RUN_ID" --repo "$GITHUB_REPOSITORY" \
+          --name "$INPUT_ARTIFACT_NAME" --dir "$download"
+        if [[ -n "$(find "$download" -type l -print -quit)" \
+              || -n "$(find "$download" -mindepth 1 ! -type f ! -type d -print -quit)" ]]; then
+          echo "::error::Publication-provider artifact contains a link or special entry."
+          exit 1
+        fi
+        wheels=()
+        while IFS= read -r path; do wheels+=("$path"); done < <(
+          find "$download" -type f -name '*.whl' -print | LC_ALL=C sort
+        )
+        if [[ "${#wheels[@]}" -ne 1 \
+              || "$(find "$download" -type f ! -name '*.whl' | wc -l)" -ne 0 ]]; then
+          echo "::error::Publication-provider artifact must contain exactly one wheel and no other files."
+          exit 1
+        fi
+        wheel="${wheels[0]}"
+        actual_wheel_digest="sha256:$(python3 - "$wheel" <<'PY'
+        import hashlib
+        import sys
+        from pathlib import Path
+
+        print(hashlib.sha256(Path(sys.argv[1]).read_bytes()).hexdigest())
+        PY
+        )"
+        if [[ "$actual_wheel_digest" != "$INPUT_WHEEL_SHA256" ]]; then
+          echo "::error::Publication-provider wheel differs from the reviewed digest."
+          exit 1
+        fi
+        python3 -I -S - "$wheel" <<'PY'
+        import stat
+        import sys
+        import zipfile
+        from pathlib import PurePosixPath
+
+        with zipfile.ZipFile(sys.argv[1]) as archive:
+            entries = archive.infolist()
+            names = [entry.filename for entry in entries]
+            if names != sorted(names) or len(names) != len(set(names)):
+                raise SystemExit("publication-provider wheel members are ambiguous")
+            for entry in entries:
+                path = PurePosixPath(entry.filename)
+                mode = entry.external_attr >> 16
+                if path.is_absolute() or ".." in path.parts or "\\" in entry.filename:
+                    raise SystemExit("publication-provider wheel contains an unsafe path")
+                if stat.S_IFMT(mode) != stat.S_IFREG or stat.S_IMODE(mode) != 0o644:
+                    raise SystemExit("publication-provider wheel contains a noncanonical member")
+        PY
+        gh attestation verify "$wheel" \
+          --repo "$GITHUB_REPOSITORY" \
+          --signer-workflow "$INPUT_SIGNER_WORKFLOW" \
+          --source-digest "$INPUT_SOURCE_COMMIT" \
+          --deny-self-hosted-runners >/dev/null
+        python3 -m pip install --no-index --no-deps --no-compile --target "$site" "$wheel" \
+          >/dev/null
+        python3 -I -S - "$site" "$INPUT_ENTRYPOINT" <<'PY'
+        import importlib
+        import sys
+        from pathlib import Path
+
+        site = Path(sys.argv[1]).resolve()
+        sys.path.insert(0, str(site))
+        importlib.invalidate_caches()
+        module_name, factory_name = sys.argv[2].split(":", 1)
+        module = importlib.import_module(module_name)
+        origin = Path(module.__file__).resolve()
+        if not origin.is_relative_to(site):
+            raise SystemExit("publication-provider module did not load from the authenticated wheel")
+        if not callable(getattr(module, factory_name, None)):
+            raise SystemExit("publication-provider factory is missing")
+        PY
+        echo "python-path=$site" >> "$GITHUB_OUTPUT"
+        echo "site-directory=$site" >> "$GITHUB_OUTPUT"
+        echo "entrypoint=$INPUT_ENTRYPOINT" >> "$GITHUB_OUTPUT"

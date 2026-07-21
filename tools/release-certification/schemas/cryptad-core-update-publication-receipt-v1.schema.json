@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/crypta-network/cryptad/tools/release-certification/schemas/cryptad-core-update-publication-receipt-v1.schema.json",
+  "title": "Cryptad CoreUpdater publication receipt v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "kind", "generatedAt", "releaseId", "buildVersion", "releaseClass",
+    "candidateIdentityDigest", "publicationPlanDigest", "descriptorDigest", "descriptorSizeBytes",
+    "packageMapDigest", "edition", "publicFetchUri", "operation", "fetchedDescriptorDigest",
+    "referencedPackages", "conflictStatus", "verificationStatus", "publicationState", "redaction"
+  ],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "kind": {"const": "cryptad-core-update-publication-receipt"},
+    "generatedAt": {"type": "string", "format": "date-time"},
+    "releaseId": {"$ref": "#/$defs/releaseId"},
+    "buildVersion": {"$ref": "#/$defs/buildVersion"},
+    "releaseClass": {"$ref": "#/$defs/releaseClass"},
+    "candidateIdentityDigest": {"$ref": "#/$defs/digest"},
+    "publicationPlanDigest": {"$ref": "#/$defs/digest"},
+    "descriptorDigest": {"$ref": "#/$defs/digest"},
+    "descriptorSizeBytes": {"type": "integer", "minimum": 1},
+    "packageMapDigest": {"$ref": "#/$defs/digest"},
+    "edition": {"type": "integer", "minimum": 1},
+    "publicFetchUri": {"type": "string", "format": "uri"},
+    "operation": {"enum": ["created", "verified-existing", "partial"]},
+    "fetchedDescriptorDigest": {"$ref": "#/$defs/digest"},
+    "referencedPackages": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/packageObservation"}},
+    "conflictStatus": {"enum": ["clear", "conflict"]},
+    "verificationStatus": {"enum": ["pass", "fail", "unavailable"]},
+    "publicationState": {"enum": ["publication-complete", "publication-partial", "publication-verification-failed"]},
+    "redaction": {"$ref": "#/$defs/redaction"}
+  },
+  "$defs": {
+    "releaseId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"},
+    "buildVersion": {"type": "string", "pattern": "^[1-9][0-9]*$"},
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "releaseClass": {"enum": ["maintenance", "security-hotfix"]},
+    "packageObservation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["packageKey", "candidateAssetDigest", "candidateAssetSizeBytes", "publicReference", "verificationStatus"],
+      "properties": {
+        "packageKey": {"type": "string", "pattern": "^(amd64|arm64)\\.(deb|rpm|dmg|exe|flatpak|snap)$"},
+        "candidateAssetDigest": {"$ref": "#/$defs/digest"},
+        "candidateAssetSizeBytes": {"type": "integer", "minimum": 1},
+        "publicReference": {"type": "string", "minLength": 1},
+        "verificationStatus": {"enum": ["pass", "fail", "unavailable"]}
+      }
+    },
+    "redaction": {
+      "type": "object", "additionalProperties": false,
+      "required": ["status", "findingCount", "findings"],
+      "properties": {"status": {"const": "pass"}, "findingCount": {"const": 0}, "findings": {"type": "array", "maxItems": 0}}
+    }
+  }
+}

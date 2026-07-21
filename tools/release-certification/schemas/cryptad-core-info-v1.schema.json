@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/crypta-network/cryptad/tools/release-certification/schemas/cryptad-core-info-v1.schema.json",
+  "title": "Cryptad deterministic CoreUpdater descriptor v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "release_page_url", "packages"],
+  "properties": {
+    "version": {"type": "string", "pattern": "^[1-9][0-9]*$"},
+    "release_page_url": {"type": "string", "pattern": "^https://[^ ]+$"},
+    "changelog_chk": {"$ref": "#/$defs/chk"},
+    "fullchangelog_chk": {"$ref": "#/$defs/chk"},
+    "packages": {"$ref": "#/$defs/packages"}
+  },
+  "$defs": {
+    "chk": {"type": "string", "pattern": "^CHK@[A-Za-z0-9~-]{43},[A-Za-z0-9~-]{43},[A-Za-z0-9~-]{7}(/[A-Za-z0-9._~/-]+)?$"},
+    "packages": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "amd64.deb": {"$ref": "#/$defs/package"},
+        "amd64.rpm": {"$ref": "#/$defs/package"},
+        "amd64.dmg": {"$ref": "#/$defs/package"},
+        "amd64.exe": {"$ref": "#/$defs/package"},
+        "amd64.flatpak": {"$ref": "#/$defs/package"},
+        "amd64.snap": {"$ref": "#/$defs/package"},
+        "arm64.deb": {"$ref": "#/$defs/package"},
+        "arm64.rpm": {"$ref": "#/$defs/package"},
+        "arm64.dmg": {"$ref": "#/$defs/package"},
+        "arm64.exe": {"$ref": "#/$defs/package"},
+        "arm64.flatpak": {"$ref": "#/$defs/package"},
+        "arm64.snap": {"$ref": "#/$defs/package"}
+      }
+    },
+    "package": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["size"],
+      "properties": {
+        "chk": {"$ref": "#/$defs/chk"},
+        "size": {"type": "integer", "minimum": 1},
+        "store_url": {"type": "string", "pattern": "^https://[^ ]+$"}
+      }
+    }
+  }
+}

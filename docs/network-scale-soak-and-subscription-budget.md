@@ -162,3 +162,14 @@ text.
 Safe fields include normalized app ids, operation names, bounded counts, booleans, status labels,
 stable error codes, window timestamps, next retry timestamps, public key kinds, digests, and
 redacted source summaries.
+
+## Maintenance evidence windows
+
+Routine Stable maintenance uses the normal production soak, live-network, interoperability, and
+performance windows recorded by the authenticated baseline and current policy. Evidence must be
+fresh and bound to the exact frozen candidate. A critical security hotfix may shorten only the
+closed scenarios named by policy and authorization; publication then creates a deadline-bound
+full-window follow-up obligation without changing the published bytes.
+
+See the [Stable 1.0 maintenance release and security hotfix
+path](stable-1.0-maintenance-release-and-hotfix-path.md).

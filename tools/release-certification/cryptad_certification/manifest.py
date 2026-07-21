@@ -29,6 +29,7 @@ COMMAND_NAMES = {
     "stable-readiness",
     "stable-rc",
     "stable-ga",
+    "stable-maintenance",
     "multi-node-beta",
     "security-response",
 }
@@ -70,6 +71,29 @@ INPUT_FIELDS = {
     "stableGaAuthorization",
     "stableGaPolicy",
     "stableGaPublicationReceipt",
+    "stableGaPromotionSummary",
+    "stableGaValidation",
+    "stableGaAuthorizationSummary",
+    "stableGaPublicationPlan",
+    "stableGaChecksums",
+    "stableGaProvenance",
+    "stableGaMaintenanceBaseline",
+    "predecessorPublicationReceipt",
+    "predecessorBaseline",
+    "latestPublishedMaintenancePointer",
+    "maintenanceCandidate",
+    "maintenanceCandidateFreeze",
+    "maintenanceCandidateAssets",
+    "maintenanceCandidateChecksums",
+    "maintenanceCandidateProvenance",
+    "maintenanceEvidence",
+    "maintenancePolicy",
+    "stableMaintenanceAuthorization",
+    "stableMaintenancePublicationReceipt",
+    "coreUpdatePublicationReceipt",
+    "hotfixFollowUpObligation",
+    "hotfixFollowUpEvidence",
+    "hotfixFollowUpClosure",
     "stableCatalogOperations",
     "stableRcFreezeExceptions",
     "stableRcValidation",
@@ -82,10 +106,16 @@ INPUT_FIELDS = {
 POLICY_FIELDS = {
     "artifactBaseUri",
     "candidateSourceCommit",
+    "candidateBaseCommit",
     "candidateSourceRef",
+    "candidateSourceBranch",
     "catalogChannel",
     "expectedPreviousReleaseId",
     "expectedPreviousProductDigest",
+    "expectedPredecessorBuild",
+    "expectedPredecessorReleaseId",
+    "expectedPredecessorProductDigest",
+    "releaseClass",
     "historyDir",
     "historyLabel",
     "metadata",
@@ -130,7 +160,11 @@ SECRET_KEY_FRAGMENTS = (
     "inserturi",
     "insert_uri",
 )
-PUBLIC_AUTHORIZATION_INPUT_PATH = "manifest.inputs.stableGaAuthorization"
+PUBLIC_AUTHORIZATION_INPUT_PATHS = {
+    "manifest.inputs.stableGaAuthorization",
+    "manifest.inputs.stableGaAuthorizationSummary",
+    "manifest.inputs.stableMaintenanceAuthorization",
+}
 
 
 class ManifestError(ValueError):
@@ -149,7 +183,7 @@ def _reject_secret_fields(value: Any, path: str = "manifest") -> None:
             normalized = str(key).lower().replace("-", "_")
             child_path = f"{path}.{key}"
             if (
-                child_path != PUBLIC_AUTHORIZATION_INPUT_PATH
+                child_path not in PUBLIC_AUTHORIZATION_INPUT_PATHS
                 and any(fragment in normalized for fragment in SECRET_KEY_FRAGMENTS)
             ):
                 raise ManifestError(
@@ -214,15 +248,30 @@ def _validate_policies(value: Any) -> dict[str, Any]:
         "refreeze",
     }:
         raise ManifestError("policies.stableRcFreezeMode is invalid")
+    if "releaseClass" in policies and policies["releaseClass"] not in {
+        "maintenance",
+        "security-hotfix",
+    }:
+        raise ManifestError("policies.releaseClass is invalid")
     if "candidateSourceCommit" in policies and re.fullmatch(
         r"[0-9a-f]{40,64}", policies["candidateSourceCommit"]
     ) is None:
         raise ManifestError("policies.candidateSourceCommit must be a lowercase Git commit id")
+    if "candidateBaseCommit" in policies and re.fullmatch(
+        r"[0-9a-f]{40,64}", policies["candidateBaseCommit"]
+    ) is None:
+        raise ManifestError("policies.candidateBaseCommit must be a lowercase Git commit id")
     if "expectedPreviousProductDigest" in policies and re.fullmatch(
         r"sha256:[0-9a-f]{64}", policies["expectedPreviousProductDigest"]
     ) is None:
         raise ManifestError(
             "policies.expectedPreviousProductDigest must be a SHA-256 digest"
+        )
+    if "expectedPredecessorProductDigest" in policies and re.fullmatch(
+        r"sha256:[0-9a-f]{64}", policies["expectedPredecessorProductDigest"]
+    ) is None:
+        raise ManifestError(
+            "policies.expectedPredecessorProductDigest must be a SHA-256 digest"
         )
     if "publicationIntent" in policies and policies["publicationIntent"] != (
         "prepare-explicit-protected-publication"

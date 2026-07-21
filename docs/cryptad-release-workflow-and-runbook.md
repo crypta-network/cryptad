@@ -678,3 +678,34 @@ edition number. If the incident is a confirmed performance regression, link the 
 
 ---
 Keep this runbook synchronized with future CoreUpdater/AppEnv changes. Update references whenever package selection logic or descriptor schema evolves.
+
+## Stable 1.0 maintenance and security hotfix publication
+
+After Stable 1.0 GA, routine work stabilizes on `release/<build-number>` from `develop`; an
+emergency security fix stabilizes on `hotfix/<build-number>` from the published `main` state. Both
+use the next suitable integer build, the `stable-maintenance` command, and the same exact-byte
+candidate, package, catalog, and CoreUpdater trust model.
+
+The protected workflow owns annotated `v<build-number>` tag creation and publication. It never
+creates or merges branches. After a verified publication receipt, complete the existing release or
+hotfix merge-back with no squash and `--no-ff` merges. See the [Stable 1.0 maintenance release and
+security hotfix path](stable-1.0-maintenance-release-and-hotfix-path.md).
+
+For this Stable path, do not use the earlier manual `core-info.json`, tag, GitHub Release, catalog,
+or update-key steps in this general runbook. The four protected maintenance operations are
+`freeze-candidate`, `prepare-authorization`, `validate-authorization`, and `publish`; each consumes
+the prior phase's exact run id, artifact name, and Actions artifact digest. Only freeze builds
+packages. Publish additionally authenticates the reviewed publication-backend wheel, requires an
+exact pre-staged artifact base, verifies public state independently, and activates the successor
+baseline with a separate short-lived activation authorization.
+
+Use Java 25 or newer for local packaging checks. The focused side-effect-free validation is:
+
+```bash
+python3 tools/release-certification/certify.py stable-maintenance --self-test
+./gradlew verifyMacAppImageSigningArguments verifyWindowsExeInstallerArguments
+```
+
+Those commands do not replace hosted Windows Authenticode production, macOS Developer ID signing
+and notarization, Linux package production, protected catalog-signature verification, or public
+publication verification.

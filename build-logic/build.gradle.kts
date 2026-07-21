@@ -20,6 +20,8 @@ repositories {
 }
 
 dependencies {
+  // Portable archive normalization runs inside Gradle so distribution tasks remain Java-only.
+  implementation(libs.commonsCompress)
   // Allow precompiled plugins to apply these without specifying versions in their scripts
   implementation("com.diffplug.spotless:spotless-plugin-gradle:${libs.versions.spotless.get()}")
   implementation(

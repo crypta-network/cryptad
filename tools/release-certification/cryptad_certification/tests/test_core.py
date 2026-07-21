@@ -15,7 +15,12 @@ from cryptad_certification.models import EvidenceEnvelope
 from cryptad_certification.legacy import execute as execute_engine
 from cryptad_certification.redaction import scan_value
 from cryptad_certification.tests.support import workspace_root, write_manifest
-from cryptad_certification.workspace import WorkspaceError, prepare_context, prepare_run_root
+from cryptad_certification.workspace import (
+    WorkspaceError,
+    prepare_context,
+    prepare_run_root,
+    reset_confined_directory,
+)
 
 
 class ManifestTest(unittest.TestCase):
@@ -239,6 +244,24 @@ class ManifestTest(unittest.TestCase):
             self.assertFalse(
                 (manifest.output.root / "outside-component").exists()
             )
+
+    def test_reset_accepts_a_canonical_alias_above_the_release_root(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            physical = root / "physical"
+            physical.mkdir()
+            alias = root / "alias"
+            try:
+                alias.symlink_to(physical, target_is_directory=True)
+            except OSError as exc:
+                self.skipTest(f"directory symlinks are unavailable: {exc}")
+            run_root = alias / "release"
+            target = run_root / "component" / "artifacts"
+            target.parent.mkdir(parents=True)
+
+            result = reset_confined_directory(target, run_root, "test output")
+
+            self.assertEqual(result, (physical / "release/component/artifacts").resolve())
 
 
 class IoSafetyTest(unittest.TestCase):

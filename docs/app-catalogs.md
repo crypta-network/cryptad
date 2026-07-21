@@ -664,6 +664,8 @@ crypta-app catalog sign \
 
 crypta-app catalog verify \
   --catalog-file dist/catalog/cryptad-app-catalog.properties \
+  --catalog-signature-file dist/catalog/cryptad-app-catalog.signature \
+  --expected-key-id dev-local \
   --trusted-key-id dev-local \
   --trusted-public-key-file /abs/path/to/dev-app-signing-public.pem
 ```
@@ -671,6 +673,13 @@ crypta-app catalog verify \
 The catalog signature authenticates the exact bytes of `cryptad-app-catalog.properties`. Do not
 rewrite, sort, or reformat the catalog after signing. See
 [app-dev-cli.md](app-dev-cli.md) for the full standalone app CLI workflow.
+
+`--catalog-signature-file` selects the exact detached sidecar instead of deriving the canonical
+sibling filename. `--expected-key-id` additionally requires that sidecar to name the separately
+declared signer, even when the trusted-key registry contains several valid keys. General local
+verification may omit either option and use the canonical sibling or any trusted signer. Protected
+release verification supplies both so a renamed sidecar or a different trusted key cannot satisfy
+the frozen catalog identity.
 
 For a local Site Publisher catalog, use a `file:` `bundle.uri` that points at the signed ZIP
 artifact, create and sign the catalog, then add the catalog source through Platform API:
@@ -690,6 +699,8 @@ crypta-app catalog sign \
 
 crypta-app catalog verify \
   --catalog-file dist/catalog/cryptad-app-catalog.properties \
+  --catalog-signature-file dist/catalog/cryptad-app-catalog.signature \
+  --expected-key-id dev-local \
   --trusted-key-id dev-local \
   --trusted-public-key-file /abs/path/to/dev-app-signing-public.pem
 ```

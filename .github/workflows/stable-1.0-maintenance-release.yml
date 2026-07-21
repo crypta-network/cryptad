@@ -1,0 +1,3248 @@
+name: Stable 1.0 Maintenance Release
+run-name: >-
+  Stable 1.0 ${{ inputs.release_class }} ${{ inputs.release_id }} build ${{ inputs.build_version }} (${{ inputs.operation }})
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_id:
+        description: Path-safe Stable 1.0 maintenance release ID.
+        required: true
+        type: string
+      build_version:
+        description: Positive integer Cryptad build; the protected tag is v<build>.
+        required: true
+        type: string
+      release_class:
+        description: Closed Stable 1.0 release class.
+        required: true
+        type: choice
+        options:
+          - maintenance
+          - security-hotfix
+      candidate_commit:
+        description: Exact lowercase 40-character source commit to build and freeze.
+        required: true
+        type: string
+      expected_predecessor_pointer_digest:
+        description: SHA-256 of the latest-published pointer observed when authorization was prepared.
+        required: true
+        type: string
+      protected_inputs_run_id:
+        description: Protected producer run containing phase-appropriate public-safe inputs; forbidden for publish.
+        required: false
+        default: ''
+        type: string
+      protected_inputs_artifact_name:
+        description: Exact protected input artifact name.
+        required: false
+        default: ''
+        type: string
+      protected_inputs_artifact_digest:
+        description: Exact sha256:<hex> GitHub Actions artifact digest.
+        required: false
+        default: ''
+        type: string
+      operation:
+        description: Closed release operation; candidate production, validation/authorization, and publication are separate runs.
+        required: true
+        type: choice
+        options:
+          - freeze-candidate
+          - prepare-authorization
+          - validate-authorization
+          - publish
+      frozen_candidate_run_id:
+        description: Prior freeze-candidate run containing exact built-once bytes; required only for prepare-authorization.
+        required: false
+        default: ''
+        type: string
+      frozen_candidate_artifact_name:
+        description: Exact attested frozen-candidate artifact name; required only for prepare-authorization.
+        required: false
+        default: ''
+        type: string
+      frozen_candidate_artifact_digest:
+        description: Exact frozen-candidate artifact sha256:<hex>; required only for prepare-authorization.
+        required: false
+        default: ''
+        type: string
+      validated_candidate_run_id:
+        description: Prior validate-authorization run containing the attested authorized candidate; required only for publish.
+        required: false
+        default: ''
+        type: string
+      validated_candidate_artifact_name:
+        description: Prior attested authorized-candidate artifact name; required only for publish.
+        required: false
+        default: ''
+        type: string
+      validated_candidate_artifact_digest:
+        description: Prior attested authorized-candidate artifact sha256:<hex>; required only for publish.
+        required: false
+        default: ''
+        type: string
+      prepared_candidate_run_id:
+        description: Prior prepare-authorization run; required only for validate-authorization.
+        required: false
+        default: ''
+        type: string
+      prepared_candidate_artifact_name:
+        description: Exact attested prepared-candidate artifact name; required only for validate-authorization.
+        required: false
+        default: ''
+        type: string
+      prepared_candidate_artifact_digest:
+        description: Exact prepared-candidate artifact sha256:<hex>; required only for validate-authorization.
+        required: false
+        default: ''
+        type: string
+      windows_exe_run_id:
+        description: Authenticated external Windows EXE producer run; required only for freeze-candidate.
+        required: false
+        default: ''
+        type: string
+      windows_exe_artifact_name:
+        description: Exact external Windows EXE artifact name; required only for freeze-candidate.
+        required: false
+        default: ''
+        type: string
+      windows_exe_artifact_digest:
+        description: External Windows EXE Actions artifact sha256:<hex>; required only for freeze-candidate.
+        required: false
+        default: ''
+        type: string
+      windows_exe_sha256:
+        description: Exact sha256:<hex> digest of the externally produced Windows EXE.
+        required: false
+        default: ''
+        type: string
+      publication_backend_run_id:
+        description: Protected producer run containing the reviewed publication-provider wheel; required only for publish.
+        required: false
+        default: ''
+        type: string
+      publication_backend_artifact_name:
+        description: Exact publication-provider artifact name; required only for publish.
+        required: false
+        default: ''
+        type: string
+      publication_backend_artifact_digest:
+        description: Exact publication-provider artifact sha256:<hex>; required only for publish.
+        required: false
+        default: ''
+        type: string
+
+# A global lock is intentional: different integer builds must not race while both claim the
+# latest Stable 1.0 predecessor or wait for protected-environment approval.
+concurrency:
+  group: stable-1-0-maintenance-publication
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  validate-dispatch:
+    name: Validate immutable release identity
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      expected_branch: ${{ steps.identity.outputs.expected_branch }}
+
+    steps:
+      - name: Check out the exact candidate commit
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.candidate_commit }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v5
+        with:
+          java-version: '25'
+          distribution: temurin
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@f29f5a9d7b09a7c6b29859002d29d24e1674c884 # v5
+
+      - name: Install Gradle properties
+        uses: ./.github/actions/setup-gradle-properties
+
+      - name: Validate integer build, class, branch, commit, and clean source
+        id: identity
+        env:
+          INPUT_RELEASE_ID: ${{ inputs.release_id }}
+          INPUT_BUILD_VERSION: ${{ inputs.build_version }}
+          INPUT_RELEASE_CLASS: ${{ inputs.release_class }}
+          INPUT_CANDIDATE_COMMIT: ${{ inputs.candidate_commit }}
+          INPUT_POINTER_DIGEST: ${{ inputs.expected_predecessor_pointer_digest }}
+          INPUT_PROTECTED_RUN_ID: ${{ inputs.protected_inputs_run_id }}
+          INPUT_PROTECTED_ARTIFACT_NAME: ${{ inputs.protected_inputs_artifact_name }}
+          INPUT_PROTECTED_ARTIFACT_DIGEST: ${{ inputs.protected_inputs_artifact_digest }}
+          INPUT_VALIDATED_RUN_ID: ${{ inputs.validated_candidate_run_id }}
+          INPUT_VALIDATED_ARTIFACT_NAME: ${{ inputs.validated_candidate_artifact_name }}
+          INPUT_VALIDATED_ARTIFACT_DIGEST: ${{ inputs.validated_candidate_artifact_digest }}
+          INPUT_FROZEN_RUN_ID: ${{ inputs.frozen_candidate_run_id }}
+          INPUT_FROZEN_ARTIFACT_NAME: ${{ inputs.frozen_candidate_artifact_name }}
+          INPUT_FROZEN_ARTIFACT_DIGEST: ${{ inputs.frozen_candidate_artifact_digest }}
+          INPUT_PREPARED_RUN_ID: ${{ inputs.prepared_candidate_run_id }}
+          INPUT_PREPARED_ARTIFACT_NAME: ${{ inputs.prepared_candidate_artifact_name }}
+          INPUT_PREPARED_ARTIFACT_DIGEST: ${{ inputs.prepared_candidate_artifact_digest }}
+          INPUT_WINDOWS_RUN_ID: ${{ inputs.windows_exe_run_id }}
+          INPUT_WINDOWS_ARTIFACT_NAME: ${{ inputs.windows_exe_artifact_name }}
+          INPUT_WINDOWS_ARTIFACT_DIGEST: ${{ inputs.windows_exe_artifact_digest }}
+          INPUT_WINDOWS_EXE_SHA256: ${{ inputs.windows_exe_sha256 }}
+          INPUT_OPERATION: ${{ inputs.operation }}
+          INPUT_BACKEND_RUN_ID: ${{ inputs.publication_backend_run_id }}
+          INPUT_BACKEND_ARTIFACT_NAME: ${{ inputs.publication_backend_artifact_name }}
+          INPUT_BACKEND_ARTIFACT_DIGEST: ${{ inputs.publication_backend_artifact_digest }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$INPUT_RELEASE_ID" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+            echo "::error::release_id is not path-safe."
+            exit 1
+          fi
+          if [[ ! "$INPUT_BUILD_VERSION" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::build_version must be one canonical positive integer."
+            exit 1
+          fi
+          if [[ ! "$INPUT_CANDIDATE_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::candidate_commit must be an exact lowercase commit."
+            exit 1
+          fi
+          if [[ ! "$INPUT_POINTER_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::The authorized predecessor pointer digest is malformed."
+            exit 1
+          fi
+          if [[ "$INPUT_RELEASE_CLASS" == maintenance ]]; then
+            expected_branch="release/$INPUT_BUILD_VERSION"
+          elif [[ "$INPUT_RELEASE_CLASS" == security-hotfix ]]; then
+            expected_branch="hotfix/$INPUT_BUILD_VERSION"
+          else
+            echo "::error::Unsupported release class."
+            exit 1
+          fi
+          if [[ "$GITHUB_REF" != "refs/heads/$expected_branch" ]]; then
+            echo "::error::Dispatch must run from the exact $expected_branch branch."
+            exit 1
+          fi
+          if [[ "$(git rev-parse HEAD)" != "$INPUT_CANDIDATE_COMMIT" ]]; then
+            echo "::error::Checked-out source differs from candidate_commit."
+            exit 1
+          fi
+          encoded_branch="${expected_branch//\//%2F}"
+          branch_commit="$(gh api --method GET \
+            "repos/$GITHUB_REPOSITORY/git/ref/heads/$encoded_branch" --jq '.object.sha')"
+          if [[ "$branch_commit" != "$INPUT_CANDIDATE_COMMIT" ]]; then
+            echo "::error::The release/hotfix branch moved or does not identify the candidate."
+            exit 1
+          fi
+          if [[ -n "$(git status --porcelain=v1 --untracked-files=all)" ]]; then
+            echo "::error::Stable maintenance execution requires a clean source tree."
+            exit 1
+          fi
+          project_version="$(./gradlew -q printVersion)"
+          if [[ "$project_version" != "$INPUT_BUILD_VERSION" ]]; then
+            echo "::error::build.gradle.kts integer version differs from the dispatch."
+            exit 1
+          fi
+          if [[ "$INPUT_OPERATION" == publish ]]; then
+            if [[ -n "$INPUT_PROTECTED_RUN_ID$INPUT_PROTECTED_ARTIFACT_NAME$INPUT_PROTECTED_ARTIFACT_DIGEST" ]]; then
+              echo "::error::publish consumes only the authorized artifact and forbids replacement inputs."
+              exit 1
+            fi
+          elif [[ ! "$INPUT_PROTECTED_RUN_ID" =~ ^[1-9][0-9]*$ \
+                  || ! "$INPUT_PROTECTED_ARTIFACT_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ \
+                  || ! "$INPUT_PROTECTED_ARTIFACT_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::This operation requires an exact protected input producer identity."
+            exit 1
+          fi
+          if [[ "$INPUT_OPERATION" == publish ]]; then
+            if [[ ! "$INPUT_VALIDATED_RUN_ID" =~ ^[1-9][0-9]*$ \
+                  || ! "$INPUT_VALIDATED_ARTIFACT_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ \
+                  || ! "$INPUT_VALIDATED_ARTIFACT_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+              echo "::error::publish requires an exact prior validated-and-authorized artifact."
+              exit 1
+            fi
+            if [[ ! "$INPUT_BACKEND_RUN_ID" =~ ^[1-9][0-9]*$ \
+                  || ! "$INPUT_BACKEND_ARTIFACT_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ \
+                  || ! "$INPUT_BACKEND_ARTIFACT_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+              echo "::error::publish requires the exact reviewed publication-provider artifact."
+              exit 1
+            fi
+            if [[ -n "$INPUT_FROZEN_RUN_ID$INPUT_FROZEN_ARTIFACT_NAME$INPUT_FROZEN_ARTIFACT_DIGEST$INPUT_PREPARED_RUN_ID$INPUT_PREPARED_ARTIFACT_NAME$INPUT_PREPARED_ARTIFACT_DIGEST$INPUT_WINDOWS_RUN_ID$INPUT_WINDOWS_ARTIFACT_NAME$INPUT_WINDOWS_ARTIFACT_DIGEST$INPUT_WINDOWS_EXE_SHA256" ]]; then
+              echo "::error::publish reuses validated frozen bytes and forbids new package inputs."
+              exit 1
+            fi
+          elif [[ "$INPUT_OPERATION" == prepare-authorization ]]; then
+            if [[ ! "$INPUT_FROZEN_RUN_ID" =~ ^[1-9][0-9]*$ \
+                  || ! "$INPUT_FROZEN_ARTIFACT_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ \
+                  || ! "$INPUT_FROZEN_ARTIFACT_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+              echo "::error::prepare-authorization requires an exact prior frozen-candidate artifact."
+              exit 1
+            fi
+            if [[ -n "$INPUT_PREPARED_RUN_ID$INPUT_PREPARED_ARTIFACT_NAME$INPUT_PREPARED_ARTIFACT_DIGEST$INPUT_VALIDATED_RUN_ID$INPUT_VALIDATED_ARTIFACT_NAME$INPUT_VALIDATED_ARTIFACT_DIGEST$INPUT_WINDOWS_RUN_ID$INPUT_WINDOWS_ARTIFACT_NAME$INPUT_WINDOWS_ARTIFACT_DIGEST$INPUT_WINDOWS_EXE_SHA256$INPUT_BACKEND_RUN_ID$INPUT_BACKEND_ARTIFACT_NAME$INPUT_BACKEND_ARTIFACT_DIGEST" ]]; then
+              echo "::error::prepare-authorization consumes frozen bytes and forbids other phase inputs."
+              exit 1
+            fi
+          elif [[ "$INPUT_OPERATION" == validate-authorization ]]; then
+            if [[ ! "$INPUT_PREPARED_RUN_ID" =~ ^[1-9][0-9]*$ \
+                  || ! "$INPUT_PREPARED_ARTIFACT_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ \
+                  || ! "$INPUT_PREPARED_ARTIFACT_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+              echo "::error::validate-authorization requires an exact prepared artifact."
+              exit 1
+            fi
+            if [[ -n "$INPUT_FROZEN_RUN_ID$INPUT_FROZEN_ARTIFACT_NAME$INPUT_FROZEN_ARTIFACT_DIGEST$INPUT_VALIDATED_RUN_ID$INPUT_VALIDATED_ARTIFACT_NAME$INPUT_VALIDATED_ARTIFACT_DIGEST$INPUT_WINDOWS_RUN_ID$INPUT_WINDOWS_ARTIFACT_NAME$INPUT_WINDOWS_ARTIFACT_DIGEST$INPUT_WINDOWS_EXE_SHA256$INPUT_BACKEND_RUN_ID$INPUT_BACKEND_ARTIFACT_NAME$INPUT_BACKEND_ARTIFACT_DIGEST" ]]; then
+              echo "::error::validate-authorization accepts only the prepared artifact and exact approval input."
+              exit 1
+            fi
+          elif [[ "$INPUT_OPERATION" == freeze-candidate ]]; then
+            if [[ ! "$INPUT_WINDOWS_RUN_ID" =~ ^[1-9][0-9]*$ \
+                  || ! "$INPUT_WINDOWS_ARTIFACT_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ \
+                  || ! "$INPUT_WINDOWS_ARTIFACT_DIGEST" =~ ^sha256:[0-9a-f]{64}$ \
+                  || ! "$INPUT_WINDOWS_EXE_SHA256" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+              echo "::error::freeze-candidate requires an authenticated external Windows EXE."
+              exit 1
+            fi
+            if [[ -n "$INPUT_FROZEN_RUN_ID$INPUT_FROZEN_ARTIFACT_NAME$INPUT_FROZEN_ARTIFACT_DIGEST$INPUT_PREPARED_RUN_ID$INPUT_PREPARED_ARTIFACT_NAME$INPUT_PREPARED_ARTIFACT_DIGEST$INPUT_VALIDATED_RUN_ID$INPUT_VALIDATED_ARTIFACT_NAME$INPUT_VALIDATED_ARTIFACT_DIGEST$INPUT_BACKEND_RUN_ID$INPUT_BACKEND_ARTIFACT_NAME$INPUT_BACKEND_ARTIFACT_DIGEST" ]]; then
+              echo "::error::freeze-candidate builds once and forbids prior candidate/publication inputs."
+              exit 1
+            fi
+          else
+            echo "::error::Unsupported maintenance operation."
+            exit 1
+          fi
+          echo "expected_branch=$expected_branch" >> "$GITHUB_OUTPUT"
+
+      - name: Run deterministic Stable maintenance self-test
+        run: python3 tools/release-certification/certify.py stable-maintenance --self-test
+
+  build-packages:
+    name: Build exact ${{ matrix.package_class }} candidate bytes
+    if: inputs.operation == 'freeze-candidate'
+    needs: validate-dispatch
+    runs-on: ${{ matrix.runner }}
+    environment: stable-1.0-maintenance-evidence
+    timeout-minutes: 360
+    permissions:
+      contents: read
+      actions: read
+      attestations: write
+      artifact-metadata: write
+      id-token: write
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - package_class: linux-and-portable
+            runner: ubuntu-latest
+            gradle_tasks: >-
+              assembleCryptadDist distTarCryptad distZipCryptad distJlinkCryptad
+              jpackageInstallerLinuxAll
+          - package_class: macos
+            runner: macos-15-intel
+            gradle_tasks: jpackageInstallerCryptad
+
+    steps:
+      - name: Check out exact candidate
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.candidate_commit }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v5
+        with:
+          java-version: '25'
+          distribution: temurin
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@f29f5a9d7b09a7c6b29859002d29d24e1674c884 # v5
+
+      - name: Install Gradle properties
+        uses: ./.github/actions/setup-gradle-properties
+
+      - name: Install Linux RPM packaging tools
+        if: matrix.package_class == 'linux-and-portable'
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes rpm
+          command -v rpm >/dev/null
+          command -v rpmbuild >/dev/null
+
+      - name: Build package set once
+        if: matrix.package_class == 'linux-and-portable'
+        env:
+          GRADLE_TASKS: ${{ matrix.gradle_tasks }}
+        run: ./gradlew $GRADLE_TASKS
+
+      - name: Build, Developer ID sign, notarize, staple, and verify macOS package once
+        if: matrix.package_class == 'macos'
+        env:
+          GRADLE_TASKS: ${{ matrix.gradle_tasks }}
+          MACOS_DEVELOPER_ID_APPLICATION: ${{ vars.CRYPTAD_MACOS_DEVELOPER_ID_APPLICATION }}
+          MACOS_CERTIFICATE_P12_BASE64: ${{ secrets.CRYPTAD_MACOS_DEVELOPER_ID_APPLICATION_P12_BASE64 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.CRYPTAD_MACOS_DEVELOPER_ID_APPLICATION_P12_PASSWORD }}
+          MACOS_NOTARY_APPLE_ID: ${{ secrets.CRYPTAD_MACOS_NOTARY_APPLE_ID }}
+          MACOS_NOTARY_TEAM_ID: ${{ secrets.CRYPTAD_MACOS_NOTARY_TEAM_ID }}
+          MACOS_NOTARY_APP_PASSWORD: ${{ secrets.CRYPTAD_MACOS_NOTARY_APP_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$MACOS_DEVELOPER_ID_APPLICATION" =~ ^Developer\ ID\ Application:\ .+\ \([A-Z0-9]{10}\)$ \
+                || -z "$MACOS_CERTIFICATE_P12_BASE64" \
+                || -z "$MACOS_CERTIFICATE_PASSWORD" \
+                || -z "$MACOS_NOTARY_APPLE_ID" \
+                || ! "$MACOS_NOTARY_TEAM_ID" =~ ^[A-Z0-9]{10}$ \
+                || -z "$MACOS_NOTARY_APP_PASSWORD" ]]; then
+            echo "::error::Protected Developer ID and notarization inputs are incomplete."
+            exit 1
+          fi
+          keychain="$RUNNER_TEMP/cryptad-maintenance-signing.keychain-db"
+          certificate="$RUNNER_TEMP/cryptad-maintenance-signing.p12"
+          notary_output="$RUNNER_TEMP/cryptad-maintenance-notary.json"
+          notary_error="$RUNNER_TEMP/cryptad-maintenance-notary.err"
+          mount_point="$RUNNER_TEMP/cryptad-maintenance-dmg"
+          mounted_device=''
+          cleanup() {
+            if [[ -n "$mounted_device" ]]; then
+              hdiutil detach "$mounted_device" -force >/dev/null 2>&1 || true
+            fi
+            rmdir "$mount_point" >/dev/null 2>&1 || true
+            security delete-keychain "$keychain" >/dev/null 2>&1 || true
+            rm -f "$certificate" "$notary_output" "$notary_error"
+          }
+          trap cleanup EXIT
+          keychain_password="$(openssl rand -hex 32)"
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          printf '%s' "$MACOS_CERTIFICATE_P12_BASE64" | base64 -D > "$certificate"
+          security import "$certificate" -k "$keychain" -P "$MACOS_CERTIFICATE_PASSWORD" \
+            -T /usr/bin/codesign -T /usr/bin/productbuild >/dev/null
+          security set-key-partition-list -S apple-tool:,apple: -s \
+            -k "$keychain_password" "$keychain" >/dev/null
+          security list-keychains -d user -s "$keychain"
+          if [[ "$(security find-identity -v -p codesigning "$keychain" \
+              | grep -F -c -- "\"$MACOS_DEVELOPER_ID_APPLICATION\"")" -ne 1 ]]; then
+            echo "::error::The protected keychain does not contain exactly the reviewed Developer ID identity."
+            exit 1
+          fi
+          xcrun notarytool store-credentials cryptad-maintenance \
+            --apple-id "$MACOS_NOTARY_APPLE_ID" \
+            --team-id "$MACOS_NOTARY_TEAM_ID" \
+            --password "$MACOS_NOTARY_APP_PASSWORD" \
+            --keychain "$keychain" >/dev/null
+          ./gradlew $GRADLE_TASKS \
+            -PmacSigningKeyUserName="$MACOS_DEVELOPER_ID_APPLICATION"
+          required=()
+          while IFS= read -r path; do required+=("$path"); done < <(
+            find build/jpackage -maxdepth 1 -type f -name '*.dmg' -print | LC_ALL=C sort
+          )
+          if [[ "${#required[@]}" -ne 1 ]]; then
+            echo "::error::The signed macOS producer must emit exactly one DMG."
+            exit 1
+          fi
+          dmg="${required[0]}"
+          app="build/jpackage/Crypta.app"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          codesign --force --timestamp --sign "$MACOS_DEVELOPER_ID_APPLICATION" \
+            --keychain "$keychain" "$dmg"
+          codesign --verify --strict --verbose=2 "$dmg"
+          if ! xcrun notarytool submit "$dmg" \
+              --keychain-profile cryptad-maintenance --keychain "$keychain" \
+              --wait --output-format json >"$notary_output" 2>"$notary_error"; then
+            echo "::error::Apple notarization submission failed."
+            exit 1
+          fi
+          if [[ "$(jq -er '.status' "$notary_output")" != Accepted ]]; then
+            echo "::error::Apple did not accept the DMG notarization submission."
+            exit 1
+          fi
+          submission_id="$(jq -er '.id' "$notary_output")"
+          xcrun notarytool info "$submission_id" \
+            --keychain-profile cryptad-maintenance --keychain "$keychain" \
+            --output-format json >"$RUNNER_TEMP/cryptad-maintenance-notary-info.json" 2>"$notary_error"
+          if [[ "$(jq -er '.status' "$RUNNER_TEMP/cryptad-maintenance-notary-info.json")" != Accepted ]]; then
+            echo "::error::Apple notarization status could not be independently confirmed."
+            exit 1
+          fi
+          rm -f "$RUNNER_TEMP/cryptad-maintenance-notary-info.json"
+          xcrun stapler staple "$dmg" >/dev/null
+          xcrun stapler validate "$dmg" >/dev/null
+          codesign --verify --deep --strict --verbose=2 "$app"
+          codesign --verify --strict --verbose=2 "$dmg"
+          spctl --assess --type execute --verbose=2 "$app"
+          spctl --assess --type open --context context:primary-signature --verbose=2 "$dmg"
+          mkdir "$mount_point"
+          mounted_device="$(hdiutil attach -readonly -nobrowse -mountpoint "$mount_point" "$dmg" \
+            | awk 'END {print $1}')"
+          if [[ ! "$mounted_device" =~ ^/dev/ ]]; then
+            echo "::error::The final stapled DMG could not be mounted read-only."
+            exit 1
+          fi
+          contained_executables=()
+          while IFS= read -r path; do contained_executables+=("$path"); done < <(
+            find "$mount_point" -type f -path '*/Crypta.app/Contents/MacOS/Crypta' -print \
+              | LC_ALL=C sort
+          )
+          if [[ "${#contained_executables[@]}" -ne 1 ]]; then
+            echo "::error::The final stapled DMG does not contain exactly one Crypta executable."
+            exit 1
+          fi
+          contained_executable="${contained_executables[0]}"
+          app_architectures="$(lipo -archs "$contained_executable")"
+          if [[ "$app_architectures" != x86_64 ]]; then
+            echo "::error::The final amd64 DMG contains '$app_architectures' application bytes."
+            exit 1
+          fi
+          codesign --verify --deep --strict --verbose=2 \
+            "$(dirname "$(dirname "$(dirname "$contained_executable")")")"
+          hdiutil detach "$mounted_device" >/dev/null
+          mounted_device=''
+          rmdir "$mount_point"
+          mkdir -p build/stable-maintenance-macos-verification
+          jq -n \
+            --arg identity "$MACOS_DEVELOPER_ID_APPLICATION" \
+            --arg team_id "$MACOS_NOTARY_TEAM_ID" \
+            --arg producer_architecture amd64 \
+            --arg file_name "$(basename "$dmg")" \
+            --arg subject_digest "sha256:$(shasum -a 256 "$dmg" | awk '{print $1}')" \
+            --argjson subject_size "$(stat -f '%z' "$dmg")" \
+            '{schemaVersion: 1, kind: "stable-1.0-maintenance-macos-package-verification",
+              signingIdentity: $identity, teamId: $team_id, signingStatus: "pass",
+              producerArchitecture: $producer_architecture,
+              fileName: $file_name, subjectDigest: $subject_digest,
+              subjectSizeBytes: $subject_size,
+              notarizationStatus: "pass", staplingStatus: "pass", gatekeeperStatus: "pass",
+              redaction: {status: "pass", findingCount: 0, findings: []}}' \
+            > build/stable-maintenance-macos-verification/verification.json
+
+      - name: Reject tracked source or index drift after package build
+        env:
+          INPUT_CANDIDATE_COMMIT: ${{ inputs.candidate_commit }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$(git rev-parse HEAD^{commit})" != "$INPUT_CANDIDATE_COMMIT" ]]; then
+            echo "::error::The package producer checkout moved away from the candidate commit."
+            exit 1
+          fi
+          if ! git diff-index --quiet --cached HEAD -- \
+              || ! git diff-files --quiet --; then
+            echo "::error::The package build changed tracked source or the Git index."
+            git status --short --untracked-files=no
+            exit 1
+          fi
+
+      - name: Stage exact package producer output
+        env:
+          PACKAGE_CLASS: ${{ matrix.package_class }}
+          INPUT_RELEASE_ID: ${{ inputs.release_id }}
+          INPUT_BUILD_VERSION: ${{ inputs.build_version }}
+          INPUT_CANDIDATE_COMMIT: ${{ inputs.candidate_commit }}
+          EXPECTED_BRANCH: ${{ needs.validate-dispatch.outputs.expected_branch }}
+          GRADLE_TASKS: ${{ matrix.gradle_tasks }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          output="build/stable-maintenance-package-output/$PACKAGE_CLASS"
+          rm -rf "$output"
+          mkdir -p "$output/assets"
+          required=()
+          if [[ "$PACKAGE_CLASS" == linux-and-portable ]]; then
+            while IFS= read -r path; do required+=("$path"); done < <(
+              find build/jpackage -maxdepth 1 -type f \
+                \( -name '*.deb' -o -name '*.rpm' \) -print | LC_ALL=C sort
+            )
+            if [[ "${#required[@]}" -ne 2 \
+                  || "$(find build/jpackage -maxdepth 1 -type f -name '*.deb' | wc -l)" -ne 1 \
+                  || "$(find build/jpackage -maxdepth 1 -type f -name '*.rpm' | wc -l)" -ne 1 ]]; then
+              echo "::error::The Linux producer must build exactly one DEB and one RPM."
+              exit 1
+            fi
+            portable=()
+            while IFS= read -r path; do portable+=("$path"); done < <(
+              find build/distributions -maxdepth 1 -type f \
+                \( -name "cryptad-v$INPUT_BUILD_VERSION.tar.gz" \
+                   -o -name "cryptad-v$INPUT_BUILD_VERSION.zip" \
+                   -o -name "cryptad-jlink-v$INPUT_BUILD_VERSION.tar.gz" \
+                   -o -name "cryptad-jlink-v$INPUT_BUILD_VERSION.zip" \) -print \
+                | LC_ALL=C sort
+            )
+            if [[ "${#portable[@]}" -ne 4 ]]; then
+              echo "::error::The portable producer did not emit the closed four-archive set."
+              exit 1
+            fi
+            required+=("${portable[@]}")
+          else
+            while IFS= read -r path; do required+=("$path"); done < <(
+              find build/jpackage -maxdepth 1 -type f -name '*.dmg' -print | LC_ALL=C sort
+            )
+            if [[ "${#required[@]}" -ne 1 ]]; then
+              echo "::error::The macOS producer must build exactly one DMG."
+              exit 1
+            fi
+            verification="build/stable-maintenance-macos-verification/verification.json"
+            dmg="${required[0]}"
+            dmg_digest="sha256:$(shasum -a 256 "$dmg" | awk '{print $1}')"
+            dmg_size="$(stat -f '%z' "$dmg")"
+            if [[ -L "$verification" || ! -f "$verification" \
+                  || "$(jq -er '.signingStatus' "$verification")" != pass \
+                  || "$(jq -er '.notarizationStatus' "$verification")" != pass \
+                  || "$(jq -er '.staplingStatus' "$verification")" != pass \
+                  || "$(jq -er '.gatekeeperStatus' "$verification")" != pass \
+                  || "$(jq -er '.fileName' "$verification")" != "$(basename "$dmg")" \
+                  || "$(jq -er '.subjectDigest' "$verification")" != "$dmg_digest" \
+                  || "$(jq -er '.subjectSizeBytes' "$verification")" != "$dmg_size" ]]; then
+              echo "::error::The DMG lacks passing protected signing and notarization verification."
+              exit 1
+            fi
+            cp "$verification" "$output/verification.json"
+          fi
+          asset_architectures='{}'
+          for source in "${required[@]}"; do
+            if [[ -L "$source" || ! -f "$source" ]]; then
+              echo "::error::Package producer output is unsafe."
+              exit 1
+            fi
+            producer_architecture=''
+            case "$source" in
+              *.deb)
+                raw_architecture="$(dpkg-deb --field "$source" Architecture)"
+                case "$raw_architecture" in
+                  amd64) producer_architecture=amd64 ;;
+                  arm64) producer_architecture=arm64 ;;
+                  *)
+                    echo "::error::Unsupported DEB architecture '$raw_architecture'."
+                    exit 1
+                    ;;
+                esac
+                ;;
+              *.rpm)
+                raw_architecture="$(rpm -qp --qf '%{ARCH}' "$source")"
+                case "$raw_architecture" in
+                  x86_64|amd64) producer_architecture=amd64 ;;
+                  aarch64|arm64) producer_architecture=arm64 ;;
+                  *)
+                    echo "::error::Unsupported RPM architecture '$raw_architecture'."
+                    exit 1
+                    ;;
+                esac
+                ;;
+              *.dmg)
+                producer_architecture="$(jq -er '.producerArchitecture' \
+                  build/stable-maintenance-macos-verification/verification.json)"
+                ;;
+            esac
+            if [[ -n "$producer_architecture" ]]; then
+              asset_architectures="$(jq -cn \
+                --argjson current "$asset_architectures" \
+                --arg name "$(basename "$source")" \
+                --arg architecture "$producer_architecture" \
+                '$current + {($name): $architecture}')"
+            fi
+            cp "$source" "$output/assets/$(basename "$source")"
+          done
+          if [[ -n "$(find "$output" -type l -print -quit)" \
+                || -n "$(find "$output" -mindepth 1 ! -type f ! -type d -print -quit)" ]]; then
+            echo "::error::Package output contains a link or special entry."
+            exit 1
+          fi
+          python3 - "$output/assets" "$output/checksums.txt" <<'PY'
+          import hashlib
+          import sys
+          from pathlib import Path
+
+          root = Path(sys.argv[1])
+          destination = Path(sys.argv[2])
+          rows = []
+          for asset in sorted(root.iterdir(), key=lambda path: path.name):
+              if asset.is_symlink() or not asset.is_file():
+                  raise SystemExit("unsafe package producer output")
+              rows.append(f"{hashlib.sha256(asset.read_bytes()).hexdigest()}  {asset.name}")
+          destination.write_text("\n".join(rows) + "\n", encoding="utf-8")
+          PY
+          source_tree_digest="sha256:$(git ls-tree -r --full-tree HEAD \
+            | shasum -a 256 | awk '{print $1}')"
+          build_logic_digest="sha256:$(git ls-tree -r --full-tree HEAD -- build-logic \
+            | shasum -a 256 | awk '{print $1}')"
+          wrapper_digest="sha256:$(shasum -a 256 gradle/wrapper/gradle-wrapper.jar | awk '{print $1}')"
+          verification_digest="sha256:$(shasum -a 256 gradle/verification-metadata.xml | awk '{print $1}')"
+          java_version="$(java --version 2>&1 | head -n 1 | tr -d '\r')"
+          java_major="$(python3 - "$java_version" <<'PY'
+          import re
+          import sys
+
+          match = re.search(r'(?<![0-9])([0-9]+)(?:\.[0-9]+)*(?:\+[0-9A-Za-z.-]+)?', sys.argv[1])
+          if match is None:
+              raise SystemExit('Java runtime version token is missing')
+          print(match.group(1))
+          PY
+          )"
+          gradle_version="$(./gradlew --version | awk '/^Gradle / {print $2; exit}')"
+          build_tasks_json="$(jq -cn --arg tasks "$GRADLE_TASKS" \
+            '$tasks | split(" ") | map(select(length > 0))')"
+          jq -n \
+            --arg release_id "$INPUT_RELEASE_ID" \
+            --arg build "$INPUT_BUILD_VERSION" \
+            --arg commit "$INPUT_CANDIDATE_COMMIT" \
+            --arg package_class "$PACKAGE_CLASS" \
+            --arg branch "$EXPECTED_BRANCH" \
+            --arg source_ref "commit:$INPUT_CANDIDATE_COMMIT" \
+            --arg repository "$GITHUB_REPOSITORY" \
+            --arg source_tree_digest "$source_tree_digest" \
+            --arg java_version "$java_version" \
+            --argjson java_major "$java_major" \
+            --arg gradle_version "$gradle_version" \
+            --arg wrapper_digest "$wrapper_digest" \
+            --arg verification_digest "$verification_digest" \
+            --arg build_logic_digest "$build_logic_digest" \
+            --argjson build_tasks "$build_tasks_json" \
+            --argjson asset_architectures "$asset_architectures" \
+            --argjson run_id "$GITHUB_RUN_ID" \
+            --argjson run_attempt "$GITHUB_RUN_ATTEMPT" \
+            '{
+              schemaVersion: 1,
+              kind: "stable-1.0-maintenance-package-producer",
+              releaseId: $release_id,
+              buildVersion: $build,
+              sourceCommit: $commit,
+              source: {
+                branch: $branch, ref: $source_ref, commit: $commit,
+                sourceTreeDigest: $source_tree_digest
+              },
+              toolchain: {
+                javaVersion: $java_version, javaMajorVersion: $java_major,
+                gradleVersion: $gradle_version, gradleWrapperDigest: $wrapper_digest,
+                dependencyVerificationDigest: $verification_digest,
+                dependencyVerificationStatus: "pass", buildLogicDigest: $build_logic_digest,
+                buildTasks: $build_tasks, productionSigning: true, testSigning: false
+              },
+              packageClass: $package_class,
+              assetArchitectures: $asset_architectures,
+              workflow: {
+                provider: "github-actions", repository: $repository,
+                runId: $run_id, runAttempt: $run_attempt
+              },
+              buildCount: 1,
+              redaction: {status: "pass", findingCount: 0, findings: []}
+            }' > "$output/producer.json"
+
+      - name: Cryptographically attest every exact package producer asset
+        id: attest-package-assets
+        uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
+        with:
+          subject-path: build/stable-maintenance-package-output/${{ matrix.package_class }}/assets/*
+
+      - name: Independently verify and bind every exact package producer attestation
+        env:
+          PACKAGE_CLASS: ${{ matrix.package_class }}
+          INPUT_RELEASE_ID: ${{ inputs.release_id }}
+          INPUT_BUILD_VERSION: ${{ inputs.build_version }}
+          INPUT_CANDIDATE_COMMIT: ${{ inputs.candidate_commit }}
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          output="build/stable-maintenance-package-output/$PACKAGE_CLASS"
+          receipts="$output/signing-receipts"
+          signer_workflow="crypta-network/cryptad/.github/workflows/stable-1.0-maintenance-release.yml"
+          rm -rf "$receipts"
+          mkdir -p "$receipts"
+          receipt_digests='{}'
+          asset_count=0
+          for asset in "$output"/assets/*; do
+            if [[ -L "$asset" || ! -f "$asset" ]]; then
+              echo "::error::The attested package producer subject is unsafe."
+              exit 1
+            fi
+            gh attestation verify "$asset" \
+              --repo "$GITHUB_REPOSITORY" \
+              --signer-workflow "$signer_workflow" \
+              --source-digest "$INPUT_CANDIDATE_COMMIT" \
+              --deny-self-hosted-runners >/dev/null
+            name="$(basename "$asset")"
+            subject_digest="sha256:$(shasum -a 256 "$asset" | awk '{print $1}')"
+            subject_size="$(wc -c < "$asset" | tr -d '[:space:]')"
+            receipt="$receipts/$name.signing.json"
+            jq -n \
+              --arg release_id "$INPUT_RELEASE_ID" \
+              --arg build "$INPUT_BUILD_VERSION" \
+              --arg commit "$INPUT_CANDIDATE_COMMIT" \
+              --arg name "$name" \
+              --arg digest "$subject_digest" \
+              --argjson size "$subject_size" \
+              --arg signer_workflow "$signer_workflow" \
+              '{
+                schemaVersion: 1,
+                kind: "stable-1.0-maintenance-asset-signing-verification",
+                releaseId: $release_id,
+                buildVersion: $build,
+                sourceCommit: $commit,
+                fileName: $name,
+                subjectDigest: $digest,
+                subjectSizeBytes: $size,
+                signingMethod: "sigstore-github-attestation",
+                signerWorkflow: $signer_workflow,
+                hostedRunnerRequired: true,
+                cryptographicVerificationStatus: "pass",
+                redaction: {status: "pass", findingCount: 0, findings: []}
+              }' > "$receipt"
+            receipt_digest="sha256:$(shasum -a 256 "$receipt" | awk '{print $1}')"
+            receipt_digests="$(jq -cn \
+              --argjson current "$receipt_digests" \
+              --arg name "$name" \
+              --arg digest "$receipt_digest" \
+              '$current + {($name): $digest}')"
+            asset_count=$((asset_count + 1))
+          done
+          if [[ "$asset_count" -lt 1 ]]; then
+            echo "::error::The package producer emitted no attestation subjects."
+            exit 1
+          fi
+          jq \
+            --arg method sigstore-github-attestation \
+            --arg signer_workflow "$signer_workflow" \
+            --arg source_commit "$INPUT_CANDIDATE_COMMIT" \
+            --argjson receipt_digests "$receipt_digests" \
+            '.assetSigning = {
+              method: $method,
+              signerWorkflow: $signer_workflow,
+              sourceCommit: $source_commit,
+              verificationStatus: "pass",
+              receiptDigests: $receipt_digests
+            }' "$output/producer.json" > "$output/producer.json.tmp"
+          mv "$output/producer.json.tmp" "$output/producer.json"
+
+      - name: Upload exact package bytes
+        uses: actions/upload-artifact@v6
+        with:
+          name: stable-maintenance-package-${{ inputs.release_id }}-${{ inputs.build_version }}-${{ matrix.package_class }}
+          path: build/stable-maintenance-package-output/${{ matrix.package_class }}/
+          if-no-files-found: error
+          retention-days: 30
+
+  authenticate-windows-exe:
+    name: Authenticate external Windows EXE producer
+    if: inputs.operation == 'freeze-candidate'
+    needs: validate-dispatch
+    runs-on: ubuntu-latest
+    environment: stable-1.0-maintenance-evidence
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read
+      attestations: read
+
+    steps:
+      - name: Authenticate and materialize exact Windows EXE
+        env:
+          INPUT_RUN_ID: ${{ inputs.windows_exe_run_id }}
+          INPUT_ARTIFACT_NAME: ${{ inputs.windows_exe_artifact_name }}
+          INPUT_ARTIFACT_DIGEST: ${{ inputs.windows_exe_artifact_digest }}
+          INPUT_EXE_SHA256: ${{ inputs.windows_exe_sha256 }}
+          INPUT_CANDIDATE_COMMIT: ${{ inputs.candidate_commit }}
+          EXPECTED_BRANCH: ${{ needs.validate-dispatch.outputs.expected_branch }}
+          INPUT_SIGNER_WORKFLOW: ${{ vars.CRYPTAD_STABLE_MAINTENANCE_WINDOWS_SIGNER_WORKFLOW }}
+          EXPECTED_WINDOWS_CERTIFICATE_SHA1: ${{ vars.CRYPTAD_WINDOWS_CODE_SIGNING_CERTIFICATE_SHA1 }}
+          INPUT_RELEASE_ID: ${{ inputs.release_id }}
+          INPUT_BUILD_VERSION: ${{ inputs.build_version }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$INPUT_SIGNER_WORKFLOW" =~ ^crypta-network/cryptad/\.github/workflows/[A-Za-z0-9._-]+\.ya?ml$ ]]; then
+            echo "::error::Protected Windows producer signer workflow is not configured safely."
+            exit 1
+          fi
+          if [[ ! "$EXPECTED_WINDOWS_CERTIFICATE_SHA1" =~ ^[0-9A-F]{40}$ ]]; then
+            echo "::error::Reviewed Windows signing-certificate identity is not configured safely."
+            exit 1
+          fi
+          expected_workflow_path="${INPUT_SIGNER_WORKFLOW#crypta-network/cryptad/}"
+          run_json="$(gh api --method GET "repos/$GITHUB_REPOSITORY/actions/runs/$INPUT_RUN_ID")"
+          jq -e \
+            --arg repository "$GITHUB_REPOSITORY" \
+            --arg commit "$INPUT_CANDIDATE_COMMIT" \
+            --arg workflow_path "$expected_workflow_path" '
+              .repository.full_name == $repository
+              and .head_sha == $commit
+              and .path == $workflow_path
+              and .event == "workflow_dispatch"
+              and .status == "completed"
+              and .conclusion == "success"' <<< "$run_json" >/dev/null
+          artifacts="$(gh api --paginate --method GET \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$INPUT_RUN_ID/artifacts" \
+            -f per_page=100 | jq -s '{artifacts: [.[].artifacts[]]}')"
+          jq -e --arg name "$INPUT_ARTIFACT_NAME" --arg digest "$INPUT_ARTIFACT_DIGEST" '
+            [.artifacts[] | select(.name == $name and .expired == false and .digest == $digest)]
+            | length == 1' <<< "$artifacts" >/dev/null
+          download="build/windows-external-producer"
+          output="build/stable-maintenance-package-output/windows"
+          rm -rf "$download" "$output"
+          mkdir -p "$download" "$output/assets"
+          gh run download "$INPUT_RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --name "$INPUT_ARTIFACT_NAME" --dir "$download"
+          if [[ -n "$(find "$download" -type l -print -quit)" \
+                || -n "$(find "$download" -mindepth 1 ! -type f ! -type d -print -quit)" ]]; then
+            echo "::error::Windows producer artifact contains a link or special entry."
+            exit 1
+          fi
+          mapfile -t executables < <(find "$download" -type f -iname '*.exe' -print | sort)
+          if [[ "${#executables[@]}" -ne 1 ]]; then
+            echo "::error::Windows producer artifact must contain exactly one EXE."
+            exit 1
+          fi
+          exe="${executables[0]}"
+          producer="$download/stable-1.0-maintenance-windows-package-producer.json"
+          if [[ -L "$producer" || ! -f "$producer" \
+                || "$(find "$download" -type f -name 'stable-1.0-maintenance-windows-package-producer.json' | wc -l)" -ne 1 \
+                || "$(find "$download" -type f | wc -l)" -ne 2 ]]; then
+            echo "::error::Windows producer omitted its exact post-build toolchain/source receipt."
+            exit 1
+          fi
+          exe_digest="sha256:$(sha256sum "$exe" | awk '{print $1}')"
+          exe_size="$(stat --format='%s' "$exe")"
+          expected_signer_digest="sha256:$(printf '%s' "$EXPECTED_WINDOWS_CERTIFICATE_SHA1" \
+            | sha256sum | awk '{print $1}')"
+          jq -e --arg release "$INPUT_RELEASE_ID" --arg build "$INPUT_BUILD_VERSION" \
+            --arg commit "$INPUT_CANDIDATE_COMMIT" --arg branch "$EXPECTED_BRANCH" \
+            --arg exe_name "$(basename "$exe")" --arg exe_digest "$exe_digest" \
+            --argjson exe_size "$exe_size" --arg signer_digest "$expected_signer_digest" '
+              .kind == "stable-1.0-maintenance-external-package-producer"
+              and .releaseId == $release
+              and .buildVersion == $build
+              and .sourceCommit == $commit
+              and .source.branch == $branch
+              and .source.ref == ("commit:" + $commit)
+              and .source.commit == $commit
+              and (.source.sourceTreeDigest | test("^sha256:[0-9a-f]{64}$"))
+              and .toolchain.javaMajorVersion >= 25
+              and .toolchain.dependencyVerificationStatus == "pass"
+              and .toolchain.productionSigning == true
+              and .toolchain.testSigning == false
+              and .authenticode.status == "pass"
+              and .authenticode.verificationPolicy == "windows-authenticode"
+              and .authenticode.timestampStatus == "pass"
+              and .authenticode.signerCertificateIdentityDigest == $signer_digest
+              and .assetDigest == $exe_digest
+              and .assetSizeBytes == $exe_size
+              and .assetArchitectures[$exe_name] == "amd64"
+              and .redaction.status == "pass"' "$producer" >/dev/null
+          python3 - "$exe" <<'PY'
+          import struct
+          import sys
+          from pathlib import Path
+
+          path = Path(sys.argv[1])
+          with path.open("rb") as stream:
+              if stream.read(2) != b"MZ":
+                  raise SystemExit("Windows producer output lacks an MZ header")
+              stream.seek(0x3C)
+              offset_bytes = stream.read(4)
+              if len(offset_bytes) != 4:
+                  raise SystemExit("Windows producer output lacks a PE offset")
+              pe_offset = struct.unpack("<I", offset_bytes)[0]
+              if pe_offset < 0x40 or pe_offset + 6 > path.stat().st_size:
+                  raise SystemExit("Windows producer output has an out-of-bounds PE offset")
+              stream.seek(pe_offset)
+              if stream.read(4) != b"PE\0\0" or stream.read(2) != b"\x64\x86":
+                  raise SystemExit("Windows producer output is not an amd64 PE image")
+          PY
+          if [[ "$exe_digest" != "$INPUT_EXE_SHA256" ]]; then
+            echo "::error::Windows EXE digest differs from the reviewed producer identity."
+            exit 1
+          fi
+          gh attestation verify "$exe" \
+            --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "$INPUT_SIGNER_WORKFLOW" \
+            --source-digest "$INPUT_CANDIDATE_COMMIT" \
+            --deny-self-hosted-runners >/dev/null
+          gh attestation verify "$producer" \
+            --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "$INPUT_SIGNER_WORKFLOW" \
+            --source-digest "$INPUT_CANDIDATE_COMMIT" \
+            --deny-self-hosted-runners >/dev/null
+          cp "$exe" "$output/assets/$(basename "$exe")"
+          cp "$producer" "$output/producer.json"
+          (
+            cd "$output/assets"
+            sha256sum -- * > ../checksums.txt
+          )
+          jq -n \
+            --arg release_id "$INPUT_RELEASE_ID" \
+            --arg build "$INPUT_BUILD_VERSION" \
+            --arg commit "$INPUT_CANDIDATE_COMMIT" \
+            --arg artifact_name "$INPUT_ARTIFACT_NAME" \
+            --arg artifact_digest "$INPUT_ARTIFACT_DIGEST" \
+            --arg repository "$GITHUB_REPOSITORY" \
+            --argjson run_id "$INPUT_RUN_ID" '
+            {
+              schemaVersion: 1,
+              kind: "stable-1.0-maintenance-external-package-producer",
+              releaseId: $release_id,
+              buildVersion: $build,
+              sourceCommit: $commit,
+              packageClass: "windows-exe",
+              producer: {
+                provider: "github-actions", repository: $repository,
+                runId: $run_id, artifactName: $artifact_name,
+                artifactDigest: $artifact_digest, attestationVerified: true
+              },
+              buildCount: 1,
+              redaction: {status: "pass", findingCount: 0, findings: []}
+            }' > "$output/authentication.json"
+
+      - name: Upload authenticated Windows package
+        uses: actions/upload-artifact@v6
+        with:
+          name: stable-maintenance-package-${{ inputs.release_id }}-${{ inputs.build_version }}-windows
+          path: build/stable-maintenance-package-output/windows/
+          if-no-files-found: error
+          retention-days: 30
+
+  freeze-and-validate:
+    name: Freeze exact bytes or validate a prior frozen Stable maintenance candidate
+    needs:
+      - validate-dispatch
+      - build-packages
+      - authenticate-windows-exe
+    if: >-
+      always()
+      && needs.validate-dispatch.result == 'success'
+      && (
+        (inputs.operation == 'freeze-candidate'
+          && needs.build-packages.result == 'success'
+          && needs.authenticate-windows-exe.result == 'success')
+        ||
+        (inputs.operation != 'freeze-candidate'
+          && needs.build-packages.result == 'skipped'
+          && needs.authenticate-windows-exe.result == 'skipped')
+      )
+    runs-on: ubuntu-latest
+    environment: stable-1.0-maintenance-evidence
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      actions: read
+      attestations: read
+    outputs:
+      artifact_name: ${{ steps.stage.outputs.artifact_name }}
+      artifact_digest: ${{ steps.upload.outputs.artifact-digest }}
+
+    steps:
+      - name: Check out exact candidate
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.candidate_commit }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v5
+        with:
+          java-version: '25'
+          distribution: temurin
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@f29f5a9d7b09a7c6b29859002d29d24e1674c884 # v5
+
+      - name: Install Gradle properties
+        uses: ./.github/actions/setup-gradle-properties
+
+      - name: Download packages built once in this run
+        if: inputs.operation == 'freeze-candidate'
+        uses: actions/download-artifact@v8
+        with:
+          pattern: stable-maintenance-package-${{ inputs.release_id }}-${{ inputs.build_version }}-*
+          path: build/stable-maintenance-packages
+          merge-multiple: false
+          digest-mismatch: error
+
+      - name: Authenticate prior exact frozen or validated candidate
+        if: inputs.operation != 'freeze-candidate'
+        env:
+          INPUT_RUN_ID: ${{ inputs.operation == 'publish' && inputs.validated_candidate_run_id || inputs.operation == 'validate-authorization' && inputs.prepared_candidate_run_id || inputs.frozen_candidate_run_id }}
+          INPUT_ARTIFACT_NAME: ${{ inputs.operation == 'publish' && inputs.validated_candidate_artifact_name || inputs.operation == 'validate-authorization' && inputs.prepared_candidate_artifact_name || inputs.frozen_candidate_artifact_name }}
+          INPUT_ARTIFACT_DIGEST: ${{ inputs.operation == 'publish' && inputs.validated_candidate_artifact_digest || inputs.operation == 'validate-authorization' && inputs.prepared_candidate_artifact_digest || inputs.frozen_candidate_artifact_digest }}
+          INPUT_CANDIDATE_COMMIT: ${{ inputs.candidate_commit }}
+          INPUT_OPERATION: ${{ inputs.operation }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          run_json="$(gh api --method GET "repos/$GITHUB_REPOSITORY/actions/runs/$INPUT_RUN_ID")"
+          jq -e --arg repository "$GITHUB_REPOSITORY" --arg commit "$INPUT_CANDIDATE_COMMIT" '
+            .repository.full_name == $repository
+            and .head_sha == $commit
+            and .path == ".github/workflows/stable-1.0-maintenance-release.yml"
+            and .event == "workflow_dispatch"
+            and .status == "completed"
+            and .conclusion == "success"' <<< "$run_json" >/dev/null
+          artifacts="$(gh api --paginate --method GET \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$INPUT_RUN_ID/artifacts" \
+            -f per_page=100 | jq -s '{artifacts: [.[].artifacts[]]}')"
+          jq -e --arg name "$INPUT_ARTIFACT_NAME" --arg digest "$INPUT_ARTIFACT_DIGEST" '
+            [.artifacts[] | select(.name == $name and .expired == false and .digest == $digest)]
+            | length == 1' <<< "$artifacts" >/dev/null
+          rm -rf build/prior-validated-candidate
+          mkdir -p build/prior-validated-candidate
+          gh run download "$INPUT_RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --name "$INPUT_ARTIFACT_NAME" --dir build/prior-validated-candidate
+          subject="build/prior-validated-candidate/freeze/stable-1.0-maintenance-candidate-freeze.json"
+          if [[ "$INPUT_OPERATION" != prepare-authorization ]]; then
+            subject="build/prior-validated-candidate/component/artifacts/legacy/stable-1.0-maintenance-candidate.json"
+          fi
+          if [[ -L "$subject" || ! -f "$subject" ]]; then
+            echo "::error::Prior candidate artifact is missing its canonical frozen identity."
+            exit 1
+          fi
+          gh attestation verify "$subject" \
+            --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "crypta-network/cryptad/.github/workflows/stable-1.0-maintenance-release.yml" \
+            --source-digest "$INPUT_CANDIDATE_COMMIT" \
+            --deny-self-hosted-runners >/dev/null
+          if [[ -d build/prior-validated-candidate/packages ]]; then
+            cp -R build/prior-validated-candidate/packages build/stable-maintenance-packages
+          else
+            echo "::error::Prior candidate artifact does not contain the exact frozen package set."
+            exit 1
+          fi
+
+      - name: Authenticate and materialize public-safe protected inputs
+        if: inputs.operation != 'publish'
+        env:
+          INPUT_RUN_ID: ${{ inputs.protected_inputs_run_id }}
+          INPUT_ARTIFACT_NAME: ${{ inputs.protected_inputs_artifact_name }}
+          INPUT_ARTIFACT_DIGEST: ${{ inputs.protected_inputs_artifact_digest }}
+          INPUT_CANDIDATE_COMMIT: ${{ inputs.candidate_commit }}
+          INPUT_SIGNER_WORKFLOW: ${{ vars.CRYPTAD_STABLE_MAINTENANCE_INPUT_SIGNER_WORKFLOW }}
+          INPUT_OPERATION: ${{ inputs.operation }}
+          INPUT_PRIOR_RUN_ID: ${{ inputs.operation == 'validate-authorization' && inputs.prepared_candidate_run_id || inputs.frozen_candidate_run_id }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$INPUT_SIGNER_WORKFLOW" =~ ^crypta-network/cryptad/\.github/workflows/[A-Za-z0-9._-]+\.ya?ml$ ]]; then
+            echo "::error::Protected input signer workflow is not configured safely."
+            exit 1
+          fi
+          expected_workflow_path="${INPUT_SIGNER_WORKFLOW#crypta-network/cryptad/}"
+          run_json="$(gh api --method GET "repos/$GITHUB_REPOSITORY/actions/runs/$INPUT_RUN_ID")"
+          jq -e \
+            --arg repository "$GITHUB_REPOSITORY" \
+            --arg commit "$INPUT_CANDIDATE_COMMIT" \
+            --arg workflow_path "$expected_workflow_path" '
+            .repository.full_name == $repository
+            and .head_sha == $commit
+            and .path == $workflow_path
+            and .event == "workflow_dispatch"
+            and .status == "completed"
+            and .conclusion == "success"' <<< "$run_json" >/dev/null
+          if [[ "$INPUT_OPERATION" == prepare-authorization \
+                || "$INPUT_OPERATION" == validate-authorization ]]; then
+            prior_run_json="$(gh api --method GET \
+              "repos/$GITHUB_REPOSITORY/actions/runs/$INPUT_PRIOR_RUN_ID")"
+            prior_completed="$(jq -er '.updated_at' <<< "$prior_run_json")"
+            protected_created="$(jq -er '.created_at' <<< "$run_json")"
+            if [[ "$protected_created" < "$prior_completed" \
+                  || "$protected_created" == "$prior_completed" ]]; then
+              echo "::error::Protected evidence/approval inputs were not produced after the prior immutable phase."
+              exit 1
+            fi
+          fi
+          artifacts="$(gh api --paginate --method GET \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$INPUT_RUN_ID/artifacts" \
+            -f per_page=100 | jq -s '{artifacts: [.[].artifacts[]]}')"
+          jq -e --arg name "$INPUT_ARTIFACT_NAME" --arg digest "$INPUT_ARTIFACT_DIGEST" '
+            [.artifacts[] | select(.name == $name and .expired == false and .digest == $digest)]
+            | length == 1' <<< "$artifacts" >/dev/null
+          root="build/protected-inputs-artifact"
+          rm -rf "$root" build/protected-inputs
+          mkdir -p "$root" build/protected-inputs
+          gh run download "$INPUT_RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --name "$INPUT_ARTIFACT_NAME" --dir "$root"
+          if [[ -n "$(find "$root" -type l -print -quit)" \
+                || -n "$(find "$root" -mindepth 1 ! -type f ! -type d -print -quit)" ]]; then
+            echo "::error::Protected input artifact contains a link or special entry."
+            exit 1
+          fi
+          if [[ "$INPUT_OPERATION" == validate-authorization ]]; then
+            authorization="$root/stable-1.0-maintenance-authorization.json"
+            if [[ -L "$authorization" || ! -f "$authorization" \
+                  || "$(find "$root" -mindepth 1 -maxdepth 1 -type f | wc -l)" -ne 1 \
+                  || -n "$(find "$root" -mindepth 1 -maxdepth 1 -type d -print -quit)" ]]; then
+              echo "::error::The approval producer must contain only the exact authorization JSON."
+              exit 1
+            fi
+            gh attestation verify "$authorization" \
+              --repo "$GITHUB_REPOSITORY" \
+              --signer-workflow "$INPUT_SIGNER_WORKFLOW" \
+              --source-digest "$INPUT_CANDIDATE_COMMIT" \
+              --deny-self-hosted-runners >/dev/null
+          else
+            manifest="$root/stable-1.0-maintenance.json"
+            if [[ ! -f "$manifest" || ! -d "$root/protected-inputs" ]]; then
+              echo "::error::Protected producer did not materialize the canonical manifest layout."
+              exit 1
+            fi
+            gh attestation verify "$manifest" \
+              --repo "$GITHUB_REPOSITORY" \
+              --signer-workflow "$INPUT_SIGNER_WORKFLOW" \
+              --source-digest "$INPUT_CANDIDATE_COMMIT" \
+              --deny-self-hosted-runners >/dev/null
+            cp "$manifest" build/stable-1.0-maintenance.json
+            cp -R "$root/protected-inputs/." build/protected-inputs/
+          fi
+
+      - name: Build the trusted Stable catalog verifier
+        if: inputs.operation == 'freeze-candidate'
+        run: |
+          set -euo pipefail
+          ./gradlew :platform-devtools:installDist
+          git diff-index --quiet --cached HEAD --
+          git diff-files --quiet --
+
+      - name: Generate the canonical exact-byte freeze record
+        if: inputs.operation == 'freeze-candidate'
+        env:
+          INPUT_RELEASE_ID: ${{ inputs.release_id }}
+          INPUT_BUILD_VERSION: ${{ inputs.build_version }}
+          INPUT_RELEASE_CLASS: ${{ inputs.release_class }}
+          INPUT_CANDIDATE_COMMIT: ${{ inputs.candidate_commit }}
+          STABLE_CATALOG_TRUSTED_KEYS_BASE64: ${{ secrets.STABLE_CATALOG_TRUSTED_KEYS_BASE64 }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$STABLE_CATALOG_TRUSTED_KEYS_BASE64" ]]; then
+            echo "::error::Protected Stable catalog trust material is unavailable."
+            exit 1
+          fi
+          trusted_keys_dir="$RUNNER_TEMP/stable-maintenance-catalog-trust-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          trusted_keys="$trusted_keys_dir/trusted-catalog-keys.properties"
+          rm -rf "$trusted_keys_dir"
+          install -d -m 700 "$trusted_keys_dir"
+          if ! printf '%s' "$STABLE_CATALOG_TRUSTED_KEYS_BASE64" \
+              | base64 --decode > "$trusted_keys"; then
+            echo "::error::Protected Stable catalog trust material is malformed."
+            exit 1
+          fi
+          chmod 600 "$trusted_keys"
+          unset STABLE_CATALOG_TRUSTED_KEYS_BASE64
+          export STABLE_CATALOG_TRUSTED_KEYS_FILE="$trusted_keys"
+          trap 'rm -rf "$trusted_keys_dir"' EXIT
+          PYTHONPATH=tools/release-certification python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          import shutil
+          import stat
+          import subprocess
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          from cryptad_certification.engines.stable_1_0_maintenance_core import (
+              select_candidate_dmg_for_freeze,
+              stable_catalog_verification_identity,
+          )
+          from cryptad_certification.schema_validation import validate_schema
+
+          def read_json(path: Path):
+              def reject_duplicates(pairs):
+                  result = {}
+                  for key, value in pairs:
+                      if key in result:
+                          raise SystemExit(f"duplicate JSON key in {path.name}")
+                      result[key] = value
+                  return result
+              return json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=reject_duplicates)
+
+          def canonical_bytes(value):
+              return (json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode()
+
+          def file_digest(path: Path):
+              return "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
+
+          def semantic_digest(value):
+              encoded = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+              return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+          protected_root = Path("build/protected-inputs").resolve(strict=True)
+
+          def protected_input(value, *, directory=False):
+              raw = Path(value)
+              if raw.is_absolute() or raw.is_symlink():
+                  raise SystemExit("candidate selection escapes protected inputs")
+              try:
+                  resolved = raw.resolve(strict=True)
+                  resolved.relative_to(protected_root)
+              except (OSError, ValueError):
+                  raise SystemExit("candidate selection escapes protected inputs") from None
+              expected_type = resolved.is_dir() if directory else resolved.is_file()
+              if not expected_type:
+                  raise SystemExit("candidate selection has the wrong protected input type")
+              return resolved
+
+          manifest = read_json(Path("build/stable-1.0-maintenance.json"))
+          inputs = manifest["inputs"]
+          candidate_path = protected_input(inputs["maintenanceCandidate"])
+          source_assets = protected_input(inputs["maintenanceCandidateAssets"], directory=True)
+          candidate = read_json(candidate_path)
+
+          forbidden_pre_freeze = (
+              "maintenanceCandidateChecksums",
+              "maintenanceCandidateProvenance",
+              "maintenanceCandidateFreeze",
+              "maintenanceEvidence",
+              "stableMaintenanceAuthorization",
+              "stableMaintenancePublicationReceipt",
+              "coreUpdatePublicationReceipt",
+          )
+          for key in forbidden_pre_freeze:
+              configured = inputs.get(key)
+              if isinstance(configured, str) and Path(configured).exists():
+                  raise SystemExit(f"freeze selection supplied forbidden pre-bound input {key}")
+
+          product = candidate["product"]
+          catalog = candidate["stableCatalog"]
+          packages = candidate["packages"]
+          catalog_names = [catalog["fileName"], catalog["signatureFileName"]]
+          names = [product["fileName"], *catalog_names, *[row["fileName"] for row in packages]]
+          if len(names) != len(set(names)) or any(Path(name).name != name for name in names):
+              raise SystemExit("candidate selection contains unsafe or duplicate filenames")
+          selection_entries = list(source_assets.iterdir())
+          if (
+              {entry.name for entry in selection_entries} != set(catalog_names)
+              or any(entry.is_symlink() or not entry.is_file() for entry in selection_entries)
+          ):
+              raise SystemExit(
+                  "freeze selection asset root must contain only the declared stable catalog and detached signature"
+              )
+
+          selected = Path("build/stable-maintenance-freeze/assets")
+          shutil.rmtree(selected.parent, ignore_errors=True)
+          selected.mkdir(parents=True)
+          producer_root = Path("build/stable-maintenance-packages")
+          for name in names:
+              if name in catalog_names:
+                  matches = [source_assets / name]
+              else:
+                  matches = sorted(producer_root.glob(f"*/assets/{name}"))
+              if len(matches) != 1 or matches[0].is_symlink() or not matches[0].is_file():
+                  raise SystemExit(f"selected asset {name} does not have one safe producer")
+              destination = selected / name
+              shutil.copyfile(matches[0], destination)
+              destination.chmod(0o644)
+
+          catalog_path = selected / catalog["fileName"]
+          catalog_signature_path = selected / catalog["signatureFileName"]
+          catalog_verifier = Path(
+              "platform-devtools/build/install/crypta-app/bin/crypta-app"
+          ).resolve(strict=True)
+          trusted_catalog_keys = Path(
+              os.environ["STABLE_CATALOG_TRUSTED_KEYS_FILE"]
+          ).resolve(strict=True)
+          verified_catalog = subprocess.run(
+              [
+                  str(catalog_verifier),
+                  "catalog",
+                  "verify",
+                  "--catalog-file",
+                  str(catalog_path),
+                  "--catalog-signature-file",
+                  str(catalog_signature_path),
+                  "--expected-key-id",
+                  catalog["signingKeyId"],
+                  "--trusted-keys-file",
+                  str(trusted_catalog_keys),
+              ],
+              stdout=subprocess.DEVNULL,
+              stderr=subprocess.DEVNULL,
+              check=False,
+          )
+          if verified_catalog.returncode != 0:
+              raise SystemExit(
+                  "Stable catalog cryptographic verification failed for the exact candidate bytes"
+              )
+          catalog_verification = stable_catalog_verification_identity(
+              catalog, file_digest(trusted_catalog_keys)
+          )
+          catalog_verification_digest = semantic_digest(catalog_verification)
+
+          checksum_path = selected.parent / "checksums.txt"
+          checksum_rows = [
+              f"{file_digest(path).removeprefix('sha256:')}  {path.name}"
+              for path in sorted(selected.iterdir(), key=lambda item: item.name)
+          ]
+          checksum_path.write_text("\n".join(checksum_rows) + "\n", encoding="utf-8")
+          checksum_path.chmod(0o644)
+
+          producer_receipts = sorted(Path("build/stable-maintenance-packages").glob("*/producer.json"))
+          if len(producer_receipts) != 3:
+              raise SystemExit("freeze requires Linux, macOS, and Windows producer receipts")
+          source_tree_digest = "sha256:" + hashlib.sha256(
+              os.popen("git ls-tree -r --full-tree HEAD").read().encode()
+          ).hexdigest()
+          build_logic_digest = "sha256:" + hashlib.sha256(
+              os.popen("git ls-tree -r --full-tree HEAD -- build-logic").read().encode()
+          ).hexdigest()
+          wrapper_digest = file_digest(Path("gradle/wrapper/gradle-wrapper.jar"))
+          dependency_verification_digest = file_digest(Path("gradle/verification-metadata.xml"))
+          java_version = os.popen("java --version 2>&1").read().splitlines()[0]
+          java_major = int(java_version.split()[1].split(".")[0])
+          gradle_version_lines = os.popen("./gradlew --version").read().splitlines()
+          gradle_version = next(line.split()[1] for line in gradle_version_lines if line.startswith("Gradle "))
+          actual_source = dict(candidate["source"])
+          actual_source["sourceTreeDigest"] = source_tree_digest
+          expected_branch_prefix = (
+              "release" if os.environ["INPUT_RELEASE_CLASS"] == "maintenance" else "hotfix"
+          )
+          expected_branch = f"{expected_branch_prefix}/{os.environ['INPUT_BUILD_VERSION']}"
+          expected_ref = f"commit:{os.environ['INPUT_CANDIDATE_COMMIT']}"
+          if (
+              actual_source.get("branch") != expected_branch
+              or actual_source.get("ref") != expected_ref
+              or actual_source.get("commit") != os.environ["INPUT_CANDIDATE_COMMIT"]
+          ):
+              raise SystemExit("candidate selection source branch/ref/commit is not the reviewed identity")
+          build_tasks = set()
+          signing_receipt_by_name = {}
+          signer_workflow = (
+              "crypta-network/cryptad/.github/workflows/"
+              "stable-1.0-maintenance-release.yml"
+          )
+          for receipt_path in producer_receipts:
+              receipt = read_json(receipt_path)
+              receipt_source = receipt.get("source", {})
+              receipt_toolchain = receipt.get("toolchain", {})
+              if (
+                  receipt_source.get("branch") != expected_branch
+                  or receipt_source.get("ref") != expected_ref
+                  or receipt_source.get("commit") != os.environ["INPUT_CANDIDATE_COMMIT"]
+                  or receipt_source.get("sourceTreeDigest") != source_tree_digest
+                  or receipt_toolchain.get("javaMajorVersion", 0) < 25
+                  or receipt_toolchain.get("gradleVersion") != gradle_version
+                  or receipt_toolchain.get("gradleWrapperDigest") != wrapper_digest
+                  or receipt_toolchain.get("dependencyVerificationDigest")
+                      != dependency_verification_digest
+                  or receipt_toolchain.get("dependencyVerificationStatus") != "pass"
+                  or receipt_toolchain.get("buildLogicDigest") != build_logic_digest
+                  or receipt_toolchain.get("productionSigning") is not True
+                  or receipt_toolchain.get("testSigning") is not False
+              ):
+                  raise SystemExit(f"producer {receipt_path.parent.name} toolchain/source identity drifted")
+              build_tasks.update(receipt_toolchain.get("buildTasks", []))
+              package_class = receipt.get("packageClass")
+              if package_class not in {"linux-and-portable", "macos"}:
+                  continue
+              signing = receipt.get("assetSigning", {})
+              asset_root = receipt_path.parent / "assets"
+              receipt_root = receipt_path.parent / "signing-receipts"
+              producer_assets = sorted(asset_root.iterdir(), key=lambda path: path.name)
+              receipt_digests = signing.get("receiptDigests", {})
+              if (
+                  signing.get("method") != "sigstore-github-attestation"
+                  or signing.get("signerWorkflow") != signer_workflow
+                  or signing.get("sourceCommit") != os.environ["INPUT_CANDIDATE_COMMIT"]
+                  or signing.get("verificationStatus") != "pass"
+                  or not isinstance(receipt_digests, dict)
+                  or set(receipt_digests) != {path.name for path in producer_assets}
+                  or not receipt_root.is_dir()
+              ):
+                  raise SystemExit(
+                      f"producer {receipt_path.parent.name} lacks exact cryptographic signing receipts"
+                  )
+              for asset in producer_assets:
+                  verification_path = receipt_root / f"{asset.name}.signing.json"
+                  if (
+                      asset.is_symlink()
+                      or not asset.is_file()
+                      or verification_path.is_symlink()
+                      or not verification_path.is_file()
+                      or receipt_digests.get(asset.name) != file_digest(verification_path)
+                  ):
+                      raise SystemExit(
+                          f"producer signing receipt is missing or mismatched for {asset.name}"
+                      )
+                  verification = read_json(verification_path)
+                  if (
+                      verification.get("kind")
+                          != "stable-1.0-maintenance-asset-signing-verification"
+                      or verification.get("releaseId") != os.environ["INPUT_RELEASE_ID"]
+                      or verification.get("buildVersion") != os.environ["INPUT_BUILD_VERSION"]
+                      or verification.get("sourceCommit")
+                          != os.environ["INPUT_CANDIDATE_COMMIT"]
+                      or verification.get("fileName") != asset.name
+                      or verification.get("subjectDigest") != file_digest(asset)
+                      or verification.get("subjectSizeBytes") != asset.stat().st_size
+                      or verification.get("signingMethod")
+                          != "sigstore-github-attestation"
+                      or verification.get("signerWorkflow") != signer_workflow
+                      or verification.get("hostedRunnerRequired") is not True
+                      or verification.get("cryptographicVerificationStatus") != "pass"
+                      or verification.get("redaction")
+                          != {"status": "pass", "findingCount": 0, "findings": []}
+                  ):
+                      raise SystemExit(
+                          f"producer signing receipt identity drifted for {asset.name}"
+                      )
+                  verified = subprocess.run(
+                      [
+                          "gh", "attestation", "verify", str(asset),
+                          "--repo", os.environ["GITHUB_REPOSITORY"],
+                          "--signer-workflow", signer_workflow,
+                          "--source-digest", os.environ["INPUT_CANDIDATE_COMMIT"],
+                          "--deny-self-hosted-runners",
+                      ],
+                      stdout=subprocess.DEVNULL,
+                      stderr=subprocess.DEVNULL,
+                      check=False,
+                  )
+                  if verified.returncode != 0:
+                      raise SystemExit(
+                          f"cryptographic signing attestation failed for {asset.name}"
+                      )
+                  if asset.name in signing_receipt_by_name:
+                      raise SystemExit(f"duplicate signing receipt for {asset.name}")
+                  signing_receipt_by_name[asset.name] = file_digest(verification_path)
+          actual_toolchain = {
+              "javaVersion": java_version,
+              "javaMajorVersion": java_major,
+              "gradleVersion": gradle_version,
+              "gradleWrapperDigest": wrapper_digest,
+              "dependencyVerificationDigest": dependency_verification_digest,
+              "dependencyVerificationStatus": "pass",
+              "buildLogicDigest": build_logic_digest,
+              "buildTasks": sorted(build_tasks),
+              "productionSigning": True,
+              "testSigning": False,
+          }
+          build_receipt = semantic_digest(
+              [{"name": path.parent.name, "digest": file_digest(path)} for path in producer_receipts]
+          )
+          producer_identity = {
+              "repository": os.environ["GITHUB_REPOSITORY"],
+              "workflowPath": ".github/workflows/stable-1.0-maintenance-release.yml",
+              "workflowCommit": os.environ["INPUT_CANDIDATE_COMMIT"],
+              "runId": os.environ["GITHUB_RUN_ID"],
+              "runAttempt": int(os.environ["GITHUB_RUN_ATTEMPT"]),
+              "runnerEnvironment": "github-hosted",
+          }
+          source_ref = {
+              "branch": actual_source["branch"],
+              "ref": actual_source["ref"],
+              "commit": actual_source["commit"],
+          }
+
+          baseline_path = protected_input(inputs["predecessorBaseline"])
+          receipt_path = protected_input(inputs["predecessorPublicationReceipt"])
+          baseline = read_json(baseline_path)
+          release = baseline["release"]
+          pointer_value = inputs.get("latestPublishedMaintenancePointer")
+          pointer_digest = None
+          if pointer_value:
+              pointer_digest = file_digest(protected_input(pointer_value))
+          predecessor_product = release.get("productDigest", release.get("rcProductDigest"))
+          if predecessor_product is None:
+              raise SystemExit("predecessor baseline lacks its product identity")
+
+          mac_verification = Path("build/stable-maintenance-packages")
+          mac_receipts = sorted(mac_verification.glob("*/verification.json"))
+          if len(mac_receipts) != 1:
+              raise SystemExit("freeze requires one macOS signing/notarization receipt")
+          mac_receipt = mac_receipts[0]
+          mac_receipt_digest = file_digest(mac_receipt)
+          mac_receipt_value = read_json(mac_receipt)
+          mac_assets = sorted(
+              path for path in (mac_receipt.parent / "assets").iterdir()
+              if path.is_file() and not path.is_symlink()
+          )
+          if len(mac_assets) != 1 or mac_assets[0].suffix.lower() != ".dmg":
+              raise SystemExit("macOS notarization receipt is not paired with exactly one DMG")
+          if (
+              mac_receipt_value.get("fileName") != mac_assets[0].name
+              or mac_receipt_value.get("subjectDigest") != file_digest(mac_assets[0])
+              or mac_receipt_value.get("subjectSizeBytes") != mac_assets[0].stat().st_size
+          ):
+              raise SystemExit("macOS notarization receipt does not bind its sibling DMG bytes")
+          try:
+              dmg_package = select_candidate_dmg_for_freeze(
+                  packages,
+                  os.environ["INPUT_RELEASE_CLASS"],
+                  candidate.get("changeScope", {}),
+              )
+          except ValueError as error:
+              raise SystemExit(str(error)) from None
+          if dmg_package is not None:
+              dmg_path = selected / dmg_package["fileName"]
+              if (
+                  mac_assets[0].name != dmg_path.name
+                  or file_digest(mac_assets[0]) != file_digest(dmg_path)
+                  or mac_assets[0].stat().st_size != dmg_path.stat().st_size
+              ):
+                  raise SystemExit("macOS notarization receipt is not bound to the selected DMG bytes")
+          for package in packages:
+              expected_notarization = (
+                  "pass" if package.get("packageType") == "dmg" else "not-applicable"
+              )
+              if package.get("notarizationStatus") != expected_notarization:
+                  raise SystemExit(
+                      f"package {package.get('fileName')} has invalid notarization scope"
+                  )
+          producer_receipt_by_name = {}
+          producer_architecture_by_name = {}
+          for receipt in producer_receipts:
+              receipt_value = read_json(receipt)
+              receipt_architectures = receipt_value.get("assetArchitectures", {})
+              if not isinstance(receipt_architectures, dict):
+                  raise SystemExit(f"producer {receipt.parent.name} lacks architecture metadata")
+              for asset in (receipt.parent / "assets").iterdir():
+                  if asset.name in producer_receipt_by_name:
+                      raise SystemExit(f"asset {asset.name} has multiple package producers")
+                  producer_receipt_by_name[asset.name] = file_digest(receipt)
+                  architecture = receipt_architectures.get(asset.name)
+                  if architecture is not None:
+                      if architecture not in {"amd64", "arm64"}:
+                          raise SystemExit(f"asset {asset.name} has an unsupported producer architecture")
+                      producer_architecture_by_name[asset.name] = architecture
+
+          assets = []
+          product_path = selected / product["fileName"]
+          product_signing_receipt = signing_receipt_by_name.get(product_path.name)
+          if product_signing_receipt is None:
+              raise SystemExit(
+                  "portable product lacks an independently verified cryptographic signing receipt"
+              )
+          assets.append({
+              "role": "product", "fileName": product_path.name,
+              "digest": file_digest(product_path), "sizeBytes": product_path.stat().st_size,
+              "packageKey": None, "os": None, "arch": None,
+              "producerArchitecture": None, "packageType": None,
+              "publicAsset": True, "signingStatus": "pass",
+              "signingReceiptDigest": product_signing_receipt,
+              "notarizationStatus": "not-applicable", "notarizationReceiptDigest": None,
+          })
+          if (
+              file_digest(catalog_path) != catalog["digest"]
+              or catalog_path.stat().st_size != catalog["sizeBytes"]
+              or file_digest(catalog_signature_path) != catalog["signatureDigest"]
+              or catalog_signature_path.stat().st_size != catalog["signatureSizeBytes"]
+          ):
+              raise SystemExit("stable catalog or detached signature bytes do not match the candidate")
+          assets.append({
+              "role": "stable-catalog", "fileName": catalog_path.name,
+              "digest": file_digest(catalog_path), "sizeBytes": catalog_path.stat().st_size,
+              "packageKey": None, "os": None, "arch": None,
+              "producerArchitecture": None, "packageType": None,
+              "publicAsset": True, "signingStatus": "pass",
+              "signingReceiptDigest": catalog_verification_digest,
+              "notarizationStatus": "not-applicable", "notarizationReceiptDigest": None,
+          })
+          assets.append({
+              "role": "stable-catalog-signature", "fileName": catalog_signature_path.name,
+              "digest": file_digest(catalog_signature_path),
+              "sizeBytes": catalog_signature_path.stat().st_size,
+              "packageKey": None, "os": None, "arch": None,
+              "producerArchitecture": None, "packageType": None,
+              "publicAsset": True, "signingStatus": "pass",
+              "signingReceiptDigest": catalog_verification_digest,
+              "notarizationStatus": "not-applicable", "notarizationReceiptDigest": None,
+          })
+          for package in packages:
+              path = selected / package["fileName"]
+              is_dmg = package["packageType"] == "dmg"
+              receipt_digest = producer_receipt_by_name.get(path.name)
+              if receipt_digest is None:
+                  raise SystemExit(f"package {path.name} lacks a producer receipt")
+              if package["packageType"] in {"deb", "rpm", "dmg"}:
+                  receipt_digest = signing_receipt_by_name.get(path.name)
+                  if receipt_digest is None:
+                      raise SystemExit(
+                          f"package {path.name} lacks independent cryptographic signing verification"
+                      )
+              producer_architecture = producer_architecture_by_name.get(path.name)
+              if producer_architecture != package["arch"]:
+                  raise SystemExit(
+                      f"package {path.name} producer architecture {producer_architecture!r} "
+                      f"does not match selector {package['arch']!r}"
+                  )
+              assets.append({
+                  "role": "package", "fileName": path.name,
+                  "digest": file_digest(path), "sizeBytes": path.stat().st_size,
+                  "packageKey": package["packageKey"], "os": package["os"],
+                  "arch": package["arch"], "packageType": package["packageType"],
+                  "producerArchitecture": producer_architecture,
+                  "publicAsset": True, "signingStatus": "pass",
+                  "signingReceiptDigest": receipt_digest,
+                  "notarizationStatus": "pass" if is_dmg else "not-applicable",
+                  "notarizationReceiptDigest": mac_receipt_digest if is_dmg else None,
+              })
+          assets.sort(key=lambda row: row["fileName"])
+          frozen_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+          freeze = {
+              "schemaVersion": 1,
+              "kind": "stable-1.0-maintenance-candidate-freeze",
+              "generatedAt": frozen_at,
+              "frozenAt": frozen_at,
+              "stableMilestone": "1.0",
+              "releaseId": os.environ["INPUT_RELEASE_ID"],
+              "buildVersion": os.environ["INPUT_BUILD_VERSION"],
+              "releaseClass": os.environ["INPUT_RELEASE_CLASS"],
+              "source": actual_source,
+              "toolchain": actual_toolchain,
+              "producer": {
+                  "system": "github-actions", **producer_identity,
+                  "producerIdentityReceiptDigest": semantic_digest(producer_identity),
+                  "sourceRefReceiptDigest": semantic_digest(source_ref),
+                  "buildReceiptDigest": build_receipt,
+                  "authenticationStatus": "pass",
+              },
+              "predecessorObservation": {
+                  "releaseId": release["releaseId"],
+                  "buildVersion": release["buildVersion"],
+                  "productDigest": predecessor_product,
+                  "baselineDigest": file_digest(baseline_path),
+                  "publicationReceiptDigest": file_digest(receipt_path),
+                  "latestPublishedPointerDigest": pointer_digest,
+                  "observedAt": frozen_at,
+                  "status": "latest-published",
+              },
+              "stableCatalogVerification": catalog_verification,
+              "buildCount": 1,
+              "rebuildPerformed": False,
+              "checksumsDigest": file_digest(checksum_path),
+              "assets": assets,
+              "assetSetDigest": semantic_digest(assets),
+              "redaction": {"status": "pass", "findingCount": 0, "findings": []},
+          }
+          errors = validate_schema(freeze, "stable-1.0-maintenance-candidate-freeze-v1.schema.json")
+          if errors:
+              raise SystemExit("candidate freeze failed its closed schema: " + "; ".join(errors))
+          freeze_path = selected.parent / "stable-1.0-maintenance-candidate-freeze.json"
+          freeze_path.write_bytes(canonical_bytes(freeze))
+          freeze_path.chmod(0o644)
+          PY
+
+      - name: Materialize and verify prior frozen bytes for authorization preparation
+        if: inputs.operation == 'prepare-authorization'
+        run: |
+          set -euo pipefail
+          manifest="build/stable-1.0-maintenance.json"
+          candidate_path="$(jq -er '.inputs.maintenanceCandidate' "$manifest")"
+          asset_root="$(jq -er '.inputs.maintenanceCandidateAssets' "$manifest")"
+          checksums_path="$(jq -er '.inputs.maintenanceCandidateChecksums' "$manifest")"
+          provenance_path="$(jq -er '.inputs.maintenanceCandidateProvenance' "$manifest")"
+          freeze_path="$(jq -er '.inputs.maintenanceCandidateFreeze' "$manifest")"
+          python3 - "$candidate_path" "$asset_root" "$checksums_path" \
+            "$provenance_path" "$freeze_path" <<'PY'
+          import sys
+          from pathlib import Path
+
+          root = Path("build/protected-inputs").resolve(strict=True)
+          for index, value in enumerate(sys.argv[1:]):
+              path = Path(value)
+              if path.is_absolute() or path.is_symlink():
+                  raise SystemExit("candidate input path escapes the authenticated protected-input root")
+              try:
+                  if index in {1, 4} and not path.exists():
+                      resolved = path.parent.resolve(strict=True) / path.name
+                  else:
+                      resolved = path.resolve(strict=True)
+                  resolved.relative_to(root)
+              except (OSError, ValueError):
+                  raise SystemExit(
+                      "candidate input path escapes the authenticated protected-input root"
+                  ) from None
+              if index == 1 and not path.exists():
+                  # Actions artifacts omit empty directories. Recreate only the authenticated,
+                  # confined candidate-assets directory; it must remain empty until the exact
+                  # prior freeze bytes are restored below.
+                  path.mkdir(mode=0o755)
+          PY
+          if [[ -L "$candidate_path" || ! -f "$candidate_path" \
+                || -L "$asset_root" || ! -d "$asset_root" \
+                || -L "$checksums_path" || ! -f "$checksums_path" \
+                || -L "$provenance_path" || ! -f "$provenance_path" ]]; then
+            echo "::error::Post-freeze candidate metadata is missing or unsafe."
+            exit 1
+          fi
+          prior_freeze="build/prior-validated-candidate/freeze"
+          if [[ -n "$(find "$asset_root" -mindepth 1 -print -quit)" ]]; then
+            echo "::error::Post-freeze evidence producer must not supply or replace candidate asset bytes."
+            exit 1
+          fi
+          rm -rf "$asset_root"
+          mkdir -p "$asset_root"
+          cp "$prior_freeze/assets/"* "$asset_root/"
+          cp "$prior_freeze/stable-1.0-maintenance-candidate-freeze.json" "$freeze_path"
+          chmod 0644 "$asset_root/"* "$freeze_path"
+          if ! cmp --silent "$prior_freeze/checksums.txt" "$checksums_path"; then
+            echo "::error::Post-freeze candidate checksums do not equal the attested freeze checksums."
+            exit 1
+          fi
+          PYTHONPATH=tools/release-certification python3 - "$manifest" <<'PY'
+          import hashlib
+          import json
+          import sys
+          from pathlib import Path
+
+          from cryptad_certification.schema_validation import validate_schema
+
+          def load(path):
+              return json.loads(Path(path).read_text(encoding="utf-8"))
+
+          def digest(path):
+              return "sha256:" + hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+          manifest = load(sys.argv[1])
+          inputs = manifest["inputs"]
+          candidate = load(inputs["maintenanceCandidate"])
+          freeze = load(inputs["maintenanceCandidateFreeze"])
+          evidence = load(inputs["maintenanceEvidence"])
+          provenance = load(inputs["maintenanceCandidateProvenance"])
+          freeze_digest = digest(inputs["maintenanceCandidateFreeze"])
+          if validate_schema(freeze, "stable-1.0-maintenance-candidate-freeze-v1.schema.json"):
+              raise SystemExit("attested candidate freeze failed its closed schema")
+          if candidate.get("candidateFreezeDigest") != freeze_digest:
+              raise SystemExit("candidate metadata does not bind the exact freeze record")
+          if provenance.get("candidateFreezeDigest") != freeze_digest:
+              raise SystemExit("candidate provenance does not bind the exact freeze record")
+          if evidence.get("candidateFreezeDigest") != freeze_digest:
+              raise SystemExit("maintenance evidence does not bind the exact freeze record")
+          if evidence.get("candidateProductDigest") != freeze["assets"][
+              next(index for index, row in enumerate(freeze["assets"]) if row["role"] == "product")
+          ]["digest"]:
+              raise SystemExit("maintenance evidence is bound to the wrong frozen product")
+          PY
+
+      - name: Restore prepared inputs and add only the exact approval
+        if: inputs.operation == 'validate-authorization'
+        run: |
+          set -euo pipefail
+          authorization="build/protected-inputs-artifact/stable-1.0-maintenance-authorization.json"
+          if [[ -L "$authorization" || ! -f "$authorization" \
+                || "$(find build/protected-inputs-artifact -mindepth 1 -maxdepth 1 -type f | wc -l)" -ne 1 \
+                || -n "$(find build/protected-inputs-artifact -mindepth 1 -maxdepth 1 -type d -print -quit)" ]]; then
+            echo "::error::validate-authorization producer must contain only the exact approval JSON."
+            exit 1
+          fi
+          rm -rf build/protected-inputs
+          cp -R build/prior-validated-candidate/protected-inputs build/protected-inputs
+          cp build/prior-validated-candidate/stable-1.0-maintenance.json \
+            build/stable-1.0-maintenance.json
+          manifest="build/stable-1.0-maintenance.json"
+          authorization_path="build/protected-inputs/authorization/stable-1.0-maintenance-authorization.json"
+          jq -e '
+            .commands["stable-maintenance"].mode == "prepare-authorization"
+            and (.inputs | has("stableMaintenanceAuthorization") | not)' \
+            "$manifest" >/dev/null
+          jq -S --arg authorization_path "$authorization_path" '
+            .commands["stable-maintenance"].mode = "validate-only"
+            | .inputs.stableMaintenanceAuthorization = $authorization_path' \
+            "$manifest" > "$manifest.next"
+          jq -S '
+            .commands["stable-maintenance"].mode = "prepare-authorization"
+            | del(.inputs.stableMaintenanceAuthorization)' \
+            "$manifest.next" > "$manifest.next.projected"
+          jq -S . "$manifest" > "$manifest.prepared.canonical"
+          if ! cmp --silent "$manifest.prepared.canonical" "$manifest.next.projected"; then
+            echo "::error::Authorization validation attempted to mutate prepared manifest fields."
+            exit 1
+          fi
+          mv "$manifest.next" "$manifest"
+          mkdir -p "$(dirname "$authorization_path")"
+          cp "$authorization" "$authorization_path"
+
+      - name: Authenticate source ancestry and exact change scope
+        if: inputs.operation != 'publish'
+        env:
+          INPUT_CANDIDATE_COMMIT: ${{ inputs.candidate_commit }}
+          INPUT_RELEASE_CLASS: ${{ inputs.release_class }}
+        run: |
+          set -euo pipefail
+          manifest="build/stable-1.0-maintenance.json"
+          candidate_path="$(jq -er '.inputs.maintenanceCandidate' "$manifest")"
+          base_branch="$(jq -er '.source.baseBranch' "$candidate_path")"
+          base_commit="$(jq -er '.source.baseCommit' "$candidate_path")"
+          expected_base="develop"
+          if [[ "$INPUT_RELEASE_CLASS" == security-hotfix ]]; then
+            expected_base="main"
+          fi
+          if [[ "$base_branch" != "$expected_base" \
+                || ! "$base_commit" =~ ^[0-9a-f]{40,64}$ ]]; then
+            echo "::error::Candidate source base does not match its closed release class."
+            exit 1
+          fi
+          remote_base="refs/remotes/origin/$base_branch"
+          if ! git rev-parse --verify "$remote_base^{commit}" >/dev/null; then
+            echo "::error::Authenticated checkout does not contain origin/$base_branch."
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$base_commit" "$INPUT_CANDIDATE_COMMIT"; then
+            echo "::error::Declared source base is not an ancestor of the candidate."
+            exit 1
+          fi
+          predecessor_baseline="$(jq -er '.inputs.predecessorBaseline' "$manifest")"
+          if [[ -L "$predecessor_baseline" || ! -f "$predecessor_baseline" ]]; then
+            echo "::error::Authenticated predecessor baseline is missing or unsafe."
+            exit 1
+          fi
+          predecessor_commit="$(jq -er '
+            .release.sourceCommit
+            | select(type == "string" and test("^[0-9a-f]{40,64}$"))' \
+            "$predecessor_baseline")"
+          if ! git rev-parse --verify "$predecessor_commit^{commit}" >/dev/null 2>&1; then
+            echo "::error::Authenticated predecessor source commit is absent from the checkout."
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor \
+              "$predecessor_commit" "$INPUT_CANDIDATE_COMMIT"; then
+            echo "::error::Candidate does not contain the latest published predecessor commit."
+            exit 1
+          fi
+          merge_base="$(git merge-base "$INPUT_CANDIDATE_COMMIT" "$remote_base")"
+          if [[ "$base_commit" != "$merge_base" ]]; then
+            echo "::error::Declared source base is not the exact candidate/$base_branch merge base."
+            exit 1
+          fi
+          if [[ "$INPUT_RELEASE_CLASS" == security-hotfix \
+                && "$base_commit" != "$(git rev-parse "$remote_base^{commit}")" ]]; then
+            echo "::error::Security hotfix was not based on the current published main head."
+            exit 1
+          fi
+          if ! jq -e '.changeScope.unrelatedFeatureChanges == []' "$candidate_path" >/dev/null; then
+            echo "::error::Candidate change-scope audit contains unrelated feature work."
+            exit 1
+          fi
+
+          mapfile -t changed_files < <(git diff --name-only --diff-filter=ACDMRTUXB \
+            "$base_commit..$INPUT_CANDIDATE_COMMIT" | LC_ALL=C sort -u)
+          if [[ "${#changed_files[@]}" -eq 0 ]]; then
+            echo "::error::Maintenance candidate has no source changes from its authenticated base."
+            exit 1
+          fi
+          mapfile -t derived_modules < <(
+            for path in "${changed_files[@]}"; do
+              if [[ "$path" == */* ]]; then
+                printf '%s\n' "${path%%/*}"
+              else
+                printf '%s\n' repository-root
+              fi
+            done | LC_ALL=C sort -u
+          )
+          mapfile -t declared_modules < <(jq -er '.changeScope.changedModules[]' \
+            "$candidate_path" | LC_ALL=C sort -u)
+          if [[ "${#derived_modules[@]}" -ne "${#declared_modules[@]}" \
+                || "$(printf '%s\n' "${derived_modules[@]}")" \
+                  != "$(printf '%s\n' "${declared_modules[@]}")" ]]; then
+            echo "::error::Declared changedModules does not exactly match the authenticated source diff."
+            exit 1
+          fi
+
+      - name: Validate manifest identity and side-effect-free mode
+        if: inputs.operation == 'prepare-authorization' || inputs.operation == 'validate-authorization'
+        env:
+          INPUT_RELEASE_ID: ${{ inputs.release_id }}
+          INPUT_BUILD_VERSION: ${{ inputs.build_version }}
+          INPUT_RELEASE_CLASS: ${{ inputs.release_class }}
+          INPUT_CANDIDATE_COMMIT: ${{ inputs.candidate_commit }}
+          EXPECTED_BRANCH: ${{ needs.validate-dispatch.outputs.expected_branch }}
+          INPUT_OPERATION: ${{ inputs.operation }}
+        run: |
+          set -euo pipefail
+          manifest="build/stable-1.0-maintenance.json"
+          jq -e \
+            --arg release "$INPUT_RELEASE_ID" \
+            --arg build "$INPUT_BUILD_VERSION" \
+            --arg release_class "$INPUT_RELEASE_CLASS" \
+            --arg commit "$INPUT_CANDIDATE_COMMIT" \
+            --arg branch "$EXPECTED_BRANCH" \
+            --arg operation "$INPUT_OPERATION" '
+              .release.id == $release
+              and .release.version == $build
+              and .release.profile == "stable-review"
+              and .policies.releaseClass == $release_class
+              and .policies.candidateSourceBranch == $branch
+              and .policies.candidateSourceCommit == $commit
+              and .policies.candidateSourceRef == ("commit:" + $commit)
+              and .execution.allowDirtyWorkspace == false
+              and .execution.fixtureEvidence == false
+              and .execution.allowTestSigningInProduction == false
+              and .commands["stable-maintenance"].mode
+                == (if $operation == "validate-authorization" then "validate-only" else "prepare-authorization" end)' \
+            "$manifest" >/dev/null
+          if [[ -n "$(git status --porcelain=v1 --untracked-files=all)" ]]; then
+            # All generated material is under ignored build/, so any result here is source drift.
+            echo "::error::Source state changed before candidate validation."
+            exit 1
+          fi
+
+      - name: Validate exact frozen candidate without publication
+        if: inputs.operation == 'prepare-authorization' || inputs.operation == 'validate-authorization'
+        run: >-
+          python3 tools/release-certification/certify.py stable-maintenance
+          --manifest build/stable-1.0-maintenance.json
+
+      - name: Prepare exact authorization material without publication
+        if: inputs.operation == 'prepare-authorization'
+        env:
+          INPUT_RELEASE_ID: ${{ inputs.release_id }}
+        run: |
+          set -euo pipefail
+          source="build/release-certification/$INPUT_RELEASE_ID/stable-maintenance"
+          destination="build/stable-maintenance-authorization/$INPUT_RELEASE_ID/stable-maintenance"
+          mkdir -p "$(dirname "$destination")"
+          cp -R "$source" "$destination"
+
+      - name: Verify final frozen candidate and exact prior identity
+        if: inputs.operation == 'prepare-authorization' || inputs.operation == 'validate-authorization'
+        env:
+          INPUT_RELEASE_ID: ${{ inputs.release_id }}
+          INPUT_BUILD_VERSION: ${{ inputs.build_version }}
+          INPUT_RELEASE_CLASS: ${{ inputs.release_class }}
+          INPUT_CANDIDATE_COMMIT: ${{ inputs.candidate_commit }}
+          INPUT_OPERATION: ${{ inputs.operation }}
+        run: |
+          set -euo pipefail
+          component="build/release-certification/$INPUT_RELEASE_ID/stable-maintenance"
+          legacy="$component/artifacts/legacy"
+          jq -e \
+            --arg release "$INPUT_RELEASE_ID" \
+            --arg build "$INPUT_BUILD_VERSION" \
+            --arg operation "$INPUT_OPERATION" '
+              .schemaVersion == 2
+              and .kind == "stable-1.0-maintenance-promotion"
+              and .subject.releaseId == $release
+              and .subject.version == $build
+              and .subject.profile == "stable-review"
+              and .subject.component == "stable-maintenance"
+              and .result.status == "pass"
+              and .result.exitCode == 0
+              and .result.promotionReady == ($operation == "validate-authorization")
+              and .redaction.status == "pass"
+              and .redaction.findingCount == 0' "$component/summary.json" >/dev/null
+          jq -e '.status == "pass" and .findingCount == 0 and .findings == []' \
+            "$component/redaction-report.json" >/dev/null
+          required=(
+            stable-1.0-maintenance-lineage.json
+            stable-1.0-maintenance-candidate.json
+            stable-1.0-maintenance-comparison.json
+            stable-1.0-maintenance-validation.json
+            stable-1.0-maintenance-promotion-summary.json
+            stable-1.0-maintenance-publication-plan.json
+            stable-1.0-maintenance-checksums.txt
+            stable-1.0-maintenance-provenance.json
+            core-info.json
+            core-update-publication-plan.json
+          )
+          for name in "${required[@]}"; do
+            if [[ -L "$legacy/$name" || ! -f "$legacy/$name" ]]; then
+              echo "::error::Required frozen candidate artifact $name is missing or unsafe."
+              exit 1
+            fi
+          done
+          jq -e \
+            --arg release "$INPUT_RELEASE_ID" \
+            --arg build "$INPUT_BUILD_VERSION" \
+            --arg release_class "$INPUT_RELEASE_CLASS" \
+            --arg commit "$INPUT_CANDIDATE_COMMIT" '
+              .releaseId == $release
+              and .buildVersion == $build
+              and .releaseClass == $release_class
+              and .source.commit == $commit
+              and .redaction.status == "pass"' \
+            "$legacy/stable-1.0-maintenance-candidate.json" >/dev/null
+          if [[ "$INPUT_OPERATION" == validate-authorization ]]; then
+            prior="build/prior-validated-candidate/component/artifacts/legacy"
+            immutable=(
+              stable-1.0-maintenance-lineage.json
+              stable-1.0-maintenance-candidate.json
+              stable-1.0-maintenance-comparison.json
+              stable-1.0-maintenance-known-limitations.json
+              stable-1.0-maintenance-release-notes.md
+              stable-1.0-maintenance-checksums.txt
+              stable-1.0-maintenance-provenance.json
+              core-info.json
+            )
+            for name in "${immutable[@]}"; do
+              if ! cmp --silent "$prior/$name" "$legacy/$name"; then
+                echo "::error::Prepublication validation changed frozen artifact $name."
+                exit 1
+              fi
+            done
+            while read -r digest name; do
+              if [[ ! "$name" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ \
+                    || "sha256:$(sha256sum "$legacy/$name" | awk '{print $1}')" \
+                      != "sha256:$digest" ]]; then
+                echo "::error::A checksum-bound candidate byte changed before publication."
+                exit 1
+              fi
+            done < "$legacy/stable-1.0-maintenance-checksums.txt"
+          fi
+
+      - name: Stage exact redaction-safe candidate
+        id: stage
+        env:
+          INPUT_RELEASE_ID: ${{ inputs.release_id }}
+          INPUT_BUILD_VERSION: ${{ inputs.build_version }}
+          INPUT_OPERATION: ${{ inputs.operation }}
+        run: |
+          set -euo pipefail
+          root="build/stable-maintenance-validation-artifact"
+          rm -rf "$root"
+          mkdir -p "$root"
+          if [[ "$INPUT_OPERATION" == freeze-candidate ]]; then
+            mkdir -p "$root/freeze" "$root/packages"
+            cp -R build/stable-maintenance-freeze/. "$root/freeze/"
+            cp -R build/stable-maintenance-packages/. "$root/packages/"
+            artifact_name="stable-1-0-maintenance-frozen-$INPUT_RELEASE_ID-$INPUT_BUILD_VERSION-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          elif [[ "$INPUT_OPERATION" == publish ]]; then
+            cp -R build/prior-validated-candidate/. "$root/"
+            artifact_name="stable-1-0-maintenance-publish-input-$INPUT_RELEASE_ID-$INPUT_BUILD_VERSION-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          else
+            component="build/release-certification/$INPUT_RELEASE_ID/stable-maintenance"
+            mkdir -p "$root/component" "$root/packages" "$root/authenticated-inputs"
+            cp -R "$component/." "$root/component/"
+            cp -R build/stable-maintenance-packages/. "$root/packages/"
+            cp build/stable-1.0-maintenance.json "$root/stable-1.0-maintenance.json"
+            cp -R build/protected-inputs "$root/protected-inputs"
+            artifact_name="stable-1-0-maintenance-prepared-$INPUT_RELEASE_ID-$INPUT_BUILD_VERSION-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+            if [[ "$INPUT_OPERATION" == validate-authorization ]]; then
+              artifact_name="stable-1-0-maintenance-authorized-$INPUT_RELEASE_ID-$INPUT_BUILD_VERSION-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+            fi
+          fi
+          stage_authenticated_input() {
+            local key="$1"
+            local output_name="$2"
+            local configured
+            configured="$(jq -er --arg key "$key" '.inputs[$key]' \
+              build/stable-1.0-maintenance.json)"
+            if ! python3 - "$configured" <<'PY'
+          import sys
+          from pathlib import Path
+
+          root = Path("build/protected-inputs").resolve(strict=True)
+          path = Path(sys.argv[1])
+          if path.is_absolute() or path.is_symlink() or not path.is_file():
+              raise SystemExit(1)
+          try:
+              path.resolve(strict=True).relative_to(root)
+          except (OSError, ValueError):
+              raise SystemExit(1) from None
+          PY
+            then
+              echo "::error::Authenticated input $key is missing or escapes the protected-input root."
+              exit 1
+            fi
+            cp "$configured" "$root/authenticated-inputs/$output_name"
+          }
+          if [[ "$INPUT_OPERATION" == prepare-authorization \
+                || "$INPUT_OPERATION" == validate-authorization ]]; then
+            stage_authenticated_input maintenanceCandidate maintenance-candidate-input.json
+            stage_authenticated_input maintenanceCandidateFreeze maintenance-candidate-freeze.json
+            stage_authenticated_input stableGaMaintenanceBaseline stable-ga-maintenance-baseline.json
+            stage_authenticated_input predecessorBaseline predecessor-maintenance-baseline.json
+            stage_authenticated_input maintenanceEvidence maintenance-evidence.json
+            if jq -e \
+              '.inputs.hotfixFollowUpClosure? | type == "string" and length > 0' \
+              build/stable-1.0-maintenance.json >/dev/null; then
+              stage_authenticated_input \
+                hotfixFollowUpClosure stable-1.0-hotfix-follow-up-closure.json
+            fi
+          fi
+          if [[ "$INPUT_OPERATION" == prepare-authorization ]]; then
+            authorization_component="build/stable-maintenance-authorization/$INPUT_RELEASE_ID/stable-maintenance"
+            if [[ ! -d "$authorization_component" ]]; then
+              echo "::error::prepare-authorization did not produce its component."
+              exit 1
+            fi
+            mkdir -p "$root/authorization-component"
+            cp -R "$authorization_component/." "$root/authorization-component/"
+          fi
+          if [[ -n "$(find "$root" -type l -print -quit)" \
+                || -n "$(find "$root" -mindepth 1 ! -type f ! -type d -print -quit)" ]]; then
+            echo "::error::Staged candidate contains a link or special entry."
+            exit 1
+          fi
+          echo "artifact_name=$artifact_name" >> "$GITHUB_OUTPUT"
+
+      - name: Upload exact validated candidate
+        id: upload
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ steps.stage.outputs.artifact_name }}
+          path: build/stable-maintenance-validation-artifact/
+          if-no-files-found: error
+          retention-days: 90
+
+  attest-evidence:
+    name: Attest exact Stable maintenance phase output
+    if: inputs.operation != 'publish'
+    needs:
+      - validate-dispatch
+      - freeze-and-validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: stable-1.0-maintenance-evidence
+    permissions:
+      contents: read
+      actions: read
+      attestations: write
+      artifact-metadata: write
+      id-token: write
+
+    steps:
+      - name: Download exact validated candidate from this run
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.freeze-and-validate.outputs.artifact_name }}
+          path: build/stable-maintenance-evidence-attestation
+          digest-mismatch: error
+
+      - name: Verify protected attestation subjects
+        if: inputs.operation == 'prepare-authorization'
+        run: |
+          set -euo pipefail
+          root="build/stable-maintenance-evidence-attestation"
+          subjects=(
+            "$root/component/artifacts/legacy/stable-1.0-maintenance-candidate.json"
+            "$root/component/artifacts/legacy/stable-1.0-maintenance-validation.json"
+            "$root/authorization-component/artifacts/legacy/stable-1.0-maintenance-authorization-summary.json"
+            "$root/authorization-component/artifacts/legacy/stable-1.0-maintenance-publication-plan.json"
+            "$root/authorization-component/artifacts/legacy/core-info.json"
+          )
+          for subject in "${subjects[@]}"; do
+            if [[ -L "$subject" || ! -f "$subject" ]]; then
+              echo "::error::Protected maintenance attestation subject is missing or unsafe."
+              exit 1
+            fi
+          done
+          jq -e '.result.status == "pass" and .redaction.status == "pass"' \
+            "$root/component/summary.json" >/dev/null
+          jq -e '.result.status == "pass" and .redaction.status == "pass"' \
+            "$root/authorization-component/summary.json" >/dev/null
+
+      - name: Attest candidate, authorization, publication targets, and updater descriptor
+        if: inputs.operation == 'prepare-authorization'
+        id: attest-prepared
+        uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
+        with:
+          subject-path: |
+            build/stable-maintenance-evidence-attestation/component/artifacts/legacy/stable-1.0-maintenance-candidate.json
+            build/stable-maintenance-evidence-attestation/component/artifacts/legacy/stable-1.0-maintenance-validation.json
+            build/stable-maintenance-evidence-attestation/authorization-component/artifacts/legacy/stable-1.0-maintenance-authorization-summary.json
+            build/stable-maintenance-evidence-attestation/authorization-component/artifacts/legacy/stable-1.0-maintenance-publication-plan.json
+            build/stable-maintenance-evidence-attestation/authorization-component/artifacts/legacy/core-info.json
+
+      - name: Attest exact candidate freeze record and selected bytes
+        if: inputs.operation == 'freeze-candidate'
+        id: attest-freeze
+        uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
+        with:
+          subject-path: |
+            build/stable-maintenance-evidence-attestation/freeze/stable-1.0-maintenance-candidate-freeze.json
+            build/stable-maintenance-evidence-attestation/freeze/checksums.txt
+            build/stable-maintenance-evidence-attestation/freeze/assets/*
+
+      - name: Attest authorized candidate, publication plan, and updater descriptor
+        if: inputs.operation == 'validate-authorization'
+        id: attest-authorized
+        uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
+        with:
+          subject-path: |
+            build/stable-maintenance-evidence-attestation/component/artifacts/legacy/stable-1.0-maintenance-candidate.json
+            build/stable-maintenance-evidence-attestation/component/artifacts/legacy/stable-1.0-maintenance-validation.json
+            build/stable-maintenance-evidence-attestation/component/artifacts/legacy/stable-1.0-maintenance-authorization-summary.json
+            build/stable-maintenance-evidence-attestation/component/artifacts/legacy/stable-1.0-maintenance-publication-plan.json
+            build/stable-maintenance-evidence-attestation/component/artifacts/legacy/core-info.json
+
+      - name: Summarize side-effect-free evidence approval
+        run: |
+          echo "Attested the exact ${{ inputs.operation }} Stable maintenance output." >> "$GITHUB_STEP_SUMMARY"
+          echo "No tag, GitHub Release, catalog insert, CoreUpdater insert, announcement, branch creation, or merge occurred." >> "$GITHUB_STEP_SUMMARY"
+
+  protected-publication:
+    name: Publish or verify exact authorized maintenance bytes
+    if: inputs.operation == 'publish'
+    needs:
+      - validate-dispatch
+      - freeze-and-validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    environment:
+      name: >-
+        ${{ inputs.release_class == 'security-hotfix'
+            && 'stable-1.0-security-hotfix-publication'
+            || 'stable-1.0-maintenance-publication' }}
+    permissions:
+      contents: read
+      actions: read
+      attestations: read
+    outputs:
+      artifact_name: ${{ steps.stage-publication.outputs.artifact_name }}
+      artifact_digest: ${{ steps.upload-publication.outputs.artifact-digest }}
+
+    steps:
+      - name: Check out exact authorized candidate
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.candidate_commit }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Materialize exact reviewed publication backend
+        id: publication-backend
+        uses: ./.github/actions/setup-stable-maintenance-publication-backend
+        with:
+          run-id: ${{ inputs.publication_backend_run_id }}
+          artifact-name: ${{ inputs.publication_backend_artifact_name }}
+          artifact-digest: ${{ inputs.publication_backend_artifact_digest }}
+          source-commit: ${{ vars.CRYPTAD_STABLE_MAINTENANCE_PUBLICATION_BACKEND_SOURCE_COMMIT }}
+          wheel-sha256: ${{ vars.CRYPTAD_STABLE_MAINTENANCE_PUBLICATION_BACKEND_WHEEL_SHA256 }}
+          signer-workflow: ${{ vars.CRYPTAD_STABLE_MAINTENANCE_PUBLICATION_BACKEND_SIGNER_WORKFLOW }}
+          entrypoint: ${{ vars.CRYPTAD_STABLE_MAINTENANCE_PUBLICATION_BACKEND }}
+          github-token: ${{ github.token }}
+
+      - name: Download exact revalidated candidate
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.freeze-and-validate.outputs.artifact_name }}
+          path: build/stable-maintenance-publication
+          digest-mismatch: error
+
+      - name: Verify protected leumor GitHub publication identity
+        env:
+          LEUMOR_GITHUB_TOKEN: ${{ secrets.LEUMOR_GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$LEUMOR_GITHUB_TOKEN" ]]; then
+            echo "::error::The protected LEUMOR_GITHUB_TOKEN secret is required for publication."
+            exit 1
+          fi
+          if [[ "$(GH_TOKEN="$LEUMOR_GITHUB_TOKEN" gh api user --jq .login)" != "leumor" ]]; then
+            echo "::error::Protected GitHub publication identity must be exactly leumor."
+            exit 1
+          fi
+
+      - name: Verify protected attestations and local exact-byte bindings
+        env:
+          INPUT_RELEASE_ID: ${{ inputs.release_id }}
+          INPUT_BUILD_VERSION: ${{ inputs.build_version }}
+          INPUT_RELEASE_CLASS: ${{ inputs.release_class }}
+          INPUT_CANDIDATE_COMMIT: ${{ inputs.candidate_commit }}
+          INPUT_POINTER_DIGEST: ${{ inputs.expected_predecessor_pointer_digest }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          root="build/stable-maintenance-publication"
+          legacy="$root/component/artifacts/legacy"
+          candidate="$legacy/stable-1.0-maintenance-candidate.json"
+          authorization="$legacy/stable-1.0-maintenance-authorization-summary.json"
+          plan="$legacy/stable-1.0-maintenance-publication-plan.json"
+          checksums="$legacy/stable-1.0-maintenance-checksums.txt"
+          for path in "$candidate" "$authorization" "$plan" "$checksums" \
+            "$legacy/core-info.json" "$legacy/core-update-publication-plan.json"; do
+            if [[ -L "$path" || ! -f "$path" ]]; then
+              echo "::error::Authorized publication input is missing or unsafe."
+              exit 1
+            fi
+          done
+          signer="crypta-network/cryptad/.github/workflows/stable-1.0-maintenance-release.yml"
+          for subject in "$candidate" "$authorization" "$plan" "$legacy/core-info.json"; do
+            gh attestation verify "$subject" \
+              --repo "$GITHUB_REPOSITORY" \
+              --signer-workflow "$signer" \
+              --source-digest "$INPUT_CANDIDATE_COMMIT" \
+              --deny-self-hosted-runners >/dev/null
+          done
+          jq -e \
+            --arg release "$INPUT_RELEASE_ID" \
+            --arg build "$INPUT_BUILD_VERSION" \
+            --arg release_class "$INPUT_RELEASE_CLASS" \
+            --arg commit "$INPUT_CANDIDATE_COMMIT" '
+              .releaseId == $release
+              and .buildVersion == $build
+              and .releaseClass == $release_class
+              and .sourceCommit == $commit
+              and .publicationState == "publication-authorized"
+              and .sideEffectsPerformed == false
+              and .redaction.status == "pass"' "$plan" >/dev/null
+          expires_at="$(jq -er '.authorization.expiresAt // .expiresAt' "$authorization")"
+          python3 - "$expires_at" <<'PY'
+          import datetime as dt
+          import sys
+
+          value = sys.argv[1]
+          try:
+              expiry = dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
+          except ValueError as exc:
+              raise SystemExit("authorization expiry is malformed") from exc
+          if expiry <= dt.datetime.now(dt.timezone.utc):
+              raise SystemExit("authorization expired before the mutation boundary")
+          PY
+          if [[ ! "$INPUT_POINTER_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::Authorized predecessor pointer digest is malformed."
+            exit 1
+          fi
+          if [[ -n "$(find "$root" -type l -print -quit)" \
+                || -n "$(find "$root" -mindepth 1 ! -type f ! -type d -print -quit)" ]]; then
+            echo "::error::Publication bundle contains a link or special entry."
+            exit 1
+          fi
+
+      - name: Preflight predecessor, authorization, freeze, and public conflicts
+        id: preflight
+        continue-on-error: true
+        env:
+          CRYPTAD_STABLE_MAINTENANCE_PUBLICATION_BACKEND: ${{ steps.publication-backend.outputs.entrypoint }}
+          CRYPTAD_STABLE_MAINTENANCE_PUBLICATION_BACKEND_SITE: ${{ steps.publication-backend.outputs.site-directory }}
+          PYTHONPATH: ${{ steps.publication-backend.outputs.python-path }}
+          INPUT_POINTER_DIGEST: ${{ inputs.expected_predecessor_pointer_digest }}
+          GITHUB_TOKEN: ${{ secrets.LEUMOR_GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$CRYPTAD_STABLE_MAINTENANCE_PUBLICATION_BACKEND" ]]; then
+            echo "::error::Protected Stable maintenance publication backend was not configured."
+            exit 1
+          fi
+          adapter="tools/release-certification/protected/stable_maintenance_publication.py"
+          if [[ ! -f "$adapter" ]]; then
+            echo "::error::Protected Stable maintenance publication adapter is not materialized."
+            exit 1
+          fi
+          python3 "$adapter" \
+            --mode preflight-only \
+            --bundle build/stable-maintenance-publication \
+            --no-protected-inputs \
+            --expected-predecessor-pointer-digest "$INPUT_POINTER_DIGEST" \
+            --check-latest-predecessor \
+            --check-authorization-expiry \
+            --check-exact-freeze-bytes \
+            --check-tag-release-artifact-catalog-and-updater-conflicts \
+            --idempotency exact-match-only \
+            --conflict-action fail \
+            --no-side-effects \
+            --out build/stable-maintenance-publication-preflight.json
+          jq -e '
+            .status == "pass"
+            and .sideEffectsPerformed == false
+            and .latestPredecessorUnchanged == true
+            and .authorizationCurrent == true
+            and .freezeBytesExact == true
+            and (.publicState == "matching-existing"
+                 or .publicState == "resumable-prefix")
+            and .redaction.status == "pass"' \
+            build/stable-maintenance-publication-preflight.json >/dev/null
+
+      - name: Stage publication preflight evidence
+        id: stage-preflight
+        if: always()
+        env:
+          INPUT_RELEASE_ID: ${{ inputs.release_id }}
+          INPUT_BUILD_VERSION: ${{ inputs.build_version }}
+          INPUT_RELEASE_CLASS: ${{ inputs.release_class }}
+          INPUT_CANDIDATE_COMMIT: ${{ inputs.candidate_commit }}
+          PREFLIGHT_OUTCOME: ${{ steps.preflight.outcome }}
+        run: |
+          set -euo pipefail
+          preflight="build/stable-maintenance-publication-preflight.json"
+          if [[ -L "$preflight" ]]; then
+            rm -f "$preflight"
+          fi
+          if [[ ! -f "$preflight" ]]; then
+            legacy="build/stable-maintenance-publication/component/artifacts/legacy"
+            plan="$legacy/stable-1.0-maintenance-publication-plan.json"
+            if [[ -L "$plan" || ! -f "$plan" ]]; then
+              echo "::error::Failed preflight cannot bind its audit to the publication plan."
+              exit 1
+            fi
+            jq -n \
+              --arg generated_at "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+              --arg release_id "$INPUT_RELEASE_ID" \
+              --arg build "$INPUT_BUILD_VERSION" \
+              --arg release_class "$INPUT_RELEASE_CLASS" \
+              --arg commit "$INPUT_CANDIDATE_COMMIT" \
+              --arg candidate_digest "$(jq -er '.candidateIdentityDigest' "$plan")" \
+              --arg outcome "$PREFLIGHT_OUTCOME" '
+              {
+                schemaVersion: 1,
+                kind: "stable-1.0-maintenance-publication-preflight",
+                generatedAt: $generated_at,
+                releaseId: $release_id,
+                buildVersion: $build,
+                releaseClass: $release_class,
+                sourceCommit: $commit,
+                candidateIdentityDigest: $candidate_digest,
+                status: "fail",
+                sideEffectsPerformed: false,
+                latestPredecessorUnchanged: false,
+                authorizationCurrent: false,
+                freezeBytesExact: false,
+                publicState: "unavailable",
+                publicStateObservation: {
+                  tag: "unavailable",
+                  githubRelease: "unavailable",
+                  assets: "unavailable",
+                  artifactBase: "unavailable",
+                  stableCatalog: "unavailable",
+                  coreUpdate: "unavailable"
+                },
+                failureCategory: "preflight-execution-failure",
+                workflowOutcome: $outcome,
+                redaction: {status: "pass", findingCount: 0, findings: []}
+              }' > "$preflight"
+          fi
+          root="build/stable-maintenance-publication-preflight-audit"
+          rm -rf "$root"
+          mkdir -p "$root"
+          cp "$preflight" "$root/"
+          artifact_name="stable-1-0-maintenance-preflight-$INPUT_RELEASE_ID-$INPUT_BUILD_VERSION-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          echo "artifact_name=$artifact_name" >> "$GITHUB_OUTPUT"
+
+      - name: Upload publication preflight evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ steps.stage-preflight.outputs.artifact_name }}
+          path: build/stable-maintenance-publication-preflight-audit/
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Fail after retaining failed preflight evidence
+        if: steps.preflight.outcome != 'success'
+        run: |
+          echo "::error::Protected publication preflight failed; its side-effect-free audit was retained."
+          exit 1
+
+      - name: Publish or idempotently verify exact bytes
+        id: publication
+        if: steps.preflight.outcome == 'success'
+        continue-on-error: true
+        env:
+          CRYPTAD_STABLE_MAINTENANCE_PUBLICATION_BACKEND: ${{ steps.publication-backend.outputs.entrypoint }}
+          CRYPTAD_STABLE_MAINTENANCE_PUBLICATION_BACKEND_SITE: ${{ steps.publication-backend.outputs.site-directory }}
+          PYTHONPATH: ${{ steps.publication-backend.outputs.python-path }}
+          CRYPTAD_STABLE_CATALOG_PUBLICATION_INPUT: ${{ secrets.CRYPTAD_STABLE_CATALOG_PUBLICATION_INPUT }}
+          CRYPTAD_CORE_UPDATE_PUBLICATION_INPUT: ${{ secrets.CRYPTAD_CORE_UPDATE_PUBLICATION_INPUT }}
+          CRYPTAD_STABLE_MAINTENANCE_EXPECTED_SOURCE_BRANCH: ${{ needs.validate-dispatch.outputs.expected_branch }}
+          CRYPTAD_STABLE_MAINTENANCE_EXPECTED_SOURCE_COMMIT: ${{ inputs.candidate_commit }}
+          CRYPTAD_STABLE_MAINTENANCE_EXPECTED_REPOSITORY: ${{ github.repository }}
+          INPUT_POINTER_DIGEST: ${{ inputs.expected_predecessor_pointer_digest }}
+          GITHUB_TOKEN: ${{ secrets.LEUMOR_GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$CRYPTAD_STABLE_MAINTENANCE_PUBLICATION_BACKEND" ]]; then
+            echo "::error::Protected Stable maintenance publication backend was not configured."
+            exit 1
+          fi
+          if [[ -z "$CRYPTAD_STABLE_CATALOG_PUBLICATION_INPUT" ]]; then
+            echo "::error::Protected stable catalog publication input was not materialized."
+            exit 1
+          fi
+          if [[ -z "$CRYPTAD_CORE_UPDATE_PUBLICATION_INPUT" ]]; then
+            echo "::error::Protected CoreUpdater publication input was not materialized."
+            exit 1
+          fi
+          encoded_branch="${CRYPTAD_STABLE_MAINTENANCE_EXPECTED_SOURCE_BRANCH//\//%2F}"
+          current_branch_commit="$(gh api --method GET \
+            "repos/$GITHUB_REPOSITORY/git/ref/heads/$encoded_branch" --jq '.object.sha')"
+          if [[ "$current_branch_commit" != "$CRYPTAD_STABLE_MAINTENANCE_EXPECTED_SOURCE_COMMIT" ]]; then
+            echo "::error::The remote release/hotfix ref moved before publication."
+            exit 1
+          fi
+          adapter="tools/release-certification/protected/stable_maintenance_publication.py"
+          marker="build/stable-maintenance-publication-side-effect-started"
+          # The marker is written only after the complete no-side-effect preflight passed.
+          : > "$marker"
+          python3 "$adapter" \
+            --mode publish-or-verify-exact \
+            --bundle build/stable-maintenance-publication \
+            --catalog-input-env CRYPTAD_STABLE_CATALOG_PUBLICATION_INPUT \
+            --core-update-input-env CRYPTAD_CORE_UPDATE_PUBLICATION_INPUT \
+            --expected-predecessor-pointer-digest "$INPUT_POINTER_DIGEST" \
+            --expected-source-repository "$GITHUB_REPOSITORY" \
+            --expected-source-branch "$CRYPTAD_STABLE_MAINTENANCE_EXPECTED_SOURCE_BRANCH" \
+            --expected-source-commit "$CRYPTAD_STABLE_MAINTENANCE_EXPECTED_SOURCE_COMMIT" \
+            --github-token-env GITHUB_TOKEN \
+            --recheck-remote-source-ref \
+            --revalidate-before-each-mutation \
+            --idempotency exact-match-only \
+            --conflict-action fail \
+            --partial-state-action record-only \
+            --forbid-overwrite \
+            --forbid-delete-recovery \
+            --receipt build/stable-1.0-maintenance-publication-receipt.json \
+            --core-update-receipt build/core-update-publication-receipt.json
+
+      - name: Record truthful partial state after a failed protected operation
+        if: steps.publication.outcome != 'success'
+        env:
+          INPUT_RELEASE_ID: ${{ inputs.release_id }}
+          INPUT_BUILD_VERSION: ${{ inputs.build_version }}
+          INPUT_RELEASE_CLASS: ${{ inputs.release_class }}
+          INPUT_CANDIDATE_COMMIT: ${{ inputs.candidate_commit }}
+        run: |
+          set -euo pipefail
+          receipt="build/stable-1.0-maintenance-publication-receipt.json"
+          audit="build/stable-1.0-maintenance-publication-failure-audit.json"
+          failure_category="pre-publication-verification-failure"
+          if [[ -f build/stable-maintenance-publication-side-effect-started ]]; then
+            failure_category="side-effecting-publication-failure"
+          fi
+          if [[ ! -f "$receipt" && ! -f "$audit" ]]; then
+            legacy="build/stable-maintenance-publication/component/artifacts/legacy"
+            plan="$legacy/stable-1.0-maintenance-publication-plan.json"
+            candidate="$legacy/stable-1.0-maintenance-candidate.json"
+            if [[ -L "$plan" || ! -f "$plan" || -L "$candidate" || ! -f "$candidate" ]]; then
+              echo "::error::Failed publication cannot bind its failure audit to the candidate plan."
+              exit 1
+            fi
+            jq -n \
+              --arg generated_at "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+              --arg release_id "$INPUT_RELEASE_ID" \
+              --arg build "$INPUT_BUILD_VERSION" \
+              --arg release_class "$INPUT_RELEASE_CLASS" \
+              --arg commit "$INPUT_CANDIDATE_COMMIT" \
+              --arg candidate_digest "$(jq -er '.candidateIdentityDigest' "$plan")" \
+              --arg product_digest "$(jq -er '.productDigest' "$plan")" \
+              --arg plan_digest "sha256:$(sha256sum "$plan" | awk '{print $1}')" \
+              --arg failure_category "$failure_category" '
+              {
+                schemaVersion: 1,
+                kind: "stable-1.0-maintenance-publication-failure-audit",
+                generatedAt: $generated_at,
+                releaseId: $release_id,
+                buildVersion: $build,
+                releaseClass: $release_class,
+                sourceCommit: $commit,
+                candidateIdentityDigest: $candidate_digest,
+                productDigest: $product_digest,
+                publicationPlanDigest: $plan_digest,
+                publicationState: "unknown-or-partial",
+                failureCategory: $failure_category,
+                predecessorPointerDigest: null,
+                latestCandidateIdentityDigest: null,
+                observedPublicState: {
+                  tag: "unavailable",
+                  githubRelease: "unavailable",
+                  assets: "unavailable",
+                  artifactBase: "unavailable",
+                  stableCatalog: "unavailable",
+                  coreUpdate: "unavailable"
+                },
+                attemptedTargets: (
+                  if $failure_category == "side-effecting-publication-failure"
+                  then ["artifactBase", "tag", "githubRelease", "assets", "stableCatalog", "coreUpdate"]
+                  else []
+                  end
+                ),
+                completedTargets: [],
+                sideEffectsMayHaveOccurred: ($failure_category == "side-effecting-publication-failure"),
+                finalVerificationStatus: "fail",
+                redaction: {status: "pass", findingCount: 0, findings: []}
+              }' > "$audit"
+          fi
+
+      - name: Validate publication audit artifacts
+        env:
+          PUBLICATION_OUTCOME: ${{ steps.publication.outcome }}
+        run: |
+          set -euo pipefail
+          receipt="build/stable-1.0-maintenance-publication-receipt.json"
+          audit="build/stable-1.0-maintenance-publication-failure-audit.json"
+          if [[ "$PUBLICATION_OUTCOME" == success ]]; then
+            if [[ -L "$receipt" || ! -f "$receipt" ]]; then
+              echo "::error::Successful protected publication omitted its canonical receipt."
+              exit 1
+            fi
+            jq -e '
+              .publicationState == "publication-complete"
+              and .finalVerificationStatus == "pass"
+              and .redaction.status == "pass"
+              and .redaction.findingCount == 0' "$receipt" >/dev/null
+          elif [[ -f "$audit" && ! -L "$audit" ]]; then
+            jq -e '
+              .kind == "stable-1.0-maintenance-publication-failure-audit"
+              and (.publicationState == "unknown-or-partial"
+                   or .publicationState == "publication-partial"
+                   or .publicationState == "publication-verification-failed")
+              and .finalVerificationStatus == "fail"
+              and .redaction.status == "pass"
+              and .redaction.findingCount == 0' "$audit" >/dev/null
+          else
+            echo "::error::Failed protected publication omitted its truthful failure audit."
+            exit 1
+          fi
+          PYTHONPATH=tools/release-certification python3 - "$receipt" "$audit" <<'PY'
+          import sys
+          from pathlib import Path
+
+          from cryptad_certification.io import read_json
+          from cryptad_certification.schema_validation import validate_schema
+
+          receipt = Path(sys.argv[1])
+          audit = Path(sys.argv[2])
+          if receipt.is_file():
+              schemas = (
+                  (receipt, "stable-1.0-maintenance-publication-receipt-v1.schema.json"),
+                  (
+                      receipt.with_name("core-update-publication-receipt.json"),
+                      "cryptad-core-update-publication-receipt-v1.schema.json",
+                  ),
+              )
+          else:
+              schemas = (
+                  (
+                      audit,
+                      "stable-1.0-maintenance-publication-failure-audit-v1.schema.json",
+                  ),
+              )
+          if any(not path.is_file() or validate_schema(read_json(path), schema) for path, schema in schemas):
+              raise SystemExit("publication audit artifact failed its closed schema")
+          PY
+
+      - name: Stage publication receipt or partial-state audit record
+        id: stage-publication
+        env:
+          INPUT_RELEASE_ID: ${{ inputs.release_id }}
+          INPUT_BUILD_VERSION: ${{ inputs.build_version }}
+        run: |
+          set -euo pipefail
+          root="build/stable-maintenance-publication-audit"
+          rm -rf "$root"
+          mkdir -p "$root"
+          if [[ -f build/stable-1.0-maintenance-publication-receipt.json ]]; then
+            cp build/stable-1.0-maintenance-publication-receipt.json "$root/"
+          fi
+          if [[ -f build/stable-1.0-maintenance-publication-failure-audit.json ]]; then
+            cp build/stable-1.0-maintenance-publication-failure-audit.json "$root/"
+          fi
+          if [[ -f build/core-update-publication-receipt.json ]]; then
+            cp build/core-update-publication-receipt.json "$root/"
+          fi
+          cp build/stable-maintenance-publication-preflight.json "$root/"
+          cp -R build/stable-maintenance-publication/component "$root/component"
+          cp -R build/stable-maintenance-publication/authenticated-inputs "$root/authenticated-inputs"
+          artifact_name="stable-1-0-maintenance-publication-$INPUT_RELEASE_ID-$INPUT_BUILD_VERSION-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          echo "artifact_name=$artifact_name" >> "$GITHUB_OUTPUT"
+
+      - name: Upload publication audit record
+        id: upload-publication
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ steps.stage-publication.outputs.artifact_name }}
+          path: build/stable-maintenance-publication-audit/
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Fail after retaining partial state
+        if: steps.publication.outcome != 'success'
+        run: |
+          echo "::error::Protected publication failed; exact observed partial state was retained without overwrite or deletion."
+          exit 1
+
+  independent-verification:
+    name: Independently verify exact public bytes
+    if: inputs.operation == 'publish'
+    needs: protected-publication
+    runs-on: ubuntu-latest
+    environment: stable-1.0-maintenance-evidence
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      actions: read
+      attestations: read
+    outputs:
+      artifact_name: ${{ steps.stage.outputs.artifact_name }}
+      artifact_digest: ${{ steps.upload.outputs.artifact-digest }}
+
+    steps:
+      - name: Check out exact candidate verifier
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.candidate_commit }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Materialize exact reviewed verification backend
+        id: publication-backend
+        uses: ./.github/actions/setup-stable-maintenance-publication-backend
+        with:
+          run-id: ${{ inputs.publication_backend_run_id }}
+          artifact-name: ${{ inputs.publication_backend_artifact_name }}
+          artifact-digest: ${{ inputs.publication_backend_artifact_digest }}
+          source-commit: ${{ vars.CRYPTAD_STABLE_MAINTENANCE_PUBLICATION_BACKEND_SOURCE_COMMIT }}
+          wheel-sha256: ${{ vars.CRYPTAD_STABLE_MAINTENANCE_PUBLICATION_BACKEND_WHEEL_SHA256 }}
+          signer-workflow: ${{ vars.CRYPTAD_STABLE_MAINTENANCE_PUBLICATION_BACKEND_SIGNER_WORKFLOW }}
+          entrypoint: ${{ vars.CRYPTAD_STABLE_MAINTENANCE_PUBLICATION_BACKEND }}
+          github-token: ${{ github.token }}
+
+      - name: Download exact publication audit artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.protected-publication.outputs.artifact_name }}
+          path: build/stable-maintenance-independent-verification
+          digest-mismatch: error
+
+      - name: Fetch and verify public tag, assets, catalog, updater, and package identities
+        id: verify-publication
+        continue-on-error: true
+        env:
+          CRYPTAD_STABLE_MAINTENANCE_PUBLICATION_BACKEND: ${{ steps.publication-backend.outputs.entrypoint }}
+          CRYPTAD_STABLE_MAINTENANCE_PUBLICATION_BACKEND_SITE: ${{ steps.publication-backend.outputs.site-directory }}
+          PYTHONPATH: ${{ steps.publication-backend.outputs.python-path }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$CRYPTAD_STABLE_MAINTENANCE_PUBLICATION_BACKEND" ]]; then
+            echo "::error::Protected Stable maintenance verification backend was not configured."
+            exit 1
+          fi
+          adapter="tools/release-certification/protected/stable_maintenance_publication.py"
+          if [[ ! -f "$adapter" ]]; then
+            echo "::error::Independent public-state verifier is not materialized."
+            exit 1
+          fi
+          python3 "$adapter" \
+            --mode verify-public-state-only \
+            --bundle build/stable-maintenance-independent-verification \
+            --no-protected-inputs \
+            --verify-annotated-tag \
+            --verify-github-release-and-assets \
+            --verify-artifact-base \
+            --verify-stable-catalog-primary-mirrors-and-rollback \
+            --verify-core-info-exact-bytes \
+            --verify-every-core-info-package-reference \
+            --forbid-unexpected-assets \
+            --receipt build/stable-1.0-maintenance-publication-receipt.json \
+            --core-update-receipt build/core-update-publication-receipt.json \
+            --successor-baseline build/stable-1.0-maintenance-successor-baseline.json \
+            --history-entry build/stable-1.0-maintenance-history-entry.json
+          jq -e '
+            .publicationState == "publication-complete"
+            and .finalVerificationStatus == "pass"
+            and .redaction.status == "pass"' \
+            build/stable-1.0-maintenance-publication-receipt.json >/dev/null
+          jq -e '
+            .publicationState == "publication-complete"
+            and .verificationStatus == "pass"
+            and .redaction.status == "pass"' \
+            build/core-update-publication-receipt.json >/dev/null
+
+      - name: Stage independently verified publication and successor
+        id: stage
+        if: always()
+        env:
+          INPUT_RELEASE_ID: ${{ inputs.release_id }}
+          INPUT_BUILD_VERSION: ${{ inputs.build_version }}
+          INPUT_RELEASE_CLASS: ${{ inputs.release_class }}
+          INPUT_CANDIDATE_COMMIT: ${{ inputs.candidate_commit }}
+          VERIFICATION_OUTCOME: ${{ steps.verify-publication.outcome }}
+        run: |
+          set -euo pipefail
+          root="build/stable-maintenance-verified-publication"
+          rm -rf "$root"
+          mkdir -p "$root"
+          artifact_name="stable-1-0-maintenance-verified-$INPUT_RELEASE_ID-$INPUT_BUILD_VERSION-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          echo "artifact_name=$artifact_name" >> "$GITHUB_OUTPUT"
+          legacy="build/stable-maintenance-independent-verification/component/artifacts/legacy"
+          plan="$legacy/stable-1.0-maintenance-publication-plan.json"
+          if [[ -L "$plan" || ! -f "$plan" ]]; then
+            echo "::error::Independent verification cannot bind its audit to the publication plan."
+            exit 1
+          fi
+          jq -n \
+            --arg generated_at "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+            --arg release_id "$INPUT_RELEASE_ID" \
+            --arg build "$INPUT_BUILD_VERSION" \
+            --arg release_class "$INPUT_RELEASE_CLASS" \
+            --arg commit "$INPUT_CANDIDATE_COMMIT" \
+            --arg candidate_digest "$(jq -er '.candidateIdentityDigest' "$plan")" \
+            --arg outcome "$VERIFICATION_OUTCOME" '
+            {
+              schemaVersion: 1,
+              kind: "stable-1.0-maintenance-independent-verification-audit",
+              generatedAt: $generated_at,
+              releaseId: $release_id,
+              buildVersion: $build,
+              releaseClass: $release_class,
+              sourceCommit: $commit,
+              candidateIdentityDigest: $candidate_digest,
+              verificationStatus: (if $outcome == "success" then "pass" else "fail" end),
+              workflowOutcome: $outcome,
+              sideEffectsPerformed: false,
+              redaction: {status: "pass", findingCount: 0, findings: []}
+            }' > "$root/stable-1.0-maintenance-independent-verification-audit.json"
+          for path in \
+            build/stable-1.0-maintenance-publication-receipt.json \
+            build/core-update-publication-receipt.json \
+            build/stable-1.0-maintenance-successor-baseline.json \
+            build/stable-1.0-maintenance-history-entry.json \
+            build/stable-1.0-maintenance-publication-failure-audit.json; do
+            if [[ -f "$path" && ! -L "$path" ]]; then
+              cp "$path" "$root/"
+            fi
+          done
+          authorization_source="build/stable-maintenance-independent-verification/component/artifacts/legacy/stable-1.0-maintenance-authorization-summary.json"
+          if [[ -f "$authorization_source" && ! -L "$authorization_source" ]]; then
+            cp "$authorization_source" "$root/"
+          elif [[ "$VERIFICATION_OUTCOME" == success ]]; then
+            echo "::error::Independent verification input omitted the exact published authorization."
+            exit 1
+          fi
+          if [[ "$VERIFICATION_OUTCOME" == success ]]; then
+            for path in \
+              "$root/stable-1.0-maintenance-publication-receipt.json" \
+              "$root/core-update-publication-receipt.json" \
+              "$root/stable-1.0-maintenance-successor-baseline.json" \
+              "$root/stable-1.0-maintenance-history-entry.json"; do
+              if [[ -L "$path" || ! -f "$path" ]]; then
+                echo "::error::Successful independent verification omitted a required record."
+                exit 1
+              fi
+            done
+          fi
+
+      - name: Upload independently verified publication
+        id: upload
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ steps.stage.outputs.artifact_name }}
+          path: build/stable-maintenance-verified-publication/
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Fail after retaining independent-verification evidence
+        if: steps.verify-publication.outcome != 'success'
+        run: |
+          echo "::error::Independent public verification failed; its audit evidence was retained."
+          exit 1
+
+  activate-latest-baseline:
+    name: Atomically activate verified successor baseline
+    if: inputs.operation == 'publish'
+    needs: independent-verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: >-
+        ${{ inputs.release_class == 'security-hotfix'
+            && 'stable-1.0-security-hotfix-publication'
+            || 'stable-1.0-maintenance-publication' }}
+    permissions:
+      contents: read
+      actions: read
+      attestations: read
+
+    steps:
+      - name: Check out exact activation verifier
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.candidate_commit }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Materialize exact reviewed activation backend
+        id: publication-backend
+        uses: ./.github/actions/setup-stable-maintenance-publication-backend
+        with:
+          run-id: ${{ inputs.publication_backend_run_id }}
+          artifact-name: ${{ inputs.publication_backend_artifact_name }}
+          artifact-digest: ${{ inputs.publication_backend_artifact_digest }}
+          source-commit: ${{ vars.CRYPTAD_STABLE_MAINTENANCE_PUBLICATION_BACKEND_SOURCE_COMMIT }}
+          wheel-sha256: ${{ vars.CRYPTAD_STABLE_MAINTENANCE_PUBLICATION_BACKEND_WHEEL_SHA256 }}
+          signer-workflow: ${{ vars.CRYPTAD_STABLE_MAINTENANCE_PUBLICATION_BACKEND_SIGNER_WORKFLOW }}
+          entrypoint: ${{ vars.CRYPTAD_STABLE_MAINTENANCE_PUBLICATION_BACKEND }}
+          github-token: ${{ github.token }}
+
+      - name: Download independently verified successor
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.independent-verification.outputs.artifact_name }}
+          path: build/stable-maintenance-baseline-activation
+          digest-mismatch: error
+
+      - name: Compare-and-swap latest-published pointer
+        id: activation
+        continue-on-error: true
+        env:
+          CRYPTAD_STABLE_MAINTENANCE_PUBLICATION_BACKEND: ${{ steps.publication-backend.outputs.entrypoint }}
+          CRYPTAD_STABLE_MAINTENANCE_PUBLICATION_BACKEND_SITE: ${{ steps.publication-backend.outputs.site-directory }}
+          PYTHONPATH: ${{ steps.publication-backend.outputs.python-path }}
+          CRYPTAD_STABLE_MAINTENANCE_STATE_INPUT: ${{ secrets.CRYPTAD_STABLE_MAINTENANCE_STATE_INPUT }}
+          CRYPTAD_STABLE_MAINTENANCE_EXPECTED_SOURCE_BRANCH: ${{ inputs.release_class == 'security-hotfix' && format('hotfix/{0}', inputs.build_version) || format('release/{0}', inputs.build_version) }}
+          CRYPTAD_STABLE_MAINTENANCE_EXPECTED_SOURCE_COMMIT: ${{ inputs.candidate_commit }}
+          CRYPTAD_STABLE_MAINTENANCE_EXPECTED_REPOSITORY: ${{ github.repository }}
+          INPUT_POINTER_DIGEST: ${{ inputs.expected_predecessor_pointer_digest }}
+          INPUT_CANDIDATE_COMMIT: ${{ inputs.candidate_commit }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$CRYPTAD_STABLE_MAINTENANCE_PUBLICATION_BACKEND" ]]; then
+            echo "::error::Protected Stable maintenance activation backend was not configured."
+            exit 1
+          fi
+          if [[ -z "$CRYPTAD_STABLE_MAINTENANCE_STATE_INPUT" ]]; then
+            echo "::error::Protected activation input was not materialized."
+            exit 1
+          fi
+          adapter="tools/release-certification/protected/stable_maintenance_publication.py"
+          if [[ ! -f "$adapter" ]]; then
+            echo "::error::Protected latest-baseline activation adapter is not materialized."
+            exit 1
+          fi
+          baseline="build/stable-maintenance-baseline-activation/stable-1.0-maintenance-successor-baseline.json"
+          history="build/stable-maintenance-baseline-activation/stable-1.0-maintenance-history-entry.json"
+          receipt="build/stable-maintenance-baseline-activation/stable-1.0-maintenance-publication-receipt.json"
+          authorization="build/stable-maintenance-baseline-activation/stable-1.0-maintenance-authorization-summary.json"
+          activation_authorization="build/stable-maintenance-baseline-activation/stable-1.0-maintenance-activation-authorization.json"
+          for path in "$baseline" "$history" "$receipt" "$authorization"; do
+            if [[ -L "$path" || ! -f "$path" ]]; then
+              echo "::error::Verified activation input is missing or unsafe."
+              exit 1
+            fi
+          done
+          jq -e '.publicationState == "publication-complete" and .finalVerificationStatus == "pass"' \
+            "$receipt" >/dev/null
+          authorization_digest="sha256:$(sha256sum "$authorization" | awk '{print $1}')"
+          if [[ "$authorization_digest" != "$(jq -er '.authorizationDigest' "$receipt")" ]]; then
+            echo "::error::Activation authorization differs from the exact published authorization."
+            exit 1
+          fi
+          gh attestation verify "$authorization" \
+            --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "crypta-network/cryptad/.github/workflows/stable-1.0-maintenance-release.yml" \
+            --source-digest "$INPUT_CANDIDATE_COMMIT" \
+            --deny-self-hosted-runners >/dev/null
+          python3 - \
+            "$baseline" \
+            "$history" \
+            "$receipt" \
+            "$authorization" \
+            "$activation_authorization" \
+            "$INPUT_POINTER_DIGEST" \
+            "$GITHUB_RUN_ID" \
+            "$GITHUB_RUN_ATTEMPT" <<'PY'
+          import datetime as dt
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import sys
+
+          (
+              baseline_path,
+              history_path,
+              receipt_path,
+              original_authorization_path,
+              output_path,
+          ) = (Path(value) for value in sys.argv[1:6])
+          expected_pointer_digest, run_id, run_attempt = sys.argv[6:9]
+
+          def read_json(path: Path) -> dict[str, object]:
+              return json.loads(path.read_text(encoding="utf-8"))
+
+          def digest(path: Path) -> str:
+              return "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
+
+          receipt_value = read_json(receipt_path)
+          release_class = receipt_value["releaseClass"]
+          protected_environment = (
+              "stable-1.0-maintenance-publication"
+              if release_class == "maintenance"
+              else "stable-1.0-security-hotfix-publication"
+          )
+          now = dt.datetime.now(dt.timezone.utc).replace(microsecond=0)
+          expires = now + dt.timedelta(minutes=30)
+          timestamp = lambda value: value.isoformat().replace("+00:00", "Z")
+          authorization = {
+              "schemaVersion": 1,
+              "kind": "stable-1.0-maintenance-activation-authorization",
+              "generatedAt": timestamp(now),
+              "authorizationId": f"activation-{run_id}-{run_attempt}",
+              "authority": "github-protected-environment",
+              "protectedEnvironment": protected_environment,
+              "workflowRepository": os.environ["GITHUB_REPOSITORY"],
+              "workflowRunId": run_id,
+              "workflowRunAttempt": int(run_attempt),
+              "sourceCommit": receipt_value["sourceCommit"],
+              "releaseId": receipt_value["releaseId"],
+              "buildVersion": receipt_value["buildVersion"],
+              "releaseClass": release_class,
+              "candidateIdentityDigest": receipt_value["candidateIdentityDigest"],
+              "publicationReceiptDigest": digest(receipt_path),
+              "successorBaselineDigest": digest(baseline_path),
+              "historyDigest": digest(history_path),
+              "originalAuthorizationDigest": digest(original_authorization_path),
+              "expectedCurrentPointerDigest": expected_pointer_digest,
+              "allowedScope": "successor-baseline:activate",
+              "authorizedAt": timestamp(now),
+              "expiresAt": timestamp(expires),
+              "status": "approved",
+              "redaction": {"status": "pass", "findingCount": 0, "findings": []},
+          }
+          if output_path.exists() or output_path.is_symlink():
+              raise SystemExit("refusing to replace an activation authorization")
+          output_path.write_text(
+              json.dumps(authorization, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          output_path.chmod(0o644)
+          PY
+          encoded_branch="${CRYPTAD_STABLE_MAINTENANCE_EXPECTED_SOURCE_BRANCH//\//%2F}"
+          current_branch_commit="$(gh api --method GET \
+            "repos/$GITHUB_REPOSITORY/git/ref/heads/$encoded_branch" --jq '.object.sha')"
+          if [[ "$current_branch_commit" != "$CRYPTAD_STABLE_MAINTENANCE_EXPECTED_SOURCE_COMMIT" ]]; then
+            echo "::error::The remote release/hotfix ref moved before baseline activation."
+            exit 1
+          fi
+          activation_marker="build/stable-maintenance-baseline-activation-started"
+          if [[ -e "$activation_marker" || -L "$activation_marker" ]]; then
+            echo "::error::Refusing to replace an existing activation-boundary marker."
+            exit 1
+          fi
+          (umask 022; : > "$activation_marker")
+          if [[ -L "$activation_marker" || ! -f "$activation_marker" ]]; then
+            echo "::error::The activation-boundary marker is unsafe."
+            exit 1
+          fi
+          python3 "$adapter" \
+            --mode activate-latest-baseline \
+            --maintenance-state-input-env CRYPTAD_STABLE_MAINTENANCE_STATE_INPUT \
+            --expected-current-pointer-digest "$INPUT_POINTER_DIGEST" \
+            --expected-source-repository "$GITHUB_REPOSITORY" \
+            --expected-source-branch "$CRYPTAD_STABLE_MAINTENANCE_EXPECTED_SOURCE_BRANCH" \
+            --expected-source-commit "$CRYPTAD_STABLE_MAINTENANCE_EXPECTED_SOURCE_COMMIT" \
+            --github-token-env GITHUB_TOKEN \
+            --recheck-remote-source-ref \
+            --successor-baseline "$baseline" \
+            --history-entry "$history" \
+            --publication-receipt "$receipt" \
+            --authorization "$authorization" \
+            --activation-authorization "$activation_authorization" \
+            --check-authorization-expiry \
+            --compare-and-swap \
+            --forbid-overwrite-on-conflict \
+            --verify-after-activation \
+            --activation-receipt build/stable-1.0-maintenance-baseline-activation-receipt.json
+          jq -e '
+            .status == "pass"
+            and .pointerUpdate == "activated"
+            and .verificationStatus == "pass"
+            and .redaction.status == "pass"' \
+            build/stable-1.0-maintenance-baseline-activation-receipt.json >/dev/null
+
+      - name: Stage baseline activation outcome
+        if: always()
+        run: |
+          set -euo pipefail
+          root="build/stable-maintenance-baseline-activation-audit"
+          rm -rf "$root"
+          mkdir -p "$root"
+          marker="build/stable-maintenance-baseline-activation-started"
+          marker_status=absent
+          activation_boundary_entered=false
+          if [[ -L "$marker" || ( -e "$marker" && ! -f "$marker" ) ]]; then
+            marker_status=unsafe
+            activation_boundary_entered=true
+          elif [[ -f "$marker" ]]; then
+            marker_status=present
+            activation_boundary_entered=true
+            cp "$marker" "$root/"
+          fi
+          receipt="build/stable-1.0-maintenance-baseline-activation-receipt.json"
+          observed_pointer_digest=''
+          if [[ ! -L "$receipt" && -f "$receipt" ]]; then
+            cp "$receipt" "$root/"
+            observed_pointer_digest="$(jq -r '.observedPointerDigest // empty' \
+              "$receipt" 2>/dev/null || true)"
+            if [[ ! "$observed_pointer_digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+              observed_pointer_digest=''
+            fi
+          fi
+          activation_authorization="build/stable-maintenance-baseline-activation/stable-1.0-maintenance-activation-authorization.json"
+          if [[ ! -L "$activation_authorization" && -f "$activation_authorization" ]]; then
+            cp "$activation_authorization" "$root/"
+          fi
+          jq -n \
+            --arg outcome "${{ steps.activation.outcome }}" \
+            --arg release_id "${{ inputs.release_id }}" \
+            --arg build "${{ inputs.build_version }}" \
+            --arg marker_status "$marker_status" \
+            --argjson activation_boundary_entered "$activation_boundary_entered" \
+            --arg observed_pointer_digest "$observed_pointer_digest" \
+            '{kind: "stable-1.0-maintenance-baseline-activation-workflow-audit",
+              releaseId: $release_id, buildVersion: $build, stepOutcome: $outcome,
+              activationBoundaryMarkerStatus: $marker_status,
+              activationBoundaryEntered: $activation_boundary_entered,
+              sideEffectsMayHaveOccurred: $activation_boundary_entered,
+              observedPointerDigest:
+                (if $observed_pointer_digest == "" then null else $observed_pointer_digest end),
+              activationReceiptPresent: false, activationAuthorizationPresent: false,
+              redaction: {status: "pass", findingCount: 0, findings: []}}' > "$root/workflow-audit.json"
+          if [[ -f "$root/stable-1.0-maintenance-baseline-activation-receipt.json" ]]; then
+            jq '.activationReceiptPresent = true' "$root/workflow-audit.json" \
+              > "$root/workflow-audit.tmp"
+            mv "$root/workflow-audit.tmp" "$root/workflow-audit.json"
+          fi
+          if [[ -f "$root/stable-1.0-maintenance-activation-authorization.json" ]]; then
+            jq '.activationAuthorizationPresent = true' "$root/workflow-audit.json" \
+              > "$root/workflow-audit.tmp"
+            mv "$root/workflow-audit.tmp" "$root/workflow-audit.json"
+          fi
+
+      - name: Upload baseline activation receipt
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: stable-1-0-maintenance-baseline-activation-${{ inputs.release_id }}-${{ inputs.build_version }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build/stable-maintenance-baseline-activation-audit/
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Summarize protected boundary
+        if: steps.activation.outcome == 'success'
+        run: |
+          echo "Exact public bytes were independently verified before the successor baseline pointer was activated." >> "$GITHUB_STEP_SUMMARY"
+          echo "This workflow did not create or merge release/hotfix branches and never squashes, rebases, or back-merges them." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Fail after retaining activation state
+        if: steps.activation.outcome != 'success'
+        run: |
+          echo "::error::Baseline activation failed or could not be verified; its exact receipt/audit was retained."
+          exit 1

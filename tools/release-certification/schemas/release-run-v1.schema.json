@@ -66,6 +66,20 @@
           "previousStableRcFreeze",
           "productionBeta",
           "publicBetaKnownIssues",
+          "coreUpdatePublicationReceipt",
+          "hotfixFollowUpEvidence",
+          "hotfixFollowUpClosure",
+          "hotfixFollowUpObligation",
+          "latestPublishedMaintenancePointer",
+          "maintenanceCandidate",
+          "maintenanceCandidateFreeze",
+          "maintenanceCandidateAssets",
+          "maintenanceCandidateChecksums",
+          "maintenanceCandidateProvenance",
+          "maintenanceEvidence",
+          "maintenancePolicy",
+          "predecessorBaseline",
+          "predecessorPublicationReceipt",
           "releaseCertification",
           "releaseHistory",
           "selectedStableRcArchive",
@@ -79,9 +93,18 @@
           "securityDrills",
           "stableCatalogOperations",
           "stableGaAuthorization",
+          "stableGaAuthorizationSummary",
+          "stableGaChecksums",
+          "stableGaMaintenanceBaseline",
           "stableGaPolicy",
+          "stableGaPromotionSummary",
+          "stableGaProvenance",
+          "stableGaPublicationPlan",
           "stableGaPublicationReceipt",
+          "stableGaValidation",
           "stableKnownLimitations",
+          "stableMaintenanceAuthorization",
+          "stableMaintenancePublicationReceipt",
           "stableRcFreezeExceptions",
           "stableRcValidation",
           "stableReadiness",
@@ -102,10 +125,21 @@
           "type": "string",
           "pattern": "^[0-9a-f]{40,64}$"
         },
+        "candidateBaseCommit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40,64}$"
+        },
+        "candidateSourceBranch": {"type": "string", "minLength": 1},
         "candidateSourceRef": {"type": "string", "minLength": 1},
         "catalogChannel": {"enum": ["stable", "beta", "nightly", "deprecated"]},
         "expectedPreviousReleaseId": {"type": "string", "minLength": 1},
         "expectedPreviousProductDigest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "expectedPredecessorBuild": {"type": "string", "minLength": 1},
+        "expectedPredecessorReleaseId": {"type": "string", "minLength": 1},
+        "expectedPredecessorProductDigest": {
           "type": "string",
           "pattern": "^sha256:[0-9a-f]{64}$"
         },
@@ -114,6 +148,7 @@
         "publicationIntent": {
           "const": "prepare-explicit-protected-publication"
         },
+        "releaseClass": {"enum": ["maintenance", "security-hotfix"]},
         "stableRcFreezeMode": {"enum": ["first-freeze", "refreeze"]},
         "metadata": {
           "type": "object",
@@ -156,6 +191,7 @@
           "stable-readiness",
           "stable-rc",
           "stable-ga",
+          "stable-maintenance",
           "multi-node-beta",
           "security-response"
         ]

@@ -2,8 +2,8 @@
 name: cryptad-release-workflow
 description: |
   Cut and stabilize a Cryptad release branch using integer build-number versioning, v-number tags,
-  no-squash --no-ff merges into main and develop, and the protected Stable 1.0 RC/GA path when the
-  release targets that product milestone.
+  no-squash --no-ff merges into main and develop, and the protected Stable 1.0 RC/GA or later
+  maintenance path when the release targets that product milestone.
 ---
 
 # Release workflow (release/<build-number>)
@@ -34,6 +34,9 @@ Build: 2
 - For Stable 1.0, freeze with `stable-rc` and promote that exact product with `stable-ga`. Do not
   rebuild, re-sign, rewrite the catalog, or create the GA tag/Release outside the explicitly
   protected publication operation.
+- After Stable 1.0 GA, use `stable-maintenance` for both routine maintenance and security hotfix
+  candidates. It builds and freezes one new integer-build candidate; the protected maintenance
+  workflow publishes only those authorized bytes and never merges the branch.
 - Use `docs/cryptad-release-workflow-and-runbook.md` as the detailed release-readiness source of
   truth. Current release gates include the release certification report, first-party app
   staging/signing/verification, first-party beta catalog and trusted app-review receipt smoke,
@@ -153,9 +156,10 @@ git checkout -b release/<build-number>
 git tag v<build-number>
 ```
 
-For Stable 1.0 GA, do not run that command manually. The explicitly authorized protected
-publication job creates or idempotently verifies the annotated `v<build-number>` tag at the exact
-authorized commit. It does not merge the release branch.
+For Stable 1.0 GA or a later Stable 1.0 maintenance release, do not run that command manually. The
+applicable explicitly authorized protected publication job creates or idempotently verifies the
+annotated `v<build-number>` tag at the exact authorized commit. It does not merge the release
+branch.
 
 5) Merge forward to `main` (no squash; preserve branch context):
 ```sh
@@ -232,6 +236,73 @@ GitHub Release creation.
       insert URIs, raw trusted reviewer public key bytes, provider app data, raw signatures, raw
       incident artifacts, raw fetched content, command lines containing secrets, CI secret values,
       and unsanitized local paths.
+
+## Stable 1.0 maintenance releases after GA
+
+For a later routine Stable 1.0 release, copy
+`tools/release-certification/manifests/stable-1.0-maintenance.example.json`, replace every
+placeholder, select `policies.releaseClass=maintenance`, and run:
+
+```bash
+python3 tools/release-certification/certify.py stable-maintenance \
+  --manifest build/stable-1.0-maintenance.json
+```
+
+The command is side-effect-free. It authenticates the immutable GA v1 baseline and complete GA
+receipt, authenticates the latest published predecessor, freezes one new candidate, enforces
+compatibility and evidence gates, and prepares an authorization or closes a hotfix follow-up. The
+protected `.github/workflows/stable-1.0-maintenance-release.yml` workflow revalidates current public
+state, creates or verifies the annotated tag, publishes exact bytes, and activates a successor v2
+baseline only after receipt verification. It never creates or merges `release/<build-number>`.
+Publication retries may continue only after an exact matching target prefix; non-prefix partial
+state is a conflict. Latest-baseline activation uses a fresh, activation-only authorization issued
+inside the protected activation environment and bound to the verified receipt, successor, history,
+original authorization digest, and expected pointer. Do not extend or replace the immutable public
+publication authorization merely because an activation approval wait crossed its expiry.
+The evidence environment must configure exact producer identities in
+`CRYPTAD_STABLE_MAINTENANCE_INPUT_SIGNER_WORKFLOW` and
+`CRYPTAD_STABLE_MAINTENANCE_WINDOWS_SIGNER_WORKFLOW`. Configure the reviewed publication-backend
+source commit, wheel digest, signer workflow, and entry point as repository-level Actions variables
+so they are visible to the evidence-scoped independent verifier and both publication environments;
+never scope those four immutable identity pins only to a publication environment. Missing producer
+authentication or publication infrastructure is a hard stop, not permission to accept a path or
+URL as identity.
+Use the checked-in protected input and Windows package producer workflow identities. The input
+producer retrieves only the exact-digest, public-safe phase ZIP through the evidence environment's
+secret locator. It must reject every non-global DNS result, connect only to the validated numeric
+addresses, verify the connected peer, and retain the original hostname for TLS SNI and certificate
+verification before sending any bearer credential. The Windows producer builds once,
+Authenticode-signs and verifies the amd64 EXE, rechecks tracked source state, and attests both the
+EXE and its receipt.
+
+Run `.github/workflows/stable-1.0-maintenance-release.yml` through its four closed operations:
+`freeze-candidate`, `prepare-authorization`, `validate-authorization`, then `publish`. Only freeze
+may build candidate assets. Prepare consumes the exact attested freeze plus post-freeze evidence;
+authorization validation consumes the exact prepared bundle plus one exact authorization JSON; and
+publish consumes only that authorized bundle. The macOS producer must Developer-ID-sign, notarize,
+staple, and verify its DMG before the freeze record is written. Publication jobs authenticate and
+install the pinned provider wheel on the clean runner and recheck the remote release/hotfix ref and
+authorization before mutation. Never collapse the four operations into one run or accept a
+replacement candidate/evidence/authorization input at publication time.
+Record the exact producing run id, artifact name, and Actions artifact digest at every handoff.
+Freeze additionally requires the protected Windows producer coordinates and exact EXE SHA-256;
+publish additionally requires the reviewed publication-backend producer coordinates. A path,
+artifact name, run id, or digest by itself is not a complete producer identity.
+
+Configure `LEUMOR_GITHUB_TOKEN` on both maintenance publication environments. The protected
+workflow must verify that token's `/user` login is exactly `leumor` and give it, rather than the
+job-scoped Actions token, to tag, GitHub Release, and release-asset mutations. Keep the Actions
+token read-only and use it only to authenticate workflow artifacts and attestations.
+
+The canonical provider verifies a separately pre-staged artifact base and uses a closed deployment
+service for catalog, CoreUpdater, publication verification, and latest-pointer state. Its
+`verify-publication` request carries the digest-bound records needed to build the receipt,
+successor, and history; do not provision an undocumented service-side candidate copy. Follow
+`tools/release-certification/publication-backend/README.md` for the exact protocol and accepted
+public-HTTPS endpoint forms.
+
+Follow `docs/stable-1.0-maintenance-release-and-hotfix-path.md`. Preserve manual no-squash,
+`--no-ff` merges into `main` and `develop` after the release-manager-approved publication flow.
 - [ ] Tag `v<build-number>` created.
 - [ ] Merged to `main` with `--no-ff` (no squash), then back-merged to `develop` with `--no-ff`.
 - [ ] Branches and tag pushed.

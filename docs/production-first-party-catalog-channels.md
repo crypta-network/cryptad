@@ -153,3 +153,15 @@ The Stable GA publication receipt verifies the primary and every authorized mirr
 same catalog and signature bytes and records rollback/key-rotation/advisory state. Mirrors remain
 transport fallbacks, not trust authorities. The resulting Stable 1.0 maintenance baseline carries
 the frozen app set and signed maintenance commitments into later maintenance and hotfix comparison.
+
+## Maintenance catalog publication
+
+A maintenance candidate records an exact catalog and first-party app delta against both the GA
+baseline and the immediately preceding release. Compatible patch and security updates still require
+trusted bundle signing, review receipts, permission-change consent, migration and backup evidence,
+and non-decreasing support commitments. Catalog downgrade, missing apps, untrusted keys, stale
+mirrors, or rollback conflicts block publication.
+
+Protected publication may accept pre-existing catalog state only when every signed byte, revision,
+mirror, and rollback observation matches. See the [Stable 1.0 maintenance release and security
+hotfix path](stable-1.0-maintenance-release-and-hotfix-path.md).

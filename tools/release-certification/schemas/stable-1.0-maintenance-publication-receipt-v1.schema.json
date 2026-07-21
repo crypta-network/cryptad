@@ -1,0 +1,155 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/crypta-network/cryptad/tools/release-certification/schemas/stable-1.0-maintenance-publication-receipt-v1.schema.json",
+  "title": "Cryptad Stable 1.0 maintenance publication receipt v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "kind", "generatedAt", "releaseId", "buildVersion", "releaseClass",
+    "sourceCommit", "githubReleasePageUri", "deploymentServicePublicUri",
+    "latestPointerPublicUri", "candidateIdentityDigest", "productDigest", "checksumsDigest",
+    "provenanceDigest", "authorizationDigest", "publicationPlanDigest", "releaseNotesDigest", "coreInfoDigest", "coreUpdateReceiptDigest",
+    "successorBaselineDigest", "releaseHistoryDigest", "tag", "githubRelease", "assets",
+    "stableCatalog", "coreUpdate", "workflow", "publicObservations", "publicationState",
+    "finalVerificationStatus", "failureCategory", "redaction"
+  ],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "kind": {"const": "stable-1.0-maintenance-publication-receipt"},
+    "generatedAt": {"type": "string", "format": "date-time"},
+    "releaseId": {"$ref": "#/$defs/releaseId"},
+    "buildVersion": {"$ref": "#/$defs/buildVersion"},
+    "releaseClass": {"$ref": "#/$defs/releaseClass"},
+    "sourceCommit": {"$ref": "#/$defs/commit"},
+    "githubReleasePageUri": {"type": "string", "format": "uri"},
+    "deploymentServicePublicUri": {"type": "string", "format": "uri"},
+    "latestPointerPublicUri": {"type": "string", "format": "uri"},
+    "candidateIdentityDigest": {"$ref": "#/$defs/digest"},
+    "productDigest": {"$ref": "#/$defs/digest"},
+    "checksumsDigest": {"$ref": "#/$defs/digest"},
+    "provenanceDigest": {"$ref": "#/$defs/digest"},
+    "authorizationDigest": {"$ref": "#/$defs/digest"},
+    "publicationPlanDigest": {"$ref": "#/$defs/digest"},
+    "releaseNotesDigest": {"$ref": "#/$defs/digest"},
+    "coreInfoDigest": {"$ref": "#/$defs/digest"},
+    "coreUpdateReceiptDigest": {"$ref": "#/$defs/digest"},
+    "successorBaselineDigest": {"$ref": "#/$defs/digest"},
+    "releaseHistoryDigest": {"$ref": "#/$defs/digest"},
+    "tag": {"$ref": "#/$defs/tag"},
+    "githubRelease": {"$ref": "#/$defs/githubRelease"},
+    "assets": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/asset"}},
+    "stableCatalog": {"$ref": "#/$defs/stableCatalog"},
+    "coreUpdate": {"$ref": "#/$defs/coreUpdate"},
+    "workflow": {"$ref": "#/$defs/workflow"},
+    "publicObservations": {"$ref": "#/$defs/publicObservations"},
+    "publicationState": {"enum": ["publication-complete", "publication-partial", "publication-verification-failed"]},
+    "finalVerificationStatus": {"enum": ["pass", "fail"]},
+    "failureCategory": {"oneOf": [{"enum": ["tag-conflict", "release-conflict", "asset-conflict", "artifact-base-conflict", "catalog-conflict", "core-update-conflict", "partial-publication", "verification-unavailable"]}, {"type": "null"}]},
+    "redaction": {"$ref": "#/$defs/redaction"}
+  },
+  "$defs": {
+    "nonEmpty": {"type": "string", "minLength": 1},
+    "releaseId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"},
+    "buildVersion": {"type": "string", "pattern": "^[1-9][0-9]*$"},
+    "commit": {"type": "string", "pattern": "^[0-9a-f]{40,64}$"},
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "releaseClass": {"enum": ["maintenance", "security-hotfix"]},
+    "operation": {"enum": ["created", "verified-existing", "partial"]},
+    "verification": {"enum": ["verified", "conflict", "unavailable"]},
+    "tag": {
+      "type": "object", "additionalProperties": false,
+      "required": ["name", "objectType", "targetCommit", "tagObjectDigest", "operation", "verificationStatus"],
+      "properties": {
+        "name": {"type": "string", "pattern": "^v[1-9][0-9]*$"},
+        "objectType": {"const": "annotated"},
+        "targetCommit": {"$ref": "#/$defs/commit"},
+        "tagObjectDigest": {"$ref": "#/$defs/digest"},
+        "operation": {"$ref": "#/$defs/operation"},
+        "verificationStatus": {"$ref": "#/$defs/verification"}
+      }
+    },
+    "githubRelease": {
+      "type": "object", "additionalProperties": false,
+      "required": ["releaseId", "tag", "pageUri", "notesDigest", "operation", "verificationStatus"],
+      "properties": {
+        "releaseId": {"$ref": "#/$defs/nonEmpty"},
+        "tag": {"type": "string", "pattern": "^v[1-9][0-9]*$"},
+        "pageUri": {"type": "string", "format": "uri"},
+        "notesDigest": {"$ref": "#/$defs/digest"},
+        "operation": {"$ref": "#/$defs/operation"},
+        "verificationStatus": {"$ref": "#/$defs/verification"}
+      }
+    },
+    "asset": {
+      "type": "object", "additionalProperties": false,
+      "required": ["role", "fileName", "digest", "sizeBytes", "publicUri", "operation", "verificationStatus"],
+      "properties": {
+        "role": {"$ref": "#/$defs/nonEmpty"},
+        "fileName": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"},
+        "digest": {"$ref": "#/$defs/digest"},
+        "sizeBytes": {"type": "integer", "minimum": 1},
+        "publicUri": {"type": "string", "format": "uri"},
+        "operation": {"$ref": "#/$defs/operation"},
+        "verificationStatus": {"$ref": "#/$defs/verification"}
+      }
+    },
+    "stableCatalog": {
+      "type": "object", "additionalProperties": false,
+      "required": ["catalogId", "revision", "edition", "digest", "signatureDigest", "publicUri", "signaturePublicUri", "mirrorSetDigest", "rollbackStateDigest", "operation", "verificationStatus"],
+      "properties": {
+        "catalogId": {"$ref": "#/$defs/nonEmpty"},
+        "revision": {"type": "integer", "minimum": 0},
+        "edition": {"type": "integer", "minimum": 0},
+        "digest": {"$ref": "#/$defs/digest"},
+        "signatureDigest": {"$ref": "#/$defs/digest"},
+        "publicUri": {"type": "string", "format": "uri"},
+        "signaturePublicUri": {"type": "string", "format": "uri"},
+        "mirrorSetDigest": {"$ref": "#/$defs/digest"},
+        "rollbackStateDigest": {"$ref": "#/$defs/digest"},
+        "operation": {"$ref": "#/$defs/operation"},
+        "verificationStatus": {"$ref": "#/$defs/verification"}
+      }
+    },
+    "coreUpdate": {
+      "type": "object", "additionalProperties": false,
+      "required": ["edition", "descriptorDigest", "publicUri", "packageMapDigest", "operation", "verificationStatus"],
+      "properties": {
+        "edition": {"type": "integer", "minimum": 1},
+        "descriptorDigest": {"$ref": "#/$defs/digest"},
+        "publicUri": {"type": "string", "format": "uri"},
+        "packageMapDigest": {"$ref": "#/$defs/digest"},
+        "operation": {"$ref": "#/$defs/operation"},
+        "verificationStatus": {"$ref": "#/$defs/verification"}
+      }
+    },
+    "workflow": {
+      "type": "object", "additionalProperties": false,
+      "required": ["repository", "runId", "runAttempt", "environment", "actor", "attestationDigest"],
+      "properties": {
+        "repository": {"const": "crypta-network/cryptad"},
+        "runId": {"type": "integer", "minimum": 1},
+        "runAttempt": {"type": "integer", "minimum": 1},
+        "environment": {"enum": ["stable-1.0-maintenance-publication", "stable-1.0-security-hotfix-publication"]},
+        "actor": {"$ref": "#/$defs/nonEmpty"},
+        "attestationDigest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "publicObservations": {
+      "type": "object", "additionalProperties": false,
+      "required": ["tag", "githubRelease", "assets", "artifactBase", "stableCatalog", "coreUpdate"],
+      "properties": {
+        "tag": {"$ref": "#/$defs/verification"},
+        "githubRelease": {"$ref": "#/$defs/verification"},
+        "assets": {"$ref": "#/$defs/verification"},
+        "artifactBase": {"$ref": "#/$defs/verification"},
+        "stableCatalog": {"$ref": "#/$defs/verification"},
+        "coreUpdate": {"$ref": "#/$defs/verification"}
+      }
+    },
+    "redaction": {
+      "type": "object", "additionalProperties": false,
+      "required": ["status", "findingCount", "findings"],
+      "properties": {"status": {"const": "pass"}, "findingCount": {"const": 0}, "findings": {"type": "array", "maxItems": 0}}
+    }
+  }
+}

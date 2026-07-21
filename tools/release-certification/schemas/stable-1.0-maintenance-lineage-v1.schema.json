@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/crypta-network/cryptad/tools/release-certification/schemas/stable-1.0-maintenance-lineage-v1.schema.json",
+  "title": "Cryptad Stable 1.0 maintenance lineage v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "kind", "generatedAt", "stableMilestone", "gaRoot", "predecessor",
+    "candidate", "chainDepth", "previousLineageDigest", "latestPublishedPointerDigest",
+    "noGap", "noFork", "status", "redaction"
+  ],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "kind": {"const": "stable-1.0-maintenance-lineage"},
+    "generatedAt": {"type": "string", "format": "date-time"},
+    "stableMilestone": {"const": "1.0"},
+    "gaRoot": {"$ref": "#/$defs/gaRoot"},
+    "predecessor": {"$ref": "#/$defs/predecessor"},
+    "candidate": {"$ref": "#/$defs/candidate"},
+    "chainDepth": {"type": "integer", "minimum": 1},
+    "previousLineageDigest": {"$ref": "#/$defs/digest"},
+    "latestPublishedPointerDigest": {"$ref": "#/$defs/digest"},
+    "noGap": {"const": true},
+    "noFork": {"const": true},
+    "status": {"const": "pass"},
+    "redaction": {"$ref": "#/$defs/redaction"}
+  },
+  "$defs": {
+    "nonEmpty": {"type": "string", "minLength": 1},
+    "releaseId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"},
+    "buildVersion": {"type": "string", "pattern": "^[1-9][0-9]*$"},
+    "commit": {"type": "string", "pattern": "^[0-9a-f]{40,64}$"},
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "releaseClass": {"enum": ["maintenance", "security-hotfix"]},
+    "gaRoot": {
+      "type": "object", "additionalProperties": false,
+      "required": ["releaseId", "buildVersion", "tag", "sourceCommit", "productDigest", "maintenanceBaselineDigest", "publicationReceiptDigest", "publicationState"],
+      "properties": {
+        "releaseId": {"$ref": "#/$defs/releaseId"},
+        "buildVersion": {"$ref": "#/$defs/buildVersion"},
+        "tag": {"type": "string", "pattern": "^v[1-9][0-9]*$"},
+        "sourceCommit": {"$ref": "#/$defs/commit"},
+        "productDigest": {"$ref": "#/$defs/digest"},
+        "maintenanceBaselineDigest": {"$ref": "#/$defs/digest"},
+        "publicationReceiptDigest": {"$ref": "#/$defs/digest"},
+        "publicationState": {"const": "publication-complete"}
+      }
+    },
+    "predecessor": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "releaseId", "buildVersion", "tag", "sourceCommit", "productDigest", "releaseClass",
+        "publicationReceiptDigest", "successorBaselineDigest", "hotfixFollowUpClosureDigest",
+        "publicationState"
+      ],
+      "properties": {
+        "releaseId": {"$ref": "#/$defs/releaseId"},
+        "buildVersion": {"$ref": "#/$defs/buildVersion"},
+        "tag": {"type": "string", "pattern": "^v[1-9][0-9]*$"},
+        "sourceCommit": {"$ref": "#/$defs/commit"},
+        "productDigest": {"$ref": "#/$defs/digest"},
+        "releaseClass": {"oneOf": [{"$ref": "#/$defs/releaseClass"}, {"const": "stable-ga"}]},
+        "publicationReceiptDigest": {"$ref": "#/$defs/digest"},
+        "successorBaselineDigest": {"oneOf": [{"$ref": "#/$defs/digest"}, {"type": "null"}]},
+        "hotfixFollowUpClosureDigest": {"oneOf": [{"$ref": "#/$defs/digest"}, {"type": "null"}]},
+        "publicationState": {"const": "publication-complete"}
+      }
+    },
+    "candidate": {
+      "type": "object", "additionalProperties": false,
+      "required": ["releaseId", "buildVersion", "tag", "sourceBranch", "sourceRef", "sourceCommit", "releaseClass"],
+      "properties": {
+        "releaseId": {"$ref": "#/$defs/releaseId"},
+        "buildVersion": {"$ref": "#/$defs/buildVersion"},
+        "tag": {"type": "string", "pattern": "^v[1-9][0-9]*$"},
+        "sourceBranch": {"type": "string", "pattern": "^(release|hotfix)/[1-9][0-9]*$"},
+        "sourceRef": {"type": "string", "pattern": "^commit:[0-9a-f]{40,64}$"},
+        "sourceCommit": {"$ref": "#/$defs/commit"},
+        "releaseClass": {"$ref": "#/$defs/releaseClass"}
+      }
+    },
+    "redaction": {
+      "type": "object", "additionalProperties": false,
+      "required": ["status", "findingCount", "findings"],
+      "properties": {"status": {"const": "pass"}, "findingCount": {"const": 0}, "findings": {"type": "array", "maxItems": 0}}
+    }
+  }
+}

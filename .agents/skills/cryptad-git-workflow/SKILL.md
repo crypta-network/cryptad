@@ -48,6 +48,12 @@ Use this skill whenever you:
   GitHub Release only after exact-RC validation and environment approval. It never merges the
   release branch. Continue to use explicit release-manager-approved `--no-ff` merges into `main`
   and `develop`.
+- The protected Stable 1.0 maintenance workflow applies the same boundary to later routine
+  `release/<build-number>` and security `hotfix/<build-number>` candidates: it may create or verify
+  the annotated tag and exact public state, but it never creates or merges branches.
+  Follow `docs/stable-1.0-maintenance-release-and-hotfix-path.md` for the protected sequence and
+  verify that the eventual `main` merge contains the tagged shipped commit; a `--no-ff` merge gives
+  `main` a distinct merge-commit tip.
 - PR policy: require green CI and at least one approval.
 - **Always ask before creating a GitHub pull request.** Do not open PRs without explicit approval.
 
@@ -70,6 +76,9 @@ For Stable 1.0, also verify:
       `publication-verification-failed` without recovery code mutating it.
 - [ ] No test, local default, pull-request workflow, or validate-only run can create a tag, Release,
       branch, public catalog update, update descriptor, or network insert.
+- [ ] For a later Stable 1.0 release, `stable-maintenance` authenticated the immutable GA root and
+      latest published predecessor, and the protected receipt verifies exact candidate bytes before
+      the manual no-squash, `--no-ff` merge-back.
 
 ## Git identity policy (must follow)
 ### GitHub operation identity

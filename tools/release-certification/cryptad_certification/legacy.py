@@ -32,6 +32,7 @@ KIND_BY_COMMAND = {
     "stable-readiness": "stable-1.0-readiness",
     "stable-rc": "stable-1.0-rc",
     "stable-ga": "stable-1.0-ga-promotion",
+    "stable-maintenance": "stable-1.0-maintenance-promotion",
 }
 V2_KIND_BY_INPUT = {
     "appPlatform": "app-platform-smoke",
@@ -921,6 +922,16 @@ def _run_stable_ga(context: RunContext) -> tuple[int, Path, Path | None]:
     return engine.run(context)
 
 
+def _run_stable_maintenance(context: RunContext) -> tuple[int, Path, Path | None]:
+    """Run side-effect-free Stable 1.0 maintenance or hotfix certification."""
+
+    if context.manifest.release.profile != "stable-review":
+        raise ValueError("stable-maintenance requires release.profile stable-review")
+    from .engines import stable_1_0_maintenance as engine
+
+    return engine.run(context)
+
+
 def _run_passthrough(context: RunContext, command: str, action: str | None) -> tuple[int, Path, Path | None]:
     engine: Any
     out = _legacy_dir(context)
@@ -1037,6 +1048,7 @@ RUNNERS: dict[str, Callable[[RunContext], tuple[int, Path, Path | None]]] = {
     "stable-readiness": _run_stable_readiness,
     "stable-rc": _run_stable_rc,
     "stable-ga": _run_stable_ga,
+    "stable-maintenance": _run_stable_maintenance,
 }
 
 

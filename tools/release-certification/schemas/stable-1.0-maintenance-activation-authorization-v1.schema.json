@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/crypta-network/cryptad/tools/release-certification/schemas/stable-1.0-maintenance-activation-authorization-v1.schema.json",
+  "title": "Cryptad Stable 1.0 maintenance latest-baseline activation authorization v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "kind", "generatedAt", "authorizationId", "authority",
+    "protectedEnvironment", "workflowRepository", "workflowRunId", "workflowRunAttempt",
+    "sourceCommit", "releaseId", "buildVersion", "releaseClass",
+    "candidateIdentityDigest", "publicationReceiptDigest", "successorBaselineDigest",
+    "historyDigest", "originalAuthorizationDigest", "expectedCurrentPointerDigest",
+    "allowedScope", "authorizedAt", "expiresAt", "status", "redaction"
+  ],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "kind": {"const": "stable-1.0-maintenance-activation-authorization"},
+    "generatedAt": {"type": "string", "format": "date-time"},
+    "authorizationId": {"type": "string", "pattern": "^activation-[1-9][0-9]*-[1-9][0-9]*$"},
+    "authority": {"const": "github-protected-environment"},
+    "protectedEnvironment": {
+      "enum": [
+        "stable-1.0-maintenance-publication",
+        "stable-1.0-security-hotfix-publication"
+      ]
+    },
+    "workflowRepository": {"const": "crypta-network/cryptad"},
+    "workflowRunId": {"type": "string", "pattern": "^[1-9][0-9]*$"},
+    "workflowRunAttempt": {"type": "integer", "minimum": 1},
+    "sourceCommit": {"type": "string", "pattern": "^[0-9a-f]{40,64}$"},
+    "releaseId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"},
+    "buildVersion": {"type": "string", "pattern": "^[1-9][0-9]*$"},
+    "releaseClass": {"enum": ["maintenance", "security-hotfix"]},
+    "candidateIdentityDigest": {"$ref": "#/$defs/digest"},
+    "publicationReceiptDigest": {"$ref": "#/$defs/digest"},
+    "successorBaselineDigest": {"$ref": "#/$defs/digest"},
+    "historyDigest": {"$ref": "#/$defs/digest"},
+    "originalAuthorizationDigest": {"$ref": "#/$defs/digest"},
+    "expectedCurrentPointerDigest": {"$ref": "#/$defs/digest"},
+    "allowedScope": {"const": "successor-baseline:activate"},
+    "authorizedAt": {"type": "string", "format": "date-time"},
+    "expiresAt": {"type": "string", "format": "date-time"},
+    "status": {"const": "approved"},
+    "redaction": {"$ref": "#/$defs/redaction"}
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "redaction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "findingCount", "findings"],
+      "properties": {
+        "status": {"const": "pass"},
+        "findingCount": {"const": 0},
+        "findings": {"type": "array", "maxItems": 0}
+      }
+    }
+  }
+}

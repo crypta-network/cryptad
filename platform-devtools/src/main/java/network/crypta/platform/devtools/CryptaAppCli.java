@@ -4490,6 +4490,12 @@ public final class CryptaAppCli implements Runnable {
     @Option(names = "--catalog-file", required = true, description = "Catalog properties file.")
     private Path catalogFile;
 
+    @Option(names = "--catalog-signature-file", description = "Exact detached signature sidecar.")
+    private Path catalogSignatureFile;
+
+    @Option(names = "--expected-key-id", description = "Exact expected catalog signing key id.")
+    private String expectedKeyId;
+
     @Option(names = "--trusted-keys-file", description = "Trusted keys properties file.")
     private Path trustedKeysFile;
 
@@ -4508,14 +4514,19 @@ public final class CryptaAppCli implements Runnable {
           KeyMaterialLoader.loadTrustedKeys(
               trustedKeysFile, trustedKeyId, trustedPublicKeyBase64, trustedPublicKeyFile);
       Path signatureFile =
-          catalogFile
-              .toAbsolutePath()
-              .normalize()
-              .resolveSibling(AppCatalogSignature.SIGNATURE_FILE_NAME);
+          catalogSignatureFile == null
+              ? catalogFile
+                  .toAbsolutePath()
+                  .normalize()
+                  .resolveSibling(AppCatalogSignature.SIGNATURE_FILE_NAME)
+              : catalogSignatureFile;
       if (!Files.exists(signatureFile)) {
         throw new AppDistributionException("missing catalog signature: " + signatureFile);
       }
-      AppCatalog catalog = AppCatalogVerifier.verify(catalogFile, trustedKeys);
+      AppCatalog catalog =
+          expectedKeyId == null
+              ? AppCatalogVerifier.verify(catalogFile, signatureFile, trustedKeys, null)
+              : AppCatalogVerifier.verify(catalogFile, signatureFile, trustedKeys, expectedKeyId);
       super.commandLine().getOut().println("Verified catalog: " + catalog.catalogId());
       return CommandLine.ExitCode.OK;
     }

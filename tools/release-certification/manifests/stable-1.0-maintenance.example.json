@@ -1,0 +1,87 @@
+{
+  "schemaVersion": 1,
+  "release": {
+    "id": "cryptad-stable-1-0-maintenance-REPLACE_ME",
+    "version": "REPLACE_WITH_INTEGER_BUILD",
+    "profile": "stable-review"
+  },
+  "output": {
+    "root": "build/release-certification",
+    "reset": true
+  },
+  "requirements": {
+    "history": true,
+    "liveNetwork": true,
+    "multiNodeSoak": true,
+    "sandboxProviderTests": true,
+    "stableReadiness": true,
+    "thirdPartyIntake": true
+  },
+  "inputs": {
+    "stableGaPromotionSummary": "build/protected-inputs/stable-ga/stable-1.0-ga-promotion-summary.json",
+    "stableGaValidation": "build/protected-inputs/stable-ga/stable-1.0-ga-validation.json",
+    "stableGaAuthorizationSummary": "build/protected-inputs/stable-ga/stable-1.0-ga-authorization-summary.json",
+    "stableGaPublicationPlan": "build/protected-inputs/stable-ga/stable-1.0-ga-publication-plan.json",
+    "stableGaPublicationReceipt": "build/protected-inputs/stable-ga/stable-1.0-ga-publication-receipt.json",
+    "stableGaChecksums": "build/protected-inputs/stable-ga/stable-1.0-ga-checksums.txt",
+    "stableGaProvenance": "build/protected-inputs/stable-ga/stable-1.0-ga-provenance.json",
+    "stableGaMaintenanceBaseline": "build/protected-inputs/stable-ga/stable-1.0-maintenance-baseline.json",
+    "predecessorPublicationReceipt": "build/protected-inputs/predecessor/publication-receipt.json",
+    "predecessorBaseline": "build/protected-inputs/predecessor/maintenance-baseline.json",
+    "maintenanceCandidate": "build/protected-inputs/candidate/stable-1.0-maintenance-candidate-input.json",
+    "maintenanceCandidateFreeze": "build/protected-inputs/candidate/stable-1.0-maintenance-candidate-freeze.json",
+    "maintenanceCandidateAssets": "build/protected-inputs/candidate/assets",
+    "maintenanceCandidateChecksums": "build/protected-inputs/candidate/checksums.txt",
+    "maintenanceCandidateProvenance": "build/protected-inputs/candidate/provenance.json",
+    "maintenanceEvidence": "build/protected-inputs/evidence/stable-1.0-maintenance-evidence.json",
+    "maintenancePolicy": "tools/release-certification/stable-1.0-maintenance-policy.json",
+    "stableMaintenanceAuthorization": "build/protected-inputs/authorization/stable-1.0-maintenance-authorization.json"
+  },
+  "policies": {
+    "artifactBaseUri": "https://REPLACE_ME.invalid/stable-1.0/maintenance/",
+    "candidateSourceBranch": "release/REPLACE_WITH_INTEGER_BUILD",
+    "candidateSourceCommit": "REPLACE_WITH_EXACT_LOWERCASE_SOURCE_COMMIT",
+    "candidateBaseCommit": "REPLACE_WITH_EXACT_LOWERCASE_BASE_COMMIT",
+    "candidateSourceRef": "commit:REPLACE_WITH_EXACT_LOWERCASE_SOURCE_COMMIT",
+    "catalogChannel": "stable",
+    "expectedPredecessorBuild": "REPLACE_WITH_PREDECESSOR_INTEGER_BUILD",
+    "expectedPredecessorProductDigest": "sha256:REPLACE_WITH_PREDECESSOR_PRODUCT_SHA256",
+    "expectedPredecessorReleaseId": "REPLACE_WITH_PREDECESSOR_RELEASE_ID",
+    "metadata": {
+      "catalogPrimaryUri": "https://REPLACE_ME.invalid/catalog/first-party-catalog.properties",
+      "catalogMirrorUris": "https://REPLACE_ME_MIRROR.invalid/catalog/first-party-catalog.properties",
+      "catalogRollbackUri": "https://REPLACE_ME.invalid/catalog/history/REPLACE_WITH_ROLLBACK_REVISION/first-party-catalog.properties",
+      "coreUpdatePublicUri": "https://REPLACE_ME.invalid/core-update/info/REPLACE_WITH_INTEGER_BUILD/core-info.json",
+      "deploymentServicePublicUri": "https://REPLACE_ME.invalid/stable-1.0/deployment/observe",
+      "githubReleasePageUri": "https://github.com/crypta-network/cryptad/releases/tag/vREPLACE_WITH_INTEGER_BUILD",
+      "latestPointerPublicUri": "https://REPLACE_ME.invalid/stable-1.0/maintenance/latest.json",
+      "hotfixAffectedPlatforms": "not-applicable",
+      "hotfixIncidentId": "not-applicable",
+      "hotfixSeverity": "not-applicable"
+    },
+    "publicationIntent": "prepare-explicit-protected-publication",
+    "releaseClass": "maintenance"
+  },
+  "execution": {
+    "allowDirtyWorkspace": false,
+    "allowTestSigningInProduction": false,
+    "collectEvidence": false,
+    "collectLiveNetwork": false,
+    "emergencySkipBuild": false,
+    "emergencySkipLiveNetwork": false,
+    "fixtureEvidence": false,
+    "generateStableReadiness": false,
+    "runMultiNodeSoak": false,
+    "runThirdPartyIntakeSampleFlow": false,
+    "skipFullBuild": true,
+    "skipGitMetadata": false,
+    "skipGradle": true,
+    "writeHistory": false
+  },
+  "commands": {
+    "stable-maintenance": {
+      "args": [],
+      "mode": "validate-only"
+    }
+  }
+}

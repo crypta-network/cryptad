@@ -219,3 +219,15 @@ archive redaction, and every required redaction result must pass before publicat
 
 See [the tooling README](../tools/release-certification/README.md) for the command tree, manifest
 schema, evidence envelope v2, and focused self-test commands.
+
+## Stable 1.0 maintenance component
+
+`stable-maintenance` is the canonical component for both routine maintenance and critical security
+hotfix candidates after Stable 1.0 GA. It authenticates the immutable GA root and latest published
+predecessor, freezes one new integer-build candidate, compares compatibility and production
+evidence, prepares closed-scope authorization, and emits deterministic publication and successor
+baseline records. Local modes are side-effect-free; only the protected workflow may publish the
+authorized bytes.
+
+See the [Stable 1.0 maintenance release and security hotfix
+path](stable-1.0-maintenance-release-and-hotfix-path.md).

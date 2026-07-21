@@ -68,3 +68,14 @@ fixture-only topology results cannot satisfy that gate.
 Private insert URIs, tokens, browser sessions, raw app data, raw messages, raw trust documents,
 node profile paths, rollback backup paths, and local absolute paths are excluded from release
 artifacts.
+
+## Stable 1.0 maintenance binding
+
+For a Stable maintenance candidate, every required upgrade, rollback, migration, backup, restore,
+state-preservation, and recovery scenario records the exact candidate product digest and immediate
+predecessor product digest. Policy may also require a direct-GA upgrade path. Only fresh production
+evidence for the declared environment, node count, operation count, and package targets satisfies
+the gate; a security hotfix cannot replace these non-waivable checks with fixtures or simulation.
+
+See the [Stable 1.0 maintenance release and security hotfix
+path](stable-1.0-maintenance-release-and-hotfix-path.md).

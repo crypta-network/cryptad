@@ -23,6 +23,11 @@ SUITE_MODULES = {
     "stable-readiness": ["cryptad_certification.tests.test_stable"],
     "stable-rc": ["cryptad_certification.tests.test_stable_rc"],
     "stable-ga": ["cryptad_certification.tests.test_stable_ga"],
+    "stable-maintenance": [
+        "cryptad_certification.tests.test_stable_maintenance",
+        "cryptad_certification.tests.test_stable_maintenance_publication",
+        "cryptad_certification.tests.test_stable_maintenance_workflows",
+    ],
     "migration": ["cryptad_certification.tests.test_core"],
 }
 

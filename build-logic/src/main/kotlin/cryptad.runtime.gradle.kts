@@ -1,3 +1,4 @@
+import cryptad.PortableArchiveNormalizer
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.TimeUnit
 
@@ -280,8 +281,14 @@ val distZipCryptadJlink by
     archiveFileName.set("cryptad-jlink-v${project.version}.zip")
     from(jlinkImageDir)
     destinationDirectory.set(layout.buildDirectory.dir("distributions"))
-    isPreserveFileTimestamps = true
+    isPreserveFileTimestamps = false
     isReproducibleFileOrder = true
+    eachFile {
+      val memberPermissions = PortableArchiveNormalizer.unixPermissionsForMember(path)
+      permissions { unix(memberPermissions) }
+    }
+    dirPermissions { unix("0755") }
+    doLast { PortableArchiveNormalizer.normalize(archiveFile.get().asFile.toPath()) }
   }
 
 // Tar.gz counterpart for convenience
@@ -296,8 +303,14 @@ val distTarCryptadJlink by
     archiveFileName.set("cryptad-jlink-v${project.version}.tar.gz")
     from(jlinkImageDir)
     destinationDirectory.set(layout.buildDirectory.dir("distributions"))
-    isPreserveFileTimestamps = true
+    isPreserveFileTimestamps = false
     isReproducibleFileOrder = true
+    eachFile {
+      val memberPermissions = PortableArchiveNormalizer.unixPermissionsForMember(path)
+      permissions { unix(memberPermissions) }
+    }
+    dirPermissions { unix("0755") }
+    doLast { PortableArchiveNormalizer.normalize(archiveFile.get().asFile.toPath()) }
   }
 
 // Aggregate task

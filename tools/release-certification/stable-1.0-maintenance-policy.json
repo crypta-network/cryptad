@@ -1,0 +1,243 @@
+{
+  "allowedMaintenanceCategories": [
+    "compatible-bug-fixes",
+    "security-fixes-and-hotfixes",
+    "platform-api-compatible-additions-and-deprecations",
+    "stable-catalog-and-app-patch-updates",
+    "emergency-advisory-and-denylist-updates",
+    "maintenance-release-upgrade-and-rollback-verification"
+  ],
+  "authorization": {
+    "allowedDecisions": [
+      "go",
+      "no-go",
+      "go-with-waivers"
+    ],
+    "allowedPublicationScope": [
+      "tag:create-or-verify",
+      "github-release:create-or-verify",
+      "artifact-base:publish-or-verify",
+      "stable-catalog:publish-or-verify",
+      "core-update:insert-or-verify",
+      "successor-baseline:activate",
+      "release-history:append"
+    ],
+    "maintenanceRole": "stable-maintenance-release-manager",
+    "requiresExpiration": true,
+    "securityHotfixRole": "stable-security-release-manager",
+    "wildcardScopeAllowed": false
+  },
+  "branchPolicy": {
+    "maintenance": {
+      "baseBranch": "develop",
+      "branchPattern": "^release/[1-9][0-9]*$"
+    },
+    "security-hotfix": {
+      "baseBranch": "main",
+      "branchPattern": "^hotfix/[1-9][0-9]*$",
+      "requiresCurrentPublishedMainBase": true
+    }
+  },
+  "catalogAndApps": {
+    "allowedCatalogChanges": [
+      "compatible-app-patch",
+      "security-app-patch",
+      "approved-signing-key-rotation",
+      "emergency-advisory",
+      "emergency-denylist",
+      "non-reducing-support-metadata-correction"
+    ],
+    "allowedSupportLevels": [
+      "core",
+      "maintained",
+      "local-rc"
+    ],
+    "permissionExpansionRequiresConsentAndRationale": true,
+    "requiresCatalogVersionAdvanceForIdentityChange": true,
+    "requiresAppDataMigrationAndBackup": true,
+    "requiresExactAppIdSet": true,
+    "requiresStableChannel": true,
+    "requiresTrustedBundleAndReviewSigners": true,
+    "supportLevelOrder": [
+      "local-rc",
+      "maintained",
+      "core"
+    ]
+  },
+  "component": "stable-maintenance",
+  "contentProfiles": {
+    "frozenProfileIds": [
+      "crypta.profile.v1",
+      "crypta.feed.snapshot.v1",
+      "crypta.trust.statement.v1",
+      "crypta.social.message.v1",
+      "crypta.social.outbox.v1"
+    ],
+    "inPlaceCanonicalizationChangeAllowed": false,
+    "inPlaceFieldMeaningChangeAllowed": false,
+    "inPlaceSignaturePayloadChangeAllowed": false,
+    "inPlaceValidDocumentRejectionAllowed": false,
+    "incompatibleChangesRequireNewProfile": true
+  },
+  "evidenceWindows": {
+    "maximumAgeDays": 14,
+    "minimumLiveNetworkDurationSeconds": 86400,
+    "minimumNodeCount": 2,
+    "minimumOperationCount": 500,
+    "requiresCandidateBinding": true,
+    "requiresPredecessorBinding": true,
+    "requiresProductionEvidence": true
+  },
+  "hotfix": {
+    "allowedSeverities": [
+      "critical"
+    ],
+    "allowedShortenedScenarios": [
+      "stable-maintenance.live-network-interoperability",
+      "stable-maintenance.performance",
+      "stable-maintenance.support-redaction"
+    ],
+    "followUpDeadlineHours": 168,
+    "fullMatrixUnaffectedPackageProofStatus": "not-applicable",
+    "minimumPrepublicationDurationSeconds": 3600,
+    "narrowedMatrixUnaffectedPackageProofStatus": "pass",
+    "nextRoutineReleaseBlockedUntilClosure": true,
+    "requiresAffectedPlatformMatrix": true,
+    "requiresExactAffectedKeysForNarrowedMatrix": true,
+    "requiresIncidentOrAdvisoryId": true,
+    "requiresNonemptyAffectedPackageKeys": true,
+    "requiresPublicSafeChangeScopeAudit": true,
+    "supersedingHotfixMayProceed": true
+  },
+  "kind": "stable-1.0-maintenance-policy",
+  "limitations": {
+    "candidateIdListsMustBeSortedAndUnique": true,
+    "currentDigestProjectionFields": [
+      "limitationIds"
+    ],
+    "deltaDigestProjectionFields": [
+      "predecessorIds",
+      "addedIds",
+      "resolvedIds",
+      "unchangedIds",
+      "currentIds"
+    ],
+    "gaMembershipField": "allowedLimitations[].id",
+    "requiresDisjointDeltaPartition": true,
+    "successorMembershipField": "limitations.currentIds"
+  },
+  "nonWaivableBlockers": [
+    "stable-maintenance.ga-baseline-authentication",
+    "stable-maintenance.predecessor-lineage",
+    "stable-maintenance.candidate-identity",
+    "stable-maintenance.archive-integrity",
+    "stable-maintenance.platform-api-compatibility",
+    "stable-maintenance.catalog-app-compatibility",
+    "stable-maintenance.content-profile-compatibility",
+    "stable-maintenance.installation-packaging",
+    "stable-maintenance.direct-ga-upgrade",
+    "stable-maintenance.upgrade-rollback-migration-backup",
+    "stable-maintenance.live-network-interoperability",
+    "stable-maintenance.performance",
+    "stable-maintenance.sandbox",
+    "stable-maintenance.security",
+    "stable-maintenance.support-redaction",
+    "stable-maintenance.core-update-descriptor",
+    "stable-maintenance.authorization",
+    "stable-maintenance.publication-conflict",
+    "stable-maintenance.publication-verification",
+    "stable-maintenance.successor-baseline"
+  ],
+  "packageMatrix": {
+    "assetSigning": {
+      "exactByteSubjectsRequired": true,
+      "hostedRunnerRequired": true,
+      "method": "sigstore-github-attestation",
+      "perAssetVerificationReceiptRequired": true,
+      "producerVerificationRequired": true,
+      "freezeBoundaryReverificationRequired": true,
+      "privateKeyInputAllowed": false
+    },
+    "portableAssetRequired": true,
+    "requiredCoreUpdatePackageKeys": [
+      "amd64.deb",
+      "amd64.dmg",
+      "amd64.exe",
+      "amd64.rpm"
+    ],
+    "supportedArchitectures": [
+      "amd64",
+      "arm64"
+    ],
+    "supportedPackageExtensions": [
+      "deb",
+      "rpm",
+      "dmg",
+      "exe",
+      "flatpak",
+      "snap"
+    ]
+  },
+  "platformApi": {
+    "baselineName": "1.0",
+    "criticalStableRemovalWaiverAllowed": false,
+    "minimumDeprecationWindowContractVersions": 2,
+    "minimumRemovalWindowContractVersions": 2,
+    "originalClockResetAllowed": false,
+    "requiresCandidateBoundCompatibilityEvidence": true,
+    "requiresThirdPartyStableSamples": true
+  },
+  "predecessor": {
+    "allowIntegerBuildGaps": true,
+    "gaIsFirstPredecessor": true,
+    "requiresLatestPublishedPointerAfterGa": true,
+    "requiresNoFork": true,
+    "requiresPublicationCompleteReceipt": true,
+    "strictlyIncreasingBuild": true
+  },
+  "profile": "stable-review",
+  "publication": {
+    "allowedOperations": [
+      "created",
+      "verified-existing"
+    ],
+    "conflictsAreNeverOverwritten": true,
+    "matchingStateIsIdempotent": true,
+    "protectedPublicationRequired": true,
+    "validationIsSideEffectFree": true
+  },
+  "releaseClasses": [
+    "maintenance",
+    "security-hotfix"
+  ],
+  "requiredEvidenceIds": [
+    "stable-maintenance.ga-baseline-authentication",
+    "stable-maintenance.predecessor-lineage",
+    "stable-maintenance.candidate-identity",
+    "stable-maintenance.archive-integrity",
+    "stable-maintenance.platform-api-compatibility",
+    "stable-maintenance.catalog-app-compatibility",
+    "stable-maintenance.content-profile-compatibility",
+    "stable-maintenance.installation-packaging",
+    "stable-maintenance.upgrade-rollback-migration-backup",
+    "stable-maintenance.live-network-interoperability",
+    "stable-maintenance.performance",
+    "stable-maintenance.sandbox",
+    "stable-maintenance.security",
+    "stable-maintenance.support-redaction",
+    "stable-maintenance.core-update-descriptor",
+    "stable-maintenance.authorization",
+    "stable-maintenance.publication-conflict",
+    "stable-maintenance.publication-verification",
+    "stable-maintenance.successor-baseline",
+    "stable-maintenance.hotfix-follow-up"
+  ],
+  "schemaVersion": 1,
+  "stableMilestone": "1.0",
+  "successorBaseline": {
+    "activateOnlyAfterVerifiedPublication": true,
+    "gaV1IsImmutableRoot": true,
+    "latestPointerUpdatedLast": true,
+    "schemaVersion": 2
+  }
+}

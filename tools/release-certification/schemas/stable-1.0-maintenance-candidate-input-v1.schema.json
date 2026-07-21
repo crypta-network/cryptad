@@ -1,0 +1,397 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/crypta-network/cryptad/tools/release-certification/schemas/stable-1.0-maintenance-candidate-input-v1.schema.json",
+  "title": "Cryptad Stable 1.0 maintenance candidate input v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "kind", "generatedAt", "stableMilestone", "releaseId", "buildVersion",
+    "releaseClass", "candidateFreezeDigest", "builtOnce", "rebuildCount", "source", "toolchain", "product", "packages", "platformApi",
+    "stableCatalog", "firstPartyApps", "contentFormatProfiles", "limitations", "security",
+    "support", "legacyBoundaries", "changeScope", "redaction"
+  ],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "kind": {"const": "stable-1.0-maintenance-candidate-input"},
+    "generatedAt": {"type": "string", "format": "date-time"},
+    "stableMilestone": {"const": "1.0"},
+    "releaseId": {"$ref": "#/$defs/releaseId"},
+    "buildVersion": {"$ref": "#/$defs/buildVersion"},
+    "releaseClass": {"$ref": "#/$defs/releaseClass"},
+    "candidateFreezeDigest": {"$ref": "#/$defs/digest"},
+    "builtOnce": {"const": true},
+    "rebuildCount": {"const": 0},
+    "source": {"$ref": "#/$defs/source"},
+    "toolchain": {"$ref": "#/$defs/toolchain"},
+    "product": {"$ref": "#/$defs/product"},
+    "packages": {
+      "type": "array", "minItems": 1, "uniqueItems": true,
+      "items": {"$ref": "#/$defs/package"}
+    },
+    "platformApi": {"$ref": "#/$defs/platformApi"},
+    "stableCatalog": {"$ref": "#/$defs/stableCatalog"},
+    "firstPartyApps": {
+      "type": "array", "minItems": 7, "maxItems": 7, "uniqueItems": true,
+      "items": {"$ref": "#/$defs/firstPartyApp"}
+    },
+    "contentFormatProfiles": {
+      "type": "array", "minItems": 5, "maxItems": 5, "uniqueItems": true,
+      "items": {"$ref": "#/$defs/contentProfile"}
+    },
+    "limitations": {"$ref": "#/$defs/limitations"},
+    "security": {"$ref": "#/$defs/security"},
+    "support": {"$ref": "#/$defs/support"},
+    "legacyBoundaries": {"$ref": "#/$defs/legacyBoundaries"},
+    "changeScope": {"$ref": "#/$defs/changeScope"},
+    "operationalWarnings": {
+      "type": "array", "uniqueItems": true,
+      "items": {"$ref": "#/$defs/operationalWarning"}
+    },
+    "coreUpdateChangelog": {"$ref": "#/$defs/coreUpdateChangelog"},
+    "redaction": {"$ref": "#/$defs/redaction"}
+  },
+  "$defs": {
+    "nonEmpty": {"type": "string", "minLength": 1},
+    "releaseId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"},
+    "buildVersion": {"type": "string", "pattern": "^[1-9][0-9]*$"},
+    "commit": {"type": "string", "pattern": "^[0-9a-f]{40,64}$"},
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "releaseClass": {"enum": ["maintenance", "security-hotfix"]},
+    "source": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "branch", "ref", "commit", "baseBranch", "baseCommit", "clean", "treeState",
+        "branchHeadVerified", "immutableRefVerified", "currentPublishedMainBaseVerified",
+        "sourceTreeDigest"
+      ],
+      "properties": {
+        "branch": {"type": "string", "pattern": "^(release|hotfix)/[1-9][0-9]*$"},
+        "ref": {"type": "string", "pattern": "^commit:[0-9a-f]{40,64}$"},
+        "commit": {"$ref": "#/$defs/commit"},
+        "baseBranch": {"enum": ["develop", "main"]},
+        "baseCommit": {"$ref": "#/$defs/commit"},
+        "clean": {"const": true},
+        "treeState": {"const": "clean"},
+        "branchHeadVerified": {"const": true},
+        "immutableRefVerified": {"const": true},
+        "currentPublishedMainBaseVerified": {"type": "boolean"},
+        "sourceTreeDigest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "toolchain": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "javaVersion", "javaMajorVersion", "gradleVersion", "gradleWrapperDigest",
+        "dependencyVerificationDigest", "dependencyVerificationStatus", "buildLogicDigest",
+        "buildTasks", "productionSigning", "testSigning"
+      ],
+      "properties": {
+        "javaVersion": {"$ref": "#/$defs/nonEmpty"},
+        "javaMajorVersion": {"type": "integer", "minimum": 25},
+        "gradleVersion": {"$ref": "#/$defs/nonEmpty"},
+        "gradleWrapperDigest": {"$ref": "#/$defs/digest"},
+        "dependencyVerificationDigest": {"$ref": "#/$defs/digest"},
+        "dependencyVerificationStatus": {"const": "pass"},
+        "buildLogicDigest": {"$ref": "#/$defs/digest"},
+        "buildTasks": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/nonEmpty"}},
+        "productionSigning": {"const": true},
+        "testSigning": {"const": false}
+      }
+    },
+    "product": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "fileName", "digest", "sizeBytes", "archiveFormat", "archiveIntegrityStatus",
+        "checksumsDigest", "frozenAt", "rebuildPerformed"
+      ],
+      "properties": {
+        "fileName": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"},
+        "digest": {"$ref": "#/$defs/digest"},
+        "sizeBytes": {"type": "integer", "minimum": 1},
+        "archiveFormat": {"enum": ["tar.gz", "zip"]},
+        "archiveIntegrityStatus": {"const": "pass"},
+        "checksumsDigest": {"$ref": "#/$defs/digest"},
+        "frozenAt": {"type": "string", "format": "date-time"},
+        "rebuildPerformed": {"const": false}
+      }
+    },
+    "package": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "packageKey", "fileName", "os", "arch", "producerArchitecture", "packageType", "digest", "sizeBytes",
+        "buildVersion", "sourceCommit", "publicChk", "storeUrl", "signingStatus",
+        "notarizationStatus", "installLaunchStatus", "upgradeStatus",
+        "installLaunchEvidenceDigest", "upgradeEvidenceDigest", "uninstallDataRetention",
+        "redactionStatus"
+      ],
+      "properties": {
+        "packageKey": {"type": "string", "pattern": "^(amd64|arm64)\\.(deb|rpm|dmg|exe|flatpak|snap)$"},
+        "fileName": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"},
+        "os": {"enum": ["linux", "macos", "windows"]},
+        "arch": {"enum": ["amd64", "arm64"]},
+        "producerArchitecture": {"enum": ["amd64", "arm64"]},
+        "packageType": {"enum": ["deb", "rpm", "dmg", "exe", "msi", "flatpak", "snap", "pkg", "tar.gz", "zip"]},
+        "digest": {"$ref": "#/$defs/digest"},
+        "sizeBytes": {"type": "integer", "minimum": 1},
+        "buildVersion": {"$ref": "#/$defs/buildVersion"},
+        "sourceCommit": {"$ref": "#/$defs/commit"},
+        "publicChk": {"oneOf": [{"type": "string", "pattern": "^CHK@[^ ]{4,}$"}, {"type": "null"}]},
+        "storeUrl": {"oneOf": [{"type": "string", "pattern": "^https://[^ ]+$"}, {"type": "null"}]},
+        "signingStatus": {"const": "pass"},
+        "notarizationStatus": {"enum": ["pass", "not-applicable"]},
+        "installLaunchStatus": {"const": "pass"},
+        "upgradeStatus": {"const": "pass"},
+        "installLaunchEvidenceDigest": {"$ref": "#/$defs/digest"},
+        "upgradeEvidenceDigest": {"$ref": "#/$defs/digest"},
+        "uninstallDataRetention": {"enum": ["retained", "not-applicable"]},
+        "redactionStatus": {"const": "pass"}
+      }
+    },
+    "platformApi": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "baselineName", "baselineDigest", "baselineContractVersion", "currentContractVersion",
+        "currentContractDigest", "stableSurfaceDigest", "compatibilityWindowPolicyDigest",
+        "stableDiffDigest", "thirdPartyCompatibilityEvidenceDigest", "deprecationHistoryDigest",
+        "deprecationHistory",
+        "removedStableEndpoints", "removedStableCapabilities", "breakingStableChanges",
+        "criticalRemovalWaiverAttempt", "deprecationClockReset", "experimentalMislabelledStable",
+        "additionsBackwardCompatible", "thirdPartyCompatibilityStatus"
+      ],
+      "properties": {
+        "baselineName": {"const": "1.0"},
+        "baselineDigest": {"$ref": "#/$defs/digest"},
+        "baselineContractVersion": {"type": "integer", "minimum": 1},
+        "currentContractVersion": {"type": "integer", "minimum": 1},
+        "currentContractDigest": {"$ref": "#/$defs/digest"},
+        "stableSurfaceDigest": {"$ref": "#/$defs/digest"},
+        "compatibilityWindowPolicyDigest": {"$ref": "#/$defs/digest"},
+        "stableDiffDigest": {"$ref": "#/$defs/digest"},
+        "thirdPartyCompatibilityEvidenceDigest": {"$ref": "#/$defs/digest"},
+        "deprecationHistoryDigest": {"$ref": "#/$defs/digest"}
+        ,"deprecationHistory": {
+          "type": "array", "uniqueItems": true,
+          "items": {"$ref": "#/$defs/deprecationHistoryEntry"}
+        }
+        ,"removedStableEndpoints": {"type": "array", "maxItems": 0}
+        ,"removedStableCapabilities": {"type": "array", "maxItems": 0}
+        ,"breakingStableChanges": {"type": "array", "maxItems": 0}
+        ,"criticalRemovalWaiverAttempt": {"const": false}
+        ,"deprecationClockReset": {"const": false}
+        ,"experimentalMislabelledStable": {"const": false}
+        ,"additionsBackwardCompatible": {"const": true}
+        ,"thirdPartyCompatibilityStatus": {"const": "pass"}
+      }
+    },
+    "deprecationHistoryEntry": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "identity", "stability", "deprecatedSinceContractVersion", "removalContractVersion"],
+      "properties": {
+        "kind": {"enum": ["capability", "endpoint"]},
+        "identity": {"$ref": "#/$defs/nonEmpty"},
+        "stability": {"enum": ["deprecated", "scheduled-for-removal"]},
+        "deprecatedSinceContractVersion": {"type": "integer", "minimum": 1},
+        "removalContractVersion": {
+          "oneOf": [{"type": "integer", "minimum": 1}, {"type": "null"}]
+        }
+      }
+    },
+    "stableCatalog": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "fileName", "sizeBytes", "signatureFileName", "signatureSizeBytes", "catalogId", "channel", "revision", "edition", "digest", "signatureDigest",
+        "signingKeyId", "deltaDigest", "signatureStatus", "keyTrustStatus", "mirrorStatus",
+        "rollbackStatus", "advisoryStatus", "denylistStatus", "keyRotationTrustTransitionStatus"
+      ],
+      "properties": {
+        "fileName": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"},
+        "sizeBytes": {"type": "integer", "minimum": 1},
+        "signatureFileName": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"},
+        "signatureSizeBytes": {"type": "integer", "minimum": 1},
+        "catalogId": {"$ref": "#/$defs/nonEmpty"},
+        "channel": {"const": "stable"},
+        "revision": {"type": "integer", "minimum": 0},
+        "edition": {"type": "integer", "minimum": 0},
+        "digest": {"$ref": "#/$defs/digest"},
+        "signatureDigest": {"$ref": "#/$defs/digest"},
+        "signingKeyId": {"$ref": "#/$defs/nonEmpty"},
+        "deltaDigest": {"$ref": "#/$defs/digest"}
+        ,"signatureStatus": {"const": "pass"}
+        ,"keyTrustStatus": {"const": "pass"}
+        ,"mirrorStatus": {"const": "pass"}
+        ,"rollbackStatus": {"const": "pass"}
+        ,"advisoryStatus": {"const": "pass"}
+        ,"denylistStatus": {"const": "pass"}
+        ,"keyRotationTrustTransitionStatus": {"enum": ["complete", "not-applicable"]}
+      }
+    },
+    "firstPartyApp": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "appId", "version", "channel", "supportLevel", "bundleDigest", "reviewReceiptDigest",
+        "appSigningKeyId", "reviewerKeyId", "manifestDigest", "permissionSetDigest",
+        "apiCompatibilityEvidenceDigest", "appDataSchemaVersion", "migrationEvidenceDigest",
+        "backupRestoreEvidenceDigest", "supportMetadataDigest", "trustState", "reviewStatus",
+        "signingStatus", "permissionExpansion", "permissionConsentStatus",
+        "permissionRationaleStatus", "apiCompatibilityStatus", "migrationStatus", "backupRestoreStatus", "serviceGrantStatus", "reviewedBundleDigest"
+      ],
+      "properties": {
+        "appId": {"enum": ["queue-manager", "publisher", "site-publisher", "profile-publisher", "social-inbox", "feed-reader", "trust-graph"]},
+        "version": {"$ref": "#/$defs/nonEmpty"},
+        "channel": {"const": "stable"},
+        "supportLevel": {"enum": ["core", "maintained", "local-rc"]},
+        "bundleDigest": {"$ref": "#/$defs/digest"},
+        "reviewReceiptDigest": {"$ref": "#/$defs/digest"},
+        "appSigningKeyId": {"$ref": "#/$defs/nonEmpty"},
+        "reviewerKeyId": {"$ref": "#/$defs/nonEmpty"},
+        "manifestDigest": {"$ref": "#/$defs/digest"},
+        "permissionSetDigest": {"$ref": "#/$defs/digest"},
+        "apiCompatibilityEvidenceDigest": {"$ref": "#/$defs/digest"},
+        "appDataSchemaVersion": {"oneOf": [{"type": "integer", "minimum": 1}, {"const": "not-applicable"}]},
+        "migrationEvidenceDigest": {"$ref": "#/$defs/digest"},
+        "backupRestoreEvidenceDigest": {"$ref": "#/$defs/digest"},
+        "supportMetadataDigest": {"$ref": "#/$defs/digest"}
+        ,"trustState": {"const": "trusted"}
+        ,"reviewStatus": {"const": "pass"}
+        ,"signingStatus": {"const": "pass"}
+        ,"permissionExpansion": {"type": "boolean"}
+        ,"permissionConsentStatus": {"enum": ["pass", "not-applicable"]}
+        ,"permissionRationaleStatus": {"enum": ["pass", "not-applicable"]}
+        ,"apiCompatibilityStatus": {"const": "pass"}
+        ,"migrationStatus": {"const": "pass"}
+        ,"backupRestoreStatus": {"const": "pass"}
+        ,"serviceGrantStatus": {"const": "pass"}
+        ,"reviewedBundleDigest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "contentProfile": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "profileId", "version", "status", "descriptorDigest", "canonicalizationRulesDigest",
+        "maximumSizePolicyDigest", "signaturePayloadRulesDigest", "parserVerifierCompatibilityEvidenceDigest",
+        "existingValidDocumentsAccepted", "acceptanceStatus"
+      ],
+      "properties": {
+        "profileId": {"enum": ["crypta.profile.v1", "crypta.feed.snapshot.v1", "crypta.trust.statement.v1", "crypta.social.message.v1", "crypta.social.outbox.v1"]},
+        "version": {"const": 1},
+        "status": {"const": "stable"},
+        "descriptorDigest": {"$ref": "#/$defs/digest"},
+        "canonicalizationRulesDigest": {"$ref": "#/$defs/digest"},
+        "maximumSizePolicyDigest": {"$ref": "#/$defs/digest"},
+        "signaturePayloadRulesDigest": {"$ref": "#/$defs/digest"},
+        "parserVerifierCompatibilityEvidenceDigest": {"$ref": "#/$defs/digest"}
+        ,"existingValidDocumentsAccepted": {"const": true}
+        ,"acceptanceStatus": {"const": "pass"}
+      }
+    },
+    "limitations": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "knownLimitationsDigest", "deltaDigest", "addedCount", "resolvedCount", "unchangedCount",
+        "addedIds", "resolvedIds", "unchangedIds", "changesReviewed", "noHiddenLimitations"
+      ],
+      "properties": {
+        "knownLimitationsDigest": {"$ref": "#/$defs/digest"},
+        "deltaDigest": {"$ref": "#/$defs/digest"},
+        "addedCount": {"type": "integer", "minimum": 0},
+        "resolvedCount": {"type": "integer", "minimum": 0},
+        "unchangedCount": {"type": "integer", "minimum": 0}
+        ,"addedIds": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/nonEmpty"}}
+        ,"resolvedIds": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/nonEmpty"}}
+        ,"unchangedIds": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/nonEmpty"}}
+        ,"changesReviewed": {"const": true}
+        ,"noHiddenLimitations": {"const": true}
+      }
+    },
+    "security": {
+      "type": "object", "additionalProperties": false,
+      "required": ["advisoryDigest", "denylistDigest", "keyStateDigest", "securityEvidenceDigest", "signingKeysUncompromised", "advisoryStatus", "denylistStatus", "securityEvidenceStatus"],
+      "properties": {
+        "advisoryDigest": {"$ref": "#/$defs/digest"},
+        "denylistDigest": {"$ref": "#/$defs/digest"},
+        "keyStateDigest": {"$ref": "#/$defs/digest"},
+        "securityEvidenceDigest": {"$ref": "#/$defs/digest"},
+        "signingKeysUncompromised": {"const": true}
+        ,"advisoryStatus": {"const": "pass"}
+        ,"denylistStatus": {"const": "pass"}
+        ,"securityEvidenceStatus": {"const": "pass"}
+      }
+    },
+    "support": {
+      "type": "object", "additionalProperties": false,
+      "required": ["supportLevelDigest", "diagnosticsEvidenceDigest", "supportBundleDigest", "supportStatus", "diagnosticsStatus", "supportCommitmentReduced", "redactionStatus"],
+      "properties": {
+        "supportLevelDigest": {"$ref": "#/$defs/digest"},
+        "diagnosticsEvidenceDigest": {"$ref": "#/$defs/digest"},
+        "supportBundleDigest": {"$ref": "#/$defs/digest"},
+        "supportStatus": {"const": "pass"},
+        "diagnosticsStatus": {"const": "pass"},
+        "supportCommitmentReduced": {"const": false},
+        "redactionStatus": {"const": "pass"}
+      }
+    },
+    "legacyBoundaries": {
+      "type": "object", "additionalProperties": false,
+      "required": ["pluginRuntime", "inCorePluginApi", "legacyAdminMutationRoutes", "fproxyBrowse", "contentFiltering", "emergencyFallbackRoutes"],
+      "properties": {
+        "pluginRuntime": {"const": "removed"},
+        "inCorePluginApi": {"const": "removed"},
+        "legacyAdminMutationRoutes": {"const": "disabled"},
+        "fproxyBrowse": {"const": "retained"},
+        "contentFiltering": {"const": "retained"},
+        "emergencyFallbackRoutes": {"const": "retained"}
+      }
+    },
+    "changeScope": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "categories", "changedModules", "publicUserVisibleFixes", "unrelatedFeatureChanges", "auditDigest", "incidentId",
+        "severity", "affectedPackageKeys", "shortenedEvidenceIds", "unaffectedPackageProofStatus",
+        "hotfixPolicyAuthorizationDigest", "followUpOwner", "followUpApprover"
+      ],
+      "properties": {
+        "categories": {
+          "type": "array", "minItems": 1, "uniqueItems": true,
+          "items": {"enum": ["compatible-bug-fixes", "security-fixes-and-hotfixes", "platform-api-compatible-additions-and-deprecations", "stable-catalog-and-app-patch-updates", "emergency-advisory-and-denylist-updates", "maintenance-release-upgrade-and-rollback-verification"]}
+        },
+        "changedModules": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/nonEmpty"}},
+        "publicUserVisibleFixes": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/nonEmpty"}},
+        "unrelatedFeatureChanges": {"type": "array", "maxItems": 0},
+        "auditDigest": {"$ref": "#/$defs/digest"},
+        "incidentId": {"oneOf": [{"$ref": "#/$defs/nonEmpty"}, {"type": "null"}]},
+        "severity": {"oneOf": [{"const": "critical"}, {"type": "null"}]},
+        "affectedPackageKeys": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^(amd64|arm64)\\.(deb|rpm|dmg|exe|flatpak|snap)$"}},
+        "shortenedEvidenceIds": {"type": "array", "uniqueItems": true, "items": {"enum": ["stable-maintenance.live-network-interoperability", "stable-maintenance.performance", "stable-maintenance.support-redaction"]}},
+        "unaffectedPackageProofStatus": {"enum": ["pass", "not-applicable"]},
+        "hotfixPolicyAuthorizationDigest": {"oneOf": [{"$ref": "#/$defs/digest"}, {"type": "null"}]},
+        "followUpOwner": {"oneOf": [{"$ref": "#/$defs/nonEmpty"}, {"type": "null"}]},
+        "followUpApprover": {"oneOf": [{"$ref": "#/$defs/nonEmpty"}, {"type": "null"}]}
+      }
+    },
+    "operationalWarning": {
+      "type": "object", "additionalProperties": false,
+      "required": ["warningId", "status", "evidenceDigest"],
+      "properties": {
+        "warningId": {"enum": ["stable-maintenance.catalog-mirror-latency-warning", "stable-maintenance.performance-comparable-runner-warning"]},
+        "status": {"const": "warn"},
+        "evidenceDigest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "coreUpdateChangelog": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "shortChk": {"oneOf": [{"type": "string", "pattern": "^CHK@[^ ]{4,}$"}, {"type": "null"}]},
+        "fullChk": {"oneOf": [{"type": "string", "pattern": "^CHK@[^ ]{4,}$"}, {"type": "null"}]}
+      }
+    },
+    "redaction": {
+      "type": "object", "additionalProperties": false,
+      "required": ["status", "findingCount", "findings"],
+      "properties": {
+        "status": {"const": "pass"},
+        "findingCount": {"const": 0},
+        "findings": {"type": "array", "maxItems": 0}
+      }
+    }
+  }
+}

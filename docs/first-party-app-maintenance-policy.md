@@ -184,3 +184,19 @@ When adding or changing a first-party app:
    `python3 -u tools/release-certification/certify.py release-certification --self-test`.
 7. If Stable RC bytes have already been frozen, treat the policy change as payload drift and start
    the authorized refreeze path before any new GA validation.
+
+## Stable 1.0 maintenance application
+
+For a later Stable 1.0 release, compare every first-party app against both the immutable GA app set
+and the immediate predecessor. Only compatible patch or security changes are eligible: app ids and
+stable channel membership remain fixed, support commitments cannot decrease, reviewed bundle bytes
+must match the catalog, and any data-schema or permission change needs candidate-bound migration,
+rollback, backup, restore, consent, and rationale evidence.
+
+App versions must use the release-canonical dotted-numeric grammar that `AppUpdateService` can
+compare. A version cannot regress below either Stable GA or the immediate predecessor, and changed
+bundle bytes require a strictly newer version so installed clients can select the update.
+
+The [Stable 1.0 maintenance release and security hotfix
+path](stable-1.0-maintenance-release-and-hotfix-path.md) defines the fail-closed delta and
+authorization process.

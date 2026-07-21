@@ -2814,12 +2814,32 @@ class CryptaAppCliTest {
             "dev-local",
             "--private-key-file",
             privateKey.toString());
+    Path detachedSignature = tempDir.resolve("candidate-catalog.detached-signature");
+    Files.move(catalogFile.resolveSibling("cryptad-app-catalog.signature"), detachedSignature);
     CliResult verifyResult =
         runCli(
             "catalog",
             "verify",
             "--catalog-file",
             catalogFile.toString(),
+            "--catalog-signature-file",
+            detachedSignature.toString(),
+            "--expected-key-id",
+            "dev-local",
+            "--trusted-key-id",
+            "dev-local",
+            "--trusted-public-key-file",
+            publicKey.toString());
+    CliResult wrongExpectedKey =
+        runCli(
+            "catalog",
+            "verify",
+            "--catalog-file",
+            catalogFile.toString(),
+            "--catalog-signature-file",
+            detachedSignature.toString(),
+            "--expected-key-id",
+            "catalog-production-other",
             "--trusted-key-id",
             "dev-local",
             "--trusted-public-key-file",
@@ -2829,6 +2849,9 @@ class CryptaAppCliTest {
     assertTrue(signResult.out().contains("Signed catalog with key: dev-local"));
     assertEquals(CommandLine.ExitCode.OK, verifyResult.exitCode());
     assertTrue(verifyResult.out().contains("Verified catalog: dev"));
+    assertEquals(CommandLine.ExitCode.SOFTWARE, wrongExpectedKey.exitCode());
+    assertTrue(
+        wrongExpectedKey.err().contains("catalog signature key id does not match expected key id"));
   }
 
   @Test

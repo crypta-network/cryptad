@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/crypta-network/cryptad/tools/release-certification/schemas/stable-1.0-maintenance-authorization-v1.schema.json",
+  "title": "Cryptad Stable 1.0 maintenance authorization v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "kind", "authorizationId", "releaseId", "buildVersion", "releaseClass",
+    "candidateIdentityDigest", "gaBaselineDigest", "predecessorIdentityDigest",
+    "predecessorProductDigest", "predecessorPublicationReceiptDigest", "candidateFreezeDigest",
+    "productDigest", "checksumsDigest", "provenanceDigest", "comparisonDigest", "evidenceDigest",
+    "coreInfoDigest", "stableCatalogDigest", "knownLimitationsDeltaDigest", "releaseNotesDigest",
+    "publicationTargetsDigest", "allowedPublicationScopes", "acceptedWarningIds", "role", "approverIdentity",
+    "authorizedAt", "expiresAt", "decision", "status", "hotfixIncidentId", "hotfixPolicyAuthorizationDigest", "hotfixShortenedEvidenceIds",
+    "hotfixFollowUpObligationDigest", "redaction"
+  ],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "kind": {"const": "stable-1.0-maintenance-authorization"},
+    "authorizationId": {"$ref": "#/$defs/releaseId"},
+    "releaseId": {"$ref": "#/$defs/releaseId"},
+    "buildVersion": {"$ref": "#/$defs/buildVersion"},
+    "releaseClass": {"$ref": "#/$defs/releaseClass"},
+    "candidateIdentityDigest": {"$ref": "#/$defs/digest"},
+    "gaBaselineDigest": {"$ref": "#/$defs/digest"},
+    "predecessorIdentityDigest": {"$ref": "#/$defs/digest"},
+    "predecessorProductDigest": {"$ref": "#/$defs/digest"},
+    "predecessorPublicationReceiptDigest": {"$ref": "#/$defs/digest"},
+    "candidateFreezeDigest": {"$ref": "#/$defs/digest"},
+    "productDigest": {"$ref": "#/$defs/digest"},
+    "checksumsDigest": {"$ref": "#/$defs/digest"},
+    "provenanceDigest": {"$ref": "#/$defs/digest"},
+    "comparisonDigest": {"$ref": "#/$defs/digest"},
+    "evidenceDigest": {"$ref": "#/$defs/digest"},
+    "coreInfoDigest": {"$ref": "#/$defs/digest"},
+    "stableCatalogDigest": {"$ref": "#/$defs/digest"},
+    "knownLimitationsDeltaDigest": {"$ref": "#/$defs/digest"},
+    "releaseNotesDigest": {"$ref": "#/$defs/digest"},
+    "publicationTargetsDigest": {"$ref": "#/$defs/digest"},
+    "allowedPublicationScopes": {
+      "type": "array", "minItems": 1, "uniqueItems": true,
+      "items": {"enum": ["tag:create-or-verify", "github-release:create-or-verify", "artifact-base:publish-or-verify", "stable-catalog:publish-or-verify", "core-update:insert-or-verify", "successor-baseline:activate", "release-history:append"]}
+    },
+    "acceptedWarningIds": {
+      "type": "array", "uniqueItems": true,
+      "items": {"enum": ["stable-maintenance.catalog-mirror-latency-warning", "stable-maintenance.performance-comparable-runner-warning"]}
+    },
+    "role": {"enum": ["stable-maintenance-release-manager", "stable-security-release-manager"]},
+    "approverIdentity": {"$ref": "#/$defs/nonEmpty"},
+    "authorizedAt": {"type": "string", "format": "date-time"},
+    "expiresAt": {"type": "string", "format": "date-time"},
+    "decision": {"enum": ["go", "no-go", "go-with-waivers"]},
+    "status": {"const": "approved"},
+    "hotfixIncidentId": {"oneOf": [{"$ref": "#/$defs/nonEmpty"}, {"type": "null"}]},
+    "hotfixPolicyAuthorizationDigest": {"oneOf": [{"$ref": "#/$defs/digest"}, {"type": "null"}]},
+    "hotfixShortenedEvidenceIds": {"type": "array", "uniqueItems": true, "items": {"enum": ["stable-maintenance.live-network-interoperability", "stable-maintenance.performance", "stable-maintenance.support-redaction"]}},
+    "hotfixFollowUpObligationDigest": {"oneOf": [{"$ref": "#/$defs/digest"}, {"type": "null"}]},
+    "redaction": {"$ref": "#/$defs/redaction"}
+  },
+  "$defs": {
+    "nonEmpty": {"type": "string", "minLength": 1},
+    "releaseId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"},
+    "buildVersion": {"type": "string", "pattern": "^[1-9][0-9]*$"},
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "releaseClass": {"enum": ["maintenance", "security-hotfix"]},
+    "redaction": {
+      "type": "object", "additionalProperties": false,
+      "required": ["status", "findingCount", "findings"],
+      "properties": {"status": {"const": "pass"}, "findingCount": {"const": 0}, "findings": {"type": "array", "maxItems": 0}}
+    }
+  }
+}

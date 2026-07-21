@@ -18,8 +18,11 @@ This skill covers how to draft or review a Cryptad GitHub release body and match
 - Repo-root `docs/cryptad-release-workflow-and-runbook.md`
 - Repo-root `docs/stable-1.0-rc-execution-and-release-freeze.md` for Stable RC notes
 - Repo-root `docs/stable-1.0-rc-validation-and-ga-promotion.md` for Stable GA notes
+- Repo-root `docs/stable-1.0-maintenance-release-and-hotfix-path.md` for later Stable 1.0 notes
 - Repo-root `docs/templates/stable-1.0-rc-release-notes.md` or
   `docs/templates/stable-1.0-ga-release-notes.md` when that generated contract is in scope
+- Repo-root `docs/templates/stable-1.0-maintenance-release-notes.md` for a maintenance or
+  security-hotfix generated-note contract
 - Repo-root `build.gradle.kts`
 
 ## Process
@@ -162,3 +165,20 @@ If the release is still on `release/<build-number>` and untagged, say so clearly
 
 For Stable RC or GA, update the template or authoritative source data and rerun the corresponding
 certification command. Do not manually patch generated output inside a release workspace.
+
+## Stable 1.0 maintenance and security-hotfix notes
+
+Generate maintenance notes through `stable-maintenance`, using integer build/tag identity and the
+authenticated predecessor. Include the release class, user-visible fixes, Platform API
+compatibility statement, catalog/app delta, migration/backup/rollback guidance, package matrix,
+CoreUpdater availability, known-limitations delta, support guidance, and checksum/provenance links.
+A security hotfix also names the public-safe advisory and accurately describes any outstanding
+full-window follow-up without exposing embargoed details or private evidence.
+
+Treat the rendered note digest as part of candidate authorization. Reject placeholders, unsafe
+Markdown/control text, private URIs, tokens, raw content/data, and local paths. Before a verified
+publication-complete receipt, describe the notes and assets as prepared or authorized, never as
+published. Link only to the planned public checksum/provenance assets. The public checksum file
+does not enumerate internal candidate, lineage, comparison, evidence, follow-up, activation, or
+history records; those belong only to the audit checksum inventory. Follow
+`docs/stable-1.0-maintenance-release-and-hotfix-path.md`.

@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/crypta-network/cryptad/tools/release-certification/schemas/stable-1.0-maintenance-publication-failure-audit-v1.schema.json",
+  "title": "Cryptad Stable 1.0 maintenance publication failure audit v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "kind", "generatedAt", "releaseId", "buildVersion", "releaseClass",
+    "sourceCommit", "candidateIdentityDigest", "productDigest", "publicationPlanDigest",
+    "publicationState", "failureCategory", "predecessorPointerDigest",
+    "latestCandidateIdentityDigest", "observedPublicState", "attemptedTargets",
+    "completedTargets",
+    "sideEffectsMayHaveOccurred", "finalVerificationStatus", "redaction"
+  ],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "kind": {"const": "stable-1.0-maintenance-publication-failure-audit"},
+    "generatedAt": {"type": "string", "format": "date-time"},
+    "releaseId": {"$ref": "#/$defs/releaseId"},
+    "buildVersion": {"$ref": "#/$defs/buildVersion"},
+    "releaseClass": {"enum": ["maintenance", "security-hotfix"]},
+    "sourceCommit": {"$ref": "#/$defs/commit"},
+    "candidateIdentityDigest": {"$ref": "#/$defs/digest"},
+    "productDigest": {"$ref": "#/$defs/digest"},
+    "publicationPlanDigest": {"$ref": "#/$defs/digest"},
+    "publicationState": {
+      "enum": ["publication-partial", "publication-verification-failed", "unknown-or-partial"]
+    },
+    "failureCategory": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$"},
+    "predecessorPointerDigest": {
+      "oneOf": [{"$ref": "#/$defs/digest"}, {"type": "null"}]
+    },
+    "latestCandidateIdentityDigest": {
+      "oneOf": [{"$ref": "#/$defs/digest"}, {"type": "null"}]
+    },
+    "observedPublicState": {"$ref": "#/$defs/publicState"},
+    "attemptedTargets": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/publicationTarget"}
+    },
+    "completedTargets": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/publicationTarget"}
+    },
+    "sideEffectsMayHaveOccurred": {"type": "boolean"},
+    "finalVerificationStatus": {"const": "fail"},
+    "redaction": {"$ref": "#/$defs/redaction"}
+  },
+  "$defs": {
+    "releaseId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"},
+    "buildVersion": {"type": "string", "pattern": "^[1-9][0-9]*$"},
+    "commit": {"type": "string", "pattern": "^[0-9a-f]{40,64}$"},
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "publicationTarget": {
+      "enum": ["tag", "githubRelease", "assets", "artifactBase", "stableCatalog", "coreUpdate"]
+    },
+    "observation": {"enum": ["absent", "matching", "conflict", "unavailable"]},
+    "publicState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tag", "githubRelease", "assets", "artifactBase", "stableCatalog", "coreUpdate"],
+      "properties": {
+        "tag": {"$ref": "#/$defs/observation"},
+        "githubRelease": {"$ref": "#/$defs/observation"},
+        "assets": {"$ref": "#/$defs/observation"},
+        "artifactBase": {"$ref": "#/$defs/observation"},
+        "stableCatalog": {"$ref": "#/$defs/observation"},
+        "coreUpdate": {"$ref": "#/$defs/observation"}
+      }
+    },
+    "redaction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "findingCount", "findings"],
+      "properties": {
+        "status": {"const": "pass"},
+        "findingCount": {"const": 0},
+        "findings": {"type": "array", "maxItems": 0}
+      }
+    }
+  }
+}
