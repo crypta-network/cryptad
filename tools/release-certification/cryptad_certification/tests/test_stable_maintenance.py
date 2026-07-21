@@ -3539,6 +3539,27 @@ class StableMaintenanceAuthorizationAndPublicationTest(unittest.TestCase):
             self.assertEqual(state.blockers, [])
             self.assertEqual(errors, [])
 
+    def test_concrete_publication_destinations_keep_fixed_github_target_offline(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory, mock.patch.object(
+            stable_1_0_ga_core.socket,
+            "getaddrinfo",
+            side_effect=OSError("DNS unavailable"),
+        ):
+            root = Path(directory)
+            state = ValidationState()
+            targets, _targets_digest = stable_1_0_maintenance._targets(  # noqa: SLF001
+                _context(root), state
+            )
+
+            errors = stable_1_0_maintenance._concrete_publication_destination_errors(  # noqa: SLF001
+                targets, _candidate(root)
+            )
+
+            self.assertEqual(state.blockers, [])
+            self.assertEqual(errors, [])
+
     def test_catalog_signature_cannot_alias_core_update_descriptor(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

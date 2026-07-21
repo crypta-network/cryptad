@@ -325,11 +325,20 @@ def _concrete_publication_destination_errors(
 
     errors: list[str] = []
     roles_by_uri: dict[str, list[str]] = {}
+    fixed_github_release_uri = (
+        "https://github.com/crypta-network/cryptad/releases/tag/"
+        f"{targets.get('tag')}"
+    )
     for role, raw_uri in destinations:
         canonical_uri = canonical_public_https_uri(raw_uri)
+        is_public_destination = (
+            canonical_uri == fixed_github_release_uri
+            if role == "github-release"
+            else _https(canonical_uri)
+        )
         if (
             canonical_uri != raw_uri
-            or not _https(canonical_uri)
+            or not is_public_destination
             or not _has_unambiguous_publication_path(canonical_uri)
         ):
             errors.append(
