@@ -34,6 +34,7 @@ import static org.junit.jupiter.api.Assumptions.assumeFalse;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyShort;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -288,6 +289,33 @@ class CoreUpdaterTest {
     when(updater.manager.isBlown()).thenReturn(true);
 
     assertFalse(updater.startDownloadFromUI());
+  }
+
+  @Test
+  void startDownloadFromUI_whenUpdaterWasPreKilled_expectDownloadDoesNotStart() throws Exception {
+    CoreUpdater updater = createCoreUpdater();
+    setField(updater, "selectedSpec", new PackageSpec(VALID_CHK, 10L, null));
+    setSelectedKey(updater);
+    updater.preKill();
+
+    assertFalse(updater.startDownloadFromUI());
+    verify(updater.core, never()).getClientContext();
+  }
+
+  @Test
+  void start_whenPackageFetcherWasCancelledBeforeRegistration_expectDownloadDoesNotStart()
+      throws Exception {
+    CoreUpdater updater = createCoreUpdater();
+    CoreUpdater.PackageFetcher fetcher =
+        updater
+        .new PackageFetcher(
+            Files.createTempFile("cryptad-package-fetch", ".deb").toFile(),
+            new FreenetURI(VALID_CHK),
+            VALID_CHK);
+    fetcher.cancelForUpdaterStop();
+
+    assertFalse(fetcher.start());
+    verify(updater.core, never()).getClientContext();
   }
 
   @Test

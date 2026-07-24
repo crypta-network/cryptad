@@ -74,6 +74,8 @@ public class CoreUpdater extends NodeUpdater {
   private final AtomicReference<PackageSpec> selectedSpec = new AtomicReference<>();
   private final AtomicReference<PackageFetcher> fetcher = new AtomicReference<>();
   private final AtomicReference<AppEnv.EnvDetection> env = new AtomicReference<>();
+  private final Object packageFetchLifecycleLock = new Object();
+  private boolean packageFetchesStopped;
 
   /**
    * Creates a core updater bound to the shared node updater manager context.
@@ -273,23 +275,26 @@ public class CoreUpdater extends NodeUpdater {
   }
 
   private void resetDescriptorStateForUriChange() {
-    cancelPackageFetchForUriChange();
-    latestInfo.set(null);
-    latestVersionBuild.set(null);
-    selectedKey = null;
-    selectedSpec.set(null);
-    env.set(null);
-  }
-
-  private void cancelPackageFetchForUriChange() {
-    PackageFetcher previous = fetcher.getAndSet(null);
+    PackageFetcher previous;
+    synchronized (packageFetchLifecycleLock) {
+      previous = fetcher.getAndSet(null);
+      latestInfo.set(null);
+      latestVersionBuild.set(null);
+      selectedKey = null;
+      selectedSpec.set(null);
+      env.set(null);
+    }
     if (previous != null) {
       previous.cancelForUriChange();
     }
   }
 
   private void cancelPackageFetchForUpdaterStop() {
-    PackageFetcher previous = fetcher.getAndSet(null);
+    PackageFetcher previous;
+    synchronized (packageFetchLifecycleLock) {
+      packageFetchesStopped = true;
+      previous = fetcher.getAndSet(null);
+    }
     if (previous != null) {
       previous.cancelForUpdaterStop();
     }
@@ -496,15 +501,26 @@ public class CoreUpdater extends NodeUpdater {
       return false;
     }
     PackageFetcher f = new PackageFetcher(target, uri, chk);
-    fetcher.set(f);
-    logInfo(
-        "starting download: key="
-            + (selectedKey != null ? selectedKey : "?")
-            + ", target="
-            + target.getAbsolutePath()
-            + ", chk="
-            + chk);
-    return f.start();
+    synchronized (packageFetchLifecycleLock) {
+      if (packageFetchesStopped || manager.isBlown()) {
+        logInfo("Skipping package download start because updater trust is unavailable");
+        return false;
+      }
+      PackageFetcher current = fetcher.get();
+      if (current != null && current.isInProgress()) {
+        logInfo("Skipping download start: another package download is still running");
+        return false;
+      }
+      fetcher.set(f);
+      logInfo(
+          "starting download: key="
+              + (selectedKey != null ? selectedKey : "?")
+              + ", target="
+              + target.getAbsolutePath()
+              + ", chk="
+              + chk);
+      return f.start();
+    }
   }
 
   /** Start downloading the currently selected package if not already in progress. */
@@ -528,11 +544,20 @@ public class CoreUpdater extends NodeUpdater {
   }
 
   @Override
+  public void preKill() {
+    synchronized (packageFetchLifecycleLock) {
+      packageFetchesStopped = true;
+    }
+    super.preKill();
+  }
+
+  @Override
   void kill() {
+    preKill();
     try {
-      super.kill();
-    } finally {
       cancelPackageFetchForUpdaterStop();
+    } finally {
+      super.kill();
     }
   }
 
@@ -828,6 +853,7 @@ public class CoreUpdater extends NodeUpdater {
     private volatile boolean failed = false;
     private volatile String errorMsg;
     private volatile boolean fatal = false;
+    private boolean cancelled;
 
     PackageFetcher(File outFile, FreenetURI chk, String chkString) {
       this.outFile = outFile;
@@ -835,7 +861,11 @@ public class CoreUpdater extends NodeUpdater {
       this.chkString = chkString;
     }
 
-    boolean start() {
+    synchronized boolean start() {
+      if (cancelled) {
+        markStartFailure("Package download was cancelled before it started", false);
+        return false;
+      }
       var ctx =
           manager
               .getNode()
@@ -884,7 +914,8 @@ public class CoreUpdater extends NodeUpdater {
       cancel("updater stop");
     }
 
-    private void cancel(String reason) {
+    private synchronized void cancel(String reason) {
+      cancelled = true;
       ClientGetter getter = clientGetter.get();
       if (getter == null || getter.isFinished()) {
         detachProgressListener();
