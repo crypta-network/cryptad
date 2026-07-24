@@ -328,6 +328,13 @@ and unknown states distinctly. It offers a package-download action only when the
 reports that it can honor that action. Acceptance of a download request is not presented as a
 completed update.
 
+CoreUpdater rechecks effective build revocation when a package download starts, when a downloaded
+installer path is resolved, and when a Linux store handoff is submitted. A store submission must
+still exactly match the daemon's selected package kind, derived package id, and public store URL;
+an already-rendered form cannot launch a superseded or revoked target. A successor lifecycle
+descriptor whose activation time is ahead of the local clock does not suspend a terminal
+revocation whose entry-level effective time has already passed.
+
 Lifecycle state does not silently shut down the node, delete user-owned data, uninstall apps,
 disable FProxy browse or content filtering, restore the legacy plugin runtime, or force an update.
 An unsupported or revoked node retains non-destructive local operation and shows actionable local

@@ -102,8 +102,8 @@ public class CoreActionToadlet extends Toadlet {
    * Creates the toadlet that handles core-update action requests from the updater UI.
    *
    * <p>The provided runtime port is used to access updater availability, download start, and
-   * installer path validation while the toadlet keeps runtime environment and response rendering
-   * behavior in the HTTP layer.
+   * installer and store-target validation while the toadlet keeps runtime environment and response
+   * rendering behavior in the HTTP layer.
    *
    * @param coreUpdateActionPort runtime port that exposes the remaining daemon-backed updater
    *     actions needed by this toadlet
@@ -204,6 +204,12 @@ public class CoreActionToadlet extends Toadlet {
     String id = request.getPartAsStringFailsafe("id", 256);
     String url = request.getPartAsStringFailsafe("url", 2048);
     logInfo("POST /core-update action=openStore kind=" + kind + " id=" + id + " url=" + url);
+
+    if (!coreUpdateActionPort.isCurrentStoreTarget(kind, id, url)) {
+      logInfo("store handoff rejected: submitted target is no longer selected");
+      writeMessage(ctx, false, t("store.targetUnavailable"));
+      return;
+    }
 
     InstallerDelegate delegate =
         switch (appEnv.osKind()) {
@@ -698,13 +704,14 @@ public class CoreActionToadlet extends Toadlet {
   }
 
   private void redirect(ToadletContext ctx) throws ToadletContextClosedException, IOException {
+    ToadletContext responseContext = Objects.requireNonNull(ctx, "ctx");
     MultiValueTable<String, String> headers =
-        MultiValueTable.from("Location", updatesRedirectUrl(ctx));
-    ctx.sendReplyHeaders(302, "Found", headers, null, 0);
+        MultiValueTable.from("Location", updatesRedirectUrl(responseContext));
+    responseContext.sendReplyHeaders(302, "Found", headers, null, 0);
   }
 
   private static String updatesRedirectUrl(ToadletContext ctx) {
-    ToadletContainer container = ctx == null ? null : ctx.getContainer();
+    ToadletContainer container = ctx.getContainer();
     if (container != null && container.isFProxyJavascriptEnabled()) {
       return SHELL_UPDATES_URL;
     }

@@ -11,6 +11,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.client.FetchContext;
 import network.crypta.client.FetchException.FetchExceptionMode;
@@ -237,6 +238,47 @@ public class CoreUpdater extends NodeUpdater {
 
     PackageFetcher inFlight = fetcher.get();
     return inFlight == null || !inFlight.isInProgress();
+  }
+
+  /**
+   * Validates a submitted package-store handoff against the current selected update target.
+   *
+   * <p>The submitted values must exactly match the form derived from the currently selected
+   * package. The selected descriptor must still advertise a newer integer build, and authenticated
+   * lifecycle state must not revoke that build. A final stability check prevents a descriptor
+   * replacement during validation from authorizing values assembled from different selections.
+   *
+   * @param kind submitted package-store kind
+   * @param id submitted package identifier, or an empty string when absent
+   * @param url submitted public store URL, or an empty string when absent
+   * @return {@code true} only for the exact current non-revoked store target
+   */
+  public boolean isCurrentStoreTarget(String kind, String id, String url) {
+    Integer build = latestVersionBuild.get();
+    String key = selectedKey;
+    PackageSpec spec = selectedSpec.get();
+    if (!isNewerThanCurrentBuild(build) || isBuildRevoked(build) || spec == null) {
+      return false;
+    }
+
+    String expectedKind = storeKind(key);
+    String expectedUrl = spec.storeUrl();
+    String expectedId = deriveStoreId(expectedKind, expectedUrl);
+    boolean exactTarget =
+        expectedKind != null
+            && hasText(expectedUrl)
+            && expectedKind.equals(kind)
+            && Objects.equals(expectedId, optionalFormValue(id))
+            && expectedUrl.equals(url);
+    return exactTarget
+        && Objects.equals(build, latestVersionBuild.get())
+        && Objects.equals(key, selectedKey)
+        && Objects.equals(spec, selectedSpec.get())
+        && !isBuildRevoked(build);
+  }
+
+  private static String optionalFormValue(String value) {
+    return hasText(value) ? value : null;
   }
 
   private boolean canPrepareUiDownload(PackageSpec spec) {

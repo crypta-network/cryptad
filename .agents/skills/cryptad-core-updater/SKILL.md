@@ -67,8 +67,8 @@ Use this skill when working on:
 - Request parsing, redirects, `AppEnv` checks, and OS-specific installer or store-launching now
   live in the HTTP adapter layer at `network.crypta.clients.http.updater.CoreActionToadlet`,
   currently packaged in `:adapter-http-legacy-admin`.
-- Daemon-backed availability checks, UI-triggered download start, and downloaded-installer
-  containment validation now live behind `CoreUpdateActionPort`.
+- Daemon-backed availability checks, UI-triggered download start, downloaded-installer containment
+  validation, and exact current store-target validation now live behind `CoreUpdateActionPort`.
 
 ## Runtime-boundary classes to inspect
 - HTTP/action layer (`:adapter-http-legacy-admin`): `network.crypta.clients.http.updater.CoreActionToadlet`
@@ -181,6 +181,12 @@ number. Build `revoked` is a lifecycle-policy decision and must not call, alias,
 the update-key blow/revocation path. End-of-support and build revocation surface actionable local
 warnings without deleting data, shutting down the node, disabling FProxy browse, or inventing a
 forced-update path.
+
+Recheck effective build revocation at every package-action boundary. A later accepted descriptor
+whose activation time is ahead of the local clock must not suspend an already-effective terminal
+revocation preserved in its entry chain. Downloaded-installer resolution and Linux `openStore`
+submission both cross `CoreUpdateActionPort`; store submissions must exactly match the daemon's
+current selected kind, derived id, and public URL before the HTTP adapter may open or install them.
 
 The lifecycle descriptor's public schema, protected publication, and operator behavior are defined
 in `docs/stable-1.0-support-lifecycle-and-deprecation-governance.md`. Use deterministic local

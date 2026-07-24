@@ -293,6 +293,33 @@ class CoreSupportLifecycleStateTest {
     assertFalse(state.isBuildRevoked(101));
   }
 
+  @Test
+  void isBuildRevoked_whenEntryEffectiveTimeIsAheadOfClock_expectBuildNotYetBlocked(
+      @TempDir Path tempDir) throws Exception {
+    CoreSupportLifecycleState state = state(tempDir, Instant.parse("2026-01-01T12:00:00Z"));
+
+    state.accept(CoreSupportLifecycleParserTest.emergencyRevocationDescriptor(false, true), 1);
+
+    assertFalse(state.isBuildRevoked(100));
+  }
+
+  @Test
+  void isBuildRevoked_whenSuccessorActivationIsAheadOfClock_expectPriorRevocationRemainsBlocked(
+      @TempDir Path tempDir) throws Exception {
+    CoreSupportLifecycleState state = state(tempDir, VERIFIED_AT);
+    byte[] revoked = CoreSupportLifecycleParserTest.emergencyRevocationDescriptor(false, true);
+    state.accept(revoked, 1);
+    String predecessorDigest = state.snapshot().descriptor().digest();
+    byte[] successor = futureEffectiveSuccessor(revoked, predecessorDigest);
+
+    state.accept(successor, 2);
+    CoreSupportLifecycleState restarted = state(tempDir, VERIFIED_AT);
+
+    assertFalse(state.snapshot().known());
+    assertTrue(state.isBuildRevoked(100));
+    assertTrue(restarted.isBuildRevoked(100));
+  }
+
   private static CoreSupportLifecycleState state(Path tempDir, Instant now) {
     return state(tempDir, now, "a".repeat(40));
   }
@@ -332,5 +359,18 @@ class CoreSupportLifecycleStateTest {
             "\"descriptorDigest\": \"" + ROOT_DIGEST + "\"",
             "\"descriptorDigest\": \"" + digest + "\"");
     return successor.getBytes(StandardCharsets.UTF_8);
+  }
+
+  private static byte[] futureEffectiveSuccessor(byte[] previous, String previousDigest) {
+    Map<String, Object> root = JsonMini.parseObject(new String(previous, StandardCharsets.UTF_8));
+    root.put("generatedAt", "2026-01-02T06:00:00Z");
+    root.put("effectiveAt", "2026-01-03T00:00:00Z");
+    root.put("staleAt", "2026-01-10T00:00:00Z");
+    root.put("descriptorEdition", 2L);
+    root.put("previousDescriptorEdition", 1L);
+    root.put("previousDescriptorDigest", previousDigest);
+    root.remove("descriptorDigest");
+    root.put("descriptorDigest", CoreSupportLifecycleParser.semanticDigest(root));
+    return CoreSupportLifecycleParser.canonicalJson(root).getBytes(StandardCharsets.UTF_8);
   }
 }

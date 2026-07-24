@@ -251,6 +251,34 @@ class CoreActionToadletTest {
   }
 
   @Test
+  void handleMethodPOST_whenRenderedStoreTargetIsNoLongerCurrent_expectActionRejected()
+      throws Exception {
+    CoreUpdateActionPort coreUpdateActionPort = mock(CoreUpdateActionPort.class);
+    ToadletContext ctx = mock(ToadletContext.class);
+    HTTPRequest request = mock(HTTPRequest.class);
+    CoreActionToadlet toadlet = new CoreActionToadlet(coreUpdateActionPort);
+    String storeUrl = "https://flathub.org/apps/network.crypta.Cryptad";
+
+    when(ctx.checkFormPassword(request)).thenReturn(true);
+    when(coreUpdateActionPort.isCoreUpdaterAvailable()).thenReturn(true);
+    when(request.getPartAsStringFailsafe(eq("action"), anyInt())).thenReturn("openStore");
+    when(request.getPartAsStringFailsafe(eq("kind"), anyInt())).thenReturn("flatpak");
+    when(request.getPartAsStringFailsafe(eq("id"), anyInt())).thenReturn("network.crypta.Cryptad");
+    when(request.getPartAsStringFailsafe(eq("url"), anyInt())).thenReturn(storeUrl);
+    when(coreUpdateActionPort.isCurrentStoreTarget("flatpak", "network.crypta.Cryptad", storeUrl))
+        .thenReturn(false);
+    AppEnv appEnv = mock(AppEnv.class);
+    replaceAppEnv(toadlet, appEnv);
+    stubHtmlContext(ctx);
+
+    toadlet.handleMethodPOST(URI.create("http://localhost/core-update/"), request, ctx);
+
+    String html = captureWrittenHtml(ctx);
+    assertTrue(html.contains("no longer the current verified update target"));
+    verify(appEnv, never()).osKind();
+  }
+
+  @Test
   void handleMethodPOST_whenInstallSnapInsideSnapSandbox_expectGuidancePage() throws Exception {
     // Arrange
     CoreUpdateActionPort coreUpdateActionPort = mock(CoreUpdateActionPort.class);
@@ -309,6 +337,7 @@ class CoreActionToadletTest {
     when(request.getPartAsStringFailsafe(eq("kind"), anyInt())).thenReturn("snap");
     when(request.getPartAsStringFailsafe(eq("id"), anyInt())).thenReturn("network.crypta");
     when(request.getPartAsStringFailsafe(eq("url"), anyInt())).thenReturn("");
+    when(coreUpdateActionPort.isCurrentStoreTarget("snap", "network.crypta", "")).thenReturn(true);
 
     AppEnv appEnv = mock(AppEnv.class);
     when(appEnv.osKind()).thenReturn(AppEnv.OsKind.LINUX);

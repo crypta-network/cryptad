@@ -95,6 +95,34 @@ class LegacyCoreUpdateActionPortTest {
   }
 
   @Test
+  void isCurrentStoreTarget_whenUpdaterApprovesSelection_expectDelegatesToCoreUpdater() {
+    String url = "https://flathub.org/apps/network.crypta.Cryptad";
+    when(node.services().nodeUpdater()).thenReturn(nodeUpdateManager);
+    when(nodeUpdateManager.getCoreUpdater()).thenReturn(coreUpdater);
+    when(coreUpdater.isCurrentStoreTarget("flatpak", "network.crypta.Cryptad", url))
+        .thenReturn(true);
+
+    LegacyCoreUpdateActionPort port = new LegacyCoreUpdateActionPort(node);
+
+    assertTrue(port.isCurrentStoreTarget("flatpak", "network.crypta.Cryptad", url));
+    verify(coreUpdater).isCurrentStoreTarget("flatpak", "network.crypta.Cryptad", url);
+  }
+
+  @Test
+  void isCurrentStoreTarget_whenUpdaterMissing_expectFalse() {
+    when(node.services().nodeUpdater()).thenReturn(nodeUpdateManager);
+    when(nodeUpdateManager.getCoreUpdater()).thenReturn(null);
+
+    LegacyCoreUpdateActionPort port = new LegacyCoreUpdateActionPort(node);
+
+    assertFalse(
+        port.isCurrentStoreTarget(
+            "flatpak",
+            "network.crypta.Cryptad",
+            "https://flathub.org/apps/network.crypta.Cryptad"));
+  }
+
+  @Test
   void supportLifecycleSnapshot_whenManagerPresent_expectDetachedStateDelegated() {
     CoreSupportLifecycleSnapshot snapshot =
         CoreSupportLifecycleSnapshot.unknown(1200, java.util.List.of("lifecycle_unknown"));

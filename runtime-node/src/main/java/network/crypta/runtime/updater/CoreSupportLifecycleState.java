@@ -215,7 +215,9 @@ final class CoreSupportLifecycleState {
    * Returns whether an effective authenticated lifecycle entry revokes one package build.
    *
    * <p>Staleness does not make an accepted revocation safe: build revocation is terminal, while a
-   * later valid descriptor can only preserve it. Unknown builds and not-yet-effective descriptors
+   * later valid descriptor can only preserve it. A successor descriptor whose activation time is
+   * still ahead of the local clock therefore cannot suspend a revocation that is already effective
+   * according to the preserved entry. Unknown builds and not-yet-effective revocation entries
    * remain outside this narrow veto rather than being assigned an invented lifecycle status.
    *
    * @param buildVersion integer package build advertised by {@code core-info.json}
@@ -226,9 +228,6 @@ final class CoreSupportLifecycleState {
       return false;
     }
     Instant now = clock.instant();
-    if (now.isBefore(descriptor.effectiveAt())) {
-      return false;
-    }
     CoreSupportLifecycleEntry entry = descriptor.entriesByBuild().get(buildVersion);
     return entry != null
         && entry.lifecycleStatus() == CoreSupportLifecycleStatus.REVOKED

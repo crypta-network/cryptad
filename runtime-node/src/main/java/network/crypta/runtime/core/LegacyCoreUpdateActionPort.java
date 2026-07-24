@@ -61,6 +61,13 @@ final class LegacyCoreUpdateActionPort implements CoreUpdateActionPort {
   }
 
   @Override
+  public boolean isCurrentStoreTarget(String kind, String id, String url) {
+    return getCoreUpdater()
+        .map(updater -> updater.isCurrentStoreTarget(kind, id, url))
+        .orElse(false);
+  }
+
+  @Override
   public CoreSupportLifecycleSnapshot supportLifecycleSnapshot() {
     NodeUpdateManager manager = node.services().nodeUpdater();
     return manager == null

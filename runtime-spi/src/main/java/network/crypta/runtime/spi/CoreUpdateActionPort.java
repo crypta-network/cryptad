@@ -15,7 +15,7 @@ import java.util.Optional;
  * <p>{@code CoreActionToadlet} continues to own request parsing, redirects, result pages, {@code
  * AppEnv} checks, and OS-specific installer or store-launching behavior. Callers typically fetch
  * the port from {@link RuntimePorts}, check availability for one request, and then invoke either a
- * download trigger or installer-path validation step.
+ * download trigger, installer-path validation, or exact store-target validation step.
  *
  * @see RuntimePorts#coreUpdateAction()
  */
@@ -68,6 +68,24 @@ public interface CoreUpdateActionPort {
    * redirects, or operator-visible errors still come from the HTTP layer and the updater itself.
    */
   boolean startCoreDownloadFromUi();
+
+  /**
+   * Validates a submitted package-store handoff against the daemon's current update selection.
+   *
+   * <p>The default is fail-closed so partial runtime adapters cannot authorize a client-supplied
+   * store target. Full daemon adapters must require an exact match for the selected package kind,
+   * derived package identifier, and public store URL, and must recheck the selected build's
+   * lifecycle revocation state at submission time.
+   *
+   * @param kind package-store kind submitted by the updater form
+   * @param id package identifier submitted by the updater form, or an empty string when absent
+   * @param url public store URL submitted by the updater form, or an empty string when absent
+   * @return {@code true} only when the submitted target is still the exact selectable, non-revoked
+   *     daemon update target
+   */
+  default boolean isCurrentStoreTarget(String kind, String id, String url) {
+    return false;
+  }
 
   /**
    * Resolves one raw installer path to the canonical, currently approved downloaded package.

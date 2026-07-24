@@ -46,6 +46,9 @@ class CoreUpdaterTest {
       "CHK@DTCDUmnkKFlrJi9UlDDVqXlktsIXvAJ~ZTseyx5cAZs,"
           + "PmA2rLgWZKVyMXxSn-ZihSskPYDTY19uhrMwqDV-~Sk,AAICAAI/index_d51.xml";
   private static final String SELECTED_PACKAGE_KEY = "amd64.deb";
+  private static final String STORE_PACKAGE_KEY = "amd64.flatpak";
+  private static final String STORE_PACKAGE_ID = "network.crypta.Cryptad";
+  private static final String STORE_PACKAGE_URL = "https://flathub.org/apps/" + STORE_PACKAGE_ID;
 
   @Test
   void parseJson_minimal() {
@@ -180,6 +183,33 @@ class CoreUpdaterTest {
     assertFalse(updater.startDownloadFromUI());
     assertNull(updater.getDownloadedFile());
     verify(updater.core, never()).getClientContext();
+  }
+
+  @Test
+  void isCurrentStoreTarget_whenSubmissionMatchesCurrentSelection_expectTrue() throws Exception {
+    CoreUpdater updater = createCoreUpdater();
+    setField(updater, "latestVersionBuild", Version.currentBuildNumber() + 1);
+    setField(updater, "selectedSpec", new PackageSpec(null, null, STORE_PACKAGE_URL));
+    setSelectedKey(updater, STORE_PACKAGE_KEY);
+
+    assertTrue(updater.isCurrentStoreTarget("flatpak", STORE_PACKAGE_ID, STORE_PACKAGE_URL));
+    assertFalse(updater.isCurrentStoreTarget("snap", STORE_PACKAGE_ID, STORE_PACKAGE_URL));
+    assertFalse(updater.isCurrentStoreTarget("flatpak", "other.package", STORE_PACKAGE_URL));
+    assertFalse(
+        updater.isCurrentStoreTarget(
+            "flatpak", STORE_PACKAGE_ID, "https://flathub.org/apps/other.package"));
+  }
+
+  @Test
+  void isCurrentStoreTarget_whenSelectedBuildIsRevoked_expectFalse() throws Exception {
+    CoreUpdater updater = createCoreUpdater();
+    int advertisedBuild = Version.currentBuildNumber() + 1;
+    setField(updater, "latestVersionBuild", advertisedBuild);
+    setField(updater, "selectedSpec", new PackageSpec(null, null, STORE_PACKAGE_URL));
+    setSelectedKey(updater, STORE_PACKAGE_KEY);
+    when(updater.manager.isCorePackageBuildRevoked(advertisedBuild)).thenReturn(true);
+
+    assertFalse(updater.isCurrentStoreTarget("flatpak", STORE_PACKAGE_ID, STORE_PACKAGE_URL));
   }
 
   @Test
@@ -448,8 +478,12 @@ class CoreUpdaterTest {
   }
 
   private static void setSelectedKey(CoreUpdater updater) throws Exception {
+    setSelectedKey(updater, SELECTED_PACKAGE_KEY);
+  }
+
+  private static void setSelectedKey(CoreUpdater updater, String selectedKey) throws Exception {
     Field field = CoreUpdater.class.getDeclaredField("selectedKey");
     field.setAccessible(true);
-    field.set(updater, SELECTED_PACKAGE_KEY);
+    field.set(updater, selectedKey);
   }
 }
