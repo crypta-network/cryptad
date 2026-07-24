@@ -132,6 +132,16 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
   private long fetchAttemptSequence;
 
   /**
+   * Serializes USK subscription registration with shutdown.
+   *
+   * <p>This lock is deliberately separate from the updater monitor because the USK manager is
+   * external code. If shutdown wins, a later start observes {@link #isRunning} as false and cannot
+   * register a detached subscription. If start wins, shutdown waits for registration and then
+   * unsubscribes it.
+   */
+  private final Object subscriptionLifecycleLock = new Object();
+
+  /**
    * Temporary file used during the current fetch. On success, the file is renamed to a finalized
    * {@code .fblob}. Subclasses may read or delete it as part of deployment.
    */
@@ -177,16 +187,21 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
   }
 
   private void subscribe(Runnable onError) {
-    try {
-      FreenetURI localUri;
-      synchronized (this) {
-        localUri = this.uri;
+    synchronized (subscriptionLifecycleLock) {
+      if (!isRunning || isFetchingBlockedByManagerState()) {
+        return;
       }
-      USK myUsk = USK.create(localUri);
-      core.getUskManager().subscribe(myUsk, this, true, getRequestClient());
-    } catch (MalformedURLException _) {
-      LOG.error("The auto-update URI isn't valid and can't be used");
-      onError.run();
+      try {
+        FreenetURI localUri;
+        synchronized (this) {
+          localUri = this.uri;
+        }
+        USK myUsk = USK.create(localUri);
+        core.getUskManager().subscribe(myUsk, this, true, getRequestClient());
+      } catch (MalformedURLException _) {
+        LOG.error("The auto-update URI isn't valid and can't be used");
+        onError.run();
+      }
     }
   }
 
@@ -1117,34 +1132,36 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
   }
 
   private void stopSubscription() {
-    ClientGetter stoppedGetter;
-    FetchAttempt stoppedAttempt;
-    FreenetURI stoppedUri;
-    synchronized (this) {
-      isRunning = false;
-      subscriptionGeneration++;
-      stoppedUri = this.uri;
-      stoppedGetter = cg;
-      stoppedAttempt = activeFetch;
-      cg = null;
-      activeFetch = null;
-      tempBlobFile = null;
-      isFetching = false;
-    }
-    try {
-      USK myUsk = USK.create(stoppedUri.setSuggestedEdition(currentVersion));
-      core.getUskManager().unsubscribe(myUsk, this);
-    } catch (Exception e) {
-      LOG.debug("Cannot unsubscribe stopped {} updater", artifactName(), e);
-    }
-    try {
-      if (stoppedGetter != null) {
-        stoppedGetter.cancel(core.getClientContext());
+    synchronized (subscriptionLifecycleLock) {
+      ClientGetter stoppedGetter;
+      FetchAttempt stoppedAttempt;
+      FreenetURI stoppedUri;
+      synchronized (this) {
+        isRunning = false;
+        subscriptionGeneration++;
+        stoppedUri = this.uri;
+        stoppedGetter = cg;
+        stoppedAttempt = activeFetch;
+        cg = null;
+        activeFetch = null;
+        tempBlobFile = null;
+        isFetching = false;
       }
-    } catch (RuntimeException e) {
-      LOG.debug("Cannot cancel stopped {} fetch", artifactName(), e);
-    } finally {
-      cleanupAttemptFile(stoppedAttempt, "while stopping updater");
+      try {
+        USK myUsk = USK.create(stoppedUri.setSuggestedEdition(currentVersion));
+        core.getUskManager().unsubscribe(myUsk, this);
+      } catch (Exception e) {
+        LOG.debug("Cannot unsubscribe stopped {} updater", artifactName(), e);
+      }
+      try {
+        if (stoppedGetter != null) {
+          stoppedGetter.cancel(core.getClientContext());
+        }
+      } catch (RuntimeException e) {
+        LOG.debug("Cannot cancel stopped {} fetch", artifactName(), e);
+      } finally {
+        cleanupAttemptFile(stoppedAttempt, "while stopping updater");
+      }
     }
   }
 

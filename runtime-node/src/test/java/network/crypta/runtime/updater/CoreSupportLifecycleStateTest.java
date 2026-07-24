@@ -283,6 +283,16 @@ class CoreSupportLifecycleStateTest {
     assertFalse(snapshot.recommendation().upgradeAvailable());
   }
 
+  @Test
+  void isBuildRevoked_whenAcceptedEntryIsEffective_expectExactBuildBlocked(@TempDir Path tempDir)
+      throws Exception {
+    CoreSupportLifecycleState state = state(tempDir, VERIFIED_AT);
+    state.accept(CoreSupportLifecycleParserTest.emergencyRevocationDescriptor(false, true), 1);
+
+    assertTrue(state.isBuildRevoked(100));
+    assertFalse(state.isBuildRevoked(101));
+  }
+
   private static CoreSupportLifecycleState state(Path tempDir, Instant now) {
     return state(tempDir, now, "a".repeat(40));
   }

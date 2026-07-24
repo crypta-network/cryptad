@@ -86,6 +86,7 @@ final class CoreSupportLifecycleUpdater extends NodeUpdater {
       byte[] descriptorBytes = readBounded(result);
       lifecycleState.accept(descriptorBytes, fetched);
       clearPersistenceFailureBackoff();
+      manager.onSupportLifecycleAccepted();
       LOG.info("Accepted Stable 1.0 support-lifecycle descriptor edition {}", fetched);
       return true;
     } catch (IllegalArgumentException _) {

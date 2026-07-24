@@ -103,6 +103,16 @@ class CoreSupportLifecycleUpdaterTest {
   }
 
   @Test
+  void processSuccess_whenDescriptorIsAccepted_expectPackageTargetReconciled() throws Exception {
+    FetchResult result = fetchedDescriptor();
+
+    boolean accepted = updater.processSuccess(1, result, null);
+
+    assertTrue(accepted);
+    verify(manager).onSupportLifecycleAccepted();
+  }
+
+  @Test
   void managerState_whenOnlyPackageUpdaterIsBlown_expectLifecycleFetchRemainsAllowed() {
     when(manager.isUpdateKeyCompromised()).thenReturn(false);
 

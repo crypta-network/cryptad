@@ -2024,6 +2024,27 @@ public final class NodeUpdateManager {
     return supportLifecycleState.snapshot();
   }
 
+  /**
+   * Returns whether authenticated lifecycle state blocks downloading one exact core package build.
+   *
+   * <p>This is a build-policy decision and deliberately does not alter update-key compromise or
+   * blow state.
+   *
+   * @param buildVersion integer build advertised by the immutable core descriptor
+   * @return {@code true} when that exact build has an effective terminal revocation
+   */
+  boolean isCorePackageBuildRevoked(int buildVersion) {
+    return supportLifecycleState.isBuildRevoked(buildVersion);
+  }
+
+  /** Reconciles the current package selection after accepting a new lifecycle descriptor. */
+  void onSupportLifecycleAccepted() {
+    CoreUpdater updater = getCoreUpdaterSnapshot();
+    if (updater != null) {
+      updater.onSupportLifecycleStateChanged();
+    }
+  }
+
   CoreSupportLifecycleParser.TrustBinding supportLifecycleTrustBinding() {
     FreenetURI lifecycleUri;
     synchronized (this) {

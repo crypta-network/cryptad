@@ -161,6 +161,22 @@ class CoreUpdaterTest {
   }
 
   @Test
+  void packageActions_whenAdvertisedBuildIsRevoked_expectPackageTargetBlocked() throws Exception {
+    CoreUpdater updater = createCoreUpdater();
+    int advertisedBuild = Version.currentBuildNumber() + 1;
+    setField(updater, "latestVersionBuild", advertisedBuild);
+    setField(updater, "selectedSpec", new PackageSpec(VALID_CHK, 10L, null));
+    setSelectedKey(updater);
+    when(updater.manager.isCorePackageBuildRevoked(advertisedBuild)).thenReturn(true);
+
+    assertFalse(updater.canUpdateNow());
+    assertFalse(updater.isUiDownloadAvailable());
+    assertFalse(updater.startDownloadFromUI());
+    assertNull(updater.getDownloadedFile());
+    verify(updater.core, never()).getClientContext();
+  }
+
+  @Test
   void isUiDownloadAvailable_whenSelectedPackageHasChkAndVersionLabelIsNonInteger_expectTrue()
       throws Exception {
     CoreUpdater updater = createCoreUpdater();
@@ -341,6 +357,21 @@ class CoreUpdaterTest {
     updater.kill();
 
     verify(fetcher).cancelForUpdaterStop();
+  }
+
+  @Test
+  void lifecycleChange_whenSelectedBuildBecomesRevoked_expectActiveDownloadCancelled()
+      throws Exception {
+    CoreUpdater updater = createCoreUpdater();
+    int advertisedBuild = Version.currentBuildNumber() + 1;
+    setField(updater, "latestVersionBuild", advertisedBuild);
+    CoreUpdater.PackageFetcher fetcher = mock(CoreUpdater.PackageFetcher.class);
+    setField(updater, "fetcher", fetcher);
+    when(updater.manager.isCorePackageBuildRevoked(advertisedBuild)).thenReturn(true);
+
+    updater.onSupportLifecycleStateChanged();
+
+    verify(fetcher).cancelForBuildRevocation();
   }
 
   private static CoreUpdater createCoreUpdater() throws Exception {

@@ -102,6 +102,20 @@ class NodeUpdaterTest {
   }
 
   @Test
+  void start_whenUpdaterWasStopped_expectNoDetachedSubscription() {
+    // Arrange
+    when(core.getUskManager()).thenReturn(uskManager);
+    updater.preKill();
+    updater.kill();
+
+    // Act
+    updater.start();
+
+    // Assert
+    verify(uskManager, never()).subscribe(any(), same(updater), eq(true), same(updater));
+  }
+
+  @Test
   void onChangeURI_whenSeedProvided_expectUpdaterUriAndSubscribeUseSeed() throws Exception {
     // Arrange
     when(core.getUskManager()).thenReturn(uskManager);

@@ -209,7 +209,8 @@ public class CoreUpdater extends NodeUpdater {
 
   @Override
   public synchronized boolean canUpdateNow() {
-    return isNewerThanCurrentBuild(latestVersionBuild.get());
+    Integer advertisedBuild = latestVersionBuild.get();
+    return isNewerThanCurrentBuild(advertisedBuild) && !isBuildRevoked(advertisedBuild);
   }
 
   /**
@@ -225,7 +226,7 @@ public class CoreUpdater extends NodeUpdater {
    */
   public boolean isUiDownloadAvailable() {
     PackageSpec spec = selectedSpec.get();
-    if (!canPrepareUiDownload(spec)) {
+    if (isSelectedBuildRevoked() || !canPrepareUiDownload(spec)) {
       return false;
     }
 
@@ -487,6 +488,10 @@ public class CoreUpdater extends NodeUpdater {
       logInfo("Skipping package download start because updater trust is unavailable");
       return false;
     }
+    if (isSelectedBuildRevoked()) {
+      logInfo("Skipping package download start because the advertised build is revoked");
+      return false;
+    }
     PackageSpec spec = selectedSpec.get();
     File target = downloadTarget();
     if (spec == null || target == null || spec.chk() == null) {
@@ -504,6 +509,10 @@ public class CoreUpdater extends NodeUpdater {
     synchronized (packageFetchLifecycleLock) {
       if (packageFetchesStopped || manager.isBlown()) {
         logInfo("Skipping package download start because updater trust is unavailable");
+        return false;
+      }
+      if (isSelectedBuildRevoked()) {
+        logInfo("Skipping package download start because the advertised build is revoked");
         return false;
       }
       PackageFetcher current = fetcher.get();
@@ -567,6 +576,9 @@ public class CoreUpdater extends NodeUpdater {
    * @return the downloaded package file when fetch completed successfully, otherwise {@code null}
    */
   public File getDownloadedFile() {
+    if (isSelectedBuildRevoked()) {
+      return null;
+    }
     PackageFetcher f = fetcherMatchesSelection();
     if (f != null && f.isSuccess()) {
       return f.completedFileOrNull();
@@ -594,6 +606,10 @@ public class CoreUpdater extends NodeUpdater {
     String chosen = selectedKey;
     PackageSpec spec = selectedSpec.get();
 
+    if (isSelectedBuildRevoked()) {
+      addRevokedPackageWarning(alertNode);
+      return;
+    }
     addHeader(alertNode, info, envNow, chosen, spec);
     alertNode.addChild(buildLinksNode(info, spec, chosen));
 
@@ -619,6 +635,37 @@ public class CoreUpdater extends NodeUpdater {
     File downloaded = getDownloadedFile();
     String path = downloaded != null ? downloaded.getAbsolutePath() : null;
     alertNode.addChild(buildInstallForm(ready, path));
+  }
+
+  /** Cancels a selected package fetch when newly accepted policy revokes its build. */
+  void onSupportLifecycleStateChanged() {
+    PackageFetcher revokedFetcher;
+    synchronized (packageFetchLifecycleLock) {
+      if (!isSelectedBuildRevoked()) {
+        return;
+      }
+      revokedFetcher = fetcher.getAndSet(null);
+    }
+    if (revokedFetcher != null) {
+      revokedFetcher.cancelForBuildRevocation();
+    }
+  }
+
+  private boolean isSelectedBuildRevoked() {
+    return isBuildRevoked(latestVersionBuild.get());
+  }
+
+  private boolean isBuildRevoked(Integer buildVersion) {
+    return buildVersion != null && manager.isCorePackageBuildRevoked(buildVersion);
+  }
+
+  private static void addRevokedPackageWarning(HTMLNode alertNode) {
+    HTMLNode warning = new HTMLNode("p");
+    warning.addChild(
+        "#",
+        "This advertised package build is revoked. Use the authenticated support-lifecycle "
+            + "recovery guidance instead.");
+    alertNode.addChild(warning);
   }
 
   private void addHeader(
@@ -912,6 +959,10 @@ public class CoreUpdater extends NodeUpdater {
 
     void cancelForUpdaterStop() {
       cancel("updater stop");
+    }
+
+    void cancelForBuildRevocation() {
+      cancel("build revocation");
     }
 
     private synchronized void cancel(String reason) {
