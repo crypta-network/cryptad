@@ -160,6 +160,12 @@ final class PlatformApiOperationalRoutes {
       }
       return PlatformApiResponse.ok(updatesApiHandler.coreSnapshot());
     }
+    if (segments.size() == 2 && "support-lifecycle".equals(segments.get(1))) {
+      if (!METHOD_GET.equals(request.method())) {
+        return methodNotAllowed(METHOD_GET, GET_ONLY_MESSAGE);
+      }
+      return PlatformApiResponse.ok(updatesApiHandler.supportLifecycleSnapshot());
+    }
     if (segments.size() == 3
         && "core".equals(segments.get(1))
         && "download".equals(segments.get(2))) {

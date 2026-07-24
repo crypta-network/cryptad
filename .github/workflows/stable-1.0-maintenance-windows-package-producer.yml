@@ -82,7 +82,8 @@ jobs:
           INPUT_EXE_FILE_NAME: ${{ inputs.exe_file_name }}
         run: |
           $ErrorActionPreference = 'Stop'
-          if ($env:INPUT_RELEASE_ID -cnotmatch '^[A-Za-z0-9][A-Za-z0-9._-]*$' -or
+          if ($env:INPUT_RELEASE_ID.Length -gt 128 -or
+              $env:INPUT_RELEASE_ID -cnotmatch '^[A-Za-z0-9][A-Za-z0-9._-]*$' -or
               $env:INPUT_BUILD_VERSION -cnotmatch '^[1-9][0-9]*$' -or
               $env:INPUT_CANDIDATE_COMMIT -cnotmatch '^[0-9a-f]{40}$' -or
               $env:INPUT_EXE_FILE_NAME -cnotmatch '^[A-Za-z0-9][A-Za-z0-9._-]*\.exe$') {

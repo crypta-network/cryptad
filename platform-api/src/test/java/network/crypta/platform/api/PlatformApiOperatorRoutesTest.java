@@ -58,6 +58,54 @@ class PlatformApiOperatorRoutesTest {
   private static final HexFormat HEX = HexFormat.of();
 
   @Test
+  void route_whenSupportLifecycleRequested_expectReadOnlyFailClosedSnapshot() {
+    PlatformApiRouter router = new PlatformApiRouter(runtimePorts());
+
+    PlatformApiResponse response =
+        router.route(request("GET", List.of("updates", "support-lifecycle"), Map.of()));
+    PlatformApiResponse mutation =
+        router.route(request("POST", List.of("updates", "support-lifecycle"), Map.of()));
+
+    assertEquals(200, response.statusCode());
+    assertTrue(response.body().contains("\"known\":false"));
+    assertTrue(response.body().contains("\"runningStatus\":null"));
+    assertTrue(response.body().contains("\"lifecycle_runtime_snapshot_unavailable\""));
+    assertEquals(405, mutation.statusCode());
+  }
+
+  @Test
+  void route_whenAppPrincipalRequestsSupportLifecycle_expectOperatorOnlyDenial() {
+    PlatformApiRouter router = new PlatformApiRouter(runtimePorts());
+    List<String> route = List.of("updates", "support-lifecycle");
+    List<String> permissions = List.of(PlatformApiCapabilities.UPDATES_READ);
+
+    PlatformApiResponse appProcessResponse =
+        router.route(
+            request("GET", route, Map.of(), PlatformApiPrincipal.appToken(APP_ID, permissions)));
+    PlatformApiResponse appBrowserResponse =
+        router.route(
+            request(
+                "GET",
+                route,
+                Map.of(),
+                PlatformApiPrincipal.appBrowserSession(APP_ID, permissions)));
+    PlatformApiResponse appReadableCoreResponse =
+        router.route(
+            request(
+                "GET",
+                List.of("updates", "core"),
+                Map.of(),
+                PlatformApiPrincipal.appToken(APP_ID, permissions)));
+
+    assertEquals(403, appProcessResponse.statusCode());
+    assertTrue(appProcessResponse.body().contains("\"code\":\"forbidden\""));
+    assertEquals(403, appBrowserResponse.statusCode());
+    assertTrue(appBrowserResponse.body().contains("\"code\":\"forbidden\""));
+    assertEquals(200, appReadableCoreResponse.statusCode());
+    assertFalse(appReadableCoreResponse.body().contains("supportLifecycle"));
+  }
+
+  @Test
   void route_whenOperatorDashboardRequested_expectSectionShape() {
     PlatformApiRouter router = new PlatformApiRouter(runtimePorts());
 
@@ -71,6 +119,8 @@ class PlatformApiOperatorRoutesTest {
     assertTrue(response.body().contains("\"subscriptions\""));
     assertTrue(response.body().contains("\"trustGraph\""));
     assertTrue(response.body().contains("\"supportWarningCount\""));
+    assertTrue(response.body().contains("\"coreSupportLifecycle\""));
+    assertTrue(response.body().contains("\"known\":false"));
   }
 
   @Test
@@ -266,6 +316,8 @@ class PlatformApiOperatorRoutesTest {
     assertTrue(response.body().contains("\"recoveryContext\""));
     assertTrue(response.body().contains("\"redactedLineCount\":3"));
     assertTrue(response.body().contains("\"redaction\":{\"status\":\"pass\""));
+    assertTrue(response.body().contains("\"coreSupportLifecycle\""));
+    assertTrue(response.body().contains("\"lifecycle_runtime_snapshot_unavailable\""));
   }
 
   @Test

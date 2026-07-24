@@ -1,6 +1,8 @@
 package network.crypta.runtime.updater;
 
 import java.net.MalformedURLException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Random;
 import network.crypta.io.comm.AsyncMessageCallback;
 import network.crypta.io.comm.ByteCounter;
@@ -17,7 +19,9 @@ import network.crypta.support.Ticker;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.io.TempDir;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
@@ -32,6 +36,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -41,6 +46,8 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
 class UpdateOverMandatoryManagerTest {
+
+  @TempDir Path tempDir;
 
   @Mock private NodeUpdateManager updateManager;
 
@@ -52,7 +59,7 @@ class UpdateOverMandatoryManagerTest {
   @Mock private Ticker ticker;
   @Mock private ByteCounter byteCounter;
 
-  private UpdateOverMandatoryManager uom;
+  @InjectMocks private UpdateOverMandatoryManager uom;
 
   @BeforeEach
   void setUp() {
@@ -60,6 +67,7 @@ class UpdateOverMandatoryManagerTest {
     when(updateManager.getNode()).thenReturn(node);
     when(updateManager.getByteCounter()).thenReturn(byteCounter);
     when(node.services().clientCore()).thenReturn(clientCore);
+    when(clientCore.getPersistentTempDir()).thenReturn(tempDir.toFile());
     when(clientCore.getAlerts()).thenReturn(alertManager);
     when(node.network().ticker()).thenReturn(ticker);
     // Do nothing when jobs are queued in tests to keep determinism
@@ -116,17 +124,35 @@ class UpdateOverMandatoryManagerTest {
 
     // Default: auto-update enabled.
     when(updateManager.isEnabled()).thenReturn(true);
+  }
 
-    uom = new UpdateOverMandatoryManager(updateManager);
+  @Test
+  void removeOldTempFiles_whenNodeUpdaterBlobsRemain_expectOnlyExactTempNamesDeleted()
+      throws Exception {
+    // Arrange
+    Path coreInfoTemp = Files.writeString(tempDir.resolve("core-info-1433-12345.fblob.tmp"), "x");
+    Path lifecycleTemp =
+        Files.writeString(tempDir.resolve("support-lifecycle-7-67890.fblob.tmp"), "x");
+    Path finalized = Files.writeString(tempDir.resolve("core-info-1433.fblob"), "x");
+    Path ambiguous = Files.writeString(tempDir.resolve("core-info-current-12345.fblob.tmp"), "x");
+
+    // Act
+    uom.removeOldTempFiles();
+
+    // Assert
+    assertFalse(Files.exists(coreInfoTemp));
+    assertFalse(Files.exists(lifecycleTemp));
+    assertTrue(Files.exists(finalized));
+    assertTrue(Files.exists(ambiguous));
   }
 
   @Test
   void handleAnnounce_whenRevocationKeyMatches_expectPeerClaimedAndAlertRegistered()
       throws MalformedURLException, NotConnectedException {
     // Arrange
-    Message m = org.mockito.Mockito.mock(Message.class);
-    PeerNode peer = org.mockito.Mockito.mock(PeerNode.class);
-    PeerTransport transport = org.mockito.Mockito.mock(PeerTransport.class);
+    Message m = mock(Message.class);
+    PeerNode peer = mock(PeerNode.class);
+    PeerTransport transport = mock(PeerTransport.class);
     when(peer.transport()).thenReturn(transport);
 
     when(m.getString(DMT.REVOCATION_KEY)).thenReturn("KSK@revoked");
@@ -177,8 +203,8 @@ class UpdateOverMandatoryManagerTest {
   @Test
   void handleAnnounce_whenRevocationKeyMalformed_expectIgnored() {
     // Arrange
-    Message m = org.mockito.Mockito.mock(Message.class);
-    PeerNode peer = org.mockito.Mockito.mock(PeerNode.class);
+    Message m = mock(Message.class);
+    PeerNode peer = mock(PeerNode.class);
 
     when(m.getString(DMT.REVOCATION_KEY)).thenReturn("NOT_A_URI");
     when(m.getBoolean(DMT.HAVE_REVOCATION_KEY)).thenReturn(true);
@@ -210,9 +236,9 @@ class UpdateOverMandatoryManagerTest {
   void handleAnnounce_whenRevocationSendFailsNotConnected_expectRemovedFromState()
       throws MalformedURLException, NotConnectedException {
     // Arrange
-    Message m = org.mockito.Mockito.mock(Message.class);
-    PeerNode peer = org.mockito.Mockito.mock(PeerNode.class);
-    PeerTransport transport = org.mockito.Mockito.mock(PeerTransport.class);
+    Message m = mock(Message.class);
+    PeerNode peer = mock(PeerNode.class);
+    PeerTransport transport = mock(PeerTransport.class);
     when(peer.transport()).thenReturn(transport);
 
     when(m.getString(DMT.REVOCATION_KEY)).thenReturn("KSK@revoked");
@@ -254,7 +280,7 @@ class UpdateOverMandatoryManagerTest {
   void getNodesSayBlown_whenMixedPeers_expectCorrectClassification()
       throws MalformedURLException, NotConnectedException {
     // Arrange common message fields
-    Message m = org.mockito.Mockito.mock(Message.class);
+    Message m = mock(Message.class);
     when(m.getString(DMT.REVOCATION_KEY)).thenReturn("KSK@revoked");
     when(m.getBoolean(DMT.HAVE_REVOCATION_KEY)).thenReturn(true);
     when(m.getString(DMT.CORE_PACKAGE_KEY)).thenReturn("KSK@unused");
@@ -269,8 +295,8 @@ class UpdateOverMandatoryManagerTest {
     when(updateManager.isBlown()).thenReturn(false);
     when(updateManager.getRevocationURI()).thenReturn(new FreenetURI("KSK@revoked"));
 
-    PeerNode connected = org.mockito.Mockito.mock(PeerNode.class);
-    PeerTransport connectedTransport = org.mockito.Mockito.mock(PeerTransport.class);
+    PeerNode connected = mock(PeerNode.class);
+    PeerTransport connectedTransport = mock(PeerTransport.class);
     when(connected.transport()).thenReturn(connectedTransport);
     when(connected.userToString()).thenReturn("connected");
     when(connected.getSimpleVersion()).thenReturn(10);
@@ -279,8 +305,8 @@ class UpdateOverMandatoryManagerTest {
         .when(connectedTransport)
         .sendAsync(any(Message.class), any(AsyncMessageCallback.class), any(ByteCounter.class));
 
-    PeerNode disconnected = org.mockito.Mockito.mock(PeerNode.class);
-    PeerTransport disconnectedTransport = org.mockito.Mockito.mock(PeerTransport.class);
+    PeerNode disconnected = mock(PeerNode.class);
+    PeerTransport disconnectedTransport = mock(PeerTransport.class);
     when(disconnected.transport()).thenReturn(disconnectedTransport);
     when(disconnected.userToString()).thenReturn("disconnected");
     when(disconnected.getSimpleVersion()).thenReturn(11);
@@ -289,8 +315,8 @@ class UpdateOverMandatoryManagerTest {
         .when(disconnectedTransport)
         .sendAsync(any(Message.class), any(AsyncMessageCallback.class), any(ByteCounter.class));
 
-    PeerNode failed = org.mockito.Mockito.mock(PeerNode.class);
-    PeerTransport failedTransport = org.mockito.Mockito.mock(PeerTransport.class);
+    PeerNode failed = mock(PeerNode.class);
+    PeerTransport failedTransport = mock(PeerTransport.class);
     when(failed.transport()).thenReturn(failedTransport);
     when(failed.userToString()).thenReturn("failed");
     when(failed.getSimpleVersion()).thenReturn(12);
@@ -327,7 +353,7 @@ class UpdateOverMandatoryManagerTest {
     // Prepare an announcement without revocation; only dependency peer tracking may run.
     when(updateManager.isBlown()).thenReturn(false);
 
-    Message m = org.mockito.Mockito.mock(Message.class);
+    Message m = mock(Message.class);
     when(m.getString(DMT.CORE_PACKAGE_KEY)).thenReturn("KSK@main");
     when(m.getInt(DMT.CORE_PACKAGE_VERSION))
         .thenReturn(5); // > current build number (likely 0 in dev)
@@ -340,8 +366,8 @@ class UpdateOverMandatoryManagerTest {
     when(m.getInt(DMT.PING_TIME)).thenReturn(0);
     when(m.getInt(DMT.BWLIMIT_DELAY_TIME)).thenReturn(0);
 
-    PeerNode peer = org.mockito.Mockito.mock(PeerNode.class);
-    PeerTransport transport = org.mockito.Mockito.mock(PeerTransport.class);
+    PeerNode peer = mock(PeerNode.class);
+    PeerTransport transport = mock(PeerTransport.class);
     when(peer.transport()).thenReturn(transport);
     when(peer.isConnected()).thenReturn(true);
     doAnswer(_ -> null)

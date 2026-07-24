@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "https://github.com/crypta-network/cryptad/tools/release-certification/schemas/stable-1.0-catalog-app-profile-lifecycle-governance-v1.schema.json",
+  "type": "object", "additionalProperties": false,
+  "required": ["schemaVersion", "kind", "generatedAt", "stableMilestone", "stableCatalog", "firstPartyApps", "contentFormatProfiles", "securityStateDigest", "securityState", "hotfixFollowUp", "trustModel", "legacyBoundariesDigest", "redaction"],
+  "properties": {
+    "schemaVersion": {"const": 1}, "kind": {"const": "stable-1.0-catalog-app-profile-lifecycle-governance"}, "generatedAt": {"type": "string", "format": "date-time"}, "stableMilestone": {"const": "1.0"},
+    "stableCatalog": {"type": "object", "additionalProperties": false, "required": ["catalogId", "channel", "revision", "edition", "digest", "signingKeyId"], "properties": {"catalogId": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/nonEmpty"}, "channel": {"const": "stable"}, "revision": {"type": "integer", "minimum": 0}, "edition": {"type": "integer", "minimum": 0}, "digest": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/digest"}, "signingKeyId": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/nonEmpty"}}},
+    "firstPartyApps": {"type": "array", "minItems": 7, "uniqueItems": true, "items": {"type": "object", "additionalProperties": false, "required": ["appId", "version", "channel", "supportLevel", "bundleDigest", "reviewReceiptDigest", "appSigningKeyId", "reviewerKeyId", "manifestDigest", "permissionSetDigest", "appDataSchemaVersion", "supportMetadataDigest"], "properties": {"appId": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/nonEmpty"}, "version": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/nonEmpty"}, "channel": {"const": "stable"}, "supportLevel": {"enum": ["core", "maintained", "local-rc"]}, "bundleDigest": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/digest"}, "reviewReceiptDigest": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/digest"}, "appSigningKeyId": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/nonEmpty"}, "reviewerKeyId": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/nonEmpty"}, "manifestDigest": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/digest"}, "permissionSetDigest": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/digest"}, "appDataSchemaVersion": {"oneOf": [{"type": "integer", "minimum": 1}, {"const": "not-applicable"}]}, "supportMetadataDigest": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/digest"}}}},
+    "contentFormatProfiles": {"type": "array", "minItems": 5, "uniqueItems": true, "items": {"type": "object", "additionalProperties": false, "required": ["profileId", "version", "status", "descriptorDigest"], "properties": {"profileId": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/nonEmpty"}, "version": {"type": "integer", "minimum": 1}, "status": {"enum": ["stable", "deprecated"]}, "descriptorDigest": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/digest"}}}},
+    "securityStateDigest": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/digest"},
+    "securityState": {
+      "type": "object", "additionalProperties": false,
+      "required": ["gaBaselineDigest", "compositeCurrentStateDigest", "predecessorStateDigest", "baselineAdvisoryCount", "baselineExactVersionDenylistCount", "trackedDimensions", "continuityStatus", "authority"],
+      "properties": {
+        "gaBaselineDigest": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/digest"},
+        "compositeCurrentStateDigest": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/digest"},
+        "predecessorStateDigest": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/nullableDigest"},
+        "baselineAdvisoryCount": {"type": "integer", "minimum": 0},
+        "baselineExactVersionDenylistCount": {"type": "integer", "minimum": 0},
+        "trackedDimensions": {"const": ["active-security-advisories", "exact-version-denylist", "reviewer-key-revocations", "app-signing-key-revocations"]},
+        "continuityStatus": {"const": "pass"},
+        "authority": {"const": "authenticated-maintenance-security-digest-chain"}
+      }
+    },
+    "hotfixFollowUp": {"oneOf": [{"type": "object", "additionalProperties": false, "required": ["status", "obligationDigest", "deadline", "blocksRoutineMaintenance"], "properties": {"status": {"enum": ["not-required", "open", "closed", "overdue"]}, "obligationDigest": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/nullableDigest"}, "deadline": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/nullableTimestamp"}, "blocksRoutineMaintenance": {"type": "boolean"}}}, {"type": "null"}]},
+    "trustModel": {"const": "projection-only-existing-signed-metadata-remains-authoritative"}, "legacyBoundariesDigest": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/digest"}, "redaction": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/redaction"}
+  }
+}

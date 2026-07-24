@@ -29,6 +29,7 @@ COMMANDS = (
     "stable-rc",
     "stable-ga",
     "stable-maintenance",
+    "stable-lifecycle",
 )
 MULTI_NODE_ACTIONS = (
     "plan",
@@ -62,6 +63,7 @@ SELF_TEST_SUITES = (
     "stable-rc",
     "stable-ga",
     "stable-maintenance",
+    "stable-lifecycle",
     "migration",
 )
 
@@ -337,6 +339,20 @@ def _validate_stable_maintenance_manifest(manifest: RunManifest) -> None:
             "stable-maintenance requires explicit immutable inputs: "
             + ", ".join(missing)
         )
+    lifecycle_inputs = {
+        "previousStableLifecycleLedger",
+        "previousStableLifecycleDescriptor",
+        "stableLifecycleAuthorization",
+        "stableLifecyclePublicationPlan",
+        "stableLifecyclePublicationReceipt",
+    }
+    present_lifecycle_inputs = lifecycle_inputs.intersection(manifest.inputs)
+    if present_lifecycle_inputs and present_lifecycle_inputs != lifecycle_inputs:
+        raise ValueError(
+            "stable-maintenance lifecycle state requires the exact ledger, descriptor, "
+            "approved authorization, authorized publication plan, and verified publication "
+            "receipt together"
+        )
     mode = manifest.commands.get("stable-maintenance", {}).get(
         "mode", "validate-only"
     )
@@ -403,6 +419,66 @@ def _validate_stable_maintenance_manifest(manifest: RunManifest) -> None:
         )
 
 
+def _validate_stable_lifecycle_manifest(manifest: RunManifest) -> None:
+    """Reject lifecycle evaluation with ambiguous policy, history, or command mode."""
+
+    if manifest.release.profile != "stable-review":
+        raise ValueError("stable-lifecycle requires release.profile stable-review")
+    version = manifest.release.version
+    if version is None or re.fullmatch(r"[1-9][0-9]*", version) is None:
+        raise ValueError("stable-lifecycle requires the authenticated tip as release.version")
+    required = {
+        "stableGaPromotionSummary",
+        "stableGaValidation",
+        "stableGaAuthorizationSummary",
+        "stableGaPublicationPlan",
+        "stableGaPublicationReceipt",
+        "stableGaChecksums",
+        "stableGaProvenance",
+        "stableGaMaintenanceBaseline",
+        "predecessorPublicationReceipt",
+        "predecessorBaseline",
+        "stableMaintenanceHistory",
+        "stableLifecyclePolicy",
+    }
+    missing = sorted(required.difference(manifest.inputs))
+    if missing:
+        raise ValueError(
+            "stable-lifecycle requires explicit authenticated inputs: " + ", ".join(missing)
+        )
+    mode = manifest.commands.get("stable-lifecycle", {}).get("mode", "evaluate")
+    allowed = {
+        "evaluate",
+        "prepare-transition",
+        "validate-authorization",
+        "verify-publication",
+    }
+    if mode not in allowed:
+        raise ValueError(
+            "stable-lifecycle mode must be evaluate, prepare-transition, "
+            "validate-authorization, or verify-publication"
+        )
+    has_approval = "stableLifecycleAuthorization" in manifest.inputs
+    has_receipt = "stableLifecyclePublicationReceipt" in manifest.inputs
+    if mode in {"evaluate", "prepare-transition"} and (has_approval or has_receipt):
+        raise ValueError(f"stable-lifecycle {mode} cannot consume protected publication inputs")
+    if mode in {"validate-authorization", "verify-publication"} and not has_approval:
+        raise ValueError(f"stable-lifecycle {mode} requires inputs.stableLifecycleAuthorization")
+    if mode == "verify-publication" and not has_receipt:
+        raise ValueError(
+            "stable-lifecycle verify-publication requires inputs.stableLifecyclePublicationReceipt"
+        )
+    expected_build = manifest.policies.get("expectedPredecessorBuild")
+    if expected_build != version:
+        raise ValueError(
+            "stable-lifecycle release.version must equal policies.expectedPredecessorBuild"
+        )
+    if manifest.policies.get("publicationIntent") != (
+        "prepare-explicit-protected-publication"
+    ):
+        raise ValueError("stable-lifecycle requires explicit protected publication intent")
+
+
 def _run_command(args: argparse.Namespace) -> int:
     command = str(args.command)
     if getattr(args, "self_test", False):
@@ -418,6 +494,8 @@ def _run_command(args: argparse.Namespace) -> int:
         _validate_stable_ga_manifest(manifest)
     if command == "stable-maintenance":
         _validate_stable_maintenance_manifest(manifest)
+    if command == "stable-lifecycle":
+        _validate_stable_lifecycle_manifest(manifest)
     prepare_run_root(manifest)
 
     previous = Path.cwd()

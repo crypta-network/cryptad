@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "https://github.com/crypta-network/cryptad/tools/release-certification/schemas/stable-1.0-support-lifecycle-summary-v1.schema.json",
+  "type": "object", "additionalProperties": false,
+  "required": ["schemaVersion", "kind", "tool", "generatedAt", "releaseId", "buildVersion", "stableMilestone", "commandMode", "status", "decision", "promotionReady", "authorizationReady", "publicationReady", "nonRelease", "publicationState", "currentStableBuild", "descriptorEdition", "descriptorDigest", "ledgerDigest", "evidence", "blockers", "warnings", "waivers", "artifacts", "redaction"],
+  "properties": {
+    "schemaVersion": {"const": 1}, "kind": {"const": "stable-1.0-support-lifecycle-summary"}, "tool": {"const": "stable-1.0-support-lifecycle"}, "generatedAt": {"type": "string", "format": "date-time"}, "releaseId": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/releaseId"}, "buildVersion": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/build"}, "stableMilestone": {"const": "1.0"},
+    "commandMode": {"enum": ["evaluate", "prepare-transition", "validate-authorization", "verify-publication"]}, "status": {"enum": ["pass", "fail"]}, "decision": {"enum": ["no-go", "go", "evaluation-complete"]}, "promotionReady": {"type": "boolean"}, "authorizationReady": {"type": "boolean"}, "publicationReady": {"type": "boolean"}, "nonRelease": {"type": "boolean"}, "publicationState": {"enum": ["not-published", "publication-verified"]},
+    "currentStableBuild": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/nullableBuild"}, "descriptorEdition": {"oneOf": [{"type": "integer", "minimum": 1}, {"type": "null"}]}, "descriptorDigest": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/nullableDigest"}, "ledgerDigest": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/nullableDigest"},
+    "evidence": {"type": "array", "minItems": 16, "maxItems": 16, "uniqueItems": true, "items": {"type": "object", "additionalProperties": false, "required": ["id", "status"], "properties": {"id": {"type": "string", "pattern": "^stable-lifecycle\\."}, "status": {"enum": ["pass", "fail"]}}}},
+    "blockers": {"type": "array"}, "warnings": {"type": "array"}, "waivers": {"type": "array", "maxItems": 0},
+    "artifacts": {
+      "type": "object", "additionalProperties": false, "required": ["redactionReport"],
+      "properties": {
+        "inventory": {"const": "stable-1.0-support-lifecycle-inventory.json"},
+        "genesisProof": {"const": "stable-1.0-support-lifecycle-genesis-proof.json"},
+        "ledger": {"const": "stable-1.0-support-lifecycle-ledger.json"},
+        "transitionSet": {"const": "stable-1.0-support-lifecycle-transition-set.json"},
+        "descriptor": {"const": "stable-1.0-support-lifecycle-descriptor.json"},
+        "authorization": {"const": "stable-1.0-support-lifecycle-authorization-summary.json"},
+        "publicationPlan": {"const": "stable-1.0-support-lifecycle-publication-plan.json"},
+        "publicationReceipt": {"const": "stable-1.0-support-lifecycle-publication-receipt.json"},
+        "latest": {"const": "stable-1.0-support-lifecycle-latest.json"},
+        "platformApiDeprecationGovernance": {"const": "stable-1.0-platform-api-deprecation-governance.json"},
+        "catalogAppProfileGovernance": {"const": "stable-1.0-catalog-app-profile-lifecycle-governance.json"},
+        "provenance": {"const": "stable-1.0-support-lifecycle-provenance.json"},
+        "checksums": {"const": "stable-1.0-support-lifecycle-checksums.txt"},
+        "redactionReport": {"const": "redaction-report.json"}
+      }
+    },
+    "redaction": {"$ref": "stable-1.0-support-lifecycle-redaction-v1.schema.json"}
+  }
+}

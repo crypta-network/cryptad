@@ -4,7 +4,10 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.net.MalformedURLException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Clock;
 import network.crypta.client.FetchContext;
 import network.crypta.client.FetchException;
 import network.crypta.client.FetchResult;
@@ -35,6 +38,7 @@ import network.crypta.node.RequestStarter;
 import network.crypta.node.Version;
 import network.crypta.runtime.alerts.RevocationKeyFoundUserAlert;
 import network.crypta.runtime.alerts.UpdatedVersionAvailableUserAlert;
+import network.crypta.runtime.spi.CoreSupportLifecycleSnapshot;
 import network.crypta.support.HTMLNode;
 import network.crypta.support.api.Bucket;
 import network.crypta.support.io.BucketTools;
@@ -88,6 +92,7 @@ public final class NodeUpdateManager {
   private static final String URI_PATH_SEPARATOR = "/";
   private static final String UPDATE_URI_PREFIX = "USK@";
   private static final String UPDATE_URI_DOC_NAME = "info";
+  private static final String SUPPORT_LIFECYCLE_URI_DOC_NAME = "support-lifecycle";
   private static final String LEGACY_UPDATE_URI_DOC_NAME = "jar";
   private static final String REVOCATION_URI_PREFIX = "SSK@";
   private static final String REVOCATION_URI_DOC_NAME = "revoked";
@@ -96,6 +101,11 @@ public final class NodeUpdateManager {
   private static final String LAST_KNOWN_GOOD_FETCHED_EDITION_KEY_OPTION =
       "lastKnownGoodFetchedEditionKey";
   private static final String REVOCATION_URI_OPTION = "revocationURI";
+  private static final String RESTORED_UPDATE_KEY_TRUST_INVALIDATION_MESSAGE =
+      "Durable update-key trust invalidation was recorded before this node restarted.";
+  static final String UPDATE_KEY_TRUST_INVALIDATION_FILE = "update-key-trust-invalidated";
+  private static final long INITIAL_TRUST_INVALIDATION_RETRY_MILLIS = SECONDS.toMillis(1);
+  private static final long MAX_TRUST_INVALIDATION_RETRY_MILLIS = MINUTES.toMillis(5);
 
   /**
    * The last build on the previous key with Java 7 support. Older nodes can update to this point
@@ -143,6 +153,8 @@ public final class NodeUpdateManager {
   // Legacy jar updater removed; core package updater is used instead.
   // Package-based core updater (Kotlin)
   private CoreUpdater coreUpdater;
+  private CoreSupportLifecycleUpdater supportLifecycleUpdater;
+  private final CoreSupportLifecycleState supportLifecycleState;
 
   private final boolean wasEnabledOnStartup;
 
@@ -170,9 +182,13 @@ public final class NodeUpdateManager {
 
   private String revocationMessage;
   private volatile boolean hasBeenBlown;
+  private volatile boolean updateKeyCompromised;
+  private boolean trustInvalidationRetryScheduled;
+  private long trustInvalidationRetryMillis = INITIAL_TRUST_INVALIDATION_RETRY_MILLIS;
   private volatile boolean peersSayBlown;
 
   // Revocation alert
+  private final Object revocationAlertRegistrationLock = new Object();
   private RevocationKeyFoundUserAlert revocationAlert;
   // Update alert
   private final UpdatedVersionAvailableUserAlert alert;
@@ -200,6 +216,7 @@ public final class NodeUpdateManager {
   public NodeUpdateManager(Node node, Config config) throws InvalidConfigValueException {
     this.node = node;
     this.hasBeenBlown = false;
+    this.updateKeyCompromised = false;
     this.alert = new UpdatedVersionAvailableUserAlert(this);
     alert.isValid(false);
 
@@ -309,6 +326,25 @@ public final class NodeUpdateManager {
     updaterConfig.registerIgnoredOption("updateInstallers");
 
     updaterConfig.finishedInitialization();
+
+    Path nodeDirectory = node.nodeDir().dir().toPath();
+    this.supportLifecycleState =
+        new CoreSupportLifecycleState(
+            new CoreSupportLifecycleStore(
+                nodeDirectory.resolve("updates/core/support-lifecycle-last-known-good.json"),
+                nodeDirectory.resolve(UPDATE_KEY_TRUST_INVALIDATION_FILE)),
+            new CoreSupportLifecycleParser(),
+            Clock.systemUTC(),
+            Version.currentBuildNumber(),
+            Version.gitRevision(),
+            supportLifecycleTrustBinding());
+    this.updateKeyCompromised = supportLifecycleState.isUpdateKeyTrustInvalidated();
+    this.hasBeenBlown = updateKeyCompromised;
+    if (updateKeyCompromised) {
+      this.revocationMessage = RESTORED_UPDATE_KEY_TRUST_INVALIDATION_MESSAGE;
+      this.revocationAlert =
+          new RevocationKeyFoundUserAlert(RESTORED_UPDATE_KEY_TRUST_INVALIDATION_MESSAGE, false);
+    }
 
     this.revocationChecker =
         new RevocationChecker(
@@ -507,6 +543,7 @@ public final class NodeUpdateManager {
   public void start() {
 
     node.services().clientCore().getAlerts().register(alert);
+    registerRestoredUpdateKeyCompromiseAlert();
 
     enable(wasEnabledOnStartup);
 
@@ -515,6 +552,18 @@ public final class NodeUpdateManager {
     // Note: make updateIPToCountry configurable
     SimplePuller ip4Getter = new SimplePuller(getIPv4ToCountryURI(), NodeFile.IPV4_TO_COUNTRY);
     ip4Getter.start(RequestStarter.UPDATE_PRIORITY_CLASS, MAX_IP_TO_COUNTRY_LENGTH);
+  }
+
+  private void registerRestoredUpdateKeyCompromiseAlert() {
+    synchronized (revocationAlertRegistrationLock) {
+      RevocationKeyFoundUserAlert restoredAlert;
+      synchronized (this) {
+        restoredAlert = updateKeyCompromised ? revocationAlert : null;
+      }
+      if (restoredAlert != null) {
+        node.services().clientCore().getAlerts().register(restoredAlert);
+      }
+    }
   }
 
   /** Broadcasts UoM announcements to local peers when armed and applicable. */
@@ -616,12 +665,14 @@ public final class NodeUpdateManager {
   /**
    * Enable or disable auto-update.
    *
+   * <p>The read-only support-lifecycle subscriber remains active while package updates are
+   * disabled. An authenticated update-key compromise still stops both subscribers because no
+   * document under that key can then be trusted.
+   *
    * @param enable Whether auto-update should be enabled.
    */
   void enable(boolean enable) {
     // Note: wrapper gating removed in favor of CoreUpdater
-    CoreUpdater stoppedCoreUpdater = null;
-    CoreUpdater startedCoreUpdater = null;
     // We need to run the revocation checker even if the auto-update is
     // disabled.
     // Two reasons:
@@ -629,43 +680,93 @@ public final class NodeUpdateManager {
     // off, it's something the user should probably know about.
     // 2. When the key is blown, we turn off auto-update!!!!
     getRevocationChecker().start(false);
+    EnableTransition transition;
     synchronized (this) {
-      boolean enabled = (coreUpdater != null);
-      if (enabled == enable) {
-        return;
-      }
-      if (!enable) {
-        // Kill it
-        coreUpdater.preKill();
-        stoppedCoreUpdater = coreUpdater;
-        coreUpdater = null;
-        disabledNotBlown = false;
-      } else {
-        // Start CoreUpdater
-        startCoreUpdater();
-        startedCoreUpdater = coreUpdater;
-        // Suppress obsolete an Update-ASAP form in alert; CoreUpdater renders its own buttons
-        armed = true;
-      }
+      transition = updateEnablementState(enable);
     }
+    completeEnablementTransition(enable, transition);
+  }
+
+  private EnableTransition updateEnablementState(boolean enable) {
+    CoreSupportLifecycleUpdater startedLifecycleUpdater = startLifecycleUpdaterIfEligible();
     if (!enable) {
-      // When we reach here with enable=false, coreUpdater was non-null above,
-      // so stoppedCoreUpdater is guaranteed to be non-null.
-      stoppedCoreUpdater.kill();
-    } else {
-      if (startedCoreUpdater != null) {
-        boolean stillCurrent;
-        synchronized (this) {
-          stillCurrent = (coreUpdater == startedCoreUpdater);
-        }
-        if (stillCurrent) {
-          startedCoreUpdater.start();
-        } else if (LOG.isDebugEnabled()) {
-          LOG.debug("Skipping stale CoreUpdater start after concurrent state change");
-        }
-      }
+      return disableCoreUpdater(startedLifecycleUpdater);
+    }
+    return enableCoreUpdater(startedLifecycleUpdater);
+  }
+
+  private CoreSupportLifecycleUpdater startLifecycleUpdaterIfEligible() {
+    if (supportLifecycleUpdater != null || updateKeyCompromised) {
+      return null;
+    }
+    startSupportLifecycleUpdater();
+    return supportLifecycleUpdater;
+  }
+
+  private EnableTransition disableCoreUpdater(CoreSupportLifecycleUpdater startedLifecycleUpdater) {
+    CoreUpdater stoppedCoreUpdater = coreUpdater;
+    if (stoppedCoreUpdater != null) {
+      stoppedCoreUpdater.preKill();
+      coreUpdater = null;
+    }
+    disabledNotBlown = false;
+    return new EnableTransition(stoppedCoreUpdater, null, startedLifecycleUpdater);
+  }
+
+  private EnableTransition enableCoreUpdater(CoreSupportLifecycleUpdater startedLifecycleUpdater) {
+    CoreUpdater startedCoreUpdater = null;
+    if (coreUpdater == null) {
+      startCoreUpdater();
+      startedCoreUpdater = coreUpdater;
+    }
+    // Suppress obsolete an Update-ASAP form in alert; CoreUpdater renders its own buttons.
+    armed = true;
+    return new EnableTransition(null, startedCoreUpdater, startedLifecycleUpdater);
+  }
+
+  private void completeEnablementTransition(boolean enable, EnableTransition transition) {
+    if (enable) {
+      startCoreUpdaterIfCurrent(transition.startedCoreUpdater());
+    } else if (transition.stoppedCoreUpdater() != null) {
+      transition.stoppedCoreUpdater().kill();
+    }
+    startLifecycleUpdaterIfCurrent(transition.startedLifecycleUpdater());
+  }
+
+  private void startCoreUpdaterIfCurrent(CoreUpdater updater) {
+    if (updater == null) {
+      return;
+    }
+    boolean stillCurrent;
+    synchronized (this) {
+      stillCurrent = coreUpdater == updater;
+    }
+    if (stillCurrent) {
+      updater.start();
+    } else if (LOG.isDebugEnabled()) {
+      LOG.debug("Skipping stale CoreUpdater start after concurrent state change");
     }
   }
+
+  private void startLifecycleUpdaterIfCurrent(CoreSupportLifecycleUpdater updater) {
+    if (updater == null) {
+      return;
+    }
+    boolean stillCurrent;
+    synchronized (this) {
+      stillCurrent = supportLifecycleUpdater == updater;
+    }
+    if (stillCurrent) {
+      updater.start();
+    } else if (LOG.isDebugEnabled()) {
+      LOG.debug("Skipping stale support lifecycle updater start after concurrent state change");
+    }
+  }
+
+  private record EnableTransition(
+      CoreUpdater stoppedCoreUpdater,
+      CoreUpdater startedCoreUpdater,
+      CoreSupportLifecycleUpdater startedLifecycleUpdater) {}
 
   /**
    * Create a NodeUpdateManager. Called by node constructor.
@@ -698,6 +799,15 @@ public final class NodeUpdateManager {
    */
   public synchronized FreenetURI getCoreInfoURI() {
     return updateURI.setDocName("info");
+  }
+
+  /**
+   * Returns the dedicated mutable lifecycle descriptor scope under the configured public key.
+   *
+   * @return public USK using the exact {@code support-lifecycle} docname
+   */
+  public synchronized FreenetURI getSupportLifecycleURI() {
+    return updateURI.setDocName(SUPPORT_LIFECYCLE_URI_DOC_NAME);
   }
 
   /**
@@ -784,7 +894,10 @@ public final class NodeUpdateManager {
    */
   public synchronized void setURI(FreenetURI uri) {
     NodeUpdater updater;
+    CoreSupportLifecycleUpdater lifecycleUpdater;
+    FreenetURI lifecycleUri;
     int subscribeEditionSeed;
+    int lifecycleEditionSeed;
     synchronized (this) {
       if (updateURI.equals(uri)) {
         return;
@@ -798,11 +911,17 @@ public final class NodeUpdateManager {
       }
       subscribeEditionSeed = computeCoreUpdaterSubscribeEditionSeedLocked(newUpdateScope);
       updater = coreUpdater;
-      if (updater == null) {
-        return;
-      }
+      lifecycleUpdater = supportLifecycleUpdater;
+      supportLifecycleState.changeTrust(supportLifecycleTrustBinding());
+      lifecycleEditionSeed = supportLifecycleState.acceptedEditionSeed();
+      lifecycleUri = getSupportLifecycleURI();
     }
-    updater.onChangeURI(uri, subscribeEditionSeed);
+    if (updater != null) {
+      updater.onChangeURI(uri, subscribeEditionSeed);
+    }
+    if (lifecycleUpdater != null) {
+      lifecycleUpdater.onChangeURI(lifecycleUri, lifecycleEditionSeed);
+    }
   }
 
   /**
@@ -932,34 +1051,179 @@ public final class NodeUpdateManager {
    *     global revocation), {@code false} when the revocation key indicates a global blow
    */
   public void blow(String msg, boolean disabledNotBlown) {
-    CoreUpdater blownCoreUpdater;
+    boolean trustInvalidationPersisted = persistCompromisedUpdateKeyInvalidation(disabledNotBlown);
+    BlowTransition transition = registerBlowTransition(msg, disabledNotBlown);
+    scheduleTrustInvalidationRetryIfNeeded(disabledNotBlown, trustInvalidationPersisted);
+    if (transition.alreadyBlown()) {
+      return;
+    }
+    completeBlowTransition(msg, disabledNotBlown, transition);
+  }
+
+  private boolean persistCompromisedUpdateKeyInvalidation(boolean disabledNotBlown) {
+    boolean persisted = disabledNotBlown || supportLifecycleState.invalidateCompromisedUpdateKey();
+    if (!persisted) {
+      LOG.error("Unable to durably invalidate lifecycle state for the compromised update key");
+    }
+    return persisted;
+  }
+
+  private BlowTransition registerBlowTransition(String msg, boolean disabledNotBlown) {
+    synchronized (revocationAlertRegistrationLock) {
+      BlowTransition transition = prepareBlowTransition(msg, disabledNotBlown);
+      updateRegisteredRevocationAlert(transition);
+      return transition;
+    }
+  }
+
+  private BlowTransition prepareBlowTransition(String msg, boolean disabledNotBlown) {
     synchronized (this) {
-      if (hasBeenBlown) {
+      boolean escalatingToAuthenticatedCompromise =
+          !disabledNotBlown && hasBeenBlown && !updateKeyCompromised;
+      if (hasBeenBlown && !escalatingToAuthenticatedCompromise) {
         LOG.error(
             "The key has ALREADY been marked as blown! Message was {} new message {}",
             revocationMessage,
             msg);
-        return;
+        return BlowTransition.alreadyBlownTransition();
       }
-      this.revocationMessage = msg;
-      this.hasBeenBlown = true;
+
+      revocationMessage = msg;
+      hasBeenBlown = true;
       this.disabledNotBlown = disabledNotBlown;
-      if (coreUpdater != null) coreUpdater.preKill();
-      blownCoreUpdater = coreUpdater;
+      if (!disabledNotBlown) {
+        updateKeyCompromised = true;
+      }
+
+      CoreUpdater stoppedCoreUpdater = stopCoreUpdaterForBlow();
+      CoreSupportLifecycleUpdater stoppedLifecycleUpdater =
+          stopLifecycleUpdaterForBlow(disabledNotBlown);
+      return createBlowTransition(
+          msg,
+          disabledNotBlown,
+          escalatingToAuthenticatedCompromise,
+          stoppedCoreUpdater,
+          stoppedLifecycleUpdater);
+    }
+  }
+
+  private CoreUpdater stopCoreUpdaterForBlow() {
+    CoreUpdater stoppedCoreUpdater = coreUpdater;
+    if (stoppedCoreUpdater != null) {
+      stoppedCoreUpdater.preKill();
       coreUpdater = null;
     }
+    return stoppedCoreUpdater;
+  }
+
+  private CoreSupportLifecycleUpdater stopLifecycleUpdaterForBlow(boolean disabledNotBlown) {
+    if (disabledNotBlown) {
+      return null;
+    }
+    CoreSupportLifecycleUpdater stoppedLifecycleUpdater = supportLifecycleUpdater;
+    if (stoppedLifecycleUpdater != null) {
+      stoppedLifecycleUpdater.preKill();
+      supportLifecycleUpdater = null;
+    }
+    return stoppedLifecycleUpdater;
+  }
+
+  private BlowTransition createBlowTransition(
+      String msg,
+      boolean disabledNotBlown,
+      boolean escalatingToAuthenticatedCompromise,
+      CoreUpdater stoppedCoreUpdater,
+      CoreSupportLifecycleUpdater stoppedLifecycleUpdater) {
+    RevocationKeyFoundUserAlert replacedAlert = null;
+    RevocationKeyFoundUserAlert newAlert = null;
+    if (revocationAlert == null || escalatingToAuthenticatedCompromise) {
+      replacedAlert = revocationAlert;
+      newAlert = new RevocationKeyFoundUserAlert(msg, disabledNotBlown);
+      revocationAlert = newAlert;
+    }
+    return new BlowTransition(
+        false, stoppedCoreUpdater, stoppedLifecycleUpdater, replacedAlert, newAlert);
+  }
+
+  private void updateRegisteredRevocationAlert(BlowTransition transition) {
+    if (transition.replacedAlert() != null) {
+      node.services().clientCore().getAlerts().unregister(transition.replacedAlert());
+    }
+    if (transition.newAlert() != null) {
+      node.services().clientCore().getAlerts().register(transition.newAlert());
+    }
+  }
+
+  private void scheduleTrustInvalidationRetryIfNeeded(
+      boolean disabledNotBlown, boolean trustInvalidationPersisted) {
+    if (!disabledNotBlown && !trustInvalidationPersisted) {
+      scheduleTrustInvalidationRetry();
+    }
+  }
+
+  private void completeBlowTransition(
+      String msg, boolean disabledNotBlown, BlowTransition transition) {
     printRevocationMessage(disabledNotBlown, msg);
-    if (blownCoreUpdater != null) {
-      blownCoreUpdater.kill();
+    if (transition.stoppedCoreUpdater() != null) {
+      transition.stoppedCoreUpdater().kill();
     }
-    if (revocationAlert == null) {
-      revocationAlert = new RevocationKeyFoundUserAlert(msg, disabledNotBlown);
-      node.services().clientCore().getAlerts().register(revocationAlert);
-      // we don't need to advertise updates: we are not going to do them
-      killUpdateAlerts();
+    if (transition.stoppedLifecycleUpdater() != null) {
+      transition.stoppedLifecycleUpdater().kill();
     }
+    // We don't need to advertise package updates: we are not going to install them.
+    killUpdateAlerts();
     getUpdateOverMandatory().killAlert();
     broadcastUOMAnnounces();
+  }
+
+  private record BlowTransition(
+      boolean alreadyBlown,
+      CoreUpdater stoppedCoreUpdater,
+      CoreSupportLifecycleUpdater stoppedLifecycleUpdater,
+      RevocationKeyFoundUserAlert replacedAlert,
+      RevocationKeyFoundUserAlert newAlert) {
+
+    private static BlowTransition alreadyBlownTransition() {
+      return new BlowTransition(true, null, null, null, null);
+    }
+  }
+
+  private void scheduleTrustInvalidationRetry() {
+    long delay;
+    synchronized (this) {
+      if (!updateKeyCompromised || trustInvalidationRetryScheduled) {
+        return;
+      }
+      trustInvalidationRetryScheduled = true;
+      delay = trustInvalidationRetryMillis;
+      trustInvalidationRetryMillis =
+          Math.min(MAX_TRUST_INVALIDATION_RETRY_MILLIS, trustInvalidationRetryMillis * 2);
+    }
+    try {
+      node.network().ticker().queueTimedJob(this::retryTrustInvalidation, delay);
+    } catch (RuntimeException e) {
+      synchronized (this) {
+        trustInvalidationRetryScheduled = false;
+      }
+      LOG.error("Unable to schedule durable update-key trust invalidation retry", e);
+    }
+  }
+
+  private void retryTrustInvalidation() {
+    synchronized (this) {
+      trustInvalidationRetryScheduled = false;
+      if (!updateKeyCompromised) {
+        return;
+      }
+    }
+    if (supportLifecycleState.invalidateCompromisedUpdateKey()) {
+      synchronized (this) {
+        trustInvalidationRetryMillis = INITIAL_TRUST_INVALIDATION_RETRY_MILLIS;
+      }
+      return;
+    }
+    LOG.error("Unable to durably invalidate lifecycle state; retry remains scheduled");
+    scheduleTrustInvalidationRetry();
   }
 
   private void printRevocationMessage(boolean disabledNotBlown, String msg) {
@@ -1041,6 +1305,19 @@ public final class NodeUpdateManager {
    */
   public boolean isBlown() {
     return hasBeenBlown;
+  }
+
+  /**
+   * Returns whether an authenticated update-key compromise has invalidated documents under the
+   * configured key.
+   *
+   * <p>This is deliberately narrower than {@link #isBlown()}: local package-updater failures stop
+   * package installation but do not invalidate the read-only support-lifecycle feed.
+   *
+   * @return {@code true} only after an authenticated global update-key blow
+   */
+  boolean isUpdateKeyCompromised() {
+    return updateKeyCompromised;
   }
 
   /**
@@ -1668,7 +1945,11 @@ public final class NodeUpdateManager {
 
   /** Create and wire the package‑based {@link CoreUpdater} if not already present. */
   public synchronized void startCoreUpdater() {
-    if (coreUpdater != null) return;
+    if (coreUpdater != null
+        || updateKeyCompromised
+        || supportLifecycleState.isUpdateKeyTrustInvalidated()) {
+      return;
+    }
     int subscribeEditionSeed =
         computeCoreUpdaterSubscribeEditionSeedLocked(normalizeFetchedEditionScope(updateURI));
     NodeUpdaterParams params =
@@ -1681,6 +1962,48 @@ public final class NodeUpdateManager {
             "core-info-",
             subscribeEditionSeed);
     coreUpdater = new CoreUpdater(params);
+  }
+
+  /** Creates the dedicated lifecycle descriptor subscriber when it is not already wired. */
+  synchronized void startSupportLifecycleUpdater() {
+    if (supportLifecycleUpdater != null
+        || updateKeyCompromised
+        || supportLifecycleState.isUpdateKeyTrustInvalidated()) {
+      return;
+    }
+    int editionSeed = supportLifecycleState.acceptedEditionSeed();
+    NodeUpdaterParams params =
+        new NodeUpdaterParams(
+            this,
+            getSupportLifecycleURI(),
+            -1,
+            -1,
+            Integer.MAX_VALUE,
+            "support-lifecycle-",
+            editionSeed);
+    supportLifecycleUpdater = new CoreSupportLifecycleUpdater(params, supportLifecycleState);
+  }
+
+  /**
+   * Returns the public-safe last-known-good Stable 1.0 build lifecycle view.
+   *
+   * @return detached snapshot that never invents support when descriptor state is unknown
+   */
+  public CoreSupportLifecycleSnapshot supportLifecycleSnapshot() {
+    return supportLifecycleState.snapshot();
+  }
+
+  CoreSupportLifecycleParser.TrustBinding supportLifecycleTrustBinding() {
+    FreenetURI lifecycleUri;
+    synchronized (this) {
+      lifecycleUri = updateURI.setDocName(SUPPORT_LIFECYCLE_URI_DOC_NAME);
+    }
+    String identityDigest =
+        CoreSupportLifecycleParser.exactBytesDigest(
+            extractPublicKeyMaterial(lifecycleUri).getBytes(StandardCharsets.UTF_8));
+    String opaqueScope = identityDigest + "/" + SUPPORT_LIFECYCLE_URI_DOC_NAME + "/0";
+    return new CoreSupportLifecycleParser.TrustBinding(
+        identityDigest, opaqueScope, SUPPORT_LIFECYCLE_URI_DOC_NAME);
   }
 
   /**

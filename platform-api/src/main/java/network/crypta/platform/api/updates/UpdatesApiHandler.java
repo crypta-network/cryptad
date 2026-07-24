@@ -1,9 +1,11 @@
 package network.crypta.platform.api.updates;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import network.crypta.platform.api.PlatformApiException;
+import network.crypta.runtime.spi.CoreSupportLifecycleSnapshot;
 import network.crypta.runtime.spi.CoreUpdateActionPort;
 
 /**
@@ -70,6 +72,23 @@ public final class UpdatesApiHandler {
     response.put("available", available);
     response.put("downloadAllowed", downloadAllowed);
     return response;
+  }
+
+  /**
+   * Returns the redacted last-known-good Stable 1.0 support-lifecycle projection.
+   *
+   * <p>Unknown and stale states remain explicit; this handler does not infer support from normal
+   * updater availability or advertise raw descriptor bytes and update-key URIs.
+   *
+   * @return JSON-compatible local lifecycle snapshot containing only public release metadata
+   */
+  public Map<String, Object> supportLifecycleSnapshot() {
+    CoreSupportLifecycleSnapshot snapshot = coreUpdateActionPort.supportLifecycleSnapshot();
+    return (snapshot == null
+            ? CoreSupportLifecycleSnapshot.unknown(
+                -1, List.of("lifecycle_runtime_snapshot_unavailable"))
+            : snapshot)
+        .toJsonValue();
   }
 
   /**

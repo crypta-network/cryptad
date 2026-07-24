@@ -3,9 +3,12 @@ package network.crypta.runtime.core;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import network.crypta.node.Node;
+import network.crypta.node.Version;
+import network.crypta.runtime.spi.CoreSupportLifecycleSnapshot;
 import network.crypta.runtime.spi.CoreUpdateActionPort;
 import network.crypta.runtime.updater.CoreUpdater;
 import network.crypta.runtime.updater.NodeUpdateManager;
@@ -55,6 +58,15 @@ final class LegacyCoreUpdateActionPort implements CoreUpdateActionPort {
   @Override
   public boolean startCoreDownloadFromUi() {
     return getCoreUpdater().map(CoreUpdater::startDownloadFromUI).orElse(false);
+  }
+
+  @Override
+  public CoreSupportLifecycleSnapshot supportLifecycleSnapshot() {
+    NodeUpdateManager manager = node.services().nodeUpdater();
+    return manager == null
+        ? CoreSupportLifecycleSnapshot.unknown(
+            Version.currentBuildNumber(), List.of("lifecycle_updater_unavailable"))
+        : manager.supportLifecycleSnapshot();
   }
 
   @Override

@@ -303,6 +303,14 @@ public-HTTPS endpoint forms.
 
 Follow `docs/stable-1.0-maintenance-release-and-hotfix-path.md`. Preserve manual no-squash,
 `--no-ff` merges into `main` and `develop` after the release-manager-approved publication flow.
+
+After a Stable 1.0 maintenance publication and successor-baseline activation are independently
+verified, prepare the separate support lifecycle transition from the authenticated history. The
+release publication itself does not make a candidate `current-stable` in mutable lifecycle state.
+Use the protected lifecycle workflow to authorize, publish, and verify the exact next
+`support-lifecycle` descriptor edition; never rewrite the release's historical `core-info.json` or
+activate lifecycle state from an unverified/partial release publication. Follow
+`docs/stable-1.0-support-lifecycle-and-deprecation-governance.md`.
 - [ ] Tag `v<build-number>` created.
 - [ ] Merged to `main` with `--no-ff` (no squash), then back-merged to `develop` with `--no-ff`.
 - [ ] Branches and tag pushed.

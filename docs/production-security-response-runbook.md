@@ -370,3 +370,21 @@ normal duration and freshness on the aggregate and on every obligated evidence r
 timestamps and the original hotfix predecessor identity. A later superseding hotfix may carry an
 open or overdue obligation, but it cannot relabel or clear that obligation with its own bytes,
 authorization, or predecessor evidence.
+
+## Stable build revocation
+
+A security advisory or incident does not silently revoke a core build. Revocation requires a
+separate protected Stable lifecycle transition bound to the affected integer build identities,
+effective UTC time, severity and reason code, authenticated replacement build or recovery path,
+security-drill evidence, authorization digest, descriptor edition/digest, and public target.
+
+The currently published chain tip may itself be revoked before a replacement is available. In that
+emergency the descriptor deliberately advertises no current build, retains the authenticated
+recovery guidance, and never points operators back to the affected tip as a replacement. This is a
+temporary security state, not an update-key blow and not permission to bypass hotfix publication.
+
+Build revocation is not update-signing-key revocation. `RevocationChecker` remains authoritative
+for update-key compromise; a build lifecycle transition never blows the update key. A published
+security hotfix can replace a revoked build after its normal exact-byte publication and lineage
+checks pass, but it cannot delete the original revocation event or hide a hotfix follow-up
+obligation. See [Stable 1.0 support lifecycle and deprecation governance](stable-1.0-support-lifecycle-and-deprecation-governance.md).

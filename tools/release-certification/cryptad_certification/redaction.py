@@ -7,6 +7,8 @@ import re
 from typing import Any
 from urllib.parse import unquote, urlsplit
 
+from .safe_text import recovery_guidance_error
+
 PRIVATE_URI_RE = re.compile(r"\b(?:SSK|USK)@[A-Za-z0-9~_-]+,[A-Za-z0-9~_-]+,AQECAAE/")
 PRIVATE_KEY_RE = re.compile(r"-----BEGIN (?:[A-Z ]+ )?PRIVATE KEY-----")
 AUTH_RE = re.compile(
@@ -456,6 +458,13 @@ def scan_value(value: Any) -> list[dict[str, str]]:
         categories.add("absolute-path")
     if windows_path:
         categories.add("windows-path")
+    if any(
+        field_path
+        and _normalized_field_name(field_path[-1]) == "recoveryguidance"
+        and recovery_guidance_error(candidate) is not None
+        for field_path, _parent, candidate in _string_contexts(value)
+    ):
+        categories.add("unsafe-recovery-guidance")
     return [
         {"category": category, "summary": f"{category} material is not allowed in v2 evidence"}
         for category in sorted(categories)

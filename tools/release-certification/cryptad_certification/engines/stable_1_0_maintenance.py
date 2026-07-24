@@ -90,6 +90,9 @@ from .stable_1_0_maintenance_core import (
 from .stable_1_0_rc_core import ValidationState
 
 _PASS_REDACTION = {"status": "pass", "findingCount": 0, "findings": []}
+LIFECYCLE_PENDING_TRANSITION_FILE = (
+    "stable-1.0-support-lifecycle-pending-maintenance-transition.json"
+)
 
 
 def _now() -> dt.datetime:
@@ -159,6 +162,9 @@ def _public_checksum_payload_paths(candidate: Candidate, out: Path) -> dict[str,
         PROVENANCE_FILE: out / PROVENANCE_FILE,
         CORE_INFO_FILE: out / CORE_INFO_FILE,
     }
+    pending_lifecycle = out / LIFECYCLE_PENDING_TRANSITION_FILE
+    if pending_lifecycle.is_file():
+        generated[LIFECYCLE_PENDING_TRANSITION_FILE] = pending_lifecycle
     duplicates = sorted(paths.keys() & generated.keys())
     if duplicates:
         raise ValueError(f"public payload basename is ambiguous: {duplicates[0]}")
@@ -359,6 +365,550 @@ def _concrete_publication_destination_errors(
     return errors
 
 
+def _lifecycle_input_presence_errors(
+    lifecycle_inputs: tuple[
+        Any | None,
+        Any | None,
+        Any | None,
+        Any | None,
+        Any | None,
+    ],
+    chain_depth: int,
+    *,
+    require_activation: bool = True,
+) -> list[str]:
+    """Require one exact authenticated lifecycle chain after genesis."""
+
+    if not require_activation:
+        return []
+    present = [item is not None for item in lifecycle_inputs]
+    if any(present) and not all(present):
+        return [
+            "lifecycle maintenance integration requires ledger, descriptor, approved "
+            "authorization, authorized publication plan, and verified receipt together"
+        ]
+    if not any(present) and chain_depth > 0:
+        return [
+            "a post-GA maintenance chain requires the exact authenticated lifecycle ledger, "
+            "descriptor, approved authorization, authorized publication plan, and verified "
+            "publication receipt"
+        ]
+    return []
+
+
+def _lifecycle_successor_capacity_errors(
+    predecessor: Predecessor, lifecycle_policy: dict[str, Any]
+) -> list[str]:
+    """Block publication before the complete successor inventory exceeds runtime capacity."""
+
+    descriptor_policy = lifecycle_policy.get("descriptor")
+    descriptor_policy = (
+        descriptor_policy if isinstance(descriptor_policy, dict) else {}
+    )
+    maximum_entries = descriptor_policy.get("maximumEntries")
+    if type(maximum_entries) is not int or maximum_entries < 1:
+        return ["lifecycle descriptor entry bound is missing or invalid"]
+    successor_entries = predecessor.chain_depth + 2
+    if successor_entries > maximum_entries:
+        return [
+            "candidate publication would exceed the authenticated lifecycle descriptor "
+            f"entry bound of {maximum_entries}"
+        ]
+    return []
+
+
+def _apply_lifecycle_promotion_gate(
+    value: dict[str, Any], lifecycle_activation_verified: bool
+) -> None:
+    """Keep evaluation useful while lifecycle activation remains a protected pending step."""
+
+    if not lifecycle_activation_verified:
+        value["promotionReady"] = False
+        value["decision"] = "no-go"
+
+
+def _lifecycle_predecessor_errors(
+    lifecycle_ledger: dict[str, Any],
+    predecessor: Predecessor,
+    release_class: Any,
+) -> list[str]:
+    """Reject a maintenance class that misrepresents lifecycle predecessor eligibility."""
+
+    errors = validate_schema(
+        lifecycle_ledger, "stable-1.0-support-lifecycle-ledger-v1.schema.json"
+    )
+    entry = _lifecycle_predecessor_entry(lifecycle_ledger, predecessor)
+    if entry is None:
+        errors.append("lifecycle ledger does not bind the exact authenticated predecessor")
+        return errors
+    status = entry.get("lifecycleStatus")
+    if release_class == "maintenance" and status != "current-stable":
+        errors.append("routine maintenance predecessor is not lifecycle current-stable")
+    if release_class == "security-hotfix" and status not in {
+        "current-stable",
+        "supported-maintenance",
+        "security-fixes-only",
+        "deprecated",
+        "revoked",
+    }:
+        errors.append("security hotfix predecessor is not eligible under lifecycle policy")
+    if status == "end-of-support":
+        errors.append("end-of-support predecessor cannot be treated as normally supported")
+    return errors
+
+
+def _lifecycle_predecessor_entry(
+    lifecycle_ledger: dict[str, Any], predecessor: Predecessor
+) -> dict[str, Any] | None:
+    """Return the one ledger entry bound to the authenticated predecessor, if present."""
+
+    rows = lifecycle_ledger.get("entries")
+    rows = rows if isinstance(rows, list) else []
+    matches = [
+        row
+        for row in rows
+        if isinstance(row, dict)
+        and row.get("releaseId") == predecessor.release_id
+        and row.get("buildVersion") == predecessor.build_version
+        and row.get("tag") == predecessor.tag
+        and row.get("sourceCommit") == predecessor.source_commit
+        and row.get("productDigest") == predecessor.product_digest
+        and row.get("publicationReceiptDigest") == predecessor.receipt_digest
+        and row.get("baselineDigest") == predecessor.baseline_digest
+    ]
+    return matches[0] if len(matches) == 1 else None
+
+
+def _hotfix_lifecycle_authority_errors(
+    lifecycle_ledger: dict[str, Any],
+    lifecycle_descriptor: dict[str, Any],
+    predecessor: Predecessor,
+    release_class: Any,
+    hotfix_scope: dict[str, Any] | None,
+) -> list[str]:
+    """Validate current selection and the protected exception for a security hotfix."""
+
+    entry = _lifecycle_predecessor_entry(lifecycle_ledger, predecessor)
+    if entry is None:
+        return []
+    current = [
+        row
+        for row in lifecycle_ledger.get("entries", [])
+        if isinstance(row, dict) and row.get("lifecycleStatus") == "current-stable"
+    ]
+    ordered_entries = [
+        row for row in lifecycle_ledger.get("entries", []) if isinstance(row, dict)
+    ]
+    status = entry.get("lifecycleStatus")
+    if len(current) > 1:
+        return ["lifecycle state selects more than one current-stable build"]
+    if len(current) == 1 and (
+        lifecycle_descriptor.get("currentStableBuild")
+        != current[0].get("buildVersion")
+    ):
+        return ["lifecycle descriptor does not select the ledger current-stable build"]
+    if release_class == "maintenance" or status == "current-stable":
+        if (
+            len(current) != 1
+            or current[0].get("buildVersion") != predecessor.build_version
+            or lifecycle_descriptor.get("currentStableBuild")
+            != predecessor.build_version
+        ):
+            return [
+                "lifecycle state does not select exactly the authenticated predecessor tip"
+            ]
+        return []
+    if release_class != "security-hotfix":
+        return ["lifecycle release class is not eligible for a non-current predecessor"]
+
+    errors: list[str] = []
+    scope = hotfix_scope if isinstance(hotfix_scope, dict) else {}
+    incident_id = scope.get("incidentId")
+    if not incident_id or not scope.get("hotfixPolicyAuthorizationDigest"):
+        errors.append(
+            "security hotfix lifecycle exception lacks exact incident and protected policy "
+            "authorization scope"
+        )
+    if len(current) == 0 and (
+        status != "revoked"
+        or lifecycle_descriptor.get("currentStableBuild") is not None
+        or not ordered_entries
+        or ordered_entries[-1].get("buildVersion") != predecessor.build_version
+    ):
+        errors.append(
+            "lifecycle state without a current-stable build is allowed only for a revoked "
+            "predecessor tip"
+        )
+    if status == "revoked":
+        matching_revocations = [
+            transition
+            for transition in lifecycle_ledger.get("transitions", [])
+            if isinstance(transition, dict)
+            and transition.get("targetBuild") == predecessor.build_version
+            and transition.get("toStatus") == "revoked"
+            and transition.get("advisoryId") == incident_id
+            and predecessor.build_version in transition.get("affectedBuilds", [])
+            and transition.get("securityEvidenceIds")
+            and transition.get("publicationTargetDigest")
+            and transition.get("authorizationRequestDigest")
+        ]
+        if (
+            len(matching_revocations) != 1
+            or incident_id not in entry.get("advisoryIds", [])
+            or not entry.get("reasonCodes")
+        ):
+            errors.append(
+                "revoked predecessor is not bound to the exact advisory, affected build, "
+                "security evidence, publication target, and lifecycle authorization request"
+            )
+    return errors
+
+
+def _authenticated_lifecycle_errors(
+    ledger: dict[str, Any],
+    descriptor: dict[str, Any],
+    authorization: dict[str, Any],
+    publication_plan: dict[str, Any],
+    receipt: dict[str, Any],
+    authorization_file_digest: str,
+    descriptor_file_digest: str,
+    expected_policy_digest: str | None,
+    predecessor: Predecessor,
+    release_class: Any,
+    now: dt.datetime,
+    hotfix_scope: dict[str, Any] | None = None,
+) -> list[str]:
+    """Bind the active lifecycle ledger, descriptor, and verified public receipt."""
+
+    errors = _lifecycle_predecessor_errors(ledger, predecessor, release_class)
+    errors.extend(
+        validate_schema(
+            descriptor, "stable-1.0-support-lifecycle-descriptor-v1.schema.json"
+        )
+    )
+    errors.extend(
+        validate_schema(
+            authorization,
+            "stable-1.0-support-lifecycle-authorization-v1.schema.json",
+        )
+    )
+    errors.extend(
+        validate_schema(
+            publication_plan,
+            "stable-1.0-support-lifecycle-publication-plan-v1.schema.json",
+        )
+    )
+    errors.extend(
+        validate_schema(
+            receipt,
+            "stable-1.0-support-lifecycle-publication-receipt-v1.schema.json",
+        )
+    )
+    from .stable_1_0_lifecycle_core import (
+        UPDATE_KEY_IDENTITY_DIGEST,
+        canonical_file_digest,
+        ledger_digest,
+    )
+
+    if ledger.get("ledgerDigest") != ledger_digest(ledger):
+        errors.append("lifecycle ledger semantic digest is invalid")
+    if ledger.get("policyDigest") != expected_policy_digest:
+        errors.append(
+            "lifecycle ledger policy digest does not match the exact checked-in support "
+            "lifecycle policy"
+        )
+    descriptor_identity = semantic_digest(
+        {key: item for key, item in descriptor.items() if key != "descriptorDigest"}
+    )
+    if descriptor.get("descriptorDigest") != descriptor_identity:
+        errors.append("lifecycle descriptor semantic digest is invalid")
+    authorization_digest = canonical_file_digest(authorization)
+    if authorization_file_digest != authorization_digest:
+        errors.append("lifecycle authorization bytes are not canonical")
+    publication_plan_identity = semantic_digest(
+        {
+            key: item
+            for key, item in publication_plan.items()
+            if key != "publicationPlanDigest"
+        }
+    )
+    if publication_plan.get("publicationPlanDigest") != publication_plan_identity:
+        errors.append("lifecycle publication plan semantic digest is invalid")
+    ledger_entries = {
+        row.get("buildVersion"): row
+        for row in ledger.get("entries", [])
+        if isinstance(row, dict)
+    }
+    descriptor_entries = {
+        row.get("buildVersion"): row
+        for row in descriptor.get("entries", [])
+        if isinstance(row, dict)
+    }
+    if (
+        len(ledger_entries) != len(ledger.get("entries", []))
+        or len(descriptor_entries) != len(descriptor.get("entries", []))
+        or set(ledger_entries) != set(descriptor_entries)
+    ):
+        errors.append("lifecycle descriptor omits, duplicates, or invents a ledger build")
+    descriptor_fields = (
+        "releaseId",
+        "buildVersion",
+        "tag",
+        "sourceCommit",
+        "productDigest",
+        "publicationReceiptDigest",
+        "baselineDigest",
+        "publishedAt",
+        "lifecycleStatus",
+        "statusEffectiveAt",
+        "fullSupportUntil",
+        "securityFixesUntil",
+        "deprecationEffectiveAt",
+        "endOfSupportAt",
+        "securityRevocationEffectiveAt",
+        "replacementBuild",
+        "recoveryGuidance",
+        "advisoryIds",
+        "reasonCodes",
+    )
+    for build, entry in ledger_entries.items():
+        projected = descriptor_entries.get(build, {})
+        if any(projected.get(field) != entry.get(field) for field in descriptor_fields):
+            errors.append(f"lifecycle descriptor rewrites ledger build {build}")
+    authorization_request_digest = semantic_digest(
+        {
+            "operation": "publish-support-lifecycle",
+            "ledgerDigest": ledger.get("ledgerDigest"),
+            "descriptorDigest": descriptor.get("descriptorDigest"),
+            "descriptorEdition": descriptor.get("descriptorEdition"),
+            "publicRequestUri": publication_plan.get("publicRequestUri"),
+            "latestMaintenancePointerPublicUri": publication_plan.get(
+                "latestMaintenancePointerPublicUri"
+            ),
+            "latestMaintenancePointerDigest": publication_plan.get(
+                "latestMaintenancePointerDigest"
+            ),
+            "transitionRequestDigest": authorization.get("transitionRequestDigest"),
+            "previousLedgerDigest": ledger.get("previousLedgerDigest"),
+            "previousDescriptorDigest": descriptor.get("previousDescriptorDigest"),
+            "requiredRole": authorization.get("role"),
+        }
+    )
+    expected_authorization = {
+        "operation": "publish-support-lifecycle",
+        "stableMilestone": STABLE_MILESTONE,
+        "targetLedgerDigest": ledger.get("ledgerDigest"),
+        "targetDescriptorDigest": descriptor.get("descriptorDigest"),
+        "targetDescriptorEdition": descriptor.get("descriptorEdition"),
+        "targetPublicRequestUri": publication_plan.get("publicRequestUri"),
+        "targetLatestMaintenancePointerPublicUri": publication_plan.get(
+            "latestMaintenancePointerPublicUri"
+        ),
+        "targetLatestMaintenancePointerDigest": publication_plan.get(
+            "latestMaintenancePointerDigest"
+        ),
+        "previousLedgerDigest": ledger.get("previousLedgerDigest"),
+        "previousDescriptorDigest": descriptor.get("previousDescriptorDigest"),
+        "authorizationRequestDigest": authorization_request_digest,
+        "decision": "approved",
+    }
+    if any(
+        authorization.get(key) != value
+        for key, value in expected_authorization.items()
+    ):
+        errors.append(
+            "lifecycle authorization does not approve the exact descriptor, ledger, and target"
+        )
+    expected_plan = {
+        "stableMilestone": STABLE_MILESTONE,
+        "descriptorEdition": descriptor.get("descriptorEdition"),
+        "descriptorDigest": descriptor.get("descriptorDigest"),
+        "descriptorSizeBytes": len(
+            (json.dumps(descriptor, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode(
+                "utf-8"
+            )
+        ),
+        "ledgerDigest": ledger.get("ledgerDigest"),
+        "updateKeyIdentityDigest": descriptor.get("updateKeyIdentityDigest"),
+        "updateKeyScope": descriptor.get("updateKeyScope"),
+        "updateKeyDocName": descriptor.get("updateKeyDocName"),
+        "previousDescriptorEdition": descriptor.get("previousDescriptorEdition"),
+        "previousDescriptorDigest": descriptor.get("previousDescriptorDigest"),
+        "authorizationDigest": authorization_digest,
+        "publicationAuthorized": True,
+    }
+    if any(
+        publication_plan.get(key) != value for key, value in expected_plan.items()
+    ):
+        errors.append(
+            "lifecycle publication plan does not bind the exact approved descriptor and ledger"
+        )
+    authorization_generated = parse_timestamp(authorization.get("generatedAt"))
+    authorization_expires = parse_timestamp(authorization.get("expiresAt"))
+    receipt_generated = parse_timestamp(receipt.get("generatedAt"))
+    if (
+        authorization_generated is None
+        or authorization_expires is None
+        or receipt_generated is None
+        or authorization_expires <= authorization_generated
+        or receipt_generated < authorization_generated
+        or receipt_generated >= authorization_expires
+    ):
+        errors.append(
+            "lifecycle publication was not verified inside its authorization validity window"
+        )
+    if (
+        descriptor.get("ledgerDigest") != ledger.get("ledgerDigest")
+        or descriptor.get("inventoryDigest") != ledger.get("inventoryDigest")
+        or receipt.get("ledgerDigest") != ledger.get("ledgerDigest")
+        or receipt.get("descriptorDigest") != descriptor.get("descriptorDigest")
+        or receipt.get("descriptorEdition") != descriptor.get("descriptorEdition")
+        or receipt.get("descriptorBytesDigest") != descriptor_file_digest
+        or receipt.get("updateKeyIdentityDigest")
+        != descriptor.get("updateKeyIdentityDigest")
+        or descriptor.get("updateKeyIdentityDigest") != UPDATE_KEY_IDENTITY_DIGEST
+        or descriptor.get("updateKeyScope")
+        != f"{UPDATE_KEY_IDENTITY_DIGEST}/support-lifecycle/0"
+        or receipt.get("updateKeyScope") != descriptor.get("updateKeyScope")
+        or receipt.get("updateKeyDocName") != "support-lifecycle"
+        or receipt.get("publicRequestUri")
+        != publication_plan.get("publicRequestUri")
+        or receipt.get("previousDescriptorEdition")
+        != publication_plan.get("previousDescriptorEdition")
+        or receipt.get("previousDescriptorDigest")
+        != publication_plan.get("previousDescriptorDigest")
+        or receipt.get("publicationPlanDigest")
+        != publication_plan.get("publicationPlanDigest")
+        or receipt.get("authorizationDigest") != authorization_digest
+        or receipt.get("operation") not in {"inserted", "verified-existing"}
+        or receipt.get("publicationState") != "publication-complete"
+        or receipt.get("verificationStatus") != "verified"
+        or receipt.get("conflict") is not False
+        or authorization.get("redaction", {}).get("status") != "pass"
+        or publication_plan.get("redaction", {}).get("status") != "pass"
+        or receipt.get("redaction", {}).get("status") != "pass"
+    ):
+        errors.append(
+            "lifecycle public receipt does not verify the exact authorized publication plan, "
+            "descriptor, and ledger"
+        )
+    stale_at = parse_timestamp(descriptor.get("staleAt"))
+    if stale_at is None or stale_at <= now:
+        errors.append("lifecycle descriptor is stale")
+    errors.extend(
+        _hotfix_lifecycle_authority_errors(
+            ledger,
+            descriptor,
+            predecessor,
+            release_class,
+            hotfix_scope,
+        )
+    )
+    return errors
+
+
+def _public_lifecycle_observation_errors(
+    observation: dict[str, Any],
+    ledger: dict[str, Any],
+    descriptor: dict[str, Any],
+    authorization: dict[str, Any],
+    publication_plan: dict[str, Any],
+    publication_receipt: dict[str, Any],
+    authorization_file_digest: str,
+    descriptor_file_digest: str,
+    now: dt.datetime,
+    maximum_age_minutes: int,
+) -> list[str]:
+    """Bind one fresh read-only provider observation to the exact authority chain."""
+
+    errors = validate_schema(
+        observation,
+        "stable-1.0-support-lifecycle-publication-receipt-v1.schema.json",
+    )
+    observed_at = parse_timestamp(observation.get("generatedAt"))
+    published_at = parse_timestamp(publication_receipt.get("generatedAt"))
+    if (
+        observed_at is None
+        or published_at is None
+        or observed_at < published_at
+        or observed_at > now
+        or now - observed_at > dt.timedelta(minutes=maximum_age_minutes)
+    ):
+        errors.append(
+            "lifecycle public observation is stale, future-dated, or predates publication"
+        )
+    expected = {
+        "stableMilestone": STABLE_MILESTONE,
+        "descriptorEdition": descriptor.get("descriptorEdition"),
+        "descriptorDigest": descriptor.get("descriptorDigest"),
+        "descriptorBytesDigest": descriptor_file_digest,
+        "ledgerDigest": ledger.get("ledgerDigest"),
+        "previousDescriptorEdition": descriptor.get("previousDescriptorEdition"),
+        "previousDescriptorDigest": descriptor.get("previousDescriptorDigest"),
+        "updateKeyIdentityDigest": descriptor.get("updateKeyIdentityDigest"),
+        "updateKeyScope": descriptor.get("updateKeyScope"),
+        "updateKeyDocName": descriptor.get("updateKeyDocName"),
+        "publicRequestUri": publication_plan.get("publicRequestUri"),
+        "publicationPlanDigest": publication_plan.get("publicationPlanDigest"),
+        "authorizationDigest": authorization_file_digest,
+        "operation": "verified-existing",
+        "publicationState": "publication-complete",
+        "verificationStatus": "verified",
+        "conflict": False,
+        "redaction": _PASS_REDACTION,
+    }
+    if any(observation.get(name) != value for name, value in expected.items()):
+        errors.append(
+            "lifecycle public observation does not re-fetch the exact authorized edition, "
+            "descriptor bytes, ledger, plan, and update-key scope"
+        )
+    if authorization.get("decision") != "approved":
+        errors.append("lifecycle public observation is not bound to approved authority")
+    return errors
+
+
+def _pending_lifecycle_transition(
+    context: RunContext,
+    predecessor: Predecessor,
+    candidate: Candidate,
+    predecessor_status: str,
+) -> dict[str, Any]:
+    """Describe publication-contingent lifecycle changes without activating them."""
+
+    proposed_predecessor_status = (
+        "supported-maintenance"
+        if predecessor_status == "current-stable"
+        else predecessor_status
+    )
+    value = {
+        "schemaVersion": 1,
+        "kind": "stable-1.0-support-lifecycle-pending-maintenance-transition",
+        "generatedAt": candidate.input_value.get("generatedAt"),
+        "stableMilestone": STABLE_MILESTONE,
+        "status": "pending-publication-verification",
+        "candidate": {
+            "releaseId": context.manifest.release.release_id,
+            "buildVersion": context.manifest.release.version,
+            "tag": f"v{context.manifest.release.version}",
+            "sourceCommit": candidate.source.get("commit"),
+            "productDigest": candidate.product_digest,
+            "candidateIdentityDigest": candidate.identity_digest,
+            "proposedStatus": "current-stable",
+        },
+        "predecessor": {
+            "releaseId": predecessor.release_id,
+            "buildVersion": predecessor.build_version,
+            "productDigest": predecessor.product_digest,
+            "proposedStatus": proposed_predecessor_status,
+        },
+        "activationCondition": "maintenance-publication-receipt-verified-and-lifecycle-publication-authorized",
+        "activeLedgerChanged": False,
+        "redaction": dict(_PASS_REDACTION),
+    }
+    value["proposalDigest"] = semantic_digest(value)
+    return value
+
+
 def _lineage(
     context: RunContext,
     ga: GaRoot,
@@ -465,6 +1015,7 @@ def _provenance(
     comparison_digest: str,
     evidence_digest: str,
     core_info_digest: str,
+    pending_lifecycle_transition_digest: str,
 ) -> dict[str, Any]:
     return {
         "schemaVersion": 1,
@@ -491,6 +1042,7 @@ def _provenance(
         "comparisonDigest": comparison_digest,
         "evidenceDigest": evidence_digest,
         "coreInfoDigest": core_info_digest,
+        "pendingLifecycleTransitionDigest": pending_lifecycle_transition_digest,
         "assets": [
             {
                 "name": name,
@@ -737,6 +1289,7 @@ def _public_assets(
         PROVENANCE_FILE: "provenance",
         AUTHORIZATION_FILE: "authorization",
         CORE_INFO_FILE: "core-info",
+        LIFECYCLE_PENDING_TRANSITION_FILE: "pending-lifecycle-transition",
     }
     for package in candidate.assets:
         roles[str(package.get("fileName"))] = "package"
@@ -1471,6 +2024,7 @@ def _validation(
     core_info_digest: str,
     checksums_digest: str,
     provenance_digest: str,
+    pending_lifecycle_transition_digest: str,
     authorization_digest: str,
     authorization_valid: bool,
     publication_state: str,
@@ -1508,6 +2062,7 @@ def _validation(
         "coreInfoDigest": core_info_digest,
         "checksumsDigest": checksums_digest,
         "provenanceDigest": provenance_digest,
+        "pendingLifecycleTransitionDigest": pending_lifecycle_transition_digest,
         "evidenceResults": evidence_results,
         "blockers": [
             {
@@ -1649,6 +2204,35 @@ def _run(context: RunContext, out: Path, state: ValidationState) -> int:
         "Use the exact checked-in Stable 1.0 maintenance policy.",
     )
     policy = policy_loaded.value
+    lifecycle_policy_path = (
+        context.workspace_root
+        / "tools/release-certification/stable-1.0-support-lifecycle-policy.json"
+    )
+    lifecycle_policy_digest: str | None = None
+    try:
+        lifecycle_policy = json.loads(lifecycle_policy_path.read_text(encoding="utf-8"))
+        lifecycle_policy_digest = file_digest(lifecycle_policy_path)
+    except (OSError, json.JSONDecodeError):
+        lifecycle_policy = {}
+    from .stable_1_0_lifecycle_core import policy_errors as lifecycle_policy_errors
+
+    lifecycle_policy_failures = validate_schema(
+        lifecycle_policy,
+        "stable-1.0-support-lifecycle-policy-v1.schema.json",
+    ) + lifecycle_policy_errors(lifecycle_policy)
+    add_blockers(
+        state,
+        "stable-lifecycle.policy",
+        lifecycle_policy_failures,
+        "Use the exact reviewed Stable 1.0 support lifecycle policy.",
+    )
+    lifecycle_observation_maximum_age_minutes = (
+        lifecycle_policy.get("supportWindows", {}).get(
+            "maximumPublicObservationAgeMinutes", 0
+        )
+        if not lifecycle_policy_failures
+        else 0
+    )
     ga = authenticate_ga_root(context, state)
     obligation = (
         load_json_input(context, "hotfixFollowUpObligation")
@@ -1684,6 +2268,49 @@ def _run(context: RunContext, out: Path, state: ValidationState) -> int:
     predecessor = authenticate_predecessor(
         context, ga, state, allow_non_successor_build=closing_follow_up
     )
+    add_blockers(
+        state,
+        "stable-lifecycle.release-inventory",
+        (
+            []
+            if closing_follow_up
+            else _lifecycle_successor_capacity_errors(predecessor, lifecycle_policy)
+        ),
+        "Do not publish another Stable 1.0 build until a separately versioned, runtime-compatible "
+        "lifecycle rollover policy is reviewed and implemented.",
+    )
+    lifecycle_ledger = load_json_input(
+        context, "previousStableLifecycleLedger", required=False
+    )
+    lifecycle_descriptor = load_json_input(
+        context, "previousStableLifecycleDescriptor", required=False
+    )
+    lifecycle_authorization = load_json_input(
+        context, "stableLifecycleAuthorization", required=False
+    )
+    lifecycle_publication_plan = load_json_input(
+        context, "stableLifecyclePublicationPlan", required=False
+    )
+    lifecycle_receipt = load_json_input(
+        context, "stableLifecyclePublicationReceipt", required=False
+    )
+    lifecycle_public_observation = load_json_input(
+        context, "stableLifecyclePublicObservationReceipt", required=False
+    )
+    lifecycle_inputs = (
+        lifecycle_ledger,
+        lifecycle_descriptor,
+        lifecycle_authorization,
+        lifecycle_publication_plan,
+        lifecycle_receipt,
+    )
+    lifecycle_activation_verified = False
+    predecessor_lifecycle_status = "current-stable"
+    lifecycle_presence_errors = _lifecycle_input_presence_errors(
+        lifecycle_inputs,
+        predecessor.chain_depth,
+        require_activation=not closing_follow_up,
+    )
     candidate = authenticate_candidate(
         context,
         predecessor,
@@ -1692,7 +2319,79 @@ def _run(context: RunContext, out: Path, state: ValidationState) -> int:
         allow_published_product=closing_follow_up,
         freeze_predecessor_observation=freeze_predecessor_observation,
     )
-
+    if lifecycle_presence_errors:
+        add_blockers(
+            state,
+            "stable-lifecycle.state-consistency",
+            lifecycle_presence_errors,
+            "Provide the exact verified five-artifact lifecycle authority chain or use the "
+            "policy-defined non-promoting GA bootstrap.",
+        )
+    elif not closing_follow_up and all(item is not None for item in lifecycle_inputs):
+        assert (
+            lifecycle_ledger
+            and lifecycle_descriptor
+            and lifecycle_authorization
+            and lifecycle_publication_plan
+            and lifecycle_receipt
+        )
+        lifecycle_errors = _authenticated_lifecycle_errors(
+            lifecycle_ledger.value,
+            lifecycle_descriptor.value,
+            lifecycle_authorization.value,
+            lifecycle_publication_plan.value,
+            lifecycle_receipt.value,
+            lifecycle_authorization.digest,
+            lifecycle_descriptor.digest,
+            lifecycle_policy_digest,
+            predecessor,
+            context.manifest.policies.get("releaseClass"),
+            _now(),
+            candidate.input_value.get("changeScope"),
+        )
+        if lifecycle_public_observation is None:
+            lifecycle_errors.append(
+                "a fresh protected read-only observation of the exact public lifecycle edition "
+                "is required"
+            )
+        else:
+            lifecycle_errors.extend(
+                _public_lifecycle_observation_errors(
+                    lifecycle_public_observation.value,
+                    lifecycle_ledger.value,
+                    lifecycle_descriptor.value,
+                    lifecycle_authorization.value,
+                    lifecycle_publication_plan.value,
+                    lifecycle_receipt.value,
+                    lifecycle_authorization.digest,
+                    lifecycle_descriptor.digest,
+                    _now(),
+                    lifecycle_observation_maximum_age_minutes,
+                )
+            )
+        add_blockers(
+            state,
+            "stable-lifecycle.state-consistency",
+            lifecycle_errors,
+            "Use the exact latest verified lifecycle state and a policy-eligible predecessor.",
+        )
+        predecessor_entry = _lifecycle_predecessor_entry(
+            lifecycle_ledger.value, predecessor
+        )
+        if predecessor_entry is not None and predecessor_entry.get(
+            "lifecycleStatus"
+        ) in {
+            "current-stable",
+            "supported-maintenance",
+            "security-fixes-only",
+            "deprecated",
+            "end-of-support",
+            "revoked",
+        }:
+            predecessor_lifecycle_status = str(
+                predecessor_entry.get("lifecycleStatus")
+            )
+        lifecycle_activation_verified = not lifecycle_errors
     if mode == "close-hotfix-follow-up":
         assert obligation
         published_follow_up = predecessor.baseline.get("hotfixFollowUp")
@@ -1792,6 +2491,23 @@ def _run(context: RunContext, out: Path, state: ValidationState) -> int:
         write_text(out / REPORT_FILE, render_go_no_go(summary))
         return 0 if not state.blockers else 1
 
+    lifecycle_proposal = _pending_lifecycle_transition(
+        context,
+        predecessor,
+        candidate,
+        predecessor_lifecycle_status,
+    )
+    add_blockers(
+        state,
+        "stable-lifecycle.transition-policy",
+        validate_schema(
+            lifecycle_proposal,
+            "stable-1.0-support-lifecycle-pending-maintenance-transition-v1.schema.json",
+        ),
+        "Correct the publication-contingent lifecycle proposal.",
+    )
+    write_json(out / LIFECYCLE_PENDING_TRANSITION_FILE, lifecycle_proposal)
+
     targets, targets_digest = _targets(context, state)
     add_blockers(
         state,
@@ -1847,6 +2563,7 @@ def _run(context: RunContext, out: Path, state: ValidationState) -> int:
         file_digest(out / COMPARISON_FILE),
         evidence_digest,
         file_digest(out / CORE_INFO_FILE),
+        lifecycle_proposal["proposalDigest"],
     )
     write_json(out / PROVENANCE_FILE, provenance)
     _write_checksums(
@@ -1937,10 +2654,12 @@ def _run(context: RunContext, out: Path, state: ValidationState) -> int:
         file_digest(out / CORE_INFO_FILE),
         file_digest(out / CHECKSUMS_FILE),
         file_digest(out / PROVENANCE_FILE),
+        lifecycle_proposal["proposalDigest"],
         authorization_digest,
         authorization_valid,
         publication_state,
     )
+    _apply_lifecycle_promotion_gate(validation, lifecycle_activation_verified)
     write_json(out / VALIDATION_FILE, validation)
     artifacts = {
         "lineage": LINEAGE_FILE,
@@ -1960,6 +2679,7 @@ def _run(context: RunContext, out: Path, state: ValidationState) -> int:
         "redactionReport": REDACTION_REPORT_FILE,
         "goNoGo": REPORT_FILE,
     }
+    artifacts["pendingLifecycleTransition"] = LIFECYCLE_PENDING_TRANSITION_FILE
     if follow_up is not None:
         artifacts["hotfixFollowUp"] = FOLLOW_UP_FILE
     if successor is not None:
@@ -1987,6 +2707,7 @@ def _run(context: RunContext, out: Path, state: ValidationState) -> int:
         (CORE_PLAN_FILE, core_plan),
         (PUBLICATION_PLAN_FILE, plan),
     ]
+    redaction_items.append((LIFECYCLE_PENDING_TRANSITION_FILE, lifecycle_proposal))
     if follow_up is not None:
         redaction_items.append((FOLLOW_UP_FILE, follow_up))
     if successor is not None:
@@ -2019,6 +2740,7 @@ def _run(context: RunContext, out: Path, state: ValidationState) -> int:
         artifacts,
         redaction,
     )
+    _apply_lifecycle_promotion_gate(summary, lifecycle_activation_verified)
     write_json(out / SUMMARY_FILE, summary)
     write_text(out / REPORT_FILE, render_go_no_go(summary))
     audit_members = [path for path in out.iterdir() if path.is_file() and path.name != AUDIT_CHECKSUMS_FILE]

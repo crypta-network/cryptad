@@ -125,3 +125,29 @@ descriptor bytes, and every referenced package before accepting that receipt.
 
 Use `AppEnv` for platform/package-key mapping and follow
 `docs/stable-1.0-maintenance-release-and-hotfix-path.md`.
+
+## Stable 1.0 support lifecycle descriptor
+
+Build support state is mutable and must not be added to or changed in an already published
+`core-info.json`. The runtime obtains the separate `support-lifecycle` document under the same
+trusted public update-key identity, validates its closed schema and release identities, and retains
+the last-known-good exact bytes plus edition and digest on disk. Reject a wrong key scope/docname,
+unknown schema or status, edition rollback, previous-digest mismatch, release-identity mutation,
+multiple current builds, or a current build that is not the authenticated release-chain tip.
+
+Keep the read-only lifecycle subscriber active when `node.updater.enabled=false`; that setting
+disables package fetching and installation, not local support/security status discovery. A genuine
+update-key blow still stops lifecycle fetching because the lifecycle document shares that public
+trust key.
+
+Expose only the detached, public-safe lifecycle snapshot through `CoreUpdateActionPort`. Unknown or
+stale state must remain explicit; never infer support from update availability or the running build
+number. Build `revoked` is a lifecycle-policy decision and must not call, alias, or otherwise trigger
+the update-key blow/revocation path. End-of-support and build revocation surface actionable local
+warnings without deleting data, shutting down the node, disabling FProxy browse, or inventing a
+forced-update path.
+
+The lifecycle descriptor's public schema, protected publication, and operator behavior are defined
+in `docs/stable-1.0-support-lifecycle-and-deprecation-governance.md`. Use deterministic local
+fixtures for fetch, rollback, persistence, stale-state, and release-identity tests; do not require
+live DNS or update-key publication.

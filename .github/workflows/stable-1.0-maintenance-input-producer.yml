@@ -36,6 +36,11 @@ on:
         description: Exact sha256:<hex> of the reviewed ZIP at the protected environment URI.
         required: true
         type: string
+      lifecycle_source_commit:
+        description: Exact source commit whose canonical lifecycle workflow attested all five lifecycle artifacts; empty only for GA genesis.
+        required: false
+        default: ''
+        type: string
 
 concurrency:
   group: >-
@@ -52,6 +57,7 @@ jobs:
     timeout-minutes: 60
     permissions:
       contents: read
+      actions: read
       attestations: write
       artifact-metadata: write
       id-token: write
@@ -78,7 +84,8 @@ jobs:
           INPUT_BUNDLE_SHA256: ${{ inputs.input_bundle_sha256 }}
         run: |
           set -euo pipefail
-          if [[ ! "$INPUT_RELEASE_ID" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ \
+          if [[ ${#INPUT_RELEASE_ID} -gt 128 \
+                || ! "$INPUT_RELEASE_ID" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ \
                 || ! "$INPUT_BUILD_VERSION" =~ ^[1-9][0-9]*$ \
                 || ! "$INPUT_CANDIDATE_COMMIT" =~ ^[0-9a-f]{40}$ \
                 || ! "$INPUT_BUNDLE_SHA256" =~ ^sha256:[0-9a-f]{64}$ \
@@ -513,6 +520,38 @@ jobs:
                   if any(part in {"", ".", ".."} for part in relative.parts):
                       raise SystemExit(f"{key} has an unsafe protected-input path")
                   return output.joinpath("protected-inputs", *relative.parts)
+              lifecycle_keys = (
+                  "previousStableLifecycleLedger",
+                  "previousStableLifecycleDescriptor",
+                  "stableLifecycleAuthorization",
+                  "stableLifecyclePublicationPlan",
+                  "stableLifecyclePublicationReceipt",
+              )
+              configured_lifecycle_keys = [key for key in lifecycle_keys if key in inputs]
+              if "stableLifecyclePublicObservationReceipt" in inputs:
+                  raise SystemExit(
+                      "a lifecycle public observation is generated only by the protected maintenance workflow under the shared publication lock"
+                  )
+              if configured_lifecycle_keys and len(configured_lifecycle_keys) != len(lifecycle_keys):
+                  raise SystemExit(
+                      "lifecycle state requires the exact ledger, descriptor, approved authorization, authorized publication plan, and verified publication receipt together"
+                  )
+              predecessor_path = staged_input("predecessorBaseline")
+              if predecessor_path is None or not predecessor_path.is_file():
+                  raise SystemExit("phase bundle lacks its authenticated predecessor baseline")
+              predecessor = load_json(predecessor_path)
+              ga_genesis = (
+                  predecessor.get("schemaVersion") == 1
+                  and predecessor.get("kind") == "stable-1.0-maintenance-baseline"
+              )
+              if not ga_genesis and len(configured_lifecycle_keys) != len(lifecycle_keys):
+                  raise SystemExit(
+                      "post-GA maintenance requires the exact lifecycle ledger, descriptor, approved authorization, authorized publication plan, and verified publication receipt"
+                  )
+              for key in configured_lifecycle_keys:
+                  path = staged_input(key)
+                  if path is None or path.is_symlink() or not path.is_file():
+                      raise SystemExit(f"phase bundle lacks exact lifecycle input {key}")
               if phase == "prepare-authorization" and "stableMaintenanceAuthorization" in inputs:
                   raise SystemExit("authorization preparation cannot contain an authorization")
               allowed_files = {manifest_path}
@@ -578,6 +617,54 @@ jobs:
                               "freeze phase catalog/signature bytes do not match the candidate"
                           )
           PY
+
+      - name: Independently authenticate the exact lifecycle authority chain
+        if: ${{ inputs.phase != 'validate-authorization' }}
+        env:
+          INPUT_LIFECYCLE_SOURCE_COMMIT: ${{ inputs.lifecycle_source_commit }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          root="build/stable-maintenance-protected-input-producer/protected-inputs/lifecycle"
+          manifest="build/stable-maintenance-protected-input-producer/stable-1.0-maintenance.json"
+          lifecycle_count="$(jq -er '[
+            .inputs
+            | has("previousStableLifecycleLedger"),
+              has("previousStableLifecycleDescriptor"),
+              has("stableLifecycleAuthorization"),
+              has("stableLifecyclePublicationPlan"),
+              has("stableLifecyclePublicationReceipt")
+            ] | map(select(.)) | length' "$manifest")"
+          if [[ "$lifecycle_count" -eq 0 ]]; then
+            if [[ -n "$INPUT_LIFECYCLE_SOURCE_COMMIT" ]]; then
+              echo "::error::GA-genesis input cannot claim lifecycle publication provenance."
+              exit 1
+            fi
+            exit 0
+          fi
+          if [[ "$lifecycle_count" -ne 5 || ! -d "$root" \
+                || -n "$(find "$root" -type l -print -quit)" \
+                || ! "$INPUT_LIFECYCLE_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Lifecycle authority requires five exact safe artifacts."
+            exit 1
+          fi
+          signer="crypta-network/cryptad/.github/workflows/stable-1.0-support-lifecycle.yml"
+          for name in \
+            stable-1.0-support-lifecycle-ledger.json \
+            stable-1.0-support-lifecycle-descriptor.json \
+            stable-1.0-support-lifecycle-authorization-summary.json \
+            stable-1.0-support-lifecycle-publication-plan.json \
+            stable-1.0-support-lifecycle-publication-receipt.json; do
+            path="$root/$name"
+            if [[ -L "$path" || ! -f "$path" ]]; then
+              echo "::error::Authenticated lifecycle artifact $name is missing or unsafe."
+              exit 1
+            fi
+            gh attestation verify "$path" --repo "$GITHUB_REPOSITORY" \
+              --signer-workflow "$signer" \
+              --source-digest "$INPUT_LIFECYCLE_SOURCE_COMMIT" \
+              --deny-self-hosted-runners >/dev/null
+          done
 
       - name: Recheck immutable checkout after intake validation
         env:

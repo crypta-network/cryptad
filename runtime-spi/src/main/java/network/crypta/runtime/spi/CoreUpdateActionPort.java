@@ -21,6 +21,19 @@ import java.util.Optional;
  */
 public interface CoreUpdateActionPort {
   /**
+   * Returns the last locally verified Stable 1.0 build-support lifecycle snapshot.
+   *
+   * <p>The default keeps older or partial runtime adapters fail-closed: it reports unknown rather
+   * than inferring support from the current build or ordinary update availability. Full daemon
+   * adapters should override this method with their persisted last-known-good lifecycle view.
+   *
+   * @return public-safe lifecycle snapshot suitable for Platform API and operator diagnostics
+   */
+  default CoreSupportLifecycleSnapshot supportLifecycleSnapshot() {
+    return CoreSupportLifecycleSnapshot.unknown(-1, java.util.List.of("lifecycle_unavailable"));
+  }
+
+  /**
    * Returns whether the package-based core updater is currently available.
    *
    * <p>Callers use this to preserve the legacy redirect behavior when the updater is disabled,

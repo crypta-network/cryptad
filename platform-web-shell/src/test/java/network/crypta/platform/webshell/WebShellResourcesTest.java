@@ -134,6 +134,7 @@ class WebShellResourcesTest {
     assertPublisherSubmissionOrder(script);
     assertAlertsAndDiagnosticsMarkersPresent(script);
     assertPlatformControlPlaneMarkersPresent(script);
+    assertSupportLifecyclePresentationOrdering(script);
     assertAppUiOriginHardeningMarkersPresent(script);
   }
 
@@ -1269,6 +1270,18 @@ class WebShellResourcesTest {
     assertTrue(script.contains("Open the legacy security page."));
     assertTrue(script.contains("async function submitConfigForm(event)"));
     assertTrue(script.contains("async function triggerCoreDownload()"));
+    assertTrue(script.contains("function renderSupportLifecycle(lifecycle)"));
+    assertTrue(script.contains("Recovery guidance"));
+    assertTrue(script.contains("Stale — verification required"));
+    assertTrue(script.contains("Current stable"));
+    assertTrue(script.contains("Supported maintenance"));
+    assertTrue(script.contains("Security fixes only"));
+    assertTrue(script.contains("Deprecated"));
+    assertTrue(script.contains("End of support"));
+    assertTrue(script.contains("Revoked build"));
+    assertTrue(script.contains("Support must not be assumed."));
+    assertTrue(
+        script.contains("Normal browsing and local data remain available while you upgrade."));
     assertTrue(script.contains("async function submitWizardForm(event)"));
     assertTrue(script.contains("function wizardSubmissionSupported(data)"));
     assertTrue(script.contains("function wizardBandwidthModeUnknown(data)"));
@@ -1282,6 +1295,8 @@ class WebShellResourcesTest {
     assertTrue(script.contains("function wizardUnsupportedMessage(data)"));
     assertTrue(script.contains("apiUrlWithQuery(\"security-levels/network-warning\""));
     assertTrue(script.contains("loadJson(apiUrl(\"updates/core\"))"));
+    assertTrue(script.contains("loadJson(apiUrl(\"updates/support-lifecycle\"))"));
+    assertTrue(script.contains("renderUpdates({ ...snapshot, supportLifecycle })"));
     assertTrue(script.contains("loadJson(apiUrl(\"config?sections=CURRENT\"))"));
     assertTrue(script.contains("loadJson(apiUrl(\"wizard/first-time\"))"));
     assertTrue(
@@ -1377,5 +1392,25 @@ class WebShellResourcesTest {
     assertTrue(script.contains("formData.set(\"preserveCurrentNetworkThreatLevel\", \"on\");"));
     assertTrue(script.contains("formData.set(\"preserveCurrentPhysicalThreatLevel\", \"on\");"));
     assertTrue(script.contains("await postForm("));
+  }
+
+  private static void assertSupportLifecyclePresentationOrdering(String script) {
+    int presentationStart = script.indexOf("function supportLifecyclePresentation(lifecycle)");
+    int presentationMap = script.indexOf("const presentations = {", presentationStart);
+    int staleCheck = script.indexOf("if (lifecycle.stale !== true)", presentationMap);
+    int terminalCheck = script.indexOf("if (terminalStatus)", staleCheck);
+    int genericStale = script.indexOf("label: \"Stale — verification required\"", terminalCheck);
+
+    assertTrue(presentationStart >= 0);
+    assertTrue(presentationMap > presentationStart);
+    assertTrue(staleCheck > presentationMap);
+    assertTrue(terminalCheck > staleCheck);
+    assertTrue(genericStale > terminalCheck);
+    assertTrue(
+        script.contains(
+            "lifecycle.runningStatus === \"end-of-support\" ||"
+                + " lifecycle.runningStatus === \"revoked\""));
+    assertTrue(script.contains("label: `${presentation.label} — descriptor stale`"));
+    assertTrue(script.contains("refresh it without treating this build as supported or safe."));
   }
 }

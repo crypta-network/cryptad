@@ -1,0 +1,123 @@
+{
+  "authorization": {
+    "maximumValidityHours": 24,
+    "releaseManagerRole": "stable-lifecycle-release-manager",
+    "securityManagerRole": "stable-lifecycle-security-manager",
+    "wildcardScopeAllowed": false
+  },
+  "cardinality": {
+    "currentStable": 1,
+    "minimumSimultaneouslySupportedBuilds": 1
+  },
+  "component": "stable-lifecycle",
+  "descriptor": {
+    "historicalCoreInfoImmutable": true,
+    "independentMonotonicEdition": true,
+    "lastKnownGoodRequired": true,
+    "maximumEntries": 256,
+    "schemaVersion": 1,
+    "updateKeyIdentityDerivation": "sha256-of-raw-public-key-material-without-USK-prefix-docname-or-edition",
+    "updateKeyIdentityDigest": "sha256:b6386982e7eed893448339eed564fcdc140547266b0dc70978ddfa345f6136d7",
+    "updateKeyDocName": "support-lifecycle"
+  },
+  "durationUnit": "days",
+  "governanceReferences": [
+    "docs/platform-api-compatibility-support-window.md",
+    "platform-api/src/main/java/network/crypta/platform/api/contentformats/ContentFormatProfile.java",
+    "platform-appcatalog/src/main/java/network/crypta/platform/appcatalog/AppCatalogProductionMetadata.java",
+    "platform-appcatalog/src/main/java/network/crypta/platform/appcatalog/AppCatalogSecurityAdvisoryRecord.java",
+    "platform-appcatalog/src/main/java/network/crypta/platform/appcatalog/AppReviewReceiptRevocation.java",
+    "tools/release-certification/first-party-app-maintenance-policy.json",
+    "tools/release-certification/schemas/stable-1.0-maintenance-successor-baseline-v2.schema.json",
+    "docs/platform-api/contracts/platform-api-1.0-baseline.json"
+  ],
+  "kind": "stable-1.0-support-lifecycle-policy",
+  "lifecycleVocabulary": [
+    "current-stable",
+    "supported-maintenance",
+    "security-fixes-only",
+    "deprecated",
+    "end-of-support",
+    "revoked"
+  ],
+  "nonWaivableBlockers": [
+    "stable-lifecycle.ga-root-authentication",
+    "stable-lifecycle.maintenance-chain-authentication",
+    "stable-lifecycle.policy",
+    "stable-lifecycle.release-inventory",
+    "stable-lifecycle.state-consistency",
+    "stable-lifecycle.transition-policy",
+    "stable-lifecycle.transition-authorization",
+    "stable-lifecycle.descriptor-integrity",
+    "stable-lifecycle.updater-integration",
+    "stable-lifecycle.platform-api-deprecation",
+    "stable-lifecycle.catalog-app-profile-governance",
+    "stable-lifecycle.security-linkage",
+    "stable-lifecycle.operator-support",
+    "stable-lifecycle.publication-conflict",
+    "stable-lifecycle.publication-verification",
+    "stable-lifecycle.redaction"
+  ],
+  "normalTransitions": [
+    {"from": "current-stable", "to": "supported-maintenance"},
+    {"from": "supported-maintenance", "to": "security-fixes-only"},
+    {"from": "security-fixes-only", "to": "deprecated"},
+    {"from": "deprecated", "to": "end-of-support"}
+  ],
+  "platformApi": {
+    "baselineName": "1.0",
+    "blockRemovalWhileSupportedBuildOrStableAppDepends": true,
+    "criticalStableRemovalWaiverAllowed": false,
+    "preserveOriginalDeprecationClock": true
+  },
+  "policyVersion": 1,
+  "profile": "stable-review",
+  "publicationOperations": [
+    "prepare",
+    "authorize",
+    "insert-or-verify",
+    "verify-publication"
+  ],
+  "redactionRequirements": [
+    "exclude-private-insert-uris",
+    "exclude-credentials-and-headers",
+    "exclude-raw-support-and-app-data",
+    "exclude-absolute-paths",
+    "exclude-embargoed-advisory-details"
+  ],
+  "revocation": {
+    "allowEmergencyNoCurrentStableWhenTipRevoked": true,
+    "buildRevocationSeparateFromUpdateKeyRevocation": true,
+    "fromStatuses": [
+      "current-stable",
+      "supported-maintenance",
+      "security-fixes-only",
+      "deprecated",
+      "end-of-support"
+    ],
+    "requiredAdvisoryFields": [
+      "advisoryId",
+      "severity",
+      "reasonCode",
+      "affectedBuilds",
+      "effectiveAt",
+      "replacementOrRecoveryGuidance",
+      "securityDrillOrReferenceEvidence",
+      "protectedAuthorization",
+      "publicationTargetAndDigest"
+    ],
+    "terminal": true,
+    "toStatus": "revoked"
+  },
+  "schemaVersion": 1,
+  "stableMilestone": "1.0",
+  "supportWindows": {
+    "maximumDescriptorAgeDays": 7,
+    "maximumEvidenceAgeDays": 14,
+    "maximumPublicObservationAgeMinutes": 30,
+    "maximumGenesisProofAgeMinutes": 30,
+    "minimumDeprecationNoticeDuration": 90,
+    "minimumFullMaintenanceDuration": 180,
+    "minimumSecurityFixesOnlyDuration": 180
+  }
+}

@@ -64,7 +64,7 @@
           "baselineContractVersion": 19,
           "baselineName": "1.0",
           "criticalStableRemovalWaiverAllowed": false,
-          "currentContractVersion": 23,
+          "currentContractVersion": 24,
           "experimentalGraduationRequiresReview": true,
           "experimentalGraduationRequiresStableReferenceUpdate": true,
           "minimumDeprecationWindowContractVersions": 2,
@@ -78,7 +78,7 @@
           "supportPhase": "beta",
           "supportWindowStartedRelease": "production-beta"
         },
-        "contractVersion": 23,
+        "contractVersion": 24,
         "endpointCount": 65,
         "flaggedStability": [],
         "stabilityCounts": {
@@ -592,7 +592,7 @@
           "baselineContractVersion": 19,
           "baselineName": "1.0",
           "criticalStableRemovalWaiverAllowed": false,
-          "currentContractVersion": 23,
+          "currentContractVersion": 24,
           "experimentalGraduationRequiresReview": true,
           "experimentalGraduationRequiresStableReferenceUpdate": true,
           "minimumDeprecationWindowContractVersions": 2,

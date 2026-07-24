@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "release": {
+    "id": "cryptad-stable-1-0-lifecycle-REPLACE_ME",
+    "version": "REPLACE_WITH_CURRENT_INTEGER_BUILD",
+    "profile": "stable-review"
+  },
+  "output": {"root": "build/release-certification", "reset": true},
+  "requirements": {
+    "history": true,
+    "liveNetwork": false,
+    "multiNodeSoak": false,
+    "sandboxProviderTests": false,
+    "stableReadiness": true,
+    "thirdPartyIntake": true
+  },
+  "inputs": {
+    "stableGaPromotionSummary": "build/protected-inputs/stable-ga/stable-1.0-ga-promotion-summary.json",
+    "stableGaValidation": "build/protected-inputs/stable-ga/stable-1.0-ga-validation.json",
+    "stableGaAuthorizationSummary": "build/protected-inputs/stable-ga/stable-1.0-ga-authorization-summary.json",
+    "stableGaPublicationPlan": "build/protected-inputs/stable-ga/stable-1.0-ga-publication-plan.json",
+    "stableGaPublicationReceipt": "build/protected-inputs/stable-ga/stable-1.0-ga-publication-receipt.json",
+    "stableGaChecksums": "build/protected-inputs/stable-ga/stable-1.0-ga-checksums.txt",
+    "stableGaProvenance": "build/protected-inputs/stable-ga/stable-1.0-ga-provenance.json",
+    "stableGaMaintenanceBaseline": "build/protected-inputs/stable-ga/stable-1.0-maintenance-baseline.json",
+    "predecessorPublicationReceipt": "build/protected-inputs/predecessor/publication-receipt.json",
+    "predecessorBaseline": "build/protected-inputs/predecessor/maintenance-baseline.json",
+    "latestPublishedMaintenancePointer": "build/protected-inputs/predecessor/latest-published.json",
+    "previousStableLifecycleLedger": "build/protected-inputs/lifecycle/stable-1.0-support-lifecycle-ledger.json",
+    "previousStableLifecycleDescriptor": "build/protected-inputs/lifecycle/stable-1.0-support-lifecycle-descriptor.json",
+    "stableMaintenanceHistory": "build/protected-inputs/lifecycle/stable-1.0-maintenance-authenticated-history.json",
+    "stableLifecyclePolicy": "tools/release-certification/stable-1.0-support-lifecycle-policy.json"
+  },
+  "policies": {
+    "expectedPredecessorBuild": "REPLACE_WITH_CURRENT_INTEGER_BUILD",
+    "expectedPredecessorProductDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "expectedPredecessorReleaseId": "REPLACE_WITH_CURRENT_RELEASE_ID",
+    "lifecycleDescriptorPublicUri": "https://REPLACE_ME.invalid/stable-1.0/support-lifecycle/latest.json",
+    "latestMaintenancePointerPublicUri": "https://REPLACE_ME.invalid/stable-1.0/maintenance/latest.json",
+    "metadata": {"lifecycleEvaluationAt": "REPLACE_WITH_CANONICAL_UTC_TIMESTAMP"},
+    "publicationIntent": "prepare-explicit-protected-publication",
+    "releaseClass": "maintenance"
+  },
+  "execution": {
+    "allowDirtyWorkspace": false,
+    "allowTestSigningInProduction": false,
+    "collectEvidence": false,
+    "collectLiveNetwork": false,
+    "emergencySkipBuild": false,
+    "emergencySkipLiveNetwork": false,
+    "fixtureEvidence": false,
+    "generateStableReadiness": false,
+    "runMultiNodeSoak": false,
+    "runThirdPartyIntakeSampleFlow": false,
+    "skipFullBuild": true,
+    "skipGitMetadata": false,
+    "skipGradle": true,
+    "writeHistory": false
+  },
+  "commands": {"stable-lifecycle": {"args": [], "mode": "evaluate"}}
+}

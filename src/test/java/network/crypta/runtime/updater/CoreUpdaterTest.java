@@ -28,6 +28,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeFalse;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -77,6 +78,32 @@ class CoreUpdaterTest {
     assertEquals("2", info.version());
     assertNotNull(info.packages().get("amd64.exe"));
     assertNull(info.releasePageUrl());
+  }
+
+  @Test
+  void jsonParser_whenNumbersAndEscapesAreValid_expectTypedValues() {
+    String json =
+        "{\"negative\":-12,\"fraction\":1.25,\"exponent\":6.02e+23,"
+            + "\"escaped\":\"quote:\\\" slash:\\\\ unicode:\\u00e9\"}";
+
+    Map<String, Object> parsed = JsonMini.parseObject(json);
+
+    assertEquals(-12L, parsed.get("negative"));
+    assertEquals(1.25, parsed.get("fraction"));
+    assertEquals(6.02e23, parsed.get("exponent"));
+    assertEquals("quote:\" slash:\\ unicode:é", parsed.get("escaped"));
+  }
+
+  @Test
+  void jsonParser_whenNumberOrEscapeIsMalformed_expectSpecificValidation() {
+    IllegalArgumentException fractionError =
+        assertThrows(IllegalArgumentException.class, () -> JsonMini.parseObject("{\"value\":1.}"));
+    IllegalArgumentException unicodeError =
+        assertThrows(
+            IllegalArgumentException.class, () -> JsonMini.parseObject("{\"value\":\"\\u12xz\"}"));
+
+    assertTrue(fractionError.getMessage().startsWith("Invalid JSON fraction at "));
+    assertTrue(unicodeError.getMessage().startsWith("Invalid Unicode escape at "));
   }
 
   @Test

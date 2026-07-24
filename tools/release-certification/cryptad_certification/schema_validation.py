@@ -10,6 +10,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from .io import read_json
+from .safe_text import recovery_guidance_error
 
 _SCHEMA_DIR = Path(__file__).resolve().parent.parent / "schemas"
 _SUPPORTED_SCHEMA_KEYS = frozenset(
@@ -23,10 +24,12 @@ _SUPPORTED_SCHEMA_KEYS = frozenset(
         "additionalProperties",
         "required",
         "properties",
+        "propertyNames",
         "const",
         "enum",
         "pattern",
         "minLength",
+        "maxLength",
         "minimum",
         "minItems",
         "maxItems",
@@ -178,6 +181,9 @@ def _schema_errors(
         minimum_length = schema.get("minLength")
         if type(minimum_length) is int and len(value) < minimum_length:
             errors.append(f"{path} is shorter than the schema minimum")
+        maximum_length = schema.get("maxLength")
+        if type(maximum_length) is int and len(value) > maximum_length:
+            errors.append(f"{path} is longer than the schema maximum")
         pattern = schema.get("pattern")
         if isinstance(pattern, str) and re.search(pattern, value) is None:
             errors.append(f"{path} does not match the schema pattern")
@@ -188,6 +194,8 @@ def _schema_errors(
             parsed = urlsplit(value)
             if not parsed.scheme or any(character.isspace() for character in value):
                 errors.append(f"{path} is not a valid schema URI")
+        if value_format == "cryptad-recovery-guidance" and recovery_guidance_error(value):
+            errors.append(f"{path} violates the lifecycle recovery-guidance text contract")
     if type(value) is int and type(schema.get("minimum")) is int and value < schema["minimum"]:
         errors.append(f"{path} is below the schema minimum")
     if isinstance(value, dict):
@@ -196,14 +204,37 @@ def _schema_errors(
         for name in required:
             if isinstance(name, str) and name not in value:
                 errors.append(f"{path} omits required field {name}")
-        if schema.get("additionalProperties") is False:
+        additional_properties = schema.get("additionalProperties")
+        if additional_properties is False:
             for name in sorted(set(value).difference(properties)):
                 errors.append(f"{path} contains unknown field {name}")
+        property_names = schema.get("propertyNames")
+        if isinstance(property_names, dict):
+            for name in value:
+                errors.extend(
+                    _schema_errors(
+                        name,
+                        property_names,
+                        root_schema,
+                        f"{path} property {name!r}",
+                        cache,
+                    )
+                )
         for name, child in value.items():
             child_schema = properties.get(name)
             if isinstance(child_schema, dict):
                 errors.extend(
                     _schema_errors(child, child_schema, root_schema, f"{path}.{name}", cache)
+                )
+            elif isinstance(additional_properties, dict):
+                errors.extend(
+                    _schema_errors(
+                        child,
+                        additional_properties,
+                        root_schema,
+                        f"{path}.{name}",
+                        cache,
+                    )
                 )
     if isinstance(value, list):
         minimum_items = schema.get("minItems")

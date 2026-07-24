@@ -24,6 +24,8 @@ class PublisherBundleStagingTest {
   private static final String EXPECTED_UI_ENTRY = "static/index.html";
   private static final String EXPECTED_LAUNCHER_PATH = "bin/publisher.sh";
   private static final String EXPECTED_PERMISSIONS = "queue.read,queue.write,content.insert";
+  private static final int EXPECTED_PLATFORM_API_MINIMUM_VERSION = 1;
+  private static final int EXPECTED_PLATFORM_API_MAXIMUM_TESTED_VERSION = 24;
   private static final Path PLATFORM_SDK_SOURCE_PATH =
       Path.of(
           "platform-sdk-js",
@@ -60,6 +62,12 @@ class PublisherBundleStagingTest {
     assertEquals(EXPECTED_UI_ENTRY, manifest.uiEntry());
     assertEquals(
         java.util.List.of("queue.read", "queue.write", "content.insert"), manifest.permissions());
+    assertEquals(
+        Integer.valueOf(EXPECTED_PLATFORM_API_MINIMUM_VERSION),
+        manifest.apiCompatibility().minimumVersion());
+    assertEquals(
+        Integer.valueOf(EXPECTED_PLATFORM_API_MAXIMUM_TESTED_VERSION),
+        manifest.apiCompatibility().maximumTestedVersion());
     assertEquals(TargetStability.STABLE, manifest.apiCompatibility().targetStability());
     assertTrue(manifest.apiCompatibility().targetStabilityDeclared());
     assertFalse(manifest.apiCompatibility().experimentalCapabilitiesAccepted());
@@ -76,6 +84,11 @@ class PublisherBundleStagingTest {
     assertTrue(manifestText.contains("app.id=" + EXPECTED_APP_ID));
     assertTrue(manifestText.contains("app.name=" + EXPECTED_APP_NAME));
     assertTrue(manifestText.contains("app.version=" + System.getProperty(APP_VERSION_PROPERTY)));
+    assertTrue(
+        manifestText.contains("api.minimumVersion=" + EXPECTED_PLATFORM_API_MINIMUM_VERSION));
+    assertTrue(
+        manifestText.contains(
+            "api.maximumTestedVersion=" + EXPECTED_PLATFORM_API_MAXIMUM_TESTED_VERSION));
     assertTrue(manifestText.contains("api.targetStability=stable"));
     assertTrue(manifestText.contains("api.experimentalCapabilitiesAccepted=false"));
     assertTrue(manifestText.contains("app.exec=" + EXPECTED_LAUNCHER_PATH));

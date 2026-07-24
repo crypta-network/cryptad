@@ -170,8 +170,9 @@ public class CoreUpdater extends NodeUpdater {
   }
 
   @Override
-  protected void processSuccess(int fetched, FetchResult result, File blobFile) {
+  protected boolean processSuccess(int fetched, FetchResult result, File blobFile) {
     // Nothing to persist from info JSON beyond the in-memory state.
+    return true;
   }
 
   /**
@@ -1075,7 +1076,12 @@ final class JsonMini {
 
   static Map<String, Object> parseObject(String s) {
     P p = new P(s);
-    return parseObjectInPlace(p);
+    Map<String, Object> result = parseObjectInPlace(p);
+    skipWs(p);
+    if (p.i != p.s.length()) {
+      throw new IllegalArgumentException("Unexpected trailing JSON content at " + p.i);
+    }
+    return result;
   }
 
   private static Map<String, Object> parseObjectInPlace(P p) {
@@ -1094,6 +1100,9 @@ final class JsonMini {
       expect(p, ':');
       skipWs(p);
       Object value = parseValue(p);
+      if (out.containsKey(key)) {
+        throw new IllegalArgumentException("Duplicate JSON object key at " + p.i);
+      }
       out.put(key, value);
       skipWs(p);
       char ch = next(p);
@@ -1159,20 +1168,84 @@ final class JsonMini {
 
   private static Number parseNumber(P p) {
     int start = p.i;
+    consumeNumberSign(p);
+    consumeIntegerPart(p);
+    boolean hasFraction = consumeFraction(p);
+    boolean hasExponent = consumeExponent(p);
+    return convertNumber(p, start, !hasFraction && !hasExponent);
+  }
+
+  private static void consumeNumberSign(P p) {
     if (peek(p) == '-') {
       p.i++;
     }
-    while (Character.isDigit(peek(p))) {
+  }
+
+  private static void consumeIntegerPart(P p) {
+    if (peek(p) == '0') {
+      p.i++;
+      if (isAsciiDigit(peek(p))) {
+        throw new IllegalArgumentException("Leading zero in JSON number at " + p.i);
+      }
+      return;
+    }
+    if (peek(p) < '1' || peek(p) > '9') {
+      throw new IllegalArgumentException("Invalid JSON number at " + p.i);
+    }
+    consumeAsciiDigits(p);
+  }
+
+  private static boolean consumeFraction(P p) {
+    if (peek(p) != '.') {
+      return false;
+    }
+    p.i++;
+    if (!isAsciiDigit(peek(p))) {
+      throw new IllegalArgumentException("Invalid JSON fraction at " + p.i);
+    }
+    consumeAsciiDigits(p);
+    return true;
+  }
+
+  private static boolean consumeExponent(P p) {
+    if (peek(p) != 'e' && peek(p) != 'E') {
+      return false;
+    }
+    p.i++;
+    if (peek(p) == '+' || peek(p) == '-') {
       p.i++;
     }
-    if (peek(p) == '.') {
-      do {
-        p.i++;
-      } while (Character.isDigit(peek(p)));
+    if (!isAsciiDigit(peek(p))) {
+      throw new IllegalArgumentException("Invalid JSON exponent at " + p.i);
     }
+    consumeAsciiDigits(p);
+    return true;
+  }
+
+  private static void consumeAsciiDigits(P p) {
+    while (isAsciiDigit(peek(p))) {
+      p.i++;
+    }
+  }
+
+  private static Number convertNumber(P p, int start, boolean integral) {
     String sub = p.s.substring(start, p.i);
-    double d = Double.parseDouble(sub);
-    return d % 1.0 == 0.0 ? (long) d : d;
+    try {
+      if (integral) {
+        return Long.parseLong(sub);
+      }
+      double value = Double.parseDouble(sub);
+      if (!Double.isFinite(value)) {
+        throw new IllegalArgumentException("Non-finite JSON number at " + start);
+      }
+      return value;
+    } catch (NumberFormatException e) {
+      throw new IllegalArgumentException("JSON number is outside supported range at " + start, e);
+    }
+  }
+
+  private static boolean isAsciiDigit(char value) {
+    return value >= '0' && value <= '9';
   }
 
   private static String parseString(P p) {
@@ -1183,27 +1256,47 @@ final class JsonMini {
       if (ch == '"') {
         return sb.toString();
       }
-      if (ch == '\\') {
-        char e = next(p);
-        switch (e) {
-          case '"' -> sb.append('"');
-          case '\\' -> sb.append('\\');
-          case '/' -> sb.append('/');
-          case 'b' -> sb.append('\b');
-          case 'f' -> sb.append('\f');
-          case 'n' -> sb.append('\n');
-          case 'r' -> sb.append('\r');
-          case 't' -> sb.append('\t');
-          case 'u' -> {
-            String hex = p.s.substring(p.i, p.i + 4);
-            p.i += 4;
-            sb.append((char) Integer.parseInt(hex, 16));
-          }
-          default -> throw new IllegalArgumentException("Bad escape \\" + e + " at " + p.i);
-        }
-      } else {
-        sb.append(ch);
-      }
+      appendStringCharacter(p, sb, ch);
+    }
+  }
+
+  private static void appendStringCharacter(P p, StringBuilder sb, char ch) {
+    if (ch == '\\') {
+      appendEscapedCharacter(p, sb);
+      return;
+    }
+    if (ch < 0x20) {
+      throw new IllegalArgumentException("Unescaped JSON control character at " + p.i);
+    }
+    sb.append(ch);
+  }
+
+  private static void appendEscapedCharacter(P p, StringBuilder sb) {
+    char escape = next(p);
+    switch (escape) {
+      case '"' -> sb.append('"');
+      case '\\' -> sb.append('\\');
+      case '/' -> sb.append('/');
+      case 'b' -> sb.append('\b');
+      case 'f' -> sb.append('\f');
+      case 'n' -> sb.append('\n');
+      case 'r' -> sb.append('\r');
+      case 't' -> sb.append('\t');
+      case 'u' -> appendUnicodeEscape(p, sb);
+      default -> throw new IllegalArgumentException("Bad escape \\" + escape + " at " + p.i);
+    }
+  }
+
+  private static void appendUnicodeEscape(P p, StringBuilder sb) {
+    if (p.i + 4 > p.s.length()) {
+      throw new IllegalArgumentException("Incomplete Unicode escape at " + p.i);
+    }
+    String hex = p.s.substring(p.i, p.i + 4);
+    p.i += 4;
+    try {
+      sb.append((char) Integer.parseInt(hex, 16));
+    } catch (NumberFormatException exception) {
+      throw new IllegalArgumentException("Invalid Unicode escape at " + (p.i - 4), exception);
     }
   }
 
@@ -1214,6 +1307,9 @@ final class JsonMini {
   }
 
   private static char next(P p) {
+    if (p.i >= p.s.length()) {
+      throw new IllegalArgumentException("Unexpected end of JSON input at " + p.i);
+    }
     return p.s.charAt(p.i++);
   }
 

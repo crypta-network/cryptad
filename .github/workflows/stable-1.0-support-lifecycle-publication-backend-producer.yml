@@ -1,0 +1,155 @@
+name: Stable 1.0 support lifecycle publication backend producer
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_commit:
+        description: Exact reviewed main-branch commit containing the lifecycle-only provider
+        required: true
+        type: string
+
+concurrency:
+  group: stable-1-0-support-lifecycle-publication-backend-${{ inputs.source_commit }}
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  build-and-attest:
+    name: Build and attest deterministic lifecycle provider wheel
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: stable-1.0-lifecycle-evidence
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    steps:
+      - name: Validate reviewed source identity
+        env:
+          INPUT_SOURCE_COMMIT: ${{ inputs.source_commit }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$INPUT_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Lifecycle provider source commit must be exact."
+            exit 1
+          fi
+          main_commit="$(gh api --method GET \
+            "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')"
+          if [[ "$main_commit" != "$INPUT_SOURCE_COMMIT" ]]; then
+            echo "::error::Lifecycle provider source is not the current reviewed main commit."
+            exit 1
+          fi
+
+      - name: Check out exact reviewed provider source
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.source_commit }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Build and independently compare deterministic lifecycle wheels
+        env:
+          INPUT_SOURCE_COMMIT: ${{ inputs.source_commit }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_SHA" != "$INPUT_SOURCE_COMMIT" \
+                || "$(git rev-parse HEAD)" != "$INPUT_SOURCE_COMMIT" \
+                || -n "$(git status --porcelain --untracked-files=no)" ]]; then
+            echo "::error::Lifecycle provider checkout is not the exact clean reviewed commit."
+            exit 1
+          fi
+          builder="tools/release-certification/publication-backend/build_wheel.py"
+          python3 "$builder" --out build/lifecycle-provider-first
+          python3 "$builder" --out build/lifecycle-provider-second
+          first="$(find build/lifecycle-provider-first -maxdepth 1 -type f -name '*.whl' -print)"
+          second="$(find build/lifecycle-provider-second -maxdepth 1 -type f -name '*.whl' -print)"
+          if [[ -z "$first" || -z "$second" \
+                || "$(find build/lifecycle-provider-first -maxdepth 1 -type f -name '*.whl' | wc -l)" -ne 1 \
+                || "$(find build/lifecycle-provider-second -maxdepth 1 -type f -name '*.whl' | wc -l)" -ne 1 \
+                || ! -f "$first" || ! -f "$second" ]]; then
+            echo "::error::Each lifecycle provider build must emit exactly one wheel."
+            exit 1
+          fi
+          if ! cmp --silent "$first" "$second"; then
+            echo "::error::Lifecycle provider wheel build was not deterministic."
+            exit 1
+          fi
+          mkdir -p build/stable-lifecycle-publication-backend
+          cp "$first" build/stable-lifecycle-publication-backend/
+          python3 -I -S - build/stable-lifecycle-publication-backend/*.whl <<'PY'
+          import importlib
+          import stat
+          import sys
+          import zipfile
+          from pathlib import PurePosixPath
+
+          wheel = sys.argv[1]
+          with zipfile.ZipFile(wheel) as archive:
+              names = [item.filename for item in archive.infolist()]
+              if names != sorted(names) or len(names) != len(set(names)):
+                  raise SystemExit("wheel members are not uniquely sorted")
+              for item in archive.infolist():
+                  path = PurePosixPath(item.filename)
+                  mode = item.external_attr >> 16
+                  if path.is_absolute() or ".." in path.parts or "\\" in item.filename:
+                      raise SystemExit("wheel member path is unsafe")
+                  if stat.S_IFMT(mode) != stat.S_IFREG or stat.S_IMODE(mode) != 0o644:
+                      raise SystemExit("wheel member mode is not canonical")
+          sys.path.insert(0, wheel)
+          module = importlib.import_module("cryptad_stable_maintenance_backend")
+          backend = module.lifecycle_factory()
+          required = (
+              "observe_lifecycle", "observe_lifecycle_genesis",
+              "publish_lifecycle", "verify_lifecycle",
+          )
+          forbidden = (
+              "activate_latest", "publish_target", "create_release", "create_tag",
+              "publish_catalog", "publish_core_update", "revoke_update_key",
+          )
+          if any(not callable(getattr(backend, name, None)) for name in required):
+              raise SystemExit("canonical lifecycle provider protocol is incomplete")
+          if any(hasattr(backend, name) for name in forbidden):
+              raise SystemExit("lifecycle provider exposes an unrelated mutation")
+          PY
+
+      - name: Attest exact lifecycle provider wheel
+        uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
+        with:
+          subject-path: build/stable-lifecycle-publication-backend/*.whl
+
+      - name: Upload exact lifecycle provider wheel
+        id: upload
+        uses: actions/upload-artifact@v6
+        with:
+          name: stable-1.0-support-lifecycle-publication-backend
+          path: build/stable-lifecycle-publication-backend/*.whl
+          if-no-files-found: error
+          include-hidden-files: false
+          retention-days: 90
+
+      - name: Record public-safe lifecycle provider identity
+        env:
+          INPUT_SOURCE_COMMIT: ${{ inputs.source_commit }}
+          ARTIFACT_DIGEST: ${{ steps.upload.outputs.artifact-digest }}
+        run: |
+          set -euo pipefail
+          wheel="$(find build/stable-lifecycle-publication-backend -maxdepth 1 -type f -name '*.whl' -print)"
+          wheel_digest="sha256:$(sha256sum "$wheel" | cut -d' ' -f1)"
+          {
+            echo '### Stable lifecycle publication backend'
+            echo
+            echo "- source commit: \`$INPUT_SOURCE_COMMIT\`"
+            echo '- artifact: `stable-1.0-support-lifecycle-publication-backend`'
+            echo "- artifact digest: \`$ARTIFACT_DIGEST\`"
+            echo "- wheel digest: \`$wheel_digest\`"
+            echo '- entrypoint: `cryptad_stable_maintenance_backend:lifecycle_factory`'
+            echo '- signer workflow: `crypta-network/cryptad/.github/workflows/stable-1.0-support-lifecycle-publication-backend-producer.yml`'
+          } >> "$GITHUB_STEP_SUMMARY"

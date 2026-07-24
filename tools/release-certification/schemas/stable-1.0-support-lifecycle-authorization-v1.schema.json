@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "https://github.com/crypta-network/cryptad/tools/release-certification/schemas/stable-1.0-support-lifecycle-authorization-v1.schema.json",
+  "type": "object", "additionalProperties": false,
+  "required": ["schemaVersion", "kind", "authorizationId", "generatedAt", "expiresAt", "role", "operation", "stableMilestone", "targetLedgerDigest", "targetDescriptorDigest", "targetDescriptorEdition", "targetPublicRequestUri", "targetLatestMaintenancePointerPublicUri", "targetLatestMaintenancePointerDigest", "transitionRequestDigest", "previousLedgerDigest", "previousDescriptorDigest", "authorizationRequestDigest", "decision", "redaction"],
+  "properties": {
+    "schemaVersion": {"const": 1}, "kind": {"const": "stable-1.0-support-lifecycle-authorization"}, "authorizationId": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/nonEmpty"},
+    "generatedAt": {"type": "string", "format": "date-time"}, "expiresAt": {"type": "string", "format": "date-time"},
+    "role": {"enum": ["stable-lifecycle-release-manager", "stable-lifecycle-security-manager"]}, "operation": {"const": "publish-support-lifecycle"}, "stableMilestone": {"const": "1.0"},
+    "targetLedgerDigest": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/digest"}, "targetDescriptorDigest": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/digest"}, "targetDescriptorEdition": {"type": "integer", "minimum": 1}, "targetPublicRequestUri": {"type": "string", "format": "uri"}, "targetLatestMaintenancePointerPublicUri": {"type": "string", "format": "uri"}, "targetLatestMaintenancePointerDigest": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/nullableDigest"},
+    "transitionRequestDigest": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/digest"}, "previousLedgerDigest": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/nullableDigest"}, "previousDescriptorDigest": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/nullableDigest"}, "authorizationRequestDigest": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/digest"},
+    "decision": {"enum": ["pending", "approved"]}, "redaction": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/redaction"}
+  }
+}

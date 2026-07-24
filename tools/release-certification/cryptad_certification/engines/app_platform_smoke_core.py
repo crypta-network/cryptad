@@ -305,7 +305,7 @@ FIRST_PARTY_MAINTENANCE_ENUMS = {
     "deprecationPolicy": {"none", "notice-only", "replacement-required", "security-only"},
 }
 
-CURRENT_PLATFORM_API_CONTRACT_VERSION = 23
+CURRENT_PLATFORM_API_CONTRACT_VERSION = 24
 
 CURRENT_PLATFORM_API_STABLE_BASELINE_CONTRACT_VERSION = 19
 
@@ -1602,7 +1602,7 @@ def first_party_app_specs(settings: Settings) -> list[dict[str, Any]]:
             "launcher": "bin/trust-graph.sh",
             "permissions": TRUST_GRAPH_PERMISSIONS,
             "apiMinimumVersion": 22,
-            "apiMaximumTestedVersion": 23,
+            "apiMaximumTestedVersion": FIRST_PARTY_CERTIFIED_MAX_CONTRACT_VERSION,
             "apiTargetStability": "experimental",
             "experimentalCapabilitiesAccepted": True,
         },

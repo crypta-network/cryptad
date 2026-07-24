@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/crypta-network/cryptad/tools/release-certification/schemas/stable-1.0-support-lifecycle-genesis-proof-v1.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "kind", "generatedAt", "observedAt", "stableMilestone",
+    "observationStatus", "transportStatus", "publicRequestUri",
+    "updateKeyIdentityDigest", "updateKeyScope", "updateKeyDocName",
+    "inventoryDigest", "gaRootDigest", "latestPointerDigest", "chainDepth",
+    "releaseId", "buildVersion", "baselineDigest", "publicationReceiptDigest",
+    "provider", "redaction", "proofDigest"
+  ],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "kind": {"const": "stable-1.0-support-lifecycle-genesis-proof"},
+    "generatedAt": {"type": "string", "format": "date-time"},
+    "observedAt": {"type": "string", "format": "date-time"},
+    "stableMilestone": {"const": "1.0"},
+    "observationStatus": {"const": "absent"},
+    "transportStatus": {"const": 404},
+    "publicRequestUri": {"type": "string", "format": "uri"},
+    "updateKeyIdentityDigest": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/digest"},
+    "updateKeyScope": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}/support-lifecycle/0$"},
+    "updateKeyDocName": {"const": "support-lifecycle"},
+    "inventoryDigest": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/digest"},
+    "gaRootDigest": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/digest"},
+    "latestPointerDigest": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/nullableDigest"},
+    "chainDepth": {"type": "integer", "minimum": 0},
+    "releaseId": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/releaseId"},
+    "buildVersion": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/build"},
+    "baselineDigest": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/digest"},
+    "publicationReceiptDigest": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/digest"},
+    "provider": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourceCommit", "artifactDigest", "signerWorkflow"],
+      "properties": {
+        "sourceCommit": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/commit"},
+        "artifactDigest": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/digest"},
+        "signerWorkflow": {"const": "crypta-network/cryptad/.github/workflows/stable-1.0-support-lifecycle-publication-backend-producer.yml"}
+      }
+    },
+    "redaction": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/redaction"},
+    "proofDigest": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/digest"}
+  }
+}

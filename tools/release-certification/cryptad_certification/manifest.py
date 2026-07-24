@@ -30,6 +30,7 @@ COMMAND_NAMES = {
     "stable-rc",
     "stable-ga",
     "stable-maintenance",
+    "stable-lifecycle",
     "multi-node-beta",
     "security-response",
 }
@@ -94,6 +95,16 @@ INPUT_FIELDS = {
     "hotfixFollowUpObligation",
     "hotfixFollowUpEvidence",
     "hotfixFollowUpClosure",
+    "stableMaintenanceHistory",
+    "stableLifecyclePolicy",
+    "stableLifecycleGenesisProof",
+    "previousStableLifecycleLedger",
+    "previousStableLifecycleDescriptor",
+    "stableLifecycleTransitionRequest",
+    "stableLifecycleAuthorization",
+    "stableLifecyclePublicationPlan",
+    "stableLifecyclePublicationReceipt",
+    "stableLifecyclePublicObservationReceipt",
     "stableCatalogOperations",
     "stableRcFreezeExceptions",
     "stableRcValidation",
@@ -121,6 +132,8 @@ POLICY_FIELDS = {
     "metadata",
     "publicationIntent",
     "stableRcFreezeMode",
+    "lifecycleDescriptorPublicUri",
+    "latestMaintenancePointerPublicUri",
 }
 EXECUTION_BOOLEAN_FIELDS = {
     "allowDirtyWorkspace",
@@ -148,7 +161,8 @@ TOP_LEVEL_FIELDS = {
     "execution",
     "commands",
 }
-RELEASE_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*\Z")
+MAX_RELEASE_ID_LENGTH = 128
+RELEASE_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}\Z")
 SECRET_KEY_FRAGMENTS = (
     "password",
     "privatekey",
@@ -164,6 +178,7 @@ PUBLIC_AUTHORIZATION_INPUT_PATHS = {
     "manifest.inputs.stableGaAuthorization",
     "manifest.inputs.stableGaAuthorizationSummary",
     "manifest.inputs.stableMaintenanceAuthorization",
+    "manifest.inputs.stableLifecycleAuthorization",
 }
 
 
@@ -338,7 +353,9 @@ def load_manifest(path: Path, workspace_root: Path, out_root: Path | None = None
         raise ManifestError(f"missing release fields: {', '.join(missing_release)}")
     release_id = release.get("id")
     if not isinstance(release_id, str) or not RELEASE_ID_RE.fullmatch(release_id):
-        raise ManifestError("release.id must be a path-safe slug")
+        raise ManifestError(
+            f"release.id must be a path-safe slug of at most {MAX_RELEASE_ID_LENGTH} characters"
+        )
     profile = release.get("profile")
     if profile not in PROFILES:
         raise ManifestError(f"release.profile must be one of {', '.join(sorted(PROFILES))}")

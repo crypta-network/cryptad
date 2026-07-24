@@ -205,3 +205,19 @@ non-waivable gate for both routine maintenance and security hotfixes.
 
 See the [Stable 1.0 maintenance release and security hotfix
 path](stable-1.0-maintenance-release-and-hotfix-path.md).
+
+## Lifecycle diagnostics
+
+Support bundles include the redacted `coreSupportLifecycle` snapshot and its descriptor/ledger
+digests. They do not include raw fetched descriptor bytes, update request or insert URIs, key
+material, local persistence paths, or raw advisory bodies. An unknown or stale snapshot remains
+explicitly unknown or stale; diagnostics must not infer `current-stable` from the running build
+number alone.
+
+An authenticated recovery-only revocation exposes bounded public guidance while current,
+recommended, and replacement build fields remain null. Support bundles preserve that distinction
+and do not include a raw advisory or descriptor body.
+
+Lifecycle status is evaluated locally from authenticated update-key content and the persisted
+last-known-good descriptor. There is no centralized support telemetry, installation counter,
+background report, or automatic support-bundle upload. See [Stable 1.0 support lifecycle and deprecation governance](stable-1.0-support-lifecycle-and-deprecation-governance.md).

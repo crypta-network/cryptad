@@ -74,13 +74,14 @@ The current source declares:
 
 ```text
 PlatformApiContract.CURRENT_API_VERSION = "v1"
-PlatformApiContract.CURRENT_CONTRACT_VERSION = 23
+PlatformApiContract.CURRENT_CONTRACT_VERSION = 24
 ```
 
 In docs, manifests, and catalog descriptors:
 
 - `/api/v1` identifies the transport route family.
-- `contractVersion=23` identifies the current Platform API compatibility contract snapshot.
+- `contractVersion=24` identifies the current Platform API compatibility contract snapshot. Version
+  24 adds the redacted local Stable 1.0 build-support lifecycle route.
 - `api.minimumVersion` and `api.maximumTestedVersion` compare against the integer contract
   version, not against the URL route prefix or the Cryptad build number.
 - `api.targetStability=stable` selects the Platform API 1.0 stable baseline for third-party app

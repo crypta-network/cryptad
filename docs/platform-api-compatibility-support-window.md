@@ -51,7 +51,7 @@ Current snapshots publish:
     "schemaVersion": 1,
     "baselineName": "1.0",
     "baselineContractVersion": 19,
-    "currentContractVersion": 23,
+    "currentContractVersion": 24,
     "supportPhase": "beta",
     "supportWindowStartedRelease": "production-beta",
     "minimumDeprecationWindowContractVersions": 2,
@@ -298,3 +298,19 @@ security hotfix.
 
 See the [Stable 1.0 maintenance release and security hotfix
 path](stable-1.0-maintenance-release-and-hotfix-path.md).
+
+## Lifecycle-bound removal governance
+
+The Stable 1.0 lifecycle gate preserves the earliest authenticated deprecation clock across every
+maintenance successor. A later contract or baseline cannot move
+`deprecatedSinceContractVersion`, the effective notice time, or scheduled-removal metadata forward
+to restart the clock. The public governance timeline binds those values to the original contract
+snapshot and records each later observation.
+
+A stable endpoint or capability cannot be removed while an authenticated published build remains
+inside its supported lifecycle commitment or while a required stable third-party sample depends on
+the surface. Moving a build to `deprecated` is not sufficient by itself; removal remains blocked
+until the lifecycle policy, minimum notice, contract history, and dependency checks all pass.
+Lifecycle state never rewrites an already published contract snapshot.
+
+See [Stable 1.0 support lifecycle and deprecation governance](stable-1.0-support-lifecycle-and-deprecation-governance.md).

@@ -132,7 +132,6 @@ on:
         required: false
         default: ''
         type: string
-
 # A global lock is intentional: different integer builds must not race while both claim the
 # latest Stable 1.0 predecessor or wait for protected-environment approval.
 concurrency:
@@ -205,11 +204,15 @@ jobs:
           INPUT_BACKEND_RUN_ID: ${{ inputs.publication_backend_run_id }}
           INPUT_BACKEND_ARTIFACT_NAME: ${{ inputs.publication_backend_artifact_name }}
           INPUT_BACKEND_ARTIFACT_DIGEST: ${{ inputs.publication_backend_artifact_digest }}
+          INPUT_LIFECYCLE_BACKEND_RUN_ID: ${{ vars.CRYPTAD_STABLE_LIFECYCLE_PUBLICATION_BACKEND_RUN_ID }}
+          INPUT_LIFECYCLE_BACKEND_ARTIFACT_NAME: ${{ vars.CRYPTAD_STABLE_LIFECYCLE_PUBLICATION_BACKEND_ARTIFACT_NAME }}
+          INPUT_LIFECYCLE_BACKEND_ARTIFACT_DIGEST: ${{ vars.CRYPTAD_STABLE_LIFECYCLE_PUBLICATION_BACKEND_ARTIFACT_DIGEST }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          if [[ ! "$INPUT_RELEASE_ID" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
-            echo "::error::release_id is not path-safe."
+          if [[ ${#INPUT_RELEASE_ID} -gt 128 \
+                || ! "$INPUT_RELEASE_ID" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+            echo "::error::release_id must be path-safe and at most 128 characters."
             exit 1
           fi
           if [[ ! "$INPUT_BUILD_VERSION" =~ ^[1-9][0-9]*$ ]]; then
@@ -222,6 +225,15 @@ jobs:
           fi
           if [[ ! "$INPUT_POINTER_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
             echo "::error::The authorized predecessor pointer digest is malformed."
+            exit 1
+          fi
+          if [[ "$INPUT_OPERATION" != freeze-candidate \
+                && ( ! "$INPUT_LIFECYCLE_BACKEND_RUN_ID" =~ ^[1-9][0-9]*$ \
+                  || "$INPUT_LIFECYCLE_BACKEND_ARTIFACT_NAME" \
+                    != "stable-1.0-support-lifecycle-publication-backend" \
+                  || ! "$INPUT_LIFECYCLE_BACKEND_ARTIFACT_DIGEST" \
+                    =~ ^sha256:[0-9a-f]{64}$ ) ]]; then
+            echo "::error::Authorization and publication require the exact read-only lifecycle provider."
             exit 1
           fi
           if [[ "$INPUT_RELEASE_CLASS" == maintenance ]]; then
@@ -849,7 +861,9 @@ jobs:
     permissions:
       contents: read
       actions: read
-      attestations: read
+      attestations: write
+      artifact-metadata: write
+      id-token: write
 
     steps:
       - name: Authenticate and materialize exact Windows EXE
@@ -1041,10 +1055,13 @@ jobs:
     permissions:
       contents: read
       actions: read
-      attestations: read
+      attestations: write
+      artifact-metadata: write
+      id-token: write
     outputs:
       artifact_name: ${{ steps.stage.outputs.artifact_name }}
       artifact_digest: ${{ steps.upload.outputs.artifact-digest }}
+      lifecycle_authority_present: ${{ steps.lifecycle-authority.outputs.present }}
 
     steps:
       - name: Check out exact candidate
@@ -1958,6 +1975,233 @@ jobs:
             exit 1
           fi
 
+      - name: Inspect exact lifecycle authority-chain presence
+        if: inputs.operation == 'prepare-authorization' || inputs.operation == 'validate-authorization'
+        id: lifecycle-authority
+        env:
+          INPUT_OPERATION: ${{ inputs.operation }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          manifest_path = Path("build/stable-1.0-maintenance.json")
+          manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+          inputs = manifest.get("inputs")
+          if not isinstance(inputs, dict):
+              raise SystemExit("maintenance manifest lacks its closed inputs object")
+
+          authority_files = {
+              "previousStableLifecycleLedger":
+                  "stable-1.0-support-lifecycle-ledger.json",
+              "previousStableLifecycleDescriptor":
+                  "stable-1.0-support-lifecycle-descriptor.json",
+              "stableLifecycleAuthorization":
+                  "stable-1.0-support-lifecycle-authorization-summary.json",
+              "stableLifecyclePublicationPlan":
+                  "stable-1.0-support-lifecycle-publication-plan.json",
+              "stableLifecyclePublicationReceipt":
+                  "stable-1.0-support-lifecycle-publication-receipt.json",
+          }
+          configured = [key for key in authority_files if key in inputs]
+          if configured and len(configured) != len(authority_files):
+              raise SystemExit(
+                  "lifecycle state requires the exact five-artifact authority chain"
+              )
+
+          protected_root = Path("build/protected-inputs").resolve(strict=True)
+
+          def protected_file(raw_value: object, label: str) -> Path:
+              if not isinstance(raw_value, str) or not raw_value:
+                  raise SystemExit(f"{label} is not one configured protected input")
+              path = Path(raw_value)
+              if path.is_absolute() or path.is_symlink() or not path.is_file():
+                  raise SystemExit(f"{label} is missing or unsafe")
+              try:
+                  resolved = path.resolve(strict=True)
+                  resolved.relative_to(protected_root)
+              except (OSError, ValueError):
+                  raise SystemExit(f"{label} escapes the protected-input root") from None
+              return resolved
+
+          predecessor_path = protected_file(
+              inputs.get("predecessorBaseline"), "predecessorBaseline"
+          )
+          chain = protected_root / "lifecycle"
+          if not configured:
+              predecessor = json.loads(predecessor_path.read_text(encoding="utf-8"))
+              if (
+                  os.environ["INPUT_OPERATION"] != "prepare-authorization"
+                  or predecessor.get("schemaVersion") != 1
+                  or predecessor.get("kind") != "stable-1.0-maintenance-baseline"
+              ):
+                  raise SystemExit(
+                      "only GA-genesis authorization preparation may omit lifecycle authority"
+                  )
+              if chain.exists():
+                  if chain.is_symlink() or not chain.is_dir():
+                      raise SystemExit("lifecycle authority-chain directory is unsafe")
+                  if any(chain.iterdir()):
+                      raise SystemExit(
+                          "GA-genesis lifecycle omission contains unreferenced authority files"
+                      )
+              with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
+                  output.write("present=false\n")
+              raise SystemExit(0)
+
+          if chain.is_symlink() or not chain.is_dir():
+              raise SystemExit("lifecycle authority-chain directory is missing or unsafe")
+          expected_paths = {
+              key: chain / name for key, name in authority_files.items()
+          }
+          for key, expected in expected_paths.items():
+              actual = protected_file(inputs.get(key), key)
+              if actual != expected or expected.is_symlink() or not expected.is_file():
+                  raise SystemExit(
+                      f"{key} is not its exact canonical lifecycle authority file"
+                  )
+          entries = set(chain.iterdir())
+          if entries != set(expected_paths.values()):
+              raise SystemExit(
+                  "lifecycle authority-chain directory is not the exact five-file set"
+              )
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
+              output.write("present=true\n")
+          PY
+
+      - name: Materialize exact read-only lifecycle provider
+        if: >-
+          (inputs.operation == 'prepare-authorization' ||
+          inputs.operation == 'validate-authorization') &&
+          steps.lifecycle-authority.outputs.present == 'true'
+        id: lifecycle-backend
+        env:
+          INPUT_RUN_ID: ${{ vars.CRYPTAD_STABLE_LIFECYCLE_PUBLICATION_BACKEND_RUN_ID }}
+          INPUT_ARTIFACT_NAME: ${{ vars.CRYPTAD_STABLE_LIFECYCLE_PUBLICATION_BACKEND_ARTIFACT_NAME }}
+          INPUT_ARTIFACT_DIGEST: ${{ vars.CRYPTAD_STABLE_LIFECYCLE_PUBLICATION_BACKEND_ARTIFACT_DIGEST }}
+          EXPECTED_SOURCE_COMMIT: ${{ vars.CRYPTAD_STABLE_LIFECYCLE_PUBLICATION_BACKEND_SOURCE_COMMIT }}
+          EXPECTED_WHEEL_DIGEST: ${{ vars.CRYPTAD_STABLE_LIFECYCLE_PUBLICATION_BACKEND_WHEEL_SHA256 }}
+          EXPECTED_SIGNER_WORKFLOW: ${{ vars.CRYPTAD_STABLE_LIFECYCLE_PUBLICATION_BACKEND_SIGNER_WORKFLOW }}
+          EXPECTED_ENTRYPOINT: ${{ vars.CRYPTAD_STABLE_LIFECYCLE_PUBLICATION_BACKEND }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          canonical_artifact="stable-1.0-support-lifecycle-publication-backend"
+          canonical_signer="crypta-network/cryptad/.github/workflows/stable-1.0-support-lifecycle-publication-backend-producer.yml"
+          canonical_entrypoint="cryptad_stable_maintenance_backend:lifecycle_factory"
+          if [[ "$INPUT_ARTIFACT_NAME" != "$canonical_artifact" \
+                || ! "$INPUT_ARTIFACT_DIGEST" =~ ^sha256:[0-9a-f]{64}$ \
+                || ! "$EXPECTED_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ \
+                || ! "$EXPECTED_WHEEL_DIGEST" =~ ^sha256:[0-9a-f]{64}$ \
+                || "$EXPECTED_SIGNER_WORKFLOW" != "$canonical_signer" \
+                || "$EXPECTED_ENTRYPOINT" != "$canonical_entrypoint" ]]; then
+            echo "::error::Read-only lifecycle-provider identity is incomplete or ambiguous."
+            exit 1
+          fi
+          run_json="$(gh api --method GET "repos/$GITHUB_REPOSITORY/actions/runs/$INPUT_RUN_ID")"
+          jq -e --arg repository "$GITHUB_REPOSITORY" \
+            --arg commit "$EXPECTED_SOURCE_COMMIT" \
+            --arg path "${canonical_signer#crypta-network/cryptad/}" '
+              .repository.full_name == $repository and .head_sha == $commit and .path == $path
+              and .event == "workflow_dispatch" and .status == "completed"
+              and .conclusion == "success"' <<< "$run_json" >/dev/null
+          artifacts="$(gh api --paginate --method GET \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$INPUT_RUN_ID/artifacts" \
+            -f per_page=100 | jq -s '{artifacts: [.[].artifacts[]]}')"
+          jq -e --arg name "$INPUT_ARTIFACT_NAME" --arg digest "$INPUT_ARTIFACT_DIGEST" '
+            [.artifacts[] | select(.name == $name and .expired == false and .digest == $digest)]
+            | length == 1' <<< "$artifacts" >/dev/null
+          root="$RUNNER_TEMP/stable-maintenance-lifecycle-observation-backend"
+          download="$root/download"
+          site="$root/site-packages"
+          rm -rf "$root"
+          mkdir -p "$download" "$site"
+          gh run download "$INPUT_RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --name "$INPUT_ARTIFACT_NAME" --dir "$download"
+          wheels=()
+          while IFS= read -r path; do wheels+=("$path"); done < <(
+            find "$download" -type f -name '*.whl' -print | LC_ALL=C sort
+          )
+          if [[ "${#wheels[@]}" -ne 1 \
+                || -n "$(find "$download" -type l -print -quit)" \
+                || "$(find "$download" -type f ! -name '*.whl' | wc -l)" -ne 0 ]]; then
+            echo "::error::Read-only lifecycle-provider artifact is not one safe wheel."
+            exit 1
+          fi
+          wheel="${wheels[0]}"
+          if [[ "sha256:$(sha256sum "$wheel" | cut -d' ' -f1)" != "$EXPECTED_WHEEL_DIGEST" ]]; then
+            echo "::error::Read-only lifecycle-provider wheel differs from its reviewed digest."
+            exit 1
+          fi
+          gh attestation verify "$wheel" --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "$EXPECTED_SIGNER_WORKFLOW" \
+            --source-digest "$EXPECTED_SOURCE_COMMIT" \
+            --deny-self-hosted-runners >/dev/null
+          python3 -m pip install --no-index --no-deps --no-compile --target "$site" "$wheel" >/dev/null
+          echo "site=$site" >> "$GITHUB_OUTPUT"
+          echo "entrypoint=$EXPECTED_ENTRYPOINT" >> "$GITHUB_OUTPUT"
+
+      - name: Re-fetch exact public lifecycle edition under the shared publication lock
+        if: >-
+          (inputs.operation == 'prepare-authorization' ||
+          inputs.operation == 'validate-authorization') &&
+          steps.lifecycle-authority.outputs.present == 'true'
+        env:
+          CRYPTAD_STABLE_LIFECYCLE_PUBLICATION_BACKEND: ${{ steps.lifecycle-backend.outputs.entrypoint }}
+          CRYPTAD_STABLE_LIFECYCLE_PUBLICATION_BACKEND_SITE: ${{ steps.lifecycle-backend.outputs.site }}
+          CRYPTAD_STABLE_LIFECYCLE_OBSERVATION_ENVIRONMENT: 'true'
+        run: |
+          set -euo pipefail
+          manifest="build/stable-1.0-maintenance.json"
+          chain="build/protected-inputs/lifecycle"
+          observation_root="build/protected-inputs/lifecycle-observation"
+          observation="$observation_root/stable-1.0-support-lifecycle-public-observation-receipt.json"
+          rm -rf "$observation_root"
+          mkdir -p "$observation_root"
+          python3 tools/release-certification/protected/stable_lifecycle_publication.py \
+            --mode observe-authorized-state \
+            --authority-chain "$chain" \
+            --out "$observation_root/operation-summary.json" \
+            --receipt "$observation" \
+            --no-side-effects
+          jq -e '
+            .operation == "verified-existing"
+            and .publicationState == "publication-complete"
+            and .verificationStatus == "verified"
+            and .conflict == false
+            and .redaction.status == "pass"' "$observation" >/dev/null
+          jq -S --arg path "$observation" \
+            '.inputs.stableLifecyclePublicObservationReceipt = $path' \
+            "$manifest" > "$manifest.next"
+          mv "$manifest.next" "$manifest"
+
+      - name: Attest the fresh exact public lifecycle observation
+        if: >-
+          (inputs.operation == 'prepare-authorization' ||
+          inputs.operation == 'validate-authorization') &&
+          steps.lifecycle-authority.outputs.present == 'true'
+        uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
+        with:
+          subject-path: build/protected-inputs/lifecycle-observation/stable-1.0-support-lifecycle-public-observation-receipt.json
+
+      - name: Verify fresh lifecycle observation provenance before certification
+        if: >-
+          (inputs.operation == 'prepare-authorization' ||
+          inputs.operation == 'validate-authorization') &&
+          steps.lifecycle-authority.outputs.present == 'true'
+        env:
+          INPUT_CANDIDATE_COMMIT: ${{ inputs.candidate_commit }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          observation="build/protected-inputs/lifecycle-observation/stable-1.0-support-lifecycle-public-observation-receipt.json"
+          gh attestation verify "$observation" --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "crypta-network/cryptad/.github/workflows/stable-1.0-maintenance-release.yml" \
+            --source-digest "$INPUT_CANDIDATE_COMMIT" \
+            --deny-self-hosted-runners >/dev/null
+
       - name: Validate manifest identity and side-effect-free mode
         if: inputs.operation == 'prepare-authorization' || inputs.operation == 'validate-authorization'
         env:
@@ -2111,7 +2355,7 @@ jobs:
           rm -rf "$root"
           mkdir -p "$root"
           if [[ "$INPUT_OPERATION" == freeze-candidate ]]; then
-            mkdir -p "$root/freeze" "$root/packages"
+            mkdir -p "$root/freeze" "$root/packages" "$root/authenticated-inputs"
             cp -R build/stable-maintenance-freeze/. "$root/freeze/"
             cp -R build/stable-maintenance-packages/. "$root/packages/"
             artifact_name="stable-1-0-maintenance-frozen-$INPUT_RELEASE_ID-$INPUT_BUILD_VERSION-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
@@ -2169,6 +2413,88 @@ jobs:
                 hotfixFollowUpClosure stable-1.0-hotfix-follow-up-closure.json
             fi
           fi
+          if [[ "$INPUT_OPERATION" == freeze-candidate \
+                || "$INPUT_OPERATION" == prepare-authorization \
+                || "$INPUT_OPERATION" == validate-authorization ]]; then
+            lifecycle_input_count="$(jq -er '[
+              .inputs
+              | has("previousStableLifecycleLedger"),
+                has("previousStableLifecycleDescriptor"),
+                has("stableLifecycleAuthorization"),
+                has("stableLifecyclePublicationPlan"),
+                has("stableLifecyclePublicationReceipt")
+              ] | map(select(.)) | length' build/stable-1.0-maintenance.json)"
+            if [[ "$lifecycle_input_count" -ne 0 && "$lifecycle_input_count" -ne 5 ]]; then
+              echo "::error::Lifecycle state must remain an exact five-artifact authority chain."
+              exit 1
+            fi
+            if [[ "$lifecycle_input_count" -eq 5 ]]; then
+              stage_authenticated_input \
+                previousStableLifecycleLedger stable-lifecycle-ledger.json
+              stage_authenticated_input \
+                previousStableLifecycleDescriptor stable-lifecycle-descriptor.json
+              stage_authenticated_input \
+                stableLifecycleAuthorization stable-lifecycle-authorization-summary.json
+              stage_authenticated_input \
+                stableLifecyclePublicationPlan stable-lifecycle-publication-plan.json
+              stage_authenticated_input \
+                stableLifecyclePublicationReceipt stable-lifecycle-publication-receipt.json
+              if [[ "$INPUT_OPERATION" == prepare-authorization \
+                    || "$INPUT_OPERATION" == validate-authorization ]]; then
+                stage_authenticated_input \
+                  stableLifecyclePublicObservationReceipt \
+                  stable-lifecycle-public-observation-receipt.json
+              fi
+            fi
+            if [[ "$INPUT_OPERATION" != freeze-candidate ]]; then
+              python3 - \
+                build/prior-validated-candidate/authenticated-inputs \
+                "$root/authenticated-inputs" <<'PY'
+          import sys
+          from pathlib import Path
+
+          names = {
+              "stable-lifecycle-ledger.json",
+              "stable-lifecycle-descriptor.json",
+              "stable-lifecycle-authorization-summary.json",
+              "stable-lifecycle-publication-plan.json",
+              "stable-lifecycle-publication-receipt.json",
+          }
+          prior = Path(sys.argv[1])
+          current = Path(sys.argv[2])
+
+          def present(root: Path) -> set[str]:
+              if root.is_symlink() or not root.is_dir():
+                  raise SystemExit("lifecycle handoff root is missing or unsafe")
+              found = set()
+              for name in names:
+                  path = root / name
+                  if path.is_symlink():
+                      raise SystemExit("lifecycle handoff contains a symbolic link")
+                  if path.exists():
+                      if not path.is_file():
+                          raise SystemExit("lifecycle handoff entry is not a regular file")
+                      found.add(name)
+              if found and found != names:
+                  raise SystemExit(
+                      "lifecycle handoff contains a partial prior/current authority chain"
+                  )
+              return found
+
+          prior_names = present(prior)
+          current_names = present(current)
+          if prior_names != current_names:
+              raise SystemExit(
+                  "lifecycle authority-chain presence changed after the prior attested phase"
+              )
+          for name in sorted(prior_names):
+              if (prior / name).read_bytes() != (current / name).read_bytes():
+                  raise SystemExit(
+                      "lifecycle state changed after the prior attested phase"
+                  )
+          PY
+            fi
+          fi
           if [[ "$INPUT_OPERATION" == prepare-authorization ]]; then
             authorization_component="build/stable-maintenance-authorization/$INPUT_RELEASE_ID/stable-maintenance"
             if [[ ! -d "$authorization_component" ]]; then
@@ -2220,6 +2546,8 @@ jobs:
 
       - name: Verify protected attestation subjects
         if: inputs.operation == 'prepare-authorization'
+        env:
+          LIFECYCLE_AUTHORITY_PRESENT: ${{ needs.freeze-and-validate.outputs.lifecycle_authority_present }}
         run: |
           set -euo pipefail
           root="build/stable-maintenance-evidence-attestation"
@@ -2230,6 +2558,13 @@ jobs:
             "$root/authorization-component/artifacts/legacy/stable-1.0-maintenance-publication-plan.json"
             "$root/authorization-component/artifacts/legacy/core-info.json"
           )
+          lifecycle_observation="$root/authenticated-inputs/stable-lifecycle-public-observation-receipt.json"
+          if [[ "$LIFECYCLE_AUTHORITY_PRESENT" == true ]]; then
+            subjects+=("$lifecycle_observation")
+          elif [[ -e "$lifecycle_observation" || -L "$lifecycle_observation" ]]; then
+            echo "::error::GA-genesis output unexpectedly retained a lifecycle observation."
+            exit 1
+          fi
           for subject in "${subjects[@]}"; do
             if [[ -L "$subject" || ! -f "$subject" ]]; then
               echo "::error::Protected maintenance attestation subject is missing or unsafe."
@@ -2274,6 +2609,15 @@ jobs:
             build/stable-maintenance-evidence-attestation/component/artifacts/legacy/stable-1.0-maintenance-authorization-summary.json
             build/stable-maintenance-evidence-attestation/component/artifacts/legacy/stable-1.0-maintenance-publication-plan.json
             build/stable-maintenance-evidence-attestation/component/artifacts/legacy/core-info.json
+
+      - name: Attest retained lifecycle public observation
+        if: >-
+          (inputs.operation == 'prepare-authorization' ||
+          inputs.operation == 'validate-authorization') &&
+          needs.freeze-and-validate.outputs.lifecycle_authority_present == 'true'
+        uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
+        with:
+          subject-path: build/stable-maintenance-evidence-attestation/authenticated-inputs/stable-lifecycle-public-observation-receipt.json
 
       - name: Summarize side-effect-free evidence approval
         run: |
@@ -2327,6 +2671,74 @@ jobs:
           entrypoint: ${{ vars.CRYPTAD_STABLE_MAINTENANCE_PUBLICATION_BACKEND }}
           github-token: ${{ github.token }}
 
+      - name: Materialize exact read-only lifecycle provider for publication boundary
+        id: publication-lifecycle-backend
+        env:
+          INPUT_RUN_ID: ${{ vars.CRYPTAD_STABLE_LIFECYCLE_PUBLICATION_BACKEND_RUN_ID }}
+          INPUT_ARTIFACT_NAME: ${{ vars.CRYPTAD_STABLE_LIFECYCLE_PUBLICATION_BACKEND_ARTIFACT_NAME }}
+          INPUT_ARTIFACT_DIGEST: ${{ vars.CRYPTAD_STABLE_LIFECYCLE_PUBLICATION_BACKEND_ARTIFACT_DIGEST }}
+          EXPECTED_SOURCE_COMMIT: ${{ vars.CRYPTAD_STABLE_LIFECYCLE_PUBLICATION_BACKEND_SOURCE_COMMIT }}
+          EXPECTED_WHEEL_DIGEST: ${{ vars.CRYPTAD_STABLE_LIFECYCLE_PUBLICATION_BACKEND_WHEEL_SHA256 }}
+          EXPECTED_SIGNER_WORKFLOW: ${{ vars.CRYPTAD_STABLE_LIFECYCLE_PUBLICATION_BACKEND_SIGNER_WORKFLOW }}
+          EXPECTED_ENTRYPOINT: ${{ vars.CRYPTAD_STABLE_LIFECYCLE_PUBLICATION_BACKEND }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          canonical_artifact="stable-1.0-support-lifecycle-publication-backend"
+          canonical_signer="crypta-network/cryptad/.github/workflows/stable-1.0-support-lifecycle-publication-backend-producer.yml"
+          canonical_entrypoint="cryptad_stable_maintenance_backend:lifecycle_factory"
+          if [[ "$INPUT_ARTIFACT_NAME" != "$canonical_artifact" \
+                || ! "$INPUT_ARTIFACT_DIGEST" =~ ^sha256:[0-9a-f]{64}$ \
+                || ! "$EXPECTED_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ \
+                || ! "$EXPECTED_WHEEL_DIGEST" =~ ^sha256:[0-9a-f]{64}$ \
+                || "$EXPECTED_SIGNER_WORKFLOW" != "$canonical_signer" \
+                || "$EXPECTED_ENTRYPOINT" != "$canonical_entrypoint" ]]; then
+            echo "::error::Publication-boundary lifecycle provider is incomplete or ambiguous."
+            exit 1
+          fi
+          run_json="$(gh api --method GET "repos/$GITHUB_REPOSITORY/actions/runs/$INPUT_RUN_ID")"
+          jq -e --arg repository "$GITHUB_REPOSITORY" \
+            --arg commit "$EXPECTED_SOURCE_COMMIT" \
+            --arg path "${canonical_signer#crypta-network/cryptad/}" '
+              .repository.full_name == $repository and .head_sha == $commit and .path == $path
+              and .event == "workflow_dispatch" and .status == "completed"
+              and .conclusion == "success"' <<< "$run_json" >/dev/null
+          artifacts="$(gh api --paginate --method GET \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$INPUT_RUN_ID/artifacts" \
+            -f per_page=100 | jq -s '{artifacts: [.[].artifacts[]]}')"
+          jq -e --arg name "$INPUT_ARTIFACT_NAME" --arg digest "$INPUT_ARTIFACT_DIGEST" '
+            [.artifacts[] | select(.name == $name and .expired == false and .digest == $digest)]
+            | length == 1' <<< "$artifacts" >/dev/null
+          root="$RUNNER_TEMP/stable-maintenance-publication-lifecycle-backend"
+          download="$root/download"
+          site="$root/site-packages"
+          rm -rf "$root"
+          mkdir -p "$download" "$site"
+          gh run download "$INPUT_RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --name "$INPUT_ARTIFACT_NAME" --dir "$download"
+          wheels=()
+          while IFS= read -r path; do wheels+=("$path"); done < <(
+            find "$download" -type f -name '*.whl' -print | LC_ALL=C sort
+          )
+          if [[ "${#wheels[@]}" -ne 1 \
+                || -n "$(find "$download" -type l -print -quit)" \
+                || "$(find "$download" -type f ! -name '*.whl' | wc -l)" -ne 0 ]]; then
+            echo "::error::Publication-boundary lifecycle provider is not one safe wheel."
+            exit 1
+          fi
+          wheel="${wheels[0]}"
+          if [[ "sha256:$(sha256sum "$wheel" | cut -d' ' -f1)" != "$EXPECTED_WHEEL_DIGEST" ]]; then
+            echo "::error::Publication-boundary lifecycle provider differs from review."
+            exit 1
+          fi
+          gh attestation verify "$wheel" --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "$EXPECTED_SIGNER_WORKFLOW" \
+            --source-digest "$EXPECTED_SOURCE_COMMIT" \
+            --deny-self-hosted-runners >/dev/null
+          python3 -m pip install --no-index --no-deps --no-compile --target "$site" "$wheel" >/dev/null
+          echo "site=$site" >> "$GITHUB_OUTPUT"
+          echo "entrypoint=$EXPECTED_ENTRYPOINT" >> "$GITHUB_OUTPUT"
+
       - name: Download exact revalidated candidate
         uses: actions/download-artifact@v8
         with:
@@ -2372,7 +2784,9 @@ jobs:
             fi
           done
           signer="crypta-network/cryptad/.github/workflows/stable-1.0-maintenance-release.yml"
-          for subject in "$candidate" "$authorization" "$plan" "$legacy/core-info.json"; do
+          lifecycle_observation="$root/authenticated-inputs/stable-lifecycle-public-observation-receipt.json"
+          for subject in "$candidate" "$authorization" "$plan" "$legacy/core-info.json" \
+            "$lifecycle_observation"; do
             gh attestation verify "$subject" \
               --repo "$GITHUB_REPOSITORY" \
               --signer-workflow "$signer" \
@@ -2413,6 +2827,28 @@ jobs:
             echo "::error::Publication bundle contains a link or special entry."
             exit 1
           fi
+
+      - name: Re-observe exact lifecycle edition immediately before maintenance preflight
+        env:
+          CRYPTAD_STABLE_LIFECYCLE_PUBLICATION_BACKEND: ${{ steps.publication-lifecycle-backend.outputs.entrypoint }}
+          CRYPTAD_STABLE_LIFECYCLE_PUBLICATION_BACKEND_SITE: ${{ steps.publication-lifecycle-backend.outputs.site }}
+          CRYPTAD_STABLE_LIFECYCLE_OBSERVATION_ENVIRONMENT: 'true'
+        run: |
+          set -euo pipefail
+          root="build/stable-maintenance-publication"
+          observation="build/stable-1.0-support-lifecycle-publication-boundary-observation-receipt.json"
+          python3 tools/release-certification/protected/stable_lifecycle_publication.py \
+            --mode observe-authorized-state \
+            --authority-chain "$root/protected-inputs/lifecycle" \
+            --out build/stable-lifecycle-publication-boundary-observation-summary.json \
+            --receipt "$observation" \
+            --no-side-effects
+          jq -e '
+            .operation == "verified-existing"
+            and .publicationState == "publication-complete"
+            and .verificationStatus == "verified"
+            and .conflict == false
+            and .redaction.status == "pass"' "$observation" >/dev/null
 
       - name: Preflight predecessor, authorization, freeze, and public conflicts
         id: preflight
@@ -2520,6 +2956,9 @@ jobs:
           rm -rf "$root"
           mkdir -p "$root"
           cp "$preflight" "$root/"
+          if [[ -f build/stable-1.0-support-lifecycle-publication-boundary-observation-receipt.json ]]; then
+            cp build/stable-1.0-support-lifecycle-publication-boundary-observation-receipt.json "$root/"
+          fi
           artifact_name="stable-1-0-maintenance-preflight-$INPUT_RELEASE_ID-$INPUT_BUILD_VERSION-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           echo "artifact_name=$artifact_name" >> "$GITHUB_OUTPUT"
 

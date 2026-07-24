@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "https://github.com/crypta-network/cryptad/tools/release-certification/schemas/stable-1.0-support-lifecycle-provenance-v1.schema.json",
+  "type": "object", "additionalProperties": false,
+  "required": ["schemaVersion", "kind", "generatedAt", "stableMilestone", "gaRootDigest", "maintenanceTipBaselineDigest", "maintenanceTipReceiptDigest", "latestMaintenancePointerPublicUri", "inventoryDigest", "ledgerDigest", "descriptorDigest", "policyDigest", "genesisProofDigest", "sideEffectsPerformed", "redaction"],
+  "properties": {
+    "schemaVersion": {"const": 1}, "kind": {"const": "stable-1.0-support-lifecycle-provenance"}, "generatedAt": {"type": "string", "format": "date-time"}, "stableMilestone": {"const": "1.0"},
+    "gaRootDigest": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/digest"}, "maintenanceTipBaselineDigest": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/digest"}, "maintenanceTipReceiptDigest": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/digest"}, "latestMaintenancePointerPublicUri": {"type": "string", "format": "uri"}, "inventoryDigest": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/digest"}, "ledgerDigest": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/digest"}, "descriptorDigest": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/digest"}, "policyDigest": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/digest"}, "genesisProofDigest": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/nullableDigest"},
+    "sideEffectsPerformed": {"const": false}, "redaction": {"$ref": "stable-1.0-support-lifecycle-common-v1.schema.json#/$defs/redaction"}
+  }
+}

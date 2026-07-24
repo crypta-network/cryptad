@@ -488,3 +488,31 @@ provider, followed by the broader suites appropriate to the touched integration:
 ```bash
 python3 tools/release-certification/certify.py stable-maintenance --self-test
 ```
+
+## Stable 1.0 support lifecycle evidence
+
+After authenticating the immutable GA root and complete no-fork maintenance history,
+`python3 tools/release-certification/certify.py stable-lifecycle` derives the real published build
+inventory and evaluates the policy-driven lifecycle ledger. It never accepts a manifest label as
+publication evidence and never publishes from `evaluate`, `prepare-transition`, self-test, or pull
+request execution. Use the checked-in support lifecycle policy and closed schemas; do not hardcode
+support durations in Python or Java.
+
+The lifecycle ledger is append-only and digest chained. Normal transitions advance through
+`current-stable`, `supported-maintenance`, `security-fixes-only`, `deprecated`, and
+`end-of-support`. An explicit advisory-backed protected transition may instead enter terminal build
+`revoked`; it remains separate from update-key revocation. Authorization must bind the exact
+transition request, previous state, resulting ledger, descriptor edition/digest, and target.
+Publication then binds the authorization and exact descriptor bytes. Do not create a circular
+authorization/ledger digest or represent a self-derived row digest as protected approval.
+
+Stable maintenance certification consumes the authenticated lifecycle state to reject an ordinary
+EOL/revoked predecessor, prevent support-clock resets, and propose successor lifecycle changes only
+after verified release publication. The protected lifecycle workflow inserts the separate
+`support-lifecycle` update-key edition, accepts identical existing bytes only after verification,
+and never overwrites a conflict. Follow
+`docs/stable-1.0-support-lifecycle-and-deprecation-governance.md` and run:
+
+```bash
+python3 tools/release-certification/certify.py stable-lifecycle --self-test
+```

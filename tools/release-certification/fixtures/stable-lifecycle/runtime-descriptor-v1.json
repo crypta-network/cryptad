@@ -1,0 +1,49 @@
+{
+  "currentStableBuild": "100",
+  "descriptorDigest": "sha256:9ee26a76598bf0a9a3a9f4b5aaf1b6583f0a4229fffc044e262905404cd554da",
+  "descriptorEdition": 1,
+  "effectiveAt": "2026-01-01T00:00:00Z",
+  "entries": [
+    {
+      "advisoryIds": [],
+      "baselineDigest": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+      "buildVersion": "100",
+      "deprecationEffectiveAt": "2027-07-01T00:00:00Z",
+      "endOfSupportAt": "2028-01-01T00:00:00Z",
+      "fullSupportUntil": "2027-01-01T00:00:00Z",
+      "lifecycleStatus": "current-stable",
+      "productDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+      "publicationReceiptDigest": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+      "publishedAt": "2026-01-01T00:00:00Z",
+      "reasonCodes": [],
+      "recoveryGuidance": null,
+      "releaseId": "stable-1.0-ga-v100",
+      "replacementBuild": null,
+      "securityFixesUntil": "2028-01-01T00:00:00Z",
+      "securityRevocationEffectiveAt": null,
+      "sourceCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "statusEffectiveAt": "2026-01-01T00:00:00Z",
+      "tag": "v100"
+    }
+  ],
+  "generatedAt": "2026-01-01T00:00:00Z",
+  "inventoryDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+  "kind": "stable-1.0-support-lifecycle-descriptor",
+  "ledgerDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+  "minimumSecuritySupportedBuild": "100",
+  "minimumSupportedBuild": "100",
+  "previousDescriptorDigest": null,
+  "previousDescriptorEdition": null,
+  "recommendedBuild": "100",
+  "redaction": {
+    "findingCount": 0,
+    "findings": [],
+    "status": "pass"
+  },
+  "schemaVersion": 1,
+  "stableMilestone": "1.0",
+  "staleAt": "2026-01-08T00:00:00Z",
+  "updateKeyDocName": "support-lifecycle",
+  "updateKeyIdentityDigest": "sha256:b6386982e7eed893448339eed564fcdc140547266b0dc70978ddfa345f6136d7",
+  "updateKeyScope": "sha256:b6386982e7eed893448339eed564fcdc140547266b0dc70978ddfa345f6136d7/support-lifecycle/0"
+}

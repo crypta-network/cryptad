@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "https://github.com/crypta-network/cryptad/tools/release-certification/schemas/stable-1.0-support-lifecycle-redaction-v1.schema.json",
+  "type": "object", "additionalProperties": false, "required": ["schemaVersion", "status", "findingCount", "findings", "guarantees"],
+  "properties": {
+    "schemaVersion": {"const": 1}, "status": {"enum": ["pass", "fail"]}, "findingCount": {"type": "integer", "minimum": 0},
+    "findings": {"type": "array", "uniqueItems": true, "items": {"type": "object", "additionalProperties": false, "required": ["artifact", "category", "summary"], "properties": {"artifact": {"type": "string", "minLength": 1}, "category": {"type": "string", "minLength": 1}, "summary": {"type": "string", "minLength": 1}}}},
+    "guarantees": {"type": "object", "additionalProperties": false, "required": ["privateInsertUrisExcluded", "rawBodiesExcluded", "absolutePathsExcluded", "sideEffectsNotPerformed"], "properties": {"privateInsertUrisExcluded": {"type": "boolean"}, "rawBodiesExcluded": {"type": "boolean"}, "absolutePathsExcluded": {"type": "boolean"}, "sideEffectsNotPerformed": {"const": true}}}
+  }
+}

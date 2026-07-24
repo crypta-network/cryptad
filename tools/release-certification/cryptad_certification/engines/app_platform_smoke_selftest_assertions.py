@@ -934,7 +934,44 @@ def assert_production_security_evidence_allows_boolean_redaction_metadata() -> N
         assert item.details["checks"]["sensitiveMarkersAbsent"] is True, item.details
         assert "redactionFindings" not in item.details, item.details
 
+def assert_checked_in_first_party_manifests_match_current_contract(repo_root: Path) -> None:
+    settings = Settings(
+        workspace_root=repo_root.resolve(),
+        out_dir=(repo_root / DEFAULT_OUT_DIR).resolve(),
+        mode="pr",
+        skip_gradle=True,
+        cli_path=None,
+        live=False,
+        live_base_url="",
+        live_form_password="",
+        timeout_seconds=60,
+    )
+    specs = first_party_app_specs(settings)
+    expected_app_ids = {
+        "feed-reader",
+        "profile-publisher",
+        "publisher",
+        "queue-manager",
+        "site-publisher",
+        "social-inbox",
+        "trust-graph",
+    }
+    assert {spec["appId"] for spec in specs} == expected_app_ids, specs
+    for spec in specs:
+        manifest_path = spec["sourceDir"] / "cryptad-app.properties.template"
+        assert manifest_path.is_file(), manifest_path
+        manifest = parse_properties(manifest_path)
+        assert manifest.get("api.minimumVersion") == str(spec["apiMinimumVersion"]), (
+            spec["appId"],
+            manifest,
+        )
+        assert manifest.get("api.maximumTestedVersion") == str(
+            FIRST_PARTY_CERTIFIED_MAX_CONTRACT_VERSION
+        ), (spec["appId"], manifest)
+
+
 def run_self_test(repo_root: Path) -> None:
+    assert_checked_in_first_party_manifests_match_current_contract(repo_root)
     assert_maintenance_policy_evidence_redacts_invalid_values()
     assert_maintenance_policy_evidence_rejects_redacted_uri_values()
     assert_maintenance_policy_evidence_rejects_allowed_policy_drift()
@@ -1574,7 +1611,9 @@ def run_self_test(repo_root: Path) -> None:
         assert exit_code == 0, summary
         assert summary["status"] in {"pass", "warn"}, summary
         evidence_by_id = {item["id"]: item for item in summary["evidence"]}
-        assert evidence_by_id["app-platform.first-party"]["status"] == "pass"
+        assert evidence_by_id["app-platform.first-party"]["status"] == "pass", evidence_by_id[
+            "app-platform.first-party"
+        ]
         assert evidence_by_id[FIRST_PARTY_BETA_QUALITY_EVIDENCE_ID]["status"] == "pass"
         devtools_item = evidence_by_id["app-platform.devtools-cli"]
         assert devtools_item["status"] == "pass", devtools_item

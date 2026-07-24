@@ -9,7 +9,7 @@ The stable baseline is separate from the integer compatibility contract version.
 contract version records when descriptors were added or changed. The stable baseline name records
 which descriptors are part of the Platform API 1.0 app-facing compatibility promise.
 Platform API 1.0 membership is frozen at contract version 19. The current snapshot contract
-version is 23. Later contract versions may add experimental or future baseline surface, but they
+version is 24. Later contract versions may add experimental or future baseline surface, but they
 must not change `stableBaseline.name=1.0` membership unless the project intentionally defines a
 new stable baseline.
 
@@ -39,7 +39,7 @@ A stable-only third-party app should declare:
 
 ```properties
 api.minimumVersion=1
-api.maximumTestedVersion=23
+api.maximumTestedVersion=24
 api.targetStability=stable
 api.experimentalCapabilitiesAccepted=false
 ```
@@ -48,7 +48,7 @@ An app that knowingly uses experimental app-facing API should declare:
 
 ```properties
 api.minimumVersion=1
-api.maximumTestedVersion=23
+api.maximumTestedVersion=24
 api.targetStability=experimental
 api.experimentalCapabilitiesAccepted=true
 ```
@@ -122,6 +122,14 @@ own stability labels, but third-party apps must not treat them as Platform API 1
 Host-only and operator-only routes may still be visible in localhost contract snapshots for audit
 or Web Shell wiring, but they are not part of the third-party stable baseline and compatibility
 verification rejects app declarations that rely on them.
+
+Contract version 24 adds the operator-only, read-only
+`GET /api/v1/updates/support-lifecycle` snapshot.
+It exposes the locally verified Stable 1.0 build-support state for the Web Shell and operator
+diagnostics. It does not change the frozen Platform API 1.0 version 19 membership and is not an
+app capability. Its public-safe projection includes nullable current/recommended/replacement build
+fields and bounded `recoveryGuidance`; a recovery-only revocation of the chain tip therefore does
+not invent a safe build.
 
 ## Submission Review Enforcement
 

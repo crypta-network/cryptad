@@ -3,6 +3,7 @@ package network.crypta.runtime.core;
 import java.io.File;
 import java.nio.file.Path;
 import network.crypta.node.Node;
+import network.crypta.runtime.spi.CoreSupportLifecycleSnapshot;
 import network.crypta.runtime.updater.CoreUpdater;
 import network.crypta.runtime.updater.NodeUpdateManager;
 import org.junit.jupiter.api.Test;
@@ -91,6 +92,18 @@ class LegacyCoreUpdateActionPortTest {
     assertTrue(port.startCoreDownloadFromUi());
 
     verify(coreUpdater).startDownloadFromUI();
+  }
+
+  @Test
+  void supportLifecycleSnapshot_whenManagerPresent_expectDetachedStateDelegated() {
+    CoreSupportLifecycleSnapshot snapshot =
+        CoreSupportLifecycleSnapshot.unknown(1200, java.util.List.of("lifecycle_unknown"));
+    when(node.services().nodeUpdater()).thenReturn(nodeUpdateManager);
+    when(nodeUpdateManager.supportLifecycleSnapshot()).thenReturn(snapshot);
+
+    LegacyCoreUpdateActionPort port = new LegacyCoreUpdateActionPort(node);
+
+    assertEquals(snapshot, port.supportLifecycleSnapshot());
   }
 
   @Test

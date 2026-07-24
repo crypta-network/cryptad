@@ -165,3 +165,14 @@ mirrors, or rollback conflicts block publication.
 Protected publication may accept pre-existing catalog state only when every signed byte, revision,
 mirror, and rollback observation matches. See the [Stable 1.0 maintenance release and security
 hotfix path](stable-1.0-maintenance-release-and-hotfix-path.md).
+
+## Stable lifecycle reporting
+
+The Stable lifecycle governance report summarizes the authenticated stable catalog revision,
+first-party app support/deprecation state, active advisory and exact-version denylist ids, and
+relevant review or signing revocations. It does not sign a catalog, make a mirror authoritative,
+or create an alternate channel/support vocabulary.
+
+An omitted active advisory, denylist, revocation, deprecated entry, or required replacement is a
+lifecycle certification blocker. A core lifecycle transition does not mutate catalog bytes or
+automatically remove an installed app. See [Stable 1.0 support lifecycle and deprecation governance](stable-1.0-support-lifecycle-and-deprecation-governance.md).

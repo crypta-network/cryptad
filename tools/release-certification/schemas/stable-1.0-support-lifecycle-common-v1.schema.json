@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/crypta-network/cryptad/tools/release-certification/schemas/stable-1.0-support-lifecycle-common-v1.schema.json",
+  "$defs": {
+    "nonEmpty": {"type": "string", "minLength": 1},
+    "recoveryGuidance": {"type": "string", "minLength": 1, "maxLength": 256, "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]+$", "format": "cryptad-recovery-guidance"},
+    "releaseId": {"type": "string", "maxLength": 128, "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"},
+    "publicId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"},
+    "build": {"type": "string", "pattern": "^[1-9][0-9]*$"},
+    "tag": {"type": "string", "pattern": "^v[1-9][0-9]*$"},
+    "commit": {"type": "string", "pattern": "^[0-9a-f]{40,64}$"},
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "nullableDigest": {"oneOf": [{"$ref": "#/$defs/digest"}, {"type": "null"}]},
+    "nullableBuild": {"oneOf": [{"$ref": "#/$defs/build"}, {"type": "null"}]},
+    "nullableTimestamp": {"oneOf": [{"type": "string", "format": "date-time"}, {"type": "null"}]},
+    "status": {"enum": ["current-stable", "supported-maintenance", "security-fixes-only", "deprecated", "end-of-support", "revoked"]},
+    "releaseClass": {"enum": ["stable-ga", "maintenance", "security-hotfix"]},
+    "redaction": {
+      "type": "object", "additionalProperties": false,
+      "required": ["status", "findingCount", "findings"],
+      "properties": {"status": {"const": "pass"}, "findingCount": {"const": 0}, "findings": {"type": "array", "maxItems": 0}}
+    },
+    "inventoryEntry": {
+      "type": "object", "additionalProperties": false,
+      "required": ["releaseId", "buildVersion", "tag", "sourceCommit", "releaseClass", "productDigest", "publicationReceiptDigest", "baselineDigest", "publishedAt", "chainDepth", "unresolvedHotfixFollowUp"],
+      "properties": {
+        "releaseId": {"$ref": "#/$defs/releaseId"}, "buildVersion": {"$ref": "#/$defs/build"},
+        "tag": {"$ref": "#/$defs/tag"}, "sourceCommit": {"$ref": "#/$defs/commit"},
+        "releaseClass": {"$ref": "#/$defs/releaseClass"}, "productDigest": {"$ref": "#/$defs/digest"},
+        "publicationReceiptDigest": {"$ref": "#/$defs/digest"}, "baselineDigest": {"$ref": "#/$defs/digest"},
+        "publishedAt": {"type": "string", "format": "date-time"}, "chainDepth": {"type": "integer", "minimum": 0},
+        "unresolvedHotfixFollowUp": {"type": "boolean"}
+      }
+    },
+    "ledgerEntry": {
+      "type": "object", "additionalProperties": false,
+      "required": ["releaseId", "buildVersion", "tag", "sourceCommit", "releaseClass", "productDigest", "publicationReceiptDigest", "baselineDigest", "publishedAt", "chainDepth", "unresolvedHotfixFollowUp", "lifecycleStatus", "statusEffectiveAt", "fullSupportUntil", "securityFixesUntil", "deprecationEffectiveAt", "endOfSupportAt", "securityRevocationEffectiveAt", "replacementBuild", "recoveryGuidance", "advisoryIds", "reasonCodes", "transitionSequence", "previousEntryDigest", "entryDigest"],
+      "properties": {
+        "releaseId": {"$ref": "#/$defs/releaseId"}, "buildVersion": {"$ref": "#/$defs/build"}, "tag": {"$ref": "#/$defs/tag"},
+        "sourceCommit": {"$ref": "#/$defs/commit"}, "releaseClass": {"$ref": "#/$defs/releaseClass"}, "productDigest": {"$ref": "#/$defs/digest"},
+        "publicationReceiptDigest": {"$ref": "#/$defs/digest"}, "baselineDigest": {"$ref": "#/$defs/digest"},
+        "publishedAt": {"type": "string", "format": "date-time"}, "chainDepth": {"type": "integer", "minimum": 0}, "unresolvedHotfixFollowUp": {"type": "boolean"},
+        "lifecycleStatus": {"$ref": "#/$defs/status"}, "statusEffectiveAt": {"type": "string", "format": "date-time"},
+        "fullSupportUntil": {"type": "string", "format": "date-time"}, "securityFixesUntil": {"type": "string", "format": "date-time"},
+        "deprecationEffectiveAt": {"type": "string", "format": "date-time"}, "endOfSupportAt": {"type": "string", "format": "date-time"},
+        "securityRevocationEffectiveAt": {"$ref": "#/$defs/nullableTimestamp"}, "replacementBuild": {"$ref": "#/$defs/nullableBuild"},
+        "recoveryGuidance": {"oneOf": [{"$ref": "#/$defs/recoveryGuidance"}, {"type": "null"}]},
+        "advisoryIds": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/nonEmpty"}},
+        "reasonCodes": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/nonEmpty"}},
+        "transitionSequence": {"type": "integer", "minimum": 0}, "previousEntryDigest": {"$ref": "#/$defs/nullableDigest"}, "entryDigest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "transition": {
+      "type": "object", "additionalProperties": false,
+      "required": ["transitionSequence", "targetBuild", "fromStatus", "toStatus", "effectiveAt", "policyRule", "reasonCode", "advisoryId", "severity", "affectedBuilds", "securityEvidenceIds", "publicationTargetDigest", "replacementBuild", "recoveryGuidance", "previousLedgerDigest", "authorizationRequestDigest", "transitionDigest"],
+      "properties": {
+        "transitionSequence": {"type": "integer", "minimum": 1}, "targetBuild": {"$ref": "#/$defs/build"},
+        "fromStatus": {"$ref": "#/$defs/status"}, "toStatus": {"$ref": "#/$defs/status"}, "effectiveAt": {"type": "string", "format": "date-time"},
+        "policyRule": {"$ref": "#/$defs/nonEmpty"}, "reasonCode": {"$ref": "#/$defs/nonEmpty"},
+        "advisoryId": {"oneOf": [{"$ref": "#/$defs/publicId"}, {"type": "null"}]},
+        "severity": {"oneOf": [{"enum": ["critical", "high"]}, {"type": "null"}]},
+        "affectedBuilds": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/build"}},
+        "securityEvidenceIds": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/publicId"}},
+        "publicationTargetDigest": {"$ref": "#/$defs/nullableDigest"}, "replacementBuild": {"$ref": "#/$defs/nullableBuild"},
+        "recoveryGuidance": {"oneOf": [{"$ref": "#/$defs/recoveryGuidance"}, {"type": "null"}]},
+        "previousLedgerDigest": {"$ref": "#/$defs/nullableDigest"}, "authorizationRequestDigest": {"$ref": "#/$defs/digest"},
+        "transitionDigest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "transitionProjection": {
+      "type": "object", "additionalProperties": false,
+      "required": ["transitionSequence", "targetBuild", "fromStatus", "toStatus", "effectiveAt", "policyRule", "reasonCode", "advisoryId", "severity", "affectedBuilds", "securityEvidenceIds", "publicationTargetDigest", "replacementBuild", "recoveryGuidance", "previousLedgerDigest", "authorizationRequestDigest", "authorizationDigest", "transitionDigest", "resultingLedgerDigest"],
+      "properties": {
+        "transitionSequence": {"type": "integer", "minimum": 1}, "targetBuild": {"$ref": "#/$defs/build"}, "fromStatus": {"$ref": "#/$defs/status"}, "toStatus": {"$ref": "#/$defs/status"},
+        "effectiveAt": {"type": "string", "format": "date-time"}, "policyRule": {"$ref": "#/$defs/nonEmpty"}, "reasonCode": {"$ref": "#/$defs/nonEmpty"},
+        "advisoryId": {"oneOf": [{"$ref": "#/$defs/publicId"}, {"type": "null"}]},
+        "severity": {"oneOf": [{"enum": ["critical", "high"]}, {"type": "null"}]},
+        "affectedBuilds": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/build"}},
+        "securityEvidenceIds": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/publicId"}},
+        "publicationTargetDigest": {"$ref": "#/$defs/nullableDigest"}, "replacementBuild": {"$ref": "#/$defs/nullableBuild"},
+        "recoveryGuidance": {"oneOf": [{"$ref": "#/$defs/recoveryGuidance"}, {"type": "null"}]}, "previousLedgerDigest": {"$ref": "#/$defs/nullableDigest"},
+        "authorizationRequestDigest": {"$ref": "#/$defs/digest"}, "authorizationDigest": {"$ref": "#/$defs/nullableDigest"}, "transitionDigest": {"$ref": "#/$defs/digest"}, "resultingLedgerDigest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "descriptorEntry": {
+      "type": "object", "additionalProperties": false,
+      "required": ["releaseId", "buildVersion", "tag", "sourceCommit", "productDigest", "publicationReceiptDigest", "baselineDigest", "publishedAt", "lifecycleStatus", "statusEffectiveAt", "fullSupportUntil", "securityFixesUntil", "deprecationEffectiveAt", "endOfSupportAt", "securityRevocationEffectiveAt", "replacementBuild", "recoveryGuidance", "advisoryIds", "reasonCodes"],
+      "properties": {
+        "releaseId": {"$ref": "#/$defs/releaseId"}, "buildVersion": {"$ref": "#/$defs/build"}, "tag": {"$ref": "#/$defs/tag"},
+        "sourceCommit": {"$ref": "#/$defs/commit"}, "productDigest": {"$ref": "#/$defs/digest"}, "publicationReceiptDigest": {"$ref": "#/$defs/digest"}, "baselineDigest": {"$ref": "#/$defs/digest"},
+        "publishedAt": {"type": "string", "format": "date-time"}, "lifecycleStatus": {"$ref": "#/$defs/status"}, "statusEffectiveAt": {"type": "string", "format": "date-time"},
+        "fullSupportUntil": {"type": "string", "format": "date-time"}, "securityFixesUntil": {"type": "string", "format": "date-time"}, "deprecationEffectiveAt": {"type": "string", "format": "date-time"}, "endOfSupportAt": {"type": "string", "format": "date-time"},
+        "securityRevocationEffectiveAt": {"$ref": "#/$defs/nullableTimestamp"}, "replacementBuild": {"$ref": "#/$defs/nullableBuild"},
+        "recoveryGuidance": {"oneOf": [{"$ref": "#/$defs/recoveryGuidance"}, {"type": "null"}]},
+        "advisoryIds": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/nonEmpty"}}, "reasonCodes": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/nonEmpty"}}
+      }
+    }
+  }
+}
