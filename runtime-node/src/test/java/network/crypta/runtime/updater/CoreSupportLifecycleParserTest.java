@@ -31,6 +31,7 @@ class CoreSupportLifecycleParserTest {
   private static final String RELEASE_ID_FIELD = "releaseId";
   private static final String DESCRIPTOR_DIGEST_FIELD = "descriptorDigest";
   private static final String LIFECYCLE_STATUS_FIELD = "lifecycleStatus";
+  private static final String STATUS_EFFECTIVE_AT_FIELD = "statusEffectiveAt";
   private static final String CURRENT_STABLE_BUILD_FIELD = "currentStableBuild";
   private static final String MINIMUM_SUPPORTED_BUILD_FIELD = "minimumSupportedBuild";
   private static final String MINIMUM_SECURITY_SUPPORTED_BUILD_FIELD =
@@ -71,6 +72,13 @@ class CoreSupportLifecycleParserTest {
         fixtureText()
             .replace(CURRENT_STABLE, "future-supported-state")
             .getBytes(StandardCharsets.UTF_8);
+
+    assertDescriptorRejected(fixture);
+  }
+
+  @Test
+  void parse_whenEntryStatusFollowsDescriptorActivation_expectRejection() throws IOException {
+    byte[] fixture = descriptorWithFutureEffectiveStatus();
 
     assertDescriptorRejected(fixture);
   }
@@ -232,6 +240,17 @@ class CoreSupportLifecycleParserTest {
     return CoreSupportLifecycleParser.canonicalJson(descriptor).getBytes(StandardCharsets.UTF_8);
   }
 
+  private static byte[] descriptorWithFutureEffectiveStatus() throws IOException {
+    Map<String, Object> descriptor = JsonMini.parseObject(fixtureText());
+    @SuppressWarnings("unchecked")
+    Map<String, Object> entry =
+        (Map<String, Object>) ((List<?>) descriptor.get(ENTRIES_FIELD)).getFirst();
+    entry.put(STATUS_EFFECTIVE_AT_FIELD, REVOCATION_EFFECTIVE_AT);
+    descriptor.remove(DESCRIPTOR_DIGEST_FIELD);
+    descriptor.put(DESCRIPTOR_DIGEST_FIELD, CoreSupportLifecycleParser.semanticDigest(descriptor));
+    return CoreSupportLifecycleParser.canonicalJson(descriptor).getBytes(StandardCharsets.UTF_8);
+  }
+
   private static byte[] descriptorWithEntryCount(int entryCount) throws IOException {
     Map<String, Object> descriptor = JsonMini.parseObject(fixtureText());
     @SuppressWarnings("unchecked")
@@ -269,12 +288,13 @@ class CoreSupportLifecycleParserTest {
     Map<String, Object> entry =
         (Map<String, Object>) ((List<?>) descriptor.get(ENTRIES_FIELD)).getFirst();
     entry.put(LIFECYCLE_STATUS_FIELD, "revoked");
-    entry.put("statusEffectiveAt", REVOCATION_EFFECTIVE_AT);
+    entry.put(STATUS_EFFECTIVE_AT_FIELD, REVOCATION_EFFECTIVE_AT);
     entry.put("securityRevocationEffectiveAt", REVOCATION_EFFECTIVE_AT);
     entry.put(REPLACEMENT_BUILD_FIELD, null);
     entry.put(RECOVERY_GUIDANCE_FIELD, guidance);
     entry.put("advisoryIds", List.of("CRYPTA-2026-001"));
     entry.put("reasonCodes", List.of("critical-release-defect"));
+    descriptor.put("effectiveAt", REVOCATION_EFFECTIVE_AT);
     descriptor.put(CURRENT_STABLE_BUILD_FIELD, claimCurrent ? "100" : null);
     descriptor.put(RECOMMENDED_BUILD_FIELD, claimCurrent ? "100" : null);
     descriptor.put(MINIMUM_SUPPORTED_BUILD_FIELD, null);
@@ -320,13 +340,14 @@ class CoreSupportLifecycleParserTest {
 
     Map<String, Object> tip = new LinkedHashMap<>(template);
     tip.put(LIFECYCLE_STATUS_FIELD, "revoked");
-    tip.put("statusEffectiveAt", REVOCATION_EFFECTIVE_AT);
+    tip.put(STATUS_EFFECTIVE_AT_FIELD, REVOCATION_EFFECTIVE_AT);
     tip.put("securityRevocationEffectiveAt", REVOCATION_EFFECTIVE_AT);
     tip.put(REPLACEMENT_BUILD_FIELD, null);
     tip.put(RECOVERY_GUIDANCE_FIELD, guidance);
     tip.put("advisoryIds", List.of("CRYPTA-2026-001"));
     tip.put("reasonCodes", List.of("critical-release-defect"));
 
+    descriptor.put("effectiveAt", REVOCATION_EFFECTIVE_AT);
     descriptor.put(ENTRIES_FIELD, List.of(older, tip));
     descriptor.put(CURRENT_STABLE_BUILD_FIELD, null);
     descriptor.put(RECOMMENDED_BUILD_FIELD, null);

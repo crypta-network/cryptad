@@ -459,6 +459,24 @@ class StableLifecyclePublicationTest(unittest.TestCase):
             ):
                 publication._validate_descriptor(stale)
 
+    def test_protected_adapter_rejects_future_effective_entry_status(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = BundleFixture(Path(directory) / "bundle")
+            descriptor = copy.deepcopy(fixture.descriptor)
+            descriptor["entries"][0]["statusEffectiveAt"] = "2026-07-22T00:00:00Z"
+            descriptor["descriptorDigest"] = semantic_digest(
+                {
+                    key: value
+                    for key, value in descriptor.items()
+                    if key != "descriptorDigest"
+                }
+            )
+
+            with self.assertRaisesRegex(
+                publication.AdapterError, "descriptor-entry-future-effective"
+            ):
+                publication._validate_descriptor(descriptor)
+
     def test_protected_adapter_accepts_recovery_only_revoked_tip(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             fixture = BundleFixture(Path(directory) / "bundle")

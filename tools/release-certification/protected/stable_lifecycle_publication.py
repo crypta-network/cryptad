@@ -662,6 +662,15 @@ def _validate_descriptor(descriptor: Mapping[str, Any]) -> None:
         or stale <= now
     ):
         raise AdapterError("descriptor-future-or-stale")
+    entries = descriptor.get("entries")
+    if not isinstance(entries, list) or any(
+        not isinstance(entry, Mapping)
+        or (status_effective := _parse_timestamp(entry.get("statusEffectiveAt")))
+        is None
+        or status_effective > effective
+        for entry in entries
+    ):
+        raise AdapterError("descriptor-entry-future-effective")
 
 
 def _validate_plan(

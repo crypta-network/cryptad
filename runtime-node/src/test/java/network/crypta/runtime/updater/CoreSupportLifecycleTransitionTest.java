@@ -153,6 +153,7 @@ class CoreSupportLifecycleTransitionTest {
     currentBuild.put(REASON_CODES_FIELD, new ArrayList<>());
 
     entries.add(currentBuild);
+    root.put("effectiveAt", JANUARY_2);
     root.put("currentStableBuild", "200");
     root.put("recommendedBuild", "200");
     root.put("minimumSupportedBuild", "100");

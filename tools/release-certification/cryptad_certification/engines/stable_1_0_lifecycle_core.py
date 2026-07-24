@@ -1225,6 +1225,14 @@ def build_descriptor(
         or descriptor_effective > descriptor_stale
     ):
         errors.append("lifecycle descriptor timestamps are unordered")
+    elif any(
+        (status_effective := parse_timestamp(row.get("statusEffectiveAt"))) is None
+        or status_effective > descriptor_effective
+        for row in descriptor_entries
+    ):
+        errors.append(
+            "lifecycle descriptor entry status is future-effective at descriptor activation"
+        )
     if previous is not None and edition <= previous_edition:
         errors.append("lifecycle descriptor edition did not advance")
     return descriptor, errors

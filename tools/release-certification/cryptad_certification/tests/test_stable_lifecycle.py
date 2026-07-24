@@ -2062,6 +2062,23 @@ class StableLifecycleDescriptorAndPublicationTest(unittest.TestCase):
             [],
         )
 
+    def test_descriptor_rejects_future_effective_entry_status(self) -> None:
+        ledger, descriptor = self._descriptor()
+        ledger["entries"][0]["statusEffectiveAt"] = "2026-07-22T00:00:00Z"
+
+        _, errors = build_descriptor(
+            ledger,
+            POLICY,
+            descriptor["effectiveAt"],
+            None,
+            POLICY["descriptor"]["updateKeyIdentityDigest"],
+        )
+
+        self.assertIn(
+            "lifecycle descriptor entry status is future-effective at descriptor activation",
+            errors,
+        )
+
     def test_descriptor_rejects_runtime_unsafe_guidance_projections(self) -> None:
         published = inventory(
             [

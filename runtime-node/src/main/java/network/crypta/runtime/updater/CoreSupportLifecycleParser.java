@@ -176,6 +176,7 @@ public final class CoreSupportLifecycleParser {
     }
 
     List<CoreSupportLifecycleEntry> entries = parseEntries(root.get("entries"));
+    validateEntryActivationTimes(entries, effectiveAt);
     validateInventory(
         entries,
         currentStableBuild,
@@ -221,6 +222,14 @@ public final class CoreSupportLifecycleParser {
       entries.add(parseEntry(map));
     }
     return List.copyOf(entries);
+  }
+
+  private static void validateEntryActivationTimes(
+      List<CoreSupportLifecycleEntry> entries, Instant descriptorEffectiveAt) {
+    if (entries.stream()
+        .anyMatch(entry -> entry.statusEffectiveAt().isAfter(descriptorEffectiveAt))) {
+      throw invalid("entry lifecycle status is future-effective at descriptor activation");
+    }
   }
 
   private static CoreSupportLifecycleEntry parseEntry(Map<String, Object> map) {
