@@ -1207,12 +1207,26 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
       availableVersion = -1;
       realAvailableVersion = -1;
       fetchingVersion = -1;
-      fetchedVersion = currentVersion;
+      fetchedVersion = fetchedEditionAfterUriChange(subscribeEditionSeed);
       isFetching = false;
       isRunning = true;
     }
     subscribe(() -> {});
     maybeUpdate();
+  }
+
+  /**
+   * Selects the accepted-edition marker retained when a subscription URI changes.
+   *
+   * <p>Ordinary update descriptors are reset to the running build. Digest-chained subscribers may
+   * override this hook when their separately persisted last-known-good state remains authoritative
+   * across the new subscription.
+   *
+   * @param subscribeEditionSeed edition used to seed the replacement subscription
+   * @return accepted edition to retain before processing announcements from the replacement URI
+   */
+  protected int fetchedEditionAfterUriChange(int subscribeEditionSeed) {
+    return currentVersion;
   }
 
   /**

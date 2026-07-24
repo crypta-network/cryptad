@@ -119,6 +119,11 @@ final class CoreSupportLifecycleUpdater extends NodeUpdater {
   }
 
   @Override
+  protected int fetchedEditionAfterUriChange(int subscribeEditionSeed) {
+    return Math.max(subscribeEditionSeed, lifecycleState.acceptedEditionSeed());
+  }
+
+  @Override
   protected boolean fetchIntermediateEditionsSequentially() {
     return true;
   }

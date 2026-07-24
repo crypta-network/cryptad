@@ -9,6 +9,7 @@ import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.client.async.USKFoundEdition;
 import network.crypta.client.async.USKFoundEditionPayload;
 import network.crypta.client.async.USKFoundEditionProgress;
+import network.crypta.client.async.USKManager;
 import network.crypta.client.events.SimpleEventProducer;
 import network.crypta.keys.FreenetURI;
 import network.crypta.keys.USK;
@@ -155,6 +156,39 @@ class CoreSupportLifecycleUpdaterTest {
             new USKFoundEditionProgress(false, true));
 
     updater.onFoundEdition(announcement);
+    updater.maybeUpdate();
+
+    assertEquals(7, updater.getFetchedVersion());
+    verify(core, never()).getPersistentTempDir();
+    verify(lifecycleState, never()).accept(any(byte[].class), anyLong());
+  }
+
+  @Test
+  void onChangeURI_whenLastKnownGoodEditionExists_expectAcceptedEditionIsNotFetchedAgain()
+      throws Exception {
+    when(lifecycleState.acceptedEditionSeed()).thenReturn(7);
+    updater =
+        new CoreSupportLifecycleUpdater(
+            new NodeUpdaterParams(
+                manager,
+                new FreenetURI("USK@" + NodeUpdateManager.UPDATE_URI + "/support-lifecycle/7"),
+                -1,
+                -1,
+                Integer.MAX_VALUE,
+                "support-lifecycle-",
+                7),
+            lifecycleState);
+    when(core.getUskManager()).thenReturn(mock(USKManager.class));
+    FreenetURI replacementUri =
+        new FreenetURI("USK@" + NodeUpdateManager.UPDATE_URI + "/support-lifecycle/0");
+
+    updater.onChangeURI(replacementUri, 7);
+    USK announcedKey = USK.create(replacementUri.setSuggestedEdition(7));
+    updater.onFoundEdition(
+        new USKFoundEdition(
+            new USKFoundEditionPayload(7L, announcedKey, false, (short) 0, null),
+            null,
+            new USKFoundEditionProgress(false, true)));
     updater.maybeUpdate();
 
     assertEquals(7, updater.getFetchedVersion());

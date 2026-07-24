@@ -126,6 +126,7 @@ class NodeUpdaterTest {
 
     // Assert
     assertEquals(1450L, updater.getUpdateKey().getSuggestedEdition());
+    assertEquals(CURRENT_VERSION, updater.getFetchedVersion());
     ArgumentCaptor<USK> capturedUsk = ArgumentCaptor.forClass(USK.class);
     verify(uskManager).subscribe(capturedUsk.capture(), same(updater), eq(true), same(updater));
     assertEquals(1450L, capturedUsk.getValue().suggestedEdition);

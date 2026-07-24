@@ -6794,7 +6794,7 @@
     try {
       const [snapshot, supportLifecycle] = await Promise.all([
         loadJson(apiUrl("updates/core")),
-        loadJson(apiUrl("updates/support-lifecycle")),
+        loadBestEffortOptionalJson(apiUrl("updates/support-lifecycle")),
       ]);
       if (loadGeneration !== updatesLoadGeneration) {
         return;

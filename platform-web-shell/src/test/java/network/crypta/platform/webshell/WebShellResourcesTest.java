@@ -1295,7 +1295,9 @@ class WebShellResourcesTest {
     assertTrue(script.contains("function wizardUnsupportedMessage(data)"));
     assertTrue(script.contains("apiUrlWithQuery(\"security-levels/network-warning\""));
     assertTrue(script.contains("loadJson(apiUrl(\"updates/core\"))"));
-    assertTrue(script.contains("loadJson(apiUrl(\"updates/support-lifecycle\"))"));
+    assertTrue(
+        script.contains("loadBestEffortOptionalJson(apiUrl(\"updates/support-lifecycle\"))"));
+    assertFalse(script.contains("loadJson(apiUrl(\"updates/support-lifecycle\"))"));
     assertTrue(script.contains("renderUpdates({ ...snapshot, supportLifecycle })"));
     assertTrue(script.contains("loadJson(apiUrl(\"config?sections=CURRENT\"))"));
     assertTrue(script.contains("loadJson(apiUrl(\"wizard/first-time\"))"));
