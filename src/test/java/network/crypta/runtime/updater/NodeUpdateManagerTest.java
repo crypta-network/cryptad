@@ -28,6 +28,7 @@ import network.crypta.client.events.SimpleEventProducer;
 import network.crypta.config.Config;
 import network.crypta.config.PersistentConfig;
 import network.crypta.fs.AppEnv;
+import network.crypta.io.comm.DMT;
 import network.crypta.io.comm.Message;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.Node;
@@ -37,6 +38,7 @@ import network.crypta.node.NodeStats;
 import network.crypta.node.PeerManager;
 import network.crypta.node.PeerMessenger;
 import network.crypta.node.PeerNode;
+import network.crypta.node.PeerTransport;
 import network.crypta.node.ProgramDirectory;
 import network.crypta.node.Version;
 import network.crypta.runtime.alerts.RevocationKeyFoundUserAlert;
@@ -282,7 +284,7 @@ class NodeUpdateManagerTest {
   }
 
   @Test
-  void enable_whenRestartRestoresCompromisedUpdateKey_expectAllUpdateSubscribersRemainStopped()
+  void start_whenRestartRestoresCompromise_expectUpdateSubscribersStoppedAndRevocationRearmed()
       throws Exception {
     USKManager uskManager = mock(USKManager.class);
     when(nodeCore.getUskManager()).thenReturn(uskManager);
@@ -303,7 +305,9 @@ class NodeUpdateManagerTest {
     assertNull(getSupportLifecycleUpdater(restarted));
     verify(alerts).register(same(restoredAlert));
     verifyNoInteractions(uskManager);
-    verifyNoInteractions(clientContext);
+    ArgumentCaptor<ClientGetter> getterCaptor = ArgumentCaptor.forClass(ClientGetter.class);
+    verify(clientContext).start(getterCaptor.capture());
+    assertEquals(restarted.getRevocationURI(), getterCaptor.getValue().getURI());
   }
 
   @Test
@@ -330,7 +334,42 @@ class NodeUpdateManagerTest {
     assertNull(getSupportLifecycleUpdater(restarted));
     verify(alerts).register(same(restoredAlert));
     verifyNoInteractions(uskManager);
-    verifyNoInteractions(clientContext);
+    ArgumentCaptor<ClientGetter> getterCaptor = ArgumentCaptor.forClass(ClientGetter.class);
+    verify(clientContext).start(getterCaptor.capture());
+    assertEquals(restarted.getRevocationURI(), getterCaptor.getValue().getURI());
+  }
+
+  @Test
+  void blow_whenRestartedCheckerRecoversCertificate_expectRevocationUomRearmed() throws Exception {
+    manager.blow("authenticated update-key compromise", false);
+    clearInvocations(peerMessenger);
+    NodeUpdateManager restarted = new NodeUpdateManager(node, new Config());
+    FetchResult result = mock(FetchResult.class);
+    when(result.asByteArray()).thenReturn("revoked".getBytes(StandardCharsets.UTF_8));
+    when(result.getMimeType()).thenReturn("text/plain");
+    PeerNode newlyConnectedPeer = mock(PeerNode.class);
+    PeerTransport transport = mock(PeerTransport.class);
+    when(newlyConnectedPeer.getNodeName()).thenReturn("Cryptad");
+    when(newlyConnectedPeer.getBuildNumber()).thenReturn(Version.currentBuildNumber());
+    when(newlyConnectedPeer.transport()).thenReturn(transport);
+
+    restarted
+        .getRevocationChecker()
+        .onSuccess(result, null, new ArrayBucket("blob".getBytes(StandardCharsets.UTF_8)));
+    restarted.maybeSendUOMAnnounce(newlyConnectedPeer);
+
+    assertTrue(restarted.getRevocationChecker().hasBlown());
+    verify(peerMessenger)
+        .localBroadcast(
+            any(Message.class),
+            eq(true),
+            eq(true),
+            same(restarted.getByteCounter()),
+            eq(NodeUpdateManager.TRANSITION_VERSION),
+            eq(Integer.MAX_VALUE));
+    ArgumentCaptor<Message> announcement = ArgumentCaptor.forClass(Message.class);
+    verify(transport).sendAsync(announcement.capture(), isNull(), same(restarted.getByteCounter()));
+    assertTrue(announcement.getValue().getBoolean(DMT.HAVE_REVOCATION_KEY));
   }
 
   @Test

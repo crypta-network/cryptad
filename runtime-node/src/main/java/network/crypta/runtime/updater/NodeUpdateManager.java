@@ -1068,9 +1068,16 @@ public final class NodeUpdateManager {
       scheduleTrustInvalidationRetryIfNeeded(disabledNotBlown, trustInvalidationPersisted);
     }
     if (transition.alreadyBlown()) {
+      armRevocationAnnouncementsAfterCertificateRecovery(disabledNotBlown);
       return;
     }
     completeBlowTransition(msg, disabledNotBlown);
+  }
+
+  private void armRevocationAnnouncementsAfterCertificateRecovery(boolean disabledNotBlown) {
+    if (!disabledNotBlown && getRevocationChecker().hasBlown()) {
+      broadcastUOMAnnounces();
+    }
   }
 
   private boolean persistCompromisedUpdateKeyInvalidation(boolean disabledNotBlown) {

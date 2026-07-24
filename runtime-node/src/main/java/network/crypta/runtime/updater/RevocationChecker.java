@@ -192,7 +192,7 @@ public class RevocationChecker implements ClientGetCallback, RequestClient {
    *     one; {@code false} otherwise.
    */
   public boolean start(boolean aggressive, boolean reset) {
-    if (manager.isBlown()) {
+    if (manager.isBlown() && !shouldRecoverCompromisedKeyCertificate()) {
       LOG.error("Not starting revocation checker: key already blown!");
       return false;
     }
@@ -227,6 +227,10 @@ public class RevocationChecker implements ClientGetCallback, RequestClient {
       // Impossible
       return false;
     }
+  }
+
+  private boolean shouldRecoverCompromisedKeyCertificate() {
+    return manager.isUpdateKeyCompromised() && !blown;
   }
 
   private record StartPrep(ClientGetter cg, ClientGetter toCancel, boolean wasRunning) {}
