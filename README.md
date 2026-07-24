@@ -623,6 +623,13 @@ dispatched protected workflow may create or verify `v<build-number>` and the Git
 must verify the public catalog state; neither command merges the release branch or publishes during
 local tests.
 
+After GA, `stable-maintenance` authenticates the immutable GA root and complete no-fork successor
+history before it freezes or authorizes one later integer-build maintenance or security-hotfix
+candidate. Support-state changes use the separate `stable-lifecycle` component and protected
+`support-lifecycle` update-key document. They do not rewrite published `core-info.json`, GA
+artifacts, maintenance receipts, or successor baselines. Nodes consume that descriptor locally and
+retain a last-known-good support snapshot without centralized telemetry.
+
 Key docs:
 
 - [Phase 3 Platform Primacy closeout](docs/phase-3-platform-primacy-closeout.md)
@@ -645,6 +652,8 @@ Key docs:
 - [Stable 1.0 readiness gate](docs/stable-1.0-readiness-gate.md)
 - [Stable 1.0 RC execution and release freeze](docs/stable-1.0-rc-execution-and-release-freeze.md)
 - [Stable 1.0 RC validation and GA promotion](docs/stable-1.0-rc-validation-and-ga-promotion.md)
+- [Stable 1.0 maintenance release and security hotfix path](docs/stable-1.0-maintenance-release-and-hotfix-path.md)
+- [Stable 1.0 support lifecycle and deprecation governance](docs/stable-1.0-support-lifecycle-and-deprecation-governance.md)
 - [Multi-node beta soak and upgrade drill](docs/multi-node-beta-soak-and-upgrade-drill.md)
 - [App-owned static UI](docs/app-owned-ui.md)
 - [App UI design system](docs/app-ui-design-system.md)
@@ -736,6 +745,8 @@ python3 tools/release-certification/certify.py go-no-go --self-test
 python3 tools/release-certification/certify.py production-beta --self-test
 python3 tools/release-certification/certify.py stable-rc --self-test
 python3 tools/release-certification/certify.py stable-ga --self-test
+python3 tools/release-certification/certify.py stable-maintenance --self-test
+python3 tools/release-certification/certify.py stable-lifecycle --self-test
 ```
 
 Generate a local report:
@@ -760,13 +771,19 @@ the first v2 candidate; normal component inputs reject legacy summaries. The com
 common evidence envelope, report, redaction report, and supporting artifacts below
 `<out-root>/<release-id>/release-certification/`.
 
-Stable 1.0 uses two additional candidate-bound components under the same release workspace:
+Stable 1.0 uses four additional candidate-bound components under the same release workspace:
 
 - `stable-rc` executes the protected production stages, freezes the candidate, verifies
   post-package drift, and emits deterministic product/archive checksums and provenance.
 - `stable-ga` selects and authenticates the latest successful freeze, validates exact-RC-bound
   post-freeze evidence and authorization, and emits a promotion plan and maintenance baseline
   without creating a tag, Release, branch, catalog update, or network insert.
+- `stable-maintenance` authenticates GA and the immediate published predecessor, freezes one
+  built-once maintenance or security-hotfix candidate, and prepares protected publication and
+  successor-baseline artifacts without publishing during ordinary validation.
+- `stable-lifecycle` derives the published Stable 1.0 inventory from authenticated receipts and
+  baselines, evaluates monotonic support-state transitions, and prepares a separately versioned
+  lifecycle descriptor without mutating historical release artifacts.
 
 Use the checked-in example manifests only as templates. Copy them below `build/`, replace every
 placeholder, and follow the protected workflow instructions in the linked RC and GA runbooks.
@@ -1256,6 +1273,11 @@ Tip: Keep the Spotless formatter at the intended version (currently `googleJavaF
 ## Update System
 
 - Core updates use a package‑based updater (“CoreUpdater”). It subscribes to an `info/<N>` JSON descriptor via the existing update USK, selects an OS/arch‑specific installer (deb/rpm/dmg/exe/flatpak/snap), and downloads to `nodeDir/updates/core/<version>/`.
+- Stable 1.0 support status is delivered separately through the trusted
+  `support-lifecycle/<N>` document. The read-only subscriber remains active when package updates
+  are disabled, persists only authenticated public-safe last-known-good bytes, and exposes unknown
+  or stale state explicitly. The operator-only Platform API route and Web Shell show this local
+  projection; the app-readable core-update response does not embed lifecycle data.
 - Installing the OS package is a user/OS action. On Linux, the UI may hand off to the system’s software center or PackageKit. On macOS/Windows, follow the platform guidance shown in the UI.
 - JAR Update‑over‑Mandatory (UOM) for the core is disabled in favor of the package flow.
 - For developer testing, replacing `build/libs/cryptad.jar` manually (as noted above) is fine; for production use CoreUpdater and platform packages.

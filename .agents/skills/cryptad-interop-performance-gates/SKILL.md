@@ -1,6 +1,6 @@
 ---
 name: cryptad-interop-performance-gates
-description: "Maintain Cryptad's Hyphanet interop, performance regression, release-certification evidence gates, production beta pipeline, Stable 1.0 RC/GA flow, and later exact-byte maintenance or security-hotfix path under tools/interop, tools/perf, tools/release-certification, CI, and release-readiness documentation."
+description: "Maintain Cryptad's Hyphanet interop, performance regression, release-certification evidence gates, production beta pipeline, Stable 1.0 RC/GA flow, later exact-byte maintenance or security-hotfix publication, and Stable 1.0 lifecycle/deprecation governance under tools/interop, tools/perf, tools/release-certification, CI, and release-readiness documentation."
 ---
 
 # Cryptad interop and performance gates
@@ -21,6 +21,8 @@ related CI jobs, or release-gate documentation.
   `docs/stable-1.0-rc-validation-and-ga-promotion.md`
 - Stable 1.0 maintenance and security hotfix path:
   `docs/stable-1.0-maintenance-release-and-hotfix-path.md`
+- Stable 1.0 support lifecycle and deprecation governance:
+  `docs/stable-1.0-support-lifecycle-and-deprecation-governance.md`
 - Stable maintenance publication provider protocol:
   `tools/release-certification/publication-backend/README.md`
 - Multi-node beta soak and upgrade drill: `docs/multi-node-beta-soak-and-upgrade-drill.md`
@@ -505,6 +507,21 @@ The lifecycle ledger is append-only and digest chained. Normal transitions advan
 transition request, previous state, resulting ledger, descriptor edition/digest, and target.
 Publication then binds the authorization and exact descriptor bytes. Do not create a circular
 authorization/ledger digest or represent a self-derived row digest as protected approval.
+
+The protected workflow has six closed operations: `prove-genesis`, `evaluate`,
+`prepare-transition`, `validate-authorization`, `publish`, and `verify-publication`. Bind every
+dispatch to the exact release id, chain-tip integer build, source commit, producer run, artifact
+name, and Actions artifact digest. Edition 1 requires an attested HTTP `404` proof for the exact
+target; HTTP `410` is a tombstone, not genesis. Later editions require the exact prior
+ledger/descriptor pair. Publish and verification consume a separately attested lifecycle-only
+provider wheel; only publish receives insert material.
+
+Keep the complete post-publication component plus external receipt available for independent
+verification, but remove protected input trees from the verification bundle. Read-only
+verification may occur after approval expiry when it proves that the original receipt timestamp
+fell inside the authorization interval. Authorization validation and publication still require a
+currently valid approval. Resolve current ledger/descriptor subjects by canonical component path,
+because successor bundles intentionally retain prior artifacts with the same basenames.
 
 Stable maintenance certification consumes the authenticated lifecycle state to reject an ordinary
 EOL/revoked predecessor, prevent support-clock resets, and propose successor lifecycle changes only

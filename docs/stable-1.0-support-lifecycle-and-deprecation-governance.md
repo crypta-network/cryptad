@@ -221,6 +221,24 @@ This is build lifecycle authentication, not update-signing-key revocation. `Revo
 continues to own update-key compromise. Marking a build deprecated, unsupported, or revoked never
 blows the update key.
 
+Accepted exact bytes are stored at
+`nodeDir/updates/core/support-lifecycle-last-known-good.json`. The subscriber seeds itself from the
+accepted edition after restart, fetches digest-linked successor editions in order, and retains the
+older state after fetch, parse, validation, or persistence failure. Persistence retries use bounded
+backoff rather than a tight fetch/write loop. Publication to local storage forces the completed
+temporary file before replacement and durably records the rename with platform-appropriate
+semantics: parent-directory synchronization on supported non-Windows filesystems and a native
+write-through move on Windows.
+
+An authenticated update-key compromise creates fixed-content invalidation markers beside the
+descriptor and at the independent node-level fallback location. Either marker prevents the old
+descriptor from loading and blocks package and lifecycle subscribers after restart. An existing
+malformed, symbolic, or unreadable marker fails closed as compromise evidence; a symlinked node
+directory with no marker is not itself treated as proof of compromise. If marker persistence
+temporarily fails, the in-memory compromise latch remains active and retries with bounded backoff.
+The critical compromise alert is restored on restart. Local-only updater failures do not create
+this durable compromise state and do not stop lifecycle polling.
+
 ## Protected publication
 
 `.github/workflows/stable-1.0-support-lifecycle.yml` separates evaluation, transition preparation,
@@ -292,9 +310,11 @@ insert capability before a real publication.
 CoreUpdater persists only public-safe last-known-good lifecycle metadata. The detached runtime SPI
 exposes `CoreSupportLifecycleSnapshot` through `CoreUpdateActionPort` rather than allowing Platform
 API or Web Shell to reach updater internals. `GET /api/v1/updates/support-lifecycle` returns the
-redacted snapshot. `GET /api/v1/updates/core` also includes it under `supportLifecycle` so Web Shell
-can render one coherent updater panel. The operator beta/RC dashboard and support bundle include
-the same local projection under `coreSupportLifecycle`.
+redacted snapshot to host/operator principals only. The app-readable `GET /api/v1/updates/core`
+response intentionally contains only updater availability and download readiness; it does not
+embed lifecycle data. Web Shell fetches both routes independently before rendering one updater
+panel. The operator beta/RC dashboard and support bundle include the same local projection under
+`coreSupportLifecycle`.
 
 The snapshot distinguishes `known=false` from a verified but stale descriptor. It reports the
 running build and status, status/support deadlines, nullable current and recommended builds,

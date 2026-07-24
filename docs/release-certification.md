@@ -38,7 +38,7 @@ files, never in the manifest.
 | `developer-dry-run` | End-to-end local or PR-safe rehearsal. | May use fixtures or skip expensive build stages, but can never become promotion-ready. |
 | `release-candidate` | Strict candidate certification. | Missing, stale, skipped, malformed, or failing required evidence blocks promotion unless policy permits a valid waiver. |
 | `production-beta` | Protected beta candidate. | Adds production signing, live-network, previous-candidate, sandbox, archive, and dashboard requirements. |
-| `stable-review` | Stable 1.0 readiness, RC freeze, and GA review. | Requires production evidence, complete Stable domains, immutable RC lineage, and the command-specific authorization policy. |
+| `stable-review` | Stable 1.0 readiness, RC freeze, GA, maintenance, and lifecycle review. | Requires production evidence, complete Stable domains, authenticated immutable release lineage, and the command-specific authorization policy. |
 
 ## Release workspace
 
@@ -59,6 +59,8 @@ Each run writes:
   stable-readiness/
   stable-rc/
   stable-ga/
+  stable-maintenance/
+  stable-lifecycle/
 ```
 
 Each component contains `summary.json`, `report.md`, `redaction-report.json`, and `artifacts/`.
@@ -227,7 +229,35 @@ hotfix candidates after Stable 1.0 GA. It authenticates the immutable GA root an
 predecessor, freezes one new integer-build candidate, compares compatibility and production
 evidence, prepares closed-scope authorization, and emits deterministic publication and successor
 baseline records. Local modes are side-effect-free; only the protected workflow may publish the
-authorized bytes.
+authorized bytes. Once a lifecycle descriptor has been activated, post-GA promotion also requires
+the exact authenticated lifecycle ledger, descriptor, authorization, publication plan, and
+verified publication receipt. The protected workflow re-observes that descriptor under the shared
+publication lock instead of trusting an old but still schema-valid receipt.
 
 See the [Stable 1.0 maintenance release and security hotfix
 path](stable-1.0-maintenance-release-and-hotfix-path.md).
+
+## Stable 1.0 support lifecycle component
+
+`stable-lifecycle` authenticates the GA publication root and complete maintenance successor chain
+before it derives the real published-build inventory. It assigns every published build one status
+from the closed lifecycle vocabulary, enforces monotonic normal transitions and terminal
+advisory-backed revocation, and emits a digest-chained ledger plus a separately versioned
+`support-lifecycle` descriptor. It never rewrites historical `core-info.json`, publication
+receipts, or baselines.
+
+The side-effect-free command modes are `evaluate`, `prepare-transition`,
+`validate-authorization`, and `verify-publication`. Protected workflow orchestration adds the
+one-time `prove-genesis` operation plus explicit `publish` and independent verification phases.
+Only `publish` receives the purpose-specific private insert capability. A first descriptor requires
+an attested HTTP `404` proof for the exact public target; HTTP `410` is a tombstone and cannot prove
+genesis. Every later edition requires the exact prior ledger and descriptor.
+
+CoreUpdater consumes the published descriptor locally, retains exact last-known-good bytes, and
+exposes a redacted snapshot through the detached runtime SPI. Build revocation remains separate
+from update-key compromise. The lifecycle subscriber continues when package updates are disabled,
+but authenticated update-key compromise invalidates cached lifecycle authority and prevents both
+package and lifecycle subscribers from restarting under that key.
+
+See [Stable 1.0 support lifecycle and deprecation
+governance](stable-1.0-support-lifecycle-and-deprecation-governance.md).

@@ -12,6 +12,8 @@ Use this skill when working on:
 - Core update discovery/download/install flows
 - `NodeUpdateManager` and updater wiring
 - `/core-update/` HTTP endpoint and UI surfacing
+- Stable 1.0 `support-lifecycle` discovery, persistence, trust invalidation, and local status
+  exposure
 - Platform-specific installer behaviors (Linux/macOS/Windows/Flatpak/Snap)
 
 ## CoreUpdater migration (conceptual overview)
@@ -34,6 +36,9 @@ Use this skill when working on:
 - Core updater state surfaces through CorePackage-named APIs:
   - `hasNewCorePackage()`, `newCorePackageVersion()`, `newCorePackageVersionLabel()`
   - `fetchingNewCorePackage()`, `fetchingNewCorePackageVersion()`
+- Stable 1.0 support state crosses the runtime boundary as the immutable
+  `CoreSupportLifecycleSnapshot` returned by `CoreUpdateActionPort#supportLifecycleSnapshot()`.
+  Platform API and Web Shell must not reach updater internals directly.
 - JAR Update-over-Mandatory for core payload transfer is disabled; legacy jar UOM paths remain
   gated/no-ops while revocation/dependency signaling is still active.
 
@@ -48,6 +53,12 @@ Use this skill when working on:
 ## Endpoint and UI
 - HTTP endpoint: `/core-update/`
 - Actions: `download`, `install`, `openStore`
+- Platform API separates app-readable update readiness from operator support state:
+  - `GET /api/v1/updates/core` reports only updater availability and download readiness.
+  - `GET /api/v1/updates/support-lifecycle` is host/operator-only and returns the redacted
+    last-known-good lifecycle projection.
+  - Web Shell fetches those routes independently; never add lifecycle state back to the
+    app-readable core response.
 - UI: alerts panel shows progress percent when available.
   - Failures surface clear retry guidance (non-fatal errors relabel to “Retry”).
 - `NodeUpdater` intentionally delays retries for `FetchExceptionMode.RECENTLY_FAILED` instead of
@@ -63,7 +74,13 @@ Use this skill when working on:
 - HTTP/action layer (`:adapter-http-legacy-admin`): `network.crypta.clients.http.updater.CoreActionToadlet`
 - Updater coordinator/state (`:runtime-node`): `network.crypta.runtime.updater.NodeUpdateManager`
 - Core package downloader (`:runtime-node`): `network.crypta.runtime.updater.CoreUpdater`
+- Lifecycle subscriber/model/parser/store (`:runtime-node`):
+  `CoreSupportLifecycleUpdater`, `CoreSupportLifecycleState`, `CoreSupportLifecycleParser`,
+  `CoreSupportLifecycleStore`, `CoreSupportLifecycleDescriptor`, and
+  `CoreSupportLifecycleEntry`
 - SPI contract: `network.crypta.runtime.spi.CoreUpdateActionPort`
+- SPI lifecycle values: `network.crypta.runtime.spi.CoreSupportLifecycleSnapshot` and
+  `CoreSupportLifecycleStatus`
 - Daemon-backed adapter (`:runtime-node`): `network.crypta.runtime.core.LegacyCoreUpdateActionPort`
 - Aggregate runtime entry point: `network.crypta.runtime.spi.RuntimePorts`
 
@@ -138,7 +155,25 @@ multiple current builds, or a current build that is not the authenticated releas
 Keep the read-only lifecycle subscriber active when `node.updater.enabled=false`; that setting
 disables package fetching and installation, not local support/security status discovery. A genuine
 update-key blow still stops lifecycle fetching because the lifecycle document shares that public
-trust key.
+trust key. Persist accepted bytes at
+`nodeDir/updates/core/support-lifecycle-last-known-good.json`, seed the subscription from the
+accepted edition after restart, and fetch digest-linked successor editions sequentially. Fetch,
+validation, or persistence failure retains the prior descriptor. Persistence retry must remain
+bounded/backed off, and stale callbacks or temporary blobs from a replaced URI/subscription must
+not regress accepted state or leak files.
+
+Lifecycle persistence is crash-durable and platform-aware. Force completed temporary bytes before
+publishing them; synchronize the parent-directory entry where supported and use the Windows native
+write-through move instead of opening a Windows directory as a file channel. Reject unsafe
+descriptor/marker leaves without treating an otherwise accepted symlinked node-directory path as
+compromise evidence when no marker exists.
+
+An authenticated update-key compromise invalidates cached lifecycle authority and package-update
+authority across restart. Maintain the fixed-content sibling marker and independent node-level
+fallback marker, treat an existing malformed/symbolic/unreadable marker as fail-closed compromise
+evidence, retry failed marker persistence with bounded backoff, restore the critical operator alert
+on restart, and block both package and lifecycle subscribers. Local-only updater failure must not
+create that durable compromise latch or permanently stop lifecycle polling.
 
 Expose only the detached, public-safe lifecycle snapshot through `CoreUpdateActionPort`. Unknown or
 stale state must remain explicit; never infer support from update availability or the running build
