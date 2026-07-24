@@ -268,6 +268,8 @@ def _validate_authorization(
     latest_pointer_public_uri: str | None,
     latest_pointer_digest: str | None,
     now: dt.datetime,
+    *,
+    valid_at: dt.datetime | None = None,
 ) -> tuple[dict[str, Any], bool, list[str]]:
     expected_role = (
         "stable-lifecycle-security-manager"
@@ -338,11 +340,13 @@ def _validate_authorization(
     generated = parse_timestamp(authorization.get("generatedAt"))
     expires = parse_timestamp(authorization.get("expiresAt"))
     max_hours = policy["authorization"]["maximumValidityHours"]
+    authorization_time = valid_at if valid_at is not None else now
     if (
         generated is None
         or expires is None
-        or generated > now
-        or expires <= now
+        or authorization_time > now
+        or generated > authorization_time
+        or expires <= authorization_time
         or expires <= generated
         or expires - generated > dt.timedelta(hours=max_hours)
     ):
@@ -411,6 +415,7 @@ def _verify_receipt(
     descriptor: dict[str, Any],
     plan: dict[str, Any],
     authorization: dict[str, Any],
+    verification_time: dt.datetime,
 ) -> tuple[bool, list[str]]:
     if receipt is None:
         return False, []
@@ -442,6 +447,20 @@ def _verify_receipt(
         errors.append("lifecycle publication is neither an exact insert nor idempotent verification")
     if receipt.get("conflict") is not False:
         errors.append("lifecycle publication receipt reports a public-state conflict")
+    receipt_generated = parse_timestamp(receipt.get("generatedAt"))
+    authorization_generated = parse_timestamp(authorization.get("generatedAt"))
+    authorization_expires = parse_timestamp(authorization.get("expiresAt"))
+    if (
+        receipt_generated is None
+        or authorization_generated is None
+        or authorization_expires is None
+        or receipt_generated > verification_time
+        or receipt_generated < authorization_generated
+        or receipt_generated >= authorization_expires
+    ):
+        errors.append(
+            "lifecycle publication receipt timestamp is outside the authorization interval"
+        )
     return not errors, errors
 
 
@@ -776,6 +795,12 @@ def _run(context: RunContext, out: Path, state: ValidationState) -> int:
     ):
         _block(state, EVIDENCE_IDS[1], "authorization-bound latest-maintenance pointer URI is unsafe, mismatched, or aliases the lifecycle descriptor", "Use the exact producer-attested public pointer URI; after the first maintenance publication it must equal the authenticated receipt target.")
     approval_input = _configured_json(context, "stableLifecycleAuthorization")
+    receipt_input = _configured_json(context, "stableLifecyclePublicationReceipt")
+    authorization_valid_at = (
+        parse_timestamp(receipt_input.get("generatedAt"))
+        if mode == "verify-publication" and receipt_input is not None
+        else None
+    )
     authorization, authorization_valid, approval_errors = _validate_authorization(
         approval_input,
         policy,
@@ -786,6 +811,7 @@ def _run(context: RunContext, out: Path, state: ValidationState) -> int:
         latest_pointer_public_uri,
         latest_pointer_digest,
         actual_now,
+        valid_at=authorization_valid_at,
     )
     for error in approval_errors:
         _block(state, EVIDENCE_IDS[6], error, "Obtain exact unexpired protected lifecycle approval.")
@@ -809,9 +835,8 @@ def _run(context: RunContext, out: Path, state: ValidationState) -> int:
         transition_set["transitionSetDigest"],
     )
     _schema_block(state, EVIDENCE_IDS[13], plan, SCHEMAS[PLAN_FILE])
-    receipt_input = _configured_json(context, "stableLifecyclePublicationReceipt")
     receipt_verified, receipt_errors = _verify_receipt(
-        receipt_input, descriptor, plan, authorization
+        receipt_input, descriptor, plan, authorization, actual_now
     )
     for error in receipt_errors:
         evidence = EVIDENCE_IDS[13] if "conflict" in error else EVIDENCE_IDS[14]

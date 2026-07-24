@@ -70,18 +70,20 @@ public interface CoreUpdateActionPort {
   boolean startCoreDownloadFromUi();
 
   /**
-   * Resolves one raw installer path to a canonical downloaded-installer path when it stays within
-   * the legacy core-updater download area.
+   * Resolves one raw installer path to the canonical, currently approved downloaded package.
    *
    * <p>Implementations preserve the existing {@code <nodeDir>/updates/core} containment check and
-   * return an empty result for blank, invalid, or out-of-tree inputs. The returned path is
-   * canonical, detached from daemon-only file-wrapper types, and suitable for later launcher or
-   * installer handling in the HTTP layer. The method validates location only; callers still handle
-   * later file existence or execution failures through the normal installation flow.
+   * return an empty result for blank, invalid, out-of-tree, superseded, or lifecycle-revoked
+   * inputs. The returned path must identify the exact successful package still selected by the
+   * daemon updater when the installation request is submitted. This final runtime lookup prevents
+   * an already-rendered browser form from launching a package after authenticated lifecycle state
+   * has revoked its build. The path is canonical and detached from daemon-only file-wrapper types;
+   * callers still handle later file existence or execution failures through the normal installation
+   * flow.
    *
    * @param rawPath raw installer path string read from the HTTP request body or query data
-   * @return canonical installer path when accepted; otherwise {@link Optional#empty()} for blank,
-   *     malformed, or out-of-tree input
+   * @return canonical installer path when currently selected and accepted; otherwise {@link
+   *     Optional#empty()}
    */
   Optional<Path> resolveDownloadedInstaller(String rawPath);
 }

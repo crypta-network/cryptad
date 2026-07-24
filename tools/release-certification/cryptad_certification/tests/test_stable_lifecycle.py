@@ -8,6 +8,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from cryptad_certification.engines.stable_1_0_lifecycle import (
     _descriptor_freshness_errors,
@@ -378,7 +379,7 @@ class StableLifecycleCommandIntegrationTest(unittest.TestCase):
             authorization.update(
                 {
                     "authorizationId": "stable-lifecycle-test-approval",
-                    "expiresAt": (generated + dt.timedelta(hours=1))
+                    "expiresAt": (generated + dt.timedelta(minutes=1))
                     .isoformat()
                     .replace("+00:00", "Z"),
                     "decision": "approved",
@@ -440,18 +441,36 @@ class StableLifecycleCommandIntegrationTest(unittest.TestCase):
             )
             manifest["commands"]["stable-lifecycle"]["mode"] = "verify-publication"
             write_json(manifest_path, manifest)
-            self.assertEqual(
-                certify_main(
-                    [
-                        "stable-lifecycle",
-                        "--workspace-root",
-                        str(workspace),
-                        "--manifest",
-                        str(manifest_path),
-                    ]
-                ),
-                0,
-            )
+            verification_time = generated + dt.timedelta(minutes=2)
+
+            class VerificationDateTime(dt.datetime):
+                @classmethod
+                def now(cls, timezone: dt.tzinfo | None = None) -> dt.datetime:
+                    return (
+                        verification_time.astimezone(timezone)
+                        if timezone is not None
+                        else verification_time.replace(tzinfo=None)
+                    )
+
+            with patch(
+                "cryptad_certification.engines.stable_1_0_lifecycle.dt.datetime",
+                VerificationDateTime,
+            ):
+                self.assertEqual(
+                    certify_main(
+                        [
+                            "stable-lifecycle",
+                            "--workspace-root",
+                            str(workspace),
+                            "--manifest",
+                            str(manifest_path),
+                        ]
+                    ),
+                    0,
+                    read_json(
+                        native / "stable-1.0-support-lifecycle-summary.json"
+                    ),
+                )
             verified = read_json(native / "stable-1.0-support-lifecycle-summary.json")
             self.assertTrue(verified["promotionReady"])
             self.assertEqual(verified["publicationState"], "publication-verified")
@@ -2286,6 +2305,18 @@ class StableLifecycleDescriptorAndPublicationTest(unittest.TestCase):
         for key in prepared:
             if key not in {"authorizationId", "generatedAt", "expiresAt", "decision"}:
                 authorization[key] = prepared[key]
+        _, authorization_valid, authorization_errors = _validate_authorization(
+            authorization,
+            POLICY,
+            descriptor,
+            ledger,
+            transition_set,
+            PUBLIC_URI,
+            MAINTENANCE_POINTER_URI,
+            None,
+            now,
+        )
+        self.assertTrue(authorization_valid, authorization_errors)
         plan = _publication_plan(
             descriptor,
             ledger,
@@ -2299,7 +2330,7 @@ class StableLifecycleDescriptorAndPublicationTest(unittest.TestCase):
         receipt = {
             "schemaVersion": 1,
             "kind": "stable-1.0-support-lifecycle-publication-receipt",
-            "generatedAt": descriptor["generatedAt"],
+            "generatedAt": now.isoformat().replace("+00:00", "Z"),
             "stableMilestone": "1.0",
             "descriptorEdition": descriptor["descriptorEdition"],
             "descriptorDigest": descriptor["descriptorDigest"],
@@ -2319,10 +2350,46 @@ class StableLifecycleDescriptorAndPublicationTest(unittest.TestCase):
             "conflict": False,
             "redaction": {"status": "pass", "findingCount": 0, "findings": []},
         }
-        valid, errors = _verify_receipt(receipt, descriptor, plan, authorization)
+        valid, errors = _verify_receipt(receipt, descriptor, plan, authorization, now)
         self.assertTrue(valid, errors)
+
+        verification_after_expiry = now + dt.timedelta(hours=2)
+        _, historical_authorization_valid, historical_authorization_errors = (
+            _validate_authorization(
+                authorization,
+                POLICY,
+                descriptor,
+                ledger,
+                transition_set,
+                PUBLIC_URI,
+                MAINTENANCE_POINTER_URI,
+                None,
+                verification_after_expiry,
+                valid_at=now,
+            )
+        )
+        self.assertTrue(
+            historical_authorization_valid, historical_authorization_errors
+        )
+        historical_receipt_valid, historical_receipt_errors = _verify_receipt(
+            receipt,
+            descriptor,
+            plan,
+            authorization,
+            verification_after_expiry,
+        )
+        self.assertTrue(historical_receipt_valid, historical_receipt_errors)
+
+        receipt["generatedAt"] = authorization["expiresAt"]
+        valid, errors = _verify_receipt(
+            receipt, descriptor, plan, authorization, verification_after_expiry
+        )
+        self.assertFalse(valid)
+        self.assertTrue(any("authorization interval" in error for error in errors))
+
+        receipt["generatedAt"] = now.isoformat().replace("+00:00", "Z")
         receipt["descriptorBytesDigest"] = OTHER_DIGEST
-        valid, _ = _verify_receipt(receipt, descriptor, plan, authorization)
+        valid, _ = _verify_receipt(receipt, descriptor, plan, authorization, now)
         self.assertFalse(valid)
 
 

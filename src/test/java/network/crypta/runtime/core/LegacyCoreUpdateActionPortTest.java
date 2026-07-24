@@ -113,12 +113,31 @@ class LegacyCoreUpdateActionPortTest {
     File installer = new File(updatesDir, "version/../cryptad.deb");
     assertTrue(updatesDir.mkdirs() || updatesDir.isDirectory());
     when(node.getNodeDir()).thenReturn(nodeDir);
+    when(node.services().nodeUpdater()).thenReturn(nodeUpdateManager);
+    when(nodeUpdateManager.getCoreUpdater()).thenReturn(coreUpdater);
+    when(coreUpdater.getDownloadedFile()).thenReturn(installer.getCanonicalFile());
 
     LegacyCoreUpdateActionPort port = new LegacyCoreUpdateActionPort(node);
 
     Path resolved = port.resolveDownloadedInstaller(installer.getPath()).orElseThrow();
 
     assertEquals(installer.getCanonicalFile().toPath(), resolved);
+  }
+
+  @Test
+  void resolveDownloadedInstaller_whenLifecycleRevokesRenderedPackage_expectEmpty() {
+    File nodeDir = tempDir.resolve("node").toFile();
+    File updatesDir = new File(nodeDir, "updates/core");
+    File installer = new File(updatesDir, "1501/cryptad.deb");
+    assertTrue(installer.getParentFile().mkdirs());
+    when(node.getNodeDir()).thenReturn(nodeDir);
+    when(node.services().nodeUpdater()).thenReturn(nodeUpdateManager);
+    when(nodeUpdateManager.getCoreUpdater()).thenReturn(coreUpdater);
+    when(coreUpdater.getDownloadedFile()).thenReturn(null);
+
+    LegacyCoreUpdateActionPort port = new LegacyCoreUpdateActionPort(node);
+
+    assertTrue(port.resolveDownloadedInstaller(installer.getPath()).isEmpty());
   }
 
   @Test

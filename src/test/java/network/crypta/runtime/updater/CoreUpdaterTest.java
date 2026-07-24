@@ -164,9 +164,15 @@ class CoreUpdaterTest {
   void packageActions_whenAdvertisedBuildIsRevoked_expectPackageTargetBlocked() throws Exception {
     CoreUpdater updater = createCoreUpdater();
     int advertisedBuild = Version.currentBuildNumber() + 1;
+    File completedPackage = Files.createTempFile("cryptad-revoked-package", ".deb").toFile();
     setField(updater, "latestVersionBuild", advertisedBuild);
     setField(updater, "selectedSpec", new PackageSpec(VALID_CHK, 10L, null));
     setSelectedKey(updater);
+    CoreUpdater.PackageFetcher completedFetcher = mock(CoreUpdater.PackageFetcher.class);
+    when(completedFetcher.matchesChk(VALID_CHK)).thenReturn(true);
+    when(completedFetcher.isSuccess()).thenReturn(true);
+    when(completedFetcher.completedFileOrNull()).thenReturn(completedPackage);
+    setField(updater, "fetcher", completedFetcher);
     when(updater.manager.isCorePackageBuildRevoked(advertisedBuild)).thenReturn(true);
 
     assertFalse(updater.canUpdateNow());

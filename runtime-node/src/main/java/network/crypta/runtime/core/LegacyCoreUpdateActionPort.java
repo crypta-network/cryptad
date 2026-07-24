@@ -79,9 +79,14 @@ final class LegacyCoreUpdateActionPort implements CoreUpdateActionPort {
       File base = new File(node.getNodeDir(), CORE_UPDATE_DIRECTORY).getCanonicalFile();
       File candidate = new File(rawPath).getCanonicalFile();
       Path candidatePath = candidate.toPath();
-      return candidatePath.startsWith(base.toPath())
-          ? Optional.of(candidatePath)
-          : Optional.empty();
+      if (!candidatePath.startsWith(base.toPath())) {
+        return Optional.empty();
+      }
+      File downloaded = getCoreUpdater().map(CoreUpdater::getDownloadedFile).orElse(null);
+      if (downloaded == null || !candidate.equals(downloaded.getCanonicalFile())) {
+        return Optional.empty();
+      }
+      return Optional.of(candidatePath);
     } catch (IOException _) {
       return Optional.empty();
     }
