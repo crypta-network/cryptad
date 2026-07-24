@@ -184,6 +184,10 @@ public class RevocationChecker implements ClientGetCallback, RequestClient {
    * its previous value. The method returns whether an in‑flight request existed prior to this call
    * (useful for callers wanting to know if they took over an existing cycle).
    *
+   * <p>A local package-updater failure does not stop this trust check. After a persisted
+   * authenticated compromise is restored, polling also continues until this checker has recovered
+   * the revocation certificate needed for peer announcements.
+   *
    * @param aggressive when {@code true}, raises priority to the maximum request class; when {@code
    *     false}, submits at a lower, immediate class suitable for background checking.
    * @param reset when {@code true}, clears the internal DNF counter before queuing a new request;
@@ -192,8 +196,8 @@ public class RevocationChecker implements ClientGetCallback, RequestClient {
    *     one; {@code false} otherwise.
    */
   public boolean start(boolean aggressive, boolean reset) {
-    if (manager.isBlown() && !shouldRecoverCompromisedKeyCertificate()) {
-      LOG.error("Not starting revocation checker: key already blown!");
+    if (manager.isUpdateKeyCompromised() && blown) {
+      LOG.error("Not starting revocation checker: compromised-key certificate already loaded");
       return false;
     }
     boolean wasRunning;
@@ -227,10 +231,6 @@ public class RevocationChecker implements ClientGetCallback, RequestClient {
       // Impossible
       return false;
     }
-  }
-
-  private boolean shouldRecoverCompromisedKeyCertificate() {
-    return manager.isUpdateKeyCompromised() && !blown;
   }
 
   private record StartPrep(ClientGetter cg, ClientGetter toCancel, boolean wasRunning) {}

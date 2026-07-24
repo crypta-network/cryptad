@@ -162,6 +162,11 @@ validation, or persistence failure retains the prior descriptor. Persistence ret
 bounded/backed off, and stale callbacks or temporary blobs from a replaced URI/subscription must
 not regress accepted state or leak files.
 
+Local-only package-updater failure must leave both lifecycle polling and revocation-key polling
+active; only authenticated update-key compromise invalidates documents under that key. Package
+payload downloads remain serialized, but completion of an older CHK fetch must retry a newer
+automatic selection that was advertised while the older fetch was active.
+
 Lifecycle persistence is crash-durable and platform-aware. Force completed temporary bytes before
 publishing them; synchronize the parent-directory entry where supported and use the Windows native
 write-through move instead of opening a Windows directory as a file channel. Reject unsafe

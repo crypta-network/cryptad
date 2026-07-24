@@ -12,8 +12,12 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.client.FetchContext;
 import network.crypta.client.FetchContextOptions;
+import network.crypta.client.FetchException.FetchExceptionMode;
+import network.crypta.client.FetchException;
+import network.crypta.client.FetchResult;
 import network.crypta.client.HighLevelSimpleClient;
 import network.crypta.client.async.ClientContext;
+import network.crypta.client.async.ClientGetter;
 import network.crypta.client.async.USKManager;
 import network.crypta.client.events.SimpleEventProducer;
 import network.crypta.keys.FreenetURI;
@@ -33,10 +37,12 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeFalse;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyShort;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -45,6 +51,9 @@ class CoreUpdaterTest {
   private static final String VALID_CHK =
       "CHK@DTCDUmnkKFlrJi9UlDDVqXlktsIXvAJ~ZTseyx5cAZs,"
           + "PmA2rLgWZKVyMXxSn-ZihSskPYDTY19uhrMwqDV-~Sk,AAICAAI/index_d51.xml";
+  private static final String REPLACEMENT_CHK =
+      "CHK@DTCDUmnkKFlrJi9UlDDVqXlktsIXvAJ~ZTseyx5cAZs,"
+          + "PmA2rLgWZKVyMXxSn-ZihSskPYDTY19uhrMwqDV-~Sk,AAICAAI/index_d52.xml";
   private static final String SELECTED_PACKAGE_KEY = "amd64.deb";
   private static final String STORE_PACKAGE_KEY = "amd64.flatpak";
   private static final String STORE_PACKAGE_ID = "network.crypta.Cryptad";
@@ -373,6 +382,34 @@ class CoreUpdaterTest {
   }
 
   @Test
+  void onSuccess_whenAutomaticSelectionChangesDuringFetch_expectReplacementStarts()
+      throws Exception {
+    CoreUpdater updater = updaterWithActivePackageFetch();
+    CoreUpdater.PackageFetcher originalFetcher = currentPackageFetcher(updater);
+    setField(updater, "selectedSpec", new PackageSpec(REPLACEMENT_CHK, 10L, null));
+    ClientContext clientContext = updater.core.getClientContext();
+
+    originalFetcher.onSuccess(mock(FetchResult.class), null);
+
+    assertTrue(currentPackageFetcher(updater).matchesChk(REPLACEMENT_CHK));
+    verify(clientContext, times(2)).start(any(ClientGetter.class));
+  }
+
+  @Test
+  void onFailure_whenAutomaticSelectionChangesDuringFetch_expectReplacementStarts()
+      throws Exception {
+    CoreUpdater updater = updaterWithActivePackageFetch();
+    CoreUpdater.PackageFetcher originalFetcher = currentPackageFetcher(updater);
+    setField(updater, "selectedSpec", new PackageSpec(REPLACEMENT_CHK, 10L, null));
+    ClientContext clientContext = updater.core.getClientContext();
+
+    originalFetcher.onFailure(new FetchException(FetchExceptionMode.ROUTE_NOT_FOUND));
+
+    assertTrue(currentPackageFetcher(updater).matchesChk(REPLACEMENT_CHK));
+    verify(clientContext, times(2)).start(any(ClientGetter.class));
+  }
+
+  @Test
   void onChangeURI_whenUpdaterResubscribes_expectPackageDownloadsRemainEnabled() throws Exception {
     CoreUpdater updater = createCoreUpdater();
     FreenetURI replacementUri =
@@ -434,6 +471,16 @@ class CoreUpdaterTest {
     return new CoreUpdater(defaultParams(manager));
   }
 
+  private static CoreUpdater updaterWithActivePackageFetch() throws Exception {
+    CoreUpdater updater = createCoreUpdater();
+    setField(updater, "latestVersionBuild", Version.currentBuildNumber() + 1);
+    setField(updater, "selectedSpec", new PackageSpec(VALID_CHK, 10L, null));
+    setSelectedKey(updater);
+    when(updater.manager.isAutoUpdateAllowed()).thenReturn(true);
+    assertTrue(updater.startDownloadFromUI());
+    return updater;
+  }
+
   private static NodeUpdaterParams defaultParams(NodeUpdateManager manager)
       throws MalformedURLException {
     return new NodeUpdaterParams(
@@ -485,5 +532,13 @@ class CoreUpdaterTest {
     Field field = CoreUpdater.class.getDeclaredField("selectedKey");
     field.setAccessible(true);
     field.set(updater, selectedKey);
+  }
+
+  @SuppressWarnings("unchecked")
+  private static CoreUpdater.PackageFetcher currentPackageFetcher(CoreUpdater updater)
+      throws Exception {
+    Field field = CoreUpdater.class.getDeclaredField("fetcher");
+    field.setAccessible(true);
+    return ((AtomicReference<CoreUpdater.PackageFetcher>) field.get(updater)).get();
   }
 }

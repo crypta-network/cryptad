@@ -109,16 +109,14 @@ class RevocationCheckerTest {
   }
 
   @Test
-  void start_whenManagerAlreadyBlown_expectFalseAndNoStart() throws Exception {
-    // Arrange
+  void start_whenManagerLocallyBlown_expectRevocationFetchStarts() throws Exception {
     when(manager.isBlown()).thenReturn(true);
+    when(manager.isUpdateKeyCompromised()).thenReturn(false);
 
-    // Act
     boolean alreadyRunning = checker.start(true, true);
 
-    // Assert
     assertFalse(alreadyRunning);
-    verify(clientContext, never()).start(Mockito.<ClientGetter>any());
+    verify(clientContext).start(Mockito.<ClientGetter>any());
   }
 
   @Test
@@ -131,6 +129,21 @@ class RevocationCheckerTest {
 
     assertFalse(alreadyRunning);
     verify(clientContext).start(Mockito.<ClientGetter>any());
+  }
+
+  @Test
+  void start_whenAuthenticatedCompromiseCertificateAlreadyLoaded_expectNoStart() throws Exception {
+    when(manager.isBlown()).thenReturn(true);
+    when(manager.isUpdateKeyCompromised()).thenReturn(true);
+    FetchResult result = mock(FetchResult.class);
+    when(result.asByteArray()).thenReturn("Revoked".getBytes(StandardCharsets.UTF_8));
+    when(result.getMimeType()).thenReturn("text/plain");
+    checker.onSuccess(result, null, new ArrayBucket("BLOB".getBytes(StandardCharsets.UTF_8)));
+
+    boolean alreadyRunning = checker.start(true, true);
+
+    assertFalse(alreadyRunning);
+    verify(clientContext, never()).start(Mockito.<ClientGetter>any());
   }
 
   @Test

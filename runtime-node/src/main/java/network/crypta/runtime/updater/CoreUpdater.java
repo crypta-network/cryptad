@@ -562,6 +562,10 @@ public class CoreUpdater extends NodeUpdater {
         logInfo("Skipping download start: another package download is still running");
         return false;
       }
+      if (current != null && current.matchesChk(chk) && current.isSuccess()) {
+        logInfo("Skipping download start: selected package is already downloaded");
+        return false;
+      }
       fetcher.set(f);
       logInfo(
           "starting download: key="
@@ -1064,6 +1068,28 @@ public class CoreUpdater extends NodeUpdater {
       return candidate != null && candidate.equals(chkString);
     }
 
+    /**
+     * Starts a newer automatic selection after this fetch has completed.
+     *
+     * <p>All current trust, lifecycle, and shutdown gates are rechecked by {@link
+     * CoreUpdater#tryStartDownload()} before the replacement fetch starts.
+     */
+    private void retrySupersedingAutomaticSelection() {
+      PackageSpec currentSelection = selectedSpec.get();
+      Integer currentBuild = latestVersionBuild.get();
+      if (fetcher.get() != this
+          || !manager.isAutoUpdateAllowed()
+          || currentSelection == null
+          || currentSelection.chk() == null
+          || matchesChk(currentSelection.chk())
+          || !isNewerThanCurrentBuild(currentBuild)) {
+        return;
+      }
+      CoreUpdater.this.logInfo(
+          "Starting package selected while the previous package download was running");
+      CoreUpdater.this.tryStartDownload();
+    }
+
     @Override
     public void onSuccess(FetchResult result, ClientGetter state) {
       detachProgressListener();
@@ -1074,6 +1100,7 @@ public class CoreUpdater extends NodeUpdater {
       errorMsg = null;
       CoreUpdater.this.logInfo(
           "download complete: " + outFile.getAbsolutePath() + " (size=" + outFile.length() + ")");
+      retrySupersedingAutomaticSelection();
     }
 
     @Override
@@ -1089,11 +1116,11 @@ public class CoreUpdater extends NodeUpdater {
         fatal = false;
       }
       errorMsg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
-      if (e.mode == FetchExceptionMode.CANCELLED) {
-        return;
+      if (e.mode != FetchExceptionMode.CANCELLED) {
+        CoreUpdater.this.logError(
+            "Package download failed: " + (errorMsg != null ? errorMsg : "unknown error"), e);
       }
-      CoreUpdater.this.logError(
-          "Package download failed: " + (errorMsg != null ? errorMsg : "unknown error"), e);
+      retrySupersedingAutomaticSelection();
     }
 
     @Override
