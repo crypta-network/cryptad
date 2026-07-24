@@ -1113,6 +1113,10 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
 
   /** Cancels any active fetch and unsubscribes from the USK. Safe to call multiple times. */
   void kill() {
+    stopSubscription();
+  }
+
+  private void stopSubscription() {
     ClientGetter stoppedGetter;
     FetchAttempt stoppedAttempt;
     FreenetURI stoppedUri;
@@ -1174,7 +1178,7 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
     synchronized (this) {
       previousDocName = (this.uri != null) ? this.uri.getDocName() : null;
     }
-    kill(); // unsubscribes from the old uri
+    stopSubscription();
     FreenetURI nextUri =
         (previousDocName != null && (newUri.getDocName() == null || newUri.getDocName().isEmpty()))
             ? newUri.setDocName(previousDocName)

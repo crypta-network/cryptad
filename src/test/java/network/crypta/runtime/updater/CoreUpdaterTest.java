@@ -13,6 +13,8 @@ import java.util.concurrent.atomic.AtomicReference;
 import network.crypta.client.FetchContext;
 import network.crypta.client.FetchContextOptions;
 import network.crypta.client.HighLevelSimpleClient;
+import network.crypta.client.async.ClientContext;
+import network.crypta.client.async.USKManager;
 import network.crypta.client.events.SimpleEventProducer;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.Node;
@@ -319,6 +321,18 @@ class CoreUpdaterTest {
   }
 
   @Test
+  void onChangeURI_whenUpdaterResubscribes_expectPackageDownloadsRemainEnabled() throws Exception {
+    CoreUpdater updater = createCoreUpdater();
+    FreenetURI replacementUri =
+        new FreenetURI("USK@" + NodeUpdateManager.UPDATE_URI + "/replacement-info/1200");
+    updater.onChangeURI(replacementUri, 1200);
+    setField(updater, "selectedSpec", new PackageSpec(VALID_CHK, 10L, null));
+    setSelectedKey(updater);
+
+    assertTrue(updater.startDownloadFromUI());
+  }
+
+  @Test
   void kill_whenPackageDownloadIsActive_expectDownloadCancelled() throws Exception {
     CoreUpdater updater = createCoreUpdater();
     CoreUpdater.PackageFetcher fetcher = mock(CoreUpdater.PackageFetcher.class);
@@ -347,6 +361,8 @@ class CoreUpdaterTest {
     when(node.network().ticker()).thenReturn(ticker);
     when(core.makeClient(anyShort(), anyBoolean(), anyBoolean())).thenReturn(client);
     when(client.getFetchContext()).thenReturn(createFetchContext());
+    when(core.getUskManager()).thenReturn(mock(USKManager.class));
+    when(core.getClientContext()).thenReturn(mock(ClientContext.class));
 
     return new CoreUpdater(defaultParams(manager));
   }

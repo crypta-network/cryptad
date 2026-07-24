@@ -303,7 +303,7 @@ class NodeUpdateManagerTest {
     assertNull(getSupportLifecycleUpdater(restarted));
     verify(alerts).register(same(restoredAlert));
     verifyNoInteractions(uskManager);
-    verify(clientContext).start(any(ClientGetter.class));
+    verifyNoInteractions(clientContext);
   }
 
   @Test
@@ -330,6 +330,7 @@ class NodeUpdateManagerTest {
     assertNull(getSupportLifecycleUpdater(restarted));
     verify(alerts).register(same(restoredAlert));
     verifyNoInteractions(uskManager);
+    verifyNoInteractions(clientContext);
   }
 
   @Test

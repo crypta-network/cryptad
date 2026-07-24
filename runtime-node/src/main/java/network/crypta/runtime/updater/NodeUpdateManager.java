@@ -549,6 +549,14 @@ public final class NodeUpdateManager {
 
     // Deprecated: seednodes/installers are no longer auto-fetched here
 
+    startIpToCountryPullIfUpdateKeyTrusted();
+  }
+
+  private void startIpToCountryPullIfUpdateKeyTrusted() {
+    if (updateKeyCompromised) {
+      LOG.warn("Not fetching the IPv4-to-country database: update-key trust is invalidated");
+      return;
+    }
     // Note: make updateIPToCountry configurable
     SimplePuller ip4Getter = new SimplePuller(getIPv4ToCountryURI(), NodeFile.IPV4_TO_COUNTRY);
     ip4Getter.start(RequestStarter.UPDATE_PRIORITY_CLASS, MAX_IP_TO_COUNTRY_LENGTH);
