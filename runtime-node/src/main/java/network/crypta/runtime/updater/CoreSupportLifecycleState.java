@@ -132,7 +132,7 @@ final class CoreSupportLifecycleState {
     try {
       store.invalidateTrust();
       return true;
-    } catch (IOException _) {
+    } catch (IOException | RuntimeException _) {
       lastFailureCode = "lifecycle_trust_invalidation_persistence_failed";
       return false;
     }

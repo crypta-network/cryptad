@@ -1051,17 +1051,28 @@ public final class NodeUpdateManager {
    *     global revocation), {@code false} when the revocation key indicates a global blow
    */
   public void blow(String msg, boolean disabledNotBlown) {
-    boolean trustInvalidationPersisted = persistCompromisedUpdateKeyInvalidation(disabledNotBlown);
     BlowTransition transition = registerBlowTransition(msg, disabledNotBlown);
-    scheduleTrustInvalidationRetryIfNeeded(disabledNotBlown, trustInvalidationPersisted);
+    try {
+      stopBlownUpdateSubscribers(transition);
+    } finally {
+      boolean trustInvalidationPersisted =
+          persistCompromisedUpdateKeyInvalidation(disabledNotBlown);
+      scheduleTrustInvalidationRetryIfNeeded(disabledNotBlown, trustInvalidationPersisted);
+    }
     if (transition.alreadyBlown()) {
       return;
     }
-    completeBlowTransition(msg, disabledNotBlown, transition);
+    completeBlowTransition(msg, disabledNotBlown);
   }
 
   private boolean persistCompromisedUpdateKeyInvalidation(boolean disabledNotBlown) {
-    boolean persisted = disabledNotBlown || supportLifecycleState.invalidateCompromisedUpdateKey();
+    boolean persisted;
+    try {
+      persisted = disabledNotBlown || supportLifecycleState.invalidateCompromisedUpdateKey();
+    } catch (RuntimeException e) {
+      LOG.error("Unable to durably invalidate lifecycle state for the compromised update key", e);
+      return false;
+    }
     if (!persisted) {
       LOG.error("Unable to durably invalidate lifecycle state for the compromised update key");
     }
@@ -1161,15 +1172,20 @@ public final class NodeUpdateManager {
     }
   }
 
-  private void completeBlowTransition(
-      String msg, boolean disabledNotBlown, BlowTransition transition) {
-    printRevocationMessage(disabledNotBlown, msg);
+  private static void stopBlownUpdateSubscribers(BlowTransition transition) {
+    if (transition.alreadyBlown()) {
+      return;
+    }
     if (transition.stoppedCoreUpdater() != null) {
       transition.stoppedCoreUpdater().kill();
     }
     if (transition.stoppedLifecycleUpdater() != null) {
       transition.stoppedLifecycleUpdater().kill();
     }
+  }
+
+  private void completeBlowTransition(String msg, boolean disabledNotBlown) {
+    printRevocationMessage(disabledNotBlown, msg);
     // We don't need to advertise package updates: we are not going to install them.
     killUpdateAlerts();
     getUpdateOverMandatory().killAlert();

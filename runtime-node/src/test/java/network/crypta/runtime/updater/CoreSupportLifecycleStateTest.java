@@ -29,6 +29,7 @@ class CoreSupportLifecycleStateTest {
   private static final Instant VERIFIED_AT = Instant.parse("2026-01-02T12:00:00Z");
   private static final Instant RESTARTED_AT = Instant.parse("2026-01-05T12:00:00Z");
   private static final String TRUST_INVALIDATED_WARNING = "lifecycle_trust_invalidated";
+  private static final String LIFECYCLE_STATE_PATH = "updates/core/lifecycle.json";
 
   @Test
   void accept_whenCertificationFixtureIsValid_expectKnownCurrentStableSnapshot(
@@ -116,9 +117,43 @@ class CoreSupportLifecycleStateTest {
   }
 
   @Test
+  void invalidateCompromisedUpdateKey_whenPersistenceThrowsUnchecked_expectTrustFailsClosed(
+      @TempDir Path tempDir) {
+    CoreSupportLifecycleStore.PersistenceSync failingPersistence =
+        new CoreSupportLifecycleStore.PersistenceSync() {
+          @Override
+          public void forceFile(Path file) {
+            throw new IllegalStateException("simulated persistence failure");
+          }
+
+          @Override
+          public void publish(Path temporary, Path target, boolean replaceExisting) {
+            throw new IllegalStateException("simulated persistence failure");
+          }
+        };
+    CoreSupportLifecycleState state =
+        new CoreSupportLifecycleState(
+            new CoreSupportLifecycleStore(
+                tempDir.resolve(LIFECYCLE_STATE_PATH), null, failingPersistence),
+            new CoreSupportLifecycleParser(),
+            Clock.fixed(VERIFIED_AT, ZoneOffset.UTC),
+            100,
+            "a".repeat(40),
+            trust());
+
+    boolean persisted = state.invalidateCompromisedUpdateKey();
+
+    assertFalse(persisted);
+    assertTrue(state.isUpdateKeyTrustInvalidated());
+    assertFalse(state.snapshot().known());
+    assertEquals(
+        List.of("lifecycle_trust_invalidation_persistence_failed"), state.snapshot().warnings());
+  }
+
+  @Test
   void constructor_whenTrustInvalidationMarkerIsMalformed_expectTrustFailsClosed(
       @TempDir Path tempDir) throws Exception {
-    Path descriptor = tempDir.resolve("updates/core/lifecycle.json");
+    Path descriptor = tempDir.resolve(LIFECYCLE_STATE_PATH);
     Files.createDirectories(tempDir.resolve("updates/core"));
     Files.writeString(
         descriptor.resolveSibling(descriptor.getFileName() + ".trust-invalidated"), "malformed");
@@ -255,7 +290,7 @@ class CoreSupportLifecycleStateTest {
   private static CoreSupportLifecycleState state(
       Path tempDir, Instant now, String runningSourceCommit) {
     return new CoreSupportLifecycleState(
-        new CoreSupportLifecycleStore(tempDir.resolve("updates/core/lifecycle.json")),
+        new CoreSupportLifecycleStore(tempDir.resolve(LIFECYCLE_STATE_PATH)),
         new CoreSupportLifecycleParser(),
         Clock.fixed(now, ZoneOffset.UTC),
         100,

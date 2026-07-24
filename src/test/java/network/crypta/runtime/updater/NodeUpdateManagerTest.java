@@ -175,6 +175,12 @@ class NodeUpdateManagerTest {
     coreUpdaterField.set(manager, updater);
   }
 
+  private void setSupportLifecycleUpdater(CoreSupportLifecycleUpdater updater) throws Exception {
+    Field updaterField = NodeUpdateManager.class.getDeclaredField("supportLifecycleUpdater");
+    updaterField.setAccessible(true);
+    updaterField.set(manager, updater);
+  }
+
   private CoreSupportLifecycleUpdater getSupportLifecycleUpdater() throws Exception {
     return getSupportLifecycleUpdater(manager);
   }
@@ -341,6 +347,63 @@ class NodeUpdateManagerTest {
         List.of("lifecycle_trust_invalidated"), manager.supportLifecycleSnapshot().warnings());
     assertFalse(Files.exists(persisted));
     assertTrue(Files.isRegularFile(trustInvalidationMarker(persisted)));
+  }
+
+  @Test
+  void blow_whenUpdateKeyIsCompromised_expectSubscribersStoppedBeforeTrustPersistence()
+      throws Exception {
+    Path descriptor = tempDir.resolve("node/updates/core/support-lifecycle-last-known-good.json");
+    Path marker = trustInvalidationMarker(descriptor);
+    CoreUpdater coreUpdater = mock(CoreUpdater.class);
+    CoreSupportLifecycleUpdater lifecycleUpdater = mock(CoreSupportLifecycleUpdater.class);
+    AtomicInteger preparedSubscribers = new AtomicInteger();
+    AtomicInteger stoppedSubscribers = new AtomicInteger();
+    setCoreUpdater(coreUpdater);
+    setSupportLifecycleUpdater(lifecycleUpdater);
+    doAnswer(
+            _ -> {
+              assertTrue(manager.isBlown());
+              assertTrue(manager.isUpdateKeyCompromised());
+              assertFalse(Files.exists(marker));
+              preparedSubscribers.incrementAndGet();
+              return null;
+            })
+        .when(coreUpdater)
+        .preKill();
+    doAnswer(
+            _ -> {
+              assertTrue(manager.isBlown());
+              assertTrue(manager.isUpdateKeyCompromised());
+              assertFalse(Files.exists(marker));
+              preparedSubscribers.incrementAndGet();
+              return null;
+            })
+        .when(lifecycleUpdater)
+        .preKill();
+    doAnswer(
+            _ -> {
+              assertFalse(Files.exists(marker));
+              stoppedSubscribers.incrementAndGet();
+              return null;
+            })
+        .when(coreUpdater)
+        .kill();
+    doAnswer(
+            _ -> {
+              assertFalse(Files.exists(marker));
+              stoppedSubscribers.incrementAndGet();
+              return null;
+            })
+        .when(lifecycleUpdater)
+        .kill();
+
+    manager.blow("authenticated update-key compromise", false);
+
+    assertEquals(2, preparedSubscribers.get());
+    assertEquals(2, stoppedSubscribers.get());
+    verify(coreUpdater).kill();
+    verify(lifecycleUpdater).kill();
+    assertTrue(Files.isRegularFile(marker));
   }
 
   @Test

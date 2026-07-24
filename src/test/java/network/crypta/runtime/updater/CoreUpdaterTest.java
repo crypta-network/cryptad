@@ -34,6 +34,7 @@ import static org.junit.jupiter.api.Assumptions.assumeFalse;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyShort;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @SuppressWarnings("java:S100")
@@ -277,6 +278,27 @@ class CoreUpdaterTest {
     setField(updater, "fetcher", fetcher);
 
     assertFalse(updater.isUiDownloadAvailable());
+  }
+
+  @Test
+  void startDownloadFromUI_whenUpdaterIsBlown_expectDownloadDoesNotStart() throws Exception {
+    CoreUpdater updater = createCoreUpdater();
+    setField(updater, "selectedSpec", new PackageSpec(VALID_CHK, 10L, null));
+    setSelectedKey(updater);
+    when(updater.manager.isBlown()).thenReturn(true);
+
+    assertFalse(updater.startDownloadFromUI());
+  }
+
+  @Test
+  void kill_whenPackageDownloadIsActive_expectDownloadCancelled() throws Exception {
+    CoreUpdater updater = createCoreUpdater();
+    CoreUpdater.PackageFetcher fetcher = mock(CoreUpdater.PackageFetcher.class);
+    setField(updater, "fetcher", fetcher);
+
+    updater.kill();
+
+    verify(fetcher).cancelForUpdaterStop();
   }
 
   private static CoreUpdater createCoreUpdater() throws Exception {

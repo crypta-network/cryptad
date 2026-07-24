@@ -288,6 +288,13 @@ public class CoreUpdater extends NodeUpdater {
     }
   }
 
+  private void cancelPackageFetchForUpdaterStop() {
+    PackageFetcher previous = fetcher.getAndSet(null);
+    if (previous != null) {
+      previous.cancelForUpdaterStop();
+    }
+  }
+
   private CoreInfo parseInfo(FetchResult result) {
     try (Bucket bucket = result.asBucket();
         InputStream input = bucket.getInputStream();
@@ -471,6 +478,10 @@ public class CoreUpdater extends NodeUpdater {
   }
 
   private boolean tryStartDownload() {
+    if (manager.isBlown()) {
+      logInfo("Skipping package download start because updater trust is unavailable");
+      return false;
+    }
     PackageSpec spec = selectedSpec.get();
     File target = downloadTarget();
     if (spec == null || target == null || spec.chk() == null) {
@@ -514,6 +525,15 @@ public class CoreUpdater extends NodeUpdater {
       }
     }
     return tryStartDownload();
+  }
+
+  @Override
+  void kill() {
+    try {
+      super.kill();
+    } finally {
+      cancelPackageFetchForUpdaterStop();
+    }
   }
 
   /**
@@ -857,6 +877,14 @@ public class CoreUpdater extends NodeUpdater {
     }
 
     void cancelForUriChange() {
+      cancel("update URI change");
+    }
+
+    void cancelForUpdaterStop() {
+      cancel("updater stop");
+    }
+
+    private void cancel(String reason) {
       ClientGetter getter = clientGetter.get();
       if (getter == null || getter.isFinished()) {
         detachProgressListener();
@@ -864,10 +892,10 @@ public class CoreUpdater extends NodeUpdater {
       }
       try {
         getter.cancel(manager.getNode().services().clientCore().getClientContext());
-        CoreUpdater.this.logInfo("Cancelled in-flight package download after update URI change");
+        CoreUpdater.this.logInfo("Cancelled in-flight package download after " + reason);
       } catch (Exception e) {
         CoreUpdater.this.logError(
-            "Error while cancelling in-flight package download after URI change", e);
+            "Error while cancelling in-flight package download after " + reason, e);
       } finally {
         detachProgressListener();
       }
