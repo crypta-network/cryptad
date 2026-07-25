@@ -167,14 +167,15 @@ class CoreSupportLifecycleTransitionTest {
   }
 
   private static void applyStatus(Map<String, Object> entry, String status, int edition) {
+    String effectiveAt = edition == 1 ? "2026-01-01T00:00:00Z" : JANUARY_2;
     entry.put(LIFECYCLE_STATUS_FIELD, status);
-    entry.put(STATUS_EFFECTIVE_AT_FIELD, edition == 1 ? "2026-01-01T00:00:00Z" : JANUARY_2);
+    entry.put(STATUS_EFFECTIVE_AT_FIELD, effectiveAt);
     boolean replacementRequired =
         "deprecated".equals(status) || END_OF_SUPPORT.equals(status) || REVOKED.equals(status);
     entry.put(REPLACEMENT_BUILD_FIELD, replacementRequired ? "200" : null);
     entry.put(RECOVERY_GUIDANCE_FIELD, null);
     if (REVOKED.equals(status)) {
-      entry.put(SECURITY_REVOCATION_EFFECTIVE_AT_FIELD, JANUARY_2);
+      entry.put(SECURITY_REVOCATION_EFFECTIVE_AT_FIELD, effectiveAt);
       entry.put(ADVISORY_IDS_FIELD, new ArrayList<>(List.of("CRYPTA-2026-001")));
       entry.put(REASON_CODES_FIELD, new ArrayList<>(List.of("critical-release-defect")));
     } else {

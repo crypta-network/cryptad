@@ -51,6 +51,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyShort;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -208,7 +209,8 @@ class CoreUpdaterTest {
   }
 
   @Test
-  void isCurrentStoreTarget_whenSubmissionMatchesCurrentSelection_expectTrue() throws Exception {
+  void withCurrentStoreTarget_whenSubmissionMatchesCurrentSelection_expectActionRuns()
+      throws Exception {
     CoreUpdater updater = createCoreUpdater();
     setDescriptorSelection(
         updater,
@@ -216,16 +218,30 @@ class CoreUpdaterTest {
         STORE_PACKAGE_KEY,
         new PackageSpec(null, null, STORE_PACKAGE_URL));
 
-    assertTrue(updater.isCurrentStoreTarget("flatpak", STORE_PACKAGE_ID, STORE_PACKAGE_URL));
-    assertFalse(updater.isCurrentStoreTarget("snap", STORE_PACKAGE_ID, STORE_PACKAGE_URL));
-    assertFalse(updater.isCurrentStoreTarget("flatpak", "other.package", STORE_PACKAGE_URL));
-    assertFalse(
-        updater.isCurrentStoreTarget(
-            "flatpak", STORE_PACKAGE_ID, "https://flathub.org/apps/other.package"));
+    assertEquals(
+        Optional.of("launched"),
+        updater.withCurrentStoreTarget(
+            "flatpak", STORE_PACKAGE_ID, STORE_PACKAGE_URL, () -> "launched"));
+    assertTrue(
+        updater
+            .withCurrentStoreTarget("snap", STORE_PACKAGE_ID, STORE_PACKAGE_URL, () -> "launched")
+            .isEmpty());
+    assertTrue(
+        updater
+            .withCurrentStoreTarget("flatpak", "other.package", STORE_PACKAGE_URL, () -> "launched")
+            .isEmpty());
+    assertTrue(
+        updater
+            .withCurrentStoreTarget(
+                "flatpak",
+                STORE_PACKAGE_ID,
+                "https://flathub.org/apps/other.package",
+                () -> "launched")
+            .isEmpty());
   }
 
   @Test
-  void isCurrentStoreTarget_whenSelectedBuildIsRevoked_expectFalse() throws Exception {
+  void withCurrentStoreTarget_whenSelectedBuildIsRevoked_expectActionRejected() throws Exception {
     CoreUpdater updater = createCoreUpdater();
     int advertisedBuild = Version.currentBuildNumber() + 1;
     setDescriptorSelection(
@@ -233,29 +249,57 @@ class CoreUpdaterTest {
         advertisedBuild,
         STORE_PACKAGE_KEY,
         new PackageSpec(null, null, STORE_PACKAGE_URL));
-    when(updater.manager.isCorePackageBuildRevoked(advertisedBuild)).thenReturn(true);
+    doReturn(Optional.empty())
+        .when(updater.manager)
+        .withNonRevokedCorePackageAction(eq(advertisedBuild), any());
 
-    assertFalse(updater.isCurrentStoreTarget("flatpak", STORE_PACKAGE_ID, STORE_PACKAGE_URL));
+    assertTrue(
+        updater
+            .withCurrentStoreTarget(
+                "flatpak", STORE_PACKAGE_ID, STORE_PACKAGE_URL, () -> "launched")
+            .isEmpty());
   }
 
   @Test
-  void isCurrentStoreTarget_whenDescriptorChangesDuringValidation_expectFalse() throws Exception {
+  void withCurrentStoreTarget_whenUriChangesDuringLaunch_expectChangeWaitsForLaunch()
+      throws Exception {
     CoreUpdater updater = createCoreUpdater();
-    int originalBuild = Version.currentBuildNumber() + 1;
+    int advertisedBuild = Version.currentBuildNumber() + 1;
     setDescriptorSelection(
-        updater, originalBuild, STORE_PACKAGE_KEY, new PackageSpec(null, null, STORE_PACKAGE_URL));
-    when(updater.manager.isCorePackageBuildRevoked(originalBuild))
-        .thenAnswer(
-            _ -> {
-              setDescriptorSelection(
-                  updater,
-                  originalBuild + 1,
-                  "amd64.snap",
-                  new PackageSpec(null, null, "https://snapcraft.io/cryptad"));
-              return false;
-            });
+        updater,
+        advertisedBuild,
+        STORE_PACKAGE_KEY,
+        new PackageSpec(null, null, STORE_PACKAGE_URL));
+    FreenetURI replacementUri =
+        new FreenetURI("USK@" + NodeUpdateManager.UPDATE_URI + "/replacement-info/1200");
+    CountDownLatch launchEntered = new CountDownLatch(1);
+    CountDownLatch releaseLaunch = new CountDownLatch(1);
 
-    assertFalse(updater.isCurrentStoreTarget("flatpak", STORE_PACKAGE_ID, STORE_PACKAGE_URL));
+    try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
+      Future<Optional<String>> launch =
+          executor.submit(
+              () ->
+                  updater.withCurrentStoreTarget(
+                      "flatpak",
+                      STORE_PACKAGE_ID,
+                      STORE_PACKAGE_URL,
+                      () -> {
+                        launchEntered.countDown();
+                        await(releaseLaunch);
+                        return "launched";
+                      }));
+      assertTrue(launchEntered.await(5, TimeUnit.SECONDS));
+      Future<?> uriChange = executor.submit(() -> updater.onChangeURI(replacementUri, 1200));
+
+      try {
+        assertThrows(TimeoutException.class, () -> uriChange.get(200, TimeUnit.MILLISECONDS));
+      } finally {
+        releaseLaunch.countDown();
+      }
+
+      assertEquals(Optional.of("launched"), launch.get(5, TimeUnit.SECONDS));
+      uriChange.get(5, TimeUnit.SECONDS);
+    }
   }
 
   @Test

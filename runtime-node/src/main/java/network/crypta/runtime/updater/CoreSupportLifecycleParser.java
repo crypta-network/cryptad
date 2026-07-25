@@ -267,6 +267,7 @@ public final class CoreSupportLifecycleParser {
         securityRevocationEffectiveAt);
     validateStatusGuidance(
         status,
+        statusEffectiveAt,
         replacementBuild,
         recoveryGuidance,
         advisoryIds,
@@ -507,6 +508,7 @@ public final class CoreSupportLifecycleParser {
 
   private static void validateStatusGuidance(
       CoreSupportLifecycleStatus status,
+      Instant statusEffectiveAt,
       Integer replacementBuild,
       String recoveryGuidance,
       List<String> advisoryIds,
@@ -519,6 +521,9 @@ public final class CoreSupportLifecycleParser {
           || (replacementBuild != null && recoveryGuidance != null)
           || securityRevocationEffectiveAt == null) {
         throw invalid("revoked build lacks public advisory, reason, or safe recovery guidance");
+      }
+      if (!statusEffectiveAt.equals(securityRevocationEffectiveAt)) {
+        throw invalid("revoked build security timestamp differs from status effective timestamp");
       }
     } else if (securityRevocationEffectiveAt != null) {
       throw invalid("non-revoked build carries security revocation metadata");

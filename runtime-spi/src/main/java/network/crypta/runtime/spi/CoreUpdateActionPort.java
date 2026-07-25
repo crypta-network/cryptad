@@ -15,7 +15,7 @@ import java.util.Optional;
  * <p>{@code CoreActionToadlet} continues to own request parsing, redirects, result pages, {@code
  * AppEnv} checks, and OS-specific installer or store-launching behavior. Callers typically fetch
  * the port from {@link RuntimePorts}, check availability for one request, and then invoke either a
- * download trigger, guarded installer action, or exact store-target validation step.
+ * download trigger, guarded installer action, or guarded store-target action.
  *
  * @see RuntimePorts#coreUpdateAction()
  */
@@ -39,6 +39,26 @@ public interface CoreUpdateActionPort {
      * @return non-null launch outcome for later response rendering
      */
     T execute(Path installer);
+  }
+
+  /**
+   * Performs one caller-owned action with the currently authorized package-store target.
+   *
+   * <p>The runtime invokes this action only after matching the submitted target to its selected
+   * package and retains updater-selection and lifecycle authorization until the action returns.
+   * Callers should perform only the bounded process launch inside the callback and render responses
+   * after it returns.
+   *
+   * @param <T> action result returned to the caller after authorization is released
+   */
+  @FunctionalInterface
+  interface StoreAction<T> {
+    /**
+     * Executes the bounded package-store launch operation.
+     *
+     * @return non-null launch outcome for later response rendering
+     */
+    T execute();
   }
 
   /**
@@ -91,21 +111,25 @@ public interface CoreUpdateActionPort {
   boolean startCoreDownloadFromUi();
 
   /**
-   * Validates a submitted package-store handoff against the daemon's current update selection.
+   * Executes a store action while the submitted target remains the authorized selection.
    *
    * <p>The default is fail-closed so partial runtime adapters cannot authorize a client-supplied
    * store target. Full daemon adapters must require an exact match for the selected package kind,
-   * derived package identifier, and public store URL, and must recheck the selected build's
-   * lifecycle revocation state at submission time.
+   * derived package identifier, and public store URL. Selection, updater scope, and lifecycle
+   * authorization must remain held through {@link StoreAction#execute()} so a concurrently revoked
+   * or superseded target cannot be launched after validation.
    *
    * @param kind package-store kind submitted by the updater form
    * @param id package identifier submitted by the updater form, or an empty string when absent
    * @param url public store URL submitted by the updater form, or an empty string when absent
-   * @return {@code true} only when the submitted target is still the exact selectable, non-revoked
-   *     daemon update target
+   * @param action bounded launch action to invoke while the target remains authorized
+   * @param <T> non-null launch outcome type
+   * @return action outcome when the target stayed authorized through launch; otherwise {@link
+   *     Optional#empty()}
    */
-  default boolean isCurrentStoreTarget(String kind, String id, String url) {
-    return false;
+  default <T> Optional<T> withCurrentStoreTarget(
+      String kind, String id, String url, StoreAction<T> action) {
+    return Optional.empty();
   }
 
   /**

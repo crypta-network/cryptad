@@ -15,6 +15,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import network.crypta.client.FetchContext;
 import network.crypta.client.FetchException.FetchExceptionMode;
 import network.crypta.client.FetchException;
@@ -271,40 +272,54 @@ public class CoreUpdater extends NodeUpdater {
   }
 
   /**
-   * Validates a submitted package-store handoff against the current selected update target.
+   * Executes a store handoff while its submitted target remains the selected package.
    *
-   * <p>The submitted values must exactly match the form derived from the currently selected
-   * package. The selected descriptor must still advertise a newer integer build, and authenticated
-   * lifecycle state must not revoke that build. A final snapshot identity check prevents a
-   * descriptor replacement during validation from authorizing a stale selection.
+   * <p>The manager, package-selection, and lifecycle-state monitors remain held until the supplied
+   * action returns. This makes target validation and process launch one ordered operation with
+   * updater replacement, URI changes, descriptor replacement, update-key compromise, and build
+   * revocation.
    *
    * @param kind submitted package-store kind
    * @param id submitted package identifier, or an empty string when absent
    * @param url submitted public store URL, or an empty string when absent
-   * @return {@code true} only for the exact current non-revoked store target
+   * @param action bounded launch action that must not re-enter updater control methods
+   * @param <T> non-null launch outcome type
+   * @return action outcome, or empty when the target or authorization is no longer current
    */
-  public boolean isCurrentStoreTarget(String kind, String id, String url) {
-    DescriptorSelection selection = descriptorSelection.get();
-    if (selection == null) {
-      return false;
-    }
-    Integer build = selection.buildVersion();
-    String key = selection.packageKey();
-    PackageSpec spec = selection.packageSpec();
-    if (!isNewerThanCurrentBuild(build) || isBuildRevoked(build) || spec == null) {
-      return false;
-    }
+  public <T> Optional<T> withCurrentStoreTarget(
+      String kind, String id, String url, Supplier<T> action) {
+    Objects.requireNonNull(action, FORM_FIELD_ACTION);
+    return manager.withCurrentCoreUpdaterAction(
+        this, () -> withCurrentStoreTargetSelection(kind, id, url, action));
+  }
 
-    String expectedKind = storeKind(key);
-    String expectedUrl = spec.storeUrl();
+  private <T> Optional<T> withCurrentStoreTargetSelection(
+      String kind, String id, String url, Supplier<T> action) {
+    synchronized (packageFetchLifecycleLock) {
+      DescriptorSelection selection = descriptorSelection.get();
+      if (!matchesCurrentStoreTarget(selection, kind, id, url)) {
+        return Optional.empty();
+      }
+      return manager.withNonRevokedCorePackageAction(selection.buildVersion(), action);
+    }
+  }
+
+  private boolean matchesCurrentStoreTarget(
+      DescriptorSelection selection, String kind, String id, String url) {
+    if (selection == null
+        || !isNewerThanCurrentBuild(selection.buildVersion())
+        || selection.packageSpec() == null
+        || !isCurrentSelection(selection)) {
+      return false;
+    }
+    String expectedKind = storeKind(selection.packageKey());
+    String expectedUrl = selection.packageSpec().storeUrl();
     String expectedId = deriveStoreId(expectedKind, expectedUrl);
-    boolean exactTarget =
-        expectedKind != null
-            && hasText(expectedUrl)
-            && expectedKind.equals(kind)
-            && Objects.equals(expectedId, optionalFormValue(id))
-            && expectedUrl.equals(url);
-    return exactTarget && !isBuildRevoked(build) && isCurrentSelection(selection);
+    return expectedKind != null
+        && hasText(expectedUrl)
+        && expectedKind.equals(kind)
+        && Objects.equals(expectedId, optionalFormValue(id))
+        && expectedUrl.equals(url);
   }
 
   private boolean isCurrentSelection(DescriptorSelection selection) {

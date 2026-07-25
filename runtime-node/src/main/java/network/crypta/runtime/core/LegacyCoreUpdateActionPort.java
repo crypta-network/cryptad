@@ -61,10 +61,11 @@ final class LegacyCoreUpdateActionPort implements CoreUpdateActionPort {
   }
 
   @Override
-  public boolean isCurrentStoreTarget(String kind, String id, String url) {
+  public <T> Optional<T> withCurrentStoreTarget(
+      String kind, String id, String url, StoreAction<T> action) {
+    Objects.requireNonNull(action, "action");
     return getCoreUpdater()
-        .map(updater -> updater.isCurrentStoreTarget(kind, id, url))
-        .orElse(false);
+        .flatMap(updater -> updater.withCurrentStoreTarget(kind, id, url, action::execute));
   }
 
   @Override

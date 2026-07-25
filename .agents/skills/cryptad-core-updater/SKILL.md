@@ -201,11 +201,14 @@ revocation preserved in its entry chain. Publish descriptor metadata, integer bu
 detected environment, selected package key, and package specification as one immutable atomic
 snapshot. Every download, installer, store-handoff, retry, and UI reader must use one snapshot
 instance and reject it if a newer snapshot replaced it before the action boundary. Downloaded
-installer launch and Linux `openStore` submission both cross `CoreUpdateActionPort`; never return a
-detached installer path after authorization. Run the bounded installer-launch callback while the
-manager identity, updater selection, and lifecycle-state authorization remain held, then release
-those locks before rendering the HTTP response. Store submissions must exactly match the daemon's
-current selected kind, derived id, and public URL before the HTTP adapter may open or install them.
+installer launch and `openStore` submission both cross `CoreUpdateActionPort`; never return a
+detached installer path or authorize a store target with a point-in-time boolean. Run each bounded
+process-launch callback while the manager identity, updater selection, and lifecycle-state
+authorization remain held, then release those locks before rendering the HTTP response. Store
+submissions must exactly match the daemon's current selected kind, derived id, and public URL before
+the HTTP adapter may open or install them. Any platform helper invoked inside that guarded callback
+must have a hard execution timeout so it cannot indefinitely block trust invalidation or URI
+changes.
 
 The lifecycle descriptor's public schema, protected publication, and operator behavior are defined
 in `docs/stable-1.0-support-lifecycle-and-deprecation-governance.md`. Use deterministic local

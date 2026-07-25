@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.TimeUnit;
 import network.crypta.clients.http.PageMaker;
 import network.crypta.clients.http.PageNode;
 import network.crypta.clients.http.ReplyHeaders;
@@ -90,6 +91,7 @@ public class CoreActionToadlet extends Toadlet {
   private static final String HTML_ATTR_CLASS = "class";
   private static final String SHELL_UPDATES_URL = WebShellPaths.SHELL_ROOT + "#updates";
   private static final String LEGACY_UPDATES_URL = "/alerts/";
+  private static final long SYSTEMD_ESCAPE_TIMEOUT_SECONDS = 5;
   private static final List<String> TRUSTED_UNIX_BIN_DIRS =
       List.of("/usr/bin", "/bin", "/usr/sbin", "/sbin", "/usr/local/bin");
 
@@ -211,12 +213,20 @@ public class CoreActionToadlet extends Toadlet {
     String url = request.getPartAsStringFailsafe("url", 2048);
     logInfo("POST /core-update action=openStore kind=" + kind + " id=" + id + " url=" + url);
 
-    if (!coreUpdateActionPort.isCurrentStoreTarget(kind, id, url)) {
+    StoreOutcome outcome =
+        coreUpdateActionPort
+            .withCurrentStoreTarget(kind, id, url, () -> tryOpenStore(kind, id, url))
+            .orElse(null);
+    if (outcome == null) {
       logInfo("store handoff rejected: submitted target is no longer selected");
       writeMessage(ctx, false, t("store.targetUnavailable"));
       return;
     }
 
+    writeMessage(ctx, outcome.success(), outcome.message().render(this));
+  }
+
+  private StoreOutcome tryOpenStore(String kind, String id, String url) {
     InstallerDelegate delegate =
         switch (appEnv.osKind()) {
           case LINUX -> linuxOpenStore(kind, blankToNull(id), blankToNull(url));
@@ -245,20 +255,20 @@ public class CoreActionToadlet extends Toadlet {
     if (delegate instanceof InstallerDelegate.Spawn(ProcessBuilder pb, LocalMessage message)) {
       try {
         pb.start();
-        writeMessage(ctx, true, message.render(this));
+        return new StoreOutcome(true, message);
       } catch (Exception throwable) {
         String reason =
             throwable.getMessage() != null
                 ? throwable.getMessage()
                 : throwable.getClass().getSimpleName();
-        writeMessage(ctx, false, msg("store.openFailed", Map.of("reason", reason)).render(this));
+        return new StoreOutcome(false, msg("store.openFailed", Map.of("reason", reason)));
       }
-      return;
     }
 
     if (delegate instanceof InstallerDelegate.Manual(LocalMessage message)) {
-      writeMessage(ctx, false, message.render(this));
+      return new StoreOutcome(false, message);
     }
+    return new StoreOutcome(false, msg("store.unsupportedPlatform"));
   }
 
   private InstallOutcome tryInstall(File file) {
@@ -676,32 +686,41 @@ public class CoreActionToadlet extends Toadlet {
       return null;
     }
 
+    Process escape = null;
     try {
       ProcessBuilder escapeBuilder =
           processBuilder(CMD_SYSTEMD_ESCAPE, "--path", file.getAbsolutePath());
       if (escapeBuilder == null) {
         return null;
       }
-      Process escape = escapeBuilder.redirectErrorStream(true).start();
-      String escaped;
-      try (BufferedReader reader =
-          new BufferedReader(
-              new InputStreamReader(escape.getInputStream(), StandardCharsets.UTF_8))) {
-        escaped = reader.readLine();
-      }
-      escape.waitFor();
+      escape = escapeBuilder.redirectErrorStream(true).start();
+      String escaped = readSystemdEscapeOutput(escape);
 
-      if (escape.exitValue() != 0 || escaped == null || escaped.isBlank()) {
+      if (escaped == null || escape.exitValue() != 0 || escaped.isBlank()) {
         return null;
       }
 
       String unit = "cryptad-core-install@" + escaped.trim() + ".service";
       return spawn(CMD_SYSTEMCTL, msg("linux.headlessUnit", Map.of("unit", unit)), "start", unit);
     } catch (InterruptedException _) {
+      escape.destroyForcibly();
       Thread.currentThread().interrupt();
       return null;
     } catch (Exception _) {
       return null;
+    }
+  }
+
+  private static String readSystemdEscapeOutput(Process escape)
+      throws InterruptedException, IOException {
+    if (!escape.waitFor(SYSTEMD_ESCAPE_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+      escape.destroyForcibly();
+      return null;
+    }
+    try (BufferedReader reader =
+        new BufferedReader(
+            new InputStreamReader(escape.getInputStream(), StandardCharsets.UTF_8))) {
+      return reader.readLine();
     }
   }
 
@@ -876,6 +895,8 @@ public class CoreActionToadlet extends Toadlet {
   private record InstallOutcome(boolean success, LocalMessage message) {}
 
   private record InstallAttempt(File installer, InstallOutcome outcome) {}
+
+  private record StoreOutcome(boolean success, LocalMessage message) {}
 
   private sealed interface InstallerDelegate {
     record Spawn(ProcessBuilder pb, LocalMessage message) implements InstallerDelegate {}

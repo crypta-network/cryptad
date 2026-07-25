@@ -181,6 +181,14 @@ class CoreSupportLifecycleParserTest {
   }
 
   @Test
+  void parse_whenRevocationSecurityTimestampDiffersFromStatusTimestamp_expectRejection()
+      throws IOException {
+    byte[] descriptorBytes = emergencyRevocationDescriptorWithMismatchedSecurityTimestamp();
+
+    assertDescriptorRejected(descriptorBytes);
+  }
+
+  @Test
   void parse_whenRecoveryGuidanceCrossesUtf16Bound_expectExactRuntimeLimit() throws IOException {
     byte[] maximum = emergencyRevocationDescriptor(false, "x".repeat(256));
     byte[] oversized = emergencyRevocationDescriptor(false, "x".repeat(257));
@@ -353,6 +361,21 @@ class CoreSupportLifecycleParserTest {
     descriptor.put(RECOMMENDED_BUILD_FIELD, null);
     descriptor.put(MINIMUM_SUPPORTED_BUILD_FIELD, "99");
     descriptor.put(MINIMUM_SECURITY_SUPPORTED_BUILD_FIELD, "99");
+    descriptor.remove(DESCRIPTOR_DIGEST_FIELD);
+    descriptor.put(DESCRIPTOR_DIGEST_FIELD, CoreSupportLifecycleParser.semanticDigest(descriptor));
+    return CoreSupportLifecycleParser.canonicalJson(descriptor).getBytes(StandardCharsets.UTF_8);
+  }
+
+  private static byte[] emergencyRevocationDescriptorWithMismatchedSecurityTimestamp()
+      throws IOException {
+    Map<String, Object> descriptor =
+        JsonMini.parseObject(
+            new String(
+                emergencyRevocationDescriptor(false, RECOVERY_GUIDANCE), StandardCharsets.UTF_8));
+    @SuppressWarnings("unchecked")
+    Map<String, Object> entry =
+        (Map<String, Object>) ((List<?>) descriptor.get(ENTRIES_FIELD)).getFirst();
+    entry.put("securityRevocationEffectiveAt", "2026-01-01T23:59:59Z");
     descriptor.remove(DESCRIPTOR_DIGEST_FIELD);
     descriptor.put(DESCRIPTOR_DIGEST_FIELD, CoreSupportLifecycleParser.semanticDigest(descriptor));
     return CoreSupportLifecycleParser.canonicalJson(descriptor).getBytes(StandardCharsets.UTF_8);

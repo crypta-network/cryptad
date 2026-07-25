@@ -4,6 +4,7 @@ import java.io.File;
 import java.nio.file.Path;
 import java.util.Optional;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import network.crypta.node.Node;
 import network.crypta.runtime.spi.CoreSupportLifecycleSnapshot;
 import network.crypta.runtime.updater.CoreUpdater;
@@ -19,6 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -99,31 +101,42 @@ class LegacyCoreUpdateActionPortTest {
   }
 
   @Test
-  void isCurrentStoreTarget_whenUpdaterApprovesSelection_expectDelegatesToCoreUpdater() {
+  void withCurrentStoreTarget_whenUpdaterApprovesSelection_expectActionRunsThroughCoreUpdater() {
     String url = "https://flathub.org/apps/network.crypta.Cryptad";
     when(node.services().nodeUpdater()).thenReturn(nodeUpdateManager);
     when(nodeUpdateManager.getCoreUpdater()).thenReturn(coreUpdater);
-    when(coreUpdater.isCurrentStoreTarget("flatpak", "network.crypta.Cryptad", url))
-        .thenReturn(true);
+    doAnswer(
+            invocation -> {
+              @SuppressWarnings("unchecked")
+              Supplier<String> action = invocation.getArgument(3, Supplier.class);
+              return Optional.of(action.get());
+            })
+        .when(coreUpdater)
+        .withCurrentStoreTarget(eq("flatpak"), eq("network.crypta.Cryptad"), eq(url), any());
 
     LegacyCoreUpdateActionPort port = new LegacyCoreUpdateActionPort(node);
 
-    assertTrue(port.isCurrentStoreTarget("flatpak", "network.crypta.Cryptad", url));
-    verify(coreUpdater).isCurrentStoreTarget("flatpak", "network.crypta.Cryptad", url);
+    assertEquals(
+        Optional.of("launched"),
+        port.withCurrentStoreTarget("flatpak", "network.crypta.Cryptad", url, () -> "launched"));
+    verify(coreUpdater)
+        .withCurrentStoreTarget(eq("flatpak"), eq("network.crypta.Cryptad"), eq(url), any());
   }
 
   @Test
-  void isCurrentStoreTarget_whenUpdaterMissing_expectFalse() {
+  void withCurrentStoreTarget_whenUpdaterMissing_expectEmpty() {
     when(node.services().nodeUpdater()).thenReturn(nodeUpdateManager);
     when(nodeUpdateManager.getCoreUpdater()).thenReturn(null);
 
     LegacyCoreUpdateActionPort port = new LegacyCoreUpdateActionPort(node);
 
-    assertFalse(
-        port.isCurrentStoreTarget(
-            "flatpak",
-            "network.crypta.Cryptad",
-            "https://flathub.org/apps/network.crypta.Cryptad"));
+    assertTrue(
+        port.withCurrentStoreTarget(
+                "flatpak",
+                "network.crypta.Cryptad",
+                "https://flathub.org/apps/network.crypta.Cryptad",
+                () -> "launched")
+            .isEmpty());
   }
 
   @Test
