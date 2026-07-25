@@ -128,7 +128,7 @@ permissions.rationale.queue.read=Displays publication progress from the local tr
 permissions.rationale.app.data.read=Restores the app-owned feed list, selected subscriptions, read state, and safe draft metadata.
 permissions.rationale.app.data.write=Saves bounded app-owned reader state through the durable app-data API.
 api.minimumVersion=9
-api.maximumTestedVersion=24
+api.maximumTestedVersion=23
 api.targetStability=stable
 api.experimentalCapabilitiesAccepted=false
 

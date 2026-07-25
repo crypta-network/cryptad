@@ -51,7 +51,7 @@ Current snapshots publish:
     "schemaVersion": 1,
     "baselineName": "1.0",
     "baselineContractVersion": 19,
-    "currentContractVersion": 24,
+    "currentContractVersion": 23,
     "supportPhase": "beta",
     "supportWindowStartedRelease": "production-beta",
     "minimumDeprecationWindowContractVersions": 2,

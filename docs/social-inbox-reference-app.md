@@ -51,7 +51,7 @@ signatures. The full profile policy is in
 app.id=social-inbox
 app.name=Social Inbox RC
 api.minimumVersion=16
-api.maximumTestedVersion=24
+api.maximumTestedVersion=23
 api.targetStability=experimental
 api.experimentalCapabilitiesAccepted=true
 app.data.schema.current=1

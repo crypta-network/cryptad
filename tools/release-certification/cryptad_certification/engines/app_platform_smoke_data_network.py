@@ -509,7 +509,6 @@ def collect_content_subscription_evidence(settings: Settings) -> EvidenceItem:
             or "CURRENT_CONTRACT_VERSION = 20" in contract_text
             or "CURRENT_CONTRACT_VERSION = 22" in contract_text
             or "CURRENT_CONTRACT_VERSION = 23" in contract_text
-            or "CURRENT_CONTRACT_VERSION = 24" in contract_text
         ),
         "capabilityDescriptorPresent": (
             "CONTENT_SUBSCRIBE" in contract_text
@@ -1232,7 +1231,6 @@ def collect_app_data_store_evidence(settings: Settings) -> EvidenceItem:
                 or "CURRENT_CONTRACT_VERSION = 20" in text["contract"]
                 or "CURRENT_CONTRACT_VERSION = 22" in text["contract"]
                 or "CURRENT_CONTRACT_VERSION = 23" in text["contract"]
-                or "CURRENT_CONTRACT_VERSION = 24" in text["contract"]
             )
             and "APP_DATA_STORE_CONTRACT_VERSION = 9" in text["contract"]
             and "app.data.read" in text["capabilities"]
@@ -2877,7 +2875,7 @@ def collect_trust_graph_rc_scope_and_safety_evidence(settings: Settings) -> Evid
     docs_lower = normalized_source_text(docs_text)
     checks = {
         "contractV15AndRoutesPresent": (
-            "CURRENT_CONTRACT_VERSION = 24" in contract_text
+            "CURRENT_CONTRACT_VERSION = 23" in contract_text
             and "TRUST_GRAPH_RC_SCOPE_CONTRACT_VERSION = 15" in contract_text
             and "/trust-graph/statements/{fingerprint}" in contract_text
             and "/trust-graph/statements/{fingerprint}/deprecate" in contract_text
@@ -3215,7 +3213,7 @@ def collect_trust_graph_exchange_evidence(settings: Settings) -> EvidenceItem:
     route_source_text = router_text + "\n" + route_text
     checks = {
         "contractVersionV10": (
-            "CURRENT_CONTRACT_VERSION = 24" in contract_text
+            "CURRENT_CONTRACT_VERSION = 23" in contract_text
             and "TRUST_GRAPH_EXCHANGE_CONTRACT_VERSION = 10" in contract_text
         ),
         "contractDescriptorsPresent": (

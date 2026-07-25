@@ -9,7 +9,7 @@ The current app-facing values are:
 
 ```text
 apiVersion=v1
-contractVersion=24
+contractVersion=23
 ```
 
 The contract does not change Platform API behavior. It publishes metadata that answers which
@@ -37,7 +37,7 @@ The response shape is:
 {
   "contract": {
     "apiVersion": "v1",
-    "contractVersion": 24,
+    "contractVersion": 23,
     "generatedBy": "cryptad",
     "stabilityPolicy": "...",
     "stableBaseline": {
@@ -52,7 +52,7 @@ The response shape is:
       "schemaVersion": 1,
       "baselineName": "1.0",
       "baselineContractVersion": 19,
-      "currentContractVersion": 24,
+      "currentContractVersion": 23,
       "supportPhase": "beta",
       "minimumDeprecationWindowContractVersions": 2,
       "minimumScheduledRemovalWindowContractVersions": 2,
@@ -98,6 +98,8 @@ Endpoint descriptors contain:
 
 The runtime app authorization path reads the same endpoint descriptors that the snapshot publishes,
 so the contract and route-to-capability policy do not maintain separate route lists.
+Host/operator-only descriptors can be recorded for local audit and Web Shell routing without
+advancing the app-facing contract version.
 
 ## Stability levels
 

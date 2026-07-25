@@ -44,7 +44,7 @@ class PlatformApiContractTest {
           Map.entry("/trust-graph/import-preview", 22),
           Map.entry("/trust-graph/import-preview-uri", 22),
           Map.entry("/trust-graph/audit", 10),
-          Map.entry("/updates/support-lifecycle", 24),
+          Map.entry("/updates/support-lifecycle", 23),
           Map.entry("/app-vault/identities/{identityId}/social-message", 11),
           Map.entry("/app-vault/identities/{identityId}/trust-statement", 7),
           Map.entry("/queue/inserts/app-document", 5),
@@ -453,7 +453,7 @@ class PlatformApiContractTest {
             .findFirst()
             .orElseThrow();
 
-    assertEquals(24, endpoint.sinceContractVersion());
+    assertEquals(23, endpoint.sinceContractVersion());
     assertEquals(PlatformApiStabilityLevel.OPERATOR_ONLY, endpoint.stability());
     assertTrue(endpoint.hostOperatorBypassAllowed());
     assertFalse(endpoint.appProcessAllowed());

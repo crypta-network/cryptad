@@ -58,11 +58,11 @@ public record PlatformApiContract(
   /**
    * Integer compatibility contract version used by app manifests and catalogs.
    *
-   * <p>The value increases when published Platform API compatibility metadata changes in a way that
-   * tooling should be able to compare. It is not the Cryptad build number, and it is not the URL
-   * API version.
+   * <p>The value increases when published app-facing Platform API compatibility metadata changes in
+   * a way that tooling should be able to compare. Operator-only descriptors do not advance it. It
+   * is not the Cryptad build number, and it is not the URL API version.
    */
-  public static final int CURRENT_CONTRACT_VERSION = 24;
+  public static final int CURRENT_CONTRACT_VERSION = 23;
 
   /** Stable app-facing Platform API baseline name published in contract snapshots. */
   public static final String PLATFORM_API_STABLE_BASELINE_NAME = "1.0";
@@ -103,7 +103,13 @@ public record PlatformApiContract(
   private static final int CONSENT_CONTRACT_VERSION = 21;
   private static final int TRUST_GRAPH_BETA_HARDENING_CONTRACT_VERSION = 22;
   private static final int CATALOG_OPERATIONS_CONTRACT_VERSION = 23;
-  private static final int SUPPORT_LIFECYCLE_CONTRACT_VERSION = 24;
+
+  /**
+   * Contract snapshot version that first records the operator-only support lifecycle descriptor.
+   *
+   * <p>Operator-only routes do not advance the app-facing compatibility version.
+   */
+  private static final int SUPPORT_LIFECYCLE_DESCRIPTOR_VERSION = 23;
 
   /**
    * Stable producer label written into generated contract snapshots.
@@ -148,9 +154,8 @@ public record PlatformApiContract(
           + CATALOG_OPERATIONS_CONTRACT_VERSION
           + " adds signed catalog operations for mirrors, source health, rollback, key-rotation"
           + " status, and emergency advisory refresh"
-          + ". Contract version "
-          + SUPPORT_LIFECYCLE_CONTRACT_VERSION
-          + " adds local authenticated Stable 1.0 support-lifecycle state"
+          + ". The operator-only support-lifecycle descriptor does not advance the app-facing"
+          + " compatibility version"
           + ". Endpoint descriptors retain the contract version where each route first appeared. "
           + "Experimental, deprecated, scheduled-for-removal, and internal entries are flagged for "
           + "developer tooling and release review before behavior changes.";
@@ -1154,7 +1159,7 @@ public record PlatformApiContract(
               "/updates/support-lifecycle",
               PlatformApiCapabilities.UPDATES_READ,
               List.of(PlatformApiCapabilities.UPDATES_READ),
-              SUPPORT_LIFECYCLE_CONTRACT_VERSION,
+              SUPPORT_LIFECYCLE_DESCRIPTOR_VERSION,
               true,
               false,
               false,

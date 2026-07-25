@@ -68,6 +68,24 @@ class PlatformApiContractVerifierTest {
   }
 
   @Test
+  void verify_whenVersion23AppTargetsCurrentContractWithOperatorRoute_expectCompatible() {
+    AppApiCompatibilityMetadata metadata =
+        new AppApiCompatibilityMetadata(1, 23, List.of(), TargetStability.STABLE, false);
+
+    CompatibilityVerificationResult result =
+        PlatformApiContractVerifier.verify(
+            metadata,
+            List.of(PlatformApiCapabilities.QUEUE_READ),
+            PlatformApiContract.current(),
+            true);
+
+    assertFalse(result.hasErrors());
+    assertFalse(
+        result.findings().stream()
+            .anyMatch(finding -> finding.code().equals("target_newer_than_tested")));
+  }
+
+  @Test
   void summarize_whenRangeWarningAndVerifierErrorExist_expectIncompatibleStatus() {
     AppApiCompatibilityMetadata metadata =
         new AppApiCompatibilityMetadata(1, 1, List.of(), TargetStability.EXPERIMENTAL, false);
