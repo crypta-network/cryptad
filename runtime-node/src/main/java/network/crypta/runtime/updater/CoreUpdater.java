@@ -349,8 +349,12 @@ public class CoreUpdater extends NodeUpdater {
 
   @Override
   public void onChangeURI(FreenetURI newUri, int subscribeEditionSeed) {
-    resetDescriptorStateForUriChange();
-    super.onChangeURI(newUri, subscribeEditionSeed);
+    changeSubscriptionScope(
+        newUri,
+        () -> {
+          resetDescriptorStateForUriChange();
+          return subscribeEditionSeed;
+        });
   }
 
   private void resetDescriptorStateForUriChange() {

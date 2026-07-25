@@ -86,7 +86,6 @@ final class CoreSupportLifecycleUpdater extends NodeUpdater {
       byte[] descriptorBytes = readBounded(result);
       lifecycleState.accept(descriptorBytes, fetched);
       clearPersistenceFailureBackoff();
-      manager.onSupportLifecycleAccepted();
       LOG.info("Accepted Stable 1.0 support-lifecycle descriptor edition {}", fetched);
       return true;
     } catch (IllegalArgumentException _) {
@@ -130,7 +129,22 @@ final class CoreSupportLifecycleUpdater extends NodeUpdater {
 
   @Override
   protected void recordSuccessfulFetch(FreenetURI fetchedUri, int fetchedEdition) {
-    // Lifecycle editions are persisted with exact descriptor bytes in their own LKG store.
+    manager.onSupportLifecycleAccepted();
+  }
+
+  /**
+   * Rebinds persisted lifecycle state inside the subscription-scope transition.
+   *
+   * @param newUri replacement lifecycle request URI
+   * @param nextTrust exact public update-key binding for the replacement scope
+   */
+  void onChangeURI(FreenetURI newUri, CoreSupportLifecycleParser.TrustBinding nextTrust) {
+    changeSubscriptionScope(
+        newUri,
+        () -> {
+          lifecycleState.changeTrust(nextTrust);
+          return lifecycleState.acceptedEditionSeed();
+        });
   }
 
   /** Starts or advances the saturating persistence retry backoff for one descriptor edition. */

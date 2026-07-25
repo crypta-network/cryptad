@@ -291,21 +291,30 @@ class NodeUpdaterTest {
     File tempBlobFile = File.createTempFile(BLOB_PREFIX, ".tmp", tempDir.toFile());
     FreenetURI oldFetchUri = new FreenetURI("USK@" + NodeUpdateManager.UPDATE_URI + "/info/1437");
     FreenetURI newUri = oldFetchUri.setDocName("alternate-info").setSuggestedEdition(1);
+    CountDownLatch scopeChangeStarted = new CountDownLatch(1);
     updater.blockPostProcessing(1437);
 
-    try (ExecutorService executor = Executors.newSingleThreadExecutor()) {
+    try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
       try {
         // Act
         Future<?> completion =
             executor.submit(() -> updater.onSuccess(result, tempBlobFile, 1437, oldFetchUri));
         assertTrue(updater.awaitPostProcessingStarted());
-        updater.onChangeURI(newUri, 1);
+        Future<?> scopeChange =
+            executor.submit(
+                () -> {
+                  scopeChangeStarted.countDown();
+                  updater.onChangeURI(newUri, 1);
+                });
+        assertTrue(scopeChangeStarted.await(5, TimeUnit.SECONDS));
+        assertFalse(scopeChange.isDone());
         updater.continuePostProcessing();
         completion.get(5, TimeUnit.SECONDS);
+        scopeChange.get(5, TimeUnit.SECONDS);
 
         // Assert
         assertEquals(CURRENT_VERSION, updater.getFetchedVersion());
-        verify(manager, never()).recordSuccessfulCoreInfoFetch(any(), eq(1437));
+        assertEquals(newUri.toString(false, false), updater.getUpdateKey().toString(false, false));
       } finally {
         updater.continuePostProcessing();
         executor.shutdownNow();

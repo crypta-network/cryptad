@@ -1,7 +1,14 @@
 package network.crypta.runtime.updater;
 
 import java.io.ByteArrayInputStream;
+import java.io.File;
 import java.io.IOException;
+import java.nio.file.Path;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import network.crypta.client.FetchContext;
 import network.crypta.client.FetchContextOptions;
 import network.crypta.client.FetchResult;
@@ -19,6 +26,7 @@ import network.crypta.support.api.Bucket;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.io.TempDir;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -29,6 +37,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyShort;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -46,6 +55,9 @@ class CoreSupportLifecycleUpdaterTest {
   @Mock NodeClientCore core;
   @Mock HighLevelSimpleClient client;
   @Mock CoreSupportLifecycleState lifecycleState;
+  @Mock USKManager uskManager;
+
+  @TempDir Path tempDir;
 
   private CoreSupportLifecycleUpdater updater;
 
@@ -104,12 +116,9 @@ class CoreSupportLifecycleUpdaterTest {
   }
 
   @Test
-  void processSuccess_whenDescriptorIsAccepted_expectPackageTargetReconciled() throws Exception {
-    FetchResult result = fetchedDescriptor();
+  void recordSuccessfulFetch_whenDescriptorIsAccepted_expectPackageTargetReconciled() {
+    updater.recordSuccessfulFetch(null, 1);
 
-    boolean accepted = updater.processSuccess(1, result, null);
-
-    assertTrue(accepted);
     verify(manager).onSupportLifecycleAccepted();
   }
 
@@ -194,6 +203,67 @@ class CoreSupportLifecycleUpdaterTest {
     assertEquals(7, updater.getFetchedVersion());
     verify(core, never()).getPersistentTempDir();
     verify(lifecycleState, never()).accept(any(byte[].class), anyLong());
+  }
+
+  @Test
+  void onChangeURI_whenAcceptanceIsInProgress_expectTrustRebindWaitsForCommit() throws Exception {
+    FetchResult result = fetchedDescriptor();
+    File tempBlob = File.createTempFile("support-lifecycle-", ".tmp", tempDir.toFile());
+    FreenetURI oldUri = updater.getUpdateKey();
+    FreenetURI replacementUri = oldUri.setSuggestedEdition(1);
+    CoreSupportLifecycleParser.TrustBinding replacementTrust =
+        new CoreSupportLifecycleParser.TrustBinding(
+            "a".repeat(64), "a".repeat(64) + "/support-lifecycle/0", "support-lifecycle");
+    CountDownLatch acceptanceStarted = new CountDownLatch(1);
+    CountDownLatch continueAcceptance = new CountDownLatch(1);
+    CountDownLatch scopeChangeStarted = new CountDownLatch(1);
+    CountDownLatch trustRebound = new CountDownLatch(1);
+    doAnswer(
+            _ -> {
+              acceptanceStarted.countDown();
+              if (!continueAcceptance.await(5, TimeUnit.SECONDS)) {
+                throw new AssertionError("timed out waiting to continue lifecycle acceptance");
+              }
+              return null;
+            })
+        .when(lifecycleState)
+        .accept(any(byte[].class), anyLong());
+    doAnswer(
+            _ -> {
+              trustRebound.countDown();
+              return null;
+            })
+        .when(lifecycleState)
+        .changeTrust(replacementTrust);
+    when(core.getPersistentTempDir()).thenReturn(tempDir.toFile());
+    when(core.getUskManager()).thenReturn(uskManager);
+
+    try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
+      try {
+        Future<?> completion =
+            executor.submit(() -> updater.onSuccess(result, tempBlob, 1, oldUri));
+        assertTrue(acceptanceStarted.await(5, TimeUnit.SECONDS));
+        Future<?> scopeChange =
+            executor.submit(
+                () -> {
+                  scopeChangeStarted.countDown();
+                  updater.onChangeURI(replacementUri, replacementTrust);
+                });
+
+        assertTrue(scopeChangeStarted.await(5, TimeUnit.SECONDS));
+        assertFalse(trustRebound.await(250, TimeUnit.MILLISECONDS));
+        continueAcceptance.countDown();
+        completion.get(5, TimeUnit.SECONDS);
+        scopeChange.get(5, TimeUnit.SECONDS);
+      } finally {
+        continueAcceptance.countDown();
+        executor.shutdownNow();
+      }
+    }
+
+    assertEquals(0, trustRebound.getCount());
+    verify(lifecycleState).accept(any(byte[].class), anyLong());
+    verify(lifecycleState).changeTrust(replacementTrust);
   }
 
   private static FetchResult fetchedDescriptor() throws IOException {

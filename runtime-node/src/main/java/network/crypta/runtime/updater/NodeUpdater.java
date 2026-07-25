@@ -10,6 +10,9 @@ import java.net.MalformedURLException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.function.IntSupplier;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import network.crypta.client.FetchContext;
@@ -140,6 +143,22 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
    * unsubscribes it.
    */
   private final Object subscriptionLifecycleLock = new Object();
+
+  /**
+   * Keeps fetched-result commits inside one subscription scope while allowing same-scope
+   * completions to finish independently.
+   *
+   * <p>Fetch post-processing holds the read side. URI changes and shutdown hold the write side from
+   * generation invalidation through state rebinding, so bytes authenticated by an old key cannot
+   * mutate state owned by its replacement.
+   */
+  private final ReentrantReadWriteLock subscriptionScopeLock = new ReentrantReadWriteLock(true);
+
+  /** Shared scope claim held while one fetched result performs side-effecting post-processing. */
+  private final Lock subscriptionScopeCommitLock = subscriptionScopeLock.readLock();
+
+  /** Exclusive scope claim held while a subscription is stopped or rebound. */
+  private final Lock subscriptionScopeChangeLock = subscriptionScopeLock.writeLock();
 
   /**
    * Temporary file used during the current fetch. On success, the file is renamed to a finalized
@@ -529,9 +548,21 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
     if (!preparation.readyForProcessing()) {
       return;
     }
-    boolean accepted = processSuccess(fetchedVersion, result, preparation.blobFile());
-    FetchCompletion completion =
-        completeFetch(fetchedVersion, fetchSubscriptionGeneration, expectedAttempt, accepted);
+    boolean accepted;
+    FetchCompletion completion;
+    subscriptionScopeCommitLock.lock();
+    try {
+      if (!isSubscriptionGenerationCurrent(fetchSubscriptionGeneration)) {
+        discardStaleResult(result);
+        cleanupTempBlobFile(preparation.blobFile(), "from superseded subscription");
+        return;
+      }
+      accepted = processSuccess(fetchedVersion, result, preparation.blobFile());
+      completion =
+          completeFetch(fetchedVersion, fetchSubscriptionGeneration, expectedAttempt, accepted);
+    } finally {
+      subscriptionScopeCommitLock.unlock();
+    }
     if (!completion.currentSubscription()) {
       return;
     }
@@ -587,6 +618,10 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
       long fetchSubscriptionGeneration, FetchAttempt expectedAttempt) {
     return fetchSubscriptionGeneration != subscriptionGeneration
         || (expectedAttempt != null && expectedAttempt != activeFetch);
+  }
+
+  private synchronized boolean isSubscriptionGenerationCurrent(long fetchSubscriptionGeneration) {
+    return fetchSubscriptionGeneration == subscriptionGeneration;
   }
 
   private FetchCompletion completeFetch(
@@ -1133,34 +1168,39 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
 
   private void stopSubscription() {
     synchronized (subscriptionLifecycleLock) {
-      ClientGetter stoppedGetter;
-      FetchAttempt stoppedAttempt;
-      FreenetURI stoppedUri;
-      synchronized (this) {
-        isRunning = false;
-        subscriptionGeneration++;
-        stoppedUri = this.uri;
-        stoppedGetter = cg;
-        stoppedAttempt = activeFetch;
-        cg = null;
-        activeFetch = null;
-        tempBlobFile = null;
-        isFetching = false;
-      }
+      subscriptionScopeChangeLock.lock();
       try {
-        USK myUsk = USK.create(stoppedUri.setSuggestedEdition(currentVersion));
-        core.getUskManager().unsubscribe(myUsk, this);
-      } catch (Exception e) {
-        LOG.debug("Cannot unsubscribe stopped {} updater", artifactName(), e);
-      }
-      try {
-        if (stoppedGetter != null) {
-          stoppedGetter.cancel(core.getClientContext());
+        ClientGetter stoppedGetter;
+        FetchAttempt stoppedAttempt;
+        FreenetURI stoppedUri;
+        synchronized (this) {
+          isRunning = false;
+          subscriptionGeneration++;
+          stoppedUri = this.uri;
+          stoppedGetter = cg;
+          stoppedAttempt = activeFetch;
+          cg = null;
+          activeFetch = null;
+          tempBlobFile = null;
+          isFetching = false;
         }
-      } catch (RuntimeException e) {
-        LOG.debug("Cannot cancel stopped {} fetch", artifactName(), e);
+        try {
+          USK myUsk = USK.create(stoppedUri.setSuggestedEdition(currentVersion));
+          core.getUskManager().unsubscribe(myUsk, this);
+        } catch (Exception e) {
+          LOG.debug("Cannot unsubscribe stopped {} updater", artifactName(), e);
+        }
+        try {
+          if (stoppedGetter != null) {
+            stoppedGetter.cancel(core.getClientContext());
+          }
+        } catch (RuntimeException e) {
+          LOG.debug("Cannot cancel stopped {} fetch", artifactName(), e);
+        } finally {
+          cleanupAttemptFile(stoppedAttempt, "while stopping updater");
+        }
       } finally {
-        cleanupAttemptFile(stoppedAttempt, "while stopping updater");
+        subscriptionScopeChangeLock.unlock();
       }
     }
   }
@@ -1191,27 +1231,54 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
    * @param subscribeEditionSeed edition to use when subscribing to the new update key
    */
   public void onChangeURI(FreenetURI newUri, int subscribeEditionSeed) {
-    String previousDocName;
-    synchronized (this) {
-      previousDocName = (this.uri != null) ? this.uri.getDocName() : null;
+    changeSubscriptionScope(newUri, () -> subscribeEditionSeed);
+  }
+
+  /**
+   * Replaces the subscription scope while excluding post-processing from the superseded scope.
+   *
+   * <p>The seed supplier runs after the previous subscription generation has been stopped and
+   * before the replacement URI becomes active. Subclasses may use it to reset or rebind state that
+   * {@link #processSuccess(int, FetchResult, File)} mutates. A successful old-scope fetch either
+   * finishes before this transition or observes the advanced generation and is discarded; it can
+   * never commit after the supplier has rebound that state.
+   *
+   * @param newUri replacement public update URI
+   * @param subscribeEditionSeed supplies the replacement subscription seed while the scope claim is
+   *     exclusive
+   */
+  protected final void changeSubscriptionScope(
+      FreenetURI newUri, IntSupplier subscribeEditionSeed) {
+    synchronized (subscriptionLifecycleLock) {
+      subscriptionScopeChangeLock.lock();
+      try {
+        String previousDocName;
+        synchronized (this) {
+          previousDocName = (this.uri != null) ? this.uri.getDocName() : null;
+        }
+        stopSubscription();
+        int nextSubscribeEditionSeed = subscribeEditionSeed.getAsInt();
+        FreenetURI nextUri =
+            (previousDocName != null
+                    && (newUri.getDocName() == null || newUri.getDocName().isEmpty()))
+                ? newUri.setDocName(previousDocName)
+                : newUri;
+        synchronized (this) {
+          this.uri = nextUri.setSuggestedEdition(nextSubscribeEditionSeed);
+          subscriptionGeneration++;
+          activeFetch = null;
+          availableVersion = -1;
+          realAvailableVersion = -1;
+          fetchingVersion = -1;
+          fetchedVersion = fetchedEditionAfterUriChange(nextSubscribeEditionSeed);
+          isFetching = false;
+          isRunning = true;
+        }
+        subscribe(() -> {});
+      } finally {
+        subscriptionScopeChangeLock.unlock();
+      }
     }
-    stopSubscription();
-    FreenetURI nextUri =
-        (previousDocName != null && (newUri.getDocName() == null || newUri.getDocName().isEmpty()))
-            ? newUri.setDocName(previousDocName)
-            : newUri;
-    synchronized (this) {
-      this.uri = nextUri.setSuggestedEdition(subscribeEditionSeed);
-      subscriptionGeneration++;
-      activeFetch = null;
-      availableVersion = -1;
-      realAvailableVersion = -1;
-      fetchingVersion = -1;
-      fetchedVersion = fetchedEditionAfterUriChange(subscribeEditionSeed);
-      isFetching = false;
-      isRunning = true;
-    }
-    subscribe(() -> {});
     maybeUpdate();
   }
 

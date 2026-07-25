@@ -905,7 +905,7 @@ public final class NodeUpdateManager {
     CoreSupportLifecycleUpdater lifecycleUpdater;
     FreenetURI lifecycleUri;
     int subscribeEditionSeed;
-    int lifecycleEditionSeed;
+    CoreSupportLifecycleParser.TrustBinding lifecycleTrust;
     synchronized (this) {
       if (updateURI.equals(uri)) {
         return;
@@ -920,15 +920,16 @@ public final class NodeUpdateManager {
       subscribeEditionSeed = computeCoreUpdaterSubscribeEditionSeedLocked(newUpdateScope);
       updater = coreUpdater;
       lifecycleUpdater = supportLifecycleUpdater;
-      supportLifecycleState.changeTrust(supportLifecycleTrustBinding());
-      lifecycleEditionSeed = supportLifecycleState.acceptedEditionSeed();
+      lifecycleTrust = supportLifecycleTrustBinding();
       lifecycleUri = getSupportLifecycleURI();
     }
     if (updater != null) {
       updater.onChangeURI(uri, subscribeEditionSeed);
     }
     if (lifecycleUpdater != null) {
-      lifecycleUpdater.onChangeURI(lifecycleUri, lifecycleEditionSeed);
+      lifecycleUpdater.onChangeURI(lifecycleUri, lifecycleTrust);
+    } else {
+      supportLifecycleState.changeTrust(lifecycleTrust);
     }
   }
 
