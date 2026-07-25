@@ -51,6 +51,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyShort;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -191,10 +192,11 @@ class CoreUpdaterTest {
     CoreUpdater updater = createCoreUpdater();
     int advertisedBuild = Version.currentBuildNumber() + 1;
     File completedPackage = Files.createTempFile("cryptad-revoked-package", ".deb").toFile();
-    setDescriptorSelection(
-        updater, advertisedBuild, SELECTED_PACKAGE_KEY, new PackageSpec(VALID_CHK, 10L, null));
+    CoreUpdater.DescriptorSelection selection =
+        setDescriptorSelection(
+            updater, advertisedBuild, SELECTED_PACKAGE_KEY, new PackageSpec(VALID_CHK, 10L, null));
     CoreUpdater.PackageFetcher completedFetcher = mock(CoreUpdater.PackageFetcher.class);
-    when(completedFetcher.matchesChk(VALID_CHK)).thenReturn(true);
+    when(completedFetcher.matchesSelection(selection)).thenReturn(true);
     when(completedFetcher.isSuccess()).thenReturn(true);
     when(completedFetcher.completedFileOrNull()).thenReturn(completedPackage);
     setField(updater, "fetcher", completedFetcher);
@@ -206,6 +208,28 @@ class CoreUpdaterTest {
     assertNull(updater.getDownloadedFile());
     assertTrue(updater.withDownloadedInstaller(completedPackage, _ -> "launched").isEmpty());
     verify(updater.core, never()).getClientContext();
+  }
+
+  @Test
+  void packageActions_whenSuccessorReusesChk_expectOriginalFetcherRejected() throws Exception {
+    CoreUpdater updater = createCoreUpdater();
+    int originalBuild = Version.currentBuildNumber() + 1;
+    int successorBuild = originalBuild + 1;
+    File completedPackage = Files.createTempFile("cryptad-original-package", ".deb").toFile();
+    CoreUpdater.DescriptorSelection originalSelection =
+        setDescriptorSelection(
+            updater, originalBuild, SELECTED_PACKAGE_KEY, new PackageSpec(VALID_CHK, 10L, null));
+    CoreUpdater.PackageFetcher originalFetcher =
+        updater.new PackageFetcher(originalSelection, completedPackage, new FreenetURI(VALID_CHK));
+    setField(updater, "fetcher", originalFetcher);
+    originalFetcher.onSuccess(mock(FetchResult.class), null);
+    setDescriptorSelection(
+        updater, successorBuild, "amd64.rpm", new PackageSpec(VALID_CHK, 10L, null));
+
+    assertNull(updater.getDownloadedFile());
+    assertTrue(updater.withDownloadedInstaller(completedPackage, _ -> "launched").isEmpty());
+    assertTrue(updater.isUiDownloadAvailable());
+    verify(updater.manager, never()).withNonRevokedCorePackageAction(eq(successorBuild), any());
   }
 
   @Test
@@ -258,6 +282,40 @@ class CoreUpdaterTest {
             .withCurrentStoreTarget(
                 "flatpak", STORE_PACKAGE_ID, STORE_PACKAGE_URL, () -> "launched")
             .isEmpty());
+  }
+
+  @Test
+  void withCurrentStoreTarget_whenVersionLabelIsNonInteger_expectActionRuns() throws Exception {
+    CoreUpdater updater = createCoreUpdater();
+    setDescriptorSelection(
+        updater,
+        new CoreInfo("legacy-release", null, Map.of(), null, null),
+        null,
+        STORE_PACKAGE_KEY,
+        new PackageSpec(null, null, STORE_PACKAGE_URL));
+
+    assertEquals(
+        Optional.of("launched"),
+        updater.withCurrentStoreTarget(
+            "flatpak", STORE_PACKAGE_ID, STORE_PACKAGE_URL, () -> "launched"));
+    verify(updater.manager).withNonRevokedCorePackageAction(isNull(), any());
+  }
+
+  @Test
+  void withCurrentStoreTarget_whenIntegerBuildIsNotNewer_expectActionRejected() throws Exception {
+    CoreUpdater updater = createCoreUpdater();
+    setDescriptorSelection(
+        updater,
+        Version.currentBuildNumber(),
+        STORE_PACKAGE_KEY,
+        new PackageSpec(null, null, STORE_PACKAGE_URL));
+
+    assertTrue(
+        updater
+            .withCurrentStoreTarget(
+                "flatpak", STORE_PACKAGE_ID, STORE_PACKAGE_URL, () -> "launched")
+            .isEmpty());
+    verify(updater.manager, never()).withNonRevokedCorePackageAction(any(), any());
   }
 
   @Test
@@ -387,13 +445,14 @@ class CoreUpdaterTest {
   @Test
   void isUiDownloadAvailable_whenMatchingPackageDownloadInProgress_expectFalse() throws Exception {
     CoreUpdater updater = createCoreUpdater();
-    setDescriptorSelection(
-        updater,
-        Version.currentBuildNumber() + 1,
-        SELECTED_PACKAGE_KEY,
-        new PackageSpec(VALID_CHK, 10L, null));
+    CoreUpdater.DescriptorSelection selection =
+        setDescriptorSelection(
+            updater,
+            Version.currentBuildNumber() + 1,
+            SELECTED_PACKAGE_KEY,
+            new PackageSpec(VALID_CHK, 10L, null));
     CoreUpdater.PackageFetcher fetcher = mock(CoreUpdater.PackageFetcher.class);
-    when(fetcher.matchesChk(VALID_CHK)).thenReturn(true);
+    when(fetcher.matchesSelection(selection)).thenReturn(true);
     when(fetcher.isInProgress()).thenReturn(true);
     setField(updater, "fetcher", fetcher);
 
@@ -403,13 +462,14 @@ class CoreUpdaterTest {
   @Test
   void isUiDownloadAvailable_whenMatchingPackageAlreadyFetched_expectFalse() throws Exception {
     CoreUpdater updater = createCoreUpdater();
-    setDescriptorSelection(
-        updater,
-        Version.currentBuildNumber() + 1,
-        SELECTED_PACKAGE_KEY,
-        new PackageSpec(VALID_CHK, 10L, null));
+    CoreUpdater.DescriptorSelection selection =
+        setDescriptorSelection(
+            updater,
+            Version.currentBuildNumber() + 1,
+            SELECTED_PACKAGE_KEY,
+            new PackageSpec(VALID_CHK, 10L, null));
     CoreUpdater.PackageFetcher fetcher = mock(CoreUpdater.PackageFetcher.class);
-    when(fetcher.matchesChk(VALID_CHK)).thenReturn(true);
+    when(fetcher.matchesSelection(selection)).thenReturn(true);
     when(fetcher.isInProgress()).thenReturn(false);
     when(fetcher.isSuccess()).thenReturn(true);
     setField(updater, "fetcher", fetcher);
@@ -426,7 +486,6 @@ class CoreUpdaterTest {
         SELECTED_PACKAGE_KEY,
         new PackageSpec(VALID_CHK, 10L, null));
     CoreUpdater.PackageFetcher fetcher = mock(CoreUpdater.PackageFetcher.class);
-    when(fetcher.matchesChk(VALID_CHK)).thenReturn(false);
     when(fetcher.isInProgress()).thenReturn(true);
     setField(updater, "fetcher", fetcher);
 
@@ -458,12 +517,15 @@ class CoreUpdaterTest {
   void start_whenPackageFetcherWasCancelledBeforeRegistration_expectDownloadDoesNotStart()
       throws Exception {
     CoreUpdater updater = createCoreUpdater();
+    CoreUpdater.DescriptorSelection selection =
+        setDescriptorSelection(
+            updater, null, SELECTED_PACKAGE_KEY, new PackageSpec(VALID_CHK, 10L, null));
     CoreUpdater.PackageFetcher fetcher =
         updater
         .new PackageFetcher(
+            selection,
             Files.createTempFile("cryptad-package-fetch", ".deb").toFile(),
-            new FreenetURI(VALID_CHK),
-            VALID_CHK);
+            new FreenetURI(VALID_CHK));
     fetcher.cancelForUpdaterStop();
 
     assertFalse(fetcher.start());
@@ -475,16 +537,17 @@ class CoreUpdaterTest {
       throws Exception {
     CoreUpdater updater = updaterWithActivePackageFetch();
     CoreUpdater.PackageFetcher originalFetcher = currentPackageFetcher(updater);
-    setDescriptorSelection(
-        updater,
-        Version.currentBuildNumber() + 2,
-        SELECTED_PACKAGE_KEY,
-        new PackageSpec(REPLACEMENT_CHK, 10L, null));
+    CoreUpdater.DescriptorSelection replacementSelection =
+        setDescriptorSelection(
+            updater,
+            Version.currentBuildNumber() + 2,
+            SELECTED_PACKAGE_KEY,
+            new PackageSpec(REPLACEMENT_CHK, 10L, null));
     ClientContext clientContext = updater.core.getClientContext();
 
     originalFetcher.onSuccess(mock(FetchResult.class), null);
 
-    assertTrue(currentPackageFetcher(updater).matchesChk(REPLACEMENT_CHK));
+    assertTrue(currentPackageFetcher(updater).matchesSelection(replacementSelection));
     verify(clientContext, times(2)).start(any(ClientGetter.class));
   }
 
@@ -493,16 +556,17 @@ class CoreUpdaterTest {
       throws Exception {
     CoreUpdater updater = updaterWithActivePackageFetch();
     CoreUpdater.PackageFetcher originalFetcher = currentPackageFetcher(updater);
-    setDescriptorSelection(
-        updater,
-        Version.currentBuildNumber() + 2,
-        SELECTED_PACKAGE_KEY,
-        new PackageSpec(REPLACEMENT_CHK, 10L, null));
+    CoreUpdater.DescriptorSelection replacementSelection =
+        setDescriptorSelection(
+            updater,
+            Version.currentBuildNumber() + 2,
+            SELECTED_PACKAGE_KEY,
+            new PackageSpec(REPLACEMENT_CHK, 10L, null));
     ClientContext clientContext = updater.core.getClientContext();
 
     originalFetcher.onFailure(new FetchException(FetchExceptionMode.ROUTE_NOT_FOUND));
 
-    assertTrue(currentPackageFetcher(updater).matchesChk(REPLACEMENT_CHK));
+    assertTrue(currentPackageFetcher(updater).matchesSelection(replacementSelection));
     verify(clientContext, times(2)).start(any(ClientGetter.class));
   }
 
@@ -550,10 +614,11 @@ class CoreUpdaterTest {
     CoreUpdater updater = createCoreUpdater();
     int advertisedBuild = Version.currentBuildNumber() + 1;
     File completedPackage = Files.createTempFile("cryptad-authorized-package", ".deb").toFile();
-    setDescriptorSelection(
-        updater, advertisedBuild, SELECTED_PACKAGE_KEY, new PackageSpec(VALID_CHK, 10L, null));
+    CoreUpdater.DescriptorSelection selection =
+        setDescriptorSelection(
+            updater, advertisedBuild, SELECTED_PACKAGE_KEY, new PackageSpec(VALID_CHK, 10L, null));
     CoreUpdater.PackageFetcher completedFetcher = mock(CoreUpdater.PackageFetcher.class);
-    when(completedFetcher.matchesChk(VALID_CHK)).thenReturn(true);
+    when(completedFetcher.matchesSelection(selection)).thenReturn(true);
     when(completedFetcher.isSuccess()).thenReturn(true);
     when(completedFetcher.completedFileOrNull()).thenReturn(completedPackage);
     setField(updater, "fetcher", completedFetcher);
@@ -594,10 +659,11 @@ class CoreUpdaterTest {
     CoreUpdater updater = createCoreUpdater();
     int advertisedBuild = Version.currentBuildNumber() + 1;
     File completedPackage = Files.createTempFile("cryptad-authorized-package", ".deb").toFile();
-    setDescriptorSelection(
-        updater, advertisedBuild, SELECTED_PACKAGE_KEY, new PackageSpec(VALID_CHK, 10L, null));
+    CoreUpdater.DescriptorSelection selection =
+        setDescriptorSelection(
+            updater, advertisedBuild, SELECTED_PACKAGE_KEY, new PackageSpec(VALID_CHK, 10L, null));
     CoreUpdater.PackageFetcher completedFetcher = mock(CoreUpdater.PackageFetcher.class);
-    when(completedFetcher.matchesChk(VALID_CHK)).thenReturn(true);
+    when(completedFetcher.matchesSelection(selection)).thenReturn(true);
     when(completedFetcher.isSuccess()).thenReturn(true);
     when(completedFetcher.completedFileOrNull()).thenReturn(completedPackage);
     setField(updater, "fetcher", completedFetcher);
@@ -732,26 +798,26 @@ class CoreUpdaterTest {
     ((AtomicReference<T>) field.get(updater)).set(value);
   }
 
-  private static void setDescriptorSelection(
+  private static CoreUpdater.DescriptorSelection setDescriptorSelection(
       CoreUpdater updater, Integer buildVersion, String packageKey, PackageSpec packageSpec)
       throws Exception {
     CoreInfo info =
         new CoreInfo(
             buildVersion != null ? buildVersion.toString() : "test", null, Map.of(), null, null);
-    setDescriptorSelection(updater, info, buildVersion, packageKey, packageSpec);
+    return setDescriptorSelection(updater, info, buildVersion, packageKey, packageSpec);
   }
 
-  private static void setDescriptorSelection(
+  private static CoreUpdater.DescriptorSelection setDescriptorSelection(
       CoreUpdater updater,
       CoreInfo info,
       Integer buildVersion,
       String packageKey,
       PackageSpec packageSpec)
       throws Exception {
-    setField(
-        updater,
-        "descriptorSelection",
-        new CoreUpdater.DescriptorSelection(info, buildVersion, null, packageKey, packageSpec));
+    CoreUpdater.DescriptorSelection selection =
+        new CoreUpdater.DescriptorSelection(info, buildVersion, null, packageKey, packageSpec);
+    setField(updater, "descriptorSelection", selection);
+    return selection;
   }
 
   @SuppressWarnings("unchecked")

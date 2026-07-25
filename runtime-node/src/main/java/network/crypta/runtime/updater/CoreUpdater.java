@@ -93,7 +93,21 @@ public class CoreUpdater extends NodeUpdater {
       Integer buildVersion,
       AppEnv.EnvDetection environment,
       String packageKey,
-      PackageSpec packageSpec) {}
+      PackageSpec packageSpec,
+      Object selectionIdentity) {
+    DescriptorSelection {
+      Objects.requireNonNull(selectionIdentity, "selectionIdentity");
+    }
+
+    DescriptorSelection(
+        CoreInfo info,
+        Integer buildVersion,
+        AppEnv.EnvDetection environment,
+        String packageKey,
+        PackageSpec packageSpec) {
+      this(info, buildVersion, environment, packageKey, packageSpec, new Object());
+    }
+  }
 
   /**
    * Creates a core updater bound to the shared node updater manager context.
@@ -307,7 +321,7 @@ public class CoreUpdater extends NodeUpdater {
   private boolean matchesCurrentStoreTarget(
       DescriptorSelection selection, String kind, String id, String url) {
     if (selection == null
-        || !isNewerThanCurrentBuild(selection.buildVersion())
+        || !isEligibleStoreBuild(selection.buildVersion())
         || selection.packageSpec() == null
         || !isCurrentSelection(selection)) {
       return false;
@@ -320,6 +334,10 @@ public class CoreUpdater extends NodeUpdater {
         && expectedKind.equals(kind)
         && Objects.equals(expectedId, optionalFormValue(id))
         && expectedUrl.equals(url);
+  }
+
+  private static boolean isEligibleStoreBuild(Integer buildVersion) {
+    return buildVersion == null || isNewerThanCurrentBuild(buildVersion);
   }
 
   private boolean isCurrentSelection(DescriptorSelection selection) {
@@ -566,7 +584,7 @@ public class CoreUpdater extends NodeUpdater {
       return null;
     }
     PackageFetcher f = fetcher.get();
-    if (f != null && f.matchesChk(spec.chk())) {
+    if (f != null && f.matchesSelection(selection)) {
       return f;
     }
     return null;
@@ -602,7 +620,7 @@ public class CoreUpdater extends NodeUpdater {
       logError("Invalid CHK URI for selected package: " + chk, e);
       return false;
     }
-    PackageFetcher f = new PackageFetcher(target, uri, chk);
+    PackageFetcher f = new PackageFetcher(selection, target, uri);
     synchronized (packageFetchLifecycleLock) {
       if (packageFetchesStopped || manager.isBlown()) {
         logInfo("Skipping package download start because updater trust is unavailable");
@@ -621,7 +639,7 @@ public class CoreUpdater extends NodeUpdater {
         logInfo("Skipping download start: another package download is still running");
         return false;
       }
-      if (current != null && current.matchesChk(chk) && current.isSuccess()) {
+      if (current != null && current.matchesSelection(selection) && current.isSuccess()) {
         logInfo("Skipping download start: selected package is already downloaded");
         return false;
       }
@@ -1044,11 +1062,16 @@ public class CoreUpdater extends NodeUpdater {
     return form;
   }
 
-  /** Lightweight fetcher for a single CHK saved directly to a file. */
+  /**
+   * Lightweight fetcher for one package selected by one immutable core descriptor snapshot.
+   *
+   * <p>The snapshot identity is retained after download so a later descriptor cannot consume the
+   * completed file merely by reusing its CHK while changing the advertised build or package key.
+   */
   class PackageFetcher implements ClientGetCallback, RequestClient, ClientEventListener {
+    private final DescriptorSelection originatingSelection;
     private final File outFile;
     private final FreenetURI chk;
-    private final String chkString;
     private final AtomicReference<FetchContext> fetchContext = new AtomicReference<>();
     private final AtomicReference<ClientGetter> clientGetter = new AtomicReference<>();
 
@@ -1062,10 +1085,11 @@ public class CoreUpdater extends NodeUpdater {
     private volatile boolean fatal = false;
     private boolean cancelled;
 
-    PackageFetcher(File outFile, FreenetURI chk, String chkString) {
+    PackageFetcher(DescriptorSelection originatingSelection, File outFile, FreenetURI chk) {
+      this.originatingSelection =
+          Objects.requireNonNull(originatingSelection, "originatingSelection");
       this.outFile = outFile;
       this.chk = chk;
-      this.chkString = chkString;
     }
 
     synchronized boolean start() {
@@ -1178,8 +1202,9 @@ public class CoreUpdater extends NodeUpdater {
       return failed && fatal;
     }
 
-    boolean matchesChk(String candidate) {
-      return candidate != null && candidate.equals(chkString);
+    boolean matchesSelection(DescriptorSelection candidate) {
+      return candidate != null
+          && originatingSelection.selectionIdentity().equals(candidate.selectionIdentity());
     }
 
     /**
@@ -1196,7 +1221,7 @@ public class CoreUpdater extends NodeUpdater {
           || !manager.isAutoUpdateAllowed()
           || currentSpec == null
           || currentSpec.chk() == null
-          || matchesChk(currentSpec.chk())
+          || matchesSelection(currentSelection)
           || !isNewerThanCurrentBuild(currentBuild)) {
         return;
       }
