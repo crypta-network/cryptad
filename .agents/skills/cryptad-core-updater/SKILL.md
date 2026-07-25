@@ -176,9 +176,10 @@ automatic selection that was advertised while the older fetch was active.
 
 Lifecycle persistence is crash-durable and platform-aware. Force completed temporary bytes before
 publishing them; synchronize the parent-directory entry where supported and use the Windows native
-write-through move instead of opening a Windows directory as a file channel. Reject unsafe
-descriptor/marker leaves without treating an otherwise accepted symlinked node-directory path as
-compromise evidence when no marker exists.
+write-through move instead of opening a Windows directory as a file channel. Resolve and pin the
+`ProgramDirectory`-accepted node root before deriving lifecycle paths; allow that configured root
+to use a symlink while rejecting symlinks in controlled descendants and descriptor/marker leaves.
+Do not treat an accepted symlinked node-directory path as compromise evidence when no marker exists.
 
 An authenticated update-key compromise invalidates cached lifecycle authority and package-update
 authority across restart. Maintain the fixed-content sibling marker and independent node-level

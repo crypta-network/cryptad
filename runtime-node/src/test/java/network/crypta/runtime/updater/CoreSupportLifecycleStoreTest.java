@@ -23,6 +23,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @SuppressWarnings("java:S100")
 class CoreSupportLifecycleStoreTest {
   private static final String DESCRIPTOR_PATH = "updates/core/lifecycle.json";
+  private static final String FALLBACK_MARKER_PATH = "update-key-trust-invalidated";
+  private static final String REAL_NODE_DIRECTORY = "real-node";
+  private static final String CONFIGURED_NODE_DIRECTORY = "configured-node";
   private static final String PUBLISH_REPLACE = "publish-replace";
   private static final Instant VERIFIED_AT = Instant.parse("2026-01-02T12:00:00Z");
   private static final Instant LATER_VERIFIED_AT = Instant.parse("2026-01-03T12:00:00Z");
@@ -106,12 +109,14 @@ class CoreSupportLifecycleStoreTest {
   }
 
   @Test
-  void save_whenNestedParentComponentIsSymbolicLink_expectRejection(@TempDir Path tempDir)
+  void save_whenControlledDescendantIsSymbolicLink_expectRejection(@TempDir Path tempDir)
       throws Exception {
-    Path real = Files.createDirectory(tempDir.resolve("real"));
-    Path link = tempDir.resolve("nested-link");
-    Files.createSymbolicLink(link, real);
-    CoreSupportLifecycleStore store = new CoreSupportLifecycleStore(link.resolve(DESCRIPTOR_PATH));
+    Path nodeRoot = Files.createDirectory(tempDir.resolve("node"));
+    Path outside = Files.createDirectory(tempDir.resolve("outside"));
+    Files.createSymbolicLink(nodeRoot.resolve("updates"), outside);
+    CoreSupportLifecycleStore store =
+        CoreSupportLifecycleStore.underAcceptedRoot(
+            nodeRoot, Path.of(DESCRIPTOR_PATH), Path.of(FALLBACK_MARKER_PATH));
 
     assertThrows(
         IOException.class,
@@ -119,10 +124,66 @@ class CoreSupportLifecycleStoreTest {
   }
 
   @Test
+  void saveAndLoad_whenAcceptedRootIsSymbolicLink_expectPersistenceUsesPinnedTarget(
+      @TempDir Path tempDir) throws Exception {
+    Path realNode = Files.createDirectory(tempDir.resolve(REAL_NODE_DIRECTORY));
+    Path redirectedNode = Files.createDirectory(tempDir.resolve("redirected-node"));
+    Path configuredNode = tempDir.resolve(CONFIGURED_NODE_DIRECTORY);
+    Files.createSymbolicLink(configuredNode, realNode);
+    CoreSupportLifecycleStore store =
+        CoreSupportLifecycleStore.underAcceptedRoot(
+            configuredNode, Path.of(DESCRIPTOR_PATH), Path.of(FALLBACK_MARKER_PATH));
+    byte[] descriptor = CoreSupportLifecycleParserTest.fixtureBytes();
+    Files.delete(configuredNode);
+    Files.createSymbolicLink(configuredNode, redirectedNode);
+
+    store.save(descriptor, VERIFIED_AT);
+    CoreSupportLifecycleStore.StoredDescriptor stored = store.load();
+
+    assertNotNull(stored);
+    assertEquals(
+        CoreSupportLifecycleParser.exactBytesDigest(descriptor),
+        CoreSupportLifecycleParser.exactBytesDigest(stored.bytes()));
+    assertTrue(Files.isRegularFile(realNode.resolve(DESCRIPTOR_PATH)));
+    assertFalse(Files.exists(redirectedNode.resolve(DESCRIPTOR_PATH)));
+  }
+
+  @Test
+  void invalidateTrust_whenAcceptedRootIsSymbolicLink_expectBothMarkersAreDurable(
+      @TempDir Path tempDir) throws Exception {
+    Path realNode = Files.createDirectory(tempDir.resolve(REAL_NODE_DIRECTORY));
+    Path configuredNode = tempDir.resolve(CONFIGURED_NODE_DIRECTORY);
+    Files.createSymbolicLink(configuredNode, realNode);
+    CoreSupportLifecycleStore store =
+        CoreSupportLifecycleStore.underAcceptedRoot(
+            configuredNode, Path.of(DESCRIPTOR_PATH), Path.of(FALLBACK_MARKER_PATH));
+    Path descriptor = realNode.resolve(DESCRIPTOR_PATH);
+    store.save(CoreSupportLifecycleParserTest.fixtureBytes(), VERIFIED_AT);
+
+    store.invalidateTrust();
+
+    assertTrue(Files.isRegularFile(invalidationMarker(descriptor)));
+    assertTrue(Files.isRegularFile(realNode.resolve(FALLBACK_MARKER_PATH)));
+    assertTrue(store.isTrustInvalidated());
+    assertNull(store.load());
+  }
+
+  @Test
+  void underAcceptedRoot_whenRelativePathEscapes_expectRejection(@TempDir Path tempDir)
+      throws Exception {
+    Path nodeRoot = Files.createDirectory(tempDir.resolve("node"));
+    Path escaped = Path.of("..", "outside.json");
+
+    assertThrows(
+        IOException.class,
+        () -> CoreSupportLifecycleStore.underAcceptedRoot(nodeRoot, escaped, null));
+  }
+
+  @Test
   void trustInvalidationStatus_whenAncestorIsSymbolicLinkAndMarkerIsAbsent_expectAbsent(
       @TempDir Path tempDir) throws Exception {
-    Path real = Files.createDirectory(tempDir.resolve("real-node"));
-    Path configuredNode = tempDir.resolve("configured-node");
+    Path real = Files.createDirectory(tempDir.resolve(REAL_NODE_DIRECTORY));
+    Path configuredNode = tempDir.resolve(CONFIGURED_NODE_DIRECTORY);
     Files.createSymbolicLink(configuredNode, real);
     CoreSupportLifecycleStore store =
         new CoreSupportLifecycleStore(configuredNode.resolve(DESCRIPTOR_PATH));
@@ -255,7 +316,7 @@ class CoreSupportLifecycleStoreTest {
   void invalidateTrust_whenSiblingMarkerConflicts_expectFallbackSurvivesRecovery(
       @TempDir Path tempDir) throws Exception {
     Path descriptor = tempDir.resolve(DESCRIPTOR_PATH);
-    Path fallback = tempDir.resolve("update-key-trust-invalidated");
+    Path fallback = tempDir.resolve(FALLBACK_MARKER_PATH);
     CoreSupportLifecycleStore store = new CoreSupportLifecycleStore(descriptor, fallback);
     byte[] bytes = CoreSupportLifecycleParserTest.fixtureBytes();
     store.save(bytes, VERIFIED_AT);

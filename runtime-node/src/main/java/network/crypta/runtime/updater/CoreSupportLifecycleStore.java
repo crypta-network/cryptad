@@ -105,6 +105,52 @@ final class CoreSupportLifecycleStore {
   }
 
   /**
+   * Creates a store below one node-directory root already accepted by {@code ProgramDirectory}.
+   *
+   * <p>The accepted root is resolved once to pin any configured symlink before controlled lifecycle
+   * paths are derived. Later path validation can therefore reject symlinks below that root without
+   * rejecting the operator's accepted root itself.
+   *
+   * @param acceptedRoot configured node-directory root that already exists and is accepted
+   * @param descriptorRelative descriptor path relative to the accepted root
+   * @param fallbackInvalidationRelative independent marker path relative to the accepted root, or
+   *     {@code null} to use only the descriptor sibling
+   * @return store anchored below the resolved accepted root
+   * @throws IOException if the accepted root cannot be pinned or a relative path escapes it
+   */
+  static CoreSupportLifecycleStore underAcceptedRoot(
+      Path acceptedRoot, Path descriptorRelative, Path fallbackInvalidationRelative)
+      throws IOException {
+    if (acceptedRoot == null) {
+      throw new IOException("lifecycle persistence root is unavailable");
+    }
+    Path anchoredRoot = acceptedRoot.toAbsolutePath().normalize().toRealPath();
+    rejectSymbolicPath(anchoredRoot);
+    Path descriptor = resolveControlledDescendant(anchoredRoot, descriptorRelative);
+    Path fallback =
+        fallbackInvalidationRelative == null
+            ? null
+            : resolveControlledDescendant(anchoredRoot, fallbackInvalidationRelative);
+    return new CoreSupportLifecycleStore(descriptor, fallback, platformPersistenceSync());
+  }
+
+  private static Path resolveControlledDescendant(Path root, Path relative) throws IOException {
+    if (relative == null || relative.isAbsolute()) {
+      throw new IOException("lifecycle persistence path is not relative");
+    }
+    Path normalized = relative.normalize();
+    if (normalized.toString().isEmpty()
+        || (normalized.getNameCount() > 0 && "..".equals(normalized.getName(0).toString()))) {
+      throw new IOException("lifecycle persistence path escapes its accepted root");
+    }
+    Path resolved = root.resolve(normalized).normalize();
+    if (!resolved.startsWith(root) || resolved.equals(root)) {
+      throw new IOException("lifecycle persistence path escapes its accepted root");
+    }
+    return resolved;
+  }
+
+  /**
    * Loads exact descriptor bytes when a safe last-known-good file exists.
    *
    * @return exact stored bytes, or {@code null} when no prior descriptor exists

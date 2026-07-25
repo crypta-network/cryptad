@@ -211,7 +211,8 @@ public final class NodeUpdateManager {
    *
    * @param node the owning node; must remain valid for the lifetime of this manager (non‑null)
    * @param config global configuration; a {@code node.updater} subconfig is created and populated
-   * @throws InvalidConfigValueException if provided, URIs are malformed or violate required shapes
+   * @throws InvalidConfigValueException if provided URIs are malformed, violate required shapes, or
+   *     the accepted node directory cannot anchor lifecycle persistence
    */
   public NodeUpdateManager(Node node, Config config) throws InvalidConfigValueException {
     this.node = node;
@@ -328,11 +329,20 @@ public final class NodeUpdateManager {
     updaterConfig.finishedInitialization();
 
     Path nodeDirectory = node.nodeDir().dir().toPath();
+    CoreSupportLifecycleStore lifecycleStore;
+    try {
+      lifecycleStore =
+          CoreSupportLifecycleStore.underAcceptedRoot(
+              nodeDirectory,
+              Path.of("updates/core/support-lifecycle-last-known-good.json"),
+              Path.of(UPDATE_KEY_TRUST_INVALIDATION_FILE));
+    } catch (IOException _) {
+      throw new InvalidConfigValueException(
+          "Unable to anchor support-lifecycle persistence below the accepted node directory");
+    }
     this.supportLifecycleState =
         new CoreSupportLifecycleState(
-            new CoreSupportLifecycleStore(
-                nodeDirectory.resolve("updates/core/support-lifecycle-last-known-good.json"),
-                nodeDirectory.resolve(UPDATE_KEY_TRUST_INVALIDATION_FILE)),
+            lifecycleStore,
             new CoreSupportLifecycleParser(),
             Clock.systemUTC(),
             Version.currentBuildNumber(),

@@ -102,6 +102,8 @@ class NodeUpdateManagerTest {
 
   private static final String SUPPORT_LIFECYCLE_IDENTITY_DIGEST =
       "sha256:b6386982e7eed893448339eed564fcdc140547266b0dc70978ddfa345f6136d7";
+  private static final String SUPPORT_LIFECYCLE_STATE_PATH =
+      "updates/core/support-lifecycle-last-known-good.json";
 
   @BeforeEach
   void setUp() throws Exception {
@@ -195,9 +197,14 @@ class NodeUpdateManagerTest {
   }
 
   private CoreSupportLifecycleState getSupportLifecycleState() throws Exception {
+    return getSupportLifecycleState(manager);
+  }
+
+  private static CoreSupportLifecycleState getSupportLifecycleState(NodeUpdateManager target)
+      throws Exception {
     Field stateField = NodeUpdateManager.class.getDeclaredField("supportLifecycleState");
     stateField.setAccessible(true);
-    return (CoreSupportLifecycleState) stateField.get(manager);
+    return (CoreSupportLifecycleState) stateField.get(target);
   }
 
   private RevocationKeyFoundUserAlert getRevocationAlert() throws Exception {
@@ -313,7 +320,7 @@ class NodeUpdateManagerTest {
   @Test
   void start_whenPersistedCompromiseMarkerIsMalformed_expectFailClosedAlertAndNoUpdaters()
       throws Exception {
-    Path descriptor = tempDir.resolve("node/updates/core/support-lifecycle-last-known-good.json");
+    Path descriptor = tempDir.resolve("node").resolve(SUPPORT_LIFECYCLE_STATE_PATH);
     Files.createDirectories(tempDir.resolve("node/updates/core"));
     Files.writeString(trustInvalidationMarker(descriptor), "malformed");
     USKManager uskManager = mock(USKManager.class);
@@ -376,7 +383,7 @@ class NodeUpdateManagerTest {
   void blow_whenUpdateKeyIsCompromised_expectLifecycleTrustInvalidated() throws Exception {
     CoreSupportLifecycleState lifecycleState = getSupportLifecycleState();
     lifecycleState.accept(lifecycleDescriptorForRunningBuild(), 1);
-    Path persisted = tempDir.resolve("node/updates/core/support-lifecycle-last-known-good.json");
+    Path persisted = tempDir.resolve("node").resolve(SUPPORT_LIFECYCLE_STATE_PATH);
     assertTrue(manager.supportLifecycleSnapshot().known());
     assertTrue(Files.isRegularFile(persisted));
 
@@ -390,9 +397,36 @@ class NodeUpdateManagerTest {
   }
 
   @Test
+  void constructor_whenNodeDirectoryRootIsSymbolicLink_expectLifecycleStateUsesPinnedTarget()
+      throws Exception {
+    Path realNode = Files.createDirectory(tempDir.resolve("real-node"));
+    Path configuredNode = tempDir.resolve("configured-node");
+    Files.createSymbolicLink(configuredNode, realNode);
+    ProgramDirectory nodeProgramDir = new ProgramDirectory();
+    nodeProgramDir.move(configuredNode.toString());
+    when(node.nodeDir()).thenReturn(nodeProgramDir);
+    NodeUpdateManager symlinked = new NodeUpdateManager(node, new Config());
+    CoreSupportLifecycleState lifecycleState = getSupportLifecycleState(symlinked);
+    Path persisted = realNode.resolve(SUPPORT_LIFECYCLE_STATE_PATH);
+
+    lifecycleState.accept(lifecycleDescriptorForRunningBuild(), 1);
+    assertTrue(Files.isRegularFile(persisted));
+    assertTrue(symlinked.supportLifecycleSnapshot().known());
+
+    symlinked.blow("authenticated update-key compromise", false);
+
+    assertFalse(Files.exists(persisted));
+    assertTrue(Files.isRegularFile(trustInvalidationMarker(persisted)));
+    assertTrue(
+        Files.isRegularFile(
+            realNode.resolve(NodeUpdateManager.UPDATE_KEY_TRUST_INVALIDATION_FILE)));
+    assertTrue(symlinked.isUpdateKeyCompromised());
+  }
+
+  @Test
   void blow_whenUpdateKeyIsCompromised_expectSubscribersStoppedBeforeTrustPersistence()
       throws Exception {
-    Path descriptor = tempDir.resolve("node/updates/core/support-lifecycle-last-known-good.json");
+    Path descriptor = tempDir.resolve("node").resolve(SUPPORT_LIFECYCLE_STATE_PATH);
     Path marker = trustInvalidationMarker(descriptor);
     CoreUpdater coreUpdater = mock(CoreUpdater.class);
     CoreSupportLifecycleUpdater lifecycleUpdater = mock(CoreSupportLifecycleUpdater.class);
@@ -449,7 +483,7 @@ class NodeUpdateManagerTest {
   @Test
   void blow_whenCompromiseMarkersCannotPersist_expectRetryRestoresDurableRestartLatch()
       throws Exception {
-    Path descriptor = tempDir.resolve("node/updates/core/support-lifecycle-last-known-good.json");
+    Path descriptor = tempDir.resolve("node").resolve(SUPPORT_LIFECYCLE_STATE_PATH);
     Path siblingMarker = trustInvalidationMarker(descriptor);
     Path fallbackMarker =
         tempDir.resolve("node").resolve(NodeUpdateManager.UPDATE_KEY_TRUST_INVALIDATION_FILE);
@@ -491,7 +525,7 @@ class NodeUpdateManagerTest {
     CoreSupportLifecycleUpdater lifecycleUpdater = getSupportLifecycleUpdater();
     CoreSupportLifecycleState lifecycleState = getSupportLifecycleState();
     lifecycleState.accept(lifecycleDescriptorForRunningBuild(), 1);
-    Path persisted = tempDir.resolve("node/updates/core/support-lifecycle-last-known-good.json");
+    Path persisted = tempDir.resolve("node").resolve(SUPPORT_LIFECYCLE_STATE_PATH);
 
     manager.blow("local updater failure", true);
 
