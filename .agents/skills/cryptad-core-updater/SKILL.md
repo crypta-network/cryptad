@@ -165,7 +165,9 @@ Persist the bounded public-safe
 `support-lifecycle-last-known-good.json.revocation-activations` sibling before replacing the
 descriptor. It records when each terminal revocation first became enforceable, so a
 future-effective successor preserves predecessor revocations across restart without activating a
-new revocation early. Clear this derived state with the descriptor after update-key compromise.
+new revocation early. If this derived state is absent or invalid, fail closed from each authenticated
+revoked entry's own effective time rather than suspending a potentially prior terminal revocation.
+Clear this derived state with the descriptor after update-key compromise.
 
 Local-only package-updater failure must leave both lifecycle polling and revocation-key polling
 active; only authenticated update-key compromise invalidates documents under that key. Package

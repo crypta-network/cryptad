@@ -477,7 +477,7 @@ final class CoreSupportLifecycleState {
 
   private Map<Integer, Instant> decodeRevocationState(
       byte[] bytes, CoreSupportLifecycleDescriptor persisted) {
-    Map<Integer, Instant> fallback = descriptorActivationFallback(persisted);
+    Map<Integer, Instant> fallback = conservativeRevocationFallback(persisted);
     if (bytes.length == 0) {
       return fallback;
     }
@@ -548,12 +548,12 @@ final class CoreSupportLifecycleState {
     return true;
   }
 
-  private static Map<Integer, Instant> descriptorActivationFallback(
+  private static Map<Integer, Instant> conservativeRevocationFallback(
       CoreSupportLifecycleDescriptor descriptor) {
     HashMap<Integer, Instant> activations = new HashMap<>();
     descriptor.entries().stream()
         .filter(entry -> entry.lifecycleStatus() == CoreSupportLifecycleStatus.REVOKED)
-        .forEach(entry -> activations.put(entry.buildVersion(), descriptor.effectiveAt()));
+        .forEach(entry -> activations.put(entry.buildVersion(), entry.statusEffectiveAt()));
     return Map.copyOf(activations);
   }
 
