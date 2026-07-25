@@ -516,6 +516,15 @@ target; HTTP `410` is a tombstone, not genesis. Later editions require the exact
 ledger/descriptor pair. Publish and verification consume a separately attested lifecycle-only
 provider wheel; only publish receives insert material.
 
+Lifecycle workflow source is trusted only when the dispatch ref is protected `main`, the exact
+`release/<build>`, or the exact `hotfix/<build>` ref and the selected source commit remains
+reachable from the authenticated live remote tip. Require GitHub's protected-ref context before
+requesting an environment. Use a credential-free preflight for producer inputs, then recheck branch
+protection and ancestry before input credentials or publication insert material are exposed.
+Configure the lifecycle evidence, authorization, and publication environments with
+deployment-branch restrictions for protected `main`, `release/*`, and `hotfix/*`; keep the
+workflow's exact-build allowlist as an independent gate.
+
 Keep the complete post-publication component plus external receipt available for independent
 verification, but remove protected input trees from the verification bundle. Read-only
 verification may occur after approval expiry when it proves that the original receipt timestamp

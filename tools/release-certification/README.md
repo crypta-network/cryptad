@@ -699,6 +699,18 @@ ZIP by exact digest, rejects redirects, private endpoints, unsafe archives, unre
 non-production execution flags, then attests its manifest and every protected input. The
 `stable-1.0-support-lifecycle.yml` consumer pins that canonical producer identity.
 
+Lifecycle input and publication jobs run only from protected `main`, the exact
+`release/<build_version>`, or the exact `hotfix/<build_version>` ref. Their job conditions first
+require GitHub's protected-ref context. They then query the live GitHub branch record, require
+`protected=true`, fetch the same remote branch, and require the selected source commit to be its
+ancestor. The publication job repeats that proof before insert material is made available; the
+input producer first completes it in a credential-free job before requesting its environment, then
+repeats it before receiving the protected bundle locator and bearer token.
+
+Configure the lifecycle evidence, authorization, and publication environments with deployment
+branch rules limited to protected `main`, `release/*`, and `hotfix/*` refs. Workflow job conditions
+retain the exact-build allowlist independently of those repository settings.
+
 Authorization validation restores those attested inputs and reruns `stable-lifecycle`; it does not
 trust a caller-assembled authorization summary or publication plan. Publication repeats the same
 certification immediately before mutation, then performs a live read of the separately bound

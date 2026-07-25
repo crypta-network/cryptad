@@ -24,7 +24,7 @@ on:
         required: true
         type: string
       source_commit:
-        description: Exact lowercase source commit; dispatch this workflow at the same ref.
+        description: Exact lowercase source commit on protected main or the exact build release/hotfix ref.
         required: true
         type: string
       input_bundle_sha256:
@@ -40,8 +40,86 @@ concurrency:
 permissions: {}
 
 jobs:
+  validate-dispatch:
+    name: Authenticate exact protected lifecycle source
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    outputs:
+      trusted_source_ref: ${{ steps.source-trust.outputs.trusted_source_ref }}
+
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.source_commit }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Bind checkout to an authenticated protected source
+        id: source-trust
+        env:
+          INPUT_BUILD_VERSION: ${{ inputs.build_version }}
+          INPUT_SOURCE_COMMIT: ${{ inputs.source_commit }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$INPUT_BUILD_VERSION" =~ ^[1-9][0-9]*$ \
+                || ! "$INPUT_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ \
+                || "$GITHUB_SHA" != "$INPUT_SOURCE_COMMIT" \
+                || "$(git rev-parse 'HEAD^{commit}')" != "$INPUT_SOURCE_COMMIT" ]]; then
+            echo "::error::Lifecycle input source does not match the dispatch identity."
+            exit 1
+          fi
+          case "$GITHUB_REF" in
+            refs/heads/main)
+              trusted_branch="main"
+              ;;
+            "refs/heads/release/$INPUT_BUILD_VERSION")
+              trusted_branch="release/$INPUT_BUILD_VERSION"
+              ;;
+            "refs/heads/hotfix/$INPUT_BUILD_VERSION")
+              trusted_branch="hotfix/$INPUT_BUILD_VERSION"
+              ;;
+            *)
+              echo "::error::Lifecycle input production requires main or the exact build release/hotfix ref."
+              exit 1
+              ;;
+          esac
+          encoded_branch="${trusted_branch//\//%2F}"
+          if ! branch_json="$(gh api --method GET \
+              "repos/$GITHUB_REPOSITORY/branches/$encoded_branch")"; then
+            echo "::error::The lifecycle input source branch could not be authenticated."
+            exit 1
+          fi
+          if ! protected_tip="$(jq -er '
+              select(.protected == true)
+              | .commit.sha
+              | select(type == "string" and test("^[0-9a-f]{40}$"))' \
+              <<< "$branch_json")"; then
+            echo "::error::Lifecycle input production requires a protected source branch."
+            exit 1
+          fi
+          git fetch --no-tags origin \
+            "+refs/heads/$trusted_branch:refs/remotes/origin/$trusted_branch"
+          remote_tip="$(git rev-parse "refs/remotes/origin/$trusted_branch^{commit}")"
+          if [[ "$remote_tip" != "$protected_tip" ]] \
+              || ! git merge-base --is-ancestor "$INPUT_SOURCE_COMMIT" "$remote_tip"; then
+            echo "::error::Lifecycle input source is not reachable from the protected ref."
+            exit 1
+          fi
+          echo "trusted_source_ref=$GITHUB_REF" >> "$GITHUB_OUTPUT"
+
   authenticate-and-attest:
     name: Authenticate and attest the exact lifecycle input set
+    if: >-
+      github.ref_protected
+      && (github.ref == 'refs/heads/main'
+      || github.ref == format('refs/heads/release/{0}', inputs.build_version)
+      || github.ref == format('refs/heads/hotfix/{0}', inputs.build_version))
+      && needs.validate-dispatch.outputs.trusted_source_ref == github.ref
+    needs: validate-dispatch
     runs-on: ubuntu-latest
     timeout-minutes: 45
     environment: ${{ inputs.operation == 'validate-authorization' && 'stable-1.0-lifecycle-authorization' || 'stable-1.0-lifecycle-evidence' }}
@@ -55,13 +133,8 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ inputs.source_commit }}
-          fetch-depth: 1
+          fetch-depth: 0
           persist-credentials: false
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: '3.12'
 
       - name: Validate dispatch identity and pristine source
         env:
@@ -69,6 +142,7 @@ jobs:
           INPUT_BUILD_VERSION: ${{ inputs.build_version }}
           INPUT_SOURCE_COMMIT: ${{ inputs.source_commit }}
           INPUT_BUNDLE_DIGEST: ${{ inputs.input_bundle_sha256 }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           if [[ ${#INPUT_RELEASE_ID} -gt 128 \
@@ -81,8 +155,50 @@ jobs:
             echo "::error::Lifecycle input producer identity is malformed or at the wrong source."
             exit 1
           fi
+          case "$GITHUB_REF" in
+            refs/heads/main)
+              trusted_branch="main"
+              ;;
+            "refs/heads/release/$INPUT_BUILD_VERSION")
+              trusted_branch="release/$INPUT_BUILD_VERSION"
+              ;;
+            "refs/heads/hotfix/$INPUT_BUILD_VERSION")
+              trusted_branch="hotfix/$INPUT_BUILD_VERSION"
+              ;;
+            *)
+              echo "::error::Lifecycle input production requires main or the exact build release/hotfix ref."
+              exit 1
+              ;;
+          esac
+          encoded_branch="${trusted_branch//\//%2F}"
+          if ! branch_json="$(gh api --method GET \
+              "repos/$GITHUB_REPOSITORY/branches/$encoded_branch")"; then
+            echo "::error::The lifecycle input source branch could not be authenticated."
+            exit 1
+          fi
+          if ! protected_tip="$(jq -er '
+              select(.protected == true)
+              | .commit.sha
+              | select(type == "string" and test("^[0-9a-f]{40}$"))' \
+              <<< "$branch_json")"; then
+            echo "::error::Lifecycle input production requires a protected source branch."
+            exit 1
+          fi
+          git fetch --no-tags origin \
+            "+refs/heads/$trusted_branch:refs/remotes/origin/$trusted_branch"
+          remote_tip="$(git rev-parse "refs/remotes/origin/$trusted_branch^{commit}")"
+          if [[ "$remote_tip" != "$protected_tip" ]] \
+              || ! git merge-base --is-ancestor "$INPUT_SOURCE_COMMIT" "$remote_tip"; then
+            echo "::error::Lifecycle input source is not reachable from the protected ref."
+            exit 1
+          fi
           git diff-index --quiet --cached HEAD --
           git diff-files --quiet --
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
 
       - name: Fetch and safely expand the exact reviewed bundle
         env:

@@ -263,6 +263,26 @@ receives the lifecycle insert capability. Configure
 `CRYPTAD_STABLE_LIFECYCLE_INPUT_SIGNER_WORKFLOW` to the canonical producer path; the consumer
 rejects an alias or arbitrary signer workflow.
 
+Both lifecycle workflows accept source only from protected `main`, the exact
+`release/<build_version>` branch, or the exact `hotfix/<build_version>` branch. Before an
+environment-backed job can start, its job condition requires GitHub's protected-ref context. The
+consumer also proves through the GitHub branch API that the selected branch is protected, fetches
+its live remote tip, and verifies that `source_commit` is reachable from that exact tip. The
+publication job repeats this proof before checked-out publication code can receive insert
+material. A credential-free input-producer preflight applies the same proof before its environment
+job can start, and the producer repeats it before receiving the reviewed-bundle URL or bearer
+token.
+
+A feature branch, tag, unprotected branch, wrong-build release/hotfix branch, deleted branch, moved
+non-descendant tip, or ambiguous source ref fails closed.
+
+Repository administrators must also restrict the `stable-1.0-lifecycle-evidence`,
+`stable-1.0-lifecycle-authorization`, and `stable-1.0-lifecycle-publication` environments to
+protected branches matching only `main`, `release/*`, and `hotfix/*`. The workflow job conditions
+independently enforce the narrower exact-build allowlist before requesting an environment, so a
+mis-dispatched feature ref cannot reach protected credentials even when an environment approval is
+mistakenly granted.
+
 `validate-authorization` consumes the producer's exact approval artifact. It restores the
 attested input tree, reruns `stable-lifecycle` in `validate-authorization` mode, and regenerates the
 descriptor, transition set, authorization summary, and publication plan. The workflow attests

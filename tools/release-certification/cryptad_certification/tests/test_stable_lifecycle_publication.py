@@ -1954,6 +1954,75 @@ class StableLifecycleWorkflowTest(unittest.TestCase):
                 before_next_action,
             )
 
+    def test_lifecycle_jobs_enter_environments_only_from_authenticated_protected_refs(
+        self,
+    ) -> None:
+        validation = self.workflow.split("  validate-dispatch:", 1)[1].split(
+            "  local-evaluation:", 1
+        )[0]
+
+        for expected in (
+            "refs/heads/main",
+            '"refs/heads/release/$INPUT_BUILD_VERSION"',
+            '"refs/heads/hotfix/$INPUT_BUILD_VERSION"',
+            "select(.protected == true)",
+            'git merge-base --is-ancestor "$INPUT_SOURCE_COMMIT" "$remote_tip"',
+            'echo "trusted_source_ref=$GITHUB_REF" >> "$GITHUB_OUTPUT"',
+        ):
+            self.assertIn(expected, validation)
+        self.assertEqual(
+            5,
+            self.workflow.count(
+                "needs.validate-dispatch.outputs.trusted_source_ref == github.ref"
+            ),
+        )
+        self.assertEqual(5, self.workflow.count("&& github.ref_protected"))
+
+        protected = self.workflow.split("  protected-publication:", 1)[1].split(
+            "  verify-publication:", 1
+        )[0]
+        secret = "secrets.CRYPTAD_STABLE_LIFECYCLE_PUBLICATION_INPUT"
+        for expected in (
+            "fetch-depth: 0",
+            "select(.protected == true)",
+            'git merge-base --is-ancestor "$INPUT_SOURCE_COMMIT" "$remote_tip"',
+        ):
+            self.assertIn(expected, protected)
+            self.assertLess(protected.index(expected), protected.index(secret))
+
+    def test_input_producer_rejects_unprotected_refs_before_credentials(
+        self,
+    ) -> None:
+        credential_step = (
+            "- name: Fetch and safely expand the exact reviewed bundle"
+        )
+        before_credentials = self.input_producer.split(credential_step, 1)[0]
+
+        for expected in (
+            "github.ref_protected",
+            "github.ref == 'refs/heads/main'",
+            "github.ref == format('refs/heads/release/{0}', inputs.build_version)",
+            "github.ref == format('refs/heads/hotfix/{0}', inputs.build_version)",
+            "needs.validate-dispatch.outputs.trusted_source_ref == github.ref",
+            "needs: validate-dispatch",
+            "fetch-depth: 0",
+            "select(.protected == true)",
+            'git merge-base --is-ancestor "$INPUT_SOURCE_COMMIT" "$remote_tip"',
+        ):
+            self.assertIn(expected, before_credentials)
+        preflight = self.input_producer.split(
+            "  authenticate-and-attest:", 1
+        )[0]
+        self.assertIn(
+            'echo "trusted_source_ref=$GITHUB_REF" >> "$GITHUB_OUTPUT"',
+            preflight,
+        )
+        self.assertNotIn("environment:", preflight)
+        self.assertNotIn(
+            "secrets.CRYPTAD_STABLE_LIFECYCLE_INPUT_BUNDLE",
+            before_credentials,
+        )
+
     def test_every_phase_binds_dispatch_identity_to_attested_lifecycle_content(
         self,
     ) -> None:
