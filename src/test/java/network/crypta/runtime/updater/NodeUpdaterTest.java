@@ -394,6 +394,31 @@ class NodeUpdaterTest {
   }
 
   @Test
+  void onSuccess_whenSequentialAnnouncementsArriveOutOfOrder_expectHighestEditionRetained()
+      throws Exception {
+    // Arrange
+    when(core.getPersistentTempDir()).thenReturn(tempDir.toFile());
+    updater.sequentialEditions = true;
+    updater.nextDiscoveredEdition = CURRENT_VERSION + 1;
+    updater.onFoundEdition(announcement(CURRENT_VERSION + 3));
+    updater.onFoundEdition(announcement(CURRENT_VERSION + 2));
+    FetchResult firstResult = mock(FetchResult.class);
+    when(firstResult.size()).thenReturn(1L);
+    File firstTempBlob = File.createTempFile(BLOB_PREFIX, ".tmp", tempDir.toFile());
+    FetchResult secondResult = mock(FetchResult.class);
+    when(secondResult.size()).thenReturn(1L);
+    File secondTempBlob = File.createTempFile(BLOB_PREFIX, ".tmp", tempDir.toFile());
+
+    // Act
+    updater.onSuccess(firstResult, firstTempBlob, CURRENT_VERSION + 1, null);
+    updater.onSuccess(secondResult, secondTempBlob, CURRENT_VERSION + 2, null);
+
+    // Assert
+    assertEquals(CURRENT_VERSION + 3, updater.fetchingVersion());
+    verify(ticker, times(2)).queueTimedJob(any(Runnable.class), eq(0L));
+  }
+
+  @Test
   void onSuccess_whenNewerOrdinaryEditionArrivesDuringFetch_expectNewerEditionScheduled()
       throws Exception {
     // Arrange

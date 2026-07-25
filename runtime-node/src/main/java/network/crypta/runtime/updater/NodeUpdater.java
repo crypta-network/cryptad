@@ -239,7 +239,7 @@ public abstract class NodeUpdater implements ClientGetCallback, USKCallback, Req
       if (!isRunning) return;
       found = (int) foundEdition.key().suggestedEdition;
 
-      realAvailableVersion = found;
+      realAvailableVersion = Math.max(realAvailableVersion, found);
       if (found > maxDeployVersion) {
         if (LOG.isWarnEnabled())
           LOG.warn(
