@@ -316,8 +316,30 @@ class CoreSupportLifecycleStateTest {
     CoreSupportLifecycleState restarted = state(tempDir, VERIFIED_AT);
 
     assertFalse(state.snapshot().known());
+    assertTrue(state.snapshot().warnings().contains("build_revoked"));
     assertTrue(state.isBuildRevoked(100));
     assertTrue(restarted.isBuildRevoked(100));
+  }
+
+  @Test
+  void isBuildRevoked_whenFutureSuccessorIntroducesRevocation_expectActivationGatePreserved(
+      @TempDir Path tempDir) throws Exception {
+    CoreSupportLifecycleState state = state(tempDir, VERIFIED_AT);
+    byte[] previous = CoreSupportLifecycleParserTest.fixtureBytes();
+    state.accept(previous, 1);
+    String predecessorDigest = state.snapshot().descriptor().digest();
+    byte[] successor = futureEffectiveRevocationSuccessor(previous, predecessorDigest);
+
+    state.accept(successor, 2);
+    CoreSupportLifecycleState restartedBeforeActivation = state(tempDir, VERIFIED_AT);
+    CoreSupportLifecycleState restartedAfterActivation =
+        state(tempDir, Instant.parse("2026-01-03T00:00:00Z"));
+
+    assertFalse(state.snapshot().known());
+    assertFalse(state.snapshot().warnings().contains("build_revoked"));
+    assertFalse(state.isBuildRevoked(100));
+    assertFalse(restartedBeforeActivation.isBuildRevoked(100));
+    assertTrue(restartedAfterActivation.isBuildRevoked(100));
   }
 
   private static CoreSupportLifecycleState state(Path tempDir, Instant now) {
@@ -369,6 +391,34 @@ class CoreSupportLifecycleStateTest {
     root.put("descriptorEdition", 2L);
     root.put("previousDescriptorEdition", 1L);
     root.put("previousDescriptorDigest", previousDigest);
+    root.remove("descriptorDigest");
+    root.put("descriptorDigest", CoreSupportLifecycleParser.semanticDigest(root));
+    return CoreSupportLifecycleParser.canonicalJson(root).getBytes(StandardCharsets.UTF_8);
+  }
+
+  private static byte[] futureEffectiveRevocationSuccessor(byte[] previous, String previousDigest) {
+    Map<String, Object> root = JsonMini.parseObject(new String(previous, StandardCharsets.UTF_8));
+    @SuppressWarnings("unchecked")
+    Map<String, Object> entry = (Map<String, Object>) ((List<?>) root.get("entries")).getFirst();
+    entry.put("lifecycleStatus", "revoked");
+    entry.put("statusEffectiveAt", "2026-01-02T00:00:00Z");
+    entry.put("securityRevocationEffectiveAt", "2026-01-02T00:00:00Z");
+    entry.put("replacementBuild", null);
+    entry.put(
+        "recoveryGuidance",
+        "Restore from a verified backup and wait for an authenticated replacement.");
+    entry.put("advisoryIds", List.of("CRYPTA-2026-001"));
+    entry.put("reasonCodes", List.of("critical-release-defect"));
+    root.put("generatedAt", "2026-01-02T06:00:00Z");
+    root.put("effectiveAt", "2026-01-03T00:00:00Z");
+    root.put("staleAt", "2026-01-10T00:00:00Z");
+    root.put("descriptorEdition", 2L);
+    root.put("previousDescriptorEdition", 1L);
+    root.put("previousDescriptorDigest", previousDigest);
+    root.put("currentStableBuild", null);
+    root.put("recommendedBuild", null);
+    root.put("minimumSupportedBuild", null);
+    root.put("minimumSecuritySupportedBuild", null);
     root.remove("descriptorDigest");
     root.put("descriptorDigest", CoreSupportLifecycleParser.semanticDigest(root));
     return CoreSupportLifecycleParser.canonicalJson(root).getBytes(StandardCharsets.UTF_8);

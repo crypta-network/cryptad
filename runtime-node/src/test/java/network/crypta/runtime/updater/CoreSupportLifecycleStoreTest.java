@@ -2,6 +2,7 @@ package network.crypta.runtime.updater;
 
 import com.sun.jna.platform.win32.WinBase;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -42,6 +43,7 @@ class CoreSupportLifecycleStoreTest {
         CoreSupportLifecycleParser.exactBytesDigest(bytes),
         CoreSupportLifecycleParser.exactBytesDigest(stored.bytes()));
     assertEquals(verifiedAt, stored.verifiedAt());
+    assertEquals(0, stored.revocationState().length);
   }
 
   @Test
@@ -61,6 +63,33 @@ class CoreSupportLifecycleStoreTest {
             .toString()
             .startsWith(".support-lifecycle-"));
     assertEquals(new SyncEvent(PUBLISH_REPLACE, descriptor), persistenceSync.events.get(1));
+  }
+
+  @Test
+  void save_whenPublishingRevocationState_expectStateIsDurableBeforeDescriptor(
+      @TempDir Path tempDir) throws Exception {
+    Path descriptor = tempDir.resolve(DESCRIPTOR_PATH);
+    Path revocationState =
+        descriptor.resolveSibling(descriptor.getFileName() + ".revocation-activations");
+    byte[] metadata = "{\"schemaVersion\":1}".getBytes(StandardCharsets.UTF_8);
+    RecordingPersistenceSync persistenceSync = new RecordingPersistenceSync();
+    CoreSupportLifecycleStore store =
+        new CoreSupportLifecycleStore(descriptor, null, persistenceSync);
+
+    store.save(CoreSupportLifecycleParserTest.fixtureBytes(), VERIFIED_AT, metadata);
+    CoreSupportLifecycleStore.StoredDescriptor stored = store.load();
+
+    assertNotNull(stored);
+    assertEquals(
+        CoreSupportLifecycleParser.exactBytesDigest(metadata),
+        CoreSupportLifecycleParser.exactBytesDigest(stored.revocationState()));
+    assertEquals(4, persistenceSync.events.size());
+    assertTrue(
+        Objects.requireNonNull(persistenceSync.events.get(0).path().getFileName())
+            .toString()
+            .startsWith(".support-lifecycle-revocations-"));
+    assertEquals(new SyncEvent(PUBLISH_REPLACE, revocationState), persistenceSync.events.get(1));
+    assertEquals(new SyncEvent(PUBLISH_REPLACE, descriptor), persistenceSync.events.get(3));
   }
 
   @Test

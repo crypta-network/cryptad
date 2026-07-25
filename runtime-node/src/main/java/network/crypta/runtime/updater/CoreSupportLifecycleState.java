@@ -1,9 +1,12 @@
 package network.crypta.runtime.updater;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -32,6 +35,12 @@ final class CoreSupportLifecycleState {
   private static final String RUNNING_BUILD_NOT_IN_LIFECYCLE_INVENTORY_WARNING =
       "running_build_not_in_lifecycle_inventory";
   private static final String LIFECYCLE_TRUST_INVALIDATED_WARNING = "lifecycle_trust_invalidated";
+  private static final long REVOCATION_STATE_SCHEMA_VERSION = 1;
+  private static final int MAX_REVOCATION_STATE_ENTRIES = 256;
+  private static final String REVOCATION_ACTIVATIONS_FIELD = "revocationActivations";
+  private static final String UPDATE_KEY_IDENTITY_DIGEST_FIELD = "updateKeyIdentityDigest";
+  private static final String UPDATE_KEY_SCOPE_FIELD = "updateKeyScope";
+  private static final String UPDATE_KEY_DOC_NAME_FIELD = "updateKeyDocName";
 
   private final CoreSupportLifecycleParser parser;
   private final CoreSupportLifecycleStore store;
@@ -44,6 +53,7 @@ final class CoreSupportLifecycleState {
   private Instant lastVerifiedAt;
   private String lastFailureCode;
   private boolean trustInvalidated;
+  private Map<Integer, Instant> revocationActivationByBuild = Map.of();
 
   /**
    * Creates state for one running build and attempts to load a matching persisted descriptor.
@@ -86,9 +96,12 @@ final class CoreSupportLifecycleState {
     CoreSupportLifecycleDescriptor candidate = parser.parse(bytes, fetchedEdition, trust);
     validateRunningIdentity(candidate);
     validateSuccessor(descriptor, candidate);
+    Map<Integer, Instant> candidateRevocationActivations =
+        revocationActivationsForSuccessor(descriptor, candidate);
     Instant verifiedAt = clock.instant();
-    store.save(bytes, verifiedAt);
+    store.save(bytes, verifiedAt, encodeRevocationState(candidateRevocationActivations));
     descriptor = candidate;
+    revocationActivationByBuild = candidateRevocationActivations;
     lastVerifiedAt = verifiedAt;
     lastFailureCode = null;
   }
@@ -109,6 +122,7 @@ final class CoreSupportLifecycleState {
   synchronized void changeTrust(CoreSupportLifecycleParser.TrustBinding nextTrust) {
     trust = Objects.requireNonNull(nextTrust, "nextTrust");
     descriptor = null;
+    revocationActivationByBuild = Map.of();
     lastVerifiedAt = null;
     lastFailureCode = null;
     loadPersisted();
@@ -127,6 +141,7 @@ final class CoreSupportLifecycleState {
   synchronized boolean invalidateCompromisedUpdateKey() {
     trustInvalidated = true;
     descriptor = null;
+    revocationActivationByBuild = Map.of();
     lastVerifiedAt = null;
     lastFailureCode = LIFECYCLE_TRUST_INVALIDATED_WARNING;
     try {
@@ -174,7 +189,11 @@ final class CoreSupportLifecycleState {
     if (stale) {
       warningCodes.add("lifecycle_descriptor_stale");
     }
-    addStatusWarning(warningCodes, running.lifecycleStatus());
+    if (effective) {
+      addStatusWarning(warningCodes, running.lifecycleStatus());
+    } else if (isBuildRevoked(runningBuild)) {
+      warningCodes.add("build_revoked");
+    }
     if (lastFailureCode != null) {
       warningCodes.add(lastFailureCode);
     }
@@ -215,10 +234,11 @@ final class CoreSupportLifecycleState {
    * Returns whether an effective authenticated lifecycle entry revokes one package build.
    *
    * <p>Staleness does not make an accepted revocation safe: build revocation is terminal, while a
-   * later valid descriptor can only preserve it. A successor descriptor whose activation time is
-   * still ahead of the local clock therefore cannot suspend a revocation that is already effective
-   * according to the preserved entry. Unknown builds and not-yet-effective revocation entries
-   * remain outside this narrow veto rather than being assigned an invented lifecycle status.
+   * later valid descriptor can only preserve it. A successor whose activation is ahead of the local
+   * clock therefore keeps only predecessor-effective revocations active; a revocation first
+   * introduced by that successor waits for descriptor activation even when its incident timestamp
+   * is earlier. Unknown builds and not-yet-effective revocation entries remain outside this narrow
+   * veto rather than being assigned an invented lifecycle status.
    *
    * @param buildVersion integer package build advertised by {@code core-info.json}
    * @return {@code true} only when the accepted descriptor effectively revokes that exact build
@@ -229,8 +249,11 @@ final class CoreSupportLifecycleState {
     }
     Instant now = clock.instant();
     CoreSupportLifecycleEntry entry = descriptor.entriesByBuild().get(buildVersion);
+    Instant activation = revocationActivationByBuild.get(buildVersion);
     return entry != null
         && entry.lifecycleStatus() == CoreSupportLifecycleStatus.REVOKED
+        && activation != null
+        && !now.isBefore(activation)
         && !now.isBefore(entry.statusEffectiveAt());
   }
 
@@ -256,9 +279,11 @@ final class CoreSupportLifecycleState {
       CoreSupportLifecycleDescriptor persisted = parser.parsePersisted(stored.bytes(), trust);
       validateRunningIdentity(persisted);
       descriptor = persisted;
+      revocationActivationByBuild = decodeRevocationState(stored.revocationState(), persisted);
       lastVerifiedAt = stored.verifiedAt();
     } catch (IOException | IllegalArgumentException _) {
       descriptor = null;
+      revocationActivationByBuild = Map.of();
       lastVerifiedAt = null;
       lastFailureCode = "lifecycle_persisted_state_invalid";
     }
@@ -271,6 +296,7 @@ final class CoreSupportLifecycleState {
     }
     trustInvalidated = true;
     descriptor = null;
+    revocationActivationByBuild = Map.of();
     lastVerifiedAt = null;
     lastFailureCode =
         status == CoreSupportLifecycleStore.TrustInvalidationStatus.VALID
@@ -405,6 +431,130 @@ final class CoreSupportLifecycleState {
       case END_OF_SUPPORT -> 4;
       case REVOKED -> Integer.MAX_VALUE;
     };
+  }
+
+  private Map<Integer, Instant> revocationActivationsForSuccessor(
+      CoreSupportLifecycleDescriptor previous, CoreSupportLifecycleDescriptor candidate) {
+    Map<Integer, CoreSupportLifecycleEntry> previousEntries =
+        previous == null ? Map.of() : previous.entriesByBuild();
+    HashMap<Integer, Instant> activations = new HashMap<>();
+    for (CoreSupportLifecycleEntry entry : candidate.entries()) {
+      if (entry.lifecycleStatus() != CoreSupportLifecycleStatus.REVOKED) {
+        continue;
+      }
+      CoreSupportLifecycleEntry old = previousEntries.get(entry.buildVersion());
+      Instant activation = candidate.effectiveAt();
+      if (previous != null
+          && old != null
+          && old.lifecycleStatus() == CoreSupportLifecycleStatus.REVOKED) {
+        activation =
+            revocationActivationByBuild.getOrDefault(entry.buildVersion(), previous.effectiveAt());
+      }
+      activations.put(entry.buildVersion(), activation);
+    }
+    return Map.copyOf(activations);
+  }
+
+  private byte[] encodeRevocationState(Map<Integer, Instant> activations) {
+    ArrayList<Map<String, Object>> entries = new ArrayList<>(activations.size());
+    activations.entrySet().stream()
+        .sorted(Map.Entry.comparingByKey())
+        .forEach(
+            activation -> {
+              LinkedHashMap<String, Object> value = new LinkedHashMap<>();
+              value.put("buildVersion", Integer.toString(activation.getKey()));
+              value.put("effectiveAt", activation.getValue().toString());
+              entries.add(value);
+            });
+    LinkedHashMap<String, Object> root = new LinkedHashMap<>();
+    root.put("schemaVersion", REVOCATION_STATE_SCHEMA_VERSION);
+    root.put(UPDATE_KEY_IDENTITY_DIGEST_FIELD, trust.updateKeyIdentityDigest());
+    root.put(UPDATE_KEY_SCOPE_FIELD, trust.updateKeyScope());
+    root.put(UPDATE_KEY_DOC_NAME_FIELD, trust.updateKeyDocName());
+    root.put(REVOCATION_ACTIVATIONS_FIELD, entries);
+    return CoreSupportLifecycleParser.canonicalJson(root).getBytes(StandardCharsets.UTF_8);
+  }
+
+  private Map<Integer, Instant> decodeRevocationState(
+      byte[] bytes, CoreSupportLifecycleDescriptor persisted) {
+    Map<Integer, Instant> fallback = descriptorActivationFallback(persisted);
+    if (bytes.length == 0) {
+      return fallback;
+    }
+    try {
+      Map<String, Object> root = JsonMini.parseObject(new String(bytes, StandardCharsets.UTF_8));
+      if (!hasExactRevocationStateFields(root) || !revocationStateMatchesTrust(root)) {
+        return fallback;
+      }
+      Map<Integer, Instant> decoded = decodeRevocationActivations(root);
+      return activationsMatchDescriptor(decoded, persisted) ? Map.copyOf(decoded) : fallback;
+    } catch (IllegalArgumentException _) {
+      return fallback;
+    }
+  }
+
+  private static boolean hasExactRevocationStateFields(Map<String, Object> root) {
+    return root.size() == 5
+        && Objects.equals(root.get("schemaVersion"), REVOCATION_STATE_SCHEMA_VERSION)
+        && root.containsKey(UPDATE_KEY_IDENTITY_DIGEST_FIELD)
+        && root.containsKey(UPDATE_KEY_SCOPE_FIELD)
+        && root.containsKey(UPDATE_KEY_DOC_NAME_FIELD)
+        && root.containsKey(REVOCATION_ACTIVATIONS_FIELD);
+  }
+
+  private boolean revocationStateMatchesTrust(Map<String, Object> root) {
+    return Objects.equals(
+            root.get(UPDATE_KEY_IDENTITY_DIGEST_FIELD), trust.updateKeyIdentityDigest())
+        && Objects.equals(root.get(UPDATE_KEY_SCOPE_FIELD), trust.updateKeyScope())
+        && Objects.equals(root.get(UPDATE_KEY_DOC_NAME_FIELD), trust.updateKeyDocName());
+  }
+
+  private static Map<Integer, Instant> decodeRevocationActivations(Map<String, Object> root) {
+    Object value = root.get(REVOCATION_ACTIVATIONS_FIELD);
+    if (!(value instanceof List<?> entries) || entries.size() > MAX_REVOCATION_STATE_ENTRIES) {
+      throw new IllegalArgumentException("invalid lifecycle revocation activation state");
+    }
+    HashMap<Integer, Instant> decoded = new HashMap<>();
+    for (Object item : entries) {
+      if (!(item instanceof Map<?, ?> entry)
+          || entry.size() != 2
+          || !(entry.get("buildVersion") instanceof String buildText)
+          || !(entry.get("effectiveAt") instanceof String effectiveText)) {
+        throw new IllegalArgumentException("invalid lifecycle revocation activation entry");
+      }
+      int build = Integer.parseInt(buildText);
+      if (build <= 0
+          || !Integer.toString(build).equals(buildText)
+          || decoded.put(build, Instant.parse(effectiveText)) != null) {
+        throw new IllegalArgumentException("invalid lifecycle revocation activation build");
+      }
+    }
+    return decoded;
+  }
+
+  private static boolean activationsMatchDescriptor(
+      Map<Integer, Instant> activations, CoreSupportLifecycleDescriptor descriptor) {
+    for (CoreSupportLifecycleEntry entry : descriptor.entries()) {
+      if (entry.lifecycleStatus() != CoreSupportLifecycleStatus.REVOKED) {
+        continue;
+      }
+      Instant activation = activations.get(entry.buildVersion());
+      if (activation == null
+          || activation.isBefore(entry.statusEffectiveAt())
+          || activation.isAfter(descriptor.effectiveAt())) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private static Map<Integer, Instant> descriptorActivationFallback(
+      CoreSupportLifecycleDescriptor descriptor) {
+    HashMap<Integer, Instant> activations = new HashMap<>();
+    descriptor.entries().stream()
+        .filter(entry -> entry.lifecycleStatus() == CoreSupportLifecycleStatus.REVOKED)
+        .forEach(entry -> activations.put(entry.buildVersion(), descriptor.effectiveAt()));
+    return Map.copyOf(activations);
   }
 
   private CoreSupportLifecycleSnapshot.DescriptorVerification verification() {

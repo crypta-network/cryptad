@@ -23,14 +23,19 @@ import network.crypta.fs.AppEnv;
 /**
  * Exact-byte local persistence for the last-known-good support-lifecycle descriptor.
  *
- * <p>The file contains only the authenticated public descriptor. Reads reject symbolic links,
- * non-regular files, and oversized content. Writes use a newly created sibling file and an atomic
- * replacement when the filesystem supports it, so a crash cannot silently turn partial bytes into
- * accepted lifecycle state. A fixed-content sibling marker and optional independent fallback marker
- * durably prevent state authenticated by a compromised update key from loading or being replaced.
- * No path or descriptor body is returned to logs or operator surfaces.
+ * <p>The descriptor file contains only the authenticated public bytes. A bounded public-safe
+ * sibling records derived terminal-revocation activation times so a future-effective successor can
+ * distinguish a predecessor revocation from a newly introduced one across restart. Reads reject
+ * symbolic links, non-regular files, and oversized content. Writes use newly created sibling files
+ * and atomic replacement when the filesystem supports it, so a crash cannot silently turn partial
+ * bytes into accepted lifecycle state. A fixed-content sibling marker and optional independent
+ * fallback marker durably prevent state authenticated by a compromised update key from loading or
+ * being replaced. No path or descriptor body is returned to logs or operator surfaces.
  */
 final class CoreSupportLifecycleStore {
+  /** Maximum derived revocation-activation metadata retained beside the descriptor. */
+  private static final int MAX_REVOCATION_STATE_BYTES = 64 * 1024;
+
   /** Exact marker body identifying the versioned update-key trust-invalidation record. */
   private static final byte[] INVALIDATION_MARKER =
       "stable-1.0-support-lifecycle-update-key-trust-invalidated-v1\n"
@@ -41,6 +46,9 @@ final class CoreSupportLifecycleStore {
 
   /** Primary trust-invalidation marker stored beside the descriptor. */
   private final Path invalidationFile;
+
+  /** Derived activation times that distinguish preserved from newly introduced revocations. */
+  private final Path revocationStateFile;
 
   /**
    * Independently located fallback marker, or the primary marker when no fallback is configured.
@@ -86,6 +94,9 @@ final class CoreSupportLifecycleStore {
     this.invalidationFile =
         this.descriptorFile.resolveSibling(
             this.descriptorFile.getFileName() + ".trust-invalidated");
+    this.revocationStateFile =
+        this.descriptorFile.resolveSibling(
+            this.descriptorFile.getFileName() + ".revocation-activations");
     this.fallbackInvalidationFile =
         fallbackInvalidationFile == null
             ? this.invalidationFile
@@ -118,7 +129,7 @@ final class CoreSupportLifecycleStore {
     byte[] bytes = Files.readAllBytes(descriptorFile);
     Instant verifiedAt =
         Files.getLastModifiedTime(descriptorFile, LinkOption.NOFOLLOW_LINKS).toInstant();
-    return new StoredDescriptor(bytes, verifiedAt);
+    return new StoredDescriptor(bytes, verifiedAt, loadRevocationState());
   }
 
   /**
@@ -129,10 +140,31 @@ final class CoreSupportLifecycleStore {
    * @throws IOException if the parent or target is unsafe or replacement cannot complete
    */
   void save(byte[] bytes, Instant verifiedAt) throws IOException {
+    save(bytes, verifiedAt, null);
+  }
+
+  /**
+   * Replaces the last-known-good descriptor and its derived revocation-activation state.
+   *
+   * <p>The derived state is published first. It contains the complete monotonic activation map, so
+   * publishing it ahead of a descriptor is harmless: entries not yet revoked by the still-current
+   * descriptor are ignored, while revocations already present retain their earlier activation.
+   *
+   * @param bytes exact authenticated descriptor bytes to persist
+   * @param verifiedAt local time at which validation of these exact bytes succeeded
+   * @param revocationState canonical public-safe derived activation metadata, or {@code null} when
+   *     the caller does not maintain that projection
+   * @throws IOException if the parent, target, metadata, or replacement is unsafe
+   */
+  void save(byte[] bytes, Instant verifiedAt, byte[] revocationState) throws IOException {
     if (bytes == null
         || bytes.length == 0
         || bytes.length > CoreSupportLifecycleParser.MAX_DESCRIPTOR_BYTES) {
       throw new IOException("lifecycle descriptor is outside runtime size bounds");
+    }
+    if (revocationState != null
+        && (revocationState.length == 0 || revocationState.length > MAX_REVOCATION_STATE_BYTES)) {
+      throw new IOException("lifecycle revocation state is outside runtime size bounds");
     }
     if (verifiedAt == null) {
       throw new IOException("lifecycle verification time is unavailable");
@@ -152,15 +184,49 @@ final class CoreSupportLifecycleStore {
       throw new IOException("lifecycle store target is a symbolic link");
     }
 
-    Path temporary = Files.createTempFile(parent, ".support-lifecycle-", ".tmp");
+    if (revocationState != null) {
+      publishState(
+          parent,
+          revocationStateFile,
+          revocationState,
+          verifiedAt,
+          ".support-lifecycle-revocations-");
+    }
+    publishState(parent, descriptorFile, bytes, verifiedAt, ".support-lifecycle-");
+  }
+
+  private void publishState(
+      Path parent, Path target, byte[] bytes, Instant verifiedAt, String temporaryPrefix)
+      throws IOException {
+    if (Files.exists(target, LinkOption.NOFOLLOW_LINKS)
+        && (Files.isSymbolicLink(target)
+            || !Files.isRegularFile(target, LinkOption.NOFOLLOW_LINKS))) {
+      throw new IOException("lifecycle store target is not a regular file");
+    }
+    Path temporary = Files.createTempFile(parent, temporaryPrefix, ".tmp");
     try {
       Files.write(temporary, bytes, StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING);
       Files.setLastModifiedTime(temporary, FileTime.from(verifiedAt));
       persistenceSync.forceFile(temporary);
-      persistenceSync.publish(temporary, descriptorFile, true);
+      persistenceSync.publish(temporary, target, true);
     } finally {
       Files.deleteIfExists(temporary);
     }
+  }
+
+  private byte[] loadRevocationState() throws IOException {
+    if (!Files.exists(revocationStateFile, LinkOption.NOFOLLOW_LINKS)) {
+      return new byte[0];
+    }
+    if (Files.isSymbolicLink(revocationStateFile)
+        || !Files.isRegularFile(revocationStateFile, LinkOption.NOFOLLOW_LINKS)) {
+      throw new IOException("lifecycle revocation state is not a regular file");
+    }
+    long size = Files.size(revocationStateFile);
+    if (size <= 0 || size > MAX_REVOCATION_STATE_BYTES) {
+      throw new IOException("lifecycle revocation state is outside runtime size bounds");
+    }
+    return Files.readAllBytes(revocationStateFile);
   }
 
   /**
@@ -322,14 +388,19 @@ final class CoreSupportLifecycleStore {
    * @throws IOException if the descriptor leaf is unsafe or cannot be removed
    */
   private void clearDescriptor() throws IOException {
-    if (!Files.exists(descriptorFile, LinkOption.NOFOLLOW_LINKS)) {
+    deleteRegularStateFile(descriptorFile);
+    deleteRegularStateFile(revocationStateFile);
+  }
+
+  private static void deleteRegularStateFile(Path stateFile) throws IOException {
+    if (!Files.exists(stateFile, LinkOption.NOFOLLOW_LINKS)) {
       return;
     }
-    if (Files.isSymbolicLink(descriptorFile)
-        || !Files.isRegularFile(descriptorFile, LinkOption.NOFOLLOW_LINKS)) {
+    if (Files.isSymbolicLink(stateFile)
+        || !Files.isRegularFile(stateFile, LinkOption.NOFOLLOW_LINKS)) {
       throw new IOException("lifecycle store path is not a regular file");
     }
-    Files.delete(descriptorFile);
+    Files.delete(stateFile);
   }
 
   /**
@@ -535,15 +606,20 @@ final class CoreSupportLifecycleStore {
     /** Durable last-modified timestamp set when these exact bytes were accepted. */
     private final Instant verifiedAt;
 
+    /** Derived revocation-activation metadata, empty when no state was stored. */
+    private final byte[] revocationState;
+
     /**
      * Creates an immutable stored-descriptor value.
      *
      * @param bytes exact authenticated descriptor bytes
      * @param verifiedAt local time at which the bytes were verified
+     * @param revocationState derived revocation-activation metadata, or {@code null} to store empty
      */
-    StoredDescriptor(byte[] bytes, Instant verifiedAt) {
+    StoredDescriptor(byte[] bytes, Instant verifiedAt, byte[] revocationState) {
       this.bytes = bytes.clone();
       this.verifiedAt = verifiedAt;
+      this.revocationState = revocationState == null ? new byte[0] : revocationState.clone();
     }
 
     /**
@@ -562,6 +638,15 @@ final class CoreSupportLifecycleStore {
      */
     Instant verifiedAt() {
       return verifiedAt;
+    }
+
+    /**
+     * Returns a defensive copy of derived revocation-activation metadata.
+     *
+     * @return independent metadata bytes, empty when none were stored
+     */
+    byte[] revocationState() {
+      return revocationState.clone();
     }
   }
 }

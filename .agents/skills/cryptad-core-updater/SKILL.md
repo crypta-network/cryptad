@@ -161,6 +161,11 @@ accepted edition after restart, and fetch digest-linked successor editions seque
 validation, or persistence failure retains the prior descriptor. Persistence retry must remain
 bounded/backed off, and stale callbacks or temporary blobs from a replaced URI/subscription must
 not regress accepted state or leak files.
+Persist the bounded public-safe
+`support-lifecycle-last-known-good.json.revocation-activations` sibling before replacing the
+descriptor. It records when each terminal revocation first became enforceable, so a
+future-effective successor preserves predecessor revocations across restart without activating a
+new revocation early. Clear this derived state with the descriptor after update-key compromise.
 
 Local-only package-updater failure must leave both lifecycle polling and revocation-key polling
 active; only authenticated update-key compromise invalidates documents under that key. Package
