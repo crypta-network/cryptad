@@ -8,6 +8,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.function.Supplier;
 import network.crypta.client.FetchContext;
 import network.crypta.client.FetchException;
 import network.crypta.client.FetchResult;
@@ -2046,6 +2049,50 @@ public final class NodeUpdateManager {
    */
   boolean isCorePackageBuildRevoked(int buildVersion) {
     return supportLifecycleState.isBuildRevoked(buildVersion);
+  }
+
+  /**
+   * Executes one action only while the expected core updater remains active and trusted.
+   *
+   * <p>The manager monitor is retained through the action so an update-URI change, updater
+   * replacement, disablement, or update-key blow cannot overtake a package launch. The supplied
+   * action is expected to acquire the core updater's package-selection lock before authorizing a
+   * concrete target.
+   *
+   * @param expectedUpdater exact updater instance whose selection is being consumed
+   * @param action bounded package action that returns an optional outcome
+   * @param <T> action outcome type
+   * @return the action outcome, or empty when the updater is no longer current or trusted
+   */
+  synchronized <T> Optional<T> withCurrentCoreUpdaterAction(
+      CoreUpdater expectedUpdater, Supplier<Optional<T>> action) {
+    Objects.requireNonNull(expectedUpdater, "expectedUpdater");
+    Objects.requireNonNull(action, "action");
+    if (coreUpdater != expectedUpdater || hasBeenBlown || updateKeyCompromised) {
+      return Optional.empty();
+    }
+    return Objects.requireNonNull(action.get(), "action result");
+  }
+
+  /**
+   * Executes a bounded package action while lifecycle state keeps its selected build non-revoked.
+   *
+   * <p>Callers enter through {@link #withCurrentCoreUpdaterAction(CoreUpdater, Supplier)} and
+   * retain the manager and updater-selection monitors before invoking this method. This final
+   * lifecycle monitor closes the authorization-to-launch interval against descriptor acceptance.
+   *
+   * @param buildVersion selected package build, or {@code null} for a legacy descriptor
+   * @param action bounded non-null action to execute
+   * @param <T> action outcome type
+   * @return action outcome, or empty when lifecycle policy revokes the selected build
+   */
+  synchronized <T> Optional<T> withNonRevokedCorePackageAction(
+      Integer buildVersion, Supplier<T> action) {
+    Objects.requireNonNull(action, "action");
+    if (hasBeenBlown || updateKeyCompromised) {
+      return Optional.empty();
+    }
+    return supportLifecycleState.withNonRevokedBuild(buildVersion, action);
   }
 
   /** Reconciles the current package selection after accepting a new lifecycle descriptor. */

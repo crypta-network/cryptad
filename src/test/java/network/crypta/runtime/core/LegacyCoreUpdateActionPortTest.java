@@ -2,6 +2,8 @@ package network.crypta.runtime.core;
 
 import java.io.File;
 import java.nio.file.Path;
+import java.util.Optional;
+import java.util.function.Function;
 import network.crypta.node.Node;
 import network.crypta.runtime.spi.CoreSupportLifecycleSnapshot;
 import network.crypta.runtime.updater.CoreUpdater;
@@ -16,6 +18,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -135,7 +139,8 @@ class LegacyCoreUpdateActionPortTest {
   }
 
   @Test
-  void resolveDownloadedInstaller_whenPathInsideCoreUpdates_expectCanonicalPath() throws Exception {
+  void withDownloadedInstaller_whenPathInsideCoreUpdates_expectActionRunsWithCanonicalPath()
+      throws Exception {
     File nodeDir = tempDir.resolve("node").toFile();
     File updatesDir = new File(nodeDir, "updates/core");
     File installer = new File(updatesDir, "version/../cryptad.deb");
@@ -143,17 +148,26 @@ class LegacyCoreUpdateActionPortTest {
     when(node.getNodeDir()).thenReturn(nodeDir);
     when(node.services().nodeUpdater()).thenReturn(nodeUpdateManager);
     when(nodeUpdateManager.getCoreUpdater()).thenReturn(coreUpdater);
-    when(coreUpdater.getDownloadedFile()).thenReturn(installer.getCanonicalFile());
+    doAnswer(
+            invocation -> {
+              File submitted = invocation.getArgument(0);
+              @SuppressWarnings("unchecked")
+              Function<File, String> action = invocation.getArgument(1, Function.class);
+              return Optional.of(action.apply(submitted));
+            })
+        .when(coreUpdater)
+        .withDownloadedInstaller(any(File.class), any());
 
     LegacyCoreUpdateActionPort port = new LegacyCoreUpdateActionPort(node);
 
-    Path resolved = port.resolveDownloadedInstaller(installer.getPath()).orElseThrow();
+    String launchedPath =
+        port.withDownloadedInstaller(installer.getPath(), Path::toString).orElseThrow();
 
-    assertEquals(installer.getCanonicalFile().toPath(), resolved);
+    assertEquals(installer.getCanonicalFile().toPath().toString(), launchedPath);
   }
 
   @Test
-  void resolveDownloadedInstaller_whenLifecycleRevokesRenderedPackage_expectEmpty() {
+  void withDownloadedInstaller_whenLifecycleRevokesRenderedPackage_expectEmpty() {
     File nodeDir = tempDir.resolve("node").toFile();
     File updatesDir = new File(nodeDir, "updates/core");
     File installer = new File(updatesDir, "1501/cryptad.deb");
@@ -161,21 +175,20 @@ class LegacyCoreUpdateActionPortTest {
     when(node.getNodeDir()).thenReturn(nodeDir);
     when(node.services().nodeUpdater()).thenReturn(nodeUpdateManager);
     when(nodeUpdateManager.getCoreUpdater()).thenReturn(coreUpdater);
-    when(coreUpdater.getDownloadedFile()).thenReturn(null);
 
     LegacyCoreUpdateActionPort port = new LegacyCoreUpdateActionPort(node);
 
-    assertTrue(port.resolveDownloadedInstaller(installer.getPath()).isEmpty());
+    assertTrue(port.withDownloadedInstaller(installer.getPath(), Path::toString).isEmpty());
   }
 
   @Test
-  void resolveDownloadedInstaller_whenPathOutsideCoreUpdates_expectEmpty() {
+  void withDownloadedInstaller_whenPathOutsideCoreUpdates_expectEmpty() {
     File nodeDir = tempDir.resolve("node").toFile();
     File outside = tempDir.resolve("outside/cryptad.deb").toFile();
     when(node.getNodeDir()).thenReturn(nodeDir);
 
     LegacyCoreUpdateActionPort port = new LegacyCoreUpdateActionPort(node);
 
-    assertTrue(port.resolveDownloadedInstaller(outside.getPath()).isEmpty());
+    assertTrue(port.withDownloadedInstaller(outside.getPath(), Path::toString).isEmpty());
   }
 }

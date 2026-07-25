@@ -20,12 +20,12 @@ import network.crypta.runtime.updater.NodeUpdateManager;
  * without letting HTTP-layer code depend on {@link Node}, {@link NodeUpdateManager}, or {@link
  * CoreUpdater}. It preserves the legacy behavior that matters to the admin shell: availability
  * depends on whether a live core updater service is wired, UI download requests delegate to {@code
- * startDownloadFromUI()}, and installer validation accepts only canonical paths beneath the node's
+ * startDownloadFromUI()}, and installer actions accept only canonical paths beneath the node's
  * {@code updates/core} directory.
  *
- * <p>The adapter does not launch installers, open stores, or interpret HTTP results. Those
- * operator-visible choices remain inside the toadlet, which means this class stays focused on
- * daemon lookups and filesystem containment checks.
+ * <p>The adapter does not choose how to launch installers, open stores, or interpret HTTP results.
+ * Those operator-visible choices remain inside the toadlet, while the supplied installer action
+ * executes before the daemon releases its selection and lifecycle authorization.
  */
 final class LegacyCoreUpdateActionPort implements CoreUpdateActionPort {
   private static final String CORE_UPDATE_DIRECTORY = "updates/core";
@@ -77,7 +77,8 @@ final class LegacyCoreUpdateActionPort implements CoreUpdateActionPort {
   }
 
   @Override
-  public Optional<Path> resolveDownloadedInstaller(String rawPath) {
+  public <T> Optional<T> withDownloadedInstaller(String rawPath, InstallerAction<T> action) {
+    Objects.requireNonNull(action, "action");
     if (rawPath == null || rawPath.isBlank()) {
       return Optional.empty();
     }
@@ -89,11 +90,11 @@ final class LegacyCoreUpdateActionPort implements CoreUpdateActionPort {
       if (!candidatePath.startsWith(base.toPath())) {
         return Optional.empty();
       }
-      File downloaded = getCoreUpdater().map(CoreUpdater::getDownloadedFile).orElse(null);
-      if (downloaded == null || !candidate.equals(downloaded.getCanonicalFile())) {
-        return Optional.empty();
-      }
-      return Optional.of(candidatePath);
+      return getCoreUpdater()
+          .flatMap(
+              updater ->
+                  updater.withDownloadedInstaller(
+                      candidate, installer -> action.execute(installer.toPath())));
     } catch (IOException _) {
       return Optional.empty();
     }

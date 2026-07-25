@@ -8,8 +8,17 @@ import java.nio.file.Files;
 import java.nio.file.attribute.PosixFilePermission;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
 import network.crypta.client.FetchContext;
 import network.crypta.client.FetchContextOptions;
 import network.crypta.client.FetchException.FetchExceptionMode;
@@ -41,6 +50,7 @@ import static org.junit.jupiter.api.Assumptions.assumeFalse;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyShort;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -193,6 +203,7 @@ class CoreUpdaterTest {
     assertFalse(updater.isUiDownloadAvailable());
     assertFalse(updater.startDownloadFromUI());
     assertNull(updater.getDownloadedFile());
+    assertTrue(updater.withDownloadedInstaller(completedPackage, _ -> "launched").isEmpty());
     verify(updater.core, never()).getClientContext();
   }
 
@@ -489,6 +500,96 @@ class CoreUpdaterTest {
     verify(fetcher).cancelForBuildRevocation();
   }
 
+  @Test
+  void withDownloadedInstaller_whenUriChangesDuringLaunch_expectChangeWaitsForLaunch()
+      throws Exception {
+    CoreUpdater updater = createCoreUpdater();
+    int advertisedBuild = Version.currentBuildNumber() + 1;
+    File completedPackage = Files.createTempFile("cryptad-authorized-package", ".deb").toFile();
+    setDescriptorSelection(
+        updater, advertisedBuild, SELECTED_PACKAGE_KEY, new PackageSpec(VALID_CHK, 10L, null));
+    CoreUpdater.PackageFetcher completedFetcher = mock(CoreUpdater.PackageFetcher.class);
+    when(completedFetcher.matchesChk(VALID_CHK)).thenReturn(true);
+    when(completedFetcher.isSuccess()).thenReturn(true);
+    when(completedFetcher.completedFileOrNull()).thenReturn(completedPackage);
+    setField(updater, "fetcher", completedFetcher);
+    FreenetURI replacementUri =
+        new FreenetURI("USK@" + NodeUpdateManager.UPDATE_URI + "/replacement-info/1200");
+    CountDownLatch launchEntered = new CountDownLatch(1);
+    CountDownLatch releaseLaunch = new CountDownLatch(1);
+
+    try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
+      Future<Optional<String>> launch =
+          executor.submit(
+              () ->
+                  updater.withDownloadedInstaller(
+                      completedPackage,
+                      installer -> {
+                        launchEntered.countDown();
+                        await(releaseLaunch);
+                        return installer.getAbsolutePath();
+                      }));
+      assertTrue(launchEntered.await(5, TimeUnit.SECONDS));
+      Future<?> uriChange = executor.submit(() -> updater.onChangeURI(replacementUri, 1200));
+
+      try {
+        assertThrows(TimeoutException.class, () -> uriChange.get(200, TimeUnit.MILLISECONDS));
+      } finally {
+        releaseLaunch.countDown();
+      }
+
+      assertEquals(
+          Optional.of(completedPackage.getCanonicalPath()), launch.get(5, TimeUnit.SECONDS));
+      uriChange.get(5, TimeUnit.SECONDS);
+    }
+  }
+
+  @Test
+  void withDownloadedInstaller_whenLifecycleRevokesDuringLaunch_expectCallbackWaitsForLaunch()
+      throws Exception {
+    CoreUpdater updater = createCoreUpdater();
+    int advertisedBuild = Version.currentBuildNumber() + 1;
+    File completedPackage = Files.createTempFile("cryptad-authorized-package", ".deb").toFile();
+    setDescriptorSelection(
+        updater, advertisedBuild, SELECTED_PACKAGE_KEY, new PackageSpec(VALID_CHK, 10L, null));
+    CoreUpdater.PackageFetcher completedFetcher = mock(CoreUpdater.PackageFetcher.class);
+    when(completedFetcher.matchesChk(VALID_CHK)).thenReturn(true);
+    when(completedFetcher.isSuccess()).thenReturn(true);
+    when(completedFetcher.completedFileOrNull()).thenReturn(completedPackage);
+    setField(updater, "fetcher", completedFetcher);
+    AtomicBoolean revoked = new AtomicBoolean();
+    when(updater.manager.isCorePackageBuildRevoked(advertisedBuild)).thenAnswer(_ -> revoked.get());
+    CountDownLatch launchEntered = new CountDownLatch(1);
+    CountDownLatch releaseLaunch = new CountDownLatch(1);
+
+    try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
+      Future<Optional<String>> launch =
+          executor.submit(
+              () ->
+                  updater.withDownloadedInstaller(
+                      completedPackage,
+                      installer -> {
+                        launchEntered.countDown();
+                        await(releaseLaunch);
+                        return installer.getAbsolutePath();
+                      }));
+      assertTrue(launchEntered.await(5, TimeUnit.SECONDS));
+      revoked.set(true);
+      Future<?> lifecycleChange = executor.submit(updater::onSupportLifecycleStateChanged);
+
+      try {
+        assertThrows(TimeoutException.class, () -> lifecycleChange.get(200, TimeUnit.MILLISECONDS));
+      } finally {
+        releaseLaunch.countDown();
+      }
+
+      assertEquals(
+          Optional.of(completedPackage.getCanonicalPath()), launch.get(5, TimeUnit.SECONDS));
+      lifecycleChange.get(5, TimeUnit.SECONDS);
+      verify(completedFetcher).cancelForBuildRevocation();
+    }
+  }
+
   private static CoreUpdater createCoreUpdater() throws Exception {
     return createCoreUpdater(
         java.nio.file.Files.createTempDirectory("cryptad-core-updater").toFile());
@@ -510,7 +611,22 @@ class CoreUpdaterTest {
     when(core.getUskManager()).thenReturn(mock(USKManager.class));
     when(core.getClientContext()).thenReturn(mock(ClientContext.class));
 
-    return new CoreUpdater(defaultParams(manager));
+    CoreUpdater updater = new CoreUpdater(defaultParams(manager));
+    when(manager.withCurrentCoreUpdaterAction(eq(updater), any()))
+        .thenAnswer(
+            invocation -> {
+              @SuppressWarnings("unchecked")
+              Supplier<Optional<Object>> action = invocation.getArgument(1, Supplier.class);
+              return action.get();
+            });
+    when(manager.withNonRevokedCorePackageAction(any(), any()))
+        .thenAnswer(
+            invocation -> {
+              @SuppressWarnings("unchecked")
+              Supplier<Object> action = invocation.getArgument(1, Supplier.class);
+              return Optional.of(action.get());
+            });
+    return updater;
   }
 
   private static CoreUpdater updaterWithActivePackageFetch() throws Exception {
@@ -600,5 +716,16 @@ class CoreUpdaterTest {
     Field field = CoreUpdater.class.getDeclaredField("fetcher");
     field.setAccessible(true);
     return ((AtomicReference<CoreUpdater.PackageFetcher>) field.get(updater)).get();
+  }
+
+  private static void await(CountDownLatch latch) {
+    try {
+      if (!latch.await(5, TimeUnit.SECONDS)) {
+        throw new AssertionError("Timed out waiting for installer launch test coordination");
+      }
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new AssertionError("Installer launch test was interrupted", e);
+    }
   }
 }

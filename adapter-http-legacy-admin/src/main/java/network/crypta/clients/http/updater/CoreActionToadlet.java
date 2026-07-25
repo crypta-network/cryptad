@@ -6,7 +6,6 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -179,15 +178,22 @@ public class CoreActionToadlet extends Toadlet {
     String path = request.getPartAsStringFailsafe("path", 4096);
     logInfo("POST /core-update action=" + ACTION_INSTALL + " path=" + path);
 
-    File candidate =
-        coreUpdateActionPort.resolveDownloadedInstaller(path).map(Path::toFile).orElse(null);
-    if (candidate == null) {
+    InstallAttempt attempt =
+        coreUpdateActionPort
+            .withDownloadedInstaller(
+                path,
+                installer -> {
+                  File candidate = installer.toFile();
+                  return new InstallAttempt(candidate, tryInstall(candidate));
+                })
+            .orElse(null);
+    if (attempt == null) {
       logInfo("install rejected: invalid path");
       writeMessage(ctx, false, t("invalidPath"));
       return;
     }
 
-    InstallOutcome outcome = tryInstall(candidate);
+    InstallOutcome outcome = attempt.outcome();
     logInfo(
         "install result: success="
             + outcome.success
@@ -195,7 +201,7 @@ public class CoreActionToadlet extends Toadlet {
             + outcome.message.key
             + ", replacements="
             + outcome.message.replacements);
-    writeInstallResult(ctx, outcome.success, outcome.message.render(this), candidate);
+    writeInstallResult(ctx, outcome.success, outcome.message.render(this), attempt.installer());
   }
 
   private void handleOpenStore(HTTPRequest request, ToadletContext ctx)
@@ -868,6 +874,8 @@ public class CoreActionToadlet extends Toadlet {
   }
 
   private record InstallOutcome(boolean success, LocalMessage message) {}
+
+  private record InstallAttempt(File installer, InstallOutcome outcome) {}
 
   private sealed interface InstallerDelegate {
     record Spawn(ProcessBuilder pb, LocalMessage message) implements InstallerDelegate {}

@@ -8,18 +8,39 @@ import java.util.Optional;
  *
  * <p>This SPI is intentionally small. Implementations answer whether a live core updater is
  * currently wired, start the same UI-triggered download flow that the legacy admin page expects,
- * and validate installer paths that come back from form submissions. The interface keeps those
- * live-daemon checks behind the runtime boundary while avoiding direct exposure of {@code Node},
- * updater services, or daemon-specific transport and config classes.
+ * and run installer actions for paths that come back from form submissions. The interface keeps
+ * those live-daemon checks behind the runtime boundary while avoiding direct exposure of {@code
+ * Node}, updater services, or daemon-specific transport and config classes.
  *
  * <p>{@code CoreActionToadlet} continues to own request parsing, redirects, result pages, {@code
  * AppEnv} checks, and OS-specific installer or store-launching behavior. Callers typically fetch
  * the port from {@link RuntimePorts}, check availability for one request, and then invoke either a
- * download trigger, installer-path validation, or exact store-target validation step.
+ * download trigger, guarded installer action, or exact store-target validation step.
  *
  * @see RuntimePorts#coreUpdateAction()
  */
 public interface CoreUpdateActionPort {
+  /**
+   * Performs one caller-owned action with a currently authorized downloaded installer.
+   *
+   * <p>The runtime invokes this action only after validating the submitted path and retains its
+   * updater-selection and lifecycle authorization until the action returns. Implementations must
+   * not return the installer path for later use. Callers should perform only the bounded launch
+   * operation inside the callback and render responses after it returns.
+   *
+   * @param <T> action result returned to the caller after authorization is released
+   */
+  @FunctionalInterface
+  interface InstallerAction<T> {
+    /**
+     * Executes the bounded installer launch operation.
+     *
+     * @param installer canonical installer path retained under runtime authorization
+     * @return non-null launch outcome for later response rendering
+     */
+    T execute(Path installer);
+  }
+
   /**
    * Returns the last locally verified Stable 1.0 build-support lifecycle snapshot.
    *
@@ -88,20 +109,19 @@ public interface CoreUpdateActionPort {
   }
 
   /**
-   * Resolves one raw installer path to the canonical, currently approved downloaded package.
+   * Executes an installer action while the submitted package remains the authorized selection.
    *
    * <p>Implementations preserve the existing {@code <nodeDir>/updates/core} containment check and
-   * return an empty result for blank, invalid, out-of-tree, superseded, or lifecycle-revoked
-   * inputs. The returned path must identify the exact successful package still selected by the
-   * daemon updater when the installation request is submitted. This final runtime lookup prevents
-   * an already-rendered browser form from launching a package after authenticated lifecycle state
-   * has revoked its build. The path is canonical and detached from daemon-only file-wrapper types;
-   * callers still handle later file existence or execution failures through the normal installation
-   * flow.
+   * return an empty result for blank, invalid, out-of-tree, superseded, lifecycle-revoked, or
+   * update-key-invalidated inputs. Selection, updater-scope, and lifecycle authorization must
+   * remain held through {@link InstallerAction#execute(Path)} so a concurrently revoked or
+   * superseded package cannot be launched through a detached path.
    *
    * @param rawPath raw installer path string read from the HTTP request body or query data
-   * @return canonical installer path when currently selected and accepted; otherwise {@link
+   * @param action bounded launch action to invoke with the canonical authorized installer
+   * @param <T> non-null launch outcome type
+   * @return action outcome when the package stayed authorized through launch; otherwise {@link
    *     Optional#empty()}
    */
-  Optional<Path> resolveDownloadedInstaller(String rawPath);
+  <T> Optional<T> withDownloadedInstaller(String rawPath, InstallerAction<T> action);
 }

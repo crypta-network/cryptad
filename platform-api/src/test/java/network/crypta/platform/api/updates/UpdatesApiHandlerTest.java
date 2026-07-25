@@ -1,6 +1,5 @@
 package network.crypta.platform.api.updates;
 
-import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -160,7 +159,7 @@ class UpdatesApiHandlerTest {
     }
 
     @Override
-    public Optional<Path> resolveDownloadedInstaller(String rawPath) {
+    public <T> Optional<T> withDownloadedInstaller(String rawPath, InstallerAction<T> action) {
       return Optional.empty();
     }
   }

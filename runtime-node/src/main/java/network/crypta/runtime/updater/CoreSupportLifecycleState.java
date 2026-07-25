@@ -10,6 +10,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
+import java.util.function.Supplier;
 import java.util.regex.Pattern;
 import network.crypta.runtime.spi.CoreSupportLifecycleSnapshot;
 import network.crypta.runtime.spi.CoreSupportLifecycleStatus;
@@ -255,6 +257,27 @@ final class CoreSupportLifecycleState {
         && activation != null
         && !now.isBefore(activation)
         && !now.isBefore(entry.statusEffectiveAt());
+  }
+
+  /**
+   * Executes one package action while lifecycle state continues to authorize its build.
+   *
+   * <p>Holding the lifecycle-state monitor through the action gives descriptor acceptance, trust
+   * changes, compromise invalidation, and installer launch one linear order. A null build retains
+   * the legacy noninteger descriptor behavior but still holds this monitor so a concurrent trust
+   * transition cannot overtake the action.
+   *
+   * @param buildVersion selected integer package build, or {@code null} for a legacy descriptor
+   * @param action bounded non-null action to execute when the build is not effectively revoked
+   * @param <T> action result type
+   * @return action result, or empty when lifecycle state revokes the selected build
+   */
+  synchronized <T> Optional<T> withNonRevokedBuild(Integer buildVersion, Supplier<T> action) {
+    Objects.requireNonNull(action, "action");
+    if (buildVersion != null && isBuildRevoked(buildVersion)) {
+      return Optional.empty();
+    }
+    return Optional.of(Objects.requireNonNull(action.get(), "action result"));
   }
 
   /** Returns whether persisted update-key compromise evidence has invalidated lifecycle trust. */

@@ -12,7 +12,9 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
 import network.crypta.client.FetchContext;
 import network.crypta.client.FetchException.FetchExceptionMode;
 import network.crypta.client.FetchException;
@@ -681,6 +683,55 @@ public class CoreUpdater extends NodeUpdater {
       }
     }
     return null;
+  }
+
+  /**
+   * Executes an installer action while one completed package remains the authorized selection.
+   *
+   * <p>The manager, package-selection, and lifecycle-state monitors remain held until the supplied
+   * action returns. This gives updater replacement, URI changes, update-key blows, descriptor
+   * replacement, lifecycle acceptance, and process launch one linear order instead of returning a
+   * detached path that can become stale before use.
+   *
+   * @param submittedFile canonical installer submitted by the runtime adapter
+   * @param action bounded launch action that must not re-enter updater control methods
+   * @param <T> non-null launch outcome type
+   * @return action outcome, or empty when the file or its authorization is no longer current
+   */
+  public <T> Optional<T> withDownloadedInstaller(File submittedFile, Function<File, T> action) {
+    Objects.requireNonNull(submittedFile, "submittedFile");
+    Objects.requireNonNull(action, FORM_FIELD_ACTION);
+    return manager.withCurrentCoreUpdaterAction(
+        this, () -> withDownloadedInstallerSelection(submittedFile, action));
+  }
+
+  private <T> Optional<T> withDownloadedInstallerSelection(
+      File submittedFile, Function<File, T> action) {
+    synchronized (packageFetchLifecycleLock) {
+      DescriptorSelection selection = descriptorSelection.get();
+      PackageFetcher matchingFetcher = fetcherMatchesSelection(selection);
+      if (selection == null
+          || isSelectedBuildRevoked(selection)
+          || matchingFetcher == null
+          || !matchingFetcher.isSuccess()) {
+        return Optional.empty();
+      }
+      File completedFile = matchingFetcher.completedFileOrNull();
+      if (completedFile == null || !isCurrentSelection(selection)) {
+        return Optional.empty();
+      }
+      try {
+        File canonicalSubmitted = submittedFile.getCanonicalFile();
+        File canonicalCompleted = completedFile.getCanonicalFile();
+        if (!canonicalSubmitted.equals(canonicalCompleted)) {
+          return Optional.empty();
+        }
+        return manager.withNonRevokedCorePackageAction(
+            selection.buildVersion(), () -> action.apply(canonicalCompleted));
+      } catch (java.io.IOException _) {
+        return Optional.empty();
+      }
+    }
   }
 
   /**

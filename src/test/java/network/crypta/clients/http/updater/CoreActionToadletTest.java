@@ -32,6 +32,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -181,7 +182,8 @@ class CoreActionToadletTest {
     when(coreUpdateActionPort.isCoreUpdaterAvailable()).thenReturn(true);
     when(request.getPartAsStringFailsafe(eq("action"), anyInt())).thenReturn("install");
     when(request.getPartAsStringFailsafe(eq("path"), anyInt())).thenReturn(invalidPath);
-    when(coreUpdateActionPort.resolveDownloadedInstaller(invalidPath)).thenReturn(Optional.empty());
+    when(coreUpdateActionPort.withDownloadedInstaller(eq(invalidPath), any()))
+        .thenReturn(Optional.empty());
 
     stubHtmlContext(ctx);
 
@@ -210,8 +212,7 @@ class CoreActionToadletTest {
     when(request.getPartAsStringFailsafe(eq("action"), anyInt())).thenReturn("install");
     when(request.getPartAsStringFailsafe(eq("path"), anyInt()))
         .thenReturn(installer.getAbsolutePath());
-    when(coreUpdateActionPort.resolveDownloadedInstaller(installer.getAbsolutePath()))
-        .thenReturn(Optional.of(installer.toPath()));
+    authorizeInstaller(coreUpdateActionPort, installer);
 
     AppEnv appEnv = mock(AppEnv.class);
     when(appEnv.osKind()).thenReturn(AppEnv.OsKind.LINUX);
@@ -297,8 +298,7 @@ class CoreActionToadletTest {
     when(request.getPartAsStringFailsafe(eq("action"), anyInt())).thenReturn("install");
     when(request.getPartAsStringFailsafe(eq("path"), anyInt()))
         .thenReturn(installer.getAbsolutePath());
-    when(coreUpdateActionPort.resolveDownloadedInstaller(installer.getAbsolutePath()))
-        .thenReturn(Optional.of(installer.toPath()));
+    authorizeInstaller(coreUpdateActionPort, installer);
 
     AppEnv appEnv = mock(AppEnv.class);
     when(appEnv.osKind()).thenReturn(AppEnv.OsKind.LINUX);
@@ -356,6 +356,16 @@ class CoreActionToadletTest {
     String html = captureWrittenHtml(ctx);
     assertTrue(html.contains("cannot perform snap installs"));
     assertTrue(html.contains("sudo snap install network.crypta"));
+  }
+
+  private static void authorizeInstaller(CoreUpdateActionPort port, File installer) {
+    doAnswer(
+            invocation -> {
+              CoreUpdateActionPort.InstallerAction<?> action = invocation.getArgument(1);
+              return Optional.of(action.execute(installer.toPath()));
+            })
+        .when(port)
+        .withDownloadedInstaller(eq(installer.getAbsolutePath()), any());
   }
 
   private static ToadletContext contextWithJavascript(boolean javascriptEnabled) {
