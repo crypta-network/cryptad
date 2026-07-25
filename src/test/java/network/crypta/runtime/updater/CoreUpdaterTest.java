@@ -52,6 +52,7 @@ import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyShort;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -514,6 +515,40 @@ class CoreUpdaterTest {
   }
 
   @Test
+  void startDownloadFromUI_whenPackageFetchStarts_expectLifecycleAuthorizationHeld()
+      throws Exception {
+    CoreUpdater updater = createCoreUpdater();
+    int advertisedBuild = Version.currentBuildNumber() + 1;
+    setDescriptorSelection(
+        updater, advertisedBuild, SELECTED_PACKAGE_KEY, new PackageSpec(VALID_CHK, 10L, null));
+    AtomicBoolean lifecycleAuthorizationHeld = new AtomicBoolean();
+    doAnswer(
+            invocation -> {
+              @SuppressWarnings("unchecked")
+              Supplier<Object> action = invocation.getArgument(1, Supplier.class);
+              lifecycleAuthorizationHeld.set(true);
+              try {
+                return Optional.of(action.get());
+              } finally {
+                lifecycleAuthorizationHeld.set(false);
+              }
+            })
+        .when(updater.manager)
+        .withNonRevokedCorePackageAction(eq(advertisedBuild), any());
+    ClientContext clientContext = updater.core.getClientContext();
+    doAnswer(
+            _ -> {
+              assertTrue(lifecycleAuthorizationHeld.get());
+              return null;
+            })
+        .when(clientContext)
+        .start(any(ClientGetter.class));
+
+    assertTrue(updater.startDownloadFromUI());
+    assertFalse(lifecycleAuthorizationHeld.get());
+  }
+
+  @Test
   void start_whenPackageFetcherWasCancelledBeforeRegistration_expectDownloadDoesNotStart()
       throws Exception {
     CoreUpdater updater = createCoreUpdater();
@@ -601,11 +636,30 @@ class CoreUpdaterTest {
     setDescriptorSelection(updater, advertisedBuild, null, null);
     CoreUpdater.PackageFetcher fetcher = mock(CoreUpdater.PackageFetcher.class);
     setField(updater, "fetcher", fetcher);
+    when(fetcher.originatingBuildVersion()).thenReturn(advertisedBuild);
     when(updater.manager.isCorePackageBuildRevoked(advertisedBuild)).thenReturn(true);
 
     updater.onSupportLifecycleStateChanged();
 
     verify(fetcher).cancelForBuildRevocation();
+  }
+
+  @Test
+  void lifecycleChange_whenSupersededFetchBuildBecomesRevoked_expectActiveDownloadCancelled()
+      throws Exception {
+    CoreUpdater updater = createCoreUpdater();
+    int originalBuild = Version.currentBuildNumber() + 1;
+    int successorBuild = originalBuild + 1;
+    CoreUpdater.PackageFetcher originalFetcher = mock(CoreUpdater.PackageFetcher.class);
+    when(originalFetcher.originatingBuildVersion()).thenReturn(originalBuild);
+    setField(updater, "fetcher", originalFetcher);
+    setDescriptorSelection(updater, successorBuild, null, null);
+    when(updater.manager.isCorePackageBuildRevoked(originalBuild)).thenReturn(true);
+    when(updater.manager.isCorePackageBuildRevoked(successorBuild)).thenReturn(false);
+
+    updater.onSupportLifecycleStateChanged();
+
+    verify(originalFetcher).cancelForBuildRevocation();
   }
 
   @Test
@@ -666,6 +720,7 @@ class CoreUpdaterTest {
     when(completedFetcher.matchesSelection(selection)).thenReturn(true);
     when(completedFetcher.isSuccess()).thenReturn(true);
     when(completedFetcher.completedFileOrNull()).thenReturn(completedPackage);
+    when(completedFetcher.originatingBuildVersion()).thenReturn(advertisedBuild);
     setField(updater, "fetcher", completedFetcher);
     AtomicBoolean revoked = new AtomicBoolean();
     when(updater.manager.isCorePackageBuildRevoked(advertisedBuild)).thenAnswer(_ -> revoked.get());

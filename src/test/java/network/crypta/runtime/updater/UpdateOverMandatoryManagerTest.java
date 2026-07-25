@@ -133,7 +133,8 @@ class UpdateOverMandatoryManagerTest {
     Path coreInfoTemp = Files.writeString(tempDir.resolve("core-info-1433-12345.fblob.tmp"), "x");
     Path lifecycleTemp =
         Files.writeString(tempDir.resolve("support-lifecycle-7-67890.fblob.tmp"), "x");
-    Path finalized = Files.writeString(tempDir.resolve("core-info-1433.fblob"), "x");
+    Path finalizedCoreInfo = Files.writeString(tempDir.resolve("core-info-1433.fblob"), "x");
+    Path finalizedLifecycle = Files.writeString(tempDir.resolve("support-lifecycle-7.fblob"), "x");
     Path ambiguous = Files.writeString(tempDir.resolve("core-info-current-12345.fblob.tmp"), "x");
 
     // Act
@@ -142,7 +143,8 @@ class UpdateOverMandatoryManagerTest {
     // Assert
     assertFalse(Files.exists(coreInfoTemp));
     assertFalse(Files.exists(lifecycleTemp));
-    assertTrue(Files.exists(finalized));
+    assertFalse(Files.exists(finalizedLifecycle));
+    assertTrue(Files.exists(finalizedCoreInfo));
     assertTrue(Files.exists(ambiguous));
   }
 

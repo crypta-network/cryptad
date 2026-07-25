@@ -621,38 +621,48 @@ public class CoreUpdater extends NodeUpdater {
       return false;
     }
     PackageFetcher f = new PackageFetcher(selection, target, uri);
+    return manager
+        .withCurrentCoreUpdaterAction(
+            this, () -> tryStartAuthorizedDownload(selection, f, target, chk))
+        .orElse(false);
+  }
+
+  private Optional<Boolean> tryStartAuthorizedDownload(
+      DescriptorSelection selection, PackageFetcher f, File target, String chk) {
     synchronized (packageFetchLifecycleLock) {
       if (packageFetchesStopped || manager.isBlown()) {
         logInfo("Skipping package download start because updater trust is unavailable");
-        return false;
+        return Optional.of(false);
       }
       if (!isCurrentSelection(selection)) {
         logInfo("Skipping package download start because the selected descriptor changed");
-        return false;
-      }
-      if (isSelectedBuildRevoked(selection)) {
-        logInfo("Skipping package download start because the advertised build is revoked");
-        return false;
+        return Optional.of(false);
       }
       PackageFetcher current = fetcher.get();
       if (current != null && current.isInProgress()) {
         logInfo("Skipping download start: another package download is still running");
-        return false;
+        return Optional.of(false);
       }
       if (current != null && current.matchesSelection(selection) && current.isSuccess()) {
         logInfo("Skipping download start: selected package is already downloaded");
-        return false;
+        return Optional.of(false);
       }
-      fetcher.set(f);
-      logInfo(
-          "starting download: key="
-              + (selection.packageKey() != null ? selection.packageKey() : "?")
-              + ", target="
-              + target.getAbsolutePath()
-              + ", chk="
-              + chk);
-      return f.start();
+      return manager.withNonRevokedCorePackageAction(
+          selection.buildVersion(), () -> startPackageFetcher(selection, f, target, chk));
     }
+  }
+
+  private boolean startPackageFetcher(
+      DescriptorSelection selection, PackageFetcher f, File target, String chk) {
+    fetcher.set(f);
+    logInfo(
+        "starting download: key="
+            + (selection.packageKey() != null ? selection.packageKey() : "?")
+            + ", target="
+            + target.getAbsolutePath()
+            + ", chk="
+            + chk);
+    return f.start();
   }
 
   /** Start downloading the currently selected package if not already in progress. */
@@ -817,8 +827,8 @@ public class CoreUpdater extends NodeUpdater {
   void onSupportLifecycleStateChanged() {
     PackageFetcher revokedFetcher;
     synchronized (packageFetchLifecycleLock) {
-      DescriptorSelection selection = descriptorSelection.get();
-      if (!isSelectedBuildRevoked(selection)) {
+      PackageFetcher activeFetcher = fetcher.get();
+      if (activeFetcher == null || !isBuildRevoked(activeFetcher.originatingBuildVersion())) {
         return;
       }
       revokedFetcher = fetcher.getAndSet(null);
@@ -1205,6 +1215,10 @@ public class CoreUpdater extends NodeUpdater {
     boolean matchesSelection(DescriptorSelection candidate) {
       return candidate != null
           && originatingSelection.selectionIdentity().equals(candidate.selectionIdentity());
+    }
+
+    Integer originatingBuildVersion() {
+      return originatingSelection.buildVersion();
     }
 
     /**
