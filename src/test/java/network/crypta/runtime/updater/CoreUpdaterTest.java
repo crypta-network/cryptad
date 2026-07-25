@@ -20,6 +20,7 @@ import network.crypta.client.async.ClientContext;
 import network.crypta.client.async.ClientGetter;
 import network.crypta.client.async.USKManager;
 import network.crypta.client.events.SimpleEventProducer;
+import network.crypta.fs.AppEnv;
 import network.crypta.keys.FreenetURI;
 import network.crypta.node.Node;
 import network.crypta.node.NodeClientCore;
@@ -165,9 +166,11 @@ class CoreUpdaterTest {
   @Test
   void isUiDownloadAvailable_whenSelectedPackageHasChk_expectTrue() throws Exception {
     CoreUpdater updater = createCoreUpdater();
-    setField(updater, "latestVersionBuild", Version.currentBuildNumber() + 1);
-    setField(updater, "selectedSpec", new PackageSpec(VALID_CHK, 10L, null));
-    setSelectedKey(updater);
+    setDescriptorSelection(
+        updater,
+        Version.currentBuildNumber() + 1,
+        SELECTED_PACKAGE_KEY,
+        new PackageSpec(VALID_CHK, 10L, null));
 
     assertTrue(updater.isUiDownloadAvailable());
   }
@@ -177,9 +180,8 @@ class CoreUpdaterTest {
     CoreUpdater updater = createCoreUpdater();
     int advertisedBuild = Version.currentBuildNumber() + 1;
     File completedPackage = Files.createTempFile("cryptad-revoked-package", ".deb").toFile();
-    setField(updater, "latestVersionBuild", advertisedBuild);
-    setField(updater, "selectedSpec", new PackageSpec(VALID_CHK, 10L, null));
-    setSelectedKey(updater);
+    setDescriptorSelection(
+        updater, advertisedBuild, SELECTED_PACKAGE_KEY, new PackageSpec(VALID_CHK, 10L, null));
     CoreUpdater.PackageFetcher completedFetcher = mock(CoreUpdater.PackageFetcher.class);
     when(completedFetcher.matchesChk(VALID_CHK)).thenReturn(true);
     when(completedFetcher.isSuccess()).thenReturn(true);
@@ -197,9 +199,11 @@ class CoreUpdaterTest {
   @Test
   void isCurrentStoreTarget_whenSubmissionMatchesCurrentSelection_expectTrue() throws Exception {
     CoreUpdater updater = createCoreUpdater();
-    setField(updater, "latestVersionBuild", Version.currentBuildNumber() + 1);
-    setField(updater, "selectedSpec", new PackageSpec(null, null, STORE_PACKAGE_URL));
-    setSelectedKey(updater, STORE_PACKAGE_KEY);
+    setDescriptorSelection(
+        updater,
+        Version.currentBuildNumber() + 1,
+        STORE_PACKAGE_KEY,
+        new PackageSpec(null, null, STORE_PACKAGE_URL));
 
     assertTrue(updater.isCurrentStoreTarget("flatpak", STORE_PACKAGE_ID, STORE_PACKAGE_URL));
     assertFalse(updater.isCurrentStoreTarget("snap", STORE_PACKAGE_ID, STORE_PACKAGE_URL));
@@ -213,10 +217,32 @@ class CoreUpdaterTest {
   void isCurrentStoreTarget_whenSelectedBuildIsRevoked_expectFalse() throws Exception {
     CoreUpdater updater = createCoreUpdater();
     int advertisedBuild = Version.currentBuildNumber() + 1;
-    setField(updater, "latestVersionBuild", advertisedBuild);
-    setField(updater, "selectedSpec", new PackageSpec(null, null, STORE_PACKAGE_URL));
-    setSelectedKey(updater, STORE_PACKAGE_KEY);
+    setDescriptorSelection(
+        updater,
+        advertisedBuild,
+        STORE_PACKAGE_KEY,
+        new PackageSpec(null, null, STORE_PACKAGE_URL));
     when(updater.manager.isCorePackageBuildRevoked(advertisedBuild)).thenReturn(true);
+
+    assertFalse(updater.isCurrentStoreTarget("flatpak", STORE_PACKAGE_ID, STORE_PACKAGE_URL));
+  }
+
+  @Test
+  void isCurrentStoreTarget_whenDescriptorChangesDuringValidation_expectFalse() throws Exception {
+    CoreUpdater updater = createCoreUpdater();
+    int originalBuild = Version.currentBuildNumber() + 1;
+    setDescriptorSelection(
+        updater, originalBuild, STORE_PACKAGE_KEY, new PackageSpec(null, null, STORE_PACKAGE_URL));
+    when(updater.manager.isCorePackageBuildRevoked(originalBuild))
+        .thenAnswer(
+            _ -> {
+              setDescriptorSelection(
+                  updater,
+                  originalBuild + 1,
+                  "amd64.snap",
+                  new PackageSpec(null, null, "https://snapcraft.io/cryptad"));
+              return false;
+            });
 
     assertFalse(updater.isCurrentStoreTarget("flatpak", STORE_PACKAGE_ID, STORE_PACKAGE_URL));
   }
@@ -225,9 +251,8 @@ class CoreUpdaterTest {
   void isUiDownloadAvailable_whenSelectedPackageHasChkAndVersionLabelIsNonInteger_expectTrue()
       throws Exception {
     CoreUpdater updater = createCoreUpdater();
-    setField(updater, "latestVersionBuild", null);
-    setField(updater, "selectedSpec", new PackageSpec(VALID_CHK, 10L, null));
-    setSelectedKey(updater);
+    setDescriptorSelection(
+        updater, null, SELECTED_PACKAGE_KEY, new PackageSpec(VALID_CHK, 10L, null));
 
     assertTrue(updater.isUiDownloadAvailable());
   }
@@ -235,8 +260,8 @@ class CoreUpdaterTest {
   @Test
   void isUiDownloadAvailable_whenSelectedPackageChkIsMalformed_expectFalse() throws Exception {
     CoreUpdater updater = createCoreUpdater();
-    setField(updater, "selectedSpec", new PackageSpec("not-a-chk", 10L, null));
-    setSelectedKey(updater);
+    setDescriptorSelection(
+        updater, null, SELECTED_PACKAGE_KEY, new PackageSpec("not-a-chk", 10L, null));
 
     assertFalse(updater.isUiDownloadAvailable());
   }
@@ -246,8 +271,8 @@ class CoreUpdaterTest {
     File nonDirectoryNodeRoot =
         java.nio.file.Files.createTempFile("cryptad-core-updater", ".tmp").toFile();
     CoreUpdater updater = createCoreUpdater(nonDirectoryNodeRoot);
-    setField(updater, "selectedSpec", new PackageSpec(VALID_CHK, 10L, null));
-    setSelectedKey(updater);
+    setDescriptorSelection(
+        updater, null, SELECTED_PACKAGE_KEY, new PackageSpec(VALID_CHK, 10L, null));
 
     assertFalse(updater.isUiDownloadAvailable());
   }
@@ -266,9 +291,12 @@ class CoreUpdaterTest {
           versionDir.canWrite(), "Test environment cannot simulate a non-writable directory.");
 
       CoreUpdater updater = createCoreUpdater(nodeDir);
-      setField(updater, "latestInfo", new CoreInfo("1200", null, Map.of(), null, null));
-      setField(updater, "selectedSpec", new PackageSpec(VALID_CHK, 10L, null));
-      setSelectedKey(updater);
+      setDescriptorSelection(
+          updater,
+          new CoreInfo("1200", null, Map.of(), null, null),
+          null,
+          SELECTED_PACKAGE_KEY,
+          new PackageSpec(VALID_CHK, 10L, null));
 
       assertFalse(updater.isUiDownloadAvailable());
     } finally {
@@ -283,8 +311,8 @@ class CoreUpdaterTest {
     assertTrue(updatesFile.createNewFile());
 
     CoreUpdater updater = createCoreUpdater(nodeDir);
-    setField(updater, "selectedSpec", new PackageSpec(VALID_CHK, 10L, null));
-    setSelectedKey(updater);
+    setDescriptorSelection(
+        updater, null, SELECTED_PACKAGE_KEY, new PackageSpec(VALID_CHK, 10L, null));
 
     assertFalse(updater.isUiDownloadAvailable());
   }
@@ -292,10 +320,10 @@ class CoreUpdaterTest {
   @Test
   void isUiDownloadAvailable_whenSelectedPackageIsStoreBacked_expectFalse() throws Exception {
     CoreUpdater updater = createCoreUpdater();
-    setField(updater, "latestVersionBuild", Version.currentBuildNumber() + 1);
-    setField(
+    setDescriptorSelection(
         updater,
-        "selectedSpec",
+        Version.currentBuildNumber() + 1,
+        SELECTED_PACKAGE_KEY,
         new PackageSpec(null, 10L, "https://store.example.com/apps/core?id=cryptad"));
 
     assertFalse(updater.isUiDownloadAvailable());
@@ -304,9 +332,11 @@ class CoreUpdaterTest {
   @Test
   void isUiDownloadAvailable_whenMatchingPackageDownloadInProgress_expectFalse() throws Exception {
     CoreUpdater updater = createCoreUpdater();
-    setField(updater, "latestVersionBuild", Version.currentBuildNumber() + 1);
-    setField(updater, "selectedSpec", new PackageSpec(VALID_CHK, 10L, null));
-    setSelectedKey(updater);
+    setDescriptorSelection(
+        updater,
+        Version.currentBuildNumber() + 1,
+        SELECTED_PACKAGE_KEY,
+        new PackageSpec(VALID_CHK, 10L, null));
     CoreUpdater.PackageFetcher fetcher = mock(CoreUpdater.PackageFetcher.class);
     when(fetcher.matchesChk(VALID_CHK)).thenReturn(true);
     when(fetcher.isInProgress()).thenReturn(true);
@@ -318,9 +348,11 @@ class CoreUpdaterTest {
   @Test
   void isUiDownloadAvailable_whenMatchingPackageAlreadyFetched_expectFalse() throws Exception {
     CoreUpdater updater = createCoreUpdater();
-    setField(updater, "latestVersionBuild", Version.currentBuildNumber() + 1);
-    setField(updater, "selectedSpec", new PackageSpec(VALID_CHK, 10L, null));
-    setSelectedKey(updater);
+    setDescriptorSelection(
+        updater,
+        Version.currentBuildNumber() + 1,
+        SELECTED_PACKAGE_KEY,
+        new PackageSpec(VALID_CHK, 10L, null));
     CoreUpdater.PackageFetcher fetcher = mock(CoreUpdater.PackageFetcher.class);
     when(fetcher.matchesChk(VALID_CHK)).thenReturn(true);
     when(fetcher.isInProgress()).thenReturn(false);
@@ -333,9 +365,11 @@ class CoreUpdaterTest {
   @Test
   void isUiDownloadAvailable_whenOtherPackageDownloadInProgress_expectFalse() throws Exception {
     CoreUpdater updater = createCoreUpdater();
-    setField(updater, "latestVersionBuild", Version.currentBuildNumber() + 1);
-    setField(updater, "selectedSpec", new PackageSpec(VALID_CHK, 10L, null));
-    setSelectedKey(updater);
+    setDescriptorSelection(
+        updater,
+        Version.currentBuildNumber() + 1,
+        SELECTED_PACKAGE_KEY,
+        new PackageSpec(VALID_CHK, 10L, null));
     CoreUpdater.PackageFetcher fetcher = mock(CoreUpdater.PackageFetcher.class);
     when(fetcher.matchesChk(VALID_CHK)).thenReturn(false);
     when(fetcher.isInProgress()).thenReturn(true);
@@ -347,8 +381,8 @@ class CoreUpdaterTest {
   @Test
   void startDownloadFromUI_whenUpdaterIsBlown_expectDownloadDoesNotStart() throws Exception {
     CoreUpdater updater = createCoreUpdater();
-    setField(updater, "selectedSpec", new PackageSpec(VALID_CHK, 10L, null));
-    setSelectedKey(updater);
+    setDescriptorSelection(
+        updater, null, SELECTED_PACKAGE_KEY, new PackageSpec(VALID_CHK, 10L, null));
     when(updater.manager.isBlown()).thenReturn(true);
 
     assertFalse(updater.startDownloadFromUI());
@@ -357,8 +391,8 @@ class CoreUpdaterTest {
   @Test
   void startDownloadFromUI_whenUpdaterWasPreKilled_expectDownloadDoesNotStart() throws Exception {
     CoreUpdater updater = createCoreUpdater();
-    setField(updater, "selectedSpec", new PackageSpec(VALID_CHK, 10L, null));
-    setSelectedKey(updater);
+    setDescriptorSelection(
+        updater, null, SELECTED_PACKAGE_KEY, new PackageSpec(VALID_CHK, 10L, null));
     updater.preKill();
 
     assertFalse(updater.startDownloadFromUI());
@@ -386,7 +420,11 @@ class CoreUpdaterTest {
       throws Exception {
     CoreUpdater updater = updaterWithActivePackageFetch();
     CoreUpdater.PackageFetcher originalFetcher = currentPackageFetcher(updater);
-    setField(updater, "selectedSpec", new PackageSpec(REPLACEMENT_CHK, 10L, null));
+    setDescriptorSelection(
+        updater,
+        Version.currentBuildNumber() + 2,
+        SELECTED_PACKAGE_KEY,
+        new PackageSpec(REPLACEMENT_CHK, 10L, null));
     ClientContext clientContext = updater.core.getClientContext();
 
     originalFetcher.onSuccess(mock(FetchResult.class), null);
@@ -400,7 +438,11 @@ class CoreUpdaterTest {
       throws Exception {
     CoreUpdater updater = updaterWithActivePackageFetch();
     CoreUpdater.PackageFetcher originalFetcher = currentPackageFetcher(updater);
-    setField(updater, "selectedSpec", new PackageSpec(REPLACEMENT_CHK, 10L, null));
+    setDescriptorSelection(
+        updater,
+        Version.currentBuildNumber() + 2,
+        SELECTED_PACKAGE_KEY,
+        new PackageSpec(REPLACEMENT_CHK, 10L, null));
     ClientContext clientContext = updater.core.getClientContext();
 
     originalFetcher.onFailure(new FetchException(FetchExceptionMode.ROUTE_NOT_FOUND));
@@ -415,8 +457,8 @@ class CoreUpdaterTest {
     FreenetURI replacementUri =
         new FreenetURI("USK@" + NodeUpdateManager.UPDATE_URI + "/replacement-info/1200");
     updater.onChangeURI(replacementUri, 1200);
-    setField(updater, "selectedSpec", new PackageSpec(VALID_CHK, 10L, null));
-    setSelectedKey(updater);
+    setDescriptorSelection(
+        updater, null, SELECTED_PACKAGE_KEY, new PackageSpec(VALID_CHK, 10L, null));
 
     assertTrue(updater.startDownloadFromUI());
   }
@@ -437,7 +479,7 @@ class CoreUpdaterTest {
       throws Exception {
     CoreUpdater updater = createCoreUpdater();
     int advertisedBuild = Version.currentBuildNumber() + 1;
-    setField(updater, "latestVersionBuild", advertisedBuild);
+    setDescriptorSelection(updater, advertisedBuild, null, null);
     CoreUpdater.PackageFetcher fetcher = mock(CoreUpdater.PackageFetcher.class);
     setField(updater, "fetcher", fetcher);
     when(updater.manager.isCorePackageBuildRevoked(advertisedBuild)).thenReturn(true);
@@ -473,9 +515,11 @@ class CoreUpdaterTest {
 
   private static CoreUpdater updaterWithActivePackageFetch() throws Exception {
     CoreUpdater updater = createCoreUpdater();
-    setField(updater, "latestVersionBuild", Version.currentBuildNumber() + 1);
-    setField(updater, "selectedSpec", new PackageSpec(VALID_CHK, 10L, null));
-    setSelectedKey(updater);
+    setDescriptorSelection(
+        updater,
+        Version.currentBuildNumber() + 1,
+        SELECTED_PACKAGE_KEY,
+        new PackageSpec(VALID_CHK, 10L, null));
     when(updater.manager.isAutoUpdateAllowed()).thenReturn(true);
     assertTrue(updater.startDownloadFromUI());
     return updater;
@@ -511,9 +555,13 @@ class CoreUpdaterTest {
       throws Exception {
     Method buildLinksNode =
         CoreUpdater.class.getDeclaredMethod(
-            "buildLinksNode", CoreInfo.class, PackageSpec.class, String.class);
+            "buildLinksNode",
+            CoreInfo.class,
+            PackageSpec.class,
+            String.class,
+            AppEnv.EnvDetection.class);
     buildLinksNode.setAccessible(true);
-    return (HTMLNode) buildLinksNode.invoke(updater, info, spec, SELECTED_PACKAGE_KEY);
+    return (HTMLNode) buildLinksNode.invoke(updater, info, spec, SELECTED_PACKAGE_KEY, null);
   }
 
   @SuppressWarnings("unchecked")
@@ -524,14 +572,26 @@ class CoreUpdaterTest {
     ((AtomicReference<T>) field.get(updater)).set(value);
   }
 
-  private static void setSelectedKey(CoreUpdater updater) throws Exception {
-    setSelectedKey(updater, SELECTED_PACKAGE_KEY);
+  private static void setDescriptorSelection(
+      CoreUpdater updater, Integer buildVersion, String packageKey, PackageSpec packageSpec)
+      throws Exception {
+    CoreInfo info =
+        new CoreInfo(
+            buildVersion != null ? buildVersion.toString() : "test", null, Map.of(), null, null);
+    setDescriptorSelection(updater, info, buildVersion, packageKey, packageSpec);
   }
 
-  private static void setSelectedKey(CoreUpdater updater, String selectedKey) throws Exception {
-    Field field = CoreUpdater.class.getDeclaredField("selectedKey");
-    field.setAccessible(true);
-    field.set(updater, selectedKey);
+  private static void setDescriptorSelection(
+      CoreUpdater updater,
+      CoreInfo info,
+      Integer buildVersion,
+      String packageKey,
+      PackageSpec packageSpec)
+      throws Exception {
+    setField(
+        updater,
+        "descriptorSelection",
+        new CoreUpdater.DescriptorSelection(info, buildVersion, null, packageKey, packageSpec));
   }
 
   @SuppressWarnings("unchecked")

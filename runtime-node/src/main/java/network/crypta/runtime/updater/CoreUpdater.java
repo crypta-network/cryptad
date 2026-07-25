@@ -55,6 +55,10 @@ import org.slf4j.LoggerFactory;
  *   <li>Managing asynchronous package fetch lifecycle and error state.
  *   <li>Rendering updater properties, forms, and links for the web UI.
  * </ul>
+ *
+ * <p>A descriptor's release identity and selected package are published together as one immutable
+ * snapshot. Package actions must consume one snapshot instance so a concurrent descriptor
+ * replacement cannot authorize a package with another descriptor's build identity.
  */
 public class CoreUpdater extends NodeUpdater {
   private static final String LOG_TAG = "[CoreUpdater]";
@@ -69,14 +73,24 @@ public class CoreUpdater extends NodeUpdater {
   private final Logger log = LoggerFactory.getLogger(CoreUpdater.class);
   private final AppEnv appEnv = new AppEnv();
 
-  private final AtomicReference<CoreInfo> latestInfo = new AtomicReference<>();
-  private final AtomicReference<Integer> latestVersionBuild = new AtomicReference<>();
-  private volatile String selectedKey; // "<arch>.<ext>"
-  private final AtomicReference<PackageSpec> selectedSpec = new AtomicReference<>();
+  private final AtomicReference<DescriptorSelection> descriptorSelection = new AtomicReference<>();
   private final AtomicReference<PackageFetcher> fetcher = new AtomicReference<>();
-  private final AtomicReference<AppEnv.EnvDetection> env = new AtomicReference<>();
   private final Object packageFetchLifecycleLock = new Object();
   private boolean packageFetchesStopped;
+
+  /**
+   * Immutable descriptor identity and the package selected from that same descriptor.
+   *
+   * <p>Package visibility is intentionally limited to the updater package so focused tests can
+   * install complete selections without recreating descriptor fetches. The active instance is still
+   * owned by this updater and published only through {@link #descriptorSelection}.
+   */
+  record DescriptorSelection(
+      CoreInfo info,
+      Integer buildVersion,
+      AppEnv.EnvDetection environment,
+      String packageKey,
+      PackageSpec packageSpec) {}
 
   /**
    * Creates a core updater bound to the shared node updater manager context.
@@ -116,27 +130,35 @@ public class CoreUpdater extends NodeUpdater {
   @Override
   protected void maybeParseManifest(FetchResult result, int build) {
     CoreInfo info = parseInfo(result);
-    latestInfo.set(info);
     Integer parsedBuild = parseStrictIntegerVersion(info.version());
-    latestVersionBuild.set(parsedBuild);
     AppEnv.EnvDetection detected = appEnv.detectEnvironment();
-    env.set(detected);
-    selectArtifact(info, detected);
-    logParsedDescriptor(info, detected, parsedBuild);
+    Map.Entry<String, PackageSpec> selectedArtifact = selectArtifact(info, detected);
+    DescriptorSelection selection =
+        new DescriptorSelection(
+            info,
+            parsedBuild,
+            detected,
+            selectedArtifact != null ? selectedArtifact.getKey() : null,
+            selectedArtifact != null ? selectedArtifact.getValue() : null);
+    synchronized (packageFetchLifecycleLock) {
+      descriptorSelection.set(selection);
+    }
+    logParsedDescriptor(selection);
 
-    PackageSpec selected = selectedSpec.get();
+    PackageSpec selected = selection.packageSpec();
     if (manager.isAutoUpdateAllowed()
         && selected != null
         && selected.chk() != null
         && isNewerThanCurrentBuild(parsedBuild)
-        && !hasUsableFetcher()) {
-      tryStartDownload();
+        && !hasUsableFetcher(selection)) {
+      tryStartDownload(selection);
     }
   }
 
-  private void logParsedDescriptor(
-      CoreInfo info, AppEnv.EnvDetection detected, Integer parsedBuild) {
+  private void logParsedDescriptor(DescriptorSelection selection) {
     try {
+      CoreInfo info = selection.info();
+      AppEnv.EnvDetection detected = selection.environment();
       String versionLabel = info.version() != null ? info.version() : "?";
       String managers = String.join(",", detected.getAvailableManagers());
       logInfo(
@@ -149,7 +171,7 @@ public class CoreUpdater extends NodeUpdater {
               + " managers="
               + managers
               + " selectedKey="
-              + (selectedKey != null ? selectedKey : "none"));
+              + (selection.packageKey() != null ? selection.packageKey() : "none"));
       if (info.releasePageUrl() != null && !info.releasePageUrl().isBlank()) {
         logInfo("release_page_url=" + info.releasePageUrl());
       }
@@ -161,7 +183,7 @@ public class CoreUpdater extends NodeUpdater {
                 + ", full="
                 + (info.fullChangelogChk() != null ? info.fullChangelogChk() : "-"));
       }
-      if (parsedBuild == null) {
+      if (selection.buildVersion() == null) {
         log.warn(
             "{} Ignoring core-info version '{}' for release gating: expected an integer build",
             LOG_TAG,
@@ -184,7 +206,7 @@ public class CoreUpdater extends NodeUpdater {
    * @return short changelog CHK string, or {@code null} when unavailable
    */
   public String getShortChangelogCHK() {
-    CoreInfo info = latestInfo.get();
+    CoreInfo info = selectedInfo();
     return info != null ? info.changelogChk() : null;
   }
 
@@ -194,7 +216,7 @@ public class CoreUpdater extends NodeUpdater {
    * @return full changelog CHK string, or {@code null} when unavailable
    */
   public String getFullChangelogCHK() {
-    CoreInfo info = latestInfo.get();
+    CoreInfo info = selectedInfo();
     return info != null ? info.fullChangelogChk() : null;
   }
 
@@ -204,13 +226,19 @@ public class CoreUpdater extends NodeUpdater {
    * @return descriptor version label, or {@code null} when unavailable
    */
   public String getAdvertisedVersionLabel() {
-    CoreInfo info = latestInfo.get();
+    CoreInfo info = selectedInfo();
     return info != null ? info.version() : null;
+  }
+
+  private CoreInfo selectedInfo() {
+    DescriptorSelection selection = descriptorSelection.get();
+    return selection != null ? selection.info() : null;
   }
 
   @Override
   public synchronized boolean canUpdateNow() {
-    Integer advertisedBuild = latestVersionBuild.get();
+    DescriptorSelection selection = descriptorSelection.get();
+    Integer advertisedBuild = selection != null ? selection.buildVersion() : null;
     return isNewerThanCurrentBuild(advertisedBuild) && !isBuildRevoked(advertisedBuild);
   }
 
@@ -226,12 +254,12 @@ public class CoreUpdater extends NodeUpdater {
    * @return {@code true} when the current selected package is directly downloadable
    */
   public boolean isUiDownloadAvailable() {
-    PackageSpec spec = selectedSpec.get();
-    if (isSelectedBuildRevoked() || !canPrepareUiDownload(spec)) {
+    DescriptorSelection selection = descriptorSelection.get();
+    if (isSelectedBuildRevoked(selection) || !canPrepareUiDownload(selection)) {
       return false;
     }
 
-    PackageFetcher matchingFetcher = fetcherMatchesSelection();
+    PackageFetcher matchingFetcher = fetcherMatchesSelection(selection);
     if (matchingFetcher != null) {
       return !matchingFetcher.isInProgress() && !matchingFetcher.isSuccess();
     }
@@ -245,8 +273,8 @@ public class CoreUpdater extends NodeUpdater {
    *
    * <p>The submitted values must exactly match the form derived from the currently selected
    * package. The selected descriptor must still advertise a newer integer build, and authenticated
-   * lifecycle state must not revoke that build. A final stability check prevents a descriptor
-   * replacement during validation from authorizing values assembled from different selections.
+   * lifecycle state must not revoke that build. A final snapshot identity check prevents a
+   * descriptor replacement during validation from authorizing a stale selection.
    *
    * @param kind submitted package-store kind
    * @param id submitted package identifier, or an empty string when absent
@@ -254,9 +282,13 @@ public class CoreUpdater extends NodeUpdater {
    * @return {@code true} only for the exact current non-revoked store target
    */
   public boolean isCurrentStoreTarget(String kind, String id, String url) {
-    Integer build = latestVersionBuild.get();
-    String key = selectedKey;
-    PackageSpec spec = selectedSpec.get();
+    DescriptorSelection selection = descriptorSelection.get();
+    if (selection == null) {
+      return false;
+    }
+    Integer build = selection.buildVersion();
+    String key = selection.packageKey();
+    PackageSpec spec = selection.packageSpec();
     if (!isNewerThanCurrentBuild(build) || isBuildRevoked(build) || spec == null) {
       return false;
     }
@@ -270,31 +302,35 @@ public class CoreUpdater extends NodeUpdater {
             && expectedKind.equals(kind)
             && Objects.equals(expectedId, optionalFormValue(id))
             && expectedUrl.equals(url);
-    return exactTarget
-        && Objects.equals(build, latestVersionBuild.get())
-        && Objects.equals(key, selectedKey)
-        && Objects.equals(spec, selectedSpec.get())
-        && !isBuildRevoked(build);
+    return exactTarget && !isBuildRevoked(build) && isCurrentSelection(selection);
+  }
+
+  private boolean isCurrentSelection(DescriptorSelection selection) {
+    return selection != null && descriptorSelection.compareAndSet(selection, selection);
   }
 
   private static String optionalFormValue(String value) {
     return hasText(value) ? value : null;
   }
 
-  private boolean canPrepareUiDownload(PackageSpec spec) {
-    if (spec == null || spec.chk() == null || selectedKey == null) {
+  private boolean canPrepareUiDownload(DescriptorSelection selection) {
+    if (selection == null) {
+      return false;
+    }
+    PackageSpec spec = selection.packageSpec();
+    if (spec == null || spec.chk() == null || selection.packageKey() == null) {
       return false;
     }
     try {
       new FreenetURI(spec.chk());
-      return canPrepareDownloadTargetPath();
+      return canPrepareDownloadTargetPath(selection);
     } catch (MalformedURLException _) {
       return false;
     }
   }
 
-  private boolean canPrepareDownloadTargetPath() {
-    File versionDir = updatesDir();
+  private boolean canPrepareDownloadTargetPath(DescriptorSelection selection) {
+    File versionDir = updatesDir(selection);
     if (versionDir.exists()) {
       return versionDir.isDirectory() && versionDir.canWrite();
     }
@@ -321,11 +357,7 @@ public class CoreUpdater extends NodeUpdater {
     PackageFetcher previous;
     synchronized (packageFetchLifecycleLock) {
       previous = fetcher.getAndSet(null);
-      latestInfo.set(null);
-      latestVersionBuild.set(null);
-      selectedKey = null;
-      selectedSpec.set(null);
-      env.set(null);
+      descriptorSelection.set(null);
     }
     if (previous != null) {
       previous.cancelForUriChange();
@@ -388,7 +420,7 @@ public class CoreUpdater extends NodeUpdater {
     return parsedBuild != null && parsedBuild > Version.currentBuildNumber();
   }
 
-  private void selectArtifact(CoreInfo info, AppEnv.EnvDetection env) {
+  private Map.Entry<String, PackageSpec> selectArtifact(CoreInfo info, AppEnv.EnvDetection env) {
     Map<String, PackageSpec> pkgs = info.packages();
     String arch = env.getArch();
     List<String> order = preferredExtensions(env);
@@ -405,8 +437,7 @@ public class CoreUpdater extends NodeUpdater {
     if (chosen == null) {
       chosen = firstAvailableForArch(pkgs, arch);
     }
-    selectedKey = chosen != null ? chosen.getKey() : null;
-    selectedSpec.set(chosen != null ? chosen.getValue() : null);
+    return chosen;
   }
 
   private static boolean isSelectableArtifact(
@@ -489,18 +520,18 @@ public class CoreUpdater extends NodeUpdater {
     return null;
   }
 
-  private File updatesDir() {
-    CoreInfo info = latestInfo.get();
+  private File updatesDir(DescriptorSelection selection) {
+    CoreInfo info = selection != null ? selection.info() : null;
     String version = info != null && info.version() != null ? info.version() : UNKNOWN_VERSION;
     return new File(getUpdatesRoot(), version);
   }
 
-  private File downloadTarget() {
-    String key = selectedKey;
+  private File downloadTarget(DescriptorSelection selection) {
+    String key = selection != null ? selection.packageKey() : null;
     if (key == null) {
       return null;
     }
-    File outDir = updatesDir();
+    File outDir = updatesDir(selection);
     if (!outDir.exists() && !outDir.mkdirs()) {
       logError("Failed to create updates directory at " + outDir.getAbsolutePath(), null);
       return null;
@@ -508,8 +539,8 @@ public class CoreUpdater extends NodeUpdater {
     return new File(outDir, key);
   }
 
-  private PackageFetcher fetcherMatchesSelection() {
-    PackageSpec spec = selectedSpec.get();
+  private PackageFetcher fetcherMatchesSelection(DescriptorSelection selection) {
+    PackageSpec spec = selection != null ? selection.packageSpec() : null;
     if (spec == null || spec.chk() == null) {
       return null;
     }
@@ -520,22 +551,25 @@ public class CoreUpdater extends NodeUpdater {
     return null;
   }
 
-  private boolean hasUsableFetcher() {
-    PackageFetcher f = fetcherMatchesSelection();
+  private boolean hasUsableFetcher(DescriptorSelection selection) {
+    PackageFetcher f = fetcherMatchesSelection(selection);
     return f != null && !f.hasFailed();
   }
 
-  private boolean tryStartDownload() {
+  private boolean tryStartDownload(DescriptorSelection selection) {
+    if (selection == null) {
+      return false;
+    }
     if (manager.isBlown()) {
       logInfo("Skipping package download start because updater trust is unavailable");
       return false;
     }
-    if (isSelectedBuildRevoked()) {
+    if (isSelectedBuildRevoked(selection)) {
       logInfo("Skipping package download start because the advertised build is revoked");
       return false;
     }
-    PackageSpec spec = selectedSpec.get();
-    File target = downloadTarget();
+    PackageSpec spec = selection.packageSpec();
+    File target = downloadTarget(selection);
     if (spec == null || target == null || spec.chk() == null) {
       return false;
     }
@@ -553,7 +587,11 @@ public class CoreUpdater extends NodeUpdater {
         logInfo("Skipping package download start because updater trust is unavailable");
         return false;
       }
-      if (isSelectedBuildRevoked()) {
+      if (!isCurrentSelection(selection)) {
+        logInfo("Skipping package download start because the selected descriptor changed");
+        return false;
+      }
+      if (isSelectedBuildRevoked(selection)) {
         logInfo("Skipping package download start because the advertised build is revoked");
         return false;
       }
@@ -569,7 +607,7 @@ public class CoreUpdater extends NodeUpdater {
       fetcher.set(f);
       logInfo(
           "starting download: key="
-              + (selectedKey != null ? selectedKey : "?")
+              + (selection.packageKey() != null ? selection.packageKey() : "?")
               + ", target="
               + target.getAbsolutePath()
               + ", chk="
@@ -580,10 +618,11 @@ public class CoreUpdater extends NodeUpdater {
 
   /** Start downloading the currently selected package if not already in progress. */
   public boolean startDownloadFromUI() {
-    if (selectedSpec.get() == null) {
+    DescriptorSelection selection = descriptorSelection.get();
+    if (selection == null || selection.packageSpec() == null) {
       return false;
     }
-    PackageFetcher matchingFetcher = fetcherMatchesSelection();
+    PackageFetcher matchingFetcher = fetcherMatchesSelection(selection);
     if (matchingFetcher != null) {
       if (matchingFetcher.isInProgress() || matchingFetcher.isSuccess()) {
         return false;
@@ -595,7 +634,7 @@ public class CoreUpdater extends NodeUpdater {
         return false;
       }
     }
-    return tryStartDownload();
+    return tryStartDownload(selection);
   }
 
   @Override
@@ -622,12 +661,20 @@ public class CoreUpdater extends NodeUpdater {
    * @return the downloaded package file when fetch completed successfully, otherwise {@code null}
    */
   public File getDownloadedFile() {
-    if (isSelectedBuildRevoked()) {
+    DescriptorSelection selection = descriptorSelection.get();
+    if (isSelectedBuildRevoked(selection)) {
       return null;
     }
-    PackageFetcher f = fetcherMatchesSelection();
-    if (f != null && f.isSuccess()) {
-      return f.completedFileOrNull();
+    PackageFetcher f = fetcherMatchesSelection(selection);
+    return downloadedFile(selection, f);
+  }
+
+  private File downloadedFile(DescriptorSelection selection, PackageFetcher matchingFetcher) {
+    if (matchingFetcher != null && matchingFetcher.isSuccess()) {
+      File completedFile = matchingFetcher.completedFileOrNull();
+      if (!isSelectedBuildRevoked(selection) && isCurrentSelection(selection)) {
+        return completedFile;
+      }
     }
     return null;
   }
@@ -638,31 +685,26 @@ public class CoreUpdater extends NodeUpdater {
    * @param alertNode parent HTML node that receives updater status content and forms
    */
   public void renderProperties(HTMLNode alertNode) {
-    CoreInfo info = latestInfo.get();
-    if (info == null) {
+    DescriptorSelection selection = descriptorSelection.get();
+    if (selection == null) {
       return;
     }
+    CoreInfo info = selection.info();
+    AppEnv.EnvDetection envNow = selection.environment();
+    String chosen = selection.packageKey();
+    PackageSpec spec = selection.packageSpec();
 
-    AppEnv.EnvDetection envNow = env.get();
-    if (envNow == null) {
-      envNow = appEnv.detectEnvironment();
-      env.set(envNow);
-    }
-
-    String chosen = selectedKey;
-    PackageSpec spec = selectedSpec.get();
-
-    if (isSelectedBuildRevoked()) {
+    if (isSelectedBuildRevoked(selection)) {
       addRevokedPackageWarning(alertNode);
       return;
     }
     addHeader(alertNode, info, envNow, chosen, spec);
-    alertNode.addChild(buildLinksNode(info, spec, chosen));
+    alertNode.addChild(buildLinksNode(info, spec, chosen, envNow));
 
-    PackageFetcher f = fetcherMatchesSelection();
+    PackageFetcher f = fetcherMatchesSelection(selection);
     if (f == null) {
       if (spec != null && spec.chk() != null) {
-        alertNode.addChild(buildDownloadForm());
+        alertNode.addChild(buildDownloadForm(selection));
       }
       return;
     }
@@ -672,13 +714,13 @@ public class CoreUpdater extends NodeUpdater {
       HTMLNode p = new HTMLNode("p");
       p.addChild("#", "Download failed: " + msg);
       alertNode.addChild(p);
-      alertNode.addChild(buildRetryForm(!f.isFatalFailure()));
+      alertNode.addChild(buildRetryForm(selection, !f.isFatalFailure()));
       return;
     }
 
     alertNode.addChild(buildProgressNode(f));
-    boolean ready = f.isSuccess();
-    File downloaded = getDownloadedFile();
+    File downloaded = downloadedFile(selection, f);
+    boolean ready = downloaded != null;
     String path = downloaded != null ? downloaded.getAbsolutePath() : null;
     alertNode.addChild(buildInstallForm(ready, path));
   }
@@ -687,7 +729,8 @@ public class CoreUpdater extends NodeUpdater {
   void onSupportLifecycleStateChanged() {
     PackageFetcher revokedFetcher;
     synchronized (packageFetchLifecycleLock) {
-      if (!isSelectedBuildRevoked()) {
+      DescriptorSelection selection = descriptorSelection.get();
+      if (!isSelectedBuildRevoked(selection)) {
         return;
       }
       revokedFetcher = fetcher.getAndSet(null);
@@ -697,8 +740,8 @@ public class CoreUpdater extends NodeUpdater {
     }
   }
 
-  private boolean isSelectedBuildRevoked() {
-    return isBuildRevoked(latestVersionBuild.get());
+  private boolean isSelectedBuildRevoked(DescriptorSelection selection) {
+    return selection != null && isBuildRevoked(selection.buildVersion());
   }
 
   private boolean isBuildRevoked(Integer buildVersion) {
@@ -740,14 +783,15 @@ public class CoreUpdater extends NodeUpdater {
     }
   }
 
-  private HTMLNode buildLinksNode(CoreInfo info, PackageSpec spec, String chosenKey) {
+  private HTMLNode buildLinksNode(
+      CoreInfo info, PackageSpec spec, String chosenKey, AppEnv.EnvDetection environment) {
     HTMLNode links = new HTMLNode("p");
     addReleaseNotesLink(links, info.releasePageUrl());
 
     String storeUrl = spec != null ? spec.storeUrl() : null;
     String kind = storeKind(chosenKey);
 
-    if (shouldRenderStoreForm(storeUrl, kind)) {
+    if (shouldRenderStoreForm(storeUrl, kind, environment)) {
       String id = deriveStoreId(kind, storeUrl);
       links.addChild(buildOpenStoreForm(kind, id, storeUrl));
       links.addChild("#", "  ");
@@ -787,13 +831,13 @@ public class CoreUpdater extends NodeUpdater {
     return chosenKey.substring(idx + 1).toLowerCase(Locale.ROOT);
   }
 
-  private boolean shouldRenderStoreForm(String storeUrl, String kind) {
-    return hasText(storeUrl) && kind != null && isLinuxEnvironment();
+  private boolean shouldRenderStoreForm(
+      String storeUrl, String kind, AppEnv.EnvDetection environment) {
+    return hasText(storeUrl) && kind != null && isLinuxEnvironment(environment);
   }
 
-  private boolean isLinuxEnvironment() {
-    AppEnv.EnvDetection detected = env.get();
-    return (detected != null && detected.getOs() == AppEnv.OsKind.LINUX) || safeIsLinux();
+  private boolean isLinuxEnvironment(AppEnv.EnvDetection environment) {
+    return (environment != null && environment.getOs() == AppEnv.OsKind.LINUX) || safeIsLinux();
   }
 
   private static boolean hasText(String value) {
@@ -878,24 +922,24 @@ public class CoreUpdater extends NodeUpdater {
     node.addChild("input", attrs.toArray(String[]::new), vals.toArray(String[]::new));
   }
 
-  private HTMLNode buildDownloadForm() {
+  private HTMLNode buildDownloadForm(DescriptorSelection selection) {
     HTMLNode form = newPostForm();
     hiddenInput(form, FORM_FIELD_ACTION, "download");
     hiddenInput(form, FORM_FIELD_FORM_PASSWORD, formPassword());
-    submitButton(form, defaultDownloadLabel(), "start", false);
+    submitButton(form, defaultDownloadLabel(selection), "start", false);
     return form;
   }
 
-  private HTMLNode buildRetryForm(boolean isRetry) {
+  private HTMLNode buildRetryForm(DescriptorSelection selection, boolean isRetry) {
     HTMLNode form = newPostForm();
     hiddenInput(form, FORM_FIELD_ACTION, "download");
     hiddenInput(form, FORM_FIELD_FORM_PASSWORD, formPassword());
-    submitButton(form, isRetry ? "Retry" : defaultDownloadLabel(), "start", false);
+    submitButton(form, isRetry ? "Retry" : defaultDownloadLabel(selection), "start", false);
     return form;
   }
 
-  private String defaultDownloadLabel() {
-    PackageSpec spec = selectedSpec.get();
+  private static String defaultDownloadLabel(DescriptorSelection selection) {
+    PackageSpec spec = selection != null ? selection.packageSpec() : null;
     Long bytes = spec != null ? spec.size() : null;
     if (bytes != null && bytes > 0) {
       return "Download (" + SizeUtil.formatSize(bytes, true) + ")";
@@ -1072,22 +1116,23 @@ public class CoreUpdater extends NodeUpdater {
      * Starts a newer automatic selection after this fetch has completed.
      *
      * <p>All current trust, lifecycle, and shutdown gates are rechecked by {@link
-     * CoreUpdater#tryStartDownload()} before the replacement fetch starts.
+     * CoreUpdater#tryStartDownload(DescriptorSelection)} before the replacement fetch starts.
      */
     private void retrySupersedingAutomaticSelection() {
-      PackageSpec currentSelection = selectedSpec.get();
-      Integer currentBuild = latestVersionBuild.get();
+      DescriptorSelection currentSelection = descriptorSelection.get();
+      PackageSpec currentSpec = currentSelection != null ? currentSelection.packageSpec() : null;
+      Integer currentBuild = currentSelection != null ? currentSelection.buildVersion() : null;
       if (fetcher.get() != this
           || !manager.isAutoUpdateAllowed()
-          || currentSelection == null
-          || currentSelection.chk() == null
-          || matchesChk(currentSelection.chk())
+          || currentSpec == null
+          || currentSpec.chk() == null
+          || matchesChk(currentSpec.chk())
           || !isNewerThanCurrentBuild(currentBuild)) {
         return;
       }
       CoreUpdater.this.logInfo(
           "Starting package selected while the previous package download was running");
-      CoreUpdater.this.tryStartDownload();
+      CoreUpdater.this.tryStartDownload(currentSelection);
     }
 
     @Override

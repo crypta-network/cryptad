@@ -189,9 +189,13 @@ forced-update path.
 
 Recheck effective build revocation at every package-action boundary. A later accepted descriptor
 whose activation time is ahead of the local clock must not suspend an already-effective terminal
-revocation preserved in its entry chain. Downloaded-installer resolution and Linux `openStore`
-submission both cross `CoreUpdateActionPort`; store submissions must exactly match the daemon's
-current selected kind, derived id, and public URL before the HTTP adapter may open or install them.
+revocation preserved in its entry chain. Publish descriptor metadata, integer build identity,
+detected environment, selected package key, and package specification as one immutable atomic
+snapshot. Every download, installer, store-handoff, retry, and UI reader must use one snapshot
+instance and reject it if a newer snapshot replaced it before the action boundary. Downloaded
+installer resolution and Linux `openStore` submission both cross `CoreUpdateActionPort`; store
+submissions must exactly match the daemon's current selected kind, derived id, and public URL
+before the HTTP adapter may open or install them.
 
 The lifecycle descriptor's public schema, protected publication, and operator behavior are defined
 in `docs/stable-1.0-support-lifecycle-and-deprecation-governance.md`. Use deterministic local
