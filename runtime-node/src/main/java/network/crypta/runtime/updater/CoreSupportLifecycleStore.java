@@ -196,7 +196,9 @@ final class CoreSupportLifecycleStore {
    *
    * <p>The derived state is published first. It contains the complete monotonic activation map, so
    * publishing it ahead of a descriptor is harmless: entries not yet revoked by the still-current
-   * descriptor are ignored, while revocations already present retain their earlier activation.
+   * descriptor are ignored, while revocations already present retain their earlier activation. A
+   * retained recovery projection binds both the still-current descriptor and its exact successor,
+   * so either crash-visible file pair remains consistent.
    *
    * @param bytes exact authenticated descriptor bytes to persist
    * @param verifiedAt local time at which validation of these exact bytes succeeded

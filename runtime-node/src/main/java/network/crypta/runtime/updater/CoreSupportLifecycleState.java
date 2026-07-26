@@ -40,12 +40,15 @@ final class CoreSupportLifecycleState {
       "running_build_not_in_lifecycle_inventory";
   private static final String LIFECYCLE_TRUST_INVALIDATED_WARNING = "lifecycle_trust_invalidated";
   private static final long LEGACY_REVOCATION_STATE_SCHEMA_VERSION = 1;
-  private static final long REVOCATION_STATE_SCHEMA_VERSION = 2;
+  private static final long SINGLE_BINDING_REVOCATION_STATE_SCHEMA_VERSION = 2;
+  private static final long REVOCATION_STATE_SCHEMA_VERSION = 3;
   private static final int MAX_REVOCATION_STATE_ENTRIES = 256;
   private static final String SCHEMA_VERSION_FIELD = "schemaVersion";
   private static final String BUILD_VERSION_FIELD = "buildVersion";
   private static final String REVOCATION_ACTIVATIONS_FIELD = "revocationActivations";
   private static final String RUNNING_REVOCATION_PROJECTION_FIELD = "runningRevocationProjection";
+  private static final String SOURCE_DESCRIPTOR_DIGEST_FIELD = "sourceDescriptorDigest";
+  private static final String TARGET_DESCRIPTOR_DIGEST_FIELD = "targetDescriptorDigest";
   private static final String UPDATE_KEY_IDENTITY_DIGEST_FIELD = "updateKeyIdentityDigest";
   private static final String UPDATE_KEY_SCOPE_FIELD = "updateKeyScope";
   private static final String UPDATE_KEY_DOC_NAME_FIELD = "updateKeyDocName";
@@ -593,13 +596,35 @@ final class CoreSupportLifecycleState {
       return null;
     }
     if (now.isBefore(previous.effectiveAt())) {
-      return runningRevocationProjection;
+      return rebindRunningRevocationProjection(previous, candidate);
     }
     return new RunningRevocationProjection(
         runningBuild,
         previous.descriptorDigest(),
+        candidate.descriptorDigest(),
         previousRunning.replacementBuild(),
         previousRunning.recoveryGuidance());
+  }
+
+  private RunningRevocationProjection rebindRunningRevocationProjection(
+      CoreSupportLifecycleDescriptor previous, CoreSupportLifecycleDescriptor candidate) {
+    RunningRevocationProjection projection = runningRevocationProjection;
+    if (projection == null) {
+      return null;
+    }
+    if (projection.sourceDescriptorDigest().equals(previous.descriptorDigest())
+        && projection.targetDescriptorDigest().equals(candidate.descriptorDigest())) {
+      return projection;
+    }
+    if (!projection.targetDescriptorDigest().equals(previous.descriptorDigest())) {
+      return null;
+    }
+    return new RunningRevocationProjection(
+        projection.buildVersion(),
+        previous.descriptorDigest(),
+        candidate.descriptorDigest(),
+        projection.replacementBuild(),
+        projection.recoveryGuidance());
   }
 
   private byte[] encodeRevocationState(
@@ -630,7 +655,8 @@ final class CoreSupportLifecycleState {
       RunningRevocationProjection projection) {
     LinkedHashMap<String, Object> value = new LinkedHashMap<>();
     value.put(BUILD_VERSION_FIELD, Integer.toString(projection.buildVersion()));
-    value.put("sourceDescriptorDigest", projection.sourceDescriptorDigest());
+    value.put(SOURCE_DESCRIPTOR_DIGEST_FIELD, projection.sourceDescriptorDigest());
+    value.put(TARGET_DESCRIPTOR_DIGEST_FIELD, projection.targetDescriptorDigest());
     value.put(
         "replacementBuild",
         projection.replacementBuild() == null
@@ -687,7 +713,8 @@ final class CoreSupportLifecycleState {
     if (schemaVersion == LEGACY_REVOCATION_STATE_SCHEMA_VERSION) {
       return root.size() == 5;
     }
-    return schemaVersion == REVOCATION_STATE_SCHEMA_VERSION
+    return (schemaVersion == SINGLE_BINDING_REVOCATION_STATE_SCHEMA_VERSION
+            || schemaVersion == REVOCATION_STATE_SCHEMA_VERSION)
         && root.size() == 6
         && root.containsKey(RUNNING_REVOCATION_PROJECTION_FIELD);
   }
@@ -734,12 +761,15 @@ final class CoreSupportLifecycleState {
     if (value == null) {
       return null;
     }
+    int expectedFields = schemaVersion == SINGLE_BINDING_REVOCATION_STATE_SCHEMA_VERSION ? 4 : 5;
     if (!(value instanceof Map<?, ?> projection)
-        || projection.size() != 4
+        || projection.size() != expectedFields
         || !(projection.get(BUILD_VERSION_FIELD) instanceof String buildText)
-        || !(projection.get("sourceDescriptorDigest") instanceof String sourceDescriptorDigest)) {
+        || !(projection.get(SOURCE_DESCRIPTOR_DIGEST_FIELD)
+            instanceof String sourceDescriptorDigest)) {
       throw new IllegalArgumentException("invalid running-build revocation projection");
     }
+    String targetDescriptorDigest = targetDescriptorDigest(projection, schemaVersion, persisted);
     int buildVersion = parseCanonicalBuild(buildText);
     CoreSupportLifecycleEntry running = persisted.entriesByBuild().get(buildVersion);
     Instant activation = activations.get(buildVersion);
@@ -748,7 +778,8 @@ final class CoreSupportLifecycleState {
         || running.lifecycleStatus() != CoreSupportLifecycleStatus.REVOKED
         || activation == null
         || !activation.isBefore(persisted.effectiveAt())
-        || !Objects.equals(persisted.previousDescriptorDigest(), sourceDescriptorDigest)) {
+        || !projectionMatchesPersistedDescriptor(
+            sourceDescriptorDigest, targetDescriptorDigest, persisted)) {
       throw new IllegalArgumentException("running-build revocation projection is not predecessor");
     }
     Integer replacementBuild = parseOptionalCanonicalBuild(projection.get("replacementBuild"));
@@ -763,7 +794,39 @@ final class CoreSupportLifecycleState {
       throw new IllegalArgumentException("running-build replacement is outside release inventory");
     }
     return new RunningRevocationProjection(
-        buildVersion, sourceDescriptorDigest, replacementBuild, recoveryGuidance);
+        buildVersion,
+        sourceDescriptorDigest,
+        targetDescriptorDigest,
+        replacementBuild,
+        recoveryGuidance);
+  }
+
+  private static String targetDescriptorDigest(
+      Map<?, ?> projection, long schemaVersion, CoreSupportLifecycleDescriptor persisted) {
+    if (schemaVersion == SINGLE_BINDING_REVOCATION_STATE_SCHEMA_VERSION) {
+      return persisted.descriptorDigest();
+    }
+    Object value = projection.get(TARGET_DESCRIPTOR_DIGEST_FIELD);
+    if (!(value instanceof String targetDescriptorDigest)
+        || CoreSupportLifecycleParser.isNotCanonicalDigest(targetDescriptorDigest)) {
+      throw new IllegalArgumentException("invalid running-build revocation target digest");
+    }
+    return targetDescriptorDigest;
+  }
+
+  private static boolean projectionMatchesPersistedDescriptor(
+      String sourceDescriptorDigest,
+      String targetDescriptorDigest,
+      CoreSupportLifecycleDescriptor persisted) {
+    if (CoreSupportLifecycleParser.isNotCanonicalDigest(sourceDescriptorDigest)
+        || sourceDescriptorDigest.equals(targetDescriptorDigest)) {
+      return false;
+    }
+    boolean completedTransition =
+        targetDescriptorDigest.equals(persisted.descriptorDigest())
+            && Objects.equals(sourceDescriptorDigest, persisted.previousDescriptorDigest());
+    boolean preparedTransition = sourceDescriptorDigest.equals(persisted.descriptorDigest());
+    return completedTransition || preparedTransition;
   }
 
   private static int parseCanonicalBuild(String text) {
@@ -875,6 +938,7 @@ final class CoreSupportLifecycleState {
   private record RunningRevocationProjection(
       int buildVersion,
       String sourceDescriptorDigest,
+      String targetDescriptorDigest,
       Integer replacementBuild,
       String recoveryGuidance) {}
 

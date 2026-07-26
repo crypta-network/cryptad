@@ -166,11 +166,13 @@ Persist the bounded public-safe
 descriptor. It records when each terminal revocation first became enforceable and retains the
 running build's bounded predecessor-effective replacement or recovery guidance. A future-effective
 successor therefore preserves both the revocation veto and its active recovery path across restart
-without activating changed successor guidance early. Bind the recovery projection to the immediate
-predecessor descriptor digest and discard it when that binding is absent or invalid. If the derived
-activation state is absent or invalid, fail closed from each authenticated revoked entry's own
-effective time rather than suspending a potentially prior terminal revocation. Clear all derived
-revocation state with the descriptor after update-key compromise.
+without activating changed successor guidance early. Bind the recovery projection to both sides of
+each immediate descriptor transition. The binding must remain valid with the old descriptor after
+the sidecar rename and with the new descriptor after its rename, including when multiple
+future-effective successors are accepted. Discard the projection when that binding is absent or
+invalid. If the derived activation state is absent or invalid, fail closed from each authenticated
+revoked entry's own effective time rather than suspending a potentially prior terminal revocation.
+Clear all derived revocation state with the descriptor after update-key compromise.
 
 Local-only package-updater failure must leave both lifecycle polling and revocation-key polling
 active; only authenticated update-key compromise invalidates documents under that key. Package

@@ -41,10 +41,13 @@ class CoreSupportLifecycleStateTest {
   private static final String REVOKED_STATUS = "revoked";
   private static final String REVOCATION_EFFECTIVE_AT = "2026-01-02T00:00:00Z";
   private static final String FUTURE_DESCRIPTOR_EFFECTIVE_AT = "2026-01-03T00:00:00Z";
+  private static final String SECOND_FUTURE_DESCRIPTOR_EFFECTIVE_AT = "2026-01-04T00:00:00Z";
   private static final String ACTIVE_RECOVERY_GUIDANCE =
       "Restore from a verified backup and wait for an authenticated replacement.";
   private static final String FUTURE_RECOVERY_GUIDANCE =
       "Use the successor recovery procedure only after descriptor activation.";
+  private static final String SECOND_FUTURE_RECOVERY_GUIDANCE =
+      "Use the second successor recovery procedure after its activation.";
   private static final String SECURITY_ADVISORY_ID = "CRYPTA-2026-001";
   private static final String REVOCATION_REASON_CODE = "critical-release-defect";
 
@@ -358,6 +361,67 @@ class CoreSupportLifecycleStateTest {
   }
 
   @Test
+  void snapshot_whenTwoSuccessorsRemainFutureEffective_expectPriorGuidanceSurvivesRestart(
+      @TempDir Path tempDir) throws Exception {
+    CoreSupportLifecycleState state = state(tempDir, VERIFIED_AT);
+    byte[] revoked = CoreSupportLifecycleParserTest.emergencyRevocationDescriptor(false, true);
+    state.accept(revoked, 1);
+    byte[] firstSuccessor =
+        futureEffectiveSuccessor(revoked, state.snapshot().descriptor().digest());
+    state.accept(firstSuccessor, 2);
+    byte[] secondSuccessor =
+        secondFutureEffectiveSuccessor(firstSuccessor, state.snapshot().descriptor().digest());
+
+    state.accept(secondSuccessor, 3);
+    CoreSupportLifecycleState restarted = state(tempDir, VERIFIED_AT);
+    CoreSupportLifecycleState activated =
+        state(tempDir, Instant.parse(SECOND_FUTURE_DESCRIPTOR_EFFECTIVE_AT));
+
+    assertEffectiveRevocationSnapshot(state.snapshot(), true);
+    assertEffectiveRevocationSnapshot(restarted.snapshot(), true);
+    assertEquals(
+        SECOND_FUTURE_RECOVERY_GUIDANCE, activated.snapshot().running().recoveryGuidance());
+  }
+
+  @Test
+  void snapshot_whenSecondSuccessorDescriptorRenameIsInterrupted_expectGuidanceRemainsBound(
+      @TempDir Path tempDir) throws Exception {
+    CoreSupportLifecycleState state = state(tempDir, VERIFIED_AT);
+    byte[] revoked = CoreSupportLifecycleParserTest.emergencyRevocationDescriptor(false, true);
+    state.accept(revoked, 1);
+    byte[] firstSuccessor =
+        futureEffectiveSuccessor(revoked, state.snapshot().descriptor().digest());
+    state.accept(firstSuccessor, 2);
+    Path descriptorPath = tempDir.resolve(LIFECYCLE_STATE_PATH);
+    byte[] persistedFirstSuccessor = Files.readAllBytes(descriptorPath);
+    byte[] secondSuccessor =
+        secondFutureEffectiveSuccessor(firstSuccessor, state.snapshot().descriptor().digest());
+    state.accept(secondSuccessor, 3);
+    Files.write(descriptorPath, persistedFirstSuccessor);
+
+    CoreSupportLifecycleState interrupted = state(tempDir, VERIFIED_AT);
+    interrupted.accept(secondSuccessor, 3);
+    CoreSupportLifecycleState restarted = state(tempDir, VERIFIED_AT);
+
+    assertEffectiveRevocationSnapshot(interrupted.snapshot(), true);
+    assertEffectiveRevocationSnapshot(restarted.snapshot(), true);
+  }
+
+  @Test
+  void snapshot_whenVersionTwoProjectionIsRestored_expectGuidanceRemainsCompatible(
+      @TempDir Path tempDir) throws Exception {
+    CoreSupportLifecycleState state = state(tempDir, VERIFIED_AT);
+    byte[] revoked = CoreSupportLifecycleParserTest.emergencyRevocationDescriptor(false, true);
+    state.accept(revoked, 1);
+    state.accept(futureEffectiveSuccessor(revoked, state.snapshot().descriptor().digest()), 2);
+    downgradeRevocationProjectionToVersionTwo(tempDir);
+
+    CoreSupportLifecycleState restarted = state(tempDir, VERIFIED_AT);
+
+    assertEffectiveRevocationSnapshot(restarted.snapshot(), true);
+  }
+
+  @Test
   void snapshot_whenActiveRevocationReplacementChanges_expectPriorReplacementPreserved(
       @TempDir Path tempDir) throws Exception {
     CoreSupportLifecycleState state = state(tempDir, VERIFIED_AT);
@@ -517,6 +581,16 @@ class CoreSupportLifecycleStateTest {
     Files.writeString(statePath, CoreSupportLifecycleParser.canonicalJson(state));
   }
 
+  private static void downgradeRevocationProjectionToVersionTwo(Path tempDir) throws IOException {
+    Path statePath = revocationStatePath(tempDir);
+    Map<String, Object> state = JsonMini.parseObject(Files.readString(statePath));
+    state.put("schemaVersion", 2L);
+    @SuppressWarnings("unchecked")
+    Map<String, Object> projection = (Map<String, Object>) state.get("runningRevocationProjection");
+    projection.remove("targetDescriptorDigest");
+    Files.writeString(statePath, CoreSupportLifecycleParser.canonicalJson(state));
+  }
+
   private static CoreSupportLifecycleState state(
       Path tempDir, Instant now, String runningSourceCommit) {
     return new CoreSupportLifecycleState(
@@ -555,24 +629,59 @@ class CoreSupportLifecycleStateTest {
   }
 
   private static byte[] futureEffectiveSuccessor(byte[] previous, String previousDigest) {
+    return futureEffectiveSuccessor(
+        previous,
+        previousDigest,
+        new FutureSuccessorFixture(
+            2L,
+            1L,
+            "2026-01-02T06:00:00Z",
+            FUTURE_DESCRIPTOR_EFFECTIVE_AT,
+            "2026-01-10T00:00:00Z",
+            FUTURE_RECOVERY_GUIDANCE));
+  }
+
+  private static byte[] secondFutureEffectiveSuccessor(byte[] previous, String previousDigest) {
+    return futureEffectiveSuccessor(
+        previous,
+        previousDigest,
+        new FutureSuccessorFixture(
+            3L,
+            2L,
+            "2026-01-02T07:00:00Z",
+            SECOND_FUTURE_DESCRIPTOR_EFFECTIVE_AT,
+            "2026-01-11T00:00:00Z",
+            SECOND_FUTURE_RECOVERY_GUIDANCE));
+  }
+
+  private static byte[] futureEffectiveSuccessor(
+      byte[] previous, String previousDigest, FutureSuccessorFixture fixture) {
     Map<String, Object> root = JsonMini.parseObject(new String(previous, StandardCharsets.UTF_8));
     @SuppressWarnings("unchecked")
     Map<String, Object> entry =
         (Map<String, Object>) ((List<?>) root.get(ENTRIES_FIELD)).getFirst();
     if (REVOKED_STATUS.equals(entry.get("lifecycleStatus"))) {
       entry.put(REPLACEMENT_BUILD_FIELD, null);
-      entry.put(RECOVERY_GUIDANCE_FIELD, FUTURE_RECOVERY_GUIDANCE);
+      entry.put(RECOVERY_GUIDANCE_FIELD, fixture.recoveryGuidance());
     }
-    root.put("generatedAt", "2026-01-02T06:00:00Z");
-    root.put("effectiveAt", FUTURE_DESCRIPTOR_EFFECTIVE_AT);
-    root.put("staleAt", "2026-01-10T00:00:00Z");
-    root.put("descriptorEdition", 2L);
-    root.put("previousDescriptorEdition", 1L);
+    root.put("generatedAt", fixture.generatedAt());
+    root.put("effectiveAt", fixture.effectiveAt());
+    root.put("staleAt", fixture.staleAt());
+    root.put("descriptorEdition", fixture.descriptorEdition());
+    root.put("previousDescriptorEdition", fixture.previousDescriptorEdition());
     root.put("previousDescriptorDigest", previousDigest);
     root.remove(DESCRIPTOR_DIGEST_FIELD);
     root.put(DESCRIPTOR_DIGEST_FIELD, CoreSupportLifecycleParser.semanticDigest(root));
     return CoreSupportLifecycleParser.canonicalJson(root).getBytes(StandardCharsets.UTF_8);
   }
+
+  private record FutureSuccessorFixture(
+      long descriptorEdition,
+      long previousDescriptorEdition,
+      String generatedAt,
+      String effectiveAt,
+      String staleAt,
+      String recoveryGuidance) {}
 
   private static byte[] revocationWithReplacementDescriptor() throws IOException {
     Map<String, Object> root =

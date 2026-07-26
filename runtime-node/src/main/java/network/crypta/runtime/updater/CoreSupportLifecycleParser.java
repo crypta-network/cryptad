@@ -629,6 +629,10 @@ public final class CoreSupportLifecycleParser {
         && !containsUnsafeText(text);
   }
 
+  static boolean isNotCanonicalDigest(String text) {
+    return text == null || !DIGEST.matcher(text).matches();
+  }
+
   private static String requiredMatchingText(
       Map<String, Object> map, String field, Pattern pattern) {
     String value = requiredText(map, field);
