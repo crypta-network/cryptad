@@ -8,6 +8,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import network.crypta.runtime.spi.CoreSupportLifecycleSnapshot;
@@ -34,10 +35,18 @@ class CoreSupportLifecycleStateTest {
   private static final String LIFECYCLE_STATE_PATH = "updates/core/lifecycle.json";
   private static final String REVOCATION_STATE_SUFFIX = ".revocation-activations";
   private static final String DESCRIPTOR_DIGEST_FIELD = "descriptorDigest";
+  private static final String ENTRIES_FIELD = "entries";
+  private static final String REPLACEMENT_BUILD_FIELD = "replacementBuild";
+  private static final String RECOVERY_GUIDANCE_FIELD = "recoveryGuidance";
+  private static final String REVOKED_STATUS = "revoked";
   private static final String REVOCATION_EFFECTIVE_AT = "2026-01-02T00:00:00Z";
   private static final String FUTURE_DESCRIPTOR_EFFECTIVE_AT = "2026-01-03T00:00:00Z";
+  private static final String ACTIVE_RECOVERY_GUIDANCE =
+      "Restore from a verified backup and wait for an authenticated replacement.";
   private static final String FUTURE_RECOVERY_GUIDANCE =
       "Use the successor recovery procedure only after descriptor activation.";
+  private static final String SECURITY_ADVISORY_ID = "CRYPTA-2026-001";
+  private static final String REVOCATION_REASON_CODE = "critical-release-defect";
 
   @Test
   void accept_whenCertificationFixtureIsValid_expectKnownCurrentStableSnapshot(
@@ -281,10 +290,8 @@ class CoreSupportLifecycleStateTest {
     state.accept(CoreSupportLifecycleParserTest.emergencyRevocationDescriptor(false, true), 1);
 
     CoreSupportLifecycleSnapshot snapshot = state.snapshot();
-    assertEquals("revoked", snapshot.running().status().wireValue());
-    assertEquals(
-        "Restore from a verified backup and wait for an authenticated replacement.",
-        snapshot.running().recoveryGuidance());
+    assertEquals(REVOKED_STATUS, snapshot.running().status().wireValue());
+    assertEquals(ACTIVE_RECOVERY_GUIDANCE, snapshot.running().recoveryGuidance());
     assertNull(snapshot.running().requiredReplacementBuild());
     assertNull(snapshot.recommendation().currentStableBuild());
     assertNull(snapshot.recommendation().recommendedBuild());
@@ -340,11 +347,33 @@ class CoreSupportLifecycleStateTest {
 
     state.accept(successor, 2);
     CoreSupportLifecycleState restarted = state(tempDir, VERIFIED_AT);
+    CoreSupportLifecycleState activated =
+        state(tempDir, Instant.parse(FUTURE_DESCRIPTOR_EFFECTIVE_AT));
 
-    assertEffectiveRevocationSnapshot(state.snapshot());
-    assertEffectiveRevocationSnapshot(restarted.snapshot());
+    assertEffectiveRevocationSnapshot(state.snapshot(), true);
+    assertEffectiveRevocationSnapshot(restarted.snapshot(), true);
+    assertEquals(FUTURE_RECOVERY_GUIDANCE, activated.snapshot().running().recoveryGuidance());
     assertTrue(state.isBuildRevoked(100));
     assertTrue(restarted.isBuildRevoked(100));
+  }
+
+  @Test
+  void snapshot_whenActiveRevocationReplacementChanges_expectPriorReplacementPreserved(
+      @TempDir Path tempDir) throws Exception {
+    CoreSupportLifecycleState state = state(tempDir, VERIFIED_AT);
+    byte[] revoked = revocationWithReplacementDescriptor();
+    state.accept(revoked, 1);
+    String predecessorDigest = state.snapshot().descriptor().digest();
+
+    state.accept(futureEffectiveSuccessorWithReplacement(revoked, predecessorDigest), 2);
+    CoreSupportLifecycleState restarted = state(tempDir, VERIFIED_AT);
+    CoreSupportLifecycleState activated =
+        state(tempDir, Instant.parse(FUTURE_DESCRIPTOR_EFFECTIVE_AT));
+
+    assertEquals(101, state.snapshot().running().requiredReplacementBuild());
+    assertEquals(101, restarted.snapshot().running().requiredReplacementBuild());
+    assertNull(state.snapshot().running().recoveryGuidance());
+    assertEquals(101, activated.snapshot().running().requiredReplacementBuild());
   }
 
   @Test
@@ -359,7 +388,7 @@ class CoreSupportLifecycleStateTest {
 
     CoreSupportLifecycleState restarted = state(tempDir, VERIFIED_AT);
 
-    assertEffectiveRevocationSnapshot(restarted.snapshot());
+    assertEffectiveRevocationSnapshot(restarted.snapshot(), false);
     assertTrue(restarted.isBuildRevoked(100));
   }
 
@@ -375,7 +404,23 @@ class CoreSupportLifecycleStateTest {
 
     CoreSupportLifecycleState restarted = state(tempDir, VERIFIED_AT);
 
-    assertEffectiveRevocationSnapshot(restarted.snapshot());
+    assertEffectiveRevocationSnapshot(restarted.snapshot(), false);
+    assertTrue(restarted.isBuildRevoked(100));
+  }
+
+  @Test
+  void snapshot_whenRecoveryProjectionBindsWrongPredecessor_expectGuidanceWithheld(
+      @TempDir Path tempDir) throws Exception {
+    CoreSupportLifecycleState state = state(tempDir, VERIFIED_AT);
+    byte[] revoked = CoreSupportLifecycleParserTest.emergencyRevocationDescriptor(false, true);
+    state.accept(revoked, 1);
+    String predecessorDigest = state.snapshot().descriptor().digest();
+    state.accept(futureEffectiveSuccessor(revoked, predecessorDigest), 2);
+    corruptProjectionPredecessorDigest(tempDir);
+
+    CoreSupportLifecycleState restarted = state(tempDir, VERIFIED_AT);
+
+    assertEffectiveRevocationSnapshot(restarted.snapshot(), false);
     assertTrue(restarted.isBuildRevoked(100));
   }
 
@@ -420,11 +465,22 @@ class CoreSupportLifecycleStateTest {
     return state(tempDir, now, "a".repeat(40));
   }
 
-  private static void assertEffectiveRevocationSnapshot(CoreSupportLifecycleSnapshot snapshot) {
+  private static void assertEffectiveRevocationSnapshot(
+      CoreSupportLifecycleSnapshot snapshot, boolean preservedGuidanceAvailable) {
     assertTrue(snapshot.known());
-    assertEquals("revoked", snapshot.running().status().wireValue());
+    assertEquals(REVOKED_STATUS, snapshot.running().status().wireValue());
     assertEquals(REVOCATION_EFFECTIVE_AT, snapshot.running().statusEffectiveAt());
-    assertInactiveGuidanceHidden(snapshot);
+    assertNull(snapshot.running().fullSupportUntil());
+    assertNull(snapshot.running().securityFixesUntil());
+    assertNull(snapshot.running().deprecationEffectiveAt());
+    assertNull(snapshot.running().endOfSupportAt());
+    assertNull(snapshot.running().requiredReplacementBuild());
+    assertEquals(
+        preservedGuidanceAvailable ? ACTIVE_RECOVERY_GUIDANCE : null,
+        snapshot.running().recoveryGuidance());
+    assertEquals(List.of(SECURITY_ADVISORY_ID), snapshot.running().advisoryIds());
+    assertEquals(List.of(REVOCATION_REASON_CODE), snapshot.running().reasonCodes());
+    assertRecommendationHidden(snapshot);
     assertTrue(snapshot.warnings().contains(BUILD_REVOKED_WARNING));
     assertTrue(snapshot.warnings().contains("lifecycle_descriptor_not_effective"));
   }
@@ -438,6 +494,10 @@ class CoreSupportLifecycleStateTest {
     assertNull(snapshot.running().recoveryGuidance());
     assertTrue(snapshot.running().advisoryIds().isEmpty());
     assertTrue(snapshot.running().reasonCodes().isEmpty());
+    assertRecommendationHidden(snapshot);
+  }
+
+  private static void assertRecommendationHidden(CoreSupportLifecycleSnapshot snapshot) {
     assertNull(snapshot.recommendation().currentStableBuild());
     assertNull(snapshot.recommendation().recommendedBuild());
     assertFalse(snapshot.recommendation().upgradeAvailable());
@@ -446,6 +506,15 @@ class CoreSupportLifecycleStateTest {
   private static Path revocationStatePath(Path tempDir) {
     Path descriptor = tempDir.resolve(LIFECYCLE_STATE_PATH);
     return descriptor.resolveSibling(descriptor.getFileName() + REVOCATION_STATE_SUFFIX);
+  }
+
+  private static void corruptProjectionPredecessorDigest(Path tempDir) throws IOException {
+    Path statePath = revocationStatePath(tempDir);
+    Map<String, Object> state = JsonMini.parseObject(Files.readString(statePath));
+    @SuppressWarnings("unchecked")
+    Map<String, Object> projection = (Map<String, Object>) state.get("runningRevocationProjection");
+    projection.put("sourceDescriptorDigest", SHA_256_PREFIX + "f".repeat(64));
+    Files.writeString(statePath, CoreSupportLifecycleParser.canonicalJson(state));
   }
 
   private static CoreSupportLifecycleState state(
@@ -488,9 +557,11 @@ class CoreSupportLifecycleStateTest {
   private static byte[] futureEffectiveSuccessor(byte[] previous, String previousDigest) {
     Map<String, Object> root = JsonMini.parseObject(new String(previous, StandardCharsets.UTF_8));
     @SuppressWarnings("unchecked")
-    Map<String, Object> entry = (Map<String, Object>) ((List<?>) root.get("entries")).getFirst();
-    if ("revoked".equals(entry.get("lifecycleStatus"))) {
-      entry.put("recoveryGuidance", FUTURE_RECOVERY_GUIDANCE);
+    Map<String, Object> entry =
+        (Map<String, Object>) ((List<?>) root.get(ENTRIES_FIELD)).getFirst();
+    if (REVOKED_STATUS.equals(entry.get("lifecycleStatus"))) {
+      entry.put(REPLACEMENT_BUILD_FIELD, null);
+      entry.put(RECOVERY_GUIDANCE_FIELD, FUTURE_RECOVERY_GUIDANCE);
     }
     root.put("generatedAt", "2026-01-02T06:00:00Z");
     root.put("effectiveAt", FUTURE_DESCRIPTOR_EFFECTIVE_AT);
@@ -503,19 +574,75 @@ class CoreSupportLifecycleStateTest {
     return CoreSupportLifecycleParser.canonicalJson(root).getBytes(StandardCharsets.UTF_8);
   }
 
+  private static byte[] revocationWithReplacementDescriptor() throws IOException {
+    Map<String, Object> root =
+        JsonMini.parseObject(
+            new String(
+                CoreSupportLifecycleParserTest.emergencyRevocationDescriptor(false, true),
+                StandardCharsets.UTF_8));
+    Map<String, Object> fixture =
+        JsonMini.parseObject(
+            new String(CoreSupportLifecycleParserTest.fixtureBytes(), StandardCharsets.UTF_8));
+    @SuppressWarnings("unchecked")
+    Map<String, Object> revoked =
+        (Map<String, Object>) ((List<?>) root.get(ENTRIES_FIELD)).getFirst();
+    @SuppressWarnings("unchecked")
+    Map<String, Object> template =
+        (Map<String, Object>) ((List<?>) fixture.get(ENTRIES_FIELD)).getFirst();
+    Map<String, Object> replacement = replacementEntry(template);
+    revoked.put(REPLACEMENT_BUILD_FIELD, "101");
+    revoked.put(RECOVERY_GUIDANCE_FIELD, null);
+    root.put(ENTRIES_FIELD, List.of(revoked, replacement));
+    root.put("currentStableBuild", "101");
+    root.put("minimumSupportedBuild", "101");
+    root.put("minimumSecuritySupportedBuild", "101");
+    root.put("recommendedBuild", "101");
+    root.remove(DESCRIPTOR_DIGEST_FIELD);
+    root.put(DESCRIPTOR_DIGEST_FIELD, CoreSupportLifecycleParser.semanticDigest(root));
+    return CoreSupportLifecycleParser.canonicalJson(root).getBytes(StandardCharsets.UTF_8);
+  }
+
+  private static Map<String, Object> replacementEntry(Map<String, Object> template) {
+    Map<String, Object> replacement = new LinkedHashMap<>(template);
+    replacement.put("releaseId", "stable-1.0-maintenance-v101");
+    replacement.put("buildVersion", "101");
+    replacement.put("tag", "v101");
+    replacement.put("sourceCommit", "b".repeat(40));
+    replacement.put("productDigest", SHA_256_PREFIX + "6".repeat(64));
+    replacement.put("publicationReceiptDigest", SHA_256_PREFIX + "7".repeat(64));
+    replacement.put("baselineDigest", SHA_256_PREFIX + "8".repeat(64));
+    replacement.put("publishedAt", REVOCATION_EFFECTIVE_AT);
+    replacement.put("statusEffectiveAt", REVOCATION_EFFECTIVE_AT);
+    return replacement;
+  }
+
+  private static byte[] futureEffectiveSuccessorWithReplacement(
+      byte[] previous, String previousDigest) {
+    Map<String, Object> root =
+        JsonMini.parseObject(
+            new String(futureEffectiveSuccessor(previous, previousDigest), StandardCharsets.UTF_8));
+    @SuppressWarnings("unchecked")
+    Map<String, Object> revoked =
+        (Map<String, Object>) ((List<?>) root.get(ENTRIES_FIELD)).getFirst();
+    revoked.put(REPLACEMENT_BUILD_FIELD, "101");
+    revoked.put(RECOVERY_GUIDANCE_FIELD, null);
+    root.remove(DESCRIPTOR_DIGEST_FIELD);
+    root.put(DESCRIPTOR_DIGEST_FIELD, CoreSupportLifecycleParser.semanticDigest(root));
+    return CoreSupportLifecycleParser.canonicalJson(root).getBytes(StandardCharsets.UTF_8);
+  }
+
   private static byte[] futureEffectiveRevocationSuccessor(byte[] previous, String previousDigest) {
     Map<String, Object> root = JsonMini.parseObject(new String(previous, StandardCharsets.UTF_8));
     @SuppressWarnings("unchecked")
-    Map<String, Object> entry = (Map<String, Object>) ((List<?>) root.get("entries")).getFirst();
-    entry.put("lifecycleStatus", "revoked");
+    Map<String, Object> entry =
+        (Map<String, Object>) ((List<?>) root.get(ENTRIES_FIELD)).getFirst();
+    entry.put("lifecycleStatus", REVOKED_STATUS);
     entry.put("statusEffectiveAt", REVOCATION_EFFECTIVE_AT);
     entry.put("securityRevocationEffectiveAt", REVOCATION_EFFECTIVE_AT);
-    entry.put("replacementBuild", null);
-    entry.put(
-        "recoveryGuidance",
-        "Restore from a verified backup and wait for an authenticated replacement.");
-    entry.put("advisoryIds", List.of("CRYPTA-2026-001"));
-    entry.put("reasonCodes", List.of("critical-release-defect"));
+    entry.put(REPLACEMENT_BUILD_FIELD, null);
+    entry.put(RECOVERY_GUIDANCE_FIELD, ACTIVE_RECOVERY_GUIDANCE);
+    entry.put("advisoryIds", List.of(SECURITY_ADVISORY_ID));
+    entry.put("reasonCodes", List.of(REVOCATION_REASON_CODE));
     root.put("generatedAt", "2026-01-02T06:00:00Z");
     root.put("effectiveAt", FUTURE_DESCRIPTOR_EFFECTIVE_AT);
     root.put("staleAt", "2026-01-10T00:00:00Z");

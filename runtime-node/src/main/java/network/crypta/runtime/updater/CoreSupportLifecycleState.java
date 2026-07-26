@@ -39,9 +39,13 @@ final class CoreSupportLifecycleState {
   private static final String RUNNING_BUILD_NOT_IN_LIFECYCLE_INVENTORY_WARNING =
       "running_build_not_in_lifecycle_inventory";
   private static final String LIFECYCLE_TRUST_INVALIDATED_WARNING = "lifecycle_trust_invalidated";
-  private static final long REVOCATION_STATE_SCHEMA_VERSION = 1;
+  private static final long LEGACY_REVOCATION_STATE_SCHEMA_VERSION = 1;
+  private static final long REVOCATION_STATE_SCHEMA_VERSION = 2;
   private static final int MAX_REVOCATION_STATE_ENTRIES = 256;
+  private static final String SCHEMA_VERSION_FIELD = "schemaVersion";
+  private static final String BUILD_VERSION_FIELD = "buildVersion";
   private static final String REVOCATION_ACTIVATIONS_FIELD = "revocationActivations";
+  private static final String RUNNING_REVOCATION_PROJECTION_FIELD = "runningRevocationProjection";
   private static final String UPDATE_KEY_IDENTITY_DIGEST_FIELD = "updateKeyIdentityDigest";
   private static final String UPDATE_KEY_SCOPE_FIELD = "updateKeyScope";
   private static final String UPDATE_KEY_DOC_NAME_FIELD = "updateKeyDocName";
@@ -58,6 +62,7 @@ final class CoreSupportLifecycleState {
   private String lastFailureCode;
   private boolean trustInvalidated;
   private Map<Integer, Instant> revocationActivationByBuild = Map.of();
+  private RunningRevocationProjection runningRevocationProjection;
 
   /**
    * Creates state for one running build and attempts to load a matching persisted descriptor.
@@ -102,10 +107,17 @@ final class CoreSupportLifecycleState {
     validateSuccessor(descriptor, candidate);
     Map<Integer, Instant> candidateRevocationActivations =
         revocationActivationsForSuccessor(descriptor, candidate);
+    RunningRevocationProjection candidateRunningRevocationProjection =
+        runningRevocationProjectionForSuccessor(descriptor, candidate);
     Instant verifiedAt = clock.instant();
-    store.save(bytes, verifiedAt, encodeRevocationState(candidateRevocationActivations));
+    store.save(
+        bytes,
+        verifiedAt,
+        encodeRevocationState(
+            candidateRevocationActivations, candidateRunningRevocationProjection));
     descriptor = candidate;
     revocationActivationByBuild = candidateRevocationActivations;
+    runningRevocationProjection = candidateRunningRevocationProjection;
     lastVerifiedAt = verifiedAt;
     lastFailureCode = null;
   }
@@ -127,6 +139,7 @@ final class CoreSupportLifecycleState {
     trust = Objects.requireNonNull(nextTrust, "nextTrust");
     descriptor = null;
     revocationActivationByBuild = Map.of();
+    runningRevocationProjection = null;
     lastVerifiedAt = null;
     lastFailureCode = null;
     loadPersisted();
@@ -146,6 +159,7 @@ final class CoreSupportLifecycleState {
     trustInvalidated = true;
     descriptor = null;
     revocationActivationByBuild = Map.of();
+    runningRevocationProjection = null;
     lastVerifiedAt = null;
     lastFailureCode = LIFECYCLE_TRUST_INVALIDATED_WARNING;
     try {
@@ -253,6 +267,13 @@ final class CoreSupportLifecycleState {
 
   private CoreSupportLifecycleSnapshot.RunningBuild effectiveRevocationSnapshot(
       CoreSupportLifecycleEntry running) {
+    Integer replacementBuild = null;
+    String recoveryGuidance = null;
+    RunningRevocationProjection projection = runningRevocationProjection;
+    if (projection != null && projection.buildVersion() == running.buildVersion()) {
+      replacementBuild = projection.replacementBuild();
+      recoveryGuidance = projection.recoveryGuidance();
+    }
     return new CoreSupportLifecycleSnapshot.RunningBuild(
         runningBuild,
         running.lifecycleStatus(),
@@ -261,10 +282,10 @@ final class CoreSupportLifecycleState {
         null,
         null,
         null,
-        null,
-        null,
-        List.of(),
-        List.of());
+        replacementBuild,
+        recoveryGuidance,
+        running.advisoryIds(),
+        running.reasonCodes());
   }
 
   /** Returns the currently accepted descriptor edition for subscription seeding. */
@@ -372,11 +393,15 @@ final class CoreSupportLifecycleState {
       CoreSupportLifecycleDescriptor persisted = parser.parsePersisted(stored.bytes(), trust);
       validateRunningIdentity(persisted);
       descriptor = persisted;
-      revocationActivationByBuild = decodeRevocationState(stored.revocationState(), persisted);
+      DecodedRevocationState revocationState =
+          decodeRevocationState(stored.revocationState(), persisted);
+      revocationActivationByBuild = revocationState.activations();
+      runningRevocationProjection = revocationState.runningProjection();
       lastVerifiedAt = stored.verifiedAt();
     } catch (IOException | IllegalArgumentException _) {
       descriptor = null;
       revocationActivationByBuild = Map.of();
+      runningRevocationProjection = null;
       lastVerifiedAt = null;
       lastFailureCode = "lifecycle_persisted_state_invalid";
     }
@@ -390,6 +415,7 @@ final class CoreSupportLifecycleState {
     trustInvalidated = true;
     descriptor = null;
     revocationActivationByBuild = Map.of();
+    runningRevocationProjection = null;
     lastVerifiedAt = null;
     lastFailureCode =
         status == CoreSupportLifecycleStore.TrustInvalidationStatus.VALID
@@ -548,51 +574,122 @@ final class CoreSupportLifecycleState {
     return Map.copyOf(activations);
   }
 
-  private byte[] encodeRevocationState(Map<Integer, Instant> activations) {
+  private RunningRevocationProjection runningRevocationProjectionForSuccessor(
+      CoreSupportLifecycleDescriptor previous, CoreSupportLifecycleDescriptor candidate) {
+    Instant now = clock.instant();
+    if (previous == null || !now.isBefore(candidate.effectiveAt())) {
+      return null;
+    }
+    CoreSupportLifecycleEntry previousRunning = previous.entriesByBuild().get(runningBuild);
+    CoreSupportLifecycleEntry candidateRunning = candidate.entriesByBuild().get(runningBuild);
+    Instant priorActivation = revocationActivationByBuild.get(runningBuild);
+    if (previousRunning == null
+        || candidateRunning == null
+        || previousRunning.lifecycleStatus() != CoreSupportLifecycleStatus.REVOKED
+        || candidateRunning.lifecycleStatus() != CoreSupportLifecycleStatus.REVOKED
+        || priorActivation == null
+        || now.isBefore(priorActivation)
+        || now.isBefore(previousRunning.statusEffectiveAt())) {
+      return null;
+    }
+    if (now.isBefore(previous.effectiveAt())) {
+      return runningRevocationProjection;
+    }
+    return new RunningRevocationProjection(
+        runningBuild,
+        previous.descriptorDigest(),
+        previousRunning.replacementBuild(),
+        previousRunning.recoveryGuidance());
+  }
+
+  private byte[] encodeRevocationState(
+      Map<Integer, Instant> activations, RunningRevocationProjection runningProjection) {
     ArrayList<Map<String, Object>> entries = new ArrayList<>(activations.size());
     activations.entrySet().stream()
         .sorted(Map.Entry.comparingByKey())
         .forEach(
             activation -> {
               LinkedHashMap<String, Object> value = new LinkedHashMap<>();
-              value.put("buildVersion", Integer.toString(activation.getKey()));
+              value.put(BUILD_VERSION_FIELD, Integer.toString(activation.getKey()));
               value.put("effectiveAt", activation.getValue().toString());
               entries.add(value);
             });
     LinkedHashMap<String, Object> root = new LinkedHashMap<>();
-    root.put("schemaVersion", REVOCATION_STATE_SCHEMA_VERSION);
+    root.put(SCHEMA_VERSION_FIELD, REVOCATION_STATE_SCHEMA_VERSION);
     root.put(UPDATE_KEY_IDENTITY_DIGEST_FIELD, trust.updateKeyIdentityDigest());
     root.put(UPDATE_KEY_SCOPE_FIELD, trust.updateKeyScope());
     root.put(UPDATE_KEY_DOC_NAME_FIELD, trust.updateKeyDocName());
     root.put(REVOCATION_ACTIVATIONS_FIELD, entries);
+    root.put(
+        RUNNING_REVOCATION_PROJECTION_FIELD,
+        runningProjection == null ? null : encodeRunningRevocationProjection(runningProjection));
     return CoreSupportLifecycleParser.canonicalJson(root).getBytes(StandardCharsets.UTF_8);
   }
 
-  private Map<Integer, Instant> decodeRevocationState(
+  private static Map<String, Object> encodeRunningRevocationProjection(
+      RunningRevocationProjection projection) {
+    LinkedHashMap<String, Object> value = new LinkedHashMap<>();
+    value.put(BUILD_VERSION_FIELD, Integer.toString(projection.buildVersion()));
+    value.put("sourceDescriptorDigest", projection.sourceDescriptorDigest());
+    value.put(
+        "replacementBuild",
+        projection.replacementBuild() == null
+            ? null
+            : Integer.toString(projection.replacementBuild()));
+    value.put("recoveryGuidance", projection.recoveryGuidance());
+    return value;
+  }
+
+  private DecodedRevocationState decodeRevocationState(
       byte[] bytes, CoreSupportLifecycleDescriptor persisted) {
-    Map<Integer, Instant> fallback = conservativeRevocationFallback(persisted);
+    DecodedRevocationState fallback =
+        new DecodedRevocationState(conservativeRevocationFallback(persisted), null);
     if (bytes.length == 0) {
       return fallback;
     }
     try {
       Map<String, Object> root = JsonMini.parseObject(new String(bytes, StandardCharsets.UTF_8));
-      if (!hasExactRevocationStateFields(root) || !revocationStateMatchesTrust(root)) {
+      long schemaVersion = revocationStateSchemaVersion(root);
+      if (!hasExactRevocationStateFields(root, schemaVersion)
+          || !revocationStateMatchesTrust(root)) {
         return fallback;
       }
       Map<Integer, Instant> decoded = decodeRevocationActivations(root);
-      return activationsMatchDescriptor(decoded, persisted) ? Map.copyOf(decoded) : fallback;
+      if (!activationsMatchDescriptor(decoded, persisted)) {
+        return fallback;
+      }
+      RunningRevocationProjection runningProjection =
+          decodeRunningRevocationProjection(root, schemaVersion, decoded, persisted);
+      return new DecodedRevocationState(Map.copyOf(decoded), runningProjection);
     } catch (IllegalArgumentException _) {
       return fallback;
     }
   }
 
-  private static boolean hasExactRevocationStateFields(Map<String, Object> root) {
-    return root.size() == 5
-        && Objects.equals(root.get("schemaVersion"), REVOCATION_STATE_SCHEMA_VERSION)
-        && root.containsKey(UPDATE_KEY_IDENTITY_DIGEST_FIELD)
-        && root.containsKey(UPDATE_KEY_SCOPE_FIELD)
-        && root.containsKey(UPDATE_KEY_DOC_NAME_FIELD)
-        && root.containsKey(REVOCATION_ACTIVATIONS_FIELD);
+  private static long revocationStateSchemaVersion(Map<String, Object> root) {
+    if (!(root.get(SCHEMA_VERSION_FIELD) instanceof Long schemaVersion)) {
+      throw new IllegalArgumentException("invalid lifecycle revocation state schema");
+    }
+    return schemaVersion;
+  }
+
+  private static boolean hasExactRevocationStateFields(
+      Map<String, Object> root, long schemaVersion) {
+    boolean commonFields =
+        root.containsKey(SCHEMA_VERSION_FIELD)
+            && root.containsKey(UPDATE_KEY_IDENTITY_DIGEST_FIELD)
+            && root.containsKey(UPDATE_KEY_SCOPE_FIELD)
+            && root.containsKey(UPDATE_KEY_DOC_NAME_FIELD)
+            && root.containsKey(REVOCATION_ACTIVATIONS_FIELD);
+    if (!commonFields) {
+      return false;
+    }
+    if (schemaVersion == LEGACY_REVOCATION_STATE_SCHEMA_VERSION) {
+      return root.size() == 5;
+    }
+    return schemaVersion == REVOCATION_STATE_SCHEMA_VERSION
+        && root.size() == 6
+        && root.containsKey(RUNNING_REVOCATION_PROJECTION_FIELD);
   }
 
   private boolean revocationStateMatchesTrust(Map<String, Object> root) {
@@ -611,7 +708,7 @@ final class CoreSupportLifecycleState {
     for (Object item : entries) {
       if (!(item instanceof Map<?, ?> entry)
           || entry.size() != 2
-          || !(entry.get("buildVersion") instanceof String buildText)
+          || !(entry.get(BUILD_VERSION_FIELD) instanceof String buildText)
           || !(entry.get("effectiveAt") instanceof String effectiveText)) {
         throw new IllegalArgumentException("invalid lifecycle revocation activation entry");
       }
@@ -623,6 +720,79 @@ final class CoreSupportLifecycleState {
       }
     }
     return decoded;
+  }
+
+  private RunningRevocationProjection decodeRunningRevocationProjection(
+      Map<String, Object> root,
+      long schemaVersion,
+      Map<Integer, Instant> activations,
+      CoreSupportLifecycleDescriptor persisted) {
+    if (schemaVersion == LEGACY_REVOCATION_STATE_SCHEMA_VERSION) {
+      return null;
+    }
+    Object value = root.get(RUNNING_REVOCATION_PROJECTION_FIELD);
+    if (value == null) {
+      return null;
+    }
+    if (!(value instanceof Map<?, ?> projection)
+        || projection.size() != 4
+        || !(projection.get(BUILD_VERSION_FIELD) instanceof String buildText)
+        || !(projection.get("sourceDescriptorDigest") instanceof String sourceDescriptorDigest)) {
+      throw new IllegalArgumentException("invalid running-build revocation projection");
+    }
+    int buildVersion = parseCanonicalBuild(buildText);
+    CoreSupportLifecycleEntry running = persisted.entriesByBuild().get(buildVersion);
+    Instant activation = activations.get(buildVersion);
+    if (buildVersion != runningBuild
+        || running == null
+        || running.lifecycleStatus() != CoreSupportLifecycleStatus.REVOKED
+        || activation == null
+        || !activation.isBefore(persisted.effectiveAt())
+        || !Objects.equals(persisted.previousDescriptorDigest(), sourceDescriptorDigest)) {
+      throw new IllegalArgumentException("running-build revocation projection is not predecessor");
+    }
+    Integer replacementBuild = parseOptionalCanonicalBuild(projection.get("replacementBuild"));
+    String recoveryGuidance = parseOptionalRecoveryGuidance(projection.get("recoveryGuidance"));
+    if ((replacementBuild == null) == (recoveryGuidance == null)) {
+      throw new IllegalArgumentException(
+          "running-build revocation projection lacks exact guidance");
+    }
+    if (replacementBuild != null
+        && (replacementBuild == runningBuild
+            || !persisted.entriesByBuild().containsKey(replacementBuild))) {
+      throw new IllegalArgumentException("running-build replacement is outside release inventory");
+    }
+    return new RunningRevocationProjection(
+        buildVersion, sourceDescriptorDigest, replacementBuild, recoveryGuidance);
+  }
+
+  private static int parseCanonicalBuild(String text) {
+    int build = Integer.parseInt(text);
+    if (build <= 0 || !Integer.toString(build).equals(text)) {
+      throw new IllegalArgumentException("invalid lifecycle revocation projection build");
+    }
+    return build;
+  }
+
+  private static Integer parseOptionalCanonicalBuild(Object value) {
+    if (value == null) {
+      return null;
+    }
+    if (!(value instanceof String text)) {
+      throw new IllegalArgumentException("invalid lifecycle revocation replacement build");
+    }
+    return parseCanonicalBuild(text);
+  }
+
+  private static String parseOptionalRecoveryGuidance(Object value) {
+    if (value == null) {
+      return null;
+    }
+    if (!(value instanceof String text)
+        || !CoreSupportLifecycleParser.isSafeRecoveryGuidance(text)) {
+      throw new IllegalArgumentException("invalid lifecycle revocation recovery guidance");
+    }
+    return text;
   }
 
   private static boolean activationsMatchDescriptor(
@@ -694,6 +864,19 @@ final class CoreSupportLifecycleState {
       case REVOKED -> warnings.add("build_revoked");
     }
   }
+
+  private record DecodedRevocationState(
+      Map<Integer, Instant> activations, RunningRevocationProjection runningProjection) {
+    private DecodedRevocationState {
+      activations = Map.copyOf(activations);
+    }
+  }
+
+  private record RunningRevocationProjection(
+      int buildVersion,
+      String sourceDescriptorDigest,
+      Integer replacementBuild,
+      String recoveryGuidance) {}
 
   private static String text(Instant instant) {
     return instant == null ? null : instant.toString();

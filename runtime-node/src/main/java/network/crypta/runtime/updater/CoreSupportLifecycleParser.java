@@ -622,6 +622,13 @@ public final class CoreSupportLifecycleParser {
         : requiredText(map, RECOVERY_GUIDANCE_FIELD);
   }
 
+  static boolean isSafeRecoveryGuidance(String text) {
+    return text != null
+        && !text.isBlank()
+        && text.length() <= MAX_TEXT_LENGTH
+        && !containsUnsafeText(text);
+  }
+
   private static String requiredMatchingText(
       Map<String, Object> map, String field, Pattern pattern) {
     String value = requiredText(map, field);

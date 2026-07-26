@@ -24,16 +24,18 @@ import network.crypta.fs.AppEnv;
  * Exact-byte local persistence for the last-known-good support-lifecycle descriptor.
  *
  * <p>The descriptor file contains only the authenticated public bytes. A bounded public-safe
- * sibling records derived terminal-revocation activation times so a future-effective successor can
- * distinguish a predecessor revocation from a newly introduced one across restart. Reads reject
- * symbolic links, non-regular files, and oversized content. Writes use newly created sibling files
- * and atomic replacement when the filesystem supports it, so a crash cannot silently turn partial
- * bytes into accepted lifecycle state. A fixed-content sibling marker and optional independent
- * fallback marker durably prevent state authenticated by a compromised update key from loading or
- * being replaced. No path or descriptor body is returned to logs or operator surfaces.
+ * sibling records derived terminal-revocation activation times and the running build's bounded
+ * predecessor-effective recovery projection. A future-effective successor can therefore distinguish
+ * a predecessor revocation from a newly introduced one and retain the active recovery path across
+ * restart without exposing changed successor guidance early. Reads reject symbolic links,
+ * non-regular files, and oversized content. Writes use newly created sibling files and atomic
+ * replacement when the filesystem supports it, so a crash cannot silently turn partial bytes into
+ * accepted lifecycle state. A fixed-content sibling marker and optional independent fallback marker
+ * durably prevent state authenticated by a compromised update key from loading or being replaced.
+ * No path or descriptor body is returned to logs or operator surfaces.
  */
 final class CoreSupportLifecycleStore {
-  /** Maximum derived revocation-activation metadata retained beside the descriptor. */
+  /** Maximum derived revocation activation/recovery metadata retained beside the descriptor. */
   private static final int MAX_REVOCATION_STATE_BYTES = 64 * 1024;
 
   /** Exact marker body identifying the versioned update-key trust-invalidation record. */
@@ -47,7 +49,7 @@ final class CoreSupportLifecycleStore {
   /** Primary trust-invalidation marker stored beside the descriptor. */
   private final Path invalidationFile;
 
-  /** Derived activation times that distinguish preserved from newly introduced revocations. */
+  /** Derived activation and active running-build recovery state for terminal revocations. */
   private final Path revocationStateFile;
 
   /**
@@ -190,7 +192,7 @@ final class CoreSupportLifecycleStore {
   }
 
   /**
-   * Replaces the last-known-good descriptor and its derived revocation-activation state.
+   * Replaces the last-known-good descriptor and its derived revocation activation/recovery state.
    *
    * <p>The derived state is published first. It contains the complete monotonic activation map, so
    * publishing it ahead of a descriptor is harmless: entries not yet revoked by the still-current
@@ -198,8 +200,8 @@ final class CoreSupportLifecycleStore {
    *
    * @param bytes exact authenticated descriptor bytes to persist
    * @param verifiedAt local time at which validation of these exact bytes succeeded
-   * @param revocationState canonical public-safe derived activation metadata, or {@code null} when
-   *     the caller does not maintain that projection
+   * @param revocationState canonical public-safe derived activation and recovery metadata, or
+   *     {@code null} when the caller does not maintain that projection
    * @throws IOException if the parent, target, metadata, or replacement is unsafe
    */
   void save(byte[] bytes, Instant verifiedAt, byte[] revocationState) throws IOException {
@@ -652,7 +654,7 @@ final class CoreSupportLifecycleStore {
     /** Durable last-modified timestamp set when these exact bytes were accepted. */
     private final Instant verifiedAt;
 
-    /** Derived revocation-activation metadata, empty when no state was stored. */
+    /** Derived revocation activation/recovery metadata, empty when no state was stored. */
     private final byte[] revocationState;
 
     /**
@@ -660,7 +662,8 @@ final class CoreSupportLifecycleStore {
      *
      * @param bytes exact authenticated descriptor bytes
      * @param verifiedAt local time at which the bytes were verified
-     * @param revocationState derived revocation-activation metadata, or {@code null} to store empty
+     * @param revocationState derived revocation activation/recovery metadata, or {@code null} to
+     *     store empty
      */
     StoredDescriptor(byte[] bytes, Instant verifiedAt, byte[] revocationState) {
       this.bytes = bytes.clone();
@@ -687,7 +690,7 @@ final class CoreSupportLifecycleStore {
     }
 
     /**
-     * Returns a defensive copy of derived revocation-activation metadata.
+     * Returns a defensive copy of derived revocation activation/recovery metadata.
      *
      * @return independent metadata bytes, empty when none were stored
      */

@@ -163,11 +163,14 @@ bounded/backed off, and stale callbacks or temporary blobs from a replaced URI/s
 not regress accepted state or leak files.
 Persist the bounded public-safe
 `support-lifecycle-last-known-good.json.revocation-activations` sibling before replacing the
-descriptor. It records when each terminal revocation first became enforceable, so a
-future-effective successor preserves predecessor revocations across restart without activating a
-new revocation early. If this derived state is absent or invalid, fail closed from each authenticated
-revoked entry's own effective time rather than suspending a potentially prior terminal revocation.
-Clear this derived state with the descriptor after update-key compromise.
+descriptor. It records when each terminal revocation first became enforceable and retains the
+running build's bounded predecessor-effective replacement or recovery guidance. A future-effective
+successor therefore preserves both the revocation veto and its active recovery path across restart
+without activating changed successor guidance early. Bind the recovery projection to the immediate
+predecessor descriptor digest and discard it when that binding is absent or invalid. If the derived
+activation state is absent or invalid, fail closed from each authenticated revoked entry's own
+effective time rather than suspending a potentially prior terminal revocation. Clear all derived
+revocation state with the descriptor after update-key compromise.
 
 Local-only package-updater failure must leave both lifecycle polling and revocation-key polling
 active; only authenticated update-key compromise invalidates documents under that key. Package
