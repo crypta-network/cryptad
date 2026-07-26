@@ -24,7 +24,7 @@ on:
         required: true
         type: string
       source_commit:
-        description: Exact lowercase source commit on protected main or the exact build release/hotfix ref.
+        description: Exact lowercase workflow-dispatch commit on protected main or the exact build release/hotfix ref.
         required: true
         type: string
       input_bundle_sha256:

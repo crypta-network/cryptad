@@ -709,11 +709,15 @@ non-production execution flags, then attests its manifest and every protected in
 
 Lifecycle input and publication jobs run only from protected `main`, the exact
 `release/<build_version>`, or the exact `hotfix/<build_version>` ref. Their job conditions first
-require GitHub's protected-ref context. They then query the live GitHub branch record, require
-`protected=true`, fetch the same remote branch, and require the selected source commit to be its
-ancestor. The publication job repeats that proof before insert material is made available; the
-input producer first completes it in a credential-free job before requesting its environment, then
-repeats it before receiving the protected bundle locator and bearer token.
+require GitHub's protected-ref context. The `source_commit` input must equal both the
+workflow-dispatch `GITHUB_SHA` and the checked-out `HEAD`, which keeps GitHub's attested source
+digest aligned with the code handling protected inputs. The jobs then query the live GitHub branch
+record, require `protected=true`, fetch the same remote branch, and require the dispatch commit to
+remain its ancestor. This ancestry check tolerates the branch advancing after dispatch; it does not
+permit an independently selected older commit. The publication job repeats that proof before
+insert material is made available; the input producer first completes it in a credential-free job
+before requesting its environment, then repeats it before receiving the protected bundle locator
+and bearer token.
 
 Configure the lifecycle evidence, authorization, and publication environments with deployment
 branch rules limited to protected `main`, `release/*`, and `hotfix/*` refs. Workflow job conditions

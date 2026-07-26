@@ -524,10 +524,13 @@ ledger/descriptor pair. Publish and verification consume a separately attested l
 provider wheel; only publish receives insert material.
 
 Lifecycle workflow source is trusted only when the dispatch ref is protected `main`, the exact
-`release/<build>`, or the exact `hotfix/<build>` ref and the selected source commit remains
-reachable from the authenticated live remote tip. Require GitHub's protected-ref context before
-requesting an environment. Use a credential-free preflight for producer inputs, then recheck branch
-protection and ancestry before input credentials or publication insert material are exposed.
+`release/<build>`, or the exact `hotfix/<build>` ref. Require the selected source commit to equal
+the workflow-dispatch `GITHUB_SHA` and checked-out `HEAD` so artifact provenance and executed code
+have one source identity. It must also remain reachable from the authenticated live remote tip;
+that ancestry check permits the branch to advance after dispatch, not an independently selected
+older commit. Require GitHub's protected-ref context before requesting an environment. Use a
+credential-free preflight for producer inputs, then recheck branch protection and ancestry before
+input credentials or publication insert material are exposed.
 Configure the lifecycle evidence, authorization, and publication environments with
 deployment-branch restrictions for protected `main`, `release/*`, and `hotfix/*`; keep the
 workflow's exact-build allowlist as an independent gate.

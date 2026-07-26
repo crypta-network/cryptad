@@ -302,9 +302,15 @@ rejects an alias or arbitrary signer workflow.
 Both lifecycle workflows accept source only from protected `main`, the exact
 `release/<build_version>` branch, or the exact `hotfix/<build_version>` branch. Before an
 environment-backed job can start, its job condition requires GitHub's protected-ref context. The
-consumer also proves through the GitHub branch API that the selected branch is protected, fetches
-its live remote tip, and verifies that `source_commit` is reachable from that exact tip. The
-publication job repeats this proof before checked-out publication code can receive insert
+`source_commit` input must equal both the workflow-dispatch `GITHUB_SHA` and the checked-out
+`HEAD`. This equality binds the code that handles protected inputs to the source commit recorded by
+GitHub's artifact attestation; later phases verify that exact source digest. The consumer also
+proves through the GitHub branch API that the selected branch is protected, fetches its live remote
+tip, and verifies that the dispatch commit is reachable from that exact tip. This ancestry check
+allows the protected branch to advance after dispatch. It does not authorize a caller-selected
+older commit while the dispatch runs from a newer tip.
+
+The publication job repeats the proof before checked-out publication code can receive insert
 material. A credential-free input-producer preflight applies the same proof before its environment
 job can start, and the producer repeats it before receiving the reviewed-bundle URL or bearer
 token.
